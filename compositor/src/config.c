@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 bool vela_config_path(const char *name, char *out, size_t size)
 {
@@ -102,12 +103,21 @@ static void read_lines(const char *path, struct lines *lines, bool *changed)
 // A new file in place of the old one: readers never see half a file.
 static void write_lines(const char *path, const struct lines *lines)
 {
-    char temporary[PATH_MAX];
-    if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) >= (int)sizeof(temporary)) {
+    // mkstemp uses 0600 regardless of umask, and prevents a predictable
+    // .tmp symlink from redirecting configuration writes.
+    char temporary[PATH_MAX + 8];
+    int n = snprintf(temporary, sizeof(temporary), "%s.XXXXXX", path);
+    if (n < 0 || (size_t)n >= sizeof(temporary)) {
         return;
     }
-    FILE *file = fopen(temporary, "w");
+    int fd = mkstemp(temporary);
+    if (fd < 0) {
+        return;
+    }
+    FILE *file = fdopen(fd, "w");
     if (!file) {
+        close(fd);
+        unlink(temporary);
         return;
     }
     bool ok = true;
@@ -115,10 +125,8 @@ static void write_lines(const char *path, const struct lines *lines)
         ok = fprintf(file, "%s\n", lines->items[i]) >= 0 && ok;
     }
     ok = fclose(file) == 0 && ok;
-    if (ok) {
-        rename(temporary, path);
-    } else {
-        remove(temporary);
+    if (!ok || rename(temporary, path) != 0) {
+        unlink(temporary);
     }
 }
 
