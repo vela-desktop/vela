@@ -269,7 +269,9 @@ if [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
 fi
 
 if [ "$check" = 1 ]; then
-    if [ -n "$ciRun" ]; then
+    if [ -n "$release_package" ]; then
+        echo ":: Public alpha package available (no GitHub login needed)."
+    elif [ -n "$ciRun" ]; then
         echo ":: GitHub already has the package: vela-update downloads it instead of building."
     fi
     exit 0
@@ -288,8 +290,36 @@ prune() {
     done
 }
 
-# Package ready on GitHub: download it or build? Without a terminal (or with
-# --download) it's downloaded.
+# Prefer an immutable public release. Verify its checksum before passing the
+# package to pacman; on missing/corrupt downloads use the existing fallbacks.
+if [ -n "$release_package" ]; then
+    DOWNLOAD="$CACHE/download"
+    rm -rf "$DOWNLOAD"
+    mkdir -p "$DOWNLOAD"
+    printf '%s  %s\n' "$release_digest" "$release_package" > "$DOWNLOAD/SHA256SUMS"
+    echo ":: Downloading public alpha package for $latestFull"
+    if curl -fsSL --retry 2 --connect-timeout 5 --max-time 180 \
+        -o "$DOWNLOAD/$release_package" "$release_url/$release_package" \
+        && (cd "$DOWNLOAD" && sha256sum --check --status SHA256SUMS); then
+        mv -f "$DOWNLOAD/$release_package" "$PACKAGES/"
+        rm -rf "$DOWNLOAD"
+        package="$PACKAGES/$release_package"
+        if ! sudo pacman -U "$package"; then
+            echo "vela-update: the verified package was downloaded but not installed. To install it:" >&2
+            echo "   sudo pacman -U $package" >&2
+            exit 1
+        fi
+        prune
+        echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
+        echo "   starts with your next session: sign out and back in."
+        exit 0
+    fi
+    echo ":: Public package unavailable or failed checksum verification; falling back." >&2
+    rm -rf "$DOWNLOAD"
+fi
+
+# Package ready on GitHub Actions: download it or build? Without a terminal
+# (or with --download) it's downloaded.
 if [ -n "$ciRun" ]; then
     answer=d
     if [ "$prefer" != download ] && [ -t 0 ]; then
