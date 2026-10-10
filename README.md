@@ -281,19 +281,25 @@ proprietary driver ≥ 570 or NVK. Once installed, **Vela** appears on the login
 
 ### Arch Linux, CachyOS, EndeavourOS
 
-Vela installs as a proper `vela-git` package:
+Vela installs as a native `vela-git` package. Install `git`, `curl` and `base-devel` first, then run:
 
 ```sh
 git clone https://github.com/vela-desktop/vela.git
-cd vela/packaging/arch
-VELA_GIT_URL=file://$PWD/../.. makepkg -si
+sh vela/packaging/arch/vela-update
 ```
 
-Then keep it up to date with **`vela-update`**. It fetches new commits, shows what
-changed, and installs the new version. Every push to `main` is built on GitHub
-Actions, so if that package is ready (and the [GitHub CLI](https://cli.github.com/) is
-logged in), `vela-update` offers to download it instead of compiling. Otherwise it
-builds the package locally.
+**`vela-update` also handles the first installation**; you do not need to build Vela
+or install a package separately. On first run it reuses Git objects from the
+checkout instead of downloading the full repository twice. It checks for a
+public, commit-matched alpha package built on `main` (no GitHub login required)
+and verifies its SHA-256 checksum before installing with pacman. If there is no
+matching public package, it can use a temporary CI artifact through an
+authenticated [GitHub CLI](https://cli.github.com/) or build the native package
+locally. The public alpha packages are published only after successful `main` builds;
+experimental branches normally build locally unless you have access to a matching
+CI artifact.
+
+Once installed, use **`vela-update`** to fetch new commits and install updates.
 
 Repository downloads use public HTTPS and need no GitHub account or SSH keys.
 Saved GitHub SSH URLs and cached mirrors from older versions are migrated to
@@ -302,7 +308,7 @@ HTTPS automatically. `--source` can still select a local Git copy.
 ```sh
 vela-update                 # update if something new is available
 vela-update --check         # only check, and list the changes
-vela-update --download      # use GitHub's package without asking
+vela-update --download      # download a matching public package, or build if unavailable
 vela-update --build         # always build locally
 vela-update --jobs 2        # fewer parallel compile jobs
 vela-update --branch YOUR_TEST_BRANCH --download  # replace with an existing branch
@@ -320,7 +326,9 @@ otherwise it builds locally as usual.
 To prepare a package for a test branch, run the **Build** workflow manually in
 GitHub Actions, selecting that branch (or run
 `gh workflow run build.yml --ref YOUR_TEST_BRANCH`). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce the same
-`vela-git` artifact as pushes to `main`; artifacts expire after 14 days.
+`vela-git` artifact as pushes to `main`; workflow artifacts expire after 14 days.
+Public `main` packages are also published as immutable per-commit GitHub prereleases
+(tagged `alpha-<full-commit-sha>`) and can be downloaded without a GitHub account.
 The tester needs a version of `vela-update` that already supports these options.
 
 The last three packages stay in `~/.cache/vela-update/packages/` for rollback.
