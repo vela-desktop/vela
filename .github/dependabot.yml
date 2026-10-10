@@ -9,6 +9,3 @@ updates:
       time: "05:30"
       timezone: Europe/Rome
     open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - security
