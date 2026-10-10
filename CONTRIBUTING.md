@@ -7,7 +7,7 @@ Vela is an alpha Linux desktop environment with a C17 Wayland compositor, Vulkan
 - Search existing issues and pull requests. For large changes, discuss the intended behavior and architecture in an issue first.
 - Keep pull requests focused. Prefer fixing a regression to adding unrelated features in the same change.
 - Describe how the change affects AMD/RADV, NVIDIA, Intel, headless and nested sessions when relevant. A CPU-only CI pass does **not** prove a GPU/driver-specific fix.
-- Code, commit messages and UI text should be in English; existing source comments may use Italian. Follow the surrounding style.
+- Use English for code, new comments, commit messages and UI text. Some existing comments are in Italian; translations to English are welcome. Follow the surrounding style.
 
 ## Build and test
 
