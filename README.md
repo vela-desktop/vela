@@ -327,8 +327,11 @@ To prepare a package for a test branch, run the **Build** workflow manually in
 GitHub Actions, selecting that branch (or run
 `gh workflow run build.yml --ref YOUR_TEST_BRANCH`). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce the same
 `vela-git` artifact as pushes to `main`; workflow artifacts expire after 14 days.
-Public `main` packages are also published as immutable per-commit GitHub prereleases
+Public `main` packages are also published as per-commit GitHub prereleases
 (tagged `alpha-<full-commit-sha>`) and can be downloaded without a GitHub account.
+Only the **five most recently published Vela alpha releases** are kept; older
+ones and their tags are removed automatically. For an older commit, `vela-update`
+falls back to an available workflow artifact or a local build.
 The tester needs a version of `vela-update` that already supports these options.
 
 The last three packages stay in `~/.cache/vela-update/packages/` for rollback.
