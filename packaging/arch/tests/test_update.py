@@ -92,6 +92,29 @@ elif name == "gh":
         dest.mkdir(parents=True)
         sha = os.environ["TEST_DOWNLOAD_SHA"]
         (dest / ("vela-git-0.1.0.r1.g" + sha + "-1-x86_64.pkg.tar.zst")).touch()
+elif name == "curl":
+    record()
+    import hashlib
+    sha = os.environ.get("TEST_RELEASE_SHA")
+    if not sha:
+        sys.exit(22)  # no public release for this fixture revision
+    url = args[-1]
+    prefix = "https://github.com/vela-desktop/vela/releases/download/alpha-" + sha + "/"
+    if not url.startswith(prefix):
+        sys.exit("Unexpected public release URL: " + url)
+    output = pathlib.Path(args[args.index("-o") + 1])
+    advertised = os.environ.get("TEST_RELEASE_PKG_SHA") or sha
+    package = "vela-git-0.1.0.r1.g" + advertised[:7] + "-1-x86_64.pkg.tar.zst"
+    data = ("package for " + sha).encode()
+    digest = hashlib.sha256(data).hexdigest()
+    if os.environ.get("TEST_BAD_RELEASE_DIGEST"):
+        digest = "f" * 64
+    if url == prefix + "SHA256SUMS":
+        output.write_text(digest + "  " + package + "\n")
+    elif url == prefix + package and not os.environ.get("TEST_FAIL_RELEASE_DOWNLOAD"):
+        output.write_bytes(data + (b"corrupted" if os.environ.get("TEST_CORRUPT_RELEASE") else b""))
+    else:
+        sys.exit(22)
 elif name == "sudo":
     record()
     sys.exit(int(os.environ.get("TEST_FAIL_INSTALL", "0")))
@@ -109,10 +132,14 @@ class UpdateFixture(unittest.TestCase):
         self.source.mkdir()
         bin_dir = self.directory / "bin"
         bin_dir.mkdir()
-        for name in ("pacman", "makepkg", "gh", "sudo", "git"):
+        for name in ("pacman", "makepkg", "gh", "sudo", "curl", "git"):
             stub = bin_dir / name
             stub.write_text(GIT_STUB if name == "git" else STUB)
             stub.chmod(0o755)
+        # Installed/updater entry point is outside a checkout: only the
+        # explicit bootstrap test below runs the updater from a Git checkout.
+        self.update_script = bin_dir / "vela-update-under-test"
+        shutil.copyfile(UPDATER, self.update_script)
         self.calls_file = self.directory / "calls.jsonl"
         # Ignore the developer's Git rewrites, SSH keys, credentials and test
         # controls. Git is restricted to file transport even if a stub errs.
@@ -137,6 +164,7 @@ class UpdateFixture(unittest.TestCase):
         packaging.mkdir(parents=True)
         self.pkgbuild = packaging / "PKGBUILD"
         self.pkgbuild.write_text((ROOT / "packaging/arch/PKGBUILD").read_text())
+        shutil.copyfile(UPDATER, packaging / "vela-update")
         self.base = self.commit("base")
         self.pkgbuild.write_text(self.pkgbuild.read_text() + "\n# main package\n")
         self.main = self.commit("main update")
@@ -158,7 +186,7 @@ class UpdateFixture(unittest.TestCase):
 
     def run_update(self, *args, status=0, source=True):
         source_args = ["--source", str(self.source)] if source else []
-        result = subprocess.run(["sh", str(UPDATER), *source_args, *args],
+        result = subprocess.run(["sh", str(self.update_script), *source_args, *args],
                                 env=self.env, input="", text=True, capture_output=True,
                                 timeout=30)
         self.assertEqual(result.returncode, status, result.stdout + result.stderr)
@@ -268,6 +296,27 @@ class UpdateRevision(UpdateFixture):
 
 
 class UpdateSources(UpdateFixture):
+    def test_checkout_bootstrap_reuses_git_objects_and_tracks_remote(self):
+        result = subprocess.run(
+            ["sh", str(self.source / "packaging/arch/vela-update"), "--check"],
+            env=self.env, input="", text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Reusing Git objects from the checkout", result.stdout)
+        calls = self.calls("git")
+        self.assertEqual([(call["operation"], call["url"]) for call in calls],
+                         [("clone", str(self.source)), ("update", HTTPS_SOURCE)])
+        self.assertFalse(self.config.exists(), "Bootstrap must not remember the local checkout")
+        origin = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip()
+        self.assertEqual(origin, HTTPS_SOURCE)
+        self.pkgbuild.write_text(self.pkgbuild.read_text() + "\n# next update\n")
+        new_sha = self.commit("post-bootstrap update")
+        checked = self.run_update("--check", source=False)
+        self.assertIn(new_sha, checked.stdout)
+        self.assertEqual([call["operation"] for call in self.calls("git")],
+                         ["clone", "update", "update"])
+
     def write_config(self, source):
         self.config.parent.mkdir(parents=True, exist_ok=True)
         self.config.write_text(f"source={source}\n")
@@ -432,6 +481,57 @@ class UpdateSources(UpdateFixture):
         self.run_update("--build", source=False, status=1)
         self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
         self.assertTrue(self.mirror.exists())
+
+
+class UpdatePublicReleases(UpdateFixture):
+    def test_public_package_installs_without_gh_login_or_build(self):
+        self.env["TEST_RELEASE_SHA"] = self.main
+        self.run_update("--download", source=False)
+        self.assertEqual(len(self.calls("curl")), 2)
+        self.assertTrue(all("/alpha-" + self.main + "/" in c["args"][-1]
+                            for c in self.calls("curl")))
+        self.assertEqual(self.calls("gh"), [])
+        self.assertEqual(self.calls("makepkg"), [])
+        self.assertEqual(len(self.calls("sudo")), 1)
+        self.assertIn(".g" + self.main[:7] + "-", self.calls("sudo")[0]["args"][-1])
+
+    def test_check_only_fetches_manifest(self):
+        self.env["TEST_RELEASE_SHA"] = self.main
+        result = self.run_update("--check", source=False)
+        self.assertIn("Public alpha package available", result.stdout)
+        self.assertEqual(len(self.calls("curl")), 1)
+        self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
+
+    def test_force_local_build_skips_public_release(self):
+        self.env["TEST_RELEASE_SHA"] = self.main
+        self.run_update("--build", source=False)
+        self.assertEqual(self.calls("curl"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_wrong_release_commit_is_not_downloaded(self):
+        self.env.update(TEST_RELEASE_SHA=self.main, TEST_RELEASE_PKG_SHA=self.nvidia)
+        self.run_update("--download", source=False)
+        self.assertEqual(len(self.calls("curl")), 1)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_bad_digest_falls_back_to_local_build(self):
+        self.env.update(TEST_RELEASE_SHA=self.main, TEST_BAD_RELEASE_DIGEST="1")
+        result = self.run_update("--download", source=False)
+        self.assertIn("failed checksum verification", result.stderr)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_corrupted_download_falls_back_to_local_build(self):
+        self.env.update(TEST_RELEASE_SHA=self.main, TEST_CORRUPT_RELEASE="1")
+        self.run_update("--download", source=False)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_absent_release_keeps_build_fallback(self):
+        self.run_update("--download", source=False)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
 
 class UpdateFailures(UpdateFixture):
