@@ -125,8 +125,8 @@ jobs:
           path: /home/builder/pkgbuild/vela-git-[0-9]*.pkg.tar.zst
           retention-days: 14
 
-  # Public, immutable per-commit alpha packages. Unlike Actions artifacts,
-  # release assets can be downloaded anonymously and do not expire after 14d.
+  # Public per-commit alpha packages, available anonymously and retained
+  # for the last five successful versions (older releases and tags are pruned).
   publish-alpha:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: package
@@ -134,6 +134,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7
         with:
           name: vela-git
@@ -156,3 +157,8 @@ jobs:
             --prerelease \
             --title "Vela alpha ${GITHUB_SHA:0:12}" \
             --notes "Automated Arch Linux alpha package for commit ${GITHUB_SHA}. Experimental software; not a stable release."
+      - name: Retain latest five Vela alpha releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/prune-alpha-releases.sh
