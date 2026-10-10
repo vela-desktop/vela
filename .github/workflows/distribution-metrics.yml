@@ -3,26 +3,42 @@
 name: Distribution metrics
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/distribution-metrics.yml'
+      - 'scripts/github_distribution_metrics.py'
+      - 'scripts/tests/test_github_distribution_metrics.py'
+      - 'docs/distribution-metrics.md'
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: vela-distribution-metrics
   cancel-in-progress: false
 
 jobs:
-  collect:
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test metrics collector
+        run: python3 -m unittest discover -s scripts/tests -p 'test_github_distribution_metrics.py'
+
+  collect:
+    needs: test
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
           fetch-depth: 1
-
       - name: Prepare metrics branch
         shell: bash
         run: |
@@ -36,13 +52,11 @@ jobs:
             git rm -rf --ignore-unmatch .
             git clean -fd
           fi
-
       - name: Collect metrics
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VELA_TRAFFIC_TOKEN: ${{ secrets.VELA_TRAFFIC_TOKEN }}
         run: python3 "${RUNNER_TEMP}/github_distribution_metrics.py" --output .
-
       - name: Commit snapshot if changed
         shell: bash
         run: |
