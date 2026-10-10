@@ -151,12 +151,26 @@ jobs:
           test "${#packages[@]}" -eq 1
           sha256sum "${packages[0]}" > SHA256SUMS
           tag="alpha-${GITHUB_SHA}"
-          gh release create "$tag" "${packages[0]}" SHA256SUMS \
+          if ! gh release create "$tag" "${packages[0]}" SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "Vela alpha ${GITHUB_SHA:0:12}" \
-            --notes "Automated Arch Linux alpha package for commit ${GITHUB_SHA}. Experimental software; not a stable release."
+            --notes "Automated Arch Linux alpha package for commit ${GITHUB_SHA}. Experimental software; not a stable release."; then
+            # A workflow rerun may race with or follow a successful publish.
+            # Accept an existing release only if both expected assets are present
+            # and its checksum manifest matches this exact built package.
+            echo ":: Checking whether the exact alpha package was already published"
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+              --json isPrerelease --jq '.isPrerelease' | grep -qx true
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+              --json assets --jq '.assets[].name' | grep -Fxq "${packages[0]}"
+            mkdir -p previous
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+              --pattern SHA256SUMS --dir previous
+            cmp SHA256SUMS previous/SHA256SUMS
+            echo ":: Existing release matches this build; continuing"
+          fi
       - name: Retain latest five Vela alpha releases
         shell: bash
         env:
