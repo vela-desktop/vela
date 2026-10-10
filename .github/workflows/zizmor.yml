@@ -38,3 +38,4 @@ jobs:
           persona: regular
           min-severity: medium
           min-confidence: medium
+          version: v1.30.1
