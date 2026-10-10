@@ -10,10 +10,13 @@
 
 #define _GNU_SOURCE
 #include <stdint.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include <zlib.h>
@@ -112,14 +115,25 @@ static void writeChunk(FILE* file, const char* type, const unsigned char* data, 
 // Output pixels -> 8-bit RGB PNG.
 static int writePng(const char* path, const unsigned char* pixels, int x, int y, int w, int h)
 {
+    // Bound both allocation arithmetic and zlib's input length.
+    if (w <= 0 || h <= 0 || (size_t)w > (SIZE_MAX - 1) / 3) {
+        return 0;
+    }
+    const size_t rowSize = 1 + (size_t)w * 3;
+    if ((size_t)h > SIZE_MAX / rowSize || (size_t)h > ULONG_MAX / rowSize) {
+        return 0;
+    }
+    const size_t rawSize = rowSize * (size_t)h;
+    unsigned char* raw = malloc(rawSize);
+    if (!raw) {
+        return 0;
+    }
     // In memory: XRGB/ARGB8888 = B,G,R,A; XBGR/ABGR8888 = R,G,B,A.
     const int bgr = frame.format == WL_SHM_FORMAT_XRGB8888 || frame.format == WL_SHM_FORMAT_ARGB8888;
-    const size_t rowSize = 1 + (size_t)w * 3;
-    unsigned char* raw = malloc(rowSize * h);
     for (int row = 0; row < h; ++row) {
         const int srcRow = frame.yInvert ? (int)frame.height - 1 - (y + row) : y + row;
         const unsigned char* src = pixels + (size_t)srcRow * frame.stride + (size_t)x * 4;
-        unsigned char* dst = raw + row * rowSize;
+        unsigned char* dst = raw + (size_t)row * rowSize;
         *dst++ = 0; // filter: none
         for (int col = 0; col < w; ++col, src += 4) {
             *dst++ = bgr ? src[2] : src[0];
@@ -127,13 +141,43 @@ static int writePng(const char* path, const unsigned char* pixels, int x, int y,
             *dst++ = bgr ? src[0] : src[2];
         }
     }
-    uLongf packedSize = compressBound(rowSize * h);
-    unsigned char* packed = malloc(packedSize);
-    compress2(packed, &packedSize, raw, rowSize * h, 6);
+    const uLongf bound = compressBound((uLong)rawSize);
+    if (!bound || bound > UINT32_MAX) {
+        free(raw);
+        return 0;
+    }
+    unsigned char* packed = malloc((size_t)bound);
+    if (!packed) {
+        free(raw);
+        return 0;
+    }
+    uLongf packedSize = bound;
+    int compressed = compress2(packed, &packedSize, raw, (uLong)rawSize, 6);
+    free(raw);
+    if (compressed != Z_OK || packedSize > UINT32_MAX) {
+        free(packed);
+        return 0;
+    }
 
-    FILE* file = fopen(path, "wb");
+    // A screenshot can contain secrets. Do not follow symlinks, and ensure
+    // even an existing output file is owner-readable/writable only.
+    int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW, S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+        perror(path);
+        free(packed);
+        return 0;
+    }
+    if (fchmod(fd, S_IRUSR | S_IWUSR) != 0 || ftruncate(fd, 0) != 0) {
+        perror(path);
+        close(fd);
+        free(packed);
+        return 0;
+    }
+    FILE* file = fdopen(fd, "wb");
     if (!file) {
         perror(path);
+        close(fd);
+        free(packed);
         return 0;
     }
     static const unsigned char signature[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n' };
@@ -145,12 +189,12 @@ static int writePng(const char* path, const unsigned char* pixels, int x, int y,
     ihdr[9] = 2; // RGB
     ihdr[10] = ihdr[11] = ihdr[12] = 0;
     writeChunk(file, "IHDR", ihdr, sizeof(ihdr));
-    writeChunk(file, "IDAT", packed, packedSize);
+    writeChunk(file, "IDAT", packed, (uint32_t)packedSize);
     writeChunk(file, "IEND", NULL, 0);
-    fclose(file);
-    free(raw);
+    int ok = !ferror(file);
+    ok = fclose(file) == 0 && ok;
     free(packed);
-    return 1;
+    return ok;
 }
 
 int main(int argc, char** argv)
