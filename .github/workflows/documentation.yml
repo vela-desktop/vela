@@ -1,0 +1,25 @@
+name: Documentation checks
+
+on:
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'docs/**'
+      - '.github/workflows/documentation.yml'
+      - '.github/workflows/build.yml'
+      - '.github/workflows/fedora.yml'
+      - 'scripts/check-docs.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate local Markdown links, anchors and build dependency lists
+        run: python3 scripts/check-docs.py

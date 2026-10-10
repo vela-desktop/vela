@@ -19,8 +19,11 @@ Page {
         required property string kind
         icon: kind === "output" ? (modelData.description.toLowerCase().indexOf("hdmi") >= 0 || modelData.description.toLowerCase().indexOf("displayport") >= 0 ? "video-display" : "audio-speakers") : "audio-input-microphone"
         title: modelData.description
-        description: modelData.isDefault ? qsTr("Default device") : ""
-        clickable: !modelData.isDefault
+        description: modelData.isDefault
+            ? (modelData.defaultError
+                ? qsTr("Couldn't verify the selected device. Controls are disabled.")
+                : qsTr("Default device")) : ""
+        clickable: !modelData.isDefault && !modelData.defaultPending
         onClicked: Audio.setDefault(kind, modelData.name)
         trailing: Rectangle {
             // The choice dot, like Windows RadioButtons.
@@ -47,16 +50,24 @@ Page {
         required property string kind
         icon: device && device.muted ? "audio-volume-muted" : kind === "output" ? "audio-volume-high" : "audio-input-microphone"
         title: qsTr("Volume")
+        description: device && device.defaultError
+            ? qsTr("Couldn't verify the selected device. Controls are disabled.")
+            : device && device.muteError
+                ? qsTr("Couldn't change mute. Check the device state.")
+                : ""
         trailing: Row {
             spacing: 8
             Button {
                 subtle: true
                 icon: volumeCard.device && volumeCard.device.muted ? (volumeCard.kind === "output" ? "audio-volume-muted" : "microphone-sensitivity-muted") : (volumeCard.kind === "output" ? "audio-volume-high" : "audio-input-microphone")
+                enabled: volumeCard.device && !volumeCard.device.mutePending
+                    && !volumeCard.device.defaultPending && !volumeCard.device.defaultError
                 onClicked: Audio.setMuted(volumeCard.kind, volumeCard.device.name, !volumeCard.device.muted)
             }
             Slider {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 220
+                enabled: volumeCard.device && !volumeCard.device.defaultPending && !volumeCard.device.defaultError
                 to: 1
                 stepSize: 0.02 // even numbers, like the volume keys and quick settings
                 value: volumeCard.device ? Math.min(1, volumeCard.device.volume) : 0

@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible Vela problem (not a security vulnerability)
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing Vela. Please search existing issues first.
+        For security issues, do **not** post details here: read SECURITY.md and use private reporting.
+        Review diagnostic archives for private information before attaching them.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Include the expected behavior and the actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start Vela ...
+        2. Open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Vela commit or package version
+      placeholder: "git rev-parse --short HEAD / pacman -Q vela-git"
+    validations:
+      required: true
+  - type: textarea
+    id: platform
+    attributes:
+      label: Hardware and software
+      description: Distribution, kernel, GPU, Vulkan driver and version, displays, scale, and real DRM vs nested/VM/headless.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs and evidence (review before sharing)
+      description: Use vela-report when possible. Remove usernames, paths, tokens and personal details from all shared files.
+    validations:
+      required: false
+  - type: textarea
+    id: testing
+    attributes:
+      label: What have you already tried?
+      description: Include reproducible results and say which checks were not run.
+    validations:
+      required: false

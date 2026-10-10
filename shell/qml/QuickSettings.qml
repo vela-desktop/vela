@@ -65,8 +65,7 @@ Window {
         if (name === "wifi") {
             wifiPage.expanded = ""
             wifiPage.password = ""
-            Network.refreshWifi()
-            Network.scan()
+            Network.scan() // cached networks appear immediately, rescan in background
         }
         panel.forceActiveFocus()
     }
@@ -678,7 +677,8 @@ Window {
                                 id: net
                                 required property var modelData
                                 readonly property bool open: wifiPage.expanded === modelData.ssid
-                                readonly property bool needsPassword: modelData.secure && !modelData.known && !modelData.active
+                                readonly property bool needsPassword: modelData.secure && !modelData.active
+                                    && (!modelData.known || Network.passwordRequiredSsid === modelData.ssid)
                                 readonly property bool busy: wifiPage.connecting === modelData.ssid && Network.connectResult === ""
                                 width: networks.width
                                 height: open ? row.height + actions.height + 12 : row.height
@@ -738,8 +738,8 @@ Window {
                                     width: parent.width - 56
                                     spacing: 8
 
-                                    // The password, for secured networks we
-                                    // don't know yet.
+                                    // Ask for a key only on first join or if a
+                                    // saved connection fails authentication.
                                     Rectangle {
                                         visible: net.needsPassword
                                         width: parent.width

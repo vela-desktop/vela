@@ -41,6 +41,7 @@ qt_add_executable(vela-shell
     src/mediakeys.h
     src/mixer.cpp
     src/mixer.h
+    src/asyncprocess.h
     src/network.cpp
     src/network.h
     src/notifications.cpp
@@ -184,6 +185,18 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-volumesteps-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-volumesteps-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-volumesteps COMMAND vela-volumesteps-test)
+
+    qt_add_executable(vela-service-models-test
+        tests/service_models.cpp
+        src/asyncprocess.h src/mixer.cpp src/mixer.h src/network.cpp src/network.h
+        src/appmodel.cpp src/appmodel.h
+        ${PROJECT_SOURCE_DIR}/settings/src/audio.cpp
+        ${PROJECT_SOURCE_DIR}/settings/src/audio.h)
+    target_include_directories(vela-service-models-test PRIVATE src ${PROJECT_SOURCE_DIR}/settings/src)
+    target_compile_options(vela-service-models-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-service-models-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
+    add_test(NAME shell-service-models COMMAND vela-service-models-test)
+    set_tests_properties(shell-service-models PROPERTIES TIMEOUT 90)
 endif()
 
 # Italian translation: strings in the code are in English, Italian lives

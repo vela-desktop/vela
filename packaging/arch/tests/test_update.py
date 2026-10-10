@@ -15,7 +15,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
 UPDATER = ROOT / "packaging/arch/vela-update"
-HTTPS_SOURCE = "https://github.com/BrandoDev/vela.git"
+HTTPS_SOURCE = "https://github.com/vela-desktop/vela.git"
 GIT_STUB = r'''#!/usr/bin/env python3
 import json, os, pathlib, subprocess, sys
 args = sys.argv[1:]
@@ -132,7 +132,7 @@ class UpdateFixture(unittest.TestCase):
         self.git("init", "--quiet", "--initial-branch=main")
         self.git("config", "user.name", "Updater Test")
         self.git("config", "user.email", "test@example.invalid")
-        self.git("remote", "add", "origin", "https://github.com/BrandoDev/vela.git")
+        self.git("remote", "add", "origin", HTTPS_SOURCE)
         packaging = self.source / "packaging/arch"
         packaging.mkdir(parents=True)
         self.pkgbuild = packaging / "PKGBUILD"
@@ -326,6 +326,28 @@ class UpdateSources(UpdateFixture):
         self.assertEqual(self.calls("git")[-1]["url"], HTTPS_SOURCE)
         self.assertEqual(self.config.read_text(), f"source={HTTPS_SOURCE}\n")
 
+    def test_saved_old_https_source_is_migrated(self):
+        self.write_config("https://github.com/BrandoDev/vela.git")
+        self.run_update("--check", source=False)
+        self.assertEqual(self.config.read_text(), f"source={HTTPS_SOURCE}\n")
+        self.assert_https_transport()
+
+    def test_explicit_old_https_source_is_migrated(self):
+        self.run_update("--source", "https://github.com/BrandoDev/vela.git",
+                        "--check", source=False)
+        self.assertEqual(self.config.read_text(), f"source={HTTPS_SOURCE}\n")
+        self.assert_https_transport()
+
+    def test_old_https_mirror_is_repointed_without_reclone(self):
+        self.run_update("--check", source=False)
+        subprocess.run(["git", "-C", str(self.mirror), "remote", "set-url",
+                        "origin", "https://github.com/BrandoDev/vela.git"],
+                       env=self.env, check=True)
+        self.run_update("--check", source=False)
+        self.assertEqual([call["operation"] for call in self.calls("git")],
+                         ["clone", "update"])
+        self.assert_https_transport()
+
     def test_explicit_github_ssh_sources_are_saved_as_https(self):
         for source in ("ssh://git@github.com/BrandoDev/vela.git", "git@github.com:BrandoDev/vela.git"):
             with self.subTest(source=source):
@@ -362,6 +384,15 @@ class UpdateSources(UpdateFixture):
                                  ["clone"] + ["update"] * index)
                 self.assert_https_transport()
 
+    def test_old_origin_uses_org_for_ci_artifacts(self):
+        self.git("remote", "set-url", "origin", "git@github.com:BrandoDev/vela.git")
+        self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.main[:7])
+        self.run_update("--download")
+        listing = next(call for call in self.calls("gh")
+                       if call["args"][:2] == ["run", "list"])
+        self.assertEqual(listing["args"][listing["args"].index("-R") + 1],
+                         "vela-desktop/vela")
+
     def test_local_copy_with_ssh_origin_stays_local(self):
         self.git("remote", "set-url", "origin", "git@github.com:BrandoDev/vela.git")
         self.run_update("--check")
@@ -383,7 +414,7 @@ class UpdateSources(UpdateFixture):
         self.run_update("--download", source=False)
         self.assert_https_transport()
         listing = next(call for call in self.calls("gh") if call["args"][:2] == ["run", "list"])
-        self.assertEqual(listing["args"][listing["args"].index("-R") + 1], "BrandoDev/vela")
+        self.assertEqual(listing["args"][listing["args"].index("-R") + 1], "vela-desktop/vela")
         self.assertEqual(self.calls("makepkg"), [])
         self.assertEqual(len(self.calls("sudo")), 1)
 

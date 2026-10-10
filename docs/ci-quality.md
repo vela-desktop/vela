@@ -1,6 +1,8 @@
 # Additional CI quality checks
 
-These workflows run on pull requests, pushes to main, and manual dispatch.
+The main Build workflow runs on pushes to `main`, pull requests and manual dispatch.
+Fedora, Sanitizer Tests, Static Analysis and Standalone Package Test run on
+pull requests and manual dispatch, not on ordinary pushes to `main`.
 
 ## Package and updater contracts
 

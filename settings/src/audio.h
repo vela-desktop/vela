@@ -4,9 +4,13 @@
 #pragma once
 
 #include <QObject>
-#include <QProcess>
+#include <QPair>
+#include <QSet>
 #include <QTimer>
 #include <QVariantList>
+
+class QJsonArray;
+class QProcess;
 
 // Audio outputs and inputs for System > Sound, from PipeWire or PulseAudio
 // through pactl (the same the taskbar uses). Updates itself when something
@@ -20,7 +24,6 @@ class Audio : public QObject {
 
 public:
     explicit Audio(QObject* parent = nullptr);
-    ~Audio() override;
 
     bool available() const { return m_available; }
     QVariantList outputs() const { return m_outputs; }
@@ -36,11 +39,26 @@ signals:
     void changed();
 
 private:
-    QVariantList list(const QString& what, const QString& defaultName) const;
+    QVariantList list(const QJsonArray& devices, bool inputs, const QString& defaultName) const;
+    void run(const QString& key, const QStringList& arguments);
+    void markMute(const QString& kind, const QString& name, bool pending, bool error);
+    void markDefault(const QString& kind, bool pending, bool error);
+    void runNext();
+    void update(const QString& kind, const QString& name, const QString& property, const QVariant& value);
 
     bool m_available = false;
     QVariantList m_outputs;
     QVariantList m_inputs;
-    QProcess m_subscribe;
+    QProcess* m_subscribe = nullptr;
     QTimer m_debounce;
+    bool m_loading = false;
+    bool m_refreshPending = false;
+    bool m_running = false;
+    quint64 m_revision = 0;
+    QList<QPair<QString, QStringList>> m_queue;
+    // A pending mute must never be displayed as an already confirmed mute.
+    QSet<QString> m_unconfirmedMutes;
+    // A default-input change may have taken effect even if its command or
+    // subsequent query failed. Do not target microphone mute until confirmed.
+    QSet<QString> m_unconfirmedDefaults;
 };

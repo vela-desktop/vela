@@ -1,5 +1,11 @@
 # The Vela renderer
 
+> **Design history:** the stage log and risk register below preserve decisions
+> made earlier in development. Descriptions such as “postponed” refer to the
+> historical stage, not necessarily the current build. See the [README](../README.md),
+> [hardware coverage](hardware.md) and [testing guide](testing.md) for current
+> documented support and validation limits.
+
 Design of Vela's own scene and renderer, native to Vulkan. It is the foundation
 of milestone 2 (blur, rounded corners, shadows) and of everything that comes
 after. This document comes before the code: decisions are made here, and the

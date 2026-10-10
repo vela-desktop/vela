@@ -20,7 +20,7 @@ CTest includes both CPU-only and GPU-dependent suites.
 |---|---|---:|
 | **Compositor / GoogleTest** | FrameClock, vblank grid, late latching, adaptive margin, learned host latency, animation curves, output scale selection, pixel geometry, night light, color filters, sunrise/sunset, `vela.conf` parsing and `outputs.conf` persistence. | No |
 | **Files** (`files-copies`) | Copy/move behavior, atomic replacement across file/directory types, failed or unsupported exchanges, processes killed immediately before/after exchange, removal errors, and a simulated full disk with `RLIMIT_FSIZE`. | No |
-| **Shell** (`shell-*`) | `.desktop` `Exec=` parsing and default-app resolution through `mimeapps.list`. | No |
+| **Shell** (`shell-*`) | `.desktop` `Exec=` parsing, default-app resolution, volume steps, and asynchronous audio/network models with slow, failed or missing services. | No |
 | **Vela Report** (`reporting`, `reporting-gui`) | Guided CLI without a display, shared Qt worker and ZIP export, explicit collection boundaries, redaction, review exclusion, process identity, resource recording, bounded commands and archive failures. | No |
 | **Package updater** (`packaging-update`) | Public HTTPS defaults in both the updater and PKGBUILD, first run and cached fetches, migration of saved SSH URLs and old mirrors, local sources, branch/commit selection, exact CI artifacts, download fallback and failed fetch/build/install handling. Uses real Git repositories with simulated package tools. | No |
 | **Functional** (`functional`) | Opening and manipulating windows (Wayland and X11), menus (popups and X11 override-redirect menus) kept where they belong, resizing from the invisible borders, keyboard Move/Resize, the window menu, drag-to-edge snap with Snap Assist, snap layouts and snap groups, snap, maximize/restore, minimize/Alt+Tab, virtual desktops, Vela's title bar (text, buttons, double click), shell layers (reserved space, live blur), partial redraws identical to full redraws, output hotplug, per-output scale and position set like Settings does, accessibility quick settings (night light and its schedule, color filters, magnifier, sticky keys), Super alone opening Start, the media and volume keys (held volume keys repeat), the mouse's side buttons as Back and Forward in Vela's apps (File Explorer, also with the focus elsewhere or on an inactive window), lock/unlock, screen power, compositor crash recovery, a shell that crashes (restarted, then given up) or exits cleanly (left alone), and an app whose GPU finishes 150 ms late (explicit and implicit sync) without a missed vblank, and the polkit agent (below). | Yes |
@@ -53,6 +53,14 @@ source. A process killed before that cleanup may leave a hidden
 `.name.vela-copy-XXXXXX` item containing the old destination. These interruption
 tests kill a separate process at the syscall boundary; they do not simulate
 power loss. Directory-to-directory replacements still merge file by file.
+
+The `shell-service-models` suite starts fake `pactl`, `pw-metadata` and `nmcli`
+clients and a delayed BlueZ service on a private D-Bus bus (`dbus-daemon` is
+required). It verifies that refresh calls return while services are waiting,
+GUI-thread timers continue firing, cached models survive errors and timeouts,
+refresh bursts coalesce, old reads cannot undo newer volume commands, the first
+taskbar wheel step waits for streams, and destroying a model terminates its
+clients without waiting. No real audio, network or Bluetooth service is used.
 
 Diagnostic reporter and graphical smoke check:
 

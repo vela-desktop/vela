@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "network.h"
+#include "asyncprocess.h"
 
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QVariantMap>
 
 #include <algorithm>
+#include <utility>
 
 namespace {
 
@@ -30,24 +32,14 @@ QStringList splitTerse(const QString& line)
     return fields;
 }
 
-QByteArray nmcli(const QStringList& arguments, int timeout = 3000)
+bool validTerse(const QByteArray& output, qsizetype fields)
 {
-    QProcess process;
-    process.start(QStringLiteral("nmcli"), arguments);
-    process.waitForFinished(timeout);
-    return process.readAllStandardOutput();
-}
-
-// The process running in the background, which calls `done` when it ends.
-template<typename Done>
-void runAsync(QObject* owner, const QStringList& arguments, Done done)
-{
-    auto* process = new QProcess(owner);
-    QObject::connect(process, &QProcess::finished, owner, [process, done](int code, QProcess::ExitStatus) {
-        done(code, process->readAllStandardOutput(), process->readAllStandardError());
-        process->deleteLater();
-    });
-    process->start(QStringLiteral("nmcli"), arguments);
+    for (const QString& line : QString::fromUtf8(output).split(u'\n', Qt::SkipEmptyParts)) {
+        if (splitTerse(line).size() < fields) {
+            return false;
+        }
+    }
+    return true;
 }
 
 } // namespace
@@ -64,59 +56,88 @@ void Network::refresh()
     if (!m_available) {
         return;
     }
+    m_detailsRequested = true;
+    refreshWifi();
+    if (m_loadingDevices) {
+        m_devicesPending = true;
+        return;
+    }
+    m_loadingDevices = true;
+    m_devicesPending = false;
+    const quint64 revision = m_revision;
+    vela::runProcess(this, QStringLiteral("nmcli"),
+        { QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("DEVICE,TYPE,STATE,CONNECTION"), QStringLiteral("device") },
+        3000, [this, revision](vela::ProcessResult result) {
+            if (result.ok && revision == m_revision && validTerse(result.output, 4)) {
+                readDevices(result.output, revision);
+            } else {
+                finishDevices(revision);
+            }
+        });
+}
+
+void Network::readDevices(const QByteArray& output, quint64 revision)
+{
     QVariantList devices;
-    const QStringList lines = QString::fromUtf8(nmcli({ QStringLiteral("-t"), QStringLiteral("-f"),
-                                                    QStringLiteral("DEVICE,TYPE,STATE,CONNECTION"), QStringLiteral("device") }))
-                                  .split(u'\n', Qt::SkipEmptyParts);
+    QList<vela::ProcessQuery> queries;
+    const QStringList lines = QString::fromUtf8(output).split(u'\n', Qt::SkipEmptyParts);
     for (const QString& line : lines) {
         const QStringList f = splitTerse(line);
         if (f.size() < 4 || (f[1] != QLatin1String("ethernet") && f[1] != QLatin1String("wifi"))) {
             continue;
         }
-        QVariantMap device { { QStringLiteral("device"), f[0] }, { QStringLiteral("type"), f[1] },
-            { QStringLiteral("state"), f[2] }, { QStringLiteral("connection"), f[3] } };
-        // The details: Windows' "Properties".
-        const QStringList details = QString::fromUtf8(nmcli({ QStringLiteral("-t"), QStringLiteral("-f"),
-                                                          QStringLiteral("GENERAL.HWADDR,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,IP6.ADDRESS"),
-                                                          QStringLiteral("device"), QStringLiteral("show"), f[0] }))
-                                        .split(u'\n', Qt::SkipEmptyParts);
-        QStringList dns;
-        QStringList ipv6;
-        for (const QString& detail : details) {
-            const qsizetype colon = detail.indexOf(u':');
-            const QString key = detail.left(colon).section(u'[', 0, 0);
-            const QString value = detail.mid(colon + 1);
-            if (key == QLatin1String("GENERAL.HWADDR")) {
-                device[QStringLiteral("mac")] = value;
-            } else if (key == QLatin1String("IP4.ADDRESS") && !device.contains(QStringLiteral("ip"))) {
-                device[QStringLiteral("ip")] = value.section(u'/', 0, 0);
-            } else if (key == QLatin1String("IP4.GATEWAY")) {
-                device[QStringLiteral("gateway")] = value;
-            } else if (key == QLatin1String("IP4.DNS")) {
-                dns << value;
-            } else if (key == QLatin1String("IP6.ADDRESS")) {
-                ipv6 << value.section(u'/', 0, 0);
+        devices.append(QVariantMap { { QStringLiteral("device"), f[0] }, { QStringLiteral("type"), f[1] },
+            { QStringLiteral("state"), f[2] }, { QStringLiteral("connection"), f[3] } });
+        queries.append({ f[0], QStringLiteral("nmcli"),
+            { QStringLiteral("-t"), QStringLiteral("-f"),
+                QStringLiteral("GENERAL.HWADDR,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,IP6.ADDRESS"),
+                QStringLiteral("device"), QStringLiteral("show"), f[0] }, 3000 });
+    }
+    vela::queryProcesses(this, queries,
+        [this, revision, devices](bool ok, const QMap<QString, QByteArray>& results) mutable {
+            for (QVariant& entry : devices) {
+                QVariantMap device = entry.toMap();
+                const QByteArray details = results.value(device.value(QStringLiteral("device")).toString());
+                ok = ok && validTerse(details, 2);
+                QStringList dns;
+                QStringList ipv6;
+                for (const QString& detail : QString::fromUtf8(details).split(u'\n', Qt::SkipEmptyParts)) {
+                    const QStringList fields = splitTerse(detail);
+                    if (fields.size() < 2) {
+                        continue;
+                    }
+                    const QString key = fields[0].section(u'[', 0, 0);
+                    const QString value = fields[1];
+                    if (key == QLatin1String("GENERAL.HWADDR")) {
+                        device[QStringLiteral("mac")] = value;
+                    } else if (key == QLatin1String("IP4.ADDRESS") && !device.contains(QStringLiteral("ip"))) {
+                        device[QStringLiteral("ip")] = value.section(u'/', 0, 0);
+                    } else if (key == QLatin1String("IP4.GATEWAY")) {
+                        device[QStringLiteral("gateway")] = value;
+                    } else if (key == QLatin1String("IP4.DNS")) {
+                        dns << value;
+                    } else if (key == QLatin1String("IP6.ADDRESS")) {
+                        ipv6 << value.section(u'/', 0, 0);
+                    }
+                }
+                device[QStringLiteral("dns")] = dns.join(QStringLiteral(", "));
+                device[QStringLiteral("ipv6")] = ipv6.join(QStringLiteral(", "));
+                entry = device;
             }
-        }
-        device[QStringLiteral("dns")] = dns.join(QStringLiteral(", "));
-        device[QStringLiteral("ipv6")] = ipv6.join(QStringLiteral(", "));
-        devices.append(device);
-    }
-    m_devices = devices;
-    emit devicesChanged();
+            if (ok && revision == m_revision) {
+                m_devices = devices;
+                emit devicesChanged();
+            }
+            finishDevices(revision);
+        });
+}
 
-    m_known.clear();
-    const QStringList connections = QString::fromUtf8(nmcli({ QStringLiteral("-t"), QStringLiteral("-f"),
-                                                          QStringLiteral("NAME,TYPE"), QStringLiteral("connection") }))
-                                        .split(u'\n', Qt::SkipEmptyParts);
-    for (const QString& line : connections) {
-        const QStringList f = splitTerse(line);
-        if (f.size() >= 2 && f[1].contains(QLatin1String("wireless"))) {
-            m_known << f[0];
-        }
+void Network::finishDevices(quint64 revision)
+{
+    m_loadingDevices = false;
+    if (std::exchange(m_devicesPending, false) || revision != m_revision) {
+        refresh();
     }
-    readWifi(nmcli({ QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("IN-USE,SSID,SIGNAL,SECURITY"),
-        QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("list"), QStringLiteral("--rescan"), QStringLiteral("no") }));
 }
 
 void Network::refreshWifi()
@@ -124,20 +145,38 @@ void Network::refreshWifi()
     if (!m_available) {
         return;
     }
-    runAsync(this, { QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("NAME,TYPE"), QStringLiteral("connection") },
-        [this](int, const QByteArray& out, const QByteArray&) {
-            m_known.clear();
-            for (const QString& line : QString::fromUtf8(out).split(u'\n', Qt::SkipEmptyParts)) {
-                const QStringList f = splitTerse(line);
-                if (f.size() >= 2 && f[1].contains(QLatin1String("wireless"))) {
-                    m_known << f[0];
-                }
-            }
-            runAsync(this,
+    // A hardware scan may be slow. Read NM's cached AP list concurrently
+    // instead of hiding it until the scan completes.
+    if (m_loadingWifi) {
+        m_wifiPending = true;
+        return;
+    }
+    m_loadingWifi = true;
+    m_wifiPending = false;
+    const quint64 revision = m_revision;
+    const QString nmcli = QStringLiteral("nmcli");
+    vela::queryProcesses(this,
+        { { QStringLiteral("known"), nmcli, { QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("NAME,TYPE"), QStringLiteral("connection") }, 3000 },
+            { QStringLiteral("wifi"), nmcli,
                 { QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("IN-USE,SSID,SIGNAL,SECURITY"),
-                    QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("list"), QStringLiteral("--rescan"),
-                    QStringLiteral("no") },
-                [this](int, const QByteArray& list, const QByteArray&) { readWifi(list); });
+                    QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("list"), QStringLiteral("--rescan"), QStringLiteral("no") }, 3000 } },
+        [this, revision](bool ok, const QMap<QString, QByteArray>& results) {
+            m_loadingWifi = false;
+            const QByteArray known = results.value(QStringLiteral("known"));
+            const QByteArray wifi = results.value(QStringLiteral("wifi"));
+            if (ok && revision == m_revision && validTerse(known, 2) && validTerse(wifi, 4)) {
+                m_known.clear();
+                for (const QString& line : QString::fromUtf8(known).split(u'\n', Qt::SkipEmptyParts)) {
+                    const QStringList f = splitTerse(line);
+                    if (f.size() >= 2 && f[1].contains(QLatin1String("wireless"))) {
+                        m_known << f[0];
+                    }
+                }
+                readWifi(wifi);
+            }
+            if (std::exchange(m_wifiPending, false) || revision != m_revision) {
+                refreshWifi();
+            }
         });
 }
 
@@ -190,67 +229,106 @@ void Network::scan()
         return;
     }
     m_scanning = true;
+    const quint64 revision = ++m_revision;
     emit scanningChanged();
-    runAsync(this,
+    refreshWifi(); // show cached access points while hardware discovery runs
+    vela::runProcess(this, QStringLiteral("nmcli"),
         { QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("IN-USE,SSID,SIGNAL,SECURITY"), QStringLiteral("device"),
             QStringLiteral("wifi"), QStringLiteral("list"), QStringLiteral("--rescan"), QStringLiteral("yes") },
-        [this](int, const QByteArray& out, const QByteArray&) {
-            readWifi(out);
+        30000, [this, revision](vela::ProcessResult result) {
+            if (result.ok && revision == m_revision && validTerse(result.output, 4)) {
+                readWifi(result.output);
+            }
             m_scanning = false;
             emit scanningChanged();
+            refreshWifi();
         });
 }
 
 void Network::connectWifi(const QString& ssid, const QString& password)
 {
+    ++m_revision;
+    const quint64 connection = ++m_connectionRevision;
     m_connectResult.clear();
+    m_passwordRequiredSsid.clear();
     emit connectResultChanged();
-    QStringList arguments { QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("connect"), ssid };
+
+    // A saved connection already owns the Wi-Fi credentials. Re-activate it
+    // instead of using 'device wifi connect', which may request a new PSK
+    // without an interactive secret agent (or create a duplicate profile).
+    const bool saved = m_known.contains(ssid) && password.isEmpty();
+    QStringList arguments = saved
+        ? QStringList { QStringLiteral("connection"), QStringLiteral("up"), QStringLiteral("id"), ssid }
+        : QStringList { QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("connect"), ssid };
     if (!password.isEmpty()) {
         arguments << QStringLiteral("password") << password;
     }
-    runAsync(this, arguments, [this](int code, const QByteArray&, const QByteArray& error) {
-        m_connectResult = code == 0 ? QStringLiteral("ok")
-                                    : QString::fromUtf8(error).trimmed().section(u'\n', 0, 0).remove(QStringLiteral("Error: "));
-        if (m_connectResult.isEmpty()) {
-            m_connectResult = QCoreApplication::translate("Network", "Couldn't connect to this network");
-        }
-        emit connectResultChanged();
-        // The shell doesn't need connection details (and must not stall).
-        if (m_devices.isEmpty()) {
-            refreshWifi();
-        } else {
-            refresh();
-        }
-    });
+    vela::runProcess(this, QStringLiteral("nmcli"), arguments, 90000,
+        [this, connection, ssid, saved](vela::ProcessResult result) {
+            if (connection != m_connectionRevision) {
+                return;
+            }
+            if (result.ok) {
+                m_connectResult = QStringLiteral("ok");
+            } else {
+                // nmcli's stderr is localized, implementation-specific and
+                // frequently contains internal key names. Never show it raw.
+                const QString details = QString::fromUtf8(result.error).toLower();
+                const bool credentials = details.contains(QLatin1String("psk"))
+                    || details.contains(QLatin1String("password"))
+                    || details.contains(QLatin1String("passwd-file"))
+                    || details.contains(QLatin1String("secret"))
+                    || details.contains(QLatin1String("segreti"))
+                    || details.contains(QLatin1String("autentic"))
+                    || details.contains(QLatin1String("authentic"));
+                if (credentials) {
+                    m_passwordRequiredSsid = ssid;
+                    m_connectResult = QCoreApplication::translate("Network", "Password required or incorrect. Enter the Wi-Fi password again.");
+                } else if (details.contains(QLatin1String("timed out"))
+                    || details.contains(QLatin1String("timeout"))
+                    || details.contains(QLatin1String("tempo scaduto"))) {
+                    m_connectResult = QCoreApplication::translate("Network", "Connection timed out. Please try again.");
+                } else if (saved) {
+                    // Saved profiles without usable secrets need a manual
+                    // retry even if NetworkManager returns an opaque error.
+                    m_passwordRequiredSsid = ssid;
+                    m_connectResult = QCoreApplication::translate("Network", "Couldn't reconnect. Re-enter the Wi-Fi password or try again.");
+                } else {
+                    m_connectResult = QCoreApplication::translate("Network", "Couldn't connect to this network. Please try again.");
+                }
+            }
+            emit connectResultChanged();
+            refreshAfterAction();
+        });
 }
 
 void Network::disconnectDevice(const QString& device)
 {
-    runAsync(this, { QStringLiteral("device"), QStringLiteral("disconnect"), device },
-        [this](int, const QByteArray&, const QByteArray&) {
-            if (m_devices.isEmpty()) {
-                refreshWifi();
-            } else {
-                refresh();
-            }
-        });
+    ++m_revision;
+    vela::runProcess(this, QStringLiteral("nmcli"), { QStringLiteral("device"), QStringLiteral("disconnect"), device },
+        30000, [this](vela::ProcessResult) { refreshAfterAction(); });
 }
 
 void Network::disconnectWifi(const QString& ssid)
 {
-    runAsync(this, { QStringLiteral("connection"), QStringLiteral("down"), QStringLiteral("id"), ssid },
-        [this](int, const QByteArray&, const QByteArray&) {
-            if (m_devices.isEmpty()) {
-                refreshWifi();
-            } else {
-                refresh();
-            }
-        });
+    ++m_revision;
+    vela::runProcess(this, QStringLiteral("nmcli"), { QStringLiteral("connection"), QStringLiteral("down"), QStringLiteral("id"), ssid },
+        30000, [this](vela::ProcessResult) { refreshAfterAction(); });
 }
 
 void Network::forget(const QString& connection)
 {
-    runAsync(this, { QStringLiteral("connection"), QStringLiteral("delete"), QStringLiteral("id"), connection },
-        [this](int, const QByteArray&, const QByteArray&) { refresh(); });
+    ++m_revision;
+    vela::runProcess(this, QStringLiteral("nmcli"), { QStringLiteral("connection"), QStringLiteral("delete"), QStringLiteral("id"), connection },
+        30000, [this](vela::ProcessResult) { refreshAfterAction(); });
+}
+
+void Network::refreshAfterAction()
+{
+    ++m_revision;
+    if (m_detailsRequested) {
+        refresh();
+    } else {
+        refreshWifi();
+    }
 }

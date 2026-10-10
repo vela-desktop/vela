@@ -20,7 +20,7 @@ CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/vela/updates.conf"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/vela-update"
 MIRROR="$CACHE/vela.git"
 PACKAGES="$CACHE/packages"
-DEFAULT_SOURCE="https://github.com/BrandoDev/vela.git"
+DEFAULT_SOURCE="https://github.com/vela-desktop/vela.git"
 KEEP=3 # old packages to keep
 
 usage() {
@@ -100,6 +100,9 @@ fi
 # The old file was called aggiornamenti.conf (key sorgente=).
 githubHTTPS() {
     case "$1" in
+    # Map existing installations to the organization, including stored SSH URLs.
+    https://github.com/BrandoDev/vela|https://github.com/BrandoDev/vela.git|ssh://git@github.com/BrandoDev/vela|ssh://git@github.com/BrandoDev/vela.git|git@github.com:BrandoDev/vela|git@github.com:BrandoDev/vela.git)
+        printf '%s\n' "$DEFAULT_SOURCE" ;;
     ssh://git@github.com/*) printf 'https://github.com/%s\n' "${1#ssh://git@github.com/}" ;;
     git@github.com:*) printf 'https://github.com/%s\n' "${1#git@github.com:}" ;;
     *) printf '%s\n' "$1" ;;
@@ -119,8 +122,8 @@ elif [ -f "$CONFIG" ]; then
     source=$(sed -n 's/^source=//p' "$CONFIG" | head -n 1)
 fi
 source="${source:-$DEFAULT_SOURCE}"
-# Migrate both remembered and explicitly supplied GitHub SSH URLs so users
-# of older packages no longer need SSH keys to fetch the public repository.
+# Migrate saved or explicit old-repository URLs and GitHub SSH URLs
+# to the canonical public HTTPS repository.
 https_source=$(githubHTTPS "$source")
 if [ "$https_source" != "$source" ]; then
     source="$https_source"
@@ -202,6 +205,7 @@ githubRepo() {
     if [ -d "$source" ]; then
         url=$(git -C "$source" remote get-url origin 2> /dev/null || true)
     fi
+    url=$(githubHTTPS "$url")
     printf '%s\n' "$url" | sed -n -E 's#^(ssh://git@github\.com/|git@github\.com:|https://github\.com/)([^/]+/[^/]+)$#\2#p' | sed 's/\.git$//'
 }
 

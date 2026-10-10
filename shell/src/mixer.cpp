@@ -4,10 +4,13 @@
 #include "mixer.h"
 
 #include "appmodel.h"
+#include "asyncprocess.h"
 #include "volumesteps.h"
 
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QDBusVariant>
 #include <QHash>
 #include <QJsonArray>
@@ -16,24 +19,9 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 
+#include <utility>
+
 namespace {
-
-QByteArray output(const QString& program, const QStringList& arguments)
-{
-    QProcess process;
-    process.start(program, arguments);
-    if (!process.waitForFinished(1000)) {
-        return {};
-    }
-    return process.readAllStandardOutput();
-}
-
-QJsonArray pactlList(const QString& what)
-{
-    return QJsonDocument::fromJson(output(QStringLiteral("pactl"), { QStringLiteral("-f"), QStringLiteral("json"),
-                                                                       QStringLiteral("list"), what }))
-        .array();
-}
 
 // The channels' average (65536 = 100), on the scale people see.
 double averageVolume(const QJsonObject& volume)
@@ -53,11 +41,11 @@ QString percent(double volume)
 // The streams sent to a chosen output, not the default one: "target.object"
 // in PipeWire's metadata (node id -> the output's id, serial or name; -1:
 // the default one again). Read only.
-QHash<QString, QString> streamTargets()
+QHash<QString, QString> streamTargets(const QByteArray& metadata)
 {
     QHash<QString, QString> targets;
     static const QRegularExpression line(QStringLiteral(R"re(id:(\d+) key:'target\.object' value:'([^']*)')re"));
-    const QString text = QString::fromUtf8(output(QStringLiteral("pw-metadata"), { QStringLiteral("-n"), QStringLiteral("default") }));
+    const QString text = QString::fromUtf8(metadata);
     for (auto match = line.globalMatch(text); match.hasNext();) {
         const QRegularExpressionMatch m = match.next();
         if (m.captured(2) != QLatin1String("-1") && !m.captured(2).isEmpty()) {
@@ -65,22 +53,6 @@ QHash<QString, QString> streamTargets()
         }
     }
     return targets;
-}
-
-// A Bluetooth headset's charge, as it reports it to BlueZ (Battery1, the same
-// source as UPower and the other desktops); -1 if it doesn't.
-int bluetoothBattery(const QString& path)
-{
-    QDBusMessage get = QDBusMessage::createMethodCall(QStringLiteral("org.bluez"), path,
-        QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-    get << QStringLiteral("org.bluez.Battery1") << QStringLiteral("Percentage");
-    const QDBusMessage reply = QDBusConnection::systemBus().call(get, QDBus::Block, 300);
-    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty()) {
-        return -1;
-    }
-    bool ok = false;
-    const int value = reply.arguments().first().value<QDBusVariant>().variant().toInt(&ok);
-    return ok && value >= 0 && value <= 100 ? value : -1;
 }
 
 } // namespace
@@ -93,12 +65,6 @@ Mixer::Mixer(AppModel* apps, QObject* parent)
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(80); // events come in bursts
     connect(&m_debounce, &QTimer::timeout, this, &Mixer::refresh);
-    connect(&m_runner, &QProcess::finished, this, &Mixer::runNext);
-    connect(&m_runner, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (error == QProcess::FailedToStart) {
-            runNext(); // no "finished" will come
-        }
-    });
 }
 
 QVariantList Mixer::apps() const
@@ -121,6 +87,7 @@ void Mixer::setActive(bool active)
 void Mixer::onAudioEvents(const QByteArray& lines)
 {
     if (m_active && (lines.contains("sink") || lines.contains("server") || lines.contains("card"))) {
+        ++m_revision;
         m_debounce.start();
     }
 }
@@ -136,11 +103,51 @@ void Mixer::refresh()
 
 void Mixer::load()
 {
-    if (!m_available) {
+    if (!m_available || busy()) {
         return;
     }
+    if (m_loading) {
+        m_refreshPending = true;
+        return;
+    }
+    m_loading = true;
+    m_refreshPending = false;
+    const quint64 revision = m_revision;
+    const QString pactl = QStringLiteral("pactl");
+    vela::queryProcesses(this,
+        { { QStringLiteral("default"), pactl, { QStringLiteral("get-default-sink") } },
+            { QStringLiteral("sinks"), pactl, { QStringLiteral("-f"), QStringLiteral("json"), QStringLiteral("list"), QStringLiteral("sinks") } },
+            { QStringLiteral("streams"), pactl, { QStringLiteral("-f"), QStringLiteral("json"), QStringLiteral("list"), QStringLiteral("sink-inputs") } },
+            { QStringLiteral("targets"), QStringLiteral("pw-metadata"), { QStringLiteral("-n"), QStringLiteral("default") }, 1000, false } },
+        [this, revision](bool ok, const QMap<QString, QByteArray>& results) {
+            m_loading = false;
+            const QJsonDocument sinks = QJsonDocument::fromJson(results.value(QStringLiteral("sinks")));
+            const QJsonDocument streams = QJsonDocument::fromJson(results.value(QStringLiteral("streams")));
+            const bool valid = ok && sinks.isArray() && streams.isArray();
+            if (valid && revision == m_revision && !busy()) {
+                apply(QString::fromUtf8(results.value(QStringLiteral("default"))).trimmed(), sinks.array(), streams.array(),
+                    results.value(QStringLiteral("targets")), results.contains(QStringLiteral("targets")));
+            }
+            const bool pending = std::exchange(m_refreshPending, false) || revision != m_revision;
+            if (pending && !busy() && (m_active || !m_taskSteps.isEmpty())) {
+                load();
+            } else if (!valid && !pending) {
+                m_taskSteps.clear(); // a failed read must not replay old wheel input later
+            }
+        });
+}
+
+void Mixer::apply(const QString& defaultName, const QJsonArray& sinks, const QJsonArray& streams,
+    const QByteArray& metadata, bool haveMetadata)
+{
     m_loaded.start();
-    const QString defaultName = QString::fromUtf8(output(QStringLiteral("pactl"), { QStringLiteral("get-default-sink") })).trimmed();
+    const quint64 snapshot = ++m_snapshot;
+    QHash<QString, int> batteries;
+    for (const QVariant& output : std::as_const(m_outputs)) {
+        const QVariantMap map = output.toMap();
+        batteries.insert(map.value(QStringLiteral("name")).toString(), map.value(QStringLiteral("battery")).toInt());
+    }
+    QList<QPair<QString, QString>> batteryRequests;
 
     // Each output's name by its index and serial: how PipeWire names the
     // output a stream was sent to.
@@ -148,7 +155,7 @@ void Mixer::load()
     QHash<int, QString> sinkByIndex;
     QHash<QString, QString> descriptions; // unplugged ones too
     m_outputs.clear();
-    for (const QJsonValue& value : pactlList(QStringLiteral("sinks"))) {
+    for (const QJsonValue& value : sinks) {
         const QJsonObject sink = value.toObject();
         const QString name = sink[QStringLiteral("name")].toString();
         const QJsonObject properties = sink[QStringLiteral("properties")].toObject();
@@ -182,7 +189,8 @@ void Mixer::load()
             if (path.isEmpty()) {
                 path = QStringLiteral("/org/bluez/hci0/dev_") + QString(address).replace(u':', u'_');
             }
-            battery = bluetoothBattery(path);
+            battery = batteries.value(name, -1);
+            batteryRequests.append({ name, path });
         }
         m_outputs.append(QVariantMap {
             { QStringLiteral("name"), name },
@@ -194,9 +202,13 @@ void Mixer::load()
     }
 
     // The apps: their streams, grouped by program.
-    const QHash<QString, QString> targets = streamTargets();
+    const QHash<QString, QString> targets = streamTargets(metadata);
+    QHash<QString, QVariantMap> previous;
+    for (const QVariantMap& app : std::as_const(m_apps)) {
+        previous.insert(app.value(QStringLiteral("key")).toString(), app);
+    }
     m_apps.clear();
-    for (const QJsonValue& value : pactlList(QStringLiteral("sink-inputs"))) {
+    for (const QJsonValue& value : streams) {
         const QJsonObject stream = value.toObject();
         const QJsonObject properties = stream[QStringLiteral("properties")].toObject();
         const auto property = [&](const char* key) { return properties[QLatin1String(key)].toString(); };
@@ -223,8 +235,10 @@ void Mixer::load()
         }
         // Sent to a chosen output: the one it's on now (the chosen one may be
         // unplugged, then the sound goes to the default one).
-        const bool chosen = targets.contains(property("object.id"));
-        QString target = sinkNames.value(targets.value(property("object.id")));
+        const bool chosen = haveMetadata ? targets.contains(property("object.id"))
+                                         : !previous.value(key).value(QStringLiteral("output")).toString().isEmpty();
+        QString target = haveMetadata ? sinkNames.value(targets.value(property("object.id")))
+                                      : previous.value(key).value(QStringLiteral("output")).toString();
         if (chosen && target.isEmpty()) {
             target = sinkByIndex.value(stream[QStringLiteral("sink")].toInt());
         }
@@ -241,6 +255,42 @@ void Mixer::load()
         });
     }
     emit changed();
+    for (const auto& [name, path] : batteryRequests) {
+        readBattery(name, path, snapshot);
+    }
+    const auto steps = std::exchange(m_taskSteps, {});
+    for (const auto& [desktopId, direction] : steps) {
+        stepTaskVolume(desktopId, direction);
+    }
+}
+
+void Mixer::readBattery(const QString& name, const QString& path, quint64 snapshot)
+{
+    QDBusMessage get = QDBusMessage::createMethodCall(QStringLiteral("org.bluez"), path,
+        QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
+    get << QStringLiteral("org.bluez.Battery1") << QStringLiteral("Percentage");
+    auto* watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(get, 300), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, name, snapshot] {
+        const QDBusPendingReply<QDBusVariant> reply = *watcher;
+        watcher->deleteLater();
+        if (reply.isError() || snapshot != m_snapshot) {
+            return;
+        }
+        bool ok = false;
+        const int battery = reply.value().variant().toInt(&ok);
+        if (!ok || battery < 0 || battery > 100) {
+            return;
+        }
+        for (QVariant& output : m_outputs) {
+            QVariantMap map = output.toMap();
+            if (map.value(QStringLiteral("name")).toString() == name) {
+                map.insert(QStringLiteral("battery"), battery);
+                output = map;
+                emit changed();
+                return;
+            }
+        }
+    });
 }
 
 QVariantMap* Mixer::findApp(const QString& key)
@@ -327,13 +377,15 @@ void Mixer::setAppOutput(const QString& key, const QString& output)
 
 bool Mixer::stepTaskVolume(const QString& desktopId, int direction)
 {
-    if (desktopId.isEmpty() || direction == 0) {
+    if (!m_available || desktopId.isEmpty() || direction == 0) {
         return false;
     }
     // Closed, the page doesn't follow the system: read it again, unless
     // this wheel's own changes are still on their way.
-    if (!m_active && !busy() && (!m_loaded.isValid() || m_loaded.elapsed() > 2000)) {
+    if (!m_loaded.isValid() || (!m_active && !busy() && m_loaded.elapsed() > 2000)) {
+        m_taskSteps.append({ desktopId, direction });
         load();
+        return true; // accepted; apply it once the streams are known
     }
     for (const QVariantMap& app : std::as_const(m_apps)) {
         if (app.value(QStringLiteral("desktopId")).toString() == desktopId) {
@@ -348,6 +400,7 @@ bool Mixer::stepTaskVolume(const QString& desktopId, int direction)
 
 void Mixer::run(const QString& key, const QStringList& arguments)
 {
+    ++m_revision;
     for (auto& waiting : m_queue) {
         if (waiting.first == key) {
             waiting.second = arguments;
@@ -355,7 +408,7 @@ void Mixer::run(const QString& key, const QStringList& arguments)
         }
     }
     m_queue.append({ key, arguments });
-    if (m_runner.state() == QProcess::NotRunning) {
+    if (!m_running) {
         runNext();
     }
 }
@@ -363,9 +416,15 @@ void Mixer::run(const QString& key, const QStringList& arguments)
 void Mixer::runNext()
 {
     if (m_queue.isEmpty()) {
-        m_debounce.start(); // what the system really did
+        if (m_active || !m_taskSteps.isEmpty()) {
+            load(); // what the system really did
+        }
         return;
     }
     const QStringList arguments = m_queue.takeFirst().second;
-    m_runner.start(QStringLiteral("pactl"), arguments);
+    m_running = true;
+    vela::runProcess(this, QStringLiteral("pactl"), arguments, 1000, [this](vela::ProcessResult) {
+        m_running = false;
+        runNext();
+    });
 }

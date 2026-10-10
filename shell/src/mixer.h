@@ -7,7 +7,7 @@
 #include <QList>
 #include <QObject>
 #include <QPair>
-#include <QProcess>
+#include <QJsonArray>
 #include <QStringList>
 #include <QTimer>
 #include <QVariantList>
@@ -50,7 +50,8 @@ public:
     // The system remembers it for the next time the app plays (WirePlumber).
     Q_INVOKABLE void setAppOutput(const QString& key, const QString& output);
     // The wheel on a taskbar button: one step for the app with that .desktop
-    // file, with the volume indicator. false if it isn't playing sound.
+    // file, with the volume indicator. With a stale cache the step is queued
+    // until streams arrive; false if the current cache says it isn't playing.
     Q_INVOKABLE bool stepTaskVolume(const QString& desktopId, int direction);
 
     // pactl subscribe's lines, from SystemStatus.
@@ -64,13 +65,16 @@ signals:
 private:
     void refresh();
     void load();
+    void apply(const QString& defaultName, const QJsonArray& sinks, const QJsonArray& streams,
+        const QByteArray& metadata, bool haveMetadata);
+    void readBattery(const QString& name, const QString& path, quint64 snapshot);
     QVariantMap* findApp(const QString& key);
     // pactl commands one at a time, in order: a slider dragged quickly can't
     // end on an older value. A command with the same key as a waiting one
     // replaces it.
     void run(const QString& key, const QStringList& arguments);
     void runNext();
-    bool busy() const { return m_runner.state() != QProcess::NotRunning || !m_queue.isEmpty(); }
+    bool busy() const { return m_running || !m_queue.isEmpty(); }
 
     AppModel* m_appModel;
     bool m_available = false;
@@ -79,6 +83,11 @@ private:
     QList<QVariantMap> m_apps;
     QElapsedTimer m_loaded; // when the system was last read
     QTimer m_debounce;
-    QProcess m_runner;
+    bool m_running = false;
+    bool m_loading = false;
+    bool m_refreshPending = false;
+    quint64 m_revision = 0; // changes invalidate a snapshot being read
+    quint64 m_snapshot = 0; // battery replies belong to this output list
     QList<QPair<QString, QStringList>> m_queue;
+    QList<QPair<QString, int>> m_taskSteps;
 };

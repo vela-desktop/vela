@@ -12,7 +12,7 @@ experience — smooth motion, precise rendering, rich effects — and avoids ove
 it does not. Every animation is tied to your monitor's real frames, and fractional scaling
 is designed around physical pixels rather than treated as an afterthought.
 
-[![Build](https://github.com/BrandoDev/vela/actions/workflows/build.yml/badge.svg)](https://github.com/BrandoDev/vela/actions/workflows/build.yml)
+[![Build](https://github.com/vela-desktop/vela/actions/workflows/build.yml/badge.svg)](https://github.com/vela-desktop/vela/actions/workflows/build.yml)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 ![wlroots](https://img.shields.io/badge/wlroots-0.20-4b8bbe)
@@ -20,8 +20,9 @@ is designed around physical pixels rather than treated as an afterthought.
 ![Qt](https://img.shields.io/badge/Qt-6-41cd52)
 ![C++](https://img.shields.io/badge/C%2B%2B-20-00599c)
 
-[Screenshots](#screenshots) · [Features](#features) · [Install](#install) ·
-[Build](#build-from-source) · [How it works](#how-it-works) · [Docs](#documentation) · [Roadmap](#roadmap)
+[Screenshots](#screenshots) · [Try Vela](#try-vela) · [Features](#features) ·
+[Install](#install) · [Build](#build-from-source) · [How it works](#how-it-works) ·
+[Docs](#documentation) · [Roadmap](#roadmap)
 
 <br>
 
@@ -107,6 +108,32 @@ responsive without heavyweight runtimes for simple desktop UI. The compositor id
 </tr>
 </table>
 
+
+## Try Vela
+
+> **Alpha software:** Vela is usable as a Wayland session but is not a stable
+> release or a replacement for keeping a working desktop/TTY available.
+> Hardware-dependent paths need verification on your GPU and driver. Read the
+> [hardware coverage and known limitations](docs/hardware.md) before installing.
+
+For a low-risk first look, [build from source](#build-from-source) and
+[run nested inside your existing Wayland desktop](#try-it-without-logging-out).
+Nested mode is convenient for exploration, but cannot validate physical DRM,
+direct scanout or every driver-specific path.
+
+For a full session, use the [Arch package](#arch-linux-cachyos-endeavouros) or
+[install from source](#other-distributions), then select Vela at the login
+screen. If something fails, [report it](#reporting-a-problem) using
+`vela-report`, reviewing any diagnostics before sharing them.
+
+### What Vela owns and what it reuses
+
+Vela implements its own compositor, Vulkan renderer, Qt Quick shell, Files and
+Settings. It deliberately reuses standard Wayland protocols and Linux services,
+and KDE components such as portals, wallet and themes when beneficial; this does
+not mean it runs on KDE's compositor or Plasma shell. Network, Bluetooth,
+audio, Xwayland, disk mounting and portals depend on their corresponding
+system services (see the [integration table](docs/hardware.md#integration-services)).
 
 ## It owns the whole pipeline
 
@@ -257,7 +284,7 @@ proprietary driver ≥ 570 or NVK. Once installed, **Vela** appears on the login
 Vela installs as a proper `vela-git` package:
 
 ```sh
-git clone https://github.com/BrandoDev/vela.git
+git clone https://github.com/vela-desktop/vela.git
 cd vela/packaging/arch
 VELA_GIT_URL=file://$PWD/../.. makepkg -si
 ```
@@ -278,7 +305,7 @@ vela-update --check         # only check, and list the changes
 vela-update --download      # use GitHub's package without asking
 vela-update --build         # always build locally
 vela-update --jobs 2        # fewer parallel compile jobs
-vela-update --branch fix/nvidia --download  # test this branch's latest commit
+vela-update --branch YOUR_TEST_BRANCH --download  # replace with an existing branch
 vela-update --commit abc1234 --download    # test an exact commit
 ```
 
@@ -292,11 +319,13 @@ otherwise it builds locally as usual.
 
 To prepare a package for a test branch, run the **Build** workflow manually in
 GitHub Actions, selecting that branch (or run
-`gh workflow run build.yml --ref fix/nvidia`). Manual runs produce the same
+`gh workflow run build.yml --ref YOUR_TEST_BRANCH`). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce the same
 `vela-git` artifact as pushes to `main`; artifacts expire after 14 days.
 The tester needs a version of `vela-update` that already supports these options.
 
-The last three packages stay in `~/.cache/vela-update` for easy rollback.
+The last three packages stay in `~/.cache/vela-update/packages/` for rollback.
+You can restore a known-good package with `sudo pacman -U /path/to/vela-git-*.pkg.tar.zst`
+(select the exact cached package file rather than installing every match).
 
 ### Other distributions
 
@@ -325,16 +354,17 @@ See [Vela Report](docs/reporting.md) for privacy details, options and limits.
 You need CMake ≥ 3.22, Ninja, a C17 and C++20 compiler, **wlroots 0.20**, Qt ≥ 6.7 with its Linguist tools, LayerShellQt,
 the Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and
 PAM. librsvg is optional (app icons in the title bar). The diagnostic reporter needs
-Python 3.10 or newer; the tests also use GoogleTest.
+Python 3.10 or newer; the tests also use GoogleTest. The pixel sharpness
+suites additionally require NumPy and Pillow for Python 3.
 
 <details>
 <summary><b>Arch / CachyOS / EndeavourOS</b></summary>
 
 ```sh
-sudo pacman -S --needed base-devel cmake ninja pkgconf wlroots0.20 wayland-protocols \
-    libxkbcommon pixman libinput qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
-    vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig \
-    pam librsvg zlib gtest python xorg-xwayland
+sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland wayland-protocols \
+    libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
+    vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
+    pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme xorg-xwayland
 ```
 </details>
 
@@ -342,17 +372,19 @@ sudo pacman -S --needed base-devel cmake ninja pkgconf wlroots0.20 wayland-proto
 <summary><b>Fedora</b></summary>
 
 ```sh
-sudo dnf install cmake ninja-build gcc-c++ wlroots-devel wayland-devel wayland-protocols-devel \
-    libxkbcommon-devel pixman-devel libinput-devel qt6-qtdeclarative-devel qt6-qttools-devel \
-    qt6-qtsvg-devel qt6-qtwayland-devel layer-shell-qt-devel \
-    vulkan-headers vulkan-loader-devel glslc mesa-libgbm-devel libdrm-devel \
-    freetype-devel harfbuzz-devel fontconfig-devel pam-devel librsvg2-devel \
-    zlib-devel gtest-devel python3
+sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
+    wlroots-devel wayland-devel wayland-protocols-devel libxkbcommon-devel \
+    pixman-devel libinput-devel libdrm-devel mesa-libgbm-devel \
+    qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel \
+    qt6-qttools-devel qt6-qtsvg-devel qt6-qtwayland-devel layer-shell-qt-devel \
+    vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
+    fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
+    zlib-devel gtest-devel python3 python3-numpy python3-pillow
 ```
 </details>
 
 <details>
-<summary><b>openSUSE Tumbleweed</b></summary>
+<summary><b>openSUSE Tumbleweed (experimental; not currently validated by CI)</b></summary>
 
 ```sh
 sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
@@ -378,7 +410,8 @@ virtual monitor:
 sh scripts/run-nested.sh
 ```
 
-The host desktop keeps the Super key, so every shortcut also has an Alt variant (below).
+The host desktop keeps the Super key, so many shortcuts have Alt variants,
+but some do not (see [the shortcut reference](docs/shortcuts.md)).
 These Alt variants are only active when nested. In a real session, Alt+letter stays with
 your apps for their menu mnemonics.
 
@@ -426,23 +459,29 @@ flowchart TB
 
 ## Performance
 
+See [how to reproduce and interpret these measurements](docs/performance.md),
+including current validation limits. These are historical observations on the
+primary development machine, **not independently repeated for this README update**.
+
 Vela does not chase low resource usage by stripping away the experience. It measures
 overhead so visual ambition does not quietly turn into waste:
 
 
-| Goal | Target | Today |
+| Goal | Target | Previously observed |
 |---|---|---|
 | Start menu | visible on the next frame after the key | ✔ |
 | Context menus | visible on the next frame after the click | ✔ |
 | Files cold start | first frame within 150 ms | **104 ms** (median of 5) |
 | Animations | always driven by real vblanks, never timers | ✔ |
-| Compositor at idle | no CPU, few wakeups | **17 MiB**, **0.1% CPU**, 3–7 wakeups/s |
-| Shell at idle | no CPU, few wakeups | **143 MiB**, **0.1% CPU**, 1–4 wakeups/s |
+| Compositor at idle | low overhead | **17 MiB PSS**, **0.1% of one CPU**, 3–7 voluntary context switches/s |
+| Shell at idle | low overhead | **143 MiB PSS**, **0.1% of one CPU**, 1–4 voluntary context switches/s |
 
 These measurements are from Vela's primary development system (Ryzen 9 9950X, Radeon
 RX 9070 XT, CachyOS, Mesa/RADV). Numbers come from `scripts/measure.sh`, which samples
-PSS memory, idle CPU, wakeups per second and, on battery, average power draw over 30
-seconds. `--json` prints one line to compare over time.
+PSS memory, idle CPU, voluntary context switches per second (a limited proxy,
+not the total number of process wakeups) and, on battery, average power draw
+of the whole computer over 30 seconds. `--json` prints one line to compare over
+time. Record the exact commit and driver versions alongside each published run.
 
 ## Development
 
@@ -474,6 +513,10 @@ see the documentation below.
 
 | Document | Contents |
 |---|---|
+| **[Alpha hardware coverage](docs/hardware.md)** | Driver validation scope, optional services and manual smoke tests. |
+| **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
+| **[Contributing](CONTRIBUTING.md)** | Development workflow, PR checklist, testing and DCO. |
+| **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
 | **[Polkit agent](docs/polkit-agent.md)** | The User Account Control dialog: agent, dialog, protocol, security notes and tests. |
 | **[Vela Report](docs/reporting.md)** | Guided diagnostic ZIPs, CLI and GUI, collection choices, privacy and validation. |
@@ -509,7 +552,8 @@ see the documentation below.
 
 ## Contributing
 
-Vela is a young project and moves fast. Issues and ideas are welcome. Before larger
+Vela is a young project and moves fast. Issues and ideas are welcome.
+See the [contribution guide](CONTRIBUTING.md) and [security policy](SECURITY.md). Before larger
 changes, open an issue to talk about it. Code, messages and interface text are in English;
 code comments are still in Italian. Please sign off your commits (`git commit -s`, the
 [Developer Certificate of Origin](https://developercertificate.org/)): contributions

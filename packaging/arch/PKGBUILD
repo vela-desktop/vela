@@ -21,7 +21,7 @@ pkgver=0.1.0.r0.g0000000
 pkgrel=1
 pkgdesc="A modern, fluid and sharp desktop environment for Wayland"
 arch=('x86_64')
-url="https://github.com/BrandoDev/vela"
+url="https://github.com/vela-desktop/vela"
 license=('GPL-3.0-or-later')
 depends=(
     'wlroots0.20' 'wayland' 'libxkbcommon' 'pixman' 'libinput' 'libdrm' 'mesa' 'vulkan-icd-loader'
@@ -50,7 +50,7 @@ optdepends=(
 provides=('vela')
 conflicts=('vela')
 backup=('etc/pam.d/vela-lock' 'etc/xdg/xdg-desktop-portal-wlr/Vela')
-source=("$_name::git+${VELA_GIT_URL:-https://github.com/BrandoDev/vela.git}")
+source=("$_name::git+${VELA_GIT_URL:-https://github.com/vela-desktop/vela.git}")
 sha256sums=('SKIP')
 
 pkgver() {

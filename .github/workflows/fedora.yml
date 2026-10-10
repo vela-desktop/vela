@@ -33,7 +33,7 @@ jobs:
           qt6-qtbase-devel qt6-qtbase-private-devel
           qt6-qtdeclarative-devel qt6-qtsvg-devel
           qt6-qtwayland-devel qt6-qttools-devel layer-shell-qt-devel
-          gtest-devel python3
+          gtest-devel python3 dbus-daemon
 
       - uses: actions/checkout@v7
 

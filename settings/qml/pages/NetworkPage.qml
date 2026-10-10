@@ -135,7 +135,8 @@ Page {
                             onClicked: {
                                 if (net.modelData.active) {
                                     Network.disconnectDevice(page.wifiDevice.device)
-                                } else if (net.modelData.secure && !net.modelData.known) {
+                                } else if (net.modelData.secure && (!net.modelData.known
+                                    || Network.passwordRequiredSsid === net.modelData.ssid)) {
                                     passwordDialog.ssid = net.modelData.ssid
                                     password.text = ""
                                     passwordDialog.open()
