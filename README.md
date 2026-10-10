@@ -334,7 +334,7 @@ Python 3.10 or newer; the tests also use GoogleTest.
 sudo pacman -S --needed base-devel cmake ninja pkgconf wlroots0.20 wayland-protocols \
     libxkbcommon pixman libinput qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
     vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig \
-    pam librsvg zlib gtest python
+    pam librsvg zlib gtest python xorg-xwayland
 ```
 </details>
 
