@@ -22,7 +22,7 @@ is designed around physical pixels rather than treated as an afterthought.
 
 [Screenshots](#screenshots) · [Try Vela](#try-vela) · [Features](#features) ·
 [Install](#install) · [Build](#build-from-source) · [How it works](#how-it-works) ·
-[Docs](#documentation) · [Roadmap](#roadmap)
+[Docs](#documentation) · [Roadmap](docs/roadmap.md)
 
 <br>
 
@@ -515,6 +515,7 @@ see the documentation below.
 |---|---|
 | **[Alpha hardware coverage](docs/hardware.md)** | Driver validation scope, optional services and manual smoke tests. |
 | **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
+| **[Roadmap](docs/roadmap.md)** | Completed milestones and planned features. |
 | **[Contributing](CONTRIBUTING.md)** | Development workflow, PR checklist, testing and DCO. |
 | **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
@@ -525,37 +526,13 @@ see the documentation below.
 | **[Configuration](docs/configuration.md)** | `vela.conf`, display persistence, runtime overrides and renderer/debug environment variables. |
 | **[Keyboard shortcuts](docs/shortcuts.md)** | Complete normal-session and nested-session shortcut reference. |
 
-## Roadmap
-
-**Done**
-- [x] **A real session**: login entry, systemd and D-Bus, portals, polkit, Xwayland,
-  lock screen, idle, notifications, system tray.
-- [x] **The look**: own Vulkan renderer, live acrylic blur, rounded corners and
-  shadows, Vela's title bar, and modern context menus throughout the shell.
-- [x] **A complete daily desktop**: Settings, Files, desktop icons, virtual desktops,
-  Task View, Snap layouts and Snap Assist, light mode.
-- [x] **Gaming and displays**: tearing control, VRR, direct scanout, multi-monitor
-  hotplug with per-output scale.
-- [x] **Daily comfort**: clipboard history, snipping tool, touchpad gestures, mouse and
-  touchpad settings.
-- [x] **Reliability**: compositor crash recovery, package and `vela-update`, CI.
-- [x] **Languages**: English and Italian, switched live from Settings.
-
-**Next**
-- [ ] Input methods (`text-input`, `input-method`) and an emoji panel (Super+.).
-- [ ] An Updates page in Settings, with a notification when a new version is out.
-- [ ] Start menu: Recommended files, and search across files and settings.
-- [ ] Screen recording in the snipping tool.
-- [ ] More languages.
-- [ ] Vela's own login screen.
-- [ ] HDR and color management.
-
 ## Contributing
 
 Vela is a young project and moves fast. Issues and ideas are welcome.
 See the [contribution guide](CONTRIBUTING.md) and [security policy](SECURITY.md). Before larger
-changes, open an issue to talk about it. Code, messages and interface text are in English;
-code comments are still in Italian. Please sign off your commits (`git commit -s`, the
+changes, open an issue to talk about it. Use English for code, new comments, commit messages and interface text.
+Some older comments are in Italian; contributions translating them are welcome.
+Please sign off your commits (`git commit -s`, the
 [Developer Certificate of Origin](https://developercertificate.org/)): contributions
 are accepted under the project's license, GPL-3.0-or-later.
 
