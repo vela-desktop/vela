@@ -25,6 +25,8 @@ Window {
     // The apps pinned to Start, installed, without duplicates (the same app as
     // a package and as a Flatpak).
     readonly property var pinned: {
+        // entry(id) is not observable: depend explicitly on catalogue changes.
+        Apps.catalogRevision
         const seen = {}
         const out = []
         for (const id of Shell.startPins) {
