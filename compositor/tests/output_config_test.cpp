@@ -15,6 +15,7 @@ extern "C" {
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <sys/stat.h>
 
 namespace {
 
@@ -140,4 +141,31 @@ TEST_F(OutputConfig, LegacyItalianFile)
     EXPECT_NE(contents("outputs.conf").find("[Vecchio]\nenabled=yes\nmode=3840x2160@60.000\nscale=1.75\n"
                                             "rotation=flipped-90\nposition=100,200\n"),
         std::string::npos);
+}
+
+TEST_F(OutputConfig, WritesPrivateModeEvenWithPermissiveUmask)
+{
+    const vela_output_config_entry entries[] = { entry("Monitor", true, 0, 0) };
+    const mode_t previous = umask(0);
+    vela_output_config_save(entries, 1);
+    umask(previous);
+    struct stat info {};
+    ASSERT_EQ(stat(path("outputs.conf").c_str(), &info), 0);
+    EXPECT_EQ(info.st_mode & 0777, 0600);
+}
+
+TEST_F(OutputConfig, DoesNotFollowPredictableTemporarySymlink)
+{
+    const std::string sentinel = m_dir + "/do-not-change";
+    std::ofstream(sentinel) << "untouched";
+    std::filesystem::create_directories(m_dir + "/config/vela");
+    std::filesystem::create_symlink(sentinel, path("outputs.conf.tmp"));
+    const vela_output_config_entry entries[] = { entry("Monitor", true, 0, 0) };
+    vela_output_config_save(entries, 1);
+    EXPECT_NE(contents("outputs.conf").find("[Monitor]"), std::string::npos);
+    std::ifstream in(sentinel);
+    std::string text;
+    in >> text;
+    EXPECT_EQ(text, "untouched");
+    EXPECT_TRUE(std::filesystem::is_symlink(path("outputs.conf.tmp")));
 }

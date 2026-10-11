@@ -69,7 +69,8 @@ class Shell(unittest.TestCase):
     (shell.c)."""
 
     def runs(self, script):
-        count = tempfile.mktemp(prefix="vela-shell-runs-")
+        with tempfile.NamedTemporaryFile(prefix="vela-shell-runs-", delete=False) as counter:
+            count = counter.name
         with Session(startup=f"sh -c 'echo run >> {count}; {script}'") as vela:
             time.sleep(2.5)
             log = vela.log_text()

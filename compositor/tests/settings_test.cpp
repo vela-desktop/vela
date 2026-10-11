@@ -14,6 +14,7 @@ extern "C" {
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <sys/stat.h>
 
 namespace {
 
@@ -118,4 +119,29 @@ TEST_F(Settings, LegacyItalianNames)
     vela_config_migrate();
     EXPECT_EQ(contents(), "# commento\nnight-light=yes\nnight-light-schedule=sunset\nvariable-refresh=games\n"
                           "mouse-primary-button=right\ncolor-filter=grayscale\ntouchpad-tap=yes\nlanguage=it\n");
+}
+
+TEST_F(Settings, WritesPrivateModeEvenWithPermissiveUmask)
+{
+    const mode_t previous = umask(0);
+    vela_config_write("night-light", "yes");
+    umask(previous);
+    struct stat info {};
+    ASSERT_EQ(stat(file().c_str(), &info), 0);
+    EXPECT_EQ(info.st_mode & 0777, 0600);
+}
+
+TEST_F(Settings, DoesNotFollowPredictableTemporarySymlink)
+{
+    std::filesystem::create_directories(m_dir + "/vela");
+    const std::string sentinel = m_dir + "/do-not-change";
+    std::ofstream(sentinel) << "untouched";
+    std::filesystem::create_symlink(sentinel, file() + ".tmp");
+    vela_config_write("night-light", "yes");
+    EXPECT_STREQ(Read().get("night-light"), "yes");
+    std::ifstream in(sentinel);
+    std::string text;
+    in >> text;
+    EXPECT_EQ(text, "untouched");
+    EXPECT_TRUE(std::filesystem::is_symlink(file() + ".tmp"));
 }

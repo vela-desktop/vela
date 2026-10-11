@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/util/log.h>
@@ -91,25 +92,33 @@ static void save(const struct vela_workspaces *ws)
 {
     char directory[PATH_MAX];
     char path[PATH_MAX];
-    char temporary[PATH_MAX];
+    char temporary[PATH_MAX + 8];
     if (!vela_config_path(NULL, directory, sizeof(directory)) || !vela_config_path("desktop.conf", path, sizeof(path))
-        || !vela_format(temporary, sizeof(temporary), "%s.tmp", path)) {
+        || !vela_format(temporary, sizeof(temporary), "%s.XXXXXX", path)) {
         return;
     }
     mkdir(directory, 0755);
-    FILE *out = fopen(temporary, "we");
-    if (!out) {
+    int fd = mkstemp(temporary); // unique, exclusively created with mode 0600
+    if (fd < 0) {
         return;
     }
-    fputs("# Vela's virtual desktops, in order (empty: \"Desktop N\")\n", out);
+    FILE *out = fdopen(fd, "w");
+    if (!out) {
+        close(fd);
+        unlink(temporary);
+        return;
+    }
+    bool ok = fputs("# Vela's virtual desktops, in order (empty: \"Desktop N\")\n", out) >= 0;
     for (int i = 0; i < ws->count; ++i) {
-        fprintf(out, "desktop=%s\n", ws->names[i]);
+        ok = fprintf(out, "desktop=%s\n", ws->names[i]) >= 0 && ok;
     }
     for (int i = 0; i < ws->sticky_count; ++i) {
-        fprintf(out, "sticky-app=%s\n", ws->sticky_apps[i]);
+        ok = fprintf(out, "sticky-app=%s\n", ws->sticky_apps[i]) >= 0 && ok;
     }
-    fclose(out);
-    rename(temporary, path);
+    ok = fclose(out) == 0 && ok;
+    if (!ok || rename(temporary, path) != 0) {
+        unlink(temporary);
+    }
 }
 
 // The name to show ("Desktop N" if it has none).

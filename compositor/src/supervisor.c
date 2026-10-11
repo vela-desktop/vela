@@ -102,7 +102,13 @@ static bool create_socket(const char *runtime_dir, struct wayland_socket *s)
             close(s->lock_fd);
             return false;
         }
-        strcpy(address.sun_path, s->path);
+        // A bounded copy even if the runtime directory was supplied externally.
+        int copied = snprintf(address.sun_path, sizeof(address.sun_path), "%s", s->path);
+        if (copied < 0 || (size_t)copied >= sizeof(address.sun_path)) {
+            close(s->fd);
+            close(s->lock_fd);
+            return false;
+        }
         if (bind(s->fd, (struct sockaddr *)&address, sizeof(address)) != 0 || listen(s->fd, 128) != 0) {
             close(s->fd);
             close(s->lock_fd);
