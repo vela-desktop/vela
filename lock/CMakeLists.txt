@@ -3,7 +3,7 @@
 
 # vela-lock: the lock screen (ext-session-lock-v1 + PAM).
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Gui Svg)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Gui GuiPrivate Svg)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LOCK_DEPS REQUIRED IMPORTED_TARGET wayland-client xkbcommon)
 pkg_get_variable(LOCK_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)

@@ -48,7 +48,7 @@ bool vela_capture_frame_valid(const struct vela_capture_frame *frame)
 {
     if (!frame || !frame->pixels || !frame->width || !frame->height ||
         !vela_capture_supported_format(frame->format) ||
-        frame->width > SIZE_MAX / 4 || !frame->stride ||
+        !frame->stride ||
         frame->stride < (size_t)frame->width * 4) {
         return false;
     }
