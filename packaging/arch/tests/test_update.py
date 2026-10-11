@@ -8,8 +8,10 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 
@@ -58,6 +60,16 @@ if name == "pacman":
         sys.exit(1)
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
 elif name == "makepkg":
+    if os.environ.get("TEST_PAUSE_BUILD"):
+        import time
+        marker = pathlib.Path(os.environ["TEST_BUILD_MARKER"])
+        release = pathlib.Path(os.environ["TEST_BUILD_RELEASE"])
+        marker.touch()
+        end = time.monotonic() + 15
+        while not release.exists() and time.monotonic() < end:
+            time.sleep(0.025)
+        if not release.exists():
+            sys.exit("Timed out waiting for test build release")
     if os.environ.get("TEST_FAIL_BUILD"):
         record()
         sys.exit(1)
@@ -198,6 +210,23 @@ class UpdateFixture(unittest.TestCase):
         return [call for line in self.calls_file.read_text().splitlines()
                 if (call := json.loads(line))["tool"] == tool]
 
+    def start_paused_build(self):
+        self.env["TEST_PAUSE_BUILD"] = "1"
+        marker = self.directory / "build-started"
+        release = self.directory / "build-release"
+        self.env["TEST_BUILD_MARKER"] = str(marker)
+        self.env["TEST_BUILD_RELEASE"] = str(release)
+        proc = subprocess.Popen(
+            ["sh", str(self.update_script), "--source", str(self.source), "--build"],
+            env=self.env, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: proc.kill() if proc.poll() is None else None)
+        limit = time.monotonic() + 12
+        while not marker.exists() and proc.poll() is None and time.monotonic() < limit:
+            time.sleep(0.025)
+        self.assertTrue(marker.exists(), "Updater did not reach makepkg")
+        return proc, release
+
 
 class UpdateRevision(UpdateFixture):
     def test_default_build_uses_main(self):
@@ -289,7 +318,8 @@ class UpdateRevision(UpdateFixture):
     def test_invalid_options_never_installed(self):
         for args in (("--branch",), ("--commit",), ("--branch=",), ("--commit=",),
                      ("--branch", "../main"), ("--commit", "HEAD"),
-                     ("--branch", "main", "--commit", self.main)):
+                     ("--branch", "main", "--commit", self.main),
+                     ("--jobs",), ("--jobs="), ("--source",), ("--source=")):
             with self.subTest(args=args):
                 self.run_update(*args, status=2)
         self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
@@ -433,6 +463,31 @@ class UpdateSources(UpdateFixture):
                                  ["clone"] + ["update"] * index)
                 self.assert_https_transport()
 
+    def test_failed_source_switch_preserves_mirror_and_config(self):
+        self.run_update("--check")
+        original = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip()
+        self.run_update("--source", str(self.directory / "nonexistent"),
+                        "--check", source=False, status=1)
+        self.assertEqual(self.config.read_text(), f"source={self.source}\\n")
+        self.assertEqual(subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip(), original)
+        self.run_update("--check", source=False)
+
+    def test_missing_branch_on_new_source_preserves_old_mirror(self):
+        self.run_update("--check")
+        alternate = self.directory / "alternate"
+        shutil.copytree(self.source, alternate)
+        self.run_update("--source", str(alternate), "--branch", "nonexistent",
+                        "--check", source=False, status=1)
+        self.assertEqual(self.config.read_text(), f"source={self.source}\\n")
+        origin = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip()
+        self.assertEqual(origin, str(self.source))
+
     def test_old_origin_uses_org_for_ci_artifacts(self):
         self.git("remote", "set-url", "origin", "git@github.com:BrandoDev/vela.git")
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.main[:7])
@@ -553,6 +608,32 @@ class UpdateFailures(UpdateFixture):
         self.assertIn("downloaded but not installed", result.stderr)
         self.assertEqual(self.calls("makepkg"), [])
         self.assertEqual(len(list((self.mirror.parent / "packages").glob("*.pkg.tar.zst"))), 1)
+
+
+class UpdateConcurrency(UpdateFixture):
+    def test_second_invocation_is_rejected_without_touching_build(self):
+        proc, release = self.start_paused_build()
+        try:
+            result = self.run_update("--check", status=1)
+            self.assertIn("another update is already running", result.stderr)
+            self.assertEqual(self.calls("sudo"), [])
+            self.assertTrue(list(self.mirror.parent.glob("build.*")))
+        finally:
+            release.touch()
+            stdout, stderr = proc.communicate(timeout=30)
+        self.assertEqual(proc.returncode, 0, stdout + stderr)
+        self.assertFalse(list(self.mirror.parent.glob("build.*")))
+
+    def test_interrupted_build_cleans_temp_directories_and_keeps_mirror(self):
+        proc, release = self.start_paused_build()
+        proc.send_signal(signal.SIGTERM)
+        release.touch()
+        stdout, stderr = proc.communicate(timeout=30)
+        self.assertNotEqual(proc.returncode, 0, stdout + stderr)
+        self.assertTrue(self.mirror.is_dir())
+        self.assertFalse(list(self.mirror.parent.glob("build.*")))
+        self.assertFalse(list(self.mirror.parent.glob("download.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
 
 
 class PackageSources(unittest.TestCase):
