@@ -376,10 +376,34 @@ githubRepo() {
     printf '%s\n' "$url" | sed -n -E 's#^(ssh://git@github\.com/|git@github\.com:|https://github\.com/)([^/]+/[^/]+)$#\2#p' | sed 's/\.git$//'
 }
 
-# Public alpha releases are immutable and named after the full source commit.
-# Check the manifest before downloading: only a matching x86_64 package with
-# a valid SHA-256 entry may be installed. No GitHub login is required.
+# Official releases are named after the source commit. An HTTPS SHA256SUMS
+# manifest alone is NOT a trust anchor: an attacker replacing both the
+# manifest and the package could bypass a checksum-only check. Require a
+# GitHub/Sigstore build provenance attestation before installing any binary.
+# Without gh or a valid attestation, fall back to building verified Git source.
 repo=$(githubRepo)
+verifyProvenance() {
+    artifact_path="$1"
+    source_kind="$2"
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "vela-update: GitHub CLI (gh) is required for signed package verification." >&2
+        return 1
+    fi
+    # The certificate must identify this repository's build.yml workflow,
+    # and the signed source SHA must equal the revision selected above.
+    # This checks the artifact digest cryptographically (not just its name).
+    set -- "$artifact_path" --repo "$repo" \
+        --signer-workflow "$repo/.github/workflows/build.yml" \
+        --source-digest "$latestFull" --deny-self-hosted-runners
+    if [ "$source_kind" = release ]; then
+        # Public alpha releases are published exclusively from main.
+        set -- "$@" --source-ref refs/heads/main
+    fi
+    if ! gh attestation verify "$@" >/dev/null 2>&1; then
+        echo "vela-update: package provenance verification failed for $latestFull; refusing binary." >&2
+        return 1
+    fi
+}
 release_package=""
 release_url=""
 release_digest=""
@@ -415,7 +439,7 @@ fi
 
 if [ "$check" = 1 ]; then
     if [ -n "$release_package" ]; then
-        echo ":: Public alpha package available (no GitHub login needed)."
+        echo ":: Public alpha package found (signature is checked before installation)."
     elif [ -n "$ciRun" ]; then
         echo ":: GitHub already has the package: vela-update downloads it instead of building."
     fi
@@ -435,15 +459,16 @@ prune() {
     done
 }
 
-# Prefer an immutable public release. Verify its checksum before passing the
-# package to pacman; on missing/corrupt downloads use the existing fallbacks.
+# Prefer a public release if its checksum AND signed build provenance verify.
+# Failed verification must never install or cache an untrusted package.
 if [ -n "$release_package" ]; then
     DOWNLOAD=$(mktemp -d "$CACHE/download.XXXXXXXX")
     printf '%s  %s\n' "$release_digest" "$release_package" > "$DOWNLOAD/SHA256SUMS"
     echo ":: Downloading public alpha package for $latestFull"
     if curl -fsSL --retry 2 --connect-timeout 5 --max-time 180 \
         -o "$DOWNLOAD/$release_package" "$release_url/$release_package" \
-        && (cd "$DOWNLOAD" && sha256sum --check --status SHA256SUMS); then
+        && (cd "$DOWNLOAD" && sha256sum --check --status SHA256SUMS) \
+        && verifyProvenance "$DOWNLOAD/$release_package" release; then
         mv -f "$DOWNLOAD/$release_package" "$PACKAGES/"
         rm -rf -- "$DOWNLOAD"
         DOWNLOAD=""
@@ -458,7 +483,7 @@ if [ -n "$release_package" ]; then
         echo "   starts with your next session: sign out and back in."
         exit 0
     fi
-    echo ":: Public package unavailable or failed checksum verification; falling back." >&2
+    echo ":: Public package unavailable, unverified or corrupt; building or checking alternatives." >&2
     rm -rf -- "$DOWNLOAD"
     DOWNLOAD=""
 fi
@@ -481,7 +506,8 @@ if [ -n "$ciRun" ]; then
     echo ":: Downloading the package from GitHub"
     if gh run download "$ciRun" -R "$repo" -n vela-git -D "$DOWNLOAD" \
         && package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1) \
-        && [ -n "$package" ]; then
+        && [ -n "$package" ] \
+        && verifyProvenance "$package" workflow; then
         mv -f "$package" "$PACKAGES/"
         rm -rf -- "$DOWNLOAD"
         DOWNLOAD=""
@@ -498,7 +524,7 @@ if [ -n "$ciRun" ]; then
     fi
     rm -rf -- "$DOWNLOAD"
     DOWNLOAD=""
-    echo ":: The GitHub package can't be downloaded: building it here." >&2
+    echo ":: The GitHub package is unavailable or not verified: building it here." >&2
 fi
 
 # The build, with the new version's PKGBUILD.
