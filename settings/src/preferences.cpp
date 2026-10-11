@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "preferences.h"
+#include "../../common/privatefile.h"
 
 extern "C" {
 #include "legacy_names.h"
@@ -507,10 +508,15 @@ void Preferences::saveCompositor(const QList<QPair<QString, QString>>& changes)
     }
     QDir().mkpath(QFileInfo(path).absolutePath());
     QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    // Existing settings may have been created with mode 0644.
+    if (!vela::openPrivateFile(file, QIODevice::WriteOnly | QIODevice::Text)) {
         return;
     }
-    file.write((lines.join(u'\n') + u'\n').toUtf8());
+    const QByteArray data = (lines.join(u'\n') + u'\n').toUtf8();
+    if (file.write(data) != data.size()) {
+        file.cancelWriting();
+        return;
+    }
     if (file.commit()) {
         // The compositor rereads (and our copy of the file updates from the
         // watcher).

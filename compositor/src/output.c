@@ -9,6 +9,7 @@
 #include "listen.h"
 #include "nested.h"
 #include "output_config.h"
+#include "output_key.h"
 #include "output_manager.h"
 #include "render/renderer.h"
 #include "scene/frame.h"
@@ -69,17 +70,7 @@ static struct wlr_output_mode *find_mode(struct wlr_output *output, int width, i
 
 void vela_output_key(const struct wlr_output *output, char *out, size_t size)
 {
-    out[0] = '\0';
-    size_t used = 0;
-    const char *parts[] = { output->make, output->model, output->serial };
-    for (int i = 0; i < 3; ++i) {
-        if (parts[i] && *parts[i] && used < size) {
-            used += (size_t)snprintf(out + used, size - used, "%s%s", used ? " " : "", parts[i]);
-        }
-    }
-    if (!out[0]) {
-        snprintf(out, size, "%s", output->name);
-    }
+    vela_output_key_format(out, size, output->make, output->model, output->serial, output->name);
 }
 
 // The initial state: what the user chose last time for this monitor (only in

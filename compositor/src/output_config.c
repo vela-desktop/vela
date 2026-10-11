@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 // The keys of a section, in the order they are written. Others are ignored
 // (and disappear at the next write).
@@ -221,25 +222,37 @@ void vela_output_config_save(const struct vela_output_config_entry *entries, int
         *slash = '/';
     }
     mkdir(dir, 0755);
-    char temporary[PATH_MAX + 4];
-    snprintf(temporary, sizeof(temporary), "%s.tmp", path);
-    FILE *out = fopen(temporary, "w");
-    if (out) {
-        fputs("# Vela's outputs, written by Vela when you change the configuration.\n"
-              "# One monitor per section: [make model serial number].\n",
-            out);
-        for (int i = 0; i < file.count; ++i) {
-            const struct section *section = &file.sections[i];
-            fprintf(out, "\n[%s]\n", section->name);
-            for (int k = 0; k < KEY_COUNT; ++k) {
-                if (section->has[k]) {
-                    fprintf(out, "%s=%s\n", key_names[k], section->values[k]);
+    char temporary[PATH_MAX + 8];
+    int length = snprintf(temporary, sizeof(temporary), "%s.XXXXXX", path);
+    if (length >= 0 && (size_t)length < sizeof(temporary)) {
+        int fd = mkstemp(temporary); // mode 0600, no predictable .tmp filename
+        if (fd >= 0) {
+            FILE *out = fdopen(fd, "w");
+            if (!out) {
+                close(fd);
+                unlink(temporary);
+            } else {
+                bool ok = fputs("# Vela's outputs, written by Vela when you change the configuration.\n"
+                                "# One monitor per section: [make model serial number].\n",
+                              out) >= 0;
+                for (int i = 0; i < file.count; ++i) {
+                    const struct section *section = &file.sections[i];
+                    ok = fprintf(out, "\n[%s]\n", section->name) >= 0 && ok;
+                    for (int k = 0; k < KEY_COUNT; ++k) {
+                        if (section->has[k]) {
+                            ok = fprintf(out, "%s=%s\n", key_names[k], section->values[k]) >= 0 && ok;
+                        }
+                    }
+                }
+                ok = fclose(out) == 0 && ok;
+                if (ok && rename(temporary, path) == 0) {
+                    if (vela_config_path("schermi.conf", legacy, sizeof(legacy))) {
+                        remove(legacy); // outputs.conf exists now
+                    }
+                } else {
+                    unlink(temporary);
                 }
             }
-        }
-        fclose(out);
-        if (rename(temporary, path) == 0 && vela_config_path("schermi.conf", legacy, sizeof(legacy))) {
-            remove(legacy); // outputs.conf exists now
         }
     }
     free_file(&file);

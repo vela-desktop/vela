@@ -10,6 +10,9 @@
 
 #define _GNU_SOURCE
 #include <stdint.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <stdbool.h>
 #include <limits.h>
 #include <stdio.h>
@@ -92,18 +95,26 @@ static void writeChunk(FILE* file, const char* type, const unsigned char* data, 
 // Output pixels -> 8-bit RGB PNG.
 static int writePng(const char* path, const struct vela_capture_frame* frame, int x, int y, int w, int h)
 {
-    // In memory: XRGB/ARGB8888 = B,G,R,A; XBGR/ABGR8888 = R,G,B,A.
     const unsigned char* pixels = frame->pixels;
-    const int bgr = frame->format == WL_SHM_FORMAT_XRGB8888 || frame->format == WL_SHM_FORMAT_ARGB8888;
-    if (w <= 0 || h <= 0 || (size_t)w > (SIZE_MAX - 1) / 3) return 0;
+    // Bound both allocation arithmetic and zlib's input length.
+    if (w <= 0 || h <= 0 || (size_t)w > (SIZE_MAX - 1) / 3) {
+        return 0;
+    }
     const size_t rowSize = 1 + (size_t)w * 3;
-    if ((size_t)h > SIZE_MAX / rowSize || rowSize * (size_t)h > ULONG_MAX) return 0;
-    unsigned char* raw = malloc(rowSize * h);
-    if (!raw) return 0;
+    if ((size_t)h > SIZE_MAX / rowSize || (size_t)h > ULONG_MAX / rowSize) {
+        return 0;
+    }
+    const size_t rawSize = rowSize * (size_t)h;
+    unsigned char* raw = malloc(rawSize);
+    if (!raw) {
+        return 0;
+    }
+    // In memory: XRGB/ARGB8888 = B,G,R,A; XBGR/ABGR8888 = R,G,B,A.
+    const int bgr = frame->format == WL_SHM_FORMAT_XRGB8888 || frame->format == WL_SHM_FORMAT_ARGB8888;
     for (int row = 0; row < h; ++row) {
         const int srcRow = y + row;
         const unsigned char* src = pixels + (size_t)srcRow * frame->stride + (size_t)x * 4;
-        unsigned char* dst = raw + row * rowSize;
+        unsigned char* dst = raw + (size_t)row * rowSize;
         *dst++ = 0; // filter: none
         for (int col = 0; col < w; ++col, src += 4) {
             *dst++ = bgr ? src[2] : src[0];
@@ -111,18 +122,42 @@ static int writePng(const char* path, const struct vela_capture_frame* frame, in
             *dst++ = bgr ? src[0] : src[2];
         }
     }
-    uLongf packedSize = compressBound(rowSize * h);
-    unsigned char* packed = malloc(packedSize);
-    if (!packed || compress2(packed, &packedSize, raw, rowSize * (size_t)h, 6) != Z_OK || packedSize > UINT32_MAX) {
+    const uLongf bound = compressBound((uLong)rawSize);
+    if (!bound || bound > UINT32_MAX) {
         free(raw);
+        return 0;
+    }
+    unsigned char* packed = malloc((size_t)bound);
+    if (!packed) {
+        free(raw);
+        return 0;
+    }
+    uLongf packedSize = bound;
+    int compressed = compress2(packed, &packedSize, raw, (uLong)rawSize, 6);
+    free(raw);
+    if (compressed != Z_OK || packedSize > UINT32_MAX) {
         free(packed);
         return 0;
     }
 
-    FILE* file = fopen(path, "wb");
+    // A screenshot can contain secrets. Do not follow symlinks, and ensure
+    // even an existing output file is owner-readable/writable only.
+    int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW, S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+        perror(path);
+        free(packed);
+        return 0;
+    }
+    if (fchmod(fd, S_IRUSR | S_IWUSR) != 0 || ftruncate(fd, 0) != 0) {
+        perror(path);
+        close(fd);
+        free(packed);
+        return 0;
+    }
+    FILE* file = fdopen(fd, "wb");
     if (!file) {
         perror(path);
-        free(raw);
+        close(fd);
         free(packed);
         return 0;
     }
@@ -135,15 +170,12 @@ static int writePng(const char* path, const struct vela_capture_frame* frame, in
     ihdr[9] = 2; // RGB
     ihdr[10] = ihdr[11] = ihdr[12] = 0;
     writeChunk(file, "IHDR", ihdr, sizeof(ihdr));
-    writeChunk(file, "IDAT", packed, packedSize);
+    writeChunk(file, "IDAT", packed, (uint32_t)packedSize);
     writeChunk(file, "IEND", NULL, 0);
-    const int had_error = ferror(file);
-    const int closed = fclose(file);
-    const int saved = !had_error && closed == 0;
-    if (!saved) remove(path);
-    free(raw);
+    int ok = !ferror(file);
+    ok = fclose(file) == 0 && ok;
     free(packed);
-    return saved;
+    return ok;
 }
 
 int main(int argc, char** argv)

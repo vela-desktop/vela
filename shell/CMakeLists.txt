@@ -179,6 +179,11 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-mimeapps-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-mimeapps COMMAND vela-mimeapps-test)
 
+    qt_add_executable(vela-private-files-test tests/privatefiles.cpp)
+    target_compile_options(vela-private-files-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-private-files-test PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME shell-private-files COMMAND vela-private-files-test)
+
     qt_add_executable(vela-volumesteps-test tests/volumesteps.cpp src/volumesteps.h)
     target_include_directories(vela-volumesteps-test PRIVATE src)
     target_compile_options(vela-volumesteps-test PRIVATE -Wall -Wextra)

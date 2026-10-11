@@ -121,6 +121,7 @@ add_library(vela-pure STATIC
     src/legacy_names.c
     src/motion.c
     src/output_config.c
+    src/output_key.c
     src/sun.c
     src/sync.c
     src/util.c)
@@ -270,6 +271,7 @@ if(VELA_BUILD_TOOLS)
             tests/color_sun_test.cpp
             tests/settings_test.cpp
             tests/output_config_test.cpp
+            tests/output_key_test.cpp
             tests/diagnostics_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp)
