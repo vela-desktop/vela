@@ -125,23 +125,42 @@ BACKUP_MIRROR=""
 DOWNLOAD=""
 WORK=""
 TEMP_CONFIG=""
+SWAP_UNCOMMITTED=0
+makepkg_pid=""
+stop_makepkg() {
+    [ -n "$makepkg_pid" ] || return 0
+    # A signal interrupts the shell's wait on makepkg. Reap the child before
+    # removing its workspace, otherwise it might still be writing into it.
+    kill -TERM "$makepkg_pid" 2>/dev/null || true
+    wait "$makepkg_pid" 2>/dev/null || true
+    makepkg_pid=""
+}
 cleanup() {
     [ -z "$WORK" ] || rm -rf -- "$WORK"
     [ -z "$DOWNLOAD" ] || rm -rf -- "$DOWNLOAD"
     [ -z "$STAGED_MIRROR" ] || rm -rf -- "$STAGED_MIRROR"
     [ -z "$TEMP_CONFIG" ] || rm -f -- "$TEMP_CONFIG"
+    # When writing the new source fails, restore the original mirror even
+    # though the replacement already occupies the active path.
+    if [ "$SWAP_UNCOMMITTED" = 1 ] && [ -d "$MIRROR" ]; then
+        rm -rf -- "$MIRROR" || true
+    fi
     if [ -n "$BACKUP_MIRROR" ]; then
-        if [ ! -d "$MIRROR" ]; then
-            mv -- "$BACKUP_MIRROR" "$MIRROR" || true
+        if [ ! -e "$MIRROR" ]; then
+            mv -- "$BACKUP_MIRROR" "$MIRROR" || {
+                echo "vela-update: previous mirror is preserved at $BACKUP_MIRROR" >&2
+            }
+        elif [ "$SWAP_UNCOMMITTED" = 1 ]; then
+            echo "vela-update: previous mirror is preserved at $BACKUP_MIRROR" >&2
         else
             rm -rf -- "$BACKUP_MIRROR"
         fi
     fi
 }
 trap 'status=$?; cleanup; exit "$status"' 0
-trap 'exit 130' INT
-trap 'exit 143' TERM
-trap 'exit 129' HUP
+trap 'stop_makepkg; exit 130' INT
+trap 'stop_makepkg; exit 143' TERM
+trap 'stop_makepkg; exit 129' HUP
 
 # From where: the one given now (and remembered), the remembered one, GitHub.
 # The old file was called aggiornamenti.conf (key sorgente=).
@@ -267,8 +286,7 @@ if [ -n "$STAGED_MIRROR" ]; then
     fi
     mv -- "$STAGED_MIRROR" "$MIRROR"
     STAGED_MIRROR=""
-    [ -z "$BACKUP_MIRROR" ] || rm -rf -- "$BACKUP_MIRROR"
-    BACKUP_MIRROR=""
+    SWAP_UNCOMMITTED=1
 fi
 
 # Save a new source only after its fetch and revision resolution succeeded.
@@ -280,6 +298,13 @@ if [ "$remember" = 1 ]; then
     printf 'source=%s\n' "$source" > "$TEMP_CONFIG"
     mv -f -- "$TEMP_CONFIG" "$CONFIG"
     TEMP_CONFIG=""
+fi
+# Source and mirror now agree; a failed config write would have kept the
+# previous mirror available for the EXIT handler to restore.
+SWAP_UNCOMMITTED=0
+if [ -n "$BACKUP_MIRROR" ]; then
+    rm -rf -- "$BACKUP_MIRROR"
+    BACKUP_MIRROR=""
 fi
 if [ "$migrate_legacy" = 1 ]; then
     rm -f -- "$OLD_CONFIG"
@@ -457,8 +482,18 @@ if [ -n "$jobs" ]; then
     export MAKEFLAGS="-j$jobs"
 fi
 echo ":: Building the package (a few minutes)"
-if ! BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-    makepkg --syncdeps --install --clean --force; then
+# Run in the background so a signal can interrupt wait and terminate makepkg.
+# Preserve stdin for makepkg/sudo prompts; don't give the child our lock FD.
+BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
+    makepkg --syncdeps --install --clean --force <&0 9>&- &
+makepkg_pid=$!
+if wait "$makepkg_pid"; then
+    build_ok=1
+else
+    build_ok=0
+fi
+makepkg_pid=""
+if [ "$build_ok" = 0 ]; then
     echo >&2
     # Built, but pacman didn't install it (cancelled, wrong password).
     built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1)
