@@ -83,7 +83,7 @@ while [ $# -gt 0 ]; do
         [ "$#" -ge 2 ] || { echo "vela-update: --source needs a value" >&2; exit 2; }
         shift
         source="$1"
-        [ -n "$source" ] || { echo "vela-update: --source needs a value" >&2; exit 2; }
+        case "$source" in ""|-*) echo "vela-update: --source needs a value" >&2; exit 2 ;; esac
         ;;
     --source=*) source="${1#*=}"; [ -n "$source" ] || { echo "vela-update: --source needs a value" >&2; exit 2; } ;;
     -h | --help) usage; exit 0 ;;
@@ -124,10 +124,12 @@ STAGED_MIRROR=""
 BACKUP_MIRROR=""
 DOWNLOAD=""
 WORK=""
+TEMP_CONFIG=""
 cleanup() {
     [ -z "$WORK" ] || rm -rf -- "$WORK"
     [ -z "$DOWNLOAD" ] || rm -rf -- "$DOWNLOAD"
     [ -z "$STAGED_MIRROR" ] || rm -rf -- "$STAGED_MIRROR"
+    [ -z "$TEMP_CONFIG" ] || rm -f -- "$TEMP_CONFIG"
     if [ -n "$BACKUP_MIRROR" ]; then
         if [ ! -d "$MIRROR" ]; then
             mv -- "$BACKUP_MIRROR" "$MIRROR" || true
@@ -273,10 +275,11 @@ fi
 # Write via rename so interrupted writes cannot truncate the old config.
 if [ "$remember" = 1 ]; then
     mkdir -p "$(dirname "$CONFIG")"
-    temp_config=$(mktemp "$(dirname "$CONFIG")/.updates.conf.XXXXXXXX")
-    chmod 600 "$temp_config"
-    printf 'source=%s\n' "$source" > "$temp_config"
-    mv -f -- "$temp_config" "$CONFIG"
+    TEMP_CONFIG=$(mktemp "$(dirname "$CONFIG")/.updates.conf.XXXXXXXX")
+    chmod 600 "$TEMP_CONFIG"
+    printf 'source=%s\n' "$source" > "$TEMP_CONFIG"
+    mv -f -- "$TEMP_CONFIG" "$CONFIG"
+    TEMP_CONFIG=""
 fi
 if [ "$migrate_legacy" = 1 ]; then
     rm -f -- "$OLD_CONFIG"
