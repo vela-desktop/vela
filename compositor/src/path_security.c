@@ -3,7 +3,9 @@
 
 #include "path_security.h"
 
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -58,4 +60,27 @@ bool vela_lock_flag_path_for_runtime(const char *runtime_dir, const char *displa
     }
     int n = snprintf(out, size, "%s/vela-locked-%s", runtime_dir, display);
     return n > 0 && (size_t)n < size;
+}
+
+bool vela_lock_marker_create(const char *path)
+{
+    if (!path || !*path) {
+        return false;
+    }
+    char temporary[PATH_MAX + 8];
+    int n = snprintf(temporary, sizeof(temporary), "%s.XXXXXX", path);
+    if (n < 0 || (size_t)n >= sizeof(temporary)) {
+        return false;
+    }
+    // A unique owner-only file avoids following a pre-existing marker symlink.
+    int fd = mkstemp(temporary);
+    if (fd < 0) {
+        return false;
+    }
+    bool ok = close(fd) == 0;
+    if (!ok || rename(temporary, path) != 0) {
+        unlink(temporary);
+        return false;
+    }
+    return true;
 }
