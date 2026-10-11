@@ -129,9 +129,14 @@ SWAP_UNCOMMITTED=0
 makepkg_pid=""
 stop_makepkg() {
     [ -n "$makepkg_pid" ] || return 0
-    # A signal interrupts the shell's wait on makepkg. Reap the child before
-    # removing its workspace, otherwise it might still be writing into it.
-    kill -TERM "$makepkg_pid" 2>/dev/null || true
+    # setsid puts makepkg and ordinary compiler descendants in their own
+    # process group. Killing the leader alone leaves compiler jobs running
+    # after the updater releases its lock and deletes their working directory.
+    kill -TERM -- "-$makepkg_pid" 2>/dev/null || true
+    # Bound shutdown even if a compiler ignores TERM or makepkg does not reap
+    # its children. KILL the same group before waiting for the launcher.
+    sleep 1
+    kill -KILL -- "-$makepkg_pid" 2>/dev/null || true
     wait "$makepkg_pid" 2>/dev/null || true
     makepkg_pid=""
 }
@@ -482,10 +487,15 @@ if [ -n "$jobs" ]; then
     export MAKEFLAGS="-j$jobs"
 fi
 echo ":: Building the package (a few minutes)"
-# Run in the background so a signal can interrupt wait and terminate makepkg.
-# Preserve stdin for makepkg/sudo prompts; don't give the child our lock FD.
+if ! command -v setsid >/dev/null 2>&1; then
+    echo "vela-update: setsid (util-linux) is required to safely manage builds" >&2
+    exit 1
+fi
+# Put the entire build in a separate session/process group (PGID = $!).
+# Keep stdin available for makepkg/sudo prompts and close our lock descriptor
+# in the child. This allows signal traps to terminate the complete build tree.
 BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-    makepkg --syncdeps --install --clean --force <&0 9>&- &
+    setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
 makepkg_pid=$!
 if wait "$makepkg_pid"; then
     build_ok=1
