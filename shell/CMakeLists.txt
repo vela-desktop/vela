@@ -178,6 +178,13 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-mimeapps-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-mimeapps COMMAND vela-mimeapps-test)
 
+    qt_add_executable(vela-appmodel-watch-test
+        tests/appmodel_watch.cpp src/appmodel.cpp src/appmodel.h src/desktopexec.h src/mimeapps.h)
+    target_include_directories(vela-appmodel-watch-test PRIVATE src)
+    target_compile_options(vela-appmodel-watch-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-appmodel-watch-test PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME shell-appmodel-watch COMMAND vela-appmodel-watch-test)
+
     qt_add_executable(vela-private-files-test tests/privatefiles.cpp)
     target_compile_options(vela-private-files-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-private-files-test PRIVATE Qt6::Core Qt6::Test)
