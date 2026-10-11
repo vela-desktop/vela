@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:latest
     env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-sanitizers
+      CCACHE_MAXSIZE: 500M
       ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
       QT_QPA_PLATFORM: offscreen
@@ -22,7 +24,7 @@ jobs:
       - name: Dependencies
         run: >-
           pacman -Syu --noconfirm --needed
-          base-devel git cmake shaderc vulkan-headers vulkan-icd-loader
+          base-devel git cmake ccache shaderc vulkan-headers vulkan-icd-loader
           gtest python wayland wayland-protocols wlroots0.20
           libxkbcommon pixman libinput libdrm mesa freetype2 harfbuzz
           fontconfig librsvg cairo zlib pam polkit qt6-base qt6-declarative
@@ -30,20 +32,44 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Restore sanitizer compiler cache
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: .ccache-sanitizers
+          key: ccache-arch-asan-ubsan-debug-v1-${{ github.sha }}
+          restore-keys: |
+            ccache-arch-asan-ubsan-debug-v1-
+
       - name: Configure ASan and UBSan
         run: >-
           cmake -S . -B build-sanitized -DCMAKE_BUILD_TYPE=Debug
           -DVELA_BUILD_TOOLS=ON
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_C_FLAGS=-fsanitize=address,undefined\ -fno-omit-frame-pointer
           -DCMAKE_CXX_FLAGS=-fsanitize=address,undefined\ -fno-omit-frame-pointer
           -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined
           -DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address,undefined
       - name: Build instrumented binaries
-        run: cmake --build build-sanitized --parallel 2
+        run: |
+          ccache --zero-stats
+          cmake --build build-sanitized --parallel 2
+      - name: Compiler cache statistics
+        if: always()
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
+
       - name: CPU-only sanitizer tests
-        run: >-
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2
-          -E '^(functional|sharpness)$'
+        run: |
+          # The packaging-tests job in Build owns this suite for PRs.
+          # Explicit manual runs remain self-contained.
+          exclude='^(functional|sharpness)$'
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            exclude='^(functional|sharpness|packaging-update)$'
+          fi
+          ctest --test-dir build-sanitized --output-on-failure --parallel 2 -E "$exclude"
       - name: Save failed test logs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
