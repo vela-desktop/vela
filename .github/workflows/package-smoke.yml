@@ -13,7 +13,7 @@ concurrency:
 jobs:
   package-build:
     runs-on: ubuntu-latest
-    container: archlinux:latest
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-package
       CCACHE_MAXSIZE: 350M
@@ -73,7 +73,7 @@ jobs:
   package-install:
     needs: package-build
     runs-on: ubuntu-latest
-    container: archlinux:latest
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
