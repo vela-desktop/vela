@@ -4,9 +4,12 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QFileSystemWatcher>
 #include <QList>
+#include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 #include <QUrl>
 #include <QVariantMap>
 
@@ -101,6 +104,10 @@ signals:
 
 private:
     void applyFilter();
+    // Keep file and directory watches in sync after installs, removals and
+    // atomic replacements. Missing XDG directories are watched via their
+    // nearest existing parent until the directory is created.
+    void updateWatchPaths(const QStringList& directories, const QSet<QString>& desktopFiles);
     // Starts the app with the given files (possibly none), as Exec says
     // (desktopexec.h): the program with its arguments, without going through
     // the shell.
@@ -109,6 +116,8 @@ private:
     QList<Entry> m_all; // sorted by name
     QList<int> m_visible; // indexes in m_all matching the search
     QString m_query;
+    QFileSystemWatcher m_watcher;
+    QTimer m_reloadTimer;
 };
 
 // The default app for a MIME type (.desktop id), from mimeapps.list.
