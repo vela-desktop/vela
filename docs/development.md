@@ -88,6 +88,27 @@ cmake -S . -B build-capture -DVELA_BUILD_CAPTURE_TOOLS=ON \
 cmake --build build-capture --target vela-screen-dump
 ```
 
+### Capture memory and permission boundaries
+
+The C core freezes width and height at SHM allocation. Late size changes
+invalidate the pending frame rather than rewriting its mapping metadata.
+Both C and Qt consumers check dimensions, stride and allocation length before
+reading pixels. Captures are one-shot; callers must end or cancel jobs before
+destroying the Wayland connection, and dispatch that connection on one thread.
+
+Both the legacy `wlr-screencopy` protocol and the new
+`ext-image-copy-capture` protocol expose the **composited output**. On
+lock, Vela disables normal desktop scene layers and renders the lock surface;
+either protocol must show that lock surface, not an underlying window.
+Direct Wayland clients in the same unlocked session can request screenshots
+without a portal prompt; this change does not introduce per-app authorization.
+
+Foreign-toplevel window capture is different: it draws a window in isolation,
+including one hidden behind other windows. Vela now rejects these requests
+while locked and revokes pre-existing capture sources as the lock engages.
+Check both newly requested and already-active sources on real hardware.
+The current frontends support only normal-transform output frames.
+
 The shared `vela-capture` static library requires Wayland client headers,
 wayland-protocols (build time), and the Wayland scanner. The CLI additionally
 needs zlib for PNG output. These dependencies do not make Qt, wlroots or Vulkan

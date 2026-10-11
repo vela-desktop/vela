@@ -1263,7 +1263,9 @@ static void handle_capture_request(struct wl_listener *listener, void *data)
 {
     struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request *request = data;
     struct vela_view *view = request->toplevel_handle->data;
-    if (!view) {
+    if (!view || view->server->locked) {
+        // An isolated window source can bypass visible composition; refuse
+        // access to any window hidden behind the lock screen.
         return;
     }
     // The current look, even if minimized or covered by other windows: the
@@ -1276,6 +1278,16 @@ static void handle_capture_request(struct wl_listener *listener, void *data)
     struct wlr_ext_image_capture_source_v1 *source = vela_window_capture_source(view->capture);
     if (source) {
         wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(request, source);
+    }
+}
+
+/** Revoke active foreign-toplevel capture sources when locking the session. */
+void vela_views_revoke_capture_on_lock(struct vela_server *server)
+{
+    struct vela_view *view;
+    wl_list_for_each (view, &server->views, link) {
+        vela_window_capture_destroy(view->capture);
+        view->capture = NULL;
     }
 }
 

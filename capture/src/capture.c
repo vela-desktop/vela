@@ -24,8 +24,12 @@ struct vela_capture_job {
     struct vela_capture_frame result;
     void *mapping;
     uint32_t selected_format;
+    uint32_t negotiated_width;
+    uint32_t negotiated_height;
     bool has_format;
+    bool constraints_changed;
     bool finished;
+    bool succeeded;
     vela_capture_done_fn done;
     void *userdata;
 };
@@ -38,14 +42,28 @@ bool vela_capture_supported_format(uint32_t format)
         format == WL_SHM_FORMAT_ABGR8888;
 }
 
+/** Check the memory description without ever dereferencing pixels. */
+bool vela_capture_frame_valid(const struct vela_capture_frame *frame)
+{
+    if (!frame || !frame->pixels || !frame->width || !frame->height ||
+        !vela_capture_supported_format(frame->format) ||
+        frame->width > SIZE_MAX / 4 || !frame->stride ||
+        frame->stride < (size_t)frame->width * 4) {
+        return false;
+    }
+    return (size_t)frame->height <= frame->length / frame->stride;
+}
+
+/** Deliver only successful captures with internally consistent metadata. */
 static void complete(struct vela_capture_job *job, bool ok)
 {
     if (job->finished) {
         return;
     }
+    job->succeeded = ok && !job->constraints_changed && vela_capture_frame_valid(&job->result);
     job->finished = true;
-    // `done` may destroy this job; do not access it afterward.
-    job->done(job, ok, job->userdata);
+    // The callback may destroy this job; do not access it afterward.
+    job->done(job, job->succeeded, job->userdata);
 }
 
 static void frame_transform(void *data, struct ext_image_copy_capture_frame_v1 *frame, uint32_t transform)
@@ -87,8 +105,15 @@ static void buffer_size(void *data, struct ext_image_copy_capture_session_v1 *se
 {
     (void)session;
     struct vela_capture_job *job = data;
-    job->result.width = width;
-    job->result.height = height;
+    if (job->frame) {
+        // A new constraint must not rewrite this frame's allocation metadata.
+        if (width != job->result.width || height != job->result.height) {
+            job->constraints_changed = true;
+        }
+    } else {
+        job->negotiated_width = width;
+        job->negotiated_height = height;
+    }
 }
 
 static void shm_format(void *data, struct ext_image_copy_capture_session_v1 *session, uint32_t format)
@@ -115,19 +140,23 @@ static void dmabuf_format(void *data, struct ext_image_copy_capture_session_v1 *
 static void session_done(void *data, struct ext_image_copy_capture_session_v1 *session)
 {
     struct vela_capture_job *job = data;
-    if (job->frame || !job->has_format || !job->result.width || !job->result.height ||
-        job->result.width > INT32_MAX / 4) {
-        if (!job->frame) complete(job, false);
-        return;
-    }
-
-    const uint32_t stride = job->result.width * 4u;
-    if (job->result.height > SIZE_MAX / stride ||
-        (size_t)stride * job->result.height > INT32_MAX) {
+    if (job->frame) return; // No reallocation while the frame is in-flight.
+    if (!job->has_format || !job->negotiated_width || !job->negotiated_height ||
+        job->negotiated_width > INT32_MAX / 4) {
         complete(job, false);
         return;
     }
 
+    const uint32_t stride = job->negotiated_width * 4u;
+    if (job->negotiated_height > SIZE_MAX / stride ||
+        (size_t)stride * job->negotiated_height > INT32_MAX) {
+        complete(job, false);
+        return;
+    }
+
+    // Freeze the dimensions associated with the allocated buffer.
+    job->result.width = job->negotiated_width;
+    job->result.height = job->negotiated_height;
     const size_t length = (size_t)stride * job->result.height;
     job->fd = memfd_create("vela-capture", MFD_CLOEXEC);
     if (job->fd < 0 || ftruncate(job->fd, (off_t)length) < 0) {
@@ -204,7 +233,8 @@ struct vela_capture_job *vela_capture_begin(struct wl_shm *shm,
 
 const struct vela_capture_frame *vela_capture_pixels(const struct vela_capture_job *job)
 {
-    return job && job->finished && job->result.pixels ? &job->result : NULL;
+    return job && job->finished && job->succeeded && vela_capture_frame_valid(&job->result)
+        ? &job->result : NULL;
 }
 
 void vela_capture_end(struct vela_capture_job *job)

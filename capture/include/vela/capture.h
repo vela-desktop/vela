@@ -16,9 +16,10 @@ struct ext_image_capture_source_v1;
 struct ext_image_copy_capture_manager_v1;
 struct vela_capture_job;
 
-// Pixels belong to the job and are valid only during the completion callback
-// and until vela_capture_end(). All dimensions/stride are in buffer pixels.
-// The caller converts pixels to a UI image or writes them to a file.
+/** A captured SHM frame with immutable allocated dimensions and stride.
+ * Pixels and metadata are borrowed from the job and become invalid when
+ * vela_capture_end() destroys the job; callers must not retain them.
+ */
 struct vela_capture_frame {
     const uint8_t *pixels;
     size_t length;
@@ -31,13 +32,12 @@ struct vela_capture_frame {
 
 typedef void (*vela_capture_done_fn)(struct vela_capture_job *job, bool success, void *userdata);
 
-// Start an asynchronous ext-image-copy-capture-v1 SHM capture. The caller owns
-// its wl_display/event dispatch. On success this job owns `source` and calls
-// `done` exactly once (including failed/stopped sessions). If NULL is
-// returned, ownership remains with the caller.
-//
-// The library does not create a new Wayland connection or dispatch events: it
-// works with both Qt's display and standalone Wayland clients.
+/** Begin a one-shot SHM capture using the caller-owned Wayland connection.
+ * On success the job owns source and calls done once, even on capture failure.
+ * The callback may call vela_capture_end(). On NULL, source remains caller-owned.
+ * Dispatch the display from one thread only and cancel outstanding jobs before
+ * destroying the connection. Qt and standalone Wayland clients are supported.
+ */
 struct vela_capture_job *vela_capture_begin(
     struct wl_shm *shm,
     struct ext_image_copy_capture_manager_v1 *manager,
@@ -45,9 +45,14 @@ struct vela_capture_job *vela_capture_begin(
     vela_capture_done_fn done,
     void *userdata);
 
+/** Return borrowed pixels after a successful, validated frame, else NULL. */
 const struct vela_capture_frame *vela_capture_pixels(const struct vela_capture_job *job);
+/** Destroy protocol proxies and SHM resources; cancels pending work. */
 void vela_capture_end(struct vela_capture_job *job);
+/** Whether this 32-bit SHM pixel format can be decoded by the clients. */
 bool vela_capture_supported_format(uint32_t format);
+/** Pure, overflow-safe bounds check for all pixel rows within SHM length. */
+bool vela_capture_frame_valid(const struct vela_capture_frame *frame);
 
 #ifdef __cplusplus
 }

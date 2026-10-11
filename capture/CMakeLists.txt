@@ -36,3 +36,10 @@ target_link_libraries(vela-capture PUBLIC PkgConfig::CAPTURE_WAYLAND)
 target_compile_definitions(vela-capture PRIVATE _GNU_SOURCE)
 set_target_properties(vela-capture PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 target_compile_options(vela-capture PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
+# CPU-only buffer validation; runs without Vulkan or a Wayland session.
+if(VELA_BUILD_TOOLS)
+    add_executable(vela-capture-frame-test tests/frame.c)
+    target_link_libraries(vela-capture-frame-test PRIVATE vela-capture)
+    add_test(NAME capture-frame-bounds COMMAND vela-capture-frame-test)
+endif()

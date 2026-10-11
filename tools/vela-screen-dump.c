@@ -33,6 +33,7 @@ static struct vela_capture_job* capture;
 static bool done, capture_ok;
 static const struct vela_capture_frame* result;
 
+/** Record terminal capture status on the caller's event dispatch thread. */
 static void captured(struct vela_capture_job* job, bool ok, void* userdata)
 {
     (void)userdata;
@@ -41,6 +42,7 @@ static void captured(struct vela_capture_job* job, bool ok, void* userdata)
     done = true;
 }
 
+/** Discover one output and the shared capture protocol globals. */
 static void registryGlobal(void* data, struct wl_registry* registry, uint32_t name,
     const char* interface, uint32_t version)
 {
@@ -68,6 +70,7 @@ static const struct wl_registry_listener registryListener = { registryGlobal, re
 
 // ------------------------------------------------------------------ PNG --
 
+/** Store a PNG 32-bit word in network byte order. */
 static void put32(unsigned char* p, uint32_t v)
 {
     p[0] = v >> 24;
@@ -76,6 +79,7 @@ static void put32(unsigned char* p, uint32_t v)
     p[3] = v;
 }
 
+/** Write a PNG chunk; the caller checks the stream status. */
 static void writeChunk(FILE* file, const char* type, const unsigned char* data, uint32_t length)
 {
     unsigned char header[8];
@@ -92,9 +96,14 @@ static void writeChunk(FILE* file, const char* type, const unsigned char* data, 
     fwrite(trailer, 1, 4, file);
 }
 
-// Output pixels -> 8-bit RGB PNG.
+/** Encode a validated SHM rectangle as an 8-bit RGB PNG. */
 static int writePng(const char* path, const struct vela_capture_frame* frame, int x, int y, int w, int h)
 {
+    if (!vela_capture_frame_valid(frame) || x < 0 || y < 0 || w <= 0 || h <= 0 ||
+        (uint64_t)x + (uint64_t)w > frame->width ||
+        (uint64_t)y + (uint64_t)h > frame->height) {
+        return 0;
+    }
     const unsigned char* pixels = frame->pixels;
     // Bound both allocation arithmetic and zlib's input length.
     if (w <= 0 || h <= 0 || (size_t)w > (SIZE_MAX - 1) / 3) {
@@ -178,6 +187,7 @@ static int writePng(const char* path, const struct vela_capture_frame* frame, in
     return ok;
 }
 
+/** Capture an output, dispatch to completion, and encode bounded pixels. */
 int main(int argc, char** argv)
 {
     if (argc != 2 && argc != 6) {
@@ -212,7 +222,8 @@ int main(int argc, char** argv)
             return 1;
         }
     }
-    if (!capture_ok || !result || !result->pixels || result->transform != WL_OUTPUT_TRANSFORM_NORMAL) {
+    if (!capture_ok || !vela_capture_frame_valid(result) ||
+        result->transform != WL_OUTPUT_TRANSFORM_NORMAL) {
         fprintf(stderr, "vela-screen-dump: capture failed or transformed output unsupported\n");
         vela_capture_end(capture);
         return 1;

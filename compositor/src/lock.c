@@ -16,6 +16,7 @@
 #include "server.h"
 #include "supervisor.h"
 #include "util.h"
+#include "view.h"
 
 #include <fcntl.h>
 #include <limits.h>
@@ -368,6 +369,9 @@ void vela_lock_engage(struct vela_lock *lock)
         return;
     }
     server->locked = true;
+    // Invalidate old isolated window sources; output capture still shows the
+    // composed lock screen, but window capture could bypass occlusion.
+    vela_views_revoke_capture_on_lock(server);
     // For the supervisor: if the compositor crashes now, the next one starts
     // locked (supervisor.c).
     char flag[PATH_MAX];

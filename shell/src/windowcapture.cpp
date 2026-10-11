@@ -276,7 +276,8 @@ int WindowCapture::captureScreensFull()
 void WindowCapture::finishJob(Job* job, bool ok)
 {
     const vela_capture_frame* frame = vela_capture_pixels(job->capture);
-    if (ok && frame && frame->pixels && frame->transform == WL_OUTPUT_TRANSFORM_NORMAL) {
+    // QImage may only see dimensions whose rows fit the actual SHM mapping.
+    if (ok && vela_capture_frame_valid(frame) && frame->transform == WL_OUTPUT_TRANSFORM_NORMAL) {
         const QImage full(frame->pixels, int(frame->width), int(frame->height),
             int(frame->stride), imageFormat(frame->format));
         if (!full.isNull()) {

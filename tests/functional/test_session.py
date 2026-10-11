@@ -41,6 +41,17 @@ class Lock(unittest.TestCase):
             state = vela.wait_for(lambda s: not s["locked"], timeout=6, what="unlocked")
             vela.wait_for(lambda s: s["focused"] == window, what="focus goes back to the window")
 
+    def test_screen_dump_during_lock_does_not_reveal_windows(self):
+        """Output capture must display only the lock surface."""
+        with Session(lock_hold_ms=5000) as vela:
+            vela.open_window()
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"], what="session locked")
+            # The test locker paints #102040; wait until it is fully locked.
+            vela.wait_for_log("vela-testlock: locked")
+            image = vela.pixels()
+            self.assertEqual(image.at(image.width // 2, image.height // 2), (16, 32, 64))
+
     def test_volume_keys_work_while_locked(self):
         with Session(lock_hold_ms=3000) as vela:
             shell = vela.fake_shell()
