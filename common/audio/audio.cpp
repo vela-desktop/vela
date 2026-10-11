@@ -130,7 +130,7 @@ void Audio::setVolume(const QString& kind, const QString& name, double volume)
     const Endpoint* e = endpoint(kind, name);
     // The selected microphone may not be the real default yet.
     const bool inputUnsure = kind == QLatin1String("input")
-        && (m_pending.contains(QStringLiteral("default input")) || m_errors.contains(QStringLiteral("default input")));
+        && (m_pending.contains(QStringLiteral("default input")));
     if (!e || inputUnsure) {
         return;
     }
@@ -159,7 +159,7 @@ void Audio::setMuted(const QString& kind, const QString& name, bool muted)
 {
     const Endpoint* e = endpoint(kind, name);
     const bool input = kind == QLatin1String("input");
-    if (!e || (input && (m_pending.contains(QStringLiteral("default input")) || m_errors.contains(QStringLiteral("default input"))))) {
+    if (!e || (input && (m_pending.contains(QStringLiteral("default input"))))) {
         return;
     }
     const QString key = QStringLiteral("mute ") + kind + u' ' + name;
@@ -261,6 +261,10 @@ void Audio::watchBattery(const QString& path)
         return;
     }
     m_batteryWatched.insert(path);
+    // Each watch has a distinct version. A reconnect must not accept a
+    // reply from a previous incarnation of the same BlueZ path.
+    const quint64 requestVersion = ++m_nextBatteryVersion;
+    m_batteryVersions.insert(path, requestVersion);
     const QString bluez = QStringLiteral("org.bluez");
     const QString properties = QStringLiteral("org.freedesktop.DBus.Properties");
     QDBusConnection bus = QDBusConnection::systemBus();
@@ -269,9 +273,14 @@ void Audio::watchBattery(const QString& path)
     QDBusMessage get = QDBusMessage::createMethodCall(bluez, path, properties, QStringLiteral("Get"));
     get << QStringLiteral("org.bluez.Battery1") << QStringLiteral("Percentage");
     auto* watcher = new QDBusPendingCallWatcher(bus.asyncCall(get, 1000), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, path] {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, path, requestVersion] {
         const QDBusPendingReply<QDBusVariant> reply = *watcher;
         watcher->deleteLater();
+        // PropertiesChanged may have supplied a newer value while Get was
+        // in flight; a disconnected/reconnected device may also reuse path.
+        if (m_batteryVersions.value(path, 0) != requestVersion) {
+            return;
+        }
         bool ok = false;
         const int percent = reply.isError() ? -1 : reply.value().variant().toInt(&ok);
         if (ok && percent >= 0 && percent <= 100) {
@@ -283,6 +292,9 @@ void Audio::watchBattery(const QString& path)
 
 void Audio::onBluetoothProperties(const QDBusMessage& message)
 {
+    if (!m_batteryWatched.contains(message.path())) {
+        return;
+    }
     const QList<QVariant> args = message.arguments();
     if (args.value(0).toString() != QLatin1String("org.bluez.Battery1")) {
         return;
@@ -297,6 +309,7 @@ void Audio::onBluetoothProperties(const QDBusMessage& message)
     }
     const int percent = properties.value(QStringLiteral("Percentage")).toInt(&ok);
     if (ok && percent >= 0 && percent <= 100) {
+        m_batteryVersions.insert(message.path(), ++m_nextBatteryVersion);
         m_batteries.insert(message.path(), percent);
         update();
     }
@@ -339,6 +352,13 @@ void Audio::flush()
 void Audio::update()
 {
     const Snapshot& s = m_core->snapshot();
+    // An error raised while WirePlumber had no default metadata is no
+    // longer relevant once defaults become available again.
+    if (s.defaultsKnown && !m_defaultsKnown) {
+        m_errors.remove(QStringLiteral("default input"));
+        m_errors.remove(QStringLiteral("default output"));
+    }
+    m_defaultsKnown = s.defaultsKnown;
 
     // An app's value, from its streams in one direction.
     const auto appValue = [&](const QString& what, const QString& key) -> QVariant {
@@ -415,6 +435,7 @@ void Audio::update()
     const QString defaultInput = s.defaultInput;
     QVariantList outputs;
     QVariantList inputs;
+    QSet<QString> activeBatteryPaths;
     double volume = 0.0;
     bool muted = false;
     bool inputMuted = false;
@@ -433,6 +454,7 @@ void Audio::update()
             bluez = QStringLiteral("/org/bluez/hci0/dev_") + QString(e.bluetoothAddress).replace(u':', u'_');
         }
         if (!bluez.isEmpty()) {
+            activeBatteryPaths.insert(bluez);
             watchBattery(bluez);
         }
         const double v = shown(QStringLiteral("volume ") + suffix, std::min(e.volume(), 1.0)).toDouble();
@@ -459,6 +481,22 @@ void Audio::update()
         } else if (isDefault) {
             inputMuted = m;
         }
+    }
+
+    // A removed Bluetooth device can later reuse the very same D-Bus path.
+    // Disconnect its subscription, forget the old percent, and let the next
+    // appearance request fresh state from BlueZ.
+    const QSet<QString> watchedPaths = m_batteryWatched;
+    for (const QString& path : watchedPaths) {
+        if (activeBatteryPaths.contains(path)) {
+            continue;
+        }
+        QDBusConnection::systemBus().disconnect(QStringLiteral("org.bluez"), path,
+            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("PropertiesChanged"),
+            this, SLOT(onBluetoothProperties(QDBusMessage)));
+        m_batteryWatched.remove(path);
+        m_batteryVersions.remove(path);
+        m_batteries.remove(path);
     }
 
     QVariantList apps;
