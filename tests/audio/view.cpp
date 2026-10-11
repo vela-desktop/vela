@@ -16,6 +16,7 @@
 #include <QDBusVariant>
 #include <QDBusVirtualObject>
 #include <QSignalSpy>
+#include <QTimer>
 
 using namespace harness;
 using vela::audio::AppIdentity;
@@ -43,6 +44,8 @@ QVariantMap find(const QVariantList& list, const QString& field, const QString& 
 class FakeBlueZ : public QDBusVirtualObject {
 public:
     int percent = 73;
+    int delayMs = 0;
+    int getRequests = 0;
     QString introspect(const QString&) const override { return {}; }
     bool handleMessage(const QDBusMessage& message, const QDBusConnection& connection) override
     {
@@ -50,7 +53,16 @@ public:
             || message.arguments().value(0).toString() != QLatin1String("org.bluez.Battery1")) {
             return false;
         }
-        connection.send(message.createReply(QVariant::fromValue(QDBusVariant(QVariant::fromValue(uchar(percent))))));
+        ++getRequests;
+        const int value = percent; // snapshot the older response
+        if (delayMs > 0) {
+            message.setDelayedReply(true);
+            QTimer::singleShot(delayMs, this, [message, connection, value] {
+                connection.send(message.createReply(QVariant::fromValue(QDBusVariant(QVariant::fromValue(uchar(value))))));
+            });
+        } else {
+            connection.send(message.createReply(QVariant::fromValue(QDBusVariant(QVariant::fromValue(uchar(value))))));
+        }
         return true;
     }
 };
@@ -108,6 +120,8 @@ private slots:
 
     void cleanup()
     {
+        bluez.percent = 73;
+        bluez.delayMs = 0;
         QTRY_VERIFY_WITH_TIMEOUT(audio->available() && id(speakers) && id(microphone), 10000);
         for (const QString& name : { speakers, headphones, surround, microphone }) {
             const QString node = QString::number(id(name));
@@ -245,6 +259,24 @@ private slots:
         QTRY_COMPARE(audio->defaultInput(), microphone);
     }
 
+    void recoveredDefaultDoesNotBlockMicrophone()
+    {
+        QCOMPARE(control(QStringLiteral("stop-wireplumber")), QStringLiteral("ok"));
+        QTRY_VERIFY(!audio->core()->snapshot().defaultsKnown);
+        audio->setDefault(QStringLiteral("input"), microphone);
+        QVERIFY(input(microphone).value("defaultError").toBool());
+
+        QCOMPARE(control(QStringLiteral("start-wireplumber")), QStringLiteral("ok"));
+        QTRY_VERIFY(audio->core()->snapshot().defaultsKnown);
+        QTRY_COMPARE(audio->defaultInput(), microphone);
+        QVERIFY(!input(microphone).value("defaultError").toBool());
+
+        audio->setMuted(QStringLiteral("input"), microphone, true);
+        QTRY_VERIFY(input(microphone).value("muted").toBool());
+        audio->setVolume(QStringLiteral("input"), microphone, 0.6);
+        QTRY_VERIFY(near(serverVolume(microphone), 0.6));
+    }
+
     void outputDefaultIsShownAtOnce()
     {
         audio->setDefault(QStringLiteral("output"), headphones);
@@ -350,6 +382,43 @@ private slots:
                 << QStringList();
         QVERIFY(QDBusConnection(QStringLiteral("fake-bluez")).send(changed));
         QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 40);
+        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
+    }
+
+    void bluetoothLateGetCannotOverwriteChangedValue()
+    {
+        bluez.percent = 73;
+        bluez.delayMs = 300;
+        const int before = bluez.getRequests;
+        QVERIFY(control(QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF")).startsWith(QLatin1String("ok")));
+        QTRY_VERIFY(!output(QStringLiteral("vela-test-headset")).isEmpty());
+        QTRY_VERIFY(bluez.getRequests > before); // the initial Get is in flight
+
+        QDBusMessage changed = QDBusMessage::createSignal(QStringLiteral("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"),
+            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("PropertiesChanged"));
+        changed << QStringLiteral("org.bluez.Battery1")
+                << QVariantMap { { QStringLiteral("Percentage"), QVariant::fromValue(uchar(40)) } } << QStringList();
+        QVERIFY(QDBusConnection(QStringLiteral("fake-bluez")).send(changed));
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 40);
+        QTest::qWait(400); // the late Get returning 73 must not roll back 40
+        QCOMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 40);
+        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
+    }
+
+    void bluetoothReconnectQueriesBatteryAgain()
+    {
+        bluez.percent = 73;
+        const int before = bluez.getRequests;
+        const QString add = QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF");
+        QVERIFY(control(add).startsWith(QLatin1String("ok")));
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 73);
+        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
+        QTRY_VERIFY(output(QStringLiteral("vela-test-headset")).isEmpty());
+
+        bluez.percent = 29;
+        QVERIFY(control(add).startsWith(QLatin1String("ok")));
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 29);
+        QVERIFY(bluez.getRequests >= before + 2);
         QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
     }
 
