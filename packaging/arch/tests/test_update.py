@@ -71,6 +71,28 @@ elif name == "makepkg":
         import time
         marker = pathlib.Path(os.environ["TEST_BUILD_MARKER"])
         release = pathlib.Path(os.environ["TEST_BUILD_RELEASE"])
+        if os.environ.get("TEST_SPAWN_BUILD_CHILD"):
+            # Model a long-running compiler spawned by makepkg. A signal
+            # delivered only to makepkg will never reach this process.
+            child_code = """
+import os, pathlib, signal, time
+ready = pathlib.Path(os.environ["TEST_BUILD_CHILD_READY"])
+signalled = pathlib.Path(os.environ["TEST_BUILD_CHILD_SIGNALLED"])
+def stop(_signum, _frame):
+    signalled.touch()
+    raise SystemExit(0)
+signal.signal(signal.SIGTERM, stop)
+ready.write_text(str(os.getpid()))
+while True:
+    time.sleep(0.025)
+"""
+            subprocess.Popen([sys.executable, "-c", child_code])
+            child_ready = pathlib.Path(os.environ["TEST_BUILD_CHILD_READY"])
+            until = time.monotonic() + 5
+            while not child_ready.exists() and time.monotonic() < until:
+                time.sleep(0.025)
+            if not child_ready.exists():
+                sys.exit("Build child failed to start")
         marker.touch()
         end = time.monotonic() + 15
         while not release.exists() and time.monotonic() < end:
@@ -664,6 +686,26 @@ class UpdateConcurrency(UpdateFixture):
             stdout, stderr = proc.communicate(timeout=30)
         self.assertEqual(proc.returncode, 0, stdout + stderr)
         self.assertFalse(list(self.mirror.parent.glob("build.*")))
+
+    def test_interruption_signals_makepkg_descendants(self):
+        self.env["TEST_SPAWN_BUILD_CHILD"] = "1"
+        child_ready = self.directory / "build-child-ready"
+        child_signalled = self.directory / "build-child-signalled"
+        self.env["TEST_BUILD_CHILD_READY"] = str(child_ready)
+        self.env["TEST_BUILD_CHILD_SIGNALLED"] = str(child_signalled)
+        proc, release = self.start_paused_build()
+        self.assertTrue(child_ready.exists(), "Expected a real build child")
+        try:
+            proc.send_signal(signal.SIGTERM)
+            stdout, stderr = proc.communicate(timeout=8)
+        finally:
+            release.touch()
+        self.assertEqual(proc.returncode, 143, stdout + stderr)
+        self.assertTrue(child_signalled.exists(),
+                        "The SIGTERM handler did not reach the compiler child")
+        self.assertFalse(list(self.mirror.parent.glob("build.*")))
+        self.env.pop("TEST_PAUSE_BUILD", None)
+        self.run_update("--check")
 
     def test_interrupted_build_cleans_temp_directories_and_keeps_mirror(self):
         proc, release = self.start_paused_build()
