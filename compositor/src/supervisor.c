@@ -78,18 +78,17 @@ struct wayland_socket {
     int lock_fd;
 };
 
-static bool create_socket(const char *runtime_dir, struct wayland_socket *s)
+static bool create_socket(int runtime_fd, struct wayland_socket *s)
 {
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     for (int n = 0; n < 32; ++n) {
         snprintf(s->name, sizeof(s->name), "wayland-%d", n);
-        int length = snprintf(s->lock_path, sizeof(s->lock_path), "%s/%s.lock", runtime_dir, s->name);
-        if (length < 0 || (size_t)length >= sizeof(s->lock_path) || length - 5 >= (int)sizeof(address.sun_path)) {
+        int length = snprintf(s->lock_path, sizeof(s->lock_path), "%s.lock", s->name);
+        if (length < 0 || (size_t)length >= sizeof(s->lock_path)) {
             return false;
         }
-        memcpy(s->path, s->lock_path, (size_t)length - 5);
-        s->path[length - 5] = '\0';
-        s->lock_fd = open(s->lock_path,
+        snprintf(s->path, sizeof(s->path), "%s", s->name);
+        s->lock_fd = openat(runtime_fd, s->lock_path,
             O_CREAT | O_CLOEXEC | O_RDWR | O_NOFOLLOW | O_NONBLOCK, S_IRUSR | S_IWUSR);
         if (s->lock_fd < 0) {
             continue;
@@ -109,9 +108,9 @@ static bool create_socket(const char *runtime_dir, struct wayland_socket *s)
         // Reclaim only a stale socket owned by us. Never unlink a regular
         // file, directory or symlink just because it has a Wayland name.
         struct stat previous;
-        if (lstat(s->path, &previous) == 0) {
+        if (fstatat(runtime_fd, s->path, &previous, AT_SYMLINK_NOFOLLOW) == 0) {
             if (!S_ISSOCK(previous.st_mode) || previous.st_uid != geteuid()
-                || unlink(s->path) != 0) {
+                || unlinkat(runtime_fd, s->path, 0) != 0) {
                 close(s->lock_fd);
                 continue;
             }
@@ -125,7 +124,8 @@ static bool create_socket(const char *runtime_dir, struct wayland_socket *s)
             return false;
         }
         // A bounded copy even if the runtime directory was supplied externally.
-        int copied = snprintf(address.sun_path, sizeof(address.sun_path), "%s", s->path);
+        int copied = snprintf(address.sun_path, sizeof(address.sun_path),
+            "/proc/self/fd/%d/%s", runtime_fd, s->path);
         if (copied < 0 || (size_t)copied >= sizeof(address.sun_path)) {
             close(s->fd);
             close(s->lock_fd);
@@ -279,13 +279,15 @@ static void run_and_wait(const char *program, const char *argument)
 int vela_supervise(int argc, char **argv)
 {
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
-    if (!vela_runtime_dir_private(runtime_dir)) {
+    int runtime_fd = vela_runtime_dir_open(runtime_dir);
+    if (runtime_fd < 0) {
         say("XDG_RUNTIME_DIR must be an absolute, private directory owned by this user");
         return 1;
     }
     struct wayland_socket socket = { 0 };
-    if (!create_socket(runtime_dir, &socket)) {
+    if (!create_socket(runtime_fd, &socket)) {
         say("can't create the Wayland socket");
+        close(runtime_fd);
         return 1;
     }
     say("socket %s; starting the compositor", socket.name);
@@ -421,11 +423,16 @@ int vela_supervise(int argc, char **argv)
         run_and_wait(hook, "stop");
     }
     if (has_lock_flag) {
-        unlink(lock_flag);
+        char marker[64];
+        int n = snprintf(marker, sizeof(marker), "vela-locked-%s", socket.name);
+        if (n > 0 && (size_t)n < sizeof(marker)) {
+            unlinkat(runtime_fd, marker, 0);
+        }
     }
-    unlink(socket.path);
+    unlinkat(runtime_fd, socket.path, 0);
     close(socket.fd);
-    unlink(socket.lock_path);
+    unlinkat(runtime_fd, socket.lock_path, 0);
     close(socket.lock_fd);
+    close(runtime_fd);
     return exit_code;
 }
