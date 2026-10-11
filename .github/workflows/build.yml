@@ -104,6 +104,11 @@ jobs:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: [packaging-tests, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     container: archlinux:latest
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-package
@@ -155,20 +160,68 @@ jobs:
             ccache --show-stats
           fi
 
+      - name: Assert exactly one package for this commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=(/home/builder/pkgbuild/vela-git-*.pkg.tar.zst)
+          test "${#packages[@]}" -eq 1
+          short_sha="${GITHUB_SHA:0:7}"
+          [[ "${packages[0]}" == *".g${short_sha}-"* ]]
+
+      # Signed SLSA provenance for the *actual* package bytes produced by
+      # this workflow. A public Sigstore attestation is bound to the artifact
+      # digest and the GitHub OIDC workflow/source identity.
+      - name: Attest package build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: /home/builder/pkgbuild/vela-git-*.pkg.tar.zst
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vela-git
           path: /home/builder/pkgbuild/vela-git-[0-9]*.pkg.tar.zst
+          if-no-files-found: error
           retention-days: 14
+
+  # Install and smoke-test the EXACT binary from the package job, not an
+  # independently rebuilt package in another workflow. This gates release.
+  package-smoke:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    needs: package
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Update fresh Arch image
+        run: pacman -Syu --noconfirm
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: vela-git
+          path: dist
+      - name: Install attested package and check runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=(dist/vela-git-*.pkg.tar.zst)
+          test "${#packages[@]}" -eq 1
+          [[ "${packages[0]}" == *".g${GITHUB_SHA:0:7}-"* ]]
+          pacman -U --noconfirm --needed "${packages[0]}"
+          bash scripts/ci-check-package.sh
 
   # Public per-commit alpha packages, available anonymously and retained
   # for the last five successful versions (older releases and tags are pruned).
   publish-alpha:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: package
+    needs: [package, package-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      attestations: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -187,6 +240,14 @@ jobs:
           shopt -s nullglob
           packages=(vela-git-*.pkg.tar.zst)
           test "${#packages[@]}" -eq 1
+          # Fail closed: release only the same bytes signed by the official
+          # build.yml workflow for this exact main commit.
+          gh attestation verify "${packages[0]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref refs/heads/main \
+            --deny-self-hosted-runners
           sha256sum "${packages[0]}" > SHA256SUMS
           tag="alpha-${GITHUB_SHA}"
           if ! gh release create "$tag" "${packages[0]}" SHA256SUMS \
