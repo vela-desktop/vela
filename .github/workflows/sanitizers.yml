@@ -13,7 +13,7 @@ concurrency:
 jobs:
   asan-ubsan:
     runs-on: ubuntu-latest
-    container: archlinux:latest
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-sanitizers
       CCACHE_MAXSIZE: 500M
