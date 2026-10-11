@@ -87,8 +87,6 @@ set(SHELL_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${SHELL_GENERATED_DIR})
 foreach(name
         ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1
-        ext-image-capture-source/ext-image-capture-source-v1
-        ext-image-copy-capture/ext-image-copy-capture-v1
         ext-data-control/ext-data-control-v1)
     get_filename_component(base ${name} NAME)
     set(xml ${SHELL_WAYLAND_PROTOCOLS_DIR}/staging/${name}.xml)
@@ -160,6 +158,7 @@ target_link_libraries(vela-shell PRIVATE
     LayerShellQt::Interface
     vela-controls # Theme, Button, Style, Effects (common/)
     vela-controlsplugin
+    vela-capture
     vela-app) # the mouse's Back and Forward buttons (common/)
 
 install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
