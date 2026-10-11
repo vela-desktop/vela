@@ -72,10 +72,20 @@ while [ $# -gt 0 ]; do
         ;;
     --branch=*) branch="${1#*=}"; [ -n "$branch" ] || { echo "vela-update: --branch needs a value" >&2; exit 2; } ;;
     --commit=*) commit="${1#*=}"; [ -n "$commit" ] || { echo "vela-update: --commit needs a value" >&2; exit 2; } ;;
-    --jobs) shift; jobs="${1:-}" ;;
-    --jobs=*) jobs="${1#*=}" ;;
-    --source) shift; source="${1:-}" ;;
-    --source=*) source="${1#*=}" ;;
+    --jobs)
+        [ "$#" -ge 2 ] || { echo "vela-update: --jobs needs a value" >&2; exit 2; }
+        shift
+        jobs="$1"
+        [ -n "$jobs" ] || { echo "vela-update: --jobs needs a value" >&2; exit 2; }
+        ;;
+    --jobs=*) jobs="${1#*=}"; [ -n "$jobs" ] || { echo "vela-update: --jobs needs a value" >&2; exit 2; } ;;
+    --source)
+        [ "$#" -ge 2 ] || { echo "vela-update: --source needs a value" >&2; exit 2; }
+        shift
+        source="$1"
+        [ -n "$source" ] || { echo "vela-update: --source needs a value" >&2; exit 2; }
+        ;;
+    --source=*) source="${1#*=}"; [ -n "$source" ] || { echo "vela-update: --source needs a value" >&2; exit 2; } ;;
     -h | --help) usage; exit 0 ;;
     *) echo "vela-update: unknown option: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -96,6 +106,41 @@ if [ -n "$jobs" ]; then
     esac
 fi
 
+# Serialize every cache/config operation, including --check. Two updater
+# processes must never delete each other's build directory or modify the
+# same Git mirror while a build is reading it.
+mkdir -p "$CACHE"
+if ! command -v flock >/dev/null 2>&1; then
+    echo "vela-update: flock (util-linux) is required" >&2
+    exit 1
+fi
+exec 9>"$CACHE/update.lock"
+if ! flock -n 9; then
+    echo "vela-update: another update is already running (try again later)" >&2
+    exit 1
+fi
+
+STAGED_MIRROR=""
+BACKUP_MIRROR=""
+DOWNLOAD=""
+WORK=""
+cleanup() {
+    [ -z "$WORK" ] || rm -rf -- "$WORK"
+    [ -z "$DOWNLOAD" ] || rm -rf -- "$DOWNLOAD"
+    [ -z "$STAGED_MIRROR" ] || rm -rf -- "$STAGED_MIRROR"
+    if [ -n "$BACKUP_MIRROR" ]; then
+        if [ ! -d "$MIRROR" ]; then
+            mv -- "$BACKUP_MIRROR" "$MIRROR" || true
+        else
+            rm -rf -- "$BACKUP_MIRROR"
+        fi
+    fi
+}
+trap 'status=$?; cleanup; exit "$status"' 0
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
 # From where: the one given now (and remembered), the remembered one, GitHub.
 # The old file was called aggiornamenti.conf (key sorgente=).
 githubHTTPS() {
@@ -109,9 +154,7 @@ githubHTTPS() {
     esac
 }
 OLD_CONFIG="$(dirname "$CONFIG")/aggiornamenti.conf"
-if [ ! -f "$CONFIG" ] && [ -f "$OLD_CONFIG" ]; then
-    sed 's/^sorgente=/source=/' "$OLD_CONFIG" > "$CONFIG" && rm -f "$OLD_CONFIG"
-fi
+migrate_legacy=0
 remember=0
 if [ -n "$source" ]; then
     remember=1
@@ -120,6 +163,10 @@ if [ -n "$source" ]; then
     fi
 elif [ -f "$CONFIG" ]; then
     source=$(sed -n 's/^source=//p' "$CONFIG" | head -n 1)
+elif [ -f "$OLD_CONFIG" ]; then
+    source=$(sed -n 's/^sorgente=//p' "$OLD_CONFIG" | head -n 1)
+    migrate_legacy=1
+    remember=1
 fi
 source="${source:-$DEFAULT_SOURCE}"
 # Migrate saved or explicit old-repository URLs and GitHub SSH URLs
@@ -128,10 +175,6 @@ https_source=$(githubHTTPS "$source")
 if [ "$https_source" != "$source" ]; then
     source="$https_source"
     remember=1
-fi
-if [ "$remember" = 1 ]; then
-    mkdir -p "$(dirname "$CONFIG")"
-    printf 'source=%s\n' "$source" > "$CONFIG"
 fi
 
 # If launched from a fresh checkout of the official repository, seed the
@@ -151,31 +194,44 @@ if [ "$source" = "$DEFAULT_SOURCE" ] && [ ! -d "$MIRROR" ]; then
     fi
 fi
 
-# The repository: clone once, then fetch only new commits.
-mkdir -p "$CACHE"
+# Fetch into a separate mirror when switching origins, so a failed source
+# cannot destroy a known-good cache. The active mirror stays untouched until
+# the new source and requested revision have both been verified.
+active_mirror="$MIRROR"
+new_mirror=0
+previous_origin=""
 if [ -d "$MIRROR" ]; then
-    cached_source=$(git -C "$MIRROR" config remote.origin.url)
+    cached_source=$(git -C "$MIRROR" config remote.origin.url 2>/dev/null || true)
     if [ "$cached_source" != "$source" ]; then
         if [ "$(githubHTTPS "$cached_source")" = "$source" ]; then
+            previous_origin="$cached_source"
             git -C "$MIRROR" remote set-url origin "$source"
         else
-            rm -rf "$MIRROR"
+            new_mirror=1
         fi
     fi
+else
+    new_mirror=1
 fi
 echo ":: Checking for updates in $source"
-if [ -d "$MIRROR" ]; then
-    fetched=$(git -C "$MIRROR" remote update --prune > /dev/null 2>&1 && echo yes || echo no)
-elif [ -n "$bootstrap" ]; then
-    echo ":: Reusing Git objects from the checkout (no second full download)"
-    fetched=$(git clone --quiet --mirror --no-hardlinks "$bootstrap" "$MIRROR" > /dev/null 2>&1 \
-        && git -C "$MIRROR" remote set-url origin "$source" \
-        && git -C "$MIRROR" remote update --prune > /dev/null 2>&1 && echo yes || echo no)
+if [ "$new_mirror" = 1 ]; then
+    STAGED_MIRROR=$(mktemp -d "$CACHE/vela-mirror.XXXXXXXX")
+    active_mirror="$STAGED_MIRROR"
+    if [ -n "$bootstrap" ]; then
+        echo ":: Reusing Git objects from the checkout (no second full download)"
+        fetched=$(git clone --quiet --mirror --no-hardlinks "$bootstrap" "$STAGED_MIRROR" > /dev/null 2>&1 \
+            && git -C "$STAGED_MIRROR" remote set-url origin "$source" \
+            && git -C "$STAGED_MIRROR" remote update --prune > /dev/null 2>&1 && echo yes || echo no)
+    else
+        fetched=$(git clone --quiet --mirror "$source" "$STAGED_MIRROR" > /dev/null 2>&1 && echo yes || echo no)
+    fi
 else
-    fetched=$(git clone --quiet --mirror "$source" "$MIRROR" > /dev/null 2>&1 && echo yes || echo no)
+    fetched=$(git -C "$MIRROR" remote update --prune > /dev/null 2>&1 && echo yes || echo no)
 fi
 if [ "$fetched" = no ]; then
-    [ -d "$MIRROR/refs" ] || rm -rf "$MIRROR"
+    if [ -n "$previous_origin" ]; then
+        git -C "$MIRROR" remote set-url origin "$previous_origin" || true
+    fi
     echo "vela-update: can't download Vela from $source." >&2
     exit 1
 fi
@@ -188,14 +244,44 @@ if [ -n "$branch" ]; then
 elif [ -n "$commit" ]; then
     target="$commit"
 fi
-if ! latestFull=$(git -C "$MIRROR" rev-parse --verify "$target^{commit}" 2> /dev/null); then
+if ! latestFull=$(git -C "$active_mirror" rev-parse --verify "$target^{commit}" 2> /dev/null); then
     # A full SHA may still be fetchable after its branch has been deleted.
-    if [ -z "$commit" ] || ! git -C "$MIRROR" fetch --quiet origin "$commit" 2> /dev/null \
-        || ! latestFull=$(git -C "$MIRROR" rev-parse --verify "$target^{commit}" 2> /dev/null); then
+    if [ -z "$commit" ] || ! git -C "$active_mirror" fetch --quiet origin "$commit" 2> /dev/null \
+        || ! latestFull=$(git -C "$active_mirror" rev-parse --verify "$target^{commit}" 2> /dev/null); then
+        [ -z "$previous_origin" ] || git -C "$MIRROR" remote set-url origin "$previous_origin" || true
         echo "vela-update: can't find the requested revision: $target" >&2
         exit 1
     fi
 fi
+# A valid staged mirror may now replace the old one. Keep the old one in a
+# backup until the replacement is in place, and restore it in the exit trap
+# if the second rename fails.
+if [ -n "$STAGED_MIRROR" ]; then
+    if [ -d "$MIRROR" ]; then
+        backup_slot=$(mktemp -d "$CACHE/vela-backup.XXXXXXXX")
+        rmdir "$backup_slot"
+        mv -- "$MIRROR" "$backup_slot"
+        BACKUP_MIRROR="$backup_slot"
+    fi
+    mv -- "$STAGED_MIRROR" "$MIRROR"
+    STAGED_MIRROR=""
+    [ -z "$BACKUP_MIRROR" ] || rm -rf -- "$BACKUP_MIRROR"
+    BACKUP_MIRROR=""
+fi
+
+# Save a new source only after its fetch and revision resolution succeeded.
+# Write via rename so interrupted writes cannot truncate the old config.
+if [ "$remember" = 1 ]; then
+    mkdir -p "$(dirname "$CONFIG")"
+    temp_config=$(mktemp "$(dirname "$CONFIG")/.updates.conf.XXXXXXXX")
+    chmod 600 "$temp_config"
+    printf 'source=%s\n' "$source" > "$temp_config"
+    mv -f -- "$temp_config" "$CONFIG"
+fi
+if [ "$migrate_legacy" = 1 ]; then
+    rm -f -- "$OLD_CONFIG"
+fi
+
 latest=$(git -C "$MIRROR" rev-parse --short=7 "$latestFull")
 echo ":: Selected revision: ${branch:-${commit:-default branch}} ($latestFull)"
 installed=$(pacman -Q vela-git 2> /dev/null | sed -n 's/.*\.g\([0-9a-f]*\)-[0-9]*$/\1/p')
@@ -293,16 +379,15 @@ prune() {
 # Prefer an immutable public release. Verify its checksum before passing the
 # package to pacman; on missing/corrupt downloads use the existing fallbacks.
 if [ -n "$release_package" ]; then
-    DOWNLOAD="$CACHE/download"
-    rm -rf "$DOWNLOAD"
-    mkdir -p "$DOWNLOAD"
+    DOWNLOAD=$(mktemp -d "$CACHE/download.XXXXXXXX")
     printf '%s  %s\n' "$release_digest" "$release_package" > "$DOWNLOAD/SHA256SUMS"
     echo ":: Downloading public alpha package for $latestFull"
     if curl -fsSL --retry 2 --connect-timeout 5 --max-time 180 \
         -o "$DOWNLOAD/$release_package" "$release_url/$release_package" \
         && (cd "$DOWNLOAD" && sha256sum --check --status SHA256SUMS); then
         mv -f "$DOWNLOAD/$release_package" "$PACKAGES/"
-        rm -rf "$DOWNLOAD"
+        rm -rf -- "$DOWNLOAD"
+        DOWNLOAD=""
         package="$PACKAGES/$release_package"
         if ! sudo pacman -U "$package"; then
             echo "vela-update: the verified package was downloaded but not installed. To install it:" >&2
@@ -315,7 +400,8 @@ if [ -n "$release_package" ]; then
         exit 0
     fi
     echo ":: Public package unavailable or failed checksum verification; falling back." >&2
-    rm -rf "$DOWNLOAD"
+    rm -rf -- "$DOWNLOAD"
+    DOWNLOAD=""
 fi
 
 # Package ready on GitHub Actions: download it or build? Without a terminal
@@ -332,14 +418,14 @@ if [ -n "$ciRun" ]; then
     esac
 fi
 if [ -n "$ciRun" ]; then
-    DOWNLOAD="$CACHE/download"
-    rm -rf "$DOWNLOAD"
+    DOWNLOAD=$(mktemp -d "$CACHE/download.XXXXXXXX")
     echo ":: Downloading the package from GitHub"
     if gh run download "$ciRun" -R "$repo" -n vela-git -D "$DOWNLOAD" \
         && package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1) \
         && [ -n "$package" ]; then
         mv -f "$package" "$PACKAGES/"
-        rm -rf "$DOWNLOAD"
+        rm -rf -- "$DOWNLOAD"
+        DOWNLOAD=""
         package="$PACKAGES/$(basename "$package")"
         if ! sudo pacman -U "$package"; then
             echo "vela-update: the package was downloaded but not installed. To install it:" >&2
@@ -351,14 +437,13 @@ if [ -n "$ciRun" ]; then
         echo "   starts with your next session: sign out and back in."
         exit 0
     fi
-    rm -rf "$DOWNLOAD"
+    rm -rf -- "$DOWNLOAD"
+    DOWNLOAD=""
     echo ":: The GitHub package can't be downloaded: building it here." >&2
 fi
 
 # The build, with the new version's PKGBUILD.
-WORK="$CACHE/build"
-rm -rf "$WORK"
-mkdir -p "$WORK"
+WORK=$(mktemp -d "$CACHE/build.XXXXXXXX")
 git -C "$MIRROR" show "$latestFull:packaging/arch/PKGBUILD" > "$WORK/PKGBUILD"
 # Advertise the selected commit to makepkg's mirror clone even when it was
 # fetched by SHA and no branch points to it anymore.
@@ -384,7 +469,9 @@ if ! BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
     echo "with fewer parallel jobs: vela-update --jobs 2" >&2
     exit 1
 fi
-rm -rf "$WORK"
+cd "$CACHE"
+rm -rf -- "$WORK"
+WORK=""
 
 prune
 
