@@ -37,6 +37,8 @@ private:
     vela::audio::Audio* m_audio;
     // The microphone's indicator waits for the server: a privacy-related
     // state is never shown before it is true.
-    bool m_micWanted = false;
+    bool m_micWanted = false; // latest intent, including repeated key presses
+    bool m_micSent = false; // the pending server write
+    bool m_micInFlight = false;
     QTimer m_micTimeout;
 };
