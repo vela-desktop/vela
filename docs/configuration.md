@@ -143,7 +143,7 @@ These variables are for diagnosis rather than normal user configuration.
 | `VELA_DEBUG_LINEAR=1` | Force linear render buffers instead of normal tiled/modifier allocation; useful for allocator/modifier diagnosis. |
 | `VELA_DEBUG_INPUT=1` | Enable the virtual keyboard/pointer protocol used by `vela-input`. Off by default for security. |
 | `VELA_FILES_TIMING=1` | Make `vela-files` print startup timing data; used by `scripts/measure.sh`. |
-| `VELA_SHOT_OUTPUT` | Select which output `vela-shot` captures by zero-based index. |
+| `VELA_SCREEN_DUMP_OUTPUT` | Select which output `vela-screen-dump` captures by zero-based index. |
 
 ## Internal variables
 

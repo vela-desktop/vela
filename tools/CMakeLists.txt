@@ -6,7 +6,9 @@
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(TOOLS_WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
-pkg_check_modules(TOOLS_XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
+if(VELA_BUILD_TOOLS)
+    pkg_check_modules(TOOLS_XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
+endif()
 pkg_check_modules(TOOLS_ZLIB REQUIRED IMPORTED_TARGET zlib)
 pkg_check_modules(TOOLS_WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
 pkg_get_variable(TOOLS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
@@ -31,8 +33,13 @@ function(vela_client_protocol target xml name)
 endfunction()
 
 set(PROTOCOLS ${PROJECT_SOURCE_DIR}/protocols)
-vela_client_protocol(proto-screencopy ${PROTOCOLS}/wlr-screencopy-unstable-v1.xml
-    wlr-screencopy-unstable-v1)
+
+add_executable(vela-screen-dump vela-screen-dump.c)
+target_link_libraries(vela-screen-dump PRIVATE vela-capture PkgConfig::TOOLS_ZLIB)
+target_compile_options(vela-screen-dump PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
+if(VELA_BUILD_TOOLS)
+
 vela_client_protocol(proto-foreign-toplevel ${PROTOCOLS}/wlr-foreign-toplevel-management-unstable-v1.xml
     wlr-foreign-toplevel-management-unstable-v1)
 vela_client_protocol(proto-virtual-pointer ${PROTOCOLS}/wlr-virtual-pointer-unstable-v1.xml
@@ -50,9 +57,6 @@ vela_client_protocol(proto-fractional-scale
 vela_client_protocol(proto-xdg-decoration
     ${TOOLS_WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
     xdg-decoration-unstable-v1)
-
-add_executable(vela-shot vela-shot.c)
-target_link_libraries(vela-shot PRIVATE proto-screencopy PkgConfig::TOOLS_ZLIB)
 
 add_executable(vela-windows vela-windows.c)
 target_link_libraries(vela-windows PRIVATE proto-foreign-toplevel)
@@ -97,6 +101,7 @@ endif()
 
 # An app with a slow GPU (tests/functional/test_ready.py): a Vulkan compute job
 # stands in for rendering and its fence comes late.
+if(VELA_BUILD_GPU_TEST_TOOLS)
 pkg_check_modules(TOOLS_VULKAN REQUIRED IMPORTED_TARGET vulkan)
 pkg_check_modules(TOOLS_GBM REQUIRED IMPORTED_TARGET gbm)
 pkg_check_modules(TOOLS_DRM REQUIRED IMPORTED_TARGET libdrm)
@@ -117,7 +122,13 @@ add_executable(vela-slowgpu vela-slowgpu.c ${TOOLS_SHADER})
 target_include_directories(vela-slowgpu PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 target_link_libraries(vela-slowgpu PRIVATE proto-xdg-shell proto-linux-dmabuf proto-linux-drm-syncobj
     PkgConfig::TOOLS_VULKAN PkgConfig::TOOLS_GBM PkgConfig::TOOLS_DRM)
+endif()
 
-foreach(tool vela-shot vela-windows vela-input vela-pattern vela-testlock vela-slowgpu vela-panel vela-randr)
+foreach(tool vela-windows vela-input vela-pattern vela-testlock vela-panel vela-randr)
     target_compile_options(${tool} PRIVATE -Wall -Wextra -Wno-unused-parameter)
 endforeach()
+if(VELA_BUILD_GPU_TEST_TOOLS)
+    target_compile_options(vela-slowgpu PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
+
+endif() # VELA_BUILD_TOOLS

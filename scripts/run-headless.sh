@@ -4,7 +4,7 @@
 
 # Starts Vela without a window (the wlroots "headless" backend): nothing
 # appears on screen, but apps open and everything can be watched and driven
-# with the tools in tools/ (vela-shot, vela-windows, vela-input). For automated
+# with the tools in tools/ (vela-screen-dump, vela-windows, vela-input). For automated
 # tests, even while you use the computer.
 #
 # Usage: scripts/run-headless.sh [build-directory] The log says which

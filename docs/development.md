@@ -71,12 +71,50 @@ export WAYLAND_DISPLAY=wayland-1
 
 build/tools/vela-input key super+Left
 build/tools/vela-windows list
-build/tools/vela-shot screen.png
+build/tools/vela-screen-dump screen.png
 ```
 
 The exact display name may differ; use the one printed by the compositor.
 
 ## Development tools
+
+The screen capture CLI, `vela-screen-dump`, can also be built without the compositor,
+Qt shell, GPU test clients, or polkit agent:
+
+```sh
+cmake -S . -B build-capture -DVELA_BUILD_CAPTURE_TOOLS=ON \
+    -DVELA_BUILD_TOOLS=OFF -DVELA_BUILD_COMPOSITOR=OFF \
+    -DVELA_BUILD_SHELL=OFF -DVELA_BUILD_POLKIT=OFF -DVELA_BUILD_REPORT=OFF
+cmake --build build-capture --target vela-screen-dump
+```
+
+### Capture memory and permission boundaries
+
+The C core freezes width and height at SHM allocation. Late size changes
+invalidate the pending frame rather than rewriting its mapping metadata.
+Both C and Qt consumers check dimensions, stride and allocation length before
+reading pixels. Captures are one-shot; callers must end or cancel jobs before
+destroying the Wayland connection, and dispatch that connection on one thread.
+
+Both the legacy `wlr-screencopy` protocol and the new
+`ext-image-copy-capture` protocol expose the **composited output**. On
+lock, Vela disables normal desktop scene layers and renders the lock surface;
+either protocol must show that lock surface, not an underlying window.
+Direct Wayland clients in the same unlocked session can request screenshots
+without a portal prompt; this change does not introduce per-app authorization.
+
+Foreign-toplevel window capture is different: it draws a window in isolation,
+including one hidden behind other windows. Vela now rejects these requests
+while locked and revokes pre-existing capture sources as the lock engages.
+Check both newly requested and already-active sources on real hardware.
+The current frontends support only normal-transform output frames.
+
+The shared `vela-capture` static library requires Wayland client headers,
+wayland-protocols (build time), and the Wayland scanner. The CLI additionally
+needs zlib for PNG output. These dependencies do not make Qt, wlroots or Vulkan
+requirements for this standalone target. `VELA_BUILD_GPU_TEST_TOOLS=OFF` disables
+the special Vulkan test client in full development builds; functional GPU tests
+that require that client must not be run in that configuration.
 
 The tools under `build/tools/` are small clients intended for development and functional tests.
 
@@ -84,7 +122,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 |---|---|
 | `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`. |
 | `vela-windows` | Inspect windows and compositor-visible state. |
-| `vela-shot` | Capture an output or region to PNG. |
+| `vela-screen-dump` | Capture an output or region to PNG. |
 | `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window). |
 | `vela-panel` | Fake shell pieces on wlr-layer-shell: `wallpaper`, and `taskbar [--blur]` with a reserved area and background blur. |
 | `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu. |

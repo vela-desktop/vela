@@ -146,6 +146,8 @@ struct vela_view {
 // xdg-activation) and the vela_server.views list.
 void vela_views_init(struct vela_server *server);
 void vela_views_finish(struct vela_server *server);
+// Revoke existing window capture sources before hiding the desktop on lock.
+void vela_views_revoke_capture_on_lock(struct vela_server *server);
 
 // The active window (the one with the keyboard), or NULL.
 struct vela_view *vela_views_focused(struct vela_server *server);

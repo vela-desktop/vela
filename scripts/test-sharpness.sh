@@ -13,7 +13,7 @@ set -u
 cd "$(dirname "$0")/.."
 BUILD="${VELA_BUILD:-build}"
 for binary in "$BUILD/compositor/vela-compositor" "$BUILD/tools/vela-pattern" \
-        "$BUILD/tools/vela-shot" "$BUILD/tools/vela-input"; do
+        "$BUILD/tools/vela-screen-dump" "$BUILD/tools/vela-input"; do
     if [ ! -x "$binary" ]; then
         echo "$binary not found: build the compositor and test tools first." >&2
         exit 1
@@ -45,7 +45,7 @@ for scale in $SCALES; do
 
     check() {
         sleep 0.8
-        "$BUILD/tools/vela-shot" "$TMP/shot.png" || { echo "capture failed"; FAILED=1; return; }
+        "$BUILD/tools/vela-screen-dump" "$TMP/shot.png" || { echo "capture failed"; FAILED=1; return; }
         python3 scripts/sharpness-check.py "$TMP/shot.png" "$1" "$CORNER" || FAILED=1
     }
     check opened

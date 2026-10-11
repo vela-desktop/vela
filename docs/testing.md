@@ -149,7 +149,7 @@ The test tools can then drive and inspect it:
 ```sh
 build/tools/vela-input key super+Left
 build/tools/vela-windows list
-build/tools/vela-shot screen.png
+build/tools/vela-screen-dump screen.png
 build/tools/vela-randr --output HEADLESS-1 --scale 1.5
 ```
 

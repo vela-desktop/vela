@@ -86,9 +86,6 @@ find_program(WAYLAND_SCANNER NAMES wayland-scanner REQUIRED)
 set(SHELL_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${SHELL_GENERATED_DIR})
 foreach(name
-        ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1
-        ext-image-capture-source/ext-image-capture-source-v1
-        ext-image-copy-capture/ext-image-copy-capture-v1
         ext-data-control/ext-data-control-v1)
     get_filename_component(base ${name} NAME)
     set(xml ${SHELL_WAYLAND_PROTOCOLS_DIR}/staging/${name}.xml)
@@ -160,6 +157,7 @@ target_link_libraries(vela-shell PRIVATE
     LayerShellQt::Interface
     vela-controls # Theme, Button, Style, Effects (common/)
     vela-controlsplugin
+    vela-capture
     vela-app) # the mouse's Back and Forward buttons (common/)
 
 install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -184,7 +182,6 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-private-files-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-private-files-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-private-files COMMAND vela-private-files-test)
-
 
     qt_add_executable(vela-volumesteps-test tests/volumesteps.cpp src/volumesteps.h)
     target_include_directories(vela-volumesteps-test PRIVATE src)

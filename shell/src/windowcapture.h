@@ -11,6 +11,7 @@
 #include <QStringList>
 #include <QVariantList>
 
+struct vela_capture_job;
 struct wl_registry;
 struct wl_shm;
 struct ext_foreign_toplevel_list_v1;

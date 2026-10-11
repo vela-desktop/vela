@@ -1008,6 +1008,7 @@ void vela_view_mapped(struct vela_view *view)
     vela_workspaces_announce(server);
 }
 
+/** Tear down an unmapped view and revoke any retained window-capture source. */
 void vela_view_unmapped(struct vela_view *view)
 {
     // Close: the scene still has the last buffers (even if it has already
@@ -1024,6 +1025,11 @@ void vela_view_unmapped(struct vela_view *view)
         vela_node_set_enabled(&view->tree->node, true);
     }
     destroy_handles(view);
+    // An unmapped view drops out of server->views; revoke its capture source
+    // now so a retained session cannot outlive the view's visible lifetime
+    // (and evade the lock-time revocation loop).
+    vela_window_capture_destroy(view->capture);
+    view->capture = NULL;
     forget(view);
     vela_workspaces_announce(view->server);
 }
@@ -1259,11 +1265,14 @@ static void handle_request_activation(struct wl_listener *listener, void *data)
     }
 }
 
+/** Reject foreign-toplevel capture during lock; accept only visible-session requests. */
 static void handle_capture_request(struct wl_listener *listener, void *data)
 {
     struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request *request = data;
     struct vela_view *view = request->toplevel_handle->data;
-    if (!view) {
+    if (!view || view->server->locked) {
+        // An isolated window source can bypass visible composition; refuse
+        // access to any window hidden behind the lock screen.
         return;
     }
     // The current look, even if minimized or covered by other windows: the
@@ -1276,6 +1285,16 @@ static void handle_capture_request(struct wl_listener *listener, void *data)
     struct wlr_ext_image_capture_source_v1 *source = vela_window_capture_source(view->capture);
     if (source) {
         wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(request, source);
+    }
+}
+
+/** Revoke active foreign-toplevel capture sources when locking the session. */
+void vela_views_revoke_capture_on_lock(struct vela_server *server)
+{
+    struct vela_view *view;
+    wl_list_for_each (view, &server->views, link) {
+        vela_window_capture_destroy(view->capture);
+        view->capture = NULL;
     }
 }
 

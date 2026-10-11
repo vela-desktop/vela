@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// vela-shot: captures Vela's screen to PNG (wlr-screencopy protocol).
+// vela-screen-dump: captures an output to PNG through the shared C capture core.
 //
-// Usage: vela-shot FILE.png [X Y WIDTH HEIGHT]
+// Usage: vela-screen-dump FILE.png [X Y WIDTH HEIGHT]
 //
 // Captures the first output; with coordinates, only that area (in output
 // pixels). Uses the session given by WAYLAND_DISPLAY.
@@ -11,83 +11,67 @@
 #define _GNU_SOURCE
 #include <stdint.h>
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <stdbool.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <wayland-client.h>
 #include <zlib.h>
 
-#include "wlr-screencopy-unstable-v1-client-protocol.h"
+#include "vela/capture.h"
+#include "ext-image-capture-source-v1-client-protocol.h"
+#include "ext-image-copy-capture-v1-client-protocol.h"
 
 static struct wl_shm* shm;
 static struct wl_output* output;
-static struct zwlr_screencopy_manager_v1* manager;
+static struct ext_output_image_capture_source_manager_v1* sources;
+static struct ext_image_copy_capture_manager_v1* manager;
+static struct vela_capture_job* capture;
+static bool done, capture_ok;
+static const struct vela_capture_frame* result;
 
-static struct {
-    uint32_t format, width, height, stride;
-    int haveBuffer, ready, failed, yInvert;
-} frame;
+/** Record terminal capture status on the caller's event dispatch thread. */
+static void captured(struct vela_capture_job* job, bool ok, void* userdata)
+{
+    (void)userdata;
+    capture_ok = ok;
+    result = vela_capture_pixels(job);
+    done = true;
+}
 
+/** Discover one output and the shared capture protocol globals. */
 static void registryGlobal(void* data, struct wl_registry* registry, uint32_t name,
     const char* interface, uint32_t version)
 {
+    (void)data; (void)version;
     if (!strcmp(interface, wl_shm_interface.name)) {
         shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
-    } else if (!strcmp(interface, wl_output_interface.name) && !output) {
-        // VELA_SHOT_OUTPUT=N picks the N-th output (from 0); otherwise the
-        // first.
+    } else if (!strcmp(interface, wl_output_interface.name)) {
         static int seen = 0;
-        const char* wanted = getenv("VELA_SHOT_OUTPUT");
+        const char* wanted = getenv("VELA_SCREEN_DUMP_OUTPUT");
         if (seen++ == (wanted ? atoi(wanted) : 0)) {
             output = wl_registry_bind(registry, name, &wl_output_interface, 1);
         }
-    } else if (!strcmp(interface, zwlr_screencopy_manager_v1_interface.name)) {
-        manager = wl_registry_bind(registry, name, &zwlr_screencopy_manager_v1_interface, 1);
+    } else if (!strcmp(interface, ext_output_image_capture_source_manager_v1_interface.name)) {
+        sources = wl_registry_bind(registry, name, &ext_output_image_capture_source_manager_v1_interface, 1);
+    } else if (!strcmp(interface, ext_image_copy_capture_manager_v1_interface.name)) {
+        manager = wl_registry_bind(registry, name, &ext_image_copy_capture_manager_v1_interface, 1);
     }
 }
 
-static void registryRemove(void* data, struct wl_registry* registry, uint32_t name) { }
-
+/** No global-removal work is required for this one-shot capture. */
+static void registryRemove(void* data, struct wl_registry* registry, uint32_t name)
+{
+    (void)data; (void)registry; (void)name;
+}
 static const struct wl_registry_listener registryListener = { registryGlobal, registryRemove };
-
-static void frameBuffer(void* data, struct zwlr_screencopy_frame_v1* f, uint32_t format,
-    uint32_t width, uint32_t height, uint32_t stride)
-{
-    frame.format = format;
-    frame.width = width;
-    frame.height = height;
-    frame.stride = stride;
-    frame.haveBuffer = 1;
-}
-
-static void frameFlags(void* data, struct zwlr_screencopy_frame_v1* f, uint32_t flags)
-{
-    frame.yInvert = flags & ZWLR_SCREENCOPY_FRAME_V1_FLAGS_Y_INVERT;
-}
-
-static void frameReady(void* data, struct zwlr_screencopy_frame_v1* f, uint32_t hi, uint32_t lo, uint32_t ns)
-{
-    frame.ready = 1;
-}
-
-static void frameFailed(void* data, struct zwlr_screencopy_frame_v1* f)
-{
-    frame.failed = 1;
-}
-
-static const struct zwlr_screencopy_frame_v1_listener frameListener = {
-    .buffer = frameBuffer,
-    .flags = frameFlags,
-    .ready = frameReady,
-    .failed = frameFailed,
-};
 
 // ------------------------------------------------------------------ PNG --
 
+/** Store a PNG 32-bit word in network byte order. */
 static void put32(unsigned char* p, uint32_t v)
 {
     p[0] = v >> 24;
@@ -96,6 +80,7 @@ static void put32(unsigned char* p, uint32_t v)
     p[3] = v;
 }
 
+/** Write a PNG chunk; the caller checks the stream status. */
 static void writeChunk(FILE* file, const char* type, const unsigned char* data, uint32_t length)
 {
     unsigned char header[8];
@@ -112,9 +97,16 @@ static void writeChunk(FILE* file, const char* type, const unsigned char* data, 
     fwrite(trailer, 1, 4, file);
 }
 
-// Output pixels -> 8-bit RGB PNG.
-static int writePng(const char* path, const unsigned char* pixels, int x, int y, int w, int h)
+/** Encode a validated SHM rectangle as an 8-bit RGB PNG. */
+/** Validate image dimensions and region, then encode a private PNG. */
+static int writePng(const char* path, const struct vela_capture_frame* frame, int x, int y, int w, int h)
 {
+    if (!vela_capture_frame_valid(frame) || x < 0 || y < 0 || w <= 0 || h <= 0 ||
+        (uint64_t)x + (uint64_t)w > frame->width ||
+        (uint64_t)y + (uint64_t)h > frame->height) {
+        return 0;
+    }
+    const unsigned char* pixels = frame->pixels;
     // Bound both allocation arithmetic and zlib's input length.
     if (w <= 0 || h <= 0 || (size_t)w > (SIZE_MAX - 1) / 3) {
         return 0;
@@ -129,10 +121,10 @@ static int writePng(const char* path, const unsigned char* pixels, int x, int y,
         return 0;
     }
     // In memory: XRGB/ARGB8888 = B,G,R,A; XBGR/ABGR8888 = R,G,B,A.
-    const int bgr = frame.format == WL_SHM_FORMAT_XRGB8888 || frame.format == WL_SHM_FORMAT_ARGB8888;
+    const int bgr = frame->format == WL_SHM_FORMAT_XRGB8888 || frame->format == WL_SHM_FORMAT_ARGB8888;
     for (int row = 0; row < h; ++row) {
-        const int srcRow = frame.yInvert ? (int)frame.height - 1 - (y + row) : y + row;
-        const unsigned char* src = pixels + (size_t)srcRow * frame.stride + (size_t)x * 4;
+        const int srcRow = y + row;
+        const unsigned char* src = pixels + (size_t)srcRow * frame->stride + (size_t)x * 4;
         unsigned char* dst = raw + (size_t)row * rowSize;
         *dst++ = 0; // filter: none
         for (int col = 0; col < w; ++col, src += 4) {
@@ -197,6 +189,7 @@ static int writePng(const char* path, const unsigned char* pixels, int x, int y,
     return ok;
 }
 
+/** Capture an output, dispatch to completion, and encode bounded pixels. */
 int main(int argc, char** argv)
 {
     if (argc != 2 && argc != 6) {
@@ -205,53 +198,54 @@ int main(int argc, char** argv)
     }
     struct wl_display* display = wl_display_connect(NULL);
     if (!display) {
-        fprintf(stderr, "vela-shot: no Wayland session (WAYLAND_DISPLAY)\n");
+        fprintf(stderr, "vela-screen-dump: no Wayland session (WAYLAND_DISPLAY)\n");
         return 1;
     }
     wl_registry_add_listener(wl_display_get_registry(display), &registryListener, NULL);
     wl_display_roundtrip(display);
-    if (!manager || !shm || !output) {
-        fprintf(stderr, "vela-shot: the compositor doesn't offer wlr-screencopy\n");
+    if (!manager || !shm || !output || !sources) {
+        fprintf(stderr, "vela-screen-dump: the compositor doesn't offer ext-image-copy-capture\n");
         return 1;
     }
 
-    struct zwlr_screencopy_frame_v1* capture = zwlr_screencopy_manager_v1_capture_output(manager, 0, output);
-    zwlr_screencopy_frame_v1_add_listener(capture, &frameListener, NULL);
-    while (!frame.haveBuffer && !frame.failed && wl_display_dispatch(display) != -1) { }
-    if (frame.failed) {
-        fprintf(stderr, "vela-shot: capture refused\n");
+    struct ext_image_capture_source_v1* source =
+        ext_output_image_capture_source_manager_v1_create_source(sources, output);
+    capture = vela_capture_begin(shm, manager, source, captured, NULL);
+    if (!capture) {
+        if (source) ext_image_capture_source_v1_destroy(source);
+        fprintf(stderr, "vela-screen-dump: failed to create capture session\n");
+        return 1;
+    }
+    wl_display_flush(display);
+    while (!done) {
+        if (wl_display_dispatch(display) < 0) {
+            fprintf(stderr, "vela-screen-dump: Wayland connection lost\n");
+            vela_capture_end(capture);
+            return 1;
+        }
+    }
+    if (!capture_ok || !vela_capture_frame_valid(result) ||
+        result->transform != WL_OUTPUT_TRANSFORM_NORMAL) {
+        fprintf(stderr, "vela-screen-dump: capture failed or transformed output unsupported\n");
+        vela_capture_end(capture);
         return 1;
     }
 
-    const size_t size = (size_t)frame.stride * frame.height;
-    const int fd = memfd_create("vela-shot", MFD_CLOEXEC);
-    if (fd < 0 || ftruncate(fd, size) < 0) {
-        perror("vela-shot");
-        return 1;
-    }
-    unsigned char* pixels = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    struct wl_shm_pool* pool = wl_shm_create_pool(shm, fd, size);
-    struct wl_buffer* buffer = wl_shm_pool_create_buffer(pool, 0, frame.width, frame.height,
-        frame.stride, frame.format);
-    zwlr_screencopy_frame_v1_copy(capture, buffer);
-    while (!frame.ready && !frame.failed && wl_display_dispatch(display) != -1) { }
-    if (frame.failed) {
-        fprintf(stderr, "vela-shot: copy failed\n");
-        return 1;
-    }
-
-    int x = 0, y = 0, w = frame.width, h = frame.height;
+    int x = 0, y = 0, w = result->width, h = result->height;
     if (argc == 6) {
         x = atoi(argv[2]);
         y = atoi(argv[3]);
         w = atoi(argv[4]);
         h = atoi(argv[5]);
-        if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > (int)frame.width || y + h > (int)frame.height) {
-            fprintf(stderr, "vela-shot: region outside the output (%ux%u)\n", frame.width, frame.height);
+        if (x < 0 || y < 0 || w <= 0 || h <= 0 || (int64_t)x + w > result->width || (int64_t)y + h > result->height) {
+            fprintf(stderr, "vela-screen-dump: region outside the output (%ux%u)\n", result->width, result->height);
+            vela_capture_end(capture);
+            wl_display_disconnect(display);
             return 2;
         }
     }
-    const int ok = writePng(argv[1], pixels, x, y, w, h);
+    const int ok = writePng(argv[1], result, x, y, w, h);
+    vela_capture_end(capture);
     wl_display_disconnect(display);
     return ok ? 0 : 1;
 }
