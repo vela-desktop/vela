@@ -31,12 +31,14 @@ QString flatpakApplications()
     return qEnvironmentVariable("VELA_TEST_FLATPAK_DATA") + QStringLiteral("/applications");
 }
 
-void writeDesktop(const QString& path, const QByteArray& text)
+bool writeDesktop(const QString& path, const QByteArray& text)
 {
-    QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+    if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
+        return false;
+    }
     QFile file(path);
-    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    QCOMPARE(file.write(text), text.size());
+    return file.open(QIODevice::WriteOnly | QIODevice::Truncate)
+        && file.write(text) == text.size();
 }
 
 QByteArray entry(const QByteArray& name, const QByteArray& extra = {})
@@ -66,7 +68,7 @@ private slots:
         apps.setQuery(QStringLiteral("Example Player"));
 
         const QString path = userApplications() + QStringLiteral("/example-player.desktop");
-        writeDesktop(path, entry("Example Player"));
+        QVERIFY(writeDesktop(path, entry("Example Player")));
 
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("example-player.desktop")),
             QStringLiteral("Example Player"), 5000);
@@ -80,21 +82,21 @@ private slots:
     void editsInPlaceUpdateNamesAndVisibility()
     {
         const QString path = userApplications() + QStringLiteral("/edited.desktop");
-        writeDesktop(path, entry("Original Name"));
+        QVERIFY(writeDesktop(path, entry("Original Name")));
 
         AppModel apps;
         apps.reload();
         QCOMPARE(apps.name(QStringLiteral("edited.desktop")), QStringLiteral("Original Name"));
 
         // Truncating/re-writing the same inode need not change the directory.
-        writeDesktop(path, entry("Updated Name"));
+        QVERIFY(writeDesktop(path, entry("Updated Name")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("edited.desktop")),
             QStringLiteral("Updated Name"), 5000);
 
-        writeDesktop(path, entry("Hidden Name", "NoDisplay=true\n"));
+        QVERIFY(writeDesktop(path, entry("Hidden Name", "NoDisplay=true\n")));
         QTRY_VERIFY_WITH_TIMEOUT(apps.name(QStringLiteral("edited.desktop")).isEmpty(), 5000);
 
-        writeDesktop(path, entry("Visible Again"));
+        QVERIFY(writeDesktop(path, entry("Visible Again")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("edited.desktop")),
             QStringLiteral("Visible Again"), 5000);
     }
@@ -106,13 +108,13 @@ private slots:
         apps.reload();
 
         const QString path = userApplications() + QStringLiteral("/vendor/tools/nested.desktop");
-        writeDesktop(path, entry("Nested Tool"));
+        QVERIFY(writeDesktop(path, entry("Nested Tool")));
 
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("vendor-tools-nested.desktop")),
             QStringLiteral("Nested Tool"), 5000);
 
         const QString another = userApplications() + QStringLiteral("/vendor/tools/another.desktop");
-        writeDesktop(another, entry("Another Tool"));
+        QVERIFY(writeDesktop(another, entry("Another Tool")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("vendor-tools-another.desktop")),
             QStringLiteral("Another Tool"), 5000);
     }
@@ -120,7 +122,7 @@ private slots:
     void systemAndFlatpakExportsUpdate()
     {
         const QString systemPath = systemApplications() + QStringLiteral("/override.desktop");
-        writeDesktop(systemPath, entry("System Version"));
+        QVERIFY(writeDesktop(systemPath, entry("System Version")));
 
         AppModel apps;
         apps.reload();
@@ -128,7 +130,7 @@ private slots:
 
         // Local .desktop files override system entries with the same ID.
         const QString localPath = userApplications() + QStringLiteral("/override.desktop");
-        writeDesktop(localPath, entry("User Version"));
+        QVERIFY(writeDesktop(localPath, entry("User Version")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("override.desktop")),
             QStringLiteral("User Version"), 5000);
 
@@ -138,7 +140,7 @@ private slots:
 
         // A Flatpak export root can be created after the first scan.
         const QString flatpakPath = flatpakApplications() + QStringLiteral("/org.example.Flatpak.desktop");
-        writeDesktop(flatpakPath, entry("Flatpak Example"));
+        QVERIFY(writeDesktop(flatpakPath, entry("Flatpak Example")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("org.example.Flatpak.desktop")),
             QStringLiteral("Flatpak Example"), 5000);
     }
