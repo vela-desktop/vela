@@ -48,6 +48,23 @@ int vela_runtime_dir_open(const char *path)
         return -1;
     }
 
+    // XDG paths may contain repeated separators, "." components or trailing
+    // slashes. Parent traversal is different: accepting ".." would let an
+    // environment value redirect the initial lookup outside the named path.
+    for (const char *p = path; *p;) {
+        while (*p == '/') {
+            ++p;
+        }
+        const char *component = p;
+        while (*p && *p != '/') {
+            ++p;
+        }
+        if (p - component == 2 && component[0] == '.' && component[1] == '.') {
+            errno = EINVAL;
+            return -1;
+        }
+    }
+
     // Trailing slashes are valid in XDG_RUNTIME_DIR, but would defeat
     // O_NOFOLLOW on a symlink to a directory.
     char *normalized = strdup(path);
@@ -58,6 +75,12 @@ int vela_runtime_dir_open(const char *path)
     while (length > 1 && normalized[length - 1] == '/') {
         normalized[--length] = '\0';
     }
+
+    // The environment chooses the XDG runtime directory by design. The input
+    // is constrained above, and the opened inode is checked below for type,
+    // ownership and private permissions; all sensitive children are accessed
+    // relative to this descriptor rather than by reusing the environment path.
+    // codeql[cpp/path-injection]
     int fd = open(normalized, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     free(normalized);
     if (fd < 0) {
