@@ -470,7 +470,7 @@ class UpdateSources(UpdateFixture):
             env=self.env, text=True).strip()
         self.run_update("--source", str(self.directory / "nonexistent"),
                         "--check", source=False, status=1)
-        self.assertEqual(self.config.read_text(), f"source={self.source}\\n")
+        self.assertEqual(self.config.read_text(), f"source={self.source}\n")
         self.assertEqual(subprocess.check_output(
             ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
             env=self.env, text=True).strip(), original)
@@ -482,7 +482,7 @@ class UpdateSources(UpdateFixture):
         shutil.copytree(self.source, alternate)
         self.run_update("--source", str(alternate), "--branch", "nonexistent",
                         "--check", source=False, status=1)
-        self.assertEqual(self.config.read_text(), f"source={self.source}\\n")
+        self.assertEqual(self.config.read_text(), f"source={self.source}\n")
         origin = subprocess.check_output(
             ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
             env=self.env, text=True).strip()
