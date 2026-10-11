@@ -10,8 +10,7 @@
 #include <QtGui/qscreen_platform.h>
 
 #include <cstring>
-#include <sys/mman.h>
-#include <unistd.h>
+#include "vela/capture.h"
 
 #include <wayland-client.h>
 
@@ -28,22 +27,11 @@ struct WindowCapture::Window {
     QString appId;
 };
 
-// A capture in progress: source -> session (it tells size and formats)
-// -> frame with a shared-memory buffer of ours -> "ready".
+// UI-side bookkeeping; shared C capture owns the Wayland session and SHM buffer.
 struct WindowCapture::Job {
     WindowCapture* owner = nullptr;
     QString identifier;
-    ext_image_capture_source_v1* source = nullptr;
-    ext_image_copy_capture_session_v1* session = nullptr;
-    ext_image_copy_capture_frame_v1* frame = nullptr;
-    wl_shm_pool* pool = nullptr;
-    wl_buffer* buffer = nullptr;
-    int fd = -1;
-    void* pixels = nullptr;
-    size_t size = 0;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    int format = -1; // chosen wl_shm format, -1 = none usable
+    vela_capture_job* capture = nullptr;
     bool full = false; // the whole image, not the thumbnail
 };
 
@@ -136,82 +124,11 @@ struct CaptureCallbacks {
         closed, done, title, appId, identifier
     };
 
-    // --- capture session ---
-    static void bufferSize(void* data, ext_image_copy_capture_session_v1*, uint32_t width, uint32_t height)
+    static void captured(vela_capture_job*, bool ok, void* userdata)
     {
-        auto* job = static_cast<Job*>(data);
-        job->width = width;
-        job->height = height;
+        auto* job = static_cast<Job*>(userdata);
+        job->owner->finishJob(job, ok);
     }
-    static void shmFormat(void* data, ext_image_copy_capture_session_v1*, uint32_t format)
-    {
-        auto* job = static_cast<Job*>(data);
-        // The first readable format is fine; XRGB/ARGB are the most common.
-        if (job->format < 0 && imageFormat(format) != QImage::Format_Invalid) {
-            job->format = static_cast<int>(format);
-        }
-    }
-    static void dmabufDevice(void*, ext_image_copy_capture_session_v1*, wl_array*) { }
-    static void dmabufFormat(void*, ext_image_copy_capture_session_v1*, uint32_t, wl_array*) { }
-    static void sessionDone(void* data, ext_image_copy_capture_session_v1* session)
-    {
-        auto* job = static_cast<Job*>(data);
-        if (job->frame) {
-            return; // it comes again if the window changes size
-        }
-        if (job->format < 0 || job->width == 0 || job->height == 0) {
-            job->owner->finishJob(job, false);
-            return;
-        }
-        const uint32_t stride = job->width * 4;
-        job->size = size_t(stride) * job->height;
-        job->fd = memfd_create("vela-capture", MFD_CLOEXEC);
-        if (job->fd < 0 || ftruncate(job->fd, off_t(job->size)) < 0) {
-            job->owner->finishJob(job, false);
-            return;
-        }
-        job->pixels = mmap(nullptr, job->size, PROT_READ | PROT_WRITE, MAP_SHARED, job->fd, 0);
-        if (job->pixels == MAP_FAILED) {
-            job->pixels = nullptr;
-            job->owner->finishJob(job, false);
-            return;
-        }
-        job->pool = wl_shm_create_pool(job->owner->m_shm, job->fd, int32_t(job->size));
-        job->buffer = wl_shm_pool_create_buffer(job->pool, 0, int32_t(job->width), int32_t(job->height),
-            int32_t(stride), uint32_t(job->format));
-
-        job->frame = ext_image_copy_capture_session_v1_create_frame(session);
-        ext_image_copy_capture_frame_v1_add_listener(job->frame, &frameListener, job);
-        ext_image_copy_capture_frame_v1_attach_buffer(job->frame, job->buffer);
-        ext_image_copy_capture_frame_v1_damage_buffer(job->frame, 0, 0, int32_t(job->width), int32_t(job->height));
-        ext_image_copy_capture_frame_v1_capture(job->frame);
-    }
-    static void stopped(void* data, ext_image_copy_capture_session_v1*)
-    {
-        auto* job = static_cast<Job*>(data);
-        job->owner->finishJob(job, false);
-    }
-    static constexpr ext_image_copy_capture_session_v1_listener sessionListener {
-        bufferSize, shmFormat, dmabufDevice, dmabufFormat, sessionDone, stopped
-    };
-
-    // --- frame ---
-    static void transform(void*, ext_image_copy_capture_frame_v1*, uint32_t) { }
-    static void damage(void*, ext_image_copy_capture_frame_v1*, int32_t, int32_t, int32_t, int32_t) { }
-    static void presentationTime(void*, ext_image_copy_capture_frame_v1*, uint32_t, uint32_t, uint32_t) { }
-    static void ready(void* data, ext_image_copy_capture_frame_v1*)
-    {
-        auto* job = static_cast<Job*>(data);
-        job->owner->finishJob(job, true);
-    }
-    static void failed(void* data, ext_image_copy_capture_frame_v1*, uint32_t)
-    {
-        auto* job = static_cast<Job*>(data);
-        job->owner->finishJob(job, false);
-    }
-    static constexpr ext_image_copy_capture_frame_v1_listener frameListener {
-        transform, damage, presentationTime, ready, failed
-    };
 };
 
 // ---------------------------------------------------------- WindowCapture --
@@ -270,9 +187,13 @@ void WindowCapture::capture(const QStringList& identifiers)
         auto* job = new Job;
         job->owner = this;
         job->identifier = window->identifier;
-        job->source = ext_foreign_toplevel_image_capture_source_manager_v1_create_source(m_sources, window->handle);
-        job->session = ext_image_copy_capture_manager_v1_create_session(m_copier, job->source, 0);
-        ext_image_copy_capture_session_v1_add_listener(job->session, &CaptureCallbacks::sessionListener, job);
+        auto* source = ext_foreign_toplevel_image_capture_source_manager_v1_create_source(m_sources, window->handle);
+        job->capture = vela_capture_begin(m_shm, m_copier, source, &CaptureCallbacks::captured, job);
+        if (!job->capture) {
+            if (source) ext_image_capture_source_v1_destroy(source);
+            delete job;
+            continue;
+        }
         m_jobs.append(job);
     }
     if (auto* wayland = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>()) {
@@ -306,9 +227,13 @@ void WindowCapture::captureScreens()
         auto* job = new Job;
         job->owner = this;
         job->identifier = QStringLiteral("screen:") + screen->name();
-        job->source = ext_output_image_capture_source_manager_v1_create_source(m_outputSources, native->output());
-        job->session = ext_image_copy_capture_manager_v1_create_session(m_copier, job->source, 0);
-        ext_image_copy_capture_session_v1_add_listener(job->session, &CaptureCallbacks::sessionListener, job);
+        auto* source = ext_output_image_capture_source_manager_v1_create_source(m_outputSources, native->output());
+        job->capture = vela_capture_begin(m_shm, m_copier, source, &CaptureCallbacks::captured, job);
+        if (!job->capture) {
+            if (source) ext_image_capture_source_v1_destroy(source);
+            delete job;
+            continue;
+        }
         m_jobs.append(job);
     }
     if (auto* wayland = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>()) {
@@ -332,9 +257,13 @@ int WindowCapture::captureScreensFull()
         job->owner = this;
         job->full = true;
         job->identifier = screen->name();
-        job->source = ext_output_image_capture_source_manager_v1_create_source(m_outputSources, native->output());
-        job->session = ext_image_copy_capture_manager_v1_create_session(m_copier, job->source, 0);
-        ext_image_copy_capture_session_v1_add_listener(job->session, &CaptureCallbacks::sessionListener, job);
+        auto* source = ext_output_image_capture_source_manager_v1_create_source(m_outputSources, native->output());
+        job->capture = vela_capture_begin(m_shm, m_copier, source, &CaptureCallbacks::captured, job);
+        if (!job->capture) {
+            if (source) ext_image_capture_source_v1_destroy(source);
+            delete job;
+            continue;
+        }
         m_jobs.append(job);
         ++count;
     }
@@ -346,52 +275,28 @@ int WindowCapture::captureScreensFull()
 
 void WindowCapture::finishJob(Job* job, bool ok)
 {
-    if (ok && job->pixels) {
-        const QImage full(static_cast<const uchar*>(job->pixels), int(job->width), int(job->height),
-            int(job->width * 4), imageFormat(uint32_t(job->format)));
-        if (job->full) {
-            // A real copy: the capture's pixels are freed below
-            // (convertToFormat wouldn't copy if the format is already the
-            // right one).
-            QImage copy = full.copy();
-            m_full.insert(job->identifier, copy.convertToFormat(QImage::Format_RGB32));
+    const vela_capture_frame* frame = vela_capture_pixels(job->capture);
+    if (ok && frame && frame->pixels && frame->transform == WL_OUTPUT_TRANSFORM_NORMAL) {
+        const QImage full(frame->pixels, int(frame->width), int(frame->height),
+            int(frame->stride), imageFormat(frame->format));
+        if (!full.isNull()) {
+            if (job->full) {
+                m_full.insert(job->identifier, full.copy().convertToFormat(QImage::Format_RGB32));
+            } else {
+                m_thumbnails.insert(job->identifier,
+                    full.scaled(thumbnailSize, thumbnailSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            }
         } else {
-            // Only the thumbnail is kept: the whole capture can be as large as
-            // the output.
-            m_thumbnails.insert(job->identifier,
-                full.scaled(thumbnailSize, thumbnailSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            ok = false;
         }
+    } else {
+        ok = false;
     }
-
-    if (job->frame) {
-        ext_image_copy_capture_frame_v1_destroy(job->frame);
-    }
-    if (job->session) {
-        ext_image_copy_capture_session_v1_destroy(job->session);
-    }
-    if (job->source) {
-        ext_image_capture_source_v1_destroy(job->source);
-    }
-    if (job->buffer) {
-        wl_buffer_destroy(job->buffer);
-    }
-    if (job->pool) {
-        wl_shm_pool_destroy(job->pool);
-    }
-    if (job->pixels) {
-        munmap(job->pixels, job->size);
-    }
-    if (job->fd >= 0) {
-        close(job->fd);
-    }
+    vela_capture_end(job->capture);
     const QString identifier = job->identifier;
-    const bool full = job->full;
+    const bool wasFull = job->full;
     m_jobs.removeOne(job);
     delete job;
-
-    if (full) {
-        emit screenCaptured(identifier, ok);
-    } else if (ok) {
-        emit thumbnailReady(identifier);
-    }
+    if (wasFull) emit screenCaptured(identifier, ok);
+    else if (ok) emit thumbnailReady(identifier);
 }
