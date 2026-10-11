@@ -58,15 +58,23 @@ TEST(PathSecurity, RequiresPrivateOwnedRuntimeDirectory)
     std::string pattern = (std::filesystem::temp_directory_path() / "vela-runtime-XXXXXX").string();
     ASSERT_NE(mkdtemp(pattern.data()), nullptr);
     EXPECT_TRUE(vela_runtime_dir_private(pattern.c_str()));
+    EXPECT_TRUE(vela_runtime_dir_private((pattern + "/").c_str()));
+    EXPECT_TRUE(vela_runtime_dir_private((pattern + "//").c_str()));
+    EXPECT_TRUE(vela_runtime_dir_private((pattern + "/./").c_str()));
+    int runtime_fd = vela_runtime_dir_open((pattern + "/").c_str());
+    ASSERT_GE(runtime_fd, 0);
+    close(runtime_fd);
     EXPECT_EQ(chmod(pattern.c_str(), 0755), 0);
     EXPECT_FALSE(vela_runtime_dir_private(pattern.c_str()));
     EXPECT_EQ(chmod(pattern.c_str(), 0700), 0);
     const std::string link = pattern + "-symlink";
     ASSERT_EQ(symlink(pattern.c_str(), link.c_str()), 0);
     EXPECT_FALSE(vela_runtime_dir_private(link.c_str()));
+    EXPECT_FALSE(vela_runtime_dir_private((link + "/").c_str()));
     EXPECT_FALSE(vela_runtime_dir_private((pattern + "/../" +
         std::filesystem::path(pattern).filename().string()).c_str()));
     EXPECT_FALSE(vela_runtime_dir_private("relative"));
+    EXPECT_FALSE(vela_runtime_dir_private(nullptr));
     unlink(link.c_str());
     rmdir(pattern.c_str());
 }
