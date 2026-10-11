@@ -727,12 +727,17 @@ class UpdatePublicReleases(UpdateFixture):
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
-    def test_missing_gh_cli_never_installs_unattested_binary(self):
+    def test_unavailable_or_unusable_gh_never_installs_unattested_binary(self):
         self.env["TEST_RELEASE_SHA"] = self.main
+        # The real GitHub CLI may already be installed on the CI runner.
+        # Removing our fixture stub therefore means either no CLI or an
+        # unauthenticated/unusable CLI, both of which must fail closed.
         gh_path = self.directory / "bin/gh"
         gh_path.rename(self.directory / "bin/gh.unavailable")
         result = self.run_update("--download", source=False)
-        self.assertIn("gh) is required", result.stderr)
+        self.assertTrue("gh) is required" in result.stderr or
+                        "provenance verification failed" in result.stderr,
+                        result.stderr)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
