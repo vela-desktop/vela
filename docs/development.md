@@ -71,7 +71,7 @@ export WAYLAND_DISPLAY=wayland-1
 
 build/tools/vela-input key super+Left
 build/tools/vela-windows list
-build/tools/vela-shot screen.png
+build/tools/vela-screen-dump screen.png
 ```
 
 The exact display name may differ; use the one printed by the compositor.
@@ -84,7 +84,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 |---|---|
 | `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`. |
 | `vela-windows` | Inspect windows and compositor-visible state. |
-| `vela-shot` | Capture an output or region to PNG. |
+| `vela-screen-dump` | Capture an output or region to PNG. |
 | `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window). |
 | `vela-panel` | Fake shell pieces on wlr-layer-shell: `wallpaper`, and `taskbar [--blur]` with a reserved area and background blur. |
 | `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu. |
