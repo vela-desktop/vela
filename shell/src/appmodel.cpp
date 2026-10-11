@@ -187,8 +187,23 @@ AppModel::AppModel(QObject* parent)
 void AppModel::updateWatchPaths(const QStringList& directories, const QSet<QString>& desktopFiles)
 {
     QSet<QString> wanted;
+    QHash<QString, QString> symlinkTargets;
+    QSet<QString> reattachRoots;
     for (const QString& directory : directories) {
         const QString root = QDir::cleanPath(directory);
+        const QFileInfo rootInfo(root);
+        if (rootInfo.isSymLink()) {
+            // Linux inotify follows symlinks. The lexical path can remain
+            // unchanged while the watched inode switches to a new target.
+            // Watch the link's parent to receive the replacement event.
+            wanted.insert(rootInfo.absolutePath());
+            const QString target = rootInfo.canonicalFilePath();
+            symlinkTargets.insert(root, target);
+            const auto previous = m_symlinkTargets.constFind(root);
+            if (previous != m_symlinkTargets.cend() && *previous != target) {
+                reattachRoots.insert(root);
+            }
+        }
         QString existing = root;
         // Some XDG application directories don't exist until the first app
         // is installed (notably per-user apps and Flatpak exports). Watching
@@ -215,10 +230,23 @@ void AppModel::updateWatchPaths(const QStringList& directories, const QSet<QStri
             wanted.insert(subdirs.next());
         }
     }
+    m_symlinkTargets = std::move(symlinkTargets);
+
     // Directory watches cover creations, removals and atomic replacements;
     // per-file watches cover edits that don't change directory metadata.
     wanted.unite(desktopFiles);
 
+    // Reattach every watcher below a replaced symlink root. The paths of
+    // nested directories and files are also unchanged, yet Qt may still be
+    // watching inodes in the old target tree.
+    const auto needsReattach = [&reattachRoots](const QString& path) {
+        for (const QString& root : reattachRoots) {
+            if (path == root || path.startsWith(root + u'/')) {
+                return true;
+            }
+        }
+        return false;
+    };
     const QStringList watchedPaths = m_watcher.directories() + m_watcher.files();
     QSet<QString> watched;
     for (const QString& path : watchedPaths) {
@@ -226,7 +254,7 @@ void AppModel::updateWatchPaths(const QStringList& directories, const QSet<QStri
     }
     QStringList remove;
     for (const QString& path : watchedPaths) {
-        if (!wanted.contains(path)) {
+        if (!wanted.contains(path) || needsReattach(path)) {
             remove.append(path);
         }
     }
@@ -235,7 +263,7 @@ void AppModel::updateWatchPaths(const QStringList& directories, const QSet<QStri
     }
     QStringList add;
     for (const QString& path : std::as_const(wanted)) {
-        if (!watched.contains(path)) {
+        if (!watched.contains(path) || needsReattach(path)) {
             add.append(path);
         }
     }
