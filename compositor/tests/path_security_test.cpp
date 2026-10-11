@@ -79,6 +79,22 @@ TEST(PathSecurity, RequiresPrivateOwnedRuntimeDirectory)
     rmdir(pattern.c_str());
 }
 
+TEST(PathSecurity, AllowsSymlinkInParentButNotRuntimeDirectory)
+{
+    std::string parent = (std::filesystem::temp_directory_path() / "vela-runtime-parent-XXXXXX").string();
+    ASSERT_NE(mkdtemp(parent.data()), nullptr);
+    const std::string runtime = parent + "/runtime";
+    ASSERT_EQ(mkdir(runtime.c_str(), 0700), 0);
+    const std::string link = parent + "-link";
+    ASSERT_EQ(symlink(parent.c_str(), link.c_str()), 0);
+
+    EXPECT_TRUE(vela_runtime_dir_private((link + "/runtime").c_str()));
+
+    unlink(link.c_str());
+    rmdir(runtime.c_str());
+    rmdir(parent.c_str());
+}
+
 TEST(PathSecurity, RejectsConfigFilenameTraversal)
 {
     char path[4096];
