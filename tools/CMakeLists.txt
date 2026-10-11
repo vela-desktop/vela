@@ -34,6 +34,12 @@ endfunction()
 
 set(PROTOCOLS ${PROJECT_SOURCE_DIR}/protocols)
 
+add_executable(vela-screen-dump vela-screen-dump.c)
+target_link_libraries(vela-screen-dump PRIVATE vela-capture PkgConfig::TOOLS_ZLIB)
+target_compile_options(vela-screen-dump PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
+if(VELA_BUILD_TOOLS)
+
 vela_client_protocol(proto-foreign-toplevel ${PROTOCOLS}/wlr-foreign-toplevel-management-unstable-v1.xml
     wlr-foreign-toplevel-management-unstable-v1)
 vela_client_protocol(proto-virtual-pointer ${PROTOCOLS}/wlr-virtual-pointer-unstable-v1.xml
@@ -51,12 +57,6 @@ vela_client_protocol(proto-fractional-scale
 vela_client_protocol(proto-xdg-decoration
     ${TOOLS_WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
     xdg-decoration-unstable-v1)
-
-add_executable(vela-screen-dump vela-screen-dump.c)
-target_link_libraries(vela-screen-dump PRIVATE vela-capture PkgConfig::TOOLS_ZLIB)
-target_compile_options(vela-screen-dump PRIVATE -Wall -Wextra -Wno-unused-parameter)
-
-if(VELA_BUILD_TOOLS)
 
 add_executable(vela-windows vela-windows.c)
 target_link_libraries(vela-windows PRIVATE proto-foreign-toplevel)
