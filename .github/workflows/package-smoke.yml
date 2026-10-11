@@ -13,7 +13,7 @@ concurrency:
 jobs:
   package-build:
     runs-on: ubuntu-latest
-    container: archlinux:latest
+    container: archlinux:base-devel
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-package
       CCACHE_MAXSIZE: 350M
