@@ -12,7 +12,8 @@ SoundKeys::SoundKeys(vela::audio::Audio* audio, QObject* parent)
     m_micTimeout.setSingleShot(true);
     m_micTimeout.setInterval(2000); // as long as Audio waits for a confirmation
     connect(&m_micTimeout, &QTimer::timeout, this, [this] {
-        emit osdRequested(QStringLiteral("microphone")); // unchanged: it didn't work
+        m_micInFlight = false;
+        emit osdRequested(QStringLiteral("microphone")); // show confirmed state, even on failure
     });
     connect(m_audio, &vela::audio::Audio::changed, this, &SoundKeys::checkMicrophone);
 }
@@ -28,9 +29,17 @@ void SoundKeys::press(const QString& key)
         if (input.isEmpty()) {
             return;
         }
+        if (m_micInFlight) {
+            // The displayed state is intentionally not optimistic. Keep the
+            // user's final intent, but wait for the first write to settle.
+            m_micWanted = !m_micWanted;
+            return;
+        }
         m_micWanted = !m_audio->inputMuted();
-        m_audio->setMuted(QStringLiteral("input"), input, m_micWanted);
+        m_micSent = m_micWanted;
+        m_micInFlight = true;
         m_micTimeout.start();
+        m_audio->setMuted(QStringLiteral("input"), input, m_micSent);
         return;
     }
     if (output.isEmpty()) {
@@ -48,19 +57,42 @@ void SoundKeys::press(const QString& key)
 
 bool SoundKeys::stepTaskVolume(const QString& desktopId, int direction)
 {
-    const QString key = m_audio->appKey(desktopId);
-    if (key.isEmpty() || direction == 0) {
+    if (desktopId.isEmpty() || direction == 0) {
         return false;
     }
-    m_audio->stepAppVolume(key, direction);
-    emit osdRequested(key);
-    return true;
+    // Audio.apps includes recording-only apps, which have no playback
+    // volume: do not claim to have changed one or show a misleading OSD.
+    for (const QVariant& entry : m_audio->apps()) {
+        const QVariantMap app = entry.toMap();
+        if (app.value(QStringLiteral("desktopId")).toString() != desktopId
+            || !app.value(QStringLiteral("playing")).toBool()) {
+            continue;
+        }
+        const QString key = app.value(QStringLiteral("key")).toString();
+        m_audio->stepAppVolume(key, direction);
+        emit osdRequested(key);
+        return true;
+    }
+    return false;
 }
 
 void SoundKeys::checkMicrophone()
 {
-    if (m_micTimeout.isActive() && m_audio->inputMuted() == m_micWanted) {
-        m_micTimeout.stop();
-        emit osdRequested(QStringLiteral("microphone"));
+    if (!m_micInFlight || m_audio->inputMuted() != m_micSent) {
+        return;
     }
+    if (m_micWanted != m_micSent) {
+        // An intervening press reversed the desired state. Serialize the
+        // follow-up write so an older confirmation cannot complete the OSD.
+        const QString input = m_audio->defaultInput();
+        if (!input.isEmpty()) {
+            m_micSent = m_micWanted;
+            m_micTimeout.start();
+            m_audio->setMuted(QStringLiteral("input"), input, m_micSent);
+            return;
+        }
+    }
+    m_micInFlight = false;
+    m_micTimeout.stop();
+    emit osdRequested(QStringLiteral("microphone"));
 }
