@@ -22,8 +22,14 @@ int vela_runtime_dir_open(const char *path);
 // Symlink runtime directories are not accepted.
 bool vela_runtime_dir_private(const char *path);
 
-// Atomically create a 0600 lock marker, safely replacing an old symlink.
-bool vela_lock_marker_create(const char *path);
+// Validate an already-open runtime directory descriptor.
+bool vela_runtime_dir_fd_private(int fd);
+
+// Create/check/remove the screen-lock marker relative to the exact runtime
+// directory inode opened by the supervisor. The display is one path component.
+bool vela_lock_marker_create_at(int runtime_fd, const char *display);
+bool vela_lock_marker_present_at(int runtime_fd, const char *display);
+bool vela_lock_marker_remove_at(int runtime_fd, const char *display);
 
 // The lock marker stays directly within the private runtime directory.
 // This builder is also tested without having to start a compositor.

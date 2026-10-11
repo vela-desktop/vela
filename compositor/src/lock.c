@@ -14,7 +14,6 @@
 #include "scene/scene.h"
 #include "scene/surface.h"
 #include "server.h"
-#include "supervisor.h"
 #include "path_security.h"
 #include "util.h"
 #include "view.h"
@@ -125,9 +124,9 @@ static void handle_unlock(struct wl_listener *listener, void *data)
     struct vela_server *server = lock->server;
     // Really unlocked: the desktop is back as it was.
     server->locked = false;
-    char flag[PATH_MAX];
-    if (vela_lock_flag_path(getenv("WAYLAND_DISPLAY"), flag, sizeof(flag))) {
-        unlink(flag);
+    if (server->runtime_dir_fd >= 0
+        && !vela_lock_marker_remove_at(server->runtime_dir_fd, server->socket_name)) {
+        wlr_log(WLR_ERROR, "Could not remove secure screen-lock marker");
     }
     set_desktop_enabled(server, true);
     vela_node_set_enabled(&server->layers.lock->node, false);
@@ -376,11 +375,9 @@ void vela_lock_engage(struct vela_lock *lock)
     vela_views_revoke_capture_on_lock(server);
     // For the supervisor: if the compositor crashes now, the next one starts
     // locked (supervisor.c).
-    char flag[PATH_MAX];
-    if (vela_lock_flag_path(getenv("WAYLAND_DISPLAY"), flag, sizeof(flag))) {
-        if (!vela_lock_marker_create(flag)) {
-            wlr_log(WLR_ERROR, "Could not create secure screen-lock marker");
-        }
+    if (server->runtime_dir_fd >= 0
+        && !vela_lock_marker_create_at(server->runtime_dir_fd, server->socket_name)) {
+        wlr_log(WLR_ERROR, "Could not create secure screen-lock marker");
     }
     set_desktop_enabled(server, false);
     vela_node_set_enabled(&server->layers.lock->node, true);

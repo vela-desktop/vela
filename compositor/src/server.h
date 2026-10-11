@@ -109,6 +109,9 @@ struct vela_server {
     bool nested; // inside another session (Wayland or X11 window)
     bool unsupported_gpu; // renderer initialization failed; supervisor must not retry
     char socket_name[64]; // our WAYLAND_DISPLAY
+    // Exact XDG_RUNTIME_DIR inode inherited from the supervisor; -1 when
+    // running nested/headless without supervision.
+    int runtime_dir_fd;
 
     struct vela_layers layers;
     struct wlr_layer_shell_v1 *layer_shell;

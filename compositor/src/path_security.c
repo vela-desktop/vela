@@ -128,9 +128,7 @@ int vela_runtime_dir_open(const char *path)
 
     // Validate the inode we actually reached. The descriptor is then reused
     // for socket and lock operations, so there is no check-then-reopen race.
-    struct stat info;
-    if (fstat(fd, &info) != 0 || !S_ISDIR(info.st_mode)
-        || info.st_uid != geteuid() || (info.st_mode & 077) != 0) {
+    if (!vela_runtime_dir_fd_private(fd)) {
         close(fd);
         errno = EACCES;
         return -1;
@@ -146,6 +144,13 @@ bool vela_runtime_dir_private(const char *path)
     }
     close(fd);
     return true;
+}
+
+bool vela_runtime_dir_fd_private(int fd)
+{
+    struct stat info;
+    return fd >= 0 && fstat(fd, &info) == 0 && S_ISDIR(info.st_mode)
+        && info.st_uid == geteuid() && (info.st_mode & 077) == 0;
 }
 
 bool vela_lock_flag_path_for_runtime(const char *runtime_dir, const char *display,
@@ -168,25 +173,73 @@ bool vela_lock_flag_path_for_runtime(const char *runtime_dir, const char *displa
     return n > 0 && (size_t)n < size;
 }
 
-bool vela_lock_marker_create(const char *path)
+static bool lock_marker_name(const char *display, char *out, size_t size)
 {
-    if (!path || !*path) {
+    if (!out || !size || !vela_path_component_safe(display)) {
         return false;
     }
-    char temporary[PATH_MAX + 8];
-    int n = snprintf(temporary, sizeof(temporary), "%s.XXXXXX", path);
-    if (n < 0 || (size_t)n >= sizeof(temporary)) {
+    int n = snprintf(out, size, "vela-locked-%s", display);
+    return n > 0 && (size_t)n < size;
+}
+
+bool vela_lock_marker_create_at(int runtime_fd, const char *display)
+{
+    char marker[64];
+    if (runtime_fd < 0 || !lock_marker_name(display, marker, sizeof(marker))) {
         return false;
     }
-    // A unique owner-only file avoids following a pre-existing marker symlink.
-    int fd = mkstemp(temporary);
+
+    // Keep the temporary in the same opened directory so renameat() is atomic
+    // and cannot be redirected if an XDG_RUNTIME_DIR parent symlink changes.
+    char temporary[96];
+    int fd = -1;
+    for (unsigned attempt = 0; attempt < 128; ++attempt) {
+        int n = snprintf(temporary, sizeof(temporary), "%s.tmp.%ld.%u",
+            marker, (long)getpid(), attempt);
+        if (n < 0 || (size_t)n >= sizeof(temporary)) {
+            return false;
+        }
+        fd = openat(runtime_fd, temporary,
+            O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC | O_NOFOLLOW, S_IRUSR | S_IWUSR);
+        if (fd >= 0) {
+            break;
+        }
+        if (errno != EEXIST) {
+            return false;
+        }
+    }
     if (fd < 0) {
         return false;
     }
-    bool ok = close(fd) == 0;
-    if (!ok || rename(temporary, path) != 0) {
-        unlink(temporary);
+
+    bool ok = fchmod(fd, S_IRUSR | S_IWUSR) == 0;
+    if (close(fd) != 0) {
+        ok = false;
+    }
+    if (!ok || renameat(runtime_fd, temporary, runtime_fd, marker) != 0) {
+        unlinkat(runtime_fd, temporary, 0);
         return false;
     }
     return true;
+}
+
+bool vela_lock_marker_present_at(int runtime_fd, const char *display)
+{
+    char marker[64];
+    if (runtime_fd < 0 || !lock_marker_name(display, marker, sizeof(marker))) {
+        return false;
+    }
+    struct stat info;
+    return fstatat(runtime_fd, marker, &info, AT_SYMLINK_NOFOLLOW) == 0
+        && S_ISREG(info.st_mode) && info.st_uid == geteuid()
+        && (info.st_mode & 077) == 0;
+}
+
+bool vela_lock_marker_remove_at(int runtime_fd, const char *display)
+{
+    char marker[64];
+    if (runtime_fd < 0 || !lock_marker_name(display, marker, sizeof(marker))) {
+        return false;
+    }
+    return unlinkat(runtime_fd, marker, 0) == 0 || errno == ENOENT;
 }

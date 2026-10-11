@@ -227,15 +227,6 @@ static double now_seconds(void)
     return (double)t.tv_sec + (double)t.tv_nsec / 1e9;
 }
 
-bool vela_lock_flag_path(const char *wayland_display, char *out, size_t size)
-{
-    const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
-    if (!vela_runtime_dir_private(runtime_dir)) {
-        return false;
-    }
-    return vela_lock_flag_path_for_runtime(runtime_dir, wayland_display, out, size);
-}
-
 bool vela_session_hook_path(char *out, size_t size)
 {
     char self[PATH_MAX] = { 0 };
@@ -252,15 +243,6 @@ bool vela_session_hook_path(char *out, size_t size)
     }
     int written = snprintf(out, size, "%s/vela-session-env", VELA_LIBEXECDIR);
     return written > 0 && (size_t)written < size && access(out, X_OK) == 0;
-}
-
-// A lock marker is meaningful only if it is a private, regular file in the
-// already-validated runtime directory. A symlink must not claim lock state.
-static bool lock_flag_present(const char *path)
-{
-    struct stat info;
-    return lstat(path, &info) == 0 && S_ISREG(info.st_mode)
-        && info.st_uid == geteuid() && (info.st_mode & 077) == 0;
 }
 
 // Starts `program` and waits for it to end (without leaving a zombie).
@@ -319,8 +301,6 @@ int vela_supervise(int argc, char **argv)
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGHUP, &action, NULL);
 
-    char lock_flag[PATH_MAX];
-    bool has_lock_flag = vela_lock_flag_path(socket.name, lock_flag, sizeof(lock_flag));
     double crashes[MAX_CRASHES];
     int crash_count = 0;
     int exit_code = 0;
@@ -335,15 +315,24 @@ int vela_supervise(int argc, char **argv)
             signal(SIGTERM, SIG_DFL);
             signal(SIGINT, SIG_DFL);
             signal(SIGHUP, SIG_DFL);
-            fcntl(socket.fd, F_SETFD, 0); // the compositor inherits it
+            // The compositor inherits the Wayland socket and the exact
+            // runtime-directory descriptor. It restores CLOEXEC on the latter
+            // before launching any applications.
+            if (fcntl(socket.fd, F_SETFD, 0) != 0
+                || fcntl(runtime_fd, F_SETFD, 0) != 0) {
+                _exit(127);
+            }
             char fd[16];
             snprintf(fd, sizeof(fd), "%d", socket.fd);
             setenv("VELA_WAYLAND_SOCKET_FD", fd, 1);
             setenv("VELA_WAYLAND_DISPLAY", socket.name, 1);
+            snprintf(fd, sizeof(fd), "%d", runtime_fd);
+            setenv("VELA_RUNTIME_DIR_FD", fd, 1);
             if (restarted) {
                 setenv("VELA_RESTARTED", "1", 1);
             }
-            if (has_lock_flag && lock_flag_present(lock_flag)) {
+            unsetenv("VELA_START_LOCKED");
+            if (vela_lock_marker_present_at(runtime_fd, socket.name)) {
                 setenv("VELA_START_LOCKED", "1", 1);
             }
             execv(self, arguments);
@@ -422,13 +411,7 @@ int vela_supervise(int argc, char **argv)
         setenv("WAYLAND_DISPLAY", socket.name, 1);
         run_and_wait(hook, "stop");
     }
-    if (has_lock_flag) {
-        char marker[64];
-        int n = snprintf(marker, sizeof(marker), "vela-locked-%s", socket.name);
-        if (n > 0 && (size_t)n < sizeof(marker)) {
-            unlinkat(runtime_fd, marker, 0);
-        }
-    }
+    vela_lock_marker_remove_at(runtime_fd, socket.name);
     unlinkat(runtime_fd, socket.path, 0);
     close(socket.fd);
     unlinkat(runtime_fd, socket.lock_path, 0);

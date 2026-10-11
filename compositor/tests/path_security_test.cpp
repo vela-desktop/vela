@@ -110,6 +110,9 @@ TEST(PathSecurity, LockMarkerAtomicallyReplacesSymlinks)
 {
     std::string pattern = (std::filesystem::temp_directory_path() / "vela-marker-XXXXXX").string();
     ASSERT_NE(mkdtemp(pattern.data()), nullptr);
+    int runtime_fd = vela_runtime_dir_open(pattern.c_str());
+    ASSERT_GE(runtime_fd, 0);
+
     const std::string marker = pattern + "/vela-locked-wayland-0";
     const std::string sentinel = pattern + "/do-not-change";
     {
@@ -119,19 +122,55 @@ TEST(PathSecurity, LockMarkerAtomicallyReplacesSymlinks)
         fclose(out);
     }
     ASSERT_EQ(symlink(sentinel.c_str(), marker.c_str()), 0);
-    ASSERT_TRUE(vela_lock_marker_create(marker.c_str()));
+    ASSERT_TRUE(vela_lock_marker_create_at(runtime_fd, "wayland-0"));
+    EXPECT_TRUE(vela_lock_marker_present_at(runtime_fd, "wayland-0"));
+
     struct stat marker_info {};
     ASSERT_EQ(lstat(marker.c_str(), &marker_info), 0);
     EXPECT_TRUE(S_ISREG(marker_info.st_mode));
     EXPECT_EQ(marker_info.st_uid, geteuid());
     EXPECT_EQ(marker_info.st_mode & 0777, 0600);
+
     char content[16] = {};
     FILE *in = fopen(sentinel.c_str(), "r");
     ASSERT_NE(in, nullptr);
     ASSERT_NE(fgets(content, sizeof(content), in), nullptr);
     fclose(in);
     EXPECT_STREQ(content, "unchanged");
-    unlink(marker.c_str());
+
+    EXPECT_TRUE(vela_lock_marker_remove_at(runtime_fd, "wayland-0"));
+    EXPECT_FALSE(vela_lock_marker_present_at(runtime_fd, "wayland-0"));
+    close(runtime_fd);
     unlink(sentinel.c_str());
     rmdir(pattern.c_str());
+}
+
+TEST(PathSecurity, LockMarkerSurvivesRuntimeAliasRetarget)
+{
+    std::string root = (std::filesystem::temp_directory_path() / "vela-marker-alias-XXXXXX").string();
+    ASSERT_NE(mkdtemp(root.data()), nullptr);
+    const std::string first = root + "/first";
+    const std::string second = root + "/second";
+    const std::string alias = root + "/runtime";
+    ASSERT_EQ(mkdir(first.c_str(), 0700), 0);
+    ASSERT_EQ(mkdir(second.c_str(), 0700), 0);
+    ASSERT_EQ(symlink(first.c_str(), alias.c_str()), 0);
+
+    int runtime_fd = vela_runtime_dir_open(alias.c_str());
+    ASSERT_GE(runtime_fd, 0);
+    ASSERT_TRUE(vela_lock_marker_create_at(runtime_fd, "wayland-0"));
+
+    ASSERT_EQ(unlink(alias.c_str()), 0);
+    ASSERT_EQ(symlink(second.c_str(), alias.c_str()), 0);
+    EXPECT_TRUE(vela_lock_marker_present_at(runtime_fd, "wayland-0"));
+    EXPECT_TRUE(std::filesystem::exists(first + "/vela-locked-wayland-0"));
+    EXPECT_FALSE(std::filesystem::exists(second + "/vela-locked-wayland-0"));
+
+    EXPECT_TRUE(vela_lock_marker_remove_at(runtime_fd, "wayland-0"));
+    EXPECT_FALSE(std::filesystem::exists(first + "/vela-locked-wayland-0"));
+    close(runtime_fd);
+    unlink(alias.c_str());
+    rmdir(first.c_str());
+    rmdir(second.c_str());
+    rmdir(root.c_str());
 }

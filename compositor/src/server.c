@@ -14,6 +14,7 @@
 #include "lock.h"
 #include "output.h"
 #include "output_manager.h"
+#include "path_security.h"
 #include "polkit.h"
 #include "render/renderer.h"
 #include "scene/effects.h"
@@ -30,6 +31,8 @@
 #include "workspace.h"
 
 #include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <math.h>
 #include <sched.h>
 #include <signal.h>
@@ -271,6 +274,7 @@ struct vela_server *vela_server_create(bool *unsupported_gpu)
 {
     if (unsupported_gpu) *unsupported_gpu = false;
     struct vela_server *server = calloc(1, sizeof(*server));
+    server->runtime_dir_fd = -1;
     if (!init(server)) {
         // What was already created is left to the process, which is about to
         // end.
@@ -289,15 +293,32 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     char given[64] = "";
     const char *socket_fd = getenv("VELA_WAYLAND_SOCKET_FD");
     const char *socket_display = getenv("VELA_WAYLAND_DISPLAY");
+    const char *runtime_fd_text = getenv("VELA_RUNTIME_DIR_FD");
     bool supervised = socket_fd && socket_display;
     if (supervised) {
+        char *end = NULL;
+        errno = 0;
+        long inherited = runtime_fd_text ? strtol(runtime_fd_text, &end, 10) : -1;
+        if (!runtime_fd_text || !*runtime_fd_text || !end || *end
+            || errno != 0 || inherited < 0 || inherited > INT_MAX
+            || !vela_runtime_dir_fd_private((int)inherited)
+            || fcntl((int)inherited, F_SETFD, FD_CLOEXEC) != 0) {
+            wlr_log(WLR_ERROR, "Supervisor did not provide a valid runtime-directory descriptor");
+            unsetenv("VELA_RUNTIME_DIR_FD");
+            unsetenv("VELA_WAYLAND_SOCKET_FD");
+            unsetenv("VELA_WAYLAND_DISPLAY");
+            return false;
+        }
+        server->runtime_dir_fd = (int)inherited;
         snprintf(given, sizeof(given), "%s", socket_display);
         if (wl_display_add_socket_fd(server->display, atoi(socket_fd)) == 0) {
             socket = given;
         }
+        unsetenv("VELA_RUNTIME_DIR_FD");
         unsetenv("VELA_WAYLAND_SOCKET_FD");
         unsetenv("VELA_WAYLAND_DISPLAY");
     } else {
+        unsetenv("VELA_RUNTIME_DIR_FD");
         socket = wl_display_add_socket_auto(server->display);
     }
     if (!socket) {
@@ -441,6 +462,10 @@ void vela_server_destroy(struct vela_server *server)
         vela_vulkan_destroy(server->vulkan); // last: everything else uses its device
     }
     wl_display_destroy(server->display);
+    if (server->runtime_dir_fd >= 0) {
+        close(server->runtime_dir_fd);
+        server->runtime_dir_fd = -1;
+    }
     free(server);
 }
 
