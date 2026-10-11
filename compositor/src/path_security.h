@@ -18,6 +18,9 @@ bool vela_relative_path_safe(const char *path);
 // Symlink runtime directories are not accepted.
 bool vela_runtime_dir_private(const char *path);
 
+// Atomically create a 0600 lock marker, safely replacing an old symlink.
+bool vela_lock_marker_create(const char *path);
+
 // The lock marker stays directly within the private runtime directory.
 // This builder is also tested without having to start a compositor.
 bool vela_lock_flag_path_for_runtime(const char *runtime_dir, const char *display,
