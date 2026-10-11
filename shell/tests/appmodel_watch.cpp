@@ -15,6 +15,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <cstdio>
+
 namespace {
 
 QString userApplications()
@@ -172,6 +174,43 @@ private slots:
         QVERIFY(writeDesktop(flatpakPath, entry("Flatpak Example")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("org.example.Flatpak.desktop")),
             QStringLiteral("Flatpak Example"), 5000);
+    }
+
+    void symlinkedRootReplacementReattachesNestedWatches()
+    {
+        const QString link = userApplications();
+        const QString parent = QFileInfo(link).absolutePath();
+        const QString oldRoot = parent + QStringLiteral("/catalog-old");
+        const QString newRoot = parent + QStringLiteral("/catalog-new");
+        const QString oldApp = oldRoot + QStringLiteral("/nested/original.desktop");
+        const QString newApp = newRoot + QStringLiteral("/nested/replacement.desktop");
+        QVERIFY(writeDesktop(oldApp, entry("Old Catalog")));
+        QVERIFY(writeDesktop(newApp, entry("New Catalog")));
+        QVERIFY(QFile::link(oldRoot, link));
+        QVERIFY(QFileInfo(link).isSymLink());
+
+        AppModel apps;
+        apps.reload();
+        QCOMPARE(apps.name(QStringLiteral("nested-original.desktop")), QStringLiteral("Old Catalog"));
+        QVERIFY(apps.name(QStringLiteral("nested-replacement.desktop")).isEmpty());
+
+        // A package manager can atomically replace a symlink without changing
+        // its pathname. rename(2) replaces the old symlink on Linux.
+        const QString nextLink = link + QStringLiteral(".next");
+        QVERIFY(QFile::link(newRoot, nextLink));
+        const QByteArray from = QFile::encodeName(nextLink);
+        const QByteArray to = QFile::encodeName(link);
+        QCOMPARE(std::rename(from.constData(), to.constData()), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("nested-replacement.desktop")),
+            QStringLiteral("New Catalog"), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(apps.name(QStringLiteral("nested-original.desktop")).isEmpty(), 5000);
+
+        // No parent-directory event is generated for a file added inside an
+        // existing nested directory: its own watcher must be reattached too.
+        const QString later = newRoot + QStringLiteral("/nested/later.desktop");
+        QVERIFY(writeDesktop(later, entry("Later Catalog")));
+        QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("nested-later.desktop")),
+            QStringLiteral("Later Catalog"), 5000);
     }
 };
 
