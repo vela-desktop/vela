@@ -174,6 +174,9 @@ AppModel::AppModel(QObject* parent)
     m_reloadTimer.setSingleShot(true);
     m_reloadTimer.setInterval(250);
     connect(&m_reloadTimer, &QTimer::timeout, this, &AppModel::reload);
+    m_watchRetryTimer.setSingleShot(true);
+    m_watchRetryTimer.setInterval(10000);
+    connect(&m_watchRetryTimer, &QTimer::timeout, this, &AppModel::reload);
     // Watch the .desktop files themselves too: changing Name= or Hidden=
     // in place need not generate a directoryChanged event on Linux.
     const auto changed = [this] { m_reloadTimer.start(); };
@@ -236,8 +239,23 @@ void AppModel::updateWatchPaths(const QStringList& directories, const QSet<QStri
             add.append(path);
         }
     }
-    if (!add.isEmpty()) {
-        m_watcher.addPaths(add);
+    // addPaths() reports rejected paths rather than throwing. A retry reload
+    // also discovers installs that occurred while a required watch was absent.
+    const QStringList failed = add.isEmpty() ? QStringList() : m_watcher.addPaths(add);
+    QSet<QString> failedPaths;
+    for (const QString& path : failed) {
+        failedPaths.insert(path);
+    }
+    if (failedPaths != m_failedWatchPaths) {
+        if (!failed.isEmpty()) {
+            qWarning().noquote() << "vela-shell: cannot watch application paths:" << failed.join(", ");
+        }
+        m_failedWatchPaths = std::move(failedPaths);
+    }
+    if (m_failedWatchPaths.isEmpty()) {
+        m_watchRetryTimer.stop();
+    } else {
+        m_watchRetryTimer.start();
     }
 }
 
@@ -288,11 +306,16 @@ void AppModel::reload()
         return collator.compare(a.name, b.name) < 0;
     });
 
+    const int previousCount = count();
     beginResetModel();
     m_all = std::move(entries);
-    m_visible.clear();
+    m_visible = filteredIndices();
     endResetModel();
-    applyFilter();
+    if (previousCount != count()) {
+        emit countChanged();
+    }
+    ++m_catalogRevision;
+    emit catalogRevisionChanged();
 
     qInfo("vela-shell: %lld applicazioni caricate in %lld ms",
         static_cast<long long>(m_all.size()), static_cast<long long>(timer.elapsed()));
@@ -308,7 +331,7 @@ void AppModel::setQuery(const QString& query)
     applyFilter();
 }
 
-void AppModel::applyFilter()
+QList<int> AppModel::filteredIndices() const
 {
     const QString q = m_query.trimmed();
     QList<int> visible;
@@ -352,6 +375,12 @@ void AppModel::applyFilter()
         }
     }
 
+    return visible;
+}
+
+void AppModel::applyFilter()
+{
+    QList<int> visible = filteredIndices();
     if (visible == m_visible) {
         return;
     }
