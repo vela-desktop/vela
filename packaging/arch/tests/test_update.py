@@ -127,7 +127,28 @@ while True:
         sys.exit(1)
 elif name == "gh":
     record()
-    if args[:2] == ["auth", "status"]:
+    if args[:2] == ["attestation", "verify"]:
+        # Simulate the GitHub CLI's verified identity + source commit policy,
+        # NOT the underlying Sigstore cryptography. A failure must fail closed.
+        if os.environ.get("TEST_REJECT_ATTEST"):
+            sys.exit(1)
+        if args[args.index("--repo") + 1] != "vela-desktop/vela":
+            sys.exit("Unexpected attestation repository")
+        if args[args.index("--signer-workflow") + 1] != "vela-desktop/vela/.github/workflows/build.yml":
+            sys.exit("Unexpected signer workflow")
+        sha = args[args.index("--source-digest") + 1]
+        if ".g" + sha[:7] + "-" not in pathlib.Path(args[2]).name:
+            sys.exit("Attestation source does not match the artifact")
+        if os.environ.get("TEST_WRONG_ATTEST_SHA"):
+            sys.exit(1)
+        if "--deny-self-hosted-runners" not in args:
+            sys.exit("Self-hosted runners must not be trusted")
+        if os.environ.get("TEST_REQUIRE_MAIN_REF") and (
+            "--source-ref" not in args or
+            args[args.index("--source-ref") + 1] != "refs/heads/main"
+        ):
+            sys.exit("Expected main source ref")
+    elif args[:2] == ["auth", "status"]:
         sys.exit(0 if os.environ.get("TEST_CI_RUN") else 1)
     if args[:2] == ["run", "list"]:
         print(os.environ["TEST_CI_RUN"])
@@ -349,6 +370,25 @@ class UpdateRevision(UpdateFixture):
         listing = next(call for call in self.calls("gh") if call["args"][:2] == ["run", "list"])
         self.assertEqual(listing["args"][listing["args"].index("-c") + 1], self.nvidia)
         self.assertIn(".g" + self.nvidia[:7] + "-", self.calls("sudo")[0]["args"][-1])
+        self.assertEqual(self.calls("makepkg"), [])
+
+    def test_workflow_artifact_with_invalid_attestation_is_never_installed(self):
+        self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.nvidia[:7],
+                        TEST_REJECT_ATTEST="1")
+        result = self.run_update("--branch", "fix/nvidia", "--download")
+        self.assertIn("provenance verification failed", result.stderr)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.nvidia)
+        self.assertEqual(list((self.mirror.parent / "packages").glob("*.pkg.tar.zst")), [])
+
+    def test_workflow_artifact_attestation_is_tied_to_selected_sha(self):
+        self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.nvidia[:7])
+        self.run_update("--branch", "fix/nvidia", "--download")
+        verification = next(call for call in self.calls("gh")
+                            if call["args"][:2] == ["attestation", "verify"])
+        args = verification["args"]
+        self.assertEqual(args[args.index("--source-digest") + 1], self.nvidia)
+        self.assertNotIn("--source-ref", args)  # manual branch packages
         self.assertEqual(self.calls("makepkg"), [])
 
     def test_failed_download_builds_selected_commit(self):
@@ -627,12 +667,15 @@ class UpdateSources(UpdateFixture):
 
 class UpdatePublicReleases(UpdateFixture):
     def test_public_package_installs_without_gh_login_or_build(self):
-        self.env["TEST_RELEASE_SHA"] = self.main
+        self.env.update(TEST_RELEASE_SHA=self.main, TEST_REQUIRE_MAIN_REF="1")
         self.run_update("--download", source=False)
         self.assertEqual(len(self.calls("curl")), 2)
         self.assertTrue(all("/alpha-" + self.main + "/" in c["args"][-1]
                             for c in self.calls("curl")))
-        self.assertEqual(self.calls("gh"), [])
+        verification = next(call for call in self.calls("gh")
+                            if call["args"][:2] == ["attestation", "verify"])
+        self.assertEqual(verification["args"][verification["args"].index("--source-digest") + 1],
+                         self.main)
         self.assertEqual(self.calls("makepkg"), [])
         self.assertEqual(len(self.calls("sudo")), 1)
         self.assertIn(".g" + self.main[:7] + "-", self.calls("sudo")[0]["args"][-1])
@@ -640,7 +683,7 @@ class UpdatePublicReleases(UpdateFixture):
     def test_check_only_fetches_manifest(self):
         self.env["TEST_RELEASE_SHA"] = self.main
         result = self.run_update("--check", source=False)
-        self.assertIn("Public alpha package available", result.stdout)
+        self.assertIn("Public alpha package found", result.stdout)
         self.assertEqual(len(self.calls("curl")), 1)
         self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
 
@@ -660,13 +703,36 @@ class UpdatePublicReleases(UpdateFixture):
     def test_bad_digest_falls_back_to_local_build(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_BAD_RELEASE_DIGEST="1")
         result = self.run_update("--download", source=False)
-        self.assertIn("failed checksum verification", result.stderr)
+        self.assertIn("unverified or corrupt", result.stderr)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_corrupted_download_falls_back_to_local_build(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_CORRUPT_RELEASE="1")
         self.run_update("--download", source=False)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_public_release_without_attestation_falls_back_to_source(self):
+        self.env.update(TEST_RELEASE_SHA=self.main, TEST_REJECT_ATTEST="1")
+        result = self.run_update("--download", source=False)
+        self.assertIn("provenance verification failed", result.stderr)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+        self.assertFalse(list((self.mirror.parent / "packages").glob("*.pkg.tar.zst")))
+
+    def test_public_release_with_wrong_source_provenance_falls_back(self):
+        self.env.update(TEST_RELEASE_SHA=self.main, TEST_WRONG_ATTEST_SHA="1")
+        self.run_update("--download", source=False)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_missing_gh_cli_never_installs_unattested_binary(self):
+        self.env["TEST_RELEASE_SHA"] = self.main
+        gh_path = self.directory / "bin/gh"
+        gh_path.rename(self.directory / "bin/gh.unavailable")
+        result = self.run_update("--download", source=False)
+        self.assertIn("gh) is required", result.stderr)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
