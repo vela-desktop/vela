@@ -106,6 +106,24 @@ private slots:
         QVERIFY(!serverMuted(microphone));
     }
 
+    void repeatedMicrophoneKeysHonorFinalIntent()
+    {
+        QSignalSpy osd(keys.get(), &SoundKeys::osdRequested);
+        keys->press(QStringLiteral("mic-mute"));
+        keys->press(QStringLiteral("mic-mute")); // before the first confirmation
+        QCOMPARE(osd.size(), 0);
+        QTRY_COMPARE(osd.size(), 1);
+        QVERIFY(!audio->inputMuted());
+        QVERIFY(!serverMuted(microphone));
+
+        keys->press(QStringLiteral("mic-mute"));
+        keys->press(QStringLiteral("mic-mute"));
+        keys->press(QStringLiteral("mic-mute"));
+        QTRY_COMPARE(osd.size(), 2);
+        QVERIFY(audio->inputMuted());
+        QVERIFY(serverMuted(microphone));
+    }
+
     void taskbarWheel()
     {
         audio->setAppResolver([](const AppIdentity& id) {
@@ -124,6 +142,24 @@ private slots:
         QTRY_VERIFY(near(audio->core()->snapshot().stream(stream)->volume(), 0.98));
         QVERIFY(!keys->stepTaskVolume(QStringLiteral("org.other.App.desktop"), -1));
         QCOMPARE(music->close(), 0);
+
+        // The same desktop application may record without playing anything.
+        // The wheel must not report a volume change for a recording stream.
+        auto voice = recorder(QStringLiteral("vela-player"));
+        QVERIFY(voice->waitStreaming());
+        QTRY_VERIFY([&] {
+            for (const QVariant& entry : audio->apps()) {
+                const QVariantMap app = entry.toMap();
+                if (app.value(QStringLiteral("key")).toString() == QLatin1String("vela-player")) {
+                    return app.value(QStringLiteral("recording")).toBool()
+                        && !app.value(QStringLiteral("playing")).toBool();
+                }
+            }
+            return false;
+        }());
+        QVERIFY(!keys->stepTaskVolume(QStringLiteral("org.vela.Player.desktop"), -1));
+        QCOMPARE(osd.size(), 1);
+        QCOMPARE(voice->close(), 0);
     }
 };
 
