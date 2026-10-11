@@ -1024,6 +1024,11 @@ void vela_view_unmapped(struct vela_view *view)
         vela_node_set_enabled(&view->tree->node, true);
     }
     destroy_handles(view);
+    // An unmapped view drops out of server->views; revoke its capture source
+    // now so a retained session cannot outlive the view's visible lifetime
+    // (and evade the lock-time revocation loop).
+    vela_window_capture_destroy(view->capture);
+    view->capture = NULL;
     forget(view);
     vela_workspaces_announce(view->server);
 }
