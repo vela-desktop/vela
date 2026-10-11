@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "snip.h"
+#include "../../common/privatefile.h"
 
 #include "clipboard.h"
 #include "notifications.h"
@@ -20,6 +21,7 @@
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
@@ -198,7 +200,9 @@ void Snip::finish(const QString& screenName, qreal x, qreal y, qreal width, qrea
     QDir().mkpath(folder);
     const QString path = folder + QStringLiteral("/Screenshot ")
         + QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HHmmss")) + QStringLiteral(".png");
-    const bool saved = cut.save(path, "PNG");
+    // Screenshots may contain private information. Save atomically and 0600.
+    QSaveFile file(path);
+    const bool saved = vela::openPrivateFile(file) && cut.save(&file, "PNG") && file.commit();
     const uint id = m_notifications->Notify(QCoreApplication::translate("Snip", "Snipping Tool"), 0,
         QStringLiteral("accessories-screenshot"), QCoreApplication::translate("Snip", "Screenshot copied to clipboard"),
         saved ? QCoreApplication::translate("Snip", "Saved to Pictures > Screenshot. Click to open it.")
