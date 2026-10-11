@@ -192,6 +192,7 @@ packaging/arch/     PKGBUILD and vela-update
 report/             vela-report: shared Python core/CLI and standalone Qt Widgets GUI
 tools/              development and test clients
 tests/functional/   headless functional scenarios
+tests/audio/        private PipeWire and WirePlumber for the audio tests (docs/audio.md)
 scripts/            nested/headless launchers, sharpness and measurements
 docs/               design and developer documentation
 ```

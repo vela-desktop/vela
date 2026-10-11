@@ -36,7 +36,7 @@ env:
     wayland wayland-protocols wlroots0.20 libxkbcommon pixman libinput libdrm
     mesa freetype2 harfbuzz fontconfig librsvg cairo zlib pam polkit
     qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt
-    hicolor-icon-theme xorg-xwayland
+    hicolor-icon-theme xorg-xwayland pipewire wireplumber
 
 jobs:
   packaging-tests:

@@ -5,7 +5,8 @@ Settings. It replaces today's three backends, which drive command-line tools
 (`wpctl`, `pactl`, `pw-dump`, `pw-metadata`). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** design under discussion. No code yet.
+> **Status:** design approved. **A0 is done** (§13): the test fixture runs
+> a private PipeWire and WirePlumber in CI. Next: A1, the library.
 
 ## 1. Goals
 
@@ -288,6 +289,11 @@ Two mechanisms, as decided.
   - After a change, WirePlumber is restarted through systemd's user manager
     (D-Bus `RestartUnit("wireplumber.service")`, no process started). The
     page says before applying that **sound stops for about a second**.
+  - WirePlumber writes its state (defaults, volumes, profiles, each app's
+    choices) about **one second after a change**, and does not write it
+    when it exits. Seen in A0, and covered by a test. A restart sooner than
+    that loses the last changes. Vela therefore restarts it only once 1.5 s
+    have passed since its own last change.
   - Names are matched on `node.name`. If a device stops existing, its rule
     stays (harmless) until Vela rewrites the file.
 
@@ -331,14 +337,30 @@ the test in a private `XDG_RUNTIME_DIR`, `XDG_STATE_HOME` and
 `XDG_CONFIG_HOME` under the build directory. They never touch the user's
 audio or WirePlumber state.
 
-- **Fixture**:
-  - PipeWire with a minimal configuration and fake devices
-    (`support.null-audio-sink`): a stereo output, a second output, a 5.1
-    output, a microphone;
-  - WirePlumber with the ALSA, Bluetooth and camera monitors disabled;
-  - a small test client (`tests/audio/fake-stream.c`) that opens playback or
-    recording streams with chosen properties (binary, app name, portal app
-    id, media role) and a known amplitude.
+- **Fixture** (`tests/audio/`, done in A0):
+  - `pipewire.conf`: PipeWire with no hardware, no realtime and fake
+    devices (`support.null-audio-sink`): `vela-test-speakers` (stereo, the
+    default), `vela-test-headphones` (stereo), `vela-test-surround` (5.1),
+    `vela-test-microphone` (mono, `Audio/Source/Virtual`, the default
+    input);
+  - `wireplumber-test.conf`: WirePlumber's normal policy, defaults and
+    state (`-p vela-test`), without the ALSA, Bluetooth and camera monitors
+    and without D-Bus;
+  - `fixture.py`: starts both in a temporary directory (runtime, state,
+    configuration, home) and gives tests an environment that cannot reach
+    the user's audio, D-Bus or WirePlumber state. The system bus points at
+    a socket nobody listens on (no rtkit, BlueZ or logind). It also runs a
+    single command inside: `fixture.py -- wpctl status`;
+  - `fake-stream.c`, `vela-audio-fake-stream`: a fake app that plays a sine
+    of known amplitude or records and reports per-channel peaks. It takes
+    any stream property (binary, app name, portal app id, media role,
+    target) and speaks lines of text (`ready`, `state`, `peaks`; `pause`,
+    `resume`, `quit`). A non-zero exit (a crash, a sanitizer) fails the
+    test;
+  - `test_fixture.py` (`audio-fixture`): devices and defaults, channel
+    layouts, playback following the default output, recording from the
+    microphone, levels following amplitude and volume, pause and resume,
+    WirePlumber and PipeWire restarts, isolation, clean shutdown. About 4 s.
 - **Library (`audio.*`)**:
   - outputs, inputs, defaults, apps grouped by program;
   - changes from outside (`wpctl` in the test) arriving as events;
@@ -357,7 +379,8 @@ audio or WirePlumber state.
   - the test sound reaching only the chosen output, left channel then right
     (checked by recording that output's monitor);
   - `90-vela.conf` written atomically, other files in the directory left
-    untouched, a rename visible after the restart.
+    untouched, WirePlumber accepting it across a restart. The rename itself
+    is checked by hand (§14).
 - **Interface (functional)**: the volume indicator (keys, microphone mute
   key), quick settings mixer (outputs, app volume/output/input), the wheel
   on a taskbar button, the tray's microphone icon, Settings' three pages.
@@ -393,7 +416,7 @@ audio or WirePlumber state.
 
 | Stage | Content | |
 |---|---|---|
-| A0 | Test fixture (§11), CI packages | |
+| A0 | Test fixture (§11), CI packages | done |
 | A1 | `vela-audio`: connection, model, volume (grid, cap, balance), defaults, apps and their outputs/inputs, reconnection; library tests | |
 | A2 | Shell on the library: system volume, OSD, microphone mute key (compositor + OSD), quick settings mixer with inputs, taskbar wheel; `wpctl`/`pactl`/`pw-*` gone from the shell | |
 | A3 | Settings on the library: Sound page with input level, device properties (profile/off, codec, balance, test sound), Mixer page with levels; `audio.cpp` gone | |
@@ -418,8 +441,10 @@ audio or WirePlumber state.
   noise filters installed by the user) and apps that keep a paused recording
   stream. The rule in §7.2 (running + linked to a source) is to be checked
   with real apps (browsers, Discord, OBS).
-- **Rename rules for null sinks**: the tests need `90-vela.conf`'s rules to
-  match the fixture's fake devices too. To check in A0, otherwise the rename
-  is only tested by hand.
+- **Rename in the tests** (answered in A0): `monitor.alsa.rules` and
+  `monitor.bluez.rules` apply to the nodes WirePlumber's monitors create.
+  The fixture's null sinks are made by PipeWire itself, so no rule renames
+  them. The automated tests check the file and that WirePlumber accepts it;
+  the rename itself is in the manual tests.
 - **libwireplumber API changes**: 0.4 → 0.5 broke clients. Vela pins
   `wireplumber-0.5` at build time; a 0.6 would mean a port of `Core`.
