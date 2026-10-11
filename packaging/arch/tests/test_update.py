@@ -48,6 +48,13 @@ if url is not None:
 rewrite = "url." + pathlib.Path(os.environ["TEST_SOURCE"]).as_uri() + ".insteadOf=" + os.environ["TEST_HTTPS_SOURCE"]
 sys.exit(subprocess.call([real_git, *(["-c", rewrite] if url is not None else []), *args]))
 '''
+MV_STUB = r'''#!/usr/bin/env python3
+import os, sys
+if (os.environ.get("TEST_FAIL_CONFIG_MV") == "1" and
+        sys.argv[-1] == os.environ["TEST_CONFIG_DEST"]):
+    sys.exit(1)
+os.execv(os.environ["TEST_REAL_MV"], [os.environ["TEST_REAL_MV"], *sys.argv[1:]])
+'''
 STUB = r'''#!/usr/bin/env python3
 import json, os, pathlib, subprocess, sys
 name = pathlib.Path(sys.argv[0]).name
@@ -144,9 +151,9 @@ class UpdateFixture(unittest.TestCase):
         self.source.mkdir()
         bin_dir = self.directory / "bin"
         bin_dir.mkdir()
-        for name in ("pacman", "makepkg", "gh", "sudo", "curl", "git"):
+        for name in ("pacman", "makepkg", "gh", "sudo", "curl", "git", "mv"):
             stub = bin_dir / name
-            stub.write_text(GIT_STUB if name == "git" else STUB)
+            stub.write_text(GIT_STUB if name == "git" else MV_STUB if name == "mv" else STUB)
             stub.chmod(0o755)
         # Installed/updater entry point is outside a checkout: only the
         # explicit bootstrap test below runs the updater from a Git checkout.
@@ -165,7 +172,9 @@ class UpdateFixture(unittest.TestCase):
                         GIT_ALLOW_PROTOCOL="file", GIT_TERMINAL_PROMPT="0",
                         TEST_CALLS=str(self.calls_file), TEST_REAL_GIT=shutil.which("git"),
                         TEST_SOURCE=str(self.source), TEST_DIRECTORY=str(self.directory),
-                        TEST_HTTPS_SOURCE=HTTPS_SOURCE)
+                        TEST_HTTPS_SOURCE=HTTPS_SOURCE,
+                        TEST_REAL_MV=shutil.which("mv"),
+                        TEST_CONFIG_DEST=str(self.directory / "config/vela/updates.conf"))
         self.config = self.directory / "config/vela/updates.conf"
         self.mirror = self.directory / "cache/vela-update/vela.git"
         self.git("init", "--quiet", "--initial-branch=main")
@@ -319,7 +328,7 @@ class UpdateRevision(UpdateFixture):
         for args in (("--branch",), ("--commit",), ("--branch=",), ("--commit=",),
                      ("--branch", "../main"), ("--commit", "HEAD"),
                      ("--branch", "main", "--commit", self.main),
-                     ("--jobs",), ("--jobs="), ("--source",), ("--source=")):
+                     ("--jobs",), ("--jobs=",), ("--source",), ("--source=",)):
             with self.subTest(args=args):
                 self.run_update(*args, status=2)
         self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
@@ -488,6 +497,38 @@ class UpdateSources(UpdateFixture):
             env=self.env, text=True).strip()
         self.assertEqual(origin, str(self.source))
 
+    def test_config_failure_restores_previous_mirror(self):
+        self.run_update("--check")
+        original_origin = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip()
+        alternate = self.directory / "alternate"
+        shutil.copytree(self.source, alternate)
+        self.env["TEST_FAIL_CONFIG_MV"] = "1"
+        try:
+            self.run_update("--source", str(alternate), "--check",
+                            source=False, status=1)
+        finally:
+            self.env.pop("TEST_FAIL_CONFIG_MV")
+        self.assertEqual(self.config.read_text(), f"source={self.source}\n")
+        restored_origin = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip()
+        self.assertEqual(restored_origin, original_origin)
+        self.assertFalse(list(self.mirror.parent.glob("vela-backup.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+        self.run_update("--check", source=False)
+
+    def test_initial_config_failure_removes_uncommitted_mirror(self):
+        self.env["TEST_FAIL_CONFIG_MV"] = "1"
+        try:
+            self.run_update("--source", str(self.source), "--check", source=False, status=1)
+        finally:
+            self.env.pop("TEST_FAIL_CONFIG_MV")
+        self.assertFalse(self.mirror.exists())
+        self.assertFalse(self.config.exists())
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+
     def test_old_origin_uses_org_for_ci_artifacts(self):
         self.git("remote", "set-url", "origin", "git@github.com:BrandoDev/vela.git")
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.main[:7])
@@ -627,13 +668,19 @@ class UpdateConcurrency(UpdateFixture):
     def test_interrupted_build_cleans_temp_directories_and_keeps_mirror(self):
         proc, release = self.start_paused_build()
         proc.send_signal(signal.SIGTERM)
-        release.touch()
-        stdout, stderr = proc.communicate(timeout=30)
-        self.assertNotEqual(proc.returncode, 0, stdout + stderr)
+        try:
+            # A hung makepkg never releases its marker: SIGTERM must still
+            # terminate the updater promptly without waiting for it.
+            stdout, stderr = proc.communicate(timeout=8)
+        finally:
+            release.touch()
+        self.assertEqual(proc.returncode, 143, stdout + stderr)
         self.assertTrue(self.mirror.is_dir())
         self.assertFalse(list(self.mirror.parent.glob("build.*")))
         self.assertFalse(list(self.mirror.parent.glob("download.*")))
         self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+        self.env.pop("TEST_PAUSE_BUILD", None)
+        self.run_update("--check")
 
 
 class PackageSources(unittest.TestCase):
