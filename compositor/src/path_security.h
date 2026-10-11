@@ -14,7 +14,11 @@ bool vela_path_component_safe(const char *name);
 // must not be empty, "." or ".."; absolute paths are rejected.
 bool vela_relative_path_safe(const char *path);
 
-// XDG_RUNTIME_DIR must be an absolute 0700-style directory owned by this UID.
+// Open the actual XDG_RUNTIME_DIR (absolute, private, owned), rejecting a
+// final symlink. Caller owns the returned O_PATH directory fd.
+int vela_runtime_dir_open(const char *path);
+
+// XDG_RUNTIME_DIR must be an absolute private directory owned by this UID.
 // Symlink runtime directories are not accepted.
 bool vela_runtime_dir_private(const char *path);
 
