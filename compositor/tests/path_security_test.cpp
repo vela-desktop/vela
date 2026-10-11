@@ -7,6 +7,7 @@ extern "C" {
 }
 
 #include <gtest/gtest.h>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -79,4 +80,34 @@ TEST(PathSecurity, RejectsConfigFilenameTraversal)
     EXPECT_FALSE(vela_config_path("", path, sizeof(path)));
     EXPECT_TRUE(vela_config_path("vela.conf", path, sizeof(path)));
     EXPECT_TRUE(vela_config_path(nullptr, path, sizeof(path)));
+}
+
+TEST(PathSecurity, LockMarkerAtomicallyReplacesSymlinks)
+{
+    std::string pattern = (std::filesystem::temp_directory_path() / "vela-marker-XXXXXX").string();
+    ASSERT_NE(mkdtemp(pattern.data()), nullptr);
+    const std::string marker = pattern + "/vela-locked-wayland-0";
+    const std::string sentinel = pattern + "/do-not-change";
+    {
+        FILE *out = fopen(sentinel.c_str(), "w");
+        ASSERT_NE(out, nullptr);
+        ASSERT_GT(fputs("unchanged", out), 0);
+        fclose(out);
+    }
+    ASSERT_EQ(symlink(sentinel.c_str(), marker.c_str()), 0);
+    ASSERT_TRUE(vela_lock_marker_create(marker.c_str()));
+    struct stat marker_info {};
+    ASSERT_EQ(lstat(marker.c_str(), &marker_info), 0);
+    EXPECT_TRUE(S_ISREG(marker_info.st_mode));
+    EXPECT_EQ(marker_info.st_uid, geteuid());
+    EXPECT_EQ(marker_info.st_mode & 0777, 0600);
+    char content[16] = {};
+    FILE *in = fopen(sentinel.c_str(), "r");
+    ASSERT_NE(in, nullptr);
+    ASSERT_NE(fgets(content, sizeof(content), in), nullptr);
+    fclose(in);
+    EXPECT_STREQ(content, "unchanged");
+    unlink(marker.c_str());
+    unlink(sentinel.c_str());
+    rmdir(pattern.c_str());
 }
