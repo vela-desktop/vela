@@ -20,11 +20,14 @@ jobs:
     name: Fedora 45
     runs-on: ubuntu-latest
     container: fedora:45
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-fedora
+      CCACHE_MAXSIZE: 350M
     steps:
       - name: Install dependencies
         run: >-
           dnf install -y
-          git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config
+          git cmake ninja-build ccache gcc gcc-c++ pkgconf-pkg-config
           glslc vulkan-headers vulkan-loader-devel
           wayland-devel wayland-protocols-devel wlroots-devel
           libxkbcommon-devel pixman-devel libinput-devel libdrm-devel
@@ -39,18 +42,42 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Restore Fedora compiler cache
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: .ccache-fedora
+          key: ccache-fedora45-relwithdebinfo-v1-${{ github.sha }}
+          restore-keys: |
+            ccache-fedora45-relwithdebinfo-v1-
+
       - name: Configure
         run: >-
           cmake -S . -B build-fedora -G Ninja
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DVELA_BUILD_TOOLS=ON
 
       - name: Build
-        run: cmake --build build-fedora --parallel 2
+        run: |
+          ccache --zero-stats
+          cmake --build build-fedora --parallel 2
+      - name: Compiler cache statistics
+        if: always()
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
+
 
       - name: CPU-only tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: >-
-          ctest --test-dir build-fedora --output-on-failure --parallel 2
-          -E '^(functional|sharpness)$'
+        run: |
+          # The packaging-tests job in Build owns this suite for PRs.
+          # Explicit manual runs remain self-contained.
+          exclude='^(functional|sharpness)$'
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            exclude='^(functional|sharpness|packaging-update)$'
+          fi
+          ctest --test-dir build-fedora --output-on-failure --parallel 2 -E "$exclude"
