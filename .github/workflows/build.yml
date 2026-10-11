@@ -55,8 +55,8 @@ jobs:
           sh -n session/vela-session.in scripts/test-sharpness.sh
           bash -n packaging/arch/PKGBUILD
 
+  # Independent of packaging contracts; both jobs still gate packaging.
   build:
-    needs: packaging-tests
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
@@ -87,11 +87,12 @@ jobs:
           CCACHE_DIR: ${{ github.workspace }}/.ccache
           CCACHE_MAXSIZE: 500M
         run: |
+          ccache --zero-stats
           cmake --build build -j "$(nproc)"
           ccache --show-stats
 
       - name: Tests
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure -E '^packaging-update$'
 
       - name: Scripts
         run: |
@@ -101,9 +102,12 @@ jobs:
 
   package:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
-    needs: build
+    needs: [packaging-tests, build]
     runs-on: ubuntu-latest
     container: archlinux:latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-package
+      CCACHE_MAXSIZE: 350M
     steps:
       - name: Dependencies
         run: pacman -Syu --noconfirm --needed $DEPENDENCIES
@@ -113,11 +117,21 @@ jobs:
           persist-credentials: false
           fetch-depth: 0 # the package version counts commits
 
+      - name: Restore Arch package compiler cache
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: .ccache-package
+          key: ccache-arch-package-v1-${{ github.sha }}
+          restore-keys: |
+            ccache-arch-package-v1-
+
       # makepkg doesn't run as root: a dedicated user, which takes Vela from
       # this copy of the repository.
       - name: Package
         run: |
           useradd -m builder
+          mkdir -p "$CCACHE_DIR"
+          chown -R builder:builder "$CCACHE_DIR"
           cp -r packaging/arch /home/builder/pkgbuild
           chown -R builder /home/builder/pkgbuild
           git config --system --add safe.directory '*'
@@ -125,7 +139,21 @@ jobs:
           # much.
           sed -i '/^OPTIONS=/s/\([( ]\)debug\b/\1!debug/' /etc/makepkg.conf
           cd /home/builder/pkgbuild
-          su builder -c "VELA_GIT_URL=file://$GITHUB_WORKSPACE MAKEFLAGS=-j$(nproc) makepkg --noconfirm"
+          su -s /bin/bash builder -c "CCACHE_DIR=$CCACHE_DIR ccache --zero-stats"
+          su -s /bin/bash builder -c \
+            "cd /home/builder/pkgbuild && \
+            CCACHE_DIR=$CCACHE_DIR CCACHE_MAXSIZE=$CCACHE_MAXSIZE \
+            CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            VELA_GIT_URL=file://$GITHUB_WORKSPACE MAKEFLAGS=-j$(nproc) \
+            makepkg --noconfirm"
+
+
+      - name: Compiler cache statistics
+        if: always()
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

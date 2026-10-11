@@ -14,11 +14,14 @@ jobs:
   package-build:
     runs-on: ubuntu-latest
     container: archlinux:latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-package
+      CCACHE_MAXSIZE: 350M
     steps:
       - name: Build dependencies
         run: >-
           pacman -Syu --noconfirm --needed
-          base-devel git cmake python shaderc vulkan-headers wayland-protocols
+          base-devel git cmake ccache python shaderc vulkan-headers wayland-protocols
           qt6-tools wlroots0.20 wayland libxkbcommon pixman libinput
           libdrm mesa vulkan-icd-loader freetype2 harfbuzz fontconfig
           librsvg cairo qt6-base qt6-declarative qt6-svg qt6-wayland
@@ -27,17 +30,40 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Restore Arch package compiler cache
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: .ccache-package
+          key: ccache-arch-package-v1-${{ github.sha }}
+          restore-keys: |
+            ccache-arch-package-v1-
+
       - name: Build checked-out revision with makepkg
         shell: bash
         run: |
           git config --system --add safe.directory '*'
           git checkout -B ci-package-source HEAD
           useradd -m builder
+          mkdir -p "$CCACHE_DIR"
+          chown -R builder:builder "$CCACHE_DIR"
           cp -r packaging/arch /home/builder/pkgbuild
           chown -R builder:builder /home/builder/pkgbuild
           sed -i '/^OPTIONS=/s/\([( ]\)debug\b/\1!debug/' /etc/makepkg.conf
+          su -s /bin/bash builder -c "CCACHE_DIR=$CCACHE_DIR ccache --zero-stats"
           su -s /bin/bash builder -c \
-            "cd /home/builder/pkgbuild && VELA_GIT_URL=file://$GITHUB_WORKSPACE MAKEFLAGS=-j2 makepkg --noconfirm"
+            "cd /home/builder/pkgbuild && \
+            CCACHE_DIR=$CCACHE_DIR CCACHE_MAXSIZE=$CCACHE_MAXSIZE \
+            CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            VELA_GIT_URL=file://$GITHUB_WORKSPACE MAKEFLAGS=-j2 \
+            makepkg --noconfirm"
+
+      - name: Compiler cache statistics
+        if: always()
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vela-smoke-package
