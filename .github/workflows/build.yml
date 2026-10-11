@@ -55,10 +55,13 @@ jobs:
           sh -n session/vela-session.in scripts/test-sharpness.sh
           bash -n packaging/arch/PKGBUILD
 
+  # Pin the official Arch x86_64 container manifest. All these jobs run
+  # pacman -Syu, but cannot silently change their base image identity.
+  # Refresh the digest intentionally when updating the builder environment.
   # Independent of packaging contracts; both jobs still gate packaging.
   build:
     runs-on: ubuntu-latest
-    container: archlinux:latest
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     steps:
       - name: Dependencies
         run: pacman -Syu --noconfirm --needed $DEPENDENCIES
@@ -109,7 +112,7 @@ jobs:
       id-token: write
       attestations: write
       artifact-metadata: write
-    container: archlinux:latest
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-package
       CCACHE_MAXSIZE: 350M
@@ -191,7 +194,7 @@ jobs:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: package
     runs-on: ubuntu-latest
-    container: archlinux:latest
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
