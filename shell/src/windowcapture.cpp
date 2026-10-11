@@ -124,6 +124,7 @@ struct CaptureCallbacks {
         closed, done, title, appId, identifier
     };
 
+    /** Forward capture completion to Qt; finishJob may destroy the capture job. */
     static void captured(vela_capture_job*, bool ok, void* userdata)
     {
         auto* job = static_cast<Job*>(userdata);
