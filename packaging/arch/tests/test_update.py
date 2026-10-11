@@ -101,7 +101,7 @@ elif name == "gh":
         if os.environ.get("TEST_FAIL_DOWNLOAD"):
             sys.exit(1)
         dest = pathlib.Path(args[args.index("-D") + 1])
-        dest.mkdir(parents=True)
+        dest.mkdir(parents=True, exist_ok=True)
         sha = os.environ["TEST_DOWNLOAD_SHA"]
         (dest / ("vela-git-0.1.0.r1.g" + sha + "-1-x86_64.pkg.tar.zst")).touch()
 elif name == "curl":
