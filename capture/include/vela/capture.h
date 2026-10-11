@@ -7,6 +7,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct wl_shm;
 struct ext_image_capture_source_v1;
 struct ext_image_copy_capture_manager_v1;
@@ -44,3 +48,7 @@ struct vela_capture_job *vela_capture_begin(
 const struct vela_capture_frame *vela_capture_pixels(const struct vela_capture_job *job);
 void vela_capture_end(struct vela_capture_job *job);
 bool vela_capture_supported_format(uint32_t format);
+
+#ifdef __cplusplus
+}
+#endif
