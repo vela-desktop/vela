@@ -15,6 +15,7 @@
 #include "scene/surface.h"
 #include "server.h"
 #include "supervisor.h"
+#include "path_security.h"
 #include "util.h"
 
 #include <fcntl.h>
@@ -372,16 +373,7 @@ void vela_lock_engage(struct vela_lock *lock)
     // locked (supervisor.c).
     char flag[PATH_MAX];
     if (vela_lock_flag_path(getenv("WAYLAND_DISPLAY"), flag, sizeof(flag))) {
-        int fd = open(flag, O_CREAT | O_WRONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK,
-            S_IRUSR | S_IWUSR);
-        if (fd >= 0) {
-            struct stat info;
-            if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode)
-                || info.st_uid != geteuid() || fchmod(fd, S_IRUSR | S_IWUSR) != 0) {
-                wlr_log(WLR_ERROR, "Could not record private screen-lock state");
-            }
-            close(fd);
-        } else {
+        if (!vela_lock_marker_create(flag)) {
             wlr_log(WLR_ERROR, "Could not create secure screen-lock marker");
         }
     }
