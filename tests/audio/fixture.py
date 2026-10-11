@@ -193,6 +193,11 @@ class AudioFixture:
         dropins = self.root / "config" / "wireplumber" / "wireplumber.conf.d"
         dropins.mkdir(parents=True)
         shutil.copy(HERE / "wireplumber-test.conf", dropins / "10-vela-test.conf")
+        # Clients (the fake app, the library under test) without realtime
+        # scheduling: nothing to ask rtkit or the kernel for in a test.
+        clients = self.root / "config" / "pipewire" / "client.conf.d"
+        clients.mkdir(parents=True)
+        (clients / "10-vela-test.conf").write_text("context.properties = { module.rt = false }\n")
 
         env = {k: v for k, v in os.environ.items() if k not in _DROPPED}
         env.update({
