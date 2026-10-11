@@ -12,6 +12,7 @@ set(CAPTURE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/protocols")
 file(MAKE_DIRECTORY "${CAPTURE_GENERATED_DIR}")
 set(CAPTURE_GENERATED_FILES)
 foreach(name
+        ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1
         ext-image-capture-source/ext-image-capture-source-v1
         ext-image-copy-capture/ext-image-copy-capture-v1)
     get_filename_component(base "${name}" NAME)
