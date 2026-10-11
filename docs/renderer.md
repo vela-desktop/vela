@@ -181,7 +181,7 @@ X11 app supports scaling.
 
 ### 3.10 How we prove it
 
-Automated tests (headless session + `vela-shot`) with a **test client** that
+Automated tests (headless session + `vela-screen-dump`) with a **test client** that
 draws "nasty" patterns: alternating one-pixel lines, checkerboards, 1 px text.
 At every supported scale the test compares the pixels on screen with the
 client's buffer **bit for bit**, also after moving, snapping and maximizing it.
