@@ -14,8 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <unistd.h>
 #include <wayland-client.h>
 #include <zlib.h>
 
@@ -47,7 +45,7 @@ static void registryGlobal(void* data, struct wl_registry* registry, uint32_t na
         shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     } else if (!strcmp(interface, wl_output_interface.name)) {
         static int seen = 0;
-        const char* wanted = getenv("VELA_SHOT_OUTPUT");
+        const char* wanted = getenv("VELA_SCREEN_DUMP_OUTPUT");
         if (seen++ == (wanted ? atoi(wanted) : 0)) {
             output = wl_registry_bind(registry, name, &wl_output_interface, 1);
         }
@@ -95,7 +93,7 @@ static int writePng(const char* path, const struct vela_capture_frame* frame, in
 {
     // In memory: XRGB/ARGB8888 = B,G,R,A; XBGR/ABGR8888 = R,G,B,A.
     const unsigned char* pixels = frame->pixels;
-    const int bgr = frame->format == WL_SHM_FORMAT_XRGB8888 || frame.format == WL_SHM_FORMAT_ARGB8888;
+    const int bgr = frame->format == WL_SHM_FORMAT_XRGB8888 || frame->format == WL_SHM_FORMAT_ARGB8888;
     const size_t rowSize = 1 + (size_t)w * 3;
     unsigned char* raw = malloc(rowSize * h);
     for (int row = 0; row < h; ++row) {
@@ -181,7 +179,7 @@ int main(int argc, char** argv)
         y = atoi(argv[3]);
         w = atoi(argv[4]);
         h = atoi(argv[5]);
-        if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > (int)result->width || y + h > (int)result->height) {
+        if (x < 0 || y < 0 || w <= 0 || h <= 0 || (int64_t)x + w > result->width || (int64_t)y + h > result->height) {
             fprintf(stderr, "vela-screen-dump: region outside the output (%ux%u)\n", result->width, result->height);
             return 2;
         }
