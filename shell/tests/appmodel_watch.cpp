@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -66,6 +67,7 @@ private slots:
         AppModel apps;
         apps.reload();
         apps.setQuery(QStringLiteral("Example Player"));
+        QSignalSpy countSignals(&apps, &AppModel::countChanged);
 
         const QString path = userApplications() + QStringLiteral("/example-player.desktop");
         QVERIFY(writeDesktop(path, entry("Example Player")));
@@ -74,9 +76,11 @@ private slots:
             QStringLiteral("Example Player"), 5000);
         QTRY_COMPARE_WITH_TIMEOUT(apps.count(), 1, 5000);
 
+        const qsizetype signalsBeforeRemove = countSignals.size();
         QVERIFY(QFile::remove(path));
         QTRY_VERIFY_WITH_TIMEOUT(apps.name(QStringLiteral("example-player.desktop")).isEmpty(), 5000);
         QTRY_COMPARE_WITH_TIMEOUT(apps.count(), 0, 5000);
+        QVERIFY(countSignals.size() > signalsBeforeRemove);
     }
 
     void editsInPlaceUpdateNamesAndVisibility()
@@ -87,11 +91,15 @@ private slots:
         AppModel apps;
         apps.reload();
         QCOMPARE(apps.name(QStringLiteral("edited.desktop")), QStringLiteral("Original Name"));
+        QSignalSpy revisions(&apps, &AppModel::catalogRevisionChanged);
+        const int revisionBeforeEdit = apps.catalogRevision();
 
         // Truncating/re-writing the same inode need not change the directory.
         QVERIFY(writeDesktop(path, entry("Updated Name")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("edited.desktop")),
             QStringLiteral("Updated Name"), 5000);
+        QVERIFY(apps.catalogRevision() > revisionBeforeEdit);
+        QVERIFY(!revisions.isEmpty());
 
         QVERIFY(writeDesktop(path, entry("Hidden Name", "NoDisplay=true\n")));
         QTRY_VERIFY_WITH_TIMEOUT(apps.name(QStringLiteral("edited.desktop")).isEmpty(), 5000);
@@ -99,6 +107,27 @@ private slots:
         QVERIFY(writeDesktop(path, entry("Visible Again")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("edited.desktop")),
             QStringLiteral("Visible Again"), 5000);
+    }
+
+    void reloadResetsOnceAndReportsLastAppRemoval()
+    {
+        const QString path = userApplications() + QStringLiteral("/reset.desktop");
+        QVERIFY(writeDesktop(path, entry("Reset Example")));
+        AppModel apps;
+        apps.reload();
+        apps.setQuery(QStringLiteral("Reset"));
+        QCOMPARE(apps.count(), 1);
+
+        QSignalSpy resets(&apps, &QAbstractItemModel::modelReset);
+        QSignalSpy countSignals(&apps, &AppModel::countChanged);
+        QSignalSpy revisions(&apps, &AppModel::catalogRevisionChanged);
+
+        QVERIFY(QFile::remove(path));
+        apps.reload();
+        QCOMPARE(apps.count(), 0);
+        QCOMPARE(resets.size(), 1);
+        QCOMPARE(countSignals.size(), 1);
+        QCOMPARE(revisions.size(), 1);
     }
 
     void nestedDirectoriesAreDiscovered()
