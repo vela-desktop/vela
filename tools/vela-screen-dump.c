@@ -11,6 +11,7 @@
 #define _GNU_SOURCE
 #include <stdint.h>
 #include <stdbool.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,8 +95,11 @@ static int writePng(const char* path, const struct vela_capture_frame* frame, in
     // In memory: XRGB/ARGB8888 = B,G,R,A; XBGR/ABGR8888 = R,G,B,A.
     const unsigned char* pixels = frame->pixels;
     const int bgr = frame->format == WL_SHM_FORMAT_XRGB8888 || frame->format == WL_SHM_FORMAT_ARGB8888;
+    if (w <= 0 || h <= 0 || (size_t)w > (SIZE_MAX - 1) / 3) return 0;
     const size_t rowSize = 1 + (size_t)w * 3;
+    if ((size_t)h > SIZE_MAX / rowSize || rowSize * (size_t)h > ULONG_MAX) return 0;
     unsigned char* raw = malloc(rowSize * h);
+    if (!raw) return 0;
     for (int row = 0; row < h; ++row) {
         const int srcRow = y + row;
         const unsigned char* src = pixels + (size_t)srcRow * frame->stride + (size_t)x * 4;
@@ -109,11 +113,17 @@ static int writePng(const char* path, const struct vela_capture_frame* frame, in
     }
     uLongf packedSize = compressBound(rowSize * h);
     unsigned char* packed = malloc(packedSize);
-    compress2(packed, &packedSize, raw, rowSize * h, 6);
+    if (!packed || compress2(packed, &packedSize, raw, rowSize * (size_t)h, 6) != Z_OK || packedSize > UINT32_MAX) {
+        free(raw);
+        free(packed);
+        return 0;
+    }
 
     FILE* file = fopen(path, "wb");
     if (!file) {
         perror(path);
+        free(raw);
+        free(packed);
         return 0;
     }
     static const unsigned char signature[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n' };
@@ -127,10 +137,11 @@ static int writePng(const char* path, const struct vela_capture_frame* frame, in
     writeChunk(file, "IHDR", ihdr, sizeof(ihdr));
     writeChunk(file, "IDAT", packed, packedSize);
     writeChunk(file, "IEND", NULL, 0);
-    fclose(file);
+    const int saved = !ferror(file) && fclose(file) == 0;
+    if (!saved) remove(path);
     free(raw);
     free(packed);
-    return 1;
+    return saved;
 }
 
 int main(int argc, char** argv)
@@ -181,6 +192,8 @@ int main(int argc, char** argv)
         h = atoi(argv[5]);
         if (x < 0 || y < 0 || w <= 0 || h <= 0 || (int64_t)x + w > result->width || (int64_t)y + h > result->height) {
             fprintf(stderr, "vela-screen-dump: region outside the output (%ux%u)\n", result->width, result->height);
+            vela_capture_end(capture);
+            wl_display_disconnect(display);
             return 2;
         }
     }
