@@ -141,6 +141,8 @@ private:
     QTimer m_expiry;
     QHash<QString, int> m_batteries; // BlueZ device path -> percent
     QSet<QString> m_batteryWatched;
+    QHash<QString, quint64> m_batteryVersions; // guards late BlueZ replies
+    quint64 m_nextBatteryVersion = 0;
 
     QVariantList m_outputs;
     QVariantList m_inputs;
@@ -150,6 +152,7 @@ private:
     double m_volume = 0.0;
     bool m_muted = false;
     bool m_inputMuted = false;
+    bool m_defaultsKnown = false; // recognize WirePlumber recovery
 };
 
 } // namespace vela::audio
