@@ -19,6 +19,8 @@ class AppModel : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    // Changes even when an installed app is renamed or replaced without changing count.
+    Q_PROPERTY(int catalogRevision READ catalogRevision NOTIFY catalogRevisionChanged)
 
 public:
     enum Role {
@@ -63,6 +65,7 @@ public:
     QString query() const { return m_query; }
     void setQuery(const QString& query);
     int count() const { return static_cast<int>(m_visible.size()); }
+    int catalogRevision() const { return m_catalogRevision; }
 
     Q_INVOKABLE void reload();
     Q_INVOKABLE bool launch(int row);
@@ -101,8 +104,10 @@ public:
 signals:
     void queryChanged();
     void countChanged();
+    void catalogRevisionChanged();
 
 private:
+    QList<int> filteredIndices() const;
     void applyFilter();
     // Keep file and directory watches in sync after installs, removals and
     // atomic replacements. Missing XDG directories are watched via their
@@ -118,6 +123,10 @@ private:
     QString m_query;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer;
+    // Retry failed watch registrations at most once per 10 seconds.
+    QTimer m_watchRetryTimer;
+    QSet<QString> m_failedWatchPaths;
+    int m_catalogRevision = 0;
 };
 
 // The default app for a MIME type (.desktop id), from mimeapps.list.
