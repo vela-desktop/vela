@@ -56,7 +56,6 @@ qt_add_executable(vela-shell
     src/taskbarmodel.cpp
     src/tray.cpp
     src/taskbarmodel.h
-    src/volumesteps.h
     src/wallpaperprovider.h
     src/screenwindows.cpp
     src/screenwindows.h
@@ -99,7 +98,7 @@ foreach(name
         COMMENT "Generating the ${base} client")
     target_sources(vela-shell PRIVATE ${header} ${code})
 endforeach()
-target_include_directories(vela-shell PRIVATE ${SHELL_GENERATED_DIR})
+target_include_directories(vela-shell PRIVATE ${SHELL_GENERATED_DIR} ${PROJECT_SOURCE_DIR}/common/audio)
 
 set(VELA_QML_FILES
     qml/Taskbar.qml
@@ -183,8 +182,8 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-private-files-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-private-files COMMAND vela-private-files-test)
 
-    qt_add_executable(vela-volumesteps-test tests/volumesteps.cpp src/volumesteps.h)
-    target_include_directories(vela-volumesteps-test PRIVATE src)
+    qt_add_executable(vela-volumesteps-test tests/volumesteps.cpp ${PROJECT_SOURCE_DIR}/common/audio/volumesteps.h)
+    target_include_directories(vela-volumesteps-test PRIVATE ${PROJECT_SOURCE_DIR}/common/audio)
     target_compile_options(vela-volumesteps-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-volumesteps-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-volumesteps COMMAND vela-volumesteps-test)
@@ -195,7 +194,8 @@ if(VELA_BUILD_TOOLS)
         src/appmodel.cpp src/appmodel.h
         ${PROJECT_SOURCE_DIR}/settings/src/audio.cpp
         ${PROJECT_SOURCE_DIR}/settings/src/audio.h)
-    target_include_directories(vela-service-models-test PRIVATE src ${PROJECT_SOURCE_DIR}/settings/src)
+    target_include_directories(vela-service-models-test PRIVATE src ${PROJECT_SOURCE_DIR}/settings/src
+        ${PROJECT_SOURCE_DIR}/common/audio)
     target_compile_options(vela-service-models-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-service-models-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
     add_test(NAME shell-service-models COMMAND vela-service-models-test)

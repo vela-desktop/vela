@@ -23,6 +23,16 @@ As a program, it runs a command inside the fixture and returns its status
 (77, "skipped", when PipeWire or WirePlumber is missing):
 
     fixture.py -- wpctl status
+
+The command can drive the fixture through a Unix socket whose path is in
+VELA_AUDIO_FIXTURE_CONTROL: one command per line, answered "ok [value]" or
+"error <message>".
+
+    stop-pipewire | start-pipewire | restart-pipewire   (WirePlumber follows)
+    stop-wireplumber | start-wireplumber | restart-wireplumber
+    add-sink <name> [positions]    a fake output appearing; "ok <node id>"
+    add-source <name> [positions]  a fake input appearing
+    remove <name>                  a node disappearing
 """
 
 import ctypes
@@ -30,6 +40,7 @@ import json
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -235,10 +246,38 @@ class AudioFixture:
 
     def restart_pipewire(self):
         """PipeWire going away and coming back; WirePlumber follows."""
+        self.stop_pipewire()
+        self.start_pipewire()
+
+    def stop_pipewire(self):
         self._stop("_wireplumber")
         self._stop("_pipewire")
+        (self.root / "run" / "pipewire-0").unlink(missing_ok=True)
+
+    def start_pipewire(self):
         self._start_pipewire()
         self._start_wireplumber()
+
+    def stop_wireplumber(self):
+        self._stop("_wireplumber")
+
+    def start_wireplumber(self):
+        self._start_wireplumber()
+
+    def add_endpoint(self, name, media_class="Audio/Sink", positions="FL FR", description=None):
+        """A fake device appearing (a null sink that outlives pw-cli); its id."""
+        props = (f'{{ factory.name=support.null-audio-sink node.name="{name}" '
+                 f'node.description="{description or name}" media.class={media_class} '
+                 f'audio.position=[ {positions} ] monitor.channel-volumes=true object.linger=true }}')
+        self.run("pw-cli", "create-node", "adapter", props)
+        self.wait_for(lambda: self.node(name) is not None, f"node {name}")
+        return self.node(name)["id"]
+
+    def remove_node(self, name):
+        node = self.node(name)
+        if node:
+            self.run("pw-cli", "destroy", str(node["id"]))
+            self.wait_for(lambda: self.node(name) is None, f"{name} gone")
 
     def _spawn(self, name, *args):
         log = open(self.root / f"{name}.log", "ab")
@@ -260,9 +299,9 @@ class AudioFixture:
         setattr(self, attribute, None)
 
     def _start_pipewire(self):
-        socket = self.root / "run" / "pipewire-0"
+        path = self.root / "run" / "pipewire-0"
         self._pipewire = self._spawn("pipewire", "pipewire", "-c", str(HERE / "pipewire.conf"))
-        self._wait(socket.exists, "the PipeWire socket", self._pipewire)
+        self._wait(path.exists, "the PipeWire socket", self._pipewire)
 
     def _start_wireplumber(self):
         self._wireplumber = self._spawn("wireplumber", "wireplumber", "-p", "vela-test")
@@ -348,6 +387,55 @@ class AudioFixture:
         raise TimeoutError(f"no {what} after {timeout} s")
 
 
+class _Control:
+    """The fixture's control socket, for a command running inside it."""
+
+    def __init__(self, audio):
+        self.audio = audio
+        self.path = audio.root / "control.sock"
+        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.server.bind(str(self.path))
+        self.server.listen(4)
+        self.thread = threading.Thread(target=self._serve, daemon=True)
+        self.thread.start()
+
+    def _serve(self):
+        while True:
+            try:
+                connection, _ = self.server.accept()
+            except OSError:
+                return
+            with connection, connection.makefile("rw") as stream:
+                for line in stream:
+                    stream.write(self._answer(line.split()) + "\n")
+                    stream.flush()
+
+    def _answer(self, words):
+        audio = self.audio
+        simple = {
+            "stop-pipewire": audio.stop_pipewire, "start-pipewire": audio.start_pipewire,
+            "restart-pipewire": audio.restart_pipewire, "stop-wireplumber": audio.stop_wireplumber,
+            "start-wireplumber": audio.start_wireplumber, "restart-wireplumber": audio.restart_wireplumber,
+        }
+        try:
+            if len(words) == 1 and words[0] in simple:
+                simple[words[0]]()
+                return "ok"
+            if len(words) >= 2 and words[0] in ("add-sink", "add-source"):
+                media_class = "Audio/Sink" if words[0] == "add-sink" else "Audio/Source/Virtual"
+                positions = " ".join(words[2:]) or ("FL FR" if words[0] == "add-sink" else "MONO")
+                return f"ok {audio.add_endpoint(words[1], media_class, positions)}"
+            if len(words) == 2 and words[0] == "remove":
+                audio.remove_node(words[1])
+                return "ok"
+            return f"error unknown command: {' '.join(words)}"
+        except Exception as error:  # the command learns why, the fixture goes on
+            return f"error {error}".replace("\n", " ")
+
+    def close(self):
+        self.server.close()
+
+
 def main(argv):
     if argv[:1] == ["--"]:
         argv = argv[1:]
@@ -359,7 +447,12 @@ def main(argv):
         print(f"skipped: {', '.join(missing)} not installed", file=sys.stderr)
         return SKIP
     with AudioFixture() as audio:
-        return subprocess.run(argv, env=audio.env).returncode
+        control = _Control(audio)
+        try:
+            env = dict(audio.env, VELA_AUDIO_FIXTURE_CONTROL=str(control.path))
+            return subprocess.run(argv, env=env).returncode
+        finally:
+            control.close()
 
 
 if __name__ == "__main__":

@@ -391,7 +391,8 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
     qt6-qttools-devel qt6-qtsvg-devel qt6-qtwayland-devel layer-shell-qt-devel \
     vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
     fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
-    zlib-devel gtest-devel python3 python3-numpy python3-pillow
+    zlib-devel gtest-devel python3 python3-numpy python3-pillow \
+    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber
 ```
 </details>
 

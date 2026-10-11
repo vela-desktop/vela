@@ -28,6 +28,7 @@ depends=(
     'freetype2' 'harfbuzz' 'fontconfig' 'librsvg' 'cairo'
     'qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'layer-shell-qt'
     'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland'
+    'pipewire' 'wireplumber'
 )
 makedepends=('git' 'cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols' 'qt6-tools')
 optdepends=(
@@ -37,7 +38,6 @@ optdepends=(
     'plasma-workspace: light or dark colors for KDE apps'
     'networkmanager: network and Wi-Fi (quick settings and Settings)'
     'bluez: Bluetooth'
-    'wireplumber: volume'
     'libpulse: volume (pactl)'
     'power-profiles-daemon: energy saver'
     'udisks2: unmounted drives in File Explorer'

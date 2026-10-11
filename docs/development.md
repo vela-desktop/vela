@@ -186,7 +186,8 @@ explorer/           vela-files
 settings/           vela-settings
 lock/               vela-lock
 polkit/             vela-polkit-agent and vela-polkit-prompt (docs/polkit-agent.md)
-common/             Vela.Controls: theme, controls and blur shared by the Qt Quick apps
+common/             Vela.Controls: theme, controls and blur shared by the Qt Quick apps;
+                    audio/: vela-audio, the shell's and Settings' audio backend (docs/audio.md)
 session/            login entry, systemd target and portal integration
 packaging/arch/     PKGBUILD and vela-update
 report/             vela-report: shared Python core/CLI and standalone Qt Widgets GUI

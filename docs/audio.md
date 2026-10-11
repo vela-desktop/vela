@@ -5,8 +5,9 @@ Settings. It replaces today's three backends, which drive command-line tools
 (`wpctl`, `pactl`, `pw-dump`, `pw-metadata`). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** design approved. **A0 is done** (§13): the test fixture runs
-> a private PipeWire and WirePlumber in CI. Next: A1, the library.
+> **Status:** design approved. **A0 and A1 are done** (§13): the test
+> fixture, and the `vela-audio` library with its tests. Next: A2, the shell
+> on the library.
 
 ## 1. Goals
 
@@ -128,6 +129,12 @@ server says: optimistic values exist only in the Qt layer (§5.4).
   - `isDefault`;
   - the Bluetooth battery, if any (BlueZ, §2).
 - Sink monitors are not inputs: they are not microphones.
+- A **suspended** node may report fewer volumes than it has channels: two,
+  until its format is set (seen in A1 on the fixture's 5.1 output). The
+  layout comes from `audio.position` / the channel map; the volumes are
+  what the node reports.
+- In A1 a device contributes only its routes' availability, icon and
+  Bluetooth address. Profiles come with the properties page (A3).
 - Icons: `device.icon-name` when set, otherwise from `device.form-factor`
   and `device.bus` (headset, headphones, speakers, HDMI/DisplayPort,
   USB...).
@@ -301,12 +308,19 @@ Two mechanisms, as decided.
 
 - `common/audio/` → static library `vela-audio` (Qt Core, `wireplumber-0.5`,
   `libpipewire-0.3`).
-  - `Core`: connection, object managers, the model, actions (§4, §5).
-  - `Audio`: the QML-facing object both processes register (outputs,
-    inputs, apps, default output's volume, microphone in use...), with the
-    optimistic layer (§5.4).
-  - `LevelMeter`, `TestSound`: §7.
-  - `WireplumberConfig`: §8.
+  - `model.h`: the snapshot's plain structs (`Endpoint`, `Stream`,
+    `AppIdentity`) and the balance math (`scaledChannels`, `balanceOf`).
+  - `core.h`, `core.cpp`: `Core`, the connection, object managers, the
+    model and actions (§4, §5). A new `WpCore` for every connection; the
+    model is rebuilt at most once per event-loop turn, whatever the number
+    of events.
+  - `audio.h`, `audio.cpp`: `Audio`, the QML-facing object both processes
+    register (outputs, inputs, apps, the default output's volume...), with
+    the optimistic layer (§5.4). Apps are named through a resolver each
+    process passes in (§5.2).
+  - `volumesteps.h`: the grid, moved from the shell.
+  - Later: the Bluetooth battery (BlueZ, in `Audio`, A2), `LevelMeter` and
+    `TestSound` (§7), `WireplumberConfig` (§8).
 - What goes away:
   - in the shell, `mixer.cpp` and the audio part of `systemstatus.cpp`
     (both become thin users of `Audio`);
@@ -361,18 +375,30 @@ audio or WirePlumber state.
     layouts, playback following the default output, recording from the
     microphone, levels following amplitude and volume, pause and resume,
     WirePlumber and PipeWire restarts, isolation, clean shutdown. About 4 s.
-- **Library (`audio.*`)**:
-  - outputs, inputs, defaults, apps grouped by program;
-  - changes from outside (`wpctl` in the test) arriving as events;
+- **Library (`audio-core`, `audio-view`, done in A1)**: `tests/audio/core.cpp`
+  and `view.cpp`, QtTest programs run inside the fixture, which they drive
+  through its control socket (stop, start and restart the daemons, devices
+  appearing and disappearing). About 13 s together. Covered:
+  - outputs, inputs, defaults and channel layouts; apps grouped by program,
+    named through the resolver; level meters and recordings of outputs not
+    counted as apps;
+  - changes from outside (`wpctl`) arriving as events;
   - volume on the grid, steps, the 100% cap, a value above 100% set from
-    outside;
-  - balance kept while stepping;
-  - mute, with the microphone shown as pending until confirmed;
-  - an app's output and input: set, cleared, restored by WirePlumber when
-    the stream comes back;
-  - outputs appearing and disappearing;
-  - PipeWire restarted (reconnection) and WirePlumber restarted (defaults
-    unknown, then back);
+    outside shown as 100% and stepped back onto the grid;
+  - balance kept while changing the volume, also through silence;
+  - a value shown at once, a dragged slider writing only its last value,
+    the server winning once the 500 ms window has passed;
+  - a step unmuting the output; microphone mute and default input shown
+    only once confirmed, a default without WirePlumber reported as an
+    error;
+  - an app's volume, mute, output and input: set, cleared, reset;
+    WirePlumber sending an app to its chosen output again the next time,
+    and forgetting it once set back to the default;
+  - outputs and inputs appearing and disappearing;
+  - PipeWire stopped (not available, actions refused) and back
+    (reconnection); WirePlumber stopped (defaults unknown, not "none") and
+    back.
+- **Library, later stages**:
   - levels within a tolerance of the known amplitude;
   - "microphone in use": a recording stream on the microphone counts, one on
     an output's monitor doesn't, Settings' meter does;
@@ -417,7 +443,7 @@ audio or WirePlumber state.
 | Stage | Content | |
 |---|---|---|
 | A0 | Test fixture (§11), CI packages | done |
-| A1 | `vela-audio`: connection, model, volume (grid, cap, balance), defaults, apps and their outputs/inputs, reconnection; library tests | |
+| A1 | `vela-audio`: connection, model, volume (grid, cap, balance), defaults, apps and their outputs/inputs, reconnection; library tests | done |
 | A2 | Shell on the library: system volume, OSD, microphone mute key (compositor + OSD), quick settings mixer with inputs, taskbar wheel; `wpctl`/`pactl`/`pw-*` gone from the shell | |
 | A3 | Settings on the library: Sound page with input level, device properties (profile/off, codec, balance, test sound), Mixer page with levels; `audio.cpp` gone | |
 | A4 | Microphone in use in the tray | |
