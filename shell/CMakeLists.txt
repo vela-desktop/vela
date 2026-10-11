@@ -86,7 +86,6 @@ find_program(WAYLAND_SCANNER NAMES wayland-scanner REQUIRED)
 set(SHELL_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${SHELL_GENERATED_DIR})
 foreach(name
-        ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1
         ext-data-control/ext-data-control-v1)
     get_filename_component(base ${name} NAME)
     set(xml ${SHELL_WAYLAND_PROTOCOLS_DIR}/staging/${name}.xml)
