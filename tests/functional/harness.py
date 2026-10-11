@@ -255,10 +255,10 @@ class Session:
         raise TimeoutError(f"window {identifier} doesn't settle")
 
     def screenshot(self, path):
-        subprocess.run([tool("vela-shot"), path], env=self.client_env, check=True)
+        subprocess.run([tool("vela-screen-dump"), path], env=self.client_env, check=True)
 
     def pixels(self):
-        """The screen now, as an Image (vela-shot)."""
+        """The screen now, as an Image (vela-screen-dump)."""
         path = os.path.join(self.directory, "shot.png")
         self.screenshot(path)
         return Image.read(path)
@@ -324,7 +324,7 @@ class FakeShell:
 
 
 class Image:
-    """A vela-shot PNG: 8-bit RGB, no filters (standard library only)."""
+    """A vela-screen-dump PNG: 8-bit RGB, no filters (standard library only)."""
 
     def __init__(self, width, height, rows):
         self.width = width
@@ -344,7 +344,7 @@ class Image:
             chunk = data[position + 8:position + 8 + length]
             if kind == b"IHDR":
                 width, height = struct.unpack(">II", chunk[:8])
-                assert chunk[8:10] == b"\x08\x02", "vela-shot writes 8-bit RGB"
+                assert chunk[8:10] == b"\x08\x02", "vela-screen-dump writes 8-bit RGB"
             elif kind == b"IDAT":
                 packed += chunk
             position += 12 + length
