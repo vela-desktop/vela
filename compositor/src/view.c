@@ -1008,6 +1008,7 @@ void vela_view_mapped(struct vela_view *view)
     vela_workspaces_announce(server);
 }
 
+/** Tear down an unmapped view and revoke any retained window-capture source. */
 void vela_view_unmapped(struct vela_view *view)
 {
     // Close: the scene still has the last buffers (even if it has already
