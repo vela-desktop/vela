@@ -4,6 +4,7 @@
 #include "config.h"
 
 #include "legacy_names.h"
+#include "path_security.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -16,12 +17,19 @@ bool vela_config_path(const char *name, char *out, size_t size)
 {
     const char *config = getenv("XDG_CONFIG_HOME");
     const char *home = getenv("HOME");
+    // Callers supply a fixed filename (or NULL for the directory). The
+    // filename is never allowed to turn into a second filesystem path.
+    if (!out || size == 0 || (name && !vela_path_component_safe(name))) {
+        return false;
+    }
     const char *file = name ? "/" : "";
     name = name ? name : "";
     int n;
-    if (config && *config) {
+    // XDG requires absolute base directories. Ignore a relative override
+    // rather than letting it redirect settings beneath the working directory.
+    if (config && *config == '/') {
         n = snprintf(out, size, "%s/vela%s%s", config, file, name);
-    } else if (home) {
+    } else if (home && *home == '/') {
         n = snprintf(out, size, "%s/.config/vela%s%s", home, file, name);
     } else {
         return false;

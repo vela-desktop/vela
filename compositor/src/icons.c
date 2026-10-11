@@ -4,6 +4,7 @@
 #include "icons.h"
 
 #include "util.h"
+#include "path_security.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -235,10 +236,13 @@ struct vela_icons *vela_icons_create(void)
     read_section(path, "Icons", theme_key, theme, 1);
     // The chain: the theme, those it inherits (Inherits), finally hicolor.
     struct strings pending = { 0 };
-    strings_push(&pending, theme[0][0] ? theme[0] : "breeze");
+    strings_push(&pending, vela_path_component_safe(theme[0]) ? theme[0] : "breeze");
     for (int next = 0; next < pending.count; ++next) {
         const char *name = pending.items[next];
-        if (strings_contain(&icons->theme_chain, name)) {
+        // A theme name is exactly one directory component. Inherited
+        // names from index.theme must not escape the selected icon roots.
+        if (!vela_path_component_safe(name)
+            || strings_contain(&icons->theme_chain, name)) {
             continue;
         }
         strings_push(&icons->theme_chain, name);
@@ -476,8 +480,12 @@ static bool find_file(struct vela_icons *icons, const char *name, int size, char
         return false;
     }
     if (name[0] == '/') {
+        // Icon=/absolute/path is explicitly supported by .desktop files.
         snprintf(out, out_size, "%s", name);
         return exists(name);
+    }
+    if (!vela_relative_path_safe(name)) {
+        return false;
     }
     char path[PATH_MAX];
     for (int t = 0; t < icons->theme_chain.count; ++t) {
@@ -493,6 +501,11 @@ static bool find_file(struct vela_icons *icons, const char *name, int size, char
             struct theme_dir *dirs = NULL;
             int count = theme_dirs(path, &dirs);
             for (int d = 0; d < count; ++d) {
+                // Theme subdirectories such as "48x48/apps" are valid;
+                // "." and ".." components are not.
+                if (!vela_relative_path_safe(dirs[d].name)) {
+                    continue;
+                }
                 static const char *const extensions[] = { ".svg", ".png" };
                 for (int e = 0; e < 2; ++e) {
                     if (!vela_format(path, sizeof(path), "%s/%s/%s%s", root, dirs[d].name, name, extensions[e])

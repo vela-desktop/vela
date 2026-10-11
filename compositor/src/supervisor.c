@@ -23,6 +23,7 @@
 #include "supervisor.h"
 #include "error_screen.h"
 #include "diagnostics.h"
+#include "path_security.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -88,15 +89,36 @@ static bool create_socket(const char *runtime_dir, struct wayland_socket *s)
         }
         memcpy(s->path, s->lock_path, (size_t)length - 5);
         s->path[length - 5] = '\0';
-        s->lock_fd = open(s->lock_path, O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IWUSR);
+        s->lock_fd = open(s->lock_path,
+            O_CREAT | O_CLOEXEC | O_RDWR | O_NOFOLLOW | O_NONBLOCK, S_IRUSR | S_IWUSR);
         if (s->lock_fd < 0) {
+            continue;
+        }
+        // The lock must be an ordinary file owned by this session's UID;
+        // O_NOFOLLOW also rejects pre-existing symlink lock files.
+        struct stat lock_info;
+        if (fstat(s->lock_fd, &lock_info) != 0 || !S_ISREG(lock_info.st_mode)
+            || lock_info.st_uid != geteuid()) {
+            close(s->lock_fd);
             continue;
         }
         if (flock(s->lock_fd, LOCK_EX | LOCK_NB) != 0) {
             close(s->lock_fd); // there is already a compositor on this number
             continue;
         }
-        unlink(s->path); // left by a dead compositor
+        // Reclaim only a stale socket owned by us. Never unlink a regular
+        // file, directory or symlink just because it has a Wayland name.
+        struct stat previous;
+        if (lstat(s->path, &previous) == 0) {
+            if (!S_ISSOCK(previous.st_mode) || previous.st_uid != geteuid()
+                || unlink(s->path) != 0) {
+                close(s->lock_fd);
+                continue;
+            }
+        } else if (errno != ENOENT) {
+            close(s->lock_fd);
+            continue;
+        }
         s->fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
         if (s->fd < 0) {
             close(s->lock_fd);
@@ -208,11 +230,10 @@ static double now_seconds(void)
 bool vela_lock_flag_path(const char *wayland_display, char *out, size_t size)
 {
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
-    if (!runtime_dir || !wayland_display) {
+    if (!vela_runtime_dir_private(runtime_dir)) {
         return false;
     }
-    int n = snprintf(out, size, "%s/vela-locked-%s", runtime_dir, wayland_display);
-    return n > 0 && (size_t)n < size;
+    return vela_lock_flag_path_for_runtime(runtime_dir, wayland_display, out, size);
 }
 
 bool vela_session_hook_path(char *out, size_t size)
@@ -233,6 +254,15 @@ bool vela_session_hook_path(char *out, size_t size)
     return written > 0 && (size_t)written < size && access(out, X_OK) == 0;
 }
 
+// A lock marker is meaningful only if it is a private, regular file in the
+// already-validated runtime directory. A symlink must not claim lock state.
+static bool lock_flag_present(const char *path)
+{
+    struct stat info;
+    return lstat(path, &info) == 0 && S_ISREG(info.st_mode)
+        && info.st_uid == geteuid() && (info.st_mode & 077) == 0;
+}
+
 // Starts `program` and waits for it to end (without leaving a zombie).
 static void run_and_wait(const char *program, const char *argument)
 {
@@ -249,8 +279,8 @@ static void run_and_wait(const char *program, const char *argument)
 int vela_supervise(int argc, char **argv)
 {
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
-    if (!runtime_dir) {
-        say("XDG_RUNTIME_DIR is not set");
+    if (!vela_runtime_dir_private(runtime_dir)) {
+        say("XDG_RUNTIME_DIR must be an absolute, private directory owned by this user");
         return 1;
     }
     struct wayland_socket socket = { 0 };
@@ -311,7 +341,7 @@ int vela_supervise(int argc, char **argv)
             if (restarted) {
                 setenv("VELA_RESTARTED", "1", 1);
             }
-            if (has_lock_flag && access(lock_flag, F_OK) == 0) {
+            if (has_lock_flag && lock_flag_present(lock_flag)) {
                 setenv("VELA_START_LOCKED", "1", 1);
             }
             execv(self, arguments);

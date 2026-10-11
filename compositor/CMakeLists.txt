@@ -122,6 +122,7 @@ add_library(vela-pure STATIC
     src/motion.c
     src/output_config.c
     src/output_key.c
+    src/path_security.c
     src/sun.c
     src/sync.c
     src/util.c)
@@ -272,6 +273,7 @@ if(VELA_BUILD_TOOLS)
             tests/settings_test.cpp
             tests/output_config_test.cpp
             tests/output_key_test.cpp
+            tests/path_security_test.cpp
             tests/diagnostics_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp)
