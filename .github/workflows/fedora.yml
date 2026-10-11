@@ -19,7 +19,7 @@ jobs:
   fedora:
     name: Fedora 45
     runs-on: ubuntu-latest
-    container: registry.fedoraproject.org/fedora-toolbox:45
+    container: fedora:45
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-fedora
       CCACHE_MAXSIZE: 350M

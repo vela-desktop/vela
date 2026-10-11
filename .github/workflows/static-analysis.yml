@@ -18,7 +18,7 @@ concurrency:
 jobs:
   static-analysis:
     runs-on: ubuntu-latest
-    container: archlinux:base-devel
+    container: archlinux:latest
     steps:
       - name: Install Arch build and analysis tools
         run: >-
