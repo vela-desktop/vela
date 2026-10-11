@@ -132,11 +132,11 @@ stop_makepkg() {
     # setsid puts makepkg and ordinary compiler descendants in their own
     # process group. Killing the leader alone leaves compiler jobs running
     # after the updater releases its lock and deletes their working directory.
-    kill -TERM -- "-$makepkg_pid" 2>/dev/null || true
+    kill -TERM "-$makepkg_pid" 2>/dev/null || true
     # Bound shutdown even if a compiler ignores TERM or makepkg does not reap
     # its children. KILL the same group before waiting for the launcher.
     sleep 1
-    kill -KILL -- "-$makepkg_pid" 2>/dev/null || true
+    kill -KILL "-$makepkg_pid" 2>/dev/null || true
     wait "$makepkg_pid" 2>/dev/null || true
     makepkg_pid=""
 }
