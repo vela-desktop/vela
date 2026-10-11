@@ -78,6 +78,23 @@ The exact display name may differ; use the one printed by the compositor.
 
 ## Development tools
 
+The screen capture CLI, `vela-screen-dump`, can also be built without the compositor,
+Qt shell, GPU test clients, or polkit agent:
+
+```sh
+cmake -S . -B build-capture -DVELA_BUILD_CAPTURE_TOOLS=ON \
+    -DVELA_BUILD_TOOLS=OFF -DVELA_BUILD_COMPOSITOR=OFF \
+    -DVELA_BUILD_SHELL=OFF -DVELA_BUILD_POLKIT=OFF -DVELA_BUILD_REPORT=OFF
+cmake --build build-capture --target vela-screen-dump
+```
+
+The shared `vela-capture` static library requires Wayland client headers,
+wayland-protocols (build time), and the Wayland scanner. The CLI additionally
+needs zlib for PNG output. These dependencies do not make Qt, wlroots or Vulkan
+requirements for this standalone target. `VELA_BUILD_GPU_TEST_TOOLS=OFF` disables
+the special Vulkan test client in full development builds; functional GPU tests
+that require that client must not be run in that configuration.
+
 The tools under `build/tools/` are small clients intended for development and functional tests.
 
 | Tool | Purpose |
