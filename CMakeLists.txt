@@ -19,6 +19,13 @@ endif()
 
 include(GNUInstallDirs)
 
+option(VELA_BUILD_CAPTURE_TOOLS "Build the lightweight screen-dump CLI separately from the GPU test tools" OFF)
+option(VELA_BUILD_GPU_TEST_TOOLS "Build GPU-intensive test clients (only relevant when VELA_BUILD_TOOLS=ON)" ON)
+
+if(VELA_BUILD_SHELL OR VELA_BUILD_CAPTURE_TOOLS OR VELA_BUILD_TOOLS)
+    add_subdirectory(capture)
+endif()
+
 option(VELA_BUILD_COMPOSITOR "Build the compositor (needs wlroots)" ON)
 option(VELA_BUILD_SHELL "Build the shell, Files and Settings (needs Qt 6 and LayerShellQt)" ON)
 option(VELA_BUILD_TOOLS "Build the test tools (vela-shot, vela-windows, vela-input...) and the tests (ctest)" ON)
@@ -50,8 +57,10 @@ endif()
 if(VELA_BUILD_POLKIT)
     add_subdirectory(polkit)
 endif()
-if(VELA_BUILD_TOOLS)
+if(VELA_BUILD_TOOLS OR VELA_BUILD_CAPTURE_TOOLS)
     add_subdirectory(tools)
+endif()
+if(VELA_BUILD_TOOLS)
     # The functional and sharpness tests, in sessions without a display
     # (tests/functional): they need the compositor and a GPU; without a GPU
     # they are reported as skipped (code 77).
