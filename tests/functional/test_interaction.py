@@ -63,10 +63,11 @@ class Interaction(unittest.TestCase):
         window = self.vela.open_window(300, 200)
         self.vela.wait_for(lambda s: s["focused"] == window)
         self.vela.keys("XF86AudioPlay", "XF86AudioNext", "XF86AudioRaiseVolume", "XF86AudioLowerVolume",
-                       "XF86AudioMute")
-        self.shell.wait_for("volume mute")
+                       "XF86AudioMute", "XF86AudioMicMute")
+        self.shell.wait_for("volume mic-mute")
         self.assertEqual(self.shell.received("media") + self.shell.received("volume"),
-                         ["media play-pause", "media next", "volume up", "volume down", "volume mute"])
+                         ["media play-pause", "media next", "volume up", "volume down", "volume mute",
+                          "volume mic-mute"])
 
     def test_held_volume_key_repeats(self):
         # With the keyboard's delay and rate (the virtual one: 600 ms, 25 a

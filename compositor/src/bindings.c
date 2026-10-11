@@ -62,8 +62,8 @@ bool vela_bindings_handle(struct vela_server *server, uint32_t modifiers, uint32
     }
     // The keyboard's media and volume keys (and knob) work whatever window has
     // the focus, even on the lock screen, like Windows: the shell plays or
-    // pauses the active player (MPRIS) and changes the volume. The app never
-    // sees them, or Play/Pause would toggle twice.
+    // pauses the active player (MPRIS), changes the volume and mutes the
+    // microphone. The app never sees them, or Play/Pause would toggle twice.
     static const struct {
         xkb_keysym_t key;
         const char *command;
@@ -71,6 +71,7 @@ bool vela_bindings_handle(struct vela_server *server, uint32_t modifiers, uint32
         { XKB_KEY_XF86AudioRaiseVolume, "volume up" },
         { XKB_KEY_XF86AudioLowerVolume, "volume down" },
         { XKB_KEY_XF86AudioMute, "volume mute" },
+        { XKB_KEY_XF86AudioMicMute, "volume mic-mute" },
         { XKB_KEY_XF86AudioPlay, "media play-pause" },
         { XKB_KEY_XF86AudioPause, "media pause" },
         { XKB_KEY_XF86AudioStop, "media stop" },

@@ -1,19 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Real QProcess/D-Bus clients talking to isolated, controllably slow services.
-// No running PipeWire, NetworkManager or BlueZ instance is touched.
-#include "appmodel.h"
+// Real QProcess clients talking to isolated, controllably slow services:
+// Settings' audio model (pactl, until it moves to vela-audio) and the
+// network (nmcli). No running PipeWire or NetworkManager is touched.
 #include "asyncprocess.h"
 #include "audio.h"
-#include "mixer.h"
 #include "network.h"
 
 #include <QCoreApplication>
-#include <QDBusConnection>
-#include <QDBusMessage>
-#include <QDBusVariant>
-#include <QDBusVirtualObject>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -72,9 +67,6 @@ QJsonObject volume(int percent)
 
 QString operation(const QString& program, const QStringList& args)
 {
-    if (program == "pw-metadata") {
-        return "targets";
-    }
     if (program == "pactl") {
         if (args.contains("list")) {
             return args.last() == "sink-inputs" ? "streams" : args.last();
@@ -105,7 +97,7 @@ int fakeService(const QString& program, const QStringList& arguments)
     // Capture the response before waiting: it can become obsolete in flight.
     const QJsonObject response = configuration().value(key).toObject();
     QByteArray output = response.value("output").toString().toUtf8();
-    if (key == "sinks" || key == "streams") {
+    if (key == "sinks") {
         const QByteArray saved = readFile(serviceRoot() + "/volume").trimmed();
         if (!saved.isEmpty()) {
             QJsonArray list = QJsonDocument::fromJson(output).array();
@@ -154,43 +146,18 @@ int fakeService(const QString& program, const QStringList& arguments)
     return response.value("code").toInt();
 }
 
-class FakeBlueZ : public QDBusVirtualObject {
-public:
-    QString introspect(const QString&) const override { return {}; }
-    bool handleMessage(const QDBusMessage& message, const QDBusConnection& connection) override
-    {
-        if (message.interface() != "org.freedesktop.DBus.Properties" || message.member() != "Get") {
-            return false;
-        }
-        const QJsonObject response = configuration().value("bluez").toObject();
-        logRequest("bluez");
-        message.setDelayedReply(true);
-        QTimer::singleShot(response.value("delay").toInt(), this, [message, connection, response] {
-            if (response.value("fail").toBool()) {
-                connection.send(message.createErrorReply("org.bluez.Error.Failed", "unavailable"));
-            } else {
-                connection.send(message.createReply(QVariant::fromValue(QDBusVariant(
-                    QVariant::fromValue(uchar(response.value("battery").toInt()))))));
-            }
-        });
-        return true;
-    }
-};
-
 } // namespace
 
 class ServiceModels : public QObject {
     Q_OBJECT
 
-    enum Model { MixerModel, AudioModel, NetworkModel };
+    enum Model { AudioModel, NetworkModel };
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<AppModel> m_apps;
     std::unique_ptr<QObject> m_model;
     QJsonObject m_config;
     QByteArray m_path;
     QProcess m_bus;
-    QProcess m_bluez;
-    int m_kind = MixerModel;
+    int m_kind = AudioModel;
 
     void save() { saveFile(m_dir->filePath("config.json"), QJsonDocument(m_config).toJson()); }
     void response(const QString& key, const QByteArray& output)
@@ -226,8 +193,7 @@ class ServiceModels : public QObject {
     bool clientsStopped() const
     {
         for (const QJsonObject& record : requests()) {
-            if (record.value("operation").toString() != "bluez"
-                && ::kill(record.value("pid").toInt(), 0) == 0) {
+            if (::kill(record.value("pid").toInt(), 0) == 0) {
                 return false;
             }
         }
@@ -236,9 +202,7 @@ class ServiceModels : public QObject {
     void makeModel(int kind)
     {
         m_kind = kind;
-        if (kind == MixerModel) {
-            m_model = std::make_unique<Mixer>(m_apps.get());
-        } else if (kind == AudioModel) {
+        if (kind == AudioModel) {
             m_model = std::make_unique<Audio>();
         } else {
             m_model = std::make_unique<Network>();
@@ -247,9 +211,7 @@ class ServiceModels : public QObject {
     }
     void refresh()
     {
-        if (m_kind == MixerModel) {
-            static_cast<Mixer*>(m_model.get())->setActive(true);
-        } else if (m_kind == AudioModel) {
+        if (m_kind == AudioModel) {
             static_cast<Audio*>(m_model.get())->refresh();
         } else {
             static_cast<Network*>(m_model.get())->refresh();
@@ -257,8 +219,8 @@ class ServiceModels : public QObject {
     }
     QVariantMap cache() const
     {
-        const QStringList properties = m_kind == MixerModel ? QStringList { "outputs", "apps" }
-            : m_kind == AudioModel ? QStringList { "outputs", "inputs" } : QStringList { "devices", "wifiNetworks" };
+        const QStringList properties = m_kind == AudioModel ? QStringList { "outputs", "inputs" }
+                                                            : QStringList { "devices", "wifiNetworks" };
         QVariantMap result;
         for (const QString& property : properties) {
             result.insert(property, m_model->property(property.toLatin1().constData()));
@@ -276,15 +238,14 @@ class ServiceModels : public QObject {
     }
     void gateReads()
     {
-        for (const QString key : { "get-default-sink", "get-default-source", "sinks", "sources", "streams",
-                 "targets", "devices", "details", "known", "wifi" }) {
+        for (const QString key : { "get-default-sink", "get-default-source", "sinks", "sources", "devices", "details",
+                 "known", "wifi" }) {
             option(key, "gate", "release");
         }
     }
     static void models_data()
     {
         QTest::addColumn<int>("kind");
-        QTest::newRow("mixer") << int(MixerModel);
         QTest::newRow("settings-audio") << int(AudioModel);
         QTest::newRow("network") << int(NetworkModel);
     }
@@ -310,7 +271,7 @@ private slots:
         m_dir = std::make_unique<QTemporaryDir>();
         QVERIFY(m_dir->isValid());
         m_path = qgetenv("PATH");
-        for (const QString program : { "pactl", "pw-metadata", "nmcli" }) {
+        for (const QString program : { "pactl", "nmcli" }) {
             QVERIFY(QFile::link(QCoreApplication::applicationFilePath(), m_dir->filePath(program)));
         }
         qputenv("PATH", QFile::encodeName(m_dir->path()));
@@ -324,13 +285,8 @@ private slots:
         QJsonObject monitor = source;
         monitor.insert("name", "test-sink.monitor");
         response("sources", QJsonDocument(QJsonArray { source, monitor }).toJson());
-        const QJsonObject stream { { "index", 7 }, { "sink", 1 }, { "volume", volume(40) }, { "mute", false },
-            { "properties", QJsonObject { { "object.id", "99" }, { "application.process.binary", "vela-async-player" },
-                { "application.name", "Async Player" } } } };
-        response("streams", QJsonDocument(QJsonArray { stream }).toJson());
         response("get-default-sink", "test-sink\n");
         response("get-default-source", "test-mic\n");
-        response("targets", "id:99 key:'target.object' value:'test-sink'\n");
         response("devices", "eth0:ethernet:connected:Wired\nwlan0:wifi:connected:Home\\:Lab\nlo:loopback:connected:lo\n");
         response("details", "GENERAL.HWADDR:AA\\:BB\nIP4.ADDRESS[1]:192.0.2.2/24\nIP4.GATEWAY:192.0.2.1\nIP4.DNS[1]:192.0.2.53\nIP6.ADDRESS[1]:2001\\:db8\\:\\:1/64\n");
         response("known", "Home\\:Lab:802-11-wireless\n");
@@ -340,11 +296,6 @@ private slots:
     void cleanup()
     {
         m_model.reset();
-        m_apps.reset();
-        if (m_bluez.state() != QProcess::NotRunning) {
-            m_bluez.kill();
-            QVERIFY(m_bluez.waitForFinished());
-        }
         QTRY_VERIFY(clientsStopped());
         qputenv("PATH", m_path);
         qunsetenv("VELA_TEST_SERVICES");
@@ -436,7 +387,7 @@ private slots:
     {
         QTest::addColumn<int>("kind");
         QTest::addColumn<QString>("failure");
-        for (int kind : { MixerModel, AudioModel, NetworkModel }) {
+        for (int kind : { AudioModel, NetworkModel }) {
             for (const QString failure : { "exit", "invalid", "timeout" }) {
                 const QByteArray name = QByteArray::number(kind) + '-' + failure.toLatin1();
                 QTest::newRow(name.constData()) << kind << failure;
@@ -467,7 +418,7 @@ private slots:
         connect(&heartbeat, &QTimer::timeout, this, [&] { ++beats; });
         heartbeat.start(10);
         refresh();
-        QTest::qWait(failure == "timeout" ? (kind == MixerModel ? 1300 : kind == AudioModel ? 2300 : 3300) : 150);
+        QTest::qWait(failure == "timeout" ? (kind == AudioModel ? 2300 : 3300) : 150);
         QVERIFY(beats >= 5);
         QCOMPARE(cache(), before);
         // Failed/time-limited requests release their busy state and can retry.
@@ -483,7 +434,6 @@ private slots:
     void oldReadCannotUndoLatestVolume_data()
     {
         QTest::addColumn<int>("kind");
-        QTest::newRow("mixer") << int(MixerModel);
         QTest::newRow("settings-audio") << int(AudioModel);
     }
     void oldReadCannotUndoLatestVolume()
@@ -496,17 +446,11 @@ private slots:
         gateReads();
         refresh();
         QTRY_COMPARE(count("sinks"), 1);
-        const QString command = kind == MixerModel ? "set-sink-input-volume" : "set-sink-volume";
+        const QString command = "set-sink-volume";
         option(command, "gate", "commands-release");
-        auto setVolume = [&](double value) {
-            if (kind == MixerModel) {
-                static_cast<Mixer*>(m_model.get())->setAppVolume("vela-async-player", value);
-            } else {
-                static_cast<Audio*>(m_model.get())->setVolume("output", "test-sink", value);
-            }
-        };
+        auto setVolume = [&](double value) { static_cast<Audio*>(m_model.get())->setVolume("output", "test-sink", value); };
         auto currentVolume = [&] {
-            return qRound(100 * m_model->property(kind == MixerModel ? "apps" : "outputs").toList().first().toMap().value("volume").toDouble());
+            return qRound(100 * m_model->property("outputs").toList().first().toMap().value("volume").toDouble());
         };
         setVolume(0.6);
         setVolume(0.7);
@@ -528,33 +472,6 @@ private slots:
             }
         }
         QCOMPARE(volumes, QStringList({ "60%", "80%" }));
-    }
-
-    void taskWheelWaitsForStreams()
-    {
-        // 50% is an exact PulseAudio value (32768): this test concerns the
-        // deferred first notch, without rounding just below a grid boundary.
-        QJsonArray streams = QJsonDocument::fromJson(m_config.value("streams").toObject().value("output").toString().toUtf8()).array();
-        QJsonObject stream = streams.first().toObject();
-        stream.insert("volume", volume(50));
-        response("streams", QJsonDocument(QJsonArray { stream }).toJson());
-        const QByteArray oldData = qgetenv("XDG_DATA_HOME");
-        const QString data = m_dir->filePath("data");
-        QDir().mkpath(data + "/applications");
-        saveFile(data + "/applications/org.vela.async-player.desktop",
-            "[Desktop Entry]\nType=Application\nName=Async Player\nExec=vela-async-player\n");
-        qputenv("XDG_DATA_HOME", QFile::encodeName(data));
-        m_apps = std::make_unique<AppModel>();
-        m_apps->reload();
-        qputenv("XDG_DATA_HOME", oldData);
-        makeModel(MixerModel);
-        auto* mixer = static_cast<Mixer*>(m_model.get());
-        QSignalSpy osd(mixer, &Mixer::appOsdRequested);
-        QVERIFY(mixer->stepTaskVolume("org.vela.async-player.desktop", 1));
-        QVERIFY(mixer->apps().isEmpty());
-        QTRY_COMPARE(osd.size(), 1);
-        QCOMPARE(qRound(100 * mixer->apps().first().toMap().value("volume").toDouble()), 52);
-        QTRY_COMPARE(readFile(m_dir->filePath("volume")), QByteArray("52"));
     }
 
     void savedWifiUsesExistingProfileAndFriendlyErrors()
@@ -814,84 +731,14 @@ private slots:
         QTRY_VERIFY(populated());
     }
 
-    void missingPipeWireMetadataStillUpdatesMixer()
-    {
-        makeModel(MixerModel);
-        refresh();
-        QTRY_VERIFY(populated());
-        QVERIFY(QFile::remove(m_dir->filePath("pw-metadata")));
-        QJsonObject sink = QJsonDocument::fromJson(m_config.value("sinks").toObject().value("output").toString().toUtf8()).array().first().toObject();
-        sink.insert("description", "Updated speakers");
-        response("sinks", QJsonDocument(QJsonArray { sink }).toJson());
-        refresh();
-        auto* mixer = static_cast<Mixer*>(m_model.get());
-        QTRY_COMPARE(mixer->outputs().first().toMap().value("description").toString(), QString("Updated speakers"));
-        QCOMPARE(mixer->apps().first().toMap().value("output").toString(), QString("test-sink"));
-    }
-
-    void delayedBatteryDoesNotBlockOrOverwriteNewerReply()
-    {
-        QJsonArray sinks = QJsonDocument::fromJson(m_config.value("sinks").toObject().value("output").toString().toUtf8()).array();
-        QJsonObject sink = sinks.first().toObject();
-        QJsonObject properties = sink.value("properties").toObject();
-        properties.insert("api.bluez5.address", "AA:BB:CC:DD:EE:FF");
-        sink.insert("properties", properties);
-        response("sinks", QJsonDocument(QJsonArray { sink }).toJson());
-        m_config.insert("bluez", QJsonObject { { "delay", 200 }, { "battery", 73 } });
-        save();
-        m_bluez.start(QCoreApplication::applicationFilePath(), { "--fake-bluez" });
-        QVERIFY(m_bluez.waitForStarted());
-        QVERIFY(m_bluez.waitForReadyRead());
-        QVERIFY(m_bluez.readAllStandardOutput().contains("ready"));
-        makeModel(MixerModel);
-        auto* mixer = static_cast<Mixer*>(m_model.get());
-        auto battery = [&] { return mixer->outputs().first().toMap().value("battery").toInt(); };
-        int beats = 0;
-        qint64 largestGap = 0;
-        QElapsedTimer gap;
-        gap.start();
-        QTimer heartbeat;
-        connect(&heartbeat, &QTimer::timeout, this, [&] {
-            largestGap = qMax(largestGap, gap.restart());
-            ++beats;
-        });
-        heartbeat.start(5);
-        refresh();
-        QTRY_VERIFY(populated());
-        QCOMPARE(battery(), -1); // outputs arrive before BlueZ
-        QTRY_COMPARE(battery(), 73);
-        QVERIFY(beats >= 10);
-        QVERIFY2(largestGap < 150, "BlueZ must not stop the GUI event loop");
-
-        m_config.insert("bluez", QJsonObject { { "delay", 200 }, { "battery", 20 } });
-        save();
-        refresh();
-        QTRY_COMPARE(count("bluez"), 2);
-        QCOMPARE(battery(), 73); // retain the last charge while waiting
-        m_config.insert("bluez", QJsonObject { { "battery", 90 } });
-        save();
-        refresh();
-        QTRY_COMPARE(battery(), 90);
-        QTest::qWait(250);
-        QCOMPARE(battery(), 90); // the earlier delayed 20% reply is obsolete
-    }
 };
 
 int main(int argc, char* argv[])
 {
     const QString program = QFileInfo(QString::fromLocal8Bit(argv[0])).fileName();
     QCoreApplication app(argc, argv);
-    if (program == "pactl" || program == "nmcli" || program == "pw-metadata") {
+    if (program == "pactl" || program == "nmcli") {
         return fakeService(program, app.arguments().mid(1));
-    }
-    if (app.arguments().contains("--fake-bluez")) {
-        FakeBlueZ bluez;
-        QDBusConnection bus = QDBusConnection::systemBus();
-        if (!bus.registerService("org.bluez") || !bus.registerVirtualObject("/", &bluez, QDBusConnection::SubPath)) {
-            return 1;
-        }
-        ::write(STDOUT_FILENO, "ready\n", 6);
-        return app.exec();
     }
     ServiceModels tests;
     return QTest::qExec(&tests, argc, argv);

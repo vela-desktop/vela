@@ -132,7 +132,7 @@ signals:
     void clipboardRequested(); // Win+V
     void snipRequested(); // Win+Shift+S, Print
     void clipboardClearRequested(); // from Settings
-    // The keyboard's volume keys: "up", "down", "mute".
+    // The keyboard's volume keys: "up", "down", "mute", "mic-mute".
     void volumeKeyPressed(const QString& key);
     // The keyboard's media keys: "play-pause", "pause", "stop", "next",
     // "previous".

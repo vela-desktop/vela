@@ -204,8 +204,8 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
   mode, Night light, accessibility, brightness, volume and battery, and a sound page
   (Super+Ctrl+V) to pick the output, see Bluetooth headsets' charge, and set each app's
   volume and output.
-- **Media and volume keys** that work whatever has the focus, with a volume indicator;
-  the wheel over an app's taskbar button sets that app's volume.
+- **Media, volume and microphone keys** that work whatever has the focus, with an
+  indicator; the wheel over an app's taskbar button sets that app's volume.
 - **Notifications** with actions, a **notification center** with a calendar (Super+N),
   and Do Not Disturb.
 - **Clipboard history** (Super+V): text and images, pinned items that survive a reboot,
@@ -375,7 +375,8 @@ suites additionally require NumPy and Pillow for Python 3.
 sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland wayland-protocols \
     libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
     vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
-    pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme xorg-xwayland
+    pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme xorg-xwayland \
+    pipewire wireplumber
 ```
 </details>
 
@@ -390,7 +391,8 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
     qt6-qttools-devel qt6-qtsvg-devel qt6-qtwayland-devel layer-shell-qt-devel \
     vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
     fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
-    zlib-devel gtest-devel python3 python3-numpy python3-pillow
+    zlib-devel gtest-devel python3 python3-numpy python3-pillow \
+    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber
 ```
 </details>
 
@@ -531,6 +533,7 @@ see the documentation below.
 | **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
 | **[Polkit agent](docs/polkit-agent.md)** | The User Account Control dialog: agent, dialog, protocol, security notes and tests. |
+| **[Audio](docs/audio.md)** | Design of the shared audio backend on WirePlumber: model, volume rules, levels, microphone in use, tests. |
 | **[Vela Report](docs/reporting.md)** | Guided diagnostic ZIPs, CLI and GUI, collection choices, privacy and validation. |
 | **[Development](docs/development.md)** | Build options, nested/headless workflows, development tools and repository layout. |
 | **[Testing](docs/testing.md)** | Unit, functional and sharpness suites; GPU requirements; local and CI coverage. |

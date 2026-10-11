@@ -53,7 +53,7 @@ The color-filter shortcut must be enabled in Accessibility settings (`color-filt
 
 ## Media and volume
 
-The keyboard's media and volume keys (and a volume knob) work whatever window has the focus, even on the lock screen. Play/pause, stop, next and previous go to the media player that is playing (MPRIS), otherwise to the one that played last. Volume up and down move by 2 points, so the number stays even, unless the output only has a few positions (a Bluetooth headset in call mode), which it then takes one at a time; held down, they repeat at the keyboard's repeat delay and rate. The volume indicator appears at the bottom of the screen. The wheel over the taskbar's volume icon does the same, and over an app's taskbar button it changes that app's volume only.
+The keyboard's media and volume keys (and a volume knob) work whatever window has the focus, even on the lock screen. Play/pause, stop, next and previous go to the media player that is playing (MPRIS), otherwise to the one that played last. Volume up and down move by 2 points, so the number stays even, unless the output only has a few positions (a Bluetooth headset in call mode), which it then takes one at a time; held down, they repeat at the keyboard's repeat delay and rate. The volume indicator appears at the bottom of the screen. The wheel over the taskbar's volume icon does the same, and over an app's taskbar button it changes that app's volume only. The microphone mute key turns the default microphone off or on; its indicator says which once the system has confirmed it.
 
 | Action | Shortcut |
 |---|---|
@@ -61,6 +61,7 @@ The keyboard's media and volume keys (and a volume knob) work whatever window ha
 | Previous / next track | <kbd>⏮</kbd> / <kbd>⏭</kbd> |
 | Volume down / up | <kbd>🔉</kbd> / <kbd>🔊</kbd>, or the knob |
 | Mute | <kbd>🔇</kbd> |
+| Microphone on / off | the keyboard's microphone mute key |
 
 ## Back and Forward in Vela's apps
 

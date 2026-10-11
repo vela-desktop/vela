@@ -76,4 +76,6 @@ if(VELA_BUILD_TOOLS)
             set_property(TEST sharpness-cpu APPEND PROPERTY ENVIRONMENT "VELA_SYNC_FILE=0")
         endif()
     endif()
+    # A private PipeWire and WirePlumber for the audio tests (docs/audio.md).
+    add_subdirectory(tests/audio)
 endif()

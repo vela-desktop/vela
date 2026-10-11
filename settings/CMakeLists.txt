@@ -40,7 +40,8 @@ qt_add_executable(vela-settings
     ${SHELL_SRC}/systemactions.h
     ${SHELL_SRC}/systemstatus.cpp
     ${SHELL_SRC}/systemstatus.h)
-target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
+target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src
+    ${PROJECT_SOURCE_DIR}/common/audio)
 
 set(SETTINGS_QML_FILES
     qml/Main.qml

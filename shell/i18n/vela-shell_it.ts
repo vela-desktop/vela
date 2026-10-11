@@ -279,8 +279,20 @@
 <context>
     <name>Network</name>
     <message>
-        <source>Couldn&apos;t connect to this network</source>
-        <translation>Impossibile connettersi a questa rete</translation>
+        <source>Password required or incorrect. Enter the Wi-Fi password again.</source>
+        <translation>Password necessaria o errata. Inserisci di nuovo la password del Wi-Fi.</translation>
+    </message>
+    <message>
+        <source>Connection timed out. Please try again.</source>
+        <translation>Tempo di connessione scaduto. Riprova.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t reconnect. Re-enter the Wi-Fi password or try again.</source>
+        <translation>Impossibile riconnettersi. Inserisci di nuovo la password del Wi-Fi o riprova.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t connect to this network. Please try again.</source>
+        <translation>Impossibile connettersi a questa rete. Riprova.</translation>
     </message>
 </context>
 <context>
@@ -485,6 +497,10 @@
     <message>
         <source>Default output</source>
         <translation>Uscita predefinita</translation>
+    </message>
+    <message>
+        <source>Default input</source>
+        <translation>Ingresso predefinito</translation>
     </message>
     <message>
         <source>Wi-Fi</source>
@@ -1020,6 +1036,17 @@
     <message>
         <source>&amp;Notification settings</source>
         <translation>Impostazioni di &amp;notifica</translation>
+    </message>
+</context>
+<context>
+    <name>VolumeOsd</name>
+    <message>
+        <source>Microphone off</source>
+        <translation>Microfono disattivato</translation>
+    </message>
+    <message>
+        <source>Microphone on</source>
+        <translation>Microfono attivato</translation>
     </message>
 </context>
 <context>

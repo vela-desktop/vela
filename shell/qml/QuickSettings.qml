@@ -21,9 +21,6 @@ Window {
 
     // "" the quick settings; "wifi", "sound" and "accessibility" their pages.
     property string page: ""
-    // The mixer reads the system only while its page is on screen.
-    readonly property bool soundShown: visible && page === "sound"
-    onSoundShownChanged: Mixer.setActive(soundShown)
 
     function open() {
         Menus.notificationCenterOpen = false
@@ -75,17 +72,25 @@ Window {
         const p = item.mapToItem(null, x, y)
         return Qt.point(Screen.width - root.width + p.x, Screen.height - Theme.taskbarHeight - root.height + p.y)
     }
-    // The outputs for one app (the mixer), in a menu under its button.
-    function chooseAppOutput(app, button) {
-        const choose = output => () => Mixer.setAppOutput(app.key, output)
-        const entries = [{ text: qsTr("Default output"), radio: true, checked: app.output === "", action: choose("") },
+    // The outputs (or inputs) for one app (the mixer), in a menu under its
+    // button.
+    function chooseAppDevice(app, button, input) {
+        const choose = name => () => input ? Audio.setAppInput(app.key, name) : Audio.setAppOutput(app.key, name)
+        const current = input ? app.input : app.output
+        const entries = [{ text: input ? qsTr("Default input") : qsTr("Default output"), radio: true,
+                           checked: current === "", action: choose("") },
                          { separator: true }]
-        for (const output of Mixer.outputs) {
-            entries.push({ text: output.description.replace(/&/g, "&&"), icon: output.icon, radio: true,
-                           checked: app.output === output.name, action: choose(output.name) })
+        for (const device of input ? Audio.inputs : Audio.outputs) {
+            entries.push({ text: device.description.replace(/&/g, "&&"), icon: device.icon, radio: true,
+                           checked: current === device.name, action: choose(device.name) })
         }
         const p = screenPoint(button, 0, button.height + 4)
         Menus.open(entries, p.x, p.y, { minWidth: 240, screen: root.screen ? root.screen.name : "" })
+    }
+    // The system volume: the default output's.
+    function setSystemVolume(value) {
+        if (Audio.muted) Audio.setMuted("output", Audio.defaultOutput, false)
+        Audio.setVolume("output", Audio.defaultOutput, value)
     }
     function openSettings(name) {
         close()
@@ -488,6 +493,51 @@ Window {
         }
     }
 
+    // Where an app's sound goes or comes from, in the mixer: a small button
+    // with an arrow, which opens the list.
+    component DeviceChooser: Rectangle {
+        id: chooser
+        property alias text: chooserLabel.text
+        signal clicked()
+        anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
+        width: visible ? Math.min(chooserLabel.implicitWidth, soundColumn.width * 0.45) + 28 : 0
+        height: 22
+        radius: Theme.radius
+        color: chooserMouse.containsMouse ? Theme.subtleHover : "transparent"
+        Text {
+            id: chooserLabel
+            x: 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - 28
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
+            elide: Text.ElideRight
+        }
+        // The "v" arrow.
+        Shape {
+            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            width: 9
+            height: 5
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                strokeColor: Theme.textSecondary
+                strokeWidth: 1.2
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                joinStyle: ShapePath.RoundJoin
+                startX: 1; startY: 1
+                PathLine { x: 4.5; y: 4.5 }
+                PathLine { x: 8; y: 1 }
+            }
+        }
+        MouseArea {
+            id: chooserMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: chooser.clicked()
+        }
+    }
+
     // A link at the bottom of a page ("More settings...").
     component Link: Text {
         id: link
@@ -617,14 +667,14 @@ Window {
                 }
                 // The arrow opens the sound page: outputs and the mixer.
                 Slider {
-                    visible: Status.volumeAvailable
-                    icon: Status.volumeIconName
-                    value: Status.volume
-                    muted: Status.muted
-                    details: Mixer.available
-                    onMoved: value => { if (Status.muted) Status.setMuted(false); Status.setVolume(value) }
-                    onWheeled: direction => Status.stepVolume(direction)
-                    onIconClicked: Status.setMuted(!Status.muted)
+                    visible: Audio.available && Audio.defaultOutput !== ""
+                    icon: Audio.iconName
+                    value: Audio.volume
+                    muted: Audio.muted
+                    details: Audio.available
+                    onMoved: value => root.setSystemVolume(value)
+                    onWheeled: direction => Audio.stepVolume("output", Audio.defaultOutput, direction)
+                    onIconClicked: Audio.setMuted("output", Audio.defaultOutput, !Audio.muted)
                     onDetailsClicked: root.showPage("sound")
                 }
             }
@@ -846,7 +896,7 @@ Window {
                         spacing: 2
 
                         Repeater {
-                            model: Mixer.outputs
+                            model: Audio.outputs
                             delegate: Rectangle {
                                 id: output
                                 required property var modelData
@@ -908,7 +958,7 @@ Window {
                                     id: outputMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
-                                    onClicked: Mixer.setDefaultOutput(output.modelData.name)
+                                    onClicked: Audio.setDefault("output", output.modelData.name)
                                 }
                             }
                         }
@@ -923,7 +973,7 @@ Window {
                         }
                         // The output's volume first, then the apps'.
                         Text {
-                            text: (Mixer.outputs.find(o => o.isDefault) || { description: qsTr("Speakers") }).description
+                            text: (Audio.outputs.find(o => o.isDefault) || { description: qsTr("Speakers") }).description
                             width: parent.width
                             leftPadding: 48
                             color: Theme.textSecondary
@@ -931,15 +981,15 @@ Window {
                             elide: Text.ElideRight
                         }
                         Slider {
-                            icon: Status.volumeIconName
-                            value: Status.volume
-                            muted: Status.muted
-                            onMoved: value => { if (Status.muted) Status.setMuted(false); Status.setVolume(value) }
-                            onWheeled: direction => Status.stepVolume(direction)
-                            onIconClicked: Status.setMuted(!Status.muted)
+                            icon: Audio.iconName
+                            value: Audio.volume
+                            muted: Audio.muted
+                            onMoved: value => root.setSystemVolume(value)
+                            onWheeled: direction => Audio.stepVolume("output", Audio.defaultOutput, direction)
+                            onIconClicked: Audio.setMuted("output", Audio.defaultOutput, !Audio.muted)
                         }
                         Repeater {
-                            model: Mixer.apps
+                            model: Audio.apps
                             delegate: Column {
                                 id: app
                                 required property var modelData
@@ -959,62 +1009,49 @@ Window {
                                         font.pixelSize: Theme.fontCaption
                                         elide: Text.ElideRight
                                     }
-                                    Rectangle {
+                                    DeviceChooser {
                                         id: appOutput
-                                        visible: Mixer.outputs.length > 1 || app.modelData.output !== ""
-                                        anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
-                                        width: visible ? Math.min(outputLabel.implicitWidth, soundColumn.width * 0.45) + 28 : 0
-                                        height: 22
-                                        radius: Theme.radius
-                                        color: outputChooser.containsMouse ? Theme.subtleHover : "transparent"
-                                        Text {
-                                            id: outputLabel
-                                            x: 8
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: parent.width - 28
-                                            text: app.modelData.output === "" ? qsTr("Default output") : app.modelData.outputDescription
-                                            color: Theme.textSecondary
-                                            font.pixelSize: Theme.fontCaption
-                                            elide: Text.ElideRight
-                                        }
-                                        // The "v" arrow.
-                                        Shape {
-                                            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                                            width: 9
-                                            height: 5
-                                            preferredRendererType: Shape.CurveRenderer
-                                            ShapePath {
-                                                strokeColor: Theme.textSecondary
-                                                strokeWidth: 1.2
-                                                fillColor: "transparent"
-                                                capStyle: ShapePath.RoundCap
-                                                joinStyle: ShapePath.RoundJoin
-                                                startX: 1; startY: 1
-                                                PathLine { x: 4.5; y: 4.5 }
-                                                PathLine { x: 8; y: 1 }
-                                            }
-                                        }
-                                        MouseArea {
-                                            id: outputChooser
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            onClicked: root.chooseAppOutput(app.modelData, appOutput)
-                                        }
+                                        visible: app.modelData.playing && (Audio.outputs.length > 1 || app.modelData.output !== "")
+                                        text: app.modelData.output === "" ? qsTr("Default output") : app.modelData.outputDescription
+                                        onClicked: root.chooseAppDevice(app.modelData, appOutput, false)
                                     }
                                 }
                                 Slider {
+                                    visible: app.modelData.playing
                                     icon: app.modelData.icon
                                     appIcon: true
                                     value: app.modelData.volume
                                     muted: app.modelData.muted
-                                    onMoved: value => Mixer.setAppVolume(app.modelData.key, value)
-                                    onWheeled: direction => Mixer.stepAppVolume(app.modelData.key, direction)
-                                    onIconClicked: Mixer.setAppMuted(app.modelData.key, !app.modelData.muted)
+                                    onMoved: value => Audio.setAppVolume(app.modelData.key, value)
+                                    onWheeled: direction => Audio.stepAppVolume(app.modelData.key, direction)
+                                    onIconClicked: Audio.setAppMuted(app.modelData.key, !app.modelData.muted)
+                                }
+                                // An app that records: where its sound comes
+                                // from.
+                                Item {
+                                    visible: app.modelData.recording && (Audio.inputs.length > 1 || app.modelData.input !== "")
+                                    width: parent.width
+                                    height: visible ? 24 : 0
+                                    Image {
+                                        x: 15
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 16
+                                        height: 16
+                                        source: Theme.icons + (app.modelData.playing ? "audio-input-microphone" : encodeURIComponent(app.modelData.icon))
+                                        sourceSize: Qt.size(width, height)
+                                    }
+                                    DeviceChooser {
+                                        id: appInput
+                                        anchors.right: undefined
+                                        x: 40
+                                        text: app.modelData.input === "" ? qsTr("Default input") : app.modelData.inputDescription
+                                        onClicked: root.chooseAppDevice(app.modelData, appInput, true)
+                                    }
                                 }
                             }
                         }
                         Text {
-                            visible: Mixer.apps.length === 0
+                            visible: Audio.apps.length === 0
                             width: parent.width
                             topPadding: 8
                             leftPadding: 48

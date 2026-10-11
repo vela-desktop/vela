@@ -82,3 +82,6 @@ target_link_libraries(vela-controls PUBLIC
     PRIVATE
     Qt6::GuiPrivate # the windows' wl_surface (backgroundeffects.cpp)
     PkgConfig::CONTROLS_WAYLAND_CLIENT)
+
+# vela-audio: the audio backend of the shell and Settings (docs/audio.md).
+add_subdirectory(audio)

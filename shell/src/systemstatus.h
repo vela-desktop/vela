@@ -5,23 +5,17 @@
 
 #include <QDBusObjectPath>
 #include <QObject>
-#include <QProcess>
 #include <QString>
-#include <QTimer>
 #include <QVariantMap>
 
 // System status for the taskbar icons and quick settings (Win+A), like Windows
-// 11: volume (PipeWire with wpctl), network (NetworkManager), Bluetooth
+// 11: network (NetworkManager), Bluetooth
 // (BlueZ), battery (UPower), power saving profile (power-profiles-daemon),
 // laptop screen brightness (logind). Everything updates itself when it
 // changes; what the system lacks is "unavailable" and the panel doesn't show
-// it.
+// it. The volume is vela-audio's (common/audio, docs/audio.md).
 class SystemStatus : public QObject {
     Q_OBJECT
-    // Volume
-    Q_PROPERTY(bool volumeAvailable READ volumeAvailable CONSTANT)
-    Q_PROPERTY(double volume READ volume NOTIFY volumeChanged)
-    Q_PROPERTY(bool muted READ muted NOTIFY volumeChanged)
     // Network
     Q_PROPERTY(bool networkConnected READ networkConnected NOTIFY networkChanged)
     Q_PROPERTY(bool networkWireless READ networkWireless NOTIFY networkChanged)
@@ -42,9 +36,8 @@ class SystemStatus : public QObject {
     // "power-saver", "balanced" or "performance" (if the system offers it)
     Q_PROPERTY(QString powerProfile READ powerProfile WRITE setPowerProfile NOTIFY powerProfileChanged)
     Q_PROPERTY(QStringList powerProfiles READ powerProfiles NOTIFY powerProfileChanged)
-    // Theme icons for network and volume, and airplane mode.
+    // The theme icon for the network, and airplane mode.
     Q_PROPERTY(QString networkIconName READ networkIcon NOTIFY networkChanged)
-    Q_PROPERTY(QString volumeIconName READ volumeIcon NOTIFY volumeChanged)
     Q_PROPERTY(bool airplane READ airplaneMode NOTIFY airplaneChanged)
     // Brightness (only backlit screens: laptops)
     Q_PROPERTY(bool brightnessAvailable READ brightnessAvailable CONSTANT)
@@ -53,19 +46,6 @@ class SystemStatus : public QObject {
 public:
     explicit SystemStatus(QObject* parent = nullptr);
     ~SystemStatus() override;
-
-    bool volumeAvailable() const { return m_volumeAvailable; }
-    double volume() const { return m_volume; }
-    bool muted() const { return m_muted; }
-    // On the volume's grid (volumesteps.h): even numbers, or the device's
-    // positions if it has only a few.
-    Q_INVOKABLE void setVolume(double value);
-    Q_INVOKABLE void setMuted(bool muted);
-    // One step up (direction > 0) or down, and unmuted, like Windows.
-    Q_INVOKABLE void stepVolume(int direction);
-    // The keyboard's volume keys and knob, the wheel on the taskbar: "up",
-    // "down", "mute" (toggles). The volume indicator shows up.
-    Q_INVOKABLE void volumeKey(const QString& key);
 
     bool networkConnected() const { return m_networkConnected; }
     bool networkWireless() const { return m_networkWireless; }
@@ -98,16 +78,10 @@ public:
     double brightness() const { return m_brightness; }
     Q_INVOKABLE void setBrightness(double value);
 
-    // The theme icon name for network and volume, like Windows' system icons.
+    // The theme icon name for the network, like Windows' system icons.
     Q_INVOKABLE QString networkIcon() const;
-    Q_INVOKABLE QString volumeIcon() const;
 
 signals:
-    void volumeChanged();
-    // A volume key or the wheel on the taskbar: the indicator (VolumeOsd.qml).
-    void volumeOsdRequested();
-    // The lines of pactl subscribe ("Event 'change' on sink-input #12"...).
-    void audioEvents(const QByteArray& lines);
     void networkChanged();
     void bluetoothChanged();
     void batteryChanged();
@@ -123,23 +97,7 @@ private Q_SLOTS:
     void onPropertiesChanged(const QString& interface, const QVariantMap& changed, const QStringList& invalidated);
 
 private:
-    void refreshVolume();
-    void writeVolume();
-    int deviceIntervals();
     void readBacklight();
-
-    bool m_volumeAvailable = false;
-    double m_volume = 0.0;
-    bool m_muted = false;
-    QProcess m_subscribe; // pactl subscribe: audio changes
-    QTimer m_volumeTimer;
-    // One wpctl set-volume at a time, so a quickly turned knob can't end on an
-    // older value; m_volumePending: another one is due when it finishes.
-    QProcess m_volumeWriter;
-    bool m_volumePending = false;
-    // The default output's positions (VolumeSteps::intervals); 0: to be read
-    // again (another output, another profile).
-    int m_intervals = 0;
 
     bool m_networkConnected = false;
     bool m_networkWireless = false;
