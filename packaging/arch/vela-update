@@ -127,16 +127,42 @@ WORK=""
 TEMP_CONFIG=""
 SWAP_UNCOMMITTED=0
 makepkg_pid=""
+build_isolated=0
 stop_makepkg() {
     [ -n "$makepkg_pid" ] || return 0
-    # setsid puts makepkg and ordinary compiler descendants in their own
-    # process group. Killing the leader alone leaves compiler jobs running
-    # after the updater releases its lock and deletes their working directory.
-    kill -TERM "-$makepkg_pid" 2>/dev/null || true
-    # Bound shutdown even if a compiler ignores TERM or makepkg does not reap
-    # its children. KILL the same group before waiting for the launcher.
+    if [ "$build_isolated" = 1 ]; then
+        # In unattended runs, setsid puts makepkg and its ordinary compiler
+        # descendants in a dedicated process group.
+        kill -TERM "-$makepkg_pid" 2>/dev/null || true
+    else
+        # Keep the controlling terminal for interactive makepkg/sudo prompts.
+        # On Linux, enumerate the child tree before signalling the parent;
+        # targeting only makepkg would leave compiler processes behind.
+        pending="$makepkg_pid"
+        build_pids=""
+        while [ -n "$pending" ]; do
+            next=""
+            for child_pid in $pending; do
+                build_pids="$build_pids $child_pid"
+                children=$(cat "/proc/$child_pid/task/$child_pid/children" 2>/dev/null || true)
+                [ -z "$children" ] || next="$next $children"
+            done
+            pending="${next# }"
+        done
+        for child_pid in $build_pids; do
+            kill -TERM "$child_pid" 2>/dev/null || true
+        done
+    fi
+    # Bound shutdown even when children ignore TERM; reap the launcher before
+    # removing its workspace. PID reuse during this short grace is unlikely.
     sleep 1
-    kill -KILL "-$makepkg_pid" 2>/dev/null || true
+    if [ "$build_isolated" = 1 ]; then
+        kill -KILL "-$makepkg_pid" 2>/dev/null || true
+    else
+        for child_pid in $build_pids; do
+            kill -KILL "$child_pid" 2>/dev/null || true
+        done
+    fi
     wait "$makepkg_pid" 2>/dev/null || true
     makepkg_pid=""
 }
@@ -487,15 +513,23 @@ if [ -n "$jobs" ]; then
     export MAKEFLAGS="-j$jobs"
 fi
 echo ":: Building the package (a few minutes)"
-if ! command -v setsid >/dev/null 2>&1; then
-    echo "vela-update: setsid (util-linux) is required to safely manage builds" >&2
-    exit 1
+if [ -t 0 ]; then
+    # setsid would detach /dev/tty, breaking sudo authentication and makepkg
+    # prompts. Preserve the existing foreground terminal's process group.
+    BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
+        makepkg --syncdeps --install --clean --force <&0 9>&- &
+    build_isolated=0
+else
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "vela-update: setsid (util-linux) is required for unattended builds" >&2
+        exit 1
+    fi
+    # Without a controlling tty, we can safely isolate the whole build in a
+    # new process group, allowing group-wide cancellation on INT/TERM/HUP.
+    BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
+        setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
+    build_isolated=1
 fi
-# Put the entire build in a separate session/process group (PGID = $!).
-# Keep stdin available for makepkg/sudo prompts and close our lock descriptor
-# in the child. This allows signal traps to terminate the complete build tree.
-BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-    setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
 makepkg_pid=$!
 if wait "$makepkg_pid"; then
     build_ok=1
