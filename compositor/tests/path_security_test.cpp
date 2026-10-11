@@ -151,25 +151,33 @@ TEST(PathSecurity, LockMarkerSurvivesRuntimeAliasRetarget)
     ASSERT_NE(mkdtemp(root.data()), nullptr);
     const std::string first = root + "/first";
     const std::string second = root + "/second";
-    const std::string alias = root + "/runtime";
+    const std::string first_runtime = first + "/runtime";
+    const std::string second_runtime = second + "/runtime";
+    const std::string alias = root + "/parent";
     ASSERT_EQ(mkdir(first.c_str(), 0700), 0);
     ASSERT_EQ(mkdir(second.c_str(), 0700), 0);
+    ASSERT_EQ(mkdir(first_runtime.c_str(), 0700), 0);
+    ASSERT_EQ(mkdir(second_runtime.c_str(), 0700), 0);
     ASSERT_EQ(symlink(first.c_str(), alias.c_str()), 0);
 
-    int runtime_fd = vela_runtime_dir_open(alias.c_str());
+    // The runtime directory itself is a real private directory; only a parent
+    // component is an alias, which is an accepted XDG path shape.
+    int runtime_fd = vela_runtime_dir_open((alias + "/runtime").c_str());
     ASSERT_GE(runtime_fd, 0);
     ASSERT_TRUE(vela_lock_marker_create_at(runtime_fd, "wayland-0"));
 
     ASSERT_EQ(unlink(alias.c_str()), 0);
     ASSERT_EQ(symlink(second.c_str(), alias.c_str()), 0);
     EXPECT_TRUE(vela_lock_marker_present_at(runtime_fd, "wayland-0"));
-    EXPECT_TRUE(std::filesystem::exists(first + "/vela-locked-wayland-0"));
-    EXPECT_FALSE(std::filesystem::exists(second + "/vela-locked-wayland-0"));
+    EXPECT_TRUE(std::filesystem::exists(first_runtime + "/vela-locked-wayland-0"));
+    EXPECT_FALSE(std::filesystem::exists(second_runtime + "/vela-locked-wayland-0"));
 
     EXPECT_TRUE(vela_lock_marker_remove_at(runtime_fd, "wayland-0"));
-    EXPECT_FALSE(std::filesystem::exists(first + "/vela-locked-wayland-0"));
+    EXPECT_FALSE(std::filesystem::exists(first_runtime + "/vela-locked-wayland-0"));
     close(runtime_fd);
     unlink(alias.c_str());
+    rmdir(first_runtime.c_str());
+    rmdir(second_runtime.c_str());
     rmdir(first.c_str());
     rmdir(second.c_str());
     rmdir(root.c_str());
