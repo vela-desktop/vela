@@ -4,13 +4,16 @@
 
 """Offline updater contracts with real Git and simulated package/CI tools."""
 
+import fcntl
 import json
 import os
+import pty
 from pathlib import Path
 import shutil
 import signal
 import subprocess
 import tempfile
+import termios
 import time
 import unittest
 
@@ -67,6 +70,10 @@ if name == "pacman":
         sys.exit(1)
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
 elif name == "makepkg":
+    if os.environ.get("TEST_REQUIRE_TTY"):
+        # sudo authenticates through /dev/tty, not necessarily stdin.
+        fd = os.open("/dev/tty", os.O_RDONLY | os.O_NONBLOCK)
+        os.close(fd)
     if os.environ.get("TEST_PAUSE_BUILD"):
         import time
         marker = pathlib.Path(os.environ["TEST_BUILD_MARKER"])
@@ -241,16 +248,33 @@ class UpdateFixture(unittest.TestCase):
         return [call for line in self.calls_file.read_text().splitlines()
                 if (call := json.loads(line))["tool"] == tool]
 
-    def start_paused_build(self):
+    def start_paused_build(self, interactive=False):
         self.env["TEST_PAUSE_BUILD"] = "1"
         marker = self.directory / "build-started"
         release = self.directory / "build-release"
         self.env["TEST_BUILD_MARKER"] = str(marker)
         self.env["TEST_BUILD_RELEASE"] = str(release)
-        proc = subprocess.Popen(
-            ["sh", str(self.update_script), "--source", str(self.source), "--build"],
-            env=self.env, stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdin = subprocess.DEVNULL
+        preexec_fn = None
+        if interactive:
+            master, slave = pty.openpty()
+            stdin = slave
+
+            def attach_terminal():
+                os.setsid()
+                fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+
+            preexec_fn = attach_terminal
+        try:
+            proc = subprocess.Popen(
+                ["sh", str(self.update_script), "--source", str(self.source), "--build"],
+                env=self.env, stdin=stdin, preexec_fn=preexec_fn,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        finally:
+            if interactive:
+                os.close(slave)
+        if interactive:
+            self.addCleanup(lambda: os.close(master))
         self.addCleanup(lambda: proc.kill() if proc.poll() is None else None)
         limit = time.monotonic() + 12
         while not marker.exists() and proc.poll() is None and time.monotonic() < limit:
@@ -703,6 +727,29 @@ class UpdateConcurrency(UpdateFixture):
         self.assertEqual(proc.returncode, 143, stdout + stderr)
         self.assertTrue(child_signalled.exists(),
                         "The SIGTERM handler did not reach the compiler child")
+        self.assertFalse(list(self.mirror.parent.glob("build.*")))
+        self.env.pop("TEST_PAUSE_BUILD", None)
+        self.run_update("--check")
+
+    def test_interactive_build_preserves_tty_and_stops_descendants(self):
+        # Simulate launching vela-update from a real terminal, with sudo
+        # opening /dev/tty and a compiler grandchild running underneath makepkg.
+        self.env["TEST_REQUIRE_TTY"] = "1"
+        self.env["TEST_SPAWN_BUILD_CHILD"] = "1"
+        ready = self.directory / "interactive-child-ready"
+        signalled = self.directory / "interactive-child-signalled"
+        self.env["TEST_BUILD_CHILD_READY"] = str(ready)
+        self.env["TEST_BUILD_CHILD_SIGNALLED"] = str(signalled)
+        proc, release = self.start_paused_build(interactive=True)
+        self.assertTrue(ready.exists())
+        try:
+            proc.send_signal(signal.SIGTERM)
+            stdout, stderr = proc.communicate(timeout=8)
+        finally:
+            release.touch()
+        self.assertEqual(proc.returncode, 143, stdout + stderr)
+        self.assertTrue(signalled.exists(),
+                        "The interactive build's compiler child did not stop")
         self.assertFalse(list(self.mirror.parent.glob("build.*")))
         self.env.pop("TEST_PAUSE_BUILD", None)
         self.run_update("--check")
