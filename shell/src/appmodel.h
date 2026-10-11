@@ -5,6 +5,7 @@
 
 #include <QAbstractListModel>
 #include <QFileSystemWatcher>
+#include <QHash>
 #include <QList>
 #include <QSet>
 #include <QString>
@@ -126,6 +127,9 @@ private:
     // Retry failed watch registrations at most once per 10 seconds.
     QTimer m_watchRetryTimer;
     QSet<QString> m_failedWatchPaths;
+    // Canonical destinations of symlinked XDG roots; detect target swaps
+    // even when their lexical paths stay the same.
+    QHash<QString, QString> m_symlinkTargets;
     int m_catalogRevision = 0;
 };
 
