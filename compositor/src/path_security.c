@@ -41,6 +41,27 @@ bool vela_path_component_safe(const char *name)
     return vela_relative_path_safe(name) && strchr(name, '/') == NULL;
 }
 
+static bool path_has_component_after(const char *path)
+{
+    while (*path) {
+        while (*path == '/') {
+            ++path;
+        }
+        if (!*path) {
+            return false;
+        }
+        const char *component = path;
+        while (*path && *path != '/') {
+            ++path;
+        }
+        size_t length = (size_t)(path - component);
+        if (!(length == 1 && component[0] == '.')) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int vela_runtime_dir_open(const char *path)
 {
     if (!path || *path != '/') {
@@ -48,47 +69,65 @@ int vela_runtime_dir_open(const char *path)
         return -1;
     }
 
-    // XDG paths may contain repeated separators, "." components or trailing
-    // slashes. Parent traversal is different: accepting ".." would let an
-    // environment value redirect the initial lookup outside the named path.
-    for (const char *p = path; *p;) {
-        while (*p == '/') {
-            ++p;
-        }
-        const char *component = p;
-        while (*p && *p != '/') {
-            ++p;
-        }
-        if (p - component == 2 && component[0] == '.' && component[1] == '.') {
-            errno = EINVAL;
-            return -1;
-        }
-    }
-
-    // Trailing slashes are valid in XDG_RUNTIME_DIR, but would defeat
-    // O_NOFOLLOW on a symlink to a directory.
-    char *normalized = strdup(path);
-    if (!normalized) {
-        return -1;
-    }
-    size_t length = strlen(normalized);
-    while (length > 1 && normalized[length - 1] == '/') {
-        normalized[--length] = '\0';
-    }
-
-    // The environment chooses the XDG runtime directory by design. The input
-    // is constrained above, and the opened inode is checked below for type,
-    // ownership and private permissions; all sensitive children are accessed
-    // relative to this descriptor rather than by reusing the environment path.
-    // codeql[cpp/path-injection]
-    int fd = open(normalized, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    free(normalized);
+    // Start from a trusted constant path, then resolve the environment-provided
+    // path one component at a time. This keeps untrusted input out of open()
+    // entirely while still accepting ordinary XDG aliases such as //, ./ and
+    // trailing slashes.
+    int fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
     if (fd < 0) {
         return -1;
     }
 
-    // Validate the directory we actually opened: never check a pathname and
-    // then reopen it, since it could be replaced between those operations.
+    const char *p = path;
+    while (*p) {
+        while (*p == '/') {
+            ++p;
+        }
+        if (!*p) {
+            break;
+        }
+
+        const char *component = p;
+        while (*p && *p != '/') {
+            ++p;
+        }
+        size_t length = (size_t)(p - component);
+
+        if (length == 1 && component[0] == '.') {
+            continue;
+        }
+        if (length == 2 && component[0] == '.' && component[1] == '.') {
+            close(fd);
+            errno = EINVAL;
+            return -1;
+        }
+
+        char *name = strndup(component, length);
+        if (!name) {
+            close(fd);
+            return -1;
+        }
+
+        // Preserve the previous semantics: parent symlinks may be part of a
+        // valid absolute XDG path, but the runtime directory itself must not
+        // be a symlink.
+        bool final = !path_has_component_after(p);
+        int flags = O_PATH | O_DIRECTORY | O_CLOEXEC;
+        if (final) {
+            flags |= O_NOFOLLOW;
+        }
+        int next = openat(fd, name, flags);
+        free(name);
+        if (next < 0) {
+            close(fd);
+            return -1;
+        }
+        close(fd);
+        fd = next;
+    }
+
+    // Validate the inode we actually reached. The descriptor is then reused
+    // for socket and lock operations, so there is no check-then-reopen race.
     struct stat info;
     if (fstat(fd, &info) != 0 || !S_ISDIR(info.st_mode)
         || info.st_uid != geteuid() || (info.st_mode & 077) != 0) {
