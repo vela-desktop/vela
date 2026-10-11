@@ -180,6 +180,8 @@ static void session_done(void *data, struct ext_image_copy_capture_session_v1 *s
         complete(job, false);
         return;
     }
+    // Cleanup must know the mapped size even if Wayland pool/buffer creation fails.
+    job->result.length = length;
     job->pool = wl_shm_create_pool(job->shm, job->fd, (int32_t)length);
     if (!job->pool) {
         complete(job, false);
@@ -193,7 +195,6 @@ static void session_done(void *data, struct ext_image_copy_capture_session_v1 *s
     }
 
     job->result.pixels = job->mapping;
-    job->result.length = length;
     job->result.stride = stride;
     job->result.format = job->selected_format;
     job->result.transform = WL_OUTPUT_TRANSFORM_NORMAL;
