@@ -9,6 +9,7 @@
 
 #include "accessibility.h"
 #include "appmodel.h"
+#include "audio.h"
 #include "clipboard.h"
 #include "config.h"
 #include "controls.h"
@@ -21,12 +22,12 @@
 #include "jumplists.h"
 #include "language.h"
 #include "mediakeys.h"
-#include "mixer.h"
 #include "network.h"
 #include "notifications.h"
 #include "servicemenus.h"
 #include "shellcontroller.h"
 #include "snip.h"
+#include "soundkeys.h"
 #include "systemactions.h"
 #include "systemstatus.h"
 #include "taskbarmodel.h"
@@ -316,9 +317,21 @@ int main(int argc, char* argv[])
     QObject::connect(&config, &Config::clipboardChanged, &clipboard,
         [&config, &clipboard] { clipboard.setEnabled(config.clipboardHistory()); });
     SystemStatus status;
-    QObject::connect(&shell, &ShellController::volumeKeyPressed, &status, &SystemStatus::volumeKey);
-    Mixer mixer(&apps);
-    QObject::connect(&status, &SystemStatus::audioEvents, &mixer, &Mixer::onAudioEvents);
+    // The sound (docs/audio.md): apps named after their .desktop file.
+    vela::audio::Audio audio;
+    audio.setAppResolver([&apps](const vela::audio::AppIdentity& id) {
+        for (const QString& candidate : { id.portalAppId, id.id, id.binary, id.name }) {
+            const QString desktopId = apps.findDesktopId(candidate);
+            if (!desktopId.isEmpty()) {
+                const QVariantMap entry = apps.entry(desktopId);
+                return vela::audio::AppInfo { desktopId, entry.value(QStringLiteral("name")).toString(),
+                    entry.value(QStringLiteral("iconName")).toString() };
+            }
+        }
+        return vela::audio::AppInfo {};
+    });
+    SoundKeys sound(&audio);
+    QObject::connect(&shell, &ShellController::volumeKeyPressed, &sound, &SoundKeys::press);
     MediaKeys media;
     QObject::connect(&shell, &ShellController::mediaKeyPressed, &media, &MediaKeys::press);
 
@@ -354,7 +367,8 @@ int main(int argc, char* argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Clip"), &clipboard);
     engine.rootContext()->setContextProperty(QStringLiteral("Snip"), &snip);
     engine.rootContext()->setContextProperty(QStringLiteral("Status"), &status);
-    engine.rootContext()->setContextProperty(QStringLiteral("Mixer"), &mixer);
+    engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
+    engine.rootContext()->setContextProperty(QStringLiteral("Sound"), &sound);
     engine.rootContext()->setContextProperty(QStringLiteral("Access"), &accessibility);
     engine.rootContext()->setContextProperty(QStringLiteral("Network"), &network);
 

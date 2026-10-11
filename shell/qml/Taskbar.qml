@@ -338,7 +338,7 @@ Window {
                     wheelRest += delta
                     while (Math.abs(wheelRest) >= 120) {
                         root.fromHere()
-                        if (!Mixer.stepTaskVolume(desktopId, wheelRest > 0 ? 1 : -1)) {
+                        if (!Sound.stepTaskVolume(desktopId, wheelRest > 0 ? 1 : -1)) {
                             wheelRest = 0
                             return
                         }
@@ -492,10 +492,10 @@ Window {
             }
             Image {
                 id: volumeIcon
-                visible: Status.volumeAvailable
+                visible: Audio.available
                 width: 16
                 height: 16
-                source: Theme.icons + encodeURIComponent(Status.volumeIconName)
+                source: Theme.icons + encodeURIComponent(Audio.iconName)
                 sourceSize: Qt.size(width, height)
             }
             Image {
@@ -522,7 +522,7 @@ Window {
                 const overVolume = volumeIcon.visible && mouse.x >= volumeIcon.x + iconsRow.x - 5
                     && mouse.x < volumeIcon.x + iconsRow.x + volumeIcon.width + 5
                 root.openMenu(overVolume ? [
-                    { text: qsTr("Open volume &mixer"), icon: "audio-volume-high", enabled: Mixer.available, action: () => { root.fromHere(); Shell.soundOutputRequested() } },
+                    { text: qsTr("Open volume &mixer"), icon: "audio-volume-high", enabled: Audio.available, action: () => { root.fromHere(); Shell.soundOutputRequested() } },
                     { text: qsTr("&Sound settings"), icon: "preferences-desktop-sound", enabled: System.available("sound-settings"), action: () => System.trigger("sound-settings") }
                 ] : [
                     { text: qsTr("&Troubleshoot network problems"), icon: "network-workgroup", enabled: false },
@@ -536,7 +536,7 @@ Window {
                 wheelRest += wheel.angleDelta.y
                 while (Math.abs(wheelRest) >= 120) {
                     root.fromHere()
-                    Status.volumeKey(wheelRest > 0 ? "up" : "down")
+                    Sound.press(wheelRest > 0 ? "up" : "down")
                     wheelRest -= wheelRest > 0 ? 120 : -120
                 }
             }

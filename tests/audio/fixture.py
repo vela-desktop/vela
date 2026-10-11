@@ -30,8 +30,9 @@ VELA_AUDIO_FIXTURE_CONTROL: one command per line, answered "ok [value]" or
 
     stop-pipewire | start-pipewire | restart-pipewire   (WirePlumber follows)
     stop-wireplumber | start-wireplumber | restart-wireplumber
-    add-sink <name> [positions]    a fake output appearing; "ok <node id>"
-    add-source <name> [positions]  a fake input appearing
+    add-sink <name> [positions] [key=value...]    a fake output appearing;
+                                                  "ok <node id>"
+    add-source <name> [positions] [key=value...]  a fake input appearing
     remove <name>                  a node disappearing
 """
 
@@ -264,11 +265,13 @@ class AudioFixture:
     def start_wireplumber(self):
         self._start_wireplumber()
 
-    def add_endpoint(self, name, media_class="Audio/Sink", positions="FL FR", description=None):
-        """A fake device appearing (a null sink that outlives pw-cli); its id."""
+    def add_endpoint(self, name, media_class="Audio/Sink", positions="FL FR", description=None, extra=None):
+        """A fake device appearing (a null sink that outlives pw-cli); its id.
+        extra: more node properties (a Bluetooth address...)."""
+        more = " ".join(f'{key}="{value}"' for key, value in (extra or {}).items())
         props = (f'{{ factory.name=support.null-audio-sink node.name="{name}" '
                  f'node.description="{description or name}" media.class={media_class} '
-                 f'audio.position=[ {positions} ] monitor.channel-volumes=true object.linger=true }}')
+                 f'audio.position=[ {positions} ] monitor.channel-volumes=true object.linger=true {more} }}')
         self.run("pw-cli", "create-node", "adapter", props)
         self.wait_for(lambda: self.node(name) is not None, f"node {name}")
         return self.node(name)["id"]
@@ -423,8 +426,10 @@ class _Control:
                 return "ok"
             if len(words) >= 2 and words[0] in ("add-sink", "add-source"):
                 media_class = "Audio/Sink" if words[0] == "add-sink" else "Audio/Source/Virtual"
-                positions = " ".join(words[2:]) or ("FL FR" if words[0] == "add-sink" else "MONO")
-                return f"ok {audio.add_endpoint(words[1], media_class, positions)}"
+                extra = dict(w.split("=", 1) for w in words[2:] if "=" in w)
+                positions = " ".join(w for w in words[2:] if "=" not in w) or (
+                    "FL FR" if words[0] == "add-sink" else "MONO")
+                return f"ok {audio.add_endpoint(words[1], media_class, positions, extra=extra)}"
             if len(words) == 2 and words[0] == "remove":
                 audio.remove_node(words[1])
                 return "ok"

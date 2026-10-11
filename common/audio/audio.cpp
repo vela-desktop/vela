@@ -6,6 +6,13 @@
 #include "core.h"
 #include "volumesteps.h"
 
+#include <QDBusArgument>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
+#include <QDBusVariant>
+
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -238,6 +245,63 @@ void Audio::resetApps()
     }
 }
 
+QString Audio::iconName() const
+{
+    if (m_muted || m_volume <= 0.0) {
+        return QStringLiteral("audio-volume-muted");
+    }
+    return m_volume < 0.34 ? QStringLiteral("audio-volume-low")
+        : m_volume < 0.67  ? QStringLiteral("audio-volume-medium")
+                           : QStringLiteral("audio-volume-high");
+}
+
+void Audio::watchBattery(const QString& path)
+{
+    if (m_batteryWatched.contains(path)) {
+        return;
+    }
+    m_batteryWatched.insert(path);
+    const QString bluez = QStringLiteral("org.bluez");
+    const QString properties = QStringLiteral("org.freedesktop.DBus.Properties");
+    QDBusConnection bus = QDBusConnection::systemBus();
+    bus.connect(bluez, path, properties, QStringLiteral("PropertiesChanged"), this,
+        SLOT(onBluetoothProperties(QDBusMessage)));
+    QDBusMessage get = QDBusMessage::createMethodCall(bluez, path, properties, QStringLiteral("Get"));
+    get << QStringLiteral("org.bluez.Battery1") << QStringLiteral("Percentage");
+    auto* watcher = new QDBusPendingCallWatcher(bus.asyncCall(get, 1000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, path] {
+        const QDBusPendingReply<QDBusVariant> reply = *watcher;
+        watcher->deleteLater();
+        bool ok = false;
+        const int percent = reply.isError() ? -1 : reply.value().variant().toInt(&ok);
+        if (ok && percent >= 0 && percent <= 100) {
+            m_batteries.insert(path, percent);
+            update();
+        }
+    });
+}
+
+void Audio::onBluetoothProperties(const QDBusMessage& message)
+{
+    const QList<QVariant> args = message.arguments();
+    if (args.value(0).toString() != QLatin1String("org.bluez.Battery1")) {
+        return;
+    }
+    bool ok = false;
+    const QVariant changed = args.value(1);
+    const QVariantMap properties = changed.canConvert<QDBusArgument>()
+        ? qdbus_cast<QVariantMap>(changed.value<QDBusArgument>())
+        : changed.toMap();
+    if (!properties.contains(QStringLiteral("Percentage"))) {
+        return;
+    }
+    const int percent = properties.value(QStringLiteral("Percentage")).toInt(&ok);
+    if (ok && percent >= 0 && percent <= 100) {
+        m_batteries.insert(message.path(), percent);
+        update();
+    }
+}
+
 QString Audio::appKey(const QString& desktopId) const
 {
     if (desktopId.isEmpty()) {
@@ -362,6 +426,15 @@ void Audio::update()
             continue; // like Windows: what isn't plugged in isn't offered
         }
         const QString suffix = kind + u' ' + e.name;
+        // A Bluetooth headset: its BlueZ object, given by PipeWire or made
+        // from its address.
+        QString bluez = e.bluezPath;
+        if (bluez.isEmpty() && !e.bluetoothAddress.isEmpty()) {
+            bluez = QStringLiteral("/org/bluez/hci0/dev_") + QString(e.bluetoothAddress).replace(u':', u'_');
+        }
+        if (!bluez.isEmpty()) {
+            watchBattery(bluez);
+        }
         const double v = shown(QStringLiteral("volume ") + suffix, std::min(e.volume(), 1.0)).toDouble();
         const bool m = shown(QStringLiteral("mute ") + suffix, e.muted).toBool();
         const QVariantMap map {
@@ -373,7 +446,7 @@ void Audio::update()
             { QStringLiteral("isDefault"), isDefault },
             { QStringLiteral("intervals"), VolumeSteps::intervals(e.step) },
             { QStringLiteral("channels"), int(e.positions.isEmpty() ? e.channelVolumes.size() : e.positions.size()) },
-            { QStringLiteral("battery"), -1 },
+            { QStringLiteral("battery"), bluez.isEmpty() ? -1 : m_batteries.value(bluez, -1) },
             { QStringLiteral("mutePending"), pending(QStringLiteral("mute ") + suffix) },
             { QStringLiteral("muteError"), m_errors.contains(QStringLiteral("mute ") + suffix) },
             { QStringLiteral("defaultPending"), pending(QStringLiteral("default ") + kind) },

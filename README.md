@@ -204,8 +204,8 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
   mode, Night light, accessibility, brightness, volume and battery, and a sound page
   (Super+Ctrl+V) to pick the output, see Bluetooth headsets' charge, and set each app's
   volume and output.
-- **Media and volume keys** that work whatever has the focus, with a volume indicator;
-  the wheel over an app's taskbar button sets that app's volume.
+- **Media, volume and microphone keys** that work whatever has the focus, with an
+  indicator; the wheel over an app's taskbar button sets that app's volume.
 - **Notifications** with actions, a **notification center** with a calendar (Super+N),
   and Do Not Disturb.
 - **Clipboard history** (Super+V): text and images, pinned items that survive a reboot,

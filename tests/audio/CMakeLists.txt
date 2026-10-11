@@ -24,14 +24,15 @@ set_tests_properties(audio-fixture PROPERTIES
     SKIP_RETURN_CODE 77
     TIMEOUT 120)
 
-# vela-audio's tests (common/audio), each run inside the fixture.
+# vela-audio's tests (common/audio) and the shell's sound keys, each run
+# inside the fixture.
 if(TARGET vela-audio)
-    find_package(Qt6 6.5 REQUIRED COMPONENTS Network Test)
-    foreach(suite core view)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Network Test)
+    foreach(suite core view keys)
         qt_add_executable(vela-audio-${suite}-test ${suite}.cpp harness.h)
         set_target_properties(vela-audio-${suite}-test PROPERTIES AUTOMOC ON)
         target_compile_options(vela-audio-${suite}-test PRIVATE -Wall -Wextra)
-        target_link_libraries(vela-audio-${suite}-test PRIVATE vela-audio Qt6::Network Qt6::Test)
+        target_link_libraries(vela-audio-${suite}-test PRIVATE vela-audio Qt6::DBus Qt6::Network Qt6::Test)
         add_test(NAME audio-${suite}
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/fixture.py
                 -- $<TARGET_FILE:vela-audio-${suite}-test>)
@@ -40,4 +41,8 @@ if(TARGET vela-audio)
             SKIP_RETURN_CODE 77
             TIMEOUT 180)
     endforeach()
+    # The shell's sound keys, on the library.
+    target_sources(vela-audio-keys-test PRIVATE ${PROJECT_SOURCE_DIR}/shell/src/soundkeys.cpp
+        ${PROJECT_SOURCE_DIR}/shell/src/soundkeys.h)
+    target_include_directories(vela-audio-keys-test PRIVATE ${PROJECT_SOURCE_DIR}/shell/src)
 endif()

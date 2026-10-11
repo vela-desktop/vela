@@ -22,6 +22,8 @@
 
 #include <functional>
 
+class QDBusMessage;
+
 namespace vela::audio {
 
 class Core;
@@ -39,7 +41,8 @@ class Audio : public QObject {
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
     // [{name, description, icon, volume, muted, isDefault, intervals,
     //   channels, battery, mutePending, muteError, defaultPending,
-    //   defaultError}]. Outputs whose jack is unplugged are left out, except
+    //   defaultError}]; battery: a Bluetooth headset's charge (BlueZ), -1 if
+    //   it doesn't say. Outputs whose jack is unplugged are left out, except
     // the default one.
     Q_PROPERTY(QVariantList outputs READ outputs NOTIFY changed)
     Q_PROPERTY(QVariantList inputs READ inputs NOTIFY changed)
@@ -55,6 +58,9 @@ class Audio : public QObject {
     Q_PROPERTY(bool muted READ muted NOTIFY changed)
     // The default input's mute, as confirmed (the microphone mute key).
     Q_PROPERTY(bool inputMuted READ inputMuted NOTIFY changed)
+    // The theme icon for the default output's volume, like Windows' system
+    // icon: muted, low, medium, high.
+    Q_PROPERTY(QString iconName READ iconName NOTIFY changed)
 
 public:
     using AppResolver = std::function<AppInfo(const AppIdentity&)>;
@@ -76,6 +82,7 @@ public:
     double volume() const { return m_volume; }
     bool muted() const { return m_muted; }
     bool inputMuted() const { return m_inputMuted; }
+    QString iconName() const;
 
     // kind: "output" or "input"; name: the endpoint's node.name.
     Q_INVOKABLE void setDefault(const QString& kind, const QString& name);
@@ -102,6 +109,10 @@ signals:
     void availableChanged();
     void changed();
 
+private Q_SLOTS:
+    // BlueZ's PropertiesChanged on a headset: its battery.
+    void onBluetoothProperties(const QDBusMessage& message);
+
 private:
     // An action waiting for the server. Optimistic ones are shown at once
     // and dropped when confirmed or after 500 ms; the others (privacy) only
@@ -118,6 +129,8 @@ private:
     void fail(const QString& key);
     void flush();
     void update();
+    // A Bluetooth output's battery: read once, then followed.
+    void watchBattery(const QString& path);
 
     Core* m_core;
     AppResolver m_resolver;
@@ -126,6 +139,8 @@ private:
     QHash<QString, double> m_writes; // volumes waiting for the next loop turn
     QTimer m_flush;
     QTimer m_expiry;
+    QHash<QString, int> m_batteries; // BlueZ device path -> percent
+    QSet<QString> m_batteryWatched;
 
     QVariantList m_outputs;
     QVariantList m_inputs;

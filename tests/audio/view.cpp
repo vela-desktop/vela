@@ -11,6 +11,10 @@
 #include "core.h"
 #include "harness.h"
 
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusVariant>
+#include <QDBusVirtualObject>
 #include <QSignalSpy>
 
 using namespace harness;
@@ -35,12 +39,31 @@ QVariantMap find(const QVariantList& list, const QString& field, const QString& 
     return {};
 }
 
+// BlueZ, as far as a headset's battery goes (org.bluez.Battery1).
+class FakeBlueZ : public QDBusVirtualObject {
+public:
+    int percent = 73;
+    QString introspect(const QString&) const override { return {}; }
+    bool handleMessage(const QDBusMessage& message, const QDBusConnection& connection) override
+    {
+        if (message.interface() != QLatin1String("org.freedesktop.DBus.Properties") || message.member() != QLatin1String("Get")
+            || message.arguments().value(0).toString() != QLatin1String("org.bluez.Battery1")) {
+            return false;
+        }
+        connection.send(message.createReply(QVariant::fromValue(QDBusVariant(QVariant::fromValue(uchar(percent))))));
+        return true;
+    }
+};
+
 } // namespace
 
 class ViewTest : public QObject {
     Q_OBJECT
 
     std::unique_ptr<Audio> audio;
+    // A private bus as the system bus, never the real one: BlueZ lives there.
+    QProcess bus;
+    FakeBlueZ bluez;
 
     QVariantMap output(const QString& name) const { return find(audio->outputs(), QStringLiteral("name"), name); }
     QVariantMap input(const QString& name) const { return find(audio->inputs(), QStringLiteral("name"), name); }
@@ -58,6 +81,24 @@ class ViewTest : public QObject {
     }
 
 private slots:
+    void initTestCase()
+    {
+        bus.start(QStringLiteral("dbus-daemon"), { QStringLiteral("--session"), QStringLiteral("--nofork"), QStringLiteral("--print-address=1") });
+        QVERIFY2(bus.waitForStarted() && bus.waitForReadyRead(), "dbus-daemon is needed");
+        const QString address = QString::fromUtf8(bus.readAllStandardOutput().trimmed());
+        qputenv("DBUS_SYSTEM_BUS_ADDRESS", address.toUtf8());
+        QDBusConnection fake = QDBusConnection::connectToBus(address, QStringLiteral("fake-bluez"));
+        QVERIFY(fake.registerService(QStringLiteral("org.bluez")));
+        QVERIFY(fake.registerVirtualObject(QStringLiteral("/org/bluez"), &bluez, QDBusConnection::SubPath));
+    }
+
+    void cleanupTestCase()
+    {
+        QDBusConnection::disconnectFromBus(QStringLiteral("fake-bluez"));
+        bus.kill();
+        bus.waitForFinished();
+    }
+
     void init()
     {
         audio = std::make_unique<Audio>();
@@ -292,6 +333,24 @@ private slots:
         QTRY_COMPARE(audio->core()->snapshot().stream(s)->endpoint, id(microphone));
         QCOMPARE(voice->close(), 0);
         QCOMPARE(control(QStringLiteral("remove vela-test-usb-mic")), QStringLiteral("ok"));
+    }
+
+    void bluetoothBattery()
+    {
+        bluez.percent = 73;
+        QVERIFY(control(QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF")).startsWith(QLatin1String("ok")));
+        QTRY_VERIFY(!output(QStringLiteral("vela-test-headset")).isEmpty());
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 73);
+        QCOMPARE(output(speakers).value("battery").toInt(), -1);
+
+        // BlueZ says it changed: followed without asking again.
+        QDBusMessage changed = QDBusMessage::createSignal(QStringLiteral("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"),
+            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("PropertiesChanged"));
+        changed << QStringLiteral("org.bluez.Battery1") << QVariantMap { { QStringLiteral("Percentage"), QVariant::fromValue(uchar(40)) } }
+                << QStringList();
+        QVERIFY(QDBusConnection(QStringLiteral("fake-bluez")).send(changed));
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 40);
+        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
     }
 
     void availableFollowsTheConnection()

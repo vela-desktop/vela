@@ -8,7 +8,8 @@ import Vela.Controls
 // the taskbar, for a moment after a volume key, the knob or the wheel on the
 // taskbar's volume icon. The wheel on an app's taskbar button shows that app's
 // volume instead, with its icon. It can be used too: dragged, the wheel, a
-// click on the icon mutes. It stays while the mouse is on it.
+// click on the icon mutes. It stays while the mouse is on it. The microphone
+// mute key shows whether the microphone is on, once the system confirms it.
 Window {
     id: root
     visible: false
@@ -16,50 +17,48 @@ Window {
     height: 64 // the pill and the room it rises from
     color: "transparent"
 
-    // The app shown (Mixer.apps' key), or "" for the system volume.
-    property string appKey: ""
-    readonly property var app: appKey !== "" ? Mixer.apps.find(a => a.key === appKey) || null : null
-    readonly property real volume: app ? app.volume : Status.volume
-    readonly property bool muted: app ? app.muted : Status.muted
+    // What it shows: "" the system volume, "microphone", or an app's key
+    // (Audio.apps).
+    property string target: ""
+    readonly property bool microphone: target === "microphone"
+    readonly property var app: target !== "" && !microphone ? Audio.apps.find(a => a.key === target) || null : null
+    readonly property real volume: app ? app.volume : Audio.volume
+    readonly property bool muted: microphone ? Audio.inputMuted : app ? app.muted : Audio.muted
 
     Connections {
-        target: Status
-        function onVolumeOsdRequested() {
-            // Quick settings already shows the volume.
-            if (!Menus.quickSettingsOpen) {
-                root.appKey = ""
-                root.show()
+        target: Sound
+        function onOsdRequested(what) {
+            // Quick settings already shows the system volume.
+            if (what === "" && Menus.quickSettingsOpen) {
+                return
             }
-        }
-    }
-    Connections {
-        target: Mixer
-        function onAppOsdRequested(key) {
-            root.appKey = key
+            root.target = what
             root.show()
         }
     }
     function setVolume(value) {
         if (app) {
-            if (app.muted) Mixer.setAppMuted(app.key, false)
-            Mixer.setAppVolume(app.key, value)
-        } else {
-            if (Status.muted) Status.setMuted(false)
-            Status.setVolume(value)
+            if (app.muted) Audio.setAppMuted(app.key, false)
+            Audio.setAppVolume(app.key, value)
+        } else if (!microphone) {
+            if (Audio.muted) Audio.setMuted("output", Audio.defaultOutput, false)
+            Audio.setVolume("output", Audio.defaultOutput, value)
         }
     }
     function step(direction) {
         if (app) {
-            Mixer.stepAppVolume(app.key, direction)
-        } else {
-            Status.stepVolume(direction)
+            Audio.stepAppVolume(app.key, direction)
+        } else if (!microphone) {
+            Audio.stepVolume("output", Audio.defaultOutput, direction)
         }
     }
     function toggleMute() {
         if (app) {
-            Mixer.setAppMuted(app.key, !app.muted)
+            Audio.setAppMuted(app.key, !app.muted)
+        } else if (microphone) {
+            Sound.press("mic-mute")
         } else {
-            Status.setMuted(!Status.muted)
+            Audio.setMuted("output", Audio.defaultOutput, !Audio.muted)
         }
     }
 
@@ -149,7 +148,9 @@ Window {
                 width: 18
                 height: 18
                 opacity: root.app && root.app.muted ? 0.45 : 1
-                source: Theme.icons + encodeURIComponent(root.app ? root.app.icon : Status.volumeIconName)
+                source: Theme.icons + encodeURIComponent(root.app ? root.app.icon
+                    : root.microphone ? (Audio.inputMuted ? "microphone-sensitivity-muted" : "audio-input-microphone")
+                    : Audio.iconName)
                 sourceSize: Qt.size(width, height)
             }
             Image {
@@ -171,8 +172,19 @@ Window {
             }
         }
 
+        // The microphone: on or off, no slider.
+        Text {
+            visible: root.microphone
+            anchors { left: speaker.right; leftMargin: 10; right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+            text: Audio.inputMuted ? qsTr("Microphone off") : qsTr("Microphone on")
+            color: Theme.text
+            font.pixelSize: Theme.fontBody
+            elide: Text.ElideRight
+        }
+
         Item {
             id: bar
+            visible: !root.microphone
             readonly property real shown: Math.max(0, Math.min(1, root.volume))
             anchors { left: speaker.right; leftMargin: 10; right: number.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
             height: 20
@@ -222,6 +234,7 @@ Window {
 
         Text {
             id: number
+            visible: !root.microphone
             anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
             width: 28 // "100" without the bar moving
             horizontalAlignment: Text.AlignRight

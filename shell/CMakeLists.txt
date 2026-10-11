@@ -21,6 +21,8 @@ qt_add_executable(vela-shell
     src/clipboard.h
     src/snip.cpp
     src/snip.h
+    src/soundkeys.cpp
+    src/soundkeys.h
     src/config.cpp
     src/config.h
     src/filethumbnails.cpp
@@ -39,8 +41,6 @@ qt_add_executable(vela-shell
     src/links.h
     src/mediakeys.cpp
     src/mediakeys.h
-    src/mixer.cpp
-    src/mixer.h
     src/asyncprocess.h
     src/network.cpp
     src/network.h
@@ -98,7 +98,7 @@ foreach(name
         COMMENT "Generating the ${base} client")
     target_sources(vela-shell PRIVATE ${header} ${code})
 endforeach()
-target_include_directories(vela-shell PRIVATE ${SHELL_GENERATED_DIR} ${PROJECT_SOURCE_DIR}/common/audio)
+target_include_directories(vela-shell PRIVATE ${SHELL_GENERATED_DIR})
 
 set(VELA_QML_FILES
     qml/Taskbar.qml
@@ -157,7 +157,8 @@ target_link_libraries(vela-shell PRIVATE
     vela-controls # Theme, Button, Style, Effects (common/)
     vela-controlsplugin
     vela-capture
-    vela-app) # the mouse's Back and Forward buttons (common/)
+    vela-app # the mouse's Back and Forward buttons (common/)
+    vela-audio) # the sound (common/audio, docs/audio.md)
 
 install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -190,12 +191,10 @@ if(VELA_BUILD_TOOLS)
 
     qt_add_executable(vela-service-models-test
         tests/service_models.cpp
-        src/asyncprocess.h src/mixer.cpp src/mixer.h src/network.cpp src/network.h
-        src/appmodel.cpp src/appmodel.h
+        src/asyncprocess.h src/network.cpp src/network.h
         ${PROJECT_SOURCE_DIR}/settings/src/audio.cpp
         ${PROJECT_SOURCE_DIR}/settings/src/audio.h)
-    target_include_directories(vela-service-models-test PRIVATE src ${PROJECT_SOURCE_DIR}/settings/src
-        ${PROJECT_SOURCE_DIR}/common/audio)
+    target_include_directories(vela-service-models-test PRIVATE src ${PROJECT_SOURCE_DIR}/settings/src)
     target_compile_options(vela-service-models-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-service-models-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
     add_test(NAME shell-service-models COMMAND vela-service-models-test)

@@ -5,9 +5,9 @@ Settings. It replaces today's three backends, which drive command-line tools
 (`wpctl`, `pactl`, `pw-dump`, `pw-metadata`). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** design approved. **A0 and A1 are done** (§13): the test
-> fixture, and the `vela-audio` library with its tests. Next: A2, the shell
-> on the library.
+> **Status:** design approved. **A0, A1 and A2 are done** (§13): the test
+> fixture, the `vela-audio` library, and the shell on it. Next: A3,
+> Settings on the library.
 
 ## 1. Goals
 
@@ -193,25 +193,33 @@ server says: optimistic values exist only in the Qt layer (§5.4).
 
 ### 6.1 Shell
 
-- **`SystemStatus`**: volume, mute and icon of the default output, the volume
-  keys and the knob, from the core. The `wpctl` and `pactl subscribe`
-  processes go away.
+- **`Audio`** (the library's object) is registered for QML as `Audio`; the
+  shell names apps through its `AppModel` (portal app id, `application.id`,
+  binary, app name). `SystemStatus` has no audio any more: the `wpctl` and
+  `pactl subscribe` processes are gone, also from Settings, which creates a
+  `SystemStatus` too. Done in A2.
+- **`SoundKeys`** (`shell/src/soundkeys.cpp`, registered as `Sound`): the
+  volume keys and the knob, the wheel on the taskbar's volume icon and on an
+  app's button, each asking for the indicator. Done in A2.
 - **Microphone mute key** (`XF86AudioMicMute`): the compositor forwards it
-  like the volume keys (`mic mute`, in `bindings.c`). The shell toggles the
-  default input's mute and shows the indicator with the microphone icon.
-  Shown after the server confirms (§5.4).
+  like the volume keys (`volume mic-mute`, in `bindings.c`). The shell
+  toggles the default input's mute; the indicator, with the microphone's
+  icon and "Microphone on/off", appears once the server confirms, or after
+  2 s showing the unchanged state. Done in A2.
 - **Volume indicator** (`VolumeOsd.qml`): unchanged, plus the microphone
-  variant.
-- **Quick settings mixer**: outputs; each app's volume, mute, output and now
-  **input** (for apps that record); a level bar on each app (§7.1). It
-  always follows the system. Today it follows only while open, but with
-  events instead of processes that costs nothing.
+  variant (no slider). Done in A2.
+- **Quick settings mixer**: outputs, with a Bluetooth headset's battery
+  (read from BlueZ in `Audio`, then followed through `PropertiesChanged`);
+  each app's volume, mute, output and now **input** (for apps that record).
+  It always follows the system. Done in A2; a level bar on each app (§7.1)
+  comes with the meters.
 - **Wheel on a taskbar button**: one step for that app, as today. No more
-  "stale cache" path: the model is always current.
+  "stale cache" path: the model is always current. Done in A2.
 - **Microphone in use** (§7.2): an icon in the tray, with the apps in its
   tooltip.
 - `systemactions.cpp` stops offering `kcm_pulseaudio` or pavucontrol for
-  "volume-mixer": Settings' Mixer page replaces them.
+  "volume-mixer": Settings' Mixer page replaces them (A3, the only user of
+  that entry is Settings' Sound page).
 
 ### 6.2 Settings
 
@@ -407,6 +415,12 @@ audio or WirePlumber state.
   - `90-vela.conf` written atomically, other files in the directory left
     untouched, WirePlumber accepting it across a restart. The rename itself
     is checked by hand (§14).
+- **Shell (`audio-keys`, done in A2)**: `SoundKeys` on the library: volume
+  keys with their indicator, a step unmuting, the microphone key whose
+  indicator waits for the server, the wheel on an app's taskbar button.
+  `audio-view` also covers the Bluetooth battery, against a fake BlueZ on a
+  private bus. The compositor forwarding the microphone key is in the
+  functional tests.
 - **Interface (functional)**: the volume indicator (keys, microphone mute
   key), quick settings mixer (outputs, app volume/output/input), the wheel
   on a taskbar button, the tray's microphone icon, Settings' three pages.
@@ -444,7 +458,7 @@ audio or WirePlumber state.
 |---|---|---|
 | A0 | Test fixture (§11), CI packages | done |
 | A1 | `vela-audio`: connection, model, volume (grid, cap, balance), defaults, apps and their outputs/inputs, reconnection; library tests | done |
-| A2 | Shell on the library: system volume, OSD, microphone mute key (compositor + OSD), quick settings mixer with inputs, taskbar wheel; `wpctl`/`pactl`/`pw-*` gone from the shell | |
+| A2 | Shell on the library: system volume, OSD, microphone mute key (compositor + OSD), quick settings mixer with inputs, taskbar wheel; `wpctl`/`pactl`/`pw-*` gone from the shell | done |
 | A3 | Settings on the library: Sound page with input level, device properties (profile/off, codec, balance, test sound), Mixer page with levels; `audio.cpp` gone | |
 | A4 | Microphone in use in the tray | |
 | A5 | `90-vela.conf`: names, format and rate, with the WirePlumber restart | |
