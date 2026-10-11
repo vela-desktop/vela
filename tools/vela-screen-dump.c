@@ -62,6 +62,7 @@ static void registryGlobal(void* data, struct wl_registry* registry, uint32_t na
     }
 }
 
+/** No global-removal work is required for this one-shot capture. */
 static void registryRemove(void* data, struct wl_registry* registry, uint32_t name)
 {
     (void)data; (void)registry; (void)name;
@@ -97,6 +98,7 @@ static void writeChunk(FILE* file, const char* type, const unsigned char* data, 
 }
 
 /** Encode a validated SHM rectangle as an 8-bit RGB PNG. */
+/** Validate image dimensions and region, then encode a private PNG. */
 static int writePng(const char* path, const struct vela_capture_frame* frame, int x, int y, int w, int h)
 {
     if (!vela_capture_frame_valid(frame) || x < 0 || y < 0 || w <= 0 || h <= 0 ||

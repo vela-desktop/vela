@@ -34,6 +34,7 @@ struct vela_capture_job {
     void *userdata;
 };
 
+/** Recognize the four SHM layouts supported by both capture frontends. */
 bool vela_capture_supported_format(uint32_t format)
 {
     return format == WL_SHM_FORMAT_XRGB8888 ||
@@ -66,30 +67,35 @@ static void complete(struct vela_capture_job *job, bool ok)
     job->done(job, job->succeeded, job->userdata);
 }
 
+/** Record the compositor's transform for consumer-side orientation checks. */
 static void frame_transform(void *data, struct ext_image_copy_capture_frame_v1 *frame, uint32_t transform)
 {
     (void)frame;
     ((struct vela_capture_job *)data)->result.transform = transform;
 }
 
+/** Full-frame copies ignore partial-damage hints from this protocol. */
 static void frame_damage(void *data, struct ext_image_copy_capture_frame_v1 *frame,
     int32_t x, int32_t y, int32_t width, int32_t height)
 {
     (void)data; (void)frame; (void)x; (void)y; (void)width; (void)height;
 }
 
+/** Ignore presentation timing, which is unnecessary for one-shot images. */
 static void frame_presentation(void *data, struct ext_image_copy_capture_frame_v1 *frame,
     uint32_t hi, uint32_t lo, uint32_t nsec)
 {
     (void)data; (void)frame; (void)hi; (void)lo; (void)nsec;
 }
 
+/** Complete a frame only after its buffer has been filled by the compositor. */
 static void frame_ready(void *data, struct ext_image_copy_capture_frame_v1 *frame)
 {
     (void)frame;
     complete(data, true);
 }
 
+/** Convert a Wayland capture failure into a single terminal callback. */
 static void frame_failed(void *data, struct ext_image_copy_capture_frame_v1 *frame, uint32_t reason)
 {
     (void)frame; (void)reason;
@@ -100,6 +106,7 @@ static const struct ext_image_copy_capture_frame_v1_listener frame_listener = {
     frame_transform, frame_damage, frame_presentation, frame_ready, frame_failed
 };
 
+/** Update proposed constraints, never a buffer already allocated. */
 static void buffer_size(void *data, struct ext_image_copy_capture_session_v1 *session,
     uint32_t width, uint32_t height)
 {
@@ -116,6 +123,7 @@ static void buffer_size(void *data, struct ext_image_copy_capture_session_v1 *se
     }
 }
 
+/** Select the first readable SHM format advertised by the compositor. */
 static void shm_format(void *data, struct ext_image_copy_capture_session_v1 *session, uint32_t format)
 {
     (void)session;
@@ -126,17 +134,20 @@ static void shm_format(void *data, struct ext_image_copy_capture_session_v1 *ses
     }
 }
 
+/** Ignore DMA-BUF hints because this backend deliberately uses SHM. */
 static void dmabuf_device(void *data, struct ext_image_copy_capture_session_v1 *session, struct wl_array *dev)
 {
     (void)data; (void)session; (void)dev;
 }
 
+/** Ignore GPU-specific formats when using a CPU-mapped capture buffer. */
 static void dmabuf_format(void *data, struct ext_image_copy_capture_session_v1 *session,
     uint32_t format, struct wl_array *modifiers)
 {
     (void)data; (void)session; (void)format; (void)modifiers;
 }
 
+/** Allocate and attach the frame once negotiation of SHM constraints ends. */
 static void session_done(void *data, struct ext_image_copy_capture_session_v1 *session)
 {
     struct vela_capture_job *job = data;
@@ -199,6 +210,7 @@ static void session_done(void *data, struct ext_image_copy_capture_session_v1 *s
     ext_image_copy_capture_frame_v1_capture(job->frame);
 }
 
+/** Surface a stopped session as failure unless already completed. */
 static void session_stopped(void *data, struct ext_image_copy_capture_session_v1 *session)
 {
     (void)session;
@@ -209,6 +221,7 @@ static const struct ext_image_copy_capture_session_v1_listener session_listener 
     buffer_size, shm_format, dmabuf_device, dmabuf_format, session_done, session_stopped
 };
 
+/** Allocate a capture job, create its session, and register event listeners. */
 struct vela_capture_job *vela_capture_begin(struct wl_shm *shm,
     struct ext_image_copy_capture_manager_v1 *manager,
     struct ext_image_capture_source_v1 *source,
@@ -231,12 +244,14 @@ struct vela_capture_job *vela_capture_begin(struct wl_shm *shm,
     return job;
 }
 
+/** Expose only a successful snapshot that passes the bounds contract. */
 const struct vela_capture_frame *vela_capture_pixels(const struct vela_capture_job *job)
 {
     return job && job->finished && job->succeeded && vela_capture_frame_valid(&job->result)
         ? &job->result : NULL;
 }
 
+/** Release all Wayland proxies and unmap the owned capture buffer. */
 void vela_capture_end(struct vela_capture_job *job)
 {
     if (!job) return;

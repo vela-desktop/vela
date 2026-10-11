@@ -174,6 +174,7 @@ QString WindowCapture::appId(const QString& identifier) const
     return {};
 }
 
+/** Start asynchronous image captures for matching Alt-Tab window identifiers. */
 void WindowCapture::capture(const QStringList& identifiers)
 {
     if (!m_shm || !m_sources || !m_copier) {
@@ -213,6 +214,7 @@ QVariantList WindowCapture::windowList() const
     return out;
 }
 
+/** Queue downscaled previews of every Qt-visible Wayland output. */
 void WindowCapture::captureScreens()
 {
     if (!m_shm || !m_outputSources || !m_copier) {
@@ -241,6 +243,7 @@ void WindowCapture::captureScreens()
     }
 }
 
+/** Queue complete output images for the interactive Snipping Tool. */
 int WindowCapture::captureScreensFull()
 {
     if (!m_shm || !m_outputSources || !m_copier) {
@@ -273,6 +276,7 @@ int WindowCapture::captureScreensFull()
     return count;
 }
 
+/** Copy validated SHM pixels into Qt-owned memory before freeing the job. */
 void WindowCapture::finishJob(Job* job, bool ok)
 {
     const vela_capture_frame* frame = vela_capture_pixels(job->capture);

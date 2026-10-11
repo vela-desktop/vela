@@ -362,6 +362,7 @@ void vela_lock_destroy(struct vela_lock *lock)
 
 // ------------------------------------------------------------------- lock --
 
+/** Engage the screen lock and revoke any previously issued window-source captures. */
 void vela_lock_engage(struct vela_lock *lock)
 {
     struct vela_server *server = lock->server;

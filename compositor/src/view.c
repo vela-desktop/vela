@@ -1259,6 +1259,7 @@ static void handle_request_activation(struct wl_listener *listener, void *data)
     }
 }
 
+/** Reject foreign-toplevel capture during lock; accept only visible-session requests. */
 static void handle_capture_request(struct wl_listener *listener, void *data)
 {
     struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request *request = data;
