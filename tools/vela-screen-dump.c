@@ -137,7 +137,9 @@ static int writePng(const char* path, const struct vela_capture_frame* frame, in
     writeChunk(file, "IHDR", ihdr, sizeof(ihdr));
     writeChunk(file, "IDAT", packed, packedSize);
     writeChunk(file, "IEND", NULL, 0);
-    const int saved = !ferror(file) && fclose(file) == 0;
+    const int had_error = ferror(file);
+    const int closed = fclose(file);
+    const int saved = !had_error && closed == 0;
     if (!saved) remove(path);
     free(raw);
     free(packed);
