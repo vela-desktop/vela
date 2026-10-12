@@ -29,6 +29,9 @@ constexpr int confirmMs = 2000;
 // A profile takes longer: a Bluetooth headset switching codec or to call
 // mode reconnects its audio.
 constexpr int profileMs = 3000;
+// How long an app that stopped recording still counts as using the
+// microphone: a pause or a page change doesn't make the icon blink.
+constexpr int microphoneHoldMs = 1000;
 
 QString kindOf(Direction direction)
 {
@@ -77,6 +80,8 @@ Audio::Audio(QObject* parent)
     , m_testSound(new TestSound(m_core, this))
 {
     connect(m_testSound, &TestSound::playingChanged, this, &Audio::testSoundChanged);
+    m_microphoneHold.setSingleShot(true);
+    connect(&m_microphoneHold, &QTimer::timeout, this, &Audio::update);
     m_flush.setSingleShot(true);
     m_flush.setInterval(0);
     connect(&m_flush, &QTimer::timeout, this, &Audio::flush);
@@ -213,6 +218,68 @@ void Audio::setProfile(const QString& device, int index)
         return;
     }
     expect(key, index, true, profileMs);
+}
+
+AppInfo Audio::appInfo(const AppIdentity& app) const
+{
+    AppInfo info = m_resolver ? m_resolver(app) : AppInfo {};
+    if (info.name.isEmpty()) {
+        info.name = !app.name.isEmpty() ? app.name : app.key;
+    }
+    if (info.icon.isEmpty()) {
+        info.icon = !app.iconName.isEmpty() ? app.iconName : QStringLiteral("applications-multimedia");
+    }
+    return info;
+}
+
+QVariantList Audio::microphoneUsers(const Snapshot& s)
+{
+    // Recording, running, from an input. Not: recording an output (screen
+    // recorders, sink monitors), meters on other streams, a filter's own
+    // streams (the app recording the filter's source counts instead).
+    QSet<QString> now;
+    for (const Stream& st : s.streams) {
+        const Endpoint* from = s.endpoint(st.endpoint);
+        if (st.direction != Direction::Input || !st.running || st.capturesOutput || st.internal || !from
+            || from->direction != Direction::Input) {
+            continue;
+        }
+        const AppInfo info = appInfo(st.app);
+        m_microphoneSeen[st.app.key] = {
+            QVariantMap {
+                { QStringLiteral("key"), st.app.key },
+                { QStringLiteral("name"), info.name },
+                { QStringLiteral("icon"), info.icon },
+                { QStringLiteral("desktopId"), info.desktopId },
+            },
+            {},
+        };
+        m_microphoneSeen[st.app.key].since.start();
+        if (!m_microphoneOrder.contains(st.app.key)) {
+            m_microphoneOrder.append(st.app.key);
+        }
+        now.insert(st.app.key);
+    }
+    QVariantList out;
+    qint64 next = -1; // when the next one that stopped goes
+    for (auto it = m_microphoneOrder.begin(); it != m_microphoneOrder.end();) {
+        const MicrophoneUser& user = m_microphoneSeen[*it];
+        const qint64 left = microphoneHoldMs - user.since.elapsed();
+        if (!now.contains(*it) && left <= 0) {
+            m_microphoneSeen.remove(*it);
+            it = m_microphoneOrder.erase(it);
+            continue;
+        }
+        if (!now.contains(*it)) {
+            next = next < 0 ? left : std::min(next, left);
+        }
+        out.append(user.info);
+        ++it;
+    }
+    if (next >= 0) {
+        m_microphoneHold.start(int(next) + 1);
+    }
+    return out;
 }
 
 QString Audio::testSoundOutput() const
@@ -642,13 +709,7 @@ void Audio::update()
         }
         seen.insert(st.app.key);
         const QString key = st.app.key;
-        AppInfo info = m_resolver ? m_resolver(st.app) : AppInfo {};
-        if (info.name.isEmpty()) {
-            info.name = !st.app.name.isEmpty() ? st.app.name : key;
-        }
-        if (info.icon.isEmpty()) {
-            info.icon = !st.app.iconName.isEmpty() ? st.app.iconName : QStringLiteral("applications-multimedia");
-        }
+        const AppInfo info = appInfo(st.app);
         const QVariant playing = appValue(QStringLiteral("output"), key);
         const QVariant recording = appValue(QStringLiteral("input"), key);
         const QString output = shown(QStringLiteral("output app ") + key, playing).toString();
@@ -671,13 +732,16 @@ void Audio::update()
         });
     }
 
+    const QVariantList microphone = microphoneUsers(s);
+
     if (outputs != m_outputs || inputs != m_inputs || apps != m_apps || devices != m_devices
-        || defaultOutput != m_defaultOutput
+        || microphone != m_microphoneUsers || defaultOutput != m_defaultOutput
         || defaultInput != m_defaultInput || volume != m_volume || muted != m_muted || inputMuted != m_inputMuted) {
         m_outputs = outputs;
         m_inputs = inputs;
         m_apps = apps;
         m_devices = devices;
+        m_microphoneUsers = microphone;
         m_defaultOutput = defaultOutput;
         m_defaultInput = defaultInput;
         m_volume = volume;

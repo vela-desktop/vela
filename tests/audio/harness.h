@@ -87,6 +87,8 @@ public:
         return m_state == QLatin1String("streaming") ? m_node : 0;
     }
     quint32 node() const { return m_node; }
+    // A command: pause, resume, quit.
+    void send(const QString& line) { m_process.write(line.toUtf8() + '\n'); }
     // Recording: each channel's peak, about every 100 ms, since the start
     // or the last clearPeaks().
     const QList<QList<double>>& peaks() const { return m_peaks; }

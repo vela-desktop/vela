@@ -62,6 +62,12 @@ class Audio : public QObject {
     //   endpoints' names. Profiles whose ports have nothing plugged in are
     //   left out, except the active one.
     Q_PROPERTY(QVariantList devices READ devices NOTIFY changed)
+    // Who uses the microphone now (docs/audio.md §7.2): [{key, name, icon,
+    //   desktopId}], an app recording from an input (a microphone, or a
+    //   virtual source made from one), Settings' level meter included. One
+    //   that stops stays about a second, so that a pause doesn't make the
+    //   tray icon blink.
+    Q_PROPERTY(QVariantList microphoneUsers READ microphoneUsers NOTIFY changed)
     // The output the test sound is playing on; empty: none.
     Q_PROPERTY(QString testSoundOutput READ testSoundOutput NOTIFY testSoundChanged)
     Q_PROPERTY(QString defaultOutput READ defaultOutput NOTIFY changed)
@@ -91,6 +97,7 @@ public:
     QVariantList inputs() const { return m_inputs; }
     QVariantList apps() const { return m_apps; }
     QVariantList devices() const { return m_devices; }
+    QVariantList microphoneUsers() const { return m_microphoneUsers; }
     QString testSoundOutput() const;
     QString defaultOutput() const { return m_defaultOutput; }
     QString defaultInput() const { return m_defaultInput; }
@@ -160,6 +167,10 @@ private:
     void fail(const QString& key);
     void flush();
     void update();
+    // How the desktop names a stream's app.
+    AppInfo appInfo(const AppIdentity& app) const;
+    // The microphone's users, with those that just stopped.
+    QVariantList microphoneUsers(const Snapshot& s);
     // A Bluetooth output's battery: read once, then followed.
     void watchBattery(const QString& path);
 
@@ -179,6 +190,14 @@ private:
     QVariantList m_inputs;
     QVariantList m_apps;
     QVariantList m_devices;
+    QVariantList m_microphoneUsers;
+    struct MicrophoneUser {
+        QVariantMap info;
+        QElapsedTimer since; // since it was last seen recording
+    };
+    QHash<QString, MicrophoneUser> m_microphoneSeen; // by app key
+    QStringList m_microphoneOrder; // first come, first shown
+    QTimer m_microphoneHold;
     TestSound* m_testSound;
     QString m_defaultOutput;
     QString m_defaultInput;

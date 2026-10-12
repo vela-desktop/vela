@@ -10,6 +10,7 @@
 #include "audio.h"
 #include "core.h"
 #include "harness.h"
+#include "levelmeter.h"
 
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -22,6 +23,7 @@ using namespace harness;
 using vela::audio::AppIdentity;
 using vela::audio::AppInfo;
 using vela::audio::Audio;
+using vela::audio::LevelMeter;
 
 namespace {
 
@@ -117,6 +119,15 @@ class ViewTest : public QObject {
     {
         const auto* e = audio->core()->snapshot().endpoint(name);
         return e ? e->volume() : -1.0;
+    }
+
+    QStringList microphoneKeys() const
+    {
+        QStringList out;
+        for (const QVariant& user : audio->microphoneUsers()) {
+            out.append(user.toMap().value(QStringLiteral("key")).toString());
+        }
+        return out;
     }
 
 private slots:
@@ -509,6 +520,93 @@ private slots:
         QTRY_COMPARE(audio->core()->snapshot().stream(s)->endpoint, id(microphone));
         QCOMPARE(voice->close(), 0);
         QCOMPARE(control(QStringLiteral("remove vela-test-usb-mic")), QStringLiteral("ok"));
+    }
+
+    void microphoneInUse()
+    {
+        audio->setAppResolver([](const AppIdentity& id) {
+            return id.binary == QLatin1String("vela-caller")
+                ? AppInfo { QStringLiteral("org.vela.Caller.desktop"), QStringLiteral("Vela Caller"), QStringLiteral("vela-caller-icon") }
+                : AppInfo {};
+        });
+        QVERIFY(audio->microphoneUsers().isEmpty());
+        auto caller = recorder(QStringLiteral("vela-caller"));
+        QVERIFY(caller->waitStreaming());
+        QTRY_COMPARE(microphoneKeys(), QStringList({ QStringLiteral("vela-caller") }));
+        const QVariantMap user = audio->microphoneUsers().first().toMap();
+        QCOMPARE(user.value("name").toString(), QStringLiteral("Vela Caller"));
+        QCOMPARE(user.value("icon").toString(), QStringLiteral("vela-caller-icon"));
+        QCOMPARE(user.value("desktopId").toString(), QStringLiteral("org.vela.Caller.desktop"));
+
+        // Paused, it stops counting, but only after a moment: a pause
+        // doesn't make the icon blink.
+        caller->send(QStringLiteral("pause"));
+        QTRY_VERIFY(audio->core()->snapshot().stream(caller->node()) && !audio->core()->snapshot().stream(caller->node())->running);
+        QCOMPARE(microphoneKeys(), QStringList({ QStringLiteral("vela-caller") }));
+        QTRY_VERIFY_WITH_TIMEOUT(audio->microphoneUsers().isEmpty(), 2000);
+        caller->send(QStringLiteral("resume"));
+        QTRY_COMPARE(microphoneKeys(), QStringList({ QStringLiteral("vela-caller") }));
+        // Gone for good: the same.
+        QCOMPARE(caller->close(), 0);
+        QTest::qWait(200);
+        QCOMPARE(microphoneKeys(), QStringList({ QStringLiteral("vela-caller") }));
+        QTRY_VERIFY_WITH_TIMEOUT(audio->microphoneUsers().isEmpty(), 2000);
+    }
+
+    void whatIsNotTheMicrophone()
+    {
+        // A screen recorder taking the desktop's sound, a filter's own
+        // stream, meters on an output and on an app: none of them listen to
+        // the microphone.
+        auto screen = std::make_unique<FakeStream>(QStringList { "--record", "--prop", "stream.capture.sink=true", "--prop",
+            "target.object=" + speakers, "--prop", "application.process.binary=vela-screen-recorder" });
+        auto filter = recorder(QStringLiteral("vela-filter"), { QStringLiteral("--prop"), QStringLiteral("node.link-group=vela-test-filter") });
+        auto music = player(QStringLiteral("vela-player"), { QStringLiteral("--amplitude"), QStringLiteral("0.2") });
+        for (auto* s : { screen.get(), filter.get(), music.get() }) {
+            QVERIFY(s->waitStreaming());
+        }
+        LevelMeter outputMeter;
+        outputMeter.setAudio(audio.get());
+        outputMeter.setKind(QStringLiteral("output"));
+        outputMeter.setName(speakers);
+        outputMeter.setActive(true);
+        LevelMeter appMeter;
+        appMeter.setAudio(audio.get());
+        appMeter.setKind(QStringLiteral("app"));
+        appMeter.setName(QStringLiteral("vela-player"));
+        appMeter.setActive(true);
+        QTRY_VERIFY(!outputMeter.monitored().isEmpty() && !appMeter.monitored().isEmpty());
+        QTRY_VERIFY(std::count_if(audio->core()->snapshot().streams.begin(), audio->core()->snapshot().streams.end(),
+                        [](const vela::audio::Stream& s) { return s.monitor && s.running; })
+            == 2);
+        QTest::qWait(300);
+        QVERIFY2(audio->microphoneUsers().isEmpty(), qPrintable(microphoneKeys().join(u' ')));
+
+        // An input's meter (Settings' Sound page) does listen: it counts.
+        LevelMeter inputMeter;
+        inputMeter.setAudio(audio.get());
+        inputMeter.setKind(QStringLiteral("input"));
+        inputMeter.setName(microphone);
+        inputMeter.setActive(true);
+        QTRY_COMPARE(microphoneKeys(), QStringList({ QCoreApplication::applicationName() }));
+        inputMeter.setActive(false);
+        QTRY_VERIFY_WITH_TIMEOUT(audio->microphoneUsers().isEmpty(), 2000);
+    }
+
+    void aVirtualSourceIsAMicrophone()
+    {
+        // Like an echo canceller's: what records it uses the microphone.
+        QVERIFY(control(QStringLiteral("add-source vela-test-echo-cancel")).startsWith(QLatin1String("ok")));
+        QTRY_VERIFY(!input(QStringLiteral("vela-test-echo-cancel")).isEmpty());
+        auto caller = recorder(QStringLiteral("vela-caller"),
+            { QStringLiteral("--prop"), QStringLiteral("target.object=vela-test-echo-cancel") });
+        const quint32 s = caller->waitStreaming();
+        QVERIFY(s);
+        QTRY_VERIFY(audio->core()->snapshot().stream(s)
+            && audio->core()->snapshot().stream(s)->endpoint == id(QStringLiteral("vela-test-echo-cancel")));
+        QTRY_COMPARE(microphoneKeys(), QStringList({ QStringLiteral("vela-caller") }));
+        QCOMPARE(caller->close(), 0);
+        QCOMPARE(control(QStringLiteral("remove vela-test-echo-cancel")), QStringLiteral("ok"));
     }
 
     void bluetoothBattery()
