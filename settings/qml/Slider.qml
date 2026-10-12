@@ -11,6 +11,9 @@ Item {
     property real to: 1
     property real value: 0
     property real stepSize: 0
+    // Where the filled part starts: `from`, or the middle of a slider that
+    // goes both ways (a balance).
+    property real origin: from
     property bool live: true // `moved` while dragging, not only on release
     readonly property bool pressed: mouse.pressed
     signal moved(real value)
@@ -22,6 +25,7 @@ Item {
     height: implicitHeight
 
     readonly property real ratio: to > from ? Math.max(0, Math.min(1, (value - from) / (to - from))) : 0
+    readonly property real originRatio: to > from ? Math.max(0, Math.min(1, (origin - from) / (to - from))) : 0
 
     Rectangle {
         anchors.verticalCenter: parent.verticalCenter
@@ -34,8 +38,8 @@ Item {
     }
     Rectangle {
         anchors.verticalCenter: parent.verticalCenter
-        x: 10
-        width: (parent.width - 20) * slider.ratio
+        x: 10 + (parent.width - 20) * Math.min(slider.ratio, slider.originRatio)
+        width: (parent.width - 20) * Math.abs(slider.ratio - slider.originRatio)
         height: 4
         radius: 2
         color: Theme.accentFill

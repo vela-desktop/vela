@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Real QProcess clients talking to isolated, controllably slow services:
-// Settings' audio model (pactl, until it moves to vela-audio) and the
-// network (nmcli). No running PipeWire or NetworkManager is touched.
+// Real QProcess clients talking to an isolated, controllably slow service:
+// the network (nmcli). No running NetworkManager is touched. (Sound has
+// its own tests on a private PipeWire, tests/audio.)
 #include "asyncprocess.h"
-#include "audio.h"
 #include "network.h"
 
 #include <QCoreApplication>
@@ -60,19 +59,8 @@ void logRequest(const QString& operation, const QStringList& arguments = {})
     }
 }
 
-QJsonObject volume(int percent)
+QString operation(const QStringList& args)
 {
-    return { { "front-left", QJsonObject { { "value", qRound(percent * 65536.0 / 100) } } } };
-}
-
-QString operation(const QString& program, const QStringList& args)
-{
-    if (program == "pactl") {
-        if (args.contains("list")) {
-            return args.last() == "sink-inputs" ? "streams" : args.last();
-        }
-        return args.value(0);
-    }
     if (args.contains("show")) {
         return "details";
     }
@@ -91,55 +79,18 @@ QString operation(const QString& program, const QStringList& args)
     return args.last() == "yes" ? "scan" : "wifi";
 }
 
-int fakeService(const QString& program, const QStringList& arguments)
+int fakeService(const QStringList& arguments)
 {
-    const QString key = operation(program, arguments);
+    const QString key = operation(arguments);
     // Capture the response before waiting: it can become obsolete in flight.
     const QJsonObject response = configuration().value(key).toObject();
-    QByteArray output = response.value("output").toString().toUtf8();
-    if (key == "sinks") {
-        const QByteArray saved = readFile(serviceRoot() + "/volume").trimmed();
-        if (!saved.isEmpty()) {
-            QJsonArray list = QJsonDocument::fromJson(output).array();
-            for (qsizetype i = 0; i < list.size(); ++i) {
-                QJsonObject device = list[i].toObject();
-                device.insert("volume", volume(saved.toInt()));
-                list[i] = device;
-            }
-            output = QJsonDocument(list).toJson(QJsonDocument::Compact);
-        }
-    }
+    const QByteArray output = response.value("output").toString().toUtf8();
     logRequest(key, arguments);
-    if (key == "subscribe") {
-        // Feed real QProcess subscription events to the model from an
-        // isolated test file; neither PipeWire nor PulseAudio is contacted.
-        QTimer events;
-        events.setInterval(10);
-        qsizetype sent = 0;
-        QObject::connect(&events, &QTimer::timeout, &events, [&] {
-            const QByteArray data = readFile(serviceRoot() + "/subscription-events");
-            if (data.size() < sent) {
-                sent = 0;
-            }
-            if (data.size() == sent) {
-                return;
-            }
-            const QByteArray next = data.mid(sent);
-            sent = data.size();
-            logRequest("subscription-output");
-            ::write(STDOUT_FILENO, next.constData(), next.size());
-        });
-        events.start();
-        return QCoreApplication::exec();
-    }
     const QString gate = response.value("gate").toString();
     while (!gate.isEmpty() && !QFileInfo::exists(serviceRoot() + '/' + gate)) {
         QThread::msleep(5); // deliberately slow service, in a separate process
     }
     QThread::msleep(response.value("delay").toInt());
-    if (key.startsWith("set-") && key.endsWith("volume")) {
-        saveFile(serviceRoot() + "/volume", arguments.last().chopped(1).toUtf8());
-    }
     ::write(STDOUT_FILENO, output.constData(), output.size());
     const QByteArray error = response.value("error").toString().toUtf8();
     ::write(STDERR_FILENO, error.constData(), error.size());
@@ -151,13 +102,11 @@ int fakeService(const QString& program, const QStringList& arguments)
 class ServiceModels : public QObject {
     Q_OBJECT
 
-    enum Model { AudioModel, NetworkModel };
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<QObject> m_model;
+    std::unique_ptr<Network> m_model;
     QJsonObject m_config;
     QByteArray m_path;
     QProcess m_bus;
-    int m_kind = AudioModel;
 
     void save() { saveFile(m_dir->filePath("config.json"), QJsonDocument(m_config).toJson()); }
     void response(const QString& key, const QByteArray& output)
@@ -199,30 +148,16 @@ class ServiceModels : public QObject {
         }
         return true;
     }
-    void makeModel(int kind)
+    void makeModel()
     {
-        m_kind = kind;
-        if (kind == AudioModel) {
-            m_model = std::make_unique<Audio>();
-        } else {
-            m_model = std::make_unique<Network>();
-        }
+        m_model = std::make_unique<Network>();
         QVERIFY(m_model->property("available").toBool());
     }
-    void refresh()
-    {
-        if (m_kind == AudioModel) {
-            static_cast<Audio*>(m_model.get())->refresh();
-        } else {
-            static_cast<Network*>(m_model.get())->refresh();
-        }
-    }
+    void refresh() { m_model->refresh(); }
     QVariantMap cache() const
     {
-        const QStringList properties = m_kind == AudioModel ? QStringList { "outputs", "inputs" }
-                                                            : QStringList { "devices", "wifiNetworks" };
         QVariantMap result;
-        for (const QString& property : properties) {
+        for (const QString property : { "devices", "wifiNetworks" }) {
             result.insert(property, m_model->property(property.toLatin1().constData()));
         }
         return result;
@@ -238,16 +173,9 @@ class ServiceModels : public QObject {
     }
     void gateReads()
     {
-        for (const QString key : { "get-default-sink", "get-default-source", "sinks", "sources", "devices", "details",
-                 "known", "wifi" }) {
+        for (const QString key : { "devices", "details", "known", "wifi" }) {
             option(key, "gate", "release");
         }
-    }
-    static void models_data()
-    {
-        QTest::addColumn<int>("kind");
-        QTest::newRow("settings-audio") << int(AudioModel);
-        QTest::newRow("network") << int(NetworkModel);
     }
 
 private slots:
@@ -271,22 +199,10 @@ private slots:
         m_dir = std::make_unique<QTemporaryDir>();
         QVERIFY(m_dir->isValid());
         m_path = qgetenv("PATH");
-        for (const QString program : { "pactl", "nmcli" }) {
-            QVERIFY(QFile::link(QCoreApplication::applicationFilePath(), m_dir->filePath(program)));
-        }
+        QVERIFY(QFile::link(QCoreApplication::applicationFilePath(), m_dir->filePath("nmcli")));
         qputenv("PATH", QFile::encodeName(m_dir->path()));
         qputenv("VELA_TEST_SERVICES", QFile::encodeName(m_dir->path()));
         m_config = {};
-        const QJsonObject sink { { "index", 1 }, { "name", "test-sink" }, { "description", "Speakers" },
-            { "volume", volume(40) }, { "mute", false }, { "properties", QJsonObject { { "object.id", "10" }, { "object.serial", "20" } } } };
-        response("sinks", QJsonDocument(QJsonArray { sink }).toJson());
-        QJsonObject source = sink;
-        source.insert("name", "test-mic");
-        QJsonObject monitor = source;
-        monitor.insert("name", "test-sink.monitor");
-        response("sources", QJsonDocument(QJsonArray { source, monitor }).toJson());
-        response("get-default-sink", "test-sink\n");
-        response("get-default-source", "test-mic\n");
         response("devices", "eth0:ethernet:connected:Wired\nwlan0:wifi:connected:Home\\:Lab\nlo:loopback:connected:lo\n");
         response("details", "GENERAL.HWADDR:AA\\:BB\nIP4.ADDRESS[1]:192.0.2.2/24\nIP4.GATEWAY:192.0.2.1\nIP4.DNS[1]:192.0.2.53\nIP6.ADDRESS[1]:2001\\:db8\\:\\:1/64\n");
         response("known", "Home\\:Lab:802-11-wireless\n");
@@ -302,11 +218,9 @@ private slots:
         m_dir.reset();
     }
 
-    void delayedRefreshKeepsCacheAndEventLoop_data() { models_data(); }
     void delayedRefreshKeepsCacheAndEventLoop()
     {
-        QFETCH(int, kind);
-        makeModel(kind);
+        makeModel();
         refresh();
         QTRY_VERIFY(populated());
         const QVariantMap before = cache();
@@ -327,82 +241,32 @@ private slots:
         for (int i = 0; i < 20; ++i) {
             refresh(); // bursts become one pending refresh, not twenty
         }
-        const QString query = kind == NetworkModel ? "devices" : "sinks";
-        QCOMPARE(count(query), 1);
+        QCOMPARE(count("devices"), 1);
         saveFile(m_dir->filePath("release"), {});
-        QTRY_COMPARE(count(query), 2);
+        QTRY_COMPARE(count("devices"), 2);
         QTRY_VERIFY(populated());
         QCOMPARE(cache(), before);
-        if (kind == AudioModel) {
-            QCOMPARE(static_cast<Audio*>(m_model.get())->inputs().size(), 1); // omit monitors
-        } else if (kind == NetworkModel) {
-            const Network* network = static_cast<Network*>(m_model.get());
-            QCOMPARE(network->devices().size(), 2);
-            QCOMPARE(network->devices().first().toMap().value("mac").toString(), QString("AA:BB"));
-            QCOMPARE(network->wifiNetworks().first().toMap().value("ssid").toString(), QString("Home:Lab"));
-            QVERIFY(network->wifiNetworks().first().toMap().value("known").toBool());
-        }
-    }
-
-    void streamEventsDoNotInvalidateAudioSnapshot()
-    {
-        makeModel(AudioModel);
-        auto* audio = static_cast<Audio*>(m_model.get());
-        audio->refresh();
-        QTRY_VERIFY(populated());
-        QTRY_COMPARE(count("subscribe"), 1);
-        saveFile(m_dir->filePath("requests.jsonl"), {});
-
-        QJsonArray sinks = QJsonDocument::fromJson(
-            m_config.value("sinks").toObject().value("output").toString().toUtf8()).array();
-        QJsonObject sink = sinks.first().toObject();
-        sink.insert("description", "Fresh speakers");
-        sinks[0] = sink;
-        option("sinks", "output", QString::fromUtf8(QJsonDocument(sinks).toJson()));
-        option("sinks", "gate", "release");
-
-        audio->refresh();
-        QTRY_COMPARE(count("sinks"), 1);
-        saveFile(m_dir->filePath("subscription-events"),
-            "Event 'change' on sink-input #7\\nEvent 'change' on source-output #3\\n");
-        QTRY_COMPARE(count("subscription-output"), 1);
-        QTest::qWait(50); // allow QProcess stdout to reach the model
-        saveFile(m_dir->filePath("release"), {});
-        QTRY_COMPARE(audio->outputs().first().toMap().value("description").toString(), QString("Fresh speakers"));
-        QTest::qWait(120);
-        QCOMPARE(count("sinks"), 1); // no invalidation or extra query
-
-        // A genuine device event must still trigger a fresh snapshot.
-        sink.insert("description", "New speakers");
-        sinks[0] = sink;
-        option("sinks", "output", QString::fromUtf8(QJsonDocument(sinks).toJson()));
-        saveFile(m_dir->filePath("subscription-events"),
-            "Event 'change' on sink-input #7\\nEvent 'change' on source-output #3\\n"
-            "Event 'change' on sink #1\\n");
-        QTRY_COMPARE(count("subscription-output"), 2);
-        QTRY_COMPARE(audio->outputs().first().toMap().value("description").toString(), QString("New speakers"));
+        QCOMPARE(m_model->devices().size(), 2);
+        QCOMPARE(m_model->devices().first().toMap().value("mac").toString(), QString("AA:BB"));
+        QCOMPARE(m_model->wifiNetworks().first().toMap().value("ssid").toString(), QString("Home:Lab"));
+        QVERIFY(m_model->wifiNetworks().first().toMap().value("known").toBool());
     }
 
     void failedRefreshKeepsCache_data()
     {
-        QTest::addColumn<int>("kind");
         QTest::addColumn<QString>("failure");
-        for (int kind : { AudioModel, NetworkModel }) {
-            for (const QString failure : { "exit", "invalid", "timeout" }) {
-                const QByteArray name = QByteArray::number(kind) + '-' + failure.toLatin1();
-                QTest::newRow(name.constData()) << kind << failure;
-            }
+        for (const QString failure : { "exit", "invalid", "timeout" }) {
+            QTest::newRow(failure.toLatin1().constData()) << failure;
         }
     }
     void failedRefreshKeepsCache()
     {
-        QFETCH(int, kind);
         QFETCH(QString, failure);
-        makeModel(kind);
+        makeModel();
         refresh();
         QTRY_VERIFY(populated());
         const QVariantMap before = cache();
-        const QStringList keys = kind == NetworkModel ? QStringList { "devices", "wifi" } : QStringList { "sinks" };
+        const QStringList keys { "devices", "wifi" };
         for (const QString& key : keys) {
             if (failure == "exit") {
                 option(key, "code", 3);
@@ -418,66 +282,23 @@ private slots:
         connect(&heartbeat, &QTimer::timeout, this, [&] { ++beats; });
         heartbeat.start(10);
         refresh();
-        QTest::qWait(failure == "timeout" ? (kind == AudioModel ? 2300 : 3300) : 150);
+        QTest::qWait(failure == "timeout" ? 3300 : 150);
         QVERIFY(beats >= 5);
         QCOMPARE(cache(), before);
         // Failed/time-limited requests release their busy state and can retry.
         saveFile(m_dir->filePath("never-release"), {});
         for (const QString& key : keys) {
             option(key, "code", 0);
-            option(key, "output", kind == NetworkModel ? "" : "[]");
+            option(key, "output", "");
         }
         refresh();
         QTRY_VERIFY(!populated());
     }
 
-    void oldReadCannotUndoLatestVolume_data()
-    {
-        QTest::addColumn<int>("kind");
-        QTest::newRow("settings-audio") << int(AudioModel);
-    }
-    void oldReadCannotUndoLatestVolume()
-    {
-        QFETCH(int, kind);
-        makeModel(kind);
-        refresh();
-        QTRY_VERIFY(populated());
-        saveFile(m_dir->filePath("requests.jsonl"), {});
-        gateReads();
-        refresh();
-        QTRY_COMPARE(count("sinks"), 1);
-        const QString command = "set-sink-volume";
-        option(command, "gate", "commands-release");
-        auto setVolume = [&](double value) { static_cast<Audio*>(m_model.get())->setVolume("output", "test-sink", value); };
-        auto currentVolume = [&] {
-            return qRound(100 * m_model->property("outputs").toList().first().toMap().value("volume").toDouble());
-        };
-        setVolume(0.6);
-        setVolume(0.7);
-        setVolume(0.8);
-        QCOMPARE(currentVolume(), 80);
-        QTRY_COMPARE(count(command), 1);
-        saveFile(m_dir->filePath("release"), {});
-        QTest::qWait(80); // the captured 40% reply arrives while the command is pending
-        QCOMPARE(currentVolume(), 80);
-        saveFile(m_dir->filePath("commands-release"), {});
-        QTRY_COMPARE(count(command), 2);
-        QTRY_COMPARE(readFile(m_dir->filePath("volume")), QByteArray("80"));
-        QTRY_COMPARE(count("sinks"), 2);
-        QCOMPARE(currentVolume(), 80);
-        QStringList volumes;
-        for (const QJsonObject& request : requests()) {
-            if (request.value("operation").toString() == command) {
-                volumes.append(request.value("arguments").toArray().last().toString());
-            }
-        }
-        QCOMPARE(volumes, QStringList({ "60%", "80%" }));
-    }
-
     void savedWifiUsesExistingProfileAndFriendlyErrors()
     {
-        makeModel(NetworkModel);
-        auto* network = static_cast<Network*>(m_model.get());
+        makeModel();
+        auto* network = m_model.get();
         network->refreshWifi();
         QTRY_VERIFY(!network->wifiNetworks().isEmpty());
         auto knownNetwork = [&] {
@@ -529,8 +350,8 @@ private slots:
 
     void slowWifiScanKeepsCachedNetworksVisible()
     {
-        makeModel(NetworkModel);
-        auto* network = static_cast<Network*>(m_model.get());
+        makeModel();
+        auto* network = m_model.get();
         option("scan", "gate", "finish-scan");
         network->scan();
         QVERIFY(network->scanning());
@@ -545,12 +366,12 @@ private slots:
 
     void missingProgramCompletesAndRecovers()
     {
-        makeModel(NetworkModel);
+        makeModel();
         refresh();
         QTRY_VERIFY(populated());
         const QVariantMap before = cache();
         QVERIFY(QFile::remove(m_dir->filePath("nmcli")));
-        auto* network = static_cast<Network*>(m_model.get());
+        auto* network = m_model.get();
         network->scan();
         QVERIFY(network->scanning());
         network->connectWifi("Home:Lab", {});
@@ -565,14 +386,12 @@ private slots:
         QTRY_COMPARE(network->connectResult(), QString("ok"));
     }
 
-    void destroyingOwnerDoesNotWait_data() { models_data(); }
     void destroyingOwnerDoesNotWait()
     {
-        QFETCH(int, kind);
         gateReads();
-        makeModel(kind);
+        makeModel();
         refresh();
-        QTRY_VERIFY(count(kind == NetworkModel ? "devices" : "sinks") > 0);
+        QTRY_VERIFY(count("devices") > 0);
         QElapsedTimer elapsed;
         elapsed.start();
         m_model.reset();
@@ -584,8 +403,8 @@ private slots:
     {
         QObject owner;
         int completions = 0;
-        option("get-default-sink", "gate", "never-release");
-        vela::runProcess(&owner, "pactl", { "get-default-sink" }, 80, [&](vela::ProcessResult result) {
+        option("devices", "gate", "never-release");
+        vela::runProcess(&owner, "nmcli", { "device" }, 80, [&](vela::ProcessResult result) {
             QVERIFY(!result.ok);
             ++completions;
         });
@@ -600,145 +419,14 @@ private slots:
         QTRY_VERIFY(clientsStopped());
     }
 
-    void failedDefaultMicrophoneCannotRetargetMute()
-    {
-        // Two microphones make it possible to distinguish the confirmed
-        // default from an optimistically selected (but rejected) replacement.
-        QJsonArray sources = QJsonDocument::fromJson(
-            m_config.value("sources").toObject().value("output").toString().toUtf8()).array();
-        QJsonObject backup = sources.first().toObject();
-        backup.insert("name", "backup-mic");
-        backup.insert("description", "Backup microphone");
-        sources.append(backup);
-        response("sources", QJsonDocument(sources).toJson());
-        makeModel(AudioModel);
-        auto* audio = static_cast<Audio*>(m_model.get());
-        audio->refresh();
-        QTRY_COMPARE(audio->inputs().size(), 2);
-
-        auto device = [&](const QString& name) {
-            for (const QVariant& value : audio->inputs()) {
-                const QVariantMap item = value.toMap();
-                if (item.value("name").toString() == name) {
-                    return item;
-                }
-            }
-            return QVariantMap();
-        };
-        QVERIFY(device("test-mic").value("isDefault").toBool());
-        QVERIFY(!device("backup-mic").value("isDefault").toBool());
-
-        option("set-default-source", "code", 3);
-        option("get-default-source", "code", 3);
-        audio->setDefault("input", "backup-mic");
-        QVERIFY(device("test-mic").value("isDefault").toBool());
-        QVERIFY(!device("backup-mic").value("isDefault").toBool());
-        QVERIFY(device("test-mic").value("defaultPending").toBool());
-
-        QTRY_VERIFY(device("test-mic").value("defaultError").toBool());
-        QVERIFY(!device("test-mic").value("defaultPending").toBool());
-        QVERIFY(device("test-mic").value("isDefault").toBool());
-        QVERIFY(!device("backup-mic").value("isDefault").toBool());
-
-        // Even a direct QML/API mute request must not act on an unconfirmed
-        // default selection (the real microphone could still be test-mic).
-        const int before = count("set-source-mute");
-        audio->setMuted("input", "test-mic", true);
-        QCOMPARE(count("set-source-mute"), before);
-        audio->setVolume("input", "test-mic", 0.0);
-        QCOMPARE(count("set-source-volume"), 0);
-
-        option("get-default-source", "code", 0);
-        audio->refresh();
-        QTRY_VERIFY(!device("test-mic").value("defaultError").toBool());
-        QVERIFY(device("test-mic").value("isDefault").toBool());
-        audio->setMuted("input", "test-mic", true);
-        QTRY_COMPARE(count("set-source-mute"), before + 1);
-    }
-
-    void successfulDefaultChangeNeedsConfirmedRead()
-    {
-        QJsonArray sources = QJsonDocument::fromJson(
-            m_config.value("sources").toObject().value("output").toString().toUtf8()).array();
-        QJsonObject backup = sources.first().toObject();
-        backup.insert("name", "backup-mic");
-        sources.append(backup);
-        response("sources", QJsonDocument(sources).toJson());
-        makeModel(AudioModel);
-        auto* audio = static_cast<Audio*>(m_model.get());
-        audio->refresh();
-        QTRY_COMPARE(audio->inputs().size(), 2);
-        const auto devices = [&] { return audio->inputs(); };
-        const int reads = count("get-default-source");
-
-        // pactl accepts the change, but follow-up reads are unavailable.
-        option("get-default-source", "code", 3);
-        audio->setDefault("input", "backup-mic");
-        QTRY_VERIFY(count("get-default-source") > reads);
-        QTRY_VERIFY(devices().first().toMap().value("defaultPending").toBool());
-        QVERIFY(devices().first().toMap().value("isDefault").toBool());
-        audio->setMuted("input", "test-mic", true);
-        QCOMPARE(count("set-source-mute"), 0);
-
-        // Only an authoritative snapshot may move the default to backup-mic
-        // and re-enable input mute operations.
-        response("get-default-source", "backup-mic\n");
-        audio->refresh();
-        QTRY_VERIFY(devices().last().toMap().value("isDefault").toBool());
-        QVERIFY(!devices().first().toMap().value("defaultPending").toBool());
-        QVERIFY(!devices().first().toMap().value("defaultError").toBool());
-        QVERIFY(!devices().first().toMap().value("isDefault").toBool());
-        audio->setMuted("input", "backup-mic", true);
-        QTRY_COMPARE(count("set-source-mute"), 1);
-    }
-
-    void failedMicrophoneMuteMustNotClaimSuccess()
-    {
-        makeModel(AudioModel);
-        refresh();
-        auto* audio = static_cast<Audio*>(m_model.get());
-        QTRY_VERIFY(populated());
-        auto mic = [&] { return audio->inputs().first().toMap(); };
-        QVERIFY(!mic().value("muted").toBool());
-
-        // A failing command followed by a failing reconciliation must never
-        // make the visible input appear safely muted.
-        option("set-source-mute", "code", 3);
-        option("sources", "code", 3);
-        audio->setMuted("input", "test-mic", true);
-        QCOMPARE(mic().value("muted").toBool(), false);
-        QTRY_VERIFY(mic().value("muteError").toBool());
-        QVERIFY(!mic().value("mutePending").toBool());
-        QVERIFY(!mic().value("muted").toBool());
-
-        // Service recovery clears the error only after a valid source snapshot.
-        option("sources", "code", 0);
-        audio->refresh();
-        QTRY_VERIFY(!mic().value("muteError").toBool());
-        QVERIFY(!mic().value("muted").toBool());
-    }
-
-    void failedSubscriptionCanRestart()
-    {
-        makeModel(AudioModel);
-        auto* audio = static_cast<Audio*>(m_model.get());
-        QVERIFY(QFile::remove(m_dir->filePath("pactl")));
-        audio->refresh();
-        QTest::qWait(100);
-        QVERIFY(QFile::link(QCoreApplication::applicationFilePath(), m_dir->filePath("pactl")));
-        audio->refresh();
-        QTRY_COMPARE(count("subscribe"), 1);
-        QTRY_VERIFY(populated());
-    }
-
 };
 
 int main(int argc, char* argv[])
 {
     const QString program = QFileInfo(QString::fromLocal8Bit(argv[0])).fileName();
     QCoreApplication app(argc, argv);
-    if (program == "pactl" || program == "nmcli") {
-        return fakeService(program, app.arguments().mid(1));
+    if (program == "nmcli") {
+        return fakeService(app.arguments().mid(1));
     }
     ServiceModels tests;
     return QTest::qExec(&tests, argc, argv);

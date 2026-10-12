@@ -12,6 +12,7 @@
 #include "about.h"
 #include "appmodel.h"
 #include "audio.h"
+#include "audioapps.h"
 #include "bluetooth.h"
 #include "controls.h"
 #include "datetime.h"
@@ -20,6 +21,7 @@
 #include "iconprovider.h"
 #include "keyboardlayouts.h"
 #include "language.h"
+#include "levelmeter.h"
 #include "network.h"
 #include "preferences.h"
 #include "systemactions.h"
@@ -32,6 +34,7 @@
 #include <QLocalSocket>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQmlEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QStandardPaths>
@@ -134,7 +137,7 @@ int main(int argc, char* argv[])
     parser.addHelpOption();
     const QCommandLineOption pageOption(QStringLiteral("page"),
         QStringLiteral("The page to open: system, display, sound, notifications, power, about, bluetooth, "
-                       "network, personalization, background, colors, taskbar, apps, installed-apps, "
+                       "volume-mixer, network, personalization, background, colors, taskbar, apps, installed-apps, "
                        "default-apps, time-language, datetime, keyboard, night-light, accessibility."),
         QStringLiteral("name"));
     parser.addOption(pageOption);
@@ -156,7 +159,9 @@ int main(int argc, char* argv[])
     SystemActions system;
     Preferences preferences;
     Displays displays;
-    Audio audio;
+    // The sound (docs/audio.md): the same library as the shell's.
+    vela::audio::Audio audio;
+    audio.setAppResolver(audioAppResolver(apps));
     Network network;
     Bluetooth bluetooth;
     About about;
@@ -178,6 +183,7 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("Prefs"), &preferences);
     context->setContextProperty(QStringLiteral("Displays"), &displays);
     context->setContextProperty(QStringLiteral("Audio"), &audio);
+    qmlRegisterType<vela::audio::LevelMeter>("Vela.Audio", 1, 0, "LevelMeter");
     context->setContextProperty(QStringLiteral("Network"), &network);
     context->setContextProperty(QStringLiteral("Bluetooth"), &bluetooth);
     context->setContextProperty(QStringLiteral("About"), &about);

@@ -14,8 +14,6 @@ qt_add_executable(vela-settings
     src/main.cpp
     src/about.cpp
     src/about.h
-    src/audio.cpp
-    src/audio.h
     src/bluetooth.cpp
     src/bluetooth.h
     src/datetime.cpp
@@ -32,6 +30,7 @@ qt_add_executable(vela-settings
     ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.h
     ${SHELL_SRC}/appmodel.cpp
     ${SHELL_SRC}/appmodel.h
+    ${SHELL_SRC}/audioapps.h
     ${SHELL_SRC}/iconprovider.h
     ${SHELL_SRC}/mica.h
     ${SHELL_SRC}/network.cpp
@@ -40,8 +39,7 @@ qt_add_executable(vela-settings
     ${SHELL_SRC}/systemactions.h
     ${SHELL_SRC}/systemstatus.cpp
     ${SHELL_SRC}/systemstatus.h)
-target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src
-    ${PROJECT_SOURCE_DIR}/common/audio)
+target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
 
 set(SETTINGS_QML_FILES
     qml/Main.qml
@@ -51,6 +49,7 @@ set(SETTINGS_QML_FILES
     qml/Toggle.qml
     qml/Choice.qml
     qml/Slider.qml
+    qml/LevelBar.qml
     qml/PageHeader.qml
     qml/Page.qml
     qml/Dialog.qml
@@ -58,6 +57,8 @@ set(SETTINGS_QML_FILES
     qml/pages/SystemPage.qml
     qml/pages/DisplayPage.qml
     qml/pages/SoundPage.qml
+    qml/pages/SoundDevicePage.qml
+    qml/pages/VolumeMixerPage.qml
     qml/pages/NotificationsPage.qml
     qml/pages/PowerPage.qml
     qml/pages/AboutPage.qml
@@ -108,7 +109,8 @@ target_link_libraries(vela-settings PRIVATE
     Qt6::Svg
     vela-controls # Theme, Button, TextBox, Style (common/)
     vela-controlsplugin
-    vela-app) # the mouse's Back and Forward buttons (common/)
+    vela-app # the mouse's Back and Forward buttons (common/)
+    vela-audio) # the sound (common/audio, docs/audio.md)
 
 install(TARGETS vela-settings RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES vela-settings.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)

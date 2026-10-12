@@ -15,6 +15,7 @@ qt_add_executable(vela-shell
     src/accessibility.h
     src/appmodel.cpp
     src/appmodel.h
+    src/audioapps.h
     src/desktopexec.h
     src/mimeapps.h
     src/clipboard.cpp
@@ -198,10 +199,8 @@ if(VELA_BUILD_TOOLS)
 
     qt_add_executable(vela-service-models-test
         tests/service_models.cpp
-        src/asyncprocess.h src/network.cpp src/network.h
-        ${PROJECT_SOURCE_DIR}/settings/src/audio.cpp
-        ${PROJECT_SOURCE_DIR}/settings/src/audio.h)
-    target_include_directories(vela-service-models-test PRIVATE src ${PROJECT_SOURCE_DIR}/settings/src)
+        src/asyncprocess.h src/network.cpp src/network.h)
+    target_include_directories(vela-service-models-test PRIVATE src)
     target_compile_options(vela-service-models-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-service-models-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
     add_test(NAME shell-service-models COMMAND vela-service-models-test)

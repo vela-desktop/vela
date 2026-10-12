@@ -30,6 +30,8 @@ Window {
         "system": { title: qsTr("System"), parent: "", file: "SystemPage.qml", icon: "computer" },
         "display": { title: qsTr("Display"), parent: "system", file: "DisplayPage.qml", icon: "video-display" },
         "sound": { title: qsTr("Sound"), parent: "system", file: "SoundPage.qml", icon: "audio-speakers" },
+        "sound-device": { title: qsTr("Properties"), parent: "sound", file: "SoundDevicePage.qml", icon: "audio-card" },
+        "volume-mixer": { title: qsTr("Volume mixer"), parent: "sound", file: "VolumeMixerPage.qml", icon: "view-media-equalizer" },
         "notifications": { title: qsTr("Notifications"), parent: "system", file: "NotificationsPage.qml", icon: "preferences-desktop-notification" },
         "power": { title: qsTr("Power"), parent: "system", file: "PowerPage.qml", icon: "preferences-system-power-management" },
         "about": { title: qsTr("About"), parent: "system", file: "AboutPage.qml", icon: "help-about" },
@@ -62,6 +64,24 @@ Window {
         "colors-settings": "colors"
     })
 
+    // The output or input System > Sound > Properties shows: {kind, name}
+    // (its node.name), and its device's name, which stays when the device
+    // is turned off and its outputs and inputs are gone.
+    property var soundDevice: ({ kind: "", name: "", device: "" })
+    readonly property string soundDeviceTitle: {
+        const list = soundDevice.kind === "output" ? Audio.outputs : soundDevice.kind === "input" ? Audio.inputs : []
+        const endpoint = list.find(e => e.name === soundDevice.name)
+        if (endpoint !== undefined) {
+            return endpoint.description
+        }
+        const device = Audio.devices.find(d => d.name === soundDevice.device)
+        return device !== undefined ? device.description : ""
+    }
+    function showSoundDevice(kind, name, device) {
+        soundDevice = { kind: kind, name: name, device: device }
+        navigate("sound-device")
+    }
+
     property string current: "home"
     readonly property string section: {
         let name = current
@@ -75,7 +95,9 @@ Window {
         let name = current
         while (name !== "" && pages[name]) {
             // The app in Default apps has its name in the path.
-            const title = name === "default-app" && DefaultApps.selectedName !== "" ? DefaultApps.selectedName : pages[name].title
+            const title = name === "default-app" && DefaultApps.selectedName !== "" ? DefaultApps.selectedName
+                : name === "sound-device" && soundDeviceTitle !== "" ? soundDeviceTitle
+                : pages[name].title
             list.unshift({ name: name, title: title })
             name = pages[name].parent
         }
@@ -141,7 +163,8 @@ Window {
         { page: "display", text: qsTr("Refresh rate"), keys: qsTr("hz refresh rate frequency") },
         { page: "sound", text: qsTr("Sound"), keys: qsTr("volume speakers headphones microphone output input sound") },
         { page: "sound", text: qsTr("Choose your output device"), keys: qsTr("output speakers headphones") },
-        { page: "sound", text: qsTr("Microphone"), keys: qsTr("input recording") },
+        { page: "sound", text: qsTr("Microphone"), keys: qsTr("input recording level test") },
+        { page: "volume-mixer", text: qsTr("Volume mixer"), keys: qsTr("app volume apps sound output input per app mixer reset") },
         { page: "notifications", text: qsTr("Notifications"), keys: qsTr("do not disturb alerts") },
         { page: "notifications", text: qsTr("Do not disturb"), keys: qsTr("silent notifications") },
         { page: "power", text: qsTr("Power"), keys: qsTr("screen off sleep idle battery energy saver lock") },

@@ -2,44 +2,96 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import QtQuick.Window
+import Vela.Audio
 import Vela.Controls
 
-// System > Sound: where sound goes and where it comes from, with the volume of
-// each, like Windows 11.
+// System > Sound, like Windows 11: where sound goes and where it comes
+// from, the volume of each, the microphone's level, each device's
+// properties and the volume mixer (docs/audio.md §6.2).
 Page {
     id: page
-    Component.onCompleted: Audio.refresh()
 
     readonly property var defaultOutput: Audio.outputs.find(d => d.isDefault)
     readonly property var defaultInput: Audio.inputs.find(d => d.isDefault)
+    // A device turned off has no outputs or inputs left: it is listed here
+    // to turn it back on.
+    readonly property var offDevices: Audio.devices.filter(d => d.off)
+
+    // The input's level, only while the page is on screen: it opens the
+    // microphone (docs/audio.md §7.2).
+    LevelMeter {
+        id: inputMeter
+        audio: Audio
+        kind: "input"
+        name: Audio.defaultInput
+        active: page.visible && root.visibility !== Window.Minimized && root.visibility !== Window.Hidden
+    }
 
     component DeviceCard: Card {
         id: device
         required property var modelData
         required property string kind
-        icon: kind === "output" ? (modelData.description.toLowerCase().indexOf("hdmi") >= 0 || modelData.description.toLowerCase().indexOf("displayport") >= 0 ? "video-display" : "audio-speakers") : "audio-input-microphone"
+        icon: modelData.icon
         title: modelData.description
-        description: modelData.isDefault
-            ? (modelData.defaultError
-                ? qsTr("Couldn't verify the selected device. Controls are disabled.")
-                : qsTr("Default device")) : ""
+        description: {
+            if (modelData.isDefault && modelData.defaultError) {
+                return qsTr("Couldn't verify the selected device. Controls are disabled.")
+            }
+            const parts = []
+            if (modelData.isDefault) {
+                parts.push(qsTr("Default device"))
+            }
+            if (modelData.battery >= 0) {
+                parts.push(qsTr("Battery %1%").arg(modelData.battery))
+            }
+            return parts.join(" · ")
+        }
         clickable: !modelData.isDefault && !modelData.defaultPending
         onClicked: Audio.setDefault(kind, modelData.name)
-        trailing: Rectangle {
+        trailing: Row {
+            spacing: 4
             // The choice dot, like Windows RadioButtons.
-            width: 20
-            height: 20
-            radius: 10
-            color: device.modelData.isDefault ? Theme.accentFill : "transparent"
-            border.width: device.modelData.isDefault ? 0 : 1
-            border.color: Theme.controlStrokeStrong
             Rectangle {
-                visible: device.modelData.isDefault
-                anchors.centerIn: parent
-                width: 10
-                height: 10
-                radius: 5
-                color: Theme.accentText
+                anchors.verticalCenter: parent.verticalCenter
+                width: 20
+                height: 20
+                radius: 10
+                color: device.modelData.isDefault ? Theme.accentFill : "transparent"
+                border.width: device.modelData.isDefault ? 0 : 1
+                border.color: Theme.controlStrokeStrong
+                Rectangle {
+                    visible: device.modelData.isDefault
+                    anchors.centerIn: parent
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: Theme.accentText
+                }
+            }
+            Item { width: 8; height: 1 }
+            // The device's properties: the arrow of the cards that lead to a
+            // page, as a button of its own.
+            Rectangle {
+                width: 32
+                height: 32
+                radius: Theme.radius
+                color: propertiesMouse.pressed ? Theme.subtlePressed : propertiesMouse.containsMouse ? Theme.subtleHover : "transparent"
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Properties")
+                Text {
+                    anchors.centerIn: parent
+                    text: "›"
+                    color: Theme.textSecondary
+                    font.pixelSize: 22
+                }
+                MouseArea {
+                    id: propertiesMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.showSoundDevice(device.kind, device.modelData.name, device.modelData.device)
+                }
             }
         }
     }
@@ -48,7 +100,8 @@ Page {
         id: volumeCard
         required property var device
         required property string kind
-        icon: device && device.muted ? "audio-volume-muted" : kind === "output" ? "audio-volume-high" : "audio-input-microphone"
+        icon: device && device.muted ? (kind === "output" ? "audio-volume-muted" : "microphone-sensitivity-muted")
+            : kind === "output" ? "audio-volume-high" : "audio-input-microphone"
         title: qsTr("Volume")
         description: device && device.defaultError
             ? qsTr("Couldn't verify the selected device. Controls are disabled.")
@@ -60,17 +113,20 @@ Page {
             Button {
                 subtle: true
                 icon: volumeCard.device && volumeCard.device.muted ? (volumeCard.kind === "output" ? "audio-volume-muted" : "microphone-sensitivity-muted") : (volumeCard.kind === "output" ? "audio-volume-high" : "audio-input-microphone")
-                enabled: volumeCard.device && !volumeCard.device.mutePending
+                Accessible.name: volumeCard.device && volumeCard.device.muted ? qsTr("Unmute") : qsTr("Mute")
+                usable: volumeCard.device !== undefined && !volumeCard.device.mutePending
                     && !volumeCard.device.defaultPending && !volumeCard.device.defaultError
                 onClicked: Audio.setMuted(volumeCard.kind, volumeCard.device.name, !volumeCard.device.muted)
             }
             Slider {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 220
-                enabled: volumeCard.device && !volumeCard.device.defaultPending && !volumeCard.device.defaultError
+                enabled: volumeCard.device !== undefined && !volumeCard.device.defaultPending && !volumeCard.device.defaultError
                 to: 1
-                stepSize: 0.02 // even numbers, like the volume keys and quick settings
-                value: volumeCard.device ? Math.min(1, volumeCard.device.volume) : 0
+                // Even numbers, like the volume keys and quick settings, or
+                // the device's own positions when they are fewer.
+                stepSize: volumeCard.device ? 1 / Math.min(50, volumeCard.device.intervals) : 0.02
+                value: volumeCard.device ? volumeCard.device.volume : 0
                 onMoved: value => Audio.setVolume(volumeCard.kind, volumeCard.device.name, value)
             }
             Text {
@@ -88,7 +144,7 @@ Page {
         visible: !Audio.available
         icon: "dialog-warning"
         title: qsTr("Sound isn't available")
-        description: qsTr("pactl is needed (PipeWire or PulseAudio).")
+        description: qsTr("PipeWire isn't running. Vela keeps trying to reach it.")
     }
 
     CardGroup {
@@ -129,16 +185,39 @@ Page {
             device: page.defaultInput
             kind: "input"
         }
+        Card {
+            visible: page.defaultInput !== undefined
+            icon: "audio-input-microphone"
+            title: qsTr("Input level")
+            description: page.defaultInput && page.defaultInput.muted
+                ? qsTr("The microphone is muted")
+                : qsTr("Speak to test your microphone")
+            trailing: LevelBar {
+                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                width: 220 + 8 + 32 + 8 + 32
+                level: inputMeter.level
+            }
+        }
     }
 
     CardGroup {
+        visible: Audio.available
         title: qsTr("Advanced")
+        Repeater {
+            model: page.offDevices
+            delegate: LinkCard {
+                required property var modelData
+                icon: modelData.icon
+                title: modelData.description
+                description: qsTr("Turned off")
+                onClicked: root.showSoundDevice("", "", modelData.name)
+            }
+        }
         LinkCard {
-            visible: System.available("volume-mixer")
             icon: "view-media-equalizer"
             title: qsTr("Volume mixer")
-            description: qsTr("Each app's volume, and the output it uses")
-            onClicked: System.trigger("volume-mixer")
+            description: qsTr("Each app's volume, and the devices it uses")
+            onClicked: root.navigate("volume-mixer")
         }
     }
 }
