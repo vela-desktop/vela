@@ -196,10 +196,10 @@ trap 'stop_makepkg; exit 129' HUP
 # From where: the one given now (and remembered), the remembered one, GitHub.
 # The old file was called aggiornamenti.conf (key sorgente=).
 githubHTTPS() {
-    # GitHub owner/repository names are case-insensitive. Recognize the old
-    # repository in any spelling, without changing unrelated source URLs.
+    # Only the official repository is canonicalized across case and transport.
+    # Other GitHub repositories, including forks, retain their own identity.
     case "$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in
-    https://github.com/brandodev/vela|https://github.com/brandodev/vela.git|ssh://git@github.com/brandodev/vela|ssh://git@github.com/brandodev/vela.git|git@github.com:brandodev/vela|git@github.com:brandodev/vela.git)
+    https://github.com/vela-desktop/vela|https://github.com/vela-desktop/vela.git|ssh://git@github.com/vela-desktop/vela|ssh://git@github.com/vela-desktop/vela.git|git@github.com:vela-desktop/vela|git@github.com:vela-desktop/vela.git)
         printf '%s\n' "$DEFAULT_SOURCE"
         return ;;
     esac
@@ -225,8 +225,8 @@ elif [ -f "$OLD_CONFIG" ]; then
     remember=1
 fi
 source="${source:-$DEFAULT_SOURCE}"
-# Migrate saved or explicit old-repository URLs and GitHub SSH URLs
-# to the canonical public HTTPS repository.
+# Normalize saved or explicit official GitHub URLs (including SSH and
+# case variants) to the canonical HTTPS repository.
 https_source=$(githubHTTPS "$source")
 if [ "$https_source" != "$source" ]; then
     source="$https_source"
