@@ -88,7 +88,7 @@ struct ProcessQuery {
 };
 
 // Publish a snapshot only when every required query succeeded. Optional
-// services (such as PipeWire metadata on a PulseAudio system) may be absent.
+// services may be absent.
 inline void queryProcesses(QObject* owner, const QList<ProcessQuery>& queries,
     std::function<void(bool, QMap<QString, QByteArray>)> done)
 {

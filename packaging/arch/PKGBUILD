@@ -38,14 +38,14 @@ optdepends=(
     'plasma-workspace: light or dark colors for KDE apps'
     'networkmanager: network and Wi-Fi (quick settings and Settings)'
     'bluez: Bluetooth'
-    'libpulse: volume (pactl)'
+    'pipewire-pulse: sound for apps that still use PulseAudio'
     'power-profiles-daemon: energy saver'
     'udisks2: unmounted drives in File Explorer'
     'wlr-randr: Settings > Display'
     'xdg-utils: share by email, default apps'
     'kdeconnect: share with your phone'
     'bluedevil: share via Bluetooth'
-    'konsole: il terminale (Win+Invio)'
+    'konsole: the terminal (Super+Enter)'
 )
 provides=('vela')
 conflicts=('vela')

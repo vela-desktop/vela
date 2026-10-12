@@ -276,7 +276,8 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
 ## Install
 
 Vela needs a GPU with **Vulkan 1.4**: AMD or Intel with Mesa ≥ 25.0, or NVIDIA with the
-proprietary driver ≥ 570 or NVK. Once installed, **Vela** appears on the login screen
+proprietary driver ≥ 570 or NVK. Sound needs **PipeWire and WirePlumber**: PulseAudio
+without PipeWire is not supported. Once installed, **Vela** appears on the login screen
 (SDDM or Plasma Login) next to Plasma.
 
 ### Arch Linux, CachyOS, EndeavourOS

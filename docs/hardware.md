@@ -31,7 +31,7 @@ Different features rely on installed/running system services. On Arch, see optio
 |---|---|
 | Network / Wi-Fi | NetworkManager |
 | Bluetooth | BlueZ |
-| Audio controls and per-app volumes | PipeWire/WirePlumber with PulseAudio-compatible control tools |
+| Audio controls and per-app volumes | PipeWire and WirePlumber (PulseAudio without PipeWire is not supported) |
 | X11 apps and older games | Xwayland |
 | Removable and unmounted storage | UDisks2 |
 | Screen sharing / application portals | xdg-desktop-portal with the configured Wayland/KDE backends |
@@ -42,5 +42,18 @@ The Vela compositor and Vulkan renderer are Vela's own; reusing these Linux/KDE 
 ## Suggested manual smoke tests
 
 On the affected physical GPU, test login/logout, multiple displays and scaling, Alt+Tab and snapping, locking/unlocking, audio mute and network scanning, screenshots and screen sharing, device hotplug, suspend/resume and recovery from a compositor/shell crash where safe. Record observed pass/fail/untested status per test; do not infer it from a generic CI green check.
+
+### Sound
+
+The automated audio tests run on a private PipeWire whose devices are null sinks ([audio](audio.md#11-tests)): no sound card, no Bluetooth, no hardware mixer. These need a real machine:
+
+- **Volume**: the volume keys and a knob on a real sound card move the hardware mixer (through the device's route); the volume is the same after logging out and in.
+- **Headphones**: unplugging hides them and moves the sound to the next output; plugging them back returns the sound to them if they were the default.
+- **Sound card**: switching profiles, HDMI/DisplayPort audio, turning a device off and on.
+- **Bluetooth headset**: battery, codecs, call mode, devices with few volume steps.
+- **Microphone**: the mute key and its indicator; on laptops, its LED. The microphone icon in the tray with real apps (a browser, Discord, OBS), including a paused recording and echo-cancelling or noise filters.
+- **Sample rate and format** (Sound › Advanced and a device's properties): on a USB DAC, "Automatic" following the music, a fixed device rate, a sample format, and the format shown live while the music changes; an HDMI receiver and a Bluetooth headset with "Automatic".
+- **Restart audio**: sound comes back, and the shell and Settings follow without restarting.
+- **Rename**: a device's new name survives a WirePlumber restart and logging out.
 
 See [testing.md](testing.md) and [reporting.md](reporting.md) for automated tests and privacy-aware diagnostics.

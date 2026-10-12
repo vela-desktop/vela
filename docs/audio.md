@@ -8,8 +8,8 @@ code: decisions are made here, and the code follows them.
 > **Status:** design approved. **A0 to A5 are done** (§13): the test
 > fixture, the `vela-audio` library, the shell and Settings on it, the
 > microphone in use in the tray, Vela's files (names, the automatic sample
-> rate, each device's rates and format). Next: A6, packaging, docs and the
-> tests on real hardware.
+> rate, each device's rates and format). A6: packaging and docs are done;
+> the tests on real hardware ([hardware](hardware.md#sound)) are next.
 
 ## 1. Goals
 
@@ -573,8 +573,8 @@ audio or WirePlumber state.
 - **Bluetooth battery**: a fake BlueZ on a private system bus, like
   `fake_polkitd.py`.
 - **CI**: the Arch images install `pipewire` and `wireplumber`.
-- **By hand, by the user, on real hardware** (added to
-  [hardware](hardware.md)):
+- **By hand, by the user, on real hardware** (in
+  [hardware](hardware.md#sound), A6):
   - volume keys and knob on a real sound card (hardware mixer through the
     Route, the volume remembered after logging out);
   - unplugging and plugging headphones (unplugged hidden, default
@@ -610,7 +610,7 @@ audio or WirePlumber state.
 | A3 | Settings on the library: Sound page with input level, device properties (profile/off, codec, balance, test sound), Mixer page with levels; `audio.cpp` gone | done |
 | A4 | Microphone in use in the tray | done |
 | A5 | Vela's files (§8): names, automatic sample rate, device rates and format, live format, restarts | done |
-| A6 | PKGBUILD and docs (§12); the user's tests on real hardware | |
+| A6 | PKGBUILD and docs (§12); the user's tests on real hardware | PKGBUILD and docs done |
 
 ## 14. Open questions and risks
 
