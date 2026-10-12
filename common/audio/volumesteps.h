@@ -36,14 +36,20 @@ inline int grid(int deviceIntervals)
     return std::min(deviceIntervals, evenGrid);
 }
 
+// How far from a position a volume still counts as on it. A sound card's
+// hardware mixer moves in dB steps and PipeWire reports the step it used:
+// 96 comes back as 96.0007, which must still step down to 94, not to 96
+// again. Floating point leaves less: 0.58 * 50 = 28.999...
+inline constexpr double onPosition = 0.05;
+
 // The next position up (direction > 0) or down from `volume`. Off the grid
 // (another program set an odd number) the first step lands on it: 33 -> 34
-// up, 32 down. The epsilon absorbs 0.58 * 50 = 28.999...
+// up, 32 down.
 inline double step(double volume, int direction, int deviceIntervals)
 {
     const int n = grid(deviceIntervals);
     const double position = std::clamp(volume, 0.0, 1.0) * n;
-    const double next = direction > 0 ? std::floor(position + 1e-6) + 1 : std::ceil(position - 1e-6) - 1;
+    const double next = direction > 0 ? std::floor(position + onPosition) + 1 : std::ceil(position - onPosition) - 1;
     return std::clamp(next, 0.0, double(n)) / n;
 }
 

@@ -55,6 +55,12 @@ private slots:
         // Floating point: 0.58 * 50 is 28.999...
         QCOMPARE(percent(VolumeSteps::step(0.58, 1, 65535)), 60);
         QCOMPARE(percent(VolumeSteps::step(0.58, -1, 65535)), 56);
+        // A hardware mixer in 1 dB steps (a FiiO K11): 96 is read back as
+        // 96.0007, 94 could be 93.9993. Each still moves on.
+        QCOMPARE(percent(VolumeSteps::step(0.960007, -1, 65535)), 94);
+        QCOMPARE(percent(VolumeSteps::step(0.960007, 1, 65535)), 98);
+        QCOMPARE(percent(VolumeSteps::step(0.939993, 1, 65535)), 96);
+        QCOMPARE(percent(VolumeSteps::step(0.939993, -1, 65535)), 92);
         QCOMPARE(percent(VolumeSteps::snap(0.331, 65535)), 34);
         QCOMPARE(percent(VolumeSteps::snap(0.329, 65535)), 32);
     }
