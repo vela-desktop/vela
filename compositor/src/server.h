@@ -32,6 +32,7 @@ struct vela_switcher;
 struct vela_lock;
 struct vela_text;
 struct vela_output;
+struct vela_output_previews;
 struct vela_renderer;
 struct vela_scene;
 struct vela_tree;
@@ -185,6 +186,7 @@ struct vela_server {
     struct vela_commands *commands; // the command socket (command.h)
     // wlr-output-management (output_manager.h).
     struct wlr_output_manager_v1 *output_manager;
+    struct vela_output_previews *output_previews;
     struct wl_listener output_manager_apply;
     struct wl_listener output_manager_test;
     struct wl_listener new_output;

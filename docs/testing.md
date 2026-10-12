@@ -21,6 +21,7 @@ CTest includes both CPU-only and GPU-dependent suites.
 | **Compositor / GoogleTest** | FrameClock, vblank grid, late latching, adaptive margin, learned host latency, animation curves, output scale selection, pixel geometry, night light, color filters, sunrise/sunset, `vela.conf` parsing and `outputs.conf` persistence. | No |
 | **Files** (`files-copies`) | Copy/move behavior, atomic replacement across file/directory types, failed or unsupported exchanges, processes killed immediately before/after exchange, removal errors, and a simulated full disk with `RLIMIT_FSIZE`. | No |
 | **Shell** (`shell-*`) | `.desktop` `Exec=` parsing, default-app resolution, volume steps, and asynchronous audio/network models with slow, failed or missing services. | No |
+| **Settings** (`settings-displays`) | Native Wayland inventory and hotplug, modes, scale, rotation, confirmation-only persistence, explicit revert, compositor deadlines with the GUI thread blocked, client disconnection and SIGKILL, competing clients, failed commits and hotplug during preview. Uses real wlroots headless outputs and Vela’s output manager/preview; rendering and window rearrangement are stubbed. | No |
 | **Vela Report** (`reporting`, `reporting-gui`) | Guided CLI without a display, shared Qt worker and ZIP export, explicit collection boundaries, redaction, review exclusion, process identity, resource recording, bounded commands and archive failures. | No |
 | **Package updater** (`packaging-update`) | Public HTTPS defaults in both the updater and PKGBUILD, first run and cached fetches, migration of saved SSH URLs and old mirrors, local sources, branch/commit selection, exact CI artifacts, download fallback and failed fetch/build/install handling. Uses real Git repositories with simulated package tools. | No |
 | **Functional** (`functional`) | Opening and manipulating windows (Wayland and X11), menus (popups and X11 override-redirect menus) kept where they belong, resizing from the invisible borders, keyboard Move/Resize, the window menu, drag-to-edge snap with Snap Assist, snap layouts and snap groups, snap, maximize/restore, minimize/Alt+Tab, virtual desktops, Vela's title bar (text, buttons, double click), shell layers (reserved space, live blur), partial redraws identical to full redraws, output hotplug, per-output scale and position set like Settings does, accessibility quick settings (night light and its schedule, color filters, magnifier, sticky keys), Super alone opening Start, the media and volume keys (held volume keys repeat), the mouse's side buttons as Back and Forward in Vela's apps (File Explorer, also with the focus elsewhere or on an inactive window), lock/unlock, screen power, compositor crash recovery, a shell that crashes (restarted, then given up) or exits cleanly (left alone), and an app whose GPU finishes 150 ms late (explicit and implicit sync) without a missed vblank, and the polkit agent (below). | Yes |
@@ -78,6 +79,18 @@ around inside the fixture by hand:
 ```sh
 VELA_BUILD=build python3 tests/audio/fixture.py -- wpctl status
 ```
+
+Display protocol and compositor-owned recovery:
+
+```sh
+ctest --test-dir build -R '^settings-displays$' --output-on-failure
+```
+
+The display fixture uses isolated Wayland sockets and configuration directories,
+with a shortened compositor deadline. Its killed process runs the same native
+`Displays` backend as Settings. These tests exercise the real protocol and output
+commits without a GPU; the functional suite still supplies renderer and window
+placement coverage on real hardware.
 
 Diagnostic reporter and graphical smoke check:
 

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="vela_output_preview_v1">
+  <copyright>
+    SPDX-FileCopyrightText: 2026 Brando Giuffrida
+    SPDX-License-Identifier: GPL-3.0-or-later
+  </copyright>
+  <interface name="vela_output_preview_manager_v1" version="1">
+    <description summary="compositor-owned display confirmation">
+      An extension to wlr-output-management. Protect a configuration before
+      sending its apply request, on the same Wayland connection. Only one
+      preview may be pending. Other configuration applies are rejected until
+      it finishes. Ordinary unprotected clients retain their existing behavior.
+    </description>
+    <enum name="error">
+      <entry name="invalid_configuration" value="0" summary="not a configuration owned by this client"/>
+    </enum>
+    <request name="destroy" type="destructor"/>
+    <request name="protect">
+      <description summary="protect a pending output configuration">
+        configuration is the object ID of a zwlr_output_configuration_v1 belonging to this
+        client. A protected configuration cannot be applied without its preview,
+        including after destroying or expiring the preview. The compositor
+        bounds the time allowed to submit apply as well as the confirmation time.
+        preserve_position can name a disabled output to re-enable at its remembered
+        position, which output-management does not advertise while it is disabled.
+        An empty string keeps the configuration's explicitly requested position.
+      </description>
+      <arg name="preview" type="new_id" interface="vela_output_preview_v1"/>
+      <arg name="configuration" type="uint" summary="configuration object ID on this connection"/>
+      <arg name="preserve_position" type="string" summary="disabled output whose remembered position should be kept, or empty"/>
+    </request>
+  </interface>
+  <interface name="vela_output_preview_v1" version="1">
+    <description summary="a reversible display change">
+      The compositor captures the previous configuration before applying the
+      protected change. Until confirmation, no new settings are persisted.
+      Timeout, revert, destruction, or client disconnection restores the
+      surviving outputs; newly connected outputs are left alone. Confirmation
+      persists the new settings. Requests after finished have no effect.
+    </description>
+    <enum name="result">
+      <entry name="confirmed" value="0"/>
+      <entry name="reverted" value="1"/>
+      <entry name="failed" value="2"/>
+      <entry name="busy" value="3"/>
+      <entry name="restore_failed" value="4"/>
+    </enum>
+    <request name="confirm"/>
+    <request name="revert"/>
+    <request name="destroy" type="destructor"/>
+    <event name="applied">
+      <description summary="preview applied and deadline started">
+        Sent only after a successful apply. The deadline is owned by the
+        compositor; clients may display a countdown but cannot extend it.
+      </description>
+      <arg name="timeout_ms" type="uint"/>
+    </event>
+    <event name="finished">
+      <arg name="result" type="uint" enum="result"/>
+    </event>
+  </interface>
+</protocol>

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "output_manager.h"
+#include "output_preview.h"
 
 #include "listen.h"
 #include "output.h"
@@ -19,12 +20,19 @@
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/util/log.h>
 
-void vela_output_manager_update(struct vela_server *server)
+struct wlr_output_configuration_v1 *vela_output_manager_snapshot(struct vela_server *server)
 {
     struct wlr_output_configuration_v1 *config = wlr_output_configuration_v1_create();
+    if (!config) {
+        return NULL;
+    }
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
         struct wlr_output_configuration_head_v1 *head = wlr_output_configuration_head_v1_create(config, output->wlr);
+        if (!head) {
+            wlr_output_configuration_v1_destroy(config);
+            return NULL;
+        }
         struct wlr_box box = { 0 };
         wlr_output_layout_get_box(server->output_layout, output->wlr, &box);
         head->state.enabled = output->wlr->enabled && !wlr_box_empty(&box);
@@ -32,95 +40,170 @@ void vela_output_manager_update(struct vela_server *server)
         head->state.x = remembered ? output->last_x : box.x;
         head->state.y = remembered ? output->last_y : box.y;
     }
-    wlr_output_manager_v1_set_configuration(server->output_manager, config);
+    return config;
 }
 
-// An output as it was applied, to remember in outputs.conf.
-struct applied {
-    struct wlr_output *output;
-    bool enabled;
-    int x, y;
-};
-
-static void apply(struct vela_server *server, struct wlr_output_configuration_v1 *config, bool test_only)
+void vela_output_manager_update(struct vela_server *server)
 {
+    struct wlr_output_configuration_v1 *config = vela_output_manager_snapshot(server);
+    if (config) {
+        wlr_output_manager_v1_set_configuration(server->output_manager, config);
+    }
+}
+
+static bool test_configuration(const struct wlr_output_configuration_v1 *config)
+{
+    struct wlr_output_configuration_head_v1 *head;
+    wl_list_for_each (head, &config->heads, link) {
+        if (!head->state.output->data) {
+            return false;
+        }
+        struct wlr_output_state state;
+        wlr_output_state_init(&state);
+        wlr_output_head_v1_state_apply(&head->state, &state);
+        bool ok = wlr_output_test_state(head->state.output, &state);
+        wlr_output_state_finish(&state);
+        if (!ok) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool commit_configuration(struct vela_server *server, const struct wlr_output_configuration_v1 *config,
+    bool restoring)
+{
+    // Preflight every output before changing any. Commits can still fail, so
+    // the caller retains a snapshot for restoration in that case.
+    if (!test_configuration(config)) {
+        return false;
+    }
     bool ok = true;
-    int count = wl_list_length(&config->heads);
-    struct applied *applied = calloc((size_t)count + 1, sizeof(*applied));
-    int n = 0;
     struct wlr_output_configuration_head_v1 *head;
     wl_list_for_each (head, &config->heads, link) {
         const struct wlr_output_head_v1_state *wanted = &head->state;
         struct vela_output *output = wanted->output->data;
-        if (!output) {
-            ok = false;
-            continue;
-        }
         struct wlr_output_state state;
         wlr_output_state_init(&state);
         wlr_output_head_v1_state_apply(wanted, &state);
-        if (test_only) {
-            ok = wlr_output_test_state(wanted->output, &state) && ok;
-        } else if (wanted->enabled) {
-            // Position first: the first frame at the new mode is already drawn
-            // there.
+        if (wanted->enabled) {
+            // Render the first new frame at its intended position.
             wlr_output_layout_add(server->output_layout, wanted->output, wanted->x, wanted->y);
-            ok = vela_output_commit_mode(output, &state) && ok;
-            applied[n++] = (struct applied) { wanted->output, true, wanted->x, wanted->y };
+            ok = vela_output_commit_mode(output, &state);
         } else {
-            struct wlr_box box = { 0 };
-            wlr_output_layout_get_box(server->output_layout, wanted->output, &box);
-            if (!wlr_box_empty(&box)) {
-                output->has_last_position = true;
-                output->last_x = box.x;
-                output->last_y = box.y;
+            struct wlr_box previous = { 0 };
+            wlr_output_layout_get_box(server->output_layout, wanted->output, &previous);
+            ok = wlr_output_commit_state(wanted->output, &state);
+            if (ok) {
+                // disable_head does not carry position. Remember the live
+                // layout, or explicitly restore a disabled head's snapshot.
+                if (restoring || !wlr_box_empty(&previous)) {
+                    output->has_last_position = true;
+                    output->last_x = restoring ? wanted->x : previous.x;
+                    output->last_y = restoring ? wanted->y : previous.y;
+                }
+                wlr_output_layout_remove(server->output_layout, wanted->output);
             }
-            ok = wlr_output_commit_state(wanted->output, &state) && ok;
-            wlr_output_layout_remove(server->output_layout, wanted->output);
-            applied[n++] = (struct applied) { wanted->output, false, 0, 0 };
         }
         wlr_output_state_finish(&state);
+        if (!ok) {
+            break;
+        }
     }
-    if (ok) {
-        wlr_output_configuration_v1_send_succeeded(config);
-    } else {
-        wlr_output_configuration_v1_send_failed(config);
-    }
-    wlr_output_configuration_v1_destroy(config);
-    if (test_only) {
-        free(applied);
-        return;
-    }
-
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
         vela_output_arrange_layers(output);
     }
-    // The windows of an output turned off move to another (and come back when
-    // it's turned on again), maximized and snapped ones are rearranged.
     vela_views_check_outputs(server);
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
         vela_view_keep_in_place(view);
     }
     vela_scene_changed(server->scene);
+    // Scale/rotation alone may not cause a layout-change notification.
+    vela_output_manager_update(server);
+    return ok;
+}
 
-    // The user's choices are remembered (only in the real session).
-    if (server->session && ok) {
-        char (*keys)[256] = calloc((size_t)n + 1, sizeof(*keys));
-        struct vela_output_config_entry *entries = calloc((size_t)n + 1, sizeof(*entries));
-        for (int i = 0; i < n; ++i) {
-            const struct wlr_output *wlr = applied[i].output;
-            vela_output_key(wlr, keys[i], sizeof(keys[i]));
-            entries[i] = (struct vela_output_config_entry) { keys[i], applied[i].enabled, wlr->width, wlr->height,
-                wlr->refresh, wlr->scale, wlr->transform, applied[i].x, applied[i].y };
+bool vela_output_manager_commit(struct vela_server *server, const struct wlr_output_configuration_v1 *config)
+{
+    return commit_configuration(server, config, false);
+}
+
+void vela_output_manager_save(struct vela_server *server)
+{
+    if (!server->session) {
+        return;
+    }
+    struct wlr_output_configuration_v1 *config = vela_output_manager_snapshot(server);
+    if (!config) {
+        return;
+    }
+    int count = wl_list_length(&config->heads);
+    char (*keys)[256] = calloc((size_t)count + 1, sizeof(*keys));
+    struct vela_output_config_entry *entries = calloc((size_t)count + 1, sizeof(*entries));
+    if (keys && entries) {
+        int n = 0;
+        struct wlr_output_configuration_head_v1 *head;
+        wl_list_for_each (head, &config->heads, link) {
+            const struct wlr_output_head_v1_state *state = &head->state;
+            const struct wlr_output *wlr = state->output;
+            vela_output_key(wlr, keys[n], sizeof(keys[n]));
+            entries[n] = (struct vela_output_config_entry) { keys[n], state->enabled, wlr->width, wlr->height,
+                wlr->refresh, wlr->scale, wlr->transform, state->x, state->y };
+            ++n;
         }
         vela_output_config_save(entries, n);
-        free(entries);
-        free(keys);
     }
-    free(applied);
-    wlr_log(WLR_INFO, "Output configuration %s", ok ? "applicata" : "only partly applied");
+    free(entries);
+    free(keys);
+    wlr_output_configuration_v1_destroy(config);
+}
+
+bool vela_output_manager_restore(struct vela_server *server, const struct wlr_output_configuration_v1 *before)
+{
+    // Include new outputs at their current positions: otherwise the layout's
+    // automatic placement can move them as an old output regains its size.
+    struct wlr_output_configuration_v1 *restore = vela_output_manager_snapshot(server);
+    if (!restore) {
+        return false;
+    }
+    struct wlr_output_configuration_head_v1 *head, *saved;
+    wl_list_for_each (head, &restore->heads, link) {
+        wl_list_for_each (saved, &before->heads, link) {
+            if (head->state.output == saved->state.output) {
+                head->state = saved->state;
+                break;
+            }
+        }
+    }
+    bool ok = commit_configuration(server, restore, true);
+    wlr_output_configuration_v1_destroy(restore);
+    return ok;
+}
+
+static void apply(struct vela_server *server, struct wlr_output_configuration_v1 *config, bool test_only)
+{
+    bool allowed = test_only || vela_output_preview_can_apply(server, config);
+    struct wlr_output_configuration_v1 *before = !test_only && allowed ? vela_output_manager_snapshot(server) : NULL;
+    bool ok = allowed && (test_only ? test_configuration(config)
+                                   : before && vela_output_manager_commit(server, config));
+    if (!ok && before && !vela_output_manager_restore(server, before)) {
+        wlr_log(WLR_ERROR, "Failed to restore outputs after a rejected configuration");
+    }
+    bool protected = !test_only && vela_output_preview_applied(server, config, before, ok);
+    if (before && !protected) {
+        wlr_output_configuration_v1_destroy(before);
+    }
+    if (ok) {
+        wlr_output_configuration_v1_send_succeeded(config);
+        if (!test_only && !protected) {
+            vela_output_manager_save(server);
+        }
+    } else {
+        wlr_output_configuration_v1_send_failed(config);
+    }
+    wlr_output_configuration_v1_destroy(config);
 }
 
 static void handle_apply(struct wl_listener *listener, void *data)
@@ -140,10 +223,12 @@ void vela_output_manager_init(struct vela_server *server)
     server->output_manager = wlr_output_manager_v1_create(server->display);
     vela_listen(&server->output_manager->events.apply, &server->output_manager_apply, handle_apply);
     vela_listen(&server->output_manager->events.test, &server->output_manager_test, handle_test);
+    vela_output_preview_init(server);
 }
 
 void vela_output_manager_finish(struct vela_server *server)
 {
+    vela_output_preview_finish(server);
     wl_list_remove(&server->output_manager_apply.link);
     wl_list_remove(&server->output_manager_test.link);
 }

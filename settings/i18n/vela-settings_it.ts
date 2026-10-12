@@ -728,12 +728,16 @@ Specifiche sistema
         <translation>Verticale (capovolto)</translation>
     </message>
     <message>
-        <source>Changing displays needs wlr-randr</source>
-        <translation>Per cambiare gli schermi serve wlr-randr</translation>
+        <source>Display settings are unavailable</source>
+        <translation>Le impostazioni degli schermi non sono disponibili</translation>
     </message>
     <message>
-        <source>Install the wlr-randr package and open this page again.</source>
-        <translation>Installa il pacchetto wlr-randr e riapri questa pagina.</translation>
+        <source>This session does not support safe display changes.</source>
+        <translation>Questa sessione non supporta modifiche sicure agli schermi.</translation>
+    </message>
+    <message>
+        <source>Could not change display settings</source>
+        <translation>Impossibile modificare le impostazioni degli schermi</translation>
     </message>
     <message>
         <source>Brightness &amp; color</source>
@@ -884,6 +888,29 @@ Specifiche sistema
     <message>
         <source> seconds.</source>
         <translation> secondi.</translation>
+    </message>
+</context>
+<context>
+    <name>Displays</name>
+    <message>
+        <source>The display connection was lost. Reopen Settings to try again.</source>
+        <translation>La connessione agli schermi è stata interrotta. Riapri Impostazioni per riprovare.</translation>
+    </message>
+    <message>
+        <source>Another display change is awaiting confirmation.</source>
+        <translation>Un’altra modifica agli schermi è in attesa di conferma.</translation>
+    </message>
+    <message>
+        <source>The display settings could not be applied. Try again.</source>
+        <translation>Impossibile applicare le impostazioni degli schermi. Riprova.</translation>
+    </message>
+    <message>
+        <source>The previous display settings could not be fully restored.</source>
+        <translation>Impossibile ripristinare completamente le impostazioni precedenti degli schermi.</translation>
+    </message>
+    <message>
+        <source>The connected displays changed. Try again.</source>
+        <translation>Gli schermi collegati sono cambiati. Riprova.</translation>
     </message>
 </context>
 <context>

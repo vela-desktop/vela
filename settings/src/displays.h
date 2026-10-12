@@ -1,44 +1,51 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 #pragma once
 
 #include <QObject>
 #include <QVariantList>
 #include <QVariantMap>
+#include <memory>
 
-// Outputs, for the System > Display page: read and changed with wlr-randr (the
-// wlr-output-management protocol, which Vela implements and remembers). Every
-// change can be undone: like Windows, the page asks "Keep these display
-// settings?" and without an answer goes back.
+struct wl_display;
+
+// Native output-management client. Vela owns the preview snapshot and deadline,
+// restoring it when this client's connection disappears, including on a crash.
 class Displays : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList outputs READ outputs NOTIFY outputsChanged)
-    Q_PROPERTY(bool available READ available CONSTANT)
+    Q_PROPERTY(bool available READ available NOTIFY stateChanged)
+    Q_PROPERTY(bool pending READ pending NOTIFY stateChanged)
+    Q_PROPERTY(bool confirming READ confirming NOTIFY stateChanged)
+    Q_PROPERTY(int secondsRemaining READ secondsRemaining NOTIFY stateChanged)
+    Q_PROPERTY(QString error READ error NOTIFY stateChanged)
 
 public:
     explicit Displays(QObject* parent = nullptr);
+    // Takes ownership of a dedicated connection (also used by protocol tests).
+    Displays(wl_display* connection, QObject* parent);
+    ~Displays() override;
 
-    bool available() const { return m_available; }
-    // [{name, description, enabled, x, y, scale, transform, current:{width,height,refresh},
-    //   modes:[{width,height,refresh,preferred,current}]}]
-    QVariantList outputs() const { return m_outputs; }
+    bool available() const;
+    bool pending() const;
+    bool confirming() const;
+    int secondsRemaining() const;
+    QString error() const;
+    QVariantList outputs() const;
 
     Q_INVOKABLE void refresh();
-    // Changes one output: optional keys enabled, width/height/refresh, scale,
-    // transform, x/y. Remembers how it was, for revert().
+    // Returns whether the asynchronous request was submitted.
     Q_INVOKABLE bool apply(const QString& name, const QVariantMap& changes);
-    // Goes back to how it was before the last apply().
+    Q_INVOKABLE void confirm();
     Q_INVOKABLE void revert();
 
 signals:
     void outputsChanged();
+    void stateChanged();
+    void confirmationRequested();
+    void confirmationFinished();
 
 private:
-    static QStringList argumentsFor(const QVariantMap& output);
-    bool run(const QStringList& arguments);
-
-    bool m_available = false;
-    QVariantList m_outputs;
-    QVariantList m_before; // before the last change
+    struct Client;
+    std::unique_ptr<Client> m_client;
 };
