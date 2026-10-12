@@ -130,18 +130,19 @@ bool vela_output_manager_commit(struct vela_server *server, const struct wlr_out
     return commit_configuration(server, config, false);
 }
 
-void vela_output_manager_save(struct vela_server *server)
+bool vela_output_manager_save(struct vela_server *server)
 {
     if (!server->session) {
-        return;
+        return true; // Non-DRM sessions deliberately do not persist.
     }
     struct wlr_output_configuration_v1 *config = vela_output_manager_snapshot(server);
     if (!config) {
-        return;
+        return false;
     }
     int count = wl_list_length(&config->heads);
     char (*keys)[256] = calloc((size_t)count + 1, sizeof(*keys));
     struct vela_output_config_entry *entries = calloc((size_t)count + 1, sizeof(*entries));
+    bool saved = false;
     if (keys && entries) {
         int n = 0;
         struct wlr_output_configuration_head_v1 *head;
@@ -153,11 +154,12 @@ void vela_output_manager_save(struct vela_server *server)
                 wlr->refresh, wlr->scale, wlr->transform, state->x, state->y };
             ++n;
         }
-        vela_output_config_save(entries, n);
+        saved = vela_output_config_save(entries, n);
     }
     free(entries);
     free(keys);
     wlr_output_configuration_v1_destroy(config);
+    return saved;
 }
 
 bool vela_output_manager_restore(struct vela_server *server, const struct wlr_output_configuration_v1 *before)
@@ -188,17 +190,21 @@ static void apply(struct vela_server *server, struct wlr_output_configuration_v1
     struct wlr_output_configuration_v1 *before = !test_only && allowed ? vela_output_manager_snapshot(server) : NULL;
     bool ok = allowed && (test_only ? test_configuration(config)
                                    : before && vela_output_manager_commit(server, config));
+    bool restored = true;
     if (!ok && before && !vela_output_manager_restore(server, before)) {
+        restored = false;
         wlr_log(WLR_ERROR, "Failed to restore outputs after a rejected configuration");
     }
-    bool protected = !test_only && vela_output_preview_applied(server, config, before, ok);
+    bool protected = !test_only && vela_output_preview_applied(server, config, before, ok, restored);
     if (before && !protected) {
         wlr_output_configuration_v1_destroy(before);
     }
     if (ok) {
         wlr_output_configuration_v1_send_succeeded(config);
         if (!test_only && !protected) {
-            vela_output_manager_save(server);
+            if (!vela_output_manager_save(server)) {
+                wlr_log(WLR_ERROR, "Could not persist the display configuration");
+            }
         }
     } else {
         wlr_output_configuration_v1_send_failed(config);
