@@ -263,6 +263,10 @@ class UpdateFixture(unittest.TestCase):
         self.assertEqual(result.returncode, status, result.stdout + result.stderr)
         return result
 
+    def write_config(self, source):
+        self.config.parent.mkdir(parents=True, exist_ok=True)
+        self.config.write_text(f"source={source}\n")
+
     def calls(self, tool):
         if not self.calls_file.exists():
             return []
@@ -450,10 +454,6 @@ class UpdateSources(UpdateFixture):
         self.assertIn(new_sha, checked.stdout)
         self.assertEqual([call["operation"] for call in self.calls("git")],
                          ["clone", "update", "update"])
-
-    def write_config(self, source):
-        self.config.parent.mkdir(parents=True, exist_ok=True)
-        self.config.write_text(f"source={source}\n")
 
     def assert_https_transport(self):
         calls = self.calls("git")
