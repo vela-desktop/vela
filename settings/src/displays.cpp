@@ -101,7 +101,11 @@ struct Displays::Client {
         if (!display) return;
         if (wl_display_flush(display) < 0) {
             if (errno == EAGAIN) write->setEnabled(true);
-            else disconnect();
+            else {
+                // Result callbacks can flush while Wayland is still dispatching.
+                // Release the display only after that dispatch has returned.
+                QTimer::singleShot(0, owner, [this] { disconnect(); });
+            }
         } else write->setEnabled(false);
     }
     void disconnect(bool notify = true)

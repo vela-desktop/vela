@@ -12,6 +12,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <cerrno>
 #include <cstdio>
 #include <csignal>
 #include <memory>
@@ -19,6 +20,47 @@
 #include <wayland-client.h>
 
 static QString serverExecutable;
+
+// Inject transport errors in the real native client, without depending on a
+// compositor-exit race. Observe whether it frees a display inside dispatch.
+namespace {
+bool failNextFlush = false;
+int flushError = EPIPE;
+int injectedFlushFailures = 0;
+int dispatchDepth = 0;
+int failedFlushesDuringDispatch = 0;
+int disconnectsDuringDispatch = 0;
+}
+
+extern "C" int __real_wl_display_flush(wl_display* display);
+extern "C" int __real_wl_display_dispatch(wl_display* display);
+extern "C" void __real_wl_display_disconnect(wl_display* display);
+
+extern "C" int __wrap_wl_display_flush(wl_display* display)
+{
+    if (failNextFlush) {
+        failNextFlush = false;
+        ++injectedFlushFailures;
+        if (dispatchDepth > 0) ++failedFlushesDuringDispatch;
+        errno = flushError;
+        return -1;
+    }
+    return __real_wl_display_flush(display);
+}
+
+extern "C" int __wrap_wl_display_dispatch(wl_display* display)
+{
+    ++dispatchDepth;
+    const int result = __real_wl_display_dispatch(display);
+    --dispatchDepth;
+    return result;
+}
+
+extern "C" void __wrap_wl_display_disconnect(wl_display* display)
+{
+    if (dispatchDepth > 0) ++disconnectsDuringDispatch;
+    __real_wl_display_disconnect(display);
+}
 
 // A separate ordinary output-management client exercises protocol ordering,
 // including clients that abandon a protected request before applying it.
@@ -167,7 +209,13 @@ class DisplaysTest : public QObject {
     }
 
 private slots:
-    void init() { QVERIFY(runtime.isValid()); }
+    void init()
+    {
+        QVERIFY(runtime.isValid());
+        failNextFlush = false;
+        flushError = EPIPE;
+        injectedFlushFailures = dispatchDepth = failedFlushesDuringDispatch = disconnectsDuringDispatch = 0;
+    }
     void cleanup()
     {
         client.reset();
@@ -465,6 +513,61 @@ private slots:
         QVERIFY(!client->apply("HEADLESS-1", { { "scale", 2 } }));
         QVERIFY(!client->pending());
     }
+    void flushFailureDuringResultDispatch_data()
+    {
+        QTest::addColumn<QString>("result");
+        QTest::newRow("confirmed-preview") << QString("confirmed");
+        QTest::newRow("failed-apply") << QString("failed");
+        QTest::newRow("cancelled-configuration") << QString("cancelled");
+    }
+    void flushFailureDuringResultDispatch()
+    {
+        QFETCH(QString, result);
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        // clearRequest emits this signal inside the Wayland result callback,
+        // immediately before flushing the outgoing destructor requests.
+        connect(client.get(), &Displays::confirmationFinished, this, [] {
+            if (dispatchDepth > 0) failNextFlush = true;
+        });
+        if (result == "failed") command("fail HEADLESS-2");
+        if (result == "cancelled") command("add"); // GUI has not dispatched the newer serial yet.
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.5 } }));
+        if (result == "confirmed") {
+            QTRY_VERIFY(client->confirming());
+            client->confirm();
+        }
+        QTRY_COMPARE(injectedFlushFailures, 1);
+        QCOMPARE(failedFlushesDuringDispatch, 1);
+        QTRY_VERIFY(!client->available());
+        QCOMPARE(disconnectsDuringDispatch, 0);
+        QVERIFY(client->outputs().isEmpty());
+        QVERIFY(!client->pending());
+        QVERIFY(!client->confirming());
+        QVERIFY(client->error().contains("connection was lost"));
+        if (result == "confirmed") QVERIFY(saved().contains("scale=1.5"));
+        else QVERIFY(saved().isEmpty());
+        QCOMPARE(server.state(), QProcess::Running);
+    }
+    void flushEagainRetriesWithoutDisconnecting()
+    {
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        flushError = EAGAIN;
+        failNextFlush = true;
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.5 } }));
+        QCOMPARE(injectedFlushFailures, 1);
+        QVERIFY(client->available());
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        QVERIFY(client->available());
+        QVERIFY(client->error().isEmpty());
+        QVERIFY(saved().contains("scale=1.5"));
+        QCOMPARE(disconnectsDuringDispatch, 0);
+    }
 };
 
 int main(int argc, char** argv)
@@ -485,7 +588,10 @@ int main(int argc, char** argv)
     if (serverExecutable.isEmpty()) return 2;
     DisplaysTest tests;
     // Remove fixture path from QtTest's own arguments.
-    char* testArgv[] = { argv[0], nullptr };
-    return QTest::qExec(&tests, 1, testArgv);
+    std::vector<char*> testArgv { argv[0] };
+    for (int i = 2; i < argc; ++i) testArgv.push_back(argv[i]);
+    const int testArgc = static_cast<int>(testArgv.size());
+    testArgv.push_back(nullptr);
+    return QTest::qExec(&tests, testArgc, testArgv.data());
 }
 #include "displays_test.moc"

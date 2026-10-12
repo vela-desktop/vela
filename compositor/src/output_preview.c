@@ -20,10 +20,10 @@ struct vela_output_previews {
     struct vela_server *server;
     struct wl_global *global;
     struct wl_list previews;
-    struct preview *active;
+    struct vela_output_preview *active;
 };
 
-struct preview {
+struct vela_output_preview {
     struct vela_output_previews *owner;
     struct wl_list link;
     struct wl_resource *resource;
@@ -35,7 +35,7 @@ struct preview {
     bool finished;
 };
 
-static void release_if_unused(struct preview *preview)
+static void release_if_unused(struct vela_output_preview *preview)
 {
     if (!preview->resource && !preview->configuration) {
         wl_list_remove(&preview->link);
@@ -44,7 +44,7 @@ static void release_if_unused(struct preview *preview)
     }
 }
 
-static void finish(struct preview *preview, uint32_t result)
+static void finish(struct vela_output_preview *preview, uint32_t result)
 {
     if (preview->finished) {
         return;
@@ -74,14 +74,14 @@ static void finish(struct preview *preview, uint32_t result)
 
 static int timeout(void *data)
 {
-    struct preview *preview = data;
+    struct vela_output_preview *preview = data;
     finish(preview, VELA_OUTPUT_PREVIEW_V1_RESULT_REVERTED);
     return 0;
 }
 
 static void configuration_destroyed(struct wl_listener *listener, void *data)
 {
-    struct preview *preview = wl_container_of(listener, preview, configuration_destroy);
+    struct vela_output_preview *preview = wl_container_of(listener, preview, configuration_destroy);
     wl_list_remove(&preview->configuration_destroy.link);
     preview->configuration = NULL;
     finish(preview, VELA_OUTPUT_PREVIEW_V1_RESULT_FAILED);
@@ -90,7 +90,7 @@ static void configuration_destroyed(struct wl_listener *listener, void *data)
 
 static void destroy_resource(struct wl_resource *resource)
 {
-    struct preview *preview = wl_resource_get_user_data(resource);
+    struct vela_output_preview *preview = wl_resource_get_user_data(resource);
     preview->resource = NULL;
     // Runs for explicit destruction AND a dead client, even after SIGKILL.
     finish(preview, VELA_OUTPUT_PREVIEW_V1_RESULT_REVERTED);
@@ -106,7 +106,7 @@ static void request_destroy(struct wl_client *client, struct wl_resource *resour
 
 static void request_confirm(struct wl_client *client, struct wl_resource *resource)
 {
-    struct preview *preview = wl_resource_get_user_data(resource);
+    struct vela_output_preview *preview = wl_resource_get_user_data(resource);
     // A premature confirmation must never remove the safety net.
     if (preview->before) {
         finish(preview, VELA_OUTPUT_PREVIEW_V1_RESULT_CONFIRMED);
@@ -134,7 +134,7 @@ static void protect(struct wl_client *client, struct wl_resource *resource, uint
             "Expected a wlr output configuration owned by this client");
         return;
     }
-    struct preview *preview = calloc(1, sizeof(*preview));
+    struct vela_output_preview *preview = calloc(1, sizeof(*preview));
     if (!preview) {
         wl_client_post_no_memory(client);
         return;
@@ -158,7 +158,7 @@ static void protect(struct wl_client *client, struct wl_resource *resource, uint
     preview->configuration = configuration;
     preview->configuration_destroy.notify = configuration_destroyed;
     wl_resource_add_destroy_listener(configuration, &preview->configuration_destroy);
-    struct preview *other;
+    struct vela_output_preview *other;
     wl_list_for_each (other, &owner->previews, link) {
         if (other != preview && other->configuration == configuration) {
             finish(preview, VELA_OUTPUT_PREVIEW_V1_RESULT_BUSY);
@@ -213,7 +213,7 @@ bool vela_output_preview_can_apply(struct vela_server *server, struct wlr_output
     if (!owner) {
         return true;
     }
-    struct preview *preview;
+    struct vela_output_preview *preview;
     wl_list_for_each (preview, &owner->previews, link) {
         if (config->resource && preview->configuration == config->resource && preview->finished) {
             return false;
@@ -242,7 +242,7 @@ bool vela_output_preview_applied(struct vela_server *server, struct wlr_output_c
     struct wlr_output_configuration_v1 *before, bool succeeded)
 {
     struct vela_output_previews *owner = server->output_previews;
-    struct preview *preview = owner ? owner->active : NULL;
+    struct vela_output_preview *preview = owner ? owner->active : NULL;
     if (!preview || preview->configuration != config->resource) {
         return false;
     }
@@ -269,7 +269,7 @@ void vela_output_preview_finish(struct vela_server *server)
     if (!owner) {
         return;
     }
-    struct preview *preview, *tmp;
+    struct vela_output_preview *preview, *tmp;
     wl_list_for_each_safe (preview, tmp, &owner->previews, link) {
         finish(preview, VELA_OUTPUT_PREVIEW_V1_RESULT_REVERTED);
         if (preview->configuration) {

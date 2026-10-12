@@ -152,6 +152,8 @@ if(VELA_BUILD_TOOLS AND VELA_BUILD_COMPOSITOR)
     target_include_directories(vela-displays-test PRIVATE ${DISPLAYS_GENERATED_DIR})
     target_link_libraries(vela-displays-test PRIVATE vela-displays Qt6::Test PkgConfig::DISPLAYS_WAYLAND)
     target_compile_options(vela-displays-test PRIVATE -Wall -Wextra)
+    target_link_options(vela-displays-test PRIVATE
+        -Wl,--wrap=wl_display_flush -Wl,--wrap=wl_display_dispatch -Wl,--wrap=wl_display_disconnect)
     add_dependencies(vela-displays-test vela-display-test-server)
     add_test(NAME settings-displays COMMAND vela-displays-test $<TARGET_FILE:vela-display-test-server>)
     set_tests_properties(settings-displays PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
