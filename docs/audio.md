@@ -5,9 +5,9 @@ Settings. It replaces today's three backends, which drive command-line tools
 (`wpctl`, `pactl`, `pw-dump`, `pw-metadata`). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** design approved. **A0, A1 and A2 are done** (§13): the test
-> fixture, the `vela-audio` library, and the shell on it. Next: A3,
-> Settings on the library.
+> **Status:** design approved. **A0 to A3 are done** (§13): the test
+> fixture, the `vela-audio` library, the shell and Settings on it. Next:
+> A4, the microphone in use in the tray.
 
 ## 1. Goals
 
@@ -133,8 +133,11 @@ server says: optimistic values exist only in the Qt layer (§5.4).
   until its format is set (seen in A1 on the fixture's 5.1 output). The
   layout comes from `audio.position` / the channel map; the volumes are
   what the node reports.
-- In A1 a device contributes only its routes' availability, icon and
-  Bluetooth address. Profiles come with the properties page (A3).
+- A device also has its profiles (`EnumProfile`) and the active one
+  (`Profile`), each with its availability: a profile whose ports have
+  nothing plugged in (HDMI without a display) isn't offered, except the
+  active one. A device whose active profile is `off` is **turned off**: its
+  outputs and inputs are gone, the device stays. Done in A3.
 - Icons: `device.icon-name` when set, otherwise from `device.form-factor`
   and `device.bus` (headset, headphones, speakers, HDMI/DisplayPort,
   USB...).
@@ -151,11 +154,12 @@ server says: optimistic values exist only in the Qt layer (§5.4).
 - **Identity**: the core reports the raw ids (`pipewire.access.portal.app_id`,
   `application.id`, the binary, `application.name`,
   `application.icon-name`). Each process resolves them to a `.desktop` file
-  with a resolver it passes in. The shell passes `AppModel`. Settings needs
-  the same matching rules (today `AppModel::findDesktopId`). Those rules
-  move to `common/` so that both processes name an app the same way.
-- Vela's own streams (§7) present themselves as Vela Settings
-  (`application.id` = `vela-settings`).
+  with a resolver it passes in. Both pass the same one,
+  `audioAppResolver` (`shell/src/audioapps.h`), on `AppModel`, whose source
+  Settings compiles too: both processes name an app the same way.
+- Vela's own streams (§7) present themselves by the program's name
+  (`application.id` = `vela-settings`, `vela-shell`): Settings' test sound
+  is named after Settings' `.desktop` file.
 
 ### 5.3 Volume
 
@@ -211,54 +215,77 @@ server says: optimistic values exist only in the Qt layer (§5.4).
 - **Quick settings mixer**: outputs, with a Bluetooth headset's battery
   (read from BlueZ in `Audio`, then followed through `PropertiesChanged`);
   each app's volume, mute, output and now **input** (for apps that record).
-  It always follows the system. Done in A2; a level bar on each app (§7.1)
-  comes with the meters.
+  It always follows the system. Done in A2; the level bars in A3 (below).
 - **Wheel on a taskbar button**: one step for that app, as today. No more
   "stale cache" path: the model is always current. Done in A2.
 - **Microphone in use** (§7.2): an icon in the tray, with the apps in its
   tooltip.
-- `systemactions.cpp` stops offering `kcm_pulseaudio` or pavucontrol for
-  "volume-mixer": Settings' Mixer page replaces them (A3, the only user of
-  that entry is Settings' Sound page).
+- **Level bars**: each app's slider in the quick settings mixer has a
+  thin bar under it (§7.1), only while the sound page is open. Done in A3.
+- "volume-mixer" opens Settings' Volume mixer page, and the quick settings'
+  "More volume settings" too, like Windows; `systemactions.cpp` no longer
+  offers pavucontrol or `kcm_pulseaudio` for it. Done in A3.
 
 ### 6.2 Settings
 
-Three pages, as in Windows 11.
+Three pages, as in Windows 11, on the library since A3 (`audio.cpp` and
+`pactl` are gone from Settings).
 
-- **Sound**
+- **Sound** (`SoundPage.qml`)
   - output: the device to use, its volume and mute;
   - input: the device to use, its volume and mute, and the **input level**
     (the bar that moves when you speak, §7.1);
-  - links to every device's properties and to the mixer.
-- **Device properties**, one page per output or input:
-  - name, which can be changed (§8);
-  - profile, including turning the device **off** (the "off" profile). On a
-    Bluetooth headset, the profile is also the **codec**: PipeWire offers one
-    profile per codec (`a2dp-sink-sbc`, `a2dp-sink-sbc_xq`, `a2dp-sink-ldac`...)
-    plus call mode, and WirePlumber remembers the choice. No restart needed;
-  - **balance** (left/right, for outputs with two or more channels);
-  - **format**: sample rate and sample format (§8);
-  - **test** (outputs, §7.3).
-- **Mixer**: every app, with volume, mute, output, input and level; the
-  outputs and inputs; "reset", which removes every app's chosen output and
-  input (they follow the defaults again).
+  - an arrow on every device leading to its properties; under "Advanced",
+    the devices turned off (to turn them back on) and the mixer.
+- **Device properties** (`SoundDevicePage.qml`, page `sound-device`), one
+  page per output or input, the device's name in the path:
+  - set as default;
+  - "Use this device": turning the device **off** (its "off" profile) and
+    on again (its best available profile, by priority);
+  - profile. On a Bluetooth headset, the profile is also the **codec**:
+    PipeWire offers one profile per codec (`a2dp-sink-sbc`,
+    `a2dp-sink-sbc_xq`, `a2dp-sink-ldac`...) plus call mode, and
+    WirePlumber remembers the choice (§3). No restart needed;
+  - volume and mute;
+  - **balance** (left/right, for endpoints with channels on both sides),
+    like PulseAudio's: the louder side keeps its level, center and LFE are
+    left alone, the volume stays. It can't be set in silence;
+  - **test** (outputs, §7.3), or the **input level** (inputs);
+  - later: the name, which can be changed, and the **format**, sample
+    rate and sample format (§8, A5).
+- **Mixer** (`VolumeMixerPage.qml`, page `volume-mixer`): the default output
+  and input with their volume; every app with volume, mute, level, output
+  and input; "Reset", which removes every app's chosen output and input
+  (they follow the defaults again).
 
 ## 7. Vela's own streams
 
 These are made with `pw_stream` from libpipewire, on the core's own
-connection (`wp_core_get_pw_core`).
+connection (`wp_core_get_pw_core`), and destroyed before it closes
+(`Core::aboutToDisconnect`). All of them say `state.restore-props` and
+`state.restore-target` = false, so WirePlumber neither remembers nor
+restores anything for them, and `node.dont-reconnect`, `node.dont-fallback`
+and `node.dont-move`, so they never end up somewhere else. Done in A3.
 
 ### 7.1 Levels
 
-- A capture stream with `stream.monitor = true` and `resample.peaks = true`
-  (the same PipeWire uses for pavucontrol's meters). PipeWire then computes
-  the peak at a low rate, so the cost is negligible.
+- `LevelMeter` (`levelmeter.h`), a QML type (`Vela.Audio`): a capture
+  stream with `stream.monitor = true` and `resample.peaks = true` (the same
+  PipeWire uses for pavucontrol's meters), F32 at 100 Hz. PipeWire then
+  computes the peak at a low rate, so the cost is negligible. Samples are
+  read on PipeWire's real-time thread; the interface reads the peak every
+  30 ms.
+- An output's meter records its monitor (`stream.capture.sink`). Meters on
+  outputs and apps are passive (`node.passive`): they don't keep anything
+  running. An input's meter is not: it opens the microphone, and that
+  counts (§7.2).
 - **Input level**: on the default input, only while Settings' Sound page is
   visible.
 - **App levels** (both mixers): one monitor stream per app stream, on that
   stream's node, only while a mixer is visible. They're opened and closed
   with the streams; at most one per stream.
-- The bar shows the peak with a short decay, like Windows.
+- The bar shows the peak on the volume's scale (cubic), with a short decay,
+  like Windows: from the top to nothing in under a second.
 
 ### 7.2 Microphone in use
 
@@ -274,13 +301,17 @@ connection (`wp_core_get_pw_core`).
 
 ### 7.3 Test sound
 
-- A short chime synthesized in code (two soft tones, float PCM), played on
-  the chosen output only (`target.object`), with `node.dont-reconnect`. If
-  that output goes away, the sound stops instead of moving elsewhere.
+- `TestSound` (`testsound.h`): a short chime synthesized in code (two soft
+  tones, 880 and 659 Hz, float PCM), played on the chosen output only
+  (`target.object`). If that output goes away, the sound stops instead of
+  moving elsewhere.
 - **First on the left channel, then on the right**, so balance and wiring can
-  be checked. Mono outputs play it once. Outputs with more channels play it
-  on the front left, then the front right.
-- A second press while it plays starts it again.
+  be checked: a stereo stream, FL then FR, with `channelmix.upmix = false`
+  so that nothing is made up for the other channels. Mono outputs (no left
+  and right) play it once. Outputs with more channels play it on the front
+  left, then the front right.
+- A second press while it plays starts it again; the button becomes
+  "Stop" meanwhile.
 
 ## 8. Settings stored in WirePlumber
 
@@ -327,13 +358,14 @@ Two mechanisms, as decided.
     the optimistic layer (§5.4). Apps are named through a resolver each
     process passes in (§5.2).
   - `volumesteps.h`: the grid, moved from the shell.
-  - Later: the Bluetooth battery (BlueZ, in `Audio`, A2), `LevelMeter` and
-    `TestSound` (§7), `WireplumberConfig` (§8).
-- What goes away:
-  - in the shell, `mixer.cpp` and the audio part of `systemstatus.cpp`
-    (both become thin users of `Audio`);
-  - in Settings, `audio.cpp`;
-  - `asyncprocess.h` stays as long as networking uses it.
+  - `levelmeter.h`, `levelmeter.cpp`, `testsound.h`, `testsound.cpp`: Vela's
+    own streams (§7), on libpipewire.
+  - The Bluetooth battery (BlueZ) is in `Audio` (A2).
+  - Later: `WireplumberConfig` (§8, A5).
+- `shell/src/audioapps.h`: the resolver both processes pass (§5.2).
+- What went away: in the shell, `mixer.cpp` and the audio part of
+  `systemstatus.cpp` (A2); in Settings, `audio.cpp` (A3).
+  `asyncprocess.h` stays as long as networking uses it.
 - GObject code stays inside `Core` and `WireplumberConfig`. No GLib types
   appear in the headers the shell and Settings include.
 
@@ -379,6 +411,11 @@ audio or WirePlumber state.
     target) and speaks lines of text (`ready`, `state`, `peaks`; `pause`,
     `resume`, `quit`). A non-zero exit (a crash, a sanitizer) fails the
     test;
+  - `fake-device.c`, `vela-audio-fake-device` (A3): a fake sound card, a
+    device this client exports with profiles (off, stereo, HDMI with
+    nothing plugged in, an LDAC codec). It reports every profile set on it
+    and whether it is to be saved (`ready`, `profile`; `available`). The
+    null sinks have no device, hence no profiles;
   - `test_fixture.py` (`audio-fixture`): devices and defaults, channel
     layouts, playback following the default output, recording from the
     microphone, levels following amplitude and volume, pause and resume,
@@ -406,12 +443,26 @@ audio or WirePlumber state.
   - PipeWire stopped (not available, actions refused) and back
     (reconnection); WirePlumber stopped (defaults unknown, not "none") and
     back.
+- **Library, A3**: in `audio-view`, the balance math; balance set and kept
+  across volume changes, also both at once and through silence; devices and
+  their profiles (unavailable ones left out, then offered once available),
+  an output naming its device; a profile shown at once, set with `save`,
+  turning off and on, remembered by WirePlumber across its restart, an
+  unknown one reported as an error. `audio-streams` (`streams.cpp`, about
+  8 s):
+  - output, input and app levels within a tolerance of the known
+    amplitude and following the volume; an app's level over all its
+    streams, a stream's monitor going with it; meters only while active,
+    not counted as apps, back after PipeWire restarts;
+  - the chime's shape; the test sound reaching only the chosen output, left
+    channel then right (recording that output's monitor, and another one
+    staying silent), again from the start, once on a mono output, stopping
+    when its output goes away without moving to the default.
+  - WirePlumber never links a playing stream to a source, so the fake
+    microphone hears a fake voice through a link the test makes (`pw-link`).
 - **Library, later stages**:
-  - levels within a tolerance of the known amplitude;
   - "microphone in use": a recording stream on the microphone counts, one on
     an output's monitor doesn't, Settings' meter does;
-  - the test sound reaching only the chosen output, left channel then right
-    (checked by recording that output's monitor);
   - `90-vela.conf` written atomically, other files in the directory left
     untouched, WirePlumber accepting it across a restart. The rename itself
     is checked by hand (§14).
@@ -421,10 +472,12 @@ audio or WirePlumber state.
   `audio-view` also covers the Bluetooth battery, against a fake BlueZ on a
   private bus. The compositor forwarding the microphone key is in the
   functional tests.
-- **Interface (functional)**: the volume indicator (keys, microphone mute
-  key), quick settings mixer (outputs, app volume/output/input), the wheel
-  on a taskbar button, the tray's microphone icon, Settings' three pages.
-  All against the same fixture, with `vela-shot` comparisons where useful.
+- **Interface (functional)**, not written yet: the volume indicator (keys,
+  microphone mute key), quick settings mixer (outputs, app
+  volume/output/input, level bars), the wheel on a taskbar button, the
+  tray's microphone icon, Settings' three pages. All against the same
+  fixture, with `vela-screen-dump` comparisons where useful. The pages of
+  A2 and A3 were checked by hand in a headless session inside the fixture.
 - **Bluetooth battery**: a fake BlueZ on a private system bus, like
   `fake_polkitd.py`.
 - **CI**: the Arch images install `pipewire` and `wireplumber`.
@@ -459,7 +512,7 @@ audio or WirePlumber state.
 | A0 | Test fixture (§11), CI packages | done |
 | A1 | `vela-audio`: connection, model, volume (grid, cap, balance), defaults, apps and their outputs/inputs, reconnection; library tests | done |
 | A2 | Shell on the library: system volume, OSD, microphone mute key (compositor + OSD), quick settings mixer with inputs, taskbar wheel; `wpctl`/`pactl`/`pw-*` gone from the shell | done |
-| A3 | Settings on the library: Sound page with input level, device properties (profile/off, codec, balance, test sound), Mixer page with levels; `audio.cpp` gone | |
+| A3 | Settings on the library: Sound page with input level, device properties (profile/off, codec, balance, test sound), Mixer page with levels; `audio.cpp` gone | done |
 | A4 | Microphone in use in the tray | |
 | A5 | `90-vela.conf`: names, format and rate, with the WirePlumber restart | |
 | A6 | PKGBUILD and docs (§12); the user's tests on real hardware | |
