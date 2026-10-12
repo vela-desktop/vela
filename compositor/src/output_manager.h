@@ -26,7 +26,8 @@ void vela_output_manager_update(struct vela_server *server);
 struct wlr_output_configuration_v1 *vela_output_manager_snapshot(struct vela_server *server);
 bool vela_output_manager_commit(struct vela_server *server, const struct wlr_output_configuration_v1 *config);
 bool vela_output_manager_restore(struct vela_server *server, const struct wlr_output_configuration_v1 *before);
-void vela_output_manager_save(struct vela_server *server);
+// True when saved, or when persistence is intentionally disabled (non-DRM session).
+bool vela_output_manager_save(struct vela_server *server);
 
 // "add 1920x1080" or "remove HEADLESS-2": only with the headless backend.
 void vela_test_output_command(struct vela_server *server, const char *arguments);
