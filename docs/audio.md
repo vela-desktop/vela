@@ -5,9 +5,9 @@ Settings. It replaces today's three backends, which drive command-line tools
 (`wpctl`, `pactl`, `pw-dump`, `pw-metadata`). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** design approved. **A0 to A3 are done** (§13): the test
-> fixture, the `vela-audio` library, the shell and Settings on it. Next:
-> A4, the microphone in use in the tray.
+> **Status:** design approved. **A0 to A4 are done** (§13): the test
+> fixture, the `vela-audio` library, the shell and Settings on it, the
+> microphone in use in the tray. Next: A5, `90-vela.conf`.
 
 ## 1. Goals
 
@@ -219,7 +219,7 @@ server says: optimistic values exist only in the Qt layer (§5.4).
 - **Wheel on a taskbar button**: one step for that app, as today. No more
   "stale cache" path: the model is always current. Done in A2.
 - **Microphone in use** (§7.2): an icon in the tray, with the apps in its
-  tooltip.
+  tooltip. Done in A4.
 - **Level bars**: each app's slider in the quick settings mixer has a
   thin bar under it (§7.1), only while the sound page is open. Done in A3.
 - "volume-mixer" opens Settings' Volume mixer page, and the quick settings'
@@ -294,10 +294,21 @@ and `node.dont-move`, so they never end up somewhere else. Done in A3.
   source made from one). Recording an output (screen recorders capturing
   desktop audio, sink monitors) doesn't count. Neither do the internal
   streams of filters (the nodes of a `node.link-group`).
+  Meters on other streams don't either: they record an app, not an input.
 - Settings' input level meter counts: while the Sound page is visible, the
-  tray says "Settings is using your microphone".
-- The tray icon appears while at least one app uses it. The tooltip lists
-  the apps, and a click opens Settings > Sound.
+  tray says "Settings is using your microphone" (its stream is a monitor,
+  but of an input).
+- `Audio::microphoneUsers`: the apps, named like in the mixers (§5.2), in
+  the order they started. One that stops (closed or paused) stays **about
+  a second**, so that a pause or a page change doesn't make the icon blink;
+  one that starts shows at once, so the icon never hides a real use.
+- The tray icon (`Taskbar.qml`, left of the system icons) appears while at
+  least one app uses it. Its tooltip, after half a second, lists the apps
+  ("Vela Player is using your microphone"), and a click opens Settings >
+  Sound. The tooltip is a small panel of its own, `TaskbarTooltip.qml`
+  (`Menus.tooltip`), placed above the taskbar like the window previews; the
+  mouse goes through it.
+- Done in A4.
 
 ### 7.3 Test sound
 
@@ -460,9 +471,13 @@ audio or WirePlumber state.
     when its output goes away without moving to the default.
   - WirePlumber never links a playing stream to a source, so the fake
     microphone hears a fake voice through a link the test makes (`pw-link`).
+- **Library, A4** (`audio-view`): "microphone in use". A recording app
+  counts, named through the resolver; paused or closed, it stays about a
+  second, then goes, and comes back when resumed. A screen recorder taking
+  an output, a filter's own stream (`node.link-group`), meters on an output
+  and on an app don't count; an input's meter does; recording a virtual
+  source (like an echo canceller's) does.
 - **Library, later stages**:
-  - "microphone in use": a recording stream on the microphone counts, one on
-    an output's monitor doesn't, Settings' meter does;
   - `90-vela.conf` written atomically, other files in the directory left
     untouched, WirePlumber accepting it across a restart. The rename itself
     is checked by hand (§14).
@@ -513,7 +528,7 @@ audio or WirePlumber state.
 | A1 | `vela-audio`: connection, model, volume (grid, cap, balance), defaults, apps and their outputs/inputs, reconnection; library tests | done |
 | A2 | Shell on the library: system volume, OSD, microphone mute key (compositor + OSD), quick settings mixer with inputs, taskbar wheel; `wpctl`/`pactl`/`pw-*` gone from the shell | done |
 | A3 | Settings on the library: Sound page with input level, device properties (profile/off, codec, balance, test sound), Mixer page with levels; `audio.cpp` gone | done |
-| A4 | Microphone in use in the tray | |
+| A4 | Microphone in use in the tray | done |
 | A5 | `90-vela.conf`: names, format and rate, with the WirePlumber restart | |
 | A6 | PKGBUILD and docs (§12); the user's tests on real hardware | |
 
