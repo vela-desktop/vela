@@ -305,17 +305,21 @@ private slots:
         FakeDevice card;
         QVERIFY(card.waitReady());
         QTRY_VERIFY(!device(QStringLiteral("vela-test-card")).isEmpty());
+        // WirePlumber may restore the previous test's saved profile. Always
+        // choose a different one, or the request needs no server update.
+        const int original = device(QStringLiteral("vela-test-card")).value("profile").toInt();
+        const int requested = original == 3 ? 1 : 3;
         QVERIFY(card.ignoreProfileChanges(true));
-        audio->setProfile(QStringLiteral("vela-test-card"), 3);
-        QCOMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), 3); // optimistic
+        audio->setProfile(QStringLiteral("vela-test-card"), requested);
+        QCOMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), requested); // optimistic
         QVERIFY(device(QStringLiteral("vela-test-card")).value("profilePending").toBool());
         QTRY_VERIFY_WITH_TIMEOUT(device(QStringLiteral("vela-test-card")).value("profileError").toBool(), 5000);
-        QCOMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), 1); // server won
+        QCOMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), original); // server won
 
         // A subsequent, confirmed request clears the previous timeout error.
         QVERIFY(card.ignoreProfileChanges(false));
-        audio->setProfile(QStringLiteral("vela-test-card"), 3);
-        QTRY_COMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), 3);
+        audio->setProfile(QStringLiteral("vela-test-card"), requested);
+        QTRY_COMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), requested);
         QTRY_VERIFY(!device(QStringLiteral("vela-test-card")).value("profilePending").toBool());
         QVERIFY(!device(QStringLiteral("vela-test-card")).value("profileError").toBool());
         QCOMPARE(card.close(), 0);
