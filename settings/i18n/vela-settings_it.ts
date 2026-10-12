@@ -909,6 +909,10 @@ Specifiche sistema
         <translation>Impossibile ripristinare completamente le impostazioni precedenti degli schermi.</translation>
     </message>
     <message>
+        <source>The display settings are active but could not be saved. They may be lost after restarting Vela.</source>
+        <translation>Le impostazioni degli schermi sono attive ma non è stato possibile salvarle. Potrebbero andare perse dopo il riavvio di Vela.</translation>
+    </message>
+    <message>
         <source>The connected displays changed. Try again.</source>
         <translation>Gli schermi collegati sono cambiati. Riprova.</translation>
     </message>
