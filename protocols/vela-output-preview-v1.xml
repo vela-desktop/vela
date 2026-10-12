@@ -36,7 +36,10 @@
       protected change. Until confirmation, no new settings are persisted.
       Timeout, revert, destruction, or client disconnection restores the
       surviving outputs; newly connected outputs are left alone. Confirmation
-      persists the new settings. Requests after finished have no effect.
+      attempts to persist the new settings. If saving fails, the applied
+      settings remain active and finished reports save_failed. If a failed
+      apply cannot be fully rolled back, finished reports restore_failed.
+      Requests after finished have no effect.
     </description>
     <enum name="result">
       <entry name="confirmed" value="0"/>
@@ -44,6 +47,7 @@
       <entry name="failed" value="2"/>
       <entry name="busy" value="3"/>
       <entry name="restore_failed" value="4"/>
+      <entry name="save_failed" value="5" summary="configuration accepted but could not be persisted"/>
     </enum>
     <request name="confirm"/>
     <request name="revert"/>
