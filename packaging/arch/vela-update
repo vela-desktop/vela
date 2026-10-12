@@ -196,10 +196,14 @@ trap 'stop_makepkg; exit 129' HUP
 # From where: the one given now (and remembered), the remembered one, GitHub.
 # The old file was called aggiornamenti.conf (key sorgente=).
 githubHTTPS() {
+    # GitHub owner/repository names are case-insensitive. Recognize the old
+    # repository in any spelling, without changing unrelated source URLs.
+    case "$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in
+    https://github.com/brandodev/vela|https://github.com/brandodev/vela.git|ssh://git@github.com/brandodev/vela|ssh://git@github.com/brandodev/vela.git|git@github.com:brandodev/vela|git@github.com:brandodev/vela.git)
+        printf '%s\n' "$DEFAULT_SOURCE"
+        return ;;
+    esac
     case "$1" in
-    # Map existing installations to the organization, including stored SSH URLs.
-    https://github.com/BrandoDev/vela|https://github.com/BrandoDev/vela.git|ssh://git@github.com/BrandoDev/vela|ssh://git@github.com/BrandoDev/vela.git|git@github.com:BrandoDev/vela|git@github.com:BrandoDev/vela.git)
-        printf '%s\n' "$DEFAULT_SOURCE" ;;
     ssh://git@github.com/*) printf 'https://github.com/%s\n' "${1#ssh://git@github.com/}" ;;
     git@github.com:*) printf 'https://github.com/%s\n' "${1#git@github.com:}" ;;
     *) printf '%s\n' "$1" ;;
@@ -399,7 +403,7 @@ verifyProvenance() {
         # Public alpha releases are published exclusively from main.
         set -- "$@" --source-ref refs/heads/main
     fi
-    if ! gh attestation verify "$@" >/dev/null 2>&1; then
+    if ! gh attestation verify "$@" >/dev/null; then
         echo "vela-update: package provenance verification failed for $latestFull; refusing binary." >&2
         return 1
     fi
