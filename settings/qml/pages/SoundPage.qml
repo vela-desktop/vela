@@ -8,7 +8,8 @@ import Vela.Controls
 
 // System > Sound, like Windows 11: where sound goes and where it comes
 // from, the volume of each, the microphone's level, each device's
-// properties and the volume mixer (docs/audio.md §6.2).
+// properties and the volume mixer; then the system's sample rate and
+// restarting audio (docs/audio.md §6.2, §8.1).
 Page {
     id: page
 
@@ -218,6 +219,41 @@ Page {
             title: qsTr("Volume mixer")
             description: qsTr("Each app's volume, and the devices it uses")
             onClicked: root.navigate("volume-mixer")
+        }
+        Card {
+            id: rateCard
+            readonly property int fixed: Audio.allowedRates.length === 1 ? Audio.allowedRates[0] : 48000
+            readonly property var choices: [
+                { text: qsTr("Automatic"), mode: "automatic" },
+                { text: qsTr("%1 Hz").arg(fixed), mode: "fixed" },
+            ].concat(Audio.sampleRateMode === "custom" ? [{ text: qsTr("Custom"), mode: "custom" }] : [])
+            visible: Audio.sampleRateMode !== ""
+            icon: "chronometer"
+            title: qsTr("Sample rate")
+            description: Audio.sampleRateMode === "automatic"
+                ? qsTr("Sound plays at its own rate, without conversion")
+                : Audio.sampleRateMode === "fixed"
+                    ? qsTr("All sound is converted to %1 Hz").arg(fixed)
+                    : qsTr("Set elsewhere: %1 Hz").arg(Audio.allowedRates.join(", "))
+            trailing: Choice {
+                model: rateCard.choices
+                currentIndex: rateCard.choices.findIndex(c => c.mode === Audio.sampleRateMode)
+                onChosen: index => {
+                    if (rateCard.choices[index].mode !== "custom") {
+                        Audio.setSampleRateMode(rateCard.choices[index].mode)
+                    }
+                }
+            }
+        }
+        Card {
+            icon: "view-refresh"
+            title: qsTr("Restart audio")
+            description: qsTr("If sound is stuck. Sound stops for a few seconds, and apps reconnect.")
+            trailing: Button {
+                text: qsTr("Restart")
+                usable: !Audio.restartPending
+                onClicked: Audio.restartAudio()
+            }
         }
     }
 }

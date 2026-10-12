@@ -7,10 +7,11 @@ import Vela.Audio
 import Vela.Controls
 
 // System > Sound > an output's or an input's properties, like Windows 11:
-// default device, the device's profile (on a Bluetooth headset also its
-// codec), turning it off, volume, balance, the test sound or the input's
-// level (docs/audio.md §6.2). A device turned off has no outputs or inputs:
-// then only the device is shown, to turn it back on.
+// default device, its name, the device's profile (on a Bluetooth headset
+// also its codec), turning it off, volume, balance, the test sound or the
+// input's level, and its format (docs/audio.md §6.2, §8.1). A device turned
+// off has no outputs or inputs: then only the device is shown, to turn it
+// back on.
 Page {
     id: page
 
@@ -22,6 +23,10 @@ Page {
     readonly property var device: Audio.devices.find(d => d.name === deviceName)
     readonly property var offProfile: device ? device.profiles.find(p => p.name === "off") : undefined
     readonly property bool playing: endpoint !== undefined && Audio.testSoundOutput === endpoint.name
+    // WirePlumber names what its ALSA and Bluetooth monitors make; virtual
+    // devices aren't theirs (docs/audio.md §8).
+    readonly property bool renamable: endpoint !== undefined
+        && (endpoint.canFormat || (device !== undefined && device.bluetooth))
 
     // The best profile to turn a device back on with.
     function bestProfile() {
@@ -52,11 +57,24 @@ Page {
             ? (page.output ? qsTr("Default output device") : qsTr("Default input device"))
             : ""
         minimumHeight: 80
-        trailing: Button {
-            visible: page.endpoint !== undefined && !page.endpoint.isDefault
-            text: qsTr("Set as default")
-            usable: page.endpoint !== undefined && !page.endpoint.defaultPending
-            onClicked: Audio.setDefault(page.selected.kind, page.endpoint.name)
+        trailing: Row {
+            spacing: 8
+            Button {
+                visible: page.renamable
+                text: qsTr("Rename")
+                onClicked: {
+                    nameField.text = page.endpoint.description
+                    renameDialog.open()
+                    nameField.selectAll()
+                    nameField.forceActiveFocus()
+                }
+            }
+            Button {
+                visible: page.endpoint !== undefined && !page.endpoint.isDefault
+                text: qsTr("Set as default")
+                usable: page.endpoint !== undefined && !page.endpoint.defaultPending
+                onClicked: Audio.setDefault(page.selected.kind, page.endpoint.name)
+            }
         }
     }
 
@@ -200,6 +218,89 @@ Page {
                 anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                 width: 220 + 8 + 32 + 8 + 32
                 level: inputMeter.level
+            }
+        }
+    }
+
+    // What it runs at, and what it may run at (docs/audio.md §8.1).
+    CardGroup {
+        id: formatGroup
+        readonly property var endpoint: page.endpoint
+        readonly property var rateChoices: endpoint ? [{ text: qsTr("Follow the system"), rate: 0 }]
+            .concat(endpoint.rates.map(r => ({ text: qsTr("Always %1 Hz").arg(r), rate: r }))) : []
+        readonly property var formatChoices: endpoint ? [{ text: qsTr("Best"), name: "" }]
+            .concat(endpoint.formats.map(f => ({ text: qsTr("%1 bit").arg(f.bits), name: f.name }))) : []
+        visible: endpoint !== undefined && endpoint.canFormat
+        title: qsTr("Format")
+        Text {
+            width: parent.width
+            text: qsTr("Changing the sample rate or format stops sound for about a second.")
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
+            wrapMode: Text.Wrap
+            bottomPadding: 4
+        }
+        Card {
+            icon: "audio-x-generic"
+            title: qsTr("Now")
+            description: {
+                const e = formatGroup.endpoint
+                if (!e || e.rate <= 0) {
+                    return page.output ? qsTr("Not playing") : qsTr("Not recording")
+                }
+                const now = e.bits > 0 ? qsTr("%1 Hz, %2 bit").arg(e.rate).arg(e.bits) : qsTr("%1 Hz").arg(e.rate)
+                if (e.converted.length === 0) {
+                    return now + " · " + qsTr("No conversion")
+                }
+                const apps = e.converted.map(c => qsTr("%1 (%2 Hz)").arg(c.name).arg(c.rate)).join(", ")
+                return now + " · " + qsTr("Converted: %1").arg(apps)
+            }
+        }
+        Card {
+            icon: "chronometer"
+            title: qsTr("Sample rate")
+            description: qsTr("Following the system, it changes with what plays")
+            trailing: Choice {
+                model: formatGroup.rateChoices
+                currentIndex: formatGroup.endpoint
+                    ? Math.max(0, formatGroup.rateChoices.findIndex(c => c.rate === formatGroup.endpoint.fixedRate)) : -1
+                onChosen: index => Audio.setEndpointRate(page.selected.kind, page.endpoint.name, formatGroup.rateChoices[index].rate)
+            }
+        }
+        Card {
+            visible: formatGroup.formatChoices.length > 2
+            icon: "audio-card"
+            title: qsTr("Sample format")
+            description: qsTr("Choose another one only if the device has trouble with the best")
+            trailing: Choice {
+                model: formatGroup.formatChoices
+                currentIndex: formatGroup.endpoint
+                    ? Math.max(0, formatGroup.formatChoices.findIndex(c => c.name === formatGroup.endpoint.fixedFormat)) : -1
+                onChosen: index => Audio.setEndpointFormat(page.selected.kind, page.endpoint.name, formatGroup.formatChoices[index].name)
+            }
+        }
+    }
+
+    Dialog {
+        id: renameDialog
+        parent: root.contentItem
+        title: qsTr("Rename device")
+        primaryText: qsTr("Rename")
+        onAccepted: Audio.setEndpointName(page.selected.kind, page.endpoint.name, nameField.text)
+        Column {
+            width: parent.width
+            spacing: 12
+            Text {
+                width: parent.width
+                text: qsTr("Leave it empty to use the device's own name. Sound stops for about a second while the name is applied.")
+                color: Theme.text
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.Wrap
+            }
+            TextBox {
+                id: nameField
+                width: parent.width
+                Keys.onReturnPressed: { renameDialog.close(); renameDialog.accepted() }
             }
         }
     }

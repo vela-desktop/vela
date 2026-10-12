@@ -165,6 +165,8 @@ Window {
         { page: "sound", text: qsTr("Choose your output device"), keys: qsTr("output speakers headphones") },
         { page: "sound", text: qsTr("Microphone"), keys: qsTr("input recording level test") },
         { page: "volume-mixer", text: qsTr("Volume mixer"), keys: qsTr("app volume apps sound output input per app mixer reset") },
+        { page: "sound", text: qsTr("Sample rate"), keys: qsTr("sample rate hz khz format bit depth quality resampling bit-perfect") },
+        { page: "sound", text: qsTr("Restart audio"), keys: qsTr("restart audio sound stuck pipewire wireplumber reset") },
         { page: "notifications", text: qsTr("Notifications"), keys: qsTr("do not disturb alerts") },
         { page: "notifications", text: qsTr("Do not disturb"), keys: qsTr("silent notifications") },
         { page: "power", text: qsTr("Power"), keys: qsTr("screen off sleep idle battery energy saver lock") },

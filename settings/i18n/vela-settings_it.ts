@@ -1230,6 +1230,22 @@ Specifiche sistema
         <translation>app volume applicazioni audio uscita ingresso output input per app mixer ripristina reimposta</translation>
     </message>
     <message>
+        <source>Sample rate</source>
+        <translation>Frequenza di campionamento</translation>
+    </message>
+    <message>
+        <source>sample rate hz khz format bit depth quality resampling bit-perfect</source>
+        <translation>frequenza campionamento hz khz formato bit profondità qualità ricampionamento conversione bit-perfect</translation>
+    </message>
+    <message>
+        <source>Restart audio</source>
+        <translation>Riavvia l&apos;audio</translation>
+    </message>
+    <message>
+        <source>restart audio sound stuck pipewire wireplumber reset</source>
+        <translation>riavvia audio suono bloccato pipewire wireplumber ripristina</translation>
+    </message>
+    <message>
         <source>do not disturb alerts</source>
         <translation>non disturbare avvisi</translation>
     </message>
@@ -1849,6 +1865,10 @@ Specifiche sistema
         <translation>Dispositivo di input predefinito</translation>
     </message>
     <message>
+        <source>Rename</source>
+        <translation>Rinomina</translation>
+    </message>
+    <message>
         <source>Set as default</source>
         <translation>Imposta come predefinito</translation>
     </message>
@@ -1960,6 +1980,86 @@ Specifiche sistema
         <source>Speak to test your microphone</source>
         <translation>Parla per provare il microfono</translation>
     </message>
+    <message>
+        <source>Follow the system</source>
+        <translation>Segui il sistema</translation>
+    </message>
+    <message>
+        <source>Always %1 Hz</source>
+        <translation>Sempre %1 Hz</translation>
+    </message>
+    <message>
+        <source>Best</source>
+        <translation>Il migliore</translation>
+    </message>
+    <message>
+        <source>%1 bit</source>
+        <translation>%1 bit</translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation>Formato</translation>
+    </message>
+    <message>
+        <source>Changing the sample rate or format stops sound for about a second.</source>
+        <translation>Cambiare la frequenza o il formato interrompe l&apos;audio per circa un secondo.</translation>
+    </message>
+    <message>
+        <source>Now</source>
+        <translation>Adesso</translation>
+    </message>
+    <message>
+        <source>Not playing</source>
+        <translation>Non sta riproducendo</translation>
+    </message>
+    <message>
+        <source>Not recording</source>
+        <translation>Non sta registrando</translation>
+    </message>
+    <message>
+        <source>%1 Hz, %2 bit</source>
+        <translation>%1 Hz, %2 bit</translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation>%1 Hz</translation>
+    </message>
+    <message>
+        <source>No conversion</source>
+        <translation>Nessuna conversione</translation>
+    </message>
+    <message>
+        <source>%1 (%2 Hz)</source>
+        <translation>%1 (%2 Hz)</translation>
+    </message>
+    <message>
+        <source>Converted: %1</source>
+        <translation>Convertiti: %1</translation>
+    </message>
+    <message>
+        <source>Sample rate</source>
+        <translation>Frequenza di campionamento</translation>
+    </message>
+    <message>
+        <source>Following the system, it changes with what plays</source>
+        <translation>Seguendo il sistema, cambia in base a cosa suona</translation>
+    </message>
+    <message>
+        <source>Sample format</source>
+        <translation>Formato dei campioni</translation>
+    </message>
+    <message>
+        <source>Choose another one only if the device has trouble with the best</source>
+        <translation>Scegline un altro solo se il dispositivo ha problemi con il migliore</translation>
+    </message>
+    <message>
+        <source>Rename device</source>
+        <translation>Rinomina il dispositivo</translation>
+    </message>
+    <message>
+        <source>Leave it empty to use the device&apos;s own name. Sound stops for about a second while the name is applied.</source>
+        <translation>Lascialo vuoto per usare il nome del dispositivo. L&apos;audio si interrompe per circa un secondo mentre il nome viene applicato.</translation>
+    </message>
 </context>
 <context>
     <name>SoundPage</name>
@@ -2046,6 +2146,46 @@ Specifiche sistema
     <message>
         <source>Each app&apos;s volume, and the devices it uses</source>
         <translation>Il volume di ogni app e i dispositivi che usa</translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation>Automatica</translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation>%1 Hz</translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation>Personalizzata</translation>
+    </message>
+    <message>
+        <source>Sample rate</source>
+        <translation>Frequenza di campionamento</translation>
+    </message>
+    <message>
+        <source>Sound plays at its own rate, without conversion</source>
+        <translation>L&apos;audio suona alla sua frequenza, senza conversioni</translation>
+    </message>
+    <message>
+        <source>All sound is converted to %1 Hz</source>
+        <translation>Tutto l&apos;audio viene convertito a %1 Hz</translation>
+    </message>
+    <message>
+        <source>Set elsewhere: %1 Hz</source>
+        <translation>Impostata altrove: %1 Hz</translation>
+    </message>
+    <message>
+        <source>Restart audio</source>
+        <translation>Riavvia l&apos;audio</translation>
+    </message>
+    <message>
+        <source>If sound is stuck. Sound stops for a few seconds, and apps reconnect.</source>
+        <translation>Se l&apos;audio è bloccato. L&apos;audio si interrompe per qualche secondo e le app si ricollegano.</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>Riavvia</translation>
     </message>
 </context>
 <context>
