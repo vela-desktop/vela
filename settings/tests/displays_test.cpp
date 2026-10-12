@@ -168,11 +168,11 @@ class DisplaysTest : public QObject {
     QString socket;
     std::unique_ptr<Displays> client;
 
-    void start(const QStringList& args = {})
+    void start(const QStringList& args = {}, bool blockedConfig = false)
     {
         auto env = QProcessEnvironment::systemEnvironment();
         env.insert("XDG_RUNTIME_DIR", runtime.path());
-        env.insert("XDG_CONFIG_HOME", runtime.path() + "/config");
+        env.insert("XDG_CONFIG_HOME", runtime.path() + (blockedConfig ? "/blocked-config" : "/config"));
         env.remove("WAYLAND_DISPLAY");
         server.setProcessEnvironment(env);
         server.start(serverExecutable, args);
@@ -399,6 +399,38 @@ private slots:
         QVERIFY(saved().isEmpty());
         QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.5 } }));
         QTRY_VERIFY(client->confirming());
+    }
+    void failedCommitReportsFailedRollback()
+    {
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        // One failed commit during apply, another during rollback.
+        command("fail-twice HEADLESS-2");
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 2 }, { "x", -960 } }));
+        QTRY_VERIFY(!client->pending());
+        QVERIFY2(client->error().contains("could not be fully restored"),
+            qPrintable(client->error()));
+        QVERIFY(saved().isEmpty());
+    }
+    void confirmationReportsFailedPersistence()
+    {
+        // A regular file cannot contain the configuration directory, even
+        // when running tests as root. The live output must remain changed.
+        QFile blocker(runtime.path() + "/blocked-config");
+        QVERIFY(blocker.open(QIODevice::WriteOnly));
+        blocker.close();
+        start({}, true);
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.5 } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        QVERIFY2(client->error().contains("could not be saved"),
+            qPrintable(client->error()));
+        QTRY_COMPARE(output("HEADLESS-2")["scale"].toDouble(), 1.5);
+        QVERIFY(saved().isEmpty());
     }
     void hotplugDuringPreviewRestoresSurvivingOutputs()
     {
