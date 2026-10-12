@@ -5,7 +5,8 @@
 
 // The test sound of an output's properties (docs/audio.md §7.3): a short
 // chime synthesized here, first on the left channel and then on the right
-// (once on a mono output), played on that output only. If the output goes
+// (once on a mono output), played on that output only, after a moment of
+// silence so a waking output doesn't cut its start. If the output goes
 // away it stops instead of moving elsewhere.
 
 #include <QObject>

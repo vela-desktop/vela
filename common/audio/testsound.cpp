@@ -19,6 +19,10 @@ namespace vela::audio {
 namespace {
 
 constexpr int rate = 48000;
+// Silence before the chime. An output waking up (a USB DAC unmuting, a
+// device switching rate) loses its first moments: the chime's start
+// would be cut.
+constexpr double leadIn = 0.25; // s
 
 // One chime: two soft tones, the second a little after the first.
 void chime(QList<float>& out, int channels, int channel, qsizetype start, int sampleRate)
@@ -166,7 +170,8 @@ bool TestSound::play(const QString& output)
     playback->owner = this;
     playback->generation = ++m_generation;
     playback->channels = hasStereo(e->positions) ? 2 : 1;
-    playback->samples = synthesize(playback->channels, rate);
+    playback->samples = QList<float>(qsizetype(leadIn * rate) * playback->channels, 0.0f)
+        + synthesize(playback->channels, rate);
 
     const QByteArray serial = QByteArray::number(e->serial);
     const QByteArray app = QCoreApplication::applicationName().toUtf8();
