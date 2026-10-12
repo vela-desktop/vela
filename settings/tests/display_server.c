@@ -20,11 +20,12 @@
 #include <wlr/types/wlr_output_management_v1.h>
 
 static char fail_name[64];
+static int failures_left;
 
 bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state *state)
 {
-    if (strcmp(fail_name, output->wlr->name) == 0) {
-        fail_name[0] = '\0';
+    if (failures_left > 0 && strcmp(fail_name, output->wlr->name) == 0) {
+        if (--failures_left == 0) fail_name[0] = '\0';
         return false;
     }
     return wlr_output_commit_state(output->wlr, state);
@@ -89,7 +90,13 @@ static int command(int fd, uint32_t mask, void *data)
         struct vela_output *output = vela_output_named(server, line + 7);
         if (output) wlr_output_destroy(output->wlr);
         vela_output_manager_update(server);
-    } else if (!strncmp(line, "fail ", 5)) snprintf(fail_name, sizeof(fail_name), "%s", line + 5);
+    } else if (!strncmp(line, "fail-twice ", 11)) {
+        snprintf(fail_name, sizeof(fail_name), "%s", line + 11);
+        failures_left = 2;
+    } else if (!strncmp(line, "fail ", 5)) {
+        snprintf(fail_name, sizeof(fail_name), "%s", line + 5);
+        failures_left = 1;
+    }
     else if (!strcmp(line, "quit")) wl_display_terminate(server->display);
     puts("ok"); fflush(stdout);
     return 0;
