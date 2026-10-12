@@ -5,9 +5,11 @@ Settings. It replaces today's three backends, which drive command-line tools
 (`wpctl`, `pactl`, `pw-dump`, `pw-metadata`). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** design approved. **A0 to A4 are done** (§13): the test
+> **Status:** design approved. **A0 to A5 are done** (§13): the test
 > fixture, the `vela-audio` library, the shell and Settings on it, the
-> microphone in use in the tray. Next: A5, `90-vela.conf`.
+> microphone in use in the tray, Vela's files (names, the automatic sample
+> rate, each device's rates and format). Next: A6, packaging, docs and the
+> tests on real hardware.
 
 ## 1. Goals
 
@@ -35,7 +37,8 @@ code: decisions are made here, and the code follows them.
 | Where it lives | a library, **`common/audio`**, linked by the shell and by Settings | each process has its own connection to PipeWire. PipeWire itself is the shared service: no Vela audio daemon |
 | Event loop | WirePlumber's GLib sources on the **default `GMainContext`**, run by Qt's own loop (`QEventDispatcherGlib`), in the interface thread | no threads, no locks, no glue code (§4.1) |
 | Maximum volume | **100%** everywhere | Settings no longer goes up to 150% (§5.3) |
-| Vela's settings | WirePlumber's **runtime settings** where they exist; otherwise **one file owned by Vela**, `~/.config/wireplumber/wireplumber.conf.d/90-vela.conf` | changes from the file need a WirePlumber restart, with a short audio gap, said before applying (§8) |
+| Vela's settings | WirePlumber's **runtime settings** where they exist; otherwise **two files owned by Vela**: `~/.config/wireplumber/wireplumber.conf.d/90-vela.conf` (per device) and `~/.config/pipewire/pipewire.conf.d/90-vela.conf` (the graph's sample rates) | changes to WirePlumber's file need a WirePlumber restart, with a short audio gap, said before applying; the sample rates apply at once (§8) |
+| Sample rate | **automatic by default**: the mix follows what plays (44.1 kHz music is not converted), on every device | better than Windows, whose shared mode converts everything to one fixed format. When a device has trouble, the fix is a setting on that device, even at the cost of an audio restart, never lower quality for everyone (§8.1) |
 | "Microphone in use" | **honest**: Settings' own level meter counts too | an indicator that hides someone, even us, can no longer be trusted (§7.2) |
 | Test sound | **synthesized** in code, left channel then right | no sound file to ship, no decoder (§7.3) |
 | Bluetooth battery | **BlueZ over D-Bus**, as today | PipeWire doesn't expose it |
@@ -220,6 +223,8 @@ server says: optimistic values exist only in the Qt layer (§5.4).
   "stale cache" path: the model is always current. Done in A2.
 - **Microphone in use** (§7.2): an icon in the tray, with the apps in its
   tooltip. Done in A4.
+- **Sample rate**: at start the shell makes "Automatic" the default where
+  nobody chose (§8.1). Done in A5.
 - **Level bars**: each app's slider in the quick settings mixer has a
   thin bar under it (§7.1), only while the sound page is open. Done in A3.
 - "volume-mixer" opens Settings' Volume mixer page, and the quick settings'
@@ -251,8 +256,17 @@ Three pages, as in Windows 11, on the library since A3 (`audio.cpp` and
     like PulseAudio's: the louder side keeps its level, center and LFE are
     left alone, the volume stays. It can't be set in silence;
   - **test** (outputs, §7.3), or the **input level** (inputs);
-  - later: the name, which can be changed, and the **format**, sample
-    rate and sample format (§8, A5).
+  - the **name**, which can be changed (§8, A5);
+  - **format** (§8.1, A5): what the device runs at right now ("44100 Hz,
+    24 bit") and which apps are converted to it, live; its sample rates
+    ("Follow the system", or always one rate) and its sample format
+    ("Best", or one of those it offers, shown only when there are two or
+    more depths). Not on Bluetooth devices, where the codec decides (the
+    profile, above). The name can be changed for ALSA and Bluetooth
+    devices, the only ones WirePlumber's monitors make. Done in A5.
+- **Sound › Advanced**, from A5: the **sample rate** ("Automatic", or fixed
+  at 48000 Hz like Windows, §8.1) and **restart audio** (WirePlumber and
+  PipeWire, for when something is stuck). Done in A5.
 - **Mixer** (`VolumeMixerPage.qml`, page `volume-mixer`): the default output
   and input with their volume; every app with volume, mute, level, output
   and input; "Reset", which removes every app's chosen output and input
@@ -324,35 +338,91 @@ and `node.dont-move`, so they never end up somewhere else. Done in A3.
 - A second press while it plays starts it again; the button becomes
   "Stop" meanwhile.
 
-## 8. Settings stored in WirePlumber
+## 8. Settings stored in WirePlumber and PipeWire
 
-Two mechanisms, as decided.
+Three mechanisms. Vela keeps no copy of what they hold: the files are its
+own state, read back to show and to change them.
 
 - **Runtime settings** (`WpSettings`, saved by WirePlumber in its own state):
   for what WirePlumber already exposes. Today that means Bluetooth's
   automatic switch to call mode (`bluetooth.autoswitch-to-headset-profile`)
   and, one day, ducking (§10). They apply immediately.
-- **Vela's file**, `~/.config/wireplumber/wireplumber.conf.d/90-vela.conf`:
-  - **device names** (`node.description` through `monitor.alsa.rules` /
-    `monitor.bluez.rules`, matched on `node.name`);
-  - **format and sample rate** (`audio.format`, `audio.rate`,
-    `audio.allowed-rates` on ALSA nodes).
+- **WirePlumber's file**,
+  `~/.config/wireplumber/wireplumber.conf.d/90-vela.conf`, one rule per
+  device, matched on `node.name` (`monitor.alsa.rules`,
+  `monitor.bluez.rules`):
+  - the **name** (`node.description`);
+  - the **sample rates** (`audio.allowed-rates`) and **sample format**
+    (`audio.format`) of an ALSA node (§8.1);
+  - what the device offered before Vela restricted it
+    (`vela.audio.rates`, `vela.audio.formats`, §8.1).
 
-  Rules for the file:
-  - Vela regenerates it whole from its own list, with an atomic write
-    (`QSaveFile`). It never reads, edits or creates any other file in that
-    directory. A user's own rules keep working; files later in the order
-    override ours.
-  - After a change, WirePlumber is restarted through systemd's user manager
-    (D-Bus `RestartUnit("wireplumber.service")`, no process started). The
-    page says before applying that **sound stops for about a second**.
-  - WirePlumber writes its state (defaults, volumes, profiles, each app's
-    choices) about **one second after a change**, and does not write it
-    when it exits. Seen in A0, and covered by a test. A restart sooner than
-    that loses the last changes. Vela therefore restarts it only once 1.5 s
-    have passed since its own last change.
-  - Names are matched on `node.name`. If a device stops existing, its rule
-    stays (harmless) until Vela rewrites the file.
+  After a change WirePlumber is restarted (below). The page says before
+  applying that **sound stops for about a second**.
+- **PipeWire's file**, `~/.config/pipewire/pipewire.conf.d/90-vela.conf`:
+  the graph's **allowed rates** (`default.clock.allowed-rates`, §8.1). It is
+  read when PipeWire starts; the same value is set at once in the `settings`
+  metadata (`clock.allowed-rates`), which PipeWire applies without a
+  restart (seen in A5 on the fixture).
+
+Rules for both files:
+- Vela regenerates its file whole, with an atomic write (`QSaveFile`). It
+  never reads, edits or creates any other file in those directories. A
+  user's own rules keep working; files later in the order override ours.
+- Restarts go through systemd's user manager (D-Bus `RestartUnit`, no
+  process started): `wireplumber.service` after WirePlumber's file changes;
+  `pipewire.service` for "Restart audio" (WirePlumber and `pipewire-pulse`
+  are bound to it and follow).
+- WirePlumber writes its state (defaults, volumes, profiles, each app's
+  choices) about **one second after a change**, and does not write it when
+  it exits. Seen in A0, and covered by a test. A restart sooner than that
+  loses the last changes. Vela therefore restarts only once 1.5 s have
+  passed since its own last change.
+- Names are matched on `node.name`. If a device stops existing, its rule
+  stays (harmless) until Vela rewrites the file.
+
+### 8.1 Sample rate and format
+
+How PipeWire works (PipeWire 1.6, its sources and the fixture):
+- The whole graph of a device mixes at **one rate**. When the device is
+  idle and a stream starts, the graph takes the highest rate its streams
+  ask for, if that rate is in the **allowed rates**; otherwise the default
+  (48000). While the device plays, the rate doesn't change: a stream
+  starting then is converted.
+- The allowed rates are `[ 48000 ]` by default, so today everything is
+  converted to 48 kHz. Measured on the fixture: with `[ 44100 48000 96000 ]`
+  set in the `settings` metadata, 44.1 kHz and 96 kHz files ran the graph at
+  their own rate, without a restart.
+- An ALSA device opens at the graph's rate when it can. Its
+  `audio.allowed-rates` restricts that: at any other rate the device is
+  opened at the nearest allowed one and converted. Its `audio.format`
+  restricts the sample format (the default is the best one it has).
+- A device lists (`EnumFormat`) its rate range and formats, but only those
+  allowed once restricted: Vela keeps what it saw before restricting in
+  the rule itself (`vela.audio.rates`, `vela.audio.formats`), to offer the
+  other choices later.
+- Upstream doesn't allow more rates by default "because of various kernel
+  and Bluetooth issues". Vela does: when a device has trouble switching
+  (an HDMI receiver that mutes for a second at every switch), that device
+  gets a fixed rate. The others keep the quality.
+
+What Vela does:
+- **System sample rate** (Sound › Advanced): "Automatic" (the default)
+  allows `44100 48000 88200 96000 176400 192000`; "48000 Hz" allows only
+  that, like Windows and PipeWire's default.
+  - The default is applied by the shell at start when PipeWire's file is
+    missing and the allowed rates are still PipeWire's default (`[ 48000 ]`).
+    If they are anything else, someone configured them: Vela leaves them
+    and the page shows them as they are, until the user chooses.
+- **Device sample rates** (properties): "Follow the system" (no rule) or
+  "Always N Hz", N among the standard rates in the device's range.
+- **Device sample format**: "Best" (no rule) or one of the device's formats
+  ("16 bit", "24 bit", "32 bit").
+- **Now** (properties): the device's negotiated format while it runs, and
+  each app whose stream runs at another rate ("converted from 44100 Hz").
+  Strict bit-perfect playback also needs the volume at 100% or done in
+  hardware: the page doesn't promise it.
+- Bluetooth devices have no format choices: the codec decides (§6.2).
 
 ## 9. Library layout
 
@@ -372,12 +442,13 @@ Two mechanisms, as decided.
   - `levelmeter.h`, `levelmeter.cpp`, `testsound.h`, `testsound.cpp`: Vela's
     own streams (§7), on libpipewire.
   - The Bluetooth battery (BlueZ) is in `Audio` (A2).
-  - Later: `WireplumberConfig` (§8, A5).
+  - `config.h`, `config.cpp`: `Config`, Vela's two files, the `settings`
+    metadata and the restarts through systemd (§8, A5).
 - `shell/src/audioapps.h`: the resolver both processes pass (§5.2).
 - What went away: in the shell, `mixer.cpp` and the audio part of
   `systemstatus.cpp` (A2); in Settings, `audio.cpp` (A3).
   `asyncprocess.h` stays as long as networking uses it.
-- GObject code stays inside `Core` and `WireplumberConfig`. No GLib types
+- GObject code stays inside `Core` and `Config`. No GLib types
   appear in the headers the shell and Settings include.
 
 ## 10. Not in scope
@@ -477,10 +548,16 @@ audio or WirePlumber state.
   an output, a filter's own stream (`node.link-group`), meters on an output
   and on an app don't count; an input's meter does; recording a virtual
   source (like an echo canceller's) does.
-- **Library, later stages**:
-  - `90-vela.conf` written atomically, other files in the directory left
-    untouched, WirePlumber accepting it across a restart. The rename itself
-    is checked by hand (§14).
+- **Library, A5**:
+  - both `90-vela.conf` written atomically, other files in the directories
+    left untouched, read back; WirePlumber accepting its file across a
+    restart, and not restarted before 1.5 s from the last change. The
+    rename itself is checked by hand (§14);
+  - the allowed rates set at once in the `settings` metadata; the default
+    applied only when PipeWire's file is missing and the rates are
+    PipeWire's own, left alone otherwise;
+  - the live format: a 44.1 kHz file playing unconverted with "Automatic",
+    converted with "48000 Hz".
 - **Shell (`audio-keys`, done in A2)**: `SoundKeys` on the library: volume
   keys with their indicator, a step unmuting, the microphone key whose
   indicator waits for the server, the wheel on an app's taskbar button.
@@ -506,7 +583,10 @@ audio or WirePlumber state.
   - a Bluetooth headset: battery, codecs, call mode, devices with few volume
     positions;
   - the microphone mute key and, on laptops, its LED;
-  - format and sample rate on a USB DAC;
+  - format and sample rate on a USB DAC: "Automatic" following the
+    music, a fixed device rate, a sample format, what the page shows
+    live; an HDMI receiver and a Bluetooth headset with "Automatic";
+  - "Restart audio";
   - a rename across a WirePlumber restart.
 
 ## 12. Packaging and documentation
@@ -529,17 +609,15 @@ audio or WirePlumber state.
 | A2 | Shell on the library: system volume, OSD, microphone mute key (compositor + OSD), quick settings mixer with inputs, taskbar wheel; `wpctl`/`pactl`/`pw-*` gone from the shell | done |
 | A3 | Settings on the library: Sound page with input level, device properties (profile/off, codec, balance, test sound), Mixer page with levels; `audio.cpp` gone | done |
 | A4 | Microphone in use in the tray | done |
-| A5 | `90-vela.conf`: names, format and rate, with the WirePlumber restart | |
+| A5 | Vela's files (§8): names, automatic sample rate, device rates and format, live format, restarts | done |
 | A6 | PKGBUILD and docs (§12); the user's tests on real hardware | |
 
 ## 14. Open questions and risks
 
-- **Format and graph clock.** PipeWire runs the whole graph at one clock
-  rate (`default.clock.rate`, switched among `default.clock.allowed-rates`).
-  Forcing a device's `audio.rate` only decides what that device is opened
-  at; the graph may still resample. What "format" should mean in Vela has to
-  be checked on a USB DAC before A5. Choices: the device's rate only, or
-  also allowing the graph to follow it.
+- **Format and graph clock** (answered in A5, §8.1): the graph follows
+  what plays when more rates are allowed, so Vela allows them by default
+  and fixes a rate only on the devices that need it. Still to check on real
+  hardware: Bluetooth and HDMI with the rates switching (§11).
 - **Hardware volume through the Route** (§3) is left to `mixer-api`. It is
   only covered by the manual tests, since null sinks have no routes.
 - **Bluetooth codec profiles**: which codecs appear depends on the headset
