@@ -264,6 +264,8 @@ struct Displays::Client {
             c->error = Displays::tr("The display settings could not be applied. Try again.");
         else if (result == VELA_OUTPUT_PREVIEW_V1_RESULT_RESTORE_FAILED)
             c->error = Displays::tr("The previous display settings could not be fully restored.");
+        else if (result == VELA_OUTPUT_PREVIEW_V1_RESULT_SAVE_FAILED)
+            c->error = Displays::tr("The display settings are active but could not be saved. They may be lost after restarting Vela.");
         c->clearRequest();
     }
     static void succeeded(void* data, zwlr_output_configuration_v1* configuration)
@@ -275,7 +277,8 @@ struct Displays::Client {
     static void failed(void* data, zwlr_output_configuration_v1*)
     {
         auto* c = static_cast<Client*>(data);
-        c->error = Displays::tr("The display settings could not be applied. Try again.");
+        if (c->error.isEmpty())
+            c->error = Displays::tr("The display settings could not be applied. Try again.");
         c->clearRequest();
     }
     static void cancelled(void* data, zwlr_output_configuration_v1*)
