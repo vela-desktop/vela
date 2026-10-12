@@ -22,7 +22,8 @@ requires the expected repository, signer workflow
 and GitHub-hosted runners. For public alpha releases it also requires the
 `refs/heads/main` source ref. A failed or missing attestation, a missing
 GitHub CLI, or an unavailable verification service means **no binary install**:
-the updater falls back to building from the selected Git revision.
+the updater shows GitHub CLI's verification error and falls back to building
+from the selected Git revision.
 
 Use `--build` to skip all binary download paths explicitly. Installing from
 a user-selected source repository remains a trust decision: signatures
