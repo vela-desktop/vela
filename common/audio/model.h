@@ -17,6 +17,64 @@ namespace vela::audio {
 
 enum class Direction { Output, Input };
 
+// The standard sample rates Vela offers (docs/audio.md §8.1): the graph's
+// with "Automatic", a device's fixed one among those it can do.
+inline const QList<quint32>& standardRates()
+{
+    static const QList<quint32> rates { 44100, 48000, 88200, 96000, 176400, 192000 };
+    return rates;
+}
+
+// A list as SPA-JSON writes it ("[ 44100 48000 ]", "[ \"S16LE\" ]") and
+// PipeWire's properties and metadata carry it.
+inline QStringList parseList(const QString& text)
+{
+    QString list = text.trimmed();
+    if (list.startsWith(u'[')) {
+        list.remove(0, 1);
+    }
+    if (list.endsWith(u']')) {
+        list.chop(1);
+    }
+    list.replace(u',', u' ').remove(u'"');
+    return list.split(u' ', Qt::SkipEmptyParts);
+}
+
+inline QList<quint32> parseRates(const QString& text)
+{
+    QList<quint32> out;
+    for (const QString& item : parseList(text)) {
+        bool ok = false;
+        const quint32 rate = item.toUInt(&ok);
+        if (ok && rate > 0 && !out.contains(rate)) {
+            out.append(rate);
+        }
+    }
+    return out;
+}
+
+// A sample format's bits ("S24_32LE" -> 24, "F32P" -> 32); 0: unknown.
+inline int formatBits(const QString& format)
+{
+    if (format.startsWith(QLatin1String("S24"))) {
+        return 24;
+    }
+    if (format.startsWith(QLatin1String("S16")) || format.startsWith(QLatin1String("U16"))) {
+        return 16;
+    }
+    if (format.startsWith(QLatin1String("S32")) || format.startsWith(QLatin1String("F32"))
+        || format.startsWith(QLatin1String("U32"))) {
+        return 32;
+    }
+    if (format.startsWith(QLatin1String("F64"))) {
+        return 64;
+    }
+    if (format.startsWith(QLatin1String("S8")) || format.startsWith(QLatin1String("U8"))) {
+        return 8;
+    }
+    return 0;
+}
+
 // One of a device's profiles: what it is set up for (stereo output, HDMI,
 // a Bluetooth codec, call mode, off).
 struct Profile {
@@ -81,6 +139,20 @@ struct Endpoint {
     quint32 device = 0; // 0: none (virtual, null sinks)
     QString bluetoothAddress;
     QString bluezPath;
+    // An ALSA node (device.api): its format can be chosen (docs/audio.md
+    // §8.1). Bluetooth's is the codec's.
+    bool alsa = false;
+    // What it runs at now (its Format); 0 and empty when it isn't running.
+    quint32 rate = 0;
+    QString format; // "S24_32LE"...
+    // What it can run at: the standard rates in its range and its sample
+    // formats (EnumFormat), or what it offered before Vela restricted it
+    // (vela.audio.rates, vela.audio.formats).
+    QList<quint32> rates;
+    QStringList formats;
+    // Its restrictions (audio.allowed-rates, audio.format), whoever set them.
+    QList<quint32> allowedRates;
+    QString fixedFormat;
 
     // The overall volume: the loudest channel.
     double volume() const
@@ -114,6 +186,8 @@ struct Stream {
     // follows the default one.
     QString target;
     bool running = false;
+    // Its sample rate (Format); 0: not negotiated.
+    quint32 rate = 0;
     bool monitor = false; // stream.monitor: a level meter
     // Recording an output (stream.capture.sink, or linked to a sink's monitor).
     bool capturesOutput = false;
@@ -135,6 +209,10 @@ struct Snapshot {
     bool defaultsKnown = false;
     QString defaultOutput; // node.name
     QString defaultInput;
+    // PipeWire's "settings" metadata is there: the graph's rates are known.
+    bool settingsKnown = false;
+    quint32 clockRate = 0; // clock.rate, the default one
+    QList<quint32> allowedRates; // clock.allowed-rates
     QList<Device> devices;
     QList<Endpoint> endpoints;
     QList<Stream> streams;

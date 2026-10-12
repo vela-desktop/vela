@@ -10,6 +10,7 @@
 // at most once per event-loop turn. Microphone mute and the default input
 // are never shown before the server confirms them.
 
+#include "config.h"
 #include "model.h"
 
 #include <QElapsedTimer>
@@ -42,10 +43,19 @@ class Audio : public QObject {
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
     // [{name, description, icon, volume, muted, isDefault, intervals,
     //   channels, battery, mutePending, muteError, defaultPending,
-    //   defaultError, device, stereo, balance}]; battery: a Bluetooth
-    //   headset's charge (BlueZ), -1 if it doesn't say; device: its
-    //   device's name, empty for virtual ones; stereo: it has a left and a
-    //   right side, and balance (-1 left, 0 even, 1 right) means something.
+    //   defaultError, device, stereo, balance, canFormat, rate, format, bits,
+    //   rates, formats, fixedRate, fixedFormat, converted}]; battery: a
+    //   Bluetooth headset's charge (BlueZ), -1 if it doesn't say; device:
+    //   its device's name, empty for virtual ones; stereo: it has a left and
+    //   a right side, and balance (-1 left, 0 even, 1 right) means
+    //   something.
+    //   The format (docs/audio.md §8.1): canFormat: an ALSA device, whose
+    //   rates and format can be chosen; rate, format, bits: what it runs at
+    //   now (0, "", 0 when it doesn't); rates: the standard rates it can do;
+    //   formats: [{name, bits}], one per depth, deepest first; fixedRate:
+    //   its only allowed rate, 0 when it follows the system; fixedFormat:
+    //   empty for the best; converted: [{name, rate}], the apps playing or
+    //   recording on it at another rate.
     // Outputs whose jack is unplugged are left out, except the default one.
     Q_PROPERTY(QVariantList outputs READ outputs NOTIFY changed)
     Q_PROPERTY(QVariantList inputs READ inputs NOTIFY changed)
@@ -68,6 +78,14 @@ class Audio : public QObject {
     //   that stops stays about a second, so that a pause doesn't make the
     //   tray icon blink.
     Q_PROPERTY(QVariantList microphoneUsers READ microphoneUsers NOTIFY changed)
+    // The graph's sample rate (docs/audio.md §8.1): "automatic" (it follows
+    // what plays), "fixed" (allowedRates' only rate), "custom" (set
+    // elsewhere); empty while unknown.
+    Q_PROPERTY(QString sampleRateMode READ sampleRateMode NOTIFY changed)
+    Q_PROPERTY(QVariantList allowedRates READ allowedRates NOTIFY changed)
+    // A WirePlumber or audio restart is waiting for WirePlumber to save its
+    // state (docs/audio.md §8).
+    Q_PROPERTY(bool restartPending READ restartPending NOTIFY restartPendingChanged)
     // The output the test sound is playing on; empty: none.
     Q_PROPERTY(QString testSoundOutput READ testSoundOutput NOTIFY testSoundChanged)
     Q_PROPERTY(QString defaultOutput READ defaultOutput NOTIFY changed)
@@ -91,6 +109,10 @@ public:
     // Settings' own index). Without one: the stream's own name and icon.
     void setAppResolver(AppResolver resolver);
     Core* core() const { return m_core; }
+    Config* config() const { return m_config; }
+    // The shell's, once per session: "Automatic" when nobody configured the
+    // graph's rates (no Vela file, PipeWire's default) (docs/audio.md §8.1).
+    void applyDefaultSampleRate();
 
     bool available() const;
     QVariantList outputs() const { return m_outputs; }
@@ -98,6 +120,9 @@ public:
     QVariantList apps() const { return m_apps; }
     QVariantList devices() const { return m_devices; }
     QVariantList microphoneUsers() const { return m_microphoneUsers; }
+    QString sampleRateMode() const { return m_sampleRateMode; }
+    QVariantList allowedRates() const { return m_allowedRates; }
+    bool restartPending() const;
     QString testSoundOutput() const;
     QString defaultOutput() const { return m_defaultOutput; }
     QString defaultInput() const { return m_defaultInput; }
@@ -124,6 +149,19 @@ public:
     Q_INVOKABLE void playTestSound(const QString& output);
     Q_INVOKABLE void stopTestSound();
 
+    // "automatic" or "fixed" (docs/audio.md §8.1): at once, and kept in
+    // PipeWire's file for the next sessions.
+    Q_INVOKABLE void setSampleRateMode(const QString& mode);
+    // An endpoint's own settings, in WirePlumber's file (docs/audio.md §8):
+    // shown at once, applied by a WirePlumber restart (sound stops for
+    // about a second). An empty name: the device's own again; rate 0: follow
+    // the system; an empty format: the best.
+    Q_INVOKABLE void setEndpointName(const QString& kind, const QString& name, const QString& text);
+    Q_INVOKABLE void setEndpointRate(const QString& kind, const QString& name, int rate);
+    Q_INVOKABLE void setEndpointFormat(const QString& kind, const QString& name, const QString& format);
+    // PipeWire, WirePlumber and pipewire-pulse, for when something is stuck.
+    Q_INVOKABLE void restartAudio();
+
     // An app's playback, on the 2-point grid.
     Q_INVOKABLE void setAppVolume(const QString& key, double volume);
     Q_INVOKABLE void stepAppVolume(const QString& key, int direction);
@@ -141,6 +179,7 @@ signals:
     void availableChanged();
     void changed();
     void testSoundChanged();
+    void restartPendingChanged();
 
 private Q_SLOTS:
     // BlueZ's PropertiesChanged on a headset: its battery.
@@ -171,11 +210,16 @@ private:
     AppInfo appInfo(const AppIdentity& app) const;
     // The microphone's users, with those that just stopped.
     QVariantList microphoneUsers(const Snapshot& s);
+    // The rule to write for an endpoint, with what it offers now.
+    DeviceRule ruleFor(const Endpoint& e) const;
+    void writeRule(const QString& key, const DeviceRule& rule, const QVariant& shown);
     // A Bluetooth output's battery: read once, then followed.
     void watchBattery(const QString& path);
 
     Core* m_core;
+    Config* m_config;
     AppResolver m_resolver;
+    bool m_applyDefaultSampleRate = false;
     QHash<QString, Pending> m_pending; // "volume output <name>", "mute input <name>"...
     QSet<QString> m_errors;
     QHash<QString, double> m_writes; // volumes and balances waiting for the next loop turn
@@ -191,6 +235,8 @@ private:
     QVariantList m_apps;
     QVariantList m_devices;
     QVariantList m_microphoneUsers;
+    QString m_sampleRateMode;
+    QVariantList m_allowedRates;
     struct MicrophoneUser {
         QVariantMap info;
         QElapsedTimer since; // since it was last seen recording

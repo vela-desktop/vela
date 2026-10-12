@@ -51,6 +51,10 @@ public:
     bool setTarget(quint32 stream, const QString& endpoint);
     // A device's profile, by index; WirePlumber remembers it.
     bool setProfile(quint32 device, quint32 index);
+    // The rates the graph may switch to (PipeWire's "settings" metadata,
+    // clock.allowed-rates): applied at once, forgotten when PipeWire
+    // restarts (docs/audio.md §8.1).
+    bool setAllowedRates(const QList<quint32>& rates);
 
 signals:
     void connectedChanged();

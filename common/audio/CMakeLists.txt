@@ -3,6 +3,7 @@
 
 # vela-audio (docs/audio.md): the audio backend the shell and Settings
 # share, on libwireplumber. GLib and WirePlumber stay inside core.cpp;
+# SPA-JSON (Vela's files) inside config.cpp;
 # libpipewire's streams inside levelmeter.cpp and testsound.cpp.
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core DBus)
@@ -12,6 +13,8 @@ pkg_check_modules(AUDIO_WIREPLUMBER REQUIRED IMPORTED_TARGET wireplumber-0.5 lib
 add_library(vela-audio STATIC
     audio.cpp
     audio.h
+    config.cpp
+    config.h
     core.cpp
     core.h
     levelmeter.cpp

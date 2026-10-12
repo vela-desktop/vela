@@ -32,7 +32,7 @@ set_tests_properties(audio-fixture PROPERTIES
 # inside the fixture.
 if(TARGET vela-audio)
     find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Network Test)
-    foreach(suite core view keys streams)
+    foreach(suite core view keys streams config)
         qt_add_executable(vela-audio-${suite}-test ${suite}.cpp harness.h)
         set_target_properties(vela-audio-${suite}-test PROPERTIES AUTOMOC ON)
         target_compile_options(vela-audio-${suite}-test PRIVATE -Wall -Wextra)

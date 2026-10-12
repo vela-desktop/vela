@@ -15,8 +15,10 @@
 //   quit (or end of input)       exit
 //
 // Usage: vela-audio-fake-stream [--record] [--channels N] [--amplitude A]
-//                               [--frequency HZ] [--prop key=value]...
+//                               [--frequency HZ] [--rate HZ] [--prop key=value]...
 //   --amplitude  playback only: 0 (default) plays silence
+//   --rate       the stream's sample rate (48000), asked of the graph
+//                (node.rate) like pw-cat does
 //   --prop       any stream property; repeatable
 
 #define _GNU_SOURCE
@@ -33,7 +35,7 @@
 #include <spa/param/audio/format-utils.h>
 #include <spa/utils/result.h>
 
-#define RATE 48000
+#define DEFAULT_RATE 48000
 #define MAX_CHANNELS 8
 
 struct fake {
@@ -41,6 +43,7 @@ struct fake {
     struct pw_stream* stream;
     bool record;
     unsigned channels;
+    unsigned rate;
     float amplitude;
     float frequency;
     double phase;
@@ -84,7 +87,7 @@ static void play(struct fake* fake, struct spa_buffer* buffer)
     }
     const uint32_t stride = sizeof(float) * fake->channels;
     const uint32_t frames = d->maxsize / stride;
-    const double step = 2.0 * M_PI * fake->frequency / RATE;
+    const double step = 2.0 * M_PI * fake->frequency / fake->rate;
     for (uint32_t i = 0; i < frames; i++) {
         const float value = fake->amplitude * (float)sin(fake->phase);
         fake->phase = fmod(fake->phase + step, 2.0 * M_PI);
@@ -114,7 +117,7 @@ static void measure(struct fake* fake, struct spa_buffer* buffer)
         }
     }
     fake->frames += frames;
-    if (fake->frames >= RATE / 10) {
+    if (fake->frames >= fake->rate / 10) {
         printf("peaks");
         for (unsigned c = 0; c < fake->channels; c++) {
             printf(" %.4f", fake->peaks[c]);
@@ -199,12 +202,12 @@ static void usage(void)
 {
     fprintf(stderr,
         "usage: vela-audio-fake-stream [--record] [--channels N] [--amplitude A]\n"
-        "                              [--frequency HZ] [--prop key=value]...\n");
+        "                              [--frequency HZ] [--rate HZ] [--prop key=value]...\n");
 }
 
 int main(int argc, char** argv)
 {
-    struct fake fake = { .channels = 2, .frequency = 440.0f };
+    struct fake fake = { .channels = 2, .rate = DEFAULT_RATE, .frequency = 440.0f };
     pw_init(&argc, &argv);
     struct pw_properties* props = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", NULL);
 
@@ -218,6 +221,10 @@ int main(int argc, char** argv)
             i++;
         } else if (strcmp(arg, "--amplitude") == 0 && value) {
             fake.amplitude = strtof(value, NULL);
+            i++;
+        } else if (strcmp(arg, "--rate") == 0 && value) {
+            fake.rate = (unsigned)atoi(value);
+            pw_properties_setf(props, PW_KEY_NODE_RATE, "1/%u", fake.rate);
             i++;
         } else if (strcmp(arg, "--frequency") == 0 && value) {
             fake.frequency = strtof(value, NULL);
@@ -235,7 +242,7 @@ int main(int argc, char** argv)
         }
     }
     if (fake.channels < 1 || fake.channels > MAX_CHANNELS || !(fake.amplitude >= 0.0f && fake.amplitude <= 1.0f)
-        || !(fake.frequency > 0.0f && fake.frequency < RATE / 2)) {
+        || fake.rate < 8000 || fake.rate > 384000 || !(fake.frequency > 0.0f && fake.frequency < fake.rate / 2)) {
         usage();
         pw_properties_free(props);
         return 2;
@@ -274,7 +281,7 @@ int main(int argc, char** argv)
     struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
     struct spa_audio_info_raw info = {
         .format = SPA_AUDIO_FORMAT_F32,
-        .rate = RATE,
+        .rate = fake.rate,
         .channels = fake.channels,
     };
     // Real positions, so that channel mixing keeps left and right apart.

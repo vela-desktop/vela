@@ -1,0 +1,325 @@
+// SPDX-FileCopyrightText: 2026 Brando Giuffrida
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Vela's files and the sample rate (docs/audio.md §8) against a real
+// PipeWire and WirePlumber: what devices can run at and run at now, the
+// graph following what plays once "Automatic", its default, WirePlumber's
+// file written whole and read back, and the restarts waiting for
+// WirePlumber to save its state.
+
+#include "audio.h"
+#include "config.h"
+#include "core.h"
+#include "harness.h"
+
+#include <QDir>
+#include <QElapsedTimer>
+#include <QFile>
+#include <QStandardPaths>
+
+using namespace harness;
+using vela::audio::Audio;
+using vela::audio::Config;
+using vela::audio::DeviceRule;
+
+namespace {
+
+QVariantMap find(const QVariantList& list, const QString& field, const QString& value)
+{
+    for (const QVariant& item : list) {
+        if (item.toMap().value(field).toString() == value) {
+            return item.toMap();
+        }
+    }
+    return {};
+}
+
+QByteArray read(const QString& path)
+{
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+}
+
+QList<quint32> rates(const QVariantList& list)
+{
+    QList<quint32> out;
+    for (const QVariant& v : list) {
+        out.append(v.toUInt());
+    }
+    return out;
+}
+
+const QList<quint32> automatic { 44100, 48000, 88200, 96000, 176400, 192000 };
+
+} // namespace
+
+class ConfigTest : public QObject {
+    Q_OBJECT
+
+    std::unique_ptr<Audio> audio;
+    // The restarts asked for, and when.
+    QStringList restarts;
+    QElapsedTimer clock;
+    QList<qint64> restartTimes;
+
+    QVariantMap output(const QString& name) const { return find(audio->outputs(), QStringLiteral("name"), name); }
+    QList<quint32> serverRates() const { return audio->core()->snapshot().allowedRates; }
+    // The graph's rates straight in PipeWire's metadata, as another program
+    // (or the user's own configuration) would set them.
+    static void setServerRates(const QString& rates)
+    {
+        run(QStringLiteral("pw-metadata"), { QStringLiteral("-n"), QStringLiteral("settings"), QStringLiteral("0"),
+                                               QStringLiteral("clock.allowed-rates"), rates });
+    }
+    void resetRates()
+    {
+        QFile::remove(Config::pipewireFile());
+        setServerRates(QStringLiteral("[ 48000 ]"));
+        QVERIFY(QTest::qWaitFor([this] { return serverRates() == QList<quint32> { 48000 }; }, 5000));
+    }
+    std::unique_ptr<Audio> newAudio()
+    {
+        auto a = std::make_unique<Audio>();
+        a->config()->setRestarter([this](const QString& unit) {
+            restarts.append(unit);
+            restartTimes.append(clock.elapsed());
+        });
+        return a;
+    }
+
+private slots:
+    void initTestCase()
+    {
+        // Vela's files go where the fixture's WirePlumber and PipeWire look.
+        QVERIFY(Config::wireplumberFile().startsWith(qEnvironmentVariable("XDG_CONFIG_HOME")));
+        clock.start();
+        audio = newAudio();
+        QVERIFY(QTest::qWaitFor([this] { return audio->available() && !output(speakers).isEmpty(); }, 10000));
+        QVERIFY(QTest::qWaitFor([this] { return audio->core()->snapshot().settingsKnown; }, 5000));
+    }
+
+    void init()
+    {
+        restarts.clear();
+        restartTimes.clear();
+    }
+
+    void parsesSpaJson()
+    {
+        const QVariantMap file = Config::parse("# a comment\n"
+                                               "context.properties = {\n"
+                                               "    default.clock.allowed-rates = [ 44100, 48000 ]\n"
+                                               "}\n"
+                                               "monitor.alsa.rules = [\n"
+                                               "  { matches = [ { node.name = \"alsa_output.\\\"odd\\\" \\\\ name\" } ]\n"
+                                               "    actions = { update-props = { node.description = Bare audio.format = \"S16LE\" } } }\n"
+                                               "]\n")
+                                     .toMap();
+        QCOMPARE(file.value(QStringLiteral("context.properties")).toMap().value(QStringLiteral("default.clock.allowed-rates")),
+            QVariant(QVariantList { 44100, 48000 }));
+        const QVariantMap rule = file.value(QStringLiteral("monitor.alsa.rules")).toList().value(0).toMap();
+        QCOMPARE(rule.value(QStringLiteral("matches")).toList().value(0).toMap().value(QStringLiteral("node.name")).toString(),
+            QStringLiteral("alsa_output.\"odd\" \\ name"));
+        const QVariantMap props = rule.value(QStringLiteral("actions")).toMap().value(QStringLiteral("update-props")).toMap();
+        QCOMPARE(props.value(QStringLiteral("node.description")).toString(), QStringLiteral("Bare"));
+        QCOMPARE(props.value(QStringLiteral("audio.format")).toString(), QStringLiteral("S16LE"));
+        QVERIFY(Config::parse("").toMap().isEmpty());
+        Config::parse("not = [ valid"); // broken: no crash
+    }
+
+    // What a device can run at: its rate range as standard rates, one
+    // format per depth; Vela's record of what it offered once restricted.
+    void capabilities()
+    {
+        const QVariantMap speakersMap = output(speakers);
+        QCOMPARE(rates(speakersMap.value(QStringLiteral("rates")).toList()), automatic); // a null sink: any rate
+        QCOMPARE(speakersMap.value(QStringLiteral("formats")).toList().size(), 1); // F32P and F32LE: one depth
+        QCOMPARE(speakersMap.value(QStringLiteral("formats")).toList().value(0).toMap().value(QStringLiteral("bits")).toInt(), 32);
+        QCOMPARE(speakersMap.value(QStringLiteral("canFormat")).toBool(), false); // not ALSA
+        QCOMPARE(speakersMap.value(QStringLiteral("fixedRate")).toInt(), 0);
+
+        QVERIFY(control(QStringLiteral("add-sink vela-test-dac FL FR device.api=alsa vela.audio.rates=[44100,96000] "
+                                       "vela.audio.formats=[S16LE,S24_32LE] audio.allowed-rates=[96000] audio.format=S24_32LE"))
+                    .startsWith(QLatin1String("ok")));
+        QVERIFY(QTest::qWaitFor([this] { return !output(QStringLiteral("vela-test-dac")).isEmpty(); }, 5000));
+        const QVariantMap dac = output(QStringLiteral("vela-test-dac"));
+        QCOMPARE(dac.value(QStringLiteral("canFormat")).toBool(), true);
+        QCOMPARE(rates(dac.value(QStringLiteral("rates")).toList()), (QList<quint32> { 44100, 96000 }));
+        const QVariantList formats = dac.value(QStringLiteral("formats")).toList();
+        QCOMPARE(formats.size(), 2);
+        QCOMPARE(formats[0].toMap().value(QStringLiteral("name")).toString(), QStringLiteral("S24_32LE")); // deepest first
+        QCOMPARE(formats[1].toMap().value(QStringLiteral("bits")).toInt(), 16);
+        QCOMPARE(dac.value(QStringLiteral("fixedRate")).toInt(), 96000);
+        QCOMPARE(dac.value(QStringLiteral("fixedFormat")).toString(), QStringLiteral("S24_32LE"));
+        QCOMPARE(control(QStringLiteral("remove vela-test-dac")), QStringLiteral("ok"));
+    }
+
+    // PipeWire's default converts everything to 48 kHz; "Automatic" lets
+    // the graph run at what plays, at once and for the next sessions.
+    void graphFollowsWhatPlays()
+    {
+        resetRates();
+        QCOMPARE(audio->sampleRateMode(), QStringLiteral("fixed"));
+        {
+            auto music = player(QStringLiteral("music"), { QStringLiteral("--rate"), QStringLiteral("44100") });
+            QVERIFY(music->waitStreaming() != 0);
+            QVERIFY(QTest::qWaitFor([this] { return output(speakers).value(QStringLiteral("rate")).toInt() == 48000
+                                                 && !output(speakers).value(QStringLiteral("converted")).toList().isEmpty(); },
+                5000));
+            const QVariantMap converted = output(speakers).value(QStringLiteral("converted")).toList().first().toMap();
+            QCOMPARE(converted.value(QStringLiteral("name")).toString(), QStringLiteral("music"));
+            QCOMPARE(converted.value(QStringLiteral("rate")).toInt(), 44100);
+        }
+
+        audio->setSampleRateMode(QStringLiteral("automatic"));
+        QCOMPARE(audio->sampleRateMode(), QStringLiteral("automatic")); // shown at once
+        QVERIFY(QTest::qWaitFor([this] { return serverRates() == automatic; }, 5000));
+        QCOMPARE(Config().pipewireRates(), automatic);
+        QVERIFY(restarts.isEmpty()); // no restart needed
+        // The graph switches once idle.
+        QVERIFY(QTest::qWaitFor([this] { return output(speakers).value(QStringLiteral("rate")).toInt() == 0; }, 10000));
+        {
+            auto music = player(QStringLiteral("music"), { QStringLiteral("--rate"), QStringLiteral("44100") });
+            QVERIFY(music->waitStreaming() != 0);
+            QVERIFY(QTest::qWaitFor([this] { return output(speakers).value(QStringLiteral("rate")).toInt() == 44100; }, 5000));
+            QVERIFY(output(speakers).value(QStringLiteral("converted")).toList().isEmpty());
+        }
+
+        audio->setSampleRateMode(QStringLiteral("fixed"));
+        QVERIFY(QTest::qWaitFor([this] { return serverRates() == QList<quint32> { 48000 }; }, 5000));
+        QCOMPARE(Config().pipewireRates(), (QList<quint32> { 48000 }));
+        QCOMPARE(audio->sampleRateMode(), QStringLiteral("fixed"));
+        resetRates();
+    }
+
+    // The shell makes "Automatic" the default, only where nobody chose.
+    void automaticByDefault()
+    {
+        resetRates();
+        {
+            auto shell = newAudio();
+            shell->applyDefaultSampleRate();
+            QVERIFY(QTest::qWaitFor([this] { return serverRates() == automatic; }, 5000));
+            QCOMPARE(Config().pipewireRates(), automatic);
+        }
+
+        // The user chose (Vela's file is there): left alone.
+        setServerRates(QStringLiteral("[ 48000 ]"));
+        QVERIFY(QTest::qWaitFor([this] { return serverRates() == QList<quint32> { 48000 }; }, 5000));
+        {
+            auto shell = newAudio();
+            shell->applyDefaultSampleRate();
+            QVERIFY(QTest::qWaitFor([&] { return shell->sampleRateMode() == QLatin1String("fixed"); }, 5000));
+            QTest::qWait(300);
+            QCOMPARE(serverRates(), (QList<quint32> { 48000 }));
+        }
+
+        // Someone configured them another way: left alone, shown as they are.
+        QFile::remove(Config::pipewireFile());
+        setServerRates(QStringLiteral("[ 44100 48000 ]"));
+        QVERIFY(QTest::qWaitFor([this] { return serverRates() == QList<quint32> { 44100, 48000 }; }, 5000));
+        {
+            auto shell = newAudio();
+            shell->applyDefaultSampleRate();
+            QVERIFY(QTest::qWaitFor([&] { return shell->sampleRateMode() == QLatin1String("custom"); }, 5000));
+            QTest::qWait(300);
+            QCOMPARE(serverRates(), (QList<quint32> { 44100, 48000 }));
+            QVERIFY(!Config().hasPipewireFile());
+        }
+        resetRates();
+    }
+
+    // WirePlumber's file: Vela's rules only, rewritten whole, read back.
+    void wireplumberFile()
+    {
+        const QString dir = QFileInfo(Config::wireplumberFile()).absolutePath();
+        const QByteArray fixtureRules = read(dir + QStringLiteral("/10-vela-test.conf"));
+        QVERIFY(!fixtureRules.isEmpty());
+
+        audio->setEndpointName(QStringLiteral("output"), speakers, QStringLiteral("Living \"room\" \\ speakers"));
+        QCOMPARE(output(speakers).value(QStringLiteral("description")).toString(),
+            QStringLiteral("Living \"room\" \\ speakers")); // shown at once
+        DeviceRule rule = Config().rule(speakers);
+        QCOMPARE(rule.description, QStringLiteral("Living \"room\" \\ speakers"));
+        QVERIFY(!rule.bluetooth);
+        QVERIFY(!rule.restricts());
+        QVERIFY(!read(Config::wireplumberFile()).contains("vela.audio.rates")); // not restricted
+
+        QVERIFY(control(QStringLiteral("add-sink vela-test-dac FL FR device.api=alsa")).startsWith(QLatin1String("ok")));
+        QVERIFY(QTest::qWaitFor([this] { return !output(QStringLiteral("vela-test-dac")).isEmpty(); }, 5000));
+        audio->setEndpointRate(QStringLiteral("output"), QStringLiteral("vela-test-dac"), 96000);
+        QCOMPARE(output(QStringLiteral("vela-test-dac")).value(QStringLiteral("fixedRate")).toInt(), 96000);
+        audio->setEndpointFormat(QStringLiteral("output"), QStringLiteral("vela-test-dac"), QStringLiteral("F32LE"));
+        rule = Config().rule(QStringLiteral("vela-test-dac"));
+        QCOMPARE(rule.allowedRates, (QList<quint32> { 96000 }));
+        QCOMPARE(rule.format, QStringLiteral("F32LE"));
+        QCOMPARE(rule.offeredRates, automatic); // to offer the others later
+        QVERIFY(rule.offeredFormats.contains(QStringLiteral("F32LE")));
+        QCOMPARE(Config().rules().size(), 2);
+        // Not offered: refused, the file unchanged.
+        const QByteArray before = read(Config::wireplumberFile());
+        audio->setEndpointRate(QStringLiteral("output"), QStringLiteral("vela-test-dac"), 12345);
+        audio->setEndpointRate(QStringLiteral("output"), speakers, 44100); // not ALSA
+        QCOMPARE(read(Config::wireplumberFile()), before);
+
+        // A Bluetooth headset's rule goes with WirePlumber's BlueZ monitor.
+        QVERIFY(control(QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF")).startsWith(QLatin1String("ok")));
+        QVERIFY(QTest::qWaitFor([this] { return !output(QStringLiteral("vela-test-headset")).isEmpty(); }, 5000));
+        audio->setEndpointName(QStringLiteral("output"), QStringLiteral("vela-test-headset"), QStringLiteral("Cuffie"));
+        QVERIFY(Config().rule(QStringLiteral("vela-test-headset")).bluetooth);
+        QVERIFY(read(Config::wireplumberFile()).contains("monitor.bluez.rules"));
+
+        // Back to the defaults: no rule left.
+        audio->setEndpointName(QStringLiteral("output"), speakers, QString());
+        audio->setEndpointName(QStringLiteral("output"), QStringLiteral("vela-test-headset"), QString());
+        audio->setEndpointRate(QStringLiteral("output"), QStringLiteral("vela-test-dac"), 0);
+        audio->setEndpointFormat(QStringLiteral("output"), QStringLiteral("vela-test-dac"), QString());
+        QVERIFY(Config().rules().isEmpty());
+        QVERIFY(!read(Config::wireplumberFile()).contains("monitor."));
+        QCOMPARE(read(dir + QStringLiteral("/10-vela-test.conf")), fixtureRules);
+        QStringList others = QDir(dir).entryList(QDir::Files);
+        others.sort();
+        QCOMPARE(others, (QStringList { QStringLiteral("10-vela-test.conf"), QStringLiteral("90-vela.conf") }));
+
+        QCOMPARE(control(QStringLiteral("remove vela-test-dac")), QStringLiteral("ok"));
+        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
+    }
+
+    // One restart for changes in a row, never sooner than 1.5 s after a
+    // change WirePlumber has to save; WirePlumber accepts the file.
+    void restartsWaitForWirePlumber()
+    {
+        QVERIFY(QTest::qWaitFor([this] { return !audio->restartPending(); }, 5000)); // the last test's
+        restarts.clear();
+        restartTimes.clear();
+
+        audio->setVolume(QStringLiteral("output"), speakers, 0.3);
+        const qint64 changed = clock.elapsed();
+        audio->setEndpointName(QStringLiteral("output"), speakers, QStringLiteral("Speakers one"));
+        QTest::qWait(200);
+        audio->setEndpointName(QStringLiteral("output"), speakers, QStringLiteral("Speakers two"));
+        QVERIFY(audio->restartPending());
+        QVERIFY(QTest::qWaitFor([this] { return !restarts.isEmpty(); }, 5000));
+        QCOMPARE(restarts, QStringList { QStringLiteral("wireplumber.service") });
+        QVERIFY2(restartTimes.first() - changed >= 1450, qPrintable(QString::number(restartTimes.first() - changed)));
+        QVERIFY(!audio->restartPending());
+        QTest::qWait(500);
+        QCOMPARE(restarts.size(), 1);
+
+        // WirePlumber starts with Vela's file, and the volume was saved.
+        QCOMPARE(control(QStringLiteral("restart-wireplumber")), QStringLiteral("ok"));
+        QVERIFY(QTest::qWaitFor([this] { return audio->core()->snapshot().defaultsKnown && !output(speakers).isEmpty(); }, 10000));
+        QVERIFY(std::abs(audio->core()->snapshot().endpoint(speakers)->volume() - 0.3) < 0.01);
+
+        // "Restart audio" restarts PipeWire, which takes WirePlumber along.
+        audio->restartAudio();
+        QVERIFY(QTest::qWaitFor([this] { return restarts.size() == 2; }, 5000));
+        QCOMPARE(restarts.last(), QStringLiteral("pipewire.service"));
+
+        audio->setEndpointName(QStringLiteral("output"), speakers, QString());
+        QVERIFY(Config().rules().isEmpty());
+    }
+};
+
+QTEST_GUILESS_MAIN(ConfigTest)
+#include "config.moc"
