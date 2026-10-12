@@ -56,7 +56,10 @@ static void finish(struct vela_output_preview *preview, uint32_t result)
     }
     if (preview->before) {
         if (result == VELA_OUTPUT_PREVIEW_V1_RESULT_CONFIRMED) {
-            vela_output_manager_save(preview->owner->server);
+            if (!vela_output_manager_save(preview->owner->server)) {
+                result = VELA_OUTPUT_PREVIEW_V1_RESULT_SAVE_FAILED;
+                wlr_log(WLR_ERROR, "Display configuration confirmed but could not be persisted");
+            }
         } else if (!vela_output_manager_restore(preview->owner->server, preview->before)) {
             result = VELA_OUTPUT_PREVIEW_V1_RESULT_RESTORE_FAILED;
             wlr_log(WLR_ERROR, "Could not fully restore the previous display configuration");
@@ -239,7 +242,7 @@ bool vela_output_preview_can_apply(struct vela_server *server, struct wlr_output
 }
 
 bool vela_output_preview_applied(struct vela_server *server, struct wlr_output_configuration_v1 *config,
-    struct wlr_output_configuration_v1 *before, bool succeeded)
+    struct wlr_output_configuration_v1 *before, bool succeeded, bool restored)
 {
     struct vela_output_previews *owner = server->output_previews;
     struct vela_output_preview *preview = owner ? owner->active : NULL;
@@ -247,7 +250,8 @@ bool vela_output_preview_applied(struct vela_server *server, struct wlr_output_c
         return false;
     }
     if (!succeeded) {
-        finish(preview, VELA_OUTPUT_PREVIEW_V1_RESULT_FAILED);
+        finish(preview, restored ? VELA_OUTPUT_PREVIEW_V1_RESULT_FAILED
+                                 : VELA_OUTPUT_PREVIEW_V1_RESULT_RESTORE_FAILED);
         return false;
     }
     // wlroots destroys the configuration after our reply; the preview now
