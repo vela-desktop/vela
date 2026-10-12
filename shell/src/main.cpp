@@ -325,6 +325,8 @@ int main(int argc, char* argv[])
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
+    // The mix follows what plays, unless someone chose otherwise (§8.1).
+    audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);
     QObject::connect(&shell, &ShellController::volumeKeyPressed, &sound, &SoundKeys::press);
     MediaKeys media;
