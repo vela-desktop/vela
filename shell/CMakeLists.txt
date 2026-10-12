@@ -127,6 +127,7 @@ set(VELA_QML_FILES
     qml/SnapLayouts.qml
     qml/SnapAssist.qml
     qml/TaskbarPreview.qml
+    qml/TaskbarTooltip.qml
     qml/FileDialogs.qml
     qml/ClipboardPanel.qml
     qml/SnipOverlay.qml)

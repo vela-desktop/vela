@@ -166,6 +166,8 @@ const Panel panels[] = {
     // The distance from the left edge is decided by the button
     // (ShellController::placeAtLeft).
     { "TaskbarPreview", "vela-taskbar-preview", layerTop, bottomLeft, 0, keysNone },
+    // Above the taskbar too, placed the same way; the mouse goes through.
+    { "TaskbarTooltip", "vela-taskbar-tooltip", layerTop, bottomLeft, 0, keysNone, {}, true },
     { "FileDialogs", "vela-file-dialogs", layerTop, centered, 0, keysOnDemand },
     { "ClipboardPanel", "vela-clipboard", layerTop, bottomRight, 0, keysOnDemand },
 };

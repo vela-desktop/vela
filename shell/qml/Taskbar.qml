@@ -401,7 +401,7 @@ Window {
     Row {
         id: tray
         visible: root.primary
-        anchors { right: systemIcons.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
+        anchors { right: microphone.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
 
         Repeater {
             model: Tray
@@ -459,6 +459,65 @@ Window {
                     }
                     onWheel: wheel => Tray.scroll(trayItem.index, wheel.angleDelta.y)
                 }
+            }
+        }
+    }
+
+    // The microphone in use (docs/audio.md §7.2), like Windows: who listens
+    // in the tooltip, a click opens Settings > Sound.
+    Item {
+        id: microphone
+        visible: root.primary && Audio.microphoneUsers.length > 0
+        anchors { right: systemIcons.left; top: parent.top; bottom: parent.bottom }
+        width: visible ? 32 : 0
+
+        readonly property string tooltipText: {
+            const users = Audio.microphoneUsers
+            if (users.length === 1) {
+                return qsTr("%1 is using your microphone").arg(users[0].name)
+            }
+            return [qsTr("These apps are using your microphone:")].concat(users.map(u => u.name)).join("\n")
+        }
+        function showTooltip() {
+            const p = microphone.mapToItem(null, microphone.width / 2, 0)
+            Menus.tooltip = { text: microphone.tooltipText, center: p.x, screen: root.screenName, owner: "microphone" }
+        }
+        function hideTooltip() {
+            tooltipDelay.stop()
+            if (Menus.tooltip && Menus.tooltip.owner === "microphone") {
+                Menus.tooltip = null
+            }
+        }
+        onTooltipTextChanged: if (Menus.tooltip && Menus.tooltip.owner === "microphone") showTooltip()
+        onVisibleChanged: if (!visible) hideTooltip()
+
+        Timer {
+            id: tooltipDelay
+            interval: 500
+            onTriggered: microphone.showTooltip()
+        }
+        Rectangle {
+            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            radius: Theme.radius
+            color: microphoneMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
+            opacity: microphoneMouse.containsMouse ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+        }
+        Image {
+            anchors.centerIn: parent
+            width: 16
+            height: 16
+            source: Theme.icons + "audio-input-microphone"
+            sourceSize: Qt.size(width, height)
+        }
+        MouseArea {
+            id: microphoneMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onContainsMouseChanged: containsMouse ? tooltipDelay.restart() : microphone.hideTooltip()
+            onClicked: {
+                microphone.hideTooltip()
+                System.trigger("sound-settings")
             }
         }
     }

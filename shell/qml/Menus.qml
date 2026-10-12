@@ -40,6 +40,9 @@ QtObject {
     // appIds, center (x on the output)}, or null. They stay while the mouse is
     // on the button or the previews.
     property var preview: null
+    // A tooltip above the taskbar (TaskbarTooltip.qml): {text, center (x on
+    // the output), screen}, or null.
+    property var tooltip: null
     // The output of the taskbar a panel was opened from (Start, quick
     // settings, notification center, Task View): the panel goes there. Empty:
     // the main output (opened from the keyboard).

@@ -1014,6 +1014,14 @@
         <translation>Visualizzazione attività</translation>
     </message>
     <message>
+        <source>%1 is using your microphone</source>
+        <translation>%1 sta usando il microfono</translation>
+    </message>
+    <message>
+        <source>These apps are using your microphone:</source>
+        <translation>Queste app stanno usando il microfono:</translation>
+    </message>
+    <message>
         <source>Open volume &amp;mixer</source>
         <translation>Apri &amp;mixer volume</translation>
     </message>
