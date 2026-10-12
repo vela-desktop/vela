@@ -272,6 +272,16 @@ struct Snapshot {
     }
 };
 
+// The shell changes PipeWire's built-in rate limit to Automatic only if
+// the graph still has the stock 48 kHz settings. A user's own fixed rate,
+// even without Vela's config file, must never be silently overwritten.
+inline bool hasBuiltInPipewireRates(const Snapshot& s)
+{
+    const quint32 clock = s.clockRate > 0 ? s.clockRate : 48000;
+    return s.settingsKnown && clock == 48000
+        && (s.allowedRates.isEmpty() || s.allowedRates == QList<quint32> { 48000 });
+}
+
 // A new overall volume with the balance kept (docs/audio.md §5.3): every
 // channel scaled by the same factor, so the loudest one lands on `volume`.
 // From silence, `balance` (each channel over the loudest, remembered while

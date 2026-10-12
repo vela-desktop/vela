@@ -91,11 +91,13 @@ Item {
             slider.moved(slider.value)
             slider.released(slider.value)
         }
-        // The second press already brought the knob under the pointer;
-        // the release that follows sends the reset value.
+        // Qt does not send onReleased for the accepted second click.
+        // Notify the consumer directly, otherwise the audio balance stays put.
         onDoubleClicked: {
             if (!isNaN(slider.resetValue)) {
                 slider.value = slider.resetValue
+                slider.moved(slider.value)
+                slider.released(slider.value)
             }
         }
         onWheel: wheel => {

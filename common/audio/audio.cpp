@@ -435,8 +435,11 @@ QVariantList Audio::microphoneUsers(const Snapshot& s)
     QSet<QString> now;
     for (const Stream& st : s.streams) {
         const Endpoint* from = s.endpoint(st.endpoint);
-        if (st.direction != Direction::Input || !st.running || st.capturesOutput || st.internal || !from
-            || from->direction != Direction::Input) {
+        // Rely on the actual graph connection, not stream.monitor,
+        // stream.capture.sink, node.virtual or node.link-group: an
+        // untrusted recording client can supply those properties itself.
+        // A real sink monitor is linked to an output and remains excluded.
+        if (st.direction != Direction::Input || !st.running || !from || from->direction != Direction::Input) {
             continue;
         }
         const AppInfo info = appInfo(st.app);
@@ -990,9 +993,7 @@ void Audio::update()
     // Nobody configured the graph's rates: "Automatic" (docs/audio.md §8.1).
     if (m_applyDefaultSampleRate && s.settingsKnown) {
         m_applyDefaultSampleRate = false;
-        const bool pipewireDefault = s.allowedRates.isEmpty()
-            || (s.allowedRates.size() == 1 && s.allowedRates.first() == (s.clockRate > 0 ? s.clockRate : 48000));
-        if (!m_config->hasPipewireFile() && pipewireDefault) {
+        if (!m_config->hasPipewireFile() && hasBuiltInPipewireRates(s)) {
             QMetaObject::invokeMethod(this, [this] { setSampleRate(0); }, Qt::QueuedConnection);
         }
     }

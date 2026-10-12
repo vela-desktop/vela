@@ -2045,12 +2045,20 @@ Specifiche sistema
         <translation>Seguendo il sistema, cambia in base a cosa suona</translation>
     </message>
     <message>
+        <source>Couldn&apos;t apply the sample rate. Please try again.</source>
+        <translation>Impossibile applicare la frequenza di campionamento. Riprova.</translation>
+    </message>
+    <message>
         <source>Sample format</source>
         <translation>Formato dei campioni</translation>
     </message>
     <message>
         <source>Choose another one only if the device has trouble with the best</source>
         <translation>Scegline un altro solo se il dispositivo ha problemi con il migliore</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t apply the sample format. Please try again.</source>
+        <translation>Impossibile applicare il formato dei campioni. Riprova.</translation>
     </message>
     <message>
         <source>Rename device</source>
@@ -2172,6 +2180,10 @@ Specifiche sistema
         <translation>Tutto l&apos;audio viene convertito a %1 Hz</translation>
     </message>
     <message>
+        <source>Couldn&apos;t apply the sample rate. Please try again.</source>
+        <translation>Impossibile applicare la frequenza di campionamento. Riprova.</translation>
+    </message>
+    <message>
         <source>Set elsewhere: %1 Hz</source>
         <translation>Impostata altrove: %1 Hz</translation>
     </message>
@@ -2182,6 +2194,10 @@ Specifiche sistema
     <message>
         <source>If sound is stuck. Sound stops for a few seconds, and apps reconnect.</source>
         <translation>Se l&apos;audio è bloccato. L&apos;audio si interrompe per qualche secondo e le app si ricollegano.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t restart audio. Check your systemd user services.</source>
+        <translation>Impossibile riavviare l&apos;audio. Controlla i servizi systemd dell&apos;utente.</translation>
     </message>
     <message>
         <source>Restart</source>

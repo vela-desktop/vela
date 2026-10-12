@@ -580,14 +580,12 @@ private slots:
 
     void whatIsNotTheMicrophone()
     {
-        // A screen recorder taking the desktop's sound, a filter's own
-        // stream, meters on an output and on an app: none of them listen to
-        // the microphone.
+        // A screen recorder taking the desktop's sound, and meters on
+        // outputs or apps: none of them listen to a microphone source.
         auto screen = std::make_unique<FakeStream>(QStringList { "--record", "--prop", "stream.capture.sink=true", "--prop",
             "target.object=" + speakers, "--prop", "application.process.binary=vela-screen-recorder" });
-        auto filter = recorder(QStringLiteral("vela-filter"), { QStringLiteral("--prop"), QStringLiteral("node.link-group=vela-test-filter") });
         auto music = player(QStringLiteral("vela-player"), { QStringLiteral("--amplitude"), QStringLiteral("0.2") });
-        for (auto* s : { screen.get(), filter.get(), music.get() }) {
+        for (auto* s : { screen.get(), music.get() }) {
             QVERIFY(s->waitStreaming());
         }
         LevelMeter outputMeter;
@@ -616,6 +614,33 @@ private slots:
         QTRY_COMPARE(microphoneKeys(), QStringList({ QCoreApplication::applicationName() }));
         inputMeter.setActive(false);
         QTRY_VERIFY_WITH_TIMEOUT(audio->microphoneUsers().isEmpty(), 2000);
+    }
+
+    void clientPropertiesCannotHideMicrophoneRecording()
+    {
+        // These flags are supplied by the client, not by a trusted
+        // authority. A recording stream with an actual source link must
+        // remain visible even when it claims to be an internal stream
+        // or a monitor.
+        const QStringList spoofed {
+            QStringLiteral("node.link-group=vela-test-internal"),
+            QStringLiteral("node.virtual=true"),
+            QStringLiteral("stream.monitor=true"),
+        };
+        for (qsizetype i = 0; i < spoofed.size(); ++i) {
+            const QString key = QStringLiteral("vela-spoof-%1").arg(i);
+            auto client = recorder(key, {
+                QStringLiteral("--prop"), spoofed[i],
+                QStringLiteral("--prop"), QStringLiteral("target.object=") + microphone,
+            });
+            const quint32 node = client->waitStreaming();
+            QVERIFY2(node != 0, qPrintable(spoofed[i]));
+            QTRY_VERIFY_WITH_TIMEOUT(audio->core()->snapshot().stream(node)
+                && audio->core()->snapshot().stream(node)->endpoint == id(microphone), 5000);
+            QTRY_VERIFY_WITH_TIMEOUT(microphoneKeys().contains(key), 5000);
+            QCOMPARE(client->close(), 0);
+            QTRY_VERIFY_WITH_TIMEOUT(!microphoneKeys().contains(key), 2000);
+        }
     }
 
     void aVirtualSourceIsAMicrophone()

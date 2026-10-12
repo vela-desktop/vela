@@ -309,11 +309,16 @@ and `node.dont-move`, so they never end up somewhere else. Done in A3.
 ### 7.2 Microphone in use
 
 - An app uses the microphone when one of its recording streams is
-  **running** and linked to an `Audio/Source` (a microphone, or a virtual
+  **running** and actually linked to an `Audio/Source` (a microphone, or a virtual
   source made from one). Recording an output (screen recorders capturing
-  desktop audio, sink monitors) doesn't count. Neither do the internal
-  streams of filters (the nodes of a `node.link-group`).
-  Meters on other streams don't either: they record an app, not an input.
+  desktop audio, sink monitors) doesn't count. Meters on other streams
+  don't either: they record an app, not an input. A filter stream linked
+  to an input **does** count: `node.link-group`, `node.virtual`,
+  `stream.monitor` and `stream.capture.sink` are client-supplied and cannot
+  be used to hide an active input link. Vela prefers a conservative
+  visible indicator over false negatives for privacy.
+- The indicator follows observed PipeWire links; it is not a permission
+  boundary or a guarantee about hardware recording outside PipeWire.
 - Settings' input level meter counts: while the Sound page is visible, the
   tray says "Settings is using your microphone" (its stream is a monitor,
   but of an input).

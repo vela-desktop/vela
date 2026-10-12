@@ -71,6 +71,33 @@ private slots:
         core.reset();
     }
 
+    void builtInPipewireRatesDoNotMaskUserConfiguration()
+    {
+        using vela::audio::Snapshot;
+        using vela::audio::hasBuiltInPipewireRates;
+
+        Snapshot s;
+        s.settingsKnown = true;
+        s.clockRate = 48000;
+        s.allowedRates = {};
+        QVERIFY(hasBuiltInPipewireRates(s));
+        s.allowedRates = { 48000 };
+        QVERIFY(hasBuiltInPipewireRates(s));
+
+        // A user-configured clock is not "nobody configured it", even
+        // without an allowed-rates list or Vela's own config file.
+        s.clockRate = 96000;
+        s.allowedRates = {};
+        QVERIFY(!hasBuiltInPipewireRates(s));
+        s.allowedRates = { 96000 };
+        QVERIFY(!hasBuiltInPipewireRates(s));
+        s.clockRate = 48000;
+        QVERIFY(!hasBuiltInPipewireRates(s)); // non-default allowed rates
+        s.settingsKnown = false;
+        s.allowedRates = { 48000 };
+        QVERIFY(!hasBuiltInPipewireRates(s));
+    }
+
     void endpointsAndDefaults()
     {
         const auto& s = core->snapshot();

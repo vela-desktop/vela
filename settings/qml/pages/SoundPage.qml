@@ -74,12 +74,22 @@ Page {
             // The device's properties: the arrow of the cards that lead to a
             // page, as a button of its own.
             Rectangle {
+                id: propertiesButton
                 width: 32
                 height: 32
                 radius: Theme.radius
+                activeFocusOnTab: true
                 color: propertiesMouse.pressed ? Theme.subtlePressed : propertiesMouse.containsMouse ? Theme.subtleHover : "transparent"
+                border.width: activeFocus ? 2 : 0
+                border.color: Theme.accentFill
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTr("Properties")
+                function openProperties() {
+                    root.showSoundDevice(device.kind, device.modelData.name, device.modelData.device)
+                }
+                Keys.onReturnPressed: propertiesButton.openProperties()
+                Keys.onEnterPressed: propertiesButton.openProperties()
+                Keys.onSpacePressed: propertiesButton.openProperties()
                 Text {
                     anchors.centerIn: parent
                     text: "›"
@@ -91,7 +101,10 @@ Page {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.showSoundDevice(device.kind, device.modelData.name, device.modelData.device)
+                    onClicked: {
+                        propertiesButton.forceActiveFocus()
+                        propertiesButton.openProperties()
+                    }
                 }
             }
         }
