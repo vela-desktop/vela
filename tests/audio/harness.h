@@ -66,6 +66,12 @@ public:
                     m_node = words.value(1).toUInt();
                 } else if (words.value(0) == "state") {
                     m_state = QString::fromLatin1(words.value(1));
+                } else if (words.value(0) == "peaks") {
+                    QList<double> peaks;
+                    for (qsizetype i = 1; i < words.size(); i++) {
+                        peaks.append(words[i].toDouble());
+                    }
+                    m_peaks.append(peaks);
                 }
             }
         });
@@ -81,6 +87,10 @@ public:
         return m_state == QLatin1String("streaming") ? m_node : 0;
     }
     quint32 node() const { return m_node; }
+    // Recording: each channel's peak, about every 100 ms, since the start
+    // or the last clearPeaks().
+    const QList<QList<double>>& peaks() const { return m_peaks; }
+    void clearPeaks() { m_peaks.clear(); }
 
     // Ends it; its exit status (not 0: a crash or a sanitizer's report).
     int close()
@@ -99,6 +109,55 @@ private:
     QProcess m_process;
     quint32 m_node = 0;
     QString m_state;
+    QList<QList<double>> m_peaks;
+};
+
+// A fake sound card with profiles (fake-device.c).
+class FakeDevice {
+public:
+    FakeDevice()
+    {
+        m_process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+        QObject::connect(&m_process, &QProcess::readyReadStandardOutput, [this] {
+            while (m_process.canReadLine()) {
+                const QList<QByteArray> words = m_process.readLine().trimmed().split(' ');
+                if (words.value(0) == "ready") {
+                    m_id = words.value(1).toUInt();
+                } else if (words.value(0) == "profile") {
+                    m_sets.append({ words.value(1).toInt(), words.value(2) == "1" });
+                }
+            }
+        });
+        m_process.start(qEnvironmentVariable("VELA_AUDIO_FAKE_DEVICE"));
+    }
+    ~FakeDevice() { close(); }
+
+    // Its device id once PipeWire has it; 0 if it never gets there.
+    quint32 waitReady()
+    {
+        static_cast<void>(QTest::qWaitFor([this] { return m_id != 0 || m_process.state() == QProcess::NotRunning; }, 5000));
+        return m_id;
+    }
+    // Every profile set on it: {index, to be saved}.
+    const QList<QPair<int, bool>>& sets() const { return m_sets; }
+    void send(const QString& line) { m_process.write(line.toUtf8() + '\n'); }
+
+    int close()
+    {
+        if (m_process.state() != QProcess::NotRunning) {
+            m_process.closeWriteChannel();
+            if (!m_process.waitForFinished(5000)) {
+                m_process.kill();
+                m_process.waitForFinished();
+            }
+        }
+        return m_process.exitStatus() == QProcess::NormalExit ? m_process.exitCode() : -1;
+    }
+
+private:
+    QProcess m_process;
+    quint32 m_id = 0;
+    QList<QPair<int, bool>> m_sets;
 };
 
 // A playing app with that program name (application.process.binary).

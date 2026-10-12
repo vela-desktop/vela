@@ -30,6 +30,19 @@ bool near(double a, double b)
     return std::abs(a - b) < 0.006;
 }
 
+bool near(const QList<double>& a, const QList<double>& b)
+{
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (qsizetype i = 0; i < a.size(); i++) {
+        if (!near(a[i], b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 QVariantMap find(const QVariantList& list, const QString& field, const QString& value)
 {
     for (const QVariant& item : list) {
@@ -80,6 +93,20 @@ class ViewTest : public QObject {
     QVariantMap output(const QString& name) const { return find(audio->outputs(), QStringLiteral("name"), name); }
     QVariantMap input(const QString& name) const { return find(audio->inputs(), QStringLiteral("name"), name); }
     QVariantMap app(const QString& key) const { return find(audio->apps(), QStringLiteral("key"), key); }
+    QVariantMap device(const QString& name) const { return find(audio->devices(), QStringLiteral("name"), name); }
+    QStringList profileNames(const QString& name) const
+    {
+        QStringList out;
+        for (const QVariant& p : device(name).value(QStringLiteral("profiles")).toList()) {
+            out.append(p.toMap().value(QStringLiteral("name")).toString());
+        }
+        return out;
+    }
+    QList<double> serverChannels(const QString& name) const
+    {
+        const auto* e = audio->core()->snapshot().endpoint(name);
+        return e ? e->channelVolumes : QList<double>();
+    }
     quint32 id(const QString& name) const
     {
         const auto* e = audio->core()->snapshot().endpoint(name);
@@ -143,6 +170,123 @@ private slots:
         QCOMPARE(scaledChannels({ 0.5, 0.5 }, 1.7), QList<double>({ 1.0, 1.0 })); // the cap
         QCOMPARE(balanceOf({ 0.8, 0.4 }), QList<double>({ 1.0, 0.5 }));
         QVERIFY(balanceOf({ 0.0, 0.0 }).isEmpty());
+
+        // Left and right (PulseAudio's balance).
+        using vela::audio::hasStereo;
+        using vela::audio::stereoBalance;
+        using vela::audio::withStereoBalance;
+        const QStringList lr { QStringLiteral("FL"), QStringLiteral("FR") };
+        QVERIFY(near(stereoBalance(lr, { 1.0, 0.5 }), -0.5));
+        QVERIFY(near(stereoBalance(lr, { 0.5, 1.0 }), 0.5));
+        QVERIFY(near(stereoBalance(lr, { 0.7, 0.7 }), 0.0));
+        QVERIFY(near(stereoBalance(lr, { 0.0, 0.0 }), 0.0));
+        QVERIFY(near(withStereoBalance(lr, { 0.8, 0.8 }, 0.5), { 0.4, 0.8 }));
+        QVERIFY(near(withStereoBalance(lr, { 0.8, 0.4 }, 0.0), { 0.8, 0.8 }));
+        QVERIFY(near(withStereoBalance(lr, { 0.8, 0.8 }, -1.0), { 0.8, 0.0 }));
+        // Center and LFE are left alone; rear channels follow their side.
+        const QStringList surround { QStringLiteral("FL"), QStringLiteral("FR"), QStringLiteral("FC"),
+            QStringLiteral("LFE"), QStringLiteral("RL"), QStringLiteral("RR") };
+        QVERIFY(near(withStereoBalance(surround, { 1, 1, 0.5, 0.5, 1, 1 }, -1.0), { 1, 0, 0.5, 0.5, 1, 0 }));
+        QVERIFY(near(stereoBalance(surround, { 1, 0.5, 0.2, 0.2, 1, 0.5 }), -0.5));
+        QVERIFY(hasStereo(lr));
+        QVERIFY(!hasStereo({ QStringLiteral("MONO") }));
+        QVERIFY(!hasStereo({ QStringLiteral("FC"), QStringLiteral("LFE") }));
+    }
+
+    void balanceKeepsTheVolume()
+    {
+        QVERIFY(output(speakers).value("stereo").toBool());
+        QVERIFY(!input(microphone).value("stereo").toBool());
+        audio->setBalance(QStringLiteral("output"), speakers, 0.5);
+        QVERIFY(near(output(speakers).value("balance").toDouble(), 0.5)); // at once
+        QTRY_VERIFY(near(serverChannels(speakers), { 0.5, 1.0 }));
+        QVERIFY(near(audio->volume(), 1.0));
+
+        audio->setVolume(QStringLiteral("output"), speakers, 0.5);
+        QTRY_VERIFY(near(serverChannels(speakers), { 0.25, 0.5 }));
+        QTest::qWait(600); // past the optimistic window: the server's value
+        QVERIFY(near(output(speakers).value("balance").toDouble(), 0.5));
+
+        // Both at once, before either reaches the server: neither is lost.
+        audio->setBalance(QStringLiteral("output"), speakers, -0.5);
+        audio->setVolume(QStringLiteral("output"), speakers, 0.8);
+        QTRY_VERIFY(near(serverChannels(speakers), { 0.8, 0.4 }));
+
+        // From silence, the balance comes back.
+        audio->setVolume(QStringLiteral("output"), speakers, 0.0);
+        QTRY_VERIFY(near(serverChannels(speakers), { 0.0, 0.0 }));
+        QTest::qWait(600);
+        QVERIFY(near(output(speakers).value("balance").toDouble(), -0.5));
+        audio->setVolume(QStringLiteral("output"), speakers, 0.6);
+        QTRY_VERIFY(near(serverChannels(speakers), { 0.6, 0.3 }));
+
+        // A mono input has no balance.
+        const QList<double> before = serverChannels(microphone);
+        audio->setBalance(QStringLiteral("input"), microphone, 0.5);
+        QVERIFY(near(input(microphone).value("balance").toDouble(), 0.0));
+        QTest::qWait(100);
+        QVERIFY(near(serverChannels(microphone), before));
+    }
+
+    void devicesAndProfiles()
+    {
+        FakeDevice card;
+        const quint32 cardId = card.waitReady();
+        QVERIFY(cardId);
+        QTRY_VERIFY(!device(QStringLiteral("vela-test-card")).isEmpty());
+        const QVariantMap d = device(QStringLiteral("vela-test-card"));
+        QCOMPARE(d.value("description").toString(), QStringLiteral("Test Card"));
+        QCOMPARE(d.value("profile").toInt(), 1);
+        QVERIFY(!d.value("off").toBool());
+        QVERIFY(!d.value("bluetooth").toBool());
+        // HDMI: nothing plugged in, not offered.
+        QCOMPARE(profileNames(QStringLiteral("vela-test-card")),
+            QStringList({ QStringLiteral("off"), QStringLiteral("output:analog-stereo"), QStringLiteral("a2dp-sink-ldac") }));
+        card.send(QStringLiteral("available 2 yes"));
+        QTRY_COMPARE(profileNames(QStringLiteral("vela-test-card")).size(), 4);
+
+        // An output of the card says so, and the card lists it.
+        QVERIFY(control(QStringLiteral("add-sink vela-test-card-output FL FR device.id=%1").arg(cardId)).startsWith(QLatin1String("ok")));
+        QTRY_COMPARE(output(QStringLiteral("vela-test-card-output")).value("device").toString(), QStringLiteral("vela-test-card"));
+        QCOMPARE(device(QStringLiteral("vela-test-card")).value("outputs").toStringList(), QStringList({ QStringLiteral("vela-test-card-output") }));
+        QVERIFY(output(speakers).value("device").toString().isEmpty());
+        QCOMPARE(control(QStringLiteral("remove vela-test-card-output")), QStringLiteral("ok"));
+        QCOMPARE(card.close(), 0);
+        QTRY_VERIFY(device(QStringLiteral("vela-test-card")).isEmpty());
+    }
+
+    void profileChosenAndRemembered()
+    {
+        FakeDevice card;
+        QVERIFY(card.waitReady());
+        QTRY_VERIFY(!device(QStringLiteral("vela-test-card")).isEmpty());
+
+        audio->setProfile(QStringLiteral("vela-test-card"), 3);
+        QCOMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), 3); // at once
+        QVERIFY(device(QStringLiteral("vela-test-card")).value("profilePending").toBool());
+        // Saved: the user chose it.
+        QTRY_VERIFY(card.sets().contains(qMakePair(3, true)));
+        QTRY_VERIFY(!device(QStringLiteral("vela-test-card")).value("profilePending").toBool());
+        QCOMPARE(audio->core()->snapshot().device(QStringLiteral("vela-test-card"))->profile, 3);
+
+        // Off, and on again.
+        audio->setProfile(QStringLiteral("vela-test-card"), 0);
+        QVERIFY(device(QStringLiteral("vela-test-card")).value("off").toBool());
+        QTRY_VERIFY(audio->core()->snapshot().device(QStringLiteral("vela-test-card"))->off());
+        audio->setProfile(QStringLiteral("vela-test-card"), 3);
+        QTRY_COMPARE(audio->core()->snapshot().device(QStringLiteral("vela-test-card"))->profile, 3);
+
+        // WirePlumber keeps the choice across a restart.
+        QTest::qWait(wireplumberSaveDelayMs);
+        QCOMPARE(control(QStringLiteral("restart-wireplumber")), QStringLiteral("ok"));
+        QTRY_VERIFY_WITH_TIMEOUT(audio->core()->snapshot().defaultsKnown, 5000);
+        QTest::qWait(500);
+        QCOMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), 3);
+
+        // An index the card doesn't have.
+        audio->setProfile(QStringLiteral("vela-test-card"), 99);
+        QVERIFY(device(QStringLiteral("vela-test-card")).value("profileError").toBool());
+        QCOMPARE(card.close(), 0);
     }
 
     void lists()

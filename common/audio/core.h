@@ -15,6 +15,8 @@
 
 #include <memory>
 
+struct pw_core;
+
 namespace vela::audio {
 
 class Core : public QObject {
@@ -30,6 +32,10 @@ public:
 
     bool connected() const { return m_snapshot.connected; }
     const Snapshot& snapshot() const { return m_snapshot; }
+    // The connection Vela's own streams use (level meters, test sound,
+    // docs/audio.md §7); null when not connected. It goes away right after
+    // aboutToDisconnect().
+    pw_core* pipewire() const;
 
     // Actions. False when the object doesn't exist, or when not connected.
     // The model changes when the server says so, never before.
@@ -43,9 +49,14 @@ public:
     // The endpoint a stream goes to (or comes from), by node.name; empty: the
     // default one again. WirePlumber remembers it for the app.
     bool setTarget(quint32 stream, const QString& endpoint);
+    // A device's profile, by index; WirePlumber remembers it.
+    bool setProfile(quint32 device, quint32 index);
 
 signals:
     void connectedChanged();
+    // The connection is about to be closed: streams made on pipewire() must
+    // be destroyed now.
+    void aboutToDisconnect();
     // The snapshot has been replaced.
     void changed();
 

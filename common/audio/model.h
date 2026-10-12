@@ -17,6 +17,44 @@ namespace vela::audio {
 
 enum class Direction { Output, Input };
 
+// One of a device's profiles: what it is set up for (stereo output, HDMI,
+// a Bluetooth codec, call mode, off).
+struct Profile {
+    quint32 index = 0;
+    QString name; // "off", "output:analog-stereo", "a2dp-sink-ldac"...
+    QString description;
+    // False when what it needs isn't there (an HDMI port with no display).
+    bool available = true;
+    quint32 priority = 0;
+};
+
+// A sound card or a Bluetooth headset (Audio/Device).
+struct Device {
+    quint32 id = 0;
+    QString name; // device.name: stable across restarts
+    QString description;
+    QString icon;
+    bool bluetooth = false;
+    QList<Profile> profiles;
+    qint32 profile = -1; // the active one's index; -1: unknown
+
+    const Profile* activeProfile() const
+    {
+        for (const Profile& p : profiles) {
+            if (qint32(p.index) == profile) {
+                return &p;
+            }
+        }
+        return nullptr;
+    }
+    // Turned off: its "off" profile is the active one.
+    bool off() const
+    {
+        const Profile* p = activeProfile();
+        return p && p->name == QLatin1String("off");
+    }
+};
+
 // An output (Audio/Sink) or an input (Audio/Source) node.
 struct Endpoint {
     quint32 id = 0;
@@ -29,6 +67,11 @@ struct Endpoint {
     // One per channel; a suspended node may report fewer (two) until its
     // format is set.
     QList<double> channelVolumes;
+    // The position of each of channelVolumes.
+    QStringList volumePositions;
+    // Each channel over the loudest, from the last time the volume was up:
+    // from silence the volume comes back with the same balance.
+    QList<double> shape;
     bool muted = false;
     // The device's volume step (the Route's volumeStep, linear); 0: unknown.
     double step = 0.0;
@@ -92,6 +135,7 @@ struct Snapshot {
     bool defaultsKnown = false;
     QString defaultOutput; // node.name
     QString defaultInput;
+    QList<Device> devices;
     QList<Endpoint> endpoints;
     QList<Stream> streams;
 
@@ -109,6 +153,24 @@ struct Snapshot {
         for (const Endpoint& e : endpoints) {
             if (e.id == id) {
                 return &e;
+            }
+        }
+        return nullptr;
+    }
+    const Device* device(quint32 id) const
+    {
+        for (const Device& d : devices) {
+            if (d.id == id) {
+                return &d;
+            }
+        }
+        return nullptr;
+    }
+    const Device* device(const QString& name) const
+    {
+        for (const Device& d : devices) {
+            if (d.name == name) {
+                return &d;
             }
         }
         return nullptr;
@@ -152,6 +214,84 @@ inline QList<double> balanceOf(const QList<double>& channels)
     }
     for (double c : channels) {
         out.append(c / loudest);
+    }
+    return out;
+}
+
+// Which side a channel is on: -1 left, 1 right, 0 neither (center, LFE,
+// mono, aux), as PulseAudio's balance counts them.
+inline int sideOf(const QString& position)
+{
+    static const QStringList left { QStringLiteral("FL"), QStringLiteral("RL"), QStringLiteral("SL"),
+        QStringLiteral("FLC"), QStringLiteral("RLC"), QStringLiteral("FLW"), QStringLiteral("FLH"),
+        QStringLiteral("TFL"), QStringLiteral("TRL"), QStringLiteral("TSL"), QStringLiteral("TFLC"),
+        QStringLiteral("LLFE") };
+    static const QStringList right { QStringLiteral("FR"), QStringLiteral("RR"), QStringLiteral("SR"),
+        QStringLiteral("FRC"), QStringLiteral("RRC"), QStringLiteral("FRW"), QStringLiteral("FRH"),
+        QStringLiteral("TFR"), QStringLiteral("TRR"), QStringLiteral("TSR"), QStringLiteral("TFRC"),
+        QStringLiteral("RLFE") };
+    return left.contains(position) ? -1 : right.contains(position) ? 1 : 0;
+}
+
+// Channels on both sides: the balance can be set.
+inline bool hasStereo(const QStringList& positions)
+{
+    bool l = false;
+    bool r = false;
+    for (const QString& p : positions) {
+        l = l || sideOf(p) < 0;
+        r = r || sideOf(p) > 0;
+    }
+    return l && r;
+}
+
+// The left/right balance (docs/audio.md §6.2), as PulseAudio computes it:
+// -1 only the left side plays, 1 only the right, 0 both alike.
+inline double stereoBalance(const QStringList& positions, const QList<double>& channels)
+{
+    double left = 0.0;
+    double right = 0.0;
+    for (qsizetype i = 0; i < channels.size(); i++) {
+        const int side = sideOf(positions.value(i));
+        if (side < 0) {
+            left = std::max(left, channels[i]);
+        } else if (side > 0) {
+            right = std::max(right, channels[i]);
+        }
+    }
+    if (left == right) {
+        return 0.0;
+    }
+    return left > right ? -(1.0 - right / left) : 1.0 - left / right;
+}
+
+// The channels with a new balance: the louder side keeps its level, the
+// other one goes down; center and LFE channels are left alone.
+inline QList<double> withStereoBalance(const QStringList& positions, const QList<double>& channels, double balance)
+{
+    balance = std::clamp(balance, -1.0, 1.0);
+    double left = 0.0;
+    double right = 0.0;
+    for (qsizetype i = 0; i < channels.size(); i++) {
+        const int side = sideOf(positions.value(i));
+        if (side < 0) {
+            left = std::max(left, channels[i]);
+        } else if (side > 0) {
+            right = std::max(right, channels[i]);
+        }
+    }
+    const double loudest = std::max(left, right);
+    const double newLeft = balance <= 0.0 ? loudest : (1.0 - balance) * loudest;
+    const double newRight = balance >= 0.0 ? loudest : (1.0 + balance) * loudest;
+    QList<double> out = channels;
+    for (qsizetype i = 0; i < out.size(); i++) {
+        const int side = sideOf(positions.value(i));
+        if (side == 0) {
+            continue;
+        }
+        const double from = side < 0 ? left : right;
+        const double to = side < 0 ? newLeft : newRight;
+        out[i] = std::clamp(from > 0.0 ? out[i] * to / from : to, 0.0, 1.0);
     }
     return out;
 }

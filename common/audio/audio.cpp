@@ -4,6 +4,7 @@
 #include "audio.h"
 
 #include "core.h"
+#include "testsound.h"
 #include "volumesteps.h"
 
 #include <QDBusArgument>
@@ -25,6 +26,9 @@ namespace {
 // how long a privacy-related action may stay unconfirmed.
 constexpr int optimisticMs = 500;
 constexpr int confirmMs = 2000;
+// A profile takes longer: a Bluetooth headset switching codec or to call
+// mode reconnects its audio.
+constexpr int profileMs = 3000;
 
 QString kindOf(Direction direction)
 {
@@ -50,12 +54,29 @@ QVariantMap findByKey(const QVariantList& list, const QString& field, const QStr
     return {};
 }
 
+// The position of each of an endpoint's channel volumes.
+QStringList volumePositions(const Endpoint& e)
+{
+    if (e.volumePositions.size() == e.channelVolumes.size()) {
+        return e.volumePositions;
+    }
+    return e.positions.size() == e.channelVolumes.size() ? e.positions : QStringList();
+}
+
+// An endpoint's balance; from silence, the one it had.
+double balanceOf(const Endpoint& e)
+{
+    return stereoBalance(volumePositions(e), e.volume() > 0.0 ? e.channelVolumes : e.shape);
+}
+
 } // namespace
 
 Audio::Audio(QObject* parent)
     : QObject(parent)
     , m_core(new Core(this))
+    , m_testSound(new TestSound(m_core, this))
 {
+    connect(m_testSound, &TestSound::playingChanged, this, &Audio::testSoundChanged);
     m_flush.setSingleShot(true);
     m_flush.setInterval(0);
     connect(&m_flush, &QTimer::timeout, this, &Audio::flush);
@@ -95,10 +116,10 @@ QList<const Stream*> Audio::appStreams(const QString& key, Direction direction) 
     return out;
 }
 
-void Audio::expect(const QString& key, const QVariant& value, bool optimistic)
+void Audio::expect(const QString& key, const QVariant& value, bool optimistic, int timeoutMs)
 {
     m_errors.remove(key);
-    Pending pending { value, optimistic, {} };
+    Pending pending { value, optimistic, {}, timeoutMs > 0 ? timeoutMs : optimistic ? optimisticMs : confirmMs };
     pending.since.start();
     m_pending.insert(key, pending);
     m_expiry.start();
@@ -168,6 +189,60 @@ void Audio::setMuted(const QString& kind, const QString& name, bool muted)
         return;
     }
     expect(key, muted, !input);
+}
+
+void Audio::setBalance(const QString& kind, const QString& name, double balance)
+{
+    const Endpoint* e = endpoint(kind, name);
+    if (!e || !hasStereo(volumePositions(*e))) {
+        return;
+    }
+    const QString key = QStringLiteral("balance ") + kind + u' ' + name;
+    const double value = std::clamp(balance, -1.0, 1.0);
+    m_writes.insert(key, value);
+    m_flush.start();
+    expect(key, value, true);
+}
+
+void Audio::setProfile(const QString& device, int index)
+{
+    const Device* d = m_core->snapshot().device(device);
+    const QString key = QStringLiteral("profile ") + device;
+    if (!d || index < 0 || !m_core->setProfile(d->id, quint32(index))) {
+        fail(key);
+        return;
+    }
+    expect(key, index, true, profileMs);
+}
+
+QString Audio::testSoundOutput() const
+{
+    return m_testSound->playing();
+}
+
+void Audio::playTestSound(const QString& output)
+{
+    if (endpoint(QStringLiteral("output"), output)) {
+        m_testSound->play(output);
+    }
+}
+
+void Audio::stopTestSound()
+{
+    m_testSound->stop();
+}
+
+QList<double> Audio::channelsFor(const Endpoint& e, const QString& kind) const
+{
+    const QString suffix = kind + u' ' + e.name;
+    const auto volume = m_pending.constFind(QStringLiteral("volume ") + suffix);
+    const double v = volume != m_pending.constEnd() ? volume->value.toDouble() : std::min(e.volume(), 1.0);
+    QList<double> channels = scaledChannels(e.channelVolumes, v, e.shape);
+    const auto balance = m_pending.constFind(QStringLiteral("balance ") + suffix);
+    if (balance != m_pending.constEnd()) {
+        channels = withStereoBalance(volumePositions(e), channels, balance->value.toDouble());
+    }
+    return channels;
 }
 
 void Audio::setAppVolume(const QString& key, double volume)
@@ -326,6 +401,8 @@ QString Audio::appKey(const QString& desktopId) const
 void Audio::flush()
 {
     const auto writes = std::exchange(m_writes, {});
+    // An endpoint's volume and balance go out together, once.
+    QHash<QString, bool> endpoints;
     for (auto it = writes.begin(); it != writes.end(); ++it) {
         const QStringList parts = it.key().split(u' ');
         if (parts.size() < 3) {
@@ -338,7 +415,11 @@ void Audio::flush()
                 ok = m_core->setVolume(s->id, it.value()) || ok;
             }
         } else if (const Endpoint* e = endpoint(parts[1], name)) {
-            ok = m_core->setVolume(e->id, it.value());
+            const QString target = parts[1] + u' ' + name;
+            if (!endpoints.contains(target)) {
+                endpoints.insert(target, m_core->setChannelVolumes(e->id, channelsFor(*e, parts[1])));
+            }
+            ok = endpoints.value(target);
         }
         if (!ok) {
             m_pending.remove(it.key()); // the server's value stands
@@ -388,6 +469,10 @@ void Audio::update()
     const auto serverValue = [&](const QString& key) -> QVariant {
         const QStringList parts = key.split(u' ');
         const QString name = key.section(u' ', 2);
+        if (parts.value(0) == QLatin1String("profile")) {
+            const Device* d = s.device(key.section(u' ', 1));
+            return d ? QVariant(int(d->profile)) : QVariant();
+        }
         if (parts.value(0) == QLatin1String("default")) {
             return parts.value(1) == QLatin1String("output") ? s.defaultOutput : s.defaultInput;
         }
@@ -401,6 +486,9 @@ void Audio::update()
         if (parts.value(0) == QLatin1String("volume")) {
             return std::min(e->volume(), 1.0);
         }
+        if (parts.value(0) == QLatin1String("balance")) {
+            return balanceOf(*e);
+        }
         return e->muted;
     };
 
@@ -409,7 +497,7 @@ void Audio::update()
         if (same(serverValue(it.key()), it->value)) {
             m_errors.remove(it.key());
             it = m_pending.erase(it);
-        } else if (it->since.elapsed() > (it->optimistic ? optimisticMs : confirmMs)) {
+        } else if (it->since.elapsed() > it->timeoutMs) {
             if (!it->optimistic) {
                 m_errors.insert(it.key());
             }
@@ -459,6 +547,8 @@ void Audio::update()
         }
         const double v = shown(QStringLiteral("volume ") + suffix, std::min(e.volume(), 1.0)).toDouble();
         const bool m = shown(QStringLiteral("mute ") + suffix, e.muted).toBool();
+        const Device* device = s.device(e.device);
+        const bool stereo = hasStereo(volumePositions(e));
         const QVariantMap map {
             { QStringLiteral("name"), e.name },
             { QStringLiteral("description"), e.description },
@@ -473,6 +563,9 @@ void Audio::update()
             { QStringLiteral("muteError"), m_errors.contains(QStringLiteral("mute ") + suffix) },
             { QStringLiteral("defaultPending"), pending(QStringLiteral("default ") + kind) },
             { QStringLiteral("defaultError"), m_errors.contains(QStringLiteral("default ") + kind) },
+            { QStringLiteral("device"), device ? device->name : QString() },
+            { QStringLiteral("stereo"), stereo },
+            { QStringLiteral("balance"), stereo ? shown(QStringLiteral("balance ") + suffix, balanceOf(e)).toDouble() : 0.0 },
         };
         (output ? outputs : inputs).append(map);
         if (isDefault && output) {
@@ -497,6 +590,48 @@ void Audio::update()
         m_batteryWatched.remove(path);
         m_batteryVersions.remove(path);
         m_batteries.remove(path);
+    }
+
+    QVariantList devices;
+    for (const Device& d : s.devices) {
+        const QString key = QStringLiteral("profile ") + d.name;
+        const int profile = shown(key, int(d.profile)).toInt();
+        QVariantList profiles;
+        bool off = false;
+        for (const Profile& p : d.profiles) {
+            const bool active = int(p.index) == profile;
+            off = off || (active && p.name == QLatin1String("off"));
+            if (!p.available && !active) {
+                continue; // like Windows: what can't play isn't offered
+            }
+            profiles.append(QVariantMap {
+                { QStringLiteral("index"), int(p.index) },
+                { QStringLiteral("name"), p.name },
+                { QStringLiteral("description"), p.description },
+                { QStringLiteral("available"), p.available },
+                { QStringLiteral("priority"), int(p.priority) },
+            });
+        }
+        QStringList outputNames;
+        QStringList inputNames;
+        for (const Endpoint& e : s.endpoints) {
+            if (e.device == d.id) {
+                (e.direction == Direction::Output ? outputNames : inputNames).append(e.name);
+            }
+        }
+        devices.append(QVariantMap {
+            { QStringLiteral("name"), d.name },
+            { QStringLiteral("description"), d.description },
+            { QStringLiteral("icon"), d.icon },
+            { QStringLiteral("bluetooth"), d.bluetooth },
+            { QStringLiteral("off"), off },
+            { QStringLiteral("profile"), profile },
+            { QStringLiteral("profiles"), profiles },
+            { QStringLiteral("profilePending"), m_pending.contains(key) },
+            { QStringLiteral("profileError"), m_errors.contains(key) },
+            { QStringLiteral("outputs"), outputNames },
+            { QStringLiteral("inputs"), inputNames },
+        });
     }
 
     QVariantList apps;
@@ -536,11 +671,13 @@ void Audio::update()
         });
     }
 
-    if (outputs != m_outputs || inputs != m_inputs || apps != m_apps || defaultOutput != m_defaultOutput
+    if (outputs != m_outputs || inputs != m_inputs || apps != m_apps || devices != m_devices
+        || defaultOutput != m_defaultOutput
         || defaultInput != m_defaultInput || volume != m_volume || muted != m_muted || inputMuted != m_inputMuted) {
         m_outputs = outputs;
         m_inputs = inputs;
         m_apps = apps;
+        m_devices = devices;
         m_defaultOutput = defaultOutput;
         m_defaultInput = defaultInput;
         m_volume = volume;

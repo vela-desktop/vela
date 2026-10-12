@@ -16,6 +16,10 @@ endif()
 add_executable(vela-audio-fake-stream fake-stream.c)
 target_compile_options(vela-audio-fake-stream PRIVATE -Wall -Wextra)
 target_link_libraries(vela-audio-fake-stream PRIVATE PkgConfig::AUDIO_TEST_PIPEWIRE m)
+# A fake sound card with profiles: null sinks have no device.
+add_executable(vela-audio-fake-device fake-device.c)
+target_compile_options(vela-audio-fake-device PRIVATE -Wall -Wextra)
+target_link_libraries(vela-audio-fake-device PRIVATE PkgConfig::AUDIO_TEST_PIPEWIRE)
 
 add_test(NAME audio-fixture
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_fixture.py)
@@ -28,7 +32,7 @@ set_tests_properties(audio-fixture PROPERTIES
 # inside the fixture.
 if(TARGET vela-audio)
     find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Network Test)
-    foreach(suite core view keys)
+    foreach(suite core view keys streams)
         qt_add_executable(vela-audio-${suite}-test ${suite}.cpp harness.h)
         set_target_properties(vela-audio-${suite}-test PROPERTIES AUTOMOC ON)
         target_compile_options(vela-audio-${suite}-test PRIVATE -Wall -Wextra)
@@ -37,7 +41,7 @@ if(TARGET vela-audio)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/fixture.py
                 -- $<TARGET_FILE:vela-audio-${suite}-test>)
         set_tests_properties(audio-${suite} PROPERTIES
-            ENVIRONMENT "VELA_AUDIO_FAKE_STREAM=$<TARGET_FILE:vela-audio-fake-stream>;PYTHONDONTWRITEBYTECODE=1"
+            ENVIRONMENT "VELA_AUDIO_FAKE_STREAM=$<TARGET_FILE:vela-audio-fake-stream>;VELA_AUDIO_FAKE_DEVICE=$<TARGET_FILE:vela-audio-fake-device>;PYTHONDONTWRITEBYTECODE=1"
             SKIP_RETURN_CODE 77
             TIMEOUT 180)
     endforeach()
