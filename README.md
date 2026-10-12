@@ -230,7 +230,8 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
 
 ### Settings (`vela-settings`)
 - **Displays**: drag-and-drop arrangement, scale, resolution, refresh rate, rotation, and
-  "Keep these settings?" with automatic revert. Also **Night light**, variable refresh
+  "Keep these settings?" with compositor-owned revert on timeout or a Settings crash.
+  Native Wayland configuration requires no external display utility. Also **Night light**, variable refresh
   rate and tearing.
 - **Sound, Notifications, Power, Clipboard**, Bluetooth and devices, **mouse and
   touchpad** (tap to click, scroll direction, three- and four-finger gestures), and

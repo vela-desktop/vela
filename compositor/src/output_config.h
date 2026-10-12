@@ -49,6 +49,7 @@ struct vela_output_config_entry {
     int transform;
     int x, y;
 };
-void vela_output_config_save(const struct vela_output_config_entry *entries, int count);
+// False when the configuration cannot be written and atomically replaced.
+bool vela_output_config_save(const struct vela_output_config_entry *entries, int count);
 
 #endif

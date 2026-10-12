@@ -69,6 +69,7 @@ endfunction()
 
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
     ext-background-effect-v1)
+vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-output-preview-v1.xml vela-output-preview-v1)
 
 # Client side, to talk to the host compositor when Vela runs in a window
 # (nested.c).
@@ -152,6 +153,7 @@ add_executable(vela-compositor
     src/nested.c
     src/output.c
     src/output_manager.c
+    src/output_preview.c
     src/popup.c
     src/polkit.c
     src/process.c
@@ -221,6 +223,17 @@ install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # sharpness geometry, color, sun, settings. They need GoogleTest (the gtest
 # package) and the test tools enabled.
 if(VELA_BUILD_TOOLS)
+    # Exercise the actual display protocol and watchdog without Vulkan/DRM.
+    add_executable(vela-display-test-server
+        ${PROJECT_SOURCE_DIR}/settings/tests/display_server.c
+        src/output_manager.c src/output_preview.c ${VELA_OWN_PROTOCOL_SOURCES})
+    target_include_directories(vela-display-test-server PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-display-test-server PRIVATE WLR_USE_UNSTABLE
+        VELA_OUTPUT_PREVIEW_TIMEOUT_MS=1200)
+    target_compile_options(vela-display-test-server PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(vela-display-test-server PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER)
+
     # CPU scene comparison, using the actual private frame function. Discard
     # unrelated rendering sections so these tools need no compositor or GPU.
     set(VELA_SCENE_DIFF_REFERENCE "" CACHE FILEPATH

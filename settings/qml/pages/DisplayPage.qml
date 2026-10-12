@@ -10,35 +10,33 @@ import Vela.Controls
 // like Windows.
 Page {
     id: page
-    property int selected: 0
+    property string selectedName: ""
+    readonly property int selected: Math.max(0, outputs.findIndex(o => o.name === selectedName))
+    function selectOutput(index) {
+        if (outputs[index]) selectedName = outputs[index].name
+    }
     readonly property var outputs: Displays.outputs
     readonly property var output: outputs.length > selected ? outputs[selected] : null
     readonly property var enabledOutputs: outputs.filter(o => o.enabled)
 
-    Component.onCompleted: Displays.refresh()
-
-    // --- changing and asking for confirmation ---
-    function change(changes) {
-        if (!output) {
-            return
-        }
-        if (Displays.apply(output.name, changes)) {
-            confirm.seconds = 15
-            confirm.open()
-            countdown.restart()
-        }
+    Component.onCompleted: {
+        Displays.refresh()
+        if (Displays.confirming) confirm.open()
     }
-    Timer {
-        id: countdown
-        interval: 1000
-        repeat: true
-        onTriggered: {
-            confirm.seconds -= 1
-            if (confirm.seconds <= 0) {
-                stop()
-                confirm.close()
-                Displays.revert()
-            }
+    Component.onDestruction: Displays.revert()
+
+    // Confirmation starts only after the compositor has applied the change.
+    // Its timer and previous configuration survive this page and client.
+    function change(changes) {
+        if (output && Displays.available && !Displays.pending)
+            Displays.apply(output.name, changes)
+    }
+    Connections {
+        target: Displays
+        function onConfirmationRequested() { confirm.open() }
+        function onConfirmationFinished() { confirm.close() }
+        function onOutputsChanged() {
+            if (!page.outputs.some(o => o.name === page.selectedName)) page.selectOutput(0)
         }
     }
 
@@ -67,8 +65,7 @@ Page {
     }
     readonly property var scales: [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3]
     // The recommended scale: the one bringing points to about 96 per logical
-    // inch. Without physical sizes (wlr-randr doesn't give them), like
-    // Windows: by the native resolution's height.
+    // inch, estimated from the native resolution's height.
     function recommendedScale(o) {
         const preferred = o.modes.find(m => m.preferred) || o.current
         if (!preferred) return 1
@@ -85,6 +82,7 @@ Page {
     Rectangle {
         id: arrangement
         visible: page.outputs.length > 1
+        enabled: Displays.available && !Displays.pending
         width: parent.width
         height: 220
         radius: Theme.radiusCard
@@ -138,7 +136,7 @@ Page {
                     anchors.fill: parent
                     drag.target: page.enabledOutputs.length > 1 ? monitor : null
                     drag.threshold: 4
-                    onPressed: page.selected = monitor.index
+                    onPressed: page.selectOutput(monitor.index)
                     onReleased: {
                         if (!drag.active && monitor.x === monitor.homeX && monitor.y === monitor.homeY) {
                             return
@@ -188,13 +186,14 @@ Page {
             if (!best || distance < best.distance) best = { x: Math.round(x), y: Math.round(y), distance: distance }
         }
         if (best && (best.x !== moving.x || best.y !== moving.y)) {
-            selected = index
+            selectOutput(index)
             change({ x: best.x, y: best.y })
         }
     }
 
     Row {
         visible: page.outputs.length > 1
+        enabled: Displays.available && !Displays.pending
         width: parent.width
         height: 44
         spacing: 8
@@ -203,15 +202,22 @@ Page {
             anchors.verticalCenter: parent.verticalCenter
             model: page.outputs.map((o, i) => ({ text: (i + 1) + ". " + (o.description || o.name) }))
             currentIndex: page.selected
-            onChosen: index => page.selected = index
+            onChosen: index => page.selectOutput(index)
         }
     }
 
     Card {
         visible: !Displays.available
         icon: "dialog-warning"
-        title: qsTr("Changing displays needs wlr-randr")
-        description: qsTr("Install the wlr-randr package and open this page again.")
+        title: qsTr("Display settings are unavailable")
+        description: qsTr("This session does not support safe display changes.")
+    }
+
+    Card {
+        visible: Displays.error !== ""
+        icon: "dialog-warning"
+        title: qsTr("Could not change display settings")
+        description: Displays.error
     }
 
     CardGroup {
@@ -243,6 +249,7 @@ Page {
 
     CardGroup {
         visible: page.output !== null
+        enabled: Displays.available && !Displays.pending
         title: qsTr("Scale & layout")
         Card {
             icon: "zoom-in"
@@ -292,6 +299,7 @@ Page {
         title: qsTr("Advanced")
         Card {
             visible: page.refreshRates.some(r => r > 0)
+            enabled: Displays.available && !Displays.pending
             icon: "chronometer"
             title: qsTr("Refresh rate")
             description: qsTr("A higher refresh rate makes motion smoother, but uses more power")
@@ -304,12 +312,13 @@ Page {
         }
         Card {
             visible: page.outputs.length > 1
+            enabled: Displays.available && !Displays.pending
             icon: "video-display"
             title: page.output && page.output.enabled ? qsTr("Disconnect this display") : qsTr("Use this display")
             description: page.output ? (page.output.description || page.output.name) + " (" + page.output.name + ")" : ""
             trailing: Button {
                 text: page.output && page.output.enabled ? qsTr("Disconnect") : qsTr("Turn on")
-                usable: !(page.output && page.output.enabled && page.enabledOutputs.length <= 1)
+                usable: Displays.available && !Displays.pending && !(page.output && page.output.enabled && page.enabledOutputs.length <= 1)
                 onClicked: page.change({ enabled: !page.output.enabled })
             }
         }
@@ -353,18 +362,14 @@ Page {
     Dialog {
         id: confirm
         parent: root.contentItem
-        property int seconds: 15
         title: qsTr("Keep these display settings?")
         primaryText: qsTr("Keep changes")
         secondaryText: qsTr("Revert")
-        onAccepted: countdown.stop()
-        onRejected: {
-            countdown.stop()
-            Displays.revert()
-        }
+        onAccepted: Displays.confirm()
+        onRejected: Displays.revert()
         Text {
             width: parent.width
-            text: qsTr("Reverting to the previous display settings in ") + confirm.seconds + qsTr(" seconds.")
+            text: qsTr("Reverting to the previous display settings in ") + Displays.secondsRemaining + qsTr(" seconds.")
             color: Theme.text
             font.pixelSize: Theme.fontBody
             wrapMode: Text.Wrap
