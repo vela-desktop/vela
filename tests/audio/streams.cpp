@@ -147,6 +147,23 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.2)), 5000);
     }
 
+    void meterTracksReplacementStreams()
+    {
+        auto first = tone(QStringLiteral("vela-player"), 0.3);
+        QVERIFY(first->waitStreaming());
+        auto m = meter(QStringLiteral("app"), QStringLiteral("vela-player"));
+        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.3)), 5000);
+        QCOMPARE(m->monitored().size(), 1);
+        QCOMPARE(first->close(), 0);
+        QTRY_VERIFY(m->monitored().isEmpty());
+        auto second = tone(QStringLiteral("vela-player"), 0.5);
+        QVERIFY(second->waitStreaming());
+        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.5)), 5000);
+        QCOMPARE(m->monitored(), QList<quint32>({ second->node() }));
+        // Different streams must never retain the previous node's meter.
+        QVERIFY(m->monitored().first() == second->node());
+    }
+
     void metersSurviveARestart()
     {
         auto music = tone(QStringLiteral("vela-player"), 0.5);

@@ -366,6 +366,56 @@ private slots:
         QVERIFY(restarts.isEmpty());
     }
 
+    // If applying live metadata fails, the next login must not apply a rate
+    // that Settings already reported as rejected.
+    void pipewireWriteRollsBack()
+    {
+        const QString path = Config::pipewireFile();
+        const bool existed = QFileInfo::exists(path);
+        const QByteArray original = read(path);
+        Config cfg;
+        QVERIFY(cfg.setPipewireRates({ 48000 }));
+        const QByteArray before = read(path);
+        bool invoked = false;
+        QVERIFY(!cfg.setPipewireRates({ 96000 }, [&] {
+            invoked = true;
+            return false;
+        }));
+        QVERIFY(invoked);
+        QCOMPARE(read(path), before);
+
+        QVERIFY(QFile::remove(path));
+        invoked = false;
+        QVERIFY(!cfg.setPipewireRates({ 96000 }, [&] {
+            invoked = true;
+            return false;
+        }));
+        QVERIFY(invoked);
+        QVERIFY(!QFileInfo::exists(path)); // no file before: none after
+        if (existed) {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QCOMPARE(file.write(original), qint64(original.size()));
+            file.close();
+        }
+    }
+
+    // The fake ALSA node does not reload its WirePlumber rule, as can happen
+    // with a failed restart. Optimism must expire with a visible error.
+    void endpointRateTimeoutReportsError()
+    {
+        const QString dac = QStringLiteral("vela-test-timeout-dac");
+        QVERIFY(control(QStringLiteral("add-sink vela-test-timeout-dac FL FR device.api=alsa")).startsWith(QLatin1String("ok")));
+        QVERIFY(QTest::qWaitFor([&] { return !output(dac).isEmpty(); }, 5000));
+        audio->setEndpointRate(QStringLiteral("output"), dac, 96000);
+        QCOMPARE(output(dac).value("fixedRate").toInt(), 96000);
+        QTRY_VERIFY_WITH_TIMEOUT(output(dac).value("rateError").toBool(), 10000);
+        QCOMPARE(output(dac).value("fixedRate").toInt(), 0);
+        audio->setEndpointRate(QStringLiteral("output"), dac, 0);
+        QVERIFY(Config().rules().isEmpty());
+        QCOMPARE(control(QStringLiteral("remove vela-test-timeout-dac")), QStringLiteral("ok"));
+    }
+
     // One restart for changes in a row, never sooner than 1.5 s after a
     // change WirePlumber has to save; WirePlumber accepts the file.
     void restartsWaitForWirePlumber()
@@ -397,8 +447,12 @@ private slots:
 
         // "Restart audio" restarts PipeWire, which takes WirePlumber along.
         audio->restartAudio();
-        QVERIFY(QTest::qWaitFor([this] { return restarts.size() == 2; }, 5000));
-        QCOMPARE(restarts.last(), QStringLiteral("pipewire.service"));
+        QVERIFY(QTest::qWaitFor([this] { return restarts.size() == 4; }, 5000));
+        QCOMPARE(restarts.mid(1), (QStringList {
+            QStringLiteral("pipewire.service"),
+            QStringLiteral("wireplumber.service"),
+            QStringLiteral("pipewire-pulse.service"),
+        }));
 
         QVERIFY(QTest::qWaitFor([&] { return !output(dac).isEmpty(); }, 10000));
         audio->setEndpointRate(QStringLiteral("output"), dac, 0);

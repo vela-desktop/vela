@@ -24,12 +24,14 @@ constexpr double decay = 0.04;
 constexpr int tickMs = 30;
 // The rate peaks are computed at (resample.peaks): one per 10 ms.
 constexpr int peakRate = 100;
+constexpr int retryMs = 3000; // retry failed links at most once per three seconds
 
 } // namespace
 
 struct LevelMeter::Monitor {
     LevelMeter* meter = nullptr;
     quint32 node = 0;
+    quint64 serial = 0;
     pw_stream* stream = nullptr;
     spa_hook listener {};
     // The loudest sample since the meter last looked, written by PipeWire's
@@ -95,6 +97,12 @@ struct LevelMeter::Monitor {
 LevelMeter::LevelMeter(QObject* parent)
     : QObject(parent)
 {
+    m_retry.setSingleShot(true);
+    m_retry.setInterval(retryMs);
+    connect(&m_retry, &QTimer::timeout, this, [this] {
+        m_failed.clear();
+        reconcile();
+    });
     m_tick.setInterval(tickMs);
     connect(&m_tick, &QTimer::timeout, this, &LevelMeter::tick);
     m_reconcile.setSingleShot(true);
@@ -157,8 +165,14 @@ void LevelMeter::setActive(bool active)
 
 void LevelMeter::closeAll()
 {
+    m_retry.stop();
+    m_tick.stop();
     m_monitors.clear();
     m_failed.clear();
+    if (m_level != 0.0) {
+        m_level = 0.0;
+        emit levelChanged();
+    }
 }
 
 void LevelMeter::reconcile()
@@ -188,9 +202,10 @@ void LevelMeter::reconcile()
     }
 
     for (auto it = m_monitors.begin(); it != m_monitors.end();) {
-        if (!wanted.contains(it.key()) || it.value()->failed) {
+        const bool stale = !wanted.contains(it.key()) || wanted.value(it.key()).serial != it.value()->serial;
+        if (stale || it.value()->failed) {
             if (it.value()->failed) {
-                m_failed.insert(it.key());
+                m_failed.insert(it.key(), it.value()->serial);
             }
             it = m_monitors.erase(it);
         } else {
@@ -198,7 +213,8 @@ void LevelMeter::reconcile()
         }
     }
     for (auto it = m_failed.begin(); it != m_failed.end();) {
-        it = wanted.contains(*it) ? std::next(it) : m_failed.erase(it);
+        it = !wanted.contains(it.key()) || wanted.value(it.key()).serial != it.value()
+            ? m_failed.erase(it) : std::next(it);
     }
 
     for (auto it = wanted.cbegin(); it != wanted.cend(); ++it) {
@@ -226,9 +242,10 @@ void LevelMeter::reconcile()
         auto monitor = std::make_shared<Monitor>();
         monitor->meter = this;
         monitor->node = it.key();
+        monitor->serial = it->serial;
         monitor->stream = pw_stream_new(connection, "vela-level-meter", props);
         if (!monitor->stream) {
-            m_failed.insert(it.key());
+            m_failed.insert(it.key(), it->serial);
             continue;
         }
         pw_stream_add_listener(monitor->stream, &monitor->listener, Monitor::events(), monitor.get());
@@ -242,10 +259,16 @@ void LevelMeter::reconcile()
                 pw_stream_flags(PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS),
                 params, 1)
             < 0) {
-            m_failed.insert(it.key());
+            m_failed.insert(it.key(), it->serial);
             continue;
         }
         m_monitors.insert(it.key(), monitor);
+    }
+
+    if (m_failed.isEmpty() || !m_active || !connection) {
+        m_retry.stop();
+    } else if (!m_retry.isActive()) {
+        m_retry.start();
     }
 
     if (m_monitors.isEmpty()) {

@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLoggingCategory>
+#include <QPointer>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QVariant>
@@ -31,6 +32,7 @@ constexpr int quietMs = 1500;
 
 const QString wireplumberUnit = QStringLiteral("wireplumber.service");
 const QString pipewireUnit = QStringLiteral("pipewire.service");
+const QString pipewirePulseUnit = QStringLiteral("pipewire-pulse.service");
 
 const char* const header = "# Written by Vela's Settings (docs/audio.md §8): it rewrites this file\n"
                            "# whole, so changes made here are lost. Put your own rules in a file\n"
@@ -129,40 +131,26 @@ QByteArray readFile(const QString& path)
     return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
 }
 
-bool writeFile(const QString& path, const QString& text)
+bool writeFile(const QString& path, const QByteArray& text)
 {
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
         qCWarning(lcAudio) << "can't create the directory of" << path;
         return false;
     }
     QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly) || file.write(text.toUtf8()) < 0 || !file.commit()) {
+    if (!file.open(QIODevice::WriteOnly) || file.write(text) != text.size() || !file.commit()) {
         qCWarning(lcAudio) << "can't write" << path << file.errorString();
         return false;
     }
     return true;
 }
 
-void restartWithSystemd(const QString& unit)
-{
-    QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.systemd1"),
-        QStringLiteral("/org/freedesktop/systemd1"), QStringLiteral("org.freedesktop.systemd1.Manager"),
-        QStringLiteral("RestartUnit"));
-    call << unit << QStringLiteral("replace");
-    auto* watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call));
-    QObject::connect(watcher, &QDBusPendingCallWatcher::finished, watcher, [unit](QDBusPendingCallWatcher* w) {
-        if (w->isError()) {
-            qCWarning(lcAudio) << "can't restart" << unit << w->error().message();
-        }
-        w->deleteLater();
-    });
-}
 
 } // namespace
 
 Config::Config(QObject* parent)
     : QObject(parent)
-    , m_restarter(restartWithSystemd)
+    , m_restarter([this](const QString& unit) { restartWithSystemd(unit); })
 {
     m_restart.setSingleShot(true);
     connect(&m_restart, &QTimer::timeout, this, &Config::restartNow);
@@ -292,7 +280,7 @@ bool Config::setRule(const DeviceRule& rule)
                 + QStringLiteral(" = [\n") + section + QStringLiteral("]\n");
         }
     }
-    if (!writeFile(wireplumberFile(), text)) {
+    if (!writeFile(wireplumberFile(), text.toUtf8())) {
         return false;
     }
     if (restart) {
@@ -353,7 +341,7 @@ QList<quint32> Config::pipewireRates() const
         file.value(QStringLiteral("context.properties")).toMap().value(QStringLiteral("default.clock.allowed-rates")));
 }
 
-bool Config::setPipewireRates(const QList<quint32>& rates)
+bool Config::setPipewireRates(const QList<quint32>& rates, const std::function<bool()>& applyNow)
 {
     if (rates.isEmpty()) {
         return false;
@@ -362,11 +350,54 @@ bool Config::setPipewireRates(const QList<quint32>& rates)
     if (defaultRateFor(rates) != 48000) {
         properties += QStringLiteral("    default.clock.rate = ") + QString::number(defaultRateFor(rates)) + u'\n';
     }
-    return writeFile(pipewireFile(),
-        QString::fromUtf8(header) + QStringLiteral("\ncontext.properties = {\n") + properties + QStringLiteral("}\n"));
+    const QString path = pipewireFile();
+    const bool existed = QFileInfo::exists(path);
+    const QByteArray previous = existed ? readFile(path) : QByteArray();
+    const QByteArray next = (QString::fromUtf8(header) + QStringLiteral("\ncontext.properties = {\n")
+        + properties + QStringLiteral("}\n")).toUtf8();
+    if (!writeFile(path, next)) {
+        return false;
+    }
+    if (!applyNow || applyNow()) {
+        return true;
+    }
+    // Keep a failed live change from unexpectedly activating on the next
+    // PipeWire startup. Even manually edited bytes are preserved verbatim.
+    const bool restored = existed ? writeFile(path, previous) : QFile::remove(path);
+    if (!restored) {
+        qCWarning(lcAudio) << "can't roll back failed audio configuration" << path;
+    }
+    return false;
 }
 
 // ------------------------------------------------------------- restarts --
+
+void Config::restartWithSystemd(const QString& unit)
+{
+    // The PulseAudio compatibility service is optional and only restarted if active.
+    const bool optional = unit == pipewirePulseUnit;
+    QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.systemd1"),
+        QStringLiteral("/org/freedesktop/systemd1"), QStringLiteral("org.freedesktop.systemd1.Manager"),
+        optional ? QStringLiteral("TryRestartUnit") : QStringLiteral("RestartUnit"));
+    call << unit << QStringLiteral("replace");
+    auto* watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call));
+    const QPointer<Config> owner(this);
+    QObject::connect(watcher, &QDBusPendingCallWatcher::finished, watcher, [owner, unit, optional](QDBusPendingCallWatcher* w) {
+        if (w->isError()) {
+            const QString errorName = w->error().name();
+            const bool absent = optional && errorName.endsWith(QLatin1String(".NoSuchUnit"));
+            if (!absent) {
+                qCWarning(lcAudio) << "can't restart" << unit << w->error().message();
+                if (owner && !owner->m_restartError) {
+                    owner->m_restartError = true;
+                    emit owner->restartErrorChanged();
+                }
+            }
+        }
+        w->deleteLater();
+    });
+}
+
 
 void Config::noteChange()
 {
@@ -385,7 +416,11 @@ void Config::restartAudio()
 
 void Config::schedule(const QString& unit)
 {
-    // PipeWire's restart takes WirePlumber with it.
+    if (m_restartError) {
+        m_restartError = false;
+        emit restartErrorChanged();
+    }
+    // A full restart supersedes an outstanding WirePlumber-only restart.
     if (!m_restart.isActive() || unit == pipewireUnit) {
         m_unit = unit;
     }
@@ -407,7 +442,12 @@ void Config::restartNow()
     const QString unit = std::exchange(m_unit, QString());
     emit restartPendingChanged();
     if (m_restarter && !unit.isEmpty()) {
+        // Do not assume distribution-specific PartOf/BindsTo relationships.
         m_restarter(unit);
+        if (unit == pipewireUnit) {
+            m_restarter(wireplumberUnit);
+            m_restarter(pipewirePulseUnit);
+        }
     }
 }
 

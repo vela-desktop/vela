@@ -228,7 +228,8 @@ Page {
             visible: Audio.sampleRateMode !== ""
             icon: "chronometer"
             title: qsTr("Sample rate")
-            description: Audio.sampleRateMode === "automatic"
+            description: Audio.sampleRateError ? qsTr("Couldn't apply the sample rate. Please try again.")
+                : Audio.sampleRateMode === "automatic"
                 ? qsTr("Sound plays at its own rate, without conversion")
                 : Audio.sampleRateMode === "fixed"
                     ? qsTr("All sound is converted to %1 Hz").arg(Audio.sampleRate)
@@ -246,7 +247,8 @@ Page {
         Card {
             icon: "view-refresh"
             title: qsTr("Restart audio")
-            description: qsTr("If sound is stuck. Sound stops for a few seconds, and apps reconnect.")
+            description: Audio.restartError ? qsTr("Couldn't restart audio. Check your systemd user services.")
+                : qsTr("If sound is stuck. Sound stops for a few seconds, and apps reconnect.")
             trailing: Button {
                 text: qsTr("Restart")
                 usable: !Audio.restartPending

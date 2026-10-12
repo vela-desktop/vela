@@ -15,6 +15,7 @@
 //                                remembered (chosen by the user)
 // On stdin:
 //   available <index> yes|no     that profile can (not) be used now
+//   ignore yes|no                acknowledge profile requests without applying them
 //   quit (or end of input)       exit
 //
 // Usage: vela-audio-fake-device [--prop key=value]...
@@ -63,6 +64,7 @@ struct fake {
     struct spa_param_info params[N_PARAMS];
     uint32_t current;
     bool saved;
+    bool ignore_profile; // simulate a backend that acknowledges but never applies a profile
     struct pw_proxy* proxy;
     struct spa_hook proxy_listener;
     char input[256];
@@ -159,6 +161,9 @@ static int impl_set_param(void* object, uint32_t id, uint32_t flags, const struc
     if (index < 0 || (uint32_t)index >= N_PROFILES) {
         return -EINVAL;
     }
+    if (fake->ignore_profile) {
+        return 0; // asynchronous confirmation will never arrive
+    }
     fake->current = (uint32_t)index;
     fake->saved = save;
     printf("profile %d %d\n", index, save ? 1 : 0);
@@ -203,6 +208,10 @@ static void command(struct fake* fake, char* line)
     unsigned index;
     if (strcmp(line, "quit") == 0) {
         pw_main_loop_quit(fake->loop);
+    } else if (sscanf(line, "ignore %7s", state) == 1) {
+        fake->ignore_profile = strcmp(state, "yes") == 0;
+        printf("ignore %s\n", fake->ignore_profile ? "yes" : "no");
+        fflush(stdout);
     } else if (sscanf(line, "available %u %7s", &index, state) == 2 && index < N_PROFILES) {
         profiles[index].available = strcmp(state, "yes") == 0 ? SPA_PARAM_AVAILABILITY_yes : SPA_PARAM_AVAILABILITY_no;
         fake->params[PARAM_ENUM_PROFILE].flags ^= SPA_PARAM_INFO_SERIAL;

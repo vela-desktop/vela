@@ -300,6 +300,27 @@ private slots:
         QCOMPARE(card.close(), 0);
     }
 
+    void optimisticProfileTimeoutReportsError()
+    {
+        FakeDevice card;
+        QVERIFY(card.waitReady());
+        QTRY_VERIFY(!device(QStringLiteral("vela-test-card")).isEmpty());
+        QVERIFY(card.ignoreProfileChanges(true));
+        audio->setProfile(QStringLiteral("vela-test-card"), 3);
+        QCOMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), 3); // optimistic
+        QVERIFY(device(QStringLiteral("vela-test-card")).value("profilePending").toBool());
+        QTRY_VERIFY_WITH_TIMEOUT(device(QStringLiteral("vela-test-card")).value("profileError").toBool(), 5000);
+        QCOMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), 1); // server won
+
+        // A subsequent, confirmed request clears the previous timeout error.
+        QVERIFY(card.ignoreProfileChanges(false));
+        audio->setProfile(QStringLiteral("vela-test-card"), 3);
+        QTRY_COMPARE(device(QStringLiteral("vela-test-card")).value("profile").toInt(), 3);
+        QTRY_VERIFY(!device(QStringLiteral("vela-test-card")).value("profilePending").toBool());
+        QVERIFY(!device(QStringLiteral("vela-test-card")).value("profileError").toBool());
+        QCOMPARE(card.close(), 0);
+    }
+
     void lists()
     {
         QCOMPARE(audio->outputs().size(), 3);

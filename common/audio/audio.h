@@ -83,12 +83,14 @@ class Audio : public QObject {
     // while unknown.
     Q_PROPERTY(QString sampleRateMode READ sampleRateMode NOTIFY changed)
     Q_PROPERTY(int sampleRate READ sampleRate NOTIFY changed)
+    Q_PROPERTY(bool sampleRateError READ sampleRateError NOTIFY changed)
     // The rates the graph can be fixed at (44100 to 192000).
     Q_PROPERTY(QVariantList sampleRates READ sampleRates CONSTANT)
     Q_PROPERTY(QVariantList allowedRates READ allowedRates NOTIFY changed)
     // A WirePlumber or audio restart is waiting for WirePlumber to save its
     // state (docs/audio.md §8).
     Q_PROPERTY(bool restartPending READ restartPending NOTIFY restartPendingChanged)
+    Q_PROPERTY(bool restartError READ restartError NOTIFY restartErrorChanged)
     // The output the test sound is playing on; empty: none.
     Q_PROPERTY(QString testSoundOutput READ testSoundOutput NOTIFY testSoundChanged)
     Q_PROPERTY(QString defaultOutput READ defaultOutput NOTIFY changed)
@@ -125,9 +127,11 @@ public:
     QVariantList microphoneUsers() const { return m_microphoneUsers; }
     QString sampleRateMode() const { return m_sampleRateMode; }
     int sampleRate() const { return m_sampleRate; }
+    bool sampleRateError() const { return m_sampleRateError; }
     QVariantList sampleRates() const;
     QVariantList allowedRates() const { return m_allowedRates; }
     bool restartPending() const;
+    bool restartError() const;
     QString testSoundOutput() const;
     QString defaultOutput() const { return m_defaultOutput; }
     QString defaultInput() const { return m_defaultInput; }
@@ -187,6 +191,7 @@ signals:
     void changed();
     void testSoundChanged();
     void restartPendingChanged();
+    void restartErrorChanged();
 
 private Q_SLOTS:
     // BlueZ's PropertiesChanged on a headset: its battery.
@@ -202,11 +207,13 @@ private:
         bool optimistic = true;
         QElapsedTimer since;
         int timeoutMs = 0;
+        bool errorOnTimeout = false;
     };
 
     const Endpoint* endpoint(const QString& kind, const QString& name) const;
     QList<const Stream*> appStreams(const QString& key, Direction direction) const;
-    void expect(const QString& key, const QVariant& value, bool optimistic, int timeoutMs = 0);
+    void expect(const QString& key, const QVariant& value, bool optimistic, int timeoutMs = 0,
+        bool errorOnTimeout = false);
     // The channels to write for an endpoint: its volume and balance as
     // shown, with what is waiting to be written.
     QList<double> channelsFor(const Endpoint& e, const QString& kind) const;
@@ -249,6 +256,7 @@ private:
     QString m_sampleRateMode;
     QHash<QString, QString> m_names; // node.name -> the name Vela's rule gives
     int m_sampleRate = 0;
+    bool m_sampleRateError = false;
     QVariantList m_allowedRates;
     struct MicrophoneUser {
         QVariantMap info;

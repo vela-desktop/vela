@@ -70,7 +70,8 @@ public:
     // there is only one (docs/audio.md §8.1); empty when there is no file.
     bool hasPipewireFile() const;
     QList<quint32> pipewireRates() const;
-    bool setPipewireRates(const QList<quint32>& rates);
+    // Apply to PipeWire after persisting; restore the previous file if applying fails.
+    bool setPipewireRates(const QList<quint32>& rates, const std::function<bool()>& applyNow = {});
 
     // Vela changed WirePlumber's state (a volume, a default...): WirePlumber
     // saves it about a second later and not when it exits, so a restart
@@ -84,6 +85,7 @@ public:
     void restartAudio();
     // A restart is waiting for its time.
     bool restartPending() const { return m_restart.isActive(); }
+    bool restartError() const { return m_restartError; }
 
     void setRestarter(Restarter restarter) { m_restarter = std::move(restarter); }
 
@@ -93,17 +95,20 @@ public:
 
 signals:
     void restartPendingChanged();
+    void restartErrorChanged();
     void rulesChanged();
 
 private:
     void schedule(const QString& unit);
     void restartNow();
+    void restartWithSystemd(const QString& unit);
     void rewatch();
 
     Restarter m_restarter;
     QElapsedTimer m_lastChange;
     QTimer m_restart;
     QString m_unit; // what the pending restart restarts
+    bool m_restartError = false;
     QFileSystemWatcher* m_watcher = nullptr;
 };
 

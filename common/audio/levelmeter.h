@@ -73,7 +73,8 @@ private:
     bool m_active = false;
     double m_level = 0.0;
     QHash<quint32, std::shared_ptr<Monitor>> m_monitors; // by the recorded node
-    QSet<quint32> m_failed; // not tried again while the node stays
+    QHash<quint32, quint64> m_failed; // node id -> serial, no stale failures on id reuse
+    QTimer m_retry;
     QTimer m_tick;
     QTimer m_reconcile;
 };

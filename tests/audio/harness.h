@@ -127,6 +127,8 @@ public:
                     m_id = words.value(1).toUInt();
                 } else if (words.value(0) == "profile") {
                     m_sets.append({ words.value(1).toInt(), words.value(2) == "1" });
+                } else if (words.value(0) == "ignore") {
+                    m_ignore = words.value(1) == "yes";
                 }
             }
         });
@@ -143,6 +145,11 @@ public:
     // Every profile set on it: {index, to be saved}.
     const QList<QPair<int, bool>>& sets() const { return m_sets; }
     void send(const QString& line) { m_process.write(line.toUtf8() + '\n'); }
+    bool ignoreProfileChanges(bool ignored)
+    {
+        send(ignored ? QStringLiteral("ignore yes") : QStringLiteral("ignore no"));
+        return QTest::qWaitFor([this, ignored] { return m_ignore == ignored; }, 2000);
+    }
 
     int close()
     {
@@ -160,6 +167,7 @@ private:
     QProcess m_process;
     quint32 m_id = 0;
     QList<QPair<int, bool>> m_sets;
+    bool m_ignore = false;
 };
 
 // A playing app with that program name (application.process.binary).

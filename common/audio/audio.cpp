@@ -116,6 +116,7 @@ Audio::Audio(QObject* parent)
 {
     connect(m_testSound, &TestSound::playingChanged, this, &Audio::testSoundChanged);
     connect(m_config, &Config::restartPendingChanged, this, &Audio::restartPendingChanged);
+    connect(m_config, &Config::restartErrorChanged, this, &Audio::restartErrorChanged);
     connect(m_config, &Config::rulesChanged, this, [this] {
         loadNames();
         update();
@@ -163,13 +164,14 @@ QList<const Stream*> Audio::appStreams(const QString& key, Direction direction) 
     return out;
 }
 
-void Audio::expect(const QString& key, const QVariant& value, bool optimistic, int timeoutMs)
+void Audio::expect(const QString& key, const QVariant& value, bool optimistic, int timeoutMs, bool errorOnTimeout)
 {
     if (!isConfigKey(key)) {
         m_config->noteChange();
     }
     m_errors.remove(key);
-    Pending pending { value, optimistic, {}, timeoutMs > 0 ? timeoutMs : optimistic ? optimisticMs : confirmMs };
+    Pending pending { value, optimistic, {}, timeoutMs > 0 ? timeoutMs : optimistic ? optimisticMs : confirmMs,
+        errorOnTimeout };
     pending.since.start();
     m_pending.insert(key, pending);
     m_expiry.start();
@@ -262,7 +264,7 @@ void Audio::setProfile(const QString& device, int index)
         fail(key);
         return;
     }
-    expect(key, index, true, profileMs);
+    expect(key, index, true, profileMs, true);
 }
 
 // ------------------------------------------------------- Vela's files --
@@ -270,6 +272,11 @@ void Audio::setProfile(const QString& device, int index)
 bool Audio::restartPending() const
 {
     return m_config->restartPending();
+}
+
+bool Audio::restartError() const
+{
+    return m_config->restartError();
 }
 
 void Audio::applyDefaultSampleRate()
@@ -288,7 +295,8 @@ void Audio::setSampleRate(int rate)
         rates = { quint32(rate) };
     }
     // The file for the next sessions, the metadata for this one.
-    if (rates.isEmpty() || !s.settingsKnown || !m_config->setPipewireRates(rates) || !m_core->setAllowedRates(rates)) {
+    if (rates.isEmpty() || !s.settingsKnown
+        || !m_config->setPipewireRates(rates, [this, &rates] { return m_core->setAllowedRates(rates); })) {
         fail(QStringLiteral("samplerate"));
         return;
     }
@@ -323,7 +331,7 @@ void Audio::writeRule(const QString& key, const DeviceRule& rule, const QVariant
         fail(key);
         return;
     }
-    expect(key, shown, true, restartMs);
+    expect(key, shown, true, restartMs, true);
 }
 
 void Audio::loadNames()
@@ -761,7 +769,7 @@ void Audio::update()
             m_errors.remove(it.key());
             it = m_pending.erase(it);
         } else if (it->since.elapsed() > it->timeoutMs) {
-            if (!it->optimistic) {
+            if (!it->optimistic || it->errorOnTimeout) {
                 m_errors.insert(it.key());
             }
             it = m_pending.erase(it);
@@ -868,6 +876,8 @@ void Audio::update()
             { QStringLiteral("fixedRate"),
                 shown(QStringLiteral("rate ") + suffix, e.allowedRates.size() == 1 ? int(e.allowedRates.first()) : 0).toInt() },
             { QStringLiteral("fixedFormat"), shown(QStringLiteral("format ") + suffix, e.fixedFormat).toString() },
+            { QStringLiteral("rateError"), m_errors.contains(QStringLiteral("rate ") + suffix) },
+            { QStringLiteral("formatError"), m_errors.contains(QStringLiteral("format ") + suffix) },
             { QStringLiteral("converted"), converted },
         };
         (output ? outputs : inputs).append(map);
@@ -972,6 +982,7 @@ void Audio::update()
 
     const int sampleRate = s.settingsKnown ? shown(QStringLiteral("samplerate"), sampleRateOf(s)).toInt() : 0;
     const QString sampleRateMode = s.settingsKnown ? sampleRateModeOf(sampleRate) : QString();
+    const bool sampleRateError = m_errors.contains(QStringLiteral("samplerate"));
     QVariantList allowedRates;
     for (quint32 rate : s.allowedRates) {
         allowedRates.append(int(rate));
@@ -987,7 +998,8 @@ void Audio::update()
     }
 
     if (outputs != m_outputs || inputs != m_inputs || apps != m_apps || devices != m_devices
-        || microphone != m_microphoneUsers || sampleRateMode != m_sampleRateMode || sampleRate != m_sampleRate || allowedRates != m_allowedRates
+        || microphone != m_microphoneUsers || sampleRateMode != m_sampleRateMode || sampleRate != m_sampleRate
+        || sampleRateError != m_sampleRateError || allowedRates != m_allowedRates
         || defaultOutput != m_defaultOutput
         || defaultInput != m_defaultInput || volume != m_volume || muted != m_muted || inputMuted != m_inputMuted) {
         m_outputs = outputs;
@@ -997,6 +1009,7 @@ void Audio::update()
         m_microphoneUsers = microphone;
         m_sampleRateMode = sampleRateMode;
         m_sampleRate = sampleRate;
+        m_sampleRateError = sampleRateError;
         m_allowedRates = allowedRates;
         m_defaultOutput = defaultOutput;
         m_defaultInput = defaultInput;

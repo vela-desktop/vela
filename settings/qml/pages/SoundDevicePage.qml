@@ -260,7 +260,9 @@ Page {
         Card {
             icon: "chronometer"
             title: qsTr("Sample rate")
-            description: qsTr("Following the system, it changes with what plays")
+            description: formatGroup.endpoint && formatGroup.endpoint.rateError
+                ? qsTr("Couldn't apply the sample rate. Please try again.")
+                : qsTr("Following the system, it changes with what plays")
             trailing: Choice {
                 model: formatGroup.rateChoices
                 currentIndex: formatGroup.endpoint
@@ -272,7 +274,9 @@ Page {
             visible: formatGroup.formatChoices.length > 2
             icon: "audio-card"
             title: qsTr("Sample format")
-            description: qsTr("Choose another one only if the device has trouble with the best")
+            description: formatGroup.endpoint && formatGroup.endpoint.formatError
+                ? qsTr("Couldn't apply the sample format. Please try again.")
+                : qsTr("Choose another one only if the device has trouble with the best")
             trailing: Choice {
                 model: formatGroup.formatChoices
                 currentIndex: formatGroup.endpoint
