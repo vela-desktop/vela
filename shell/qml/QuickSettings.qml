@@ -3,6 +3,7 @@
 
 import QtQuick
 import QtQuick.Shapes
+import Vela.Audio
 import Vela.Controls
 
 // Quick settings (Win+A, or a click on the taskbar's system icons), like
@@ -267,6 +268,8 @@ Window {
         // speaker; the volume's icon is already the crossed one.
         property bool appIcon: false
         property bool details: false
+        // What it plays now, 0-1 (docs/audio.md §7.1); below 0: no bar.
+        property real level: -1
         signal moved(real value)
         signal wheeled(int direction)
         signal iconClicked()
@@ -325,6 +328,16 @@ Window {
                 height: 4
                 radius: 2
                 color: slider.muted ? Theme.textSecondary : Theme.accent
+            }
+            // The level: a thin bar under the track.
+            Rectangle {
+                visible: slider.level >= 0
+                y: parent.height / 2 + 5
+                width: parent.width * Math.max(0, Math.min(1, slider.level))
+                height: 2
+                radius: 1
+                color: Theme.accent
+                opacity: 0.6
             }
             Rectangle {
                 id: knob
@@ -1016,11 +1029,19 @@ Window {
                                         onClicked: root.chooseAppDevice(app.modelData, appOutput, false)
                                     }
                                 }
+                                LevelMeter {
+                                    id: appLevel
+                                    audio: Audio
+                                    kind: "app"
+                                    name: app.modelData.key
+                                    active: root.visible && soundPage.visible && app.modelData.playing
+                                }
                                 Slider {
                                     visible: app.modelData.playing
                                     icon: app.modelData.icon
                                     appIcon: true
                                     value: app.modelData.volume
+                                    level: appLevel.level
                                     muted: app.modelData.muted
                                     onMoved: value => Audio.setAppVolume(app.modelData.key, value)
                                     onWheeled: direction => Audio.stepAppVolume(app.modelData.key, direction)
@@ -1065,7 +1086,7 @@ Window {
                 Item { width: 1; height: 4 }
                 Link {
                     text: qsTr("More volume settings")
-                    target: "sound-settings"
+                    target: "volume-mixer" // Settings' Volume mixer, like Windows
                 }
             }
 

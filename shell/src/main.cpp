@@ -10,6 +10,7 @@
 #include "accessibility.h"
 #include "appmodel.h"
 #include "audio.h"
+#include "audioapps.h"
 #include "clipboard.h"
 #include "config.h"
 #include "controls.h"
@@ -21,6 +22,7 @@
 #include "iconprovider.h"
 #include "jumplists.h"
 #include "language.h"
+#include "levelmeter.h"
 #include "mediakeys.h"
 #include "network.h"
 #include "notifications.h"
@@ -44,6 +46,7 @@
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQmlEngine>
 #include <QQuickWindow>
 #include <QScreen>
 #include <QTimer>
@@ -319,17 +322,7 @@ int main(int argc, char* argv[])
     SystemStatus status;
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
-    audio.setAppResolver([&apps](const vela::audio::AppIdentity& id) {
-        for (const QString& candidate : { id.portalAppId, id.id, id.binary, id.name }) {
-            const QString desktopId = apps.findDesktopId(candidate);
-            if (!desktopId.isEmpty()) {
-                const QVariantMap entry = apps.entry(desktopId);
-                return vela::audio::AppInfo { desktopId, entry.value(QStringLiteral("name")).toString(),
-                    entry.value(QStringLiteral("iconName")).toString() };
-            }
-        }
-        return vela::audio::AppInfo {};
-    });
+    audio.setAppResolver(audioAppResolver(apps));
     SoundKeys sound(&audio);
     QObject::connect(&shell, &ShellController::volumeKeyPressed, &sound, &SoundKeys::press);
     MediaKeys media;
@@ -369,6 +362,8 @@ int main(int argc, char* argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Status"), &status);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Sound"), &sound);
+    // The apps' level bars in the quick settings mixer (docs/audio.md §7.1).
+    qmlRegisterType<vela::audio::LevelMeter>("Vela.Audio", 1, 0, "LevelMeter");
     engine.rootContext()->setContextProperty(QStringLiteral("Access"), &accessibility);
     engine.rootContext()->setContextProperty(QStringLiteral("Network"), &network);
 
