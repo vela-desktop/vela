@@ -183,13 +183,13 @@ bool vela_output_config_load(const char *key, struct vela_saved_output *out)
     return true;
 }
 
-void vela_output_config_save(const struct vela_output_config_entry *entries, int count)
+bool vela_output_config_save(const struct vela_output_config_entry *entries, int count)
 {
     char path[PATH_MAX];
     char dir[PATH_MAX];
     char legacy[PATH_MAX];
     if (!vela_config_path("outputs.conf", path, sizeof(path)) || !vela_config_path(NULL, dir, sizeof(dir))) {
-        return;
+        return false;
     }
     struct file file;
     read_file(&file);
@@ -214,6 +214,7 @@ void vela_output_config_save(const struct vela_output_config_entry *entries, int
         set_value(section, POSITION, buffer);
     }
 
+    bool saved = false;
     // The ~/.config directory, then ~/.config/vela.
     char *slash = strrchr(dir, '/');
     if (slash) {
@@ -246,6 +247,7 @@ void vela_output_config_save(const struct vela_output_config_entry *entries, int
                 }
                 ok = fclose(out) == 0 && ok;
                 if (ok && rename(temporary, path) == 0) {
+                    saved = true;
                     if (vela_config_path("schermi.conf", legacy, sizeof(legacy))) {
                         remove(legacy); // outputs.conf exists now
                     }
@@ -256,4 +258,5 @@ void vela_output_config_save(const struct vela_output_config_entry *entries, int
         }
     }
     free_file(&file);
+    return saved;
 }

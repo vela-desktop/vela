@@ -89,6 +89,25 @@ Files written before October 2026 used Italian names (`schermi.conf`, and Italia
 
 Normally this file should be managed through **Settings → Displays** rather than edited by hand.
 
+Settings talks directly to `wlr-output-management`; no external display utility
+is required. Changes are previewed for 15 seconds. Vela's compositor keeps the
+previous configuration and restores it when the deadline expires, Settings
+exits or crashes, or the user chooses **Revert**. The countdown does not depend
+on Settings remaining responsive. Only **Keep changes** attempts to write the new settings
+to `outputs.conf`.
+
+The preview uses `protocols/vela-output-preview-v1.xml`, bound on the same
+Wayland connection as the output configuration. While a preview is pending,
+competing display changes are rejected. If monitors are unplugged, restoration
+covers the surviving original outputs and leaves newly connected outputs alone.
+If a confirmed change cannot be saved, the active display configuration is
+kept, but Settings warns that it may be lost after a restart. A failed apply
+whose rollback also fails is reported distinctly.
+Settings declines to apply changes on compositors that lack the preview extension.
+Ordinary output-management clients retain their immediate-apply behavior when
+no preview is pending. Backend failures are reported; restoration cannot guarantee
+recovery from a hardware failure that also rejects the previous configuration.
+
 ## Runtime environment variables
 
 These are useful for one-off overrides, nested sessions, experiments and troubleshooting.

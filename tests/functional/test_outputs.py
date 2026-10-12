@@ -6,9 +6,12 @@ windows of an output that goes away move to another and return to their place
 when the output comes back (vela_views_check_outputs); scale and position
 chosen as Settings > Display does (wlr-output-management)."""
 
+import os
+import signal
+import subprocess
 import unittest
 
-from harness import Session
+from harness import BUILD, Session
 
 
 class Outputs(unittest.TestCase):
@@ -79,6 +82,40 @@ class Outputs(unittest.TestCase):
         state = self.vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized")
         maximized = state.window(window)
         self.assertEqual((maximized["x"], maximized["w"]), (960, 960))
+
+    def settings_preview(self):
+        executable = os.path.join(BUILD, "settings", "vela-displays-test")
+        if not os.path.exists(executable):
+            self.skipTest("native Settings backend test client not built")
+        process = subprocess.Popen([executable, "--preview-client", self.vela.display],
+                                   env=self.vela.client_env, stdout=subprocess.DEVNULL,
+                                   stderr=self.vela.log)
+        self.vela.clients.append(process)
+        self.vela.wait_for(lambda s: s.output["scale"] == 1.5,
+                           what="native Settings preview applied")
+        return process
+
+    def test_settings_crash_reverts_native_preview(self):
+        before = self.vela.state().output
+        settings = self.settings_preview()
+        settings.kill()
+        settings.wait(2)
+        state = self.vela.wait_for(lambda s: s.output["scale"] == before["scale"],
+                                   what="compositor recovery after Settings SIGKILL")
+        for key in ("x", "y", "w", "h", "scale"):
+            self.assertEqual(state.output[key], before[key])
+
+    def test_settings_hang_reverts_native_preview(self):
+        before = self.vela.state().output
+        settings = self.settings_preview()
+        os.kill(settings.pid, signal.SIGSTOP)
+        try:
+            state = self.vela.wait_for(lambda s: s.output["scale"] == before["scale"], timeout=20,
+                                       what="compositor deadline with Settings stopped")
+            for key in ("x", "y", "w", "h", "scale"):
+                self.assertEqual(state.output[key], before[key])
+        finally:
+            os.kill(settings.pid, signal.SIGCONT)
 
     def test_unplugged_output_rescues_windows(self):
         state = self.add_second()
