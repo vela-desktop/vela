@@ -13,6 +13,6 @@ void vela_output_preview_finish(struct vela_server *server);
 bool vela_output_preview_can_apply(struct vela_server *server, struct wlr_output_configuration_v1 *config);
 // Takes ownership of the snapshot only when this is a protected apply.
 bool vela_output_preview_applied(struct vela_server *server, struct wlr_output_configuration_v1 *config,
-    struct wlr_output_configuration_v1 *before, bool succeeded);
+    struct wlr_output_configuration_v1 *before, bool succeeded, bool restored);
 
 #endif
