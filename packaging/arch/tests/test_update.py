@@ -131,7 +131,7 @@ elif name == "gh":
         # Simulate the GitHub CLI's verified identity + source commit policy,
         # NOT the underlying Sigstore cryptography. A failure must fail closed.
         if os.environ.get("TEST_REJECT_ATTEST"):
-            sys.exit(1)
+            sys.exit("simulated gh attestation rejection")
         if args[args.index("--repo") + 1] != "vela-desktop/vela":
             sys.exit("Unexpected attestation repository")
         if args[args.index("--signer-workflow") + 1] != "vela-desktop/vela/.github/workflows/build.yml":
@@ -381,6 +381,15 @@ class UpdateRevision(UpdateFixture):
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.nvidia)
         self.assertEqual(list((self.mirror.parent / "packages").glob("*.pkg.tar.zst")), [])
 
+    def test_workflow_artifact_attestation_failure_shows_reason_and_builds(self):
+        self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.nvidia[:7],
+                        TEST_REJECT_ATTEST="1")
+        result = self.run_update("--branch", "fix/nvidia", "--download")
+        self.assertIn("simulated gh attestation rejection", result.stderr)
+        self.assertIn("provenance verification failed", result.stderr)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.nvidia)
+
     def test_workflow_artifact_attestation_is_tied_to_selected_sha(self):
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.nvidia[:7])
         self.run_update("--branch", "fix/nvidia", "--download")
@@ -510,6 +519,39 @@ class UpdateSources(UpdateFixture):
         self.run_update("--source", "https://github.com/BrandoDev/vela.git",
                         "--check", source=False)
         self.assertEqual(self.config.read_text(), f"source={HTTPS_SOURCE}\n")
+        self.assert_https_transport()
+
+    def test_lowercase_legacy_sources_are_migrated(self):
+        aliases = (
+            "https://github.com/brandodev/vela",
+            "https://github.com/brandodev/vela.git",
+            "ssh://git@github.com/brandodev/vela",
+            "ssh://git@github.com/brandodev/vela.git",
+            "git@github.com:brandodev/vela",
+            "git@github.com:brandodev/vela.git",
+            "https://github.com/BrAnDoDeV/VeLa.git",
+        )
+        for url in aliases:
+            with self.subTest(url=url):
+                self.write_config(url)
+                self.run_update("--check", source=False)
+                self.assertEqual(self.config.read_text(), f"source={HTTPS_SOURCE}\n")
+                self.assert_https_transport()
+
+    def test_lowercase_legacy_explicit_source_is_migrated(self):
+        self.run_update("--source", "https://github.com/brandodev/vela",
+                        "--check", source=False)
+        self.assertEqual(self.config.read_text(), f"source={HTTPS_SOURCE}\n")
+        self.assert_https_transport()
+
+    def test_lowercase_legacy_mirror_is_repointed_without_reclone(self):
+        self.run_update("--check", source=False)
+        subprocess.run(["git", "-C", str(self.mirror), "remote", "set-url",
+                        "origin", "https://github.com/brandodev/vela"],
+                       env=self.env, check=True)
+        self.run_update("--check", source=False)
+        self.assertEqual([call["operation"] for call in self.calls("git")],
+                         ["clone", "update"])
         self.assert_https_transport()
 
     def test_old_https_mirror_is_repointed_without_reclone(self):
@@ -710,6 +752,28 @@ class UpdatePublicReleases(UpdateFixture):
     def test_corrupted_download_falls_back_to_local_build(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_CORRUPT_RELEASE="1")
         self.run_update("--download", source=False)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_lowercase_legacy_release_uses_canonical_provenance(self):
+        self.write_config("https://github.com/brandodev/vela")
+        self.env["TEST_RELEASE_SHA"] = self.main
+        self.run_update("--download", source=False)
+        self.assertEqual(self.config.read_text(), f"source={HTTPS_SOURCE}\n")
+        verification = next(call for call in self.calls("gh")
+                            if call["args"][:2] == ["attestation", "verify"])
+        args = verification["args"]
+        self.assertEqual(args[args.index("--repo") + 1], "vela-desktop/vela")
+        self.assertEqual(args[args.index("--signer-workflow") + 1],
+                         "vela-desktop/vela/.github/workflows/build.yml")
+        self.assertEqual(self.calls("makepkg"), [])
+        self.assertEqual(len(self.calls("sudo")), 1)
+
+    def test_public_release_attestation_failure_shows_reason_and_builds(self):
+        self.env.update(TEST_RELEASE_SHA=self.main, TEST_REJECT_ATTEST="1")
+        result = self.run_update("--download")
+        self.assertIn("simulated gh attestation rejection", result.stderr)
+        self.assertIn("provenance verification failed", result.stderr)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
