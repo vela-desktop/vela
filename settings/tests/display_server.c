@@ -96,8 +96,7 @@ static int command(int fd, uint32_t mask, void *data)
     } else if (!strncmp(line, "fail ", 5)) {
         snprintf(fail_name, sizeof(fail_name), "%s", line + 5);
         failures_left = 1;
-    }
-    else if (!strcmp(line, "quit")) wl_display_terminate(server->display);
+    } else if (!strcmp(line, "quit")) wl_display_terminate(server->display);
     puts("ok"); fflush(stdout);
     return 0;
 }
