@@ -4,6 +4,7 @@
 #include <spa/utils/json.h>
 
 #include "config.h"
+#include "model.h"
 
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -217,6 +218,7 @@ QList<DeviceRule> Config::rules() const
             }
             r.bluetooth = section == QLatin1String("monitor.bluez.rules");
             r.description = props.value(QStringLiteral("node.description")).toString();
+            r.ownDescription = props.value(QStringLiteral("vela.audio.description")).toString();
             r.allowedRates = toRates(props.value(QStringLiteral("audio.allowed-rates")));
             r.format = props.value(QStringLiteral("audio.format")).toString();
             r.offeredRates = toRates(props.value(QStringLiteral("vela.audio.rates")));
@@ -242,6 +244,8 @@ DeviceRule Config::rule(const QString& node) const
 bool Config::setRule(const DeviceRule& rule)
 {
     QList<DeviceRule> all = rules();
+    const DeviceRule before = this->rule(rule.node);
+    const bool restart = before.allowedRates != rule.allowedRates || before.format != rule.format;
     all.erase(std::remove_if(all.begin(), all.end(), [&](const DeviceRule& r) { return r.node == rule.node; }),
         all.end());
     if (!rule.isEmpty()) {
@@ -259,6 +263,9 @@ bool Config::setRule(const DeviceRule& rule)
             QStringList props;
             if (!r.description.isEmpty()) {
                 props.append(QStringLiteral("node.description = ") + quoted(r.description));
+                if (!r.ownDescription.isEmpty()) {
+                    props.append(QStringLiteral("vela.audio.description = ") + quoted(r.ownDescription));
+                }
             }
             if (!r.allowedRates.isEmpty()) {
                 props.append(QStringLiteral("audio.allowed-rates = ") + rateList(r.allowedRates));
@@ -288,8 +295,48 @@ bool Config::setRule(const DeviceRule& rule)
     if (!writeFile(wireplumberFile(), text)) {
         return false;
     }
-    restartWireplumber();
+    if (restart) {
+        restartWireplumber();
+    }
+    emit rulesChanged();
     return true;
+}
+
+void Config::watchRules()
+{
+    if (m_watcher) {
+        return;
+    }
+    m_watcher = new QFileSystemWatcher(this);
+    const auto changed = [this] {
+        rewatch();
+        emit rulesChanged();
+    };
+    connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, changed);
+    connect(m_watcher, &QFileSystemWatcher::fileChanged, this, changed);
+    rewatch();
+}
+
+// The file, and the nearest folder there is on its way: written whole
+// (renamed into place), or its folder made, it is seen either way.
+void Config::rewatch()
+{
+    if (const QStringList old = m_watcher->files() + m_watcher->directories(); !old.isEmpty()) {
+        m_watcher->removePaths(old);
+    }
+    const QString file = wireplumberFile();
+    if (QFileInfo::exists(file)) {
+        m_watcher->addPath(file);
+    }
+    for (QString dir = QFileInfo(file).absolutePath(); !dir.isEmpty(); dir = QFileInfo(dir).path()) {
+        if (QFileInfo(dir).isDir()) {
+            m_watcher->addPath(dir);
+            break;
+        }
+        if (dir == QFileInfo(dir).path()) {
+            break; // the root
+        }
+    }
 }
 
 // ------------------------------------------------------------- PipeWire --
@@ -311,9 +358,12 @@ bool Config::setPipewireRates(const QList<quint32>& rates)
     if (rates.isEmpty()) {
         return false;
     }
+    QString properties = QStringLiteral("    default.clock.allowed-rates = ") + rateList(rates) + u'\n';
+    if (defaultRateFor(rates) != 48000) {
+        properties += QStringLiteral("    default.clock.rate = ") + QString::number(defaultRateFor(rates)) + u'\n';
+    }
     return writeFile(pipewireFile(),
-        QString::fromUtf8(header) + QStringLiteral("\ncontext.properties = {\n    default.clock.allowed-rates = ")
-            + rateList(rates) + QStringLiteral("\n}\n"));
+        QString::fromUtf8(header) + QStringLiteral("\ncontext.properties = {\n") + properties + QStringLiteral("}\n"));
 }
 
 // ------------------------------------------------------------- restarts --

@@ -54,6 +54,6 @@ The automated audio tests run on a private PipeWire whose devices are null sinks
 - **Microphone**: the mute key and its indicator; on laptops, its LED. The microphone icon in the tray with real apps (a browser, Discord, OBS), including a paused recording and echo-cancelling or noise filters.
 - **Sample rate and format** (Sound › Advanced and a device's properties): on a USB DAC, "Automatic" following the music, a fixed device rate, a sample format, and the format shown live while the music changes; an HDMI receiver and a Bluetooth headset with "Automatic".
 - **Restart audio**: sound comes back, and the shell and Settings follow without restarting.
-- **Rename**: a device's new name survives a WirePlumber restart and logging out.
+- **Rename**: a device's new name shows at once in Vela, and in other apps (pavucontrol, a browser's device list) after logging out and in or "Restart audio"; going back to the device's own name the same way.
 
 See [testing.md](testing.md) and [reporting.md](reporting.md) for automated tests and privacy-aware diagnostics.

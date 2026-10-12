@@ -15,6 +15,9 @@ Item {
     // goes both ways (a balance).
     property real origin: from
     property bool live: true // `moved` while dragging, not only on release
+    // Where a double click on the knob puts it back (a balance's middle);
+    // NaN: nowhere.
+    property real resetValue: NaN
     readonly property bool pressed: mouse.pressed
     signal moved(real value)
     signal released(real value)
@@ -87,6 +90,13 @@ Item {
         onReleased: {
             slider.moved(slider.value)
             slider.released(slider.value)
+        }
+        // The second press already brought the knob under the pointer;
+        // the release that follows sends the reset value.
+        onDoubleClicked: {
+            if (!isNaN(slider.resetValue)) {
+                slider.value = slider.resetValue
+            }
         }
         onWheel: wheel => {
             const step = slider.stepSize > 0 ? slider.stepSize : (slider.to - slider.from) / 50

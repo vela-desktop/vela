@@ -171,6 +171,11 @@ server says: optimistic values exist only in the Qt layer (§5.4).
 - **Grid:** `volumesteps.h` stays as it is: 2 points, or the device's own
   positions when farther apart. The step comes from the model, so the
   blocking read in `deviceIntervals()` goes away.
+  - A value within 5% of a position counts as on it. A sound card's
+    hardware mixer moves in dB steps, and PipeWire reports the step it
+    used: on a FiiO K11 (1 dB steps), 96% comes back as 96.0007%, and a
+    tighter rule stepped down from there to 96% again, so the knob stopped
+    after one or two steps (found in A6 on real hardware).
 - **Maximum 100%.** Vela never writes more than 1.0. A value above 100% set
   by another program is shown as 100% (slider at the end) and left alone;
   the first step down lands back on the grid.
@@ -337,6 +342,9 @@ and `node.dont-move`, so they never end up somewhere else. Done in A3.
   left, then the front right.
 - A second press while it plays starts it again; the button becomes
   "Stop" meanwhile.
+- A quarter of a second of silence comes first: an output waking up (a USB
+  DAC unmuting, a device switching rate) loses its first moments, and cut
+  the chime's start on real hardware (A6).
 
 ## 8. Settings stored in WirePlumber and PipeWire
 
@@ -351,16 +359,25 @@ own state, read back to show and to change them.
   `~/.config/wireplumber/wireplumber.conf.d/90-vela.conf`, one rule per
   device, matched on `node.name` (`monitor.alsa.rules`,
   `monitor.bluez.rules`):
-  - the **name** (`node.description`);
+  - the **name** (`node.description`), with the device's own
+    (`vela.audio.description`);
   - the **sample rates** (`audio.allowed-rates`) and **sample format**
     (`audio.format`) of an ALSA node (§8.1);
   - what the device offered before Vela restricted it
     (`vela.audio.rates`, `vela.audio.formats`, §8.1).
 
-  After a change WirePlumber is restarted (below). The page says before
-  applying that **sound stops for about a second**.
+  After a change of rates or format WirePlumber is restarted (below). The
+  page says before applying that **sound stops for about a second**.
+  A new **name restarts nothing** (decided in A6): Vela shows the rule's
+  name at once, in the shell too (it watches the file); other programs see
+  it once WirePlumber starts again, at the next login or "Restart audio".
+  Until then the node keeps the name it was made with, so the rule also
+  keeps the device's own name: going back to it while the node still has
+  the old one leaves a rule giving the own name, which WirePlumber applies
+  next time.
 - **PipeWire's file**, `~/.config/pipewire/pipewire.conf.d/90-vela.conf`:
-  the graph's **allowed rates** (`default.clock.allowed-rates`, §8.1). It is
+  the graph's **allowed rates** (`default.clock.allowed-rates`, §8.1), and
+  its default rate (`default.clock.rate`) when it is fixed at another one. It is
   read when PipeWire starts; the same value is set at once in the `settings`
   metadata (`clock.allowed-rates`), which PipeWire applies without a
   restart (seen in A5 on the fixture).
@@ -372,7 +389,15 @@ Rules for both files:
 - Restarts go through systemd's user manager (D-Bus `RestartUnit`, no
   process started): `wireplumber.service` after WirePlumber's file changes;
   `pipewire.service` for "Restart audio" (WirePlumber and `pipewire-pulse`
-  are bound to it and follow).
+  are bound to it and follow). Only "Restart audio" restarts PipeWire;
+  the system sample rate restarts nothing.
+- Why rates and formats restart WirePlumber: it reads its rules only when
+  it starts, and makes the node with them. An ALSA node
+  does take `audio.allowed-rates` and `audio.format` at run time (its
+  `Props` `params`), but on real hardware (PipeWire 1.6.9, a USB DAC) the
+  node failed to start after the change ("Start error: Operation not
+  supported") and WirePlumber had to make it again. Tried in A6; not
+  used.
 - WirePlumber writes its state (defaults, volumes, profiles, each app's
   choices) about **one second after a change**, and does not write it when
   it exits. Seen in A0, and covered by a test. A restart sooner than that
@@ -408,8 +433,17 @@ How PipeWire works (PipeWire 1.6, its sources and the fixture):
 
 What Vela does:
 - **System sample rate** (Sound › Advanced): "Automatic" (the default)
-  allows `44100 48000 88200 96000 176400 192000`; "48000 Hz" allows only
-  that, like Windows and PipeWire's default.
+  allows `44100 48000 88200 96000 176400 192000`; "N Hz", one of those,
+  allows only that one, so everything is converted to it (like Windows'
+  default format; 48000 Hz is PipeWire's default). With one allowed rate
+  PipeWire always picks it, but it drops an allowed list that doesn't hold
+  its default rate (`clock.rate`) and keeps `[ 48000 ]`: so the default
+  rate is set first, to that rate, in the metadata and in the file
+  (`default.clock.rate`). Found in A6: the fixture's graph stayed at
+  48 kHz with `[ 96000 ]` alone.
+  - In "Automatic" the graph often runs at 48 kHz anyway: most of what
+    plays (browsers, games, calls) is 48 kHz. Higher rates appear with
+    music files at those rates.
   - The default is applied by the shell at start when PipeWire's file is
     missing and the allowed rates are still PipeWire's default (`[ 48000 ]`).
     If they are anything else, someone configured them: Vela leaves them
@@ -558,6 +592,11 @@ audio or WirePlumber state.
     PipeWire's own, left alone otherwise;
   - the live format: a 44.1 kHz file playing unconverted with "Automatic",
     converted with "48000 Hz".
+- **Library, A6**: a fixed rate other than 48000 (the graph at 96 kHz with
+  a 44.1 kHz file, `default.clock.rate` in the file); a rename restarting
+  nothing, shown at once and in a second process through the watched
+  file, and back to the own name while the node still has the old one;
+  steps from hardware-mixer volumes read back slightly off the grid.
 - **Shell (`audio-keys`, done in A2)**: `SoundKeys` on the library: volume
   keys with their indicator, a step unmuting, the microphone key whose
   indicator waits for the server, the wheel on an app's taskbar button.

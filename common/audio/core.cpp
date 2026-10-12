@@ -923,6 +923,9 @@ bool Core::setAllowedRates(const QList<quint32>& rates)
         list.append(QString::number(rate));
     }
     const QByteArray value = (QStringLiteral("[ ") + list.join(u' ') + QStringLiteral(" ]")).toUtf8();
+    // The default rate first: PipeWire checks the allowed ones against it.
+    const QByteArray rate = QByteArray::number(defaultRateFor(rates));
+    wp_metadata_set(settings, 0, "clock.rate", nullptr, rate.constData());
     wp_metadata_set(settings, 0, "clock.allowed-rates", nullptr, value.constData());
     g_object_unref(settings);
     return true;

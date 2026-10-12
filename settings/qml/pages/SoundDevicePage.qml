@@ -183,10 +183,11 @@ Page {
                     from: -1
                     to: 1
                     origin: 0
+                    resetValue: 0
                     stepSize: 0.02
                     value: page.endpoint ? page.endpoint.balance : 0
                     // The middle holds the knob a little, so even is easy
-                    // to find again.
+                    // to find again; a double click puts it there.
                     onMoved: value => Audio.setBalance(page.selected.kind, page.endpoint.name, Math.abs(value) < 0.05 ? 0 : value)
                 }
                 Text {
@@ -292,7 +293,7 @@ Page {
             spacing: 12
             Text {
                 width: parent.width
-                text: qsTr("Leave it empty to use the device's own name. Sound stops for about a second while the name is applied.")
+                text: qsTr("Leave it empty to use the device's own name. Other apps show the new name after you sign in again.")
                 color: Theme.text
                 font.pixelSize: Theme.fontBody
                 wrapMode: Text.Wrap

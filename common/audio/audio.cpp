@@ -32,8 +32,8 @@ constexpr int profileMs = 3000;
 // How long an app that stopped recording still counts as using the
 // microphone: a pause or a page change doesn't make the icon blink.
 constexpr int microphoneHoldMs = 1000;
-// An endpoint's name, rates or format: WirePlumber saves its state (up to
-// 1.5 s), restarts and makes the node again.
+// An endpoint's rates or format: WirePlumber saves its state (up to 1.5 s),
+// restarts and makes the node again.
 constexpr int restartMs = 8000;
 
 // Keys of the settings Vela's files hold: writing them doesn't change
@@ -44,21 +44,27 @@ bool isConfigKey(const QString& key)
         || key.startsWith(QLatin1String("format ")) || key == QLatin1String("samplerate");
 }
 
-// The graph's rates as Vela names them (docs/audio.md §8.1).
-QString sampleRateModeOf(const Snapshot& s)
+// The graph's rates as Vela names them (docs/audio.md §8.1): 0 "Automatic",
+// a rate when it is the only one allowed, -1 anything else.
+int sampleRateOf(const Snapshot& s)
 {
-    if (!s.settingsKnown) {
-        return {};
-    }
     QList<quint32> rates = s.allowedRates;
     std::sort(rates.begin(), rates.end());
     if (rates == standardRates()) {
-        return QStringLiteral("automatic");
+        return 0;
     }
-    if (rates.size() <= 1) {
-        return QStringLiteral("fixed");
+    if (rates.size() == 1 && rates.first() > 0 && standardRates().contains(rates.first())) {
+        return int(rates.first());
     }
-    return QStringLiteral("custom");
+    if (rates.isEmpty()) {
+        return s.clockRate > 0 ? int(s.clockRate) : 48000;
+    }
+    return -1;
+}
+
+QString sampleRateModeOf(int rate)
+{
+    return rate == 0 ? QStringLiteral("automatic") : rate > 0 ? QStringLiteral("fixed") : QStringLiteral("custom");
 }
 
 QString kindOf(Direction direction)
@@ -110,6 +116,12 @@ Audio::Audio(QObject* parent)
 {
     connect(m_testSound, &TestSound::playingChanged, this, &Audio::testSoundChanged);
     connect(m_config, &Config::restartPendingChanged, this, &Audio::restartPendingChanged);
+    connect(m_config, &Config::rulesChanged, this, [this] {
+        loadNames();
+        update();
+    });
+    m_config->watchRules();
+    loadNames();
     m_microphoneHold.setSingleShot(true);
     connect(&m_microphoneHold, &QTimer::timeout, this, &Audio::update);
     m_flush.setSingleShot(true);
@@ -266,21 +278,30 @@ void Audio::applyDefaultSampleRate()
     update();
 }
 
-void Audio::setSampleRateMode(const QString& mode)
+void Audio::setSampleRate(int rate)
 {
     const Snapshot& s = m_core->snapshot();
     QList<quint32> rates;
-    if (mode == QLatin1String("automatic")) {
+    if (rate == 0) {
         rates = standardRates();
-    } else if (mode == QLatin1String("fixed")) {
-        rates = { s.clockRate > 0 ? s.clockRate : 48000 };
+    } else if (standardRates().contains(quint32(std::max(rate, 0)))) {
+        rates = { quint32(rate) };
     }
     // The file for the next sessions, the metadata for this one.
     if (rates.isEmpty() || !s.settingsKnown || !m_config->setPipewireRates(rates) || !m_core->setAllowedRates(rates)) {
         fail(QStringLiteral("samplerate"));
         return;
     }
-    expect(QStringLiteral("samplerate"), mode, true);
+    expect(QStringLiteral("samplerate"), rate, true);
+}
+
+QVariantList Audio::sampleRates() const
+{
+    QVariantList rates;
+    for (quint32 rate : standardRates()) {
+        rates.append(int(rate));
+    }
+    return rates;
 }
 
 DeviceRule Audio::ruleFor(const Endpoint& e) const
@@ -305,6 +326,21 @@ void Audio::writeRule(const QString& key, const DeviceRule& rule, const QVariant
     expect(key, shown, true, restartMs);
 }
 
+void Audio::loadNames()
+{
+    m_names.clear();
+    for (const DeviceRule& rule : m_config->rules()) {
+        if (!rule.description.isEmpty()) {
+            m_names.insert(rule.node, rule.description);
+        }
+    }
+}
+
+QString Audio::nameOf(const Endpoint& e) const
+{
+    return m_names.value(e.name, e.description);
+}
+
 void Audio::setEndpointName(const QString& kind, const QString& name, const QString& text)
 {
     const Endpoint* e = endpoint(kind, name);
@@ -313,19 +349,31 @@ void Audio::setEndpointName(const QString& kind, const QString& name, const QStr
         fail(key);
         return;
     }
+    // No restart (docs/audio.md §8): the node keeps the name it was made
+    // with until WirePlumber starts again, Vela shows the rule's at once.
     DeviceRule rule = ruleFor(*e);
-    rule.description = text.trimmed();
-    if (rule.description == e->description && m_config->rule(name).description.isEmpty()) {
+    // Before any rename the node carries the device's own name.
+    const QString own = !rule.ownDescription.isEmpty() ? rule.ownDescription : e->description;
+    const QString wanted = text.trimmed().isEmpty() ? own : text.trimmed();
+    if (wanted != own) {
+        rule.description = wanted;
+        rule.ownDescription = own;
+    } else if (e->description != own) {
+        // Back to its own name while the node still has the old one: the
+        // rule says so until WirePlumber makes it again.
+        rule.description = own;
+        rule.ownDescription = own;
+    } else {
         rule.description.clear(); // its own name: no rule needed
+        rule.ownDescription.clear();
     }
-    if (rule.description.isEmpty()) {
-        // Its own name comes back with the restart; until then, the old one.
-        if (!m_config->setRule(rule)) {
-            fail(key);
-        }
+    if (!m_config->setRule(rule)) {
+        fail(key);
         return;
     }
-    writeRule(key, rule, rule.description);
+    m_errors.remove(key);
+    loadNames();
+    update();
 }
 
 void Audio::setEndpointRate(const QString& kind, const QString& name, int rate)
@@ -683,7 +731,7 @@ void Audio::update()
             return parts.value(1) == QLatin1String("output") ? s.defaultOutput : s.defaultInput;
         }
         if (key == QLatin1String("samplerate")) {
-            return sampleRateModeOf(s);
+            return sampleRateOf(s);
         }
         if (parts.value(1) == QLatin1String("app")) {
             return appValue(parts.value(0), name);
@@ -697,9 +745,6 @@ void Audio::update()
         }
         if (parts.value(0) == QLatin1String("balance")) {
             return balanceOf(*e);
-        }
-        if (parts.value(0) == QLatin1String("name")) {
-            return e->description;
         }
         if (parts.value(0) == QLatin1String("rate")) {
             return e->allowedRates.size() == 1 ? int(e->allowedRates.first()) : 0;
@@ -799,7 +844,7 @@ void Audio::update()
         }
         const QVariantMap map {
             { QStringLiteral("name"), e.name },
-            { QStringLiteral("description"), shown(QStringLiteral("name ") + suffix, e.description).toString() },
+            { QStringLiteral("description"), nameOf(e) },
             { QStringLiteral("icon"), e.icon },
             { QStringLiteral("volume"), v },
             { QStringLiteral("muted"), m },
@@ -917,15 +962,16 @@ void Audio::update()
             { QStringLiteral("volume"), shown(QStringLiteral("volume app ") + key, appValue(QStringLiteral("volume"), key)).toDouble() },
             { QStringLiteral("muted"), shown(QStringLiteral("mute app ") + key, appValue(QStringLiteral("mute"), key)).toBool() },
             { QStringLiteral("output"), output },
-            { QStringLiteral("outputDescription"), outputEndpoint ? outputEndpoint->description : output },
+            { QStringLiteral("outputDescription"), outputEndpoint ? nameOf(*outputEndpoint) : output },
             { QStringLiteral("input"), input },
-            { QStringLiteral("inputDescription"), inputEndpoint ? inputEndpoint->description : input },
+            { QStringLiteral("inputDescription"), inputEndpoint ? nameOf(*inputEndpoint) : input },
         });
     }
 
     const QVariantList microphone = microphoneUsers(s);
 
-    const QString sampleRateMode = shown(QStringLiteral("samplerate"), sampleRateModeOf(s)).toString();
+    const int sampleRate = s.settingsKnown ? shown(QStringLiteral("samplerate"), sampleRateOf(s)).toInt() : 0;
+    const QString sampleRateMode = s.settingsKnown ? sampleRateModeOf(sampleRate) : QString();
     QVariantList allowedRates;
     for (quint32 rate : s.allowedRates) {
         allowedRates.append(int(rate));
@@ -936,12 +982,12 @@ void Audio::update()
         const bool pipewireDefault = s.allowedRates.isEmpty()
             || (s.allowedRates.size() == 1 && s.allowedRates.first() == (s.clockRate > 0 ? s.clockRate : 48000));
         if (!m_config->hasPipewireFile() && pipewireDefault) {
-            QMetaObject::invokeMethod(this, [this] { setSampleRateMode(QStringLiteral("automatic")); }, Qt::QueuedConnection);
+            QMetaObject::invokeMethod(this, [this] { setSampleRate(0); }, Qt::QueuedConnection);
         }
     }
 
     if (outputs != m_outputs || inputs != m_inputs || apps != m_apps || devices != m_devices
-        || microphone != m_microphoneUsers || sampleRateMode != m_sampleRateMode || allowedRates != m_allowedRates
+        || microphone != m_microphoneUsers || sampleRateMode != m_sampleRateMode || sampleRate != m_sampleRate || allowedRates != m_allowedRates
         || defaultOutput != m_defaultOutput
         || defaultInput != m_defaultInput || volume != m_volume || muted != m_muted || inputMuted != m_inputMuted) {
         m_outputs = outputs;
@@ -950,6 +996,7 @@ void Audio::update()
         m_devices = devices;
         m_microphoneUsers = microphone;
         m_sampleRateMode = sampleRateMode;
+        m_sampleRate = sampleRate;
         m_allowedRates = allowedRates;
         m_defaultOutput = defaultOutput;
         m_defaultInput = defaultInput;

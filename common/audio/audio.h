@@ -79,9 +79,12 @@ class Audio : public QObject {
     //   tray icon blink.
     Q_PROPERTY(QVariantList microphoneUsers READ microphoneUsers NOTIFY changed)
     // The graph's sample rate (docs/audio.md §8.1): "automatic" (it follows
-    // what plays), "fixed" (allowedRates' only rate), "custom" (set
-    // elsewhere); empty while unknown.
+    // what plays), "fixed" (sampleRate), "custom" (set elsewhere); empty
+    // while unknown.
     Q_PROPERTY(QString sampleRateMode READ sampleRateMode NOTIFY changed)
+    Q_PROPERTY(int sampleRate READ sampleRate NOTIFY changed)
+    // The rates the graph can be fixed at (44100 to 192000).
+    Q_PROPERTY(QVariantList sampleRates READ sampleRates CONSTANT)
     Q_PROPERTY(QVariantList allowedRates READ allowedRates NOTIFY changed)
     // A WirePlumber or audio restart is waiting for WirePlumber to save its
     // state (docs/audio.md §8).
@@ -121,6 +124,8 @@ public:
     QVariantList devices() const { return m_devices; }
     QVariantList microphoneUsers() const { return m_microphoneUsers; }
     QString sampleRateMode() const { return m_sampleRateMode; }
+    int sampleRate() const { return m_sampleRate; }
+    QVariantList sampleRates() const;
     QVariantList allowedRates() const { return m_allowedRates; }
     bool restartPending() const;
     QString testSoundOutput() const;
@@ -149,13 +154,15 @@ public:
     Q_INVOKABLE void playTestSound(const QString& output);
     Q_INVOKABLE void stopTestSound();
 
-    // "automatic" or "fixed" (docs/audio.md §8.1): at once, and kept in
-    // PipeWire's file for the next sessions.
-    Q_INVOKABLE void setSampleRateMode(const QString& mode);
-    // An endpoint's own settings, in WirePlumber's file (docs/audio.md §8):
-    // shown at once, applied by a WirePlumber restart (sound stops for
-    // about a second). An empty name: the device's own again; rate 0: follow
-    // the system; an empty format: the best.
+    // 0: "Automatic"; a rate among sampleRates: always that one
+    // (docs/audio.md §8.1). At once, and kept in PipeWire's file for the
+    // next sessions.
+    Q_INVOKABLE void setSampleRate(int rate);
+    // An endpoint's own settings, in WirePlumber's file (docs/audio.md §8),
+    // shown at once. A name needs no restart (other programs see it once
+    // WirePlumber starts again); a rate or a format restarts WirePlumber
+    // (sound stops for about a second). An empty name: the device's own
+    // again; rate 0: follow the system; an empty format: the best.
     Q_INVOKABLE void setEndpointName(const QString& kind, const QString& name, const QString& text);
     Q_INVOKABLE void setEndpointRate(const QString& kind, const QString& name, int rate);
     Q_INVOKABLE void setEndpointFormat(const QString& kind, const QString& name, const QString& format);
@@ -212,6 +219,10 @@ private:
     QVariantList microphoneUsers(const Snapshot& s);
     // The rule to write for an endpoint, with what it offers now.
     DeviceRule ruleFor(const Endpoint& e) const;
+    // The names in Vela's rules, shown instead of the node's own
+    // (docs/audio.md §8).
+    void loadNames();
+    QString nameOf(const Endpoint& e) const;
     void writeRule(const QString& key, const DeviceRule& rule, const QVariant& shown);
     // A Bluetooth output's battery: read once, then followed.
     void watchBattery(const QString& path);
@@ -236,6 +247,8 @@ private:
     QVariantList m_devices;
     QVariantList m_microphoneUsers;
     QString m_sampleRateMode;
+    QHash<QString, QString> m_names; // node.name -> the name Vela's rule gives
+    int m_sampleRate = 0;
     QVariantList m_allowedRates;
     struct MicrophoneUser {
         QVariantMap info;

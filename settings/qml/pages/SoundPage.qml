@@ -222,25 +222,23 @@ Page {
         }
         Card {
             id: rateCard
-            readonly property int fixed: Audio.allowedRates.length === 1 ? Audio.allowedRates[0] : 48000
-            readonly property var choices: [
-                { text: qsTr("Automatic"), mode: "automatic" },
-                { text: qsTr("%1 Hz").arg(fixed), mode: "fixed" },
-            ].concat(Audio.sampleRateMode === "custom" ? [{ text: qsTr("Custom"), mode: "custom" }] : [])
+            readonly property var choices: [{ text: qsTr("Automatic"), rate: 0 }]
+                .concat(Audio.sampleRates.map(r => ({ text: qsTr("%1 Hz").arg(r), rate: r })))
+                .concat(Audio.sampleRateMode === "custom" ? [{ text: qsTr("Custom"), rate: -1 }] : [])
             visible: Audio.sampleRateMode !== ""
             icon: "chronometer"
             title: qsTr("Sample rate")
             description: Audio.sampleRateMode === "automatic"
                 ? qsTr("Sound plays at its own rate, without conversion")
                 : Audio.sampleRateMode === "fixed"
-                    ? qsTr("All sound is converted to %1 Hz").arg(fixed)
+                    ? qsTr("All sound is converted to %1 Hz").arg(Audio.sampleRate)
                     : qsTr("Set elsewhere: %1 Hz").arg(Audio.allowedRates.join(", "))
             trailing: Choice {
                 model: rateCard.choices
-                currentIndex: rateCard.choices.findIndex(c => c.mode === Audio.sampleRateMode)
+                currentIndex: rateCard.choices.findIndex(c => c.rate === Audio.sampleRate)
                 onChosen: index => {
-                    if (rateCard.choices[index].mode !== "custom") {
-                        Audio.setSampleRateMode(rateCard.choices[index].mode)
+                    if (rateCard.choices[index].rate >= 0) {
+                        Audio.setSampleRate(rateCard.choices[index].rate)
                     }
                 }
             }

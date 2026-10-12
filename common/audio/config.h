@@ -8,6 +8,7 @@
 // regenerated whole and read back, never any other file next to it.
 
 #include <QElapsedTimer>
+#include <QFileSystemWatcher>
 #include <QList>
 #include <QObject>
 #include <QString>
@@ -23,6 +24,9 @@ struct DeviceRule {
     QString node;
     bool bluetooth = false; // monitor.bluez.rules, else monitor.alsa.rules
     QString description; // node.description; empty: the device's own name
+    // The device's own name, kept with a new one: until WirePlumber makes
+    // the node again it still carries the old name (vela.audio.description).
+    QString ownDescription;
     QList<quint32> allowedRates; // audio.allowed-rates; empty: follow the system
     QString format; // audio.format; empty: the best
     // What the device offered before being restricted (EnumFormat then
@@ -53,13 +57,17 @@ public:
     // WirePlumber's file.
     QList<DeviceRule> rules() const;
     DeviceRule rule(const QString& node) const;
-    // Replaces the node's rule (an empty one goes away), writes the file and
-    // restarts WirePlumber (restartWireplumber). False if it can't be
-    // written.
+    // Replaces the node's rule (an empty one goes away) and writes the file.
+    // A new name needs no restart: Vela shows the rule's, other programs see
+    // it once WirePlumber starts again. New rates or a new format restart
+    // WirePlumber (restartWireplumber). False if it can't be written.
     bool setRule(const DeviceRule& rule);
+    // rulesChanged when WirePlumber's file changes, from this or another
+    // process (Settings renames, the shell shows it).
+    void watchRules();
 
-    // PipeWire's file: the graph's allowed rates (docs/audio.md §8.1); empty
-    // when there is no file.
+    // PipeWire's file: the graph's allowed rates, and its default rate when
+    // there is only one (docs/audio.md §8.1); empty when there is no file.
     bool hasPipewireFile() const;
     QList<quint32> pipewireRates() const;
     bool setPipewireRates(const QList<quint32>& rates);
@@ -85,15 +93,18 @@ public:
 
 signals:
     void restartPendingChanged();
+    void rulesChanged();
 
 private:
     void schedule(const QString& unit);
     void restartNow();
+    void rewatch();
 
     Restarter m_restarter;
     QElapsedTimer m_lastChange;
     QTimer m_restart;
     QString m_unit; // what the pending restart restarts
+    QFileSystemWatcher* m_watcher = nullptr;
 };
 
 } // namespace vela::audio

@@ -25,6 +25,14 @@ inline const QList<quint32>& standardRates()
     return rates;
 }
 
+// The graph's default rate (clock.rate) for these allowed rates. PipeWire
+// drops an allowed list without its default rate and keeps [ 48000 ], so
+// a single rate is also the default; otherwise PipeWire's own, 48000.
+inline quint32 defaultRateFor(const QList<quint32>& rates)
+{
+    return rates.size() == 1 || !rates.contains(48000) ? rates.value(0, 48000) : 48000;
+}
+
 // A list as SPA-JSON writes it ("[ 44100 48000 ]", "[ \"S16LE\" ]") and
 // PipeWire's properties and metadata carry it.
 inline QStringList parseList(const QString& text)

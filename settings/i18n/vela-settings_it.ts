@@ -2057,8 +2057,8 @@ Specifiche sistema
         <translation>Rinomina il dispositivo</translation>
     </message>
     <message>
-        <source>Leave it empty to use the device&apos;s own name. Sound stops for about a second while the name is applied.</source>
-        <translation>Lascialo vuoto per usare il nome del dispositivo. L&apos;audio si interrompe per circa un secondo mentre il nome viene applicato.</translation>
+        <source>Leave it empty to use the device&apos;s own name. Other apps show the new name after you sign in again.</source>
+        <translation>Lascialo vuoto per usare il nome del dispositivo. Le altre app mostrano il nuovo nome dopo il prossimo accesso.</translation>
     </message>
 </context>
 <context>
