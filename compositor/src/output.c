@@ -302,11 +302,13 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
         // Fallback (also to turn the output on or off): wlroots puts an empty
         // buffer, which our damage tracking doesn't know about.
         ok = wlr_output_commit_state(output->wlr, state);
-        if (ok && reset_gamma) {
-            output->frame->night_gamma_committed = false;
+        if (ok && (state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM)) {
+            // The fallback may have committed a color transform even though
+            // the renderer failed earlier. Track what the monitor accepted.
+            output->frame->night_gamma_committed = state->color_transform != NULL;
             output->frame->night_clear_needed = false;
             output->frame->night_commit_pending = false;
-            output->frame->night_in_gamma = false;
+            output->frame->night_in_gamma = state->color_transform != NULL;
         }
         if (!ok && reset_gamma) {
             // If clearing the LUT is also refused, still try the mode change.
