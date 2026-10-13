@@ -1180,6 +1180,7 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
             struct wlr_output_state no_color;
             wlr_output_state_init(&no_color);
             if (wlr_output_state_copy(&no_color, state)) {
+                wlr_output_state_set_color_transform(&no_color, NULL);
                 no_color.committed &= ~WLR_OUTPUT_STATE_COLOR_TRANSFORM;
                 if (wlr_output_commit_state(output, &no_color)) {
                     // This buffer did reach the output, but the requested LUT
@@ -1187,6 +1188,7 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
                     // clear the previously installed LUT on the next frame.
                     ok = true;
                     color_commit_failed = true;
+                    wlr_output_state_set_color_transform(state, NULL);
                     state->committed &= ~WLR_OUTPUT_STATE_COLOR_TRANSFORM;
                 } else {
                     // If both commits fail, only blame gamma when testing
