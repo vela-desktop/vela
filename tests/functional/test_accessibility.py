@@ -113,6 +113,17 @@ class Accessibility(unittest.TestCase):
                           for actual, expected in zip(self.vela.pixels().at(x, y), original)),
             what="Vulkan night-light fallback to restore the original pixel", read_state=False)
 
+        # Interrupt another fade while it is still warming the output:
+        # disabling must not leave a partially tinted cached buffer behind.
+        self.vela.command("night-light on")
+        self.vela.wait_for(lambda _: self.vela.pixels().at(x, y)[2] < original[2] - 3,
+                           what="a partial Night Light transition", read_state=False)
+        self.vela.command("night-light off")
+        self.vela.wait_for(
+            lambda _: all(abs(actual - expected) <= 3
+                          for actual, expected in zip(self.vela.pixels().at(x, y), original)),
+            what="restoration after interrupting Night Light", read_state=False)
+
     def modifiers_while(self, actions, at_ms):
         """The keyboard modifiers ("modifiers" request) at the moments
         `at_ms` while vela-input runs `actions`: its virtual keyboard
