@@ -552,6 +552,17 @@ Please sign off your commits (`git commit -s`, the
 [Developer Certificate of Origin](https://developercertificate.org/)): contributions
 are accepted under the project's license, GPL-3.0-or-later.
 
+## AI Disclosure
+
+AI tools are actively used in Vela's development, including code generation,
+refactoring, debugging, code review, and documentation.
+
+The project's vision, architecture, and technical direction remain human-driven.
+AI-assisted code is not inherently trusted: it is subject to the same review,
+testing, and quality expectations as any other contribution.
+
+AI is a development tool, not a substitute for engineering judgment.
+
 ## Acknowledgements
 
 Vela stands on the shoulders of [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots),
