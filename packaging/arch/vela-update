@@ -176,7 +176,9 @@ cleanup() {
     if [ "$SWAP_UNCOMMITTED" = 1 ] && [ -d "$MIRROR" ]; then
         rm -rf -- "$MIRROR" || true
     fi
-    if [ -n "$BACKUP_MIRROR" ]; then
+    # The rollback pathname is recorded *before* its rename. An interrupted
+    # rename can leave the active mirror in place and the backup nonexistent.
+    if [ -n "$BACKUP_MIRROR" ] && [ -e "$BACKUP_MIRROR" ]; then
         if [ ! -e "$MIRROR" ]; then
             mv -- "$BACKUP_MIRROR" "$MIRROR" || {
                 echo "vela-update: previous mirror is preserved at $BACKUP_MIRROR" >&2
