@@ -4,6 +4,7 @@
 #include "systemactions.h"
 #include "appmodel.h"
 #include "mimeapps.h"
+#include "velatool.h"
 
 #include <QCoreApplication>
 #include <QDBusConnection>
@@ -46,25 +47,11 @@ bool spawn(const QString& command, const QString& directory = QDir::homePath())
     return QProcess::startDetached(QStringLiteral("/bin/sh"), { QStringLiteral("-c"), command }, directory);
 }
 
-// A Vela app (vela-settings, vela-files): installed, next to the shell, or in
-// the build directory (settings/, explorer/ next to shell/). Empty inside the
-// app itself, which must not point to itself.
+// Use the apps built alongside this executable before installed versions.
 QString velaTool(const QString& name, const QString& buildDir)
 {
-    if (QCoreApplication::applicationName() == name) {
-        return {};
-    }
-    const QString installed = QStandardPaths::findExecutable(name);
-    if (!installed.isEmpty()) {
-        return installed;
-    }
-    const QString here = QCoreApplication::applicationDirPath();
-    for (const QString& candidate : { here + u'/' + name, here + QStringLiteral("/../") + buildDir + u'/' + name }) {
-        if (QFileInfo(candidate).isExecutable()) {
-            return QFileInfo(candidate).canonicalFilePath();
-        }
-    }
-    return {};
+    return vela::toolExecutable(name, buildDir, QCoreApplication::applicationDirPath(),
+        QCoreApplication::applicationName());
 }
 
 QString velaSettings()
