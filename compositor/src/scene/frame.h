@@ -136,7 +136,7 @@ struct vela_output_frame {
     struct wlr_color_transform *night_transform;
     bool night_commit_pending;
     bool night_gamma_committed; // last successful color commit installed a LUT
-    bool night_clear_needed; // a failed NULL commit left the old LUT installed
+    bool night_clear_needed; // an old committed LUT still needs clearing
     uint32_t night_version;
     bool night_in_gamma; // use the gamma path instead of the Vulkan filter
     bool gamma_refused; // current fallback after a rejected gamma test/commit
