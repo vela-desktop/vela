@@ -59,8 +59,14 @@ if (os.environ.get("TEST_FAIL_CONFIG_MV") == "1" and
 mirror_swap = (os.environ.get("TEST_INTERRUPT_MIRROR_SWAP") == "1"
                and sys.argv[-1] == os.environ["TEST_MIRROR_DEST"]
                and pathlib.Path(sys.argv[-2]).name.startswith("vela-mirror."))
+old_mirror_swap = (os.environ.get("TEST_INTERRUPT_OLD_MIRROR_SWAP") == "1"
+                   and sys.argv[-2] == os.environ["TEST_MIRROR_DEST"]
+                   and pathlib.Path(sys.argv[-1]).name.startswith("vela-corrupt."))
 config_commit = (os.environ.get("TEST_INTERRUPT_CONFIG_COMMIT") == "1"
                  and sys.argv[-1] == os.environ["TEST_CONFIG_DEST"])
+if old_mirror_swap:
+    os.kill(os.getppid(), signal.SIGTERM)
+    sys.exit(0)  # Pretend mv returned normally after the parent was signaled
 if mirror_swap or config_commit:
     subprocess.run([os.environ["TEST_REAL_MV"], *sys.argv[1:]], check=True)
     os.kill(os.getppid(), signal.SIGTERM)
@@ -765,6 +771,20 @@ class UpdateSources(UpdateFixture):
         self.assertEqual(len(quarantine), 1)
         self.assertTrue((quarantine[0] / "refs/vela-update/selected").exists())
         self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
+
+    def test_signal_before_old_mirror_rename_leaves_original_untouched(self):
+        self.run_update("--check", source=False)
+        self.corrupt_cached_mirror()
+        self.env["TEST_INTERRUPT_OLD_MIRROR_SWAP"] = "1"
+        try:
+            result = self.run_update("--check", source=False, status=143)
+        finally:
+            self.env.pop("TEST_INTERRUPT_OLD_MIRROR_SWAP")
+        self.assertIn("cached Git mirror is corrupt", result.stderr)
+        self.assertTrue((self.mirror / "refs/vela-update/selected").exists())
+        self.assertNotIn("previous mirror is preserved at", result.stderr)
+        self.assertFalse(list(self.mirror.parent.glob("vela-corrupt.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
 
     def test_signal_during_mirror_swap_restores_corrupt_cache(self):
         self.run_update("--check", source=False)
