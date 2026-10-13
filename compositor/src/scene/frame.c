@@ -748,8 +748,10 @@ static void night_color_commit_failed(struct vela_output_frame *frame)
     frame->night_clear_needed = frame->night_gamma_committed;
     frame->night_commit_pending = tried_lut && frame->night_clear_needed;
     frame->night_in_gamma = frame->night_clear_needed && !frame->night_commit_pending;
-    wlr_log(WLR_INFO, "%s: gamma color commit rejected, retrying with Vulkan fallback",
-        frame->output->name);
+    wlr_log(WLR_INFO, "%s: gamma color commit rejected, %s", frame->output->name,
+        frame->night_commit_pending ? "clearing previous LUT before Vulkan fallback"
+                                    : frame->night_clear_needed ? "deferring LUT clear until retry"
+                                                                : "falling back to Vulkan");
     vela_output_frame_damage_whole(frame);
 }
 
@@ -778,7 +780,8 @@ void vela_output_frame_damage_whole(struct vela_output_frame *frame)
 
 void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filter_changed, bool night_changed)
 {
-    if (filter_changed || (night_changed && (!wlr_output_is_drm(frame->output) || frame->gamma_refused))) {
+    if (filter_changed || (night_changed && (!wlr_output_is_drm(frame->output)
+                              || (frame->gamma_refused && !frame->night_in_gamma)))) {
         vela_output_frame_damage_whole(frame);
     } else if (night_changed) {
         // A DRM gamma transform can be committed with unchanged pixels.
@@ -788,8 +791,8 @@ void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filte
 
 void vela_output_frame_retry_night_light(struct vela_output_frame *frame)
 {
-    if (!frame->gamma_refused || frame->gamma_retry_pending || !wlr_output_is_drm(frame->output)
-        || !frame->output->enabled) {
+    if ((!frame->gamma_refused && !frame->night_clear_needed) || frame->gamma_retry_pending
+        || !wlr_output_is_drm(frame->output) || !frame->output->enabled) {
         return;
     }
     // The retry flag bypasses the version guard without inventing a version.
