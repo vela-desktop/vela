@@ -87,6 +87,30 @@ class Accessibility(unittest.TestCase):
         self.vela.wait_for(lambda _: not self.a11y()["nightLight"], what="night light off by the schedule",
                            read_state=False)
 
+    def test_night_light_headless_fallback_pixels(self):
+        # A headless output has no DRM gamma LUT. The Vulkan fallback must
+        # tint rendered pixels, then restore the originals when turned off.
+        self.start(["night-light-strength=100"])
+        self.vela.open_window(400, 300)
+        before = self.vela.pixels()
+        # Pick a stable, reasonably bright pixel from the test pattern.
+        samples = [(x, y) for y in range(200, 900, 24) for x in range(400, 1500, 24)
+                   if min(before.at(x, y)) > 100]
+        self.assertTrue(samples, "test scene should contain a bright color")
+        x, y = samples[len(samples) // 2]
+        original = before.at(x, y)
+
+        self.vela.command("night-light on")
+        time.sleep(1.2) # one-second warm-up transition
+        warm = self.vela.pixels().at(x, y)
+        self.assertLess(warm[2], original[2] - 10, "fallback should reduce blue")
+
+        self.vela.command("night-light off")
+        time.sleep(1.2)
+        restored = self.vela.pixels().at(x, y)
+        for actual, expected in zip(restored, original):
+            self.assertAlmostEqual(actual, expected, delta=3)
+
     def modifiers_while(self, actions, at_ms):
         """The keyboard modifiers ("modifiers" request) at the moments
         `at_ms` while vela-input runs `actions`: its virtual keyboard
