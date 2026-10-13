@@ -274,14 +274,10 @@ void vela_a11y_set_night_light(struct vela_a11y *a11y, bool on, bool save)
     if (save) {
         vela_config_write("night-light", yes_no(on));
     }
-    if (on == a11y->night_light && !a11y->level_animating && a11y->night_level == (on ? 1.0 : 0.0)) {
-        return;
-    }
     bool activating = on && !a11y->night_light;
-    a11y->night_light = on;
-    // A failed LUT clear must be retried when the user switches Night Light
-    // off, too: an old hardware LUT may still be tinting the screen.
-    // This is one explicit retry, not a retry on every animation tick.
+    // Retrying a failed LUT clear must work even when Night Light is already
+    // off and its fade has finished. Do this before the unchanged-state return,
+    // without starting another animation or retrying on every animation tick.
     if (activating || !on) {
         struct vela_output *output;
         wl_list_for_each (output, &a11y->server->outputs, link) {
@@ -290,6 +286,10 @@ void vela_a11y_set_night_light(struct vela_a11y *a11y, bool on, bool save)
             }
         }
     }
+    if (on == a11y->night_light && !a11y->level_animating && a11y->night_level == (on ? 1.0 : 0.0)) {
+        return;
+    }
+    a11y->night_light = on;
     start_night_transition(a11y);
     announce(a11y);
 }
