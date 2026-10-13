@@ -671,9 +671,9 @@ static void prepare_night_light(struct vela_output_frame *frame)
         return;
     }
     frame->night_version = scene->night_version;
-    // Only real outputs have a gamma (not nested or headless ones).
-    if (frame->gamma_refused || !wlr_output_is_drm(frame->output)) {
-        frame->gamma_refused = true;
+    // Only real DRM outputs have a gamma LUT. An earlier failure suppresses
+    // repeated tests during the animation, except on an explicit retry.
+    if (!wlr_output_is_drm(frame->output) || (frame->gamma_refused && !frame->gamma_retry_pending)) {
         frame->night_in_gamma = false;
         return;
     }
@@ -690,15 +690,27 @@ static void prepare_night_light(struct vela_output_frame *frame)
             wlr_color_transform_unref(transform);
         }
         frame->gamma_refused = true;
+        frame->gamma_retry_pending = false;
         frame->night_in_gamma = false;
+        // We may have scheduled just a gamma commit; the shader fallback
+        // instead changes the pixels of the entire output.
+        vela_output_frame_damage_whole(frame);
         return;
     }
+    bool recovering = frame->gamma_refused;
+    frame->gamma_refused = false;
+    frame->gamma_retry_pending = false;
     if (frame->night_transform) {
         wlr_color_transform_unref(frame->night_transform);
     }
     frame->night_transform = transform;
     frame->night_commit_pending = true;
     frame->night_in_gamma = scene->night_active;
+    if (recovering && scene->night_active) {
+        // Previously rendered buffers contain the shader's warm tint.
+        // Redraw them once without the shader when the LUT comes back.
+        vela_output_frame_damage_whole(frame);
+    }
 }
 
 void vela_output_frame_set_magnifier(struct vela_output_frame *frame, double zoom, double x, double y)
@@ -721,6 +733,28 @@ void vela_output_frame_damage_whole(struct vela_output_frame *frame)
     wlr_output_transformed_resolution(frame->output, &width, &height);
     const struct wlr_box whole = { 0, 0, width, height };
     wlr_damage_ring_add_box(&frame->ring, &whole);
+    vela_output_schedule_frame(frame->owner);
+}
+
+void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filter_changed, bool night_changed)
+{
+    if (filter_changed || (night_changed && (!wlr_output_is_drm(frame->output) || frame->gamma_refused))) {
+        vela_output_frame_damage_whole(frame);
+    } else if (night_changed) {
+        // A DRM gamma transform can be committed with unchanged pixels.
+        vela_output_schedule_frame(frame->owner);
+    }
+}
+
+void vela_output_frame_retry_night_light(struct vela_output_frame *frame)
+{
+    if (!frame->gamma_refused || frame->gamma_retry_pending || !wlr_output_is_drm(frame->output)
+        || !frame->output->enabled) {
+        return;
+    }
+    frame->gamma_retry_pending = true;
+    // The gains may be unchanged since the failed test: force prepare_night_light.
+    frame->night_version = frame->scene->night_version - 1;
     vela_output_schedule_frame(frame->owner);
 }
 
