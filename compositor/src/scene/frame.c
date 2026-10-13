@@ -1173,9 +1173,33 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
             }
         }
         ok = wlr_output_commit_state(output, state);
-        color_commit_failed = !ok && frame->night_commit_pending;
+        if (!ok && frame->night_commit_pending) {
+            // A commit can fail for reasons unrelated to gamma. Try the same
+            // buffer/mode without changing the color transform before deciding
+            // that the LUT was rejected. Omitting the bit retains an old LUT.
+            struct wlr_output_state no_color;
+            wlr_output_state_init(&no_color);
+            if (wlr_output_state_copy(&no_color, state)) {
+                no_color.committed &= ~WLR_OUTPUT_STATE_COLOR_TRANSFORM;
+                if (wlr_output_commit_state(output, &no_color)) {
+                    // This buffer did reach the output, but the requested LUT
+                    // did not. Repaint with the shader and (if necessary)
+                    // clear the previously installed LUT on the next frame.
+                    ok = true;
+                    color_commit_failed = true;
+                    state->committed &= ~WLR_OUTPUT_STATE_COLOR_TRANSFORM;
+                } else {
+                    // If both commits fail, only blame gamma when testing
+                    // isolates the color transform as the rejected change.
+                    // A runtime failure despite valid tests is not proof.
+                    color_commit_failed = !wlr_output_test_state(output, state)
+                        && wlr_output_test_state(output, &no_color);
+                }
+            }
+            wlr_output_state_finish(&no_color);
+        }
     }
-    if (ok && frame->night_commit_pending) {
+    if (ok && frame->night_commit_pending && !color_commit_failed) {
         frame->night_gamma_committed = frame->night_transform != NULL;
         frame->night_clear_needed = false;
         frame->night_commit_pending = false;
@@ -1186,9 +1210,11 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
         // The frame didn't reach the output: its damage must be redrawn.
         wlr_region_transform(&frame_damage, &frame_damage, transform, buffer_width, buffer_height);
         wlr_damage_ring_add(&frame->ring, &frame_damage);
-        if (color_commit_failed) {
-            night_color_commit_failed(frame);
-        }
+    }
+    if (color_commit_failed) {
+        // Also needed when the buffer-only retry succeeded: that success
+        // does not mean the gamma LUT was applied.
+        night_color_commit_failed(frame);
     }
     pixman_region32_fini(&frame_damage);
     pixman_region32_fini(&buffer_damage);
