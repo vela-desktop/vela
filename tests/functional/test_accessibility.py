@@ -104,15 +104,14 @@ class Accessibility(unittest.TestCase):
         original = before.at(x, y)
 
         self.vela.command("night-light on")
-        time.sleep(1.2) # one-second warm-up transition
-        warm = self.vela.pixels().at(x, y)
-        self.assertLess(warm[2], original[2] - 10, "fallback should reduce blue")
+        self.vela.wait_for(lambda _: self.vela.pixels().at(x, y)[2] < original[2] - 10,
+                           what="Vulkan night-light fallback to reduce blue", read_state=False)
 
         self.vela.command("night-light off")
-        time.sleep(1.2)
-        restored = self.vela.pixels().at(x, y)
-        for actual, expected in zip(restored, original):
-            self.assertAlmostEqual(actual, expected, delta=3)
+        self.vela.wait_for(
+            lambda _: all(abs(actual - expected) <= 3
+                          for actual, expected in zip(self.vela.pixels().at(x, y), original)),
+            what="Vulkan night-light fallback to restore the original pixel", read_state=False)
 
     def modifiers_while(self, actions, at_ms):
         """The keyboard modifiers ("modifiers" request) at the moments
