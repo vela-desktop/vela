@@ -530,7 +530,7 @@ see the documentation below.
 |---|---|
 | **[Alpha hardware coverage](docs/hardware.md)** | Driver validation scope, optional services and manual smoke tests. |
 | **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
-| **[Roadmap](docs/roadmap.md)** | Completed milestones and planned features. |
+| **[Roadmap](docs/roadmap.md)** | Work in progress, what comes next, what is not planned, and what is done. |
 | **[Contributing](CONTRIBUTING.md)** | Development workflow, PR checklist, testing and DCO. |
 | **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
