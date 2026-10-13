@@ -124,8 +124,10 @@ bool parseDesktopFile(const QString& path, const QStringList& localeKeys, AppMod
         return false;
     }
     const QString tryExec = values.value(QStringLiteral("TryExec"));
-    if (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()
-        && !QFile::exists(tryExec)) {
+    const QString resolvedTryExec = vela::desktopExecutable(
+        tryExec, QCoreApplication::applicationDirPath());
+    if (!tryExec.isEmpty() && QStandardPaths::findExecutable(resolvedTryExec).isEmpty()
+        && !QFile::exists(resolvedTryExec)) {
         return false;
     }
 
