@@ -83,9 +83,8 @@ static bool timezone_coordinates(double *latitude, double *longitude)
 
 // ----------------------------------------------------------------- color --
 
-// Filters and night light to the scene: where they go through drawing,
-// everything must be redrawn (where they go through the monitor's gamma the
-// commit is enough, which the frame does anyway).
+// Filters change the rendered pixels. Night light only does so on outputs
+// where the gamma LUT is unavailable; DRM outputs only need another commit.
 static void apply_color(struct vela_a11y *a11y)
 {
     struct vela_scene *scene = a11y->server->scene;
@@ -112,7 +111,7 @@ static void apply_color(struct vela_a11y *a11y)
     if (filter_changed || night_changed) {
         struct vela_output *output;
         wl_list_for_each (output, &a11y->server->outputs, link) {
-            vela_output_frame_damage_whole(output->frame);
+            vela_output_frame_color_changed(output->frame, filter_changed, night_changed);
         }
     }
 }
@@ -169,6 +168,14 @@ static int handle_schedule_timer(void *data)
 {
     struct vela_a11y *a11y = data;
     check_night_schedule(a11y);
+    // A failed gamma test can be temporary (e.g. during an output change).
+    // Retry at most once per minute, never once per animation frame.
+    if (a11y->night_light) {
+        struct vela_output *output;
+        wl_list_for_each (output, &a11y->server->outputs, link) {
+            vela_output_frame_retry_night_light(output->frame);
+        }
+    }
     wl_event_source_timer_update(a11y->timer, 60000);
     return 0;
 }
@@ -270,7 +277,14 @@ void vela_a11y_set_night_light(struct vela_a11y *a11y, bool on, bool save)
     if (on == a11y->night_light && !a11y->level_animating && a11y->night_level == (on ? 1.0 : 0.0)) {
         return;
     }
+    bool activating = on && !a11y->night_light;
     a11y->night_light = on;
+    if (activating) {
+        struct vela_output *output;
+        wl_list_for_each (output, &a11y->server->outputs, link) {
+            vela_output_frame_retry_night_light(output->frame);
+        }
+    }
     start_night_transition(a11y);
     announce(a11y);
 }
