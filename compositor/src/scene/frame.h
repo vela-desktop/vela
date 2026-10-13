@@ -137,7 +137,8 @@ struct vela_output_frame {
     bool night_commit_pending;
     uint32_t night_version;
     bool night_in_gamma; // the gamma is showing it
-    bool gamma_refused; // this output doesn't accept it: in drawing
+    bool gamma_refused; // current fallback after an unsuccessful gamma test
+    bool gamma_retry_pending; // one explicit retry, not every animation frame
     bool cursor_locked; // with the filter in drawing, we draw the cursor ourselves
     // Explicit sync for scanout: the backend signals here the release of an
     // app's buffer when it stops showing it.
@@ -164,6 +165,11 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
 // we think anymore.
 void vela_output_frame_reset_damage(struct vela_output_frame *frame);
 void vela_output_frame_damage_whole(struct vela_output_frame *frame);
+// Color changes invalidate pixels only when the effect is drawn in Vulkan.
+void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filter_changed, bool night_changed);
+// Reconsider a rejected DRM gamma LUT on reactivation, a mode change or the
+// accessibility timer (at most once per minute), never on each color tween tick.
+void vela_output_frame_retry_night_light(struct vela_output_frame *frame);
 
 // After the frame: frame callbacks to the visible surfaces paced by this
 // output.
