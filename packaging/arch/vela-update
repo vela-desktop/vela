@@ -181,7 +181,9 @@ cleanup() {
             mv -- "$BACKUP_MIRROR" "$MIRROR" || {
                 echo "vela-update: previous mirror is preserved at $BACKUP_MIRROR" >&2
             }
-        elif [ "$SWAP_UNCOMMITTED" = 1 ]; then
+        elif [ "$SWAP_UNCOMMITTED" = 1 ] || [ "$mirror_corrupt" = 1 ]; then
+            # Corrupt mirrors are evidence, not disposable temporary backups.
+            # Preserve them even if interrupted just after committing a swap.
             echo "vela-update: previous mirror is preserved at $BACKUP_MIRROR" >&2
         else
             rm -rf -- "$BACKUP_MIRROR"
@@ -356,12 +358,16 @@ if [ -n "$STAGED_MIRROR" ]; then
             backup_slot=$(mktemp -d "$CACHE/vela-backup.XXXXXXXX")
         fi
         rmdir "$backup_slot"
-        mv -- "$MIRROR" "$backup_slot"
+        # Record the rollback path before renaming the old mirror. A signal
+        # during mv must not leave an untracked backup.
         BACKUP_MIRROR="$backup_slot"
+        mv -- "$MIRROR" "$backup_slot"
     fi
+    # Mark the swap uncommitted *before* the staged rename. If interrupted
+    # between mv and the next statement, cleanup can still roll it back.
+    SWAP_UNCOMMITTED=1
     mv -- "$STAGED_MIRROR" "$MIRROR"
     STAGED_MIRROR=""
-    SWAP_UNCOMMITTED=1
 fi
 
 # Save a new source only after its fetch and revision resolution succeeded.
@@ -458,7 +464,10 @@ release_digest=""
 if [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1; then
     release_url="https://github.com/$repo/releases/download/alpha-$latestFull"
     manifest="$CACHE/public-release-SHA256SUMS"
-    if curl -fsSL --connect-timeout 5 --max-time 20 -o "$manifest" "$release_url/SHA256SUMS" 2>"$CACHE/release-lookup-error.log"; then
+    # curl exit 22 covers every HTTP error, not only missing prereleases.
+    # Record the final response code, and suppress only an actual HTTP 404.
+    if response_code=$(curl -fsSL --write-out '%{http_code}' --connect-timeout 5 --max-time 20 \
+        -o "$manifest" "$release_url/SHA256SUMS" 2>"$CACHE/release-lookup-error.log"); then
         if [ "$(wc -l < "$manifest")" -eq 1 ]; then
             release_digest=$(awk 'NR == 1 {print $1}' "$manifest")
             release_package=$(awk 'NR == 1 {print $2}' "$manifest")
@@ -470,10 +479,10 @@ if [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1;
         fi
     else
         status=$?
-        # A missing prerelease is ordinary (not every commit has a binary).
-        # Timeouts, TLS, DNS and other curl errors should never be swallowed.
-        if [ "$status" -ne 22 ]; then
-            echo "vela-update: optional public release lookup failed (curl exit $status):" >&2
+        # A 404 is normal; 403, 429, 5xx, TLS, DNS and timeouts are not.
+        # All failures still fall back safely to the local build.
+        if [ "$status" -ne 22 ] || [ "$response_code" != 404 ]; then
+            echo "vela-update: optional public release lookup failed (HTTP ${response_code:-unknown}, curl exit $status):" >&2
             cat "$CACHE/release-lookup-error.log" >&2
         fi
     fi
