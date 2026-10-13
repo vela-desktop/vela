@@ -689,12 +689,23 @@ static void prepare_night_light(struct vela_output_frame *frame)
         if (transform) {
             wlr_color_transform_unref(transform);
         }
+        bool was_refused = frame->gamma_refused;
         frame->gamma_refused = true;
         frame->gamma_retry_pending = false;
         frame->night_in_gamma = false;
-        // We may have scheduled just a gamma commit; the shader fallback
-        // instead changes the pixels of the entire output.
-        vela_output_frame_damage_whole(frame);
+        if (frame->night_transform) {
+            // A previous LUT can still be active in DRM. Omitting the color
+            // transform from the next state would not disable it: explicitly
+            // commit NULL before showing shader-tinted pixels.
+            wlr_color_transform_unref(frame->night_transform);
+            frame->night_transform = NULL;
+            frame->night_commit_pending = true;
+        }
+        if (!was_refused && scene->night_active) {
+            // Switching from gamma to Vulkan changes every displayed pixel.
+            // A retry that fails while already in Vulkan needs no redraw.
+            vela_output_frame_damage_whole(frame);
+        }
         return;
     }
     bool recovering = frame->gamma_refused;
