@@ -204,7 +204,16 @@ elif name == "curl":
     if os.environ.get("TEST_BAD_RELEASE_DIGEST"):
         digest = "f" * 64
     if url == prefix + "SHA256SUMS":
-        output.write_text(digest + "  " + package + "\n")
+        mode = os.environ.get("TEST_BAD_RELEASE_MANIFEST")
+        if mode == "invalid-digest":
+            digest = "not-a-sha256"
+        if mode == "empty":
+            content = ""
+        elif mode == "multiple":
+            content = digest + "  " + package + "\n" + digest + "  " + package + "\n"
+        else:
+            content = digest + "  " + package + "\n"
+        output.write_text(content)
         print("200")
     elif url == prefix + package and not os.environ.get("TEST_FAIL_RELEASE_DOWNLOAD"):
         output.write_bytes(data + (b"corrupted" if os.environ.get("TEST_CORRUPT_RELEASE") else b""))
@@ -800,6 +809,43 @@ class UpdateSources(UpdateFixture):
         self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
         self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
 
+    def test_signal_after_source_config_rename_restores_both_old_paths(self):
+        self.run_update("--check")
+        original_config = self.config.read_bytes()
+        original_origin = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip()
+        alternate = self.directory / "alternate"
+        shutil.copytree(self.source, alternate)
+        self.env["TEST_INTERRUPT_CONFIG_COMMIT"] = "1"
+        try:
+            result = self.run_update("--source", str(alternate), "--check",
+                                     source=False, status=143)
+        finally:
+            self.env.pop("TEST_INTERRUPT_CONFIG_COMMIT")
+        self.assertEqual(self.config.read_bytes(), original_config)
+        self.assertEqual(subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip(), original_origin)
+        self.assertFalse(list(self.config.parent.glob(".updates.conf.backup.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-backup.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+        self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
+        self.run_update("--check", source=False)
+
+    def test_signal_after_initial_config_rename_removes_uncommitted_paths(self):
+        self.env["TEST_INTERRUPT_CONFIG_COMMIT"] = "1"
+        try:
+            self.run_update("--source", HTTPS_SOURCE, "--check",
+                            source=False, status=143)
+        finally:
+            self.env.pop("TEST_INTERRUPT_CONFIG_COMMIT")
+        self.assertFalse(self.config.exists())
+        self.assertFalse(self.mirror.exists())
+        self.assertFalse(list(self.config.parent.glob(".updates.conf.backup.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+        self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
+
     def test_signal_during_config_commit_restores_corrupt_cache(self):
         self.run_update("--check", source=False)
         self.corrupt_cached_mirror()
@@ -867,7 +913,8 @@ class UpdatePublicReleases(UpdateFixture):
 
     def test_wrong_release_commit_is_not_downloaded(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_RELEASE_PKG_SHA=self.nvidia)
-        self.run_update("--download", source=False)
+        result = self.run_update("--download", source=False)
+        self.assertIn("invalid public release manifest", result.stderr)
         self.assertEqual(len(self.calls("curl")), 1)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
@@ -940,6 +987,15 @@ class UpdatePublicReleases(UpdateFixture):
         self.assertNotIn("release lookup failed", result.stderr)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_invalid_manifest_reports_error_and_builds(self):
+        for mode in ("invalid-digest", "empty", "multiple"):
+            with self.subTest(mode=mode):
+                self.env.update(TEST_RELEASE_SHA=self.main, TEST_BAD_RELEASE_MANIFEST=mode)
+                result = self.run_update("--download", source=False)
+                self.assertIn("invalid public release manifest", result.stderr)
+                self.assertEqual(self.calls("sudo"), [])
+                self.assertEqual(self.calls("makepkg")[-1]["sha"], self.main)
 
     def test_http_failures_other_than_404_are_reported_and_build(self):
         for code in ("403", "429", "500", "503"):
