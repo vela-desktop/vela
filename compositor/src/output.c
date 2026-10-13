@@ -292,9 +292,28 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
     struct wlr_box area = vela_output_box(output);
     bool ok = vela_output_frame_render(output->frame, area.x, area.y, state);
     if (!ok) {
+        // A failed render commit may have included a newly rejected gamma LUT.
+        // The mode fallback must not re-submit that transform by accident.
+        bool reset_gamma = output->frame->gamma_refused
+            && (state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM);
+        if (reset_gamma) {
+            wlr_output_state_set_color_transform(state, NULL);
+        }
         // Fallback (also to turn the output on or off): wlroots puts an empty
         // buffer, which our damage tracking doesn't know about.
         ok = wlr_output_commit_state(output->wlr, state);
+        if (ok && reset_gamma) {
+            output->frame->night_gamma_committed = false;
+            output->frame->night_clear_needed = false;
+            output->frame->night_commit_pending = false;
+            output->frame->night_in_gamma = false;
+        }
+        if (!ok && reset_gamma) {
+            // If clearing the LUT is also refused, still try the mode change.
+            // Keep the old LUT marked as applied for a later clear retry.
+            state->committed &= ~WLR_OUTPUT_STATE_COLOR_TRANSFORM;
+            ok = wlr_output_commit_state(output->wlr, state);
+        }
         vela_output_frame_reset_damage(output->frame);
     }
     vela_frame_clock_set_mode_refresh(&output->clock, output->wlr->refresh);
