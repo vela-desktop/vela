@@ -168,11 +168,11 @@ static int handle_schedule_timer(void *data)
 {
     struct vela_a11y *a11y = data;
     check_night_schedule(a11y);
-    // A failed gamma test can be temporary (e.g. during an output change).
-    // Retry at most once per minute, never once per animation frame.
-    if (a11y->night_light) {
-        struct vela_output *output;
-        wl_list_for_each (output, &a11y->server->outputs, link) {
+    // A failed gamma test/commit can be temporary. A pending LUT clear must
+    // also retry when Night Light is OFF: the monitor may still be tinted.
+    struct vela_output *output;
+    wl_list_for_each (output, &a11y->server->outputs, link) {
+        if (a11y->night_light || output->frame->night_clear_needed) {
             vela_output_frame_retry_night_light(output->frame);
         }
     }
