@@ -103,6 +103,33 @@ class Shell(unittest.TestCase):
 
 
 class Supervisor(unittest.TestCase):
+    def test_redraw_signal_keeps_supervised_session_alive(self):
+        # pkill -x matches /proc/<pid>/comm, not argv. Never run pkill in
+        # tests: it could signal a real desktop running outside this session.
+        with Session(supervise=True) as vela:
+            supervisor_pid = vela.process.pid
+            vela.wait_for(lambda _: child_compositor(supervisor_pid) is not None,
+                          read_state=False, what="supervised compositor")
+            compositor_pid = child_compositor(supervisor_pid)
+            with open(f"/proc/{supervisor_pid}/comm") as name:
+                self.assertEqual(name.read().strip(), "vela-supervise")
+            with open(f"/proc/{compositor_pid}/comm") as name:
+                self.assertEqual(name.read().strip(), "vela-compositor")
+
+            # An accidental direct signal to the supervisor must not log out.
+            os.kill(supervisor_pid, signal.SIGUSR1)
+            time.sleep(0.2)
+            self.assertIsNone(vela.process.poll())
+            self.assertEqual(child_compositor(supervisor_pid), compositor_pid)
+
+            # Targeting the real compositor must only request a redraw.
+            os.kill(compositor_pid, signal.SIGUSR1)
+            time.sleep(0.2)
+            vela.state()
+            self.assertIsNone(vela.process.poll())
+            self.assertEqual(child_compositor(supervisor_pid), compositor_pid)
+            self.assertNotIn("the compositor crashed", vela.log_text())
+
     def test_restart_after_crash(self):
         with Session(supervise=True) as vela:
             first = child_compositor(vela.process.pid)
