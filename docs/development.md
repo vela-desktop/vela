@@ -239,6 +239,12 @@ The renderer design is documented in detail in [renderer.md](renderer.md).
 
 ## Debugging rendering
 
+`SIGUSR1` forces a full redraw for damage-tracking diagnostics. The real
+compositor is named `vela-compositor`; its session supervisor is named
+`vela-supervise`. When debugging a running compositor, target its **exact
+PID**, not a broad `pkill` that could reach other sessions. Prefer a nested
+session for potentially disruptive compositor tests.
+
 Several environment variables are intended specifically for renderer diagnosis. The most useful ones are:
 
 ```sh
