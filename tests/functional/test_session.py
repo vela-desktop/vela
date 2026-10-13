@@ -116,6 +116,19 @@ class Supervisor(unittest.TestCase):
             with open(f"/proc/{compositor_pid}/comm") as name:
                 self.assertEqual(name.read().strip(), "vela-compositor")
 
+            # The main thread AND GPU worker threads must block SIGUSR1:
+            # Wayland's signalfd can only receive a process-directed signal
+            # reliably when another thread cannot handle it instead.
+            redraw_bit = 1 << (signal.SIGUSR1 - 1)
+            for tid in os.listdir(f"/proc/{compositor_pid}/task"):
+                try:
+                    with open(f"/proc/{compositor_pid}/task/{tid}/status") as status:
+                        line = next(line for line in status if line.startswith("SigBlk:"))
+                except (FileNotFoundError, ProcessLookupError):
+                    continue  # A worker thread can exit while inspecting.
+                self.assertNotEqual(int(line.split()[1], 16) & redraw_bit, 0,
+                                    f"SIGUSR1 unblocked by compositor thread {tid}")
+
             # An accidental direct signal to the supervisor must not log out.
             os.kill(supervisor_pid, signal.SIGUSR1)
             time.sleep(0.2)
