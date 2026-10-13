@@ -299,6 +299,11 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
     }
     vela_frame_clock_set_mode_refresh(&output->clock, output->wlr->refresh);
     vela_output_arrange_layers(output);
+    if (ok && (state->committed & (WLR_OUTPUT_STATE_MODE | WLR_OUTPUT_STATE_ENABLED))) {
+        // The DRM gamma capabilities may have changed with the mode/power state.
+        // Retry after the mode commit, not while testing the old output state.
+        vela_output_frame_retry_night_light(output->frame);
+    }
     vela_output_schedule_frame(output);
     return ok;
 }
