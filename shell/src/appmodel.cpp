@@ -4,8 +4,10 @@
 #include "appmodel.h"
 #include "desktopexec.h"
 #include "mimeapps.h"
+#include "velatool.h"
 
 #include <QCollator>
+#include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
@@ -122,8 +124,10 @@ bool parseDesktopFile(const QString& path, const QStringList& localeKeys, AppMod
         return false;
     }
     const QString tryExec = values.value(QStringLiteral("TryExec"));
-    if (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()
-        && !QFile::exists(tryExec)) {
+    const QString resolvedTryExec = vela::desktopExecutable(
+        tryExec, QCoreApplication::applicationDirPath());
+    if (!tryExec.isEmpty() && QStandardPaths::findExecutable(resolvedTryExec).isEmpty()
+        && !QFile::exists(resolvedTryExec)) {
         return false;
     }
 
@@ -665,6 +669,12 @@ bool AppModel::launchEntry(const Entry& entry, const QList<QUrl>& files) const
             for (const QUrl& file : run) {
                 arguments.append(DesktopExec::asPath(file));
             }
+        }
+        // The installed .desktop files use bare names: nested development
+        // sessions should launch local Vela binaries rather than old packages.
+        // Resolve after field-code expansion, but before terminal wrapping.
+        if (!arguments.isEmpty()) {
+            arguments[0] = vela::desktopExecutable(arguments.first(), QCoreApplication::applicationDirPath());
         }
         if (entry.terminal) {
             arguments = QStringList { qEnvironmentVariable("VELA_TERMINAL", QStringLiteral("konsole")),

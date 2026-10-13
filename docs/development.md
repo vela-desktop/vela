@@ -45,6 +45,11 @@ sh scripts/run-nested.sh
 
 Vela opens as a window that behaves like a virtual monitor. If `build/shell/vela-shell` exists, the script starts it together with the compositor.
 
+Files and Settings are launched from the same build tree when available, even if an
+older Vela package is installed in `/usr/bin`. This includes opening them from
+the Start menu, desktop shortcuts, and shell actions. The installed executables
+are used only when no matching build-tree executable exists.
+
 The host compositor normally owns the Super key, so Vela exposes Alt-based alternatives while nested. The full mapping is in [shortcuts.md](shortcuts.md).
 
 A different build directory can be supplied as the first argument:

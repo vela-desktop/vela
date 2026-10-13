@@ -52,6 +52,7 @@ qt_add_executable(vela-shell
     src/servicemenus.h
     src/systemactions.cpp
     src/systemactions.h
+    src/velatool.h
     src/systemstatus.cpp
     src/systemstatus.h
     src/taskbarmodel.cpp
@@ -179,6 +180,12 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-mimeapps-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-mimeapps-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-mimeapps COMMAND vela-mimeapps-test)
+
+    qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
+    target_include_directories(vela-tool-path-test PRIVATE src)
+    target_compile_options(vela-tool-path-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-tool-path-test PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME shell-tool-path COMMAND vela-tool-path-test)
 
     qt_add_executable(vela-appmodel-watch-test
         tests/appmodel_watch.cpp src/appmodel.cpp src/appmodel.h src/desktopexec.h src/mimeapps.h)

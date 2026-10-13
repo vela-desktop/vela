@@ -11,6 +11,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -148,6 +150,62 @@ private slots:
         QVERIFY(writeDesktop(another, entry("Another Tool")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("vendor-tools-another.desktop")),
             QStringLiteral("Another Tool"), 5000);
+    }
+
+    void tryExecResolvesBuildTree()
+    {
+        // AppModel uses the process executable directory to find sibling tools.
+        // Run this test from a synthetic build/shell instead of relying on
+        // whatever was built or installed beside the real test executable.
+        if (qEnvironmentVariableIsSet("VELA_TEST_TRYEXEC_CHILD")) {
+            QVERIFY(writeDesktop(userApplications() + QStringLiteral("/local-files.desktop"),
+                "[Desktop Entry]\nType=Application\nName=Local Files\n"
+                "Exec=vela-files\nTryExec=vela-files\n"));
+            QVERIFY(writeDesktop(userApplications() + QStringLiteral("/local-settings.desktop"),
+                "[Desktop Entry]\nType=Application\nName=Local Settings\n"
+                "Exec=vela-settings\nTryExec=vela-settings\n"));
+            QVERIFY(writeDesktop(userApplications() + QStringLiteral("/missing.desktop"),
+                "[Desktop Entry]\nType=Application\nName=Missing Tool\n"
+                "Exec=vela-files\nTryExec=not-installed-test-tool\n"));
+
+            AppModel apps;
+            apps.reload();
+            QCOMPARE(apps.name(QStringLiteral("local-files.desktop")), QStringLiteral("Local Files"));
+            QCOMPARE(apps.name(QStringLiteral("local-settings.desktop")), QStringLiteral("Local Settings"));
+            QVERIFY(apps.name(QStringLiteral("missing.desktop")).isEmpty());
+            return;
+        }
+
+        QTemporaryDir sandbox;
+        QVERIFY(sandbox.isValid());
+        const QString shellDir = sandbox.filePath(QStringLiteral("build/shell"));
+        const QString files = sandbox.filePath(QStringLiteral("build/explorer/vela-files"));
+        const QString settings = sandbox.filePath(QStringLiteral("build/settings/vela-settings"));
+        const QString runner = shellDir + u'/' + QFileInfo(QCoreApplication::applicationFilePath()).fileName();
+        QVERIFY(QDir().mkpath(shellDir));
+        QVERIFY(writeDesktop(files, "#!/bin/sh\n"));
+        QVERIFY(writeDesktop(settings, "#!/bin/sh\n"));
+        const auto permissions = QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner;
+        QVERIFY(QFile::setPermissions(files, permissions));
+        QVERIFY(QFile::setPermissions(settings, permissions));
+        QVERIFY(QFile::copy(QCoreApplication::applicationFilePath(), runner));
+        QVERIFY(QFile::setPermissions(runner, permissions));
+        const QString emptyPath = sandbox.filePath(QStringLiteral("empty-bin"));
+        QVERIFY(QDir().mkpath(emptyPath));
+
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert(QStringLiteral("PATH"), emptyPath);
+        env.insert(QStringLiteral("VELA_TEST_TRYEXEC_CHILD"), QStringLiteral("1"));
+        QProcess child;
+        child.setProgram(runner);
+        child.setArguments({ QStringLiteral("tryExecResolvesBuildTree") });
+        child.setProcessEnvironment(env);
+        child.setProcessChannelMode(QProcess::MergedChannels);
+        child.start();
+        QVERIFY2(child.waitForStarted(10000), qPrintable(child.errorString()));
+        QVERIFY2(child.waitForFinished(20000), qPrintable(child.errorString()));
+        const QByteArray output = child.readAll();
+        QVERIFY2(child.exitStatus() == QProcess::NormalExit && child.exitCode() == 0, output.constData());
     }
 
     void systemAndFlatpakExportsUpdate()
