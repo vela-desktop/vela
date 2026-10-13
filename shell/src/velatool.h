@@ -30,4 +30,21 @@ inline QString toolExecutable(const QString& name, const QString& siblingDir,
     return QStandardPaths::findExecutable(name);
 }
 
+// Desktop-file launches (Start menu, pinned apps, shortcuts) may intentionally
+// start a second instance of Files or Settings, unlike SystemActions. Rewrite
+// only bare Vela executable names; leave other apps and explicit paths alone.
+inline QString desktopExecutable(const QString& program, const QString& appDir)
+{
+    QString siblingDir;
+    if (program == QLatin1String("vela-files"))
+        siblingDir = QStringLiteral("explorer");
+    else if (program == QLatin1String("vela-settings"))
+        siblingDir = QStringLiteral("settings");
+    else
+        return program;
+
+    const QString resolved = toolExecutable(program, siblingDir, appDir, {});
+    return resolved.isEmpty() ? program : resolved;
+}
+
 } // namespace vela
