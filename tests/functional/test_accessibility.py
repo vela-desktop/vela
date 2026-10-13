@@ -91,12 +91,15 @@ class Accessibility(unittest.TestCase):
         # A headless output has no DRM gamma LUT. The Vulkan fallback must
         # tint rendered pixels, then restore the originals when turned off.
         self.start(["night-light-strength=100"])
-        self.vela.open_window(400, 300)
+        identifier = self.vela.open_window(400, 300,
+                                           command=[tool("vela-pattern"), "--scale1", "400", "300"])
+        window = self.vela.state().window(identifier)
         before = self.vela.pixels()
-        # Pick a stable, reasonably bright pixel from the test pattern.
-        samples = [(x, y) for y in range(200, 900, 24) for x in range(400, 1500, 24)
-                   if min(before.at(x, y)) > 100]
-        self.assertTrue(samples, "test scene should contain a bright color")
+        # The scale1 test pattern has stable pure-white pixels in this area.
+        left, top = int(window["x"]), int(window["y"])
+        samples = [(left + x, top + y) for y in range(80, 110) for x in range(230, 270)
+                   if before.at(left + x, top + y) == (255, 255, 255)]
+        self.assertTrue(samples, "test pattern should have a stable white pixel")
         x, y = samples[len(samples) // 2]
         original = before.at(x, y)
 
