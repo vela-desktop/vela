@@ -1182,7 +1182,13 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
             if (wlr_output_state_copy(&no_color, state)) {
                 wlr_output_state_set_color_transform(&no_color, NULL);
                 no_color.committed &= ~WLR_OUTPUT_STATE_COLOR_TRANSFORM;
-                if (wlr_output_commit_state(output, &no_color)) {
+                // A shader-tinted frame must never be delivered with an old
+                // hardware LUT still installed: omitting a rejected NULL
+                // clear would briefly apply both tints. In that case, test
+                // the distinction without committing the unsafe buffer.
+                bool would_double_tint = frame->night_gamma_committed
+                    && frame->night_transform == NULL && night_in_drawing;
+                if (!would_double_tint && wlr_output_commit_state(output, &no_color)) {
                     // This buffer did reach the output, but the requested LUT
                     // did not. Repaint with the shader and (if necessary)
                     // clear the previously installed LUT on the next frame.
