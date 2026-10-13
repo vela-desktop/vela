@@ -135,9 +135,11 @@ struct vela_output_frame {
     // if the monitor accepts it.
     struct wlr_color_transform *night_transform;
     bool night_commit_pending;
+    bool night_gamma_committed; // last successful color commit installed a LUT
+    bool night_clear_needed; // a failed NULL commit left the old LUT installed
     uint32_t night_version;
-    bool night_in_gamma; // the gamma is showing it
-    bool gamma_refused; // current fallback after an unsuccessful gamma test
+    bool night_in_gamma; // use the gamma path instead of the Vulkan filter
+    bool gamma_refused; // current fallback after a rejected gamma test/commit
     bool gamma_retry_pending; // one explicit retry, not every animation frame
     bool cursor_locked; // with the filter in drawing, we draw the cursor ourselves
     // Explicit sync for scanout: the backend signals here the release of an
