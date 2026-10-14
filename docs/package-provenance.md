@@ -96,9 +96,9 @@ manifest.
 ## Development and verification
 
 ```sh
-python3 -m unittest discover -s packaging/arch/tests -v
-sh -n packaging/arch/vela-update
-python3 -m unittest discover -s packaging/arch/tests -p 'test_fedora_update.py' -v
+python3 -m unittest discover -s packaging/tests -v
+sh -n packaging/vela-update
+python3 -m unittest discover -s packaging/tests -p 'test_fedora_update.py' -v
 ```
 
 Offline tests simulate successful and rejected `gh attestation verify`

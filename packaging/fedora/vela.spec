@@ -96,7 +96,7 @@ Vulkan renderer, Qt Quick shell, file manager, settings, and lock screen.
 
 %install
 %cmake_install
-install -Dm755 packaging/arch/vela-update %{buildroot}%{_bindir}/vela-update
+install -Dm755 packaging/vela-update %{buildroot}%{_bindir}/vela-update
 
 %files
 %license LICENSE

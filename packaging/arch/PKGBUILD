@@ -72,5 +72,5 @@ build() {
 
 package() {
     DESTDIR="$pkgdir" cmake --install build
-    install -Dm755 "$_name/packaging/arch/vela-update" "$pkgdir/usr/bin/vela-update"
+    install -Dm755 "$_name/packaging/vela-update" "$pkgdir/usr/bin/vela-update"
 }

@@ -288,7 +288,7 @@ Vela installs as a native `vela-git` package. Install `git`, `curl` and `base-de
 
 ```sh
 git clone https://github.com/vela-desktop/vela.git
-sh vela/packaging/arch/vela-update
+sh vela/packaging/vela-update
 ```
 
 **`vela-update` also handles the first installation**; you do not need to build Vela
@@ -313,7 +313,7 @@ and handles subsequent updates through DNF. To get started:
 ```sh
 sudo dnf install git curl gh rpm-build dnf5-plugins
 git clone https://github.com/vela-desktop/vela.git
-sh vela/packaging/arch/vela-update
+sh vela/packaging/vela-update
 ```
 
 The updater looks for an RPM built for the exact selected commit in the public

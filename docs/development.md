@@ -194,7 +194,9 @@ polkit/             vela-polkit-agent and vela-polkit-prompt (docs/polkit-agent.
 common/             Vela.Controls: theme, controls and blur shared by the Qt Quick apps;
                     audio/: vela-audio, the shell's and Settings' audio backend (docs/audio.md)
 session/            login entry, systemd target and portal integration
-packaging/arch/     PKGBUILD and vela-update
+packaging/          cross-distro vela-update and shared updater tests
+packaging/arch/     Arch Linux PKGBUILD
+packaging/fedora/   Fedora RPM spec and RPM-specific tests
 report/             vela-report: shared Python core/CLI and standalone Qt Widgets GUI
 tools/              development and test clients
 tests/functional/   headless functional scenarios

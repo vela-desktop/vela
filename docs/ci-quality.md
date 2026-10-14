@@ -7,7 +7,7 @@ pull requests and manual dispatch, not on ordinary pushes to `main`.
 ## Package and updater contracts
 
 The [Build workflow](../.github/workflows/build.yml) runs the offline
-`packaging/arch/tests` suite before the full build, and again as CTest's
+`packaging/tests` suite before the full build, and again as CTest's
 `packaging-update` in Arch. It checks public HTTPS defaults, migration of old
 SSH configuration and mirrors, revision selection, CI artifact selection and
 failure handling. It uses real Git with isolated configuration and rejects

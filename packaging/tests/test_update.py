@@ -18,8 +18,8 @@ import time
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[3]
-UPDATER = ROOT / "packaging/arch/vela-update"
+ROOT = Path(__file__).resolve().parents[2]
+UPDATER = ROOT / "packaging/vela-update"
 HTTPS_SOURCE = "https://github.com/vela-desktop/vela.git"
 GIT_STUB = r'''#!/usr/bin/env python3
 import json, os, pathlib, subprocess, sys
@@ -307,7 +307,7 @@ class UpdateFixture(unittest.TestCase):
         packaging.mkdir(parents=True)
         self.pkgbuild = packaging / "PKGBUILD"
         self.pkgbuild.write_text((ROOT / "packaging/arch/PKGBUILD").read_text())
-        shutil.copyfile(UPDATER, packaging / "vela-update")
+        shutil.copyfile(UPDATER, self.source / "packaging/vela-update")
         self.base = self.commit("base")
         self.pkgbuild.write_text(self.pkgbuild.read_text() + "\n# main package\n")
         self.main = self.commit("main update")
@@ -508,7 +508,7 @@ class UpdateRevision(UpdateFixture):
 class UpdateSources(UpdateFixture):
     def test_checkout_bootstrap_reuses_git_objects_and_tracks_remote(self):
         result = subprocess.run(
-            ["sh", str(self.source / "packaging/arch/vela-update"), "--check"],
+            ["sh", str(self.source / "packaging/vela-update"), "--check"],
             env=self.env, input="", text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("Reusing Git objects from the checkout", result.stdout)

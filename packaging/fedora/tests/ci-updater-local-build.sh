@@ -65,18 +65,18 @@ git -C "$work/source" commit -qm 'Create isolated RPM fixture'
 sha=$(git -C "$work/source" rev-parse HEAD)
 
 # Use the actual installed script from this commit, not a mocked runner.
-sh packaging/arch/vela-update --source "$work/source" --commit "$sha" --build --jobs 1
+sh packaging/vela-update --source "$work/source" --commit "$sha" --build --jobs 1
 test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci'
 rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]1[.]g${sha:0:7}[.]fc44$"
 test "$(find "$XDG_CACHE_HOME/vela-update/packages" -maxdepth 1 -name 'vela-git-*.x86_64.rpm' | wc -l)" -eq 1
 
 # An identical selected revision must be a no-op without --force.
-if sh packaging/arch/vela-update --check --source "$work/source" --commit "$sha"; then
+if sh packaging/vela-update --check --source "$work/source" --commit "$sha"; then
     echo "Expected --check to report the fixture is already installed" >&2
     exit 1
 fi
 
 # Force should exercise the DNF5 reinstall path with the exact same NEVRA.
-sh packaging/arch/vela-update --force --build --source "$work/source" --commit "$sha"
+sh packaging/vela-update --force --build --source "$work/source" --commit "$sha"
 test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci'
 echo ":: Fedora updater full local-build and force-reinstall integration passed"

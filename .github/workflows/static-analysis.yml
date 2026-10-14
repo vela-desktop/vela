@@ -35,7 +35,7 @@ jobs:
       - name: Shell syntax and ShellCheck
         shell: bash
         run: |
-          for script in packaging/arch/vela-update session/vela-session-env scripts/*.sh; do
+          for script in packaging/vela-update session/vela-session-env scripts/*.sh; do
             sh -n "$script"
           done
           bash -n scripts/ci-check-package.sh

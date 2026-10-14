@@ -321,7 +321,7 @@ fi
 # the same history twice during the first installation.
 bootstrap=""
 if [ "$source" = "$DEFAULT_SOURCE" ] && [ ! -d "$MIRROR" ]; then
-    candidate=$(CDPATH= cd "$(dirname "$0")/../.." 2> /dev/null && pwd) || candidate=""
+    candidate=$(CDPATH= cd "$(dirname "$0")/.." 2> /dev/null && pwd) || candidate=""
     if [ -n "$candidate" ] && [ -d "$candidate/.git" ] \
         && [ "$(git -C "$candidate" rev-parse --show-toplevel 2> /dev/null || true)" = "$candidate" ]; then
         origin=$(git -C "$candidate" remote get-url origin 2> /dev/null || true)

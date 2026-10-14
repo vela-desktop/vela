@@ -46,12 +46,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Updater and package source contracts (no network or credentials)
-        run: python3 -m unittest discover -s packaging/arch/tests -v
+        run: python3 -m unittest discover -s packaging/tests -v
       - name: Reporter evidence contracts (no GPU or running session)
         run: PYTHONPATH=report python3 -m unittest discover -s report/tests -v
       - name: Package script syntax
         run: |
-          sh -n packaging/arch/vela-update
+          sh -n packaging/vela-update
           sh -n session/vela-session.in scripts/test-sharpness.sh
           bash -n packaging/arch/PKGBUILD
 
@@ -99,7 +99,7 @@ jobs:
 
       - name: Scripts
         run: |
-          for script in packaging/arch/vela-update session/vela-session-env scripts/*.sh; do
+          for script in packaging/vela-update session/vela-session-env scripts/*.sh; do
             sh -n "$script"
           done
 
