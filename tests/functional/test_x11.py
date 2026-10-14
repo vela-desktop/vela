@@ -93,6 +93,40 @@ class X11(unittest.TestCase):
             self.assertEqual(self.vela.state().window(view_id)["fullscreen"], expected)
             time.sleep(0.03)
 
+    def test_wine_redundant_fullscreen_off_does_not_disarm_return(self):
+        # Wine may echo an EWMH "off" when the compositor is already windowed.
+        path = os.path.join(self.vela.directory, "wine-xid")
+        view_id = self.open_x11("--id-file", path, "--wine-style", "0x96000000", 300, 200)
+        with open(path, encoding="ascii") as xids:
+            xid = xids.read().strip()
+        self.x11_control("--fullscreen", xid, "on")
+        self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"], what="fullscreen Wine popup")
+        self.x11_control("--set-wine-style", xid, "0x16cf0000")
+        self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"], what="windowed Wine state")
+        self.x11_control("--fullscreen", xid, "off")
+        time.sleep(0.15)
+        self.x11_control("--set-wine-style", xid, "0x96000000")
+        self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"],
+                           what="redundant EWMH off preserves Wine fullscreen return")
+
+    def test_wine_intermediate_style_does_not_disarm_return(self):
+        # Between WS_OVERLAPPEDWINDOW and WS_POPUP Wine may publish a style
+        # which is neither decorated nor popup.
+        path = os.path.join(self.vela.directory, "wine-xid")
+        view_id = self.open_x11("--id-file", path, "--wine-style", "0x96000000", 300, 200)
+        with open(path, encoding="ascii") as xids:
+            xid = xids.read().strip()
+        self.x11_control("--fullscreen", xid, "on")
+        self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"], what="fullscreen popup")
+        self.x11_control("--set-wine-style", xid, "0x16cf0000")
+        self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"], what="windowed state")
+        self.x11_control("--set-wine-style", xid, "0x16000000")
+        time.sleep(0.15)
+        self.assertFalse(self.vela.state().window(view_id)["fullscreen"])
+        self.x11_control("--set-wine-style", xid, "0x96000000")
+        self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"],
+                           what="Wine popup return after intermediate style")
+
     def test_wine_initial_fullscreen_size_restores_to_window(self):
         path = os.path.join(self.vela.directory, "wine-xid")
         output = self.vela.state().output
