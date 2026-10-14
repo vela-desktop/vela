@@ -53,6 +53,8 @@ class FedoraUpdates(FedoraFixture):
         self.assertEqual(built[0]["jobs"], "2")
         self.assertIn("Name:           vela-git", built[0]["spec"])
         self.assertEqual(self.calls("sudo")[0]["args"][:2], ["dnf", "builddep"])
+        self.assertIn("vela_version 0.1.0", self.calls("sudo")[0]["args"])
+        self.assertEqual(self.calls("sudo")[0]["args"][-1].split("/")[-1], "vela.spec")
         self.assertEqual(self.calls("sudo")[1]["args"][:3], ["dnf", "install", "-y"])
         self.assertIn(".g" + self.nvidia[:7] + ".fc44.x86_64.rpm",
                       self.calls("sudo")[1]["args"][-1])

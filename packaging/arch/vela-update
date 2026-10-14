@@ -763,7 +763,8 @@ else
         echo "vela-update: could not archive revision $latestFull for rpmbuild." >&2
         exit 1
     fi
-    if ! sudo dnf builddep -y "$WORK/SPECS/vela.spec"; then
+    # The SPEC requires vela_version even when DNF is only resolving BuildRequires.
+    if ! sudo dnf builddep -y --define "vela_version $version" "$WORK/SPECS/vela.spec"; then
         echo "vela-update: unable to install Fedora build dependencies (requires dnf5-plugins)." >&2
         exit 1
     fi

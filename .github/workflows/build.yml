@@ -36,7 +36,7 @@ env:
     wayland wayland-protocols wlroots0.20 libxkbcommon pixman libinput libdrm
     mesa freetype2 harfbuzz fontconfig librsvg cairo zlib pam polkit
     qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt
-    hicolor-icon-theme xorg-xwayland pipewire wireplumber
+    hicolor-icon-theme shared-mime-info xorg-xwayland pipewire wireplumber
 
 jobs:
   packaging-tests:
@@ -216,11 +216,17 @@ jobs:
           pacman -U --noconfirm --needed "${packages[0]}"
           bash scripts/ci-check-package.sh
 
+  # Fedora CTest suite is a reusable workflow: its result gates releases.
+  fedora-tests:
+    uses: ./.github/workflows/fedora.yml
+    permissions:
+      contents: read
+
   # Build the SAME revision as the Arch package, in Fedora 44.
   fedora-package:
     needs: packaging-tests
     runs-on: ubuntu-latest
-    container: fedora:44
+    container: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 # official Fedora 44 image index
     permissions:
       contents: read
       id-token: write
@@ -230,7 +236,7 @@ jobs:
       - name: Install RPM packaging dependencies
         run: >-
           dnf install -y
-          git rpm-build cmake ninja-build gcc gcc-c++ pkgconf-pkg-config
+          git rpm-build dnf5-plugins cmake ninja-build gcc gcc-c++ pkgconf-pkg-config
           glslc vulkan-headers vulkan-loader-devel
           wayland-devel wayland-protocols-devel wlroots-devel
           libxkbcommon-devel pixman-devel libinput-devel libdrm-devel
@@ -258,6 +264,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Exercise the actual spec with DNF5, not just an updater stub.
+          dnf builddep -y --define "vela_version $VELA_RPM_VERSION" rpmbuild/SPECS/vela.spec
           rpmbuild -bb rpmbuild/SPECS/vela.spec \
             --define "_topdir $GITHUB_WORKSPACE/rpmbuild" \
             --define "vela_version $VELA_RPM_VERSION" \
@@ -284,7 +292,7 @@ jobs:
   fedora-package-smoke:
     needs: fedora-package
     runs-on: ubuntu-latest
-    container: fedora:44
+    container: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 # official Fedora 44 image index
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -301,6 +309,10 @@ jobs:
           rpms=(dist/vela-git-[0-9]*.x86_64.rpm)
           test "${#rpms[@]}" -eq 1
           [[ "${rpms[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
+          # Exercise the full local Git -> builddep -> rpmbuild -> DNF updater path
+          # against a tiny fixture before installing the actual Vela RPM.
+          dnf install -y git rpm-build dnf5-plugins
+          bash packaging/fedora/tests/ci-updater-local-build.sh
           dnf install -y --setopt=install_weak_deps=False "${rpms[0]}"
           rpm -V vela-git
           # Validate local RPM install/upgrade/downgrade/reinstall with real DNF5.
@@ -328,7 +340,7 @@ jobs:
   # for the last five successful versions (older releases and tags are pruned).
   publish-alpha:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [package, package-smoke, fedora-package, fedora-package-smoke]
+    needs: [package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write
