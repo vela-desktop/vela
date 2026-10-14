@@ -152,6 +152,25 @@ test-power on
 reload-config
 ```
 
+For X11/Wine games that do not enter or exit fullscreen correctly, the private
+command socket supports an opt-in ring buffer of the last 128 transitions.
+It is off by default, does not record window titles or pixels, and can be
+enabled without restarting the compositor:
+
+```text
+trace-x11 on       # clear old history, start recording
+trace-x11          # JSON array of events, oldest first
+trace-x11 off      # stop recording, retain recorded events
+trace-x11 clear    # discard recorded events
+```
+
+The trace records each X window ID (important if games recreate the window),
+managed map/unmap, associate/dissociate, buffer-size changes, requests to
+enter/leave fullscreen, and ConfigureRequests with the geometry Vela received
+and whether policy constrained it. The `trace-x11` query is read-only.
+This diagnostic **does not** try to infer a fullscreen transition from a
+resize request; X11 apps are allowed to resize while remaining fullscreen.
+
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
 
 ## Project layout
