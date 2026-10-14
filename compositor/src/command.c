@@ -197,6 +197,19 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         window_rects_json(server, &reply);
     } else if (strcmp(line, "state") == 0) {
         state_json(server, &reply);
+    } else if (strcmp(line, "trace-x11") == 0) {
+        // Oldest to newest. A fixed-size ring prevents unbounded memory growth,
+        // even when a game changes mode in a tight loop.
+        vela_buffer_append(&reply, "[");
+        unsigned count = server->trace_x11_total < 128 ? server->trace_x11_total : 128;
+        unsigned start = server->trace_x11_total - count;
+        for (unsigned i = 0; i < count; ++i) {
+            if (i > 0) {
+                vela_buffer_append(&reply, ",");
+            }
+            vela_buffer_append_json(&reply, server->trace_x11_events[(start + i) % 128]);
+        }
+        vela_buffer_append(&reply, "]");
     } else if (strcmp(line, "accessibility") == 0) {
         char json[512];
         if (!vela_a11y_json(server->a11y, json, sizeof(json))) {
@@ -369,6 +382,15 @@ static void run_command(struct vela_server *server, const char *line)
         // already answered to whoever asked
     } else if (starts_with(line, "workspace ")) {
         workspace(server, line);
+    } else if (strcmp(line, "trace-x11 on") == 0) {
+        server->trace_x11_total = 0;
+        server->trace_x11_enabled = true;
+    } else if (strcmp(line, "trace-x11 off") == 0) {
+        server->trace_x11_enabled = false;
+    } else if (strcmp(line, "trace-x11 clear") == 0) {
+        server->trace_x11_total = 0;
+    } else if (strcmp(line, "trace-x11") == 0) {
+        // Read-only query; answered above.
     } else if (strcmp(line, "reload-config") == 0) {
         // Settings changed vela.conf.
         wlr_log(WLR_INFO, "Settings: reloading vela.conf");
