@@ -9,6 +9,7 @@ it, so its window is created while the X window manager is being set up."""
 
 import os
 import subprocess
+import tempfile
 import time
 import unittest
 
@@ -63,6 +64,39 @@ class X11(unittest.TestCase):
 
         self.vela.keys("alt+F4")
         self.vela.wait_for(lambda s: not s.has(window), what="the X11 window closed")
+
+    def x11_control(self, *args):
+        subprocess.run([tool("vela-x11"), *map(str, args)], env=self.env, check=True)
+
+    def test_wine_popup_to_decorated_restores_fullscreen(self):
+        # Wine can toggle a Windows fullscreen popup into a normal decorated
+        # window without sending an EWMH fullscreen request or X11 resize.
+        path = os.path.join(self.vela.directory, "wine-xid")
+        view_id = self.open_x11("--id-file", path, "--wine-style", "0x96000000", 300, 200)
+        with open(path, encoding="ascii") as xids:
+            xid = xids.read().strip()
+        self.x11_control("--fullscreen", xid, "on")
+        self.vela.wait_for(lambda state: state.window(view_id)["fullscreen"], what="fullscreen popup")
+
+        self.x11_control("--set-wine-style", xid, "0x16cf0000")
+        self.vela.wait_for(lambda state: not state.window(view_id)["fullscreen"],
+                           what="Wine changed popup to decorated window")
+        self.assertLess(self.vela.state().window(view_id)["w"], self.vela.state().output["w"])
+
+        self.x11_control("--set-wine-style", xid, "0x96000000")
+        self.vela.wait_for(lambda state: state.window(view_id)["fullscreen"],
+                           what="Wine changed decorated window to fullscreen popup")
+
+    def test_wine_non_popup_changes_do_not_override_fullscreen(self):
+        path = os.path.join(self.vela.directory, "wine-xid")
+        view_id = self.open_x11("--id-file", path, "--wine-style", "0x16cf0000", 300, 200)
+        with open(path, encoding="ascii") as xids:
+            xid = xids.read().strip()
+        self.x11_control("--fullscreen", xid, "on")
+        self.vela.wait_for(lambda state: state.window(view_id)["fullscreen"], what="fullscreen window")
+        # Changing unrelated style bits must not cancel fullscreen.
+        self.x11_control("--set-wine-style", xid, "0x16cf0008")
+        self.assertTrue(self.vela.wait_for(lambda _: True).window(view_id)["fullscreen"])
 
     def test_menu_stays_where_the_app_puts_it(self):
         self.open_x11("--menu", "100,120", 300, 200)
