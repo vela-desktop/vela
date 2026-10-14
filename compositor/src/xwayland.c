@@ -36,6 +36,7 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/xcursor.h>
+#include <xcb/xcbext.h>
 #include <wlr/xwayland.h>
 #include <wlr/xwayland/shell.h>
 
@@ -56,25 +57,112 @@ static bool wine_decorated(uint32_t style)
     return (style & WINE_WS_POPUP) == 0 && (style & WINE_WS_CAPTION) == WINE_WS_CAPTION;
 }
 
-static bool read_wine_style(struct vela_server *server, xcb_window_t window, uint32_t *style)
+// XCB property replies can wait for Xwayland. Never wait synchronously in
+// wlroots' XWM handler or on the compositor's main loop.
+static void request_wine_style(struct vela_view *view)
 {
-    if (!server->xwayland_wine_style_atom) {
-        return false;
+    struct vela_server *server = view->server;
+    if (!server->xwayland_wine_style_atom || !server->xwayland_wine_timer) {
+        return;
+    }
+    if (view->x11_wine_style_pending) {
+        // A second PropertyNotify arrived while a read was in flight. Ask
+        // again after the response, so the final value is not overlooked.
+        view->x11_wine_style_dirty = true;
+        return;
     }
     xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(server->xwayland);
-    if (!connection) {
-        return false;
+    if (!connection || xcb_connection_has_error(connection)) {
+        return;
     }
-    xcb_get_property_cookie_t cookie = xcb_get_property(connection, 0, window,
+    xcb_get_property_cookie_t cookie = xcb_get_property(connection, 0, view->x11->window_id,
         server->xwayland_wine_style_atom, XCB_ATOM_CARDINAL, 0, 1);
-    xcb_get_property_reply_t *reply = xcb_get_property_reply(connection, cookie, NULL);
-    bool valid = reply && reply->type == XCB_ATOM_CARDINAL
-        && reply->format == 32 && xcb_get_property_value_length(reply) == sizeof(uint32_t);
-    if (valid) {
-        memcpy(style, xcb_get_property_value(reply), sizeof(*style));
+    view->x11_wine_style_cookie = cookie.sequence;
+    view->x11_wine_style_pending = true;
+    xcb_flush(connection);
+    wl_event_source_timer_update(server->xwayland_wine_timer, 1);
+}
+
+static void cancel_wine_style(struct vela_view *view)
+{
+    if (view->x11_wine_style_pending && view->server->xwayland) {
+        xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(view->server->xwayland);
+        if (connection) {
+            xcb_discard_reply(connection, view->x11_wine_style_cookie);
+        }
     }
-    free(reply);
-    return valid;
+    view->x11_wine_style_pending = false;
+    view->x11_wine_style_dirty = false;
+    view->x11_wine_style_known = false;
+    view->x11_wine_restore_fullscreen = false;
+}
+
+static void apply_wine_style(struct vela_view *view, uint32_t style)
+{
+    uint32_t previous = view->x11_wine_style;
+    bool known = view->x11_wine_style_known;
+    view->x11_wine_style = style;
+    view->x11_wine_style_known = true;
+    if (!known || previous == style) {
+        return;
+    }
+    if (wine_popup(previous) && wine_decorated(style) && view->fullscreen) {
+        wlr_log(WLR_INFO, "Xwayland: Wine popup -> decorated, exiting stale fullscreen for window 0x%x",
+            (unsigned)view->x11->window_id);
+        vela_view_set_fullscreen(view, false);
+        view->x11_wine_restore_fullscreen = true;
+    } else if (wine_decorated(previous) && wine_popup(style) && !view->fullscreen
+        && view->x11_wine_restore_fullscreen) {
+        // WS_POPUP by itself is not a fullscreen request: only undo a
+        // fullscreen exit which this workaround previously initiated.
+        wlr_log(WLR_INFO, "Xwayland: Wine decorated -> popup, restoring fullscreen for window 0x%x",
+            (unsigned)view->x11->window_id);
+        vela_view_set_fullscreen(view, true);
+    }
+}
+
+static int poll_wine_styles(void *data)
+{
+    struct vela_server *server = data;
+    xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(server->xwayland);
+    if (!connection || xcb_connection_has_error(connection)) {
+        return 0;
+    }
+    bool waiting = false;
+    struct vela_view *view;
+    wl_list_for_each (view, &server->views, link) {
+        if (!view->x11 || !view->x11_wine_style_pending) {
+            continue;
+        }
+        xcb_get_property_reply_t *reply = NULL;
+        xcb_generic_error_t *error = NULL;
+        if (!xcb_poll_for_reply(connection, view->x11_wine_style_cookie, (void **)&reply, &error)) {
+            waiting = true;
+            continue;
+        }
+        view->x11_wine_style_pending = false;
+        bool valid = !error && reply && reply->type == XCB_ATOM_CARDINAL
+            && reply->format == 32 && xcb_get_property_value_length(reply) == sizeof(uint32_t);
+        if (valid) {
+            uint32_t style;
+            memcpy(&style, xcb_get_property_value(reply), sizeof(style));
+            apply_wine_style(view, style);
+        } else {
+            view->x11_wine_style_known = false;
+            view->x11_wine_restore_fullscreen = false;
+        }
+        free(reply);
+        free(error);
+        if (view->x11_wine_style_dirty) {
+            view->x11_wine_style_dirty = false;
+            request_wine_style(view);
+            waiting = true;
+        }
+    }
+    if (waiting) {
+        wl_event_source_timer_update(server->xwayland_wine_timer, 5);
+    }
+    return 0;
 }
 
 // Called by wlroots before its own XWM event processing; return false so it
@@ -91,31 +179,10 @@ static bool handle_x11_event(struct wlr_xwayland *xwayland, xcb_generic_event_t 
     }
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
-        if (!view->x11 || view->x11->window_id != property->window) {
-            continue;
-        }
-        uint32_t style;
-        if (!read_wine_style(server, property->window, &style)) {
-            view->x11_wine_style_known = false;
+        if (view->x11 && view->x11->window_id == property->window) {
+            request_wine_style(view);
             break;
         }
-        uint32_t previous = view->x11_wine_style;
-        bool known = view->x11_wine_style_known;
-        view->x11_wine_style = style;
-        view->x11_wine_style_known = true;
-        if (!known || previous == style) {
-            break;
-        }
-        if (wine_popup(previous) && wine_decorated(style) && view->fullscreen) {
-            wlr_log(WLR_INFO, "Xwayland: Wine popup -> decorated, exiting stale fullscreen for window 0x%x",
-                (unsigned)property->window);
-            vela_view_set_fullscreen(view, false);
-        } else if (wine_decorated(previous) && wine_popup(style) && !view->fullscreen) {
-            wlr_log(WLR_INFO, "Xwayland: Wine decorated -> popup, entering fullscreen for window 0x%x",
-                (unsigned)property->window);
-            vela_view_set_fullscreen(view, true);
-        }
-        break;
     }
     return false;
 }
@@ -267,8 +334,7 @@ static void handle_map(struct wl_listener *listener, void *data)
     struct vela_view *view = wl_container_of(listener, view, map);
     // Establish the baseline even when Wine set the style before mapping:
     // only later transitions may affect fullscreen policy.
-    view->x11_wine_style_known = read_wine_style(view->server,
-        view->x11->window_id, &view->x11_wine_style);
+    request_wine_style(view);
     vela_view_update_decoration(view);
     // X11 apps can ask to start maximized or fullscreen (games).
     if (view->x11->fullscreen) {
@@ -282,6 +348,7 @@ static void handle_map(struct wl_listener *listener, void *data)
 static void handle_unmap(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, unmap);
+    cancel_wine_style(view);
     vela_view_unmapped(view);
 }
 
@@ -307,6 +374,7 @@ static void handle_associate(struct wl_listener *listener, void *data)
 static void handle_dissociate(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, dissociate);
+    cancel_wine_style(view);
     vela_unlisten(&view->map);
     vela_unlisten(&view->unmap);
     vela_unlisten(&view->commit);
@@ -319,6 +387,7 @@ static void handle_dissociate(struct wl_listener *listener, void *data)
 static void handle_destroy(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, destroy);
+    cancel_wine_style(view);
     vela_view_destroy(view);
 }
 
@@ -530,7 +599,12 @@ void vela_xwayland_init(struct vela_server *server)
     // Observe Wine's _WINE_HWND_STYLE notifications while forwarding every
     // event to wlroots for normal XWM management.
     server->xwayland->data = server;
-    server->xwayland->user_event_handler = handle_x11_event;
+    server->xwayland_wine_timer = wl_event_loop_add_timer(server->loop, poll_wine_styles, server);
+    if (server->xwayland_wine_timer) {
+        server->xwayland->user_event_handler = handle_x11_event;
+    } else {
+        wlr_log(WLR_ERROR, "Xwayland: cannot watch Wine style changes (timer creation failed)");
+    }
     vela_listen(&server->xwayland->events.ready, &server->xwayland_ready, handle_ready);
     vela_listen(&server->xwayland->events.new_surface, &server->xwayland_new_surface, handle_new_surface);
     vela_listen(&server->xwayland->shell_v1->events.new_surface, &server->xwayland_shell_surface, handle_shell_surface);
@@ -539,6 +613,10 @@ void vela_xwayland_init(struct vela_server *server)
 
 void vela_xwayland_finish(struct vela_server *server)
 {
+    if (server->xwayland_wine_timer) {
+        wl_event_source_remove(server->xwayland_wine_timer);
+        server->xwayland_wine_timer = NULL;
+    }
     // Closes the X11 windows (and their views) before the Wayland clients.
     if (server->xwayland) {
         vela_unlisten(&server->xwayland_ready);
