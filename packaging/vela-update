@@ -107,10 +107,12 @@ if [ -n "$jobs" ]; then
     esac
 fi
 
-# Select the native package manager. Avoid silently attempting RPM installation
-# on unsupported distributions which happen to have dnf installed.
-if [ -r /etc/os-release ]; then
-    . /etc/os-release
+# Select the native package manager. RPM/DNF presence alone is insufficient:
+# Fedora's RPM must not be installed on unrelated DNF-based distributions.
+# Alternate os-release files support unprivileged, isolated regression tests.
+os_release="${VELA_OS_RELEASE_FILE:-/etc/os-release}"
+if [ -r "$os_release" ]; then
+    . "$os_release"
 else
     ID=""
 fi
@@ -119,10 +121,8 @@ fedora) backend=fedora ;;
 arch|cachyos|endeavouros) backend=arch ;;
 *) if command -v pacman >/dev/null 2>&1; then
        backend=arch
-   elif command -v rpm >/dev/null 2>&1 && command -v dnf >/dev/null 2>&1; then
-       backend=fedora
    else
-       echo "vela-update: unsupported distribution (requires Arch/pacman or Fedora/dnf)." >&2
+       echo "vela-update: unsupported distribution (requires Arch/pacman or Fedora 44)." >&2
        exit 1
    fi ;;
 esac
