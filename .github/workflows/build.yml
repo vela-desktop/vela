@@ -216,11 +216,11 @@ jobs:
           pacman -U --noconfirm --needed "${packages[0]}"
           bash scripts/ci-check-package.sh
 
-  # Build the SAME revision as the Arch package, in Fedora 45.
+  # Build the SAME revision as the Arch package, in Fedora 44.
   fedora-package:
     needs: packaging-tests
     runs-on: ubuntu-latest
-    container: fedora:45
+    container: fedora:44
     permissions:
       contents: read
       id-token: write
@@ -284,7 +284,7 @@ jobs:
   fedora-package-smoke:
     needs: fedora-package
     runs-on: ubuntu-latest
-    container: fedora:45
+    container: fedora:44
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -379,7 +379,7 @@ jobs:
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "Vela alpha ${GITHUB_SHA:0:12}" \
-            --notes "Automated Arch Linux and Fedora 45 alpha packages for commit ${GITHUB_SHA}. Experimental software; not a stable release."; then
+            --notes "Automated Arch Linux and Fedora 44 alpha packages for commit ${GITHUB_SHA}. Experimental software; not a stable release."; then
             # A workflow rerun may race with or follow a successful publish.
             # Accept an existing release only if both expected assets are present
             # and its checksum manifest matches this exact built package.

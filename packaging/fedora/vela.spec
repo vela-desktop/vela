@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Fedora 45 x86_64 alpha package. Build exactly the selected Git commit:
+# Fedora 44 x86_64 alpha package. Build exactly the selected Git commit:
 #   git archive --format=tar.gz --prefix=vela-0.1.0/ HEAD > SOURCES/vela-0.1.0.tar.gz
 #   rpmbuild -bb packaging/fedora/vela.spec --define "_topdir <rpmbuild-dir>" \
 #     --define "vela_version <CMake project version>" \

@@ -54,7 +54,7 @@ class FedoraUpdates(FedoraFixture):
         self.assertIn("Name:           vela-git", built[0]["spec"])
         self.assertEqual(self.calls("sudo")[0]["args"][:2], ["dnf", "builddep"])
         self.assertEqual(self.calls("sudo")[1]["args"][:3], ["dnf", "install", "-y"])
-        self.assertIn(".g" + self.nvidia[:7] + ".fc45.x86_64.rpm",
+        self.assertIn(".g" + self.nvidia[:7] + ".fc44.x86_64.rpm",
                       self.calls("sudo")[1]["args"][-1])
         self.assertEqual(len(list((self.mirror.parent / "packages").glob("*.rpm"))), 1)
 
@@ -104,9 +104,16 @@ class FedoraUpdates(FedoraFixture):
         self.assertEqual(len([c for c in self.calls("sudo")
                               if c["args"][:2] == ["dnf", "install"]]), 1)
 
-    def test_reject_unsupported_fedora_release(self):
+    def test_fedora_44_is_supported(self):
         self.env["TEST_FEDORA_RELEASE"] = "44"
-        self.run_update("--check", status=1)
+        self.run_update("--check")
+        self.assertEqual(self.calls("rpmbuild"), [])
+        self.assertEqual(self.calls("sudo"), [])
+
+    def test_reject_unsupported_fedora_release(self):
+        self.env["TEST_FEDORA_RELEASE"] = "45"
+        result = self.run_update("--check", status=1)
+        self.assertIn("Fedora 44", result.stderr)
         self.assertEqual(self.calls("rpmbuild"), [])
         self.assertEqual(self.calls("sudo"), [])
 

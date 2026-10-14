@@ -17,9 +17,9 @@ concurrency:
 
 jobs:
   fedora:
-    name: Fedora 45
+    name: Fedora 44
     runs-on: ubuntu-latest
-    container: fedora:45
+    container: fedora:44
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-fedora
       CCACHE_MAXSIZE: 350M
@@ -47,9 +47,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache-fedora
-          key: ccache-fedora45-relwithdebinfo-v1-${{ github.sha }}
+          key: ccache-fedora44-relwithdebinfo-v1-${{ github.sha }}
           restore-keys: |
-            ccache-fedora45-relwithdebinfo-v1-
+            ccache-fedora44-relwithdebinfo-v1-
 
       - name: Configure
         run: >-

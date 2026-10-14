@@ -135,8 +135,8 @@ if [ "$backend" = fedora ]; then
     fi
     # Having DNF installed does not imply compatible Fedora libraries.
     fedora_release=$(rpm --eval '%{?fedora}' 2>/dev/null || true)
-    if [ "$fedora_release" != 45 ]; then
-        echo "vela-update: Fedora 45 is the only supported RPM target (detected: ${fedora_release:-unknown})." >&2
+    if [ "$fedora_release" != 44 ]; then
+        echo "vela-update: Fedora 44 is the only supported RPM target (detected: ${fedora_release:-unknown})." >&2
         exit 1
     fi
 fi

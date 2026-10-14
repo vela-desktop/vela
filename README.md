@@ -122,7 +122,7 @@ Nested mode is convenient for exploration, but cannot validate physical DRM,
 direct scanout or every driver-specific path.
 
 For a full session, use the [Arch package](#arch-linux-cachyos-endeavouros),
-the [Fedora RPM](#fedora-45) or [install from source](#other-distributions),
+the [Fedora RPM](#fedora-44) or [install from source](#other-distributions),
 then select Vela at the login
 screen. If something fails, [report it](#reporting-a-problem) using
 `vela-report`, reviewing any diagnostics before sharing them.
@@ -304,9 +304,9 @@ CI artifact.
 
 Once installed, use **`vela-update`** to fetch new commits and install updates.
 
-### Fedora 45
+### Fedora 44
 
-Fedora 45 x86_64 has a native `vela-git` RPM. RPMs are not yet supported on
+Fedora 44 x86_64 has a native `vela-git` RPM. RPMs are not yet supported on
 other Fedora releases or other DNF-based distributions. The same updater installs it
 and handles subsequent updates through DNF. To get started:
 
@@ -323,7 +323,7 @@ installs it with DNF. On Fedora, `--build` also installs build dependencies with
 `dnf builddep`. An existing Arch package is **never** installed on Fedora.
 Use `vela-update --check` to inspect changes without installing.
 
-Fedora RPMs are built and installation-tested in a fresh Fedora 45 container
+Fedora RPMs are built and installation-tested in a fresh Fedora 44 container
 before release; a physical GPU login and other Fedora versions still require
 testing. Fedora's immutable/ostree-based variants are not supported by this
 DNF-based installer.

@@ -1,6 +1,6 @@
 # Vela Arch and Fedora package provenance and release policy
 
-Vela publishes experimental per-commit packages for Arch and Fedora 45.
+Vela publishes experimental per-commit packages for Arch and Fedora 44.
 Arch assets use `SHA256SUMS`, Fedora RPMs use `SHA256SUMS-fedora`, with one
 checksum entry in each. A matching filename and manifest downloaded together
 are **not** proof of origin:
@@ -11,7 +11,7 @@ cryptographic provenance verification **before** `sudo pacman -U` or
 ## Trust model
 
 The [Build workflow](../.github/workflows/build.yml) runs `makepkg` for Arch
-and `rpmbuild` for Fedora 45, and signs the exact output files using
+and `rpmbuild` for Fedora 44, and signs the exact output files using
 `actions/attest`. The signed SLSA build-provenance attestations bind each
 package's SHA-256 to the workflow's GitHub OIDC identity and source commit.
 Publishing checks both signatures and the exact main commit, **and** requires
@@ -29,7 +29,7 @@ and GitHub-hosted runners. For public alpha releases it also requires the
 GitHub CLI, or an unavailable verification service means **no binary install**:
 the updater shows GitHub CLI's verification error and falls back to building
 from the selected Git revision with native packaging tools
-(`makepkg` on Arch, `rpmbuild` plus `dnf builddep` on Fedora 45 only).
+(`makepkg` on Arch, `rpmbuild` plus `dnf builddep` on Fedora 44 only).
 
 Use `--build` to skip all binary download paths explicitly. Installing from
 a user-selected source repository remains a trust decision: signatures
@@ -58,7 +58,7 @@ gh attestation verify vela-git-<version>.pkg.tar.zst \
 ```
 
 Fedora uses the same verification flags, replacing the input with
-`vela-git-<version>-<release>.fc45.x86_64.rpm`. Both binary types are
+`vela-git-<version>-<release>.fc44.x86_64.rpm`. Both binary types are
 published atomically under the same `alpha-<full-SHA>` release, following
 successful package smoke checks on each distribution.
 

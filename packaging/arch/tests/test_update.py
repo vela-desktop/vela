@@ -86,11 +86,11 @@ if name == "pacman":
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
 elif name == "rpm":
     if args[:2] == ["--eval", "%{?fedora}"]:
-        print(os.environ.get("TEST_FEDORA_RELEASE", "45"))
+        print(os.environ.get("TEST_FEDORA_RELEASE", "44"))
         sys.exit(0)
     if not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
-    print("0.1.0-1.1.g" + os.environ["TEST_INSTALLED"] + ".fc45")
+    print("0.1.0-1.1.g" + os.environ["TEST_INSTALLED"] + ".fc44")
 elif name == "rpmbuild":
     values = {}
     for idx, value in enumerate(args[:-1]):
@@ -108,10 +108,10 @@ elif name == "rpmbuild":
         sys.exit(1)
     rpm_dir = topdir / "RPMS/x86_64"
     rpm_dir.mkdir(parents=True, exist_ok=True)
-    (rpm_dir / ("vela-git-" + version + "-1.1.g" + sha[:7] + ".fc45.x86_64.rpm")).touch()
+    (rpm_dir / ("vela-git-" + version + "-1.1.g" + sha[:7] + ".fc44.x86_64.rpm")).touch()
     # Fedora also emits these debug subpackages by default: ignore both.
     for suffix in ("-debuginfo", "-debugsource"):
-        (rpm_dir / ("vela-git" + suffix + "-" + version + "-1.1.g" + sha[:7] + ".fc45.x86_64.rpm")).touch()
+        (rpm_dir / ("vela-git" + suffix + "-" + version + "-1.1.g" + sha[:7] + ".fc44.x86_64.rpm")).touch()
 elif name == "makepkg":
     if os.environ.get("TEST_REQUIRE_TTY"):
         # sudo authenticates through /dev/tty, not necessarily stdin.
@@ -205,7 +205,7 @@ elif name == "gh":
         dest.mkdir(parents=True, exist_ok=True)
         sha = os.environ["TEST_DOWNLOAD_SHA"]
         if os.environ.get("TEST_FEDORA"):
-            (dest / ("vela-git-0.1.0-1.1.g" + sha + ".fc45.x86_64.rpm")).touch()
+            (dest / ("vela-git-0.1.0-1.1.g" + sha + ".fc44.x86_64.rpm")).touch()
         else:
             (dest / ("vela-git-0.1.0.r1.g" + sha + "-1-x86_64.pkg.tar.zst")).touch()
 elif name == "curl":
@@ -231,7 +231,7 @@ elif name == "curl":
     output = pathlib.Path(args[args.index("-o") + 1])
     advertised = os.environ.get("TEST_RELEASE_PKG_SHA") or sha
     if os.environ.get("TEST_FEDORA"):
-        package = "vela-git-0.1.0-1.1.g" + advertised[:7] + ".fc45.x86_64.rpm"
+        package = "vela-git-0.1.0-1.1.g" + advertised[:7] + ".fc44.x86_64.rpm"
     else:
         package = "vela-git-0.1.0.r1.g" + advertised[:7] + "-1-x86_64.pkg.tar.zst"
     data = ("package for " + sha).encode()
