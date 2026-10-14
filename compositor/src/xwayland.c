@@ -26,6 +26,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <wlr/config.h>
 #include <wlr/util/log.h>
 
@@ -37,6 +38,87 @@
 #include <wlr/xcursor.h>
 #include <wlr/xwayland.h>
 #include <wlr/xwayland/shell.h>
+
+// Wine publishes the native HWND style as an X11 CARDINAL. Some games switch
+// WS_POPUP -> WS_OVERLAPPEDWINDOW without sending EWMH fullscreen requests.
+// Only an observed *transition* between those unmistakable styles is a hint,
+// not an arbitrary change in location, dimensions, or opaque framebuffer data.
+#define WINE_WS_POPUP 0x80000000u
+#define WINE_WS_CAPTION 0x00c00000u
+
+static bool wine_popup(uint32_t style)
+{
+    return (style & WINE_WS_POPUP) != 0 && (style & WINE_WS_CAPTION) != WINE_WS_CAPTION;
+}
+
+static bool wine_decorated(uint32_t style)
+{
+    return (style & WINE_WS_POPUP) == 0 && (style & WINE_WS_CAPTION) == WINE_WS_CAPTION;
+}
+
+static bool read_wine_style(struct vela_server *server, xcb_window_t window, uint32_t *style)
+{
+    if (!server->xwayland_wine_style_atom) {
+        return false;
+    }
+    xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(server->xwayland);
+    if (!connection) {
+        return false;
+    }
+    xcb_get_property_cookie_t cookie = xcb_get_property(connection, 0, window,
+        server->xwayland_wine_style_atom, XCB_ATOM_CARDINAL, 0, 1);
+    xcb_get_property_reply_t *reply = xcb_get_property_reply(connection, cookie, NULL);
+    bool valid = reply && reply->type == XCB_ATOM_CARDINAL
+        && reply->format == 32 && xcb_get_property_value_length(reply) == sizeof(uint32_t);
+    if (valid) {
+        memcpy(style, xcb_get_property_value(reply), sizeof(*style));
+    }
+    free(reply);
+    return valid;
+}
+
+// Called by wlroots before its own XWM event processing; return false so it
+// still sees and handles every PropertyNotify itself.
+static bool handle_x11_event(struct wlr_xwayland *xwayland, xcb_generic_event_t *event)
+{
+    struct vela_server *server = xwayland->data;
+    if ((event->response_type & 0x7f) != XCB_PROPERTY_NOTIFY || !server->xwayland_wine_style_atom) {
+        return false;
+    }
+    const xcb_property_notify_event_t *property = (const xcb_property_notify_event_t *)event;
+    if (property->atom != server->xwayland_wine_style_atom) {
+        return false;
+    }
+    struct vela_view *view;
+    wl_list_for_each (view, &server->views, link) {
+        if (!view->x11 || view->x11->window_id != property->window) {
+            continue;
+        }
+        uint32_t style;
+        if (!read_wine_style(server, property->window, &style)) {
+            view->x11_wine_style_known = false;
+            break;
+        }
+        uint32_t previous = view->x11_wine_style;
+        bool known = view->x11_wine_style_known;
+        view->x11_wine_style = style;
+        view->x11_wine_style_known = true;
+        if (!known || previous == style) {
+            break;
+        }
+        if (wine_popup(previous) && wine_decorated(style) && view->fullscreen) {
+            wlr_log(WLR_INFO, "Xwayland: Wine popup -> decorated, exiting stale fullscreen for window 0x%x",
+                (unsigned)property->window);
+            vela_view_set_fullscreen(view, false);
+        } else if (wine_decorated(previous) && wine_popup(style) && !view->fullscreen) {
+            wlr_log(WLR_INFO, "Xwayland: Wine decorated -> popup, entering fullscreen for window 0x%x",
+                (unsigned)property->window);
+            vela_view_set_fullscreen(view, true);
+        }
+        break;
+    }
+    return false;
+}
 
 // -------------------------------------------- menus, tooltips, drop-downs --
 
@@ -183,6 +265,10 @@ void vela_view_sync_x11(struct vela_view *view)
 static void handle_map(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, map);
+    // Establish the baseline even when Wine set the style before mapping:
+    // only later transitions may affect fullscreen policy.
+    view->x11_wine_style_known = read_wine_style(view->server,
+        view->x11->window_id, &view->x11_wine_style);
     vela_view_update_decoration(view);
     // X11 apps can ask to start maximized or fullscreen (games).
     if (view->x11->fullscreen) {
@@ -410,6 +496,11 @@ static void handle_ready(struct wl_listener *listener, void *data)
         = xcb_intern_atom_reply(connection, xcb_intern_atom(connection, 0, sizeof(name) - 1, name), NULL);
     server->xwayland_wake_atom = atom ? atom->atom : XCB_ATOM_NONE;
     free(atom);
+    static const char wine_style_name[] = "_WINE_HWND_STYLE";
+    atom = xcb_intern_atom_reply(connection,
+        xcb_intern_atom(connection, 0, sizeof(wine_style_name) - 1, wine_style_name), NULL);
+    server->xwayland_wine_style_atom = atom ? atom->atom : XCB_ATOM_NONE;
+    free(atom);
     wake_window_manager(server);
     wlr_log(WLR_INFO, "Xwayland ready on DISPLAY=%s", server->xwayland->display_name);
 }
@@ -436,6 +527,10 @@ void vela_xwayland_init(struct vela_server *server)
         wlr_log(WLR_ERROR, "Xwayland not available: X11-only apps won't start");
         return;
     }
+    // Observe Wine's _WINE_HWND_STYLE notifications while forwarding every
+    // event to wlroots for normal XWM management.
+    server->xwayland->data = server;
+    server->xwayland->user_event_handler = handle_x11_event;
     vela_listen(&server->xwayland->events.ready, &server->xwayland_ready, handle_ready);
     vela_listen(&server->xwayland->events.new_surface, &server->xwayland_new_surface, handle_new_surface);
     vela_listen(&server->xwayland->shell_v1->events.new_surface, &server->xwayland_shell_surface, handle_shell_surface);
