@@ -109,10 +109,8 @@ fi
 
 # Select the native package manager. RPM/DNF presence alone is insufficient:
 # Fedora's RPM must not be installed on unrelated DNF-based distributions.
-# Alternate os-release files support unprivileged, isolated regression tests.
-os_release="${VELA_OS_RELEASE_FILE:-/etc/os-release}"
-if [ -r "$os_release" ]; then
-    . "$os_release"
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
 else
     ID=""
 fi
