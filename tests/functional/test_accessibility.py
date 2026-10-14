@@ -124,6 +124,24 @@ class Accessibility(unittest.TestCase):
                           for actual, expected in zip(self.vela.pixels().at(x, y), original)),
             what="restoration after interrupting Night Light", read_state=False)
 
+    def test_night_light_nvidia_fix_config_reload(self):
+        # The experimental override is opt-in, persists in vela.conf and can be
+        # switched without restarting the compositor. Headless always renders
+        # using Vulkan; real DRM/NVIDIA validation needs physical hardware.
+        self.start(["night-light-nvidia-fix=yes", "night-light-strength=100"])
+        self.assertTrue(self.a11y()["nightLightNvidiaFix"])
+        self.vela.command("night-light on")
+        self.vela.wait_for(lambda _: self.a11y()["nightLight"], what="Night light enabled",
+                           read_state=False)
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write("night-light=yes\\nnight-light-strength=100\\nnight-light-nvidia-fix=no\\n")
+        self.vela.command("reload-config")
+        self.vela.wait_for(lambda _: not self.a11y()["nightLightNvidiaFix"],
+                           what="experimental NVIDIA fix disabled by reload",
+                           read_state=False)
+        self.assertTrue(self.a11y()["nightLight"])
+        self.assertIn("night-light-nvidia-fix=no", self.conf())
+
     def modifiers_while(self, actions, at_ms):
         """The keyboard modifiers ("modifiers" request) at the moments
         `at_ms` while vela-input runs `actions`: its virtual keyboard
