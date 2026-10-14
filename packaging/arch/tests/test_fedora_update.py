@@ -102,6 +102,28 @@ class FedoraUpdates(FedoraFixture):
         self.assertEqual(len([c for c in self.calls("sudo")
                               if c["args"][:2] == ["dnf", "install"]]), 1)
 
+    def test_reject_unsupported_fedora_release(self):
+        self.env["TEST_FEDORA_RELEASE"] = "44"
+        self.run_update("--check", status=1)
+        self.assertEqual(self.calls("rpmbuild"), [])
+        self.assertEqual(self.calls("sudo"), [])
+
+    def test_local_build_selects_main_rpm_not_debug_subpackages(self):
+        self.run_update("--build")
+        installed = [c for c in self.calls("sudo") if c["args"][:2] == ["dnf", "install"]]
+        self.assertEqual(len(installed), 1)
+        self.assertNotIn("debuginfo", installed[0]["args"][-1])
+        self.assertNotIn("debugsource", installed[0]["args"][-1])
+        self.assertEqual(len(list((self.mirror.parent / "packages").glob("*.rpm"))), 1)
+
+    def test_project_version_controls_rpm_version(self):
+        import re
+        version = re.search(r"(?m)^\s*VERSION\s+([0-9]+(?:\.[0-9]+)+)\s*$",
+                            (ROOT / "CMakeLists.txt").read_text()).group(1)
+        self.assertIn("Version:        %{vela_version}", self.spec.read_text())
+        self.run_update("--build")
+        self.assertIn("vela_version " + version, self.calls("rpmbuild")[0]["args"])
+
     def test_missing_commit_does_not_install(self):
         self.run_update("--commit", "0" * 40, status=1)
         self.assertEqual(self.calls("sudo"), [])

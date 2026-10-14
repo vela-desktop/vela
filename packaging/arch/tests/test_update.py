@@ -85,6 +85,9 @@ if name == "pacman":
         sys.exit(1)
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
 elif name == "rpm":
+    if args[:2] == ["--eval", "%{?fedora}"]:
+        print(os.environ.get("TEST_FEDORA_RELEASE", "45"))
+        sys.exit(0)
     if not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
     print("0.1.0-1.1.g" + os.environ["TEST_INSTALLED"] + ".fc45")
@@ -96,7 +99,8 @@ elif name == "rpmbuild":
             values[key] = entry
     sha = values["vela_commit"]
     topdir = pathlib.Path(values["_topdir"])
-    assert (topdir / "SOURCES/vela-0.1.0.tar.gz").is_file()
+    version = values["vela_version"]
+    assert (topdir / ("SOURCES/vela-" + version + ".tar.gz")).is_file()
     assert (topdir / "SPECS/vela.spec").is_file()
     record(sha=sha, jobs=os.environ.get("RPM_BUILD_NCPUS"),
            spec=(topdir / "SPECS/vela.spec").read_text())
@@ -104,7 +108,10 @@ elif name == "rpmbuild":
         sys.exit(1)
     rpm_dir = topdir / "RPMS/x86_64"
     rpm_dir.mkdir(parents=True, exist_ok=True)
-    (rpm_dir / ("vela-git-0.1.0-1.1.g" + sha[:7] + ".fc45.x86_64.rpm")).touch()
+    (rpm_dir / ("vela-git-" + version + "-1.1.g" + sha[:7] + ".fc45.x86_64.rpm")).touch()
+    # Fedora also emits these debug subpackages by default: ignore both.
+    for suffix in ("-debuginfo", "-debugsource"):
+        (rpm_dir / ("vela-git" + suffix + "-" + version + "-1.1.g" + sha[:7] + ".fc45.x86_64.rpm")).touch()
 elif name == "makepkg":
     if os.environ.get("TEST_REQUIRE_TTY"):
         # sudo authenticates through /dev/tty, not necessarily stdin.
