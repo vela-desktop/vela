@@ -791,15 +791,16 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
     if (!vela_view_configurable(view)) {
         return;
     }
+    // A user, app or shell fullscreen request invalidates a Wine-specific
+    // restoration hint, including requests that reaffirm the current state.
+    // The Wine handler re-arms it after its own automatic fullscreen exit.
+    view->x11_wine_restore_fullscreen = false;
     if (on == view->fullscreen) {
         if (view->xdg) {
             wlr_xdg_surface_schedule_configure(view->xdg->base);
         }
         return;
     }
-    // A user, app or shell fullscreen change invalidates a Wine-specific
-    // restoration hint. The Wine handler re-arms it after its own exit.
-    view->x11_wine_restore_fullscreen = false;
     vela_view_finish_open_animation(view);
     struct vela_output *output = view->mapped ? vela_view_output(view) : vela_output_under_cursor(view->server);
 
