@@ -134,7 +134,7 @@ class Accessibility(unittest.TestCase):
         self.vela.wait_for(lambda _: self.a11y()["nightLight"], what="Night light enabled",
                            read_state=False)
         with open(self.vela.config_path(), "w") as conf:
-            conf.write("night-light=yes\\nnight-light-strength=100\\nnight-light-nvidia-fix=no\\n")
+            conf.write("night-light=yes\nnight-light-strength=100\nnight-light-nvidia-fix=no\n")
         self.vela.command("reload-config")
         self.vela.wait_for(lambda _: not self.a11y()["nightLightNvidiaFix"],
                            what="experimental NVIDIA fix disabled by reload",
