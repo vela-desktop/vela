@@ -670,11 +670,32 @@ static void prepare_night_light(struct vela_output_frame *frame)
     if (scene->night_version == frame->night_version && !frame->gamma_retry_pending) {
         return;
     }
+    bool was_shader = scene->night_active && !frame->night_in_gamma;
     frame->night_version = scene->night_version;
     // Only real DRM outputs have a gamma LUT. An earlier failure suppresses
     // repeated tests during the animation, except on an explicit retry.
     if (!wlr_output_is_drm(frame->output)) {
         frame->night_in_gamma = false;
+        return;
+    }
+    if (scene->night_force_shader) {
+        // Never submit a new gamma LUT in this mode. If the hardware still
+        // holds an old one, remove it atomically with the shader-tinted frame.
+        // A failed NULL commit must never let a shader-tinted buffer through
+        // the still-active LUT (double tint).
+        if (frame->night_transform) {
+            wlr_color_transform_unref(frame->night_transform);
+            frame->night_transform = NULL;
+        }
+        bool keep_old_lut = frame->gamma_refused && frame->night_clear_needed
+            && !frame->gamma_retry_pending && frame->night_gamma_committed;
+        frame->gamma_retry_pending = false;
+        frame->night_clear_needed = frame->night_gamma_committed;
+        frame->night_commit_pending = frame->night_clear_needed && !keep_old_lut;
+        frame->night_in_gamma = keep_old_lut;
+        if (scene->night_active || frame->night_clear_needed) {
+            vela_output_frame_damage_whole(frame);
+        }
         return;
     }
     if (frame->gamma_refused && !frame->gamma_retry_pending) {
@@ -724,8 +745,8 @@ static void prepare_night_light(struct vela_output_frame *frame)
     frame->night_transform = transform;
     frame->night_commit_pending = true;
     frame->night_in_gamma = scene->night_active;
-    if (recovering && scene->night_active) {
-        // Previously rendered buffers contain the shader's warm tint.
+    if ((recovering || was_shader) && scene->night_active) {
+        // Previously rendered buffers may contain the shader's warm tint.
         // Redraw them once without the shader when the LUT comes back.
         vela_output_frame_damage_whole(frame);
     }
