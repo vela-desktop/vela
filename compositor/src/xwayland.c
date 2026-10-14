@@ -25,6 +25,8 @@
 #include "snap.h"
 
 #include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <wlr/config.h>
 #include <wlr/util/log.h>
@@ -37,6 +39,32 @@
 #include <wlr/xcursor.h>
 #include <wlr/xwayland.h>
 #include <wlr/xwayland/shell.h>
+
+// Runtime-only, opt-in diagnostics: no logging cost or retained history unless
+// explicitly enabled through the private Vela command socket. Track IDs and
+// geometry, not potentially private application titles or buffer content.
+static void trace_x11(struct vela_view *view, const char *event, const char *format, ...)
+{
+    struct vela_server *server = view->server;
+    if (!server->trace_x11_enabled) {
+        return;
+    }
+    struct wlr_xwayland_surface *x11 = view->x11;
+    char *entry = server->trace_x11_events[server->trace_x11_total % 128];
+    int n = snprintf(entry, 192, "xid=0x%08x event=%s x11fullscreen=%d velafullscreen=%d mapped=%d "
+        "x11geo=%d,%d:%ux%u ", (unsigned)x11->window_id, event, x11->fullscreen, view->fullscreen, view->mapped,
+        x11->x, x11->y, (unsigned)x11->width, (unsigned)x11->height);
+    if (n < 0) {
+        return;
+    }
+    if (n < 192 && format) {
+        va_list args;
+        va_start(args, format);
+        vsnprintf(entry + n, (size_t)(192 - n), format, args);
+        va_end(args);
+    }
+    ++server->trace_x11_total;
+}
 
 // -------------------------------------------- menus, tooltips, drop-downs --
 
@@ -183,6 +211,7 @@ void vela_view_sync_x11(struct vela_view *view)
 static void handle_map(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, map);
+    trace_x11(view, "map", "");
     vela_view_update_decoration(view);
     // X11 apps can ask to start maximized or fullscreen (games).
     if (view->x11->fullscreen) {
@@ -191,17 +220,28 @@ static void handle_map(struct wl_listener *listener, void *data)
         vela_view_set_maximized(view, true, true);
     }
     vela_view_mapped(view);
+    trace_x11(view, "mapped", "");
 }
 
 static void handle_unmap(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, unmap);
+    trace_x11(view, "unmap", "");
     vela_view_unmapped(view);
 }
 
 static void handle_commit(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, commit);
+    if (view->server->trace_x11_enabled && view->x11->surface) {
+        int width = view->x11->surface->current.width;
+        int height = view->x11->surface->current.height;
+        if (width != view->x11_trace_width || height != view->x11_trace_height) {
+            trace_x11(view, "buffer-size", "surface=%dx%d", width, height);
+            view->x11_trace_width = width;
+            view->x11_trace_height = height;
+        }
+    }
     vela_view_committed(view);
 }
 
@@ -210,6 +250,7 @@ static void handle_commit(struct wl_listener *listener, void *data)
 static void handle_associate(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, associate);
+    trace_x11(view, "associate", "");
     struct wlr_surface *surface = view->x11->surface;
     view->surface_node = vela_surface_node_create(view->tree, surface);
     vela_listen(&surface->events.map, &view->map, handle_map);
@@ -221,6 +262,9 @@ static void handle_associate(struct wl_listener *listener, void *data)
 static void handle_dissociate(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, dissociate);
+    trace_x11(view, "dissociate", "");
+    view->x11_trace_width = 0;
+    view->x11_trace_height = 0;
     vela_unlisten(&view->map);
     vela_unlisten(&view->unmap);
     vela_unlisten(&view->commit);
@@ -233,6 +277,7 @@ static void handle_dissociate(struct wl_listener *listener, void *data)
 static void handle_destroy(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, destroy);
+    trace_x11(view, "destroy", "");
     vela_view_destroy(view);
 }
 
@@ -240,6 +285,10 @@ static void handle_request_configure(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, request_configure);
     struct wlr_xwayland_surface_configure_event *event = data;
+    trace_x11(view, "request-configure", "request=%d,%d:%ux%u mask=0x%x policy=%s",
+        event->x, event->y, (unsigned)event->width, (unsigned)event->height, (unsigned)event->mask,
+        !view->mapped ? "initial" : (view->maximized || view->fullscreen || !vela_snap_is_none(view->snap))
+            ? "constrained" : "free");
     if (!view->mapped) {
         // Before appearing the app chooses where and how large (remembered:
         // it's its "normal" size).
@@ -294,7 +343,9 @@ static void handle_request_maximize(struct wl_listener *listener, void *data)
 static void handle_request_fullscreen(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, request_fullscreen);
+    trace_x11(view, "request-fullscreen", "requested=%d", view->x11->fullscreen);
     vela_view_set_fullscreen(view, view->x11->fullscreen);
+    trace_x11(view, "fullscreen-applied", "requested=%d", view->x11->fullscreen);
 }
 
 static void handle_request_minimize(struct wl_listener *listener, void *data)
