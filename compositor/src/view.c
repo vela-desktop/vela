@@ -796,11 +796,17 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
     if (!vela_view_configurable(view)) {
         return;
     }
+    // Wine can drop the titlebar before announcing popup style. When we
+    // saved the decorated frame at that moment, do not overwrite it using
+    // the 32px-shorter undecorated client rectangle on fullscreen re-entry.
+    bool preserved_wine_box = view->x11 && on && view->x11_wine_restore_fullscreen
+        && view->x11_wine_restore_box_saved;
     // Actual fullscreen state changes override an outstanding Wine restore
     // hint. Redundant requests must not: Wine can echo fullscreen-off after
     // Vela reconciled a popup -> decorated style change.
     if (on != view->fullscreen) {
         view->x11_wine_restore_fullscreen = false;
+        view->x11_wine_restore_box_saved = false;
     }
     if (on == view->fullscreen) {
         if (view->xdg) {
@@ -812,7 +818,8 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
     struct vela_output *output = view->mapped ? vela_view_output(view) : vela_output_under_cursor(view->server);
 
     if (on) {
-        if (view->mapped && !view->maximized && vela_snap_is_none(view->snap)) {
+        if (view->mapped && !view->maximized && vela_snap_is_none(view->snap)
+            && !preserved_wine_box) {
             view->restore = vela_view_frame_box(view);
         }
         view->fullscreen = true;
