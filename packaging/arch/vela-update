@@ -576,7 +576,7 @@ if [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1;
                     package_name_valid=1
                 fi
             else
-                printf '%s\n' "$release_package" |
+                if printf '%s\n' "$release_package" |
                     grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}(\.fc[[:digit:]]+)?\.x86_64\.rpm$"; then
                     package_name_valid=1
                 fi
