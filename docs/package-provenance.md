@@ -1,18 +1,23 @@
-# Vela Arch package provenance and release policy
+# Vela Arch and Fedora package provenance and release policy
 
-Vela publishes experimental per-commit Arch packages. A matching filename and
-SHA256SUMS downloaded together from a release are **not** proof of origin:
+Vela publishes experimental per-commit packages for Arch and Fedora 45.
+Arch assets use `SHA256SUMS`, Fedora RPMs use `SHA256SUMS-fedora`, with one
+checksum entry in each. A matching filename and manifest downloaded together
+are **not** proof of origin:
 both files can be replaced by the same attacker. Downloaded packages must pass
-cryptographic provenance verification **before** `sudo pacman -U`.
+cryptographic provenance verification **before** `sudo pacman -U` or
+`sudo dnf install`.
 
 ## Trust model
 
-The [Build workflow](../.github/workflows/build.yml) runs `makepkg` and uses
-`actions/attest` to create a signed SLSA build-provenance attestation binding
-the exact package SHA-256 to GitHub's OIDC identity for that workflow and source
-commit. Publishing checks that signature and the exact main commit, **and**
-requires a clean-Arch install and `scripts/ci-check-package.sh` smoke test
-of the very same uploaded artifact. PR-only package tests remain independent
+The [Build workflow](../.github/workflows/build.yml) runs `makepkg` for Arch
+and `rpmbuild` for Fedora 45, and signs the exact output files using
+`actions/attest`. The signed SLSA build-provenance attestations bind each
+package's SHA-256 to the workflow's GitHub OIDC identity and source commit.
+Publishing checks both signatures and the exact main commit, **and** requires
+clean-container installation smoke tests of the same uploaded Arch and Fedora
+packages. The RPM smoke test also checks installed files and shared-library
+linkage; neither test substitutes for a physical GPU login. PR-only package tests remain independent
 and do not replace this release gate.
 
 `vela-update` also verifies downloaded **public release assets** and
@@ -23,12 +28,13 @@ and GitHub-hosted runners. For public alpha releases it also requires the
 `refs/heads/main` source ref. A failed or missing attestation, a missing
 GitHub CLI, or an unavailable verification service means **no binary install**:
 the updater shows GitHub CLI's verification error and falls back to building
-from the selected Git revision.
+from the selected Git revision with native packaging tools
+(`makepkg` on Arch, `rpmbuild` plus `dnf builddep` on Fedora).
 
 Use `--build` to skip all binary download paths explicitly. Installing from
 a user-selected source repository remains a trust decision: signatures
 authenticate the claimed builder and revision but cannot prove that its source
-code is harmless. Existing installed packages and manual `pacman -U` commands
+code is harmless. Existing installed packages and manual `pacman -U` or `dnf install` commands
 are outside the updater's verification boundary.
 
 ### Requirements for users
@@ -51,6 +57,11 @@ gh attestation verify vela-git-<version>.pkg.tar.zst \
   --deny-self-hosted-runners
 ```
 
+Fedora uses the same verification flags, replacing the input with
+`vela-git-<version>-<release>.fc45.x86_64.rpm`. Both binary types are
+published atomically under the same `alpha-<full-SHA>` release, following
+successful package smoke checks on each distribution.
+
 ## Required repository setting: immutable releases
 
 **A repository administrator must enable this in GitHub.** A workflow cannot
@@ -62,7 +73,7 @@ This prevents modification of release tags and assets after publication.
 It affects only *future* releases; existing alpha releases remain mutable.
 See [GitHub's instructions](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes).
 
-The alpha publisher attaches its package and manifest when creating the
+The alpha publisher attaches both packages and both checksum manifests when creating the
 release (GitHub CLI prepares it as a draft and then publishes it). It retains
 only the latest five alpha releases. Deleted immutable releases cannot have
 their tag names reused, so do not attempt to republish pruned alpha commit
@@ -87,11 +98,12 @@ manifest.
 ```sh
 python3 -m unittest discover -s packaging/arch/tests -v
 sh -n packaging/arch/vela-update
+python3 -m unittest discover -s packaging/arch/tests -p 'test_fedora_update.py' -v
 ```
 
 Offline tests simulate successful and rejected `gh attestation verify`
 results and assert fail-closed installation behavior. They **do not simulate
 Sigstore cryptographic verification**; end-to-end attestations are generated
 by the main-branch package job, checked again by the publisher and verified
-with the real `gh` client. The package-smoke job installs the exact uploaded
+with the real `gh` client. Both package-smoke jobs install their respective uploaded
 binary and must pass before a public alpha is published.
