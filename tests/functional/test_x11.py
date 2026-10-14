@@ -64,6 +64,18 @@ class X11(unittest.TestCase):
         self.vela.keys("alt+F4")
         self.vela.wait_for(lambda s: not s.has(window), what="the X11 window closed")
 
+    def test_x11_trace_can_be_enabled_without_restarting(self):
+        self.assertEqual(self.vela.query("trace-x11"), [])
+        self.vela.command("trace-x11 on")
+        self.assertEqual(self.vela.query("trace-x11"), [])
+        self.open_x11(300, 200)
+        events = self.vela.query("trace-x11")
+        self.assertTrue(any("event=map" in event for event in events), events)
+        self.assertTrue(any("event=buffer-size" in event for event in events), events)
+        self.assertTrue(all("xid=0x" in event for event in events), events)
+        self.vela.command("trace-x11 off")
+        self.assertTrue(self.vela.query("trace-x11"))
+
     def test_menu_stays_where_the_app_puts_it(self):
         self.open_x11("--menu", "100,120", 300, 200)
         time.sleep(0.4)
