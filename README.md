@@ -121,8 +121,9 @@ For a low-risk first look, [build from source](#build-from-source) and
 Nested mode is convenient for exploration, but cannot validate physical DRM,
 direct scanout or every driver-specific path.
 
-For a full session, use the [Arch package](#arch-linux-cachyos-endeavouros) or
-[install from source](#other-distributions), then select Vela at the login
+For a full session, use the [Arch package](#arch-linux-cachyos-endeavouros),
+the [Fedora RPM](#fedora-45) or [install from source](#other-distributions),
+then select Vela at the login
 screen. If something fails, [report it](#reporting-a-problem) using
 `vela-report`, reviewing any diagnostics before sharing them.
 
@@ -294,7 +295,7 @@ sh vela/packaging/arch/vela-update
 or install a package separately. On first run it reuses Git objects from the
 checkout instead of downloading the full repository twice. It checks for a
 public, commit-matched alpha package built on `main` (no GitHub login required)
-and verifies its SHA-256 checksum before installing with pacman. If there is no
+and verifies its SHA-256 checksum **and signed build provenance** before installing with pacman. If there is no
 matching public package, it can use a temporary CI artifact through an
 authenticated [GitHub CLI](https://cli.github.com/) or build the native package
 locally. The public alpha packages are published only after successful `main` builds;
@@ -302,6 +303,32 @@ experimental branches normally build locally unless you have access to a matchin
 CI artifact.
 
 Once installed, use **`vela-update`** to fetch new commits and install updates.
+
+### Fedora 45
+
+Fedora 45 x86_64 has a native `vela-git` RPM. The same updater installs it
+and handles subsequent updates through DNF. To get started:
+
+```sh
+sudo dnf install git curl gh rpm-build dnf5-plugins
+git clone https://github.com/vela-desktop/vela.git
+sh vela/packaging/arch/vela-update
+```
+
+The updater looks for an RPM built for the exact selected commit in the public
+alpha release and verifies both its checksum and signed GitHub build provenance.
+If no trusted RPM exists, it builds one from that commit with `rpmbuild` and
+installs it with DNF. On Fedora, `--build` also installs build dependencies with
+`dnf builddep`. An existing Arch package is **never** installed on Fedora.
+Use `vela-update --check` to inspect changes without installing.
+
+Fedora RPMs are built and installation-tested in a fresh Fedora 45 container
+before release; a physical GPU login and other Fedora versions still require
+testing. Fedora's immutable/ostree-based variants are not supported by this
+DNF-based installer.
+
+Once installed, use **`vela-update`** on either distribution to fetch new
+commits and install updates.
 
 Repository downloads use public HTTPS and need no GitHub account or SSH keys.
 Saved GitHub SSH URLs and cached mirrors from older versions are migrated to
@@ -327,8 +354,9 @@ otherwise it builds locally as usual.
 
 To prepare a package for a test branch, run the **Build** workflow manually in
 GitHub Actions, selecting that branch (or run
-`gh workflow run build.yml --ref YOUR_TEST_BRANCH`). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce the same
-`vela-git` artifact as pushes to `main`; workflow artifacts expire after 14 days.
+`gh workflow run build.yml --ref YOUR_TEST_BRANCH`). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce both the `vela-git` Arch artifact and the
+`vela-fedora-rpm` artifact, as on pushes to `main`; workflow artifacts expire
+after 14 days.
 Public `main` packages are also published as per-commit GitHub prereleases
 (tagged `alpha-<full-commit-sha>`) and can be downloaded without a GitHub account.
 Only the **five most recently published Vela alpha releases** are kept; older
@@ -337,8 +365,10 @@ falls back to an available workflow artifact or a local build.
 The tester needs a version of `vela-update` that already supports these options.
 
 The last three packages stay in `~/.cache/vela-update/packages/` for rollback.
-You can restore a known-good package with `sudo pacman -U /path/to/vela-git-*.pkg.tar.zst`
-(select the exact cached package file rather than installing every match).
+Restore a known-good Arch package with `sudo pacman -U /path/to/vela-git-*.pkg.tar.zst`,
+or on Fedora with `sudo dnf install /path/to/vela-git-*.x86_64.rpm`
+(select **one exact file**, never install every cached package at once).
+For Fedora, `dnf reinstall` handles a same-version forced reinstall.
 
 ### Other distributions
 
