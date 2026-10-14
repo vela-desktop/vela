@@ -582,7 +582,12 @@ red, green and blue remains at the chosen temperature).
   screenshots or screen sharing, it also applies to the hardware cursor, and
   games keep direct scanout. Where there is no gamma (nested, headless) or the
   monitor doesn't accept it, it is multiplied into the drawing matrix like the
-  filters.
+  filters. The opt-in `night-light-nvidia-fix=yes` setting bypasses gamma
+  entirely and uses the Vulkan path, even on DRM outputs that accept a gamma
+  LUT. When enabled while a LUT is already installed, its removal is committed
+  atomically with the newly shader-tinted frame; a failed clear leaves the
+  shader off until a safe retry. This is a diagnostic workaround for drivers
+  that accept the LUT but display corrupted colors.
 - The transition (one second, like Windows) is an animation of §4.2: a new value
   on every frame, and the whole output redrawn (or just a new gamma).
 
