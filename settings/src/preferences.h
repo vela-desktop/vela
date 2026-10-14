@@ -54,6 +54,7 @@ class Preferences : public QObject {
     // --- Display: night light and games ---
     Q_PROPERTY(bool nightLight READ nightLight WRITE setNightLight NOTIFY nightLightChanged)
     Q_PROPERTY(int nightStrength READ nightStrength WRITE setNightStrength NOTIFY nightLightChanged)
+    Q_PROPERTY(bool nightNvidiaFix READ nightNvidiaFix WRITE setNightNvidiaFix NOTIFY nightLightChanged)
     // "no", "sunset" (from sunset to sunrise) or "hours"
     Q_PROPERTY(QString nightSchedule READ nightSchedule WRITE setNightSchedule NOTIFY nightLightChanged)
     Q_PROPERTY(QString nightFrom READ nightFrom WRITE setNightFrom NOTIFY nightLightChanged) // "21:00"
@@ -139,6 +140,8 @@ public:
     void setNightLight(bool on);
     int nightStrength() const { return m_nightStrength; }
     void setNightStrength(int strength);
+    bool nightNvidiaFix() const { return m_nightNvidiaFix; }
+    void setNightNvidiaFix(bool on);
     QString nightSchedule() const { return m_nightSchedule; }
     void setNightSchedule(const QString& schedule);
     QString nightFrom() const { return m_nightFrom; }
@@ -242,6 +245,7 @@ private:
     int m_repeatRate = 30;
     bool m_nightLight = false;
     int m_nightStrength = 48;
+    bool m_nightNvidiaFix = false;
     QString m_nightSchedule = QStringLiteral("no");
     QString m_nightFrom = QStringLiteral("21:00");
     QString m_nightTo = QStringLiteral("07:00");
