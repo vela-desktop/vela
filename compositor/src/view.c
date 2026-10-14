@@ -298,7 +298,14 @@ struct wlr_box vela_view_restore_box(struct vela_view *view)
     }
     const struct wlr_box area = output->usable;
     struct wlr_box frame = { 0, 0, area.width * 2 / 3, area.height * 2 / 3 };
-    if (view->x11 && view->x11_initial.width > 0 && view->x11_initial.height > 0) {
+    // A game opened directly in fullscreen may report its monitor-sized
+    // geometry as the "initial" X11 size. Restoring that would recreate the
+    // same oversized window instead of making a usable normal window.
+    struct wlr_box full = vela_output_box(output);
+    bool initial_fullscreen = view->x11 && view->x11_initial.width >= full.width
+        && view->x11_initial.height >= full.height;
+    if (view->x11 && !initial_fullscreen && view->x11_initial.width > 0
+        && view->x11_initial.height > 0) {
         frame.width = view->x11_initial.width;
         frame.height = view->x11_initial.height + (view->decoration ? VELA_DECORATION_HEIGHT : 0);
     }
@@ -790,6 +797,9 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         }
         return;
     }
+    // A user, app or shell fullscreen change invalidates a Wine-specific
+    // restoration hint. The Wine handler re-arms it after its own exit.
+    view->x11_wine_restore_fullscreen = false;
     vela_view_finish_open_animation(view);
     struct vela_output *output = view->mapped ? vela_view_output(view) : vela_output_under_cursor(view->server);
 
