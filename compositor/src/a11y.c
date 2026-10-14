@@ -101,17 +101,24 @@ static void apply_color(struct vela_a11y *a11y)
     bool filter_changed = a11y->color_filter != scene->color_filtered
         || (a11y->color_filter && memcmp(m, scene->color_filter, sizeof(m)) != 0);
     bool night_changed = night != scene->night_active || memcmp(gains, scene->night_gains, sizeof(gains)) != 0;
+    bool backend_changed = a11y->night_nvidia_fix != scene->night_force_shader;
+    scene->night_force_shader = a11y->night_nvidia_fix;
     scene->color_filtered = a11y->color_filter;
     memcpy(scene->color_filter, m, sizeof(m));
     scene->night_active = night;
     memcpy(scene->night_gains, gains, sizeof(gains));
-    if (night_changed) {
+    if (night_changed || backend_changed) {
         ++scene->night_version;
     }
-    if (filter_changed || night_changed) {
+    if (filter_changed || night_changed || backend_changed) {
         struct vela_output *output;
         wl_list_for_each (output, &a11y->server->outputs, link) {
-            vela_output_frame_color_changed(output->frame, filter_changed, night_changed);
+            // A manual return to hardware mode should retry even if a previous
+            // DRM gamma commit was rejected.
+            if (backend_changed && !a11y->night_nvidia_fix) {
+                vela_output_frame_retry_night_light(output->frame);
+            }
+            vela_output_frame_color_changed(output->frame, filter_changed, night_changed || backend_changed);
         }
     }
 }
@@ -226,6 +233,7 @@ void vela_a11y_load(struct vela_a11y *a11y)
     struct vela_config settings;
     vela_config_read(&settings);
     a11y->night_strength = vela_clamp(atoi(vela_config_get(&settings, "night-light-strength", "48")), 0, 100);
+    a11y->night_nvidia_fix = vela_config_flag(&settings, "night-light-nvidia-fix", false);
     snprintf(a11y->schedule, sizeof(a11y->schedule), "%s", vela_config_get(&settings, "night-light-schedule", "no"));
     a11y->night_from = vela_parse_clock(vela_config_get(&settings, "night-light-from", ""), 21 * 60);
     a11y->night_to = vela_parse_clock(vela_config_get(&settings, "night-light-to", ""), 7 * 60);
@@ -578,8 +586,9 @@ bool vela_a11y_json(const struct vela_a11y *a11y, char *out, size_t size)
     const char *t = "true";
     const char *f = "false";
     return vela_format(out, size,
-        "{\"nightLight\":%s,\"colorFilter\":%s,\"magnifier\":%s,\"stickyKeys\":%s,\"touchpad\":%s%s}",
-        a11y->night_light ? t : f, a11y->color_filter ? t : f, a11y->magnifier ? t : f, a11y->sticky_keys ? t : f,
+        "{\"nightLight\":%s,\"nightLightNvidiaFix\":%s,\"colorFilter\":%s,\"magnifier\":%s,\"stickyKeys\":%s,\"touchpad\":%s%s}",
+        a11y->night_light ? t : f, a11y->night_nvidia_fix ? t : f, a11y->color_filter ? t : f,
+        a11y->magnifier ? t : f, a11y->sticky_keys ? t : f,
         vela_input_has_touchpad(a11y->server->input) ? t : f, sun);
 }
 
