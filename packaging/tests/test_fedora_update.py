@@ -22,7 +22,11 @@ class FedoraFixture(UpdateFixture):
         # Test Fedora's identity without altering CI's real /etc/os-release.
         self.os_release = self.directory / "os-release"
         self.os_release.write_text("ID=fedora\n")
-        self.env["VELA_OS_RELEASE_FILE"] = str(self.os_release)
+        # Only the disposable updater copy is retargeted; production reads the
+        # host's real /etc/os-release with no environment override.
+        script = self.update_script.read_text()
+        self.assertEqual(script.count("/etc/os-release"), 2)
+        self.update_script.write_text(script.replace("/etc/os-release", str(self.os_release)))
         # The source archive version is read from the selected Git commit.
         (self.source / "CMakeLists.txt").write_text("project(vela\n    VERSION 0.1.0\n)\n")
         fedora = self.source / "packaging/fedora"
