@@ -571,13 +571,15 @@ if [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1;
             release_package=$(awk 'NR == 1 {print $2}' "$manifest")
             package_name_valid=0
             if [ "$backend" = arch ]; then
-                printf '%s\n' "$release_package" |
-                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}-[[:digit:]]+-x86_64\.pkg\.tar\.zst$" &&
+                if printf '%s\n' "$release_package" |
+                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}-[[:digit:]]+-x86_64\.pkg\.tar\.zst$"; then
                     package_name_valid=1
+                fi
             else
                 printf '%s\n' "$release_package" |
-                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}(\.fc[[:digit:]]+)?\.x86_64\.rpm$" &&
+                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}(\.fc[[:digit:]]+)?\.x86_64\.rpm$"; then
                     package_name_valid=1
+                fi
             fi
             if ! printf '%s\n' "$release_digest" | grep -Eq '^[0-9a-f]{64}$' ||
                 [ "$package_name_valid" != 1 ]; then
