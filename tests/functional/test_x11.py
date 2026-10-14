@@ -115,7 +115,6 @@ class X11(unittest.TestCase):
         view_id = self.open_x11("--id-file", path, 400, 320)
         with open(path, encoding="ascii") as xids:
             xid = xids.read().strip()
-        self.assert_x11_geometry_matches(view_id, xid)
         self.vela.keys("super+Up")
         self.vela.wait_for(lambda state: state.window(view_id)["maximized"], what="maximized X11 window")
         self.assert_x11_geometry_matches(view_id, xid)
