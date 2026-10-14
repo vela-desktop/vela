@@ -53,6 +53,8 @@ BuildRequires:  qt6-qtwayland-devel
 BuildRequires:  qt6-qttools-devel
 BuildRequires:  layer-shell-qt-devel
 BuildRequires:  python3
+BuildRequires:  pipewire-devel
+BuildRequires:  wireplumber-devel
 
 Requires:       wlroots >= 0.20
 Requires:       qt6-qtbase
