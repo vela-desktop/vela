@@ -51,6 +51,7 @@ class Accessibility(unittest.TestCase):
 
     def test_quick_settings(self):
         self.start()
+        self.assertFalse(self.a11y()["nightLightNvidiaFix"])  # workaround off by default
         self.assertEqual({key: self.a11y()[key] for key in ("nightLight", "colorFilter", "magnifier", "stickyKeys")},
                          {"nightLight": False, "colorFilter": False, "magnifier": False, "stickyKeys": False})
         for command, key, setting in (("night-light", "nightLight", "night-light=yes"),
