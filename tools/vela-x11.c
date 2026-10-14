@@ -7,13 +7,17 @@
 // Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--wine-style HEX] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
 //        vela-x11 --set-wine-style XID HEX
+//        vela-x11 --delete-wine-style XID
+//        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
 //
 // Opens an orange window with class "vela.x11" and title "vela-x11", which
 // closes on WM_DELETE_WINDOW (Alt+F4). --menu also opens a green 120x80
 // override-redirect menu at (X, Y) on the screen, like the drop-down menus
 // of X11 apps. Like most apps, it draws only when the server asks (Expose).
 
+#include <fcntl.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <xcb/xcb.h>
@@ -48,11 +52,21 @@ int main(int argc, char** argv)
     const char* idFile = NULL;
     uint32_t wineStyle = 0;
     int hasWineStyle = 0;
-    int control = argc == 4
-        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style"));
+    int startFullscreen = 0;
+    int control = (argc == 4
+        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")))
+        || (argc == 3 && !strcmp(argv[1], "--delete-wine-style"));
     int arg = 1;
     if (!control) {
-        while (arg + 1 < argc) {
+        while (arg < argc) {
+            if (!strcmp(argv[arg], "--start-fullscreen")) {
+                startFullscreen = 1;
+                ++arg;
+                continue;
+            }
+            if (arg + 1 >= argc) {
+                break;
+            }
             if (!strcmp(argv[arg], "--menu")
                 && sscanf(argv[arg + 1], "%d,%d", &menuX, &menuY) == 2) {
                 menu = 1;
@@ -83,6 +97,8 @@ int main(int argc, char** argv)
             uint32_t style = (uint32_t)strtoul(argv[3], NULL, 0);
             xcb_change_property(connection, XCB_PROP_MODE_REPLACE, target,
                 atom(connection, "_WINE_HWND_STYLE"), XCB_ATOM_CARDINAL, 32, 1, &style);
+        } else if (!strcmp(argv[1], "--delete-wine-style")) {
+            xcb_delete_property(connection, target, atom(connection, "_WINE_HWND_STYLE"));
         } else {
             xcb_client_message_event_t event = { 0 };
             event.response_type = XCB_CLIENT_MESSAGE;
@@ -103,15 +119,31 @@ int main(int argc, char** argv)
     }
     xcb_window_t window = create(connection, screen, 0, 0, width, height, 0xff8000, 0);
     if (idFile) {
-        FILE* id = fopen(idFile, "w");
-        if (id) {
-            fprintf(id, "0x%x\n", window);
-            fclose(id);
+        // The XID control file must not be world-writable (CodeQL).
+        int fd = open(idFile, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        if (fd < 0) {
+            perror("vela-x11: create XID file");
+            xcb_disconnect(connection);
+            return 1;
         }
+        char xid[32];
+        int len = snprintf(xid, sizeof(xid), "0x%x\n", window);
+        if (len <= 0 || write(fd, xid, (size_t)len) != len) {
+            perror("vela-x11: write XID file");
+            close(fd);
+            xcb_disconnect(connection);
+            return 1;
+        }
+        close(fd);
     }
     if (hasWineStyle) {
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
             atom(connection, "_WINE_HWND_STYLE"), XCB_ATOM_CARDINAL, 32, 1, &wineStyle);
+    }
+    if (startFullscreen) {
+        xcb_atom_t fullscreen = atom(connection, "_NET_WM_STATE_FULLSCREEN");
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
+            atom(connection, "_NET_WM_STATE"), XCB_ATOM_ATOM, 32, 1, &fullscreen);
     }
     const char title[] = "vela-x11";
     const char wmClass[] = "vela-x11\0vela.x11"; // instance and class
