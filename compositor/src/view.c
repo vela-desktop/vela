@@ -791,10 +791,12 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
     if (!vela_view_configurable(view)) {
         return;
     }
-    // A user, app or shell fullscreen request invalidates a Wine-specific
-    // restoration hint, including requests that reaffirm the current state.
-    // The Wine handler re-arms it after its own automatic fullscreen exit.
-    view->x11_wine_restore_fullscreen = false;
+    // Actual fullscreen state changes override an outstanding Wine restore
+    // hint. Redundant requests must not: Wine can echo fullscreen-off after
+    // Vela reconciled a popup -> decorated style change.
+    if (on != view->fullscreen) {
+        view->x11_wine_restore_fullscreen = false;
+    }
     if (on == view->fullscreen) {
         if (view->xdg) {
             wlr_xdg_surface_schedule_configure(view->xdg->base);

@@ -163,8 +163,10 @@ Vela observes those property notifications on managed X11 windows and
 reconciles its fullscreen state after an observed `WS_POPUP →`
 decorated style transition while already fullscreen. The reverse change
 re-enters fullscreen **only when it undoes that specific automatic exit**:
-a popup window by itself never implies fullscreen. Explicit fullscreen
-changes clear that restore hint. Non-Wine windows, other style changes,
+a popup window by itself never implies fullscreen. Actual fullscreen
+state changes clear that restore hint, while redundant requests which
+reaffirm the existing state do not. The armed return also survives
+intermediate non-popup Wine styles. Non-Wine windows, other style changes,
 and unknown initial styles are left alone. Property replies are polled
 asynchronously to avoid blocking the compositor's event loop.
 

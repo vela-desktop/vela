@@ -111,11 +111,12 @@ static void apply_wine_style(struct vela_view *view, uint32_t style)
             (unsigned)view->x11->window_id);
         vela_view_set_fullscreen(view, false);
         view->x11_wine_restore_fullscreen = true;
-    } else if (wine_decorated(previous) && wine_popup(style) && !view->fullscreen
+    } else if (!wine_popup(previous) && wine_popup(style) && !view->fullscreen
         && view->x11_wine_restore_fullscreen) {
-        // WS_POPUP by itself is not a fullscreen request: only undo a
-        // fullscreen exit which this workaround previously initiated.
-        wlr_log(WLR_INFO, "Xwayland: Wine decorated -> popup, restoring fullscreen for window 0x%x",
+        // Wine may pass through a non-popup intermediate style before its
+        // final WS_POPUP. Only undo a Wine fullscreen exit we initiated;
+        // an arbitrary WS_POPUP does not request fullscreen.
+        wlr_log(WLR_INFO, "Xwayland: Wine windowed -> popup, restoring fullscreen for window 0x%x",
             (unsigned)view->x11->window_id);
         vela_view_set_fullscreen(view, true);
     }
