@@ -116,6 +116,25 @@ class X11(unittest.TestCase):
         self.x11_control("--set-wine-style", xid, "0x96000000")
         self.assert_fullscreen_remains(view_id, False)
 
+    def test_wine_manual_fullscreen_override_clears_restore_hint(self):
+        path = os.path.join(self.vela.directory, "wine-xid")
+        view_id = self.open_x11("--id-file", path, "--wine-style", "0x96000000", 300, 200)
+        with open(path, encoding="ascii") as xids:
+            xid = xids.read().strip()
+        self.x11_control("--fullscreen", xid, "on")
+        self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"], what="fullscreen Wine window")
+        self.x11_control("--set-wine-style", xid, "0x16cf0000")
+        self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"],
+                           what="Wine-driven fullscreen exit")
+
+        # A later explicit fullscreen on/off must disarm the old Wine hint.
+        self.x11_control("--fullscreen", xid, "on")
+        self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"], what="manual fullscreen on")
+        self.x11_control("--fullscreen", xid, "off")
+        self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"], what="manual fullscreen off")
+        self.x11_control("--set-wine-style", xid, "0x96000000")
+        self.assert_fullscreen_remains(view_id, False)
+
     def test_wine_deleted_style_invalidates_transition(self):
         path = os.path.join(self.vela.directory, "wine-xid")
         view_id = self.open_x11("--id-file", path, "--wine-style", "0x96000000", 300, 200)
