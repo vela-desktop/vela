@@ -77,7 +77,10 @@ def build_checks() -> list[str]:
         arch_required = package_section(arch, '  DEPENDENCIES: >-', '\n\njobs:')
         fedora_required = package_section(fedora, '          dnf install -y', '\n\n      - uses:')
         arch_documented = package_section(readme, 'sudo pacman -S --needed ', '\n```')
-        fedora_documented = package_section(readme, 'sudo dnf install ', '\n```')
+        # The README also documents the short updater bootstrap command.
+        # Validate against the full Fedora source-build dependency list.
+        fedora_documented = package_section(readme.rsplit('sudo dnf install ', 1)[-1],
+                                            '', '\n```')
     except ValueError as e:
         return [str(e)]
     for name, required, documented in [
