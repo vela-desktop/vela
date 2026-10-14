@@ -39,6 +39,8 @@ Version:        %{vela_version}
 Release:        1.%{vela_count}.g%{vela_short}%{?dist}
 Summary:        Disposable Fedora updater integration test package
 License:        MIT
+# Shell-only fixture: Fedora's automatic debugsource package would be empty.
+%global debug_package %{nil}
 Source0:        vela-%{version}.tar.gz
 BuildRequires:  bash
 
@@ -62,21 +64,41 @@ git -C "$work/source" config user.name "Vela CI"
 git -C "$work/source" config user.email "vela-ci@example.invalid"
 git -C "$work/source" add .
 git -C "$work/source" commit -qm 'Create isolated RPM fixture'
-sha=$(git -C "$work/source" rev-parse HEAD)
+old_sha=$(git -C "$work/source" rev-parse HEAD)
+# Commit another payload revision so the updater must perform a real downgrade.
+cat > "$work/source/packaging/fedora/ci-marker" <<'MARKER'
+#!/bin/sh
+echo vela-fedora-updater-ci-v2
+MARKER
+chmod +x "$work/source/packaging/fedora/ci-marker"
+git -C "$work/source" add .
+git -C "$work/source" commit -qm 'Update RPM fixture payload'
+new_sha=$(git -C "$work/source" rev-parse HEAD)
 
 # Use the actual installed script from this commit, not a mocked runner.
-sh packaging/vela-update --source "$work/source" --commit "$sha" --build --jobs 1
-test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci'
-rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]1[.]g${sha:0:7}[.]fc44$"
+sh packaging/vela-update --source "$work/source" --commit "$new_sha" --build --jobs 1
+test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci-v2'
+rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]2[.]g${new_sha:0:7}[.]fc44$"
 test "$(find "$XDG_CACHE_HOME/vela-update/packages" -maxdepth 1 -name 'vela-git-*.x86_64.rpm' | wc -l)" -eq 1
 
 # An identical selected revision must be a no-op without --force.
-if sh packaging/vela-update --check --source "$work/source" --commit "$sha"; then
+if sh packaging/vela-update --check --source "$work/source" --commit "$new_sha"; then
     echo "Expected --check to report the fixture is already installed" >&2
     exit 1
 fi
 
 # Force should exercise the DNF5 reinstall path with the exact same NEVRA.
-sh packaging/vela-update --force --build --source "$work/source" --commit "$sha"
+sh packaging/vela-update --force --build --source "$work/source" --commit "$new_sha"
+test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci-v2'
+
+# The updater's own --commit path must downgrade the installed RPM.
+sh packaging/vela-update --source "$work/source" --commit "$old_sha" --build --jobs 1
 test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci'
-echo ":: Fedora updater full local-build and force-reinstall integration passed"
+rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]1[.]g${old_sha:0:7}[.]fc44$"
+
+# Upgrading again must restore the newer payload and preserve both RPMs.
+sh packaging/vela-update --source "$work/source" --commit "$new_sha" --build --jobs 1
+test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci-v2'
+rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]2[.]g${new_sha:0:7}[.]fc44$"
+test "$(find "$XDG_CACHE_HOME/vela-update/packages" -maxdepth 1 -name 'vela-git-*.x86_64.rpm' | wc -l)" -eq 2
+echo ":: Fedora updater local-build, force-reinstall, downgrade and upgrade passed"
