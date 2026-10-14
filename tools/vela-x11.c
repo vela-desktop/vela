@@ -8,6 +8,7 @@
 //        vela-x11 --fullscreen XID on|off
 //        vela-x11 --set-wine-style XID HEX
 //        vela-x11 --delete-wine-style XID
+//        vela-x11 --geometry XID (root-relative X11 x y width height)
 //        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
 //
 // Opens an orange window with class "vela.x11" and title "vela-x11", which
@@ -55,7 +56,8 @@ int main(int argc, char** argv)
     int startFullscreen = 0;
     int control = (argc == 4
         && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")))
-        || (argc == 3 && !strcmp(argv[1], "--delete-wine-style"));
+        || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
+            || !strcmp(argv[1], "--geometry")));
     int arg = 1;
     if (!control) {
         while (arg < argc) {
@@ -93,7 +95,25 @@ int main(int argc, char** argv)
     xcb_screen_t* screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
     if (control) {
         xcb_window_t target = (xcb_window_t)strtoul(argv[2], NULL, 0);
-        if (!strcmp(argv[1], "--set-wine-style")) {
+        if (!strcmp(argv[1], "--geometry")) {
+            xcb_get_geometry_reply_t* geometry =
+                xcb_get_geometry_reply(connection, xcb_get_geometry(connection, target), NULL);
+            xcb_translate_coordinates_reply_t* location = xcb_translate_coordinates_reply(connection,
+                xcb_translate_coordinates(connection, target, screen->root, 0, 0), NULL);
+            if (!geometry || !location) {
+                fprintf(stderr, "vela-x11: cannot query X11 window geometry\n");
+                free(geometry);
+                free(location);
+                xcb_disconnect(connection);
+                return 1;
+            }
+            printf("%d %d %u %u\n", location->dst_x, location->dst_y,
+                (unsigned)geometry->width, (unsigned)geometry->height);
+            free(geometry);
+            free(location);
+            xcb_disconnect(connection);
+            return 0;
+        } else if (!strcmp(argv[1], "--set-wine-style")) {
             uint32_t style = (uint32_t)strtoul(argv[3], NULL, 0);
             xcb_change_property(connection, XCB_PROP_MODE_REPLACE, target,
                 atom(connection, "_WINE_HWND_STYLE"), XCB_ATOM_CARDINAL, 32, 1, &style);

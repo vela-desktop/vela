@@ -67,6 +67,25 @@ class X11(unittest.TestCase):
     def x11_control(self, *args):
         subprocess.run([tool("vela-x11"), *map(str, args)], env=self.env, check=True)
 
+    def x11_geometry(self, xid):
+        # Query the X11 server, not the Wayland compositor's scene geometry.
+        # They can disagree when Vela resizes the X11 window *before* moving
+        # its scene node into the final fullscreen/restored position.
+        result = subprocess.check_output([tool("vela-x11"), "--geometry", xid],
+                                         env=self.env, text=True)
+        return tuple(map(int, result.split()))
+
+    def assert_x11_geometry_matches(self, view_id, xid, expected_size=True):
+        def matches(state):
+            w = state.window(view_id)
+            x, y, width, height = self.x11_geometry(xid)
+            # Vela's frame rectangle can include its server-side title bar.
+            # The X11 surface top-left must match horizontally, while in
+            # fullscreen (no title bar) it must also match vertically.
+            return x == w["x"] and (not expected_size or width == w["w"]) and (
+                not w["fullscreen"] or y == w["y"])
+        self.vela.wait_for(matches, timeout=3, what="X11 root coordinates agree with Vela scene")
+
     def test_wine_popup_to_decorated_restores_fullscreen(self):
         # Wine can toggle a Windows fullscreen popup into a normal decorated
         # window without sending an EWMH fullscreen request or X11 resize.
@@ -76,15 +95,33 @@ class X11(unittest.TestCase):
             xid = xids.read().strip()
         self.x11_control("--fullscreen", xid, "on")
         self.vela.wait_for(lambda state: state.window(view_id)["fullscreen"], what="fullscreen popup")
+        self.assert_x11_geometry_matches(view_id, xid)
 
         self.x11_control("--set-wine-style", xid, "0x16cf0000")
         self.vela.wait_for(lambda state: not state.window(view_id)["fullscreen"],
                            what="Wine changed popup to decorated window")
         self.assertLess(self.vela.state().window(view_id)["w"], self.vela.state().output["w"])
+        self.assert_x11_geometry_matches(view_id, xid)
 
         self.x11_control("--set-wine-style", xid, "0x96000000")
         self.vela.wait_for(lambda state: state.window(view_id)["fullscreen"],
                            what="Wine changed decorated window to fullscreen popup")
+        # Regression: previously the fullscreen buffer was configured at the
+        # OLD centered windowed coordinates while the scene node moved to 0,0.
+        self.assert_x11_geometry_matches(view_id, xid)
+
+    def test_managed_x11_maximize_and_restore_sync_native_position(self):
+        path = os.path.join(self.vela.directory, "maximize-xid")
+        view_id = self.open_x11("--id-file", path, 400, 320)
+        with open(path, encoding="ascii") as xids:
+            xid = xids.read().strip()
+        self.assert_x11_geometry_matches(view_id, xid)
+        self.vela.keys("super+Up")
+        self.vela.wait_for(lambda state: state.window(view_id)["maximized"], what="maximized X11 window")
+        self.assert_x11_geometry_matches(view_id, xid)
+        self.vela.keys("super+Down")
+        self.vela.wait_for(lambda state: not state.window(view_id)["maximized"], what="restored X11 window")
+        self.assert_x11_geometry_matches(view_id, xid)
 
     def assert_fullscreen_remains(self, view_id, expected):
         # A single immediate state read can predate the asynchronous XWM
