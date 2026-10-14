@@ -12,8 +12,8 @@
 # no minutes of compiling, and no compiler crashes.
 #
 # The repository is kept in ~/.cache/vela-update, so each time only new commits
-# are fetched; the last packages stay there too, to go back: sudo pacman -U
-# ~/.cache/vela-update/packages/<file> (pacman -U or dnf install).
+# are fetched; the last packages stay there too, for rollback with native tools
+# from ~/.cache/vela-update/packages/<file>.
 
 set -eu
 
@@ -710,9 +710,9 @@ if [ -n "$ciRun" ]; then
         rm -rf -- "$DOWNLOAD"
         DOWNLOAD=""
         package="$PACKAGES/$(basename "$package")"
-        if ! sudo pacman -U "$package"; then
+        if ! installPackage "$package"; then
             echo "vela-update: the package was downloaded but not installed. To install it:" >&2
-            echo "   sudo pacman -U $package" >&2
+            echo "   $(packageLabel) $package" >&2
             exit 1
         fi
         prune
