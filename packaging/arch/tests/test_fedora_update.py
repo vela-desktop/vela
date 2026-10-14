@@ -19,6 +19,8 @@ class FedoraFixture(UpdateFixture):
             stub.write_text(STUB)
             stub.chmod(0o755)
         self.env["TEST_FEDORA"] = "1"
+        # The source archive version is read from the selected Git commit.
+        (self.source / "CMakeLists.txt").write_text("project(vela\n    VERSION 0.1.0\n)\n")
         fedora = self.source / "packaging/fedora"
         fedora.mkdir(parents=True)
         self.spec = fedora / "vela.spec"
