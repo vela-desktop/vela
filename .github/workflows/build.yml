@@ -238,7 +238,7 @@ jobs:
           librsvg2-devel cairo-devel zlib-devel pam-devel polkit-devel
           qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel
           qt6-qtsvg-devel qt6-qtwayland-devel qt6-qttools-devel
-          layer-shell-qt-devel python3
+          layer-shell-qt-devel python3 pipewire-devel wireplumber-devel
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
