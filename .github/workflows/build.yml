@@ -328,6 +328,9 @@ jobs:
             test -x "/usr/libexec/vela/$helper"
           done
           test -f /usr/libexec/vela/report/vela_report/cli.py
+          # The archive's source metadata must not inherit CI's parent git state.
+          grep -F "\"source_commit\": \"$GITHUB_SHA\"" /usr/bin/vela-report
+          grep -F '"dirty": "false" == "true"' /usr/bin/vela-report
           vela-report --help >/dev/null
           for exe in /usr/bin/vela-compositor /usr/bin/vela-shell /usr/bin/vela-settings /usr/bin/vela-files; do
             if ldd "$exe" | grep -F 'not found'; then
