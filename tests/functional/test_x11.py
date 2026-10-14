@@ -9,7 +9,6 @@ it, so its window is created while the X window manager is being set up."""
 
 import os
 import subprocess
-import tempfile
 import time
 import unittest
 
@@ -87,6 +86,47 @@ class X11(unittest.TestCase):
         self.vela.wait_for(lambda state: state.window(view_id)["fullscreen"],
                            what="Wine changed decorated window to fullscreen popup")
 
+    def assert_fullscreen_remains(self, view_id, expected):
+        # A single immediate state read can predate the asynchronous XWM
+        # PropertyNotify. Observe the state across multiple compositor ticks.
+        for _ in range(15):
+            self.assertEqual(self.vela.state().window(view_id)["fullscreen"], expected)
+            time.sleep(0.03)
+
+    def test_wine_initial_fullscreen_size_restores_to_window(self):
+        path = os.path.join(self.vela.directory, "wine-xid")
+        output = self.vela.state().output
+        view_id = self.open_x11("--id-file", path, "--wine-style", "0x96000000",
+                                "--start-fullscreen", output["w"], output["h"])
+        with open(path, encoding="ascii") as xids:
+            xid = xids.read().strip()
+        self.vela.wait_for(lambda state: state.window(view_id)["fullscreen"],
+                           what="window launched in fullscreen")
+        self.x11_control("--set-wine-style", xid, "0x16cf0000")
+        state = self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"],
+                                   what="fullscreen game became a window")
+        self.assertLess(state.window(view_id)["w"], output["w"])
+        self.assertLess(state.window(view_id)["h"], output["h"])
+
+    def test_wine_popup_is_not_automatically_fullscreen(self):
+        path = os.path.join(self.vela.directory, "wine-xid")
+        view_id = self.open_x11("--id-file", path, "--wine-style", "0x16cf0000", 300, 200)
+        with open(path, encoding="ascii") as xids:
+            xid = xids.read().strip()
+        self.x11_control("--set-wine-style", xid, "0x96000000")
+        self.assert_fullscreen_remains(view_id, False)
+
+    def test_wine_deleted_style_invalidates_transition(self):
+        path = os.path.join(self.vela.directory, "wine-xid")
+        view_id = self.open_x11("--id-file", path, "--wine-style", "0x96000000", 300, 200)
+        with open(path, encoding="ascii") as xids:
+            xid = xids.read().strip()
+        self.x11_control("--delete-wine-style", xid)
+        # Do not infer a transition from a missing/unknown previous style.
+        time.sleep(0.1)
+        self.x11_control("--set-wine-style", xid, "0x16cf0000")
+        self.assert_fullscreen_remains(view_id, False)
+
     def test_wine_non_popup_changes_do_not_override_fullscreen(self):
         path = os.path.join(self.vela.directory, "wine-xid")
         view_id = self.open_x11("--id-file", path, "--wine-style", "0x16cf0000", 300, 200)
@@ -96,7 +136,7 @@ class X11(unittest.TestCase):
         self.vela.wait_for(lambda state: state.window(view_id)["fullscreen"], what="fullscreen window")
         # Changing unrelated style bits must not cancel fullscreen.
         self.x11_control("--set-wine-style", xid, "0x16cf0008")
-        self.assertTrue(self.vela.wait_for(lambda _: True).window(view_id)["fullscreen"])
+        self.assert_fullscreen_remains(view_id, True)
 
     def test_menu_stays_where_the_app_puts_it(self):
         self.open_x11("--menu", "100,120", 300, 200)
