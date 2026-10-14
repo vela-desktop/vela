@@ -4,7 +4,11 @@
 find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     OUTPUT_VARIABLE VELA_REPORT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-if(NOT VELA_REPORT_COMMIT)
+# Source RPM archives intentionally contain no .git directory; preserve the
+# exact selected commit passed by the authenticated packaging workflow/updater.
+if(DEFINED VELA_PACKAGE_COMMIT AND NOT VELA_PACKAGE_COMMIT STREQUAL "")
+    set(VELA_REPORT_COMMIT "${VELA_PACKAGE_COMMIT}")
+elseif(NOT VELA_REPORT_COMMIT)
     set(VELA_REPORT_COMMIT "unknown")
 endif()
 execute_process(COMMAND git status --porcelain --untracked-files=normal
