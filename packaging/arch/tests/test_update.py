@@ -84,6 +84,27 @@ if name == "pacman":
     if not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
+elif name == "rpm":
+    if not os.environ.get("TEST_INSTALLED"):
+        sys.exit(1)
+    print("0.1.0-1.1.g" + os.environ["TEST_INSTALLED"] + ".fc45")
+elif name == "rpmbuild":
+    values = {}
+    for idx, value in enumerate(args[:-1]):
+        if value == "--define":
+            key, _, entry = args[idx + 1].partition(" ")
+            values[key] = entry
+    sha = values["vela_commit"]
+    topdir = pathlib.Path(values["_topdir"])
+    assert (topdir / "SOURCES/vela-0.1.0.tar.gz").is_file()
+    assert (topdir / "SPECS/vela.spec").is_file()
+    record(sha=sha, jobs=os.environ.get("RPM_BUILD_NCPUS"),
+           spec=(topdir / "SPECS/vela.spec").read_text())
+    if os.environ.get("TEST_FAIL_BUILD"):
+        sys.exit(1)
+    rpm_dir = topdir / "RPMS/x86_64"
+    rpm_dir.mkdir(parents=True, exist_ok=True)
+    (rpm_dir / ("vela-git-0.1.0-1.1.g" + sha[:7] + ".fc45.x86_64.rpm")).touch()
 elif name == "makepkg":
     if os.environ.get("TEST_REQUIRE_TTY"):
         # sudo authenticates through /dev/tty, not necessarily stdin.
@@ -152,7 +173,8 @@ elif name == "gh":
         if args[args.index("--signer-workflow") + 1] != "vela-desktop/vela/.github/workflows/build.yml":
             sys.exit("Unexpected signer workflow")
         sha = args[args.index("--source-digest") + 1]
-        if ".g" + sha[:7] + "-" not in pathlib.Path(args[2]).name:
+        if (".g" + sha[:7] + "-" not in pathlib.Path(args[2]).name and
+                ".g" + sha[:7] + "." not in pathlib.Path(args[2]).name):
             sys.exit("Attestation source does not match the artifact")
         if os.environ.get("TEST_WRONG_ATTEST_SHA"):
             sys.exit(1)
@@ -175,7 +197,10 @@ elif name == "gh":
         dest = pathlib.Path(args[args.index("-D") + 1])
         dest.mkdir(parents=True, exist_ok=True)
         sha = os.environ["TEST_DOWNLOAD_SHA"]
-        (dest / ("vela-git-0.1.0.r1.g" + sha + "-1-x86_64.pkg.tar.zst")).touch()
+        if os.environ.get("TEST_FEDORA"):
+            (dest / ("vela-git-0.1.0-1.1.g" + sha + ".fc45.x86_64.rpm")).touch()
+        else:
+            (dest / ("vela-git-0.1.0.r1.g" + sha + "-1-x86_64.pkg.tar.zst")).touch()
 elif name == "curl":
     record()
     import hashlib
@@ -198,12 +223,16 @@ elif name == "curl":
         sys.exit("Unexpected public release URL: " + url)
     output = pathlib.Path(args[args.index("-o") + 1])
     advertised = os.environ.get("TEST_RELEASE_PKG_SHA") or sha
-    package = "vela-git-0.1.0.r1.g" + advertised[:7] + "-1-x86_64.pkg.tar.zst"
+    if os.environ.get("TEST_FEDORA"):
+        package = "vela-git-0.1.0-1.1.g" + advertised[:7] + ".fc45.x86_64.rpm"
+    else:
+        package = "vela-git-0.1.0.r1.g" + advertised[:7] + "-1-x86_64.pkg.tar.zst"
     data = ("package for " + sha).encode()
     digest = hashlib.sha256(data).hexdigest()
     if os.environ.get("TEST_BAD_RELEASE_DIGEST"):
         digest = "f" * 64
-    if url == prefix + "SHA256SUMS":
+    manifest_name = "SHA256SUMS-fedora" if os.environ.get("TEST_FEDORA") else "SHA256SUMS"
+    if url == prefix + manifest_name:
         mode = os.environ.get("TEST_BAD_RELEASE_MANIFEST")
         if mode == "invalid-digest":
             digest = "not-a-sha256"
