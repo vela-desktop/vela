@@ -252,6 +252,14 @@ static void handle_associate(struct wl_listener *listener, void *data)
     struct vela_view *view = wl_container_of(listener, view, associate);
     trace_x11(view, "associate", "");
     struct wlr_surface *surface = view->x11->surface;
+    // The first buffer may have arrived before Xwayland paired this surface.
+    // Log its size now instead of waiting for a commit that may never come.
+    if (view->server->trace_x11_enabled && surface
+        && (surface->current.width > 0 || surface->current.height > 0)) {
+        view->x11_trace_width = surface->current.width;
+        view->x11_trace_height = surface->current.height;
+        trace_x11(view, "buffer-size", "surface=%dx%d", view->x11_trace_width, view->x11_trace_height);
+    }
     view->surface_node = vela_surface_node_create(view->tree, surface);
     vela_listen(&surface->events.map, &view->map, handle_map);
     vela_listen(&surface->events.unmap, &view->unmap, handle_unmap);
