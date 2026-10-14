@@ -218,7 +218,6 @@ jobs:
 
   # Build the SAME revision as the Arch package, in Fedora 45.
   fedora-package:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: packaging-tests
     runs-on: ubuntu-latest
     container: fedora:45
@@ -265,6 +264,7 @@ jobs:
           test "${#rpm_files[@]}" -eq 1
           [[ "${rpm_files[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
       - name: Attest Fedora RPM provenance
+        if: github.event_name != 'pull_request'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: rpmbuild/RPMS/x86_64/vela-git-*.rpm
@@ -277,7 +277,6 @@ jobs:
 
   # Install exactly the signed binary, not a second independently built RPM.
   fedora-package-smoke:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: fedora-package
     runs-on: ubuntu-latest
     container: fedora:45
