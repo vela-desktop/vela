@@ -129,8 +129,16 @@ esac
 if [ "$backend" = arch ] && ! command -v pacman >/dev/null 2>&1; then
     echo "vela-update: pacman is missing." >&2; exit 1
 fi
-if [ "$backend" = fedora ] && { ! command -v rpm >/dev/null 2>&1 || ! command -v dnf >/dev/null 2>&1; }; then
-    echo "vela-update: Fedora needs rpm and dnf." >&2; exit 1
+if [ "$backend" = fedora ]; then
+    if ! command -v rpm >/dev/null 2>&1 || ! command -v dnf >/dev/null 2>&1; then
+        echo "vela-update: Fedora needs rpm and dnf." >&2; exit 1
+    fi
+    # Having DNF installed does not imply compatible Fedora libraries.
+    fedora_release=$(rpm --eval '%{?fedora}' 2>/dev/null || true)
+    if [ "$fedora_release" != 45 ]; then
+        echo "vela-update: Fedora 45 is the only supported RPM target (detected: ${fedora_release:-unknown})." >&2
+        exit 1
+    fi
 fi
 
 packageVersion() {
@@ -745,7 +753,13 @@ else
         echo "vela-update: this revision has no Fedora RPM spec ($latestFull)." >&2
         exit 1
     fi
-    if ! git -C "$MIRROR" archive --format=tar.gz --prefix=vela-0.1.0/ "$latestFull" > "$WORK/SOURCES/vela-0.1.0.tar.gz"; then
+    version=$(git -C "$MIRROR" show "$latestFull:CMakeLists.txt" |
+        sed -n 's/^[[:space:]]*VERSION[[:space:]]\([0-9][0-9.]*\).*/\1/p' | head -n 1)
+    if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+(\.[0-9]+)+$'; then
+        echo "vela-update: invalid or missing project version in selected revision." >&2
+        exit 1
+    fi
+    if ! git -C "$MIRROR" archive --format=tar.gz --prefix="vela-$version/" "$latestFull" > "$WORK/SOURCES/vela-$version.tar.gz"; then
         echo "vela-update: could not archive revision $latestFull for rpmbuild." >&2
         exit 1
     fi
@@ -776,12 +790,12 @@ if [ "$backend" = arch ]; then
     fi
 elif [ -t 0 ]; then
     rpmbuild -bb "$WORK/SPECS/vela.spec" \
-        --define "_topdir $WORK" --define "vela_commit $latestFull" \
+        --define "_topdir $WORK" --define "vela_version $version" --define "vela_commit $latestFull" \
         --define "vela_short $latest" --define "vela_count $count" <&0 9>&- &
     build_isolated=0
 else
     setsid --wait rpmbuild -bb "$WORK/SPECS/vela.spec" \
-        --define "_topdir $WORK" --define "vela_commit $latestFull" \
+        --define "_topdir $WORK" --define "vela_version $version" --define "vela_commit $latestFull" \
         --define "vela_short $latest" --define "vela_count $count" <&0 9>&- &
     build_isolated=1
 fi
@@ -789,7 +803,7 @@ makepkg_pid=$!
 if wait "$makepkg_pid"; then build_ok=1; else build_ok=0; fi
 makepkg_pid=""
 if [ "$backend" = fedora ] && [ "$build_ok" = 1 ]; then
-    built=$(ls "$WORK"/RPMS/x86_64/vela-git-*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
+    built=$(ls "$WORK"/RPMS/x86_64/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
     if [ -z "$built" ]; then
         echo "vela-update: rpmbuild did not produce the selected revision." >&2
         build_ok=0
@@ -804,7 +818,7 @@ if [ "$build_ok" = 0 ]; then
     if [ "$backend" = arch ]; then
         built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2>/dev/null | head -n 1)
     else
-        built=$(ls -t "$PACKAGES"/vela-git-*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
+        built=$(ls -t "$PACKAGES"/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
     fi
     if [ -n "$built" ]; then
         echo "vela-update: the package is ready but wasn't installed. To install it:" >&2

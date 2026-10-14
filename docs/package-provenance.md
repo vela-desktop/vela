@@ -29,7 +29,7 @@ and GitHub-hosted runners. For public alpha releases it also requires the
 GitHub CLI, or an unavailable verification service means **no binary install**:
 the updater shows GitHub CLI's verification error and falls back to building
 from the selected Git revision with native packaging tools
-(`makepkg` on Arch, `rpmbuild` plus `dnf builddep` on Fedora).
+(`makepkg` on Arch, `rpmbuild` plus `dnf builddep` on Fedora 45 only).
 
 Use `--build` to skip all binary download paths explicitly. Installing from
 a user-selected source repository remains a trust decision: signatures

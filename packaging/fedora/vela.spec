@@ -4,16 +4,18 @@
 # Fedora 45 x86_64 alpha package. Build exactly the selected Git commit:
 #   git archive --format=tar.gz --prefix=vela-0.1.0/ HEAD > SOURCES/vela-0.1.0.tar.gz
 #   rpmbuild -bb packaging/fedora/vela.spec --define "_topdir <rpmbuild-dir>" \
+#     --define "vela_version <CMake project version>" \
 #     --define "vela_commit <full-sha>" --define "vela_short <short-sha>" \
 #     --define "vela_count <git-rev-list-count>"
 #
 # The release includes its Git revision to match vela-update's Arch behavior.
+%{!?vela_version:%{error:Missing vela_version (read VERSION from CMakeLists.txt)}}
 %{!?vela_commit:%global vela_commit unknown}
 %{!?vela_short:%global vela_short 0000000}
 %{!?vela_count:%global vela_count 0}
 
 Name:           vela-git
-Version:        0.1.0
+Version:        %{vela_version}
 Release:        1.%{vela_count}.g%{vela_short}%{?dist}
 Summary:        Modern Wayland desktop environment with its own Vulkan renderer
 License:        GPL-3.0-or-later

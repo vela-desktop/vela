@@ -306,7 +306,8 @@ Once installed, use **`vela-update`** to fetch new commits and install updates.
 
 ### Fedora 45
 
-Fedora 45 x86_64 has a native `vela-git` RPM. The same updater installs it
+Fedora 45 x86_64 has a native `vela-git` RPM. RPMs are not yet supported on
+other Fedora releases or other DNF-based distributions. The same updater installs it
 and handles subsequent updates through DNF. To get started:
 
 ```sh
