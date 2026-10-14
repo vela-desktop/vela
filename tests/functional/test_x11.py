@@ -70,6 +70,27 @@ class X11(unittest.TestCase):
     def x11_control(self, *args):
         subprocess.run([tool("vela-x11"), *map(str, args)], env=self.env, check=True)
 
+    def test_x11_trace_stats_query_and_reset(self):
+        self.vela.command("trace-x11 on")
+        initial = self.vela.query("trace-x11 stats")
+        self.assertTrue(initial["enabled"])
+        self.assertEqual(initial["windows"], [])
+        self.open_x11(300, 200)
+        stats = self.vela.query("trace-x11 stats")
+        self.assertEqual(len(stats["windows"]), 1)
+        view = stats["windows"][0]
+        self.assertTrue(view["mapped"])
+        self.assertTrue(view["has_buffer"])
+        self.assertTrue(view["has_texture"])
+        for key in ("submitted", "applied", "attaches", "null_attaches",
+                    "buffer_changes", "damaged", "last_submit_ns", "last_apply_ns"):
+            self.assertIsInstance(view[key], int)
+            self.assertGreaterEqual(view[key], 0)
+        self.vela.command("trace-x11 on")
+        reset = self.vela.query("trace-x11 stats")
+        self.assertEqual(reset["windows"][0]["submitted"], 0)
+        self.assertEqual(reset["windows"][0]["applied"], 0)
+
     def test_x11_trace_lifecycle(self):
         self.assertEqual(self.trace_events(), [])
         self.vela.command("trace-x11 on")

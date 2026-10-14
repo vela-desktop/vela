@@ -22,6 +22,7 @@
 #include "motion.h"
 #include "snap.h"
 
+struct vela_buffer;
 struct vela_decoration;
 struct vela_output;
 struct vela_server;
@@ -112,6 +113,21 @@ struct vela_view {
     // Track distinct X11 buffer sizes for the on-demand transition trace.
     int x11_trace_width;
     int x11_trace_height;
+    // Counters since the last "trace-x11 on"; unlike the 128-event ring,
+    // these survive a high frame rate and can be compared across F presses.
+    uint64_t x11_trace_submitted;
+    uint64_t x11_trace_applied;
+    uint64_t x11_trace_attaches;
+    uint64_t x11_trace_null_attaches;
+    uint64_t x11_trace_buffer_changes;
+    uint64_t x11_trace_damage_commits;
+    uint64_t x11_trace_last_submit_ns;
+    uint64_t x11_trace_last_apply_ns;
+    uint64_t x11_trace_last_attach_ns;
+    uint64_t x11_trace_last_damage_ns;
+    const void *x11_trace_last_buffer;
+    bool x11_trace_had_buffer;
+    bool x11_trace_had_texture;
 
     struct wl_listener map;
     struct wl_listener unmap;
@@ -254,5 +270,6 @@ void vela_xwayland_init(struct vela_server *server);
 void vela_xwayland_finish(struct vela_server *server);
 void vela_xwayland_sync(struct vela_server *server); // on every frame: X11 apps know where they are
 void vela_xwayland_trace_snapshot(struct vela_server *server); // capture current X11 state when tracing begins
+void vela_xwayland_trace_stats(struct vela_server *server, struct vela_buffer *json); // live X11 commit counters
 
 #endif

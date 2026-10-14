@@ -171,7 +171,14 @@ has a monotonic timestamp (`time_ns`), sequence number (`seq`), X window ID,
 map/unmap, associate/dissociate, buffer-size changes, fullscreen requests,
 ConfigureRequests (requested geometry, mask and constraint policy), and the
 actual geometry Vela sent back (`configure-sent`). The oldest entries are
-discarded after 128 events. The `trace-x11` query is read-only.
+discarded after 128 events. The  `trace-x11 stats` reports per-window counters since the most recent
+`trace-x11 on` (submitted and applied commits, attaches, null buffers, buffer
+identity changes, effective-damage commits, and last-event monotonic timestamps).
+Unlike the event ring, these counters do not wrap at 128 frames. Enabling the
+trace again resets them and snapshots the currently mapped windows. A read-only
+stats query does not reset the counters. `has_buffer` and `has_texture`
+are live surface states; no pixel contents or application titles are captured.
+The `trace-x11` query is read-only.
 This diagnostic **does not** try to infer a fullscreen transition from a
 resize request; X11 apps are allowed to resize while remaining fullscreen.
 For development tests, `vela-x11 --fullscreen XID on|off` sends an EWMH

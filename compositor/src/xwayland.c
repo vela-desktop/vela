@@ -14,6 +14,7 @@
 
 #include "view.h"
 
+#include "buffer.h"
 #include "interact.h"
 #include "focus.h"
 #include "bindings.h"
@@ -25,6 +26,7 @@
 #include "snap.h"
 
 #include <math.h>
+#include <pixman.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <time.h>
@@ -43,15 +45,20 @@
 
 // Opt-in diagnostics for managed and override-redirect X11 windows. No
 // titles or pixels are recorded, and entries never outlive the compositor.
+static uint64_t trace_now_ns(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
+}
+
 static void trace_x11_record(struct vela_server *server, struct wlr_xwayland_surface *x11,
     const struct vela_view *view, const char *event, const char *format, va_list args)
 {
     if (!server->trace_x11_enabled) {
         return;
     }
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    uint64_t time_ns = (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
+    uint64_t time_ns = trace_now_ns();
     char *entry = server->trace_x11_events[server->trace_x11_total % 128];
     int mapped = view ? view->mapped : (x11->surface && x11->surface->mapped);
     int n = snprintf(entry, sizeof(server->trace_x11_events[0]),
@@ -94,6 +101,48 @@ static void trace_x11_unmanaged(struct vela_server *server, struct wlr_xwayland_
     va_start(args, format);
     trace_x11_record(server, x11, NULL, event, format, args);
     va_end(args);
+}
+
+// Counters are per managed X11 view, because frequent frame commits would
+// overwrite the fixed 128-entry transition log in seconds.
+static void trace_x11_reset_view(struct vela_view *view)
+{
+    struct wlr_surface *surface = view->x11->surface;
+    view->x11_trace_submitted = 0;
+    view->x11_trace_applied = 0;
+    view->x11_trace_attaches = 0;
+    view->x11_trace_null_attaches = 0;
+    view->x11_trace_buffer_changes = 0;
+    view->x11_trace_damage_commits = 0;
+    view->x11_trace_last_submit_ns = 0;
+    view->x11_trace_last_apply_ns = 0;
+    view->x11_trace_last_attach_ns = 0;
+    view->x11_trace_last_damage_ns = 0;
+    view->x11_trace_last_buffer = surface ? surface->buffer : NULL;
+    view->x11_trace_had_buffer = surface && wlr_surface_has_buffer(surface);
+    view->x11_trace_had_texture = surface && wlr_surface_get_texture(surface) != NULL;
+    view->x11_trace_width = surface ? surface->current.width : 0;
+    view->x11_trace_height = surface ? surface->current.height : 0;
+}
+
+static void handle_trace_client_commit(struct wl_listener *listener, void *data)
+{
+    struct vela_view *view = wl_container_of(listener, view, client_commit);
+    if (!view->server->trace_x11_enabled) {
+        return;
+    }
+    struct wlr_surface *surface = view->x11->surface;
+    const struct wlr_surface_state *pending = &surface->pending;
+    ++view->x11_trace_submitted;
+    view->x11_trace_last_submit_ns = trace_now_ns();
+    if (pending->committed & WLR_SURFACE_STATE_BUFFER) {
+        ++view->x11_trace_attaches;
+        view->x11_trace_last_attach_ns = view->x11_trace_last_submit_ns;
+        if (!pending->buffer) {
+            ++view->x11_trace_null_attaches;
+            trace_x11(view, "null-buffer-submitted", "");
+        }
+    }
 }
 
 // -------------------------------------------- menus, tooltips, drop-downs --
@@ -278,14 +327,36 @@ static void handle_unmap(struct wl_listener *listener, void *data)
 static void handle_commit(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, commit);
-    if (view->server->trace_x11_enabled && view->x11->surface) {
-        int width = view->x11->surface->current.width;
-        int height = view->x11->surface->current.height;
+    if (view->server->trace_x11_enabled) {
+        struct wlr_surface *surface = view->x11->surface;
+        ++view->x11_trace_applied;
+        view->x11_trace_last_apply_ns = trace_now_ns();
+        int width = surface->current.width;
+        int height = surface->current.height;
         if (width != view->x11_trace_width || height != view->x11_trace_height) {
             trace_x11(view, "buffer-size", "surface=%dx%d", width, height);
             view->x11_trace_width = width;
             view->x11_trace_height = height;
         }
+        if ((const void *)surface->buffer != view->x11_trace_last_buffer) {
+            ++view->x11_trace_buffer_changes;
+            view->x11_trace_last_buffer = surface->buffer;
+        }
+        bool has_buffer = wlr_surface_has_buffer(surface);
+        bool has_texture = wlr_surface_get_texture(surface) != NULL;
+        if (has_buffer != view->x11_trace_had_buffer || has_texture != view->x11_trace_had_texture) {
+            trace_x11(view, "buffer-state", "has_buffer=%d has_texture=%d", has_buffer, has_texture);
+            view->x11_trace_had_buffer = has_buffer;
+            view->x11_trace_had_texture = has_texture;
+        }
+        pixman_region32_t damage;
+        pixman_region32_init(&damage);
+        wlr_surface_get_effective_damage(surface, &damage);
+        if (pixman_region32_not_empty(&damage)) {
+            ++view->x11_trace_damage_commits;
+            view->x11_trace_last_damage_ns = view->x11_trace_last_apply_ns;
+        }
+        pixman_region32_fini(&damage);
     }
     vela_view_committed(view);
 }
@@ -297,20 +368,17 @@ static void handle_associate(struct wl_listener *listener, void *data)
     struct vela_view *view = wl_container_of(listener, view, associate);
     trace_x11(view, "associate", "");
     struct wlr_surface *surface = view->x11->surface;
-    // The first buffer may have arrived before Xwayland paired this surface.
-    // Log its size now instead of waiting for a commit that may never come.
-    // The associate event guarantees a non-NULL surface; do not add a
-    // contradictory NULL branch that the listeners below cannot support.
-    if (view->server->trace_x11_enabled
-        && (surface->current.width > 0 || surface->current.height > 0)) {
-        view->x11_trace_width = surface->current.width;
-        view->x11_trace_height = surface->current.height;
+    // The associate event guarantees a non-NULL surface. The first buffer
+    // may have arrived before pairing; record its state as our baseline.
+    trace_x11_reset_view(view);
+    if (view->server->trace_x11_enabled && (surface->current.width > 0 || surface->current.height > 0)) {
         trace_x11(view, "buffer-size", "surface=%dx%d", view->x11_trace_width, view->x11_trace_height);
     }
     view->surface_node = vela_surface_node_create(view->tree, surface);
     vela_listen(&surface->events.map, &view->map, handle_map);
     vela_listen(&surface->events.unmap, &view->unmap, handle_unmap);
     vela_listen(&surface->events.commit, &view->commit, handle_commit);
+    vela_listen(&surface->events.client_commit, &view->client_commit, handle_trace_client_commit);
     map_if_drawn(surface);
 }
 
@@ -323,6 +391,8 @@ static void handle_dissociate(struct wl_listener *listener, void *data)
     vela_unlisten(&view->map);
     vela_unlisten(&view->unmap);
     vela_unlisten(&view->commit);
+    vela_unlisten(&view->client_commit);
+    view->x11_trace_last_buffer = NULL;
     if (view->surface_node) {
         vela_node_destroy(&view->surface_node->node);
         view->surface_node = NULL;
@@ -587,12 +657,10 @@ void vela_xwayland_trace_snapshot(struct vela_server *server)
         if (!view->x11) {
             continue;
         }
-        struct wlr_surface *surface = view->x11->surface;
-        int width = surface ? surface->current.width : 0;
-        int height = surface ? surface->current.height : 0;
-        view->x11_trace_width = width;
-        view->x11_trace_height = height;
-        trace_x11(view, "snapshot", "surface=%dx%d", width, height);
+        trace_x11_reset_view(view);
+        trace_x11(view, "snapshot", "surface=%dx%d has_buffer=%d has_texture=%d",
+            view->x11_trace_width, view->x11_trace_height,
+            view->x11_trace_had_buffer, view->x11_trace_had_texture);
     }
     struct unmanaged *menu;
     wl_list_for_each (menu, &server->x11_unmanaged, link) {
@@ -601,6 +669,42 @@ void vela_xwayland_trace_snapshot(struct vela_server *server)
         int height = surface ? surface->current.height : 0;
         trace_x11_unmanaged(server, menu->x11, "snapshot", "surface=%dx%d", width, height);
     }
+}
+
+void vela_xwayland_trace_stats(struct vela_server *server, struct vela_buffer *json)
+{
+    vela_buffer_appendf(json, "{\"enabled\":%s,\"held_global\":%llu,\"windows\":[",
+        server->trace_x11_enabled ? "true" : "false", (unsigned long long)server->ready.held_now);
+    bool first = true;
+    struct vela_view *view;
+    wl_list_for_each (view, &server->views, link) {
+        if (!view->x11) {
+            continue;
+        }
+        struct wlr_surface *surface = view->x11->surface;
+        vela_buffer_appendf(json, "%s{\"xid\":\"0x%08x\",\"mapped\":%s,\"fullscreen\":%s,"
+            "\"x11_fullscreen\":%s,\"width\":%d,\"height\":%d,\"has_buffer\":%s,\"has_texture\":%s,"
+            "\"submitted\":%llu,\"applied\":%llu,\"attaches\":%llu,\"null_attaches\":%llu,"
+            "\"buffer_changes\":%llu,\"damaged\":%llu,\"last_submit_ns\":%llu,"
+            "\"last_apply_ns\":%llu,\"last_attach_ns\":%llu,\"last_damage_ns\":%llu}",
+            first ? "" : ",", (unsigned)view->x11->window_id, view->mapped ? "true" : "false",
+            view->fullscreen ? "true" : "false", view->x11->fullscreen ? "true" : "false",
+            surface ? surface->current.width : 0, surface ? surface->current.height : 0,
+            surface && wlr_surface_has_buffer(surface) ? "true" : "false",
+            surface && wlr_surface_get_texture(surface) ? "true" : "false",
+            (unsigned long long)view->x11_trace_submitted,
+            (unsigned long long)view->x11_trace_applied,
+            (unsigned long long)view->x11_trace_attaches,
+            (unsigned long long)view->x11_trace_null_attaches,
+            (unsigned long long)view->x11_trace_buffer_changes,
+            (unsigned long long)view->x11_trace_damage_commits,
+            (unsigned long long)view->x11_trace_last_submit_ns,
+            (unsigned long long)view->x11_trace_last_apply_ns,
+            (unsigned long long)view->x11_trace_last_attach_ns,
+            (unsigned long long)view->x11_trace_last_damage_ns);
+        first = false;
+    }
+    vela_buffer_append(json, "]}");
 }
 
 #else
@@ -623,6 +727,11 @@ void vela_xwayland_sync(struct vela_server *server)
 
 void vela_xwayland_trace_snapshot(struct vela_server *server)
 {
+}
+
+void vela_xwayland_trace_stats(struct vela_server *server, struct vela_buffer *json)
+{
+    vela_buffer_append(json, "{\"enabled\":false,\"held_global\":0,\"windows\":[]}");
 }
 
 #endif

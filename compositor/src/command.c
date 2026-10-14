@@ -197,6 +197,10 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         window_rects_json(server, &reply);
     } else if (strcmp(line, "state") == 0) {
         state_json(server, &reply);
+    } else if (strcmp(line, "trace-x11 stats") == 0) {
+        // Frame commits are much more frequent than state transitions; expose
+        // persistent counters separately instead of flooding the event ring.
+        vela_xwayland_trace_stats(server, &reply);
     } else if (strcmp(line, "trace-x11") == 0) {
         // Oldest to newest. A fixed-size ring prevents unbounded memory growth,
         // even when a game changes mode in a tight loop.
@@ -390,8 +394,8 @@ static void run_command(struct vela_server *server, const char *line)
         server->trace_x11_enabled = false;
     } else if (strcmp(line, "trace-x11 clear") == 0) {
         server->trace_x11_total = 0;
-    } else if (strcmp(line, "trace-x11") == 0) {
-        // Read-only query; answered above.
+    } else if (strcmp(line, "trace-x11") == 0 || strcmp(line, "trace-x11 stats") == 0) {
+        // Read-only queries; answered above.
     } else if (strcmp(line, "reload-config") == 0) {
         // Settings changed vela.conf.
         wlr_log(WLR_INFO, "Settings: reloading vela.conf");
