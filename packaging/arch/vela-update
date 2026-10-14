@@ -506,7 +506,7 @@ if [ -n "$installed" ] && git -C "$MIRROR" cat-file -e "$installed^{commit}" 2> 
         git -C "$MIRROR" log --format='   %s' "$installed..$latestFull"
     fi
 elif [ -n "$installed" ]; then
-    echo ":: Installed version: $(pacman -Q vela-git | cut -d' ' -f2); new: $latest"
+    echo ":: Installed version: $(packageVersion); new: $latest"
 else
     echo ":: Vela isn't installed as a package: installing it ($latest)."
 fi
@@ -607,7 +607,7 @@ if [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
         --json databaseId -q '.[0].databaseId' 2>"$CACHE/gh-lookup-error.log"); then
         if [ -n "$run" ]; then
             if artifacts=$(gh api "repos/$repo/actions/runs/$run/artifacts" \
-                -q '.artifacts[] | select(.name == \"$artifact_name\" and .expired == false) | .id' \
+                -q ".artifacts[] | select(.name == \"$artifact_name\" and .expired == false) | .id" \
                 2>"$CACHE/gh-lookup-error.log"); then
                 [ -z "$artifacts" ] || ciRun="$run"
             else
@@ -668,7 +668,7 @@ if [ -n "$release_package" ]; then
             exit 1
         fi
         prune
-        echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
+        echo ":: Vela is up to date ($(packageVersion)). The new version"
         echo "   starts with your next session: sign out and back in."
         exit 0
     fi
@@ -713,7 +713,7 @@ if [ -n "$ciRun" ]; then
             exit 1
         fi
         prune
-        echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
+        echo ":: Vela is up to date ($(packageVersion)). The new version"
         echo "   starts with your next session: sign out and back in."
         exit 0
     fi
@@ -722,52 +722,90 @@ if [ -n "$ciRun" ]; then
     echo ":: The GitHub package is unavailable or not verified: building it here." >&2
 fi
 
-# The build, with the new version's PKGBUILD.
+# Build exactly the selected commit with the distribution's native tooling.
 WORK=$(mktemp -d "$CACHE/build.XXXXXXXX")
-if ! git -C "$MIRROR" show "$latestFull:packaging/arch/PKGBUILD" > "$WORK/PKGBUILD"; then
-    echo "vela-update: cannot read PKGBUILD from selected revision $latestFull." >&2
-    exit 1
-fi
-# Advertise the selected commit to makepkg's mirror clone even when it was
-# fetched by SHA and no branch points to it anymore.
-git -C "$MIRROR" update-ref refs/vela-update/selected "$latestFull"
-cd "$WORK"
-export VELA_GIT_URL="file://$MIRROR#commit=$latestFull"
-if [ -n "$jobs" ]; then
-    export MAKEFLAGS="-j$jobs"
-fi
-echo ":: Building the package (a few minutes)"
-if [ -t 0 ]; then
-    # setsid would detach /dev/tty, breaking sudo authentication and makepkg
-    # prompts. Preserve the existing foreground terminal's process group.
-    BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-        makepkg --syncdeps --install --clean --force <&0 9>&- &
-    build_isolated=0
-else
-    if ! command -v setsid >/dev/null 2>&1; then
-        echo "vela-update: setsid (util-linux) is required for unattended builds" >&2
+if [ "$backend" = arch ]; then
+    if ! git -C "$MIRROR" show "$latestFull:packaging/arch/PKGBUILD" > "$WORK/PKGBUILD"; then
+        echo "vela-update: cannot read PKGBUILD from selected revision $latestFull." >&2
         exit 1
     fi
-    # Without a controlling tty, we can safely isolate the whole build in a
-    # new process group, allowing group-wide cancellation on INT/TERM/HUP.
-    BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-        setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
+    git -C "$MIRROR" update-ref refs/vela-update/selected "$latestFull"
+    export VELA_GIT_URL="file://$MIRROR#commit=$latestFull"
+    if [ -n "$jobs" ]; then export MAKEFLAGS="-j$jobs"; fi
+else
+    if ! command -v rpmbuild >/dev/null 2>&1; then
+        echo "vela-update: install RPM build tools first: sudo dnf install rpm-build dnf5-plugins" >&2
+        exit 1
+    fi
+    mkdir -p "$WORK"/BUILD "$WORK"/BUILDROOT "$WORK"/RPMS "$WORK"/SOURCES "$WORK"/SPECS
+    if ! git -C "$MIRROR" show "$latestFull:packaging/fedora/vela.spec" > "$WORK/SPECS/vela.spec"; then
+        echo "vela-update: this revision has no Fedora RPM spec ($latestFull)." >&2
+        exit 1
+    fi
+    if ! git -C "$MIRROR" archive --format=tar.gz --prefix=vela-0.1.0/ "$latestFull" > "$WORK/SOURCES/vela-0.1.0.tar.gz"; then
+        echo "vela-update: could not archive revision $latestFull for rpmbuild." >&2
+        exit 1
+    fi
+    if ! sudo dnf builddep -y "$WORK/SPECS/vela.spec"; then
+        echo "vela-update: unable to install Fedora build dependencies (requires dnf5-plugins)." >&2
+        exit 1
+    fi
+    count=$(git -C "$MIRROR" rev-list --count "$latestFull")
+    RPM_BUILD_NCPUS=$(nproc)
+    [ -z "$jobs" ] || RPM_BUILD_NCPUS="$jobs"
+    export RPM_BUILD_NCPUS
+fi
+cd "$WORK"
+echo ":: Building the $backend package"
+if [ ! -t 0 ] && ! command -v setsid >/dev/null 2>&1; then
+    echo "vela-update: setsid (util-linux) is required for unattended builds" >&2
+    exit 1
+fi
+if [ "$backend" = arch ]; then
+    if [ -t 0 ]; then
+        BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
+            makepkg --syncdeps --install --clean --force <&0 9>&- &
+        build_isolated=0
+    else
+        BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
+            setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
+        build_isolated=1
+    fi
+elif [ -t 0 ]; then
+    rpmbuild -bb "$WORK/SPECS/vela.spec" \
+        --define "_topdir $WORK" --define "vela_commit $latestFull" \
+        --define "vela_short $latest" --define "vela_count $count" <&0 9>&- &
+    build_isolated=0
+else
+    setsid --wait rpmbuild -bb "$WORK/SPECS/vela.spec" \
+        --define "_topdir $WORK" --define "vela_commit $latestFull" \
+        --define "vela_short $latest" --define "vela_count $count" <&0 9>&- &
     build_isolated=1
 fi
 makepkg_pid=$!
-if wait "$makepkg_pid"; then
-    build_ok=1
-else
-    build_ok=0
-fi
+if wait "$makepkg_pid"; then build_ok=1; else build_ok=0; fi
 makepkg_pid=""
+if [ "$backend" = fedora ] && [ "$build_ok" = 1 ]; then
+    built=$(ls "$WORK"/RPMS/x86_64/vela-git-*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
+    if [ -z "$built" ]; then
+        echo "vela-update: rpmbuild did not produce the selected revision." >&2
+        build_ok=0
+    else
+        mv -f "$built" "$PACKAGES/"
+        built="$PACKAGES/$(basename "$built")"
+        if ! installPackage "$built"; then build_ok=0; fi
+    fi
+fi
 if [ "$build_ok" = 0 ]; then
     echo >&2
-    # Built, but pacman didn't install it (cancelled, wrong password).
-    built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1)
+    if [ "$backend" = arch ]; then
+        built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2>/dev/null | head -n 1)
+    else
+        built=$(ls -t "$PACKAGES"/vela-git-*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
+    fi
     if [ -n "$built" ]; then
         echo "vela-update: the package is ready but wasn't installed. To install it:" >&2
-        echo "   sudo pacman -U $built" >&2
+        echo "   $(packageLabel) $built" >&2
         exit 1
     fi
     echo "vela-update: the update failed (see the messages above)." >&2
@@ -778,202 +816,6 @@ fi
 cd "$CACHE"
 rm -rf -- "$WORK"
 WORK=""
-
 prune
-
-echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
-echo "   starts with your next session: sign out and back in." ||
-                [ "$package_name_valid" != 1 ]; then
-                echo "vela-update: invalid public release manifest for $latestFull (checksum or package name); trying alternatives." >&2
-                release_package=""
-            fi
-        else
-            echo "vela-update: invalid public release manifest for $latestFull (expected exactly one checksum entry); trying alternatives." >&2
-        fi
-    else
-        status=$?
-        # A 404 is normal; 403, 429, 5xx, TLS, DNS and timeouts are not.
-        # All failures still fall back safely to the local build.
-        if [ "$status" -ne 22 ] || [ "$response_code" != 404 ]; then
-            echo "vela-update: optional public release lookup failed (HTTP ${response_code:-unknown}, curl exit $status):" >&2
-            cat "$CACHE/release-lookup-error.log" >&2
-        fi
-    fi
-    rm -f "$manifest" "$CACHE/release-lookup-error.log"
-fi
-
-# Legacy 14-day workflow artifacts are an optional authenticated fallback,
-# mainly useful for manually built test branches without a public release.
-ciRun=""
-if [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
-    && command -v gh > /dev/null && gh auth status > /dev/null 2>&1; then
-    if run=$(gh run list -R "$repo" -w build.yml -c "$latestFull" -s success -L 1 \
-        --json databaseId -q '.[0].databaseId' 2>"$CACHE/gh-lookup-error.log"); then
-        if [ -n "$run" ]; then
-            if artifacts=$(gh api "repos/$repo/actions/runs/$run/artifacts" \
-                -q '.artifacts[] | select(.name == "vela-git" and .expired == false) | .id' \
-                2>"$CACHE/gh-lookup-error.log"); then
-                [ -z "$artifacts" ] || ciRun="$run"
-            else
-                echo "vela-update: optional GitHub Actions artifact lookup failed:" >&2
-                cat "$CACHE/gh-lookup-error.log" >&2
-            fi
-        fi
-    else
-        echo "vela-update: optional GitHub Actions run lookup failed:" >&2
-        cat "$CACHE/gh-lookup-error.log" >&2
-    fi
-    rm -f "$CACHE/gh-lookup-error.log"
-fi
-
-if [ "$check" = 1 ]; then
-    if [ -n "$release_package" ]; then
-        echo ":: Public alpha package found (signature is checked before installation)."
-    elif [ -n "$ciRun" ]; then
-        echo ":: GitHub already has the package: vela-update downloads it instead of building."
-    fi
-    exit 0
-fi
-
-mkdir -p "$PACKAGES"
-if [ -d "$CACHE/pacchetti" ]; then
-    mv -f "$CACHE"/pacchetti/* "$PACKAGES"/ 2> /dev/null || true
-    rm -rf "$CACHE/pacchetti" "$CACHE/scaricato" "$CACHE/costruzione" "$CACHE/sorgenti"
-fi
-
-# Only the last packages, to be able to go back.
-prune() {
-    ls -t "$PACKAGES"/vela-git-*.pkg.tar.* 2> /dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
-        rm -f "$old"
-    done
-}
-
-# Prefer a public release if its checksum AND signed build provenance verify.
-# Failed verification must never install or cache an untrusted package.
-if [ -n "$release_package" ]; then
-    DOWNLOAD=$(mktemp -d "$CACHE/download.XXXXXXXX")
-    printf '%s  %s\n' "$release_digest" "$release_package" > "$DOWNLOAD/SHA256SUMS"
-    echo ":: Downloading public alpha package for $latestFull"
-    if curl -fsSL --retry 2 --connect-timeout 5 --max-time 180 \
-        -o "$DOWNLOAD/$release_package" "$release_url/$release_package" \
-        && (cd "$DOWNLOAD" && sha256sum --check --quiet SHA256SUMS) \
-        && verifyProvenance "$DOWNLOAD/$release_package" release; then
-        mv -f "$DOWNLOAD/$release_package" "$PACKAGES/"
-        rm -rf -- "$DOWNLOAD"
-        DOWNLOAD=""
-        package="$PACKAGES/$release_package"
-        if ! sudo pacman -U "$package"; then
-            echo "vela-update: the verified package was downloaded but not installed. To install it:" >&2
-            echo "   sudo pacman -U $package" >&2
-            exit 1
-        fi
-        prune
-        echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
-        echo "   starts with your next session: sign out and back in."
-        exit 0
-    fi
-    echo ":: Public package unavailable, unverified or corrupt; building or checking alternatives." >&2
-    rm -rf -- "$DOWNLOAD"
-    DOWNLOAD=""
-fi
-
-# Package ready on GitHub Actions: download it or build? Without a terminal
-# (or with --download) it's downloaded.
-if [ -n "$ciRun" ]; then
-    answer=d
-    if [ "$prefer" != download ] && [ -t 0 ]; then
-        printf ':: GitHub already has the package built for this version.\n'
-        printf '   Download and install it [D], or build it here [b]? '
-        read -r answer || answer=d
-    fi
-    case "$answer" in
-    b | B | build) ciRun="" ;;
-    esac
-fi
-if [ -n "$ciRun" ]; then
-    DOWNLOAD=$(mktemp -d "$CACHE/download.XXXXXXXX")
-    echo ":: Downloading the package from GitHub"
-    if gh run download "$ciRun" -R "$repo" -n vela-git -D "$DOWNLOAD" \
-        && package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1) \
-        && [ -n "$package" ] \
-        && verifyProvenance "$package" workflow; then
-        mv -f "$package" "$PACKAGES/"
-        rm -rf -- "$DOWNLOAD"
-        DOWNLOAD=""
-        package="$PACKAGES/$(basename "$package")"
-        if ! sudo pacman -U "$package"; then
-            echo "vela-update: the package was downloaded but not installed. To install it:" >&2
-            echo "   sudo pacman -U $package" >&2
-            exit 1
-        fi
-        prune
-        echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
-        echo "   starts with your next session: sign out and back in."
-        exit 0
-    fi
-    rm -rf -- "$DOWNLOAD"
-    DOWNLOAD=""
-    echo ":: The GitHub package is unavailable or not verified: building it here." >&2
-fi
-
-# The build, with the new version's PKGBUILD.
-WORK=$(mktemp -d "$CACHE/build.XXXXXXXX")
-if ! git -C "$MIRROR" show "$latestFull:packaging/arch/PKGBUILD" > "$WORK/PKGBUILD"; then
-    echo "vela-update: cannot read PKGBUILD from selected revision $latestFull." >&2
-    exit 1
-fi
-# Advertise the selected commit to makepkg's mirror clone even when it was
-# fetched by SHA and no branch points to it anymore.
-git -C "$MIRROR" update-ref refs/vela-update/selected "$latestFull"
-cd "$WORK"
-export VELA_GIT_URL="file://$MIRROR#commit=$latestFull"
-if [ -n "$jobs" ]; then
-    export MAKEFLAGS="-j$jobs"
-fi
-echo ":: Building the package (a few minutes)"
-if [ -t 0 ]; then
-    # setsid would detach /dev/tty, breaking sudo authentication and makepkg
-    # prompts. Preserve the existing foreground terminal's process group.
-    BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-        makepkg --syncdeps --install --clean --force <&0 9>&- &
-    build_isolated=0
-else
-    if ! command -v setsid >/dev/null 2>&1; then
-        echo "vela-update: setsid (util-linux) is required for unattended builds" >&2
-        exit 1
-    fi
-    # Without a controlling tty, we can safely isolate the whole build in a
-    # new process group, allowing group-wide cancellation on INT/TERM/HUP.
-    BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-        setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
-    build_isolated=1
-fi
-makepkg_pid=$!
-if wait "$makepkg_pid"; then
-    build_ok=1
-else
-    build_ok=0
-fi
-makepkg_pid=""
-if [ "$build_ok" = 0 ]; then
-    echo >&2
-    # Built, but pacman didn't install it (cancelled, wrong password).
-    built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1)
-    if [ -n "$built" ]; then
-        echo "vela-update: the package is ready but wasn't installed. To install it:" >&2
-        echo "   sudo pacman -U $built" >&2
-        exit 1
-    fi
-    echo "vela-update: the update failed (see the messages above)." >&2
-    echo "If the compiler crashed (\"internal compiler error\"), try again" >&2
-    echo "with fewer parallel jobs: vela-update --jobs 2" >&2
-    exit 1
-fi
-cd "$CACHE"
-rm -rf -- "$WORK"
-WORK=""
-
-prune
-
-echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
+echo ":: Vela is up to date ($(packageVersion)). The new version"
 echo "   starts with your next session: sign out and back in."
