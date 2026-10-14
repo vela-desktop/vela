@@ -109,6 +109,9 @@ struct vela_view {
     int x11_height;
     struct wlr_box x11_sent;
     struct wlr_box x11_initial;
+    // Track distinct X11 buffer sizes for the on-demand transition trace.
+    int x11_trace_width;
+    int x11_trace_height;
 
     struct wl_listener map;
     struct wl_listener unmap;
