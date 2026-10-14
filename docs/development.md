@@ -164,12 +164,19 @@ trace-x11 off      # stop recording, retain recorded events
 trace-x11 clear    # discard recorded events
 ```
 
-The trace records each X window ID (important if games recreate the window),
-managed map/unmap, associate/dissociate, buffer-size changes, requests to
-enter/leave fullscreen, and ConfigureRequests with the geometry Vela received
-and whether policy constrained it. The `trace-x11` query is read-only.
+Enabling the trace first snapshots already mapped managed windows and existing
+override-redirect windows, including their current surface sizes. Every record
+has a monotonic timestamp (`time_ns`), sequence number (`seq`), X window ID,
+`managed` flag, fullscreen states and geometry. The trace then follows
+map/unmap, associate/dissociate, buffer-size changes, fullscreen requests,
+ConfigureRequests (requested geometry, mask and constraint policy), and the
+actual geometry Vela sent back (`configure-sent`). The oldest entries are
+discarded after 128 events. The `trace-x11` query is read-only.
 This diagnostic **does not** try to infer a fullscreen transition from a
 resize request; X11 apps are allowed to resize while remaining fullscreen.
+For development tests, `vela-x11 --fullscreen XID on|off` sends an EWMH
+request to an existing window, `--configure XID WIDTH HEIGHT` requests a
+resize, and `--flood XID` emits 180 resize requests to exercise the ring.
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
 

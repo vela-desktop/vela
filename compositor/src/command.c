@@ -201,8 +201,8 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         // Oldest to newest. A fixed-size ring prevents unbounded memory growth,
         // even when a game changes mode in a tight loop.
         vela_buffer_append(&reply, "[");
-        unsigned count = server->trace_x11_total < 128 ? server->trace_x11_total : 128;
-        unsigned start = server->trace_x11_total - count;
+        unsigned count = server->trace_x11_total < 128 ? (unsigned)server->trace_x11_total : 128;
+        uint64_t start = server->trace_x11_total - count;
         for (unsigned i = 0; i < count; ++i) {
             if (i > 0) {
                 vela_buffer_append(&reply, ",");
@@ -385,6 +385,7 @@ static void run_command(struct vela_server *server, const char *line)
     } else if (strcmp(line, "trace-x11 on") == 0) {
         server->trace_x11_total = 0;
         server->trace_x11_enabled = true;
+        vela_xwayland_trace_snapshot(server);
     } else if (strcmp(line, "trace-x11 off") == 0) {
         server->trace_x11_enabled = false;
     } else if (strcmp(line, "trace-x11 clear") == 0) {

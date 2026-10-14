@@ -5,6 +5,9 @@
 // not depend on installed programs.
 //
 // Usage: vela-x11 [--menu X,Y] [WIDTH HEIGHT]   (default 300x200)
+//        vela-x11 --fullscreen XID on|off
+//        vela-x11 --configure XID WIDTH HEIGHT
+//        vela-x11 --flood XID (180 ConfigureRequests)
 //
 // Opens an orange window with class "vela.x11" and title "vela-x11", which
 // closes on WM_DELETE_WINDOW (Alt+F4). --menu also opens a green 120x80
@@ -38,17 +41,22 @@ static xcb_window_t create(xcb_connection_t* connection, xcb_screen_t* screen, i
 
 int main(int argc, char** argv)
 {
+    // Control an existing X11 window from the functional test harness. These
+    // modes don't create a window of their own.
+    int control = argc >= 3 && (!strcmp(argv[1], "--fullscreen")
+        || !strcmp(argv[1], "--configure") || !strcmp(argv[1], "--flood"));
     int width = 300;
     int height = 200;
     int menu = 0;
     int menuX = 0;
     int menuY = 0;
     int arg = 1;
-    if (arg + 1 < argc && !strcmp(argv[arg], "--menu") && sscanf(argv[arg + 1], "%d,%d", &menuX, &menuY) == 2) {
+    if (!control && arg + 1 < argc && !strcmp(argv[arg], "--menu")
+        && sscanf(argv[arg + 1], "%d,%d", &menuX, &menuY) == 2) {
         menu = 1;
         arg += 2;
     }
-    if (arg + 1 < argc) {
+    if (!control && arg + 1 < argc) {
         width = atoi(argv[arg]);
         height = atoi(argv[arg + 1]);
     }
@@ -58,6 +66,40 @@ int main(int argc, char** argv)
         return 1;
     }
     xcb_screen_t* screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
+    if (control) {
+        xcb_window_t target = (xcb_window_t)strtoul(argv[2], NULL, 0);
+        if (!strcmp(argv[1], "--fullscreen") && argc == 4) {
+            xcb_client_message_event_t message = { 0 };
+            message.response_type = XCB_CLIENT_MESSAGE;
+            message.format = 32;
+            message.window = target;
+            message.type = atom(connection, "_NET_WM_STATE");
+            message.data.data32[0] = !strcmp(argv[3], "on") ? 1 : 0; // ADD / REMOVE
+            message.data.data32[1] = atom(connection, "_NET_WM_STATE_FULLSCREEN");
+            message.data.data32[3] = 1; // application request
+            xcb_send_event(connection, 0, screen->root,
+                XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
+                (const char*)&message);
+        } else if (!strcmp(argv[1], "--configure") && argc == 5) {
+            const uint32_t dimensions[] = { (uint32_t)atoi(argv[3]), (uint32_t)atoi(argv[4]) };
+            xcb_configure_window(connection, target,
+                XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, dimensions);
+        } else if (!strcmp(argv[1], "--flood") && argc == 3) {
+            for (int i = 0; i < 180; ++i) {
+                const uint32_t dimensions[] = { 320u + (uint32_t)(i % 8), 220u + (uint32_t)(i % 3) };
+                xcb_configure_window(connection, target,
+                    XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, dimensions);
+            }
+        } else {
+            fprintf(stderr, "vela-x11: invalid control arguments\n");
+            xcb_disconnect(connection);
+            return 2;
+        }
+        xcb_flush(connection);
+        int failed = xcb_connection_has_error(connection);
+        xcb_disconnect(connection);
+        return failed ? 1 : 0;
+    }
     xcb_window_t window = create(connection, screen, 0, 0, width, height, 0xff8000, 0);
     const char title[] = "vela-x11";
     const char wmClass[] = "vela-x11\0vela.x11"; // instance and class

@@ -64,17 +64,81 @@ class X11(unittest.TestCase):
         self.vela.keys("alt+F4")
         self.vela.wait_for(lambda s: not s.has(window), what="the X11 window closed")
 
-    def test_x11_trace_can_be_enabled_without_restarting(self):
-        self.assertEqual(self.vela.query("trace-x11"), [])
+    def trace_events(self):
+        return self.vela.query("trace-x11")
+
+    def x11_control(self, *args):
+        subprocess.run([tool("vela-x11"), *map(str, args)], env=self.env, check=True)
+
+    def test_x11_trace_lifecycle(self):
+        self.assertEqual(self.trace_events(), [])
         self.vela.command("trace-x11 on")
-        self.assertEqual(self.vela.query("trace-x11"), [])
+        self.assertEqual(self.trace_events(), [])
         self.open_x11(300, 200)
-        events = self.vela.query("trace-x11")
-        self.assertTrue(any("event=map" in event for event in events), events)
-        self.assertTrue(any("event=buffer-size" in event for event in events), events)
-        self.assertTrue(all("xid=0x" in event for event in events), events)
+        events = self.trace_events()
+        self.assertTrue(any(" event=map " in e for e in events), events)
+        self.assertTrue(any(" event=buffer-size " in e for e in events), events)
+        self.assertTrue(all("xid=0x" in e and "time_ns=" in e for e in events), events)
         self.vela.command("trace-x11 off")
-        self.assertTrue(self.vela.query("trace-x11"))
+        retained = self.trace_events()
+        self.open_x11(420, 260)
+        self.assertEqual(self.trace_events(), retained)  # off really stops capture
+        self.vela.command("trace-x11 clear")
+        self.assertEqual(self.trace_events(), [])
+        self.vela.command("trace-x11 on")
+        snapshots = self.trace_events()
+        self.assertEqual(sum(" event=snapshot " in e for e in snapshots), 2)
+        self.vela.command("trace-x11 clear")
+        self.assertEqual(self.trace_events(), [])
+
+    def test_x11_trace_snapshot_includes_unmanaged_windows(self):
+        self.open_x11("--menu", "100,120", 300, 200)
+        self.vela.command("trace-x11 on")
+        events = self.trace_events()
+        self.assertTrue(any(" event=snapshot " in e and " managed=1 " in e for e in events), events)
+        self.assertTrue(any(" event=snapshot " in e and " managed=0 " in e for e in events), events)
+        self.assertTrue(all(" surface=" in e for e in events), events)
+
+    def test_x11_trace_fullscreen_and_configure(self):
+        self.vela.command("trace-x11 on")
+        self.open_x11(300, 200)
+        event = next(e for e in self.trace_events() if " event=map " in e and " managed=1 " in e)
+        xid = next(field.split("=", 1)[1] for field in event.split() if field.startswith("xid="))
+        self.x11_control("--configure", xid, 640, 420)
+        self.vela.wait_for(
+            lambda _: any(" event=request-configure " in e and "request=" in e and ":640x420" in e
+                          for e in self.trace_events()),
+            read_state=False, what="X11 ConfigureRequest recorded")
+        self.vela.wait_for(
+            lambda _: any(" event=configure-sent " in e and "640x420" in e for e in self.trace_events()),
+            read_state=False, what="X11 configure response recorded")
+        self.x11_control("--fullscreen", xid, "on")
+        self.vela.wait_for(
+            lambda _: any(" event=fullscreen-applied " in e and "velafullscreen=1" in e
+                          for e in self.trace_events()),
+            read_state=False, what="X11 fullscreen entered")
+        self.x11_control("--fullscreen", xid, "off")
+        self.vela.wait_for(
+            lambda _: any(" event=fullscreen-applied " in e and "velafullscreen=0" in e
+                          for e in self.trace_events()),
+            read_state=False, what="X11 fullscreen left")
+        events = self.trace_events()
+        self.assertTrue(any(" event=request-fullscreen " in e and "requested=1" in e for e in events))
+        self.assertTrue(any(" event=request-fullscreen " in e and "requested=0" in e for e in events))
+
+    def test_x11_trace_is_bounded_and_ordered(self):
+        self.vela.command("trace-x11 on")
+        self.open_x11(300, 200)
+        event = next(e for e in self.trace_events() if " event=map " in e and " managed=1 " in e)
+        xid = next(field.split("=", 1)[1] for field in event.split() if field.startswith("xid="))
+        self.vela.command("trace-x11 clear")
+        self.x11_control("--flood", xid)
+        self.vela.wait_for(lambda _: len(self.trace_events()) == 128,
+                           read_state=False, what="128-entry bounded X11 trace")
+        events = self.trace_events()
+        sequences = [int(e.split("seq=", 1)[1].split()[0]) for e in events]
+        self.assertEqual(sequences, list(range(sequences[0], sequences[0] + 128)))
+        self.assertGreater(sequences[0], 0)  # oldest entries were evicted
 
     def test_menu_stays_where_the_app_puts_it(self):
         self.open_x11("--menu", "100,120", 300, 200)

@@ -168,8 +168,9 @@ struct vela_server {
     // Opt-in, bounded in-memory X11 transition trace for debugging games.
     // Toggle via "trace-x11 on|off"; read via the "trace-x11" socket query.
     bool trace_x11_enabled;
-    unsigned trace_x11_total;
-    char trace_x11_events[128][192];
+    uint64_t trace_x11_total;
+    char trace_x11_events[128][320];
+    struct wl_list x11_unmanaged; // X11 override-redirect surfaces (for trace snapshots)
     struct wl_event_source *output_check;
     struct vela_seen_output *seen_outputs;
     int seen_output_count;

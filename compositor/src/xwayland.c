@@ -27,6 +27,7 @@
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <wlr/config.h>
 #include <wlr/util/log.h>
@@ -40,30 +41,59 @@
 #include <wlr/xwayland.h>
 #include <wlr/xwayland/shell.h>
 
-// Runtime-only, opt-in diagnostics: no logging cost or retained history unless
-// explicitly enabled through the private Vela command socket. Track IDs and
-// geometry, not potentially private application titles or buffer content.
-static void trace_x11(struct vela_view *view, const char *event, const char *format, ...)
+// Opt-in diagnostics for managed and override-redirect X11 windows. No
+// titles or pixels are recorded, and entries never outlive the compositor.
+static void trace_x11_record(struct vela_server *server, struct wlr_xwayland_surface *x11,
+    const struct vela_view *view, const char *event, const char *format, va_list args)
 {
-    struct vela_server *server = view->server;
     if (!server->trace_x11_enabled) {
         return;
     }
-    struct wlr_xwayland_surface *x11 = view->x11;
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    uint64_t time_ns = (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
     char *entry = server->trace_x11_events[server->trace_x11_total % 128];
-    int n = snprintf(entry, 192, "xid=0x%08x event=%s x11fullscreen=%d velafullscreen=%d mapped=%d "
-        "x11geo=%d,%d:%ux%u ", (unsigned)x11->window_id, event, x11->fullscreen, view->fullscreen, view->mapped,
+    int mapped = view ? view->mapped : (x11->surface && x11->surface->mapped);
+    int n = snprintf(entry, sizeof(server->trace_x11_events[0]),
+        "seq=%llu time_ns=%llu xid=0x%08x event=%s managed=%d "
+        "x11fullscreen=%d velafullscreen=%d mapped=%d x11geo=%d,%d:%ux%u ",
+        (unsigned long long)server->trace_x11_total, (unsigned long long)time_ns,
+        (unsigned)x11->window_id, event, view != NULL, x11->fullscreen,
+        view ? (int)view->fullscreen : -1, mapped,
         x11->x, x11->y, (unsigned)x11->width, (unsigned)x11->height);
-    if (n < 0) {
+    if (n < 0 || (size_t)n >= sizeof(server->trace_x11_events[0])) {
         return;
     }
-    if (n < 192 && format) {
-        va_list args;
-        va_start(args, format);
-        vsnprintf(entry + n, (size_t)(192 - n), format, args);
-        va_end(args);
+    if (format && format[0]) {
+        int extra = vsnprintf(entry + n, sizeof(server->trace_x11_events[0]) - (size_t)n, format, args);
+        if (extra < 0) {
+            return;
+        }
     }
     ++server->trace_x11_total;
+}
+
+static void trace_x11(struct vela_view *view, const char *event, const char *format, ...)
+{
+    if (!view->server->trace_x11_enabled) {
+        return;
+    }
+    va_list args;
+    va_start(args, format);
+    trace_x11_record(view->server, view->x11, view, event, format, args);
+    va_end(args);
+}
+
+static void trace_x11_unmanaged(struct vela_server *server, struct wlr_xwayland_surface *x11,
+    const char *event, const char *format, ...)
+{
+    if (!server->trace_x11_enabled) {
+        return;
+    }
+    va_list args;
+    va_start(args, format);
+    trace_x11_record(server, x11, NULL, event, format, args);
+    va_end(args);
 }
 
 // -------------------------------------------- menus, tooltips, drop-downs --
@@ -71,6 +101,7 @@ static void trace_x11(struct vela_view *view, const char *event, const char *for
 // An X11 menu, tooltip or drop-down: no window manager, the app chooses the
 // position (in global coordinates).
 struct unmanaged {
+    struct wl_list link; // vela_server.x11_unmanaged
     struct vela_server *server;
     struct wlr_xwayland_surface *x11;
     struct vela_tree *tree;
@@ -87,6 +118,7 @@ struct unmanaged {
 static void handle_unmanaged_map(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, map);
+    trace_x11_unmanaged(menu->server, menu->x11, "map", "");
     vela_node_set_position(&menu->tree->node, menu->x11->x, menu->x11->y);
     vela_node_raise_to_top(&menu->tree->node);
     vela_node_set_enabled(&menu->tree->node, true);
@@ -99,6 +131,7 @@ static void handle_unmanaged_map(struct wl_listener *listener, void *data)
 static void handle_unmanaged_unmap(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, unmap);
+    trace_x11_unmanaged(menu->server, menu->x11, "unmap", "");
     vela_node_set_enabled(&menu->tree->node, false);
     if (menu->server->seat->keyboard_state.focused_surface == menu->x11->surface) {
         vela_focus_refocus(menu->server);
@@ -120,6 +153,7 @@ static void map_if_drawn(struct wlr_surface *surface)
 static void handle_unmanaged_associate(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, associate);
+    trace_x11_unmanaged(menu->server, menu->x11, "associate", "");
     menu->surface_node = vela_surface_node_create(menu->tree, menu->x11->surface);
     vela_listen(&menu->x11->surface->events.map, &menu->map, handle_unmanaged_map);
     vela_listen(&menu->x11->surface->events.unmap, &menu->unmap, handle_unmanaged_unmap);
@@ -129,6 +163,7 @@ static void handle_unmanaged_associate(struct wl_listener *listener, void *data)
 static void handle_unmanaged_dissociate(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, dissociate);
+    trace_x11_unmanaged(menu->server, menu->x11, "dissociate", "");
     vela_unlisten(&menu->map);
     vela_unlisten(&menu->unmap);
     if (menu->surface_node) {
@@ -147,12 +182,19 @@ static void handle_unmanaged_request_configure(struct wl_listener *listener, voi
 {
     struct unmanaged *menu = wl_container_of(listener, menu, request_configure);
     struct wlr_xwayland_surface_configure_event *event = data;
+    trace_x11_unmanaged(menu->server, menu->x11, "request-configure",
+        "request=%d,%d:%ux%u mask=0x%x policy=unmanaged",
+        event->x, event->y, (unsigned)event->width, (unsigned)event->height, (unsigned)event->mask);
     wlr_xwayland_surface_configure(menu->x11, event->x, event->y, event->width, event->height);
+    trace_x11_unmanaged(menu->server, menu->x11, "configure-sent", "sent=%d,%d:%ux%u",
+        event->x, event->y, (unsigned)event->width, (unsigned)event->height);
 }
 
 static void handle_unmanaged_destroy(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, destroy);
+    trace_x11_unmanaged(menu->server, menu->x11, "destroy", "");
+    wl_list_remove(&menu->link);
     vela_unlisten(&menu->associate);
     vela_unlisten(&menu->dissociate);
     vela_unlisten(&menu->map);
@@ -172,6 +214,8 @@ static void unmanaged_create(struct vela_server *server, struct wlr_xwayland_sur
     struct unmanaged *menu = calloc(1, sizeof(*menu));
     menu->server = server;
     menu->x11 = x11;
+    wl_list_insert(&server->x11_unmanaged, &menu->link);
+    trace_x11_unmanaged(server, x11, "new-surface", "");
     menu->tree = vela_tree_create(server->layers.x11_popups);
     vela_node_set_enabled(&menu->tree->node, false);
     wl_list_init(&menu->map.link);
@@ -205,6 +249,7 @@ void vela_view_sync_x11(struct vela_view *view)
     }
     wlr_xwayland_surface_configure(x11, (int16_t)wanted.x, (int16_t)wanted.y, (uint16_t)wanted.width,
         (uint16_t)wanted.height);
+    trace_x11(view, "configure-sent", "sent=%d,%d:%dx%d", wanted.x, wanted.y, wanted.width, wanted.height);
     view->x11_sent = wanted;
 }
 
@@ -254,7 +299,9 @@ static void handle_associate(struct wl_listener *listener, void *data)
     struct wlr_surface *surface = view->x11->surface;
     // The first buffer may have arrived before Xwayland paired this surface.
     // Log its size now instead of waiting for a commit that may never come.
-    if (view->server->trace_x11_enabled && surface
+    // The associate event guarantees a non-NULL surface; do not add a
+    // contradictory NULL branch that the listeners below cannot support.
+    if (view->server->trace_x11_enabled
         && (surface->current.width > 0 || surface->current.height > 0)) {
         view->x11_trace_width = surface->current.width;
         view->x11_trace_height = surface->current.height;
@@ -302,6 +349,8 @@ static void handle_request_configure(struct wl_listener *listener, void *data)
         // it's its "normal" size).
         view->x11_initial = (struct wlr_box) { event->x, event->y, event->width, event->height };
         wlr_xwayland_surface_configure(view->x11, event->x, event->y, event->width, event->height);
+        trace_x11(view, "configure-sent", "sent=%d,%d:%ux%u policy=initial",
+            event->x, event->y, (unsigned)event->width, (unsigned)event->height);
         return;
     }
     if (view->maximized || view->fullscreen || !vela_snap_is_none(view->snap)) {
@@ -402,6 +451,7 @@ static void view_create(struct vela_server *server, struct wlr_xwayland_surface 
     vela_view_init(view, server);
     view->x11 = x11;
     x11->data = view; // to get back to the parent window
+    trace_x11(view, "new-surface", "");
     vela_listen(&x11->events.associate, &view->associate, handle_associate);
     vela_listen(&x11->events.dissociate, &view->dissociate, handle_dissociate);
     vela_listen(&x11->events.destroy, &view->destroy, handle_destroy);
@@ -486,6 +536,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
 
 void vela_xwayland_init(struct vela_server *server)
 {
+    wl_list_init(&server->x11_unmanaged);
     wl_list_init(&server->xwayland_ready.link);
     wl_list_init(&server->xwayland_new_surface.link);
     wl_list_init(&server->xwayland_shell_surface.link);
@@ -526,6 +577,32 @@ void vela_xwayland_sync(struct vela_server *server)
     }
 }
 
+void vela_xwayland_trace_snapshot(struct vela_server *server)
+{
+    // server->views contains mapped managed windows; save their current buffer
+    // dimensions as a baseline, so the next unchanged commit isn't reported
+    // as a resize merely because tracing was just enabled.
+    struct vela_view *view;
+    wl_list_for_each (view, &server->views, link) {
+        if (!view->x11) {
+            continue;
+        }
+        struct wlr_surface *surface = view->x11->surface;
+        int width = surface ? surface->current.width : 0;
+        int height = surface ? surface->current.height : 0;
+        view->x11_trace_width = width;
+        view->x11_trace_height = height;
+        trace_x11(view, "snapshot", "surface=%dx%d", width, height);
+    }
+    struct unmanaged *menu;
+    wl_list_for_each (menu, &server->x11_unmanaged, link) {
+        struct wlr_surface *surface = menu->x11->surface;
+        int width = surface ? surface->current.width : 0;
+        int height = surface ? surface->current.height : 0;
+        trace_x11_unmanaged(server, menu->x11, "snapshot", "surface=%dx%d", width, height);
+    }
+}
+
 #else
 
 void vela_view_sync_x11(struct vela_view *view)
@@ -541,6 +618,10 @@ void vela_xwayland_finish(struct vela_server *server)
 }
 
 void vela_xwayland_sync(struct vela_server *server)
+{
+}
+
+void vela_xwayland_trace_snapshot(struct vela_server *server)
 {
 }
 
