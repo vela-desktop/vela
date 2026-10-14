@@ -32,8 +32,8 @@ MARKER
 chmod +x "$work/source/packaging/fedora/ci-marker"
 cat > "$work/source/packaging/fedora/vela.spec" <<'SPEC'
 %{!?vela_version:%{error:Missing vela_version}}
-%{!?vela_short:%{error:Missing vela_short}}
-%{!?vela_count:%{error:Missing vela_count}}
+%{!?vela_short:%global vela_short 0000000}
+%{!?vela_count:%global vela_count 0}
 Name:           vela-git
 Version:        %{vela_version}
 Release:        1.%{vela_count}.g%{vela_short}%{?dist}
