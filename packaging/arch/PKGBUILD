@@ -32,6 +32,7 @@ depends=(
 )
 makedepends=('git' 'cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols' 'qt6-tools')
 optdepends=(
+    'cosign: verify downloaded prebuilt package attestations without gh'
     'xdg-desktop-portal-wlr: screen sharing'
     'xdg-desktop-portal-kde: file chooser and other portals for apps'
     'breeze-icons: Vela icons (breeze and breeze-dark)'
