@@ -189,8 +189,13 @@ void Snip::finish(const QString& screenName, qreal x, qreal y, qreal width, qrea
     // From logical coordinates to image pixels (the output's scale).
     const qreal sx = full.width() / qreal(screen->geometry().width());
     const qreal sy = full.height() / qreal(screen->geometry().height());
-    const QRect area = QRect(qRound(x * sx), qRound(y * sy), qRound(width * sx), qRound(height * sy))
-                           .intersected(full.rect());
+    // Round the two endpoints, not the origin and size independently: at
+    // fractional scales their rounding errors can differ by one pixel.
+    const int left = qRound(x * sx);
+    const int top = qRound(y * sy);
+    const int right = qRound((x + width) * sx);
+    const int bottom = qRound((y + height) * sy);
+    const QRect area = QRect(left, top, right - left, bottom - top).intersected(full.rect());
     const QImage cut = full.copy(area);
     m_captureTimeout.stop();
     closeOverlays();
