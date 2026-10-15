@@ -31,6 +31,14 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME packaging-update COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/packaging/tests -v)
     set_tests_properties(packaging-update PROPERTIES TIMEOUT 120)
+    add_test(NAME script-tests COMMAND ${Python3_EXECUTABLE} -m unittest discover
+        -s ${PROJECT_SOURCE_DIR}/scripts/tests -v)
+    add_test(NAME documentation COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-docs.py)
+    add_test(NAME functional-harness COMMAND ${Python3_EXECUTABLE} -m unittest discover
+        -s ${PROJECT_SOURCE_DIR}/tests/harness -v)
+    set_tests_properties(script-tests documentation functional-harness PROPERTIES TIMEOUT 30)
+    set_tests_properties(functional-harness PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/tests/functional")
 endif()
 
 option(VELA_BUILD_REPORT "Build the standalone diagnostic reporter (needs Python 3)" ON)
@@ -72,6 +80,7 @@ if(VELA_BUILD_TOOLS)
                 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}"
                 SKIP_RETURN_CODE 77
                 TIMEOUT 600
+                LABELS gpu
                 RUN_SERIAL TRUE)
             set_property(TEST sharpness-cpu APPEND PROPERTY ENVIRONMENT "VELA_SYNC_FILE=0")
         endif()

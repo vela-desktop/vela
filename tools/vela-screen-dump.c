@@ -6,7 +6,9 @@
 // Usage: vela-screen-dump FILE.png [X Y WIDTH HEIGHT]
 //
 // Captures the first output; with coordinates, only that area (in output
-// pixels). Uses the session given by WAYLAND_DISPLAY.
+// pixels, after applying the output transform). Uses WAYLAND_DISPLAY.
+// VELA_SCREEN_DUMP_OUTPUT selects an output; VELA_SCREEN_DUMP_CURSOR=1
+// includes the pointer for visual coordinate diagnostics.
 
 #define _GNU_SOURCE
 #include <stdint.h>
@@ -97,16 +99,15 @@ static void writeChunk(FILE* file, const char* type, const unsigned char* data, 
     fwrite(trailer, 1, 4, file);
 }
 
-/** Encode a validated SHM rectangle as an 8-bit RGB PNG. */
 /** Validate image dimensions and region, then encode a private PNG. */
 static int writePng(const char* path, const struct vela_capture_frame* frame, int x, int y, int w, int h)
 {
-    if (!vela_capture_frame_valid(frame) || x < 0 || y < 0 || w <= 0 || h <= 0 ||
-        (uint64_t)x + (uint64_t)w > frame->width ||
-        (uint64_t)y + (uint64_t)h > frame->height) {
+    uint32_t width, height;
+    if (!vela_capture_frame_dimensions(frame, &width, &height) || x < 0 || y < 0 || w <= 0 || h <= 0 ||
+        (uint64_t)x + (uint64_t)w > width ||
+        (uint64_t)y + (uint64_t)h > height) {
         return 0;
     }
-    const unsigned char* pixels = frame->pixels;
     // Bound both allocation arithmetic and zlib's input length.
     if (w <= 0 || h <= 0 || (size_t)w > (SIZE_MAX - 1) / 3) {
         return 0;
@@ -123,11 +124,10 @@ static int writePng(const char* path, const struct vela_capture_frame* frame, in
     // In memory: XRGB/ARGB8888 = B,G,R,A; XBGR/ABGR8888 = R,G,B,A.
     const int bgr = frame->format == WL_SHM_FORMAT_XRGB8888 || frame->format == WL_SHM_FORMAT_ARGB8888;
     for (int row = 0; row < h; ++row) {
-        const int srcRow = y + row;
-        const unsigned char* src = pixels + (size_t)srcRow * frame->stride + (size_t)x * 4;
         unsigned char* dst = raw + (size_t)row * rowSize;
         *dst++ = 0; // filter: none
-        for (int col = 0; col < w; ++col, src += 4) {
+        for (int col = 0; col < w; ++col) {
+            const unsigned char* src = vela_capture_frame_pixel(frame, x + col, y + row);
             *dst++ = bgr ? src[2] : src[0];
             *dst++ = src[1];
             *dst++ = bgr ? src[0] : src[2];
@@ -210,7 +210,10 @@ int main(int argc, char** argv)
 
     struct ext_image_capture_source_v1* source =
         ext_output_image_capture_source_manager_v1_create_source(sources, output);
-    capture = vela_capture_begin(shm, manager, source, captured, NULL);
+    const char* cursor = getenv("VELA_SCREEN_DUMP_CURSOR");
+    uint32_t options = cursor && !strcmp(cursor, "1")
+        ? EXT_IMAGE_COPY_CAPTURE_MANAGER_V1_OPTIONS_PAINT_CURSORS : 0;
+    capture = vela_capture_begin_with_options(shm, manager, source, options, captured, NULL);
     if (!capture) {
         if (source) ext_image_capture_source_v1_destroy(source);
         fprintf(stderr, "vela-screen-dump: failed to create capture session\n");
@@ -224,21 +227,22 @@ int main(int argc, char** argv)
             return 1;
         }
     }
-    if (!capture_ok || !vela_capture_frame_valid(result) ||
-        result->transform != WL_OUTPUT_TRANSFORM_NORMAL) {
-        fprintf(stderr, "vela-screen-dump: capture failed or transformed output unsupported\n");
+    uint32_t width, height;
+    if (!capture_ok || !vela_capture_frame_dimensions(result, &width, &height) ||
+        width > INT_MAX || height > INT_MAX) {
+        fprintf(stderr, "vela-screen-dump: capture failed or invalid frame\n");
         vela_capture_end(capture);
         return 1;
     }
 
-    int x = 0, y = 0, w = result->width, h = result->height;
+    int x = 0, y = 0, w = width, h = height;
     if (argc == 6) {
         x = atoi(argv[2]);
         y = atoi(argv[3]);
         w = atoi(argv[4]);
         h = atoi(argv[5]);
-        if (x < 0 || y < 0 || w <= 0 || h <= 0 || (int64_t)x + w > result->width || (int64_t)y + h > result->height) {
-            fprintf(stderr, "vela-screen-dump: region outside the output (%ux%u)\n", result->width, result->height);
+        if (x < 0 || y < 0 || w <= 0 || h <= 0 || (int64_t)x + w > width || (int64_t)y + h > height) {
+            fprintf(stderr, "vela-screen-dump: region outside the output (%ux%u)\n", width, height);
             vela_capture_end(capture);
             wl_display_disconnect(display);
             return 2;

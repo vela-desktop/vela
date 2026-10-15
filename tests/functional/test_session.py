@@ -166,7 +166,7 @@ class Supervisor(unittest.TestCase):
             vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
 
     def test_gives_up_after_three_quick_crashes(self):
-        with Session(supervise=True) as vela:
+        with Session(supervise=True, expected_exit=1) as vela:
             for _ in range(3):
                 vela.wait_for(lambda s: child_compositor(vela.process.pid), read_state=False, what="the compositor")
                 child = child_compositor(vela.process.pid)
@@ -175,7 +175,7 @@ class Supervisor(unittest.TestCase):
                 while child_compositor(vela.process.pid) == child and time.monotonic() < deadline:
                     time.sleep(0.05)
             vela.process.wait(10)
-            self.assertNotEqual(vela.process.returncode, 0)
+            self.assertEqual(vela.process.returncode, 1)
             self.assertIn("giving up", vela.log_text())
             runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
             self.assertFalse(os.path.exists(os.path.join(runtime, vela.display))) # Wayland socket removed

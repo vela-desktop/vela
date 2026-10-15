@@ -154,6 +154,38 @@ reload-config
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
 
+### Wine/Proton fullscreen style transitions
+
+Wine/Proton exports its native Windows window styles through
+`_WINE_HWND_STYLE`. A fullscreen Windows popup can turn into a captioned
+overlapped window even when Wine does not issue an EWMH fullscreen change.
+Vela observes those property notifications on managed X11 windows and
+reconciles its fullscreen state after an observed `WS_POPUP →`
+decorated style transition while already fullscreen. The reverse change
+re-enters fullscreen **only when it undoes that specific automatic exit**:
+a popup window by itself never implies fullscreen. Actual fullscreen
+state changes clear that restore hint, while redundant requests which
+reaffirm the existing state do not. The armed return also survives
+intermediate non-popup Wine styles. Non-Wine windows, other style changes,
+and unknown initial styles are left alone. Property replies are polled
+asynchronously to avoid blocking the compositor's event loop.
+
+The X11 geometry must agree with Vela's scene: when transitioning into
+fullscreen, maximizing, or restoring, Vela now places the scene node *before*
+calling `vela_view_configure_size` so the X11 configure request contains the
+**final position and size together**, avoiding a stale root position. The
+functional X11 helper can independently query root-relative geometry to detect
+a mismatch after either direction of a mode change.
+
+This also updates the window's size and scene layer through the ordinary
+`vela_view_set_fullscreen` path.
+
+The compatibility handling is based on the
+documented Windows style flags, not game names or opaque pixel inspection.
+The isolated `test_x11.py` tests exercise both transitions, fullscreen
+at initial map, popup windows that must stay windowed, deleted style
+properties and unrelated style changes.
+
 ## Project layout
 
 ```text

@@ -45,6 +45,15 @@ struct vela_capture_job *vela_capture_begin(
     vela_capture_done_fn done,
     void *userdata);
 
+/** Begin capture with ext-image-copy-capture-v1 options (e.g. paint_cursors). */
+struct vela_capture_job *vela_capture_begin_with_options(
+    struct wl_shm *shm,
+    struct ext_image_copy_capture_manager_v1 *manager,
+    struct ext_image_capture_source_v1 *source,
+    uint32_t options,
+    vela_capture_done_fn done,
+    void *userdata);
+
 /** Return borrowed pixels after a successful, validated frame, else NULL. */
 const struct vela_capture_frame *vela_capture_pixels(const struct vela_capture_job *job);
 /** Destroy protocol proxies and SHM resources; cancels pending work. */
@@ -53,6 +62,10 @@ void vela_capture_end(struct vela_capture_job *job);
 bool vela_capture_supported_format(uint32_t format);
 /** Pure, overflow-safe bounds check for all pixel rows within SHM length. */
 bool vela_capture_frame_valid(const struct vela_capture_frame *frame);
+/** Size of the upright image after applying the protocol's buffer transform. */
+bool vela_capture_frame_dimensions(const struct vela_capture_frame *frame, uint32_t *width, uint32_t *height);
+/** Borrow a 32-bit pixel in upright image coordinates; NULL outside the image. */
+const uint8_t *vela_capture_frame_pixel(const struct vela_capture_frame *frame, uint32_t x, uint32_t y);
 
 #ifdef __cplusplus
 }

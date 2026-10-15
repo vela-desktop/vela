@@ -83,9 +83,9 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         vela_buffer_append(json, first ? "{\"name\":" : ",{\"name\":");
         vela_buffer_append_json(json, output->wlr->name);
         vela_buffer_appendf(json,
-            ",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"scale\":%g,\"enabled\":%s,\"powered\":%s,\"frames\":%llu,"
+            ",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"scale\":%g,\"transform\":%d,\"enabled\":%s,\"powered\":%s,\"frames\":%llu,"
             "\"missed\":%llu}",
-            box.x, box.y, box.width, box.height, (double)output->wlr->scale, output->wlr->enabled ? t : f,
+            box.x, box.y, box.width, box.height, (double)output->wlr->scale, (int)output->wlr->transform, output->wlr->enabled ? t : f,
             output->powered ? t : f, (unsigned long long)output->clock.frames_total,
             (unsigned long long)output->clock.missed_total);
         first = false;
@@ -142,7 +142,10 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         } else {
             vela_buffer_append(json, "null");
         }
-        vela_buffer_append(json, "}");
+        double lx = 0, ly = 0;
+        vela_node_coords(&layer->tree->node, &lx, &ly);
+        vela_buffer_appendf(json, ",\"x\":%g,\"y\":%g,\"w\":%d,\"h\":%d}", lx, ly,
+            wlr->surface->current.width, wlr->surface->current.height);
         if (keyboard_surface && wlr->surface == keyboard_surface) {
             keyboard_layer = layer;
         }

@@ -13,6 +13,13 @@ ctest --test-dir build --output-on-failure
 ```
 
 CTest includes both CPU-only and GPU-dependent suites.
+The `gpu` label groups `functional`, `sharpness` and `sharpness-cpu`; the latter
+uses CPU fence synchronization while rendering still requires a GPU.
+
+```sh
+ctest --test-dir build -LE gpu --output-on-failure # CPU-only suites
+ctest --test-dir build -L gpu --output-on-failure  # GPU suites
+```
 
 ## Test suites
 
@@ -24,12 +31,23 @@ CTest includes both CPU-only and GPU-dependent suites.
 | **Settings** (`settings-displays`) | Native Wayland inventory and hotplug, modes, scale, rotation, confirmation-only persistence, explicit revert, compositor deadlines with the GUI thread blocked, client disconnection and SIGKILL, competing clients, failed commits and hotplug during preview. Uses real wlroots headless outputs and Vela’s output manager/preview; rendering and window rearrangement are stubbed. | No |
 | **Vela Report** (`reporting`, `reporting-gui`) | Guided CLI without a display, shared Qt worker and ZIP export, explicit collection boundaries, redaction, review exclusion, process identity, resource recording, bounded commands and archive failures. | No |
 | **Package updater** (`packaging-update`) | Public HTTPS defaults in both the updater and PKGBUILD, first run and cached fetches, migration of saved SSH URLs and old mirrors, local sources, branch/commit selection, exact CI artifacts, download fallback and failed fetch/build/install handling. Uses real Git repositories with simulated package tools. | No |
+| **Test infrastructure** (`functional-harness`) | Unexpected compositor exits, explicit intentional failure status, failed startup cleanup, reaping clients, all five PNG filters with known pixels, and exact bounds of changed pixels. | No |
+| **Scripts and documentation** (`script-tests`, `documentation`) | Distribution metrics, API failures without partial writes, offline Markdown links/anchors and build dependency lists. | No |
 | **Functional** (`functional`) | Opening and manipulating windows (Wayland and X11), menus (popups and X11 override-redirect menus) kept where they belong, resizing from the invisible borders, keyboard Move/Resize, the window menu, drag-to-edge snap with Snap Assist, snap layouts and snap groups, snap, maximize/restore, minimize/Alt+Tab, virtual desktops, Vela's title bar (text, buttons, double click), shell layers (reserved space, live blur), partial redraws identical to full redraws, output hotplug, per-output scale and position set like Settings does, accessibility quick settings (night light and its schedule, color filters, magnifier, sticky keys), Super alone opening Start, the media and volume keys (held volume keys repeat), the mouse's side buttons as Back and Forward in Vela's apps (File Explorer, also with the focus elsewhere or on an inactive window), lock/unlock, screen power, compositor crash recovery, a shell that crashes (restarted, then given up) or exits cleanly (left alone), and an app whose GPU finishes 150 ms late (explicit and implicit sync) without a missed vblank, and the polkit agent (below). | Yes |
 | **Audio** (`audio-*`) | The private PipeWire and WirePlumber the audio tests run on ([audio](audio.md#11-tests)): fake devices, defaults, streams following the default output, recording, levels, restarts and isolation from the user's audio. On it, the `vela-audio` library: the model, changes from outside, the volume's grid and 100% cap, balance, values shown at once and the server winning, microphone actions shown only once confirmed, apps grouped by program with their volume, mute, output and input, devices appearing, PipeWire and WirePlumber restarts; a Bluetooth headset's battery from a fake BlueZ. The shell's sound keys on it: volume keys, the microphone key whose indicator waits for the server, the wheel on a taskbar button. | No |
 | **Polkit agent / GoogleTest** (`polkit.*`) | The agent's queue, cancellations by polkit and by the user, a crashed dialog counting as "No", retries after a wrong password, sessions that fail by themselves, identity order and choice, the dialog protocol. | No |
 | **Sharpness** (`sharpness`) | Pixel-level checks that windows reach the expected physical pixels across fractional scales and common window states. | Yes |
 
-The compositor currently contains 59 GoogleTest cases and the polkit agent 23; the functional harness runs 87 end-to-end scenarios when the Qt shell is built. Every scenario also checks that the compositor exits with status 0 when asked to stop: a crash on the way out would look like a real one to the supervisor.
+The compositor currently contains 75 GoogleTest cases and the polkit agent 23;
+the functional harness runs 103 end-to-end scenarios when the Qt shell is built.
+A complete build registers 124 CTest entries; some entries contain multiple
+scenarios. Every scenario requires the expected compositor exit status, normally
+0, even if it exited before cleanup. The deliberate three-crash supervisor test
+explicitly requires status 1. Unexpected crashes cannot become passing tests.
+
+CPU tests of the harness and scripts are included in CTest even on GPU-less CI.
+PNG decoding is checked with fixed encoded rows and independently specified
+pixels, including Paeth tie breaking and byte wraparound.
 
 ## Run a subset
 
@@ -92,6 +110,20 @@ with a shortened compositor deadline. Its killed process runs the same native
 commits without a GPU; the functional suite still supplies renderer and window
 placement coverage on real hardware.
 
+Size-only changes through the native Settings backend preserve the selected
+display's facing edge, gap and transverse alignment with a neighboring display.
+The fixture covers monitors above, below, left and right, fractional scaling,
+explicit positions, preview rollback and insufficient space between two other
+outputs. An upper 1080p screen rotated to portrait must move from `y=-1080` to
+`y=-1920`, rather than overlap the screen below it.
+
+The GPU shell test repeats that reported layout with the real Qt desktop:
+2560x1440 at 125% below 1920x1080 at 100%. It requests only the transform through
+the actual `Displays` client, checks both wallpaper and taskbar rectangles, and
+compares the main screen's pixels across 90°, 270° and landscape transitions.
+Direct `vela-randr --pos` tests alone cannot verify Settings chooses the right
+position. Layer entries in diagnostic `state` include their live logical bounds.
+
 Diagnostic reporter and graphical smoke check:
 
 ```sh
@@ -140,6 +172,31 @@ python3 tests/functional/run.py --sharpness
 The sharpness check additionally needs NumPy and Pillow available to `python3`.
 
 ## GPU requirements
+
+`tests/functional/test_output_rotation.py` exercises mixed landscape/portrait
+outputs, all eight Wayland transforms on an already maximized window, negative
+layout coordinates at 150% scale, and four-output layouts with explicit
+transform assertions. Every interior pixel of the maximized `vela-pattern`
+window is compared with its independently generated coordinate pattern;
+nonblank pixels or equality with a previous capture are insufficient. Stability
+captures must span distinct presented frames. A portrait crop also verifies
+that screen-dump regions use upright image coordinates.
+Software-cursor-only damage is checked after rotating the output, with a shader
+color filter forcing cursor composition: old cursor pixels must be restored
+and the new pointer drawn without relying on capture's PAINT_CURSORS option.
+The event damage arrives in buffer-local coordinates and is converted into
+upright scene coordinates before the frame's damage ring consumes it.
+The four-output case also renders three simultaneous maximized coordinate
+patterns and checks their pixels on the individual outputs.
+
+`vela-screen-dump` normalizes image dimensions and samples pixels with the
+inverse of the protocol's buffer-to-output transform before PNG encoding.
+`VELA_SCREEN_DUMP_CURSOR=1` includes the pointer for coordinate checks.
+CPU capture tests cover all eight
+transforms on a rectangular buffer with padded rows, including bounds and
+invalid-transform rejection. These GPU tests use real hardware with headless
+outputs; physical-monitor rotation and driver coverage still need separate
+validation.
 
 The functional and sharpness suites use the real Vulkan renderer. They intentionally do not fall back to software rendering.
 
@@ -292,6 +349,34 @@ native surface lifetime: configure and ACK precede the first buffer, the hidden
 menu releases its native surface, and blur binds to the new surface on reopen.
 Run, Quick Settings and Notification Center also reopen after native surface
 destruction. A fake shell or `vela-panel` cannot exercise this Qt lifecycle.
+Selection and snipping tests cover all eight transforms, 100%, 125% and 150%
+scales, and outputs above, below, left and right in eight representative cases.
+Additional snips cover odd 1367x769 dimensions at 125% and 4K at 200%.
+A held virtual pointer grows
+and shrinks the desktop band, then releases it; only the expected upright
+rectangle may change, with exact unzoomed bounds. The 2x magnifier allows only
+the three-pixel Catmull-Rom footprint at its top/left edges. A fixed private SVG
+gradient avoids dependence on the installed wallpaper or theme image.
+Both Print and Super+Shift+S must map overlays on every
+output and save exactly the selected pixels to an isolated Pictures directory.
+Odd logical selection endpoints at 125% and 150% scale additionally verify that
+the crop rounds its two physical edges independently, rather than rounding
+origin and width separately.
+Qt PNG filters are decoded before comparison. Captures with the wlroots cursor
+independently anchor image coordinates to the pointer position and shape, so
+opposite errors in capture and scene rotation cannot cancel each other. A zoomed
+portrait case checks that the magnifier preserves cursor/selection alignment.
+The default Qt sessions use CPU synchronization; set `VELA_QT_SYNC_FILE=1` to
+repeat them with GPU fence synchronization (the renderer remains Vulkan).
+Coverage is sampled rather than an exhaustive product of every transform,
+scale, resolution, layout, refresh rate and client buffer transform. These tests
+do not measure sustained frame-drop rates or exercise DRM hardware cursor
+planes, HDR/color-management combinations or every Intel/NVIDIA driver. The
+physical-monitor smoke test complements the headless GPU scenarios.
+The desktop tests assert the selection band's rendering; icon selection/drag
+state on a portrait primary output still needs a dedicated UI scenario. Snipping
+currently verifies rectangular crops; window/full-screen modes, cancellation,
+pending-capture timeouts and screen removal during a snip need separate cases.
 These tests do not establish that a driver-specific protocol error is fixed
 on NVIDIA; they enforce the observable lifecycle and animation contracts.
 Reporter fixtures separately check protocol errors and shell restarts without
@@ -309,6 +394,10 @@ For renderer work, run relevant scenarios with Vulkan validation enabled:
 ```sh
 VELA_VULKAN_VALIDATION=1 ctest --test-dir build -R 'functional|sharpness' --output-on-failure
 ```
+
+For functional sessions, the harness also requires the requested validation
+layers to be enabled and fails on logged Vulkan validation errors, including
+errors emitted during compositor shutdown.
 
 Additional rendering switches such as `VELA_DEBUG_DAMAGE`, `VELA_DEBUG_SYNC`, `VELA_DEBUG_LINEAR` and `VELA_DEBUG_SCANOUT` are documented in [configuration.md](configuration.md).
 

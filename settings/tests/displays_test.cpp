@@ -6,6 +6,8 @@
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QSignalSpy>
@@ -252,8 +254,12 @@ private slots:
         QVERIFY(!client->apply("HEADLESS-1", { { "scale", 2 } }));
         QTRY_COMPARE(applied.count(), 1);
         QTRY_COMPARE(output("HEADLESS-2")["scale"].toDouble(), 1.5);
-        QCOMPARE(output("HEADLESS-2")["x"].toInt(), -1280);
-        QCOMPARE(output("HEADLESS-2")["y"].toInt(), -100);
+        // A screen moved above/left of the main one remains there visually,
+        // but the desktop root starts at (0,0) for XWayland compatibility.
+        QTRY_COMPARE(output("HEADLESS-2")["x"].toInt(), 0);
+        QTRY_COMPARE(output("HEADLESS-2")["y"].toInt(), 0);
+        QTRY_COMPARE(output("HEADLESS-1")["x"].toInt(), 1280);
+        QTRY_COMPARE(output("HEADLESS-1")["y"].toInt(), 100);
         QCOMPARE(output("HEADLESS-2")["transform"].toString(), QString("90"));
         QVERIFY(saved().isEmpty());
         QVERIFY(client->secondsRemaining() > 0);
@@ -261,6 +267,8 @@ private slots:
         QTRY_VERIFY(!client->pending());
         QVERIFY(saved().contains("scale=1.5"));
         QVERIFY(saved().contains("rotation=90"));
+        QVERIFY(saved().contains("position=1280,100"));
+        QVERIFY(saved().contains("position=0,0"));
         const auto confirmed = saved();
         QTest::qWait(1400);
         QCOMPARE(output("HEADLESS-2")["scale"].toDouble(), 1.5);
@@ -268,6 +276,112 @@ private slots:
         client = connectClient();
         QTRY_COMPARE(output("HEADLESS-2")["scale"].toDouble(), 1.5);
         QCOMPARE(saved(), confirmed);
+    }
+    void sizeChangesKeepTheOutputNextToItsNeighbor_data()
+    {
+        QTest::addColumn<int>("x");
+        QTest::addColumn<int>("y");
+        QTest::addColumn<double>("oldScale");
+        QTest::addColumn<QVariantMap>("changes");
+        QTest::addColumn<int>("expectedX");
+        QTest::addColumn<int>("expectedY");
+        const QVariantMap portrait { { "transform", "90" } };
+        QTest::newRow("above-portrait") << 0 << -1080 << 1.0 << portrait << 0 << -1920;
+        QTest::newRow("left-portrait") << -1920 << 0 << 1.0 << portrait << -1080 << 0;
+        QTest::newRow("right-portrait") << 1920 << 0 << 1.0 << portrait << 1920 << 0;
+        QTest::newRow("below-portrait") << 0 << 1080 << 1.0 << portrait << 0 << 1080;
+        QTest::newRow("above-gap") << 0 << -1200 << 1.0 << portrait << 0 << -2040;
+        QTest::newRow("above-fractional-right-aligned") << 640 << -720 << 1.5 << portrait << 1200 << -1280;
+        QTest::newRow("above-scale") << 0 << -1080 << 1.0 << QVariantMap { { "scale", 1.5 } } << 0 << -720;
+        QTest::newRow("above-explicit-position") << 0 << -1080 << 1.0
+            << QVariantMap { { "transform", "90" }, { "x", -1080 }, { "y", 0 } } << -1080 << 0;
+    }
+    void sizeChangesKeepTheOutputNextToItsNeighbor()
+    {
+        QFETCH(int, x);
+        QFETCH(int, y);
+        QFETCH(double, oldScale);
+        QFETCH(QVariantMap, changes);
+        QFETCH(int, expectedX);
+        QFETCH(int, expectedY);
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        QVERIFY(client->apply("HEADLESS-2", { { "x", x }, { "y", y }, { "scale", oldScale } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        const auto before = client->outputs();
+        const auto disk = saved();
+        // The explicit-position test vector describes offsets relative to
+        // HEADLESS-1. After root-origin normalization, HEADLESS-1 itself may
+        // have moved, so convert those offsets to absolute protocol positions.
+        QVariantMap requestedChanges = changes;
+        if (requestedChanges.contains("x") && requestedChanges.contains("y")) {
+            requestedChanges["x"] = requestedChanges["x"].toInt() + output("HEADLESS-1")["x"].toInt();
+            requestedChanges["y"] = requestedChanges["y"].toInt() + output("HEADLESS-1")["y"].toInt();
+        }
+        QVERIFY(client->apply("HEADLESS-2", requestedChanges));
+        QTRY_VERIFY(client->confirming());
+        // PositionForSize() preserves adjacency and the requested relative
+        // offset. The compositor then translates the whole enabled layout:
+        // a monitor above/left of the primary must be at (0,0), never at
+        // negative root coordinates, while the primary moves by the same
+        // translation. Compare both heads, not just the edited output.
+        const int originX = expectedX < 0 ? expectedX : 0;
+        const int originY = expectedY < 0 ? expectedY : 0;
+        const int expectedSecondaryX = expectedX - originX;
+        const int expectedSecondaryY = expectedY - originY;
+        const int expectedPrimaryX = -originX;
+        const int expectedPrimaryY = -originY;
+        QTRY_COMPARE(output("HEADLESS-2")["x"].toInt(), expectedSecondaryX);
+        QTRY_COMPARE(output("HEADLESS-2")["y"].toInt(), expectedSecondaryY);
+        QTRY_COMPARE(output("HEADLESS-1")["x"].toInt(), expectedPrimaryX);
+        QTRY_COMPARE(output("HEADLESS-1")["y"].toInt(), expectedPrimaryY);
+        QCOMPARE(output("HEADLESS-2")["x"].toInt() - output("HEADLESS-1")["x"].toInt(), expectedX);
+        QCOMPARE(output("HEADLESS-2")["y"].toInt() - output("HEADLESS-1")["y"].toInt(), expectedY);
+        QCOMPARE(saved(), disk);
+        client->revert();
+        QTRY_VERIFY(!client->pending());
+        QTRY_COMPARE(client->outputs(), before);
+        QCOMPARE(saved(), disk);
+    }
+    void emptyEffectiveSizeDoesNotRejectInSettings()
+    {
+        // 8 physical pixels at scale 16 produce 0 logical pixels. A request
+        // must reach the compositor instead of failing Settings' layout check.
+        start({ "tiny" });
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        const auto before = output("HEADLESS-2");
+        QCOMPARE(before["current"].toMap()["width"].toInt(), 8);
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 16 } }));
+        QVERIFY2(client->error().isEmpty(), qPrintable(client->error()));
+        // Whether the compositor accepts zero effective pixels is its decision;
+        // the regression is an early rejection by positionForSize().
+    }
+    void sizeChangeCannotOverlapTwoUnchangedNeighbors()
+    {
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        QVERIFY(client->apply("HEADLESS-2", { { "x", 1920 }, { "y", 0 }, { "transform", "90" } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        command("add");
+        QTRY_COMPARE(client->outputs().size(), 3);
+        QVERIFY(client->apply("HEADLESS-3", { { "x", 3000 }, { "y", 0 } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        const auto before = client->outputs();
+        const auto disk = saved();
+        QVERIFY(!client->apply("HEADLESS-2", { { "transform", "normal" } }));
+        QVERIFY(!client->pending());
+        QVERIFY(!client->error().isEmpty());
+        QCOMPARE(client->outputs(), before);
+        QCOMPARE(saved(), disk);
     }
     void revertRestoresAllPropertiesAndSavedFile()
     {
@@ -606,6 +720,25 @@ int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
     const auto args = app.arguments();
+    if (args.value(1) == "--apply-client") {
+        const auto document = QJsonDocument::fromJson(args.value(4).toUtf8());
+        if (!document.isObject() || args.value(3).isEmpty()) return 2;
+        Displays client(wl_display_connect(args.value(2).toUtf8().constData()), nullptr);
+        QTimer check;
+        QObject::connect(&check, &QTimer::timeout, &client, [&] {
+            if (client.available()) {
+                check.stop();
+                if (!client.apply(args.value(3), document.object().toVariantMap())) app.exit(2);
+            }
+        });
+        QObject::connect(&client, &Displays::confirmationRequested, &client, [&] { client.confirm(); });
+        QObject::connect(&client, &Displays::confirmationFinished, &client, [&] {
+            app.exit(client.error().isEmpty() ? 0 : 1);
+        });
+        QTimer::singleShot(5000, &app, [&] { app.exit(3); });
+        check.start(10);
+        return app.exec();
+    }
     if (args.value(1) == "--preview-client") {
         Displays client(wl_display_connect(args.value(2).toUtf8().constData()), nullptr);
         QTimer check;

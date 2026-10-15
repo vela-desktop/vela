@@ -582,7 +582,12 @@ red, green and blue remains at the chosen temperature).
   screenshots or screen sharing, it also applies to the hardware cursor, and
   games keep direct scanout. Where there is no gamma (nested, headless) or the
   monitor doesn't accept it, it is multiplied into the drawing matrix like the
-  filters.
+  filters. The opt-in `night-light-nvidia-fix=yes` setting bypasses gamma
+  entirely and uses the Vulkan path, even on DRM outputs that accept a gamma
+  LUT. When enabled while a LUT is already installed, its removal is committed
+  atomically with the newly shader-tinted frame; a failed clear leaves the
+  shader off until a safe retry. This is a diagnostic workaround for drivers
+  that accept the LUT but display corrupted colors.
 - The transition (one second, like Windows) is an animation of §4.2: a new value
   on every frame, and the whole output redrawn (or just a new gamma).
 
@@ -848,9 +853,12 @@ matched it; then `wlr_scene` went away. Each stage closes only with its tests.
   mitigated by not tearing down the renderer and device on a normal shutdown
   (the kernel reclaims everything). With `VELA_VULKAN_VALIDATION=1` everything is
   torn down, to find forgotten resources.
-- **Output rotation**: the frame handles it (elements in rotated space, damage
-  and drawing brought back to the buffer), but it hasn't been tested on a real
-  output yet.
+- **Output rotation**: elements and scene damage use upright output coordinates;
+  texture orientation and rectangles use the inverse output transform when
+  drawing into the buffer. Buffer-age history stays in swapchain-buffer
+  coordinates and is invalidated on every transform change, including 90° ↔
+  270°. GPU headless tests compare the coordinate pattern under all eight
+  transforms; physical-monitor rotation still needs separate validation.
 - **Text and icons in the compositor** (§9.2, §9.6): new dependencies
   (FreeType, HarfBuzz, fontconfig, resvg) and delicate code. The first three are
   on every system; resvg must be checked on other distributions.
