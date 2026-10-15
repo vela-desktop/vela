@@ -40,6 +40,28 @@ class VerificationTests(unittest.TestCase):
         self.digest = hashlib.sha256(self.package.read_bytes()).hexdigest()
         self.commit = "a" * 40
 
+    def test_curl_does_not_follow_redirects(self):
+        url = f"https://api.github.com/repos/vela-desktop/vela/attestations/sha256:{self.digest}"
+        with patch.object(verification.subprocess, "check_output", return_value=b"{}") as output:
+            verification.curl(url)
+        command = output.call_args.args[0]
+        self.assertEqual(command[0], "curl")
+        self.assertIn("-fsS", command)
+        self.assertNotIn("-L", command)
+        self.assertNotIn("--location", command)
+        self.assertEqual(command[-1], url)
+
+    def test_redirect_body_cannot_reach_cosign(self):
+        url = "https://api.github.com/redirected-bundle"
+        with patch.object(verification, "bundle_candidates", return_value=[url]), \
+             patch.object(verification.subprocess, "check_output",
+                          return_value=b"<html>redirect</html>") as download, \
+             patch.object(verification.subprocess, "run") as run:
+            with self.assertRaisesRegex(ValueError, "none of the Sigstore attestations passed"):
+                verification.verify(self.package, "vela-desktop/vela", self.commit, "release")
+        self.assertNotIn("-L", download.call_args.args[0])
+        run.assert_not_called()
+
     def test_valid_main_attestation_pins_workflow_and_commit(self):
         with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
              patch.object(verification.subprocess, "run") as run:

@@ -69,25 +69,43 @@ def package_section(content: str, prefix: str, suffix: str) -> set[str]:
 
 
 def documented_build_dependencies(markdown: str, command: str, marker: str) -> set[str]:
-    """Find the full source-build command, regardless of Markdown headings."""
-    # Select a complete shell command containing a known build-only dependency.
-    # This avoids matching the shorter updater bootstrap commands.
-    fence = re.compile(r'^(`{3}|~{3})(?:sh|bash|shell)?[ \t]*\r?\n(.*?)^\1[ \t]*$', re.M | re.S)
+    """Find one complete source-build command inside a shell Markdown fence."""
+    # Markdown closing fences use the opening character and at least its length.
+    # Track non-shell fences too, so embedded shell examples are not misread.
+    opener = re.compile(r'^[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<info>[^`\r\n]*)$')
+    closer = re.compile(r'^[ ]{0,3}(?P<fence>`{3,}|~{3,})[ \t]*$')
     candidates = []
-    for match in fence.finditer(markdown):
-        body = re.sub(r'\\\r?\n[ \t]*', ' ', match.group(2))
-        for line in body.splitlines():
-            found = re.match(r'^\s*sudo\s+' + re.escape(command) + r'\s+(.+)$', line)
-            if found:
-                packages = set(re.findall(r'[A-Za-z0-9_+.-]+', found.group(1)))
-                if marker in packages:
-                    candidates.append(packages)
+    opening_fence = ''
+    shell_fence = False
+    body_lines = []
+    for line in markdown.splitlines():
+        if not opening_fence:
+            start = opener.fullmatch(line)
+            if start:
+                opening_fence = start.group('fence')
+                shell_fence = start.group('info').strip() in ('', 'sh', 'bash', 'shell')
+                body_lines = []
+            continue
+        end = closer.fullmatch(line)
+        if end and end.group('fence')[0] == opening_fence[0] and len(end.group('fence')) >= len(opening_fence):
+            if shell_fence:
+                body = re.sub(r'\\\n[ \t]*', ' ', '\n'.join(body_lines))
+                for command_line in body.splitlines():
+                    found = re.match(r'^\s*sudo\s+' + re.escape(command) + r'\s+(.+)$', command_line)
+                    if found:
+                        packages = set(re.findall(r'[A-Za-z0-9_+.-]+', found.group(1)))
+                        if marker in packages:
+                            candidates.append(packages)
+            opening_fence = ''
+            continue
+        body_lines.append(line)
     if len(candidates) != 1:
         raise ValueError(
             f'expected one full source-build dependency block for {command!r} '
             f'(identified by {marker!r}), found {len(candidates)}'
         )
     return candidates[0]
+
 
 def build_checks() -> list[str]:
     failures = []

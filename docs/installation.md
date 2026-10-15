@@ -69,7 +69,7 @@ installed directly without following the bootstrap commands above. It recommends
 `curl` for signed binary downloads, plus `rpm-build` and
 `dnf5-plugins` for the local build fallback. If weak dependencies were
 disabled during installation, install those optional tools before using their
-respective updater modes. Cosign is installed separately (see below).
+respective updater modes. Cosign is installed separately (see above).
 
 Fedora RPMs are built and installation-tested in a fresh Fedora 44 container
 before release; a physical GPU login and other Fedora versions still require

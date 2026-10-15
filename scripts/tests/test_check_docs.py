@@ -34,6 +34,46 @@ class BuildDependencyParserTests(unittest.TestCase):
             {"git", "wlroots0.20", "wayland"},
         )
 
+    def test_four_backtick_fence(self):
+        docs = "````sh\nsudo dnf install git wlroots-devel\n````\n"
+        self.assertEqual(
+            checker.documented_build_dependencies(docs, "dnf install", "wlroots-devel"),
+            {"git", "wlroots-devel"},
+        )
+
+    def test_longer_tilde_fence_and_longer_closer(self):
+        docs = "~~~~shell\nsudo dnf install git wlroots-devel\n~~~~~~\n"
+        self.assertEqual(
+            checker.documented_build_dependencies(docs, "dnf install", "wlroots-devel"),
+            {"git", "wlroots-devel"},
+        )
+
+    def test_shorter_and_wrong_character_fences_do_not_close(self):
+        docs = (
+            "`````sh\n```\n~~~\n"
+            "sudo dnf install git wlroots-devel\n``````\n"
+        )
+        self.assertEqual(
+            checker.documented_build_dependencies(docs, "dnf install", "wlroots-devel"),
+            {"git", "wlroots-devel"},
+        )
+
+    def test_shell_example_inside_non_shell_fence_is_skipped(self):
+        docs = (
+            "````python\n```sh\nsudo dnf install bogus wlroots-devel\n"
+            "```\n````\n"
+            "```sh\nsudo dnf install git wlroots-devel\n```\n"
+        )
+        self.assertEqual(
+            checker.documented_build_dependencies(docs, "dnf install", "wlroots-devel"),
+            {"git", "wlroots-devel"},
+        )
+
+    def test_unclosed_long_fence_is_ignored(self):
+        docs = "````sh\nsudo dnf install wlroots-devel\n```\n"
+        with self.assertRaisesRegex(ValueError, "found 0"):
+            checker.documented_build_dependencies(docs, "dnf install", "wlroots-devel")
+
     def test_missing_full_block_has_clear_error(self):
         docs = "```sh\nsudo dnf install git curl gh\n```\n"
         with self.assertRaisesRegex(ValueError, "expected one full source-build dependency block"):
