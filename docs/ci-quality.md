@@ -1,14 +1,14 @@
 # Additional CI quality checks
 
-The main Build workflow runs on pushes to `main`, pull requests and manual dispatch.
-Fedora, Sanitizer Tests, Static Analysis and Standalone Package Test run on
+The main Build workflow runs on pushes to `main`, pull requests and manual dispatch; it also invokes the Fedora build and test workflow to gate public releases.
+Sanitizer Tests, Static Analysis and Standalone Package Test run separately on
 pull requests and manual dispatch, not on ordinary pushes to `main`.
 
 ## Package and updater contracts
 
 The [Build workflow](../.github/workflows/build.yml) runs the offline
-`packaging/tests` suite before the full build, and again as CTest's
-`packaging-update` in Arch. It checks public HTTPS defaults, migration of old
+`packaging/tests` suite before the full build. The regular Arch build excludes
+CTest's `packaging-update` to avoid running that same suite twice. It checks public HTTPS defaults, migration of old
 SSH configuration and mirrors, revision selection, CI artifact selection and
 failure handling. It uses real Git with isolated configuration and rejects
 unexpected transports; package tools are simulated. See [testing.md](testing.md)
