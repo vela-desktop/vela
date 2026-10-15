@@ -184,8 +184,9 @@ that screen-dump regions use upright image coordinates.
 Software-cursor-only damage is checked after rotating the output, with a shader
 color filter forcing cursor composition: old cursor pixels must be restored
 and the new pointer drawn without relying on capture's PAINT_CURSORS option.
-The event damage arrives in buffer-local coordinates and is converted into
-upright scene coordinates before the frame's damage ring consumes it.
+The output's damage event arrives in upright output coordinates (wlroots'
+header says buffer-local, but its cursors emit their box as is) and joins the
+scene damage unchanged; the frame converts it to the buffer once.
 The four-output case also renders three simultaneous maximized coordinate
 patterns and checks their pixels on the individual outputs.
 
