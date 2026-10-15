@@ -41,6 +41,38 @@ class FedoraFixture(UpdateFixture):
 
 
 class FedoraUpdates(FedoraFixture):
+    def test_rpm_declares_updater_dependencies(self):
+        # The RPM must work when installed directly, not only through the
+        # README bootstrap command that already installs these utilities.
+        spec = self.spec.read_text()
+        required = {
+            line.split(":", 1)[1].strip()
+            for line in spec.splitlines() if line.startswith("Requires:")
+        }
+        recommended = {
+            line.split(":", 1)[1].strip()
+            for line in spec.splitlines() if line.startswith("Recommends:")
+        }
+        for name in ("git", "util-linux", "rpm", "dnf5"):
+            self.assertIn(name, required)
+        for name in ("curl", "gh", "rpm-build", "dnf5-plugins"):
+            self.assertIn(name, recommended)
+
+    def test_multiple_runs_select_the_fedora_artifact(self):
+        self.env.update(TEST_CI_RUNS="303,202,101",
+                        TEST_CI_MISSING_RUNS="303,202",
+                        TEST_DOWNLOAD_SHA=self.main[:7])
+        self.run_update("--download")
+        download = next(c for c in self.calls("gh")
+                        if c["args"][:2] == ["run", "download"])
+        self.assertEqual(download["args"][2], "101")
+        self.assertEqual(
+            download["args"][download["args"].index("-n") + 1],
+            "vela-fedora-rpm",
+        )
+        self.assertEqual(self.calls("rpmbuild"), [])
+        self.assertEqual(self.calls("sudo")[0]["args"][:3], ["dnf", "install", "-y"])
+
     def test_check_is_read_only(self):
         self.run_update("--check")
         self.assertEqual(self.calls("rpmbuild"), [])
