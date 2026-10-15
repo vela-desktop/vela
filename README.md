@@ -277,38 +277,19 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
 
 ## Install
 
-Vela needs a GPU with **Vulkan 1.4**: AMD or Intel with Mesa ≥ 25.0, or NVIDIA with the
-proprietary driver ≥ 570 or NVK. Sound needs **PipeWire and WirePlumber**: PulseAudio
-without PipeWire is not supported. Once installed, **Vela** appears on the login screen
-(SDDM or Plasma Login) next to Plasma.
+Vela needs a GPU with **Vulkan 1.4**: AMD or Intel with Mesa ≥ 25.0, or NVIDIA with the proprietary driver ≥ 570 or NVK. Sound needs **PipeWire and WirePlumber**. Once installed, choose **Vela** from the login screen.
 
 ### Arch Linux, CachyOS, EndeavourOS
 
-Vela installs as a native `vela-git` package. Install `git`, `curl` and `base-devel` first, then run:
-
 ```sh
+sudo pacman -S --needed git curl base-devel github-cli
 git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update
 ```
 
-**`vela-update` also handles the first installation**; you do not need to build Vela
-or install a package separately. On first run it reuses Git objects from the
-checkout instead of downloading the full repository twice. It checks for a
-public, commit-matched alpha package built on `main` (no GitHub login required)
-and verifies its SHA-256 checksum **and signed build provenance** before installing with pacman. If there is no
-matching public package, it can use a temporary CI artifact through an
-authenticated [GitHub CLI](https://cli.github.com/) or build the native package
-locally. The public alpha packages are published only after successful `main` builds;
-experimental branches normally build locally unless you have access to a matching
-CI artifact.
-
-Once installed, use **`vela-update`** to fetch new commits and install updates.
-
 ### Fedora 44
 
-Fedora 44 x86_64 has a native `vela-git` RPM. RPMs are not yet supported on
-other Fedora releases or other DNF-based distributions. The same updater installs it
-and handles subsequent updates through DNF. To get started:
+Only Fedora 44 x86_64 is currently supported by the native RPM updater; other Fedora versions and immutable variants are not supported by this installer.
 
 ```sh
 sudo dnf install git curl gh rpm-build dnf5-plugins
@@ -316,83 +297,11 @@ git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update
 ```
 
-The updater looks for an RPM built for the exact selected commit in the public
-alpha release and verifies both its checksum and signed GitHub build provenance.
-If no trusted RPM exists, it builds one from that commit with `rpmbuild` and
-installs it with DNF. On Fedora, `--build` also installs build dependencies with
-`dnf builddep`. An existing Arch package is **never** installed on Fedora.
-Use `vela-update --check` to inspect changes without installing.
-
-The RPM requires Git, DNF5, RPM and `flock` (from util-linux), even when
-installed directly without following the bootstrap commands above. It recommends
-`curl` and `gh` for signed binary downloads, plus `rpm-build` and
-`dnf5-plugins` for the local build fallback. If weak dependencies were
-disabled during installation, install those optional tools before using their
-respective updater modes.
-
-Fedora RPMs are built and installation-tested in a fresh Fedora 44 container
-before release; a physical GPU login and other Fedora versions still require
-testing. Fedora's immutable/ostree-based variants are not supported by this
-DNF-based installer.
-
-Once installed, use **`vela-update`** on either distribution to fetch new
-commits and install updates.
-
-Repository downloads use public HTTPS and need no GitHub account or SSH keys.
-Saved GitHub SSH URLs and cached mirrors from older versions are migrated to
-HTTPS automatically. `--source` can still select a local Git copy.
-
-```sh
-vela-update                 # update if something new is available
-vela-update --check         # only check, and list the changes
-vela-update --download      # download a matching public package, or build if unavailable
-vela-update --build         # always build locally
-vela-update --jobs 2        # fewer parallel compile jobs
-vela-update --branch YOUR_TEST_BRANCH --download  # replace with an existing branch
-vela-update --commit abc1234 --download    # test an exact commit
-```
-
-`--branch` and `--commit` apply only to that invocation and cannot be combined.
-The next plain `vela-update` returns to the repository's default branch (`main`
-on GitHub), including when this means installing an older version. Commit SHAs
-may be full or abbreviated, provided the abbreviation is unambiguous.
-Both options also work with `--check` and `--build`; local builds use the exact
-selected commit too. `--download` uses that commit's CI package if available,
-otherwise it builds locally as usual.
-
-To prepare a package for a test branch, run the **Build** workflow manually in
-GitHub Actions, selecting that branch (or run
-`gh workflow run build.yml --ref YOUR_TEST_BRANCH`). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce both the `vela-git` Arch artifact and the
-`vela-fedora-rpm` artifact, as on pushes to `main`; workflow artifacts expire
-after 14 days. PR builds also smoke-test both packages, but their artifacts are
-not attested, and `vela-update` does not accept them as trusted downloads.
-Public `main` packages are also published as per-commit GitHub prereleases
-(tagged `alpha-<full-commit-sha>`) and can be downloaded without a GitHub account.
-Only the **five most recently published Vela alpha releases** are kept; older
-ones and their tags are removed automatically. For an older commit, `vela-update`
-falls back to an available workflow artifact or a local build.
-The tester needs a version of `vela-update` that already supports these options.
-
-The last three packages stay in `~/.cache/vela-update/packages/` for rollback.
-Restore a known-good Arch package with `sudo pacman -U /path/to/vela-git-*.pkg.tar.zst`,
-or on Fedora with `sudo dnf install /path/to/vela-git-*.x86_64.rpm`
-(select **one exact file**, never install every cached package at once).
-For Fedora, `dnf reinstall` handles a same-version forced reinstall.
-
 ### Other distributions
 
-Build from source (below), then:
+See [build from source](#build-from-source); there is currently no native package updater for these systems.
 
-```sh
-sudo cmake --install build   # into /usr/local, plus /etc/pam.d and /etc/xdg
-```
-
-If the session doesn't show up, your display manager may not look in `/usr/local`:
-
-```sh
-sudo ln -s /usr/local/share/wayland-sessions/vela.desktop /usr/share/wayland-sessions/
-```
-
+`vela-update` installs Vela on first run and handles subsequent updates. It verifies downloaded package provenance, falling back to a local build if the signed package cannot be verified. For now, the verification path requires `gh`; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
 ## Reporting a problem
 
 Run `vela-report` to create a diagnostic ZIP with a description and the evidence
@@ -403,58 +312,14 @@ See [Vela Report](docs/reporting.md) for privacy details, options and limits.
 
 ## Build from source
 
-You need CMake ≥ 3.22, Ninja, a C17 and C++20 compiler, **wlroots 0.20**, Qt ≥ 6.7 with its Linguist tools, LayerShellQt,
-the Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and
-PAM. librsvg is optional (app icons in the title bar). The diagnostic reporter needs
-Python 3.10 or newer; the tests also use GoogleTest. The pixel sharpness
-suites additionally require NumPy and Pillow for Python 3.
-
-<details>
-<summary><b>Arch / CachyOS / EndeavourOS</b></summary>
-
-```sh
-sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland wayland-protocols \
-    libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
-    vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
-    pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
-    pipewire wireplumber
-```
-</details>
-
-<details>
-<summary><b>Fedora</b></summary>
-
-```sh
-sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
-    wlroots-devel wayland-devel wayland-protocols-devel libxkbcommon-devel \
-    pixman-devel libinput-devel libdrm-devel mesa-libgbm-devel \
-    qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel \
-    qt6-qttools-devel qt6-qtsvg-devel qt6-qtwayland-devel layer-shell-qt-devel \
-    vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
-    fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
-    zlib-devel gtest-devel python3 python3-numpy python3-pillow shared-mime-info \
-    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber
-```
-</details>
-
-<details>
-<summary><b>openSUSE Tumbleweed (experimental; not currently validated by CI)</b></summary>
-
-```sh
-sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
-    libxkbcommon-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
-    qt6-svg-devel qt6-waylandclient-devel layer-shell-qt6-devel \
-    vulkan-headers vulkan-devel shaderc libgbm-devel libdrm-devel \
-    freetype2-devel harfbuzz-devel fontconfig-devel pam-devel librsvg-devel \
-    zlib-devel gtest python3
-```
-</details>
+The source build requires wlroots **0.20**, Qt **6.7+**, Vulkan headers and loader, and the other dependencies listed in the [developer guide](docs/development.md#distribution-dependencies).
 
 ```sh
 cmake -B build -G Ninja
 cmake --build build
 ```
 
+To install system-wide or run a nested session, follow the [installation guide](docs/installation.md#other-distributions) or the instructions below.
 ### Try it without logging out
 
 From a running Wayland session (Plasma, for example), Vela opens in a window like a
@@ -567,6 +432,7 @@ see the documentation below.
 
 | Document | Contents |
 |---|---|
+| **[Install and update](docs/installation.md)** | Installation, verified updates, test branches and rollback. |
 | **[Alpha hardware coverage](docs/hardware.md)** | Driver validation scope, optional services and manual smoke tests. |
 | **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
 | **[Roadmap](docs/roadmap.md)** | Work in progress, what comes next, what is not planned, and what is done. |
