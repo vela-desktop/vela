@@ -165,8 +165,8 @@ target_link_libraries(vela-shell PRIVATE
 
 install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-# The tests (ctest): the Exec key of .desktop files, default apps and the
-# volume's steps.
+# The tests (ctest): the Exec key of .desktop files, default apps, the
+# volume's steps and the animation effects switch Style reads.
 if(VELA_BUILD_TOOLS)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
     qt_add_executable(vela-desktopexec-test tests/desktopexec.cpp src/desktopexec.h)
@@ -219,6 +219,11 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-service-models-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
     add_test(NAME shell-service-models COMMAND vela-service-models-test)
     set_tests_properties(shell-service-models PROPERTIES TIMEOUT 90)
+
+    qt_add_executable(vela-appearance-effects-test tests/appearance_effects.cpp)
+    target_compile_options(vela-appearance-effects-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-appearance-effects-test PRIVATE vela-controls Qt6::Gui Qt6::Test)
+    add_test(NAME shell-appearance-effects COMMAND vela-appearance-effects-test)
 endif()
 
 # Italian translation: strings in the code are in English, Italian lives

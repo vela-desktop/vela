@@ -26,7 +26,7 @@ Window {
         visible = true
         Menus.notificationCenterOpen = true
         column.opacity = 0
-        slide.x = 24
+        slide.x = 24 * Theme.motion
         appear.restart()
         column.forceActiveFocus()
         updateBlur()

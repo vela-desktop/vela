@@ -22,7 +22,7 @@ Window {
         current = 0
         visible = true
         panel.opacity = 0
-        slide.y = 12
+        slide.y = 12 * Theme.motion
         appear.restart()
         panel.forceActiveFocus()
         updateBlur()

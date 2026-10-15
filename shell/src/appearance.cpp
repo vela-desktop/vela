@@ -5,11 +5,36 @@
 
 #include "defaults.h"
 #include "iconprovider.h"
+#include "language.h"
 #include "mica.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QSettings>
+
+namespace {
+
+// animation-effects in vela.conf (the compositor reads it too): yes unless
+// it says otherwise.
+bool configuredAnimationEffects()
+{
+    QFile file(vela::language::configPath());
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return true;
+    }
+    bool on = true;
+    while (!file.atEnd()) {
+        const QString line = QString::fromUtf8(file.readLine()).trimmed();
+        if (line.startsWith(QLatin1String("animation-effects="))) {
+            const QString value = line.mid(18).trimmed();
+            on = value != QLatin1String("no") && value != QLatin1String("0") && value != QLatin1String("false");
+        }
+    }
+    return on;
+}
+
+} // namespace
 
 Appearance::Appearance(QObject* parent, Mode mode)
     : QObject(parent)
@@ -28,7 +53,7 @@ void Appearance::watch()
 {
     // Whoever writes the files replaces them: the directories are watched too.
     const QString shellConfig = QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell")).fileName();
-    for (const QString& path : { shellConfig, wallpaperTintCachePath() }) {
+    for (const QString& path : { shellConfig, wallpaperTintCachePath(), vela::language::configPath() }) {
         const QFileInfo info(path);
         if (info.exists() && !m_watcher.files().contains(path)) {
             m_watcher.addPath(path);
@@ -57,9 +82,15 @@ void Appearance::reload()
     const QColor tint = cachedWallpaperTint();
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
+    const bool effects = configuredAnimationEffects();
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
+        if (effects != m_animationEffects) {
+            m_animationEffects = effects;
+            emit changed();
+        }
         return;
     }
+    m_animationEffects = effects;
     const bool first = !m_accent.isValid();
     m_light = light;
     m_accent = accent;

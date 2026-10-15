@@ -196,6 +196,18 @@ Specifiche sistema
         <translation>Interazione</translation>
     </message>
     <message>
+        <source>Visual effects</source>
+        <translation>Effetti visivi</translation>
+    </message>
+    <message>
+        <source>Animation effects</source>
+        <translation>Effetti di animazione</translation>
+    </message>
+    <message>
+        <source>Windows and panels move as they open, close and change. Off, they only fade, briefly</source>
+        <translation>Finestre e pannelli si muovono quando si aprono, si chiudono e cambiano. Disattivati, svaniscono soltanto, in breve</translation>
+    </message>
+    <message>
         <source>Sticky keys</source>
         <translation>Tasti permanenti</translation>
     </message>
@@ -1487,6 +1499,14 @@ Specifiche sistema
     <message>
         <source>sticky keys shift ctrl alt keyboard</source>
         <translation>sticky keys maiusc ctrl alt tastiera</translation>
+    </message>
+    <message>
+        <source>Animation effects</source>
+        <translation>Effetti di animazione</translation>
+    </message>
+    <message>
+        <source>animations motion reduce movement visual effects</source>
+        <translation>animazioni movimento ridurre effetti visivi</translation>
     </message>
     <message>
         <source>Local account</source>

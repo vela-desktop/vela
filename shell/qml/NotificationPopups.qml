@@ -58,7 +58,7 @@ Window {
                 border.color: critical ? Qt.rgba(1, 0.35, 0.35, 0.6) : Theme.stroke
 
                 // It comes in from the right, like on Windows.
-                transform: Translate { id: slide; x: 60 }
+                transform: Translate { id: slide; x: 60 * Theme.motion }
                 opacity: 0
                 Component.onCompleted: appear.start()
                 ParallelAnimation {

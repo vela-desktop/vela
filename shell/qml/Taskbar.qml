@@ -244,19 +244,20 @@ Window {
         spacing: 4
 
         Behavior on x {
+            enabled: Theme.motion > 0
             NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
         }
         // The button of an app just opened comes in growing.
         add: Transition {
             NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.normal }
             NumberAnimation {
-                property: "scale"; from: 0.5; to: 1; duration: Theme.slow
+                property: "scale"; from: 1 - 0.5 * Theme.motion; to: 1; duration: Theme.slow
                 easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
             }
         }
         move: Transition {
             NumberAnimation {
-                property: "x"; duration: Theme.normal
+                property: "x"; duration: Theme.normal * Theme.motion
                 easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
             }
         }

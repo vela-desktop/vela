@@ -6,6 +6,7 @@ shows every animation at its own predicted presentation time, and what can't
 be undone waits for the wall clock. Read from the VELA_DEBUG_ANIMATION log,
 with two outputs at 75 and 180 Hz, with late latching and without."""
 
+import os
 from pathlib import Path
 import re
 import time
@@ -152,6 +153,78 @@ class Durations(unittest.TestCase):
         self.assertEqual(set(durations), set(self.TOKENS))
         for name, token in self.TOKENS.items():
             self.assertEqual(durations[name], {scale[token]}, f"{name}: {token.lower()}")
+
+
+GEOMETRY = re.compile(r"animation: (\S+) #(\d+) geometry ([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+) opacity ([-\d.]+)")
+
+
+class AnimationEffects(unittest.TestCase):
+    """docs/visual-coherence.md §6.5: with animation-effects=no nothing moves
+    (each animation's logged geometry stays put, at scale 1) and what fades
+    takes at most `fast`; the magnifier zooms at once and maximizing doesn't
+    morph. Settings' vela.conf and reload-config switch it, nothing restarts."""
+
+    def switch(self, vela, on):
+        os.makedirs(os.path.dirname(vela.config_path()), exist_ok=True)
+        with open(vela.config_path(), "w") as conf:
+            conf.write(f"animation-effects={'yes' if on else 'no'}\n")
+        vela.command("reload-config")
+
+    def test_switched_off_nothing_moves(self):
+        motion_h = (Path(__file__).resolve().parents[2] / "compositor/src/motion.h").read_text()
+        fast, slow = (float(re.search(rf"#define VELA_MOTION_{token}_MS ([\d.]+)", motion_h)[1])
+                      for token in ("FAST", "SLOW"))
+        with Session(env={"VELA_DEBUG_ANIMATION": "1"}) as vela:
+            self.switch(vela, False)
+            window = vela.open_window(400, 300, decorated=True)
+            vela.wait_for(lambda s: s["focused"] == window)
+            for action in ("maximize", "restore", "minimize", "restore"):
+                vela.command(f"window {window} {action}")
+                time.sleep(0.3)
+            vela.command("workspace new switch")
+            time.sleep(0.3)
+            vela.command("workspace switch 0")
+            time.sleep(0.3)
+            vela.command("magnifier on")
+            time.sleep(0.3)
+            vela.command("magnifier off")
+            time.sleep(0.3)
+            w = vela.state().window(window)
+            x, y = w["x"] + 200, w["y"] + 16
+            vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x, y + 10, "sleep", "50",
+                       "move", 0, 400, "sleep", "300", "move", 700, 400, "sleep", "50", "up")
+            vela.wait_for(lambda _: "animation: snap-preview " in vela.log_text(), read_state=False,
+                          what="the snap preview")
+            time.sleep(0.3)
+            vela.command(f"window {window} close")
+            vela.wait_for(lambda _: "animation: close " in vela.log_text(), read_state=False, what="close")
+            time.sleep(0.3)
+            log = vela.log_text()
+
+            durations = {}
+            for m in PROGRESS.finditer(log):
+                durations.setdefault(m[1], set()).add(float(m[4]))
+            self.assertEqual(set(durations), {"open", "minimize", "restore", "desktop", "magnifier", "snap-preview",
+                                              "close"}, "no morph")
+            for name, values in durations.items():
+                self.assertEqual(values, {0.0} if name == "magnifier" else {fast}, name)
+            geometry = {}
+            for m in GEOMETRY.finditer(log):
+                geometry.setdefault((m[1], m[2]), set()).add(tuple(float(v) for v in m.group(3, 4, 5, 6)))
+            self.assertTrue({name for name, _ in geometry} >= {"open", "minimize", "restore", "desktop",
+                                                                "snap-preview", "close"})
+            for (name, serial), places in geometry.items():
+                self.assertEqual(len(places), 1, f"{name} #{serial} moved: {sorted(places)}")
+                self.assertEqual(next(iter(places))[2:], (1.0, 1.0), f"{name} #{serial} scaled")
+
+            # Back on, without restarting: a new window rises again.
+            self.switch(vela, True)
+            before = len(log)
+            vela.open_window(400, 300)
+            opened = [m for m in GEOMETRY.finditer(vela.log_text()[before:]) if m[1] == "open"]
+            self.assertGreater(len({m[4] for m in opened}), 1, "the window rose")
+            self.assertTrue(all(float(m[4]) == slow for m in PROGRESS.finditer(vela.log_text()[before:])
+                                if m[1] == "open"))
 
 
 class MorphCorners(unittest.TestCase):

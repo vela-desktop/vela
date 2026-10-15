@@ -46,7 +46,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             x: toggle.checked ? parent.width - width - 4 : 4
             color: toggle.checked ? Theme.accentText : Theme.textSecondary
-            Behavior on x { NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+            Behavior on x { enabled: Theme.motion > 0; NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
             Behavior on width { NumberAnimation { duration: Theme.fast } }
         }
     }

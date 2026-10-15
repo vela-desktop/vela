@@ -53,7 +53,7 @@ Window {
             root.focusIndex = keyboard ? 0 : -1
             root.visible = true
             panel.opacity = 0
-            panel.y = Qt.binding(() => panelY - 6)
+            panel.y = Qt.binding(() => panelY - 6 * Theme.motion)
             appear.restart()
             content.forceActiveFocus()
             leaveTimer.stop()

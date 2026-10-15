@@ -23,7 +23,7 @@ Item {
     function open() {
         visible = true
         panel.opacity = 0
-        panel.scale = 1.05
+        panel.scale = 1 + 0.05 * Theme.motion
         appear.restart()
         panel.forceActiveFocus()
     }

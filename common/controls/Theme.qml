@@ -114,10 +114,16 @@ QtObject {
     // (compositor/src/motion.h), so windows and shell move the same way.
     // scripts/check-shared-values.py fails if the two copies disagree. ---
     readonly property var scale: ({ fast: 120, normal: 200, slow: 250, long: 300 })
+    // Animation effects off (Settings > Accessibility > Visual effects; the
+    // compositor reads the same key): nothing moves, and what fades takes at
+    // most `fast`. Every movement is multiplied by `motion` (1 or 0): a
+    // panel's offset and scale, a page's slide, a layout change's duration.
+    readonly property bool animationEffects: Style.animationEffects
+    readonly property real motion: animationEffects ? 1 : 0
     readonly property int fast: scale.fast // fades in, state fills
-    readonly property int normal: scale.normal // exits, popups, dialogs, page changes
-    readonly property int slow: scale.slow // panels and windows entering the scene
-    readonly property int long: scale.long // what moves across the whole window
+    readonly property int normal: animationEffects ? scale.normal : fast // exits, popups, dialogs, page changes
+    readonly property int slow: animationEffects ? scale.slow : fast // panels and windows entering the scene
+    readonly property int long: animationEffects ? scale.long : fast // what moves across the whole window
     // cubic-bezier(0, 0, 0.2, 1): a decisive start, a soft landing. For exits
     // too, which are shorter: one that starts slowly seems to ignore the click.
     readonly property var decelerate: [0.0, 0.0, 0.2, 1.0, 1.0, 1.0]

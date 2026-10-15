@@ -133,7 +133,7 @@ Item {
 
     // It comes in fading and sliding slightly from the side it starts from.
     opacity: 0
-    property real slide: above ? 8 : -8
+    property real slide: (above ? 8 : -8) * Theme.motion
     transform: Translate { y: panel.slide }
     Component.onCompleted: appear.start()
     ParallelAnimation {

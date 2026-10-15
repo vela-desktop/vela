@@ -23,6 +23,7 @@
 #include <wlr/types/wlr_seat.h>
 #include <xkbcommon/xkbcommon.h>
 #include <wlr/util/edges.h>
+#include <wlr/util/log.h>
 
 struct vela_area vela_snap_area(const struct vela_output *output, struct vela_snap snap)
 {
@@ -220,7 +221,7 @@ void vela_snapping_destroy(struct vela_snapping *snapping)
 // Grows from the center of the area and lights up.
 static void apply_preview(struct vela_snapping *snapping, double p)
 {
-    double scale = 0.9 + 0.1 * p;
+    double scale = vela_motion_effects() ? 0.9 + 0.1 * p : 1.0;
     double width = snapping->target_width * scale;
     double height = snapping->target_height * scale;
     vela_rect_node_set_size(snapping->rect, width, height);
@@ -234,6 +235,11 @@ static void apply_preview(struct vela_snapping *snapping, double p)
         alpha,
     };
     vela_rect_node_set_color(snapping->rect, &color);
+    if (vela_motion_logger) {
+        wlr_log(WLR_INFO, "animation: snap-preview #%u geometry %.3f %.3f %.4f %.4f opacity %.3f",
+            snapping->tween.serial, snapping->target_x + snapping->target_width / 2.0,
+            snapping->target_y + snapping->target_height / 2.0, scale, scale, alpha / PREVIEW_ALPHA);
+    }
 }
 
 bool vela_snap_tick_preview(struct vela_server *server, double now_ms)
@@ -310,7 +316,7 @@ void vela_snap_update_zone(struct vela_server *server)
     }
     // Below the dragged window, like Windows.
     vela_node_place_below(&snapping->rect->node, &grabbed->tree->node);
-    vela_tween_start(&snapping->tween, "snap-preview", VELA_SNAP_PREVIEW_MS, &vela_decelerate);
+    vela_tween_start(&snapping->tween, "snap-preview", vela_motion_ms(VELA_SNAP_PREVIEW_MS), &vela_decelerate);
     apply_preview(snapping, 0.0);
     vela_server_schedule_frames(server);
 }

@@ -114,10 +114,10 @@ Window {
             border.width: 1
             border.color: Theme.dialogStroke
             opacity: 0
-            scale: 1.05
+            scale: 1 + 0.05 * Theme.motion
             Component.onCompleted: {
                 opacity = Qt.binding(() => Request.closing ? 0 : 1)
-                scale = Qt.binding(() => Request.closing ? 0.98 : 1)
+                scale = Qt.binding(() => Request.closing ? 1 - 0.02 * Theme.motion : 1)
             }
             Behavior on opacity { NumberAnimation { duration: Request.closing ? Theme.fast : Theme.normal } }
             Behavior on scale {
@@ -443,10 +443,10 @@ Window {
                                 SequentialAnimation {
                                     id: shake
                                     loops: 1
-                                    NumberAnimation { target: field; property: "x"; to: -10; duration: 50 }
-                                    NumberAnimation { target: field; property: "x"; to: 10; duration: 70 }
-                                    NumberAnimation { target: field; property: "x"; to: -6; duration: 60 }
-                                    NumberAnimation { target: field; property: "x"; to: 4; duration: 50 }
+                                    NumberAnimation { target: field; property: "x"; to: -10 * Theme.motion; duration: 50 }
+                                    NumberAnimation { target: field; property: "x"; to: 10 * Theme.motion; duration: 70 }
+                                    NumberAnimation { target: field; property: "x"; to: -6 * Theme.motion; duration: 60 }
+                                    NumberAnimation { target: field; property: "x"; to: 4 * Theme.motion; duration: 50 }
                                     NumberAnimation { target: field; property: "x"; to: 0; duration: 40 }
                                 }
                                 // While PAM checks: a line running under the field.

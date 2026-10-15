@@ -262,15 +262,18 @@ bool vela_snapshot_animate(struct vela_server *server, struct vela_view *view, e
     }
     struct animation *a = animation_create(view, kind, frame);
     if (kind == VELA_SNAPSHOT_CLOSE) {
-        vela_tween_start(&a->tween, "close", VELA_WINDOW_CLOSE_MS, &vela_decelerate);
-        a->to_scale = VELA_WINDOW_CLOSE_SCALE;
+        vela_tween_start(&a->tween, "close", vela_motion_ms(VELA_WINDOW_CLOSE_MS), &vela_decelerate);
+        a->to_scale = vela_motion_effects() ? VELA_WINDOW_CLOSE_SCALE : 1.0;
     } else {
-        struct wlr_box target = vela_view_minimize_target(view);
-        vela_tween_start(&a->tween, kind == VELA_SNAPSHOT_RESTORE ? "restore" : "minimize", VELA_WINDOW_MINIMIZE_MS,
-            &vela_decelerate);
-        a->to_x = target.x + target.width / 2.0;
-        a->to_y = target.y + target.height / 2.0;
-        a->to_scale = VELA_WINDOW_MINIMIZE_SCALE;
+        vela_tween_start(&a->tween, kind == VELA_SNAPSHOT_RESTORE ? "restore" : "minimize",
+            vela_motion_ms(VELA_WINDOW_MINIMIZE_MS), &vela_decelerate);
+        // Without animation effects it fades where it is.
+        if (vela_motion_effects()) {
+            struct wlr_box target = vela_view_minimize_target(view);
+            a->to_x = target.x + target.width / 2.0;
+            a->to_y = target.y + target.height / 2.0;
+            a->to_scale = VELA_WINDOW_MINIMIZE_SCALE;
+        }
         if (kind == VELA_SNAPSHOT_RESTORE) {
             // The same flight, reversed.
             double x = a->from_x, y = a->from_y, scale = a->from_scale;
@@ -301,6 +304,9 @@ bool vela_snapshot_morph(struct vela_server *server, struct vela_view *view, str
         return false;
     }
     vela_snapshot_cancel(server, view);
+    if (!vela_motion_effects()) {
+        return false; // the window takes its new frame at once
+    }
     struct animation *a = animation_create(view, VELA_SNAPSHOT_MORPH, from);
     vela_tween_start(&a->tween, "morph", VELA_WINDOW_MAXIMIZE_MS, &vela_decelerate);
     a->to_x = to.x + to.width / 2.0;
@@ -343,10 +349,17 @@ bool vela_snapshots_tick(struct vela_server *server, double now_ms, double wall_
         // flying to the taskbar is an image of itself, scaled with it.
         double radius = a->kind == VELA_SNAPSHOT_MORPH ? lerp(a->from_radius, a->to_radius, p)
                                                        : a->snapshot->shape.radius * fmin(scale_x, scale_y);
-        snapshot_apply(a->snapshot, lerp(a->from_x, a->to_x, p), lerp(a->from_y, a->to_y, p), scale_x, scale_y,
-            radius, (float)lerp(a->from_opacity, a->to_opacity, fade));
-        if (vela_motion_logger && a->snapshot->shape.enabled) {
-            wlr_log(WLR_INFO, "animation: %s #%u radius %.3f", a->tween.name, a->tween.serial, radius);
+        double x = lerp(a->from_x, a->to_x, p);
+        double y = lerp(a->from_y, a->to_y, p);
+        float opacity = (float)lerp(a->from_opacity, a->to_opacity, fade);
+        snapshot_apply(a->snapshot, x, y, scale_x, scale_y, radius, opacity);
+        if (vela_motion_logger) {
+            // The snapshot's center and scale.
+            wlr_log(WLR_INFO, "animation: %s #%u geometry %.3f %.3f %.4f %.4f opacity %.3f", a->tween.name,
+                a->tween.serial, x, y, scale_x, scale_y, opacity);
+            if (a->snapshot->shape.enabled) {
+                wlr_log(WLR_INFO, "animation: %s #%u radius %.3f", a->tween.name, a->tween.serial, radius);
+            }
         }
         if (!vela_tween_retired(&a->tween, wall_ms)) {
             continue;

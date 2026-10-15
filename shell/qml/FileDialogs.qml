@@ -47,7 +47,7 @@ Window {
     function show() {
         visible = true
         panel.opacity = 0
-        panel.scale = 0.96
+        panel.scale = 1 - 0.04 * Theme.motion
         appear.restart()
         panel.forceActiveFocus()
     }

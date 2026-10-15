@@ -48,7 +48,7 @@ Item {
         anchors.centerIn: parent
         width: 26
         height: 26
-        scale: mouse.pressed ? 0.84 : 1
+        scale: mouse.pressed ? 1 - 0.16 * Theme.motion : 1
 
         Behavior on scale {
             NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
@@ -67,6 +67,7 @@ Item {
         opacity: root.active || root.running ? 1 : 0
 
         Behavior on width {
+            enabled: Theme.motion > 0
             NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
         }
         Behavior on color {

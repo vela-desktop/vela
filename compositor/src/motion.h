@@ -24,7 +24,8 @@ double vela_curve_eval(const struct vela_curve *curve, double x);
 
 // A fixed-duration interpolation. Its start time is fixed by the first frame
 // that reads it, so the first frame drawn is always exactly the initial state,
-// however long passes between the request and the frame.
+// however long passes between the request and the frame. One of duration 0 is
+// finished on its first frame.
 //
 // Two clocks (docs/visual-coherence.md §6.2). Each output's frame shows the
 // state at its own predicted presentation time (vela_tween_progress), which
@@ -53,6 +54,15 @@ bool vela_tween_retired(struct vela_tween *tween, double wall_ms);
 // when it retires, go to the compositor's log (the tests read it); NULL:
 // nowhere.
 extern void (*vela_motion_logger)(const char *line);
+
+// Animation effects (animation-effects in vela.conf, Settings > Accessibility
+// > Visual effects; docs/visual-coherence.md §6.5). Off, nothing moves: no
+// rise, slide, scale, flight or zoom; what fades still fades, within
+// VELA_MOTION_FAST_MS. Every animation asks vela_motion_effects() before using
+// an amount of movement and passes its duration through vela_motion_ms().
+void vela_motion_set_effects(bool on);
+bool vela_motion_effects(void);
+double vela_motion_ms(double duration_ms);
 
 // The duration scale. fast: changes of state, small things (the snap
 // preview, a magnifier step); normal: exits; slow: entrances; long: what moves

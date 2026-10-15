@@ -68,7 +68,7 @@ Window {
             visible = true
             Effects.setBlur(root, [Qt.rect(pill.x, 12, pill.width, pill.height)])
             pill.opacity = 0
-            slide.y = 12
+            slide.y = 12 * Theme.motion
             fade.stop()
             appear.restart()
         } else if (fade.running) {

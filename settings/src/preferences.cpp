@@ -219,6 +219,7 @@ void Preferences::reloadCompositor()
     m_colorFilterShortcut = flag(QStringLiteral("color-filters-shortcut"), false);
     m_magnifierStep = value(QStringLiteral("magnifier-step"), QStringLiteral("100")).toInt();
     m_stickyKeys = flag(QStringLiteral("sticky-keys"), false);
+    m_animationEffects = flag(QStringLiteral("animation-effects"), true);
     m_mouseSpeed = std::clamp(value(QStringLiteral("mouse-speed"), QStringLiteral("10")).toInt(), 1, 20);
     m_mousePrecision = flag(QStringLiteral("mouse-precision"), true);
     m_mouseLeftHanded = value(QStringLiteral("mouse-primary-button"), QStringLiteral("left")) == QLatin1String("right");
@@ -740,6 +741,15 @@ void Preferences::setStickyKeys(bool on)
     if (on != m_stickyKeys) {
         m_stickyKeys = on;
         saveCompositor({ { QStringLiteral("sticky-keys"), yesNo(on) } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setAnimationEffects(bool on)
+{
+    if (on != m_animationEffects) {
+        m_animationEffects = on;
+        saveCompositor({ { QStringLiteral("animation-effects"), yesNo(on) } });
         emit accessibilityChanged();
     }
 }

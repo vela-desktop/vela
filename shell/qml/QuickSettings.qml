@@ -30,7 +30,7 @@ Window {
         visible = true
         Menus.quickSettingsOpen = true
         panel.opacity = 0
-        slide.y = 12
+        slide.y = 12 * Theme.motion
         appear.restart()
         panel.forceActiveFocus()
         updateBlur()
@@ -132,7 +132,7 @@ Window {
     ParallelAnimation {
         id: pageIn
         NumberAnimation { target: pages; property: "opacity"; from: 0; to: 1; duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        NumberAnimation { target: pageSlide; property: "x"; from: 24; to: 0; duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+        NumberAnimation { target: pageSlide; property: "x"; from: 24 * Theme.motion; to: 0; duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
     }
 
     // A tile: on (accent color) or off, with the label below. `split`: an
@@ -448,7 +448,7 @@ Window {
                 height: width
                 radius: width / 2
                 color: toggle.checked ? "white" : Theme.textSecondary
-                Behavior on x { NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+                Behavior on x { enabled: Theme.motion > 0; NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
             }
         }
         MouseArea {

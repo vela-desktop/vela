@@ -622,17 +622,24 @@ void vela_view_set_activated(struct vela_view *view, bool on)
 
 static void apply_open_frame(struct vela_view *view, double progress)
 {
-    // Maximized and fullscreen windows only fade in.
-    int rise = (view->maximized || view->fullscreen) ? 0 : VELA_WINDOW_OPEN_RISE;
-    vela_node_set_position(&view->tree->node, view->target_x, view->target_y + (1.0 - progress) * rise);
+    // Maximized and fullscreen windows only fade in, and so does every window
+    // without animation effects.
+    int rise = (view->maximized || view->fullscreen || !vela_motion_effects()) ? 0 : VELA_WINDOW_OPEN_RISE;
+    double y = view->target_y + (1.0 - progress) * rise;
+    vela_node_set_position(&view->tree->node, view->target_x, y);
     // Opacity reaches 1 a little before the motion ends: the window is
     // readable at once, the final motion is just "settling".
-    vela_node_set_opacity(&view->tree->node, (float)fmin(1.0, progress * 1.4));
+    float opacity = (float)fmin(1.0, progress * 1.4);
+    vela_node_set_opacity(&view->tree->node, opacity);
+    if (vela_motion_logger) {
+        wlr_log(WLR_INFO, "animation: open #%u geometry %.3f %.3f 1 1 opacity %.3f", view->open_tween.serial,
+            view->target_x, y, opacity);
+    }
 }
 
 static void start_open_animation(struct vela_view *view)
 {
-    vela_tween_start(&view->open_tween, "open", VELA_WINDOW_OPEN_MS, &vela_decelerate);
+    vela_tween_start(&view->open_tween, "open", vela_motion_ms(VELA_WINDOW_OPEN_MS), &vela_decelerate);
     view->animating = true;
     view->open_frames = 0;
     apply_open_frame(view, 0.0);

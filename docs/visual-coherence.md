@@ -7,8 +7,9 @@ purpose, the invariants the code must keep, and the changes, in the order
 they are made and with how each is verified.
 
 > **Status:** approved design, implemented in the order of §8; done: PR 1
-> (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4). Each change has one
-> explanation, in §6; the plan in §8 only says which pull request carries it.
+> (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4), PR 5 (§6.5). Each change has
+> one explanation, in §6; the plan in §8 only says which pull request carries
+> it.
 
 ## 1. Goals
 
@@ -474,8 +475,9 @@ accessibility keys, shown as Settings > Accessibility > Visual effects >
 Animation effects, as on Windows. Off means:
 
 - **no movement**: slides, rises, scales, the minimize flight, the desktop
-  slide, the magnifier's zoom, layout changes (a panel's height, a field
-  opening);
+  slide, the magnifier's zoom (it happens at once), layout changes (a panel's
+  height, a field opening); maximize and restore don't morph, the window takes
+  its new frame at once;
 - **fades kept, at most `fast`**: a window that closes fades where it is, a
   minimized one fades out, a desktop switch cross-fades. A change stays visible
   as a change;
@@ -497,10 +499,17 @@ are already read:
   `PanelMotion`'s offset and scale, a page's slide, the duration of a height
   change.
 
+Until `PanelMotion` exists (PR 8), the shell's panels, Settings' pages and
+dialogs, and the polkit prompt multiply their existing offsets and scales by
+`Theme.motion`, and their layout `Behavior`s are enabled only with it.
+
 **Verified by** the animation log for each window animation with the switch off
-(no change of position or scale, opacity done within 120 ms), a Qt Quick Test
-for `PanelMotion` (§6.9), and a functional test that flips the switch through
-Settings' `vela.conf` and `reload-config` without restarting anything.
+(each recipe logs its `geometry`, position and scale, which stays put; every
+duration is `fast`, the magnifier's 0; no morph), a Qt Quick Test for
+`PanelMotion` (§6.9), a functional test that flips the switch through
+Settings' `vela.conf` and `reload-config` without restarting anything
+(`test_animation.AnimationEffects`), and `shell-appearance-effects`, which
+checks that `Style` follows the file.
 
 ### 6.6 The compositor draws the shell's colors (D7, D8, D9)
 

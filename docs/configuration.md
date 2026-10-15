@@ -49,6 +49,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `color-filters-shortcut` | `no` | Allow Super+Ctrl+C to toggle color filters. |
 | `magnifier-step` | `100` | Magnifier step in percent. |
 | `sticky-keys` | `no` | Sticky modifier keys. |
+| `animation-effects` | `yes` | Windows and the shell's panels move as they open, close and change. `no`: nothing moves (no rise, slide, scale, flight to the taskbar or magnifier zoom) and what fades takes at most 120 ms ([visual coherence](visual-coherence.md#65-animation-effects-one-switch-d11)). Settings > Accessibility > Visual effects. |
 | `tearing` | `yes` | Allow fullscreen apps that explicitly request tearing. |
 | `variable-refresh` | `games` | VRR policy: `no`, `games` or `always`. |
 | `mouse-speed` | `10` | Pointer speed, 1–20. |
@@ -169,7 +170,7 @@ These variables are for diagnosis rather than normal user configuration.
 | `VELA_DEBUG=1` | Enable verbose wlroots logging. |
 | `VELA_DEBUG_SCANOUT=1` | Log why a fullscreen surface is not eligible for direct scanout. |
 | `VELA_DEBUG_DAMAGE=1` | Force full-output damage every frame, bypassing normal damage reduction for diagnosis. |
-| `VELA_DEBUG_ANIMATION=1` | Log, per output and frame, the presentation and wall times and each running animation's progress, and a line when an animation retires (`tests/functional/test_animation.py` reads it). |
+| `VELA_DEBUG_ANIMATION=1` | Log, per output and frame, the presentation and wall times and each running animation's progress and geometry (position, scale, opacity), and a line when an animation retires (`tests/functional/test_animation.py` reads it). |
 | `VELA_DEBUG_SYNC=1` | Make the CPU wait for the GPU on every renderer submission; useful when isolating synchronization problems. |
 | `VELA_DEBUG_LINEAR=1` | Force linear render buffers instead of normal tiled/modifier allocation; useful for allocator/modifier diagnosis. |
 | `VELA_DEBUG_INPUT=1` | Enable the virtual keyboard/pointer protocol used by `vela-input`. Off by default for security. |

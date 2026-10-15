@@ -107,7 +107,7 @@ Window {
         if (!visible) {
             visible = true
             panel.opacity = 0
-            slide.y = 8
+            slide.y = 8 * Theme.motion
             appear.restart()
         }
         updateBlur()

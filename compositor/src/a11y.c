@@ -249,6 +249,7 @@ void vela_a11y_load(struct vela_a11y *a11y)
     bool night = vela_config_flag(&settings, "night-light", false);
     bool filter = vela_config_flag(&settings, "color-filters", false);
     bool sticky = vela_config_flag(&settings, "sticky-keys", false);
+    vela_motion_set_effects(vela_config_flag(&settings, "animation-effects", true));
     vela_config_finish(&settings);
 
     // A new (or changed) schedule decides at once; otherwise the file's value
@@ -344,6 +345,12 @@ void vela_a11y_set_sticky_keys(struct vela_a11y *a11y, bool on, bool save)
 
 // ------------------------------------------------------------- magnifier --
 
+// Zooming is movement: without animation effects it happens at once.
+static double zoom_ms(void)
+{
+    return vela_motion_effects() ? VELA_MAGNIFIER_MS : 0.0;
+}
+
 void vela_a11y_set_magnifier(struct vela_a11y *a11y, bool on)
 {
     if (on == a11y->magnifier) {
@@ -353,7 +360,7 @@ void vela_a11y_set_magnifier(struct vela_a11y *a11y, bool on)
     // Like Windows: it starts at double.
     a11y->zoom_target = on ? 1.0 + a11y->zoom_step / 100.0 : 1.0;
     a11y->zoom_from = a11y->zoom;
-    vela_tween_start(&a11y->zoom_tween, "magnifier", VELA_MAGNIFIER_MS, &vela_decelerate);
+    vela_tween_start(&a11y->zoom_tween, "magnifier", zoom_ms(), &vela_decelerate);
     a11y->zoom_animating = true;
     struct wlr_cursor *cursor = a11y->server->cursor;
     if (on && !a11y->zoom_output) {
@@ -383,7 +390,7 @@ void vela_a11y_zoom(struct vela_a11y *a11y, int direction)
     }
     a11y->zoom_target = target;
     a11y->zoom_from = a11y->zoom;
-    vela_tween_start(&a11y->zoom_tween, "magnifier", VELA_MAGNIFIER_MS, &vela_decelerate);
+    vela_tween_start(&a11y->zoom_tween, "magnifier", zoom_ms(), &vela_decelerate);
     a11y->zoom_animating = true;
     vela_server_schedule_frames(a11y->server);
 }

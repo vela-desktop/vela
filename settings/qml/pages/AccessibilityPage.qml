@@ -4,9 +4,10 @@
 import QtQuick
 import Vela.Controls
 
-// Accessibility, like Windows 11: the magnifier, color filters (also with
-// Win+Ctrl+C) and sticky keys. The compositor applies them
-// (compositor/src/a11y.c).
+// Accessibility, like Windows 11: animation effects, the magnifier, color
+// filters (also with Win+Ctrl+C) and sticky keys. The compositor applies them
+// (compositor/src/a11y.c); animation effects reach every Vela process too
+// (Theme.animationEffects).
 Page {
     id: page
     readonly property var steps: [25, 50, 100, 150, 200, 400]
@@ -16,6 +17,19 @@ Page {
         { value: "protanopia", text: qsTr("Red-green (red weak, protanopia)") },
         { value: "tritanopia", text: qsTr("Blue-yellow (tritanopia)") }
     ]
+
+    CardGroup {
+        title: qsTr("Visual effects")
+        Card {
+            icon: "preferences-desktop-effects"
+            title: qsTr("Animation effects")
+            description: qsTr("Windows and panels move as they open, close and change. Off, they only fade, briefly")
+            trailing: Toggle {
+                checked: Prefs.animationEffects
+                onToggled: on => Prefs.animationEffects = on
+            }
+        }
+    }
 
     CardGroup {
         title: qsTr("Vision")

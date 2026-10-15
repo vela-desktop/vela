@@ -35,7 +35,7 @@ Item {
         anchors.centerIn: parent
         width: parent.width - 12
         spacing: 8
-        scale: mouse.pressed ? 0.92 : 1
+        scale: mouse.pressed ? 1 - 0.08 * Theme.motion : 1
 
         Behavior on scale {
             NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }

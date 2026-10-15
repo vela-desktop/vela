@@ -26,6 +26,8 @@
 //   color-filters-shortcut=no  Win+Ctrl+C turns it on and off
 //   magnifier-step=100       how much Win+plus zooms in (percent)
 //   sticky-keys=no           Shift, Ctrl, Alt and Win stay pressed
+//   animation-effects=yes    windows move as they open, close, minimize...
+//                            (no: they only fade, briefly)
 //   tearing=yes              for fullscreen games that ask for it
 //   variable-refresh=games   VRR: no, games (fullscreen apps), always
 //   mouse-speed=10           1-20, like the Windows pointer

@@ -275,7 +275,7 @@ Window {
         readonly property real restY: 10
         // How far it rises while opening. The part sticking out below the
         // window is cut at the taskbar's edge.
-        readonly property real slide: 140
+        readonly property real slide: 140 * Theme.motion
         x: 10
         y: restY
         width: root.width - 20
@@ -475,7 +475,7 @@ Window {
                     width: 20
                     height: 20
                     preferredRendererType: Shape.CurveRenderer
-                    scale: powerMouse.pressed ? 0.9 : 1
+                    scale: powerMouse.pressed ? 1 - 0.1 * Theme.motion : 1
                     Behavior on scale {
                         NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
                     }

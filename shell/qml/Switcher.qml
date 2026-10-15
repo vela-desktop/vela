@@ -76,7 +76,7 @@ Window {
         id: appear
         NumberAnimation { target: panel; property: "opacity"; from: 0; to: 1; duration: Theme.fast }
         NumberAnimation {
-            target: panel; property: "scale"; from: 0.96; to: 1; duration: Theme.normal
+            target: panel; property: "scale"; from: 1 - 0.04 * Theme.motion; to: 1; duration: Theme.normal
             easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
         }
     }

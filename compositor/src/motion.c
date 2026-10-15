@@ -13,6 +13,23 @@ const struct vela_curve vela_decelerate = { VELA_DECELERATE_CURVE };
 
 void (*vela_motion_logger)(const char *line);
 
+static bool effects = true;
+
+void vela_motion_set_effects(bool on)
+{
+    effects = on;
+}
+
+bool vela_motion_effects(void)
+{
+    return effects;
+}
+
+double vela_motion_ms(double duration_ms)
+{
+    return effects ? duration_ms : fmin(duration_ms, VELA_MOTION_FAST_MS);
+}
+
 static void log_line(const char *format, ...) __attribute__((format(printf, 1, 2)));
 
 static void log_line(const char *format, ...)
@@ -111,7 +128,9 @@ double vela_tween_progress(struct vela_tween *tween, double now_ms)
     if (tween->start_ms < 0.0) {
         tween->start_ms = now_ms;
     }
-    double x = vela_clampd((now_ms - tween->start_ms) / tween->duration_ms, 0.0, 1.0);
+    double x = tween->duration_ms > 0.0
+        ? vela_clampd((now_ms - tween->start_ms) / tween->duration_ms, 0.0, 1.0)
+        : 1.0;
     double progress = tween->curve ? vela_curve_eval(tween->curve, x) : x;
     if (vela_motion_logger) {
         const struct vela_curve *c = tween->curve ? tween->curve : &(const struct vela_curve) { 0.0, 0.0, 1.0, 1.0 };

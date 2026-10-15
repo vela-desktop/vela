@@ -33,7 +33,7 @@ Window {
         Menus.placeOnTargetScreen(root)
         visible = true
         content.opacity = 0
-        content.scale = 1.03
+        content.scale = 1 + 0.03 * Theme.motion
         appear.restart()
         content.forceActiveFocus()
         updateBlur()
@@ -229,8 +229,8 @@ Window {
                     y: place.y
                     width: place.width
                     height: place.height
-                    Behavior on x { enabled: root.dragging === ""; NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
-                    Behavior on y { enabled: root.dragging === ""; NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+                    Behavior on x { enabled: root.dragging === "" && Theme.motion > 0; NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+                    Behavior on y { enabled: root.dragging === "" && Theme.motion > 0; NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
 
                     // The one being dragged: a copy following the mouse.
                     Rectangle {

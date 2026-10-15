@@ -89,6 +89,7 @@ class Preferences : public QObject {
     Q_PROPERTY(QString colorFilterKind READ colorFilterKind WRITE setColorFilterKind NOTIFY accessibilityChanged)
     Q_PROPERTY(bool colorFilterShortcut READ colorFilterShortcut WRITE setColorFilterShortcut NOTIFY accessibilityChanged)
     Q_PROPERTY(bool stickyKeys READ stickyKeys WRITE setStickyKeys NOTIFY accessibilityChanged)
+    Q_PROPERTY(bool animationEffects READ animationEffects WRITE setAnimationEffects NOTIFY accessibilityChanged)
 
 public:
     explicit Preferences(QObject* parent = nullptr);
@@ -168,6 +169,8 @@ public:
     void setColorFilterShortcut(bool on);
     bool stickyKeys() const { return m_stickyKeys; }
     void setStickyKeys(bool on);
+    bool animationEffects() const { return m_animationEffects; }
+    void setAnimationEffects(bool on);
 
     int mouseSpeed() const { return m_mouseSpeed; }
     void setMouseSpeed(int value);
@@ -260,6 +263,7 @@ private:
     QString m_colorFilterKind = QStringLiteral("grayscale");
     bool m_colorFilterShortcut = false;
     bool m_stickyKeys = false;
+    bool m_animationEffects = true;
     int m_mouseSpeed = 10;
     bool m_mousePrecision = true;
     bool m_mouseLeftHanded = false;
