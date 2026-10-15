@@ -25,7 +25,7 @@ ISSUER = "https://token.actions.githubusercontent.com"
 def curl(url: str) -> bytes:
     return subprocess.check_output(
         ["curl", "-fsSL", "--retry", "1", "--connect-timeout", "5",
-         "--max-time", "30", url], stderr=subprocess.PIPE)
+         "--max-time", "30", url], stderr=subprocess.PIPE
     )
 
 
