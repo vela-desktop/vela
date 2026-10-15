@@ -71,8 +71,7 @@ TEST(Color, MatrixMultiplyWithIdentity)
     }
 }
 
-// The final tick of a shader Night Light fade changes every pixel, even
-// though the tint is now completely off. A gamma-only DRM tick does not.
+/** Check shader repaint policy on fade completion and backend switches. */
 TEST(NightLightBackend, FullRepaintOnShaderFadeAndBackendSwitch)
 {
     EXPECT_TRUE(vela_night_light_repaint_required(false, true, true, true, false, false));
@@ -84,10 +83,7 @@ TEST(NightLightBackend, FullRepaintOnShaderFadeAndBackendSwitch)
     EXPECT_FALSE(vela_night_light_repaint_required(false, false, true, true, false, false));
 }
 
-// A previously rejected LUT clear stays deferred between animation ticks,
-// but an explicit retry (including enabling the workaround) must allow one
-// more attempt. This prevents the old, potentially corrupted LUT being kept
-// until the next minute-long timer retry after the user toggles the fix.
+/** Check that a rejected LUT clear is deferred only until explicit retry. */
 TEST(NightLightBackend, ClearDeferralCanBeOverriddenByExplicitRetry)
 {
     EXPECT_TRUE(vela_night_light_defer_clear(true, true, false, true));
