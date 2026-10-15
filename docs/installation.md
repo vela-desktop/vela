@@ -6,9 +6,10 @@ Vela requires a Vulkan 1.4 GPU and a working PipeWire/WirePlumber audio stack. T
 
 ## Arch Linux, CachyOS, EndeavourOS
 
-Vela installs as a native `vela-git` package. Install `git`, `curl` and `base-devel` first, then run:
+Vela installs as a native `vela-git` package. Install `git`, `curl`, `base-devel` and `github-cli` (required for signed prebuilt package verification with the current updater):
 
 ```sh
+sudo pacman -S --needed git curl base-devel github-cli
 git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update
 ```
@@ -105,7 +106,7 @@ For Fedora, `dnf reinstall` handles a same-version forced reinstall.
 
 ## Other distributions
 
-Build from source (below), then:
+Follow the [source-build instructions](development.md#build), then:
 
 ```sh
 sudo cmake --install build   # into /usr/local, plus /etc/pam.d and /etc/xdg
