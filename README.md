@@ -323,6 +323,13 @@ installs it with DNF. On Fedora, `--build` also installs build dependencies with
 `dnf builddep`. An existing Arch package is **never** installed on Fedora.
 Use `vela-update --check` to inspect changes without installing.
 
+The RPM requires Git, DNF5, RPM and `flock` (from util-linux), even when
+installed directly without following the bootstrap commands above. It recommends
+`curl` and `gh` for signed binary downloads, plus `rpm-build` and
+`dnf5-plugins` for the local build fallback. If weak dependencies were
+disabled during installation, install those optional tools before using their
+respective updater modes.
+
 Fedora RPMs are built and installation-tested in a fresh Fedora 44 container
 before release; a physical GPU login and other Fedora versions still require
 testing. Fedora's immutable/ostree-based variants are not supported by this
@@ -357,7 +364,8 @@ To prepare a package for a test branch, run the **Build** workflow manually in
 GitHub Actions, selecting that branch (or run
 `gh workflow run build.yml --ref YOUR_TEST_BRANCH`). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce both the `vela-git` Arch artifact and the
 `vela-fedora-rpm` artifact, as on pushes to `main`; workflow artifacts expire
-after 14 days.
+after 14 days. PR builds also smoke-test both packages, but their artifacts are
+not attested, and `vela-update` does not accept them as trusted downloads.
 Public `main` packages are also published as per-commit GitHub prereleases
 (tagged `alpha-<full-commit-sha>`) and can be downloaded without a GitHub account.
 Only the **five most recently published Vela alpha releases** are kept; older
