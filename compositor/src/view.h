@@ -118,8 +118,6 @@ struct vela_view {
     bool x11_wine_style_dirty;
     // Only a fullscreen exit initiated by a Wine style change arms re-entry.
     bool x11_wine_restore_fullscreen;
-    // True if the decorated frame was saved before Wine removed its titlebar.
-    bool x11_wine_restore_box_saved;
 
     struct wl_listener map;
     struct wl_listener unmap;
