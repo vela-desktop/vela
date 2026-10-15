@@ -20,13 +20,14 @@ packages. The RPM smoke test also checks installed files and shared-library
 linkage; neither test substitutes for a physical GPU login. PR-only package tests remain independent
 and do not replace this release gate.
 
-`vela-update` also verifies downloaded **public release assets** and
-**GitHub Actions artifacts** with `gh attestation verify`. Verification
+`vela-update` verifies downloaded **public release assets** and
+**GitHub Actions artifacts** using the public GitHub attestation API and
+`cosign verify-blob-attestation`, without using `gh` for verification. Verification
 requires the expected repository, signer workflow
 `.github/workflows/build.yml`, the precise selected 40-character source SHA,
 and GitHub-hosted runners. For public alpha releases it also requires the
 `refs/heads/main` source ref. A failed or missing attestation, a missing
-GitHub CLI, or an unavailable verification service means **no binary install**:
+Cosign verifier, or an unavailable verification service means **no binary install**:
 the updater shows GitHub CLI's verification error and falls back to building
 from the selected Git revision with native packaging tools
 (`makepkg` on Arch, `rpmbuild` plus `dnf builddep` on Fedora 44 only).
@@ -39,9 +40,9 @@ are outside the updater's verification boundary.
 
 ### Requirements for users
 
-Install GitHub CLI (`gh`) for verified prebuilt packages; no GitHub login
-should be necessary when verifying public attestations, subject to current
-GitHub API and CLI requirements. If verification is unavailable, use
+Install Cosign for verified prebuilt packages (Arch: `sudo pacman -S cosign`;
+Fedora 44: use the upstream RPM instructions in [installation.md](installation.md#fedora-44)).
+No GitHub login or GitHub CLI is needed for public alpha releases. If verification is unavailable, use
 `vela-update --build`. Older releases created before signed attestations were
 enabled cannot be trusted by the updater solely on their checksum and will be
 built locally instead. No `--insecure` bypass is provided.
@@ -101,9 +102,9 @@ sh -n packaging/vela-update
 python3 -m unittest discover -s packaging/tests -p 'test_fedora_update.py' -v
 ```
 
-Offline tests simulate successful and rejected `gh attestation verify`
+Offline tests simulate successful and rejected `cosign verify-blob-attestation`
 results and assert fail-closed installation behavior. They **do not simulate
 Sigstore cryptographic verification**; end-to-end attestations are generated
 by the main-branch package job, checked again by the publisher and verified
-with the real `gh` client. Both package-smoke jobs install their respective uploaded
+with the real `cosign` client in Vela's updater; publishing still uses `gh` on GitHub Actions. Both package-smoke jobs install their respective uploaded
 binary and must pass before a public alpha is published.
