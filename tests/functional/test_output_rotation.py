@@ -227,6 +227,41 @@ class MixedOutputRotation(unittest.TestCase):
 class RotatedDamage(unittest.TestCase):
     """Compare partial updates, blur and window movement with independent full redraws."""
 
+    def test_software_cursor_damage_uses_upright_coordinates(self):
+        """Cursor-only damage must draw the new pointer and erase its old pixels."""
+        for angle in ("90", "270", "flipped-90", "flipped-270"):
+            with self.subTest(angle=angle), Session(scale=1) as vela:
+                vela.randr("--output", "HEADLESS-1", "--transform", angle)
+                window = vela.open_window(300, 200)
+                vela.keys("super+up")
+                vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized cursor test pattern")
+                # A shader filter forces wlroots to use the software cursor.
+                # PAINT_CURSORS remains disabled in screen-dump: the screenshot
+                # must contain the cursor in Vela's rendered buffer.
+                vela.command("color-filter on")
+                vela.input("move", 60, 90, "sleep", 250)
+                base = vela.pixels()
+                first = (240, 380)
+                second = (600, 780)
+
+                def patch(image, position):
+                    x, y = position
+                    return tuple(row[(x - 8) * 3:(x + 40) * 3]
+                                 for row in image.rows[y - 8:y + 40])
+
+                vela.input("move", *first, "sleep", 150)
+                vela.wait_for(lambda _: patch(vela.pixels(), first) != patch(base, first),
+                              read_state=False, timeout=4, what="software cursor at first position")
+                vela.input("move", *second, "sleep", 150)
+
+                def moved_and_erased(_):
+                    image = vela.pixels()
+                    return (patch(image, first) == patch(base, first)
+                            and patch(image, second) != patch(base, second))
+
+                vela.wait_for(moved_and_erased, read_state=False, timeout=4,
+                              what="old cursor region restored and new cursor drawn")
+
     def test_partial_redraw_matches_full_on_rotated_outputs(self):
         """Portrait damage and blurred layers must agree at integer and fractional scales."""
         for angle, scale in (("90", 1), ("270", 1.25), ("flipped-90", 1), ("flipped-270", 1.25)):
