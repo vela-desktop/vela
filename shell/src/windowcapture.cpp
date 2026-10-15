@@ -71,7 +71,7 @@ QImage uprightImage(const vela_capture_frame* frame)
     QImage image(int(width), int(height), format);
     if (image.isNull()) return {};
 
-    const std::ptrdiff_t stride = static_cast<ptrdiff_t>(frame->stride);
+    const std::ptrdiff_t stride = static_cast<std::ptrdiff_t>(frame->stride);
     const uchar* first = frame->pixels;
     std::ptrdiff_t xStep = 4, yStep = stride;
     switch (frame->transform) {
