@@ -140,6 +140,7 @@ public:
     void setNightLight(bool on);
     int nightStrength() const { return m_nightStrength; }
     void setNightStrength(int strength);
+    /** Whether Night Light uses Vulkan tinting instead of the DRM gamma LUT. */
     bool nightNvidiaFix() const { return m_nightNvidiaFix; }
     void setNightNvidiaFix(bool on);
     QString nightSchedule() const { return m_nightSchedule; }
