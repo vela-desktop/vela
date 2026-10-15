@@ -6,7 +6,54 @@ For renderer design and frame scheduling, see [renderer.md](renderer.md). For th
 
 ## Build
 
-Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3. Distribution package lists are in the [README](../README.md#build-from-source).
+Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3. Distribution package lists are below in [distribution dependencies](#distribution-dependencies).
+
+## Distribution dependencies
+
+These packages are for **building Vela from source**, not the much smaller requirements of the [user installer](installation.md). Keep them synchronized with the CI's build dependencies.
+
+<details>
+<summary><b>Arch / CachyOS / EndeavourOS</b></summary>
+
+```sh
+sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland wayland-protocols \
+    libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
+    vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
+    pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
+    pipewire wireplumber
+```
+</details>
+
+<details>
+<summary><b>Fedora</b></summary>
+
+```sh
+sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
+    wlroots-devel wayland-devel wayland-protocols-devel libxkbcommon-devel \
+    pixman-devel libinput-devel libdrm-devel mesa-libgbm-devel \
+    qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel \
+    qt6-qttools-devel qt6-qtsvg-devel qt6-qtwayland-devel layer-shell-qt-devel \
+    vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
+    fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
+    zlib-devel gtest-devel python3 python3-numpy python3-pillow shared-mime-info \
+    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber
+```
+</details>
+
+<details>
+<summary><b>openSUSE Tumbleweed (experimental; not currently validated by CI)</b></summary>
+
+```sh
+sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
+    libxkbcommon-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
+    qt6-svg-devel qt6-waylandclient-devel layer-shell-qt6-devel \
+    vulkan-headers vulkan-devel shaderc libgbm-devel libdrm-devel \
+    freetype2-devel harfbuzz-devel fontconfig-devel pam-devel librsvg-devel \
+    zlib-devel gtest python3
+```
+</details>
+
+## Build commands
 
 The normal development build is:
 
@@ -226,7 +273,9 @@ polkit/             vela-polkit-agent and vela-polkit-prompt (docs/polkit-agent.
 common/             Vela.Controls: theme, controls and blur shared by the Qt Quick apps;
                     audio/: vela-audio, the shell's and Settings' audio backend (docs/audio.md)
 session/            login entry, systemd target and portal integration
-packaging/arch/     PKGBUILD and vela-update
+packaging/          cross-distro vela-update and shared updater tests
+packaging/arch/     Arch Linux PKGBUILD
+packaging/fedora/   Fedora RPM spec and RPM-specific tests
 report/             vela-report: shared Python core/CLI and standalone Qt Widgets GUI
 tools/              development and test clients
 tests/functional/   headless functional scenarios

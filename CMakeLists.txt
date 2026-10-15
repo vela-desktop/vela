@@ -29,7 +29,7 @@ if(VELA_BUILD_TOOLS)
     enable_testing()
     find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
     add_test(NAME packaging-update COMMAND ${Python3_EXECUTABLE} -m unittest discover
-        -s ${PROJECT_SOURCE_DIR}/packaging/arch/tests -v)
+        -s ${PROJECT_SOURCE_DIR}/packaging/tests -v)
     set_tests_properties(packaging-update PROPERTIES TIMEOUT 120)
     add_test(NAME script-tests COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/scripts/tests -v)

@@ -139,7 +139,7 @@ ctest --test-dir build -R '^functional$' --output-on-failure
 Package and updater contracts (also runnable without building Vela):
 
 ```sh
-python3 -m unittest discover -s packaging/arch/tests -v
+python3 -m unittest discover -s packaging/tests -v
 ctest --test-dir build -R '^packaging-update$' --output-on-failure
 ```
 

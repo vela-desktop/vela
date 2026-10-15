@@ -3,9 +3,10 @@
 
 name: Fedora Build
 
-# PR validation only; post-merge build and packaging run in build.yml.
+# Called by build.yml on PRs and main pushes, gating public releases.
+# Can also be run independently for debugging without duplicating PR jobs.
 on:
-  pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -17,9 +18,9 @@ concurrency:
 
 jobs:
   fedora:
-    name: Fedora 45
+    name: Fedora 44
     runs-on: ubuntu-latest
-    container: fedora:45
+    container: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 # official Docker Fedora 44 OCI image index, pinned intentionally
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-fedora
       CCACHE_MAXSIZE: 350M
@@ -36,7 +37,7 @@ jobs:
           qt6-qtbase-devel qt6-qtbase-private-devel
           qt6-qtdeclarative-devel qt6-qtsvg-devel
           qt6-qtwayland-devel qt6-qttools-devel layer-shell-qt-devel
-          gtest-devel python3 dbus-daemon
+          gtest-devel python3 dbus-daemon shared-mime-info
           pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,9 +48,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache-fedora
-          key: ccache-fedora45-relwithdebinfo-v1-${{ github.sha }}
+          key: ccache-fedora44-relwithdebinfo-v1-${{ github.sha }}
           restore-keys: |
-            ccache-fedora45-relwithdebinfo-v1-
+            ccache-fedora44-relwithdebinfo-v1-
 
       - name: Configure
         run: >-

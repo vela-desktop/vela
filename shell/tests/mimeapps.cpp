@@ -9,6 +9,7 @@
 
 #include "mimeapps.h"
 
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -88,10 +89,13 @@ private slots:
     {
         // Written with the old name, it's found with the new one too (and vice
         // versa).
-        write(config() + QStringLiteral("/mimeapps.list"), "[Default Applications]\nvideo/x-matroska=kate.desktop;\n");
-        QCOMPARE(MimeApps::defaultFor(QStringLiteral("video/matroska")), QStringLiteral("kate.desktop"));
-        QVERIFY(MimeApps::setDefault({ QStringLiteral("video/matroska") }, QStringLiteral("okular.desktop")));
-        QCOMPARE(MimeApps::defaultFor(QStringLiteral("video/x-matroska")), QStringLiteral("okular.desktop"));
+        // Explicit test-only MIME database; distribution versions may not agree
+        // on the legacy Matroska alias, so never assert it exists system-wide.
+        write(config() + QStringLiteral("/mimeapps.list"),
+            "[Default Applications]\napplication/x-vela-legacy=kate.desktop;\n");
+        QCOMPARE(MimeApps::defaultFor(QStringLiteral("application/x-vela-canonical")), QStringLiteral("kate.desktop"));
+        QVERIFY(MimeApps::setDefault({ QStringLiteral("application/x-vela-canonical") }, QStringLiteral("okular.desktop")));
+        QCOMPARE(MimeApps::defaultFor(QStringLiteral("application/x-vela-legacy")), QStringLiteral("okular.desktop"));
     }
 
     void skipsMissingApps()
@@ -112,6 +116,21 @@ int main(int argc, char* argv[])
     // (/usr/share/mime, for aliases).
     qputenv("XDG_DATA_DIRS", QFile::encodeName(dir.filePath(QStringLiteral("sys-data"))) + ":/usr/local/share:/usr/share");
     qputenv("XDG_CURRENT_DESKTOP", "Vela:KDE");
+    // Generate a deterministic MIME database in a private XDG_DATA_DIRS entry.
+    // Neither Fedora's nor Arch's system database should define these names.
+    const QString mimeDir = dir.filePath(QStringLiteral("sys-data/mime"));
+    write(mimeDir + QStringLiteral("/packages/vela-test.xml"),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<mime-info xmlns=\"http://www.freedesktop.org/standards/shared-mime-info\">\n"
+        "  <mime-type type=\"application/x-vela-canonical\">\n"
+        "    <comment>Vela test type</comment>\n"
+        "    <alias type=\"application/x-vela-legacy\"/>\n"
+        "  </mime-type>\n"
+        "</mime-info>\n");
+    if (QProcess::execute(QStringLiteral("update-mime-database"), { mimeDir }) != 0) {
+        qCritical("Unable to prepare isolated MIME alias fixture (shared-mime-info missing?)");
+        return 1;
+    }
     QCoreApplication app(argc, argv);
     MimeAppsTest test;
     return QTest::qExec(&test, argc, argv);
