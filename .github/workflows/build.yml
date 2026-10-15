@@ -80,6 +80,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Validate standalone Sigstore verifier syntax
+        run: python3 -m py_compile packaging/verify-attestation.py
       - name: Updater and package source contracts (no network or credentials)
         run: python3 -m unittest discover -s packaging/tests -v
       - name: Reporter evidence contracts (no GPU or running session)
