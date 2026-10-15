@@ -11,7 +11,34 @@ concurrency:
   group: sanitizer-tests-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      heavy: ${{ steps.paths.outputs.heavy }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 3
+      - id: paths
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != pull_request ] || ! git rev-parse 'HEAD^2' >/dev/null 2>&1; then
+            echo 'heavy=true' >> "$GITHUB_OUTPUT"
+          elif git diff --name-only 'HEAD^1' 'HEAD^2' |
+              grep -Ev '^(docs/|README\.md$|CONTRIBUTING\.md$|SECURITY\.md$|.*\.md$)' |
+              grep -q .; then
+            echo 'heavy=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'heavy=false' >> "$GITHUB_OUTPUT"
+          fi
+
   asan-ubsan:
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
