@@ -893,6 +893,10 @@ Specifiche sistema
 <context>
     <name>Displays</name>
     <message>
+        <source>Move this display to make room before changing its size or orientation.</source>
+        <translation>Sposta questo schermo per creare spazio prima di modificarne le dimensioni o l’orientamento.</translation>
+    </message>
+    <message>
         <source>The display connection was lost. Reopen Settings to try again.</source>
         <translation>La connessione agli schermi è stata interrotta. Riapri Impostazioni per riprovare.</translation>
     </message>

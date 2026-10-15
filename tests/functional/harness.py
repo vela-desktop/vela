@@ -45,7 +45,8 @@ class Session:
         vela.wait_for(lambda s: s.window(window)["snap"] == [0, 0, 6, 12])
     """
 
-    def __init__(self, scale=1.0, size="1920x1080@60", supervise=False, lock_hold_ms=None, env=None, startup=None, nofile=None):
+    def __init__(self, scale=1.0, size="1920x1080@60", supervise=False, lock_hold_ms=None, env=None, startup=None,
+                 nofile=None, expected_exit=0):
         self.scale = scale
         self.size = size
         self.supervise = supervise
@@ -53,11 +54,13 @@ class Session:
         self.extra_env = env or {}
         self.startup = startup # the startup command (-s), like the shell
         self.nofile = nofile
+        self.expected_exit = expected_exit
         self.process = None
         self.clients = []
         self.display = None
         self.directory = None
         self.shell = None
+        self.log = None
 
     # ---------------------------------------------------------- startup --
 
@@ -70,6 +73,14 @@ class Session:
         return False
 
     def start(self):
+        """Start a session and clean up partial startup on failure."""
+        try:
+            self._start()
+        except BaseException:
+            self.stop(keep_log=True)
+            raise
+
+    def _start(self):
         self.directory = tempfile.mkdtemp(prefix="vela-functional-")
         env = {key: value for key, value in os.environ.items()
                if key not in ("WAYLAND_DISPLAY", "DISPLAY", "QT_WAYLAND_RECONNECT", "WAYLAND_SOCKET")}
@@ -110,6 +121,7 @@ class Session:
         self.wait_for(lambda s: s["outputs"], what="an output")
 
     def stop(self, keep_log=False):
+        validation_errors = []
         if self.shell:
             self.shell.close()
         for client in self.clients:
@@ -120,25 +132,43 @@ class Session:
                 client.wait(2)
             except subprocess.TimeoutExpired:
                 client.kill()
-        status = 0
-        if self.process and self.process.poll() is None:
-            os.killpg(self.process.pid, signal.SIGTERM)
+                client.wait()
+        status = self.process.poll() if self.process else 0
+        if status is None:
+            try:
+                os.killpg(self.process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass # It exited between poll() and the signal; wait still records its status.
             try:
                 status = self.process.wait(5)
             except subprocess.TimeoutExpired:
-                os.killpg(self.process.pid, signal.SIGKILL)
+                try:
+                    os.killpg(self.process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                self.process.wait()
                 status = "a hang"
         if self.directory:
-            self.log.close()
-            if keep_log or status != 0:
+            if self.log:
+                self.log.close()
+            if self.process and self.env.get("VELA_VULKAN_VALIDATION") == "1":
+                with open(self.log_path, errors="replace") as log:
+                    text = log.read()
+                if "Vulkan validation layers enabled" not in text:
+                    validation_errors.append("Requested Vulkan validation layers were not enabled")
+                validation_errors.extend(line for line in text.splitlines()
+                                         if "[ERROR]" in line and "Vulkan:" in line)
+            if keep_log or status != self.expected_exit:
                 print(f"\n--- Vela log ({self.log_path}) ---")
                 with open(self.log_path, errors="replace") as log:
                     print("".join(log.readlines()[-40:]))
             shutil.rmtree(self.directory, ignore_errors=True)
         # Asked to stop, Vela closes cleanly: a crash on the way out would look
         # like a real one to the supervisor.
-        if status != 0:
-            raise AssertionError(f"vela-compositor stopped with {status}")
+        if self.process and status != self.expected_exit:
+            raise AssertionError(f"vela-compositor stopped with {status} (expected {self.expected_exit})")
+        if validation_errors:
+            raise AssertionError("Vulkan validation failed:\n" + "\n".join(validation_errors))
 
     def log_text(self):
         self.log.flush()
@@ -254,13 +284,19 @@ class Session:
                 return current
         raise TimeoutError(f"window {identifier} doesn't settle")
 
-    def screenshot(self, path):
-        subprocess.run([tool("vela-screen-dump"), path], env=self.client_env, check=True)
+    def screenshot(self, path, output=0, region=None, cursor=False):
+        """Capture upright output pixels; an optional region is (x, y, width, height)."""
+        env = dict(self.client_env, VELA_SCREEN_DUMP_OUTPUT=str(output),
+                   VELA_SCREEN_DUMP_CURSOR="1" if cursor else "0")
+        args = [tool("vela-screen-dump"), path]
+        if region is not None:
+            args.extend(str(value) for value in region)
+        subprocess.run(args, env=env, check=True)
 
-    def pixels(self):
-        """The screen now, as an Image (vela-screen-dump)."""
+    def pixels(self, output=0):
+        """The chosen output now, as an Image (vela-screen-dump)."""
         path = os.path.join(self.directory, "shot.png")
-        self.screenshot(path)
+        self.screenshot(path, output=output)
         return Image.read(path)
 
 
@@ -324,7 +360,7 @@ class FakeShell:
 
 
 class Image:
-    """A vela-screen-dump PNG: 8-bit RGB, no filters (standard library only)."""
+    """An 8-bit RGB PNG from screen-dump or Qt (standard library only)."""
 
     def __init__(self, width, height, rows):
         self.width = width
@@ -344,18 +380,56 @@ class Image:
             chunk = data[position + 8:position + 8 + length]
             if kind == b"IHDR":
                 width, height = struct.unpack(">II", chunk[:8])
-                assert chunk[8:10] == b"\x08\x02", "vela-screen-dump writes 8-bit RGB"
+                assert chunk[8:] == b"\x08\x02\x00\x00\x00", "expected non-interlaced 8-bit RGB"
             elif kind == b"IDAT":
                 packed += chunk
             position += 12 + length
         raw = zlib.decompress(packed)
         stride = 1 + width * 3
-        rows = [raw[y * stride + 1:(y + 1) * stride] for y in range(height)]
+        assert len(raw) == height * stride, "invalid PNG scanline size"
+        rows = []
+        for y in range(height):
+            filter_type = raw[y * stride]
+            row = bytearray(raw[y * stride + 1:(y + 1) * stride])
+            assert filter_type <= 4, "invalid PNG filter"
+            if filter_type:
+                previous = rows[-1] if rows else bytes(width * 3)
+                for x in range(len(row)):
+                    left = row[x - 3] if x >= 3 else 0
+                    above = previous[x]
+                    upper_left = previous[x - 3] if x >= 3 else 0
+                    if filter_type == 1:
+                        prediction = left
+                    elif filter_type == 2:
+                        prediction = above
+                    elif filter_type == 3:
+                        prediction = (left + above) // 2
+                    else:
+                        p = left + above - upper_left
+                        distances = (abs(p - left), abs(p - above), abs(p - upper_left))
+                        prediction = (left, above, upper_left)[distances.index(min(distances))]
+                    row[x] = (row[x] + prediction) & 255
+            rows.append(bytes(row))
         return Image(width, height, rows)
 
     def at(self, x, y):
         row = self.rows[y]
         return tuple(row[x * 3:x * 3 + 3])
+
+    def changed_bounds(self, other, height=None):
+        """Half-open bounds of changed RGB pixels, or None; optionally omit bottom rows."""
+        assert (self.width, self.height) == (other.width, other.height), "image dimensions differ"
+        left, top, right, bottom = self.width, self.height, 0, 0
+        for y in range(self.height if height is None else height):
+            actual, old = self.rows[y], other.rows[y]
+            if actual == old:
+                continue
+            first = next(i for i, (a, b) in enumerate(zip(actual, old)) if a != b) // 3
+            last = self.width - next(i for i, (a, b) in enumerate(zip(reversed(actual), reversed(old)))
+                                     if a != b) // 3
+            left, top = min(left, first), min(top, y)
+            right, bottom = max(right, last), y + 1
+        return (left, top, right, bottom) if right else None
 
     def colors(self, x0, y0, x1, y1):
         """I colori diversi nel rettangolo [x0, x1) x [y0, y1)."""

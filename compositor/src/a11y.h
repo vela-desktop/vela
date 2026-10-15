@@ -37,6 +37,7 @@ struct vela_a11y {
 
     bool night_light; // on, by hand or by the schedule
     int night_strength; // 0-100, like Windows' "Strength"
+    bool night_nvidia_fix; // opt-in Vulkan rendering, bypass hardware gamma
     char schedule[16]; // "no", "sunset" (from sunset to sunrise), "hours"
     int night_from; // minutes after midnight
     int night_to;

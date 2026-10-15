@@ -109,9 +109,11 @@ struct vela_output_frame {
     struct vela_renderer *renderer;
     struct wlr_output *output;
     struct vela_output *owner;
-    struct wlr_damage_ring ring;
+    struct wlr_damage_ring ring; // buffer-age history in swapchain-buffer coordinates
+    pixman_region32_t scene_damage; // current scene damage in upright output coordinates
     int width, height;
     float scale;
+    enum wl_output_transform transform; // damage history is bound to this orientation
 
     // The previous frame and the one being built (they swap): the damage comes
     // from them.

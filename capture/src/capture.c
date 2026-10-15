@@ -55,6 +55,41 @@ bool vela_capture_frame_valid(const struct vela_capture_frame *frame)
     return (size_t)frame->height <= frame->length / frame->stride;
 }
 
+/** Apply Wayland's flip-then-counterclockwise-rotation convention to the size. */
+bool vela_capture_frame_dimensions(const struct vela_capture_frame *frame, uint32_t *width, uint32_t *height)
+{
+    if (!width || !height || !vela_capture_frame_valid(frame) || frame->transform > WL_OUTPUT_TRANSFORM_FLIPPED_270) {
+        return false;
+    }
+    bool swapped = frame->transform & 1;
+    *width = swapped ? frame->height : frame->width;
+    *height = swapped ? frame->width : frame->height;
+    return true;
+}
+
+/** Map an upright pixel back into the validated, possibly padded SHM buffer. */
+const uint8_t *vela_capture_frame_pixel(const struct vela_capture_frame *frame, uint32_t x, uint32_t y)
+{
+    uint32_t width, height;
+    if (!vela_capture_frame_dimensions(frame, &width, &height) || x >= width || y >= height) {
+        return NULL;
+    }
+    uint32_t sx = x, sy = y;
+    // The reported transform maps buffer to output. Sampling upright pixels
+    // requires its inverse, matching wlr_box_transform and the output cursor.
+    switch (frame->transform) {
+    case WL_OUTPUT_TRANSFORM_NORMAL: break;
+    case WL_OUTPUT_TRANSFORM_90: sx = y; sy = frame->height - 1 - x; break;
+    case WL_OUTPUT_TRANSFORM_180: sx = frame->width - 1 - x; sy = frame->height - 1 - y; break;
+    case WL_OUTPUT_TRANSFORM_270: sx = frame->width - 1 - y; sy = x; break;
+    case WL_OUTPUT_TRANSFORM_FLIPPED: sx = frame->width - 1 - x; break;
+    case WL_OUTPUT_TRANSFORM_FLIPPED_90: sx = y; sy = x; break;
+    case WL_OUTPUT_TRANSFORM_FLIPPED_180: sy = frame->height - 1 - y; break;
+    case WL_OUTPUT_TRANSFORM_FLIPPED_270: sx = frame->width - 1 - y; sy = frame->height - 1 - x; break;
+    }
+    return frame->pixels + (size_t)sy * frame->stride + (size_t)sx * 4;
+}
+
 /** Deliver only successful captures with internally consistent metadata. */
 static void complete(struct vela_capture_job *job, bool ok)
 {
@@ -228,6 +263,15 @@ struct vela_capture_job *vela_capture_begin(struct wl_shm *shm,
     struct ext_image_capture_source_v1 *source,
     vela_capture_done_fn done, void *userdata)
 {
+    return vela_capture_begin_with_options(shm, manager, source, 0, done, userdata);
+}
+
+/** Start a capture with explicitly requested protocol options. */
+struct vela_capture_job *vela_capture_begin_with_options(struct wl_shm *shm,
+    struct ext_image_copy_capture_manager_v1 *manager,
+    struct ext_image_capture_source_v1 *source,
+    uint32_t options, vela_capture_done_fn done, void *userdata)
+{
     if (!shm || !manager || !source || !done) return NULL;
     struct vela_capture_job *job = calloc(1, sizeof(*job));
     if (!job) return NULL;
@@ -235,7 +279,7 @@ struct vela_capture_job *vela_capture_begin(struct wl_shm *shm,
     job->shm = shm;
     job->done = done;
     job->userdata = userdata;
-    job->session = ext_image_copy_capture_manager_v1_create_session(manager, source, 0);
+    job->session = ext_image_copy_capture_manager_v1_create_session(manager, source, options);
     if (!job->session) {
         free(job);
         return NULL;

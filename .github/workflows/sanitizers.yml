@@ -66,11 +66,11 @@ jobs:
         run: |
           # The packaging-tests job in Build owns this suite for PRs.
           # Explicit manual runs remain self-contained.
-          exclude='^(functional|sharpness)$'
+          exclude='^$'
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            exclude='^(functional|sharpness|packaging-update)$'
+            exclude='^packaging-update$'
           fi
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2 -E "$exclude"
+          ctest --test-dir build-sanitized --output-on-failure --parallel 2 -LE gpu -E "$exclude"
       - name: Save failed test logs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

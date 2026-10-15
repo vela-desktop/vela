@@ -85,6 +85,15 @@ Page {
             }
         }
         Card {
+            icon: "applications-graphics"
+            title: qsTr("Experimental NVIDIA fix")
+            description: qsTr("Use Vulkan instead of the monitor's gamma LUT if Night light causes broken colors. May disable direct scanout.")
+            trailing: Toggle {
+                checked: Prefs.nightNvidiaFix
+                onToggled: on => Prefs.nightNvidiaFix = on
+            }
+        }
+        Card {
             icon: "chronometer"
             title: qsTr("Schedule night light")
             trailing: Toggle {

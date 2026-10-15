@@ -21,6 +21,7 @@
 
 static char fail_name[64];
 static int failures_left;
+static int fixture_width = 1920, fixture_height = 1080;
 
 bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state *state)
 {
@@ -63,7 +64,7 @@ static void destroyed(struct wl_listener *listener, void *data)
 }
 static void add_output(struct vela_server *server)
 {
-    struct wlr_output *wlr = wlr_headless_add_output(server->backend, 1920, 1080);
+    struct wlr_output *wlr = wlr_headless_add_output(server->backend, fixture_width, fixture_height);
     struct vela_output *output = calloc(1, sizeof(*output));
     output->server = server;
     output->wlr = wlr;
@@ -71,7 +72,7 @@ static void add_output(struct vela_server *server)
     struct wlr_output_state state;
     wlr_output_state_init(&state);
     wlr_output_state_set_enabled(&state, true);
-    wlr_output_state_set_custom_mode(&state, 1920, 1080, 60000);
+    wlr_output_state_set_custom_mode(&state, fixture_width, fixture_height, 60000);
     if (!wlr_output_commit_state(wlr, &state)) abort();
     wlr_output_state_finish(&state);
     wl_list_insert(server->outputs.prev, &output->link);
@@ -109,6 +110,8 @@ static int command(int fd, uint32_t mask, void *data)
 }
 int main(int argc, char **argv)
 {
+    // The tiny fixture exercises scales whose effective resolution rounds to 0.
+    if (argc > 1 && !strcmp(argv[1], "tiny")) fixture_width = fixture_height = 8;
     struct vela_server server = {0};
     server.display = wl_display_create();
     server.loop = wl_display_get_event_loop(server.display);
