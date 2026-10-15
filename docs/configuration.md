@@ -89,6 +89,16 @@ Files written before October 2026 used Italian names (`schermi.conf`, and Italia
 
 Normally this file should be managed through **Settings → Displays** rather than edited by hand.
 
+Vela keeps the *relative* monitor arrangement while shifting its global layout
+so the upper-left corner of the enabled display group is always at (0,0).
+For example, a 1920×1080 monitor physically **above** a 2048×1152 primary
+will appear as (0,0) and (0,1080) respectively. This avoids exposing
+negative monitor coordinates to XWayland/Wine while leaving the perceived
+screen arrangement unchanged. Existing saved configurations with negative
+positions are normalized when loaded; new positions are saved normalized.
+Windows on a translated output move with it, including during Settings
+preview/revert.
+
 Settings talks directly to `wlr-output-management`; no external display utility
 is required. Changes are previewed for 15 seconds. Vela's compositor keeps the
 previous configuration and restores it when the deadline expires, Settings
