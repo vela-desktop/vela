@@ -513,13 +513,29 @@ Until `PanelMotion` exists (PR 8), the shell's panels, Settings' pages and
 dialogs, and the polkit prompt multiply their existing offsets and scales by
 `Theme.motion`, and their layout `Behavior`s are enabled only with it.
 
+**Duration.** Below the switch, Settings has a slider for how long animations
+take: `animation-duration` in `vela.conf`, a percentage of Vela's durations
+from 50 to 300 in steps of 25, 100 by default. The slider marks Vela's 100
+with a tick and the label "(suggested)", and a double click on its knob goes
+back to it. The compositor multiplies every duration in `vela_motion_ms()`
+(night light aside, it isn't motion); `Style` exposes it as
+`animationDuration`, and `Theme`'s tokens are `scale` times it, so one factor
+reaches both processes and the shared values stay the ones checked in §6.4. The
+polkit prompt waits for its fade times the same factor. With effects off the
+slider is disabled: fades take at most `fast`, whatever it says. Added at the
+user's request: the person who wants to follow a window as it moves (or see
+less of it) gets one knob, distinct from the switch; it isn't §9's rejected
+levels, which reduced *what* moves.
+
 **Verified by** the animation log for each window animation with the switch off
 (each recipe logs its `geometry`, position and scale, which stays put; every
 duration is `fast`, the magnifier's 0; no morph), a Qt Quick Test for
 `PanelMotion` (§6.9), a functional test that flips the switch through
 Settings' `vela.conf` and `reload-config` without restarting anything
-(`test_animation.AnimationEffects`), and `shell-appearance-effects`, which
-checks that `Style` follows the file.
+(`test_animation.AnimationEffects`), `test_animation.Durations` at 200% and
+50% (every duration its token times the factor), and
+`shell-appearance-effects`, which checks that `Style` follows the file and
+keeps the duration within its range.
 
 ### 6.6 The compositor draws the shell's colors (D7, D8, D9)
 

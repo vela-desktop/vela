@@ -62,6 +62,10 @@ extern void (*vela_motion_logger)(const char *line);
 // an amount of movement and passes its duration through vela_motion_ms().
 void vela_motion_set_effects(bool on);
 bool vela_motion_effects(void);
+// How long animations take compared with Vela's durations
+// (animation-duration in vela.conf, a percentage; Settings' slider): 1 is
+// Vela's. With effects off, fades still take at most VELA_MOTION_FAST_MS.
+void vela_motion_set_duration(double factor);
 double vela_motion_ms(double duration_ms);
 
 // The duration scale. fast: changes of state, small things (the snap

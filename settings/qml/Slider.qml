@@ -18,6 +18,9 @@ Item {
     // Where a double click on the knob puts it back (a balance's middle);
     // NaN: nowhere.
     property real resetValue: NaN
+    // A tick under the track at a value worth finding again (the suggested
+    // one); NaN: none.
+    property real mark: NaN
     readonly property bool pressed: mouse.pressed
     signal moved(real value)
     signal released(real value)
@@ -38,6 +41,15 @@ Item {
         radius: 2
         color: Theme.controlStrokeStrong
         opacity: 0.6
+    }
+    Rectangle {
+        visible: !isNaN(slider.mark) && slider.to > slider.from
+        x: 10 + (parent.width - 20) * Math.max(0, Math.min(1, (slider.mark - slider.from) / (slider.to - slider.from)))
+           - width / 2
+        y: parent.height / 2 + 6
+        width: 1
+        height: 5
+        color: Theme.textTertiary
     }
     Rectangle {
         anchors.verticalCenter: parent.verticalCenter

@@ -250,6 +250,8 @@ void vela_a11y_load(struct vela_a11y *a11y)
     bool filter = vela_config_flag(&settings, "color-filters", false);
     bool sticky = vela_config_flag(&settings, "sticky-keys", false);
     vela_motion_set_effects(vela_config_flag(&settings, "animation-effects", true));
+    int duration = vela_clamp(atoi(vela_config_get(&settings, "animation-duration", "100")), 50, 300);
+    vela_motion_set_duration(duration / 100.0);
     vela_config_finish(&settings);
 
     // A new (or changed) schedule decides at once; otherwise the file's value
@@ -348,7 +350,7 @@ void vela_a11y_set_sticky_keys(struct vela_a11y *a11y, bool on, bool save)
 // Zooming is movement: without animation effects it happens at once.
 static double zoom_ms(void)
 {
-    return vela_motion_effects() ? VELA_MAGNIFIER_MS : 0.0;
+    return vela_motion_effects() ? vela_motion_ms(VELA_MAGNIFIER_MS) : 0.0;
 }
 
 void vela_a11y_set_magnifier(struct vela_a11y *a11y, bool on)

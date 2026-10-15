@@ -11,6 +11,7 @@ import Vela.Controls
 Page {
     id: page
     readonly property var steps: [25, 50, 100, 150, 200, 400]
+    readonly property int suggestedDuration: 100 // percent: Vela's durations
     readonly property var filters: [
         { value: "grayscale", text: qsTr("Grayscale") },
         { value: "deuteranopia", text: qsTr("Red-green (green weak, deuteranopia)") },
@@ -27,6 +28,37 @@ Page {
             trailing: Toggle {
                 checked: Prefs.animationEffects
                 onToggled: on => Prefs.animationEffects = on
+            }
+        }
+        Card {
+            icon: "chronometer"
+            title: qsTr("Animation duration")
+            description: qsTr("How long they take, compared with Vela's suggested durations (the mark). Double-click the knob to go back to them")
+            enabled: Prefs.animationEffects
+            opacity: enabled ? 1 : 0.5
+            trailing: Row {
+                spacing: 12
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: durationSlider.value === page.suggestedDuration
+                        ? qsTr("%1% (suggested)").arg(Math.round(durationSlider.value))
+                        : qsTr("%1%").arg(Math.round(durationSlider.value))
+                    color: Theme.text
+                    font.pixelSize: Theme.fontBody
+                }
+                Slider {
+                    id: durationSlider
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 220
+                    from: 50
+                    to: 300
+                    stepSize: 25
+                    mark: page.suggestedDuration
+                    resetValue: page.suggestedDuration
+                    live: false
+                    value: Prefs.animationDuration
+                    onReleased: value => Prefs.animationDuration = Math.round(value)
+                }
             }
         }
     }

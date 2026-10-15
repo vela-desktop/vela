@@ -115,15 +115,18 @@ QtObject {
     // scripts/check-shared-values.py fails if the two copies disagree. ---
     readonly property var scale: ({ fast: 120, normal: 200, slow: 250, long: 300 })
     // Animation effects off (Settings > Accessibility > Visual effects; the
-    // compositor reads the same key): nothing moves, and what fades takes at
+    // compositor reads the same keys): nothing moves, and what fades takes at
     // most `fast`. Every movement is multiplied by `motion` (1 or 0): a
     // panel's offset and scale, a page's slide, a layout change's duration.
+    // On, every duration is Vela's times `duration` (Settings' slider; 1 is
+    // Vela's).
     readonly property bool animationEffects: Style.animationEffects
     readonly property real motion: animationEffects ? 1 : 0
-    readonly property int fast: scale.fast // fades in, state fills
-    readonly property int normal: animationEffects ? scale.normal : fast // exits, popups, dialogs, page changes
-    readonly property int slow: animationEffects ? scale.slow : fast // panels and windows entering the scene
-    readonly property int long: animationEffects ? scale.long : fast // what moves across the whole window
+    readonly property real duration: animationEffects ? Style.animationDuration : 1
+    readonly property int fast: Math.round(scale.fast * duration) // fades in, state fills
+    readonly property int normal: animationEffects ? Math.round(scale.normal * duration) : fast // exits, popups, dialogs, page changes
+    readonly property int slow: animationEffects ? Math.round(scale.slow * duration) : fast // panels and windows entering the scene
+    readonly property int long: animationEffects ? Math.round(scale.long * duration) : fast // what moves across the whole window
     // cubic-bezier(0, 0, 0.2, 1): a decisive start, a soft landing. For exits
     // too, which are shorter: one that starts slowly seems to ignore the click.
     readonly property var decelerate: [0.0, 0.0, 0.2, 1.0, 1.0, 1.0]

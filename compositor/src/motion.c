@@ -14,6 +14,7 @@ const struct vela_curve vela_decelerate = { VELA_DECELERATE_CURVE };
 void (*vela_motion_logger)(const char *line);
 
 static bool effects = true;
+static double duration = 1.0;
 
 void vela_motion_set_effects(bool on)
 {
@@ -25,9 +26,14 @@ bool vela_motion_effects(void)
     return effects;
 }
 
+void vela_motion_set_duration(double factor)
+{
+    duration = factor;
+}
+
 double vela_motion_ms(double duration_ms)
 {
-    return effects ? duration_ms : fmin(duration_ms, VELA_MOTION_FAST_MS);
+    return effects ? duration_ms * duration : fmin(duration_ms, VELA_MOTION_FAST_MS);
 }
 
 static void log_line(const char *format, ...) __attribute__((format(printf, 1, 2)));

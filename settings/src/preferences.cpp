@@ -220,6 +220,7 @@ void Preferences::reloadCompositor()
     m_magnifierStep = value(QStringLiteral("magnifier-step"), QStringLiteral("100")).toInt();
     m_stickyKeys = flag(QStringLiteral("sticky-keys"), false);
     m_animationEffects = flag(QStringLiteral("animation-effects"), true);
+    m_animationDuration = qBound(50, value(QStringLiteral("animation-duration"), QStringLiteral("100")).toInt(), 300);
     m_mouseSpeed = std::clamp(value(QStringLiteral("mouse-speed"), QStringLiteral("10")).toInt(), 1, 20);
     m_mousePrecision = flag(QStringLiteral("mouse-precision"), true);
     m_mouseLeftHanded = value(QStringLiteral("mouse-primary-button"), QStringLiteral("left")) == QLatin1String("right");
@@ -750,6 +751,16 @@ void Preferences::setAnimationEffects(bool on)
     if (on != m_animationEffects) {
         m_animationEffects = on;
         saveCompositor({ { QStringLiteral("animation-effects"), yesNo(on) } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setAnimationDuration(int percent)
+{
+    percent = qBound(50, percent, 300);
+    if (percent != m_animationDuration) {
+        m_animationDuration = percent;
+        saveCompositor({ { QStringLiteral("animation-duration"), QString::number(percent) } });
         emit accessibilityChanged();
     }
 }

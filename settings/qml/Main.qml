@@ -202,7 +202,8 @@ Window {
         { page: "accessibility", text: qsTr("Magnifier"), keys: qsTr("zoom magnify magnifier") },
         { page: "accessibility", text: qsTr("Color filters"), keys: qsTr("grayscale color blindness deuteranopia protanopia tritanopia") },
         { page: "accessibility", text: qsTr("Sticky keys"), keys: qsTr("sticky keys shift ctrl alt keyboard") },
-        { page: "accessibility", text: qsTr("Animation effects"), keys: qsTr("animations motion reduce movement visual effects") }
+        { page: "accessibility", text: qsTr("Animation effects"), keys: qsTr("animations motion reduce movement visual effects") },
+        { page: "accessibility", text: qsTr("Animation duration"), keys: qsTr("animations speed slow fast duration") }
     ]
     readonly property var searchResults: {
         const q = search.text.trim().toLowerCase()

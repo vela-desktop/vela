@@ -310,7 +310,7 @@ bool vela_snapshot_morph(struct vela_server *server, struct vela_view *view, str
         return false; // the window takes its new frame at once
     }
     struct animation *a = animation_create(view, VELA_SNAPSHOT_MORPH, from);
-    vela_tween_start(&a->tween, "morph", VELA_WINDOW_MAXIMIZE_MS, &vela_decelerate);
+    vela_tween_start(&a->tween, "morph", vela_motion_ms(VELA_WINDOW_MAXIMIZE_MS), &vela_decelerate);
     a->to_x = to.x + to.width / 2.0;
     a->to_y = to.y + to.height / 2.0;
     a->to_scale = (double)to.width / from.width;

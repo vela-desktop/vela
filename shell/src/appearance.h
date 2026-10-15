@@ -22,6 +22,8 @@ class Appearance : public QObject {
     Q_PROPERTY(QColor mica READ mica NOTIFY changed)
     Q_PROPERTY(QColor micaInactive READ micaInactive NOTIFY changed)
     Q_PROPERTY(bool animationEffects READ animationEffects NOTIFY changed)
+    // animation-duration in vela.conf as a factor: 1 is Vela's durations.
+    Q_PROPERTY(qreal animationDuration READ animationDuration NOTIFY changed)
     // "l/" or "d/" for image://icon: changes a moment after the mode, once the
     // icon caches are emptied (applyIconTheme).
     Q_PROPERTY(QString iconMode READ iconMode NOTIFY iconModeChanged)
@@ -35,6 +37,7 @@ public:
     QColor mica() const { return m_mica; }
     QColor micaInactive() const { return m_micaInactive; }
     bool animationEffects() const { return m_animationEffects; }
+    qreal animationDuration() const { return m_animationDuration; }
     QString iconMode() const { return m_iconMode; }
 
     // Starts watching the files (after the first frame: startup stays fast).
@@ -56,5 +59,6 @@ private:
     QColor m_mica;
     QColor m_micaInactive;
     bool m_animationEffects = true;
+    qreal m_animationDuration = 1.0;
     QString m_iconMode = QStringLiteral("d/");
 };

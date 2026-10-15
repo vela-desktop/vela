@@ -90,6 +90,8 @@ class Preferences : public QObject {
     Q_PROPERTY(bool colorFilterShortcut READ colorFilterShortcut WRITE setColorFilterShortcut NOTIFY accessibilityChanged)
     Q_PROPERTY(bool stickyKeys READ stickyKeys WRITE setStickyKeys NOTIFY accessibilityChanged)
     Q_PROPERTY(bool animationEffects READ animationEffects WRITE setAnimationEffects NOTIFY accessibilityChanged)
+    // Percent of Vela's animation durations (100: Vela's).
+    Q_PROPERTY(int animationDuration READ animationDuration WRITE setAnimationDuration NOTIFY accessibilityChanged)
 
 public:
     explicit Preferences(QObject* parent = nullptr);
@@ -171,6 +173,8 @@ public:
     void setStickyKeys(bool on);
     bool animationEffects() const { return m_animationEffects; }
     void setAnimationEffects(bool on);
+    int animationDuration() const { return m_animationDuration; }
+    void setAnimationDuration(int percent);
 
     int mouseSpeed() const { return m_mouseSpeed; }
     void setMouseSpeed(int value);
@@ -264,6 +268,7 @@ private:
     bool m_colorFilterShortcut = false;
     bool m_stickyKeys = false;
     bool m_animationEffects = true;
+    int m_animationDuration = 100;
     int m_mouseSpeed = 10;
     bool m_mousePrecision = true;
     bool m_mouseLeftHanded = false;

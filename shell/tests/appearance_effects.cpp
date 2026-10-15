@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Style.animationEffects (docs/visual-coherence.md §6.5): read from
-// animation-effects in vela.conf, yes by default, and followed live when
-// Settings replaces the file.
+// Style.animationEffects and Style.animationDuration (docs/visual-coherence.md
+// §6.5): read from animation-effects and animation-duration in vela.conf (on,
+// at Vela's durations, by default), and followed live when Settings replaces
+// the file.
 
 #include "appearance.h"
 
@@ -41,7 +42,21 @@ private slots:
     void onWithoutTheKey()
     {
         QVERIFY(writeConf("sticky-keys=no\n"));
-        QVERIFY(Appearance().animationEffects());
+        const Appearance appearance;
+        QVERIFY(appearance.animationEffects());
+        QCOMPARE(appearance.animationDuration(), 1.0);
+    }
+
+    void durationWithinItsRange()
+    {
+        QVERIFY(writeConf("animation-duration=150\n"));
+        QCOMPARE(Appearance().animationDuration(), 1.5);
+        QVERIFY(writeConf("animation-duration=1000\n"));
+        QCOMPARE(Appearance().animationDuration(), 3.0);
+        QVERIFY(writeConf("animation-duration=10\n"));
+        QCOMPARE(Appearance().animationDuration(), 0.5);
+        QVERIFY(writeConf("animation-duration=slow\n"));
+        QCOMPARE(Appearance().animationDuration(), 1.0);
     }
 
     void followsTheFile()
@@ -56,6 +71,8 @@ private slots:
         QVERIFY(changed.count() >= 1);
         QVERIFY(writeConf("animation-effects=no\n"));
         QTRY_VERIFY(!appearance.animationEffects());
+        QVERIFY(writeConf("animation-effects=no\nanimation-duration=200\n"));
+        QTRY_COMPARE(appearance.animationDuration(), 2.0);
     }
 };
 

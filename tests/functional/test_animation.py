@@ -114,45 +114,66 @@ class AnimationClock(unittest.TestCase):
 
 class Durations(unittest.TestCase):
     """docs/visual-coherence.md §6.4: every window animation lasts one of the
-    four durations of motion.h (the ones Theme.qml shares)."""
+    four durations of motion.h (the ones Theme.qml shares), times Settings'
+    animation-duration (100: Vela's)."""
 
     TOKENS = {"open": "SLOW", "close": "NORMAL", "minimize": "SLOW", "restore": "SLOW", "morph": "SLOW",
               "desktop": "LONG", "snap-preview": "FAST", "magnifier": "FAST"}
 
-    def test_each_animation_takes_its_token(self):
+    def play(self, vela, factor=1.0):
+        """Every window animation once; their logged durations."""
+        mark = len(vela.log_text())
+        window = vela.open_window(400, 300, decorated=True)
+        vela.wait_for(lambda s: s["focused"] == window)
+        pause = 0.5 * factor
+        for action in ("maximize", "restore", "minimize", "restore"):
+            vela.command(f"window {window} {action}")
+            time.sleep(pause)
+        vela.command("workspace new switch")
+        time.sleep(pause)
+        vela.command("workspace switch 0")
+        time.sleep(pause)
+        vela.command("magnifier on")
+        time.sleep(pause)
+        vela.command("magnifier off")
+        time.sleep(pause)
+        # The snap preview: the bar dragged to the left edge and held there.
+        w = vela.state().window(window)
+        x, y = w["x"] + 200, w["y"] + 16
+        vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x, y + 10, "sleep", "50",
+                   "move", 0, 400, "sleep", "300", "move", 700, 400, "sleep", "50", "up")
+        vela.wait_for(lambda _: "animation: snap-preview " in vela.log_text()[mark:], read_state=False,
+                      what="the snap preview")
+        time.sleep(pause)
+        vela.command(f"window {window} close")
+        vela.wait_for(lambda _: "animation: close " in vela.log_text()[mark:], read_state=False, what="close")
+        time.sleep(pause)
+        durations = {}
+        for m in PROGRESS.finditer(vela.log_text()[mark:]):
+            durations.setdefault(m[1], set()).add(float(m[4]))
+        return durations
+
+    def check(self, durations, factor):
         motion_h = (Path(__file__).resolve().parents[2] / "compositor/src/motion.h").read_text()
         scale = {m[1]: float(m[2]) for m in re.finditer(r"#define VELA_MOTION_(\w+)_MS ([\d.]+)", motion_h)}
-        with Session(env={"VELA_DEBUG_ANIMATION": "1"}) as vela:
-            window = vela.open_window(400, 300, decorated=True)
-            vela.wait_for(lambda s: s["focused"] == window)
-            for action in ("maximize", "restore", "minimize", "restore"):
-                vela.command(f"window {window} {action}")
-                time.sleep(0.5)
-            vela.command("workspace new switch")
-            time.sleep(0.5)
-            vela.command("workspace switch 0")
-            time.sleep(0.5)
-            vela.command("magnifier on")
-            time.sleep(0.3)
-            vela.command("magnifier off")
-            time.sleep(0.3)
-            # The snap preview: the bar dragged to the left edge and held there.
-            w = vela.state().window(window)
-            x, y = w["x"] + 200, w["y"] + 16
-            vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x, y + 10, "sleep", "50",
-                       "move", 0, 400, "sleep", "300", "move", 700, 400, "sleep", "50", "up")
-            vela.wait_for(lambda _: "animation: snap-preview " in vela.log_text(), read_state=False,
-                          what="the snap preview")
-            time.sleep(0.4)
-            vela.command(f"window {window} close")
-            vela.wait_for(lambda _: "animation: close " in vela.log_text(), read_state=False, what="close")
-            time.sleep(0.4)
-            durations = {}
-            for m in PROGRESS.finditer(vela.log_text()):
-                durations.setdefault(m[1], set()).add(float(m[4]))
         self.assertEqual(set(durations), set(self.TOKENS))
         for name, token in self.TOKENS.items():
-            self.assertEqual(durations[name], {scale[token]}, f"{name}: {token.lower()}")
+            self.assertEqual(durations[name], {scale[token] * factor}, f"{name}: {token.lower()} x {factor}")
+
+    def test_each_animation_takes_its_token(self):
+        with Session(env={"VELA_DEBUG_ANIMATION": "1"}) as vela:
+            self.check(self.play(vela), 1.0)
+
+    def test_the_duration_setting_scales_each_one(self):
+        # As Settings' slider does: vela.conf, then reload-config.
+        with Session(env={"VELA_DEBUG_ANIMATION": "1"}) as vela:
+            for percent in (200, 50):
+                with self.subTest(percent=percent):
+                    os.makedirs(os.path.dirname(vela.config_path()), exist_ok=True)
+                    with open(vela.config_path(), "w") as conf:
+                        conf.write(f"animation-duration={percent}\n")
+                    vela.command("reload-config")
+                    self.check(self.play(vela, percent / 100), percent / 100)
 
 
 GEOMETRY = re.compile(r"animation: (\S+) #(\d+) geometry ([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+) opacity ([-\d.]+)")

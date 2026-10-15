@@ -204,6 +204,22 @@ Specifiche sistema
         <translation>Effetti di animazione</translation>
     </message>
     <message>
+        <source>Animation duration</source>
+        <translation>Durata delle animazioni</translation>
+    </message>
+    <message>
+        <source>How long they take, compared with Vela&apos;s suggested durations (the mark). Double-click the knob to go back to them</source>
+        <translation>Quanto durano, rispetto alle durate consigliate da Vela (la tacca). Doppio clic sul cursore per tornarci</translation>
+    </message>
+    <message>
+        <source>%1% (suggested)</source>
+        <translation>%1% (consigliata)</translation>
+    </message>
+    <message>
+        <source>%1%</source>
+        <translation>%1%</translation>
+    </message>
+    <message>
         <source>Windows and panels move as they open, close and change. Off, they only fade, briefly</source>
         <translation>Finestre e pannelli si muovono quando si aprono, si chiudono e cambiano. Disattivati, svaniscono soltanto, in breve</translation>
     </message>
@@ -1507,6 +1523,14 @@ Specifiche sistema
     <message>
         <source>animations motion reduce movement visual effects</source>
         <translation>animazioni movimento ridurre effetti visivi</translation>
+    </message>
+    <message>
+        <source>Animation duration</source>
+        <translation>Durata delle animazioni</translation>
+    </message>
+    <message>
+        <source>animations speed slow fast duration</source>
+        <translation>animazioni velocità lente veloci durata</translation>
     </message>
     <message>
         <source>Local account</source>

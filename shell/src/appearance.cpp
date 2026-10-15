@@ -15,23 +15,33 @@
 
 namespace {
 
-// animation-effects in vela.conf (the compositor reads it too): yes unless
-// it says otherwise.
-bool configuredAnimationEffects()
+// animation-effects and animation-duration in vela.conf (the compositor
+// reads them too): on, at Vela's durations, unless it says otherwise.
+struct Motion {
+    bool effects = true;
+    qreal duration = 1.0;
+};
+
+Motion configuredMotion()
 {
+    Motion motion;
     QFile file(vela::language::configPath());
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return true;
+        return motion;
     }
-    bool on = true;
     while (!file.atEnd()) {
         const QString line = QString::fromUtf8(file.readLine()).trimmed();
         if (line.startsWith(QLatin1String("animation-effects="))) {
             const QString value = line.mid(18).trimmed();
-            on = value != QLatin1String("no") && value != QLatin1String("0") && value != QLatin1String("false");
+            motion.effects
+                = value != QLatin1String("no") && value != QLatin1String("0") && value != QLatin1String("false");
+        } else if (line.startsWith(QLatin1String("animation-duration="))) {
+            bool ok = false;
+            const int percent = line.mid(19).trimmed().toInt(&ok);
+            motion.duration = ok ? qBound(50, percent, 300) / 100.0 : 1.0;
         }
     }
-    return on;
+    return motion;
 }
 
 } // namespace
@@ -82,15 +92,17 @@ void Appearance::reload()
     const QColor tint = cachedWallpaperTint();
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
-    const bool effects = configuredAnimationEffects();
+    const Motion motion = configuredMotion();
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
-        if (effects != m_animationEffects) {
-            m_animationEffects = effects;
+        if (motion.effects != m_animationEffects || motion.duration != m_animationDuration) {
+            m_animationEffects = motion.effects;
+            m_animationDuration = motion.duration;
             emit changed();
         }
         return;
     }
-    m_animationEffects = effects;
+    m_animationEffects = motion.effects;
+    m_animationDuration = motion.duration;
     const bool first = !m_accent.isValid();
     m_light = light;
     m_accent = accent;
