@@ -599,9 +599,15 @@ static void handle_damage(struct wl_listener *listener, void *data)
 {
     struct vela_output_frame *frame = wl_container_of(listener, frame, damage);
     const struct wlr_output_event_damage *event = data;
-    // output.events.damage uses upright output-local pixels (including the
-    // software cursor). Convert once when scene_damage enters the buffer ring.
-    pixman_region32_union(&frame->scene_damage, &frame->scene_damage, event->damage);
+    // wlroots emits output-buffer-local damage (not upright scene coordinates).
+    // Convert it at the boundary; render() transforms scene_damage back into
+    // buffer coordinates only once, when adding it to the damage ring.
+    pixman_region32_t upright;
+    pixman_region32_init(&upright);
+    wlr_region_transform(&upright, event->damage, frame->output->transform,
+        frame->output->width, frame->output->height);
+    pixman_region32_union(&frame->scene_damage, &frame->scene_damage, &upright);
+    pixman_region32_fini(&upright);
     vela_output_schedule_frame(frame->owner);
 }
 
