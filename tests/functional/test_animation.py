@@ -6,6 +6,7 @@ shows every animation at its own predicted presentation time, and what can't
 be undone waits for the wall clock. Read from the VELA_DEBUG_ANIMATION log,
 with two outputs at 75 and 180 Hz, with late latching and without."""
 
+from pathlib import Path
 import re
 import time
 import unittest
@@ -108,6 +109,49 @@ class AnimationClock(unittest.TestCase):
         # the wall clock passes the end: a few more).
         for (serial, output), count in frames.items():
             self.assertLessEqual(count, durations[serial] * HZ[output] / 1000 + 4, f"{names[serial]} #{serial} on {output}")
+
+
+class Durations(unittest.TestCase):
+    """docs/visual-coherence.md §6.4: every window animation lasts one of the
+    four durations of motion.h (the ones Theme.qml shares)."""
+
+    TOKENS = {"open": "SLOW", "close": "NORMAL", "minimize": "SLOW", "restore": "SLOW", "morph": "SLOW",
+              "desktop": "LONG", "snap-preview": "FAST", "magnifier": "FAST"}
+
+    def test_each_animation_takes_its_token(self):
+        motion_h = (Path(__file__).resolve().parents[2] / "compositor/src/motion.h").read_text()
+        scale = {m[1]: float(m[2]) for m in re.finditer(r"#define VELA_MOTION_(\w+)_MS ([\d.]+)", motion_h)}
+        with Session(env={"VELA_DEBUG_ANIMATION": "1"}) as vela:
+            window = vela.open_window(400, 300, decorated=True)
+            vela.wait_for(lambda s: s["focused"] == window)
+            for action in ("maximize", "restore", "minimize", "restore"):
+                vela.command(f"window {window} {action}")
+                time.sleep(0.5)
+            vela.command("workspace new switch")
+            time.sleep(0.5)
+            vela.command("workspace switch 0")
+            time.sleep(0.5)
+            vela.command("magnifier on")
+            time.sleep(0.3)
+            vela.command("magnifier off")
+            time.sleep(0.3)
+            # The snap preview: the bar dragged to the left edge and held there.
+            w = vela.state().window(window)
+            x, y = w["x"] + 200, w["y"] + 16
+            vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x, y + 10, "sleep", "50",
+                       "move", 0, 400, "sleep", "300", "move", 700, 400, "sleep", "50", "up")
+            vela.wait_for(lambda _: "animation: snap-preview " in vela.log_text(), read_state=False,
+                          what="the snap preview")
+            time.sleep(0.4)
+            vela.command(f"window {window} close")
+            vela.wait_for(lambda _: "animation: close " in vela.log_text(), read_state=False, what="close")
+            time.sleep(0.4)
+            durations = {}
+            for m in PROGRESS.finditer(vela.log_text()):
+                durations.setdefault(m[1], set()).add(float(m[4]))
+        self.assertEqual(set(durations), set(self.TOKENS))
+        for name, token in self.TOKENS.items():
+            self.assertEqual(durations[name], {scale[token]}, f"{name}: {token.lower()}")
 
 
 class MorphCorners(unittest.TestCase):

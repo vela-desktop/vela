@@ -7,8 +7,8 @@ purpose, the invariants the code must keep, and the changes, in the order
 they are made and with how each is verified.
 
 > **Status:** approved design, implemented in the order of §8; done: PR 1
-> (§6.1), PR 2 (§6.2), PR 3 (§6.3). Each change has one explanation, in §6; the plan in §8 only says
-> which pull request carries it.
+> (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4). Each change has one
+> explanation, in §6; the plan in §8 only says which pull request carries it.
 
 ## 1. Goals
 
@@ -451,18 +451,21 @@ One curve, decelerate `(0, 0, 0.2, 1)`, for entrances and exits, exits shorter;
 `Theme.accelerate` goes. Night light keeps its one second: Windows' value, and
 it isn't motion.
 
-The four numbers and the curve are written in `motion.h` and in `Theme.qml`
+The four numbers and the curve are written in `motion.h`
+(`VELA_MOTION_FAST_MS` and the others, `VELA_DECELERATE_CURVE`; each animation's
+duration is defined as one of them) and in `Theme.qml`
 (`readonly property var scale: ({ fast: 120, normal: 200, slow: 250, long: 300 })`,
 from which `Theme.fast` and the others derive). A ctest script,
 `scripts/check-shared-values.py`, reads both, plus `fadeOutMs` in
-`polkit/prompt/main.cpp` (which must be at least `normal`) and the title bar's
-fills (§6.6), and fails if they disagree. Why not one shared header: QML would
+`polkit/prompt/main.cpp` (which must be at least `normal`) and, from PR 6, the
+title bar's fills (§6.6), and fails if they disagree. Why not one shared header: QML would
 read four numbers through a C header, a C++ property and `Theme`, three hops
 for a reader looking for `Theme.fast`, plus an include path from the
 compositor into `common/`; a twenty-line test keeps two readable copies equal.
 
-**Verified by** the script in ctest, and the window animations' logged
-durations.
+**Verified by** the script in ctest (`shared-values`, with its own unit tests
+in `scripts/tests`), and the window animations' logged durations
+(`test_animation.py`, `Durations`).
 
 ### 6.5 Animation effects: one switch (D11)
 

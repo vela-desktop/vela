@@ -34,9 +34,10 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME script-tests COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/scripts/tests -v)
     add_test(NAME documentation COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-docs.py)
+    add_test(NAME shared-values COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-shared-values.py)
     add_test(NAME functional-harness COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/tests/harness -v)
-    set_tests_properties(script-tests documentation functional-harness PROPERTIES TIMEOUT 30)
+    set_tests_properties(script-tests documentation shared-values functional-harness PROPERTIES TIMEOUT 30)
     set_tests_properties(functional-harness PROPERTIES
         ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/tests/functional")
 endif()

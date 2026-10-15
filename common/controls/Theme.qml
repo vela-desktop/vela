@@ -110,13 +110,15 @@ QtObject {
     readonly property int fontSubtitle: 20
     readonly property int fontTitle: 28
 
-    // --- motion: the same curves and durations as the compositor's
-    // (compositor/src/motion.h), so windows and shell move the same way ---
-    readonly property int fast: 120
-    readonly property int normal: 200
-    readonly property int slow: 250 // panels and windows entering the scene
-    // cubic-bezier(0, 0, 0.2, 1): a decisive start, a soft landing
+    // --- motion: four durations and one curve, the same as the compositor's
+    // (compositor/src/motion.h), so windows and shell move the same way.
+    // scripts/check-shared-values.py fails if the two copies disagree. ---
+    readonly property var scale: ({ fast: 120, normal: 200, slow: 250, long: 300 })
+    readonly property int fast: scale.fast // fades in, state fills
+    readonly property int normal: scale.normal // exits, popups, dialogs, page changes
+    readonly property int slow: scale.slow // panels and windows entering the scene
+    readonly property int long: scale.long // what moves across the whole window
+    // cubic-bezier(0, 0, 0.2, 1): a decisive start, a soft landing. For exits
+    // too, which are shorter: one that starts slowly seems to ignore the click.
     readonly property var decelerate: [0.0, 0.0, 0.2, 1.0, 1.0, 1.0]
-    // for exits: starts slowly and leaves fast
-    readonly property var accelerate: [0.7, 0.0, 0.84, 0.0, 1.0, 1.0]
 }

@@ -244,12 +244,12 @@ Window {
             NumberAnimation {
                 target: panel; property: "y"; to: panel.restY + panel.slide
                 duration: Theme.normal
-                easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.accelerate
+                easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
             }
             NumberAnimation {
                 target: panel; property: "opacity"; to: 0
                 duration: Theme.normal
-                easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.accelerate
+                easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
             }
         }
         ScriptAction {

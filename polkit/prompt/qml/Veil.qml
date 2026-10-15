@@ -28,7 +28,7 @@ Window {
             NumberAnimation {
                 duration: Request.closing ? Theme.normal : Theme.slow
                 easing.type: Easing.BezierSpline
-                easing.bezierCurve: Request.closing ? Theme.accelerate : Theme.decelerate
+                easing.bezierCurve: Theme.decelerate
             }
         }
     }

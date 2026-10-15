@@ -5,8 +5,12 @@
 #define VELA_MOTION_H
 
 // Vela's motion design: curves and durations in one place, so the whole
-// desktop moves the same way. The QML shell uses the same values (see
-// common/controls/Theme.qml).
+// desktop moves the same way.
+//
+// Four durations and one curve, the same as QML's (Theme.scale and
+// Theme.decelerate in common/controls/Theme.qml). Both copies are read by
+// scripts/check-shared-values.py, which fails if they disagree
+// (docs/visual-coherence.md §6.4). Every animation below takes one of them.
 
 #include <stdbool.h>
 
@@ -50,41 +54,50 @@ bool vela_tween_retired(struct vela_tween *tween, double wall_ms);
 // nowhere.
 extern void (*vela_motion_logger)(const char *line);
 
-// Deceleration: starts decisively and settles gently. This curve, more than
-// the duration, is what feels "modern". Beware of more extreme curves such as
-// (0.1, 0.9, 0.2, 1): at 180 Hz they cover half the movement in the first 3
+// The duration scale. fast: changes of state, small things (the snap
+// preview, a magnifier step); normal: exits; slow: entrances; long: what moves
+// across the whole output.
+#define VELA_MOTION_FAST_MS 120.0
+#define VELA_MOTION_NORMAL_MS 200.0
+#define VELA_MOTION_SLOW_MS 250.0
+#define VELA_MOTION_LONG_MS 300.0
+
+// Deceleration, for entrances and exits alike: starts decisively and settles
+// gently. This curve, more than the duration, is what feels "modern". An exit
+// curve that starts slowly would make a window seem to ignore the click for
+// half the time; exits are shorter instead. Beware of more extreme curves such
+// as (0.1, 0.9, 0.2, 1): at 180 Hz they cover half the movement in the first 3
 // frames and the animation is no longer visible.
+#define VELA_DECELERATE_CURVE 0.0, 0.0, 0.2, 1.0
 extern const struct vela_curve vela_decelerate;
 
-// Window open: fade plus rise. Same duration as Theme.slow.
-#define VELA_WINDOW_OPEN_MS 250.0
+// Window open: fade plus rise.
+#define VELA_WINDOW_OPEN_MS VELA_MOTION_SLOW_MS
 #define VELA_WINDOW_OPEN_RISE 36
 
-// Close: the window shrinks a little and disappears. The deceleration curve
-// here too: with one that starts slowly the window would seem to ignore the
-// click for half the time.
-#define VELA_WINDOW_CLOSE_MS 180.0
+// Close: the window shrinks a little and disappears.
+#define VELA_WINDOW_CLOSE_MS VELA_MOTION_NORMAL_MS
 #define VELA_WINDOW_CLOSE_SCALE 0.94
 
 // Minimize and restore: the window flies to its taskbar button (and back),
 // shrinking and fading.
-#define VELA_WINDOW_MINIMIZE_MS 250.0
+#define VELA_WINDOW_MINIMIZE_MS VELA_MOTION_SLOW_MS
 #define VELA_WINDOW_MINIMIZE_SCALE 0.3
 
 // Maximize and restore: the old content morphs into the new frame and fades
 // into the real window.
-#define VELA_WINDOW_MAXIMIZE_MS 250.0
+#define VELA_WINDOW_MAXIMIZE_MS VELA_MOTION_SLOW_MS
 
 // Snap preview: grows from the center of the area and lights up.
-#define VELA_SNAP_PREVIEW_MS 150.0
+#define VELA_SNAP_PREVIEW_MS VELA_MOTION_FAST_MS
 
 // Desktop switch: the desktop being left slides away fading, the new one comes
 // from the other side. The slide is a fraction of the narrowest output: with
 // several outputs windows don't intrude on the next one.
-#define VELA_WORKSPACE_SWITCH_MS 300.0
+#define VELA_WORKSPACE_SWITCH_MS VELA_MOTION_LONG_MS
 #define VELA_WORKSPACE_SLIDE_FRACTION 0.25
 
 // Magnifier: from one zoom level to the next.
-#define VELA_MAGNIFIER_MS 150.0
+#define VELA_MAGNIFIER_MS VELA_MOTION_FAST_MS
 
 #endif

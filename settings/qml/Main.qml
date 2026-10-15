@@ -412,7 +412,7 @@ Window {
             ParallelAnimation {
                 id: enter
                 NumberAnimation { target: pageLoader.item; property: "opacity"; to: 1; duration: Theme.normal }
-                NumberAnimation { target: slide; property: "y"; to: 0; duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+                NumberAnimation { target: slide; property: "y"; to: 0; duration: Theme.long; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
             }
         }
     }

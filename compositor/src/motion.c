@@ -9,7 +9,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-const struct vela_curve vela_decelerate = { 0.0, 0.0, 0.2, 1.0 };
+const struct vela_curve vela_decelerate = { VELA_DECELERATE_CURVE };
 
 void (*vela_motion_logger)(const char *line);
 
