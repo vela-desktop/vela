@@ -478,6 +478,9 @@ bool vela_a11y_tick(struct vela_a11y *a11y, double now_ms, double wall_ms)
         }
         if (!a11y->zoom_animating && a11y->zoom <= 1.0 && !a11y->magnifier) {
             a11y->zoom = 1.0;
+            // Closed: the next opening anchors at the pointer, not at the
+            // point this one kept still.
+            a11y->zoom_output = NULL;
         }
         update_magnifier(a11y);
         running = running || a11y->zoom_animating;

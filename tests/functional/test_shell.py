@@ -298,6 +298,9 @@ class QtShell(unittest.TestCase):
                             self.fail(f"{error}\nChanged bounds: {last_bounds}; band: {(left, top, right, bottom)}")
                 finally:
                     self.vela.command("magnifier off")
+                    # Reopened while still zooming out, it would keep the
+                    # cursor's place on screen, not the pointer's point.
+                    time.sleep(0.5)
 
     @contextmanager
     def held_input(self, actions):

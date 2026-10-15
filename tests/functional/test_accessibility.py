@@ -239,6 +239,33 @@ class Accessibility(unittest.TestCase):
         time.sleep(0.6)
         self.assertEqual(self.vela.pixels().rows, before.rows)
 
+    def test_magnifier_reopens_at_the_pointer(self):
+        # The point kept still while zooming is the one under the pointer, also
+        # when the last zoom had moved its view elsewhere. Read from the pattern
+        # window's pixels, whose color is their position (red x, green y).
+        self.start()
+        window = self.vela.open_window(400, 300)
+        self.vela.keys("super+Up")
+        self.vela.wait_for(lambda s: s.window(window)["maximized"], what="the pattern maximized")
+        self.vela.wait_still(window)
+        w = self.vela.state().window(window)
+        self.vela.input("move", 400, 300, "sleep", 100)
+        self.vela.command("magnifier on")
+        time.sleep(0.5)
+        self.vela.input("move", 1800, 1050, "sleep", 300) # the view follows the pointer
+        self.vela.command("magnifier off")
+        time.sleep(0.5) # the zoom-out animation
+        self.vela.input("move", 400, 300, "sleep", 100)
+        self.vela.command("magnifier on")
+        time.sleep(0.5)
+        image = self.vela.pixels()
+        # At 2x around (400, 300), the screen's (x, y) shows (200 + x/2, 150 + y/2).
+        for x, y in ((360, 260), (300, 200)):
+            red, green, _ = image.at(x, y)
+            expected = ((200 + x // 2 - w["x"]) & 255, (150 + y // 2 - w["y"]) & 255)
+            self.assertLessEqual(max(abs(red - expected[0]), abs(green - expected[1])), 2,
+                                 f"screen ({x}, {y}) shows {(red, green)}, expected {expected}")
+
 
 if __name__ == "__main__":
     unittest.main()
