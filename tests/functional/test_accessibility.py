@@ -50,6 +50,7 @@ class Accessibility(unittest.TestCase):
             return conf.read()
 
     def test_quick_settings(self):
+        """Verify quick settings, workaround defaults, and persistence."""
         self.start()
         self.assertFalse(self.a11y()["nightLightNvidiaFix"])  # workaround off by default
         self.assertEqual({key: self.a11y()[key] for key in ("nightLight", "colorFilter", "magnifier", "stickyKeys")},
@@ -126,6 +127,7 @@ class Accessibility(unittest.TestCase):
             what="restoration after interrupting Night Light", read_state=False)
 
     def test_night_light_nvidia_fix_config_reload(self):
+        """Verify the opt-in NVIDIA fallback reloads without restarting."""
         # The experimental override is opt-in, persists in vela.conf and can be
         # switched without restarting the compositor. Headless always renders
         # using Vulkan; real DRM/NVIDIA validation needs physical hardware.
@@ -144,6 +146,7 @@ class Accessibility(unittest.TestCase):
         self.assertIn("night-light-nvidia-fix=no", self.conf())
 
     def test_night_light_nvidia_fix_headless_pixels_after_toggles(self):
+        """Validate tinted pixels after a newly rendered output frame."""
         # Headless has no hardware LUT, but switching the option while warm
         # must preserve the visible tint and a final fade must restore every
         # pixel. The actual DRM gamma -> Vulkan transition needs hardware.
@@ -163,12 +166,17 @@ class Accessibility(unittest.TestCase):
         self.vela.wait_for(lambda _: self.vela.pixels().at(x, y)[2] < original[2] - 10,
                            what="the experimental shader to warm the screen", read_state=False)
         for enabled in (False, True):
+            # The accessibility state can change before the compositor redraws.
+            # Record the frame count before reload to detect a fresh frame.
+            frames_before_reload = self.vela.state()["outputs"][0]["frames"]
             with open(self.vela.config_path(), "w") as conf:
                 conf.write("night-light=yes\nnight-light-strength=100\n"
                            f"night-light-nvidia-fix={'yes' if enabled else 'no'}\n")
             self.vela.command("reload-config")
             self.vela.wait_for(lambda _: self.a11y()["nightLightNvidiaFix"] == enabled,
                                what=f"experimental fallback set to {enabled}", read_state=False)
+            self.vela.wait_for(lambda state: state["outputs"][0]["frames"] > frames_before_reload,
+                               what=f"a post-reload output frame with fallback set to {enabled}")
             self.assertLess(self.vela.pixels().at(x, y)[2], original[2] - 10)
 
         self.vela.command("night-light off")
