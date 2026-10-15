@@ -205,8 +205,10 @@ class QtShell(unittest.TestCase):
         pictures = os.path.join(self.vela.directory, "Pictures", "Screenshot")
         previous = {path: os.stat(os.path.join(pictures, path)).st_ino
                     for path in os.listdir(pictures)} if os.path.isdir(pictures) else {}
-        self.vela.input("move", output["x"] + 120, output["y"] + 160, "sleep", 100, "down",
-                        "sleep", 100, "move", output["x"] + 520, output["y"] + 420,
+        # Odd edges expose independent origin/width rounding at 125% and 150%.
+        x1, y1, x2, y2 = 121, 161, 522, 423
+        self.vela.input("move", output["x"] + x1, output["y"] + y1, "sleep", 100, "down",
+                        "sleep", 100, "move", output["x"] + x2, output["y"] + y2,
                         "sleep", 200, "up")
         self.vela.wait_for(lambda s: not any(layer["namespace"] == "vela-snip" and layer["mapped"]
                                            for layer in s["layers"]), what="snipping completed")
@@ -214,8 +216,11 @@ class QtShell(unittest.TestCase):
                  if name.endswith(".png") and previous.get(name) != os.stat(os.path.join(pictures, name)).st_ino]
         self.assertEqual(len(paths), 1, "one snip saved to the isolated Pictures directory")
         cut = Image.read(paths[0])
-        scale = output["scale"]
-        left, top, right, bottom = (int(value * scale) for value in (120, 160, 520, 420))
+        # Qt maps screen logical coordinates to physical image pixels using
+        # the actual captured dimensions (which may be odd at fractional scale).
+        sx, sy = before.width / output["w"], before.height / output["h"]
+        left, right = (int(x * sx + 0.5) for x in (x1, x2))
+        top, bottom = (int(y * sy + 0.5) for y in (y1, y2))
         self.assertEqual((cut.width, cut.height), (right - left, bottom - top))
         self.assertEqual(cut.rows, [row[left * 3:right * 3] for row in before.rows[top:bottom]])
 
