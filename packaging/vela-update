@@ -612,11 +612,12 @@ fi
 ciRun=""
 if [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
     && command -v gh > /dev/null && gh auth status > /dev/null 2>&1; then
-    # The newest successful run may be a PR validation run that has no
-    # artifact of the requested type. Search recent runs for the first
-    # matching, non-expired artifact instead of falling back prematurely.
+    # PR package artifacts are deliberately unsigned. Select only main-push
+    # or manually dispatched builds (which attest their outputs), and search
+    # several successful runs in case a newer one lacks this distribution.
     if runs=$(gh run list -R "$repo" -w build.yml -c "$latestFull" -s success -L 20 \
-        --json databaseId -q '.[].databaseId' 2>"$CACHE/gh-lookup-error.log"); then
+        --json databaseId,event -q '.[] | select(.event == "push" or .event == "workflow_dispatch") | .databaseId' \
+        2>"$CACHE/gh-lookup-error.log"); then
         for run in $runs; do
             if artifacts=$(gh api "repos/$repo/actions/runs/$run/artifacts?per_page=100" \
                 -q ".artifacts[] | select(.name == \"$artifact_name\" and .expired == false) | .id" \
