@@ -164,6 +164,37 @@ class QtShell(unittest.TestCase):
                 with self.subTest(shortcut=shortcut, transform=transform, scale=scale, side=side):
                     self.check_snip(output, before, shortcut)
 
+    def test_software_cursor_damage_uses_upright_coordinates(self):
+        """A moving software cursor must update both its old and new buffer regions."""
+        for transform in ("90", "270", "flipped-90", "flipped-270"):
+            with self.subTest(transform=transform):
+                output = self.secondary_output(transform, 1, "above")
+                # Qt's wallpaper owns the pointer shape. Force Vela's software
+                # cursor with a shader filter, then capture WITHOUT PAINT_CURSORS.
+                self.vela.command("color-filter on")
+                self.vela.input("move", output["x"] + 60, output["y"] + 90, "sleep", 150)
+                before = self.settled_wallpaper()
+                first, second = (240, 380), (600, 780)
+
+                def patch(image, position):
+                    x, y = position
+                    return tuple(row[(x - 8) * 3:(x + 40) * 3]
+                                 for row in image.rows[y - 8:y + 40])
+
+                self.vela.input("move", output["x"] + first[0], output["y"] + first[1], "sleep", 150)
+                self.vela.wait_for(
+                    lambda _: patch(self.vela.pixels(output=1), first) != patch(before, first),
+                    read_state=False, timeout=4, what="composited cursor visible at new position")
+                self.vela.input("move", output["x"] + second[0], output["y"] + second[1], "sleep", 150)
+
+                def moved_and_erased(_):
+                    image = self.vela.pixels(output=1)
+                    return (patch(image, first) == patch(before, first)
+                            and patch(image, second) != patch(before, second))
+
+                self.vela.wait_for(moved_and_erased, read_state=False, timeout=4,
+                                   what="software cursor erased and redrawn on rotated output")
+
     def test_cursor_remains_at_the_pointer_coordinates_on_every_transform(self):
         """wlroots' cursor must agree with Qt surface pixels, not an inverted capture oracle."""
         expected = None
