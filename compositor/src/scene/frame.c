@@ -663,8 +663,11 @@ void vela_output_frame_destroy(struct vela_output_frame *frame)
     free(frame);
 }
 
-// Before every frame: if night light changed, try it on the gamma; if the
-// monitor accepts it, it goes into the next commit.
+/**
+ * Select the DRM gamma LUT or Vulkan shader for the next output commit.
+ * If the shader path is forced, first remove an installed LUT to prevent
+ * applying the same warm tint twice.
+ */
 static void prepare_night_light(struct vela_output_frame *frame)
 {
     struct vela_scene *scene = frame->scene;
@@ -800,6 +803,7 @@ void vela_output_frame_damage_whole(struct vela_output_frame *frame)
     vela_output_schedule_frame(frame->owner);
 }
 
+/** Request fresh pixels for shader color changes or a gamma-only commit. */
 void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filter_changed, bool night_changed)
 {
     if (vela_night_light_repaint_required(filter_changed, night_changed, wlr_output_is_drm(frame->output),
@@ -811,6 +815,7 @@ void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filte
     }
 }
 
+/** Permit one more hardware color commit after an earlier gamma LUT rejection. */
 void vela_output_frame_retry_night_light(struct vela_output_frame *frame)
 {
     if ((!frame->gamma_refused && !frame->night_clear_needed) || frame->gamma_retry_pending
