@@ -143,6 +143,40 @@ class Accessibility(unittest.TestCase):
         self.assertTrue(self.a11y()["nightLight"])
         self.assertIn("night-light-nvidia-fix=no", self.conf())
 
+    def test_night_light_nvidia_fix_headless_pixels_after_toggles(self):
+        # Headless has no hardware LUT, but switching the option while warm
+        # must preserve the visible tint and a final fade must restore every
+        # pixel. The actual DRM gamma -> Vulkan transition needs hardware.
+        self.start(["night-light-strength=100", "night-light-nvidia-fix=yes"])
+        identifier = self.vela.open_window(400, 300,
+                                           command=[tool("vela-pattern"), "--scale1", "400", "300"])
+        window = self.vela.state().window(identifier)
+        before = self.vela.pixels()
+        left, top = int(window["x"]), int(window["y"])
+        samples = [(left + x, top + y) for y in range(80, 110) for x in range(230, 270)
+                   if before.at(left + x, top + y) == (255, 255, 255)]
+        self.assertTrue(samples, "test pattern should contain a stable white pixel")
+        x, y = samples[len(samples) // 2]
+        original = before.at(x, y)
+
+        self.vela.command("night-light on")
+        self.vela.wait_for(lambda _: self.vela.pixels().at(x, y)[2] < original[2] - 10,
+                           what="the experimental shader to warm the screen", read_state=False)
+        for enabled in (False, True):
+            with open(self.vela.config_path(), "w") as conf:
+                conf.write("night-light=yes\nnight-light-strength=100\n"
+                           f"night-light-nvidia-fix={'yes' if enabled else 'no'}\n")
+            self.vela.command("reload-config")
+            self.vela.wait_for(lambda _: self.a11y()["nightLightNvidiaFix"] == enabled,
+                               what=f"experimental fallback set to {enabled}", read_state=False)
+            self.assertLess(self.vela.pixels().at(x, y)[2], original[2] - 10)
+
+        self.vela.command("night-light off")
+        self.vela.wait_for(
+            lambda _: all(abs(actual - expected) <= 3
+                          for actual, expected in zip(self.vela.pixels().at(x, y), original)),
+            what="neutral pixels after a shader fade reaches zero", read_state=False)
+
     def modifiers_while(self, actions, at_ms):
         """The keyboard modifiers ("modifiers" request) at the moments
         `at_ms` while vela-input runs `actions`: its virtual keyboard
