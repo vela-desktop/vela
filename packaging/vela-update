@@ -7,8 +7,9 @@
 # build an Arch package with makepkg or a Fedora RPM with rpmbuild.
 # The new version starts at the next session.
 #
-# If GitHub Actions has already built that commit's package (and gh is there,
-# logged into the account), it asks whether to download it instead of building:
+# If GitHub Actions has built that commit's public release, it can download
+# the signed package without GitHub CLI. Private workflow artifacts optionally
+# use an authenticated gh session only for retrieval, never verification:
 # no minutes of compiling, and no compiler crashes.
 #
 # The repository is kept in ~/.cache/vela-update, so each time only new commits
@@ -528,30 +529,37 @@ githubRepo() {
     printf '%s\n' "$url" | sed -n -E 's#^(ssh://git@github\.com/|git@github\.com:|https://github\.com/)([^/]+/[^/]+)$#\2#p' | sed 's/\.git$//'
 }
 
-# Official releases are named after the source commit. An HTTPS SHA256SUMS
-# manifest alone is NOT a trust anchor: an attacker replacing both the
-# manifest and the package could bypass a checksum-only check. Require a
-# GitHub/Sigstore build provenance attestation before installing any binary.
-# Without gh or a valid attestation, fall back to building verified Git source.
+# A checksum manifest alone is not a trust anchor. The release is only trusted
+# after cryptographic Sigstore verification of GitHub's artifact attestation,
+# including the package digest, workflow identity and exact selected revision.
+# This path needs curl, Python and cosign, but never a GitHub login or gh.
 repo=$(githubRepo)
 verifyProvenance() {
     artifact_path="$1"
     source_kind="$2"
-    if ! command -v gh >/dev/null 2>&1; then
-        echo "vela-update: GitHub CLI (gh) is required for signed package verification." >&2
+    if ! command -v cosign >/dev/null 2>&1; then
+        echo "vela-update: cosign is required for signed binary verification; building locally instead." >&2
         return 1
     fi
-    # The certificate must identify this repository's build.yml workflow,
-    # and the signed source SHA must equal the revision selected above.
-    # This checks the artifact digest cryptographically (not just its name).
-    set -- "$artifact_path" --repo "$repo" \
-        --signer-workflow "$repo/.github/workflows/build.yml" \
-        --source-digest "$latestFull" --deny-self-hosted-runners
-    if [ "$source_kind" = release ]; then
-        # Public alpha releases are published exclusively from main.
-        set -- "$@" --source-ref refs/heads/main
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "vela-update: Python 3 is required for signed binary verification." >&2
+        return 1
     fi
-    if ! gh attestation verify "$@" >/dev/null; then
+    helper=""
+    # Bootstrap from an ordinary checkout, or run after installation.
+    for candidate in "$(dirname "$0")/verify-attestation.py" \
+        /usr/libexec/vela/verify-attestation.py /usr/lib/vela/verify-attestation.py; do
+        if [ -f "$candidate" ]; then
+            helper="$candidate"
+            break
+        fi
+    done
+    if [ -z "$helper" ]; then
+        echo "vela-update: missing installed Sigstore verifier; refusing downloaded binary." >&2
+        return 1
+    fi
+    if ! python3 "$helper" --repository "$repo" --commit "$latestFull" \
+        --kind "$source_kind" "$artifact_path"; then
         echo "vela-update: package provenance verification failed for $latestFull; refusing binary." >&2
         return 1
     fi
