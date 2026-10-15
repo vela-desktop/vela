@@ -66,13 +66,19 @@ class MixedOutputRotation(unittest.TestCase):
                 self.assertTrue(separated, f"output boxes overlap: {left} / {right}")
 
     def rotate(self, angle, x, y=0, scale=1):
-        """Apply orientation, scale and position and await their logical geometry."""
+        """Apply orientation, scale and position and await their logical geometry.
+
+        The compositor moves the whole layout so that it starts at (0, 0) (the
+        X11 root's origin): a position left of or above the first output ends
+        up at 0 and the first output moves by as much."""
+        main = self.output(self.vela.state(), "HEADLESS-1")
         self.vela.randr("--output", "HEADLESS-2", "--scale", str(scale),
                         "--pos", f"{x},{y}", "--transform", str(angle))
         expected = ("normal", "90", "180", "270", "flipped", "flipped-90",
                     "flipped-180", "flipped-270").index(str(angle))
         width, height = (1080, 1920) if expected & 1 else (1920, 1080)
         width, height = int(width / scale), int(height / scale)
+        x, y = x - min(x, main["x"]), y - min(y, main["y"])
         return self.vela.wait_for(
             lambda s: (lambda o: (o["x"], o["y"], o["w"], o["h"], o["transform"])
                        == (x, y, width, height, expected))(self.output(s, "HEADLESS-2")),
@@ -170,13 +176,14 @@ class MixedOutputRotation(unittest.TestCase):
                 self.assert_picture_stable()
 
     def test_portrait_left_of_landscape_at_fractional_scale(self):
-        """Negative layout coordinates and 150% scaling must preserve exact pixels."""
+        """An output placed left of the first one (at a negative position, which
+        moves the layout's origin) and 150% scaling must preserve exact pixels."""
         self.add_output()
         state = self.rotate("90", -720, scale=1.5)
         self.assert_disjoint(state)
         second = self.output(state, "HEADLESS-2")
-        self.assertEqual((second["x"], second["y"], second["w"], second["h"]),
-                         (-720, 0, 720, 1280))
+        self.assertEqual((second["x"], second["y"], second["w"], second["h"]), (0, 0, 720, 1280))
+        self.assertEqual(self.output(state, "HEADLESS-1")["x"], 720)
         self.maximize_on_output()
         self.assert_pattern(1080, 1920)
 
@@ -187,19 +194,22 @@ class MixedOutputRotation(unittest.TestCase):
         self.add_output("HEADLESS-3")
         self.vela.randr("--output", "HEADLESS-3", "--scale", "1",
                         "--pos", "-1080,0", "--transform", "90")
-        self.add_output("HEADLESS-4")
+        # HEADLESS-3 at x = -1080 moved the layout's origin: the others are
+        # 1080 further right, and HEADLESS-4 goes right of HEADLESS-2.
+        state = self.add_output("HEADLESS-4")
+        second = self.output(state, "HEADLESS-2")
         self.vela.randr("--output", "HEADLESS-4", "--scale", "1",
-                        "--pos", "3200,0", "--transform", "270")
+                        "--pos", f"{second['x'] + second['w']},0", "--transform", "270")
         state = self.vela.wait_for(lambda s: len(s["outputs"]) == 4
                                   and self.output(s, "HEADLESS-3")["w"] == 1080
                                   and self.output(s, "HEADLESS-4")["w"] == 1080,
                                   what="two landscape and two portrait outputs")
         self.assert_disjoint(state)
         for name, expected in {
-            "HEADLESS-1": (0, 0, 1920, 1080, 0),
-            "HEADLESS-2": (1920, 0, 1280, 720, 0),
-            "HEADLESS-3": (-1080, 0, 1080, 1920, 1),
-            "HEADLESS-4": (3200, 0, 1080, 1920, 3),
+            "HEADLESS-1": (1080, 0, 1920, 1080, 0),
+            "HEADLESS-2": (3000, 0, 1280, 720, 0),
+            "HEADLESS-3": (0, 0, 1080, 1920, 1),
+            "HEADLESS-4": (4280, 0, 1080, 1920, 3),
         }.items():
             o = self.output(state, name)
             self.assertEqual((o["x"], o["y"], o["w"], o["h"], o["transform"]), expected, name)

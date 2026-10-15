@@ -107,9 +107,9 @@ class Outputs(unittest.TestCase):
         listed = dict(line.split(" ", 1) for line in self.vela.randr().splitlines())
         self.assertIn("0,1080", listed["HEADLESS-1"])
         self.assertIn("0,0", listed["HEADLESS-2"])
-        # Move the same display to the right: preserve window position relative
-        # to its original output, including when a preview returns to this layout.
-        self.vela.randr("--output", "HEADLESS-2", "--pos", "1920,0")
+        # Move the same display right of the primary: the layout no longer needs
+        # the shift, both return to y = 0 and the window with its output.
+        self.vela.randr("--output", "HEADLESS-2", "--pos", "1920,1080")
         state = self.vela.wait_for(lambda s: any(
             o["name"] == "HEADLESS-1" and o["y"] == 0 for o in s["outputs"]),
             what="restored nonnegative side-by-side output layout")

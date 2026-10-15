@@ -79,7 +79,9 @@ class QtShell(unittest.TestCase):
         self.assertNotIn("layer_surface has never been configured", self.vela.log_text())
 
     def secondary_output(self, transform="90", scale=1, side="above", size=(1920, 1080)):
-        """Configure a real Qt desktop at any side, including negative layout coordinates."""
+        """Configure a real Qt desktop at any side of the main output. Above or
+        left of it means a negative position: the compositor then moves the
+        layout's origin back to (0, 0), and the main output with it."""
         if not any(o["name"] == "HEADLESS-2" for o in self.vela.state()["outputs"]):
             self.vela.command(f"test-output add {size[0]}x{size[1]}")
             self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="secondary output")
@@ -89,6 +91,7 @@ class QtShell(unittest.TestCase):
         main = next(o for o in self.vela.state()["outputs"] if o["name"] == "HEADLESS-1")
         x, y = {"above": (0, -height), "left": (-width, 0),
                 "right": (main["w"], 0), "below": (0, main["h"])}[side]
+        x, y = main["x"] + x, main["y"] + y
         self.vela.randr("--output", "HEADLESS-2", "--mode", f"{size[0]}x{size[1]}",
                         "--scale", str(scale), "--pos", f"{x},{y}",
                         "--transform", transform)
@@ -344,8 +347,9 @@ class QtShell(unittest.TestCase):
         self.vela.wait_for(lambda s: s.window(window)["maximized"], what="main-output pattern maximized")
         self.vela.wait_still(window)
         before = self.vela.pixels(output=0)
-        for transform, y, size in (("90", -1920, (1080, 1920)), ("270", -1920, (1080, 1920)),
-                                   ("normal", -1080, (1920, 1080))):
+        # Above the main output: the layout starts at the upper monitor, so
+        # the main one sits right below it, at its height.
+        for transform, size in (("90", (1080, 1920)), ("270", (1080, 1920)), ("normal", (1920, 1080))):
             with self.subTest(transform=transform):
                 result = subprocess.run([settings, "--apply-client", self.vela.display, "HEADLESS-2",
                                          json.dumps({"transform": transform})], env=self.vela.client_env,
@@ -354,9 +358,9 @@ class QtShell(unittest.TestCase):
                 state = self.vela.state() # The native client exits only after server confirmation.
                 main, upper = (next(o for o in state["outputs"] if o["name"] == name)
                                for name in ("HEADLESS-1", "HEADLESS-2"))
-                self.assertEqual((upper["x"], upper["y"], upper["w"], upper["h"]), (0, y, *size))
+                self.assertEqual((upper["x"], upper["y"], upper["w"], upper["h"]), (0, 0, *size))
                 self.assertEqual(upper["y"] + upper["h"], main["y"])
-                self.assertEqual((main["x"], main["y"], main["w"], main["h"]), (0, 0, 2048, 1152))
+                self.assertEqual((main["x"], main["y"], main["w"], main["h"]), (0, size[1], 2048, 1152))
                 def layers_placed(s):
                     layers = {layer["namespace"]: layer for layer in s["layers"]
                               if layer["mapped"] and layer["output"] == "HEADLESS-2"}
@@ -364,9 +368,9 @@ class QtShell(unittest.TestCase):
                         return False
                     wallpaper, taskbar = layers["vela-wallpaper"], layers["vela-taskbar"]
                     return ((wallpaper["x"], wallpaper["y"], wallpaper["w"], wallpaper["h"])
-                            == (0, y, *size)
+                            == (0, 0, *size)
                             and (taskbar["x"], taskbar["y"], taskbar["w"], taskbar["h"])
-                            == (0, -48, size[0], 48))
+                            == (0, size[1] - 48, size[0], 48))
 
                 self.vela.wait_for(layers_placed, what="both upper layers confined to their own monitor")
                 after = self.vela.pixels(output=0)

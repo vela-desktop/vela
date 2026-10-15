@@ -174,8 +174,9 @@ The sharpness check additionally needs NumPy and Pillow available to `python3`.
 ## GPU requirements
 
 `tests/functional/test_output_rotation.py` exercises mixed landscape/portrait
-outputs, all eight Wayland transforms on an already maximized window, negative
-layout coordinates at 150% scale, and four-output layouts with explicit
+outputs, all eight Wayland transforms on an already maximized window, an
+output placed at negative coordinates (the compositor then moves the layout's
+origin to 0,0) at 150% scale, and four-output layouts with explicit
 transform assertions. Every interior pixel of the maximized `vela-pattern`
 window is compared with its independently generated coordinate pattern;
 nonblank pixels or equality with a previous capture are insufficient. Stability
