@@ -59,6 +59,11 @@ BuildRequires:  pipewire-devel
 BuildRequires:  wireplumber-devel
 
 Requires:       wlroots >= 0.20
+# Tools required by the installed vela-update command even without a build.
+Requires:       git
+Requires:       util-linux
+Requires:       rpm
+Requires:       dnf5
 Requires:       qt6-qtbase
 Requires:       qt6-qtdeclarative
 Requires:       qt6-qtsvg
@@ -72,6 +77,12 @@ Requires:       pipewire
 Requires:       wireplumber
 Requires:       hicolor-icon-theme
 
+# Public, attested binary downloads (curl + gh) and local RPM build fallback.
+# Keep the build toolchain optional for systems using prebuilt releases.
+Recommends:     curl
+Recommends:     gh
+Recommends:     rpm-build
+Recommends:     dnf5-plugins
 Recommends:     xdg-desktop-portal-wlr
 Recommends:     xdg-desktop-portal-kde
 Recommends:     breeze-icon-theme
