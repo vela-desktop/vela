@@ -181,6 +181,11 @@ window is compared with its independently generated coordinate pattern;
 nonblank pixels or equality with a previous capture are insufficient. Stability
 captures must span distinct presented frames. A portrait crop also verifies
 that screen-dump regions use upright image coordinates.
+Software-cursor-only damage is checked after rotating the output, with a shader
+color filter forcing cursor composition: old cursor pixels must be restored
+and the new pointer drawn without relying on capture's PAINT_CURSORS option.
+The event damage arrives in buffer-local coordinates and is converted into
+upright scene coordinates before the frame's damage ring consumes it.
 The four-output case also renders three simultaneous maximized coordinate
 patterns and checks their pixels on the individual outputs.
 
@@ -354,6 +359,9 @@ the three-pixel Catmull-Rom footprint at its top/left edges. A fixed private SVG
 gradient avoids dependence on the installed wallpaper or theme image.
 Both Print and Super+Shift+S must map overlays on every
 output and save exactly the selected pixels to an isolated Pictures directory.
+Odd logical selection endpoints at 125% and 150% scale additionally verify that
+the crop rounds its two physical edges independently, rather than rounding
+origin and width separately.
 Qt PNG filters are decoded before comparison. Captures with the wlroots cursor
 independently anchor image coordinates to the pointer position and shape, so
 opposite errors in capture and scene rotation cannot cancel each other. A zoomed
