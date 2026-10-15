@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "scene/frame.h"
+#include "scene/night_light_policy.h"
 
 #include "geometry.h"
 #include "listen.h"
@@ -687,8 +688,8 @@ static void prepare_night_light(struct vela_output_frame *frame)
             wlr_color_transform_unref(frame->night_transform);
             frame->night_transform = NULL;
         }
-        bool keep_old_lut = frame->gamma_refused && frame->night_clear_needed
-            && !frame->gamma_retry_pending && frame->night_gamma_committed;
+        bool keep_old_lut = vela_night_light_defer_clear(frame->gamma_refused, frame->night_clear_needed,
+            frame->gamma_retry_pending, frame->night_gamma_committed);
         frame->gamma_retry_pending = false;
         frame->night_clear_needed = frame->night_gamma_committed;
         frame->night_commit_pending = frame->night_clear_needed && !keep_old_lut;
@@ -801,8 +802,8 @@ void vela_output_frame_damage_whole(struct vela_output_frame *frame)
 
 void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filter_changed, bool night_changed)
 {
-    if (filter_changed || (night_changed && (!wlr_output_is_drm(frame->output)
-                              || (frame->gamma_refused && !frame->night_in_gamma)))) {
+    if (vela_night_light_repaint_required(filter_changed, night_changed, wlr_output_is_drm(frame->output),
+            frame->scene->night_force_shader, frame->gamma_refused, frame->night_in_gamma)) {
         vela_output_frame_damage_whole(frame);
     } else if (night_changed) {
         // A DRM gamma transform can be committed with unchanged pixels.
