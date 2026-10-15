@@ -30,6 +30,7 @@ struct vela_snapshot {
     struct piece *pieces;
     int count;
     int capacity;
+    int surfaces; // of them, the app's surfaces
     struct vela_shape shape; // the window's (corners, shadow), scaled with it
 };
 
@@ -62,6 +63,7 @@ static void add_surface_copy(struct wlr_surface *surface, int sx, int sy, void *
     struct vela_buffer_node *copy = vela_buffer_node_create(context->snapshot->tree, &buffer->base, buffer->texture,
         &src, wlr_output_transform_invert(surface->current.transform), width, height);
     add_piece(context->snapshot, &copy->node, context->lx + sx, context->ly + sy, width, height);
+    ++context->snapshot->surfaces;
 }
 
 // For surfaces, whether nodes are enabled doesn't matter: on close the surface
@@ -354,9 +356,11 @@ bool vela_snapshots_tick(struct vela_server *server, double now_ms, double wall_
         float opacity = (float)lerp(a->from_opacity, a->to_opacity, fade);
         snapshot_apply(a->snapshot, x, y, scale_x, scale_y, radius, opacity);
         if (vela_motion_logger) {
-            // The snapshot's center and scale.
-            wlr_log(WLR_INFO, "animation: %s #%u geometry %.3f %.3f %.4f %.4f opacity %.3f", a->tween.name,
-                a->tween.serial, x, y, scale_x, scale_y, opacity);
+            // The snapshot's center and scale, and how many images it has
+            // (of them, the app's surfaces).
+            wlr_log(WLR_INFO, "animation: %s #%u geometry %.3f %.3f %.4f %.4f opacity %.3f pieces %d surfaces %d",
+                a->tween.name, a->tween.serial, x, y, scale_x, scale_y, opacity, a->snapshot->count,
+                a->snapshot->surfaces);
             if (a->snapshot->shape.enabled) {
                 wlr_log(WLR_INFO, "animation: %s #%u radius %.3f", a->tween.name, a->tween.serial, radius);
             }

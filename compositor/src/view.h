@@ -200,6 +200,10 @@ int vela_view_title_bar_height(const struct vela_view *view);
 // animate: false when the window leaves maximized because it's being dragged
 // (it already follows the cursor).
 void vela_view_set_maximized(struct vela_view *view, bool on, bool animate);
+// Like Windows 11: the window's current image morphs into the frame `to` it is
+// about to take (maximize, snap and back), with corners if that frame has
+// them. Call it before changing the window's state.
+void vela_view_morph(struct vela_view *view, struct wlr_box to, bool corners);
 void vela_view_set_fullscreen(struct vela_view *view, bool on);
 // Like Windows: the window disappears, goes to the end of the Alt+Tab order
 // and the keyboard moves to the next one.

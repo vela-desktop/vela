@@ -441,7 +441,7 @@ void vela_interact_begin(struct vela_server *server, struct vela_view *view, int
         if (view->maximized) {
             vela_view_set_maximized(view, false, false);
         } else {
-            vela_view_set_snap(view, vela_snap_none, NULL);
+            vela_view_set_snap(view, vela_snap_none, NULL, false);
         }
         struct wlr_box geometry = vela_view_geometry(view);
         vela_node_set_position(&view->tree->node, (int)(cursor->x - fraction * restored_width) - geometry.x,
@@ -484,7 +484,7 @@ void vela_interact_begin_keyboard(struct vela_server *server, struct vela_view *
         return;
     }
     if (!vela_snap_is_none(view->snap)) {
-        vela_view_set_snap(view, vela_snap_none, NULL);
+        vela_view_set_snap(view, vela_snap_none, NULL, false);
     }
     vela_focus_view(server, view);
     vela_view_finish_open_animation(view);

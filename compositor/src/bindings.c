@@ -274,7 +274,7 @@ void vela_window_action(struct vela_server *server, struct vela_view *view, cons
         } else if (view->maximized) {
             vela_view_set_maximized(view, false, true);
         } else if (!vela_snap_is_none(view->snap)) {
-            vela_view_set_snap(view, vela_snap_none, NULL);
+            vela_view_set_snap(view, vela_snap_none, NULL, true);
         }
     } else if (strcmp(action, "minimize") == 0) {
         vela_view_set_minimized(view, true);
@@ -289,7 +289,7 @@ void vela_window_action(struct vela_server *server, struct vela_view *view, cons
     } else if (strcmp(action, "snap-left") == 0 || strcmp(action, "snap-right") == 0) {
         // From Task View: "Snap left/right".
         vela_focus_view(server, view);
-        vela_view_set_snap(view, strcmp(action, "snap-left") == 0 ? vela_snap_left : vela_snap_right, NULL);
+        vela_view_set_snap(view, strcmp(action, "snap-left") == 0 ? vela_snap_left : vela_snap_right, NULL, true);
     } else if (starts_with(action, "snap ")) {
         // From snap layouts and Snap Assist: "snap x0 y0 x1 y1 [quiet
         // [window]]", in twelfths. From Snap Assist also the window it goes
@@ -303,7 +303,7 @@ void vela_window_action(struct vela_server *server, struct vela_view *view, cons
                 vela_view_set_minimized(view, false);
             }
             vela_focus_view(server, view);
-            vela_view_set_snap(view, tile, NULL);
+            vela_view_set_snap(view, tile, NULL, true);
             if (strcmp(quiet, "quiet") != 0) {
                 vela_snap_offer_assist(server, view);
             } else if (n >= 6) {

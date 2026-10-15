@@ -439,6 +439,16 @@ and size: one more pair of values in `snapshot.c`'s `struct animation`.
 **Verified** with the animation log: the source's radius on the first frame,
 the destination's on the last.
 
+Snapping (Win+arrows, dragging to an edge, a layout's zone) and unsnapping
+morph the same way, as on Windows 11; leaving a snap or maximized by dragging
+the window doesn't, it already follows the pointer. With two outputs every
+taskbar reports the window's button, and minimizing flies to the one on the
+window's own output. `test_animation.EveryTrigger` starts each window animation
+the ways a person does (the title bar's buttons and double click, the
+keyboard, dragging to an edge) and requires its snapshots to hold the app's
+surfaces; the shell's tests do the same with Settings, a Qt app drawn on the
+GPU, and its taskbar button.
+
 ### 6.4 One duration scale, written twice and checked (D10)
 
 | Token | ms | Compositor (`compositor/src/motion.h`) | QML (`Theme.qml`) |

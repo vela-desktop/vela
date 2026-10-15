@@ -60,7 +60,7 @@ void vela_view_apply_snap(struct vela_view *view, struct vela_output *output)
     vela_node_set_position(&view->tree->node, place.x - geometry.x, place.y - geometry.y);
 }
 
-void vela_view_set_snap(struct vela_view *view, struct vela_snap side, struct vela_output *output)
+void vela_view_set_snap(struct vela_view *view, struct vela_snap side, struct vela_output *output, bool animate)
 {
     if (!view->mapped || view->fullscreen || !vela_view_configurable(view)) {
         return;
@@ -73,9 +73,12 @@ void vela_view_set_snap(struct vela_view *view, struct vela_snap side, struct ve
         if (vela_snap_is_none(view->snap)) {
             return;
         }
+        struct wlr_box back = vela_view_restore_box(view);
+        if (animate && back.width > 0) {
+            vela_view_morph(view, back, true);
+        }
         view->snap = vela_snap_none;
         vela_view_send_tiled(view, WLR_EDGE_NONE);
-        struct wlr_box back = vela_view_restore_box(view);
         vela_view_configure_size(view, back.width, back.height);
         if (back.width > 0) {
             struct wlr_box geometry = vela_view_geometry(view);
@@ -85,6 +88,12 @@ void vela_view_set_snap(struct vela_view *view, struct vela_snap side, struct ve
     }
     if (!vela_snap_valid(side)) {
         return;
+    }
+    struct vela_output *target = output ? output : vela_view_output(view);
+    if (animate && target && !vela_snap_equal(side, view->snap)) {
+        struct vela_placement place = vela_output_place(target, vela_snap_area(target, side));
+        vela_view_morph(
+            view, (struct wlr_box) { (int)lround(place.x), (int)lround(place.y), place.width, place.height }, false);
     }
     // The size to restore is the "free" one, not that of another snap or of
     // the maximized window.
@@ -99,7 +108,7 @@ void vela_view_set_snap(struct vela_view *view, struct vela_snap side, struct ve
         }
     }
     view->snap = side;
-    vela_view_apply_snap(view, output ? output : vela_view_output(view));
+    vela_view_apply_snap(view, target);
 }
 
 void vela_view_leave_snap_group(struct vela_view *view)
@@ -149,19 +158,19 @@ void vela_snap_keyboard(struct vela_server *server, struct vela_view *view, uint
     if (sym == XKB_KEY_Left || sym == XKB_KEY_Right) {
         bool to_left = sym == XKB_KEY_Left;
         if ((to_left && right_column) || (!to_left && left_column)) {
-            vela_view_set_snap(view, vela_snap_none, NULL);
+            vela_view_set_snap(view, vela_snap_none, NULL, true);
         } else if (!left_column && !right_column) {
-            vela_view_set_snap(view, to_left ? vela_snap_left : vela_snap_right, NULL);
+            vela_view_set_snap(view, to_left ? vela_snap_left : vela_snap_right, NULL, true);
             vela_snap_offer_assist(server, view);
         }
         return; // it's already on that side
     }
     if (sym == XKB_KEY_Up) {
         if (is_half_column(s)) {
-            vela_view_set_snap(view, (struct vela_snap) { s.x0, 0, s.x1, 6 }, NULL);
+            vela_view_set_snap(view, (struct vela_snap) { s.x0, 0, s.x1, 6 }, NULL, true);
             vela_snap_offer_assist(server, view);
         } else if (is_quarter(s) && s.y0 == 6) {
-            vela_view_set_snap(view, (struct vela_snap) { s.x0, 0, s.x1, 12 }, NULL);
+            vela_view_set_snap(view, (struct vela_snap) { s.x0, 0, s.x1, 12 }, NULL, true);
         } else {
             vela_view_set_maximized(view, true, true);
         }
@@ -171,12 +180,12 @@ void vela_snap_keyboard(struct vela_server *server, struct vela_view *view, uint
     if (view->maximized) {
         vela_view_set_maximized(view, false, true);
     } else if (is_half_column(s)) {
-        vela_view_set_snap(view, (struct vela_snap) { s.x0, 6, s.x1, 12 }, NULL);
+        vela_view_set_snap(view, (struct vela_snap) { s.x0, 6, s.x1, 12 }, NULL, true);
         vela_snap_offer_assist(server, view);
     } else if (is_quarter(s) && s.y0 == 0) {
-        vela_view_set_snap(view, (struct vela_snap) { s.x0, 0, s.x1, 12 }, NULL);
+        vela_view_set_snap(view, (struct vela_snap) { s.x0, 0, s.x1, 12 }, NULL, true);
     } else if (!vela_snap_is_none(s) && !(is_quarter(s) && s.y0 == 6)) {
-        vela_view_set_snap(view, vela_snap_none, NULL);
+        vela_view_set_snap(view, vela_snap_none, NULL, true);
     } else {
         vela_view_set_minimized(view, true);
     }
@@ -338,7 +347,7 @@ void vela_snap_end_zone(struct vela_server *server, bool apply)
     if (zone == VELA_SNAP_ZONE_MAXIMIZE) {
         vela_view_set_maximized(grabbed, true, true);
     } else {
-        vela_view_set_snap(grabbed, tile, output);
+        vela_view_set_snap(grabbed, tile, output, true);
         vela_snap_offer_assist(server, grabbed);
     }
 }

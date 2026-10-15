@@ -55,8 +55,9 @@ static inline bool vela_snap_valid(struct vela_snap s)
 struct vela_area vela_snap_area(const struct vela_output *output, struct vela_snap snap);
 
 // Snaps (or unsnaps, with vela_snap_none) the window; `output`: the output, if
-// not the one it's on.
-void vela_view_set_snap(struct vela_view *view, struct vela_snap side, struct vela_output *output);
+// not the one it's on. animate: false when it leaves its snap because it's
+// being dragged (it already follows the cursor).
+void vela_view_set_snap(struct vela_view *view, struct vela_snap side, struct vela_output *output, bool animate);
 // Realigns it to its snap on `output`.
 void vela_view_apply_snap(struct vela_view *view, struct vela_output *output);
 // Moved elsewhere: it's no longer with its group (a group of one window is no

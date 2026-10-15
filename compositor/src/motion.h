@@ -94,8 +94,8 @@ extern const struct vela_curve vela_decelerate;
 #define VELA_WINDOW_MINIMIZE_MS VELA_MOTION_SLOW_MS
 #define VELA_WINDOW_MINIMIZE_SCALE 0.3
 
-// Maximize and restore: the old content morphs into the new frame and fades
-// into the real window.
+// Maximize, snap (a half, a quarter, a layout's zone) and back: the old
+// content morphs into the new frame and fades into the real window.
 #define VELA_WINDOW_MAXIMIZE_MS VELA_MOTION_SLOW_MS
 
 // Snap preview: grows from the center of the area and lights up.

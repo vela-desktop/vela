@@ -415,6 +415,42 @@ class QtShell(unittest.TestCase):
                                     and output["y"] + output["h"] - 48 <= button[1] < output["y"] + output["h"],
                                     f"{action} on {name}: the button at {button}, outside {output}")
 
+    def test_a_qt_app_animates_with_its_own_images(self):
+        """Settings (Qt, drawn on the GPU) through Vela's title bar and its taskbar
+        button: every animation starts, and its snapshots hold the app's images."""
+        env = dict(self.vela.client_env)
+        env.pop("QT_WAYLAND_RECONNECT", None)
+        settings = subprocess.Popen([os.path.join(BUILD, "settings", "vela-settings")], env=env,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.vela.clients.append(settings)
+        state = self.vela.wait_for(lambda s: any(w["app"] == "vela-settings" for w in s.windows), timeout=15,
+                                   what="Settings")
+        window = next(w["id"] for w in state.windows if w["app"] == "vela-settings")
+        self.vela.wait_still(window)
+        time.sleep(1.0) # its first frames
+
+        def act(name, *actions):
+            mark = len(self.vela.log_text())
+            self.vela.input(*actions, "sleep", 400)
+            self.vela.wait_for(lambda _: re.search(rf"animation: {name} #\d+ retired", self.vela.log_text()[mark:]),
+                               read_state=False, what=name)
+            text = self.vela.log_text()[mark:]
+            surfaces = [int(m[1]) for m in re.finditer(rf"animation: {name} #\d+ geometry .* surfaces (\d+)", text)]
+            self.assertTrue(surfaces and min(surfaces) > 0, f"{name}: the snapshot lacks Settings' images")
+            return text
+
+        def button(part):
+            w = self.vela.state().window(window)
+            return w["x"] + w["w"] - {"close": 23, "maximize": 69, "minimize": 115}[part], w["y"] + 15
+
+        act("morph", "move", *button("maximize"), "sleep", 300, "down", "sleep", 30, "up")
+        act("morph", "move", *button("maximize"), "sleep", 300, "down", "sleep", 30, "up")
+        text = act("minimize", "move", *button("minimize"), "sleep", 300, "down", "sleep", 30, "up")
+        x, y = (float(v) for v in re.findall(r"animation: minimize #\d+ geometry ([-\d.]+) ([-\d.]+)", text)[-1])
+        act("restore", "move", int(x), int(y), "sleep", 300, "down", "sleep", 30, "up") # its taskbar button
+        self.assertFalse(self.vela.state().window(window)["minimized"])
+        act("close", "move", *button("close"), "sleep", 300, "down", "sleep", 30, "up")
+
     def test_super_repeatedly_opens_and_closes_the_real_menu(self):
         # One virtual keyboard, as on the user's desktop. Creating a fresh
         # keyboard for each key would briefly change focus and close the menu.

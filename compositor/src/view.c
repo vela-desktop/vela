@@ -766,6 +766,13 @@ static void restore(struct vela_view *view)
     vela_view_configure_size(view, back.width, back.height);
 }
 
+void vela_view_morph(struct vela_view *view, struct wlr_box to, bool corners)
+{
+    if (view->mapped && !view->minimized && view->tree->node.enabled && vela_view_on_current_workspace(view)) {
+        vela_snapshot_morph(view->server, view, to, corners && !has_own_shadow(view) ? CORNER_RADIUS : 0.0);
+    }
+}
+
 void vela_view_set_maximized(struct vela_view *view, bool on, bool animate)
 {
     if (!vela_view_configurable(view)) {
@@ -779,18 +786,13 @@ void vela_view_set_maximized(struct vela_view *view, bool on, bool animate)
         return;
     }
     vela_view_finish_open_animation(view);
-    // Like Windows 11: the window morphs into the new frame.
-    animate = animate && view->mapped && !view->minimized && view->tree->node.enabled
-        && vela_view_on_current_workspace(view);
 
     if (on) {
-        if (animate) {
-            struct vela_output *output = vela_view_output(view);
-            if (output) {
-                struct vela_placement place = vela_output_place(output, vela_output_usable_area(output));
-                vela_snapshot_morph(view->server, view,
-                    (struct wlr_box) { (int)lround(place.x), (int)lround(place.y), place.width, place.height }, 0.0);
-            }
+        struct vela_output *output = vela_view_output(view);
+        if (animate && output) {
+            struct vela_placement place = vela_output_place(output, vela_output_usable_area(output));
+            vela_view_morph(
+                view, (struct wlr_box) { (int)lround(place.x), (int)lround(place.y), place.width, place.height }, false);
         }
         vela_view_leave_snap_group(view);
         if (view->mapped && vela_snap_is_none(view->snap)) {
@@ -807,8 +809,7 @@ void vela_view_set_maximized(struct vela_view *view, bool on, bool animate)
     }
 
     if (animate) {
-        vela_snapshot_morph(
-            view->server, view, vela_view_restore_box(view), has_own_shadow(view) ? 0.0 : CORNER_RADIUS);
+        vela_view_morph(view, vela_view_restore_box(view), true);
     }
     view->maximized = false;
     vela_view_send_maximized(view, false);

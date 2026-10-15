@@ -227,6 +227,89 @@ class AnimationEffects(unittest.TestCase):
                                 if m[1] == "open"))
 
 
+SURFACES = re.compile(r"animation: (\S+) #\d+ geometry .* surfaces (\d+)")
+
+
+class EveryTrigger(unittest.TestCase):
+    """Each window animation from every way a person starts it: Vela's title
+    bar (its buttons, a double click), the keyboard, dragging to an edge. Each
+    one must start its animation, and a snapshot must hold the window's images
+    (an empty one animates nothing visible)."""
+
+    def expect(self, names, what, *actions):
+        mark = len(self.vela.log_text())
+        for action in actions:
+            action()
+
+        def started(_):
+            text = self.vela.log_text()[mark:]
+            return all(f"animation: {name} #" in text for name in names)
+        self.vela.wait_for(started, read_state=False, what=f"{what}: {', '.join(names)}")
+        time.sleep(0.5) # the animation ends
+        for m in SURFACES.finditer(self.vela.log_text()[mark:]):
+            self.assertGreater(int(m[2]), 0, f"{what}: the {m[1]} snapshot has none of the app's images")
+
+    def bar(self, window):
+        """The title bar's middle and buttons (46 units wide, at the right)."""
+        w = self.vela.state().window(window)
+        right, y = w["x"] + w["w"], w["y"] + 15
+        return {"middle": (w["x"] + w["w"] // 2, y), "close": (right - 23, y),
+                "maximize": (right - 69, y), "minimize": (right - 115, y)}
+
+    def click(self, window, part, double=False):
+        x, y = self.bar(window)[part]
+        actions = ["move", x, y, "sleep", 300, "down", "sleep", 30, "up"]
+        if double:
+            actions += ["sleep", 60, "down", "sleep", 30, "up"]
+        return lambda: self.vela.input(*actions, "sleep", 400) # no double click with the next one
+
+    def drag_to(self, window, x, y):
+        bx, by = self.bar(window)["middle"]
+        return lambda: self.vela.input("move", bx, by, "sleep", 300, "down", "sleep", 50, "move", bx, by + 10,
+                                       "sleep", 50, "move", x, y, "sleep", 300, "up", "sleep", 400)
+
+    def keys(self, *combos):
+        return lambda: self.vela.keys(*combos)
+
+    def command(self, line):
+        return lambda: self.vela.command(line)
+
+    def test_every_trigger_animates(self):
+        with Session(env={"VELA_DEBUG_ANIMATION": "1"}) as vela:
+            self.vela = vela
+            mark = len(vela.log_text())
+            window = vela.open_window(500, 360, decorated=True)
+            self.assertIn("animation: open #", vela.log_text()[mark:])
+            vela.wait_for(lambda s: s["focused"] == window)
+
+            self.expect(["morph"], "maximize button", self.click(window, "maximize"))
+            self.expect(["morph"], "restore button", self.click(window, "maximize"))
+            self.expect(["morph"], "double click on the bar", self.click(window, "middle", double=True))
+            self.expect(["morph"], "double click again", self.click(window, "middle", double=True))
+            self.expect(["morph"], "Win+Up", self.keys("super+Up"))
+            self.expect(["morph"], "Win+Down from maximized", self.keys("super+Down"))
+            self.expect(["morph"], "Win+Left", self.keys("super+Left"))
+            self.expect(["morph"], "Win+Down from a half", self.keys("super+Down"))
+            self.expect(["morph"], "Win+Up from a quarter", self.keys("super+Up"))
+            self.expect(["morph"], "Win+Right from the left half", self.keys("super+Right"))
+            self.expect(["snap-preview", "morph"], "dragged to the left edge", self.drag_to(window, 0, 500))
+            self.expect(["morph"], "Win+Right back", self.keys("super+Right"))
+            self.expect(["snap-preview", "morph"], "dragged to the top", self.drag_to(window, 960, 0))
+            self.expect(["morph"], "Win+Down", self.keys("super+Down"))
+            self.expect(["minimize"], "minimize button", self.click(window, "minimize"))
+            self.expect(["restore"], "restored", self.command(f"window {window} restore"))
+            self.expect(["minimize"], "Win+Down from normal", self.keys("super+Down"))
+            self.expect(["restore"], "restored again", self.command(f"window {window} restore"))
+            self.expect(["desktop"], "Win+Ctrl+D", self.keys("super+ctrl+d"))
+            self.expect(["desktop"], "Win+Ctrl+Left", self.keys("super+ctrl+Left"))
+            self.expect(["magnifier"], "Win+Plus", self.keys("super+plus"))
+            self.expect(["magnifier"], "Win+Esc", self.keys("super+Escape"))
+            self.expect(["close"], "close button", self.click(window, "close"))
+            other = vela.open_window(500, 360, decorated=True)
+            vela.wait_for(lambda s: s["focused"] == other)
+            self.expect(["close"], "Alt+F4", self.keys("alt+F4"))
+
+
 class MorphCorners(unittest.TestCase):
     """docs/visual-coherence.md §6.3: maximizing, the window's corners go away
     while it morphs into the new frame; restoring, they come back. They never
