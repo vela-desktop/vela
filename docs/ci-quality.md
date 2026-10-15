@@ -1,8 +1,10 @@
 # Additional CI quality checks
 
 The main Build workflow runs on pushes to `main`, pull requests and manual dispatch; it also invokes the Fedora build and test workflow to gate public releases.
-Sanitizer Tests, Static Analysis and Standalone Package Test run separately on
-pull requests and manual dispatch, not on ordinary pushes to `main`.
+Sanitizer Tests and Static Analysis run separately on pull requests and manual dispatch;
+Standalone Package Test is now manual-only because Build already performs the
+same Arch package build and smoke test on PRs. Documentation-only PRs skip the
+expensive Build jobs after an inexpensive source-change check.
 
 ## Package and updater contracts
 
@@ -27,7 +29,7 @@ AddressSanitizer and UndefinedBehaviorSanitizer and runs CPU-only CTest
 suites. It deliberately excludes functional and sharpness tests, which
 need a real GPU exposing Vulkan 1.4 and a DRM render node.
 
-## Standalone package test
+## Standalone package test (manual only)
 
 [Standalone Package Test](../.github/workflows/package-smoke.yml) builds
 the existing PKGBUILD from the checked-out revision, then installs its
