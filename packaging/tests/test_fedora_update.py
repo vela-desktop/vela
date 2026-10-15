@@ -55,7 +55,7 @@ class FedoraUpdates(FedoraFixture):
         }
         for name in ("git", "util-linux", "rpm", "dnf5"):
             self.assertIn(name, required)
-        for name in ("curl", "gh", "rpm-build", "dnf5-plugins"):
+        for name in ("curl", "rpm-build", "dnf5-plugins"):
             self.assertIn(name, recommended)
 
     def test_multiple_runs_select_the_fedora_artifact(self):
@@ -113,9 +113,9 @@ class FedoraUpdates(FedoraFixture):
                      if call["args"][:2] == ["run", "download"]]
         self.assertEqual(downloads[0]["args"][downloads[0]["args"].index("-n") + 1],
                          "vela-fedora-rpm")
-        verification = next(call for call in self.calls("gh")
-                            if call["args"][:2] == ["attestation", "verify"])
-        self.assertEqual(verification["args"][verification["args"].index("--source-digest") + 1],
+        verification = next(call for call in self.calls("cosign")
+                            if call["args"][:1] == ["verify-blob-attestation"])
+        self.assertEqual(verification["args"][verification["args"].index("--certificate-github-workflow-sha") + 1],
                          self.nvidia)
         self.assertEqual(self.calls("rpmbuild"), [])
         self.assertEqual(self.calls("sudo")[0]["args"][:3], ["dnf", "install", "-y"])
@@ -134,9 +134,9 @@ class FedoraUpdates(FedoraFixture):
         curls = self.calls("curl")
         self.assertTrue(any(c["args"][-1].endswith("SHA256SUMS-fedora") for c in curls))
         self.assertEqual(self.calls("rpmbuild"), [])
-        verification = next(c for c in self.calls("gh")
-                            if c["args"][:2] == ["attestation", "verify"])
-        self.assertEqual(verification["args"][verification["args"].index("--source-ref") + 1],
+        verification = next(c for c in self.calls("cosign")
+                            if c["args"][:1] == ["verify-blob-attestation"])
+        self.assertEqual(verification["args"][verification["args"].index("--certificate-github-workflow-ref") + 1],
                          "refs/heads/main")
 
     def test_bad_public_release_checksum_falls_back_to_local_build(self):
