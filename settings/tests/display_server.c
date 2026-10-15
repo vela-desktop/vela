@@ -33,6 +33,13 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
 void vela_output_arrange_layers(struct vela_output *output) {}
 void vela_views_check_outputs(struct vela_server *server) {}
 void vela_view_keep_in_place(struct vela_view *view) {}
+// No mapped windows exist in this CPU-only display preview fixture.
+// Provide the view/scene entry points used by the actual output manager's
+// monitor-origin translation, without linking the Vulkan compositor.
+struct vela_output *vela_view_output(struct vela_view *view) { return NULL; }
+struct wlr_box vela_output_box(const struct vela_output *output) { return (struct wlr_box) {0}; }
+void vela_node_set_position(struct vela_node *node, double x, double y) {}
+void vela_view_sync_x11(struct vela_view *view) {}
 void vela_scene_changed(struct vela_scene *scene) {}
 void vela_output_key(const struct wlr_output *output, char *out, size_t size)
 {
