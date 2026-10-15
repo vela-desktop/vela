@@ -23,6 +23,7 @@
 #include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -272,6 +273,13 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
         if (pixman_region32_not_empty(&pixels)) {
             const pixman_box32_t *ext = pixman_region32_extents(&pixels);
             e->blur_box = (struct wlr_box) { ext->x1, ext->y1, ext->x2 - ext->x1, ext->y2 - ext->y1 };
+            // Mechanism for clients, policy for ourselves: Vela's surfaces
+            // are layer surfaces named vela-... (the shell's panels, the
+            // polkit prompt); a client that picks such a name only changes its
+            // own look.
+            struct wlr_layer_surface_v1 *layer
+                = wlr_layer_surface_v1_try_from_wlr_surface(wlr_surface_get_root_surface(surface));
+            e->acrylic = layer && layer->namespace && strncmp(layer->namespace, "vela-", 5) == 0;
         }
         pixman_region32_fini(&pixels);
     }
@@ -487,7 +495,7 @@ static bool same_look(const struct vela_element *a, const struct vela_element *b
         && a->transform == b->transform && a->opacity == b->opacity && a->linear == b->linear
         && same_color(&a->color, &b->color) && same_box(&a->shape_rect, &b->shape_rect)
         && a->shape_radius == b->shape_radius && same_box(&a->shadow_window, &b->shadow_window)
-        && a->shadow_sigma == b->shadow_sigma && same_box(&a->blur_box, &b->blur_box);
+        && a->shadow_sigma == b->shadow_sigma && same_box(&a->blur_box, &b->blur_box) && a->acrylic == b->acrylic;
 }
 
 // ---------------------------------------------------------------- drawing --
@@ -574,7 +582,8 @@ void vela_draw_elements(struct vela_scene *scene, struct vela_pass *pass, const 
             if (pixman_region32_not_empty(&region)) {
                 struct vela_texture_draw panel = draw;
                 panel.clip = NULL;
-                vela_pass_add_blur(pass, &panel, &region, blur_strength(e->scale_x), &scene->acrylic_tint);
+                vela_pass_add_blur(
+                    pass, &panel, &region, blur_strength(e->scale_x), e->acrylic ? &scene->acrylic_tint : NULL);
             }
             pixman_region32_fini(&region);
         }

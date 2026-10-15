@@ -659,9 +659,21 @@ corners): it costs a frame, not the whole area.
   decorations. Not "everything transparent": apps' shadow margins are
   transparent and must not be blurred.
 - **Algorithm**: dual Kawase (a chain of downsamples and upsamples at half
-  resolution), then the acrylic recipe: saturation, tint, luminosity and a veil
-  of noise to avoid banding. The radius is in logical units, so it is identical
-  at every scale.
+  resolution) and a veil of noise to avoid banding. The radius is in logical
+  units, so it is identical at every scale; above 240% it stops growing
+  (`blur_strength()` clamps at 3: four Kawase levels show artifacts beyond),
+  and the blur weakens a little.
+- **Policy: blur for everyone, acrylic for Vela** (docs/visual-coherence.md
+  §6.7). Every client asking for blur gets the blur and the dither (the
+  dither is technical: no banding when the blur is written in 8 or 10 bits).
+  The acrylic recipe, saturation 1.25 and the gray tint (`acrylic_tint`,
+  Windows 11's dark or light gray at 55%, by the shell's mode), is only for
+  Vela's surfaces: layer surfaces named `vela-…` (the shell's panels, the
+  polkit prompt). Keying a visual rule on the layer namespace is what other
+  wlroots compositors do for blur; a client that picks a `vela-` name only
+  changes its own look. The gray stays in the compositor rather than in the
+  panels' fill: it must come before the dither, which only survives what is
+  drawn after it (a fill blended on top can't be dithered).
 - **Cost under control**:
   - only the **damaged** part behind each area is blurred, enlarged by the
     radius;
@@ -683,7 +695,10 @@ and rounded corners stay. Damage touching an area (with the radius) makes it
 redraw entirely, radius included. Measured cost: 0.05–0.13 ms of GPU per frame
 with the Start menu opening over the taskbar. The cache of the blurred
 background (keeping it from one frame to the next if nothing changes behind) has
-not been needed yet: at idle nothing is redrawn anyway.
+not been needed yet: at idle nothing is redrawn anyway. `blur_mix.frag` applies
+the acrylic recipe when the draw's flags have bit 3, which `add_surface()` sets
+from the layer surface's namespace; for other clients `vela_pass_add_blur()`
+passes no tint and a saturation of 1.
 - **Everything at full quality, even on battery**: no automatic reduction of
   effects. Savings come from not drawing what doesn't change, not from removing
   effects.

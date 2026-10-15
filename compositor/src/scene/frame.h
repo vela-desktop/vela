@@ -53,8 +53,10 @@ struct vela_element {
     struct wlr_box shadow_window;
     float shadow_sigma;
     // Blur behind the surface (ext-background-effect, §8.3): where, in pixels
-    // (empty: none).
+    // (empty: none), and whether it gets Vela's acrylic recipe (saturation and
+    // gray tint): only Vela's own surfaces do (docs/visual-coherence.md §6.7).
     struct wlr_box blur_box;
+    bool acrylic;
     bool visible; // not entirely covered
     int64_t visible_area; // uncovered pixels
     int order; // position in the list, from the bottom

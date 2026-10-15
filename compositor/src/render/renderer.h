@@ -130,10 +130,11 @@ void vela_pass_add_shadow(struct vela_pass *pass, const struct wlr_box *box, con
 
 // Live blur (§8.3) under a panel: reads what has already been drawn behind
 // `region` (target pixels, clip included), blurs it (dual Kawase) and draws it
-// with the acrylic recipe. The shape comes from the alpha of `panel`, the
-// surface that goes on top (added afterwards, as usual). `strength`: the width
-// of the passes, in pixels; `tint`: the acrylic tint (premultiplied sRGB).
-// Nothing happens if the target can't be read.
+// dithered. The shape comes from the alpha of `panel`, the surface that goes
+// on top (added afterwards, as usual). `strength`: the width of the passes, in
+// pixels; `tint`: Vela's acrylic recipe with this tint (premultiplied sRGB),
+// or NULL for the plain blur a client asked for. Nothing happens if the target
+// can't be read.
 void vela_pass_add_blur(struct vela_pass *pass, const struct vela_texture_draw *panel,
     const pixman_region32_t *region, float strength, const struct wlr_render_color *tint);
 
