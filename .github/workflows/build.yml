@@ -39,7 +39,39 @@ env:
     hicolor-icon-theme shared-mime-info xorg-xwayland pipewire wireplumber
 
 jobs:
+  changes:
+    name: Detect source changes
+    runs-on: ubuntu-latest
+    outputs:
+      heavy: ${{ steps.detect.outputs.heavy }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 3
+      - name: Skip costly jobs for documentation-only PRs
+        id: detect
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != pull_request ]; then
+            echo 'heavy=true' >> "$GITHUB_OUTPUT"
+          elif ! git rev-parse 'HEAD^2' >/dev/null 2>&1; then
+            # Fail open for unexpected checkout topology: run all checks.
+            echo 'heavy=true' >> "$GITHUB_OUTPUT"
+          elif git diff --name-only 'HEAD^1' 'HEAD^2' |
+              grep -Ev '^(docs/|README\.md$|CONTRIBUTING\.md$|SECURITY\.md$|.*\.md$)' |
+              grep -q .; then
+            echo 'heavy=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'heavy=false' >> "$GITHUB_OUTPUT"
+          fi
+
   packaging-tests:
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,6 +92,8 @@ jobs:
   # Refresh the digest intentionally when updating the builder environment.
   # Independent of packaging contracts; both jobs still gate packaging.
   build:
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     steps:
@@ -218,6 +252,8 @@ jobs:
 
   # Fedora CTest suite is a reusable workflow: its result gates releases.
   fedora-tests:
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     uses: ./.github/workflows/fedora.yml
     permissions:
       contents: read
@@ -225,6 +261,9 @@ jobs:
   # Build the SAME revision as the Arch package, in Fedora 44.
   fedora-package:
     needs: packaging-tests
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-fedora-rpm
+      CCACHE_MAXSIZE: 500M
     runs-on: ubuntu-latest
     container: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 # official Fedora 44 image index
     permissions:
@@ -236,7 +275,7 @@ jobs:
       - name: Install RPM packaging dependencies
         run: >-
           dnf install -y
-          git rpm-build dnf5-plugins cmake ninja-build gcc gcc-c++ pkgconf-pkg-config
+          git rpm-build dnf5-plugins ccache cmake ninja-build gcc gcc-c++ pkgconf-pkg-config
           glslc vulkan-headers vulkan-loader-devel
           wayland-devel wayland-protocols-devel wlroots-devel
           libxkbcommon-devel pixman-devel libinput-devel libdrm-devel
@@ -249,6 +288,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Restore Fedora RPM compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache-fedora-rpm
+          key: ccache-fedora44-rpm-v1-${{ github.sha }}
+          restore-keys: ccache-fedora44-rpm-v1-
       - name: Create exact-commit source archive
         shell: bash
         run: |
@@ -271,11 +316,15 @@ jobs:
             --define "vela_version $VELA_RPM_VERSION" \
             --define "vela_commit $GITHUB_SHA" \
             --define "vela_short $(git rev-parse --short=7 HEAD)" \
-            --define "vela_count $(git rev-list --count HEAD)"
+            --define "vela_count $(git rev-list --count HEAD)" \
+            --define "vela_ccache 1"
           shopt -s nullglob
           rpm_files=(rpmbuild/RPMS/x86_64/vela-git-[0-9]*.x86_64.rpm)
           test "${#rpm_files[@]}" -eq 1
           [[ "${rpm_files[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
+      - name: Fedora RPM ccache statistics
+        if: always()
+        run: ccache --show-stats || true
       - name: Attest Fedora RPM provenance
         if: github.event_name != 'pull_request'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -321,7 +370,7 @@ jobs:
           for dependency in git util-linux rpm dnf5; do
             grep -Fx "$dependency" <<< "$installed_requires"
           done
-          for tool in git flock curl gh dnf rpmbuild; do
+          for tool in git flock curl dnf rpmbuild python3; do
             command -v "$tool"
           done
           # Validate local RPM install/upgrade/downgrade/reinstall with real DNF5.
@@ -346,6 +395,7 @@ jobs:
               echo "::error::Missing shared libraries for $exe"; exit 1
             fi
           done
+          test -f /usr/libexec/vela/verify-attestation.py
           sh -n /usr/bin/vela-update
 
   # Public per-commit alpha packages, available anonymously and retained
