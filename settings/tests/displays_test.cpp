@@ -313,7 +313,15 @@ private slots:
         QTRY_VERIFY(!client->pending());
         const auto before = client->outputs();
         const auto disk = saved();
-        QVERIFY(client->apply("HEADLESS-2", changes));
+        // The explicit-position test vector describes offsets relative to
+        // HEADLESS-1. After root-origin normalization, HEADLESS-1 itself may
+        // have moved, so convert those offsets to absolute protocol positions.
+        QVariantMap requestedChanges = changes;
+        if (requestedChanges.contains("x") && requestedChanges.contains("y")) {
+            requestedChanges["x"] = requestedChanges["x"].toInt() + output("HEADLESS-1")["x"].toInt();
+            requestedChanges["y"] = requestedChanges["y"].toInt() + output("HEADLESS-1")["y"].toInt();
+        }
+        QVERIFY(client->apply("HEADLESS-2", requestedChanges));
         QTRY_VERIFY(client->confirming());
         // PositionForSize() preserves adjacency and the requested relative
         // offset. The compositor then translates the whole enabled layout:
