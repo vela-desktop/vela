@@ -6,8 +6,11 @@
 
 #include <stdbool.h>
 
-// A shader-tinted DRM frame needs a full repaint even on the final transition
-// tick, when night_active becomes false. Gamma-only updates don't change pixels.
+/**
+ * Return whether a color change must repaint the rendered buffer.
+ * The final shader fade tick still changes every pixel, whereas a gamma-only
+ * commit can reuse an unmodified buffer.
+ */
 static inline bool vela_night_light_repaint_required(bool filter_changed, bool night_changed, bool drm,
     bool force_shader, bool gamma_refused, bool night_in_gamma)
 {
@@ -15,8 +18,10 @@ static inline bool vela_night_light_repaint_required(bool filter_changed, bool n
         || (night_changed && (!drm || force_shader || (gamma_refused && !night_in_gamma)));
 }
 
-// After a rejected clear, keep the existing hardware LUT rather than double
-// tinting. An explicit retry must override that deferral for one attempt.
+/**
+ * Defer clearing a rejected hardware LUT unless a retry was requested.
+ * Keeping the LUT prevents a simultaneous shader tint from doubling colors.
+ */
 static inline bool vela_night_light_defer_clear(bool gamma_refused, bool clear_needed, bool retry_pending,
     bool gamma_committed)
 {
