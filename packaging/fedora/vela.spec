@@ -77,10 +77,13 @@ Requires:       pipewire
 Requires:       wireplumber
 Requires:       hicolor-icon-theme
 
-# Public, attested binary downloads (curl + gh) and local RPM build fallback.
+# Public, attested binary downloads (curl + cosign) and local RPM build fallback.
 # Keep the build toolchain optional for systems using prebuilt releases.
 Recommends:     curl
-Recommends:     gh
+Recommends:     python3
+# Cosign is an optional verification prerequisite; Fedora 44 does not ship it
+# in the default repositories, so document the upstream RPM installation.
+# No GitHub CLI is required by vela-update for public alpha releases.
 Recommends:     rpm-build
 Recommends:     dnf5-plugins
 Recommends:     xdg-desktop-portal-wlr
@@ -108,6 +111,7 @@ Vulkan renderer, Qt Quick shell, file manager, settings, and lock screen.
 %install
 %cmake_install
 install -Dm755 packaging/vela-update %{buildroot}%{_bindir}/vela-update
+install -Dm644 packaging/verify-attestation.py %{buildroot}%{_libexecdir}/vela/verify-attestation.py
 
 %files
 %license LICENSE
