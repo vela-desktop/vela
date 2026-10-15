@@ -9,8 +9,8 @@
 #   .desktop and default app ones. The functional and sharpness tests
 #   (tests/functional) are reported as skipped here: the renderer wants a GPU
 #   with a DRM node, which GitHub runners don't have.
-# - package: main pushes and manual runs (including test branches), built
-#   with the PKGBUILD,
+# - package: PRs, main pushes and manual runs (including test branches),
+#   built with the PKGBUILD,
 #   downloadable from the run's page (Artifacts) and installable with
 #   sudo pacman -U.
 
@@ -104,7 +104,6 @@ jobs:
           done
 
   package:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: [packaging-tests, build]
     runs-on: ubuntu-latest
     permissions:
@@ -177,6 +176,8 @@ jobs:
       # this workflow. A public Sigstore attestation is bound to the artifact
       # digest and the GitHub OIDC workflow/source identity.
       - name: Attest package build provenance
+        # PR builds validate packaging, but only main/manual outputs are signed.
+        if: github.event_name != 'pull_request'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: /home/builder/pkgbuild/vela-git-*.pkg.tar.zst
@@ -191,7 +192,6 @@ jobs:
   # Install and smoke-test the EXACT binary from the package job, not an
   # independently rebuilt package in another workflow. This gates release.
   package-smoke:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: package
     runs-on: ubuntu-latest
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
@@ -205,7 +205,7 @@ jobs:
         with:
           name: vela-git
           path: dist
-      - name: Install attested package and check runtime dependencies
+      - name: Install built Arch package and check runtime dependencies
         shell: bash
         run: |
           set -euo pipefail
@@ -313,8 +313,17 @@ jobs:
           # against a tiny fixture before installing the actual Vela RPM.
           dnf install -y git rpm-build dnf5-plugins
           bash packaging/fedora/tests/ci-updater-local-build.sh
-          dnf install -y --setopt=install_weak_deps=False "${rpms[0]}"
+          # Use normal DNF defaults so recommended desktop/updater tools
+          # are exercised along with the mandatory runtime dependencies.
+          dnf install -y "${rpms[0]}"
           rpm -V vela-git
+          installed_requires=$(rpm -q --requires vela-git)
+          for dependency in git util-linux rpm dnf5; do
+            grep -Fx "$dependency" <<< "$installed_requires"
+          done
+          for tool in git flock curl gh dnf rpmbuild; do
+            command -v "$tool"
+          done
           # Validate local RPM install/upgrade/downgrade/reinstall with real DNF5.
           dnf install -y rpm-build
           bash packaging/fedora/tests/ci-dnf-transactions.sh
