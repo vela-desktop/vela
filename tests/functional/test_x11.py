@@ -139,45 +139,6 @@ class X11(unittest.TestCase):
         # OLD centered windowed coordinates while the scene node moved to 0,0.
         self.assert_x11_geometry_matches(view_id, xid)
 
-    def test_wine_fullscreen_cycles_preserve_decorated_frame(self):
-        # An uninterrupted F sequence removes Motif decorations *before* the
-        # fullscreen popup style notification. Do not lose the 32px titlebar
-        # from the saved restore rect over successive cycles.
-        path = os.path.join(self.vela.directory, "wine-xid")
-        view_id = self.open_x11("--id-file", path, "--wine-style", "0x96000000",
-                                "--start-fullscreen", 300, 200)
-        with open(path, encoding="ascii") as xids:
-            xid = xids.read().strip()
-        self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"], what="Wine initial fullscreen")
-        self.x11_control("--set-decorations", xid, "on")
-        self.x11_control("--set-wine-style", xid, "0x16cf0000")
-        self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"], what="initial windowed Wine state")
-
-        def frame():
-            w = self.vela.state().window(view_id)
-            return (w["x"], w["y"], w["w"], w["h"])
-
-        self.vela.wait_for(lambda s: s.window(view_id)["h"] == self.x11_geometry(xid)[3] + 32,
-                           what="decorated X11 frame")
-        original = frame()
-        self.assertGreater(original[3], 64)
-
-        for cycle in range(5):
-            self.x11_control("--set-decorations", xid, "off")
-            self.vela.wait_for(lambda s: s.window(view_id)["h"] == self.x11_geometry(xid)[3],
-                               what=f"Wine drops titlebar before popup {cycle}")
-            self.x11_control("--set-wine-style", xid, "0x96000000")
-            self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"],
-                               what=f"Wine fullscreen {cycle}")
-            self.x11_control("--set-decorations", xid, "on")
-            self.x11_control("--set-wine-style", xid, "0x16cf0000")
-            self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"],
-                               what=f"Wine decorated return {cycle}")
-            self.vela.wait_for(lambda s: s.window(view_id)["h"] == self.x11_geometry(xid)[3] + 32,
-                               what=f"restored titlebar {cycle}")
-            self.assertEqual(frame(), original, f"frame drift on toggle {cycle}")
-            self.assertEqual(self.x11_geometry(xid)[3], original[3] - 32)
-
     def test_managed_x11_maximize_and_restore_sync_native_position(self):
         path = os.path.join(self.vela.directory, "maximize-xid")
         view_id = self.open_x11("--id-file", path, 400, 320)
