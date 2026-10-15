@@ -282,7 +282,7 @@ Vela needs a GPU with **Vulkan 1.4**: AMD or Intel with Mesa ≥ 25.0, or NVIDIA
 ### Arch Linux, CachyOS, EndeavourOS
 
 ```sh
-sudo pacman -S --needed git curl base-devel github-cli
+sudo pacman -S --needed git curl base-devel cosign
 git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update
 ```
@@ -292,7 +292,7 @@ sh vela/packaging/vela-update
 Only Fedora 44 x86_64 is currently supported by the native RPM updater; other Fedora versions and immutable variants are not supported by this installer.
 
 ```sh
-sudo dnf install git curl gh rpm-build dnf5-plugins
+sudo dnf install git curl rpm-build dnf5-plugins
 git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update
 ```
@@ -301,7 +301,7 @@ sh vela/packaging/vela-update
 
 See [build from source](#build-from-source); there is currently no native package updater for these systems.
 
-`vela-update` installs Vela on first run and handles subsequent updates. It verifies downloaded package provenance, falling back to a local build if the signed package cannot be verified. For now, the verification path requires `gh`; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
+`vela-update` installs Vela on first run and handles subsequent updates. It uses Sigstore/Cosign to verify downloaded packages (no GitHub CLI required) and falls back to a local build if verification is unavailable. Fedora 44 users should install Cosign from its official upstream RPM before the first download; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
 ## Reporting a problem
 
 Run `vela-report` to create a diagnostic ZIP with a description and the evidence
