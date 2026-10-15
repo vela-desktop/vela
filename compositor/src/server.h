@@ -160,6 +160,11 @@ struct vela_server {
     struct wl_listener new_capture_request;
     struct wl_listener new_decoration;
     struct wl_listener request_activation;
+    // Vela's title bar for apps that never ask through xdg-decoration but
+    // expect the compositor's bar anyway (kitty): comma-separated app ids
+    // (decoration-ssd in vela.conf, vela_views_load_settings), NULL when
+    // empty.
+    char *ssd_include;
     struct wlr_xwayland *xwayland; // NULL without Xwayland
     struct wl_listener xwayland_ready;
     struct wl_listener xwayland_new_surface;

@@ -155,6 +155,9 @@ struct vela_view {
 // xdg-activation) and the vela_server.views list.
 void vela_views_init(struct vela_server *server);
 void vela_views_finish(struct vela_server *server);
+// Rereads vela.conf (the "reload-config" command): which app ids always get
+// Vela's title bar.
+void vela_views_load_settings(struct vela_server *server);
 // Revoke existing window capture sources before hiding the desktop on lock.
 void vela_views_revoke_capture_on_lock(struct vela_server *server);
 

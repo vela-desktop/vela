@@ -3,6 +3,7 @@
 
 #include "view.h"
 
+#include "config.h"
 #include "interact.h"
 #include "focus.h"
 #include "bindings.h"
@@ -363,9 +364,13 @@ void vela_view_update_decoration(struct vela_view *view)
     // X11 windows that leave the bar to the window manager (apps with a bar of
     // their own, like Steam, say no), but not splash screens; Wayland apps
     // that accept a server-side bar (xdg-decoration: Qt and KDE, Chromium if
-    // chosen).
+    // chosen); and apps that never ask but expect the compositor's bar anyway
+    // (kitty: decoration-ssd in vela.conf).
     bool wanted = view->xdg_decoration
         && view->xdg_decoration->current.mode == WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
+    if (!view->xdg_decoration && !view->x11) {
+        wanted = vela_config_list_has(view->server->ssd_include, vela_view_app_id(view));
+    }
 #if WLR_HAS_XWAYLAND
     if (view->x11) {
         wanted = !view->x11->override_redirect && view->x11->decorations == WLR_XWAYLAND_SURFACE_DECORATIONS_ALL
@@ -1357,6 +1362,25 @@ void vela_views_finish(struct vela_server *server)
     }
     free(server->seen_outputs);
     server->seen_outputs = NULL;
+    free(server->ssd_include);
+    server->ssd_include = NULL;
+}
+
+void vela_views_load_settings(struct vela_server *server)
+{
+    struct vela_config settings;
+    vela_config_read(&settings);
+    free(server->ssd_include);
+    const char *include = vela_config_get(&settings, "decoration-ssd", "kitty");
+    server->ssd_include = *include ? strdup(include) : NULL;
+    vela_config_finish(&settings);
+    // Open windows pick it up at once (new ones on map and first commit).
+    struct vela_view *view;
+    wl_list_for_each (view, &server->views, link) {
+        if (view->mapped && view->xdg) {
+            vela_view_update_decoration(view);
+        }
+    }
 }
 
 // ------------------------------------------------------------- outputs --

@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -213,6 +214,26 @@ bool vela_config_flag(const struct vela_config *config, const char *key, bool fa
         return fallback;
     }
     return strcmp(value, "yes") == 0 || strcmp(value, "1") == 0 || strcmp(value, "true") == 0;
+}
+
+bool vela_config_list_has(const char *list, const char *item)
+{
+    size_t length = item ? strlen(item) : 0;
+    while (list && *list && length) {
+        while (*list == ' ') {
+            ++list;
+        }
+        const char *end = strchr(list, ',');
+        size_t n = end ? (size_t)(end - list) : strlen(list);
+        while (n > 0 && list[n - 1] == ' ') {
+            --n;
+        }
+        if (n == length && strncasecmp(list, item, n) == 0) {
+            return true;
+        }
+        list = end ? end + 1 : list + n;
+    }
+    return false;
 }
 
 

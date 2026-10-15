@@ -66,6 +66,9 @@ void vela_config_finish(struct vela_config *config);
 const char *vela_config_get(const struct vela_config *config, const char *key, const char *fallback);
 // "yes"/"1"/"true"; `fallback` if missing or empty.
 bool vela_config_flag(const struct vela_config *config, const char *key, bool fallback);
+// Whether a comma-separated list (spaces around names are fine) has `item
+// (case-insensitive). NULL and empty lists never have it.
+bool vela_config_list_has(const char *list, const char *item);
 
 // Changes one key in the file and leaves the rest as it is (comments too): for
 // what is also turned on outside Settings (quick settings, shortcuts).

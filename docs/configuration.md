@@ -32,6 +32,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `language` | system | Interface language: `it`, `en`, or empty to follow the system (Italian if the system is Italian, English otherwise). |
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
+| `decoration-ssd` | `kitty` | Comma-separated app ids that always get Vela's title bar, even when they never ask through xdg-decoration (kitty never asks). Empty disables it. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
 | `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. |
 | `keyboard-variant` | empty | Comma-separated XKB variants matching `keyboard-layout`. |

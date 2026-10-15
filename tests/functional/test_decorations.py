@@ -6,6 +6,7 @@ xdg-decoration: 32 high, above the content, with the title written by the
 compositor and the three buttons; closing, maximizing with a double click.
 It's found on screen, not from the state."""
 
+import os
 import unittest
 
 from harness import Session
@@ -55,6 +56,32 @@ class Decorations(unittest.TestCase):
         window, w, image, top = self.open()
         self.vela.input("move", w["x"] + 150, top + BAR // 2, "sleep", "50", "click", "sleep", "60", "click")
         self.vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized")
+
+    def test_window_without_decoration_request_gets_no_bar(self):
+        # Apps that never bind xdg-decoration (kitty) draw borderless, unless
+        # listed: the content starts at the very top of the window.
+        window = self.vela.open_window(400, 300, app_id="undecorated-app")
+        state = self.vela.wait_for(lambda s: s["focused"] == window)
+        w = state.window(window)
+        image = self.vela.pixels()
+        column = w["x"] + 100
+        top = next(y for y in range(image.height) if image.at(column, y) != (0, 0, 0))
+        self.assertEqual(image.at(column, top), (100, 0, 0))
+
+    def test_listed_window_without_decoration_request_gets_a_bar(self):
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path(), "w") as f:
+            f.write("decoration-ssd=listed-app\n")
+        self.vela.command("reload-config")
+        window = self.vela.open_window(400, 300, app_id="listed-app")
+        state = self.vela.wait_for(lambda s: s["focused"] == window)
+        w = state.window(window)
+        image = self.vela.pixels()
+        # The bar is there: 32 high, the content starts right below it.
+        column = w["x"] + 100
+        top = next(y for y in range(image.height) if image.at(column, y) != (0, 0, 0))
+        self.assertEqual(image.at(column, top + BAR), (100, 0, 0))
+        self.assertEqual(image.at(column, top + BAR - 1)[:2] != (100, 0), True)
 
 
 if __name__ == "__main__":
