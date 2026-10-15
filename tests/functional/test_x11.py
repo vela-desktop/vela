@@ -86,6 +86,35 @@ class X11(unittest.TestCase):
                 not w["fullscreen"] or y == w["y"])
         self.vela.wait_for(matches, timeout=3, what="X11 root coordinates agree with Vela scene")
 
+    def test_x11_fullscreen_on_primary_with_secondary_above(self):
+        # Vela's Wayland output space can use negative positions, but Wine's
+        # XRandR root must have an origin at zero and include both displays.
+        # The previously failing layout exposed (0,-1080) to XWayland and
+        # left Isaac rendering at the upper monitor's 1920x1080 resolution.
+        path = os.path.join(self.vela.directory, "negative-output-xid")
+        view_id = self.open_x11("--id-file", path, "--wine-style", "0x96000000",
+                                "--start-fullscreen", 300, 200)
+        with open(path, encoding="ascii") as f:
+            xid = f.read().strip()
+        self.vela.command("test-output add 1920x1080")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="second Xwayland output")
+        self.vela.randr("--output", "HEADLESS-2", "--pos", "0,-1080", "--scale", "1")
+        state = self.vela.wait_for(lambda s: any(
+            o["name"] == "HEADLESS-1" and o["y"] == 1080 for o in s["outputs"]),
+            what="root-aligned output positions")
+        self.assertEqual((state.window(view_id)["x"], state.window(view_id)["y"]), (0, 1080))
+        self.vela.wait_for(lambda s: subprocess.check_output(
+            [tool("vela-x11"), "--root-size"], env=self.env, text=True).strip() == "1920 2160",
+            what="Xwayland root covers both displays")
+        self.assertEqual(self.x11_geometry(xid), (0, 1080, 1920, 1080))
+        self.x11_control("--set-wine-style", xid, "0x16cf0000")
+        self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"], what="windowed above-layout Wine")
+        self.x11_control("--set-wine-style", xid, "0x96000000")
+        state = self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"],
+                                   what="fullscreen above-layout Wine")
+        self.assertEqual((state.window(view_id)["x"], state.window(view_id)["y"]), (0, 1080))
+        self.assertEqual(self.x11_geometry(xid), (0, 1080, 1920, 1080))
+
     def test_wine_popup_to_decorated_restores_fullscreen(self):
         # Wine can toggle a Windows fullscreen popup into a normal decorated
         # window without sending an EWMH fullscreen request or X11 resize.

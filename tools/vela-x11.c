@@ -10,6 +10,7 @@
 //        vela-x11 --delete-wine-style XID
 //        vela-x11 --geometry XID (root-relative X11 x y width height)
 //        vela-x11 --set-decorations XID on|off
+//        vela-x11 --root-size (current X11 root width height)
 //        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
 //
 // Opens an orange window with class "vela.x11" and title "vela-x11", which
@@ -59,7 +60,8 @@ int main(int argc, char** argv)
         && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
             || !strcmp(argv[1], "--set-decorations")))
         || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
-            || !strcmp(argv[1], "--geometry")));
+            || !strcmp(argv[1], "--geometry")))
+        || (argc == 2 && !strcmp(argv[1], "--root-size"));
     int arg = 1;
     if (!control) {
         while (arg < argc) {
@@ -96,6 +98,19 @@ int main(int argc, char** argv)
     }
     xcb_screen_t* screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
     if (control) {
+        if (!strcmp(argv[1], "--root-size")) {
+            xcb_get_geometry_reply_t* geometry =
+                xcb_get_geometry_reply(connection, xcb_get_geometry(connection, screen->root), NULL);
+            if (!geometry) {
+                fprintf(stderr, "vela-x11: cannot query root geometry\n");
+                xcb_disconnect(connection);
+                return 1;
+            }
+            printf("%u %u\n", (unsigned)geometry->width, (unsigned)geometry->height);
+            free(geometry);
+            xcb_disconnect(connection);
+            return 0;
+        }
         xcb_window_t target = (xcb_window_t)strtoul(argv[2], NULL, 0);
         if (!strcmp(argv[1], "--geometry")) {
             xcb_get_geometry_reply_t* geometry =
