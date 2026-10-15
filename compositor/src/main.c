@@ -78,15 +78,15 @@ int main(int argc, char *argv[])
     // Vulkan/DRM may start worker threads *before* the event loop registers
     // its handlers. Block SIGUSR1 (redraw) and SIGINT/SIGTERM (clean exit,
     // server.c) before initializing those libraries, so their threads inherit
-    // the mask and the signals reach Wayland's signalfd instead of taking the
-    // default action (terminating the whole process without a clean exit).
+    // the mask and process-directed signals reach Wayland's signalfd instead
+    // of taking the default action (terminating without a clean exit).
     // Vela's fork/exec helpers clear signal masks in launched applications.
-    sigset_t redraw_mask;
-    sigemptyset(&redraw_mask);
-    sigaddset(&redraw_mask, SIGUSR1);
-    sigaddset(&redraw_mask, SIGINT);
-    sigaddset(&redraw_mask, SIGTERM);
-    if (sigprocmask(SIG_BLOCK, &redraw_mask, NULL) != 0) {
+    sigset_t handled_signals;
+    sigemptyset(&handled_signals);
+    sigaddset(&handled_signals, SIGUSR1);
+    sigaddset(&handled_signals, SIGINT);
+    sigaddset(&handled_signals, SIGTERM);
+    if (sigprocmask(SIG_BLOCK, &handled_signals, NULL) != 0) {
         perror("vela-compositor: cannot block signals");
         return 1;
     }
