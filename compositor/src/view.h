@@ -118,7 +118,13 @@ struct vela_view {
     bool x11_wine_style_dirty;
     // Only a fullscreen exit initiated by a Wine style change arms re-entry.
     bool x11_wine_restore_fullscreen;
+    // The _NET_WM_STATE the app set before mapping, read at its MapRequest.
+    unsigned int x11_initial_state_cookie;
+    bool x11_initial_state_pending;
+    bool x11_start_fullscreen;
+    bool x11_start_maximized;
 
+    struct wl_listener map_request; // X11
     struct wl_listener map;
     struct wl_listener unmap;
     struct wl_listener commit;

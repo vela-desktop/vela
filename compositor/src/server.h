@@ -165,7 +165,10 @@ struct vela_server {
     struct wl_listener xwayland_shell_surface;
     uint32_t xwayland_wake_atom; // the root property that wakes the X window manager (xwayland.c)
     uint32_t xwayland_wine_style_atom; // _WINE_HWND_STYLE, interned on Xwayland ready
-    struct wl_event_source *xwayland_wine_timer; // non-blocking property reply polling
+    // _NET_WM_STATE and its FULLSCREEN, MAXIMIZED_VERT and MAXIMIZED_HORZ, for
+    // the state an app sets before mapping (xwayland.c)
+    uint32_t xwayland_state_atoms[4];
+    struct wl_event_source *xwayland_property_timer; // non-blocking property reply polling
     struct wl_event_source *output_check;
     struct vela_seen_output *seen_outputs;
     int seen_output_count;

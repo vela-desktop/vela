@@ -922,7 +922,7 @@ static void move_to_output(struct vela_view *view, struct vela_output *output, i
 
 // Every listener of a view: they all start disconnected, so all of them
 // can be disconnected at the end.
-enum { VIEW_LISTENERS = 28 };
+enum { VIEW_LISTENERS = 29 };
 
 static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTENERS])
 {
@@ -947,6 +947,7 @@ static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTE
         &view->associate,
         &view->dissociate,
         &view->request_configure,
+        &view->map_request,
         &view->request_activate,
         &view->set_decorations,
         &view->handle_activate,
