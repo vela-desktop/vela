@@ -98,8 +98,10 @@ def verify(package: Path, repository: str, commit: str, kind: str) -> None:
                 subprocess.run(command, check=True, stdout=subprocess.DEVNULL,
                                stderr=subprocess.PIPE, timeout=90)
                 return
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
-                OSError, ValueError) as exc:
+        except subprocess.CalledProcessError as exc:
+            message = (exc.stderr or b"").decode("utf-8", "replace").strip()
+            errors.append(message[:400] or str(exc))
+        except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
             errors.append(str(exc))
     raise ValueError("none of the Sigstore attestations passed verification: "
                      + "; ".join(errors[:3]))
