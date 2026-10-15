@@ -164,6 +164,7 @@ QString modernLine(const QString& line)
 
 } // namespace
 
+/** Refresh compositor settings, including the Night Light backend toggle. */
 void Preferences::reloadCompositor()
 {
     // vela.conf
@@ -634,6 +635,7 @@ void Preferences::setNightStrength(int strength)
     }
 }
 
+/** Persist the NVIDIA workaround setting and notify bindings in the UI. */
 void Preferences::setNightNvidiaFix(bool on)
 {
     if (on != m_nightNvidiaFix) {
