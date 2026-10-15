@@ -193,11 +193,15 @@ elif name == "gh":
         ):
             sys.exit("Expected main source ref")
     elif args[:2] == ["auth", "status"]:
-        sys.exit(0 if os.environ.get("TEST_CI_RUN") else 1)
+        sys.exit(0 if (os.environ.get("TEST_CI_RUN") or os.environ.get("TEST_CI_RUNS")) else 1)
     if args[:2] == ["run", "list"]:
-        print(os.environ["TEST_CI_RUN"])
+        # The real gh CLI prints one run ID per line after the jq event filter.
+        print((os.environ.get("TEST_CI_RUNS") or os.environ.get("TEST_CI_RUN", "")).replace(",", "\n"))
     elif args[0] == "api":
-        print("99")
+        missing = os.environ.get("TEST_CI_MISSING_RUNS", "").split(",")
+        run_id = args[1].split("/runs/", 1)[1].split("/", 1)[0]
+        if run_id not in missing:
+            print("99")
     elif args[:2] == ["run", "download"]:
         if os.environ.get("TEST_FAIL_DOWNLOAD"):
             sys.exit(1)
@@ -447,6 +451,34 @@ class UpdateRevision(UpdateFixture):
         self.assertEqual(listing["args"][listing["args"].index("-c") + 1], self.nvidia)
         self.assertIn(".g" + self.nvidia[:7] + "-", self.calls("sudo")[0]["args"][-1])
         self.assertEqual(self.calls("makepkg"), [])
+
+    def test_artifact_lookup_skips_recent_runs_without_a_package(self):
+        self.env.update(TEST_CI_RUNS="303,202,101",
+                        TEST_CI_MISSING_RUNS="303,202",
+                        TEST_DOWNLOAD_SHA=self.nvidia[:7])
+        self.run_update("--branch", "fix/nvidia", "--download")
+        calls = self.calls("gh")
+        listing = next(c for c in calls if c["args"][:2] == ["run", "list"])
+        self.assertEqual(listing["args"][listing["args"].index("-L") + 1], "20")
+        self.assertIn("event", listing["args"][listing["args"].index("--json") + 1])
+        self.assertIn('select(.event == "push" or .event == "workflow_dispatch")',
+                      listing["args"][listing["args"].index("-q") + 1])
+        lookups = [c["args"][1] for c in calls if c["args"][0] == "api"]
+        self.assertEqual(lookups, [
+            f"repos/vela-desktop/vela/actions/runs/{run}/artifacts?per_page=100"
+            for run in ("303", "202", "101")
+        ])
+        download = next(c for c in calls if c["args"][:2] == ["run", "download"])
+        self.assertEqual(download["args"][2], "101")
+        self.assertEqual(self.calls("makepkg"), [])
+        self.assertEqual(self.calls("sudo")[0]["args"][:2], ["pacman", "-U"])
+
+    def test_artifact_lookup_without_matching_run_builds_selected_revision(self):
+        self.env.update(TEST_CI_RUNS="303,202",
+                        TEST_CI_MISSING_RUNS="303,202")
+        self.run_update("--branch", "fix/nvidia", "--download")
+        self.assertFalse(any(c["args"][:2] == ["run", "download"] for c in self.calls("gh")))
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.nvidia)
 
     def test_workflow_artifact_with_invalid_attestation_is_never_installed(self):
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.nvidia[:7],
