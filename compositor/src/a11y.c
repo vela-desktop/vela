@@ -113,9 +113,10 @@ static void apply_color(struct vela_a11y *a11y)
     if (filter_changed || night_changed || backend_changed) {
         struct vela_output *output;
         wl_list_for_each (output, &a11y->server->outputs, link) {
-            // A manual return to hardware mode should retry even if a previous
-            // DRM gamma commit was rejected.
-            if (backend_changed && !a11y->night_nvidia_fix) {
+            // A manual switch in either direction must retry a previously
+            // rejected LUT clear. Otherwise enabling the workaround can leave
+            // the broken hardware LUT installed until the periodic retry.
+            if (backend_changed) {
                 vela_output_frame_retry_night_light(output->frame);
             }
             vela_output_frame_color_changed(output->frame, filter_changed, night_changed || backend_changed);
