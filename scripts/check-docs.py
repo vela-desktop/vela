@@ -70,9 +70,26 @@ def package_section(content: str, prefix: str, suffix: str) -> set[str]:
 
 def documented_build_dependencies(markdown: str, command: str, marker: str) -> set[str]:
     """Find the full source-build command, regardless of Markdown headings."""
-    # Inspect shell fences, not heading text or a specific README location.
-    # A short installation/bootstrap command is not the full dependency list.
-    fence = re.compile(r'^(`{3}|~{3})(?:sh|bash|shell)?[ \t]*\r?\n(.*?)^\1[ \t]*
+    # Select a complete shell command containing a known build-only dependency.
+    # This avoids matching the shorter updater bootstrap commands.
+    fence = re.compile(r'^(`{3}|~{3})(?:sh|bash|shell)?[ \t]*\r?\n(.*?)^\1[ \t]*$', re.M | re.S)
+    candidates = []
+    for match in fence.finditer(markdown):
+        body = re.sub(r'\\\r?\n[ \t]*', ' ', match.group(2))
+        for line in body.splitlines():
+            found = re.match(r'^\s*sudo\s+' + re.escape(command) + r'\s+(.+)$', line)
+            if found:
+                packages = set(re.findall(r'[A-Za-z0-9_+.-]+', found.group(1)))
+                if marker in packages:
+                    candidates.append(packages)
+    if len(candidates) != 1:
+        raise ValueError(
+            f'expected one full source-build dependency block for {command!r} '
+            f'(identified by {marker!r}), found {len(candidates)}'
+        )
+    return candidates[0]
+
+def build_checks() -> list[str]:
     failures = []
     development = (ROOT / 'docs/development.md').read_text(encoding='utf-8')
     arch = (ROOT / '.github/workflows/build.yml').read_text()
@@ -94,104 +111,7 @@ def documented_build_dependencies(markdown: str, command: str, marker: str) -> s
         # CI-only tools are not required for a user's build.
         missing -= {'ccache', 'dbus-daemon'}
         if missing:
-            failures.append(f'{name}: README dependency list omits CI build dependencies: {sorted(missing)}')
-    return failures
-
-
-def main() -> int:
-    failures = check_links() + build_checks()
-    for issue in failures:
-        print(f'ERROR: {issue}', file=sys.stderr)
-    if failures:
-        print(f'{len(failures)} documentation check(s) failed', file=sys.stderr)
-        return 1
-    print(f'Documentation checks passed ({len(DOCS)} Markdown files).')
-    return 0
-
-
-if __name__ == '__main__':
-    sys.exit(main())
-, re.M | re.S)
-    candidates = []
-    for match in fence.finditer(markdown):
-        body = re.sub(r'\\\r?\n[ \t]*', ' ', match.group(2))
-        for line in body.splitlines():
-            found = re.match(r'^\s*sudo\s+' + re.escape(command) + r'\s+(.+)
-    failures = []
-    readme = (ROOT / 'README.md').read_text()
-    arch = (ROOT / '.github/workflows/build.yml').read_text()
-    fedora = (ROOT / '.github/workflows/fedora.yml').read_text()
-    try:
-        arch_required = package_section(arch, '  DEPENDENCIES: >-', '\n\njobs:')
-        fedora_required = package_section(fedora, '          dnf install -y', '\n\n      - uses:')
-        arch_documented = package_section(readme, 'sudo pacman -S --needed ', '\n```')
-        # The README also documents the short updater bootstrap command.
-        # Validate against the full Fedora source-build dependency list.
-        fedora_build_docs = readme.split('<summary><b>Fedora</b></summary>', 1)[1]
-        fedora_documented = package_section(fedora_build_docs, 'sudo dnf install ', '\n```')
-    except ValueError as e:
-        return [str(e)]
-    for name, required, documented in [
-        ('Arch', arch_required, arch_documented),
-        ('Fedora', fedora_required, fedora_documented),
-    ]:
-        missing = required - documented
-        # CI-only tools are not required for a user's build.
-        missing -= {'ccache', 'dbus-daemon'}
-        if missing:
-            failures.append(f'{name}: README dependency list omits CI build dependencies: {sorted(missing)}')
-    return failures
-
-
-def main() -> int:
-    failures = check_links() + build_checks()
-    for issue in failures:
-        print(f'ERROR: {issue}', file=sys.stderr)
-    if failures:
-        print(f'{len(failures)} documentation check(s) failed', file=sys.stderr)
-        return 1
-    print(f'Documentation checks passed ({len(DOCS)} Markdown files).')
-    return 0
-
-
-if __name__ == '__main__':
-    sys.exit(main())
-, line)
-            if found:
-                packages = set(re.findall(r'[A-Za-z0-9_+.-]+', found.group(1)))
-                if marker in packages:
-                    candidates.append(packages)
-    if len(candidates) != 1:
-        raise ValueError(
-            f'expected one full source-build dependency block for {command!r} '
-            f'(identified by {marker!r}), found {len(candidates)}'
-        )
-    return candidates[0]
-
-def build_checks() -> list[str]:
-    failures = []
-    readme = (ROOT / 'README.md').read_text()
-    arch = (ROOT / '.github/workflows/build.yml').read_text()
-    fedora = (ROOT / '.github/workflows/fedora.yml').read_text()
-    try:
-        arch_required = package_section(arch, '  DEPENDENCIES: >-', '\n\njobs:')
-        fedora_required = package_section(fedora, '          dnf install -y', '\n\n      - uses:')
-        arch_documented = package_section(readme, 'sudo pacman -S --needed ', '\n```')
-        # The README also documents the short updater bootstrap command.
-        # Validate against the full Fedora source-build dependency list.
-        fedora_build_docs = readme.split('<summary><b>Fedora</b></summary>', 1)[1]
-        fedora_documented = package_section(fedora_build_docs, 'sudo dnf install ', '\n```')
-    except ValueError as e:
-        return [str(e)]
-    for name, required, documented in [
-        ('Arch', arch_required, arch_documented),
-        ('Fedora', fedora_required, fedora_documented),
-    ]:
-        missing = required - documented
-        # CI-only tools are not required for a user's build.
-        missing -= {'ccache', 'dbus-daemon'}
-        if missing:
-            failures.append(f'{name}: README dependency list omits CI build dependencies: {sorted(missing)}')
+            failures.append(f'{name}: source-build dependency list omits CI build dependencies: {sorted(missing)}')
     return failures
 
 
