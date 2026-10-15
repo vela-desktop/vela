@@ -5,6 +5,7 @@
 
 extern "C" {
 #include "color.h"
+#include "scene/night_light_policy.h"
 #include "sun.h"
 }
 
@@ -68,6 +69,32 @@ TEST(Color, MatrixMultiplyWithIdentity)
         EXPECT_EQ(left[i], m[i]) << i;
         EXPECT_EQ(right[i], m[i]) << i;
     }
+}
+
+// The final tick of a shader Night Light fade changes every pixel, even
+// though the tint is now completely off. A gamma-only DRM tick does not.
+TEST(NightLightBackend, FullRepaintOnShaderFadeAndBackendSwitch)
+{
+    EXPECT_TRUE(vela_night_light_repaint_required(false, true, true, true, false, false));
+    EXPECT_TRUE(vela_night_light_repaint_required(false, true, true, true, false, true));
+    EXPECT_TRUE(vela_night_light_repaint_required(false, true, false, false, false, false));
+    EXPECT_TRUE(vela_night_light_repaint_required(false, true, true, false, true, false));
+    EXPECT_TRUE(vela_night_light_repaint_required(true, false, true, false, false, true));
+    EXPECT_FALSE(vela_night_light_repaint_required(false, true, true, false, false, true));
+    EXPECT_FALSE(vela_night_light_repaint_required(false, false, true, true, false, false));
+}
+
+// A previously rejected LUT clear stays deferred between animation ticks,
+// but an explicit retry (including enabling the workaround) must allow one
+// more attempt. This prevents the old, potentially corrupted LUT being kept
+// until the next minute-long timer retry after the user toggles the fix.
+TEST(NightLightBackend, ClearDeferralCanBeOverriddenByExplicitRetry)
+{
+    EXPECT_TRUE(vela_night_light_defer_clear(true, true, false, true));
+    EXPECT_FALSE(vela_night_light_defer_clear(true, true, true, true));
+    EXPECT_FALSE(vela_night_light_defer_clear(false, true, false, true));
+    EXPECT_FALSE(vela_night_light_defer_clear(true, false, false, true));
+    EXPECT_FALSE(vela_night_light_defer_clear(true, true, false, false));
 }
 
 TEST(Sun, ParseZoneCoordinates)
