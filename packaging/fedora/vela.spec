@@ -103,6 +103,8 @@ Vulkan renderer, Qt Quick shell, file manager, settings, and lock screen.
 
 %build
 %cmake -G Ninja \
+    %{?vela_ccache:-DCMAKE_C_COMPILER_LAUNCHER=ccache} \
+    %{?vela_ccache:-DCMAKE_CXX_COMPILER_LAUNCHER=ccache} \
     -DCMAKE_INSTALL_LIBEXECDIR=libexec/vela \
     -DVELA_BUILD_TOOLS=OFF \
     -DVELA_PACKAGE_COMMIT=%{vela_commit}
