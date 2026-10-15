@@ -201,9 +201,9 @@ void vela_snap_keyboard(struct vela_server *server, struct vela_view *view, uint
 #define CORNER_SIZE 96
 // The mouse resting on the Maximize button: how long before the layouts open.
 #define LAYOUTS_DELAY_MS 450
-// The shell's accent (Theme.accent, #5b8cff), translucent.
-static const float preview_color[3] = { 0.357f, 0.549f, 1.0f };
+// The shell's accent (Theme.accent, sent with `theme`), translucent.
 #define PREVIEW_ALPHA 0.28f
+#define PREVIEW_RADIUS 8.0
 
 struct vela_snapping *vela_snapping_create(void)
 {
@@ -218,8 +218,9 @@ void vela_snapping_destroy(struct vela_snapping *snapping)
     if (!snapping) {
         return;
     }
-    if (snapping->rect) {
+    if (snapping->preview) {
         vela_node_destroy(&snapping->rect->node);
+        vela_node_destroy(&snapping->preview->node);
     }
     if (snapping->layouts_timer) {
         wl_event_source_remove(snapping->layouts_timer);
@@ -228,19 +229,21 @@ void vela_snapping_destroy(struct vela_snapping *snapping)
 }
 
 // Grows from the center of the area and lights up.
-static void apply_preview(struct vela_snapping *snapping, double p)
+static void apply_preview(const struct vela_server *server, struct vela_snapping *snapping, double p)
 {
     double scale = vela_motion_effects() ? 0.9 + 0.1 * p : 1.0;
     double width = snapping->target_width * scale;
     double height = snapping->target_height * scale;
     vela_rect_node_set_size(snapping->rect, width, height);
-    vela_node_set_position(&snapping->rect->node, snapping->target_x + (snapping->target_width - width) / 2,
+    vela_node_set_position(&snapping->preview->node, snapping->target_x + (snapping->target_width - width) / 2,
         snapping->target_y + (snapping->target_height - height) / 2);
+    const struct vela_shape shape = { .enabled = true, .width = width, .height = height, .radius = PREVIEW_RADIUS };
+    vela_tree_set_shape(snapping->preview, &shape);
     float alpha = PREVIEW_ALPHA * (float)p;
     const struct wlr_render_color color = {
-        preview_color[0] * alpha,
-        preview_color[1] * alpha,
-        preview_color[2] * alpha,
+        server->accent.r * alpha,
+        server->accent.g * alpha,
+        server->accent.b * alpha,
         alpha,
     };
     vela_rect_node_set_color(snapping->rect, &color);
@@ -257,15 +260,17 @@ bool vela_snap_tick_preview(struct vela_server *server, double now_ms)
     if (!snapping->rect) {
         return false;
     }
-    apply_preview(snapping, vela_tween_progress(&snapping->tween, now_ms));
+    apply_preview(server, snapping, vela_tween_progress(&snapping->tween, now_ms));
     return !vela_tween_finished(&snapping->tween, now_ms);
 }
 
 static void remove_preview(struct vela_snapping *snapping)
 {
-    if (snapping->rect) {
+    if (snapping->preview) {
         vela_node_destroy(&snapping->rect->node);
+        vela_node_destroy(&snapping->preview->node);
         snapping->rect = NULL;
+        snapping->preview = NULL;
     }
 }
 
@@ -319,14 +324,15 @@ void vela_snap_update_zone(struct vela_server *server)
     snapping->target_y = target.y;
     snapping->target_width = target.width;
     snapping->target_height = target.height;
-    if (!snapping->rect) {
+    if (!snapping->preview) {
         const struct wlr_render_color none = { 0 };
-        snapping->rect = vela_rect_node_create(grabbed->tree->node.parent, 0, 0, &none);
+        snapping->preview = vela_tree_create(grabbed->tree->node.parent);
+        snapping->rect = vela_rect_node_create(snapping->preview, 0, 0, &none);
     }
     // Below the dragged window, like Windows.
-    vela_node_place_below(&snapping->rect->node, &grabbed->tree->node);
+    vela_node_place_below(&snapping->preview->node, &grabbed->tree->node);
     vela_tween_start(&snapping->tween, "snap-preview", vela_motion_ms(VELA_SNAP_PREVIEW_MS), &vela_decelerate);
-    apply_preview(snapping, 0.0);
+    apply_preview(server, snapping, 0.0);
     vela_server_schedule_frames(server);
 }
 

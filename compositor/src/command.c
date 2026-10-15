@@ -225,44 +225,77 @@ static void refresh_decorations(struct vela_server *server)
     }
 }
 
-// wallpaper-tint R G B (0-255): the wallpaper's average color, for the title
-// bars.
-static void wallpaper_tint(struct vela_server *server, const char *arguments)
+// "#rrggbb" as an opaque color.
+static bool parse_color(const char *text, struct wlr_render_color *color)
 {
-    int r = 0;
-    int g = 0;
-    int b = 0;
-    if (sscanf(arguments, "%d %d %d", &r, &g, &b) != 3) {
+    unsigned rgb = 0;
+    if (strlen(text) != 7 || sscanf(text, "#%6x", &rgb) != 1) {
+        return false;
+    }
+    *color = (struct wlr_render_color) {
+        ((rgb >> 16) & 0xff) / 255.0f,
+        ((rgb >> 8) & 0xff) / 255.0f,
+        (rgb & 0xff) / 255.0f,
+        1.0f,
+    };
+    return true;
+}
+
+static bool same_color(const struct wlr_render_color *a, const struct wlr_render_color *b)
+{
+    return a->r == b->r && a->g == b->g && a->b == b->b && a->a == b->a;
+}
+
+// mica #active #inactive: the title bars' colors, computed by the shell
+// (shell/src/mica.h, micaFromTint) in the apps' mode.
+static void mica(struct vela_server *server, const char *arguments)
+{
+    char active_text[16] = "";
+    char inactive_text[16] = "";
+    struct wlr_render_color active;
+    struct wlr_render_color inactive;
+    if (sscanf(arguments, "%15s %15s", active_text, inactive_text) != 2 || !parse_color(active_text, &active)
+        || !parse_color(inactive_text, &inactive)) {
         return;
     }
-    server->wallpaper_tint[0] = vela_clamp(r, 0, 255) / 255.0f;
-    server->wallpaper_tint[1] = vela_clamp(g, 0, 255) / 255.0f;
-    server->wallpaper_tint[2] = vela_clamp(b, 0, 255) / 255.0f;
-    server->has_wallpaper_tint = true;
-    ++server->wallpaper_tint_version;
+    if (server->has_mica && same_color(&active, &server->mica_active)
+        && same_color(&inactive, &server->mica_inactive)) {
+        return;
+    }
+    server->has_mica = true;
+    server->mica_active = active;
+    server->mica_inactive = inactive;
+    ++server->look_version;
     refresh_decorations(server);
 }
 
-// theme <shell> <apps>, "light" or "dark": Vela's mode and the apps' mode.
+// theme <shell> <apps> [<accent>]: "light" or "dark", Vela's mode and the
+// apps' mode, and the accent as #rrggbb (an older shell doesn't send it: the
+// default stays).
 static void theme(struct vela_server *server, const char *arguments)
 {
     char shell_mode[16] = "";
     char app_mode[16] = "";
-    if (sscanf(arguments, "%15s %15s", shell_mode, app_mode) != 2) {
+    char accent_text[16] = "";
+    if (sscanf(arguments, "%15s %15s %15s", shell_mode, app_mode, accent_text) < 2) {
         return;
     }
     bool shell_light = strcmp(shell_mode, "light") == 0;
     bool apps_light = strcmp(app_mode, "light") == 0;
-    if (shell_light == server->light_shell && apps_light == server->light_apps) {
+    struct wlr_render_color accent = server->accent;
+    parse_color(accent_text, &accent);
+    if (shell_light == server->light_shell && apps_light == server->light_apps
+        && same_color(&accent, &server->accent)) {
         return;
     }
+    server->accent = accent;
     server->light_shell = shell_light;
     server->light_apps = apps_light;
     // Windows 11's acrylic tint, dark or light (premultiplied sRGB).
     server->scene->acrylic_tint = shell_light
         ? (struct wlr_render_color) { 0.95f * 0.55f, 0.95f * 0.55f, 0.96f * 0.55f, 0.55f }
         : (struct wlr_render_color) { 0.11f * 0.55f, 0.11f * 0.55f, 0.12f * 0.55f, 0.55f };
-    ++server->wallpaper_tint_version;
+    ++server->look_version;
     refresh_decorations(server);
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
@@ -361,8 +394,8 @@ static void run_command(struct vela_server *server, const char *line)
     if (strcmp(line, "logout") == 0) {
         wlr_log(WLR_INFO, "Exit requested by the shell");
         wl_display_terminate(server->display);
-    } else if (starts_with(line, "wallpaper-tint ")) {
-        wallpaper_tint(server, line + 15);
+    } else if (starts_with(line, "mica ")) {
+        mica(server, line + 5);
     } else if (starts_with(line, "theme ")) {
         theme(server, line + 6);
     } else if (strcmp(line, "paste") == 0) {

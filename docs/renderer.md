@@ -702,11 +702,12 @@ get the part below. On the left, the app icon (from the `.desktop` file via
 `app_id` or `StartupWMClass`, from KDE's icon theme, an SVG drawn with librsvg at
 the physical size; without librsvg, which is optional, no icon): a click opens
 the window menu, a double click closes the window. The background is the Mica
-tint: the shell sends the compositor the average color of the desktop wallpaper
-(`wallpaper-tint`), made safe for text and mixed with Windows 11's gray (more so
-when inactive). The live blur behind the bar (§9.4, last point) is postponed:
-the solid tint is already close to Mica, which on Windows doesn't show the
-windows behind it.
+tint: the shell computes the bar's two colors (`mica <active> <inactive>`, §9.4)
+from the desktop wallpaper's average color, made safe for text and mixed with
+Windows 11's gray (more so when inactive), with the same formula Vela's apps use
+for their content (`shell/src/mica.h`), so bar and content meet without a seam.
+The live blur behind the bar (§9.4, last point) is postponed: the solid tint is
+already close to Mica, which on Windows doesn't show the windows behind it.
 
 **First version (September 2026)**, only for X11 apps that leave the title bar
 to the window manager (`compositor/src/decoration.*`): measurements of §9.3,
@@ -755,7 +756,12 @@ debug overlay (§10) and for other compositor UI.
 - **Background**: live blur of what's behind, with a **tint derived from the
   desktop wallpaper** (like Mica on Windows): see §9.4.
 - **Minimize/maximize/close buttons**: glyphs drawn as SDFs (lines), sharp at
-  every scale; animated hover; red "close".
+  every scale. Their hover is WinUI's SubtleFillColorSecondary (white at 6.1% in
+  dark mode, black at 3.7% in light mode: `Theme.subtleHover`, checked by
+  `scripts/check-shared-values.py`) and fades in and out in `fast`, turning back
+  from where it is; Close's hover is its red, with a white glyph faded in above
+  the normal one. No pressed state: a button acts on the press
+  (docs/visual-coherence.md §6.6).
 - **Title**: text with grayscale antialiasing (no RGB subpixel: it doesn't get
   along with transparency and animations), glyphs rasterized for each physical
   scale and never enlarged, in a texture atlas. The font is **KDE's** (§9.5).
@@ -782,6 +788,15 @@ so every window blends with the desktop without any settings:
   title stays at least 4.5:1 (the WCAG threshold);
 - final result = live blur of what's behind, mixed with the tint, plus a veil of
   noise; when inactive, the tint weighs more and the bar "dims", as on Windows.
+
+**Today** the tint is the wallpaper's average color, and the shell, which owns
+the theme, computes the bar's colors itself: `mica #active #inactive` in the
+apps' mode, with `micaFromTint()` (`shell/src/mica.h`), the function Settings
+and Files use for their content. The compositor draws what it receives; without
+a shell the bar keeps Windows 11's grays. `theme <shell> <apps> <accent>` also
+brings the accent, which the snap preview uses (a rectangle with radius 8
+corners, no shadow). One formula, in the process that owns the theme
+(docs/visual-coherence.md §6.6).
 
 ### 9.5 The font, from KDE
 

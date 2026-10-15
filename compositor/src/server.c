@@ -156,6 +156,8 @@ static bool init(struct vela_server *server)
     server->interaction = vela_interaction_create();
     server->switcher = vela_switcher_create();
     server->snapping = vela_snapping_create();
+    // Vela's accent until the shell sends the user's (Theme.qml's default).
+    server->accent = (struct wlr_render_color) { 0x5b / 255.0f, 0x8c / 255.0f, 1.0f, 1.0f };
     server->vrr_mode = 1;
     server->display = wl_display_create();
     server->loop = wl_display_get_event_loop(server->display);

@@ -24,6 +24,7 @@
 #include "language.h"
 #include "levelmeter.h"
 #include "mediakeys.h"
+#include "mica.h"
 #include "network.h"
 #include "notifications.h"
 #include "servicemenus.h"
@@ -285,14 +286,6 @@ int main(int argc, char* argv[])
     accessibility.query();
     Network network;
     shell.listen();
-    shell.sendWallpaperTint(config.wallpaper());
-    QObject::connect(&config, &Config::wallpaperChanged, &shell, [&] { shell.sendWallpaperTint(config.wallpaper()); });
-    // The mode to the compositor (acrylic tint, title bars).
-    auto sendTheme = [&config] {
-        ShellController::sendToCompositor("theme " + config.shellTheme().toLatin1() + ' ' + config.appTheme().toLatin1());
-    };
-    sendTheme();
-    QObject::connect(&config, &Config::themeChanged, &shell, sendTheme);
     shell.watchSleep();
 
     ForeignToplevelManager windows;
@@ -336,7 +329,27 @@ int main(int argc, char* argv[])
     qmlEngine = &engine;
     // Theme, Style (the shell's mode, accent, icons) and Effects (the blur):
     // Vela.Controls, like the apps.
-    vela::controls::install(engine, Appearance::Mode::Shell)->watch();
+    Appearance* style = vela::controls::install(engine, Appearance::Mode::Shell);
+    style->watch();
+    // The look the compositor draws with, computed here (docs/visual-coherence.md
+    // §6.6): both modes and the accent (acrylic tint, title bars, the snap
+    // preview), and the title bars' Mica colors in the apps' mode, with the
+    // formula Vela's apps use for their content (mica.h).
+    QColor tint = shell.wallpaperTint(config.wallpaper());
+    auto sendLook = [&config, style, &tint] {
+        ShellController::sendToCompositor("theme " + config.shellTheme().toLatin1() + ' '
+            + config.appTheme().toLatin1() + ' ' + style->accent().name().toLatin1());
+        const bool appsLight = config.appTheme() == QLatin1String("light");
+        ShellController::sendToCompositor("mica " + micaFromTint(tint, true, appsLight).name().toLatin1() + ' '
+            + micaFromTint(tint, false, appsLight).name().toLatin1());
+    };
+    sendLook();
+    QObject::connect(&config, &Config::wallpaperChanged, &shell, [&] {
+        tint = shell.wallpaperTint(config.wallpaper());
+        sendLook();
+    });
+    QObject::connect(&config, &Config::themeChanged, &shell, sendLook);
+    QObject::connect(style, &Appearance::changed, &shell, sendLook);
     engine.addImageProvider(QStringLiteral("fileicon"), new IconProvider(32));
     engine.addImageProvider(QStringLiteral("wallpaper"), new WallpaperProvider);
     engine.addImageProvider(QStringLiteral("thumbnail"), new ThumbnailProvider(&capture));

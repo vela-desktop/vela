@@ -7,9 +7,9 @@ purpose, the invariants the code must keep, and the changes, in the order
 they are made and with how each is verified.
 
 > **Status:** approved design, implemented in the order of §8; done: PR 1
-> (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4), PR 5 (§6.5). Each change has
-> one explanation, in §6; the plan in §8 only says which pull request carries
-> it.
+> (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4), PR 5 (§6.5), PR 6 (§6.6).
+> Each change has one explanation, in §6; the plan in §8 only says which pull
+> request carries it.
 
 ## 1. Goals
 
@@ -571,7 +571,11 @@ that gets no accent keeps the default.
 window to an edge shows a preview with the expected red at the expected alpha;
 after a `mica` line, the bar has those colors; hovering Close logs a color that
 changes on every frame and arrives within 120 ms plus one period at 60 and
-180 Hz, and leaving halfway turns back from where it was.
+180 Hz, and leaving halfway turns back from where it was
+(`test_decorations.ShellColors`). With the real shell, Settings' bar and the
+content right below it have the same color, tinted by the wallpaper
+(`test_settings_bar_continues_its_content`); `scripts/check-shared-values.py`
+checks the buttons' hover against `Theme.subtleHover`.
 
 ### 6.7 Blur for everyone, acrylic for Vela (D6)
 

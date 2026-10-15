@@ -451,6 +451,29 @@ class QtShell(unittest.TestCase):
         self.assertFalse(self.vela.state().window(window)["minimized"])
         act("close", "move", *button("close"), "sleep", 300, "down", "sleep", 30, "up")
 
+    def test_settings_bar_continues_its_content(self):
+        """docs/visual-coherence.md §6.6, D8: the shell sends the bars' Mica
+        colors, computed as Vela's apps compute their content's, so the bar
+        (the compositor's) and Settings' content (Qt's) meet without a seam,
+        tinted by the wallpaper."""
+        env = dict(self.vela.client_env)
+        env.pop("QT_WAYLAND_RECONNECT", None)
+        settings = subprocess.Popen([os.path.join(BUILD, "settings", "vela-settings")], env=env,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.vela.clients.append(settings)
+        state = self.vela.wait_for(lambda s: any(w["app"] == "vela-settings" for w in s.windows), timeout=15,
+                                   what="Settings")
+        window = next(w["id"] for w in state.windows if w["app"] == "vela-settings")
+        self.vela.wait_still(window)
+
+        def seam(_):
+            w = self.vela.state().window(window)
+            image = self.vela.pixels()
+            x = w["x"] + w["w"] - 3 * 46 - 10 # between the title and the buttons
+            bar, content = image.at(x, w["y"] + 16), image.at(x, w["y"] + 32 + 6)
+            return bar == content and bar != (32, 32, 32) # the same, and not the untinted gray
+        self.vela.wait_for(seam, timeout=8, read_state=False, what="the bar continuing Settings' content")
+
     def test_panels_animate(self):
         """Start, Quick Settings, the notification center and Task View don't
         just appear (docs/visual-coherence.md K5): at 300% (Settings' slider,

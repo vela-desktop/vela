@@ -686,6 +686,9 @@ bool vela_views_tick(struct vela_server *server, double now_ms, double wall_ms)
     bool running = false;
     struct vela_view *view, *next;
     wl_list_for_each_safe (view, next, &server->views, link) {
+        if (view->decoration) {
+            running |= vela_decoration_tick(view->decoration, now_ms, wall_ms);
+        }
         if (!view->animating) {
             continue;
         }

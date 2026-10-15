@@ -86,7 +86,10 @@ struct vela_snapping {
     enum vela_snap_zone zone;
     struct vela_snap tile;
     struct vela_output *output;
-    struct vela_rect_node *rect; // below the dragged window, or NULL
+    // Below the dragged window, or NULL: a rectangle in a tree with rounded
+    // corners (radius 8, as Vela's other floating things), no shadow.
+    struct vela_tree *preview;
+    struct vela_rect_node *rect;
     double target_x, target_y, target_width, target_height; // the target area
     struct vela_tween tween;
     // Snap layouts with the mouse resting on Maximize.

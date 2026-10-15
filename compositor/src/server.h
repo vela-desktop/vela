@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <wayland-server-core.h>
+#include <wlr/render/pass.h>
 #include <wlr/util/box.h>
 
 #include "process.h"
@@ -129,15 +130,20 @@ struct vela_server {
     bool locked;
 
     // The theme chosen in Settings ("Choose your mode"), sent by the shell:
-    // light shell (acrylic tint) and light apps (title bars).
+    // light shell (acrylic tint) and light apps (title bars), and the accent
+    // (the snap preview; sRGB, opaque).
     bool light_shell;
     bool light_apps;
-    // The desktop wallpaper's tint (Mica, docs/renderer.md §9.4): the average
-    // color, in sRGB, sent by the shell. The version changes with it and with
-    // the theme: title bars redraw.
-    bool has_wallpaper_tint;
-    float wallpaper_tint[3];
-    uint32_t wallpaper_tint_version;
+    struct wlr_render_color accent;
+    // The title bars' Mica colors, active and inactive (docs/renderer.md
+    // §9.4): computed by the shell from the wallpaper, in the apps' mode, as
+    // Vela's apps compute their content's. Without them the bars keep their
+    // base grays. The version changes with them and with the theme: title
+    // bars redraw.
+    bool has_mica;
+    struct wlr_render_color mica_active;
+    struct wlr_render_color mica_inactive;
+    uint32_t look_version;
     // Title bar text and icons, loaded on first use (decoration.c);
     // text_loaded: tried, even if there is no font.
     struct vela_text *text;

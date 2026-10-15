@@ -6,9 +6,12 @@ xdg-decoration: 32 high, above the content, with the title written by the
 compositor and the three buttons; closing, maximizing with a double click.
 It's found on screen, not from the state."""
 
+import re
+import subprocess
+import time
 import unittest
 
-from harness import Session
+from harness import Session, tool
 
 BAR = 32
 BUTTON = 46
@@ -136,3 +139,92 @@ def bar_images(image, w, scale):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShellColors(unittest.TestCase):
+    """docs/visual-coherence.md §6.6: the compositor draws with the colors the
+    shell computes. The accent tints the snap preview (with rounded corners),
+    `mica` sets the bars' backgrounds, and the buttons' hover fades."""
+
+    def test_the_snap_preview_takes_the_accent(self):
+        with Session() as vela:
+            vela.command("theme dark dark #ff0000")
+            window = vela.open_window(400, 300, decorated=True)
+            w = vela.wait_for(lambda s: s["focused"] == window).window(window)
+            x, y = w["x"] + 200, w["y"] + BAR // 2
+            # Dragged to the left edge and held there while we look.
+            drag = subprocess.Popen([tool("vela-input"), "move", str(x), str(y), "sleep", "300", "down", "sleep", "50",
+                                     "move", str(x), str(y + 10), "sleep", "50", "move", "0", "400", "sleep", "1500",
+                                     "move", "960", "400", "sleep", "50", "up"], env=vela.client_env)
+            try:
+                time.sleep(1.0)
+                image = vela.pixels()
+            finally:
+                drag.wait(timeout=10)
+            # Black below it: the accent at the preview's 28%, blended in
+            # linear light and stored in sRGB.
+            red, green, blue = image.at(700, 900)
+            expected = round(255 * (1.055 * 0.28 ** (1 / 2.4) - 0.055))
+            self.assertTrue(abs(red - expected) <= 2 and green <= 2 and blue <= 2, (red, green, blue, expected))
+            # Rounded: the corner itself stays black.
+            self.assertEqual(image.at(0, 0), (0, 0, 0))
+            self.assertEqual(image.at(20, 20)[0], red)
+
+    def test_mica_colors_the_bars(self):
+        with Session() as vela:
+            vela.command("mica #102030 #405060")
+            # Side by side, the second one active.
+            first = vela.open_window(400, 300, decorated=True)
+            vela.wait_for(lambda s: s["focused"] == first)
+            vela.keys("super+Left")
+            second = vela.open_window(400, 300, decorated=True)
+            vela.wait_for(lambda s: s["focused"] == second)
+            vela.keys("super+Right")
+            time.sleep(0.6) # the morphs
+
+            def spot(window):
+                w = vela.state().window(window)
+                return w["x"] + w["w"] - 3 * BUTTON - 10, w["y"] + BAR // 2 # between the title and the buttons
+            vela.wait_for(lambda _: vela.pixels().at(*spot(second)) == (0x10, 0x20, 0x30), read_state=False,
+                          what="the active bar in Mica's active color")
+            self.assertEqual(vela.pixels().at(*spot(first)), (0x40, 0x50, 0x60), "the inactive one")
+
+    def test_the_close_hover_fades(self):
+        for hz in (60, 180):
+            with self.subTest(hz=hz), Session(size=f"1920x1080@{hz}", env={"VELA_DEBUG_ANIMATION": "1"}) as vela:
+                window = vela.open_window(400, 300, decorated=True)
+                w = vela.wait_for(lambda s: s["focused"] == window).window(window)
+                close = (w["x"] + w["w"] - BUTTON // 2, w["y"] + BAR // 2)
+                away = (w["x"] + 100, w["y"] + 150)
+
+                def fills(after):
+                    out = {}
+                    for m in FILL.finditer(vela.log_text()[after:]):
+                        out.setdefault(int(m[1]), []).append(float(m[2]))
+                    return out
+
+                mark = len(vela.log_text())
+                vela.input("move", *close)
+                vela.wait_for(lambda _: any(v[-1] == 1.0 for v in fills(mark).values()), read_state=False,
+                              what="Close red")
+                (values,) = fills(mark).values()
+                # Every frame a new color, up to the full red within `fast`
+                # (120 ms) plus one period.
+                rising = values[:values.index(1.0) + 1]
+                self.assertTrue(all(b > a for a, b in zip(rising, rising[1:])), values)
+                self.assertLessEqual(len(rising) - 1, 120 * hz / 1000 + 1, values)
+
+                # Left halfway: it turns back from where it was.
+                vela.input("move", *away)
+                time.sleep(0.5)
+                mark = len(vela.log_text())
+                vela.input("move", *close, "sleep", "40", "move", *away)
+                vela.wait_for(lambda _: len(fills(mark)) == 2 and list(fills(mark).values())[1][-1] == 0.0,
+                              read_state=False, what="back to none")
+                going, back = fills(mark).values()
+                self.assertTrue(0.05 < going[-1] < 0.95, going)
+                self.assertAlmostEqual(back[0], going[-1], places=3)
+                self.assertTrue(all(b < a for a, b in zip(back, back[1:])), back)
+
+
+FILL = re.compile(r"animation: close-hover #(\d+) fill ([\d.]+)")
