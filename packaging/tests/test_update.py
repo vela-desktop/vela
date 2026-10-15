@@ -1070,7 +1070,7 @@ class UpdatePublicReleases(UpdateFixture):
         # Make the verification executable unusable; a missing verifier must
         # fall back to local sources even if GitHub serves a valid checksum.
         cosign = self.directory / "bin/cosign"
-        cosign.write_text("#!/bin/sh\\nexit 1\\n")
+        cosign.write_text("not an executable")
         result = self.run_update("--download", source=False)
         self.assertIn("provenance verification failed", result.stderr)
         self.assertEqual(self.calls("sudo"), [])
