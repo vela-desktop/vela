@@ -83,8 +83,11 @@ static bool timezone_coordinates(double *latitude, double *longitude)
 
 // ----------------------------------------------------------------- color --
 
-// Filters change the rendered pixels. Night light only does so on outputs
-// where the gamma LUT is unavailable; DRM outputs only need another commit.
+/**
+ * Publish color-filter and Night Light state to the scene and each output.
+ * Switching backends invalidates rendering even if the gains remain constant
+ * and explicitly retries any previously rejected hardware LUT clear.
+ */
 static void apply_color(struct vela_a11y *a11y)
 {
     struct vela_scene *scene = a11y->server->scene;
@@ -229,6 +232,7 @@ static void start_night_transition(struct vela_a11y *a11y)
     vela_server_schedule_frames(a11y->server);
 }
 
+/** Reload accessibility preferences, including the optional Night Light backend. */
 void vela_a11y_load(struct vela_a11y *a11y)
 {
     struct vela_config settings;
@@ -574,6 +578,7 @@ bool vela_a11y_sticky_key(struct vela_a11y *a11y, struct wlr_keyboard *keyboard,
 
 // ------------------------------------------------------------ the shell --
 
+/** Serialize accessibility flags, the NVIDIA fallback setting, and sun times. */
 bool vela_a11y_json(const struct vela_a11y *a11y, char *out, size_t size)
 {
     // Today's sun times, for the night light page ("Sunset to sunrise").
