@@ -6,10 +6,10 @@ Vela requires a Vulkan 1.4 GPU and a working PipeWire/WirePlumber audio stack. T
 
 ## Arch Linux, CachyOS, EndeavourOS
 
-Vela installs as a native `vela-git` package. Install `git`, `curl`, `base-devel` and `github-cli` (required for signed prebuilt package verification with the current updater):
+Vela installs as a native `vela-git` package. Install `git`, `curl`, `base-devel` and `cosign` (for signed prebuilt packages; GitHub CLI is not required):
 
 ```sh
-sudo pacman -S --needed git curl base-devel github-cli
+sudo pacman -S --needed git curl base-devel cosign
 git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update
 ```
@@ -34,10 +34,28 @@ other Fedora releases or other DNF-based distributions. The same updater install
 and handles subsequent updates through DNF. To get started:
 
 ```sh
-sudo dnf install git curl gh rpm-build dnf5-plugins
+sudo dnf install git curl rpm-build dnf5-plugins
 git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update
 ```
+
+**Fedora 44 verification prerequisite:** Fedora 44 does not currently ship
+`cosign` in its default repositories. Install the official upstream Cosign RPM
+before expecting the updater to use precompiled RPMs:
+
+```sh
+version=$(curl -fsSL https://api.github.com/repos/sigstore/cosign/releases/latest |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"].removeprefix("v"))')
+curl -fL -o cosign.rpm "https://github.com/sigstore/cosign/releases/download/v${version}/cosign-${version}-1.x86_64.rpm"
+sudo dnf install ./cosign.rpm
+rm cosign.rpm
+```
+
+Only obtain Cosign from the official Sigstore release. This HTTPS bootstrap
+assumes the upstream Cosign distribution is trustworthy; it is not independently
+authenticated by Vela. If Cosign is missing or verification fails, Vela builds
+the selected source commit locally instead of trusting an unsigned binary.
+No `gh` installation or GitHub login is needed for public releases.
 
 The updater looks for an RPM built for the exact selected commit in the public
 alpha release and verifies both its checksum and signed GitHub build provenance.
@@ -48,10 +66,10 @@ Use `vela-update --check` to inspect changes without installing.
 
 The RPM requires Git, DNF5, RPM and `flock` (from util-linux), even when
 installed directly without following the bootstrap commands above. It recommends
-`curl` and `gh` for signed binary downloads, plus `rpm-build` and
+`curl` for signed binary downloads, plus `rpm-build` and
 `dnf5-plugins` for the local build fallback. If weak dependencies were
 disabled during installation, install those optional tools before using their
-respective updater modes.
+respective updater modes. Cosign is installed separately (see below).
 
 Fedora RPMs are built and installation-tested in a fresh Fedora 44 container
 before release; a physical GPU login and other Fedora versions still require
@@ -87,10 +105,12 @@ otherwise it builds locally as usual.
 
 To prepare a package for a test branch, run the **Build** workflow manually in
 GitHub Actions, selecting that branch (or run
-`gh workflow run build.yml --ref YOUR_TEST_BRANCH`). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce both the `vela-git` Arch artifact and the
+`gh workflow run build.yml --ref YOUR_TEST_BRANCH` for maintainers). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce both the `vela-git` Arch artifact and the
 `vela-fedora-rpm` artifact, as on pushes to `main`; workflow artifacts expire
 after 14 days. PR builds also smoke-test both packages, but their artifacts are
 not attested, and `vela-update` does not accept them as trusted downloads.
+The GitHub CLI is only needed for optional private workflow-artifact retrieval;
+Sigstore/Cosign performs all package verification.
 Public `main` packages are also published as per-commit GitHub prereleases
 (tagged `alpha-<full-commit-sha>`) and can be downloaded without a GitHub account.
 Only the **five most recently published Vela alpha releases** are kept; older
