@@ -147,6 +147,20 @@ class Supervisor(unittest.TestCase):
             self.assertEqual(child_compositor(supervisor_pid), compositor_pid)
             self.assertNotIn("the compositor crashed", vela.log_text())
 
+    def test_termination_signals_exit_cleanly(self):
+        # Both signals must reach Wayland's signalfd and shut down the
+        # compositor without being mistaken for a crash by the supervisor.
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=signal.Signals(signum).name):
+                with Session(supervise=True) as vela:
+                    compositor_pid = child_compositor(vela.process.pid)
+                    self.assertIsNotNone(compositor_pid)
+                    os.kill(compositor_pid, signum)
+                    self.assertEqual(vela.process.wait(timeout=15), 0)
+                    log = vela.log_text()
+                    self.assertNotIn("the compositor crashed", log)
+                    self.assertNotIn("restarting it", log)
+
     def test_restart_after_crash(self):
         with Session(supervise=True) as vela:
             first = child_compositor(vela.process.pid)
