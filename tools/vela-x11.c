@@ -9,7 +9,6 @@
 //        vela-x11 --set-wine-style XID HEX
 //        vela-x11 --delete-wine-style XID
 //        vela-x11 --geometry XID (root-relative X11 x y width height)
-//        vela-x11 --set-decorations XID on|off
 //        vela-x11 --root-size (current X11 root width height)
 //        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
 //
@@ -57,8 +56,7 @@ int main(int argc, char** argv)
     int hasWineStyle = 0;
     int startFullscreen = 0;
     int control = (argc == 4
-        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
-            || !strcmp(argv[1], "--set-decorations")))
+        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")))
         || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
             || !strcmp(argv[1], "--geometry")))
         || (argc == 2 && !strcmp(argv[1], "--root-size"));
@@ -134,17 +132,6 @@ int main(int argc, char** argv)
             uint32_t style = (uint32_t)strtoul(argv[3], NULL, 0);
             xcb_change_property(connection, XCB_PROP_MODE_REPLACE, target,
                 atom(connection, "_WINE_HWND_STYLE"), XCB_ATOM_CARDINAL, 32, 1, &style);
-        } else if (!strcmp(argv[1], "--set-decorations")) {
-            if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
-                fprintf(stderr, "vela-x11: decorations must be on or off\n");
-                xcb_disconnect(connection);
-                return 1;
-            }
-            // _MOTIF_WM_HINTS: flags, functions, decorations, input, status.
-            const uint32_t hints[5] = { 1u << 1, 0, !strcmp(argv[3], "on") ? 1u : 0u, 0, 0 };
-            xcb_atom_t motif = atom(connection, "_MOTIF_WM_HINTS");
-            xcb_change_property(connection, XCB_PROP_MODE_REPLACE, target,
-                motif, motif, 32, 5, hints);
         } else if (!strcmp(argv[1], "--delete-wine-style")) {
             xcb_delete_property(connection, target, atom(connection, "_WINE_HWND_STYLE"));
         } else {
