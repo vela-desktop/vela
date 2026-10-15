@@ -254,7 +254,10 @@ static bool init(struct vela_server *server)
     // Seat, cursor, mice, keyboards, gestures (input.c).
     server->input = vela_input_create(server);
 
-    wl_event_loop_add_signal(server->loop, SIGUSR1, handle_redraw_all, server);
+    if (!wl_event_loop_add_signal(server->loop, SIGUSR1, handle_redraw_all, server)) {
+        wlr_log_errno(WLR_ERROR, "Cannot register SIGUSR1 handler");
+        return false;
+    }
     vela_xwayland_init(server); // X11 apps (xwayland.c)
     server->lock = vela_lock_create(server); // lock and inactivity (lock.c)
     // Accessibility and screen color (a11y.c); VRR and tearing.
@@ -264,8 +267,14 @@ static bool init(struct vela_server *server)
     vela_a11y_load(server->a11y);
     server->workspaces = vela_workspaces_create(server); // virtual desktops (workspace.c)
 
-    wl_event_loop_add_signal(server->loop, SIGINT, handle_terminate, display);
-    wl_event_loop_add_signal(server->loop, SIGTERM, handle_terminate, display);
+    if (!wl_event_loop_add_signal(server->loop, SIGINT, handle_terminate, display)) {
+        wlr_log_errno(WLR_ERROR, "Cannot register SIGINT handler");
+        return false;
+    }
+    if (!wl_event_loop_add_signal(server->loop, SIGTERM, handle_terminate, display)) {
+        wlr_log_errno(WLR_ERROR, "Cannot register SIGTERM handler");
+        return false;
+    }
     make_realtime();
     return true;
 }
