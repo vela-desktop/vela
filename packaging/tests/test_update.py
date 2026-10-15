@@ -234,13 +234,26 @@ elif name == "gh":
             (dest / ("vela-git-0.1.0.r1.g" + sha + "-1-x86_64.pkg.tar.zst")).touch()
 elif name == "curl":
     record()
+    import hashlib
     url = args[-1]
     if url.startswith("https://api.github.com/repos/vela-desktop/vela/attestations/sha256:"):
         print(json.dumps({"attestations": [{"bundle_url":
               "https://vela-test.blob.core.windows.net/attestations/bundle.json"}]}))
         sys.exit(0)
     if url == "https://vela-test.blob.core.windows.net/attestations/bundle.json":
-        print("{}")
+        import base64
+        digest = os.environ.get("TEST_EXPECTED_DIGEST", "")
+        if not digest:
+            # Workflow artifacts are empty fake packages in this fixture.
+            release_sha = os.environ.get("TEST_RELEASE_SHA")
+            digest = hashlib.sha256(("package for " + release_sha).encode() if release_sha else b"").hexdigest()
+        runner = "self-hosted" if os.environ.get("TEST_SELF_HOSTED") else "github-hosted"
+        statement = {"predicateType": "https://slsa.dev/provenance/v1",
+                     "subject": [{"digest": {"sha256": digest}}],
+                     "predicate": {"buildDefinition": {"internalParameters":
+                                  {"github": {"runner_environment": runner}}}}}
+        print(json.dumps({"dsseEnvelope": {"payload":
+              base64.b64encode(json.dumps(statement).encode()).decode()}}))
         sys.exit(0)
     import hashlib
     sha = os.environ.get("TEST_RELEASE_SHA")
@@ -1058,6 +1071,13 @@ class UpdatePublicReleases(UpdateFixture):
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
         self.assertFalse(list((self.mirror.parent / "packages").glob("*.pkg.tar.zst")))
+
+    def test_signed_self_hosted_runner_is_rejected(self):
+        self.env.update(TEST_RELEASE_SHA=self.main, TEST_SELF_HOSTED="1")
+        result = self.run_update("--download")
+        self.assertIn("non-GitHub-hosted runner", result.stderr)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_public_release_with_wrong_source_provenance_falls_back(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_WRONG_ATTEST_SHA="1")
