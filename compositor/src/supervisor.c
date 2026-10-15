@@ -58,6 +58,14 @@ static void on_terminate(int signal)
     }
 }
 
+// The supervisor is not a compositor. In particular SIGUSR1 requests a
+// renderer redraw, not a session shutdown. Use a handler (not SIG_IGN): the
+// forked child must regain SIG_DFL at exec before Wayland registers signalfd.
+static void on_compositor_redraw(int signal)
+{
+    (void)signal;
+}
+
 static void say(const char *format, ...)
 {
     va_list args;
@@ -260,6 +268,20 @@ static void run_and_wait(const char *program, const char *argument)
 
 int vela_supervise(int argc, char **argv)
 {
+    // Both processes execute vela-compositor. Give the supervisor its own
+    // /proc/<pid>/comm so `pkill -x vela-compositor` never logs out the user.
+    // Keep a defensive SIGUSR1 handler for explicit PID/group signals.
+    struct sigaction redraw = { .sa_handler = on_compositor_redraw };
+    sigemptyset(&redraw.sa_mask);
+    if (sigaction(SIGUSR1, &redraw, NULL) != 0) {
+        say("can't install supervisor SIGUSR1 handler: %s", strerror(errno));
+        return 1;
+    }
+    if (prctl(PR_SET_NAME, "vela-supervise", 0, 0, 0) != 0) {
+        say("can't set supervisor process name: %s", strerror(errno));
+        return 1;
+    }
+
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
     int runtime_fd = vela_runtime_dir_open(runtime_dir);
     if (runtime_fd < 0) {

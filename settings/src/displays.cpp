@@ -7,12 +7,16 @@
 
 #include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QPoint>
+#include <QRectF>
 #include <QSocketNotifier>
 #include <QTimer>
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
 #include <cstring>
+#include <limits>
+#include <optional>
 #include <vector>
 #include <wayland-client.h>
 
@@ -55,6 +59,79 @@ struct Displays::Client {
         std::vector<std::unique_ptr<Mode>> modes;
         ~Head() { destroyProxy(proxy); }
     };
+
+    // Match wlroots' effective resolution: transformed mode size, divided by
+    // the output's float scale and truncated to integer logical pixels.
+    static QSize logicalSize(const Mode* mode, double scale, int transform)
+    {
+        if (!mode || !std::isfinite(scale) || scale <= 0) return {};
+        const float width = static_cast<float>(transform & 1 ? mode->height : mode->width) / static_cast<float>(scale);
+        const float height = static_cast<float>(transform & 1 ? mode->width : mode->height) / static_cast<float>(scale);
+        if (width < 1 || height < 1 || width >= std::numeric_limits<int>::max()
+            || height >= std::numeric_limits<int>::max()) return {};
+        return { static_cast<int>(width), static_cast<int>(height) };
+    }
+
+    std::optional<QPoint> positionForSize(const Head* target, const Mode* mode, double scale, int transform) const
+    {
+        const QSize oldSize = logicalSize(target->current, target->scale, target->transform);
+        const QSize newSize = logicalSize(mode, scale, transform);
+        // No meaningful geometry to arrange: leave the position unchanged and
+        // let the compositor decide whether the requested scale is valid.
+        if (oldSize.isEmpty() || newSize.isEmpty() || oldSize == newSize)
+            return QPoint(target->x, target->y);
+        const QRectF before(QPointF(target->x, target->y), oldSize);
+        std::vector<QRectF> neighbors;
+        for (const auto& head : heads) {
+            if (head.get() == target || !head->enabled || !head->current) continue;
+            const QSize size = logicalSize(head->current, head->scale, head->transform);
+            if (!size.isEmpty()) neighbors.emplace_back(QPointF(head->x, head->y), size);
+        }
+        const auto clear = [&](QPoint point) {
+            const QRectF after(point, newSize);
+            return std::none_of(neighbors.begin(), neighbors.end(), [&](const QRectF& other) {
+                return after.intersects(other);
+            });
+        };
+        std::optional<QPoint> best;
+        double bestGap = std::numeric_limits<double>::infinity();
+        double bestMove = std::numeric_limits<double>::infinity();
+        const auto consider = [&](double x, double y, double gap) {
+            if (x < std::numeric_limits<int>::min() || x > std::numeric_limits<int>::max()
+                || y < std::numeric_limits<int>::min() || y > std::numeric_limits<int>::max()) return;
+            const QPoint point(static_cast<int>(std::lround(x)), static_cast<int>(std::lround(y)));
+            if (!clear(point)) return;
+            const double dx = x - before.x(), dy = y - before.y();
+            const double movement = dx * dx + dy * dy;
+            if (gap < bestGap || (gap == bestGap && movement < bestMove)) {
+                best = point;
+                bestGap = gap;
+                bestMove = movement;
+            }
+        };
+        // Preserve the old facing edge and gap. On the other axis, preserve
+        // left/top alignment, right/bottom alignment, or exact centering.
+        const auto aligned = [](double start, double length, double otherStart, double otherLength, double resized) {
+            if (start == otherStart) return start;
+            if (start + length == otherStart + otherLength) return otherStart + otherLength - resized;
+            if (start + length / 2 == otherStart + otherLength / 2) return otherStart + (otherLength - resized) / 2;
+            return start;
+        };
+        for (const QRectF& other : neighbors) {
+            const double x = aligned(before.x(), before.width(), other.x(), other.width(), newSize.width());
+            const double y = aligned(before.y(), before.height(), other.y(), other.height(), newSize.height());
+            if (before.bottom() <= other.top())
+                consider(x, before.bottom() - newSize.height(), other.top() - before.bottom());
+            if (before.top() >= other.bottom())
+                consider(x, before.top(), before.top() - other.bottom());
+            if (before.right() <= other.left())
+                consider(before.right() - newSize.width(), y, other.left() - before.right());
+            if (before.left() >= other.right())
+                consider(before.left(), y, before.left() - other.right());
+        }
+        if (!best && clear(QPoint(target->x, target->y))) best = QPoint(target->x, target->y);
+        return best;
+    }
 
     Displays* owner;
     wl_display* display = nullptr;
@@ -333,6 +410,15 @@ bool Displays::apply(const QString& name, const QVariantMap& changes)
     }
     if (!enabled && target->enabled && std::count_if(c.heads.begin(), c.heads.end(),
             [](const auto& h) { return h->enabled; }) <= 1) return false;
+    std::optional<QPoint> resizedPosition;
+    if (enabled && target->enabled && target->current && !changes.contains("x") && !changes.contains("y")) {
+        resizedPosition = c.positionForSize(target, selected ? selected : target->current, scale, transform);
+        if (!resizedPosition) {
+            c.error = tr("Move this display to make room before changing its size or orientation.");
+            emit stateChanged();
+            return false;
+        }
+    }
     c.error.clear();
     c.configuration = zwlr_output_manager_v1_create_configuration(c.manager, c.serial);
     static const zwlr_output_configuration_v1_listener configurationListener {
@@ -356,6 +442,8 @@ bool Displays::apply(const QString& name, const QVariantMap& changes)
             if (changes.contains("x") || changes.contains("y"))
                 zwlr_output_configuration_head_v1_set_position(wanted,
                     changes.value("x", h->x).toInt(), changes.value("y", h->y).toInt());
+            else if (resizedPosition && (resizedPosition->x() != h->x || resizedPosition->y() != h->y))
+                zwlr_output_configuration_head_v1_set_position(wanted, resizedPosition->x(), resizedPosition->y());
         }
         destroyProxy(wanted);
     }

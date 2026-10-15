@@ -47,15 +47,30 @@ if url is not None:
     if url != os.environ["TEST_HTTPS_SOURCE"] and not allowed_local:
         sys.exit("Unexpected repository transport: " + url)
     if os.environ.get("TEST_FAIL_FETCH") and operation in ("clone", "update", "fetch"):
-        sys.exit(1)
+        sys.exit("simulated Git transport failure")
 rewrite = "url." + pathlib.Path(os.environ["TEST_SOURCE"]).as_uri() + ".insteadOf=" + os.environ["TEST_HTTPS_SOURCE"]
 sys.exit(subprocess.call([real_git, *(["-c", rewrite] if url is not None else []), *args]))
 '''
 MV_STUB = r'''#!/usr/bin/env python3
-import os, sys
+import os, pathlib, signal, subprocess, sys
 if (os.environ.get("TEST_FAIL_CONFIG_MV") == "1" and
         sys.argv[-1] == os.environ["TEST_CONFIG_DEST"]):
     sys.exit(1)
+mirror_swap = (os.environ.get("TEST_INTERRUPT_MIRROR_SWAP") == "1"
+               and sys.argv[-1] == os.environ["TEST_MIRROR_DEST"]
+               and pathlib.Path(sys.argv[-2]).name.startswith("vela-mirror."))
+old_mirror_swap = (os.environ.get("TEST_INTERRUPT_OLD_MIRROR_SWAP") == "1"
+                   and sys.argv[-2] == os.environ["TEST_MIRROR_DEST"]
+                   and pathlib.Path(sys.argv[-1]).name.startswith("vela-corrupt."))
+config_commit = (os.environ.get("TEST_INTERRUPT_CONFIG_COMMIT") == "1"
+                 and sys.argv[-1] == os.environ["TEST_CONFIG_DEST"])
+if old_mirror_swap:
+    os.kill(os.getppid(), signal.SIGTERM)
+    sys.exit(0)  # Pretend mv returned normally after the parent was signaled
+if mirror_swap or config_commit:
+    subprocess.run([os.environ["TEST_REAL_MV"], *sys.argv[1:]], check=True)
+    os.kill(os.getppid(), signal.SIGTERM)
+    sys.exit(0)
 os.execv(os.environ["TEST_REAL_MV"], [os.environ["TEST_REAL_MV"], *sys.argv[1:]])
 '''
 STUB = r'''#!/usr/bin/env python3
@@ -165,7 +180,17 @@ elif name == "curl":
     record()
     import hashlib
     sha = os.environ.get("TEST_RELEASE_SHA")
+    if os.environ.get("TEST_RELEASE_TIMEOUT"):
+        print("000")  # curl's --write-out HTTP code for a network failure
+        sys.exit("simulated release lookup timeout")
+    if os.environ.get("TEST_RELEASE_HTTP"):
+        code = os.environ["TEST_RELEASE_HTTP"]
+        print(code)
+        if code != "404":
+            print("simulated release lookup HTTP " + code, file=sys.stderr)
+        sys.exit(22)  # curl -f uses 22 for all HTTP errors
     if not sha:
+        print("404")
         sys.exit(22)  # no public release for this fixture revision
     url = args[-1]
     prefix = "https://github.com/vela-desktop/vela/releases/download/alpha-" + sha + "/"
@@ -179,7 +204,17 @@ elif name == "curl":
     if os.environ.get("TEST_BAD_RELEASE_DIGEST"):
         digest = "f" * 64
     if url == prefix + "SHA256SUMS":
-        output.write_text(digest + "  " + package + "\n")
+        mode = os.environ.get("TEST_BAD_RELEASE_MANIFEST")
+        if mode == "invalid-digest":
+            digest = "not-a-sha256"
+        if mode == "empty":
+            content = ""
+        elif mode == "multiple":
+            content = digest + "  " + package + "\n" + digest + "  " + package + "\n"
+        else:
+            content = digest + "  " + package + "\n"
+        output.write_text(content)
+        print("200")
     elif url == prefix + package and not os.environ.get("TEST_FAIL_RELEASE_DOWNLOAD"):
         output.write_bytes(data + (b"corrupted" if os.environ.get("TEST_CORRUPT_RELEASE") else b""))
     else:
@@ -224,7 +259,8 @@ class UpdateFixture(unittest.TestCase):
                         TEST_SOURCE=str(self.source), TEST_DIRECTORY=str(self.directory),
                         TEST_HTTPS_SOURCE=HTTPS_SOURCE,
                         TEST_REAL_MV=shutil.which("mv"),
-                        TEST_CONFIG_DEST=str(self.directory / "config/vela/updates.conf"))
+                        TEST_CONFIG_DEST=str(self.directory / "config/vela/updates.conf"),
+                        TEST_MIRROR_DEST=str(self.directory / "cache/vela-update/vela.git"))
         self.config = self.directory / "config/vela/updates.conf"
         self.mirror = self.directory / "cache/vela-update/vela.git"
         self.git("init", "--quiet", "--initial-branch=main")
@@ -707,6 +743,146 @@ class UpdateSources(UpdateFixture):
         self.assertTrue(self.mirror.exists())
 
 
+    def test_legacy_refspec_migrates_without_pruning_private_pin(self):
+        self.run_update("--build", source=False)
+        pin = self.mirror / "refs/vela-update/selected"
+        self.assertEqual(pin.read_text().strip(), self.main)
+        subprocess.run(["git", "-C", str(self.mirror), "config", "--replace-all",
+                        "remote.origin.fetch", "+refs/*:refs/*"], env=self.env, check=True)
+        self.run_update("--check", source=False)
+        self.assertEqual(pin.read_text().strip(), self.main)
+        specs = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "--get-all", "remote.origin.fetch"],
+            env=self.env, text=True).splitlines()
+        self.assertEqual(specs, ["+refs/heads/*:refs/heads/*",
+                                 "+refs/tags/*:refs/tags/*"])
+        self.assertFalse(list(self.mirror.parent.glob("vela-corrupt.*")))
+
+    def corrupt_cached_mirror(self):
+        oid = "aa" + "b" * 38
+        obj = self.mirror / "objects/aa" / ("b" * 38)
+        obj.parent.mkdir(parents=True, exist_ok=True)
+        obj.touch()
+        ref = self.mirror / "refs/vela-update/selected"
+        ref.parent.mkdir(parents=True, exist_ok=True)
+        ref.write_text(oid + "\n")
+        return ref
+
+    def test_corrupt_cache_reclones_and_preserves_old_mirror(self):
+        self.run_update("--check", source=False)
+        self.corrupt_cached_mirror()
+        result = self.run_update("--check", source=False)
+        self.assertIn("corrupt", result.stderr)
+        self.assertIn("invalid sha1 pointer", result.stderr)
+        self.assertIn("preserved at", result.stderr)
+        self.assertFalse((self.mirror / "refs/vela-update/selected").exists())
+        quarantine = list(self.mirror.parent.glob("vela-corrupt.*"))
+        self.assertEqual(len(quarantine), 1)
+        self.assertTrue((quarantine[0] / "refs/vela-update/selected").exists())
+        self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
+
+    def test_signal_before_old_mirror_rename_leaves_original_untouched(self):
+        self.run_update("--check", source=False)
+        self.corrupt_cached_mirror()
+        self.env["TEST_INTERRUPT_OLD_MIRROR_SWAP"] = "1"
+        try:
+            result = self.run_update("--check", source=False, status=143)
+        finally:
+            self.env.pop("TEST_INTERRUPT_OLD_MIRROR_SWAP")
+        self.assertIn("cached Git mirror is corrupt", result.stderr)
+        self.assertTrue((self.mirror / "refs/vela-update/selected").exists())
+        self.assertNotIn("previous mirror is preserved at", result.stderr)
+        self.assertFalse(list(self.mirror.parent.glob("vela-corrupt.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+
+    def test_signal_during_mirror_swap_restores_corrupt_cache(self):
+        self.run_update("--check", source=False)
+        self.corrupt_cached_mirror()
+        self.env["TEST_INTERRUPT_MIRROR_SWAP"] = "1"
+        try:
+            result = self.run_update("--check", source=False, status=143)
+        finally:
+            self.env.pop("TEST_INTERRUPT_MIRROR_SWAP")
+        self.assertIn("cached Git mirror is corrupt", result.stderr)
+        self.assertTrue((self.mirror / "refs/vela-update/selected").exists())
+        self.assertFalse(list(self.mirror.parent.glob("vela-corrupt.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+        self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
+
+    def test_signal_after_source_config_rename_restores_both_old_paths(self):
+        self.run_update("--check")
+        original_config = self.config.read_bytes()
+        original_origin = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip()
+        alternate = self.directory / "alternate"
+        shutil.copytree(self.source, alternate)
+        self.env["TEST_INTERRUPT_CONFIG_COMMIT"] = "1"
+        try:
+            result = self.run_update("--source", str(alternate), "--check",
+                                     source=False, status=143)
+        finally:
+            self.env.pop("TEST_INTERRUPT_CONFIG_COMMIT")
+        self.assertEqual(self.config.read_bytes(), original_config)
+        self.assertEqual(subprocess.check_output(
+            ["git", "-C", str(self.mirror), "config", "remote.origin.url"],
+            env=self.env, text=True).strip(), original_origin)
+        self.assertFalse(list(self.config.parent.glob(".updates.conf.backup.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-backup.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+        self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
+        self.run_update("--check", source=False)
+
+    def test_signal_after_initial_config_rename_removes_uncommitted_paths(self):
+        self.env["TEST_INTERRUPT_CONFIG_COMMIT"] = "1"
+        try:
+            self.run_update("--source", HTTPS_SOURCE, "--check",
+                            source=False, status=143)
+        finally:
+            self.env.pop("TEST_INTERRUPT_CONFIG_COMMIT")
+        self.assertFalse(self.config.exists())
+        self.assertFalse(self.mirror.exists())
+        self.assertFalse(list(self.config.parent.glob(".updates.conf.backup.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+        self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
+
+    def test_signal_during_config_commit_restores_corrupt_cache(self):
+        self.run_update("--check", source=False)
+        self.corrupt_cached_mirror()
+        self.write_config(HTTPS_SOURCE)
+        self.env["TEST_INTERRUPT_CONFIG_COMMIT"] = "1"
+        try:
+            result = self.run_update("--source", HTTPS_SOURCE, "--check",
+                                     source=False, status=143)
+        finally:
+            self.env.pop("TEST_INTERRUPT_CONFIG_COMMIT")
+        self.assertIn("cached Git mirror is corrupt", result.stderr)
+        self.assertTrue((self.mirror / "refs/vela-update/selected").exists())
+        self.assertEqual(self.config.read_text(), "source=" + HTTPS_SOURCE + "\n")
+        self.assertFalse(list(self.mirror.parent.glob("vela-corrupt.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+        self.assertEqual(self.calls("makepkg") + self.calls("sudo"), [])
+
+    def test_failed_corrupt_cache_reclone_keeps_original(self):
+        self.run_update("--check", source=False)
+        self.corrupt_cached_mirror()
+        self.env["TEST_FAIL_FETCH"] = "1"
+        result = self.run_update("--check", source=False, status=1)
+        self.assertIn("simulated Git transport failure", result.stderr)
+        self.assertTrue((self.mirror / "refs/vela-update/selected").exists())
+        self.assertFalse(list(self.mirror.parent.glob("vela-corrupt.*")))
+        self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
+
+    def test_transient_fetch_failure_reports_git_error_and_does_not_reclone(self):
+        self.run_update("--check", source=False)
+        self.env["TEST_FAIL_FETCH"] = "1"
+        result = self.run_update("--check", source=False, status=1)
+        self.assertIn("simulated Git transport failure", result.stderr)
+        self.assertNotIn("cached Git mirror is corrupt", result.stderr)
+        clones = [c for c in self.calls("git") if c["operation"] == "clone"]
+        self.assertEqual(len(clones), 1)
+
+
 class UpdatePublicReleases(UpdateFixture):
     def test_public_package_installs_without_gh_login_or_build(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_REQUIRE_MAIN_REF="1")
@@ -737,7 +913,8 @@ class UpdatePublicReleases(UpdateFixture):
 
     def test_wrong_release_commit_is_not_downloaded(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_RELEASE_PKG_SHA=self.nvidia)
-        self.run_update("--download", source=False)
+        result = self.run_update("--download", source=False)
+        self.assertIn("invalid public release manifest", result.stderr)
         self.assertEqual(len(self.calls("curl")), 1)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
@@ -806,8 +983,42 @@ class UpdatePublicReleases(UpdateFixture):
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_absent_release_keeps_build_fallback(self):
-        self.run_update("--download", source=False)
+        result = self.run_update("--download", source=False)
+        self.assertNotIn("release lookup failed", result.stderr)
         self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_invalid_manifest_reports_error_and_builds(self):
+        for mode in ("invalid-digest", "empty", "multiple"):
+            with self.subTest(mode=mode):
+                self.env.update(TEST_RELEASE_SHA=self.main, TEST_BAD_RELEASE_MANIFEST=mode)
+                result = self.run_update("--download", source=False)
+                self.assertIn("invalid public release manifest", result.stderr)
+                self.assertEqual(self.calls("sudo"), [])
+                self.assertEqual(self.calls("makepkg")[-1]["sha"], self.main)
+
+    def test_http_failures_other_than_404_are_reported_and_build(self):
+        for code in ("403", "429", "500", "503"):
+            with self.subTest(http=code):
+                self.env["TEST_RELEASE_HTTP"] = code
+                result = self.run_update("--download", source=False)
+                self.assertIn("HTTP " + code, result.stderr)
+                self.assertIn("optional public release lookup failed", result.stderr)
+                self.assertEqual(self.calls("sudo"), [])
+                self.assertEqual(self.calls("makepkg")[-1]["sha"], self.main)
+
+    def test_http_404_is_quiet_and_falls_back_to_build(self):
+        self.env["TEST_RELEASE_HTTP"] = "404"
+        result = self.run_update("--download", source=False)
+        self.assertNotIn("optional public release lookup failed", result.stderr)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_release_lookup_network_error_is_visible_without_aborting_build(self):
+        self.env["TEST_RELEASE_TIMEOUT"] = "1"
+        result = self.run_update("--download", source=False)
+        self.assertIn("release lookup failed", result.stderr)
+        self.assertIn("simulated release lookup timeout", result.stderr)
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
 

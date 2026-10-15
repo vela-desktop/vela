@@ -79,7 +79,8 @@ TEST_F(OutputConfig, SaveAndLoad)
     EXPECT_FLOAT_EQ(saved.scale, 1.25f);
     EXPECT_EQ(saved.transform, 1);
     EXPECT_TRUE(saved.has_position);
-    EXPECT_EQ(saved.x, -2048);
+    // Loading rebases a layout with one enabled output to the X11 root.
+    EXPECT_EQ(saved.x, 0);
     EXPECT_EQ(saved.y, 0);
     EXPECT_FALSE(std::filesystem::exists(path("outputs.conf.tmp")));
 }
@@ -132,8 +133,9 @@ TEST_F(OutputConfig, LegacyItalianFile)
     EXPECT_EQ(saved.width, 3840);
     EXPECT_FLOAT_EQ(saved.scale, 1.75f);
     EXPECT_EQ(saved.transform, 5); // flipped-90
-    EXPECT_EQ(saved.x, 100);
-    EXPECT_EQ(saved.y, 200);
+    // Legacy absolute positions are also normalized at load time.
+    EXPECT_EQ(saved.x, 0);
+    EXPECT_EQ(saved.y, 0);
 
     const vela_output_config_entry entries[] = { entry("Altro", true, 0, 0) };
     vela_output_config_save(entries, 1);
@@ -141,6 +143,25 @@ TEST_F(OutputConfig, LegacyItalianFile)
     EXPECT_NE(contents("outputs.conf").find("[Vecchio]\nenabled=yes\nmode=3840x2160@60.000\nscale=1.75\n"
                                             "rotation=flipped-90\nposition=100,200\n"),
         std::string::npos);
+}
+
+TEST_F(OutputConfig, NegativeMonitorAbovePreservesRelativeArrangement)
+{
+    write("outputs.conf",
+        "[Primary]\nenabled=yes\nposition=0,0\n"
+        "[Above]\nenabled=yes\nposition=0,-1080\n"
+        "[Disabled]\nenabled=no\nposition=-2048,-2048\n");
+    vela_saved_output primary {}, above {}, disabled {};
+    ASSERT_TRUE(vela_output_config_load("Primary", &primary));
+    ASSERT_TRUE(vela_output_config_load("Above", &above));
+    ASSERT_TRUE(vela_output_config_load("Disabled", &disabled));
+    EXPECT_EQ(primary.x, 0);
+    EXPECT_EQ(primary.y, 1080);
+    EXPECT_EQ(above.x, 0);
+    EXPECT_EQ(above.y, 0);
+    EXPECT_FALSE(disabled.enabled);
+    EXPECT_EQ(disabled.x, -2048); // Disabled outputs do not anchor the layout.
+    EXPECT_EQ(disabled.y, -968);
 }
 
 TEST_F(OutputConfig, WritesPrivateModeEvenWithPermissiveUmask)

@@ -199,6 +199,12 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-private-files-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-private-files COMMAND vela-private-files-test)
 
+    qt_add_executable(vela-snipcrop-test tests/snipcrop.cpp src/snipcrop.h)
+    target_include_directories(vela-snipcrop-test PRIVATE src)
+    target_compile_options(vela-snipcrop-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-snipcrop-test PRIVATE Qt6::Gui Qt6::Test)
+    add_test(NAME shell-snipcrop COMMAND vela-snipcrop-test)
+
     qt_add_executable(vela-volumesteps-test tests/volumesteps.cpp ${PROJECT_SOURCE_DIR}/common/audio/volumesteps.h)
     target_include_directories(vela-volumesteps-test PRIVATE ${PROJECT_SOURCE_DIR}/common/audio)
     target_compile_options(vela-volumesteps-test PRIVATE -Wall -Wextra)

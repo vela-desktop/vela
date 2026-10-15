@@ -5,6 +5,7 @@
 
 extern "C" {
 #include "color.h"
+#include "scene/night_light_policy.h"
 #include "sun.h"
 }
 
@@ -68,6 +69,28 @@ TEST(Color, MatrixMultiplyWithIdentity)
         EXPECT_EQ(left[i], m[i]) << i;
         EXPECT_EQ(right[i], m[i]) << i;
     }
+}
+
+/** Check shader repaint policy on fade completion and backend switches. */
+TEST(NightLightBackend, FullRepaintOnShaderFadeAndBackendSwitch)
+{
+    EXPECT_TRUE(vela_night_light_repaint_required(false, true, true, true, false, false));
+    EXPECT_TRUE(vela_night_light_repaint_required(false, true, true, true, false, true));
+    EXPECT_TRUE(vela_night_light_repaint_required(false, true, false, false, false, false));
+    EXPECT_TRUE(vela_night_light_repaint_required(false, true, true, false, true, false));
+    EXPECT_TRUE(vela_night_light_repaint_required(true, false, true, false, false, true));
+    EXPECT_FALSE(vela_night_light_repaint_required(false, true, true, false, false, true));
+    EXPECT_FALSE(vela_night_light_repaint_required(false, false, true, true, false, false));
+}
+
+/** Check that a rejected LUT clear is deferred only until explicit retry. */
+TEST(NightLightBackend, ClearDeferralCanBeOverriddenByExplicitRetry)
+{
+    EXPECT_TRUE(vela_night_light_defer_clear(true, true, false, true));
+    EXPECT_FALSE(vela_night_light_defer_clear(true, true, true, true));
+    EXPECT_FALSE(vela_night_light_defer_clear(false, true, false, true));
+    EXPECT_FALSE(vela_night_light_defer_clear(true, false, false, true));
+    EXPECT_FALSE(vela_night_light_defer_clear(true, true, false, false));
 }
 
 TEST(Sun, ParseZoneCoordinates)

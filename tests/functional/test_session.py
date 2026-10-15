@@ -103,6 +103,46 @@ class Shell(unittest.TestCase):
 
 
 class Supervisor(unittest.TestCase):
+    def test_redraw_signal_keeps_supervised_session_alive(self):
+        # pkill -x matches /proc/<pid>/comm, not argv. Never run pkill in
+        # tests: it could signal a real desktop running outside this session.
+        with Session(supervise=True) as vela:
+            supervisor_pid = vela.process.pid
+            vela.wait_for(lambda _: child_compositor(supervisor_pid) is not None,
+                          read_state=False, what="supervised compositor")
+            compositor_pid = child_compositor(supervisor_pid)
+            with open(f"/proc/{supervisor_pid}/comm") as name:
+                self.assertEqual(name.read().strip(), "vela-supervise")
+            with open(f"/proc/{compositor_pid}/comm") as name:
+                self.assertEqual(name.read().strip(), "vela-compositor")
+
+            # The main thread AND GPU worker threads must block SIGUSR1:
+            # Wayland's signalfd can only receive a process-directed signal
+            # reliably when another thread cannot handle it instead.
+            redraw_bit = 1 << (signal.SIGUSR1 - 1)
+            for tid in os.listdir(f"/proc/{compositor_pid}/task"):
+                try:
+                    with open(f"/proc/{compositor_pid}/task/{tid}/status") as status:
+                        line = next(line for line in status if line.startswith("SigBlk:"))
+                except (FileNotFoundError, ProcessLookupError):
+                    continue  # A worker thread can exit while inspecting.
+                self.assertNotEqual(int(line.split()[1], 16) & redraw_bit, 0,
+                                    f"SIGUSR1 unblocked by compositor thread {tid}")
+
+            # An accidental direct signal to the supervisor must not log out.
+            os.kill(supervisor_pid, signal.SIGUSR1)
+            time.sleep(0.2)
+            self.assertIsNone(vela.process.poll())
+            self.assertEqual(child_compositor(supervisor_pid), compositor_pid)
+
+            # Targeting the real compositor must only request a redraw.
+            os.kill(compositor_pid, signal.SIGUSR1)
+            time.sleep(0.2)
+            vela.state()
+            self.assertIsNone(vela.process.poll())
+            self.assertEqual(child_compositor(supervisor_pid), compositor_pid)
+            self.assertNotIn("the compositor crashed", vela.log_text())
+
     def test_restart_after_crash(self):
         with Session(supervise=True) as vela:
             first = child_compositor(vela.process.pid)
@@ -126,7 +166,7 @@ class Supervisor(unittest.TestCase):
             vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
 
     def test_gives_up_after_three_quick_crashes(self):
-        with Session(supervise=True) as vela:
+        with Session(supervise=True, expected_exit=1) as vela:
             for _ in range(3):
                 vela.wait_for(lambda s: child_compositor(vela.process.pid), read_state=False, what="the compositor")
                 child = child_compositor(vela.process.pid)
@@ -135,7 +175,7 @@ class Supervisor(unittest.TestCase):
                 while child_compositor(vela.process.pid) == child and time.monotonic() < deadline:
                     time.sleep(0.05)
             vela.process.wait(10)
-            self.assertNotEqual(vela.process.returncode, 0)
+            self.assertEqual(vela.process.returncode, 1)
             self.assertIn("giving up", vela.log_text())
             runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
             self.assertFalse(os.path.exists(os.path.join(runtime, vela.display))) # Wayland socket removed

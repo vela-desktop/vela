@@ -41,7 +41,7 @@ public:
     // fullImage(name). The number of outputs captured.
     int captureScreensFull();
     QImage fullImage(const QString& screen) const { return m_full.value(screen); }
-    void clearFull() { m_full.clear(); }
+    void clearFull();
     // The open windows: [{id, title, appId}], in opening order.
     Q_INVOKABLE QVariantList windowList() const;
     Q_INVOKABLE QString title(const QString& identifier) const;

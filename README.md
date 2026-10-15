@@ -530,7 +530,7 @@ see the documentation below.
 |---|---|
 | **[Alpha hardware coverage](docs/hardware.md)** | Driver validation scope, optional services and manual smoke tests. |
 | **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
-| **[Roadmap](docs/roadmap.md)** | Completed milestones and planned features. |
+| **[Roadmap](docs/roadmap.md)** | Work in progress, what comes next, what is not planned, and what is done. |
 | **[Contributing](CONTRIBUTING.md)** | Development workflow, PR checklist, testing and DCO. |
 | **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
@@ -551,6 +551,17 @@ Some older comments are in Italian; contributions translating them are welcome.
 Please sign off your commits (`git commit -s`, the
 [Developer Certificate of Origin](https://developercertificate.org/)): contributions
 are accepted under the project's license, GPL-3.0-or-later.
+
+## AI Disclosure
+
+AI tools are actively used in Vela's development, including code generation,
+refactoring, debugging, code review, and documentation.
+
+The project's vision, architecture, and technical direction remain human-driven.
+AI-assisted code is not inherently trusted: it is subject to the same review,
+testing, and quality expectations as any other contribution.
+
+AI is a development tool, not a substitute for engineering judgment.
 
 ## Acknowledgements
 

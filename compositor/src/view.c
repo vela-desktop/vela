@@ -298,7 +298,14 @@ struct wlr_box vela_view_restore_box(struct vela_view *view)
     }
     const struct wlr_box area = output->usable;
     struct wlr_box frame = { 0, 0, area.width * 2 / 3, area.height * 2 / 3 };
-    if (view->x11 && view->x11_initial.width > 0 && view->x11_initial.height > 0) {
+    // A game opened directly in fullscreen may report its monitor-sized
+    // geometry as the "initial" X11 size. Restoring that would recreate the
+    // same oversized window instead of making a usable normal window.
+    struct wlr_box full = vela_output_box(output);
+    bool initial_fullscreen = view->x11 && view->x11_initial.width >= full.width
+        && view->x11_initial.height >= full.height;
+    if (view->x11 && !initial_fullscreen && view->x11_initial.width > 0
+        && view->x11_initial.height > 0) {
         frame.width = view->x11_initial.width;
         frame.height = view->x11_initial.height + (view->decoration ? VELA_DECORATION_HEIGHT : 0);
     }
@@ -703,22 +710,27 @@ static void apply_maximized(struct vela_view *view)
     }
     vela_view_send_maximized(view, true);
     struct vela_placement place = vela_output_place(output, vela_output_usable_area(output));
+    // Set the scene position first. vela_view_configure_size() sends an X11
+    // ConfigureWindow request using the scene node's *current* coordinates.
+    // Sending the new size first leaves Xwayland at the old window position.
+    vela_view_keep_in_place(view);
     vela_view_configure_size(view, place.width, place.height);
     if (view->handle) {
         wlr_foreign_toplevel_handle_v1_set_maximized(view->handle, true);
     }
-    vela_view_keep_in_place(view);
 }
 
 // Back to the free frame it had before being maximized or fullscreen.
 static void restore(struct vela_view *view)
 {
     struct wlr_box back = vela_view_restore_box(view);
-    vela_view_configure_size(view, back.width, back.height);
     if (view->mapped && back.width > 0) {
         struct wlr_box geometry = vela_view_geometry(view);
         vela_node_set_position(&view->tree->node, back.x - geometry.x, back.y - geometry.y);
     }
+    // For X11, configure after positioning: size-only then move-only
+    // configurations can leave the X11 window offset from Vela's scene.
+    vela_view_configure_size(view, back.width, back.height);
 }
 
 void vela_view_set_maximized(struct vela_view *view, bool on, bool animate)
@@ -779,6 +791,12 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
     if (!vela_view_configurable(view)) {
         return;
     }
+    // Actual fullscreen state changes override an outstanding Wine restore
+    // hint. Redundant requests must not: Wine can echo fullscreen-off after
+    // Vela reconciled a popup -> decorated style change.
+    if (on != view->fullscreen) {
+        view->x11_wine_restore_fullscreen = false;
+    }
     if (on == view->fullscreen) {
         if (view->xdg) {
             wlr_xdg_surface_schedule_configure(view->xdg->base);
@@ -797,13 +815,15 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         if (view->handle) {
             wlr_foreign_toplevel_handle_v1_set_fullscreen(view->handle, true);
         }
+        // Above taskbar and panels. Position the scene before configuring
+        // the X11 window so it gets the final fullscreen origin (not the
+        // old centered windowed origin) in the same ConfigureWindow request.
+        vela_node_reparent(&view->tree->node, view->server->layers.fullscreen);
+        vela_view_keep_in_place(view);
         if (output) {
             struct vela_placement place = vela_output_place(output, vela_output_full_area(output));
             vela_view_configure_size(view, place.width, place.height);
         }
-        // Above taskbar and panels.
-        vela_node_reparent(&view->tree->node, view->server->layers.fullscreen);
-        vela_view_keep_in_place(view);
         vela_view_refresh_decoration(view); // fullscreen hides the bar
         return;
     }

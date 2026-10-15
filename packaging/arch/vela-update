@@ -126,6 +126,9 @@ DOWNLOAD=""
 WORK=""
 TEMP_CONFIG=""
 SWAP_UNCOMMITTED=0
+CONFIG_BACKUP=""
+CONFIG_HAD_PREVIOUS=0
+CONFIG_ROLLBACK_ARMED=0
 makepkg_pid=""
 build_isolated=0
 stop_makepkg() {
@@ -176,17 +179,34 @@ cleanup() {
     if [ "$SWAP_UNCOMMITTED" = 1 ] && [ -d "$MIRROR" ]; then
         rm -rf -- "$MIRROR" || true
     fi
-    if [ -n "$BACKUP_MIRROR" ]; then
+    # The rollback pathname is recorded *before* its rename. An interrupted
+    # rename can leave the active mirror in place and the backup nonexistent.
+    if [ -n "$BACKUP_MIRROR" ] && [ -e "$BACKUP_MIRROR" ]; then
         if [ ! -e "$MIRROR" ]; then
             mv -- "$BACKUP_MIRROR" "$MIRROR" || {
                 echo "vela-update: previous mirror is preserved at $BACKUP_MIRROR" >&2
             }
-        elif [ "$SWAP_UNCOMMITTED" = 1 ]; then
+        elif [ "$SWAP_UNCOMMITTED" = 1 ] || [ "$mirror_corrupt" = 1 ]; then
+            # Corrupt mirrors are evidence, not disposable temporary backups.
+            # Preserve them even if interrupted just after committing a swap.
             echo "vela-update: previous mirror is preserved at $BACKUP_MIRROR" >&2
         else
             rm -rf -- "$BACKUP_MIRROR"
         fi
     fi
+    # A signal can arrive after the config's atomic rename but before the
+    # mirror swap is committed. Roll back both paths as one transaction.
+    if [ "$SWAP_UNCOMMITTED" = 1 ] && [ "$CONFIG_ROLLBACK_ARMED" = 1 ]; then
+        if [ "$CONFIG_HAD_PREVIOUS" = 1 ]; then
+            if ! mv -f -- "$CONFIG_BACKUP" "$CONFIG"; then
+                echo "vela-update: cannot restore config; previous copy preserved at $CONFIG_BACKUP" >&2
+                CONFIG_BACKUP="" # Do not delete the only remaining copy.
+            fi
+        else
+            rm -f -- "$CONFIG" || echo "vela-update: cannot remove uncommitted config $CONFIG" >&2
+        fi
+    fi
+    [ -z "$CONFIG_BACKUP" ] || rm -f -- "$CONFIG_BACKUP"
 }
 trap 'status=$?; cleanup; exit "$status"' 0
 trap 'stop_makepkg; exit 130' INT
@@ -253,8 +273,40 @@ fi
 # Fetch into a separate mirror when switching origins, so a failed source
 # cannot destroy a known-good cache. The active mirror stays untouched until
 # the new source and requested revision have both been verified.
+# Mirror clones normally fetch +refs/*:refs/*, and --prune will then try
+# to delete our private selected-commit ref. Fetch only remote heads and tags.
+# Apply this to existing caches too, before their first prune.
+configure_mirror_fetch() {
+    git -C "$1" config --replace-all remote.origin.fetch '+refs/heads/*:refs/heads/*' &&
+        git -C "$1" config --add remote.origin.fetch '+refs/tags/*:refs/tags/*'
+}
+stage_mirror() {
+    STAGED_MIRROR=$(mktemp -d "$CACHE/vela-mirror.XXXXXXXX") || return 1
+    active_mirror="$STAGED_MIRROR"
+    if [ -n "$bootstrap" ]; then
+        echo ":: Reusing Git objects from the checkout (no second full download)"
+        git clone --quiet --mirror --no-hardlinks "$bootstrap" "$STAGED_MIRROR" &&
+            git -C "$STAGED_MIRROR" remote set-url origin "$source" &&
+            configure_mirror_fetch "$STAGED_MIRROR" &&
+            git -C "$STAGED_MIRROR" remote update --prune
+    else
+        git clone --quiet --mirror "$source" "$STAGED_MIRROR" &&
+            configure_mirror_fetch "$STAGED_MIRROR"
+    fi
+}
+fetch_failed() {
+    [ -z "$previous_origin" ] || git -C "$MIRROR" remote set-url origin "$previous_origin" || true
+    echo "vela-update: can't download Vela from $source (see Git error above)." >&2
+    exit 1
+}
+report_corrupt_mirror() {
+    echo "vela-update: cached Git mirror is corrupt; attempting a clean clone." >&2
+    cat "$CACHE/git-fsck-error.log" >&2
+}
+
 active_mirror="$MIRROR"
 new_mirror=0
+mirror_corrupt=0
 previous_origin=""
 if [ -d "$MIRROR" ]; then
     cached_source=$(git -C "$MIRROR" config remote.origin.url 2>/dev/null || true)
@@ -266,30 +318,34 @@ if [ -d "$MIRROR" ]; then
             new_mirror=1
         fi
     fi
+    if [ "$new_mirror" = 0 ] &&
+        ! git -C "$MIRROR" fsck --full --no-reflogs --no-progress > /dev/null 2>"$CACHE/git-fsck-error.log"; then
+        # Check integrity before modifying the live mirror. Do not mistake a
+        # network failure for corruption, or destroy a usable offline cache.
+        report_corrupt_mirror
+        new_mirror=1
+        mirror_corrupt=1
+    fi
 else
     new_mirror=1
 fi
+
 echo ":: Checking for updates in $source"
 if [ "$new_mirror" = 1 ]; then
-    STAGED_MIRROR=$(mktemp -d "$CACHE/vela-mirror.XXXXXXXX")
-    active_mirror="$STAGED_MIRROR"
-    if [ -n "$bootstrap" ]; then
-        echo ":: Reusing Git objects from the checkout (no second full download)"
-        fetched=$(git clone --quiet --mirror --no-hardlinks "$bootstrap" "$STAGED_MIRROR" > /dev/null 2>&1 \
-            && git -C "$STAGED_MIRROR" remote set-url origin "$source" \
-            && git -C "$STAGED_MIRROR" remote update --prune > /dev/null 2>&1 && echo yes || echo no)
-    else
-        fetched=$(git clone --quiet --mirror "$source" "$STAGED_MIRROR" > /dev/null 2>&1 && echo yes || echo no)
-    fi
+    stage_mirror || fetch_failed
 else
-    fetched=$(git -C "$MIRROR" remote update --prune > /dev/null 2>&1 && echo yes || echo no)
-fi
-if [ "$fetched" = no ]; then
-    if [ -n "$previous_origin" ]; then
-        git -C "$MIRROR" remote set-url origin "$previous_origin" || true
+    if ! configure_mirror_fetch "$MIRROR" ||
+       ! git -C "$MIRROR" remote update --prune; then
+        # A failed fetch may be a network outage, but it can also reveal
+        # previously undetected disk corruption. Recover only in the latter case.
+        if git -C "$MIRROR" fsck --full --no-reflogs --no-progress > /dev/null 2>"$CACHE/git-fsck-error.log"; then
+            fetch_failed
+        fi
+        report_corrupt_mirror
+        mirror_corrupt=1
+        new_mirror=1
+        stage_mirror || fetch_failed
     fi
-    echo "vela-update: can't download Vela from $source." >&2
-    exit 1
 fi
 
 # Resolve once: the changelog, CI artifact and local build must all use the
@@ -302,7 +358,7 @@ elif [ -n "$commit" ]; then
 fi
 if ! latestFull=$(git -C "$active_mirror" rev-parse --verify "$target^{commit}" 2> /dev/null); then
     # A full SHA may still be fetchable after its branch has been deleted.
-    if [ -z "$commit" ] || ! git -C "$active_mirror" fetch --quiet origin "$commit" 2> /dev/null \
+    if [ -z "$commit" ] || ! git -C "$active_mirror" fetch --quiet origin "$commit" \
         || ! latestFull=$(git -C "$active_mirror" rev-parse --verify "$target^{commit}" 2> /dev/null); then
         [ -z "$previous_origin" ] || git -C "$MIRROR" remote set-url origin "$previous_origin" || true
         echo "vela-update: can't find the requested revision: $target" >&2
@@ -314,14 +370,22 @@ fi
 # if the second rename fails.
 if [ -n "$STAGED_MIRROR" ]; then
     if [ -d "$MIRROR" ]; then
-        backup_slot=$(mktemp -d "$CACHE/vela-backup.XXXXXXXX")
+        if [ "$mirror_corrupt" = 1 ]; then
+            backup_slot=$(mktemp -d "$CACHE/vela-corrupt.XXXXXXXX")
+        else
+            backup_slot=$(mktemp -d "$CACHE/vela-backup.XXXXXXXX")
+        fi
         rmdir "$backup_slot"
-        mv -- "$MIRROR" "$backup_slot"
+        # Record the rollback path before renaming the old mirror. A signal
+        # during mv must not leave an untracked backup.
         BACKUP_MIRROR="$backup_slot"
+        mv -- "$MIRROR" "$backup_slot"
     fi
+    # Mark the swap uncommitted *before* the staged rename. If interrupted
+    # between mv and the next statement, cleanup can still roll it back.
+    SWAP_UNCOMMITTED=1
     mv -- "$STAGED_MIRROR" "$MIRROR"
     STAGED_MIRROR=""
-    SWAP_UNCOMMITTED=1
 fi
 
 # Save a new source only after its fetch and revision resolution succeeded.
@@ -331,14 +395,33 @@ if [ "$remember" = 1 ]; then
     TEMP_CONFIG=$(mktemp "$(dirname "$CONFIG")/.updates.conf.XXXXXXXX")
     chmod 600 "$TEMP_CONFIG"
     printf 'source=%s\n' "$source" > "$TEMP_CONFIG"
+    if [ "$SWAP_UNCOMMITTED" = 1 ]; then
+        # Snapshot the exact previous config before exposing the new one.
+        # Arm rollback only after the snapshot is complete, so a failed copy
+        # cannot cause cleanup to discard the original.
+        if [ -f "$CONFIG" ]; then
+            CONFIG_BACKUP=$(mktemp "$(dirname "$CONFIG")/.updates.conf.backup.XXXXXXXX")
+            cp -p -- "$CONFIG" "$CONFIG_BACKUP"
+            CONFIG_HAD_PREVIOUS=1
+        fi
+        CONFIG_ROLLBACK_ARMED=1
+    fi
     mv -f -- "$TEMP_CONFIG" "$CONFIG"
     TEMP_CONFIG=""
 fi
-# Source and mirror now agree; a failed config write would have kept the
-# previous mirror available for the EXIT handler to restore.
+# Source and mirror now agree. On signals before this point, the EXIT
+# handler restores the original config together with the original mirror.
 SWAP_UNCOMMITTED=0
+if [ -n "$CONFIG_BACKUP" ]; then
+    rm -f -- "$CONFIG_BACKUP"
+    CONFIG_BACKUP=""
+fi
 if [ -n "$BACKUP_MIRROR" ]; then
-    rm -rf -- "$BACKUP_MIRROR"
+    if [ "$mirror_corrupt" = 1 ]; then
+        echo "vela-update: corrupt mirror preserved at $BACKUP_MIRROR" >&2
+    else
+        rm -rf -- "$BACKUP_MIRROR"
+    fi
     BACKUP_MIRROR=""
 fi
 if [ "$migrate_legacy" = 1 ]; then
@@ -414,18 +497,32 @@ release_digest=""
 if [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1; then
     release_url="https://github.com/$repo/releases/download/alpha-$latestFull"
     manifest="$CACHE/public-release-SHA256SUMS"
-    if curl -fsSL --connect-timeout 5 --max-time 20 -o "$manifest" "$release_url/SHA256SUMS" 2> /dev/null; then
+    # curl exit 22 covers every HTTP error, not only missing prereleases.
+    # Record the final response code, and suppress only an actual HTTP 404.
+    if response_code=$(curl -fsSL --write-out '%{http_code}' --connect-timeout 5 --max-time 20 \
+        -o "$manifest" "$release_url/SHA256SUMS" 2>"$CACHE/release-lookup-error.log"); then
         if [ "$(wc -l < "$manifest")" -eq 1 ]; then
             release_digest=$(awk 'NR == 1 {print $1}' "$manifest")
             release_package=$(awk 'NR == 1 {print $2}' "$manifest")
-            if ! printf '%s\n' "$release_digest" | grep -Eq '^[0-9a-f]{64}$' \
-                || ! printf '%s\n' "$release_package" \
-                    | grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}-[[:digit:]]+-x86_64\.pkg\.tar\.zst$"; then
+            if ! printf '%s\n' "$release_digest" | grep -Eq '^[0-9a-f]{64}$' ||
+                ! printf '%s\n' "$release_package" |
+                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}-[[:digit:]]+-x86_64\.pkg\.tar\.zst$"; then
+                echo "vela-update: invalid public release manifest for $latestFull (checksum or package name); trying alternatives." >&2
                 release_package=""
             fi
+        else
+            echo "vela-update: invalid public release manifest for $latestFull (expected exactly one checksum entry); trying alternatives." >&2
+        fi
+    else
+        status=$?
+        # A 404 is normal; 403, 429, 5xx, TLS, DNS and timeouts are not.
+        # All failures still fall back safely to the local build.
+        if [ "$status" -ne 22 ] || [ "$response_code" != 404 ]; then
+            echo "vela-update: optional public release lookup failed (HTTP ${response_code:-unknown}, curl exit $status):" >&2
+            cat "$CACHE/release-lookup-error.log" >&2
         fi
     fi
-    rm -f "$manifest"
+    rm -f "$manifest" "$CACHE/release-lookup-error.log"
 fi
 
 # Legacy 14-day workflow artifacts are an optional authenticated fallback,
@@ -433,12 +530,23 @@ fi
 ciRun=""
 if [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
     && command -v gh > /dev/null && gh auth status > /dev/null 2>&1; then
-    run=$(gh run list -R "$repo" -w build.yml -c "$latestFull" -s success -L 1 \
-        --json databaseId -q '.[0].databaseId' 2> /dev/null || true)
-    if [ -n "$run" ] && [ -n "$(gh api "repos/$repo/actions/runs/$run/artifacts" \
-        -q '.artifacts[] | select(.name == "vela-git" and .expired == false) | .id' 2> /dev/null || true)" ]; then
-        ciRun="$run"
+    if run=$(gh run list -R "$repo" -w build.yml -c "$latestFull" -s success -L 1 \
+        --json databaseId -q '.[0].databaseId' 2>"$CACHE/gh-lookup-error.log"); then
+        if [ -n "$run" ]; then
+            if artifacts=$(gh api "repos/$repo/actions/runs/$run/artifacts" \
+                -q '.artifacts[] | select(.name == "vela-git" and .expired == false) | .id' \
+                2>"$CACHE/gh-lookup-error.log"); then
+                [ -z "$artifacts" ] || ciRun="$run"
+            else
+                echo "vela-update: optional GitHub Actions artifact lookup failed:" >&2
+                cat "$CACHE/gh-lookup-error.log" >&2
+            fi
+        fi
+    else
+        echo "vela-update: optional GitHub Actions run lookup failed:" >&2
+        cat "$CACHE/gh-lookup-error.log" >&2
     fi
+    rm -f "$CACHE/gh-lookup-error.log"
 fi
 
 if [ "$check" = 1 ]; then
@@ -471,7 +579,7 @@ if [ -n "$release_package" ]; then
     echo ":: Downloading public alpha package for $latestFull"
     if curl -fsSL --retry 2 --connect-timeout 5 --max-time 180 \
         -o "$DOWNLOAD/$release_package" "$release_url/$release_package" \
-        && (cd "$DOWNLOAD" && sha256sum --check --status SHA256SUMS) \
+        && (cd "$DOWNLOAD" && sha256sum --check --quiet SHA256SUMS) \
         && verifyProvenance "$DOWNLOAD/$release_package" release; then
         mv -f "$DOWNLOAD/$release_package" "$PACKAGES/"
         rm -rf -- "$DOWNLOAD"
@@ -533,7 +641,10 @@ fi
 
 # The build, with the new version's PKGBUILD.
 WORK=$(mktemp -d "$CACHE/build.XXXXXXXX")
-git -C "$MIRROR" show "$latestFull:packaging/arch/PKGBUILD" > "$WORK/PKGBUILD"
+if ! git -C "$MIRROR" show "$latestFull:packaging/arch/PKGBUILD" > "$WORK/PKGBUILD"; then
+    echo "vela-update: cannot read PKGBUILD from selected revision $latestFull." >&2
+    exit 1
+fi
 # Advertise the selected commit to makepkg's mirror clone even when it was
 # fetched by SHA and no branch points to it anymore.
 git -C "$MIRROR" update-ref refs/vela-update/selected "$latestFull"

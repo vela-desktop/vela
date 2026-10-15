@@ -21,6 +21,7 @@
 
 static char fail_name[64];
 static int failures_left;
+static int fixture_width = 1920, fixture_height = 1080;
 
 bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state *state)
 {
@@ -33,6 +34,13 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
 void vela_output_arrange_layers(struct vela_output *output) {}
 void vela_views_check_outputs(struct vela_server *server) {}
 void vela_view_keep_in_place(struct vela_view *view) {}
+// No mapped windows exist in this CPU-only display preview fixture.
+// Provide the view/scene entry points used by the actual output manager's
+// monitor-origin translation, without linking the Vulkan compositor.
+struct vela_output *vela_view_output(struct vela_view *view) { return NULL; }
+struct wlr_box vela_output_box(const struct vela_output *output) { return (struct wlr_box) {0}; }
+void vela_node_set_position(struct vela_node *node, double x, double y) {}
+void vela_view_sync_x11(struct vela_view *view) {}
 void vela_scene_changed(struct vela_scene *scene) {}
 void vela_output_key(const struct wlr_output *output, char *out, size_t size)
 {
@@ -56,7 +64,7 @@ static void destroyed(struct wl_listener *listener, void *data)
 }
 static void add_output(struct vela_server *server)
 {
-    struct wlr_output *wlr = wlr_headless_add_output(server->backend, 1920, 1080);
+    struct wlr_output *wlr = wlr_headless_add_output(server->backend, fixture_width, fixture_height);
     struct vela_output *output = calloc(1, sizeof(*output));
     output->server = server;
     output->wlr = wlr;
@@ -64,7 +72,7 @@ static void add_output(struct vela_server *server)
     struct wlr_output_state state;
     wlr_output_state_init(&state);
     wlr_output_state_set_enabled(&state, true);
-    wlr_output_state_set_custom_mode(&state, 1920, 1080, 60000);
+    wlr_output_state_set_custom_mode(&state, fixture_width, fixture_height, 60000);
     if (!wlr_output_commit_state(wlr, &state)) abort();
     wlr_output_state_finish(&state);
     wl_list_insert(server->outputs.prev, &output->link);
@@ -102,6 +110,8 @@ static int command(int fd, uint32_t mask, void *data)
 }
 int main(int argc, char **argv)
 {
+    // The tiny fixture exercises scales whose effective resolution rounds to 0.
+    if (argc > 1 && !strcmp(argv[1], "tiny")) fixture_width = fixture_height = 8;
     struct vela_server server = {0};
     server.display = wl_display_create();
     server.loop = wl_display_get_event_loop(server.display);

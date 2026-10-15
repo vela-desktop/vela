@@ -109,6 +109,15 @@ struct vela_view {
     int x11_height;
     struct wlr_box x11_sent;
     struct wlr_box x11_initial;
+    // Wine's private X11 style reports window mode changes that some games
+    // do not mirror to _NET_WM_STATE_FULLSCREEN (e.g. fullscreen popup -> captioned).
+    uint32_t x11_wine_style;
+    unsigned int x11_wine_style_cookie;
+    bool x11_wine_style_known;
+    bool x11_wine_style_pending;
+    bool x11_wine_style_dirty;
+    // Only a fullscreen exit initiated by a Wine style change arms re-entry.
+    bool x11_wine_restore_fullscreen;
 
     struct wl_listener map;
     struct wl_listener unmap;

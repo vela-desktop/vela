@@ -4,14 +4,22 @@
 // vela-x11: a test X11 app (through Xwayland), so the X11 window tests do
 // not depend on installed programs.
 //
-// Usage: vela-x11 [--menu X,Y] [WIDTH HEIGHT]   (default 300x200)
+// Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--wine-style HEX] [WIDTH HEIGHT]
+//        vela-x11 --fullscreen XID on|off
+//        vela-x11 --set-wine-style XID HEX
+//        vela-x11 --delete-wine-style XID
+//        vela-x11 --geometry XID (root-relative X11 x y width height)
+//        vela-x11 --root-size (current X11 root width height)
+//        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
 //
 // Opens an orange window with class "vela.x11" and title "vela-x11", which
 // closes on WM_DELETE_WINDOW (Alt+F4). --menu also opens a green 120x80
 // override-redirect menu at (X, Y) on the screen, like the drop-down menus
 // of X11 apps. Like most apps, it draws only when the server asks (Expose).
 
+#include <fcntl.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <xcb/xcb.h>
@@ -43,14 +51,43 @@ int main(int argc, char** argv)
     int menu = 0;
     int menuX = 0;
     int menuY = 0;
+    const char* idFile = NULL;
+    uint32_t wineStyle = 0;
+    int hasWineStyle = 0;
+    int startFullscreen = 0;
+    int control = (argc == 4
+        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")))
+        || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
+            || !strcmp(argv[1], "--geometry")))
+        || (argc == 2 && !strcmp(argv[1], "--root-size"));
     int arg = 1;
-    if (arg + 1 < argc && !strcmp(argv[arg], "--menu") && sscanf(argv[arg + 1], "%d,%d", &menuX, &menuY) == 2) {
-        menu = 1;
-        arg += 2;
-    }
-    if (arg + 1 < argc) {
-        width = atoi(argv[arg]);
-        height = atoi(argv[arg + 1]);
+    if (!control) {
+        while (arg < argc) {
+            if (!strcmp(argv[arg], "--start-fullscreen")) {
+                startFullscreen = 1;
+                ++arg;
+                continue;
+            }
+            if (arg + 1 >= argc) {
+                break;
+            }
+            if (!strcmp(argv[arg], "--menu")
+                && sscanf(argv[arg + 1], "%d,%d", &menuX, &menuY) == 2) {
+                menu = 1;
+            } else if (!strcmp(argv[arg], "--id-file")) {
+                idFile = argv[arg + 1];
+            } else if (!strcmp(argv[arg], "--wine-style")) {
+                wineStyle = (uint32_t)strtoul(argv[arg + 1], NULL, 0);
+                hasWineStyle = 1;
+            } else {
+                break;
+            }
+            arg += 2;
+        }
+        if (arg + 1 < argc) {
+            width = atoi(argv[arg]);
+            height = atoi(argv[arg + 1]);
+        }
     }
     xcb_connection_t* connection = xcb_connect(NULL, NULL);
     if (xcb_connection_has_error(connection)) {
@@ -58,7 +95,91 @@ int main(int argc, char** argv)
         return 1;
     }
     xcb_screen_t* screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
+    if (control) {
+        if (!strcmp(argv[1], "--root-size")) {
+            xcb_get_geometry_reply_t* geometry =
+                xcb_get_geometry_reply(connection, xcb_get_geometry(connection, screen->root), NULL);
+            if (!geometry) {
+                fprintf(stderr, "vela-x11: cannot query root geometry\n");
+                xcb_disconnect(connection);
+                return 1;
+            }
+            printf("%u %u\n", (unsigned)geometry->width, (unsigned)geometry->height);
+            free(geometry);
+            xcb_disconnect(connection);
+            return 0;
+        }
+        xcb_window_t target = (xcb_window_t)strtoul(argv[2], NULL, 0);
+        if (!strcmp(argv[1], "--geometry")) {
+            xcb_get_geometry_reply_t* geometry =
+                xcb_get_geometry_reply(connection, xcb_get_geometry(connection, target), NULL);
+            xcb_translate_coordinates_reply_t* location = xcb_translate_coordinates_reply(connection,
+                xcb_translate_coordinates(connection, target, screen->root, 0, 0), NULL);
+            if (!geometry || !location) {
+                fprintf(stderr, "vela-x11: cannot query X11 window geometry\n");
+                free(geometry);
+                free(location);
+                xcb_disconnect(connection);
+                return 1;
+            }
+            printf("%d %d %u %u\n", location->dst_x, location->dst_y,
+                (unsigned)geometry->width, (unsigned)geometry->height);
+            free(geometry);
+            free(location);
+            xcb_disconnect(connection);
+            return 0;
+        } else if (!strcmp(argv[1], "--set-wine-style")) {
+            uint32_t style = (uint32_t)strtoul(argv[3], NULL, 0);
+            xcb_change_property(connection, XCB_PROP_MODE_REPLACE, target,
+                atom(connection, "_WINE_HWND_STYLE"), XCB_ATOM_CARDINAL, 32, 1, &style);
+        } else if (!strcmp(argv[1], "--delete-wine-style")) {
+            xcb_delete_property(connection, target, atom(connection, "_WINE_HWND_STYLE"));
+        } else {
+            xcb_client_message_event_t event = { 0 };
+            event.response_type = XCB_CLIENT_MESSAGE;
+            event.window = target;
+            event.type = atom(connection, "_NET_WM_STATE");
+            event.format = 32;
+            event.data.data32[0] = !strcmp(argv[3], "on") ? 1 : 0;
+            event.data.data32[1] = atom(connection, "_NET_WM_STATE_FULLSCREEN");
+            event.data.data32[3] = 1; // application source
+            xcb_send_event(connection, 0, screen->root,
+                XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
+                (const char*)&event);
+        }
+        xcb_flush(connection);
+        int failed = xcb_connection_has_error(connection);
+        xcb_disconnect(connection);
+        return failed != 0;
+    }
     xcb_window_t window = create(connection, screen, 0, 0, width, height, 0xff8000, 0);
+    if (idFile) {
+        // The XID control file must not be world-writable (CodeQL).
+        int fd = open(idFile, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        if (fd < 0) {
+            perror("vela-x11: create XID file");
+            xcb_disconnect(connection);
+            return 1;
+        }
+        char xid[32];
+        int len = snprintf(xid, sizeof(xid), "0x%x\n", window);
+        if (len <= 0 || write(fd, xid, (size_t)len) != len) {
+            perror("vela-x11: write XID file");
+            close(fd);
+            xcb_disconnect(connection);
+            return 1;
+        }
+        close(fd);
+    }
+    if (hasWineStyle) {
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
+            atom(connection, "_WINE_HWND_STYLE"), XCB_ATOM_CARDINAL, 32, 1, &wineStyle);
+    }
+    if (startFullscreen) {
+        xcb_atom_t fullscreen = atom(connection, "_NET_WM_STATE_FULLSCREEN");
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
+            atom(connection, "_NET_WM_STATE"), XCB_ATOM_ATOM, 32, 1, &fullscreen);
+    }
     const char title[] = "vela-x11";
     const char wmClass[] = "vela-x11\0vela.x11"; // instance and class
     xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
