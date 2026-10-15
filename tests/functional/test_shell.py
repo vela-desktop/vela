@@ -451,6 +451,41 @@ class QtShell(unittest.TestCase):
         self.assertFalse(self.vela.state().window(window)["minimized"])
         act("close", "move", *button("close"), "sleep", 300, "down", "sleep", 30, "up")
 
+    def test_panels_animate(self):
+        """Start, Quick Settings, the notification center and Task View don't
+        just appear (docs/visual-coherence.md K5): at 300% (Settings' slider,
+        so a capture lands inside the animation) the panel's first frames still
+        show what's behind its top edge."""
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write("animation-duration=300\n")
+        self.vela.command("reload-config")
+        time.sleep(1.0) # the shell sees the file
+        for name, key, namespace in (("Start", "super", "vela-start-menu"),
+                                     ("Quick Settings", "super+a", "vela-quick-settings"),
+                                     ("the notification center", "super+n", "vela-notification-center"),
+                                     ("Task View", "super+Tab", "vela-task-view")):
+            with self.subTest(panel=name):
+                before = self.vela.pixels()
+                self.vela.input("key", key)
+                # Its first frames: an instant panel would already look settled.
+                self.vela.wait_for(lambda s: self.mapped(s, namespace), what=f"{name} open")
+                early = self.vela.pixels()
+                time.sleep(1.5)
+                settled = self.vela.pixels()
+                box = settled.changed_bounds(before, height=settled.height - 48)
+                self.assertIsNotNone(box, f"{name} didn't open")
+                # The panel's top band: sliding in or fading, its first frames
+                # still show what's behind it there.
+                x0, y0, x1, _ = box
+                band = [(x, y) for y in range(y0 + 2, y0 + 42, 4) for x in range(x0 + 4, x1 - 4, 8)]
+                moving = sum(1 for x, y in band
+                             if max(abs(a - b) for a, b in zip(early.at(x, y), settled.at(x, y))) > 24)
+                self.assertGreater(moving, len(band) // 4, f"{name} appeared without an animation")
+                self.vela.input("key", "Escape")
+                self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{name} closed")
+                time.sleep(1.5)
+
     def test_super_repeatedly_opens_and_closes_the_real_menu(self):
         # One virtual keyboard, as on the user's desktop. Creating a fresh
         # keyboard for each key would briefly change focus and close the menu.

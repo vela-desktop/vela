@@ -32,6 +32,7 @@ Window {
         Capture.capture(windows.map(w => w.id))
         Menus.placeOnTargetScreen(root)
         visible = true
+        backdrop.opacity = 0
         content.opacity = 0
         content.scale = 1 + 0.03 * Theme.motion
         appear.restart()
@@ -96,6 +97,9 @@ Window {
 
     ParallelAnimation {
         id: appear
+        // The backdrop fades in with the rest (K5: it appears animated, it
+        // vanishes at once).
+        NumberAnimation { target: backdrop; property: "opacity"; to: 1; duration: Theme.fast }
         NumberAnimation { target: content; property: "opacity"; to: 1; duration: Theme.fast }
         NumberAnimation { target: content; property: "scale"; to: 1; duration: Theme.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
     }
@@ -103,6 +107,7 @@ Window {
     // The backdrop: the blurred wallpaper, darkened. A click on the empty area
     // closes.
     Rectangle {
+        id: backdrop
         anchors.fill: parent
         color: Theme.backdrop
         MouseArea {
