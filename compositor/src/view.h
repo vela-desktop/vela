@@ -48,6 +48,9 @@ struct vela_owner {
     enum vela_owner_kind kind;
 };
 
+// Taskbars that can show a window's button: one per output.
+#define VELA_TASKBAR_BUTTONS 8
+
 struct vela_view {
     struct vela_owner owner; // first field: the tree's vela_node.data
     struct wl_list link; // vela_server.views, while mapped
@@ -79,7 +82,12 @@ struct vela_view {
     char home_output[64];
     int home_x;
     int home_y;
-    struct wlr_box taskbar_rect; // its taskbar button (global), if known
+    // Its taskbar buttons: one per taskbar (one per output), each in that
+    // taskbar's surface coordinates (vela_view_minimize_target).
+    struct {
+        struct wlr_surface *surface;
+        struct wlr_box box;
+    } taskbar_buttons[VELA_TASKBAR_BUTTONS];
 
     // How the taskbar sees and commands this window (foreign-toplevel). It
     // exists only while the window is mapped and on the current desktop.

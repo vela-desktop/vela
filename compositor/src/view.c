@@ -272,13 +272,39 @@ struct vela_output *vela_view_output(struct vela_view *view)
     return output ? output : vela_output_under_cursor(view->server);
 }
 
+// The taskbar showing a window's button, if it still exists.
+static struct vela_layer_surface *taskbar_layer(struct vela_server *server, struct wlr_surface *surface)
+{
+    struct vela_layer_surface *layer;
+    wl_list_for_each (layer, &server->layer_surfaces, link) {
+        if (layer->wlr->surface == surface) {
+            return layer;
+        }
+    }
+    return NULL;
+}
+
 struct wlr_box vela_view_minimize_target(struct vela_view *view)
 {
-    if (view->taskbar_rect.width > 0) {
-        return view->taskbar_rect;
+    // Its button on the taskbar of its own output: every output has a
+    // taskbar, and a window flying to another output's would leave the screen
+    // at once.
+    struct vela_output *output = vela_view_output(view);
+    for (int i = 0; output && i < VELA_TASKBAR_BUTTONS; ++i) {
+        struct vela_layer_surface *layer = view->taskbar_buttons[i].surface
+            ? taskbar_layer(view->server, view->taskbar_buttons[i].surface)
+            : NULL;
+        if (layer && layer->mapped && layer->wlr->output == output->wlr) {
+            double lx = 0.0;
+            double ly = 0.0;
+            vela_node_coords(&layer->tree->node, &lx, &ly);
+            struct wlr_box box = view->taskbar_buttons[i].box;
+            box.x += (int)lround(lx);
+            box.y += (int)lround(ly);
+            return box;
+        }
     }
     // Unknown button: the center of the output's bottom edge.
-    struct vela_output *output = vela_view_output(view);
     struct wlr_box area = output ? vela_output_box(output) : (struct wlr_box) { 0, 0, 1920, 1080 };
     return (struct wlr_box) { area.x + area.width / 2 - 24, area.y + area.height - 48, 48, 48 };
 }
@@ -515,27 +541,27 @@ static void handle_taskbar_rectangle(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, handle_rectangle);
     struct wlr_foreign_toplevel_handle_v1_set_rectangle_event *event = data;
-    // The taskbar tells us where this window's button is, in its surface
-    // coordinates: we bring it to global coordinates.
-    view->taskbar_rect = (struct wlr_box) { 0 };
-    if (event->width <= 0 || event->height <= 0) {
-        return;
-    }
-    struct vela_layer_surface *layer;
-    wl_list_for_each (layer, &view->server->layer_surfaces, link) {
-        if (layer->wlr->surface == event->surface) {
-            double lx = 0.0;
-            double ly = 0.0;
-            vela_node_coords(&layer->tree->node, &lx, &ly);
-            view->taskbar_rect = (struct wlr_box) {
-                (int)lround(lx) + event->x,
-                (int)lround(ly) + event->y,
-                event->width,
-                event->height,
-            };
-            return;
+    // A taskbar tells us where this window's button is, in its surface
+    // coordinates; each taskbar (one per output) its own. An empty one: no
+    // button there.
+    int slot = -1;
+    for (int i = 0; i < VELA_TASKBAR_BUTTONS; ++i) {
+        struct wlr_surface *surface = view->taskbar_buttons[i].surface;
+        if (surface == event->surface) {
+            slot = i;
+            break;
+        }
+        // A free slot, or one of a taskbar that is gone.
+        if (slot < 0 && (!surface || !taskbar_layer(view->server, surface))) {
+            slot = i;
         }
     }
+    if (slot < 0) {
+        return;
+    }
+    bool shown = event->width > 0 && event->height > 0;
+    view->taskbar_buttons[slot].surface = shown ? event->surface : NULL;
+    view->taskbar_buttons[slot].box = (struct wlr_box) { event->x, event->y, event->width, event->height };
 }
 
 static void create_taskbar_handle(struct vela_view *view)
@@ -574,7 +600,7 @@ static void destroy_taskbar_handle(struct vela_view *view)
     vela_unlisten(&view->handle_rectangle);
     wlr_foreign_toplevel_handle_v1_destroy(view->handle);
     view->handle = NULL;
-    view->taskbar_rect = (struct wlr_box) { 0 };
+    memset(view->taskbar_buttons, 0, sizeof(view->taskbar_buttons));
 }
 
 static void create_handles(struct vela_view *view)

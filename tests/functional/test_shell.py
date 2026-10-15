@@ -32,7 +32,8 @@ class QtShell(unittest.TestCase):
         address = self.bus.stdout.readline().strip()
         self.assertTrue(address, "private D-Bus session failed to start")
         self.vela = Session(size="1920x1080@100", env={
-            "VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"), "DBUS_SESSION_BUS_ADDRESS": address})
+            "VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"), "DBUS_SESSION_BUS_ADDRESS": address,
+            "VELA_DEBUG_ANIMATION": "1"})
         self.vela.start()
         self.addCleanup(self.vela.stop)
         # Snips and desktop files must stay in this isolated test session.
@@ -379,6 +380,40 @@ class QtShell(unittest.TestCase):
                 self.assertEqual(before.rows[64:-96], after.rows[64:-96],
                                  "upper-monitor contents leaked into the main monitor")
                 self.check_desktop()
+
+    def test_minimize_flies_to_the_button_on_its_own_output(self):
+        """Every output has a taskbar with the window's button: minimizing (and
+        restoring) flies to and from the one on the window's own output."""
+        self.vela.command("test-output add 1920x1080")
+        self.vela.wait_for(lambda s: sum(layer["namespace"] == "vela-taskbar" and layer["mapped"]
+                                         for layer in s["layers"]) == 2, timeout=15, what="two taskbars")
+        window = self.vela.open_window(400, 300)
+        for name in ("HEADLESS-1", "HEADLESS-2"):
+            with self.subTest(output=name):
+                state = self.vela.state()
+                if state.window(window)["output"] != name:
+                    w = state.window(window)
+                    target = next(o for o in state["outputs"] if o["name"] == name)
+                    sx, sy = w["x"] + 50, w["y"] + 50
+                    tx, ty = target["x"] + target["w"] // 2, target["y"] + 300
+                    self.vela.input("move", sx, sy, "keydown", "super", "down", "sleep", "50",
+                                    "move", (sx + tx) // 2, (sy + ty) // 2, "sleep", "50",
+                                    "move", tx, ty, "sleep", "100", "up", "keyup", "super")
+                    self.vela.wait_for(lambda s: s.window(window)["output"] == name, what=f"window on {name}")
+                    self.vela.wait_still(window)
+                output = next(o for o in self.vela.state()["outputs"] if o["name"] == name)
+                for action in ("minimize", "restore"):
+                    mark = len(self.vela.log_text())
+                    self.vela.command(f"window {window} {action}")
+                    self.vela.wait_for(lambda _: f"animation: {action} #" in self.vela.log_text()[mark:]
+                                       and " retired " in self.vela.log_text()[mark:], read_state=False,
+                                       what=f"{action} on {name}")
+                    flight = [tuple(float(v) for v in m.groups()) for m in re.finditer(
+                        rf"animation: {action} #\d+ geometry ([-\d.]+) ([-\d.]+)", self.vela.log_text()[mark:])]
+                    button = flight[-1] if action == "minimize" else flight[0]
+                    self.assertTrue(output["x"] <= button[0] < output["x"] + output["w"]
+                                    and output["y"] + output["h"] - 48 <= button[1] < output["y"] + output["h"],
+                                    f"{action} on {name}: the button at {button}, outside {output}")
 
     def test_super_repeatedly_opens_and_closes_the_real_menu(self):
         # One virtual keyboard, as on the user's desktop. Creating a fresh
