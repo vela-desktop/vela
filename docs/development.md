@@ -178,13 +178,7 @@ functional X11 helper can independently query root-relative geometry to detect
 a mismatch after either direction of a mode change.
 
 This also updates the window's size and scene layer through the ordinary
-`vela_view_set_fullscreen` path. For Wine fullscreen cycles, when Motif decorations disappear immediately
-before a WS_POPUP style transition, Vela remembers the complete decorated
-frame beforehand. The subsequent fullscreen request must not overwrite it
-with the undecorated client dimensions: doing so would subtract the 32px
-server-side titlebar on each return to windowed mode. The regression test
-emulates Motif decoration removal and checks invariant frames over multiple
-fullscreen/windowed cycles without changing keyboard focus.
+`vela_view_set_fullscreen` path.
 
 The compatibility handling is based on the
 documented Windows style flags, not game names or opaque pixel inspection.
