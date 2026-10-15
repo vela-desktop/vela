@@ -612,18 +612,24 @@ fi
 ciRun=""
 if [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
     && command -v gh > /dev/null && gh auth status > /dev/null 2>&1; then
-    if run=$(gh run list -R "$repo" -w build.yml -c "$latestFull" -s success -L 1 \
-        --json databaseId -q '.[0].databaseId' 2>"$CACHE/gh-lookup-error.log"); then
-        if [ -n "$run" ]; then
-            if artifacts=$(gh api "repos/$repo/actions/runs/$run/artifacts" \
+    # The newest successful run may be a PR validation run that has no
+    # artifact of the requested type. Search recent runs for the first
+    # matching, non-expired artifact instead of falling back prematurely.
+    if runs=$(gh run list -R "$repo" -w build.yml -c "$latestFull" -s success -L 20 \
+        --json databaseId -q '.[].databaseId' 2>"$CACHE/gh-lookup-error.log"); then
+        for run in $runs; do
+            if artifacts=$(gh api "repos/$repo/actions/runs/$run/artifacts?per_page=100" \
                 -q ".artifacts[] | select(.name == \"$artifact_name\" and .expired == false) | .id" \
                 2>"$CACHE/gh-lookup-error.log"); then
-                [ -z "$artifacts" ] || ciRun="$run"
+                if [ -n "$artifacts" ]; then
+                    ciRun="$run"
+                    break
+                fi
             else
-                echo "vela-update: optional GitHub Actions artifact lookup failed:" >&2
+                echo "vela-update: optional GitHub Actions artifact lookup failed for run $run:" >&2
                 cat "$CACHE/gh-lookup-error.log" >&2
             fi
-        fi
+        done
     else
         echo "vela-update: optional GitHub Actions run lookup failed:" >&2
         cat "$CACHE/gh-lookup-error.log" >&2
