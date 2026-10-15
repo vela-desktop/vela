@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "scene/frame.h"
+#include "scene/night_light_policy.h"
 
 #include "geometry.h"
 #include "listen.h"
@@ -675,19 +676,43 @@ void vela_output_frame_destroy(struct vela_output_frame *frame)
     free(frame);
 }
 
-// Before every frame: if night light changed, try it on the gamma; if the
-// monitor accepts it, it goes into the next commit.
+/**
+ * Select the DRM gamma LUT or Vulkan shader for the next output commit.
+ * If the shader path is forced, first remove an installed LUT to prevent
+ * applying the same warm tint twice.
+ */
 static void prepare_night_light(struct vela_output_frame *frame)
 {
     struct vela_scene *scene = frame->scene;
     if (scene->night_version == frame->night_version && !frame->gamma_retry_pending) {
         return;
     }
+    bool was_shader = scene->night_active && !frame->night_in_gamma;
     frame->night_version = scene->night_version;
     // Only real DRM outputs have a gamma LUT. An earlier failure suppresses
     // repeated tests during the animation, except on an explicit retry.
     if (!wlr_output_is_drm(frame->output)) {
         frame->night_in_gamma = false;
+        return;
+    }
+    if (scene->night_force_shader) {
+        // Never submit a new gamma LUT in this mode. If the hardware still
+        // holds an old one, remove it atomically with the shader-tinted frame.
+        // A failed NULL commit must never let a shader-tinted buffer through
+        // the still-active LUT (double tint).
+        if (frame->night_transform) {
+            wlr_color_transform_unref(frame->night_transform);
+            frame->night_transform = NULL;
+        }
+        bool keep_old_lut = vela_night_light_defer_clear(frame->gamma_refused, frame->night_clear_needed,
+            frame->gamma_retry_pending, frame->night_gamma_committed);
+        frame->gamma_retry_pending = false;
+        frame->night_clear_needed = frame->night_gamma_committed;
+        frame->night_commit_pending = frame->night_clear_needed && !keep_old_lut;
+        frame->night_in_gamma = keep_old_lut;
+        if (scene->night_active || frame->night_clear_needed) {
+            vela_output_frame_damage_whole(frame);
+        }
         return;
     }
     if (frame->gamma_refused && !frame->gamma_retry_pending) {
@@ -737,8 +762,8 @@ static void prepare_night_light(struct vela_output_frame *frame)
     frame->night_transform = transform;
     frame->night_commit_pending = true;
     frame->night_in_gamma = scene->night_active;
-    if (recovering && scene->night_active) {
-        // Previously rendered buffers contain the shader's warm tint.
+    if ((recovering || was_shader) && scene->night_active) {
+        // Previously rendered buffers may contain the shader's warm tint.
         // Redraw them once without the shader when the LUT comes back.
         vela_output_frame_damage_whole(frame);
     }
@@ -791,10 +816,11 @@ void vela_output_frame_damage_whole(struct vela_output_frame *frame)
     vela_output_schedule_frame(frame->owner);
 }
 
+/** Request fresh pixels for shader color changes or a gamma-only commit. */
 void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filter_changed, bool night_changed)
 {
-    if (filter_changed || (night_changed && (!wlr_output_is_drm(frame->output)
-                              || (frame->gamma_refused && !frame->night_in_gamma)))) {
+    if (vela_night_light_repaint_required(filter_changed, night_changed, wlr_output_is_drm(frame->output),
+            frame->scene->night_force_shader, frame->gamma_refused, frame->night_in_gamma)) {
         vela_output_frame_damage_whole(frame);
     } else if (night_changed) {
         // A DRM gamma transform can be committed with unchanged pixels.
@@ -802,6 +828,7 @@ void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filte
     }
 }
 
+/** Permit one more hardware color commit after an earlier gamma LUT rejection. */
 void vela_output_frame_retry_night_light(struct vela_output_frame *frame)
 {
     if ((!frame->gamma_refused && !frame->night_clear_needed) || frame->gamma_retry_pending

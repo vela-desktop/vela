@@ -18,6 +18,7 @@
 //   night-light=no           night light on (quick settings and the schedule
 //                            change it too)
 //   night-light-strength=48  0-100
+//   night-light-nvidia-fix=no  experiment: render Night light in Vulkan instead of DRM gamma
 //   night-light-schedule=no|sunset|hours
 //   night-light-from=21:00, night-light-to=07:00
 //   color-filters=no         color filter on

@@ -164,6 +164,7 @@ QString modernLine(const QString& line)
 
 } // namespace
 
+/** Refresh compositor settings, including the Night Light backend toggle. */
 void Preferences::reloadCompositor()
 {
     // vela.conf
@@ -207,6 +208,7 @@ void Preferences::reloadCompositor()
 
     m_nightLight = flag(QStringLiteral("night-light"), false);
     m_nightStrength = std::clamp(value(QStringLiteral("night-light-strength"), QStringLiteral("48")).toInt(), 0, 100);
+    m_nightNvidiaFix = flag(QStringLiteral("night-light-nvidia-fix"), false);
     m_nightSchedule = value(QStringLiteral("night-light-schedule"), QStringLiteral("no"));
     m_nightFrom = value(QStringLiteral("night-light-from"), QStringLiteral("21:00"));
     m_nightTo = value(QStringLiteral("night-light-to"), QStringLiteral("07:00"));
@@ -629,6 +631,16 @@ void Preferences::setNightStrength(int strength)
     if (strength != m_nightStrength) {
         m_nightStrength = strength;
         saveCompositor({ { QStringLiteral("night-light-strength"), QString::number(strength) } });
+        emit nightLightChanged();
+    }
+}
+
+/** Persist the NVIDIA workaround setting and notify bindings in the UI. */
+void Preferences::setNightNvidiaFix(bool on)
+{
+    if (on != m_nightNvidiaFix) {
+        m_nightNvidiaFix = on;
+        saveCompositor({ { QStringLiteral("night-light-nvidia-fix"), yesNo(on) } });
         emit nightLightChanged();
     }
 }

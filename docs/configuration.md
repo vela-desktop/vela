@@ -40,6 +40,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `keyboard-repeat-rate` | `30` | Key repeats per second. |
 | `night-light` | `no` | Enable Night light. |
 | `night-light-strength` | `48` | Night-light strength, 0–100. |
+| `night-light-nvidia-fix` | `no` | Experimental NVIDIA workaround: apply Night light in Vulkan instead of the monitor's DRM gamma LUT (may disable direct scanout). |
 | `night-light-schedule` | `no` | Night-light schedule: `no`, `sunset` or `hours`. |
 | `night-light-from` | `21:00` | Manual Night-light start time. |
 | `night-light-to` | `07:00` | Manual Night-light end time. |
