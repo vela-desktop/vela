@@ -252,8 +252,12 @@ private slots:
         QVERIFY(!client->apply("HEADLESS-1", { { "scale", 2 } }));
         QTRY_COMPARE(applied.count(), 1);
         QTRY_COMPARE(output("HEADLESS-2")["scale"].toDouble(), 1.5);
-        QCOMPARE(output("HEADLESS-2")["x"].toInt(), -1280);
-        QCOMPARE(output("HEADLESS-2")["y"].toInt(), -100);
+        // A screen moved above/left of the main one remains there visually,
+        // but the desktop root starts at (0,0) for XWayland compatibility.
+        QTRY_COMPARE(output("HEADLESS-2")["x"].toInt(), 0);
+        QTRY_COMPARE(output("HEADLESS-2")["y"].toInt(), 0);
+        QTRY_COMPARE(output("HEADLESS-1")["x"].toInt(), 1280);
+        QTRY_COMPARE(output("HEADLESS-1")["y"].toInt(), 100);
         QCOMPARE(output("HEADLESS-2")["transform"].toString(), QString("90"));
         QVERIFY(saved().isEmpty());
         QVERIFY(client->secondsRemaining() > 0);
@@ -261,6 +265,8 @@ private slots:
         QTRY_VERIFY(!client->pending());
         QVERIFY(saved().contains("scale=1.5"));
         QVERIFY(saved().contains("rotation=90"));
+        QVERIFY(saved().contains("position=1280,100"));
+        QVERIFY(saved().contains("position=0,0"));
         const auto confirmed = saved();
         QTest::qWait(1400);
         QCOMPARE(output("HEADLESS-2")["scale"].toDouble(), 1.5);
