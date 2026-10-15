@@ -319,6 +319,20 @@ private slots:
         QTRY_COMPARE(client->outputs(), before);
         QCOMPARE(saved(), disk);
     }
+    void emptyEffectiveSizeDoesNotRejectInSettings()
+    {
+        // 8 physical pixels at scale 16 produce 0 logical pixels. A request
+        // must reach the compositor instead of failing Settings' layout check.
+        start({ "tiny" });
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        const auto before = output("HEADLESS-2");
+        QCOMPARE(before["current"].toMap()["width"].toInt(), 8);
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 16 } }));
+        QVERIFY2(client->error().isEmpty(), qPrintable(client->error()));
+        // Whether the compositor accepts zero effective pixels is its decision;
+        // the regression is an early rejection by positionForSize().
+    }
     void sizeChangeCannotOverlapTwoUnchangedNeighbors()
     {
         start();

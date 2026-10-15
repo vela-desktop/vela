@@ -76,8 +76,10 @@ struct Displays::Client {
     {
         const QSize oldSize = logicalSize(target->current, target->scale, target->transform);
         const QSize newSize = logicalSize(mode, scale, transform);
-        if (oldSize.isEmpty() || newSize.isEmpty()) return std::nullopt;
-        if (oldSize == newSize) return QPoint(target->x, target->y);
+        // No meaningful geometry to arrange: leave the position unchanged and
+        // let the compositor decide whether the requested scale is valid.
+        if (oldSize.isEmpty() || newSize.isEmpty() || oldSize == newSize)
+            return QPoint(target->x, target->y);
         const QRectF before(QPointF(target->x, target->y), oldSize);
         std::vector<QRectF> neighbors;
         for (const auto& head : heads) {

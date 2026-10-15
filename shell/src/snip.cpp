@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "snip.h"
+#include "snipcrop.h"
 #include "../../common/privatefile.h"
 
 #include "clipboard.h"
@@ -186,17 +187,9 @@ void Snip::finish(const QString& screenName, qreal x, qreal y, qreal width, qrea
         cancel();
         return;
     }
-    // From logical coordinates to image pixels (the output's scale).
-    const qreal sx = full.width() / qreal(screen->geometry().width());
-    const qreal sy = full.height() / qreal(screen->geometry().height());
-    // Round the two endpoints, not the origin and size independently: at
-    // fractional scales their rounding errors can differ by one pixel.
-    const int left = qRound(x * sx);
-    const int top = qRound(y * sy);
-    const int right = qRound((x + width) * sx);
-    const int bottom = qRound((y + height) * sy);
-    const QRect area = QRect(left, top, right - left, bottom - top).intersected(full.rect());
-    const QImage cut = full.copy(area);
+    // Empty pixel rectangles must never reach QImage::copy: a null QRect
+    // requests the entire image, potentially exposing unselected pixels.
+    const QImage cut = vela::cropSnipImage(full, screen->geometry().size(), QRectF(x, y, width, height));
     m_captureTimeout.stop();
     closeOverlays();
     m_capture->clearFull();
