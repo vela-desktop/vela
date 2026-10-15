@@ -107,7 +107,7 @@ static bool test_configuration(const struct wlr_output_configuration_v1 *config)
 // Remember each mapped window's original output coordinates. A normalization
 // translates every monitor together, so its windows (including restored frame
 // positions) must follow that output rather than remaining in the old area.
-struct tracked_view {
+struct vela_tracked_view {
     struct vela_view *view;
     struct wlr_output *output;
     int x, y;
@@ -124,7 +124,7 @@ static bool commit_configuration(struct vela_server *server, const struct wlr_ou
     int origin_x, origin_y;
     configuration_origin(config, &origin_x, &origin_y);
     int tracked_count = wl_list_length(&server->views);
-    struct tracked_view *tracked = calloc((size_t)tracked_count + 1, sizeof(*tracked));
+    struct vela_tracked_view *tracked = calloc((size_t)tracked_count + 1, sizeof(*tracked));
     if (!tracked) {
         return false;
     }
@@ -134,7 +134,7 @@ static bool commit_configuration(struct vela_server *server, const struct wlr_ou
         struct vela_output *old = vela_view_output(view);
         if (old && old->wlr->enabled && wlr_output_layout_get(server->output_layout, old->wlr)) {
             struct wlr_box box = vela_output_box(old);
-            tracked[n++] = (struct tracked_view) { view, old->wlr, box.x, box.y };
+            tracked[n++] = (struct vela_tracked_view) { view, old->wlr, box.x, box.y };
         }
     }
     bool ok = true;
@@ -174,7 +174,7 @@ static bool commit_configuration(struct vela_server *server, const struct wlr_ou
     // origin. Restore boxes are *absolute* frame coordinates as well.
     // This also keeps preview rollback stable when the old layout returns.
     for (int i = 0; i < n; ++i) {
-        struct tracked_view *entry = &tracked[i];
+        struct vela_tracked_view *entry = &tracked[i];
         struct wlr_output_layout_output *layout
             = wlr_output_layout_get(server->output_layout, entry->output);
         if (!layout || !entry->output->enabled) {
