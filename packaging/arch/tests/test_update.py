@@ -758,8 +758,10 @@ class UpdateSources(UpdateFixture):
                                  "+refs/tags/*:refs/tags/*"])
         self.assertFalse(list(self.mirror.parent.glob("vela-corrupt.*")))
 
+    CORRUPT_OID = "aa" + "b" * 38
+
     def corrupt_cached_mirror(self):
-        oid = "aa" + "b" * 38
+        oid = self.CORRUPT_OID
         obj = self.mirror / "objects/aa" / ("b" * 38)
         obj.parent.mkdir(parents=True, exist_ok=True)
         obj.touch()
@@ -773,7 +775,9 @@ class UpdateSources(UpdateFixture):
         self.corrupt_cached_mirror()
         result = self.run_update("--check", source=False)
         self.assertIn("corrupt", result.stderr)
-        self.assertIn("invalid sha1 pointer", result.stderr)
+        # git fsck's own report reaches the user. Its wording depends on Git's
+        # version and language; every version names the broken object.
+        self.assertIn(self.CORRUPT_OID, result.stderr)
         self.assertIn("preserved at", result.stderr)
         self.assertFalse((self.mirror / "refs/vela-update/selected").exists())
         quarantine = list(self.mirror.parent.glob("vela-corrupt.*"))
