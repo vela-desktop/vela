@@ -95,7 +95,6 @@ static void cancel_wine_style(struct vela_view *view)
     view->x11_wine_style_dirty = false;
     view->x11_wine_style_known = false;
     view->x11_wine_restore_fullscreen = false;
-    view->x11_wine_restore_box_saved = false;
 }
 
 static void apply_wine_style(struct vela_view *view, uint32_t style)
@@ -478,13 +477,6 @@ static void handle_set_decorations(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, set_decorations);
     if (view->mapped) {
-        // Wine can remove its Motif titlebar before changing WS_OVERLAPPED
-        // to WS_POPUP. Save the *frame* while it still includes the bar.
-        if (!view->fullscreen && view->x11_wine_restore_fullscreen && view->decoration
-            && view->x11->decorations != WLR_XWAYLAND_SURFACE_DECORATIONS_ALL) {
-            view->restore = vela_view_frame_box(view);
-            view->x11_wine_restore_box_saved = true;
-        }
         vela_view_update_decoration(view);
     }
 }
