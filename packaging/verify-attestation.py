@@ -10,6 +10,7 @@ digest and enforces the OIDC workflow identity and exact source commit.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 from pathlib import Path
 import re
@@ -59,6 +60,32 @@ def bundle_candidates(repository: str, digest: str) -> list[object]:
     return candidates
 
 
+def validate_signed_provenance(bundle: dict, digest: str) -> None:
+    """Apply source/runner policy to the envelope after Cosign validates it."""
+    envelope = bundle.get("dsseEnvelope")
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("payload"), str):
+        raise ValueError("verified bundle has no signed DSSE statement")
+    try:
+        statement = json.loads(base64.b64decode(envelope["payload"], validate=True))
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid signed SLSA statement") from exc
+    if statement.get("predicateType") != "https://slsa.dev/provenance/v1":
+        raise ValueError("unexpected provenance predicate")
+    subjects = statement.get("subject")
+    if not isinstance(subjects, list) or not any(
+        isinstance(sub, dict) and isinstance(sub.get("digest"), dict)
+        and sub["digest"].get("sha256") == digest for sub in subjects
+    ):
+        raise ValueError("signed provenance does not bind the package SHA-256")
+    try:
+        github = statement["predicate"]["buildDefinition"]["internalParameters"]["github"]
+        runner = github["runner_environment"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError("signed provenance lacks the runner environment") from exc
+    if runner != "github-hosted":
+        raise ValueError("refusing attestation from non-GitHub-hosted runner")
+
+
 def verify(package: Path, repository: str, commit: str, kind: str) -> None:
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("invalid GitHub repository")
@@ -90,13 +117,15 @@ def verify(package: Path, repository: str, commit: str, kind: str) -> None:
             with tempfile.TemporaryDirectory(prefix="vela-attestation-") as temp:
                 bundle = Path(temp) / "bundle.json"
                 if isinstance(candidate, dict):
-                    bundle.write_text(json.dumps(candidate), encoding="utf-8")
+                    evidence = candidate
                 else:
-                    bundle.write_bytes(curl(candidate))
+                    evidence = json.loads(curl(candidate))
+                bundle.write_text(json.dumps(evidence), encoding="utf-8")
                 command = ["cosign", "verify-blob-attestation",
                            "--bundle", str(bundle), *shared, str(package)]
                 subprocess.run(command, check=True, stdout=subprocess.DEVNULL,
                                stderr=subprocess.PIPE, timeout=90)
+                validate_signed_provenance(evidence, h.hexdigest())
                 return
         except subprocess.CalledProcessError as exc:
             message = (exc.stderr or b"").decode("utf-8", "replace").strip()
