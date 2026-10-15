@@ -169,7 +169,7 @@ class X11(unittest.TestCase):
         self.x11_control("--set-wine-style", xid, "0x16cf0000")
         self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"], what="windowed Wine state")
         self.x11_control("--fullscreen", xid, "off")
-        time.sleep(0.15)
+        self.assert_fullscreen_remains(view_id, False)
         self.x11_control("--set-wine-style", xid, "0x96000000")
         self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"],
                            what="redundant EWMH off preserves Wine fullscreen return")
@@ -186,8 +186,7 @@ class X11(unittest.TestCase):
         self.x11_control("--set-wine-style", xid, "0x16cf0000")
         self.vela.wait_for(lambda s: not s.window(view_id)["fullscreen"], what="windowed state")
         self.x11_control("--set-wine-style", xid, "0x16000000")
-        time.sleep(0.15)
-        self.assertFalse(self.vela.state().window(view_id)["fullscreen"])
+        self.assert_fullscreen_remains(view_id, False)
         self.x11_control("--set-wine-style", xid, "0x96000000")
         self.vela.wait_for(lambda s: s.window(view_id)["fullscreen"],
                            what="Wine popup return after intermediate style")
@@ -241,7 +240,7 @@ class X11(unittest.TestCase):
             xid = xids.read().strip()
         self.x11_control("--delete-wine-style", xid)
         # Do not infer a transition from a missing/unknown previous style.
-        time.sleep(0.1)
+        self.assert_fullscreen_remains(view_id, False)
         self.x11_control("--set-wine-style", xid, "0x16cf0000")
         self.assert_fullscreen_remains(view_id, False)
 
