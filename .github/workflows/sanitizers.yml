@@ -104,7 +104,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             exclude='^packaging-update$'
           fi
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180 --output-junit sanitizer-ctest.xml -LE gpu -E "$exclude"
+          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180 --output-junit build-sanitized/sanitizer-ctest.xml -LE gpu -E "$exclude"
       - name: Upload sanitizer test timings
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
