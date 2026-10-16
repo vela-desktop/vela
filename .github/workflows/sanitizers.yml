@@ -4,6 +4,9 @@ name: Sanitizer Tests
 # PR validation only; post-merge build and packaging run in build.yml.
 on:
   pull_request:
+  # Prime a reusable sanitizer cache on the default branch so PRs can restore it.
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -46,7 +49,7 @@ jobs:
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-sanitizers
-      CCACHE_MAXSIZE: 500M
+      CCACHE_MAXSIZE: 1G
       ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
       QT_QPA_PLATFORM: offscreen
@@ -67,14 +70,15 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache-sanitizers
-          key: ccache-arch-asan-ubsan-debug-v1-${{ github.sha }}
+          key: ccache-arch-asan-ubsan-debug-v2-${{ github.event.pull_request.base.sha || github.sha }}
           restore-keys: |
-            ccache-arch-asan-ubsan-debug-v1-
+            ccache-arch-asan-ubsan-debug-v2-
 
       - name: Configure ASan and UBSan
         run: >-
           cmake -S . -B build-sanitized -DCMAKE_BUILD_TYPE=Debug
           -DVELA_BUILD_TOOLS=ON
+          -DVELA_BUILD_GPU_TEST_TOOLS=OFF
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_C_FLAGS=-fsanitize=address,undefined\ -fno-omit-frame-pointer
@@ -100,7 +104,15 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             exclude='^packaging-update$'
           fi
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2 -LE gpu -E "$exclude"
+          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180 --output-junit sanitizer-ctest.xml -LE gpu -E "$exclude"
+      - name: Upload sanitizer test timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sanitizer-ctest-results
+          path: build-sanitized/sanitizer-ctest.xml
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Save failed test logs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
