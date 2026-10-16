@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Shapes
 import QtQuick.Effects
 import Vela.Controls
+import "tiles.js" as Tiles
 
 // The Start menu: search at the top, all apps below, user at the bottom. It
 // opens rising from behind the taskbar and leaves the same way; it closes on
@@ -47,6 +48,14 @@ Window {
     }
     readonly property bool showPinned: search.text.length === 0 && pinned.length > 0
 
+    // The keyboard's tile: a pinned one (`pinnedSelection`, its index) or the
+    // grid's current app (-1). Shown once a key moves it, or at once among
+    // search results.
+    property int pinnedSelection: -1
+    property bool selecting: false
+    readonly property bool selectionShown: selecting || search.text.length > 0
+    onPinnedChanged: pinnedSelection = Math.min(pinnedSelection, pinned.length - 1)
+
     // The Start menu is above the taskbar, centered or at the left: from its
     // coordinates to the output's, for right-click menus.
     function screenPoint(item, x, y) {
@@ -76,19 +85,20 @@ Window {
         const taskbar = Tasks.isPinned(id)
             ? { text: qsTr("Unpin from &taskbar"), icon: "window-unpin", action: () => Tasks.unpin(id) }
             : { text: qsTr("Pin to &taskbar"), icon: "window-pin", action: () => Tasks.pin(id) }
+        const desktop = { text: qsTr("Add to &desktop"), icon: "user-desktop", action: () => root.addToDesktop(id) }
         const folder = { text: qsTr("Open file &location"), icon: "document-open-folder", action: () => { System.showInFolder(Apps.desktopFile(id)); root.close() } }
         const uninstall = { text: qsTr("&Uninstall"), icon: "edit-delete", enabled: System.canUninstall(Apps.desktopFile(id)), action: () => { System.uninstall(Apps.desktopFile(id)); root.close() } }
         if (pinnedTile) {
             entries.push(
                 { text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) },
                 { text: qsTr("Move to &front"), icon: "go-top", enabled: Shell.startPins.indexOf(id) > 0, action: () => Shell.moveStartPinToFront(id) },
-                taskbar, folder, uninstall)
+                taskbar, desktop, folder, uninstall)
         } else {
             entries.push(
                 inStart
                     ? { text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) }
                     : { text: qsTr("&Pin to Start"), icon: "window-pin", action: () => Shell.pinToStart(id) },
-                { text: qsTr("&More"), children: [taskbar, folder] },
+                { text: qsTr("&More"), children: [taskbar, desktop, folder] },
                 uninstall)
         }
         return entries
@@ -96,7 +106,21 @@ Window {
 
     function openAppMenu(item, x, y, id, pinnedTile) {
         const p = screenPoint(item, x, y)
-        Menus.open(appMenu(id, pinnedTile), p.x, p.y)
+        Menus.open(appMenu(id, pinnedTile), p.x, p.y, { screen: root.screen ? root.screen.name : Shell.primaryScreen })
+    }
+
+    // A shortcut to the app's launcher on the desktop. Start closes once it
+    // is there; a failure is said here, and Start stays.
+    function addToDesktop(id) {
+        const launcher = Apps.desktopFile(id)
+        const error = launcher === "" ? qsTr("Couldn't find this application's launcher.")
+            : FileActions.createShortcut(Desktop.directory, launcher, "")
+        if (error !== "") {
+            notice.show(error)
+            return
+        }
+        Desktop.refresh()
+        close()
     }
 
     // An entry of the power menu.
@@ -135,8 +159,8 @@ Window {
             powerButton.menuOpen = false
             Apps.query = ""
             search.text = ""
-            grid.currentIndex = 0
-            grid.positionViewAtBeginning()
+            notice.hide()
+            resetSelection()
             Menus.placeOnTargetScreen(root) // the output of the taskbar it opens from
         }
         visible = true
@@ -157,6 +181,71 @@ Window {
     function launch(row) {
         if (row >= 0 && row < grid.count && Apps.launch(row)) {
             close()
+        }
+    }
+
+    // ---------------------------------------------------- keyboard selection --
+    // The keys go through sections of tiles in rows of six: the pinned ones
+    // (when shown), then all apps (tiles.js).
+
+    function resetSelection() {
+        pinnedSelection = -1
+        selecting = false
+        grid.currentIndex = 0
+        grid.positionViewAtBeginning()
+    }
+
+    function sections() {
+        return showPinned ? [pinned.length, grid.count] : [grid.count]
+    }
+
+    function select(section, index) {
+        if (showPinned && section === 0) {
+            pinnedSelection = index
+            const tile = grid.headerItem ? grid.headerItem.tileAt(index) : null
+            if (tile) {
+                const top = tile.mapToItem(grid.contentItem, 0, 0).y
+                if (top < grid.contentY) {
+                    grid.contentY = top
+                } else if (top + tile.height > grid.contentY + grid.height) {
+                    grid.contentY = top + tile.height - grid.height
+                }
+            }
+        } else {
+            pinnedSelection = -1
+            grid.currentIndex = index
+            grid.positionViewAtIndex(index, GridView.Contain)
+        }
+    }
+
+    function move(direction) {
+        const counts = sections()
+        if (counts.every(n => n === 0)) {
+            return
+        }
+        // The first key shows where the selection is, on the first tile.
+        if (!selectionShown) {
+            selecting = true
+            select(counts.findIndex(n => n > 0), 0)
+            return
+        }
+        const section = pinnedSelection >= 0 ? 0 : counts.length - 1
+        const index = pinnedSelection >= 0 ? pinnedSelection : Math.max(0, grid.currentIndex)
+        selecting = true
+        const to = Tiles.next(counts, section, index, direction, 6)
+        select(to.section, to.index)
+    }
+
+    function launchSelection() {
+        if (!selectionShown) {
+            return
+        }
+        if (pinnedSelection >= 0) {
+            if (Apps.launchId(pinned[pinnedSelection].id)) {
+                close()
+            }
+        } else {
+            launch(grid.currentIndex)
         }
     }
 
@@ -256,18 +345,21 @@ Window {
 
                     onTextChanged: {
                         Apps.query = text
-                        grid.currentIndex = 0
-                        grid.positionViewAtBeginning()
+                        root.resetSelection()
                     }
 
-                    // The keyboard stays in the search; the arrows move the grid.
+                    // The keyboard stays in the search; the arrows move the
+                    // selection, left and right only while there is no text
+                    // to move through.
                     Keys.onEscapePressed: root.close()
-                    Keys.onReturnPressed: root.launch(grid.currentIndex)
-                    Keys.onEnterPressed: root.launch(grid.currentIndex)
-                    Keys.onDownPressed: grid.moveCurrentIndexDown()
-                    Keys.onUpPressed: grid.moveCurrentIndexUp()
-                    Keys.onTabPressed: grid.moveCurrentIndexRight()
-                    Keys.onBacktabPressed: grid.moveCurrentIndexLeft()
+                    Keys.onReturnPressed: root.launchSelection()
+                    Keys.onEnterPressed: root.launchSelection()
+                    Keys.onDownPressed: root.move("down")
+                    Keys.onUpPressed: root.move("up")
+                    Keys.onTabPressed: root.move("right")
+                    Keys.onBacktabPressed: root.move("left")
+                    Keys.onLeftPressed: event => text.length > 0 ? event.accepted = false : root.move("left")
+                    Keys.onRightPressed: event => text.length > 0 ? event.accepted = false : root.move("right")
                 }
             }
 
@@ -296,15 +388,12 @@ Window {
                 boundsBehavior: Flickable.StopAtBounds
                 highlightFollowsCurrentItem: false
 
-                // With the arrows the selection can leave the view: we follow it.
-                onCurrentIndexChanged: positionViewAtIndex(currentIndex, GridView.Contain)
-
                 delegate: AppTile {
                     id: tile
                     required property string appId
                     width: grid.cellWidth
                     height: grid.cellHeight
-                    current: index === grid.currentIndex && search.text.length > 0
+                    current: root.selectionShown && root.pinnedSelection < 0 && index === grid.currentIndex
                     onActivated: root.launch(index)
                     onContextRequested: (x, y) => root.openAppMenu(tile, x, y, tile.appId, false)
                 }
@@ -314,12 +403,16 @@ Window {
                     width: grid.width
                     height: root.showPinned ? pinnedGrid.height + allTitle.height + 24 : 0
                     visible: root.showPinned
+                    function tileAt(index) {
+                        return pinnedTiles.itemAt(index)
+                    }
 
                     Grid {
                         id: pinnedGrid
                         columns: 6
 
                         Repeater {
+                            id: pinnedTiles
                             model: root.pinned
 
                             delegate: AppTile {
@@ -330,6 +423,7 @@ Window {
                                 name: modelData.name
                                 iconName: modelData.iconName
                                 comment: ""
+                                current: root.selectionShown && root.pinnedSelection === index
                                 onActivated: {
                                     if (Apps.launchId(modelData.id)) {
                                         root.close()
@@ -355,6 +449,43 @@ Window {
                     text: qsTr("No apps found")
                     color: Theme.textSecondary
                     font.pixelSize: Theme.fontBody
+                }
+            }
+
+            // What went wrong, said where it was asked for (Add to desktop),
+            // for a few seconds.
+            Rectangle {
+                id: notice
+                property string text
+                function show(message) {
+                    text = message
+                    hideTimer.restart()
+                }
+                function hide() {
+                    text = ""
+                    hideTimer.stop()
+                }
+                visible: text !== ""
+                z: 1
+                anchors { left: parent.left; right: parent.right; bottom: footer.top; leftMargin: 24; rightMargin: 24; bottomMargin: 8 }
+                height: noticeText.implicitHeight + 24
+                radius: Theme.radius
+                color: Theme.popup
+                border.width: 1
+                border.color: Theme.stroke
+                Text {
+                    id: noticeText
+                    anchors { fill: parent; margins: 12 }
+                    text: notice.text
+                    color: Theme.text
+                    font.pixelSize: Theme.fontBody
+                    wrapMode: Text.Wrap
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Timer {
+                    id: hideTimer
+                    interval: 7000
+                    onTriggered: notice.text = ""
                 }
             }
 

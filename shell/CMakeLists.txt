@@ -107,6 +107,7 @@ set(VELA_QML_FILES
     qml/TaskbarButton.qml
     qml/StartGlyph.qml
     qml/StartMenu.qml
+    qml/tiles.js
     qml/AppTile.qml
     qml/Switcher.qml
     qml/Wallpaper.qml

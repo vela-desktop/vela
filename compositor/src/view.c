@@ -566,6 +566,11 @@ static void handle_taskbar_rectangle(struct wl_listener *listener, void *data)
 
 static void create_taskbar_handle(struct vela_view *view)
 {
+#if WLR_HAS_XWAYLAND
+    if (view->x11 && view->x11->skip_taskbar) {
+        return; // _NET_WM_STATE_SKIP_TASKBAR (Wine's fullscreen backdrop)
+    }
+#endif
     struct wlr_foreign_toplevel_handle_v1 *handle
         = wlr_foreign_toplevel_handle_v1_create(view->server->foreign_toplevels);
     view->handle = handle;
@@ -856,6 +861,7 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         // the X11 window so it gets the final fullscreen origin (not the
         // old centered windowed origin) in the same ConfigureWindow request.
         vela_node_reparent(&view->tree->node, view->server->layers.fullscreen);
+        vela_view_keep_below(view); // Wine's backdrop must not cover the game
         vela_view_keep_in_place(view);
         if (output) {
             struct vela_placement place = vela_output_place(output, vela_output_full_area(output));
@@ -871,6 +877,7 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         wlr_foreign_toplevel_handle_v1_set_fullscreen(view->handle, false);
     }
     vela_node_reparent(&view->tree->node, view->server->layers.windows);
+    vela_view_keep_below(view);
     if (view->maximized) {
         apply_maximized(view);
     } else if (!vela_snap_is_none(view->snap)) {
@@ -959,7 +966,7 @@ static void move_to_output(struct vela_view *view, struct vela_output *output, i
 
 // Every listener of a view: they all start disconnected, so all of them
 // can be disconnected at the end.
-enum { VIEW_LISTENERS = 29 };
+enum { VIEW_LISTENERS = 32 };
 
 static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTENERS])
 {
@@ -987,6 +994,9 @@ static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTE
         &view->map_request,
         &view->request_activate,
         &view->set_decorations,
+        &view->set_override_redirect,
+        &view->request_below,
+        &view->request_skip_taskbar,
         &view->handle_activate,
         &view->handle_close,
         &view->handle_maximize,
@@ -995,6 +1005,27 @@ static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTE
         &view->handle_rectangle,
     };
     memcpy(out, all, sizeof(all));
+}
+
+bool vela_view_stays_below(const struct vela_view *view)
+{
+#if WLR_HAS_XWAYLAND
+    return view->x11 && view->x11->below;
+#else
+    return false;
+#endif
+}
+
+void vela_view_keep_below(struct vela_view *view)
+{
+    struct vela_tree *parent = view->tree->node.parent;
+    if (!vela_view_stays_below(view) || !parent) {
+        return;
+    }
+    struct vela_node *bottom = wl_container_of(parent->children.next, bottom, link);
+    if (bottom != &view->tree->node) {
+        vela_node_place_below(&view->tree->node, bottom);
+    }
 }
 
 void vela_view_init(struct vela_view *view, struct vela_server *server)
@@ -1056,7 +1087,11 @@ void vela_view_mapped(struct vela_view *view)
     wl_list_insert(&server->views, &view->link);
     vela_workspaces_view_mapped(server, view);
     create_handles(view);
-    vela_focus_new_view(server, view);
+    if (vela_view_stays_below(view)) {
+        vela_view_keep_below(view); // no keyboard either: it is a backdrop
+    } else {
+        vela_focus_new_view(server, view);
+    }
     start_open_animation(view);
     vela_workspaces_announce(server);
 }

@@ -4,8 +4,11 @@
 // vela-x11: a test X11 app (through Xwayland), so the X11 window tests do
 // not depend on installed programs.
 //
-// Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--wine-style HEX] [WIDTH HEIGHT]
+// Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--backdrop-id-file PATH]
+//                 [--wine-style HEX] [--wine-backdrop] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
+//        vela-x11 --state XID below|skip-taskbar on|off
+//        vela-x11 --override-redirect XID on|off
 //        vela-x11 --set-wine-style XID HEX
 //        vela-x11 --delete-wine-style XID
 //        vela-x11 --geometry XID (root-relative X11 x y width height)
@@ -16,6 +19,10 @@
 // closes on WM_DELETE_WINDOW (Alt+F4). --menu also opens a green 120x80
 // override-redirect menu at (X, Y) on the screen, like the drop-down menus
 // of X11 apps. Like most apps, it draws only when the server asks (Expose).
+// --wine-backdrop also opens Wine's black fullscreen backdrop (same class):
+// override-redirect and as large as the screen; once it is shown the orange
+// window asks for fullscreen and the backdrop becomes managed, asking for
+// fullscreen, skip-taskbar/pager and below after mapping.
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -44,6 +51,56 @@ static xcb_window_t create(xcb_connection_t* connection, xcb_screen_t* screen, i
     return window;
 }
 
+static int write_xid_file(const char* path, xcb_window_t window)
+{
+    // O_EXCL prevents replacing an existing file or following a symlink.
+    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) {
+        perror("vela-x11: create XID file");
+        return -1;
+    }
+    char xid[32];
+    int len = snprintf(xid, sizeof(xid), "0x%x\n", window);
+    int ok = len > 0 && write(fd, xid, (size_t)len) == len;
+    if (!ok) {
+        perror("vela-x11: write XID file");
+    }
+    close(fd);
+    return ok ? 0 : -1;
+}
+
+static void send_state(xcb_connection_t* connection, xcb_screen_t* screen, xcb_window_t window, const char* first,
+    const char* second)
+{
+    xcb_client_message_event_t event = { 0 };
+    event.response_type = XCB_CLIENT_MESSAGE;
+    event.window = window;
+    event.type = atom(connection, "_NET_WM_STATE");
+    event.format = 32;
+    event.data.data32[0] = 1; // add
+    event.data.data32[1] = atom(connection, first);
+    event.data.data32[2] = second ? atom(connection, second) : XCB_ATOM_NONE;
+    event.data.data32[3] = 1; // application source
+    xcb_send_event(connection, 0, screen->root, XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
+        (const char*)&event);
+}
+
+// Wine's order: the game goes fullscreen; the backdrop is unmapped, drops
+// override-redirect, is mapped again, then asks for its states.
+static void wine_backdrop_managed(xcb_connection_t* connection, xcb_screen_t* screen, xcb_window_t game,
+    xcb_window_t backdrop)
+{
+    send_state(connection, screen, game, "_NET_WM_STATE_FULLSCREEN", NULL);
+    xcb_unmap_window(connection, backdrop);
+    const uint32_t managed = 0;
+    xcb_change_window_attributes(connection, backdrop, XCB_CW_OVERRIDE_REDIRECT, &managed);
+    xcb_map_window(connection, backdrop);
+    send_state(connection, screen, backdrop, "_NET_WM_STATE_FULLSCREEN", NULL);
+    send_state(connection, screen, backdrop, "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER");
+    send_state(connection, screen, backdrop, "_NET_WM_STATE_BELOW", NULL);
+    xcb_flush(connection);
+}
+
 int main(int argc, char** argv)
 {
     int width = 300;
@@ -52,11 +109,15 @@ int main(int argc, char** argv)
     int menuX = 0;
     int menuY = 0;
     const char* idFile = NULL;
+    const char* backdropIdFile = NULL;
     uint32_t wineStyle = 0;
     int hasWineStyle = 0;
     int startFullscreen = 0;
+    int wineBackdrop = 0;
     int control = (argc == 4
-        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")))
+        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
+            || !strcmp(argv[1], "--override-redirect")))
+        || (argc == 5 && !strcmp(argv[1], "--state"))
         || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
             || !strcmp(argv[1], "--geometry")))
         || (argc == 2 && !strcmp(argv[1], "--root-size"));
@@ -68,6 +129,11 @@ int main(int argc, char** argv)
                 ++arg;
                 continue;
             }
+            if (!strcmp(argv[arg], "--wine-backdrop")) {
+                wineBackdrop = 1;
+                ++arg;
+                continue;
+            }
             if (arg + 1 >= argc) {
                 break;
             }
@@ -76,6 +142,8 @@ int main(int argc, char** argv)
                 menu = 1;
             } else if (!strcmp(argv[arg], "--id-file")) {
                 idFile = argv[arg + 1];
+            } else if (!strcmp(argv[arg], "--backdrop-id-file")) {
+                backdropIdFile = argv[arg + 1];
             } else if (!strcmp(argv[arg], "--wine-style")) {
                 wineStyle = (uint32_t)strtoul(argv[arg + 1], NULL, 0);
                 hasWineStyle = 1;
@@ -139,14 +207,35 @@ int main(int argc, char** argv)
                 atom(connection, "_WINE_HWND_STYLE"), XCB_ATOM_CARDINAL, 32, 1, &style);
         } else if (!strcmp(argv[1], "--delete-wine-style")) {
             cookie = xcb_delete_property_checked(connection, target, atom(connection, "_WINE_HWND_STYLE"));
+        } else if (!strcmp(argv[1], "--override-redirect")) {
+            if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
+                fprintf(stderr, "vela-x11: expected on or off\n");
+                xcb_disconnect(connection);
+                return 2;
+            }
+            uint32_t redirect = !strcmp(argv[3], "on");
+            cookie = xcb_change_window_attributes_checked(connection, target, XCB_CW_OVERRIDE_REDIRECT, &redirect);
         } else {
+            const int setState = !strcmp(argv[1], "--state");
+            const char* requested = setState ? argv[3] : "fullscreen";
+            const char* desired = setState ? argv[4] : argv[3];
+            if ((strcmp(requested, "fullscreen") && strcmp(requested, "below")
+                    && strcmp(requested, "skip-taskbar"))
+                || (strcmp(desired, "on") && strcmp(desired, "off"))) {
+                fprintf(stderr, "vela-x11: invalid state (expected fullscreen, below or skip-taskbar; on/off)\n");
+                xcb_disconnect(connection);
+                return 2;
+            }
+            const char* name = !strcmp(requested, "below") ? "_NET_WM_STATE_BELOW"
+                : !strcmp(requested, "skip-taskbar") ? "_NET_WM_STATE_SKIP_TASKBAR"
+                : "_NET_WM_STATE_FULLSCREEN";
             xcb_client_message_event_t event = { 0 };
             event.response_type = XCB_CLIENT_MESSAGE;
             event.window = target;
             event.type = atom(connection, "_NET_WM_STATE");
             event.format = 32;
-            event.data.data32[0] = !strcmp(argv[3], "on") ? 1 : 0;
-            event.data.data32[1] = atom(connection, "_NET_WM_STATE_FULLSCREEN");
+            event.data.data32[0] = !strcmp(desired, "on") ? 1 : 0;
+            event.data.data32[1] = atom(connection, name);
             event.data.data32[3] = 1; // application source
             cookie = xcb_send_event_checked(connection, 0, screen->root,
                 XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
@@ -163,23 +252,9 @@ int main(int argc, char** argv)
         return failed;
     }
     xcb_window_t window = create(connection, screen, 0, 0, width, height, 0xff8000, 0);
-    if (idFile) {
-        // The XID control file must not be world-writable (CodeQL).
-        int fd = open(idFile, O_WRONLY | O_CREAT | O_EXCL, 0600);
-        if (fd < 0) {
-            perror("vela-x11: create XID file");
-            xcb_disconnect(connection);
-            return 1;
-        }
-        char xid[32];
-        int len = snprintf(xid, sizeof(xid), "0x%x\n", window);
-        if (len <= 0 || write(fd, xid, (size_t)len) != len) {
-            perror("vela-x11: write XID file");
-            close(fd);
-            xcb_disconnect(connection);
-            return 1;
-        }
-        close(fd);
+    if (idFile && write_xid_file(idFile, window) != 0) {
+        xcb_disconnect(connection);
+        return 1;
     }
     if (hasWineStyle) {
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
@@ -203,6 +278,17 @@ int main(int argc, char** argv)
     if (menu) {
         xcb_map_window(connection, create(connection, screen, menuX, menuY, 120, 80, 0x00c000, 1));
     }
+    xcb_window_t backdrop = XCB_NONE;
+    if (wineBackdrop) {
+        backdrop = create(connection, screen, 0, 0, screen->width_in_pixels, screen->height_in_pixels, 0x000000, 1);
+        if (backdropIdFile && write_xid_file(backdropIdFile, backdrop) != 0) {
+            xcb_disconnect(connection);
+            return 1;
+        }
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, backdrop, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 8,
+            sizeof(wmClass), wmClass);
+        xcb_map_window(connection, backdrop);
+    }
     xcb_flush(connection);
 
     // One graphics context per color, made on first use.
@@ -211,7 +297,16 @@ int main(int argc, char** argv)
     xcb_generic_event_t* event;
     while ((event = xcb_wait_for_event(connection))) {
         int type = event->response_type & 0x7f;
-        if (type == XCB_EXPOSE) {
+        if (type == XCB_EXPOSE && backdrop != XCB_NONE
+            && ((const xcb_expose_event_t*)event)->window == backdrop) {
+            // Black is its background. Shown as an override-redirect window
+            // once: give the compositor time to show it, then make it managed.
+            if (wineBackdrop) {
+                wineBackdrop = 0;
+                usleep(200000);
+                wine_backdrop_managed(connection, screen, window, backdrop);
+            }
+        } else if (type == XCB_EXPOSE) {
             const xcb_expose_event_t* expose = (const xcb_expose_event_t*)event;
             xcb_gcontext_t* gc = expose->window == window ? &orange : &green;
             if (*gc == XCB_NONE) {

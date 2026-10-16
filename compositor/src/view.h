@@ -156,6 +156,9 @@ struct vela_view {
     struct wl_listener request_configure;
     struct wl_listener request_activate;
     struct wl_listener set_decorations;
+    struct wl_listener set_override_redirect;
+    struct wl_listener request_below;
+    struct wl_listener request_skip_taskbar;
     // The taskbar's requests through the handle.
     struct wl_listener handle_activate;
     struct wl_listener handle_close;
@@ -237,6 +240,11 @@ const char *vela_view_app_id(const struct vela_view *view); // never NULL (X11: 
 // A system dialog waiting for an answer (keyring, administrator password,
 // GnuPG PIN): it stays above normal windows.
 bool vela_view_is_system_prompt(const struct vela_view *view);
+// An X11 window that asked to stay below the others (_NET_WM_STATE_BELOW, such
+// as the black backdrop Wine puts under a fullscreen game).
+bool vela_view_stays_below(const struct vela_view *view);
+// It goes back to the bottom of its layer, if it stays below.
+void vela_view_keep_below(struct vela_view *view);
 bool vela_view_resizable(const struct vela_view *view); // not if min = max
 pid_t vela_view_pid(const struct vela_view *view); // the process (for "End task")
 // Size of the whole frame (bar included); 0x0: the app chooses.

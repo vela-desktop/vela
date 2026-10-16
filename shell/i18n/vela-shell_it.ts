@@ -776,6 +776,10 @@
         <translation>Aggiungi alla &amp;barra delle applicazioni</translation>
     </message>
     <message>
+        <source>Add to &amp;desktop</source>
+        <translation>Aggiungi al &amp;desktop</translation>
+    </message>
+    <message>
         <source>Open file &amp;location</source>
         <translation>Apri &amp;percorso file</translation>
     </message>
@@ -798,6 +802,10 @@
     <message>
         <source>&amp;More</source>
         <translation>A&amp;ltro</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t find this application&apos;s launcher.</source>
+        <translation>Impossibile trovare l&apos;avviatore di questa applicazione.</translation>
     </message>
     <message>
         <source>Search apps</source>

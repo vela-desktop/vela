@@ -113,9 +113,9 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
             vela_buffer_append(json, "null");
         }
         vela_buffer_appendf(json,
-            ",\"workspace\":%d,\"sticky\":%s,\"maximized\":%s,\"minimized\":%s,\"fullscreen\":%s,\"snap\":",
+            ",\"workspace\":%d,\"sticky\":%s,\"maximized\":%s,\"minimized\":%s,\"fullscreen\":%s,\"below\":%s,\"snap\":",
             view->workspace, view->sticky ? t : f, view->maximized ? t : f, view->minimized ? t : f,
-            view->fullscreen ? t : f);
+            view->fullscreen ? t : f, vela_view_stays_below(view) ? t : f);
         if (vela_snap_is_none(view->snap)) {
             vela_buffer_append(json, "null");
         } else {

@@ -19,7 +19,7 @@
 
 void vela_focus_view(struct vela_server *server, struct vela_view *view)
 {
-    if (!view || !view->mapped || server->locked) {
+    if (!view || !view->mapped || server->locked || vela_view_stays_below(view)) {
         return;
     }
     // A window on another desktop: go to that desktop, like Windows.
@@ -145,7 +145,7 @@ void vela_focus_refocus(struct vela_server *server)
     }
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
-        if (view->mapped && !view->minimized && vela_view_on_current_workspace(view)) {
+        if (view->mapped && !view->minimized && vela_view_on_current_workspace(view) && !vela_view_stays_below(view)) {
             vela_focus_view(server, view);
             return;
         }

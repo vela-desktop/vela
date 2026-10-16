@@ -177,7 +177,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 | `vela-screen-dump` | Capture an output or region to PNG. |
 | `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window). |
 | `vela-panel` | Fake shell pieces on wlr-layer-shell: `wallpaper`, and `taskbar [--blur]` with a reserved area and background blur. |
-| `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu. |
+| `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu; `--wine-backdrop` adds Wine's black fullscreen backdrop (override-redirect, then managed with fullscreen, skip-taskbar and below). |
 | `vela-randr` | Configure outputs like Settings > Display (wlr-output-management): list them, or `--output NAME` with `--on`/`--off`, `--scale`, `--pos X,Y`, `--mode WxH`. |
 | `vela-testlock` | Test the lock path without requiring a password; it unlocks itself. |
 | `vela-slowgpu` | An app whose GPU finishes each frame late (Vulkan compute job, explicit or `--implicit` sync), to check that the screen never waits for it. |
@@ -232,6 +232,29 @@ documented Windows style flags, not game names or opaque pixel inspection.
 The isolated `test_x11.py` tests exercise both transitions, fullscreen
 at initial map, popup windows that must stay windowed, deleted style
 properties and unrelated style changes.
+
+### Wine/Proton fullscreen backdrop
+
+Wine puts a black, screen-sized window with the game's `WM_CLASS` under a
+fullscreen game. It is created override-redirect and made managed later,
+then asks for `_NET_WM_STATE_FULLSCREEN`, `SKIP_TASKBAR`, `SKIP_PAGER` and,
+after mapping, `BELOW`. Vela follows wlroots' `set_override_redirect`: an X11
+window that changes kind is recreated as a view or as an unmanaged surface,
+keeping its surface and map state (otherwise the backdrop stays an
+override-redirect surface above the game). Any X11 view with
+`_NET_WM_STATE_BELOW` stays at the bottom of its layer (on map, on
+fullscreen changes and when the state arrives later), never takes the
+keyboard and is left out of Alt+Tab; `SKIP_TASKBAR` views get no taskbar
+handle. `test_x11.py` reproduces the sequence with `vela-x11 --wine-backdrop`.
+Even if a mapped BELOW backdrop switches back to override-redirect, it stays
+in the ordinary window layer below fullscreen rather than in the X11 popup
+layer above fullscreen. Other override-redirect menus retain their normal
+popup stacking. `--backdrop-id-file PATH` exposes the backdrop XID for the
+mapped transition regression test.
+The mapped-state regression tests also use `vela-x11 --override-redirect XID on|off`
+and `vela-x11 --state XID below|skip-taskbar on|off` to exercise transitions
+without first unmapping the X11 window. Switching to override-redirect does
+not create a close-animation snapshot: the same surface remains visible.
 
 ## Project layout
 
