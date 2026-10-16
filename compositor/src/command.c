@@ -229,7 +229,8 @@ static void refresh_decorations(struct vela_server *server)
 static bool parse_color(const char *text, struct wlr_render_color *color)
 {
     unsigned rgb = 0;
-    if (strlen(text) != 7 || sscanf(text, "#%6x", &rgb) != 1) {
+    if (strlen(text) != 7 || text[0] != '#' || strspn(text + 1, "0123456789abcdefABCDEF") != 6
+        || sscanf(text, "#%6x", &rgb) != 1) {
         return false;
     }
     *color = (struct wlr_render_color) {
