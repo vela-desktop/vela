@@ -6,6 +6,8 @@
 //
 // Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--wine-style HEX] [--wine-backdrop] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
+//        vela-x11 --state XID below|skip-taskbar on|off
+//        vela-x11 --override-redirect XID on|off
 //        vela-x11 --set-wine-style XID HEX
 //        vela-x11 --delete-wine-style XID
 //        vela-x11 --geometry XID (root-relative X11 x y width height)
@@ -93,7 +95,9 @@ int main(int argc, char** argv)
     int startFullscreen = 0;
     int wineBackdrop = 0;
     int control = (argc == 4
-        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")))
+        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
+            || !strcmp(argv[1], "--override-redirect")))
+        || (argc == 5 && !strcmp(argv[1], "--state"))
         || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
             || !strcmp(argv[1], "--geometry")))
         || (argc == 2 && !strcmp(argv[1], "--root-size"));
@@ -176,14 +180,35 @@ int main(int argc, char** argv)
                 atom(connection, "_WINE_HWND_STYLE"), XCB_ATOM_CARDINAL, 32, 1, &style);
         } else if (!strcmp(argv[1], "--delete-wine-style")) {
             xcb_delete_property(connection, target, atom(connection, "_WINE_HWND_STYLE"));
+        } else if (!strcmp(argv[1], "--override-redirect")) {
+            if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
+                fprintf(stderr, "vela-x11: expected on or off\\n");
+                xcb_disconnect(connection);
+                return 2;
+            }
+            uint32_t redirect = !strcmp(argv[3], "on");
+            xcb_change_window_attributes(connection, target, XCB_CW_OVERRIDE_REDIRECT, &redirect);
         } else {
+            const int setState = !strcmp(argv[1], "--state");
+            const char* requested = setState ? argv[3] : "fullscreen";
+            const char* desired = setState ? argv[4] : argv[3];
+            if ((strcmp(requested, "fullscreen") && strcmp(requested, "below")
+                    && strcmp(requested, "skip-taskbar"))
+                || (strcmp(desired, "on") && strcmp(desired, "off"))) {
+                fprintf(stderr, "vela-x11: invalid state (expected fullscreen, below or skip-taskbar; on/off)\\n");
+                xcb_disconnect(connection);
+                return 2;
+            }
+            const char* name = !strcmp(requested, "below") ? "_NET_WM_STATE_BELOW"
+                : !strcmp(requested, "skip-taskbar") ? "_NET_WM_STATE_SKIP_TASKBAR"
+                : "_NET_WM_STATE_FULLSCREEN";
             xcb_client_message_event_t event = { 0 };
             event.response_type = XCB_CLIENT_MESSAGE;
             event.window = target;
             event.type = atom(connection, "_NET_WM_STATE");
             event.format = 32;
-            event.data.data32[0] = !strcmp(argv[3], "on") ? 1 : 0;
-            event.data.data32[1] = atom(connection, "_NET_WM_STATE_FULLSCREEN");
+            event.data.data32[0] = !strcmp(desired, "on") ? 1 : 0;
+            event.data.data32[1] = atom(connection, name);
             event.data.data32[3] = 1; // application source
             xcb_send_event(connection, 0, screen->root,
                 XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
