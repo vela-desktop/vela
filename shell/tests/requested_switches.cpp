@@ -222,7 +222,7 @@ private slots:
         QCOMPARE(request.value(false), true);
         request.reported(false); // the service, still on its way
         QCOMPARE(request.value(false), true);
-        request.refused(false); // an older request's refusal
+        request.refused(0); // a request never made
         QCOMPARE(request.value(false), true);
         request.reported(true);
         QVERIFY(!request.wanted());
@@ -231,10 +231,27 @@ private slots:
         request.ask(true);
         QTRY_COMPARE(changes, 3);
         QCOMPARE(request.value(false), false);
-        request.ask(false);
-        request.refused(false);
+        const Requested::Id off = request.ask(false);
+        request.refused(off);
         QCOMPARE(changes, 5);
         QCOMPARE(request.value(true), true);
+    }
+
+    // On, off, on again: the first request's late refusal is the first's,
+    // even though it asked for the same value as the last.
+    void requestedOldRefusalLeavesTheLastAlone()
+    {
+        Requested request([] {}, 1000);
+        const Requested::Id first = request.ask(true);
+        request.ask(false);
+        const Requested::Id last = request.ask(true);
+        QVERIFY(request.pending(last));
+        QVERIFY(!request.pending(first));
+        request.refused(first);
+        QCOMPARE(request.wanted(), std::optional<bool>(true));
+        QCOMPARE(request.value(false), true);
+        request.refused(last);
+        QVERIFY(!request.wanted());
     }
 
     void bluetoothShowsAtOnceAndStays()

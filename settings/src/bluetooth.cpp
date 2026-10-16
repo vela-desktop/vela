@@ -213,11 +213,11 @@ void Bluetooth::setPowered(bool on)
     if (m_adapter.isEmpty()) {
         return;
     }
-    m_poweredRequest.ask(on);
+    const Requested::Id request = m_poweredRequest.ask(on);
     // Even if blocked by rfkill.
     vela::bluetooth::setPowered(
-        this, m_adapter, on, [this, on] { return m_poweredRequest.wanted() == on; },
-        [this, on] { m_poweredRequest.refused(on); });
+        this, m_adapter, on, [this, request] { return m_poweredRequest.pending(request); },
+        [this, request] { m_poweredRequest.refused(request); });
 }
 
 void Bluetooth::startDiscovery()

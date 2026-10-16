@@ -48,8 +48,8 @@ inline bool unblock()
 
 // Asks BlueZ to turn the adapter on or off. `refused()` if BlueZ says no, or
 // if the adapter is still off after the retries; success shows up as BlueZ's
-// own PropertiesChanged. The retries stop once `wanted()` is false (the user
-// changed their mind, or the request timed out). Nothing blocks: callbacks
+// own PropertiesChanged. The retries stop once `wanted()` is false (a newer
+// request came, or this one timed out). Nothing blocks: callbacks
 // end with `context`.
 inline void setPowered(QObject* context, const QString& adapter, bool on, std::function<bool()> wanted,
     std::function<void()> refused, int attempt = 0)
