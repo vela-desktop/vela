@@ -170,6 +170,29 @@ class ShellColors(unittest.TestCase):
             self.assertEqual(image.at(0, 0), (0, 0, 0))
             self.assertEqual(image.at(20, 20)[0], red)
 
+    def test_a_resting_snap_preview_wakes_nothing(self):
+        # Once the preview has grown in, holding the window still at the edge
+        # plans no frame: its tick sets the same color again, which is no
+        # change to the scene. Each frame the compositor plans is a line of
+        # the animation log, drawn or not.
+        with Session(env={"VELA_DEBUG_ANIMATION": "1"}) as vela:
+            window = vela.open_window(400, 300, decorated=True)
+            w = vela.wait_for(lambda s: s["focused"] == window).window(window)
+            x, y = w["x"] + 200, w["y"] + BAR // 2
+            drag = subprocess.Popen([tool("vela-input"), "move", str(x), str(y), "sleep", "300", "down", "sleep", "50",
+                                     "move", str(x), str(y + 10), "sleep", "50", "move", "0", "400", "sleep", "3000",
+                                     "move", "960", "400", "sleep", "50", "up"], env=vela.client_env)
+            try:
+                time.sleep(1.5) # the preview has grown in
+                before = vela.log_text().count("animation: frame ")
+                time.sleep(1.0)
+                after = vela.log_text().count("animation: frame ")
+                shown = "animation: snap-preview" in vela.log_text()
+            finally:
+                drag.wait(timeout=10)
+            self.assertTrue(shown, "the preview was shown")
+            self.assertEqual(after - before, 0, "frames planned while the preview rests")
+
     def test_mica_colors_the_bars(self):
         with Session() as vela:
             vela.command("mica #102030 #405060")
