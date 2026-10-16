@@ -248,7 +248,8 @@ static void handle_unmanaged_request_below(struct wl_listener *listener, void *d
 {
     struct unmanaged *menu = wl_container_of(listener, menu, request_below);
     unmanaged_restack(menu);
-    if (menu->x11->below && menu->server->seat->keyboard_state.focused_surface == menu->x11->surface) {
+    if (menu->x11->below && menu->x11->surface
+        && menu->server->seat->keyboard_state.focused_surface == menu->x11->surface) {
         vela_focus_refocus(menu->server);
     }
 }
