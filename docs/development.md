@@ -246,6 +246,10 @@ override-redirect surface above the game). Any X11 view with
 fullscreen changes and when the state arrives later), never takes the
 keyboard and is left out of Alt+Tab; `SKIP_TASKBAR` views get no taskbar
 handle. `test_x11.py` reproduces the sequence with `vela-x11 --wine-backdrop`.
+The mapped-state regression tests also use `vela-x11 --override-redirect XID on|off`
+and `vela-x11 --state XID below|skip-taskbar on|off` to exercise transitions
+without first unmapping the X11 window. Switching to override-redirect does
+not create a close-animation snapshot: the same surface remains visible.
 
 ## Project layout
 
