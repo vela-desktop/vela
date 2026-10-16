@@ -4,7 +4,8 @@
 // vela-x11: a test X11 app (through Xwayland), so the X11 window tests do
 // not depend on installed programs.
 //
-// Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--wine-style HEX] [--wine-backdrop] [WIDTH HEIGHT]
+// Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--backdrop-id-file PATH]
+//                 [--wine-style HEX] [--wine-backdrop] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
 //        vela-x11 --state XID below|skip-taskbar on|off
 //        vela-x11 --override-redirect XID on|off
@@ -50,6 +51,24 @@ static xcb_window_t create(xcb_connection_t* connection, xcb_screen_t* screen, i
     return window;
 }
 
+static int write_xid_file(const char* path, xcb_window_t window)
+{
+    // O_EXCL prevents replacing an existing file or following a symlink.
+    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) {
+        perror("vela-x11: create XID file");
+        return -1;
+    }
+    char xid[32];
+    int len = snprintf(xid, sizeof(xid), "0x%x\n", window);
+    int ok = len > 0 && write(fd, xid, (size_t)len) == len;
+    if (!ok) {
+        perror("vela-x11: write XID file");
+    }
+    close(fd);
+    return ok ? 0 : -1;
+}
+
 static void send_state(xcb_connection_t* connection, xcb_screen_t* screen, xcb_window_t window, const char* first,
     const char* second)
 {
@@ -90,6 +109,7 @@ int main(int argc, char** argv)
     int menuX = 0;
     int menuY = 0;
     const char* idFile = NULL;
+    const char* backdropIdFile = NULL;
     uint32_t wineStyle = 0;
     int hasWineStyle = 0;
     int startFullscreen = 0;
@@ -122,6 +142,8 @@ int main(int argc, char** argv)
                 menu = 1;
             } else if (!strcmp(argv[arg], "--id-file")) {
                 idFile = argv[arg + 1];
+            } else if (!strcmp(argv[arg], "--backdrop-id-file")) {
+                backdropIdFile = argv[arg + 1];
             } else if (!strcmp(argv[arg], "--wine-style")) {
                 wineStyle = (uint32_t)strtoul(argv[arg + 1], NULL, 0);
                 hasWineStyle = 1;
@@ -220,23 +242,9 @@ int main(int argc, char** argv)
         return failed != 0;
     }
     xcb_window_t window = create(connection, screen, 0, 0, width, height, 0xff8000, 0);
-    if (idFile) {
-        // The XID control file must not be world-writable (CodeQL).
-        int fd = open(idFile, O_WRONLY | O_CREAT | O_EXCL, 0600);
-        if (fd < 0) {
-            perror("vela-x11: create XID file");
-            xcb_disconnect(connection);
-            return 1;
-        }
-        char xid[32];
-        int len = snprintf(xid, sizeof(xid), "0x%x\n", window);
-        if (len <= 0 || write(fd, xid, (size_t)len) != len) {
-            perror("vela-x11: write XID file");
-            close(fd);
-            xcb_disconnect(connection);
-            return 1;
-        }
-        close(fd);
+    if (idFile && write_xid_file(idFile, window) != 0) {
+        xcb_disconnect(connection);
+        return 1;
     }
     if (hasWineStyle) {
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
@@ -263,6 +271,10 @@ int main(int argc, char** argv)
     xcb_window_t backdrop = XCB_NONE;
     if (wineBackdrop) {
         backdrop = create(connection, screen, 0, 0, screen->width_in_pixels, screen->height_in_pixels, 0x000000, 1);
+        if (backdropIdFile && write_xid_file(backdropIdFile, backdrop) != 0) {
+            xcb_disconnect(connection);
+            return 1;
+        }
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, backdrop, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 8,
             sizeof(wmClass), wmClass);
         xcb_map_window(connection, backdrop);
