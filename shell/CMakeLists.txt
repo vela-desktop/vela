@@ -219,6 +219,18 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-service-models COMMAND vela-service-models-test)
     set_tests_properties(shell-service-models PROPERTIES TIMEOUT 90)
 
+    # Switches backed by BlueZ and NetworkManager move at once and come back
+    # if the service fails (src/requested.h), against fakes on a private bus.
+    qt_add_executable(vela-requested-switches-test
+        tests/requested_switches.cpp
+        src/requested.h src/bluetoothpower.h src/systemstatus.cpp src/systemstatus.h
+        ${PROJECT_SOURCE_DIR}/settings/src/bluetooth.cpp ${PROJECT_SOURCE_DIR}/settings/src/bluetooth.h)
+    target_include_directories(vela-requested-switches-test PRIVATE src ${PROJECT_SOURCE_DIR}/settings/src)
+    target_compile_options(vela-requested-switches-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-requested-switches-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
+    add_test(NAME shell-requested-switches COMMAND vela-requested-switches-test)
+    set_tests_properties(shell-requested-switches PROPERTIES TIMEOUT 60)
+
     qt_add_executable(vela-appearance-effects-test tests/appearance_effects.cpp)
     target_compile_options(vela-appearance-effects-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-appearance-effects-test PRIVATE vela-controls Qt6::Gui Qt6::Test)

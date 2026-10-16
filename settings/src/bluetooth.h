@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "requested.h"
+
 #include <QDBusContext>
 #include <QDBusObjectPath>
 #include <QObject>
@@ -31,7 +33,8 @@ public:
     explicit Bluetooth(QObject* parent = nullptr);
 
     bool available() const { return !m_adapter.isEmpty(); }
-    bool powered() const { return m_powered; }
+    // What the user asked for until BlueZ has done it (requested.h).
+    bool powered() const { return m_poweredRequest.value(m_powered); }
     void setPowered(bool on);
     bool discovering() const { return m_discovering; }
     QString adapterName() const { return m_adapterName; }
@@ -66,6 +69,7 @@ private:
     QString m_adapter;
     QString m_adapterName;
     bool m_powered = false;
+    Requested m_poweredRequest { [this] { emit changed(); } };
     bool m_discovering = false;
     QMap<QString, QVariantMap> m_devices; // path -> Device1 properties (+ "Battery", "busy")
     QString m_error;

@@ -27,7 +27,7 @@ ctest --test-dir build -L gpu --output-on-failure  # GPU suites
 |---|---|---:|
 | **Compositor / GoogleTest** | FrameClock, vblank grid, late latching, adaptive margin, learned host latency, animation curves, output scale selection, pixel geometry, night light, color filters, sunrise/sunset, `vela.conf` parsing and `outputs.conf` persistence. | No |
 | **Files** (`files-copies`) | Copy/move behavior, atomic replacement across file/directory types, failed or unsupported exchanges, processes killed immediately before/after exchange, removal errors, and a simulated full disk with `RLIMIT_FSIZE`. | No |
-| **Shell** (`shell-*`) | `.desktop` `Exec=` parsing, default-app resolution, volume steps, the asynchronous network model with slow, failed or missing services, and `Style` following `animation-effects` and `animation-duration` in `vela.conf`. | No |
+| **Shell** (`shell-*`) | `.desktop` `Exec=` parsing, default-app resolution, volume steps, the asynchronous network model with slow, failed or missing services, `Style` following `animation-effects` and `animation-duration` in `vela.conf`, and switches backed by services (Bluetooth in quick settings, Settings' home and Bluetooth page; Wi-Fi; airplane mode) moving at once and turning back when a fake BlueZ or NetworkManager on a private bus refuses or never does it (`shell-requested-switches`). | No |
 | **Vela.Controls** (`controls`, `controls-no-effects`) | Qt Quick Test, offscreen, at three times Vela's durations, then with animation effects off: `Button`, `Switch` and `Slider` reach the color of each state combination, fade and turn back halfway from where they are, take the focus from Tab and not from a click, activate from Space and Enter and set their accessible role and state; a binding on `checked` or `value` survives input; the switch's knob follows a drag and slides only on its own (jumps with effects off); the slider's value is never animated and it reports when the user is done; `PanelMotion` enters, leaves, turns back when reopened without `closed()`, takes no input while leaving and moves only with effects on; `Dialog`'s buttons, Esc, Enter and fade-out ([visual coherence](visual-coherence.md#68-controls-qt-behaves-vela-looks-d12)). | No |
 | **Settings** (`settings-displays`) | Native Wayland inventory and hotplug, modes, scale, rotation, confirmation-only persistence, explicit revert, compositor deadlines with the GUI thread blocked, client disconnection and SIGKILL, competing clients, failed commits and hotplug during preview. Uses real wlroots headless outputs and Vela’s output manager/preview; rendering and window rearrangement are stubbed. | No |
 | **Vela Report** (`reporting`, `reporting-gui`) | Guided CLI without a display, shared Qt worker and ZIP export, explicit collection boundaries, redaction, review exclusion, process identity, resource recording, bounded commands and archive failures. | No |
@@ -39,9 +39,9 @@ ctest --test-dir build -L gpu --output-on-failure  # GPU suites
 | **Polkit agent / GoogleTest** (`polkit.*`) | The agent's queue, cancellations by polkit and by the user, a crashed dialog counting as "No", retries after a wrong password, sessions that fail by themselves, identity order and choice, the dialog protocol. | No |
 | **Sharpness** (`sharpness`) | Pixel-level checks that windows reach the expected physical pixels across fractional scales and common window states. | Yes |
 
-The compositor currently contains 75 GoogleTest cases and the polkit agent 23;
+The compositor currently contains 83 GoogleTest cases and the polkit agent 23;
 the functional harness runs 103 end-to-end scenarios when the Qt shell is built.
-A complete build registers 135 CTest entries; some entries contain multiple
+A complete build registers 138 CTest entries; some entries contain multiple
 scenarios. Every scenario requires the expected compositor exit status, normally
 0, even if it exited before cleanup. The deliberate three-crash supervisor test
 explicitly requires status 1. Unexpected crashes cannot become passing tests.

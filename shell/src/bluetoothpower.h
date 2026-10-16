@@ -14,10 +14,13 @@
 
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
 #include <QDBusVariant>
 #include <QString>
 #include <QTimer>
 #include <QVariant>
+
+#include <functional>
 
 #include <fcntl.h>
 #include <linux/rfkill.h>
@@ -25,10 +28,12 @@
 
 namespace vela::bluetooth {
 
-// Removes the soft block from all Bluetooth devices.
+// Removes the soft block from all Bluetooth devices. VELA_RFKILL replaces
+// /dev/rfkill in the tests, which must not unblock the machine's radios.
 inline bool unblock()
 {
-    const int fd = ::open("/dev/rfkill", O_WRONLY | O_CLOEXEC);
+    const QByteArray path = qEnvironmentVariableIsSet("VELA_RFKILL") ? qgetenv("VELA_RFKILL") : QByteArray("/dev/rfkill");
+    const int fd = ::open(path.constData(), O_WRONLY | O_CLOEXEC);
     if (fd < 0) {
         return false;
     }
@@ -41,9 +46,16 @@ inline bool unblock()
     return ok;
 }
 
-inline void setPowered(const QString& adapter, bool on, int attempt = 0)
+// Asks BlueZ to turn the adapter on or off. `refused()` if BlueZ says no, or
+// if the adapter is still off after the retries; success shows up as BlueZ's
+// own PropertiesChanged. The retries stop once `wanted()` is false (the user
+// changed their mind, or the request timed out). Nothing blocks: callbacks
+// end with `context`.
+inline void setPowered(QObject* context, const QString& adapter, bool on, std::function<bool()> wanted,
+    std::function<void()> refused, int attempt = 0)
 {
     if (adapter.isEmpty()) {
+        refused();
         return;
     }
     if (on && attempt == 0) {
@@ -52,22 +64,41 @@ inline void setPowered(const QString& adapter, bool on, int attempt = 0)
     QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.bluez"), adapter,
         QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Set"));
     call << QStringLiteral("org.bluez.Adapter1") << QStringLiteral("Powered") << QVariant::fromValue(QDBusVariant(on));
-    QDBusConnection::systemBus().callWithCallback(call, nullptr, nullptr, nullptr);
-    if (on && attempt < 3) {
-        // BlueZ sees the unblock with some delay: until the adapter is on,
-        // it's asked again (at most three times).
-        QTimer::singleShot(400, [adapter, attempt] {
+    auto* reply = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call), context);
+    QObject::connect(reply, &QDBusPendingCallWatcher::finished, context, [=](QDBusPendingCallWatcher* w) {
+        w->deleteLater();
+        if (!on) {
+            if (w->isError()) {
+                refused();
+            }
+            return;
+        }
+        // BlueZ sees the unblock with some delay (and may refuse until it
+        // does): until the adapter is on, it's asked again, three times.
+        QTimer::singleShot(400, context, [=] {
+            if (!wanted()) {
+                return;
+            }
             QDBusMessage get = QDBusMessage::createMethodCall(QStringLiteral("org.bluez"), adapter,
                 QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
             get << QStringLiteral("org.bluez.Adapter1") << QStringLiteral("Powered");
-            const QDBusMessage reply = QDBusConnection::systemBus().call(get, QDBus::Block, 500);
-            const bool powered = reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()
-                && reply.arguments().first().value<QDBusVariant>().variant().toBool();
-            if (!powered) {
-                setPowered(adapter, true, attempt + 1);
-            }
+            auto* check = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(get, 500), context);
+            QObject::connect(check, &QDBusPendingCallWatcher::finished, context, [=](QDBusPendingCallWatcher* c) {
+                c->deleteLater();
+                const QDBusMessage message = c->reply();
+                const bool powered = message.type() == QDBusMessage::ReplyMessage && !message.arguments().isEmpty()
+                    && message.arguments().first().value<QDBusVariant>().variant().toBool();
+                if (powered || !wanted()) {
+                    return;
+                }
+                if (attempt < 3) {
+                    setPowered(context, adapter, true, wanted, refused, attempt + 1);
+                } else {
+                    refused();
+                }
+            });
         });
-    }
+    });
 }
 
 } // namespace vela::bluetooth
