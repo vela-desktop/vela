@@ -23,6 +23,7 @@
 #include "scene/scene.h"
 #include "server.h"
 #include "snap.h"
+#include "switcher.h"
 #include "workspace.h"
 
 #include <math.h>
@@ -304,6 +305,11 @@ static void handle_unmanaged_set_override_redirect(struct wl_listener *listener,
     struct unmanaged *menu = wl_container_of(listener, menu, set_override_redirect);
     struct vela_server *server = menu->server;
     struct wlr_xwayland_surface *x11 = menu->x11;
+    // Only promote a surface which really became managed. The notification
+    // can also arrive when X11 reapplies the current window attributes.
+    if (x11->override_redirect) {
+        return;
+    }
     bool mapped = x11->surface && x11->surface->mapped;
     if (mapped) {
         handle_unmanaged_unmap(&menu->unmap, NULL);
@@ -531,6 +537,11 @@ static void handle_request_below(struct wl_listener *listener, void *data)
     // wlroots has already updated the flag. Wine asks after mapping, when the
     // backdrop may already have the keyboard and cover the game: give both back.
     vela_view_keep_below(view);
+    if (view->mapped && vela_view_stays_below(view)) {
+        // Alt+Tab caches its candidates when opened; discard a window that
+        // became a backdrop during an active switcher session.
+        vela_switcher_forget(view->server, view);
+    }
     if (view->mapped && vela_view_stays_below(view) && vela_views_focused(view->server) == view) {
         vela_focus_refocus(view->server);
     }
@@ -548,9 +559,16 @@ static void handle_set_override_redirect(struct wl_listener *listener, void *dat
     struct vela_view *view = wl_container_of(listener, view, set_override_redirect);
     struct vela_server *server = view->server;
     struct wlr_xwayland_surface *x11 = view->x11;
+    // Do not demote an ordinary managed view on a redundant X11 notification.
+    if (!x11->override_redirect) {
+        return;
+    }
     bool mapped = view->mapped;
     cancel_wine_style(view);
     if (mapped) {
+        // The underlying Wayland surface is still live. Closing snapshots
+        // would leave a fading ghost over its replacement unmanaged surface.
+        view->close_animated = true;
         vela_view_unmapped(view);
     }
     x11->data = NULL;
