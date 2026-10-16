@@ -17,53 +17,87 @@ Item {
     property real backing: 3
     property real committed: NaN
 
-    Item { id: start; focus: true; activeFocusOnTab: true; width: 10; height: 10 }
-    Slider {
-        id: control
-        x: 20
-        y: 20
-        width: 220
-        from: 0
-        to: 10
-        stepSize: 1
-        value: root.backing
-        onMoved: root.backing = value
+    // Qt Quick Test sends synthetic mouse events. On the offscreen backend,
+    // a previous slider can retain its hover/PointHandler state after the
+    // pointer moves away. Recreate the whole fixture for each test instead
+    // of trying to reset a live control's hoverEnabled property.
+    readonly property var control: fixture.item ? fixture.item.control : null
+    readonly property var deferred: fixture.item ? fixture.item.deferred : null
+    readonly property var start: fixture.item ? fixture.item.start : null
+    readonly property var releases: fixture.item ? fixture.item.releases : null
+
+    Component {
+        id: sliderFixture
+        Item {
+            property alias start: startItem
+            property alias control: controlItem
+            property alias deferred: deferredItem
+            property alias releases: releaseSpy
+
+            Item {
+                id: startItem
+                focus: true
+                activeFocusOnTab: true
+                width: 10
+                height: 10
+            }
+            Slider {
+                id: controlItem
+                x: 20
+                y: 20
+                width: 220
+                from: 0
+                to: 10
+                stepSize: 1
+                value: root.backing
+                onMoved: root.backing = value
+            }
+            Slider {
+                id: deferredItem
+                x: 20
+                y: 80
+                width: 220
+                from: 0
+                to: 10
+                stepSize: 1
+                live: false
+                mark: 5
+                resetValue: 5
+                value: root.committed
+                onReleased: v => root.committed = v
+            }
+            SignalSpy {
+                id: releaseSpy
+                target: deferredItem
+                signalName: "released"
+            }
+        }
     }
-    Slider {
-        id: deferred
-        x: 20
-        y: 80
-        width: 220
-        from: 0
-        to: 10
-        stepSize: 1
-        live: false
-        mark: 5
-        resetValue: 5
-        value: root.committed
-        onReleased: v => root.committed = v
+    Loader {
+        id: fixture
+        anchors.fill: parent
+        sourceComponent: sliderFixture
     }
-    SignalSpy { id: releases; target: deferred; signalName: "released" }
 
     TestCase {
         name: "Slider"
         when: windowShown
 
-        readonly property Item dot: control.handle.children[0]
+        readonly property Item dot: control && control.handle ? control.handle.children[0] : null
 
         function init() {
-            mouseMove(root, 390, 290)
-            // Qt Quick Test's synthetic click can leave this slider's
-            // PointHandler hover cached between test functions offscreen.
-            // Reset the hover subscription, not the production control's
-            // geometry or bindings, before asserting the rest state.
-            control.hoverEnabled = false
-            control.hoverEnabled = true
-            tryCompare(control, "hovered", false, 2000)
-            start.forceActiveFocus()
+            // Destroy first, then move the synthetic pointer out of the
+            // fixture's bounds. A newly constructed slider has clean hover,
+            // focus, signal and animation state on every platform.
+            fixture.active = false
             root.backing = 3
             root.committed = 2
-            releases.clear()
+            mouseMove(root, 390, 290)
+            fixture.active = true
+            verify(control !== null)
+            start.forceActiveFocus()
+            compare(releases.count, 0)
+            tryCompare(control, "hovered", false, 2000)
             tryCompare(dot, "width", 12, 2000)
         }
 
