@@ -33,6 +33,20 @@ void vela_focus_view(struct vela_server *server, struct vela_view *view)
 
     // Bring it forward and to the head of the list in any case. System dialogs
     // stay above (but the keyboard goes where the user clicked).
+    // Like Windows: a fullscreen window stays above the taskbar and the other
+    // windows of its output only while it is the one in use (Alt+Tab out of a
+    // game shows the chosen window; back to the game, it covers all again).
+    struct vela_layers *layers = &server->layers;
+    struct vela_view *other;
+    wl_list_for_each (other, &server->views, link) {
+        if (other != view && other->tree->node.parent == layers->fullscreen
+            && vela_view_output(other) == vela_view_output(view)) {
+            vela_node_reparent(&other->tree->node, layers->windows);
+        }
+    }
+    if (view->fullscreen) {
+        vela_node_reparent(&view->tree->node, layers->fullscreen);
+    }
     vela_node_raise_to_top(&view->tree->node);
     wl_list_remove(&view->link);
     wl_list_insert(&server->views, &view->link);

@@ -239,6 +239,8 @@ static bool init(struct vela_server *server)
     layers->windows_out = vela_tree_create(root);
     vela_node_place_above(&layers->windows_out->node, &layers->windows->node);
     layers->windows_out->node.ignores_input = true;
+    layers->x11_covers = vela_tree_create(root);
+    vela_node_place_above(&layers->x11_covers->node, &layers->windows_out->node);
     layers->drag = vela_tree_create(root);
     layers->drag->node.ignores_input = true;
     layers->lock = vela_tree_create(root);
@@ -446,7 +448,7 @@ void vela_server_destroy(struct vela_server *server)
     struct vela_layers *l = &server->layers;
     struct vela_tree *trees[] = {
         l->background, l->bottom, l->windows, l->windows_out, l->top, l->fullscreen, l->top_above_fullscreen,
-        l->x11_popups, l->overlay, l->drag, l->lock,
+        l->x11_covers, l->x11_popups, l->overlay, l->drag, l->lock,
     };
     for (size_t i = 0; i < sizeof(trees) / sizeof(trees[0]); ++i) {
         vela_node_destroy(&trees[i]->node);

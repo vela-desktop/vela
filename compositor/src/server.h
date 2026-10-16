@@ -69,6 +69,10 @@ struct vela_layers {
     // Run...): like Windows, they appear above a fullscreen game too, which
     // instead covers the taskbar.
     struct vela_tree *top_above_fullscreen;
+    // X11 override-redirect windows as large as an output (the Steam overlay
+    // over a game): above the windows and below the taskbar, above the
+    // fullscreen layer only while a fullscreen window is shown (xwayland.c).
+    struct vela_tree *x11_covers;
     struct vela_tree *x11_popups; // menus and tooltips of X11 apps
     struct vela_tree *overlay;
     struct vela_tree *drag; // the icon of what's being dragged between apps

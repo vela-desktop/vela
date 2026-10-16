@@ -10,12 +10,13 @@
 //        vela-x11 --delete-wine-style XID
 //        vela-x11 --geometry XID (root-relative X11 x y width height)
 //        vela-x11 --root-size (current X11 root width height)
-//        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
+//        vela-x11 [--start-fullscreen] [--cover] [WIDTH HEIGHT]
 //
 // Opens an orange window with class "vela.x11" and title "vela-x11", which
 // closes on WM_DELETE_WINDOW (Alt+F4). --menu also opens a green 120x80
 // override-redirect menu at (X, Y) on the screen, like the drop-down menus
-// of X11 apps. Like most apps, it draws only when the server asks (Expose).
+// of X11 apps; --cover instead opens a green override-redirect window as
+// large as the X screen, like the Steam overlay over a game. Like most apps, it draws only when the server asks (Expose).
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -55,6 +56,7 @@ int main(int argc, char** argv)
     uint32_t wineStyle = 0;
     int hasWineStyle = 0;
     int startFullscreen = 0;
+    int cover = 0;
     int control = (argc == 4
         && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")))
         || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
@@ -65,6 +67,11 @@ int main(int argc, char** argv)
         while (arg < argc) {
             if (!strcmp(argv[arg], "--start-fullscreen")) {
                 startFullscreen = 1;
+                ++arg;
+                continue;
+            }
+            if (!strcmp(argv[arg], "--cover")) {
+                cover = 1;
                 ++arg;
                 continue;
             }
@@ -203,6 +210,12 @@ int main(int argc, char** argv)
         int type = event->response_type & 0x7f;
         if (type == XCB_EXPOSE) {
             const xcb_expose_event_t* expose = (const xcb_expose_event_t*)event;
+            // The overlay comes once the window is on screen (and focused).
+            if (cover == 1 && expose->window == window) {
+                cover = 2;
+                xcb_map_window(connection,
+                    create(connection, screen, 0, 0, screen->width_in_pixels, screen->height_in_pixels, 0x00c000, 1));
+            }
             xcb_gcontext_t* gc = expose->window == window ? &orange : &green;
             if (*gc == XCB_NONE) {
                 uint32_t color = expose->window == window ? 0xff8000 : 0x00c000;

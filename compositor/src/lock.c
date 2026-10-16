@@ -52,7 +52,8 @@ static void set_desktop_enabled(struct vela_server *server, bool enabled)
 {
     struct vela_layers *l = &server->layers;
     struct vela_tree *layers[] = {
-        l->background, l->bottom, l->windows, l->windows_out, l->top, l->fullscreen, l->x11_popups, l->overlay,
+        l->background, l->bottom, l->windows, l->windows_out, l->top, l->fullscreen, l->x11_covers, l->x11_popups,
+        l->overlay,
     };
     for (size_t i = 0; i < sizeof(layers) / sizeof(layers[0]); ++i) {
         vela_node_set_enabled(&layers[i]->node, enabled);

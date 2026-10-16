@@ -63,6 +63,21 @@ static bool starts_with(const char *text, const char *prefix)
 
 // -------------------------------------------------------------- answers --
 
+// Position of the window in the scene, from the bottom (fullscreen ones are in
+// a layer above): tests read the stacking order from it.
+static int stack_index(struct vela_server *server, const struct vela_view *view)
+{
+    int index = 0;
+    struct vela_node *node;
+    wl_list_for_each (node, &server->layers.windows->children, link) {
+        if (node == &view->tree->node) {
+            return index;
+        }
+        ++index;
+    }
+    return -1;
+}
+
 static void state_json(struct vela_server *server, struct vela_buffer *json)
 {
     const char *t = "true";
@@ -121,7 +136,7 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         } else {
             vela_buffer_appendf(json, "[%d,%d,%d,%d]", view->snap.x0, view->snap.y0, view->snap.x1, view->snap.y1);
         }
-        vela_buffer_appendf(json, ",\"snapGroup\":%u}", view->snap_group);
+        vela_buffer_appendf(json, ",\"snapGroup\":%u,\"z\":%d}", view->snap_group, stack_index(server, view));
         first = false;
     }
     // The layer-shell surfaces, bottom to top, and the one with the keyboard.

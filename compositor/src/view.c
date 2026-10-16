@@ -1380,8 +1380,9 @@ bool vela_views_fullscreen_on(struct vela_server *server, struct vela_output *ou
 {
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
+        // Alt+Tabbed out of, it is below the desktop's windows (focus.c).
         if (view->mapped && view->fullscreen && !view->minimized && vela_view_on_current_workspace(view)
-            && vela_view_output(view) == output) {
+            && view->tree->node.parent == server->layers.fullscreen && vela_view_output(view) == output) {
             return true;
         }
     }

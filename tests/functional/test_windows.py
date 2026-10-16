@@ -89,6 +89,22 @@ class Windows(unittest.TestCase):
         self.vela.input("keydown", "alt", "key", "tab", "sleep", "100", "keyup", "alt")
         self.vela.wait_for(lambda s: s["focused"] == second, what="Alt+Tab again: back again")
 
+    def test_alt_tab_out_of_a_fullscreen_window(self):
+        """Like Windows: Alt+Tab from a fullscreen game shows the chosen window
+        (the game drops below it, still fullscreen); Alt+Tab back puts the game
+        above everything again."""
+        a = self.vela.open_window(300, 200)
+        game = self.vela.open_window(command=[tool("vela-pattern"), "--fullscreen"])
+        self.vela.wait_for(lambda s: s.window(game)["fullscreen"] and s["focused"] == game, what="fullscreen")
+        self.vela.keys("alt+Tab")
+        state = self.vela.wait_for(lambda s: s["focused"] == a, what="Alt+Tab to the other window")
+        self.assertTrue(state.window(game)["fullscreen"])
+        self.assertGreater(state.window(a)["z"], state.window(game)["z"])
+        self.assertNotEqual(state.window(game)["z"], -1)  # out of the fullscreen layer
+        self.vela.keys("alt+Tab")
+        state = self.vela.wait_for(lambda s: s["focused"] == game, what="Alt+Tab back to the game")
+        self.assertEqual(state.window(game)["z"], -1)
+
     def test_virtual_desktops(self):
         window = self.vela.open_window()
         self.vela.keys("super+ctrl+d") # a new desktop, and we go there

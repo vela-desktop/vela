@@ -206,14 +206,48 @@ struct unmanaged {
     struct wl_listener destroy;
 };
 
+// As large as (almost all of) the output it is on: not a menu but an overlay
+// drawn over a game (Steam's), which can stay mapped and invisible for as long
+// as the game runs.
+static bool unmanaged_covers_output(const struct unmanaged *menu)
+{
+    const struct wlr_xwayland_surface *x11 = menu->x11;
+    struct vela_output *output = vela_output_at(menu->server, x11->x + x11->width / 2.0, x11->y + x11->height / 2.0);
+    if (!output) {
+        return false;
+    }
+    struct wlr_box box = vela_output_box(output);
+    struct wlr_box window = { x11->x, x11->y, x11->width, x11->height };
+    struct wlr_box common;
+    if (!wlr_box_intersection(&common, &box, &window)) {
+        return false;
+    }
+    return (double)common.width * common.height >= 0.9 * (double)box.width * box.height;
+}
+
+// Menus above everything; an overlay as large as the output below the
+// taskbar (x11_covers), so it hides neither the taskbar nor the windows
+// raised over it.
+static void unmanaged_place(struct unmanaged *menu)
+{
+    struct vela_layers *layers = &menu->server->layers;
+    struct vela_tree *layer = unmanaged_covers_output(menu) ? layers->x11_covers : layers->x11_popups;
+    if (menu->tree->node.parent != layer) {
+        vela_node_reparent(&menu->tree->node, layer);
+    }
+    vela_node_set_position(&menu->tree->node, menu->x11->x, menu->x11->y);
+}
+
 static void handle_unmanaged_map(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, map);
-    vela_node_set_position(&menu->tree->node, menu->x11->x, menu->x11->y);
+    unmanaged_place(menu);
     vela_node_raise_to_top(&menu->tree->node);
     vela_node_set_enabled(&menu->tree->node, true);
-    // Some X11 menus want the keyboard (to move through the entries).
-    if (wlr_xwayland_surface_override_redirect_wants_focus(menu->x11)) {
+    // Some X11 menus want the keyboard (to move through the entries); an
+    // overlay as large as the output doesn't take it from the game, Alt+Tab
+    // and Alt+F4.
+    if (wlr_xwayland_surface_override_redirect_wants_focus(menu->x11) && !unmanaged_covers_output(menu)) {
         vela_input_keyboard_enter(menu->server->input, menu->x11->surface);
     }
 }
@@ -262,7 +296,7 @@ static void handle_unmanaged_dissociate(struct wl_listener *listener, void *data
 static void handle_unmanaged_set_geometry(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, set_geometry);
-    vela_node_set_position(&menu->tree->node, menu->x11->x, menu->x11->y);
+    unmanaged_place(menu);
 }
 
 static void handle_unmanaged_request_configure(struct wl_listener *listener, void *data)
@@ -632,6 +666,19 @@ void vela_xwayland_sync(struct vela_server *server)
 {
     if (!server->xwayland) {
         return;
+    }
+    // The overlays as large as the output go over a fullscreen game shown
+    // above the taskbar too (but not over the panels summoned above it, such
+    // as the Start menu).
+    struct vela_layers *layers = &server->layers;
+    bool fullscreen = false;
+    struct vela_node *node;
+    wl_list_for_each (node, &layers->fullscreen->children, link) {
+        fullscreen = fullscreen || node->enabled;
+    }
+    struct vela_node *below = fullscreen ? &layers->fullscreen->node : &layers->windows_out->node;
+    if (layers->x11_covers->node.link.prev != &below->link) {
+        vela_node_place_above(&layers->x11_covers->node, below);
     }
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
