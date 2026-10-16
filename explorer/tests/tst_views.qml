@@ -63,22 +63,24 @@ Item {
             return item.selected ? Theme.selection : Theme.subtleRest
         }
 
-        function scrollAndCheck(view, flickable, name, step) {
+        function scrollAndCheck(view, flickable, name, step, perScreen) {
             view.visible = true
+            const firstIndex = new Map() // delegate -> the file it was made for
             let reused = 0
-            const pooled = []
             for (let pass = 0; pass < 6; ++pass) {
                 tryVerify(() => shown(view, flickable, name).every(d => Colors.same(d.fill.color, expected(d.item))), 5000,
                           "settled before scrolling")
-                const before = new Map(shown(view, flickable, name).map(d => [d.item, d.item.selected]))
+                for (const d of shown(view, flickable, name))
+                    if (!firstIndex.has(d.item)) firstIndex.set(d.item, d.item.index)
                 flickable.contentY += step
-                wait(0)
-                for (const d of shown(view, flickable, name)) {
+                flickable.forceLayout() // the new rows now, not at the next frame
+                const now = shown(view, flickable, name)
+                verify(now.length >= perScreen, "a full screen of delegates: " + now.length)
+                for (const d of now) {
                     verify(Colors.same(d.fill.color, expected(d.item)),
                            "row " + d.item.index + " (" + (d.item.selected ? "selected" : "not selected") + ") is " + d.fill.color)
-                    if (!before.has(d.item) && pooled.indexOf(d.item) >= 0) ++reused
+                    if (firstIndex.has(d.item) && firstIndex.get(d.item) !== d.item.index) ++reused
                 }
-                for (const item of before.keys()) pooled.push(item)
             }
             verify(reused > 0, "the view recycled its delegates")
             view.visible = false
@@ -92,11 +94,11 @@ Item {
         }
 
         function test_details_view() {
-            scrollAndCheck(details, flickable(details), "rowFill", details.rowHeight * 25)
+            scrollAndCheck(details, flickable(details), "rowFill", details.rowHeight * 25, 10)
         }
 
         function test_icon_view() {
-            scrollAndCheck(icons, flickable(icons), "cellFill", icons.cellHeight * 25)
+            scrollAndCheck(icons, flickable(icons), "cellFill", icons.cellHeight * 25, 10)
         }
     }
 }
