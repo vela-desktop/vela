@@ -696,6 +696,7 @@ Window {
         id: showDesktop
         anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
         width: 8
+        visible: Config.showDesktopCorner
 
         function showTooltip() {
             const p = showDesktop.mapToItem(null, showDesktop.width / 2, 0)
