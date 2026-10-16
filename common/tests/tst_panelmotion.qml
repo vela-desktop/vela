@@ -26,6 +26,7 @@ Item {
             anchors.fill: parent
             color: "gray"
             MouseArea { id: area; anchors.fill: parent; hoverEnabled: true }
+            TextInput { id: field; width: 100; height: 20 }
         }
     }
     PanelMotion {
@@ -122,6 +123,22 @@ Item {
             mouseClick(content, 60, 60)
             compare(spy.count, 0)
             tryCompare(closed, "count", 1, 3000)
+        }
+
+        function test_no_keys_while_leaving_and_back_when_turning_back() {
+            openFully()
+            field.text = ""
+            field.forceActiveFocus()
+            keyClick(Qt.Key_A)
+            compare(field.text, "a")
+            motion.close()
+            verify(!field.activeFocus)
+            keyClick(Qt.Key_B)
+            compare(field.text, "a", "a key while leaving")
+            motion.open()
+            verify(field.activeFocus, "the keys are back")
+            keyClick(Qt.Key_C)
+            compare(field.text, "ac")
         }
 
         function test_only_opacity_without_effects() {

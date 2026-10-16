@@ -783,7 +783,7 @@ Its whole interface:
 | `offset` (point), `scaleFrom` (1) | where and how big the panel starts; both × `Theme.motion` |
 | `duration` (`Theme.slow`) | the entering movement's; dialogs and menus pass `Theme.normal`. The fade in is always `fast`, the exit always `normal` |
 | `instantExit` (false) | menus, previews, Alt+Tab, Task View (K5) |
-| `open()`, `close()`, `closing`, `closed()` | `open()` during a close turns back from the current values; the content takes no input while `closing`; `closed()` when an exit finishes and no reopening came |
+| `open()`, `close()`, `closing`, `closed()` | `open()` during a close turns back from the current values; the content takes no input while `closing`, neither mouse nor keys (the keys go back to where they were if it turns back); `closed()` when an exit finishes and no reopening came |
 | `moving`, `area` | entering or leaving; the blur region: while `moving` the rectangle covering the panel along its whole travel, at rest the panel |
 
 No modes, no recipe table: each panel's three numbers are written where the

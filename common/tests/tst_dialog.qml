@@ -77,6 +77,22 @@ Item {
             compare(chosen.signalArguments[0][0], "save")
         }
 
+        function test_one_choice_per_opening() {
+            root.valid = true
+            dialog.open()
+            keyClick(Qt.Key_Return)
+            keyClick(Qt.Key_Return)
+            keyClick(Qt.Key_Escape)
+            verify(dialog.closing)
+            dialog.close("save")
+            compare(chosen.count, 1)
+            compare(chosen.signalArguments[0][0], "save")
+            tryCompare(dialog, "visible", false, 3000)
+            dialog.open()
+            keyClick(Qt.Key_Escape)
+            compare(chosen.count, 2, "a new opening chooses again")
+        }
+
         function test_a_click_chooses() {
             dialog.open()
             wait(Theme.normal * 2)

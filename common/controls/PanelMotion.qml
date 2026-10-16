@@ -5,7 +5,7 @@ import QtQuick
 
 // What every panel does the same way (docs/visual-coherence.md §6.9): it
 // enters, leaves, turns back when reopened during its exit, and takes no
-// input while leaving. A container: the owner puts the panel and its Shadow
+// input while leaving, neither the mouse nor the keys. A container: the owner puts the panel and its Shadow
 // inside, places it where the panel rests, and the container moves, scales
 // and fades them together. What differs per panel stays with it: where it
 // comes from (`offset`, in units, and `scaleFrom`, both times Theme.motion,
@@ -84,6 +84,10 @@ Item {
             opacity = 0
         }
         enter.restart()
+        // The keys go back where they were before the exit took them.
+        if (turningBack && d.focus)
+            d.focus.forceActiveFocus()
+        d.focus = null
     }
     // `atOnce`: without the exit, when what comes next happens elsewhere at
     // once (the clipboard's paste needs the keyboard back in the app).
@@ -99,12 +103,27 @@ Item {
             closed()
             return
         }
+        // The keys too: a second Enter while a dialog leaves must not choose
+        // again.
+        const focused = Window.activeFocusItem
+        d.focus = inside(focused) ? focused : null
         exit.restart()
+        if (d.focus)
+            blocker.forceActiveFocus()
+    }
+
+    function inside(item) {
+        for (let i = item; i; i = i.parent) {
+            if (i === motion)
+                return true
+        }
+        return false
     }
 
     QtObject {
         id: d
         property bool opened: false
+        property Item focus: null // what had the keys when the exit began
     }
 
     ParallelAnimation {
@@ -119,14 +138,17 @@ Item {
         onFinished: motion.closed() // open() stops it: never after a reopening
     }
 
-    // Above the content: while leaving, a click, the wheel or a hover reaches
-    // nothing.
+    // Above the content: while leaving, a click, the wheel, a hover or a key
+    // reaches nothing.
     MouseArea {
+        id: blocker
         z: 1000000
         anchors.fill: parent
         visible: motion.closing
         hoverEnabled: true
         acceptedButtons: Qt.AllButtons
         onWheel: {}
+        Keys.onPressed: event => event.accepted = true
+        Keys.onReleased: event => event.accepted = true
     }
 }

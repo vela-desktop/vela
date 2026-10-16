@@ -8,7 +8,8 @@ import QtQuick
 // four buttons in a band at the bottom (`buttons`: [{text, accent, value,
 // enabled}]). `chosen(value)` with the pressed one; Esc chooses "cancel",
 // Enter the accent button. It grows in from 1.05 and fades out (PanelMotion);
-// close() without a value closes it without choosing.
+// close() without a value closes it without choosing. One choice per
+// opening: once it leaves, nothing chooses again.
 Item {
     id: dialog
     property string title
@@ -29,6 +30,8 @@ Item {
         panel.forceActiveFocus()
     }
     function close(value) {
+        if (!motion.opened)
+            return
         motion.close()
         if (value !== undefined)
             chosen(value)
