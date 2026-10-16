@@ -182,7 +182,7 @@ int main(int argc, char** argv)
             xcb_delete_property(connection, target, atom(connection, "_WINE_HWND_STYLE"));
         } else if (!strcmp(argv[1], "--override-redirect")) {
             if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
-                fprintf(stderr, "vela-x11: expected on or off\\n");
+                fprintf(stderr, "vela-x11: expected on or off\n");
                 xcb_disconnect(connection);
                 return 2;
             }
@@ -195,7 +195,7 @@ int main(int argc, char** argv)
             if ((strcmp(requested, "fullscreen") && strcmp(requested, "below")
                     && strcmp(requested, "skip-taskbar"))
                 || (strcmp(desired, "on") && strcmp(desired, "off"))) {
-                fprintf(stderr, "vela-x11: invalid state (expected fullscreen, below or skip-taskbar; on/off)\\n");
+                fprintf(stderr, "vela-x11: invalid state (expected fullscreen, below or skip-taskbar; on/off)\n");
                 xcb_disconnect(connection);
                 return 2;
             }
