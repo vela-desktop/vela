@@ -206,6 +206,7 @@ struct unmanaged {
     struct wl_listener set_geometry;
     struct wl_listener request_configure;
     struct wl_listener set_override_redirect;
+    struct wl_listener request_below;
     struct wl_listener destroy;
 };
 
@@ -213,15 +214,42 @@ static struct vela_view *view_create(struct vela_server *server, struct wlr_xway
 static void handle_associate(struct wl_listener *listener, void *data);
 static void handle_map(struct wl_listener *listener, void *data);
 
+// A BELOW backdrop must render behind fullscreen windows even when Wine
+// changes it to override-redirect while mapped. Ordinary menus stay on top.
+static void unmanaged_restack(struct unmanaged *menu)
+{
+    struct vela_tree *layer = menu->x11->below
+        ? menu->server->layers.windows : menu->server->layers.x11_popups;
+    vela_node_reparent(&menu->tree->node, layer);
+    if (menu->x11->below) {
+        // The tree is already a child, so the list cannot be empty.
+        struct vela_node *bottom = wl_container_of(layer->children.next, bottom, link);
+        if (bottom != &menu->tree->node) {
+            vela_node_place_below(&menu->tree->node, bottom);
+        }
+    } else {
+        vela_node_raise_to_top(&menu->tree->node);
+    }
+}
+
 static void handle_unmanaged_map(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, map);
     vela_node_set_position(&menu->tree->node, menu->x11->x, menu->x11->y);
-    vela_node_raise_to_top(&menu->tree->node);
+    unmanaged_restack(menu);
     vela_node_set_enabled(&menu->tree->node, true);
-    // Some X11 menus want the keyboard (to move through the entries).
-    if (wlr_xwayland_surface_override_redirect_wants_focus(menu->x11)) {
+    // BELOW backdrops must not steal keyboard focus from the game.
+    if (!menu->x11->below && wlr_xwayland_surface_override_redirect_wants_focus(menu->x11)) {
         vela_input_keyboard_enter(menu->server->input, menu->x11->surface);
+    }
+}
+
+static void handle_unmanaged_request_below(struct wl_listener *listener, void *data)
+{
+    struct unmanaged *menu = wl_container_of(listener, menu, request_below);
+    unmanaged_restack(menu);
+    if (menu->x11->below && menu->server->seat->keyboard_state.focused_surface == menu->x11->surface) {
+        vela_focus_refocus(menu->server);
     }
 }
 
@@ -289,6 +317,7 @@ static void handle_unmanaged_destroy(struct wl_listener *listener, void *data)
     vela_unlisten(&menu->set_geometry);
     vela_unlisten(&menu->request_configure);
     vela_unlisten(&menu->set_override_redirect);
+    vela_unlisten(&menu->request_below);
     vela_unlisten(&menu->destroy);
     if (menu->surface_node) {
         vela_node_destroy(&menu->surface_node->node);
@@ -339,6 +368,7 @@ static struct unmanaged *unmanaged_create(struct vela_server *server, struct wlr
     vela_listen(&x11->events.request_configure, &menu->request_configure, handle_unmanaged_request_configure);
     vela_listen(&x11->events.set_override_redirect, &menu->set_override_redirect,
         handle_unmanaged_set_override_redirect);
+    vela_listen(&x11->events.request_below, &menu->request_below, handle_unmanaged_request_below);
     vela_listen(&x11->events.destroy, &menu->destroy, handle_unmanaged_destroy);
     return menu;
 }
