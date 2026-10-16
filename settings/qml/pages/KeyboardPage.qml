@@ -96,8 +96,7 @@ Page {
         id: addDialog
         parent: root.contentItem
         title: qsTr("Add a keyboard")
-        primaryText: ""
-        secondaryText: qsTr("Cancel")
+        buttons: [{ text: qsTr("Cancel"), value: "cancel" }]
         dialogWidth: 520
         readonly property var all: visible ? Layouts.all() : []
         readonly property var matches: {

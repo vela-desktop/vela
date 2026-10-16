@@ -221,7 +221,7 @@ Item {
     }
 
     // --- look ---
-    PanelShadow {
+    Shadow {
         target: panel
         radius: Theme.radiusOverlay
         blur: 16

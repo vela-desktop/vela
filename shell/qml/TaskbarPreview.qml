@@ -203,7 +203,7 @@ Window {
         }
     }
 
-    PanelShadow {
+    Shadow {
         target: panel
         opacity: panel.opacity
         blur: 24

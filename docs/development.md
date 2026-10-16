@@ -318,6 +318,21 @@ The compositor owns its scene graph, Vulkan renderer, frame clock, damage handli
 
 The renderer design is documented in detail in [renderer.md](renderer.md).
 
+## Controls
+
+Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`): `Theme` (colors, radii, shadows, durations) and the pieces more than one program uses. Their behavior is Qt's (Qt Quick Templates: input, keyboard, focus, accessibility); their look and their timing are Vela's ([visual coherence](visual-coherence.md#68-controls-qt-behaves-vela-looks-d12)).
+
+| Piece | What it is |
+|---|---|
+| `Fill` | A background whose color, chosen by the control from its state, fades in `Theme.fast` |
+| `Button`, `Switch`, `Slider` | Templates' controls on `Fill`; `usable` is an alias of `enabled` |
+| `TextBox` | A restyled Basic `TextField` |
+| `Shadow` | What floats casts it outside itself; `depth` is one of `Theme.shadow`'s |
+| `PanelMotion` | A panel's entrance, exit and turning back, and its blur `area` ([§6.9](visual-coherence.md#69-panels-panelmotion-shadow-dialog-d14d18)) |
+| `Dialog` | A window's dialog: title, text, content, `buttons` and `chosen(value)` |
+
+A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) reports what doesn't, and a line that differs on purpose says why with a `// motion:` comment. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`).
+
 ## Debugging rendering
 
 `SIGUSR1` forces a full redraw for damage-tracking diagnostics. The real

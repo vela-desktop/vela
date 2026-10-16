@@ -117,6 +117,10 @@ Specifiche sistema
         <translation>Avanti</translation>
     </message>
     <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
         <source>Your PC&apos;s current name is </source>
         <translation>Il nome attuale del PC è </translation>
     </message>
@@ -733,8 +737,8 @@ Specifiche sistema
 <context>
     <name>Dialog</name>
     <message>
-        <source>Cancel</source>
-        <translation>Annulla</translation>
+        <source>OK</source>
+        <translation>OK</translation>
     </message>
 </context>
 <context>
@@ -1049,6 +1053,10 @@ Specifiche sistema
     <message>
         <source>Uninstall </source>
         <translation>Disinstalla </translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
     </message>
     <message>
         <source>This app and its related info will be uninstalled. You may be asked for your password.</source>
@@ -1762,6 +1770,10 @@ Specifiche sistema
         <translation>Avanti</translation>
     </message>
     <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
         <source>Enter the network security key</source>
         <translation>Immetti la chiave di sicurezza di rete</translation>
     </message>
@@ -1787,6 +1799,14 @@ Specifiche sistema
     <message>
         <source>Strength</source>
         <translation>Intensità</translation>
+    </message>
+    <message>
+        <source>Experimental NVIDIA fix</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use Vulkan instead of the monitor&apos;s gamma LUT if Night light causes broken colors. May disable direct scanout.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Schedule night light</source>
@@ -2144,6 +2164,10 @@ Specifiche sistema
         <translation>Rinomina il dispositivo</translation>
     </message>
     <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
         <source>Leave it empty to use the device&apos;s own name. Other apps show the new name after you sign in again.</source>
         <translation>Lascialo vuoto per usare il nome del dispositivo. Le altre app mostrano il nuovo nome dopo il prossimo accesso.</translation>
     </message>
@@ -2284,6 +2308,17 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>Switch</name>
+    <message>
+        <source>On</source>
+        <translation>Attivato</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Disattivato</translation>
+    </message>
+</context>
+<context>
     <name>System</name>
     <message>
         <source>; echo; read -r -p &apos;Press Enter to close&apos; _</source>
@@ -2421,17 +2456,6 @@ Specifiche sistema
     <message>
         <source>Keyboard layouts, key repeat</source>
         <translation>Layout di tastiera, ripetizione dei tasti</translation>
-    </message>
-</context>
-<context>
-    <name>Toggle</name>
-    <message>
-        <source>On</source>
-        <translation>Attivato</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation>Disattivato</translation>
     </message>
 </context>
 <context>

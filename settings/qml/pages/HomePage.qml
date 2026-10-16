@@ -84,9 +84,9 @@ Page {
             icon: "preferences-system-bluetooth"
             title: qsTr("Bluetooth")
             description: Status.bluetoothEnabled ? qsTr("Discoverable as \"") + About.hostname + "\"" : qsTr("Off")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Status.bluetoothEnabled
-                onToggled: on => Status.setBluetoothEnabled(on)
+                onToggled: Status.setBluetoothEnabled(checked)
             }
         }
         LinkCard {

@@ -26,6 +26,9 @@ QtObject {
     readonly property color controlStrokeStrong: light ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(1, 1, 1, 0.55)
     readonly property color subtleHover: light ? Qt.rgba(0, 0, 0, 0.037) : Qt.rgba(1, 1, 1, 0.061)
     readonly property color subtlePressed: light ? Qt.rgba(0, 0, 0, 0.024) : Qt.rgba(1, 1, 1, 0.042)
+    // subtleHover at alpha 0: what a subtle control fades from ("transparent"
+    // is black at alpha 0, and a fade from it would pass through gray).
+    readonly property color subtleRest: light ? Qt.rgba(0, 0, 0, 0) : Qt.rgba(1, 1, 1, 0)
     readonly property color stroke: light ? Qt.rgba(0, 0, 0, 0.09) : Qt.rgba(1, 1, 1, 0.09) // panels and menus
     readonly property color divider: light ? Qt.rgba(0, 0, 0, 0.08) : Qt.rgba(1, 1, 1, 0.084)
     readonly property color card: light ? Qt.rgba(1, 1, 1, 0.7) : Qt.rgba(1, 1, 1, 0.051)
@@ -104,6 +107,13 @@ QtObject {
     readonly property int radius: 4 // controls
     readonly property int radiusCard: 6
     readonly property int radiusOverlay: 8 // menus, flyouts, dialogs, panels
+    // Shadows (Shadow.qml): WinUI's elevations for what floats. Flyouts:
+    // menus, panels, previews; dialogs: above a window or the screen. The
+    // compositor gives windows their own (scene/, two layers).
+    readonly property var shadow: ({
+        flyout: { blur: 32, offset: 6, opacity: 0.45 },
+        dialog: { blur: 48, offset: 16, opacity: 0.45 }
+    })
     readonly property int fontCaption: 12
     readonly property int fontBody: 14
     readonly property int fontBodyLarge: 18

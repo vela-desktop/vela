@@ -8,8 +8,9 @@ they are made and with how each is verified.
 
 > **Status:** approved design, implemented in the order of §8; done: PR 1
 > (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4), PR 5 (§6.5), PR 6 (§6.6),
-> PR 7 (§6.7). Each change has one explanation, in §6; the plan in §8 only says
-> which pull request carries it.
+> PR 7 (§6.7), PR 8 (the shared pieces of §6.8 and §6.9, §6.11 reporting).
+> Each change has one explanation, in §6; the plan in §8 only says which pull
+> request carries it.
 
 ## 1. Goals
 
@@ -185,9 +186,10 @@ password field jumps open; going back plays the same slide as going forward;
 the height jumps between pages, because the window is resized with the panel
 (`height: panel.height + 24`), which a layer surface can't do smoothly.
 
-**D14. Shadows: four panels of seventeen, three recipes, cut by their
-windows** [§6.9]. `PanelShadow` (blur 32, offset 6, 45%) on context menus,
-taskbar previews and file dialogs; Start overrides it (40, 8, 50%); the polkit
+**D14. Shadows: four panels of seventeen, four recipes, cut by their
+windows** [§6.9]. `PanelShadow` (blur 32, offset 6, 45%) on the file dialogs;
+context menus (16, 4, 40%), taskbar previews (24, 4) and Start (40, 8, 50%)
+override it; the polkit
 prompt draws its own (48, 16, 45%) because `PanelShadow` lives in `Vela.Shell`.
 Quick Settings, Notification Center, Clipboard, Alt+Tab, Snap Layouts, Run,
 Confirm, Properties, the screen-share chooser, toasts, the OSDs and the taskbar
@@ -698,8 +700,19 @@ otherwise with their program, built on Templates and `Fill`:
 | `Tile`, `Link` | `T.AbstractButton` + `Fill` | Quick Settings | its private `Tile` and `Link` |
 | the file dialogs' field | `TextBox` | shell | `FileDialogs`' `Field` |
 
-The API callers use (`text`, `icon`, `accent`, `subtle`, `usable`, `clicked`)
-stays, so call sites change only where a private control is replaced.
+The API callers use (`text`, `accent`, `subtle`, `usable`, `clicked`) stays,
+so call sites change only where a private control is replaced. Three names are
+Qt's and changed with the move to Templates (PR 8): an icon is `icon.name` (the
+Templates' `icon` group is final and can't become a string); `toggled()` and
+`moved()` carry no argument, so handlers read `checked` and `value`; and a
+binding on `checked` or `value` survives the user's input, where the
+hand-made copies assigned to the property and broke it. `Slider` keeps its
+`released(value)`, emitted once the user is done (released, a key, a notch of
+the wheel), and `origin`, `mark` and `resetValue`; a double click on the knob
+emits `released(resetValue)` and lets the caller's binding move the knob. A
+click gives no keyboard focus (`focusPolicy: Qt.TabFocus`), as before: Tab
+does, with the ring, so a click on a toolbar button doesn't take the keys from
+a view. `TextBox` takes `Fill` as its background.
 
 **Verified by** Qt Quick Test (part of Qt): for `Button`, `Switch` and `Slider`,
 each state combination gives the expected color at rest; a hover reversed
@@ -759,8 +772,9 @@ does: never during a slide; on every frame of Quick Settings' height change,
 like Start's updates today. Start drops its per-frame updates.
 
 **`Shadow.qml`** is `PanelShadow` moved into `Vela.Controls` (so the polkit
-prompt can use it), with two depths in `Theme`: `flyout` (blur 32, offset 6,
-45%) and `dialog` (blur 48, offset 16, 45%). Start takes `flyout` (it had a
+prompt can use it), with two depths in `Theme.shadow` (`Theme.flyout` and
+`Theme.dialog` are colors): `flyout` (blur 32, offset 6, 45%) and `dialog`
+(blur 48, offset 16, 45%). Start takes `flyout` (it had a
 private 40/8/50%). Windows get room for the shadow: 46 units around the panel,
 cut only where the window meets the taskbar. A click in that room closes the
 panel, as a click outside does, through a `MouseArea` under the `PanelMotion`,
@@ -771,7 +785,12 @@ already do.
 
 **`Dialog.qml`** is Files' dialog (the button list is the more general API) with
 Settings' content slot and only `Theme` values, in `Vela.Controls`; the two
-copies go. Its panel is a `PanelMotion` with `scaleFrom: 1.05`.
+copies go. Its panel is a `PanelMotion` with `scaleFrom: 1.05` and
+`duration: Theme.normal`, with the `dialog` shadow; the smoke over the window
+fades with it. A button may be `enabled: false` (Settings' `primaryEnabled`);
+Enter chooses the accent button only then, Esc chooses `"cancel"`, and
+`close()` without a value closes it without choosing (what Settings' callers
+do once the work is done elsewhere, as a paired Bluetooth device).
 
 **Verified by** Qt Quick Test for `PanelMotion` (reopening during a close turns
 back from the current offset and opacity and doesn't emit `closed()`; with

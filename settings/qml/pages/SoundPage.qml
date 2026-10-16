@@ -126,7 +126,7 @@ Page {
             spacing: 8
             Button {
                 subtle: true
-                icon: volumeCard.device && volumeCard.device.muted ? (volumeCard.kind === "output" ? "audio-volume-muted" : "microphone-sensitivity-muted") : (volumeCard.kind === "output" ? "audio-volume-high" : "audio-input-microphone")
+                icon.name: volumeCard.device && volumeCard.device.muted ? (volumeCard.kind === "output" ? "audio-volume-muted" : "microphone-sensitivity-muted") : (volumeCard.kind === "output" ? "audio-volume-high" : "audio-input-microphone")
                 Accessible.name: volumeCard.device && volumeCard.device.muted ? qsTr("Unmute") : qsTr("Mute")
                 usable: volumeCard.device !== undefined && !volumeCard.device.mutePending
                     && !volumeCard.device.defaultPending && !volumeCard.device.defaultError
@@ -141,7 +141,7 @@ Page {
                 // the device's own positions when they are fewer.
                 stepSize: volumeCard.device ? 1 / Math.min(50, volumeCard.device.intervals) : 0.02
                 value: volumeCard.device ? volumeCard.device.volume : 0
-                onMoved: value => Audio.setVolume(volumeCard.kind, volumeCard.device.name, value)
+                onMoved: Audio.setVolume(volumeCard.kind, volumeCard.device.name, value)
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter

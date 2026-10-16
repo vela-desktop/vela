@@ -53,15 +53,13 @@ set(FILES_QML_FILES
     qml/ThisPcPage.qml
     qml/StatusBar.qml
     qml/MenuLayer.qml
-    qml/Dialog.qml
     qml/ProgressPanel.qml
     qml/ToolButton.qml
     qml/FileIcon.qml
     qml/RenameField.qml
     qml/ScrollBar.qml
     qml/PreviewPane.qml
-    ${PROJECT_SOURCE_DIR}/shell/qml/MenuPanel.qml
-    ${PROJECT_SOURCE_DIR}/shell/qml/PanelShadow.qml)
+    ${PROJECT_SOURCE_DIR}/shell/qml/MenuPanel.qml)
 
 foreach(file IN LISTS FILES_QML_FILES)
     get_filename_component(name ${file} NAME)
@@ -102,7 +100,7 @@ install(FILES vela-files.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applicatio
 # shell/src/language.h). After changing texts:
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
-qt_add_translations(TARGETS vela-files SOURCE_TARGETS vela-files vela-files-core
+qt_add_translations(TARGETS vela-files SOURCE_TARGETS vela-files vela-files-core vela-controls
     TS_FILES i18n/vela-files_it.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-files_lupdate

@@ -25,9 +25,9 @@ Page {
             icon: "preferences-desktop-effects"
             title: qsTr("Animation effects")
             description: qsTr("Windows and panels move as they open, close and change. Off, they only fade, briefly")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.animationEffects
-                onToggled: on => Prefs.animationEffects = on
+                onToggled: Prefs.animationEffects = checked
             }
         }
         Card {
@@ -69,9 +69,9 @@ Page {
             icon: "zoom-in"
             title: qsTr("Magnifier")
             description: qsTr("Win+Plus opens the magnifier and zooms in, Win+Minus zooms out, Win+Esc closes it")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.magnifier
-                onToggled: on => Prefs.magnifier = on
+                onToggled: Prefs.magnifier = checked
             }
         }
         Card {
@@ -88,9 +88,9 @@ Page {
             icon: "preferences-desktop-color"
             title: qsTr("Color filters")
             description: qsTr("To see photos and colors better, or to tell colors apart with color blindness")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.colorFilter
-                onToggled: on => Prefs.colorFilter = on
+                onToggled: Prefs.colorFilter = checked
             }
         }
         Card {
@@ -106,9 +106,9 @@ Page {
             icon: "input-keyboard"
             title: qsTr("Keyboard shortcut for color filters")
             description: qsTr("Win+Ctrl+C turns them on and off")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.colorFilterShortcut
-                onToggled: on => Prefs.colorFilterShortcut = on
+                onToggled: Prefs.colorFilterShortcut = checked
             }
         }
     }
@@ -119,9 +119,9 @@ Page {
             icon: "input-keyboard"
             title: qsTr("Sticky keys")
             description: qsTr("Shift, Ctrl, Alt and Win pressed and released apply to the next key: shortcuts are typed one key at a time. Pressed twice, they stay locked")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.stickyKeys
-                onToggled: on => Prefs.stickyKeys = on
+                onToggled: Prefs.stickyKeys = checked
             }
         }
     }

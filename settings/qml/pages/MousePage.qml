@@ -35,9 +35,9 @@ Page {
             icon: "edit-select"
             title: qsTr("Enhance pointer precision")
             description: qsTr("The pointer goes further when you move the mouse faster (acceleration)")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.mousePrecision
-                onToggled: on => Prefs.mousePrecision = on
+                onToggled: Prefs.mousePrecision = checked
             }
         }
     }

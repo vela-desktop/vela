@@ -261,7 +261,7 @@ Window {
     }
 
     // A soft shadow around the panel (not below: it's acrylic).
-    PanelShadow {
+    Shadow {
         target: panel
         opacity: panel.opacity
         blur: 40

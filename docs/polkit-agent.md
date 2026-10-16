@@ -321,8 +321,8 @@ of the dialog is still to do (§12).
 
 One theme and one set of controls for every Qt Quick interface of Vela.
 Before it, `Theme.qml` existed in three copies (shell, Settings, Files) that
-had drifted apart; Files also compiles `MenuPanel.qml` and `PanelShadow.qml`
-straight from `shell/qml`, which it still does.
+had drifted apart; Files also compiles `MenuPanel.qml` straight from
+`shell/qml`, which it still does (its shadow is now `Vela.Controls`' `Shadow`).
 
 - **The module.** A static QML module, `Vela.Controls`, in `common/`:
   - `Theme` (singleton): Windows 11's Fluent colors and sizes, named after
@@ -330,7 +330,9 @@ straight from `shell/qml`, which it still does.
     acrylic surfaces, Settings' cards, Files' selection and scroll bars) and
     the veil behind system dialogs;
   - `Button` (standard, accent or subtle, with text and/or an icon) and
-    `TextBox` (with `password: true`);
+    `TextBox` (with `password: true`), since joined by `Fill`, `Switch`,
+    `Slider`, `Shadow`, `PanelMotion` and `Dialog`
+    ([development](development.md#controls));
   - the C++ singletons `Style` (`Appearance`: light or dark, accent, Mica,
     icon mode; system UI follows the shell's mode, apps their own) and
     `Effects` (`BackgroundEffects`: blur), plus the `image://icon` provider,

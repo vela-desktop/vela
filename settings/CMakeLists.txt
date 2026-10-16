@@ -66,13 +66,10 @@ set(SETTINGS_QML_FILES
     qml/Card.qml
     qml/CardGroup.qml
     qml/LinkCard.qml
-    qml/Toggle.qml
     qml/Choice.qml
-    qml/Slider.qml
     qml/LevelBar.qml
     qml/PageHeader.qml
     qml/Page.qml
-    qml/Dialog.qml
     qml/pages/HomePage.qml
     qml/pages/SystemPage.qml
     qml/pages/DisplayPage.qml
@@ -141,7 +138,7 @@ install(FILES vela-settings.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applica
 # shell/src/language.h). After changing texts:
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
-qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-displays
+qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-displays vela-controls
     TS_FILES i18n/vela-settings_it.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-settings_lupdate

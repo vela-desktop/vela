@@ -3,20 +3,21 @@
 
 import QtQuick
 import QtQuick.Effects
-import Vela.Controls
 
-// A panel's soft shadow, drawn only *outside* the panel: acrylic panels are
+// What floats casts a soft shadow, drawn only *outside* it: acrylic panels are
 // semi-transparent and must show the blurred background below, not a shadow.
 // RectangularShadow (analytic, like the compositor's) clipped into four strips
-// around the panel.
+// around the target. `depth` is one of Theme.shadow's (flyout, dialog); the
+// window must leave `reach` around the target, or the shadow is cut.
 Item {
     id: root
 
     required property Item target
+    property var depth: Theme.shadow.flyout
     property real radius: Theme.radiusOverlay
-    property real blur: 32
-    property vector2d offset: Qt.vector2d(0, 6)
-    property color color: Qt.rgba(0, 0, 0, 0.45)
+    property real blur: depth.blur
+    property vector2d offset: Qt.vector2d(0, depth.offset)
+    property color color: Qt.rgba(0, 0, 0, depth.opacity)
     readonly property real reach: blur + Math.max(Math.abs(offset.x), Math.abs(offset.y)) + 8
 
     anchors.fill: target

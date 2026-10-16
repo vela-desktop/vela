@@ -119,7 +119,6 @@ set(VELA_QML_FILES
     qml/ConfirmDialog.qml
     qml/SourceChooser.qml
     qml/PropertiesDialog.qml
-    qml/PanelShadow.qml
     qml/QuickSettings.qml
     qml/NotificationCenter.qml
     qml/TaskView.qml

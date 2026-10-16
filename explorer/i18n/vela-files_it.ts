@@ -170,6 +170,13 @@
     </message>
 </context>
 <context>
+    <name>Dialog</name>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+</context>
+<context>
     <name>Files</name>
     <message>
         <source>File Explorer</source>
@@ -314,6 +321,10 @@
     <message>
         <source>Couldn&apos;t delete &quot;%1&quot;.</source>
         <translation>Impossibile eliminare &quot;%1&quot;.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t empty the Recycle Bin (%1 items could not be deleted).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Compress</source>
@@ -643,6 +654,17 @@
     <message>
         <source>      Loading...</source>
         <translation>      Caricamento...</translation>
+    </message>
+</context>
+<context>
+    <name>Switch</name>
+    <message>
+        <source>On</source>
+        <translation>Attivato</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Disattivato</translation>
     </message>
 </context>
 <context>

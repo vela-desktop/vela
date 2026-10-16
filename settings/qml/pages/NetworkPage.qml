@@ -66,11 +66,11 @@ Page {
         icon: "network-wireless"
         title: qsTr("Wi-Fi")
         description: Status.wifiEnabled ? (page.wifiDevice && page.wifiDevice.connection !== "" ? qsTr("Connected to ") + page.wifiDevice.connection : qsTr("Not connected")) : qsTr("Off")
-        trailing: Toggle {
+        trailing: Switch {
             checked: Status.wifiEnabled
-            onToggled: on => {
-                Status.setWifiEnabled(on)
-                if (on) scanLater.start()
+            onToggled: {
+                Status.setWifiEnabled(checked)
+                if (checked) scanLater.start()
             }
         }
         Timer { id: scanLater; interval: 2000; onTriggered: Network.scan() }
@@ -237,9 +237,11 @@ Page {
         parent: root.contentItem
         property string ssid
         title: qsTr("Connect to ") + ssid
-        primaryText: qsTr("Next")
-        primaryEnabled: password.text.length >= 8
-        onAccepted: Network.connectWifi(ssid, password.text)
+        buttons: [
+            { text: qsTr("Next"), accent: true, value: "ok", enabled: password.text.length >= 8 },
+            { text: qsTr("Cancel"), value: "cancel" }
+        ]
+        onChosen: value => { if (value === "ok") Network.connectWifi(ssid, password.text) }
         Column {
             width: parent.width
             spacing: 8
@@ -252,7 +254,7 @@ Page {
                 id: password
                 width: parent.width
                 echoMode: TextInput.Password
-                Keys.onReturnPressed: if (passwordDialog.primaryEnabled) { passwordDialog.close(); Network.connectWifi(passwordDialog.ssid, text) }
+                Keys.onReturnPressed: passwordDialog.accept()
             }
         }
     }

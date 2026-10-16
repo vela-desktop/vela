@@ -230,7 +230,7 @@ Page {
             trailing: Slider {
                 width: 200
                 value: Status.brightness
-                onMoved: value => Status.setBrightness(value)
+                onMoved: Status.setBrightness(value)
             }
         }
         Card {
@@ -240,9 +240,9 @@ Page {
             clickable: true
             chevron: true
             onClicked: root.navigate("night-light")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.nightLight
-                onToggled: on => Prefs.nightLight = on
+                onToggled: Prefs.nightLight = checked
             }
         }
     }
@@ -341,9 +341,9 @@ Page {
             icon: "input-gaming"
             title: qsTr("Show every frame right away in full-screen games")
             description: qsTr("Games that ask for it reach the screen without waiting for the monitor: less latency, with some tearing in the picture")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.tearing
-                onToggled: on => Prefs.tearing = on
+                onToggled: Prefs.tearing = checked
             }
         }
     }
@@ -363,10 +363,8 @@ Page {
         id: confirm
         parent: root.contentItem
         title: qsTr("Keep these display settings?")
-        primaryText: qsTr("Keep changes")
-        secondaryText: qsTr("Revert")
-        onAccepted: Displays.confirm()
-        onRejected: Displays.revert()
+        buttons: [{ text: qsTr("Keep changes"), accent: true, value: "keep" }, { text: qsTr("Revert"), value: "cancel" }]
+        onChosen: value => value === "keep" ? Displays.confirm() : Displays.revert()
         Text {
             width: parent.width
             text: qsTr("Reverting to the previous display settings in ") + Displays.secondsRemaining + qsTr(" seconds.")

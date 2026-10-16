@@ -35,9 +35,9 @@ Page {
         title: qsTr("Bluetooth")
         description: Bluetooth.powered ? qsTr("Discoverable as \"") + Bluetooth.adapterName + "\"" : qsTr("Off")
         minimumHeight: 80
-        trailing: Toggle {
+        trailing: Switch {
             checked: Bluetooth.powered
-            onToggled: on => Bluetooth.powered = on
+            onToggled: Bluetooth.powered = checked
         }
     }
 
@@ -123,9 +123,8 @@ Page {
         parent: root.contentItem
         property var device: null
         title: qsTr("Remove this device?")
-        primaryText: qsTr("Yes")
-        secondaryText: qsTr("No")
-        onAccepted: Bluetooth.removeDevice(device.path)
+        buttons: [{ text: qsTr("Yes"), accent: true, value: "yes" }, { text: qsTr("No"), value: "cancel" }]
+        onChosen: value => { if (value === "yes") Bluetooth.removeDevice(device.path) }
         Text {
             width: parent.width
             text: removeDialog.device ? qsTr("To use ") + removeDialog.device.name + qsTr(" again, you'll need to pair it once more.") : ""
@@ -140,10 +139,9 @@ Page {
         id: addDialog
         parent: root.contentItem
         title: qsTr("Add a device")
-        primaryText: ""
-        secondaryText: qsTr("Cancel")
+        buttons: [{ text: qsTr("Cancel"), value: "cancel" }]
         dialogWidth: 520
-        onRejected: Bluetooth.stopDiscovery()
+        onChosen: Bluetooth.stopDiscovery()
         Column {
             width: parent.width
             spacing: 8
@@ -218,7 +216,7 @@ Page {
         target: Bluetooth
         property int pairedCount: Bluetooth.paired.length
         function onChanged() {
-            if (addDialog.visible && Bluetooth.paired.length > pairedCount) {
+            if (addDialog.visible && !addDialog.closing && Bluetooth.paired.length > pairedCount) {
                 addDialog.close()
                 Bluetooth.stopDiscovery()
             }

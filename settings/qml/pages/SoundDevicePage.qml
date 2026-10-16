@@ -97,12 +97,12 @@ Page {
             icon: "system-shutdown"
             title: qsTr("Use this device")
             description: page.device && page.device.profileError ? qsTr("Couldn't change it. The device may be busy.") : ""
-            trailing: Toggle {
+            trailing: Switch {
                 checked: page.device !== undefined && !page.device.off
                 usable: page.device !== undefined && !page.device.profilePending
                     && (page.device.off ? page.bestProfile() !== undefined : true)
-                onToggled: on => {
-                    const p = on ? page.bestProfile() : page.offProfile
+                onToggled: {
+                    const p = checked ? page.bestProfile() : page.offProfile
                     if (p !== undefined) {
                         Audio.setProfile(page.device.name, p.index)
                     }
@@ -140,7 +140,7 @@ Page {
                 spacing: 8
                 Button {
                     subtle: true
-                    icon: volumeCard.icon
+                    icon.name: volumeCard.icon
                     Accessible.name: page.endpoint && page.endpoint.muted ? qsTr("Unmute") : qsTr("Mute")
                     usable: page.endpoint !== undefined && !page.endpoint.mutePending
                     onClicked: Audio.setMuted(page.selected.kind, page.endpoint.name, !page.endpoint.muted)
@@ -151,7 +151,7 @@ Page {
                     to: 1
                     stepSize: page.endpoint ? 1 / Math.min(50, page.endpoint.intervals) : 0.02
                     value: page.endpoint ? page.endpoint.volume : 0
-                    onMoved: value => Audio.setVolume(page.selected.kind, page.endpoint.name, value)
+                    onMoved: Audio.setVolume(page.selected.kind, page.endpoint.name, value)
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -188,7 +188,11 @@ Page {
                     value: page.endpoint ? page.endpoint.balance : 0
                     // The middle holds the knob a little, so even is easy
                     // to find again; a double click puts it there.
-                    onMoved: value => Audio.setBalance(page.selected.kind, page.endpoint.name, Math.abs(value) < 0.05 ? 0 : value)
+                    function apply(balance) {
+                        Audio.setBalance(page.selected.kind, page.endpoint.name, Math.abs(balance) < 0.05 ? 0 : balance)
+                    }
+                    onMoved: apply(value)
+                    onReleased: balance => apply(balance)
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -290,8 +294,8 @@ Page {
         id: renameDialog
         parent: root.contentItem
         title: qsTr("Rename device")
-        primaryText: qsTr("Rename")
-        onAccepted: Audio.setEndpointName(page.selected.kind, page.endpoint.name, nameField.text)
+        buttons: [{ text: qsTr("Rename"), accent: true, value: "ok" }, { text: qsTr("Cancel"), value: "cancel" }]
+        onChosen: value => { if (value === "ok") Audio.setEndpointName(page.selected.kind, page.endpoint.name, nameField.text) }
         Column {
             width: parent.width
             spacing: 12
@@ -305,7 +309,7 @@ Page {
             TextBox {
                 id: nameField
                 width: parent.width
-                Keys.onReturnPressed: { renameDialog.close(); renameDialog.accepted() }
+                Keys.onReturnPressed: renameDialog.accept()
             }
         }
     }

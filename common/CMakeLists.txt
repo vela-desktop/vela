@@ -45,8 +45,14 @@ qt_add_library(vela-controls STATIC)
 
 set(CONTROLS_QML_FILES
     controls/Theme.qml
+    controls/Fill.qml
     controls/Button.qml
-    controls/TextBox.qml)
+    controls/Switch.qml
+    controls/Slider.qml
+    controls/TextBox.qml
+    controls/Shadow.qml
+    controls/PanelMotion.qml
+    controls/Dialog.qml)
 foreach(file IN LISTS CONTROLS_QML_FILES)
     get_filename_component(name ${file} NAME)
     set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name})
@@ -82,6 +88,20 @@ target_link_libraries(vela-controls PUBLIC
     PRIVATE
     Qt6::GuiPrivate # the windows' wl_surface (backgroundeffects.cpp)
     PkgConfig::CONTROLS_WAYLAND_CLIENT)
+
+# The shared pieces under Qt Quick Test (tests/tst_*.qml): their states,
+# fades, keyboard and accessibility, with animation effects on and off.
+if(VELA_BUILD_TOOLS)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
+    qt_add_executable(vela-controls-test tests/controls_test.cpp)
+    target_compile_definitions(vela-controls-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    target_compile_options(vela-controls-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-controls-test PRIVATE vela-controls vela-controlsplugin Qt6::QuickTest)
+    add_test(NAME controls COMMAND vela-controls-test)
+    add_test(NAME controls-no-effects COMMAND vela-controls-test)
+    set_tests_properties(controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(controls controls-no-effects PROPERTIES TIMEOUT 120)
+endif()
 
 # vela-audio: the audio backend of the shell and Settings (docs/audio.md).
 add_subdirectory(audio)
