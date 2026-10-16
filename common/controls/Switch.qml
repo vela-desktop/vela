@@ -21,6 +21,7 @@ T.Switch {
     rightPadding: track.width + (showLabel ? spacing : 0)
     spacing: 12
     focusPolicy: Qt.TabFocus
+    hoverEnabled: true // deterministic hover for Qt Quick and headless tests
     opacity: enabled ? 1 : 0.45
 
     indicator: Fill {
@@ -49,8 +50,8 @@ T.Switch {
                 enabled: !control.down && Theme.motion > 0
                 NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
             }
-            Behavior on width { NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
-            Behavior on height { NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+            Behavior on width { enabled: Theme.motion > 0; NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+            Behavior on height { enabled: Theme.motion > 0; NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
         }
         // Keyboard focus: a ring around the track, like Windows.
         Rectangle {
