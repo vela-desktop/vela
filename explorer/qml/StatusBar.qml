@@ -40,14 +40,14 @@ Item {
         ToolButton {
             width: 28
             height: 24
-            icon: "view-list-details"
+            icon.name: "view-list-details"
             checked: bar.viewMode === "details"
             onClicked: bar.viewRequested("details")
         }
         ToolButton {
             width: 28
             height: 24
-            icon: "view-list-icons"
+            icon.name: "view-list-icons"
             checked: bar.viewMode === "large"
             onClicked: bar.viewRequested("large")
         }

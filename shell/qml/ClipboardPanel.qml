@@ -132,28 +132,14 @@ Window {
                         font.pixelSize: Theme.fontBody + 2
                         font.weight: Font.DemiBold
                     }
-                    Rectangle {
+                    Button {
                         visible: Clip.enabled && Clip.items.some(i => !i.pinned)
                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                        width: clearText.implicitWidth + 20
-                        height: 30
-                        radius: Theme.radius
-                        color: clearMouse.containsMouse ? Theme.subtleHover : Theme.control
-                        border.width: 1
-                        border.color: Theme.stroke
-                        Text {
-                            id: clearText
-                            anchors.centerIn: parent
-                            text: qsTr("Clear all")
-                            color: Theme.text
-                            font.pixelSize: Theme.fontCaption
-                        }
-                        MouseArea {
-                            id: clearMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: { Clip.clear(); root.current = 0 }
-                        }
+                        implicitWidth: implicitContentWidth + 20
+                        implicitHeight: 30
+                        text: qsTr("Clear all")
+                        font.pixelSize: Theme.fontCaption
+                        onClicked: { Clip.clear(); root.current = 0 }
                     }
                 }
 
@@ -212,7 +198,7 @@ Window {
                         spacing: 8
                         Repeater {
                             model: Clip.items
-                            delegate: Rectangle {
+                            delegate: Fill {
                                 id: card
                                 required property var modelData
                                 required property int index
@@ -265,31 +251,22 @@ Window {
                                     font.pixelSize: 11
                                     opacity: 0.7
                                 }
-                                Rectangle {
+                                Button {
                                     id: more
                                     anchors { right: parent.right; top: parent.top; margins: 8 }
                                     width: 28
                                     height: 28
-                                    radius: Theme.radius
-                                    color: moreMouse.containsMouse ? Theme.subtleHover : "transparent"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "…"
-                                        color: Theme.text
-                                        font.pixelSize: Theme.fontBody
-                                    }
-                                    MouseArea {
-                                        id: moreMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: {
-                                            const id = card.modelData.id
-                                            const p = root.screenPoint(more, 0, more.height)
-                                            Menus.open([
-                                                { text: card.modelData.pinned ? qsTr("&Unpin") : qsTr("&Pin"), icon: card.modelData.pinned ? "window-unpin" : "window-pin", action: () => Clip.togglePin(id) },
-                                                { text: qsTr("&Delete"), icon: "edit-delete", shortcut: qsTr("Del"), action: () => Clip.remove(id) }
-                                            ], p.x, p.y, { screen: root.screen ? root.screen.name : "" })
-                                        }
+                                    padding: 0
+                                    subtle: true
+                                    text: "…"
+                                    Accessible.name: qsTr("See more")
+                                    onClicked: {
+                                        const id = card.modelData.id
+                                        const p = root.screenPoint(more, 0, more.height)
+                                        Menus.open([
+                                            { text: card.modelData.pinned ? qsTr("&Unpin") : qsTr("&Pin"), icon: card.modelData.pinned ? "window-unpin" : "window-pin", action: () => Clip.togglePin(id) },
+                                            { text: qsTr("&Delete"), icon: "edit-delete", shortcut: qsTr("Del"), action: () => Clip.remove(id) }
+                                        ], p.x, p.y, { screen: root.screen ? root.screen.name : "" })
                                     }
                                 }
                             }

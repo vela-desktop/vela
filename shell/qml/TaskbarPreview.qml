@@ -119,7 +119,7 @@ Window {
     }
 
     // A card: icon, title, Close; the thumbnail (or the group) below.
-    component Card: Rectangle {
+    component Card: Fill {
         id: card
         property string title
         property string icon
@@ -130,7 +130,7 @@ Window {
         width: root.cardWidth
         height: root.cardHeight
         radius: Theme.radiusOverlay
-        color: cardHover.hovered ? Theme.subtleHover : "transparent"
+        color: cardHover.hovered ? Theme.subtleHover : Theme.subtleRest
 
         HoverHandler { id: cardHover }
         Row {
@@ -139,12 +139,9 @@ Window {
             y: 8
             width: parent.width - 20 - (closable ? 24 : 0)
             spacing: 8
-            Image {
-                width: 16
-                height: 16
+            Icon {
                 anchors.verticalCenter: parent.verticalCenter
-                source: Theme.icons + encodeURIComponent(card.icon)
-                sourceSize: Qt.size(width, height)
+                name: card.icon
             }
             Text {
                 width: header.width - 24
@@ -171,13 +168,13 @@ Window {
             }
         }
         // Close, at the top right on hover.
-        Rectangle {
+        Fill {
             visible: card.closable && cardHover.hovered
             anchors { right: parent.right; top: parent.top; margins: 4 }
             width: 28
             height: 24
             radius: Theme.radius
-            color: closeMouse.containsMouse ? "#c42b1c" : "transparent"
+            color: closeMouse.containsMouse ? "#c42b1c" : "#00c42b1c"
             Text {
                 anchors.centerIn: parent
                 text: "✕"
@@ -256,13 +253,11 @@ Window {
                             cache: false
                             smooth: true
                         }
-                        Image {
+                        Icon {
                             anchors.centerIn: parent
-                            width: 40
-                            height: 40
                             visible: thumbnail.status !== Image.Ready
-                            source: Theme.icons + encodeURIComponent(windowCard.modelData.icon)
-                            sourceSize: Qt.size(width, height)
+                            name: windowCard.modelData.icon
+                            size: 40
                         }
                     }
                 }
@@ -313,13 +308,11 @@ Window {
                                         cache: false
                                         smooth: true
                                     }
-                                    Image {
+                                    Icon {
                                         anchors.centerIn: parent
-                                        width: 20
-                                        height: 20
                                         visible: memberThumb.status !== Image.Ready
-                                        source: Theme.icons + encodeURIComponent(member.modelData.icon)
-                                        sourceSize: Qt.size(width, height)
+                                        name: member.modelData.icon
+                                        size: 20
                                     }
                                 }
                             }

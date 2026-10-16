@@ -108,7 +108,7 @@ Window {
                 Repeater {
                     model: windows
 
-                    Rectangle {
+                    Fill {
                         id: card
                         required property int index
                         required property string identifier
@@ -120,7 +120,7 @@ Window {
                         width: root.cardWidth
                         height: root.cardHeight
                         radius: Theme.radiusOverlay
-                        color: current || cardMouse.containsMouse ? Theme.subtleHover : "transparent"
+                        color: current || cardMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         border.width: current ? 2 : 0
                         border.color: Theme.accent
 
@@ -138,12 +138,9 @@ Window {
                             anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
                             spacing: 8
 
-                            Image {
-                                width: 16
-                                height: 16
+                            Icon {
                                 anchors.verticalCenter: parent.verticalCenter
-                                source: Theme.icons + encodeURIComponent(card.icon)
-                                sourceSize: Qt.size(width, height)
+                                name: card.icon
                             }
                             Text {
                                 width: header.width - 24
@@ -167,13 +164,11 @@ Window {
                                 smooth: true
                             }
                             // Until the preview exists: the big icon.
-                            Image {
+                            Icon {
                                 anchors.centerIn: parent
-                                width: 48
-                                height: 48
                                 visible: thumbnail.status !== Image.Ready
-                                source: Theme.icons + encodeURIComponent(card.icon)
-                                sourceSize: Qt.size(width, height)
+                                name: card.icon
+                                size: 48
                             }
                         }
                     }

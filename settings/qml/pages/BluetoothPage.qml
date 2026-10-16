@@ -162,20 +162,18 @@ Page {
                     spacing: 2
                     model: Bluetooth.found
                     boundsBehavior: Flickable.StopAtBounds
-                    delegate: Rectangle {
+                    delegate: Fill {
                         id: candidate
                         required property var modelData
                         width: found.width
                         height: 56
                         radius: Theme.radius
-                        color: candidateMouse.containsMouse ? Theme.subtleHover : "transparent"
-                        Image {
+                        color: candidateMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                        Icon {
                             x: 12
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 24
-                            height: 24
-                            source: Theme.icons + encodeURIComponent(page.deviceIcon(candidate.modelData.icon))
-                            sourceSize: Qt.size(width, height)
+                            name: page.deviceIcon(candidate.modelData.icon)
+                            size: 24
                         }
                         Column {
                             x: 52

@@ -142,22 +142,20 @@ Window {
                     { mode: "window", icon: "window", tip: qsTr("Window") },
                     { mode: "screen", icon: "view-fullscreen", tip: qsTr("Full screen") }
                 ]
-                delegate: Rectangle {
+                delegate: Fill {
                     id: tool
                     required property var modelData
                     readonly property bool current: Snip.mode === modelData.mode
                     width: 40
                     height: 36
                     radius: Theme.radius
-                    color: current ? Theme.subtleHover : toolMouse.containsMouse ? Theme.subtleHover : "transparent"
+                    color: current || toolMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                     border.width: current ? 1 : 0
                     border.color: Theme.accent
-                    Image {
+                    Icon {
                         anchors.centerIn: parent
-                        width: 20
-                        height: 20
-                        source: Theme.icons + tool.modelData.icon
-                        sourceSize: Qt.size(width, height)
+                        name: tool.modelData.icon
+                        size: 20
                     }
                     MouseArea {
                         id: toolMouse
@@ -171,11 +169,11 @@ Window {
                 }
             }
             Rectangle { width: 1; height: 24; anchors.verticalCenter: parent.verticalCenter; color: Theme.stroke }
-            Rectangle {
+            Fill {
                 width: 40
                 height: 36
                 radius: Theme.radius
-                color: closeMouse.containsMouse ? Theme.subtleHover : "transparent"
+                color: closeMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 Text {
                     anchors.centerIn: parent
                     text: "✕"

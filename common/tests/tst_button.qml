@@ -18,6 +18,9 @@ Item {
     Button { id: accent; x: 20; y: 70; text: "Accent"; accent: true }
     Button { id: subtle; x: 20; y: 120; text: "Subtle"; subtle: true }
     Button { id: unusable; x: 20; y: 170; text: "Unusable"; usable: false }
+    Button { id: open; x: 200; y: 120; text: "Open"; subtle: true; checked: true }
+    Button { id: small; x: 200; y: 20; text: "Small"; font.pixelSize: Theme.fontCaption }
+    Button { id: withIcon; x: 200; y: 70; icon.name: "go-up"; accent: true }
     SignalSpy { id: clicks; target: standard; signalName: "clicked" }
 
     TestCase {
@@ -95,6 +98,19 @@ Item {
             mouseMove(standard, 10, 10)
             wait(Theme.fast / 3)
             verify(Colors.between(standard.background.color, Theme.control, Theme.controlHover))
+        }
+
+        function test_a_checked_subtle_button_rests_on_its_hover() {
+            tryVerify(() => Colors.same(open.background.color, Theme.subtleHover), 2000)
+            mouseClick(open)
+            verify(open.checked, "the caller's binding decides, not a click")
+        }
+
+        function test_font_and_icon_reach_the_content() {
+            compare(small.contentItem.children[0].children[1].font.pixelSize, Theme.fontCaption)
+            compare(standard.contentItem.children[0].children[1].font.pixelSize, Theme.fontBody)
+            const icon = withIcon.contentItem.children[0].children[0]
+            compare(String(icon.source), Theme.iconsOnAccent + "go-up")
         }
 
         function test_space_and_enter_activate() {

@@ -28,6 +28,10 @@
         <translation>Non c&apos;è niente qui. Quando copi qualcosa, lo ritrovi qui per incollarlo di nuovo.</translation>
     </message>
     <message>
+        <source>See more</source>
+        <translation>Visualizza altro</translation>
+    </message>
+    <message>
         <source>&amp;Unpin</source>
         <translation>&amp;Rimuovi fissaggio</translation>
     </message>
@@ -308,6 +312,13 @@
     <message>
         <source>No new notifications</source>
         <translation>Nessuna nuova notifica</translation>
+    </message>
+</context>
+<context>
+    <name>NotificationPopups</name>
+    <message>
+        <source>Close</source>
+        <translation>Chiudi</translation>
     </message>
 </context>
 <context>
@@ -807,6 +818,10 @@
     <message>
         <source>No apps found</source>
         <translation>Nessuna app trovata</translation>
+    </message>
+    <message>
+        <source>Power</source>
+        <translation>Arresta</translation>
     </message>
     <message>
         <source>Sleep</source>

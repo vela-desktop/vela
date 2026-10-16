@@ -20,7 +20,7 @@ Flickable {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
 
-    component Entry: Rectangle {
+    component Entry: Fill {
         id: entry
         property string icon
         property string label
@@ -34,7 +34,7 @@ Flickable {
         width: column.width
         height: 32
         radius: Theme.radius
-        color: drop.containsDrag ? Theme.selectionHover : selected ? Theme.selection : mouse.containsMouse ? Theme.subtleHover : "transparent"
+        color: drop.containsDrag ? Theme.selectionHover : selected ? Theme.selection : mouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
 
         Rectangle {
             visible: entry.selected

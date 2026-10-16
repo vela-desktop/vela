@@ -71,13 +71,7 @@ Window {
         color: Theme.veil
         opacity: 0
         Component.onCompleted: opacity = Qt.binding(() => Request.closing ? 0 : 1)
-        Behavior on opacity {
-            NumberAnimation {
-                duration: Request.closing ? Theme.normal : Theme.slow
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.decelerate
-            }
-        }
+        Behavior on opacity { Eased { duration: Request.closing ? Theme.normal : Theme.slow } }
     }
     MouseArea {
         anchors.fill: parent
@@ -120,9 +114,7 @@ Window {
                 scale = Qt.binding(() => Request.closing ? 1 - 0.02 * Theme.motion : 1)
             }
             Behavior on opacity { NumberAnimation { duration: Request.closing ? Theme.fast : Theme.normal } }
-            Behavior on scale {
-                NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-            }
+            Behavior on scale { Eased {} }
 
             Accessible.role: Accessible.Dialog
             Accessible.name: window.title
@@ -309,7 +301,7 @@ Window {
                                     Repeater {
                                         model: Request.chooseIdentity ? Request.identities
                                                : (window.selectedIdentity ? [window.selectedIdentity] : [])
-                                        delegate: Rectangle {
+                                        delegate: Fill {
                                             id: tile
                                             required property var modelData
                                             readonly property bool selected: modelData.uid === Request.selectedUid
@@ -317,9 +309,9 @@ Window {
                                             width: parent.width
                                             height: 56
                                             radius: Theme.radius
-                                            color: !Request.chooseIdentity ? "transparent"
+                                            color: !Request.chooseIdentity ? Theme.subtleRest
                                                  : selected ? Theme.controlPressed
-                                                 : tileMouse.containsMouse ? Theme.subtleHover : "transparent"
+                                                 : tileMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                                             border.width: Request.chooseIdentity && selected ? 1 : 0
                                             border.color: Theme.accentFill
                                             activeFocusOnTab: Request.chooseIdentity
@@ -440,14 +432,16 @@ Window {
                                         event.accepted = false
                                     }
                                 }
+                                // Its beats in twelfths of `fast`: 270 ms at Vela's
+                                // speed, scaled with every other duration.
                                 SequentialAnimation {
                                     id: shake
                                     loops: 1
-                                    NumberAnimation { target: field; property: "x"; to: -10 * Theme.motion; duration: 50 }
-                                    NumberAnimation { target: field; property: "x"; to: 10 * Theme.motion; duration: 70 }
-                                    NumberAnimation { target: field; property: "x"; to: -6 * Theme.motion; duration: 60 }
-                                    NumberAnimation { target: field; property: "x"; to: 4 * Theme.motion; duration: 50 }
-                                    NumberAnimation { target: field; property: "x"; to: 0; duration: 40 }
+                                    NumberAnimation { target: field; property: "x"; to: -10 * Theme.motion; duration: Theme.fast * 5 / 12 }
+                                    NumberAnimation { target: field; property: "x"; to: 10 * Theme.motion; duration: Theme.fast * 7 / 12 }
+                                    NumberAnimation { target: field; property: "x"; to: -6 * Theme.motion; duration: Theme.fast * 6 / 12 }
+                                    NumberAnimation { target: field; property: "x"; to: 4 * Theme.motion; duration: Theme.fast * 5 / 12 }
+                                    NumberAnimation { target: field; property: "x"; to: 0; duration: Theme.fast * 4 / 12 }
                                 }
                                 // While PAM checks: a line running under the field.
                                 Item {
@@ -465,7 +459,7 @@ Window {
                                             running: Request.checking
                                             from: -runner.width
                                             to: fieldRow.width
-                                            duration: 1100
+                                            duration: 1100 // motion: a progress bar's period, not a transition
                                             loops: Animation.Infinite
                                         }
                                     }

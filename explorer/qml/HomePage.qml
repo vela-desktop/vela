@@ -20,13 +20,13 @@ Flickable {
     }
 
     // A file row (Favorites and Recent): name, date, folder.
-    component FileRow: Rectangle {
+    component FileRow: Fill {
         id: row
         required property var modelData
         width: column.width
         height: 32
         radius: Theme.radius
-        color: rowMouse.containsMouse ? Theme.subtleHover : "transparent"
+        color: rowMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         Image {
             x: 8
             anchors.verticalCenter: parent.verticalCenter
@@ -107,13 +107,13 @@ Flickable {
             spacing: 4
             Repeater {
                 model: Places.quickAccess
-                delegate: Rectangle {
+                delegate: Fill {
                     id: tile
                     required property var modelData
                     width: 220
                     height: 64
                     radius: Theme.radius
-                    color: tileMouse.containsMouse ? Theme.subtleHover : "transparent"
+                    color: tileMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                     Image {
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter

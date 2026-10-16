@@ -11,13 +11,12 @@ Vela.Controls:
 2. A `color` or `border.color` driven by a state (containsMouse, pressed,
    hovered, down, checked, selected) belongs to a Fill, or to an object with
    its own `Behavior on` that property; on a plain Rectangle it changes at
-   once and is reported.
+   once and is reported. So is an `opacity` driven by a state on a Rectangle
+   or a Fill (a hover shown by turning a fixed color on): the state belongs in
+   the color, which fades.
 
 A reported line passes with a comment on it, or on the line above, saying why:
-`// motion: follows the drag`.
-
-Until the private controls are replaced (§8, PR 11) it only reports; with
---strict it fails on any report."""
+`// motion: follows the drag`. Any other report fails."""
 from __future__ import annotations
 
 import argparse
@@ -33,7 +32,7 @@ EXEMPT = re.compile(r"//\s*motion:")
 OPENING = re.compile(r"(?:^|[\s:;{])([A-Z][\w.]*)\s*\{")
 DURATION = re.compile(r"(?<![\w.])duration:\s*(.+?)\s*(?:;|$|\}|//)")
 DECLARATION = re.compile(r"^\s*(?:readonly\s+|required\s+|default\s+)*property\s+\S+\s+\w+\s*:")
-COLOR = re.compile(r"(?:^|[\s;{])((?:border\.)?color):\s*(.+?)\s*(?:;\s*\w|$|//)")
+COLOR = re.compile(r"(?:^|[\s;{])((?:border\.)?color|opacity):\s*(.+?)\s*(?:;\s*\w|$|//)")
 NUMBER = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)(?![\w.])")
 
 
@@ -121,12 +120,15 @@ def check_file(path: Path, relative: str) -> list[Report]:
             if not STATES.search(strip_strings(expression)):
                 continue
             owner = innermost(found, i)
-            if owner is None or owner[0] != "Rectangle":
+            kinds = ("Rectangle", "Fill") if prop == "opacity" else ("Rectangle",)
+            if owner is None or owner[0] not in kinds:
                 continue
             block = "\n".join(lines[owner[1] : owner[2] + 1])
             if re.search(rf"Behavior on {re.escape(prop)}\b", block):
                 continue
-            reports.append(Report(relative, i + 1, f"state {prop} on a Rectangle, not a Fill", raw.strip()))
+            rule = "state opacity on a background, not a faded color" if prop == "opacity" \
+                else f"state {prop} on a Rectangle, not a Fill"
+            reports.append(Report(relative, i + 1, rule, raw.strip()))
     return reports
 
 
@@ -138,11 +140,8 @@ def check(root: Path = ROOT) -> list[Report]:
     return reports
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--strict", action="store_true", help="fail on any report")
-    args = parser.parse_args()
-    reports = check()
+def main(root: Path = ROOT) -> int:
+    reports = check(root)
     for report in reports:
         print(report)
     rules: dict[str, int] = {}
@@ -150,8 +149,9 @@ def main() -> int:
         rules[report.rule] = rules.get(report.rule, 0) + 1
     summary = ", ".join(f"{count} {rule}" for rule, count in sorted(rules.items())) or "nothing to report"
     print(f"QML motion: {summary}.")
-    return 1 if args.strict and reports else 0
+    return 1 if reports else 0
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(description=__doc__.split("\n\n")[0]).parse_args()
     sys.exit(main())

@@ -34,13 +34,13 @@ Flickable {
             spacing: 4
             Repeater {
                 model: Places.quickAccess
-                delegate: Rectangle {
+                delegate: Fill {
                     id: folder
                     required property var modelData
                     width: 220
                     height: 56
                     radius: Theme.radius
-                    color: folderMouse.containsMouse ? Theme.subtleHover : "transparent"
+                    color: folderMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                     Image {
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter
@@ -81,7 +81,7 @@ Flickable {
             spacing: 4
             Repeater {
                 model: Places.drives
-                delegate: Rectangle {
+                delegate: Fill {
                     id: drive
                     required property var modelData
                     readonly property bool mounted: modelData.mounted !== false
@@ -95,7 +95,7 @@ Flickable {
                     height: 72
                     opacity: mounted ? 1 : 0.85
                     radius: Theme.radius
-                    color: driveMouse.containsMouse ? Theme.subtleHover : "transparent"
+                    color: driveMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                     Image {
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter

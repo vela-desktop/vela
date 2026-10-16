@@ -285,19 +285,16 @@ Item {
                                 readonly property bool usable: modelData.enabled !== false
                                 width: 36
                                 height: 36
-                                Rectangle {
+                                Fill {
                                     anchors.fill: parent
                                     radius: Theme.radius
-                                    color: iconMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-                                    opacity: iconMouse.containsMouse && iconButton.usable ? 1 : 0
+                                    color: !iconButton.usable ? Theme.subtleRest
+                                         : iconMouse.pressed ? Theme.subtlePressed : iconMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                                 }
-                                Image {
+                                Icon {
                                     anchors.centerIn: parent
-                                    width: 16
-                                    height: 16
                                     opacity: iconButton.usable ? 1 : 0.4
-                                    source: Theme.icons + encodeURIComponent(iconButton.modelData.icon)
-                                    sourceSize: Qt.size(width, height)
+                                    name: iconButton.modelData.icon
                                 }
                                 MouseArea {
                                     id: iconMouse
@@ -325,13 +322,13 @@ Item {
                         visible: !row.entry.separator && row.entry.header === undefined && !row.entry.iconRow
                         anchors.fill: parent
 
-                        Rectangle {
+                        Fill {
                             x: 4
                             width: parent.width - 8
                             height: parent.height
                             radius: Theme.radius
-                            color: rowMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-                            opacity: row.isCurrent && row.usable ? 1 : 0
+                            color: !row.isCurrent || !row.usable ? Theme.subtleRest
+                                 : rowMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
                         }
 
                         // Icon, or the check mark or dot of choice entries.
@@ -448,11 +445,9 @@ Item {
                         anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                         width: 28
                         height: 28
-                        Rectangle {
+                        Fill {
                             anchors.fill: parent
-                            radius: Theme.radius
-                            color: Theme.subtleHover
-                            opacity: pinMouse.containsMouse ? 1 : 0
+                            color: pinMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         }
                         Shape {
                             anchors.centerIn: parent

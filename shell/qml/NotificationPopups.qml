@@ -63,14 +63,8 @@ Window {
                 Component.onCompleted: appear.start()
                 ParallelAnimation {
                     id: appear
-                    NumberAnimation {
-                        target: slide; property: "x"; to: 0
-                        duration: Theme.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
-                    }
-                    NumberAnimation {
-                        target: toast; property: "opacity"; to: 1
-                        duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
-                    }
+                    Eased { target: slide; property: "x"; to: 0; duration: Theme.slow }
+                    Eased { target: toast; property: "opacity"; to: 1 }
                 }
 
                 MouseArea {
@@ -141,63 +135,46 @@ Window {
                         spacing: 8
                         Repeater {
                             model: toast.actions
-                            delegate: Rectangle {
+                            delegate: Button {
                                 required property var modelData
-                                width: Math.max(80, actionLabel.implicitWidth + 24)
-                                height: 30
-                                radius: Theme.radius
-                                color: actionMouse.pressed ? Theme.subtlePressed : actionMouse.containsMouse ? Theme.subtleHover : Theme.control
-                                border.width: 1
-                                border.color: Theme.stroke
-                                Text {
-                                    id: actionLabel
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    color: Theme.text
-                                    font.pixelSize: Theme.fontCaption
-                                }
-                                MouseArea {
-                                    id: actionMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    onClicked: Notifications.invoke(toast.notificationId, modelData.key)
-                                }
+                                implicitWidth: Math.max(80, implicitContentWidth + 24)
+                                implicitHeight: 30
+                                text: modelData.label
+                                font.pixelSize: Theme.fontCaption
+                                onClicked: Notifications.invoke(toast.notificationId, modelData.key)
                             }
                         }
                     }
                 }
 
                 // Close: appears with the mouse over, at the top right.
-                Rectangle {
+                Button {
+                    id: closeButton
                     anchors { right: parent.right; top: parent.top; margins: 8 }
                     width: 24
                     height: 24
-                    radius: Theme.radius
-                    color: closeMouse.containsMouse ? Theme.subtleHover : "transparent"
-                    opacity: toastMouse.containsMouse || closeMouse.containsMouse ? 1 : 0
-                    Behavior on opacity {
-                        NumberAnimation { duration: Theme.fast }
-                    }
-                    Shape {
-                        anchors.centerIn: parent
-                        width: 10
-                        height: 10
-                        preferredRendererType: Shape.CurveRenderer
-                        ShapePath {
-                            strokeColor: Theme.text
-                            strokeWidth: 1.2
-                            capStyle: ShapePath.RoundCap
-                            startX: 0; startY: 0
-                            PathLine { x: 10; y: 10 }
-                            PathMove { x: 10; y: 0 }
-                            PathLine { x: 0; y: 10 }
+                    padding: 0
+                    subtle: true
+                    opacity: toastMouse.containsMouse || hovered ? 1 : 0
+                    Behavior on opacity { Eased { duration: Theme.fast } }
+                    Accessible.name: qsTr("Close")
+                    onClicked: Notifications.dismiss(toast.notificationId)
+                    contentItem: Item {
+                        Shape {
+                            anchors.centerIn: parent
+                            width: 10
+                            height: 10
+                            preferredRendererType: Shape.CurveRenderer
+                            ShapePath {
+                                strokeColor: Theme.text
+                                strokeWidth: 1.2
+                                capStyle: ShapePath.RoundCap
+                                startX: 0; startY: 0
+                                PathLine { x: 10; y: 10 }
+                                PathMove { x: 10; y: 0 }
+                                PathLine { x: 0; y: 10 }
+                            }
                         }
-                    }
-                    MouseArea {
-                        id: closeMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: Notifications.dismiss(toast.notificationId)
                     }
                 }
             }

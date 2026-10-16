@@ -245,21 +245,15 @@ Window {
 
         Behavior on x {
             enabled: Theme.motion > 0
-            NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+            Eased {}
         }
         // The button of an app just opened comes in growing.
         add: Transition {
             NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.normal }
-            NumberAnimation {
-                property: "scale"; from: 1 - 0.5 * Theme.motion; to: 1; duration: Theme.slow
-                easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
-            }
+            Eased { property: "scale"; from: 1 - 0.5 * Theme.motion; to: 1; duration: Theme.slow }
         }
         move: Transition {
-            NumberAnimation {
-                property: "x"; duration: Theme.normal * Theme.motion
-                easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
-            }
+            Eased { property: "x"; duration: Theme.normal * Theme.motion }
         }
 
         TaskbarButton {
@@ -417,12 +411,10 @@ Window {
                 height: tray.height
                 visible: icon !== ""
 
-                Rectangle {
+                Fill {
                     anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
                     radius: Theme.radius
-                    color: trayMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-                    opacity: trayMouse.containsMouse ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+                    color: trayMouse.pressed ? Theme.subtlePressed : trayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 }
                 Image {
                     anchors.centerIn: parent
@@ -497,19 +489,14 @@ Window {
             interval: 500
             onTriggered: microphone.showTooltip()
         }
-        Rectangle {
+        Fill {
             anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
             radius: Theme.radius
-            color: microphoneMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-            opacity: microphoneMouse.containsMouse ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+            color: microphoneMouse.pressed ? Theme.subtlePressed : microphoneMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         }
-        Image {
+        Icon {
             anchors.centerIn: parent
-            width: 16
-            height: 16
-            source: Theme.icons + "audio-input-microphone"
-            sourceSize: Qt.size(width, height)
+            name: "audio-input-microphone"
         }
         MouseArea {
             id: microphoneMouse
@@ -532,38 +519,27 @@ Window {
         anchors { right: clock.left; top: parent.top; bottom: parent.bottom; rightMargin: 2 }
         width: visible ? iconsRow.width + 16 : 0
 
-        Rectangle {
+        Fill {
             anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
             radius: Theme.radius
-            color: systemMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-            opacity: systemMouse.containsMouse || Menus.quickSettingsOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+            color: systemMouse.pressed ? Theme.subtlePressed : systemMouse.containsMouse || Menus.quickSettingsOpen ? Theme.subtleHover : Theme.subtleRest
         }
         Row {
             id: iconsRow
             anchors.centerIn: parent
             spacing: 10
-            Image {
+            Icon {
                 id: networkIcon
-                width: 16
-                height: 16
-                source: Theme.icons + encodeURIComponent(Status.networkIconName)
-                sourceSize: Qt.size(width, height)
+                name: Status.networkIconName
             }
-            Image {
+            Icon {
                 id: volumeIcon
                 visible: Audio.available
-                width: 16
-                height: 16
-                source: Theme.icons + encodeURIComponent(Audio.iconName)
-                sourceSize: Qt.size(width, height)
+                name: Audio.iconName
             }
-            Image {
+            Icon {
                 visible: Status.batteryPresent
-                width: 16
-                height: 16
-                source: Theme.icons + encodeURIComponent(Status.batteryCharging ? "battery-good-charging" : "battery-good")
-                sourceSize: Qt.size(width, height)
+                name: Status.batteryCharging ? "battery-good-charging" : "battery-good"
             }
         }
         MouseArea {
@@ -618,12 +594,9 @@ Window {
             onTriggered: clock.now = new Date()
         }
 
-        Rectangle {
+        Fill {
             anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
-            radius: Theme.radius
-            color: Theme.subtleHover
-            opacity: clockMouse.containsMouse || Menus.notificationCenterOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+            color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
         // Notifications to read: a number next to the clock, like Windows 11
         // (with "Do not disturb" a muted bell).
@@ -642,13 +615,11 @@ Window {
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
             }
-            Image {
+            Icon {
                 anchors.centerIn: parent
                 visible: Notifications.doNotDisturb
-                width: 14
-                height: 14
-                source: Theme.icons + "notifications-disabled"
-                sourceSize: Qt.size(width, height)
+                name: "notifications-disabled"
+                size: 14
             }
         }
 

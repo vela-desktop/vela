@@ -9,7 +9,8 @@ they are made and with how each is verified.
 > **Status:** approved design, implemented in the order of §8; done: PR 1
 > (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4), PR 5 (§6.5), PR 6 (§6.6),
 > PR 7 (§6.7), PR 8 (the shared pieces of §6.8 and §6.9, §6.11 reporting),
-> PR 9 (§6.10), PR 10 (§6.9 for the other panels).
+> PR 9 (§6.10), PR 10 (§6.9 for the other panels), PR 11 (the rest of §6.8,
+> §6.11 failing).
 > Each change has one explanation, in §6; the plan in §8 only says which pull
 > request carries it.
 
@@ -694,12 +695,18 @@ otherwise with their program, built on Templates and `Fill`:
 | `Button` (`accent`, `subtle`, `icon`, `text`; `usable` stays as an alias of `enabled`) | `T.Button` | `Vela.Controls` | the shell's ad-hoc buttons, Quick Settings' back and settings buttons, the Notification Center's `SmallButton`, notifications' close |
 | `Switch` | `T.Switch`; knob on `visualPosition`, `Behavior on x` only when not `down` | `Vela.Controls` | Quick Settings' `Switch`, Settings' `Toggle.qml` |
 | `Slider` | `T.Slider`; thumb size fades with hover and press; the value never animated | `Vela.Controls` | Quick Settings' `Slider`, Settings' `Slider.qml` |
-| `ToolButton` | `T.ToolButton` + `Fill` | Files | Files' `ToolButton` |
+| `ToolButton` (`checked`: a pane or a view that is on) | `T.ToolButton` + `Fill` | Files | Files' `ToolButton` |
 | `CheckBox` | `T.CheckBox` + `Fill` | shell (Properties) | Properties' `Check` |
 | `RadioButton` | `T.RadioButton` + `Fill` | Settings | the night light page's `Radio` |
-| `ListItem` (`highlighted`: the chosen one) | `T.ItemDelegate` + `Fill` | `Vela.Controls` (PR 9: used by Quick Settings now, Settings and Files in PR 10–11) | device, network and output rows; clickable cards; the `containsMouse ? Theme.subtleHover` rows of the shell, Settings and Files |
+| `ListItem` (`highlighted`: the chosen one; `checked`: the current one of a subtle list) | `T.ItemDelegate` + `Fill` | `Vela.Controls` | device, network and output rows; Start's power entries; the file dialogs' `Choice` |
 | `Tile`, `Link` | `T.AbstractButton` + `Fill` | Quick Settings | its private `Tile` and `Link` |
-| the file dialogs' field | `TextBox` | shell | `FileDialogs`' `Field` |
+| `MenuTextBox` | `TextBox` + `TextMenu` (the right-click menu `MenuTextField` has too) | shell | `FileDialogs`' `Field` |
+
+Rows that are more than a click (a file row with its drag, drop and context
+menu, a Settings card, a task card) keep their `MouseArea` and take a `Fill`
+whose rest color is the hover color at alpha 0 (`Theme.subtleRest`, or the
+Close red's `#00c42b1c`). A hover shown by turning a fixed color's opacity on
+moves into the color, so it fades like the rest (§6.11).
 
 **The pieces controls are made of** (PR 9). Writing Quick Settings on the
 pieces above showed what every control repeats, so it is written once in
@@ -713,8 +720,8 @@ programs' own) can reach it:
 | `FocusRing` | the keyboard focus ring, 3 units outside its parent with its corners | as a 9-line `Rectangle` in each control |
 | `Chevron` (`down`, `color`) | the ">" of what opens a page, the "v" of what opens a list | as a `Shape` in Quick Settings, Task View, the Notification Center and Files' address bar |
 
-The shell, Settings and Files take them with the rest of their private
-controls (PR 10–11).
+The shell, Settings, Files and the polkit prompt take them with the rest of
+their private controls (PR 10–11).
 
 The API callers use (`text`, `accent`, `subtle`, `usable`, `clicked`) stays,
 so call sites change only where a private control is replaced. Three names are
@@ -736,9 +743,10 @@ a view. `TextBox` takes `Fill` as its background.
 each state combination gives the expected color at rest; a hover reversed
 halfway turns back from its current color; Space and Enter activate, Tab moves
 focus and shows the focus ring, the accessible role and checked state are set;
-with animation effects off the knob jumps. For Files, a test scrolls a recycled
-view with selected rows and checks that no color animation runs on a reused
-delegate.
+with animation effects off the knob jumps. The programs' own controls
+(`ToolButton`, `CheckBox`, `RadioButton`) get the same checks with the same
+runner. For Files, a test scrolls a recycled view with selected rows and checks
+that no color animation runs on a reused delegate.
 
 ### 6.9 Panels: `PanelMotion`, `Shadow`, `Dialog` (D14–D18)
 
@@ -942,10 +950,13 @@ and the polkit prompt:
    §6.5 can't reach it.
 2. **State colors fade.** A `color` or `border.color` driven by `containsMouse`,
    `pressed`, `hovered`, `down`, `checked` or `selected` belongs to a `Fill` (or
-   a control built on one); on a plain `Rectangle` it is reported.
+   a control built on one); on a plain `Rectangle` it is reported. So is an
+   `opacity` driven by those states on a `Rectangle` or a `Fill` without its own
+   `Behavior`: a hover drawn by turning a fixed color on, which jumps.
 
 A reported line passes with a comment on it saying why (`// motion: follows the
-drag`), so the exception sits next to the code. Local `Behavior`s and
+drag`), so the exception sits next to the code; any other report fails the
+check (PR 8 only reported, until PR 11 replaced the private controls). Local `Behavior`s and
 animations are allowed: the taskbar indicator, the Start menu's app tiles, the
 polkit prompt's shake and spinner have motion of their own.
 
@@ -988,7 +999,7 @@ its behavior touches. This document goes with the first.
 | 8. Shared QML pieces | `Fill`, `Button`, `Switch`, `Slider`, `Shadow`, `Dialog`, `PanelMotion`; §6.11 reporting only | Qt Quick Test for them | Settings and Files with the new `Button`, `Switch`, `Slider`, `Dialog` | development.md (where controls live) |
 | 9. Quick Settings | §6.10 | §6.9 and §6.10 tests | every page, both themes, effects on and off | — |
 | 10. Other panels | §6.9 for the rest | Start's tests for the edge panels; shadow-room click; blur during entrance | every panel, both themes | — |
-| 11. Settings, Files, polkit, the shell's controls | the remaining private controls of §6.8, the shell's too (the Notification Center's `SmallButton`, Properties' `Check`, the file dialogs' `Field` and `Choice`, Start's power entries, the shell's `containsMouse` rows); §6.11 failing | Files reuse test; check script | both apps and the prompt, effects on and off | — |
+| 11. Settings, Files, polkit, the shell's controls | the remaining private controls of §6.8, the shell's too (the Notification Center's `SmallButton`, Properties' `Check`, the file dialogs' `Field` and `Choice`, Start's power entries, the shell's `containsMouse` rows); §6.11 failing | Files reuse test; Qt Quick Test for `ToolButton`, `CheckBox`, `RadioButton`; check script | both apps and the prompt, effects on and off | development.md, testing.md |
 
 Order: 1–3 fix the compositor without touching a color. 4 before 5 (the switch
 caps the tokens) and 5 before 8 (`PanelMotion` reads `Theme.motion`). 6 and 7

@@ -120,13 +120,11 @@ Window {
             border.width: 1
             border.color: Theme.stroke
 
-            Image {
+            Icon {
                 x: 20
                 y: 20
-                width: 32
-                height: 32
-                source: Theme.icons + "system-run"
-                sourceSize: Qt.size(width, height)
+                name: "system-run"
+                size: 32
             }
             Text {
                 x: 64

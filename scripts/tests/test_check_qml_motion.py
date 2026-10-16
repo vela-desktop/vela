@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
+import contextlib
 import importlib.util
+import io
 import tempfile
 from pathlib import Path
 import unittest
@@ -107,11 +109,50 @@ Rectangle {
 }
 """), [])
 
+    def test_a_state_opacity_on_a_background_is_reported(self):
+        self.assertEqual(reports("""
+Item {
+    Rectangle {
+        color: Theme.subtleHover
+        opacity: mouse.containsMouse ? 1 : 0
+    }
+    Fill {
+        color: Theme.subtleHover
+        opacity: hovered ? 1 : 0
+    }
+}
+"""), [(5, "state opacity on a background, not a faded color"),
+              (9, "state opacity on a background, not a faded color")])
+
+    def test_an_opacity_with_its_own_fade_or_on_content_passes(self):
+        self.assertEqual(reports("""
+Item {
+    Rectangle {
+        opacity: hovered ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+    }
+    Item { opacity: hovered ? 1 : 0 }
+    Image { opacity: pressed ? 0.5 : 1 }
+    Rectangle { opacity: enabled ? 1 : 0.45 }
+}
+"""), [])
+
 
 class Repository(unittest.TestCase):
-    def test_vela_controls_is_clean(self):
-        controls = [r for r in m.check() if r.path.startswith("common/controls/")]
-        self.assertEqual([str(r) for r in controls], [])
+    def test_the_repository_is_clean(self):
+        self.assertEqual([str(r) for r in m.check()], [])
+
+    def test_a_report_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "shell" / "qml" / "Test.qml"
+            path.parent.mkdir(parents=True)
+            path.write_text("Rectangle { color: hovered ? Theme.subtleHover : Theme.subtleRest }\n")
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(m.main(Path(directory)), 1)
+            self.assertIn("Test.qml:1: state color on a Rectangle, not a Fill", out.getvalue())
+            path.write_text("Fill { color: hovered ? Theme.subtleHover : Theme.subtleRest }\n")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(m.main(Path(directory)), 0)
 
 
 if __name__ == "__main__":

@@ -115,10 +115,13 @@ set(VELA_QML_FILES
     qml/ContextMenu.qml
     qml/MenuPanel.qml
     qml/MenuTextField.qml
+    qml/MenuTextBox.qml
+    qml/TextMenu.qml
     qml/RunDialog.qml
     qml/ConfirmDialog.qml
     qml/SourceChooser.qml
     qml/PropertiesDialog.qml
+    qml/CheckBox.qml
     qml/QuickSettings.qml
     qml/NotificationCenter.qml
     qml/TaskView.qml
@@ -180,6 +183,15 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-mimeapps-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-mimeapps-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-mimeapps COMMAND vela-mimeapps-test)
+
+    # The shell's own controls (tests/tst_*.qml) under Vela.Controls' Qt Quick
+    # Test runner, with animation effects on and off.
+    if(TARGET vela-controls-test)
+        add_test(NAME shell-controls COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+        add_test(NAME shell-controls-no-effects COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+        set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
+        set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
+    endif()
 
     qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
     target_include_directories(vela-tool-path-test PRIVATE src)

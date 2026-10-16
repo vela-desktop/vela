@@ -273,12 +273,9 @@ Window {
                 }
             }
             Keys.onEscapePressed: text = ""
-            Image {
+            Icon {
                 anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                width: 16
-                height: 16
-                source: Theme.icons + "edit-find"
-                sourceSize: Qt.size(width, height)
+                name: "edit-find"
                 opacity: 0.8
             }
         }
@@ -292,14 +289,14 @@ Window {
             boundsBehavior: Flickable.StopAtBounds
             model: root.sections
             spacing: 2
-            delegate: Rectangle {
+            delegate: Fill {
                 id: entry
                 required property string modelData
                 readonly property bool selected: root.section === modelData
                 width: sectionList.width - 16
                 height: 36
                 radius: Theme.radius
-                color: entryMouse.pressed ? Theme.subtlePressed : selected || entryMouse.containsMouse ? Theme.subtleHover : "transparent"
+                color: entryMouse.pressed ? Theme.subtlePressed : selected || entryMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
 
                 Rectangle {
                     visible: entry.selected
@@ -353,13 +350,13 @@ Window {
                 width: parent.width - 8
                 Repeater {
                     model: root.searchResults
-                    delegate: Rectangle {
+                    delegate: Fill {
                         id: result
                         required property var modelData
                         width: results.width
                         height: 40
                         radius: Theme.radius
-                        color: resultMouse.containsMouse ? Theme.subtleHover : "transparent"
+                        color: resultMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         Image {
                             x: 10
                             anchors.verticalCenter: parent.verticalCenter
@@ -414,7 +411,7 @@ Window {
             ParallelAnimation {
                 id: enter
                 NumberAnimation { target: pageLoader.item; property: "opacity"; to: 1; duration: Theme.normal }
-                NumberAnimation { target: slide; property: "y"; to: 0; duration: Theme.long; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+                Eased { target: slide; property: "y"; to: 0; duration: Theme.long }
             }
         }
     }

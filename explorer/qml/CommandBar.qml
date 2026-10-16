@@ -28,7 +28,7 @@ Item {
         ToolButton {
             id: newButton
             visible: !bar.tab.isTrash
-            icon: "list-add"
+            icon.name: "list-add"
             text: qsTr("New")
             menu: true
             usable: bar.writable
@@ -37,13 +37,13 @@ Item {
         Rectangle { visible: !bar.tab.isTrash; width: 1; height: 24; anchors.verticalCenter: parent.verticalCenter; color: Theme.divider }
         Item { visible: !bar.tab.isTrash; width: 4; height: 1 }
 
-        ToolButton { visible: !bar.tab.isTrash; icon: "edit-cut"; tooltip: qsTr("Cut (Ctrl+X)"); usable: bar.hasSelection && bar.writable; onClicked: bar.tab.cutSelection() }
-        ToolButton { visible: !bar.tab.isTrash; icon: "edit-copy"; tooltip: qsTr("Copy (Ctrl+C)"); usable: bar.hasSelection; onClicked: bar.tab.copySelection() }
-        ToolButton { visible: !bar.tab.isTrash; icon: "edit-paste"; tooltip: qsTr("Paste (Ctrl+V)"); usable: Ops.canPaste && bar.writable; onClicked: bar.tab.paste() }
-        ToolButton { visible: !bar.tab.isTrash; icon: "edit-rename"; tooltip: qsTr("Rename (F2)"); usable: bar.tab.model && bar.tab.model.selectionCount === 1 && bar.writable; onClicked: bar.tab.renameSelection() }
+        ToolButton { visible: !bar.tab.isTrash; icon.name: "edit-cut"; tooltip: qsTr("Cut (Ctrl+X)"); usable: bar.hasSelection && bar.writable; onClicked: bar.tab.cutSelection() }
+        ToolButton { visible: !bar.tab.isTrash; icon.name: "edit-copy"; tooltip: qsTr("Copy (Ctrl+C)"); usable: bar.hasSelection; onClicked: bar.tab.copySelection() }
+        ToolButton { visible: !bar.tab.isTrash; icon.name: "edit-paste"; tooltip: qsTr("Paste (Ctrl+V)"); usable: Ops.canPaste && bar.writable; onClicked: bar.tab.paste() }
+        ToolButton { visible: !bar.tab.isTrash; icon.name: "edit-rename"; tooltip: qsTr("Rename (F2)"); usable: bar.tab.model && bar.tab.model.selectionCount === 1 && bar.writable; onClicked: bar.tab.renameSelection() }
         ToolButton {
             visible: !bar.tab.isTrash
-            icon: "document-share"
+            icon.name: "document-share"
             tooltip: qsTr("Share")
             usable: bar.hasSelection
             onClicked: {
@@ -52,11 +52,11 @@ Item {
                 if (files.length > 0) Ops.share(files)
             }
         }
-        ToolButton { visible: !bar.tab.isTrash; icon: "edit-delete"; tooltip: qsTr("Delete (Del)"); usable: bar.hasSelection && bar.writable; onClicked: bar.tab.deleteSelection(false) }
+        ToolButton { visible: !bar.tab.isTrash; icon.name: "edit-delete"; tooltip: qsTr("Delete (Del)"); usable: bar.hasSelection && bar.writable; onClicked: bar.tab.deleteSelection(false) }
 
         // In the Recycle Bin.
-        ToolButton { visible: bar.tab.isTrash; icon: "trash-empty"; text: qsTr("Empty Recycle Bin"); usable: bar.tab.model && bar.tab.model.count > 0; onClicked: bar.tab.askEmptyTrash() }
-        ToolButton { visible: bar.tab.isTrash; icon: "edit-undo"; text: qsTr("Restore the selected items"); usable: bar.hasSelection; onClicked: Ops.restoreFromTrash(bar.tab.model.selectedPaths()) }
+        ToolButton { visible: bar.tab.isTrash; icon.name: "trash-empty"; text: qsTr("Empty Recycle Bin"); usable: bar.tab.model && bar.tab.model.count > 0; onClicked: bar.tab.askEmptyTrash() }
+        ToolButton { visible: bar.tab.isTrash; icon.name: "edit-undo"; text: qsTr("Restore the selected items"); usable: bar.hasSelection; onClicked: Ops.restoreFromTrash(bar.tab.model.selectedPaths()) }
 
         Item { width: 4; height: 1 }
         Rectangle { width: 1; height: 24; anchors.verticalCenter: parent.verticalCenter; color: Theme.divider }
@@ -64,7 +64,7 @@ Item {
 
         ToolButton {
             id: sortButton
-            icon: "view-sort"
+            icon.name: "view-sort"
             text: qsTr("Sort")
             menu: true
             usable: bar.tab.isFolder
@@ -72,7 +72,7 @@ Item {
         }
         ToolButton {
             id: viewButton
-            icon: "view-list-icons"
+            icon.name: "view-list-icons"
             text: qsTr("View")
             menu: true
             usable: bar.tab.isFolder
@@ -83,7 +83,7 @@ Item {
         Item { width: 4; height: 1 }
         ToolButton {
             id: moreButton
-            icon: "view-more-horizontal-symbolic"
+            icon.name: "view-more-horizontal-symbolic"
             tooltip: qsTr("See more")
             usable: bar.tab.isFolder
             onClicked: bar.openMenu(bar.tab.moreEntries(), moreButton)
@@ -93,7 +93,7 @@ Item {
     // On the right, like Windows 11: the details pane.
     ToolButton {
         anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-        icon: "help-about"
+        icon.name: "help-about"
         text: qsTr("Details")
         tooltip: qsTr("Details pane (Alt+Shift+P)")
         checked: bar.tab.win.pane === "details"

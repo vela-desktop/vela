@@ -73,10 +73,10 @@ Item {
                 x: view.columnX(index)
                 width: modelData.width
                 height: header.height
-                Rectangle {
+                Fill {
                     anchors { fill: parent; topMargin: 2; bottomMargin: 2 }
                     radius: Theme.radius
-                    color: headerMouse.containsMouse && column.modelData.key >= 0 ? Theme.subtleHover : "transparent"
+                    color: headerMouse.containsMouse && column.modelData.key >= 0 ? Theme.subtleHover : Theme.subtleRest
                 }
                 Text {
                     x: 8
@@ -198,8 +198,13 @@ Item {
             required property string location
             width: list.width - 8
             height: view.rowHeight
+            // A recycled row takes its new file's state at once.
+            ListView.onPooled: fill.animated = false
+            ListView.onReused: fill.animated = true
 
-            Rectangle {
+            Fill {
+                id: fill
+                objectName: "rowFill"
                 x: 4
                 width: parent.width - 4
                 height: parent.height - 2
@@ -207,7 +212,7 @@ Item {
                 radius: Theme.radius
                 color: rowDrop.containsDrag ? Theme.selectionHover
                     : row.selected ? (rowMouse.containsMouse ? Theme.selectionHover : Theme.selection)
-                    : rowMouse.containsMouse ? Theme.subtleHover : "transparent"
+                    : rowMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 border.width: view.model.currentIndex === row.index && view.tab.viewFocused ? 1 : 0
                 border.color: Theme.focusRing
             }

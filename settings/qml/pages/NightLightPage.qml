@@ -18,49 +18,6 @@ Page {
         return list
     }
 
-    // A single-choice option (radio button).
-    component Radio: Item {
-        id: radio
-        property string text
-        property bool checked
-        property bool usable: true
-        signal clicked()
-        width: parent.width
-        height: 32
-        opacity: usable ? 1 : 0.45
-        Rectangle {
-            id: dot
-            anchors.verticalCenter: parent.verticalCenter
-            width: 20
-            height: 20
-            radius: 10
-            color: radio.checked ? Theme.accentFill : Theme.control
-            border.width: radio.checked ? 0 : 1
-            border.color: Theme.controlStrokeStrong
-            Rectangle {
-                visible: radio.checked
-                anchors.centerIn: parent
-                width: radioMouse.containsMouse ? 10 : 8
-                height: width
-                radius: width / 2
-                color: Theme.accentText
-            }
-        }
-        Text {
-            anchors { left: dot.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
-            text: radio.text
-            color: Theme.text
-            font.pixelSize: Theme.fontBody
-        }
-        MouseArea {
-            id: radioMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            enabled: radio.usable
-            onClicked: radio.clicked()
-        }
-    }
-
     CardGroup {
         Card {
             icon: "redshift-status-on"
@@ -118,13 +75,13 @@ Page {
                 x: 36
                 width: parent.width - 36
                 spacing: 4
-                Radio {
+                RadioButton {
                     text: qsTr("Sunset to sunrise") + (Prefs.sunset !== "" ? " (" + Prefs.sunset + " - " + Prefs.sunrise + ")" : "")
                     usable: Prefs.sunset !== ""
                     checked: Prefs.nightSchedule === "sunset"
                     onClicked: Prefs.nightSchedule = "sunset"
                 }
-                Radio {
+                RadioButton {
                     text: qsTr("Set hours")
                     checked: Prefs.nightSchedule === "hours"
                     onClicked: Prefs.nightSchedule = "hours"

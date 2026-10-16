@@ -64,42 +64,14 @@ Window {
             : [notifications, calendar].map(p => Qt.rect(motion.x + p.x, motion.y + p.y, p.width, p.height)))
     }
 
-    component SmallButton: Item {
-        id: smallButton
-        property string label
-        property string icon
-        property bool checked: false
-        signal clicked()
-        width: icon !== "" ? 32 : buttonText.implicitWidth + 20
-        height: 28
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radius
-            color: smallButton.checked ? Theme.accent : Theme.subtleHover
-            opacity: smallButton.checked || buttonMouse.containsMouse ? 1 : 0
-        }
-        Text {
-            id: buttonText
-            visible: smallButton.label !== ""
-            anchors.centerIn: parent
-            text: smallButton.label
-            color: Theme.text
-            font.pixelSize: Theme.fontCaption
-        }
-        Image {
-            visible: smallButton.icon !== ""
-            anchors.centerIn: parent
-            width: 16
-            height: 16
-            source: smallButton.icon !== "" ? Theme.icons + encodeURIComponent(smallButton.icon) : ""
-            sourceSize: Qt.size(width, height)
-        }
-        MouseArea {
-            id: buttonMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: smallButton.clicked()
-        }
+    // The panels' small buttons: subtle, or the accent while on.
+    component SmallButton: Button {
+        subtle: !accent
+        implicitWidth: text === "" ? 32 : implicitContentWidth + 20
+        implicitHeight: 28
+        leftPadding: 10
+        rightPadding: 10
+        font.pixelSize: Theme.fontCaption
     }
 
     ShadowRoom {
@@ -164,13 +136,13 @@ Window {
                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                         spacing: 4
                         SmallButton {
-                            icon: Notifications.doNotDisturb ? "notifications-disabled" : "notifications"
-                            checked: Notifications.doNotDisturb
+                            icon.name: Notifications.doNotDisturb ? "notifications-disabled" : "notifications"
+                            accent: Notifications.doNotDisturb
                             onClicked: Notifications.doNotDisturb = !Notifications.doNotDisturb
                         }
                         SmallButton {
                             visible: root.history.count > 0
-                            label: qsTr("Clear all")
+                            text: qsTr("Clear all")
                             onClicked: Notifications.clearHistory()
                         }
                     }
@@ -195,7 +167,7 @@ Window {
                         font.pixelSize: Theme.fontCaption
                     }
 
-                    delegate: Rectangle {
+                    delegate: Fill {
                         id: item
                         required property int notificationId
                         required property string icon
@@ -277,7 +249,7 @@ Window {
                                         model: item.actions
                                         delegate: SmallButton {
                                             required property var modelData
-                                            label: modelData.label
+                                            text: modelData.label
                                             onClicked: Notifications.invokeFromHistory(item.notificationId, modelData.key)
                                         }
                                     }
@@ -288,7 +260,7 @@ Window {
                         SmallButton {
                             anchors { right: parent.right; top: parent.top; margins: 6 }
                             visible: itemHover.hovered
-                            icon: "window-close"
+                            icon.name: "window-close"
                             onClicked: Notifications.dismissFromHistory(item.notificationId)
                         }
                     }
@@ -348,11 +320,11 @@ Window {
                             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                             spacing: 4
                             SmallButton {
-                                icon: "go-up"
+                                icon.name: "go-up"
                                 onClicked: root.month = new Date(root.month.getFullYear(), root.month.getMonth() - 1, 1)
                             }
                             SmallButton {
-                                icon: "go-down"
+                                icon.name: "go-down"
                                 onClicked: root.month = new Date(root.month.getFullYear(), root.month.getMonth() + 1, 1)
                             }
                         }
@@ -392,13 +364,12 @@ Window {
                                 }
                                 width: days.cell
                                 height: 36
-                                Rectangle {
+                                Fill {
                                     anchors.centerIn: parent
                                     width: 32
                                     height: 32
                                     radius: 16
-                                    color: parent.today ? Theme.accent : Theme.subtleHover
-                                    opacity: parent.today || dayMouse.containsMouse ? 1 : 0
+                                    color: parent.today ? Theme.accent : dayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                                 }
                                 Text {
                                     anchors.centerIn: parent

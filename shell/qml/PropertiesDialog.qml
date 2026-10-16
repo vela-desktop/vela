@@ -137,46 +137,6 @@ Window {
         height: 1
         color: Theme.stroke
     }
-    component Check: Item {
-        id: check
-        property string label
-        property bool checked
-        property bool usable: true
-        signal toggled()
-        width: box.width + 8 + text.implicitWidth
-        height: 22
-        opacity: usable ? 1 : 0.5
-        Rectangle {
-            id: box
-            width: 18
-            height: 18
-            anchors.verticalCenter: parent.verticalCenter
-            radius: 4
-            color: check.checked ? Theme.accent : "transparent"
-            border.width: check.checked ? 0 : 1
-            border.color: Theme.textSecondary
-            Text {
-                anchors.centerIn: parent
-                text: "✓"
-                visible: check.checked
-                color: "white"
-                font.pixelSize: 12
-            }
-        }
-        Text {
-            id: text
-            anchors { left: box.right; leftMargin: 8; verticalCenter: parent.verticalCenter }
-            text: check.label
-            color: Theme.text
-            font.pixelSize: Theme.fontBody
-        }
-        MouseArea {
-            anchors.fill: parent
-            enabled: check.usable
-            onClicked: check.toggled()
-        }
-    }
-
     // A click in the shadow's room closes it, like a click outside.
     ShadowRoom {
         panels: [panel]
@@ -301,12 +261,9 @@ Window {
                         width: 260
                         spacing: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        Image {
-                            width: 16
-                            height: 16
+                        Icon {
                             anchors.verticalCenter: parent.verticalCenter
-                            source: root.defaultAppIcon !== "" ? Theme.icons + encodeURIComponent(root.defaultAppIcon) : ""
-                            sourceSize: Qt.size(width, height)
+                            name: root.defaultAppIcon
                         }
                         Text {
                             width: 150
@@ -316,27 +273,19 @@ Window {
                             font.pixelSize: Theme.fontBody
                             elide: Text.ElideRight
                         }
-                        Rectangle {
+                        Button {
                             id: changeButton
                             width: 80
-                            height: 28
-                            radius: Theme.radius
-                            color: changeMouse.containsMouse ? Theme.subtleHover : Theme.control
-                            border.width: 1
-                            border.color: Theme.stroke
-                            Text { anchors.centerIn: parent; text: qsTr("Change…"); color: Theme.text; font.pixelSize: Theme.fontCaption }
-                            MouseArea {
-                                id: changeMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                onClicked: {
-                                    const path = root.paths[0]
-                                    const p = root.screenPoint(changeButton, 0, changeButton.height + 2)
-                                    Menus.open(Apps.appsForFile(path).map(a => ({
-                                        text: a.name.replace(/&/g, "&&"), icon: a.icon, radio: true, checked: a.isDefault,
-                                        action: () => { Properties.setDefaultApp(path, a.id); root.defaultApp = a.name; root.defaultAppIcon = a.icon }
-                                    })), p.x, p.y)
-                                }
+                            implicitHeight: 28
+                            text: qsTr("Change…")
+                            font.pixelSize: Theme.fontCaption
+                            onClicked: {
+                                const path = root.paths[0]
+                                const p = root.screenPoint(changeButton, 0, changeButton.height + 2)
+                                Menus.open(Apps.appsForFile(path).map(a => ({
+                                    text: a.name.replace(/&/g, "&&"), icon: a.icon, radio: true, checked: a.isDefault,
+                                    action: () => { Properties.setDefaultApp(path, a.id); root.defaultApp = a.name; root.defaultAppIcon = a.icon }
+                                })), p.x, p.y)
                             }
                         }
                     }
@@ -358,14 +307,14 @@ Window {
                 Row {
                     spacing: 16
                     Label { text: qsTr("Attributes:"); width: 104; anchors.verticalCenter: parent.verticalCenter }
-                    Check {
-                        label: qsTr("Read-only")
+                    CheckBox {
+                        text: qsTr("Read-only")
                         checked: root.readOnly
                         onToggled: root.readOnly = !root.readOnly
                     }
                     // On Linux "hidden" is the dot at the start of the name.
-                    Check {
-                        label: qsTr("Hidden")
+                    CheckBox {
+                        text: qsTr("Hidden")
                         checked: !!root.info.hidden
                         usable: false
                     }
@@ -377,8 +326,8 @@ Window {
                     visible: root.single && !root.info.isDir
                     spacing: 16
                     Label { text: ""; width: 104 }
-                    Check {
-                        label: qsTr("Allow executing as a program")
+                    CheckBox {
+                        text: qsTr("Allow executing as a program")
                         usable: !!root.info.mine
                         checked: (root.permissions & 0o111) !== 0
                         onToggled: {
@@ -414,10 +363,10 @@ Window {
                         Label { text: modelData.who; width: 104 }
                         Repeater {
                             model: [{ what: qsTr("Read"), bit: 4 }, { what: qsTr("Write"), bit: 2 }, { what: root.info.isDir ? qsTr("Open") : qsTr("Execute"), bit: 1 }]
-                            delegate: Check {
+                            delegate: CheckBox {
                                 required property var modelData
                                 readonly property int mask: modelData.bit << parent.modelData.shift
-                                label: modelData.what
+                                text: modelData.what
                                 usable: !!root.info.mine
                                 checked: (root.permissions & mask) !== 0
                                 onToggled: root.permissions = root.permissions ^ mask

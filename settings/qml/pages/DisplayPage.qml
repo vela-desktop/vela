@@ -106,7 +106,7 @@ Page {
 
         Repeater {
             model: page.outputs
-            delegate: Rectangle {
+            delegate: Fill {
                 id: monitor
                 required property var modelData
                 required property int index

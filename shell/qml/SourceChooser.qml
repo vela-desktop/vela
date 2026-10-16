@@ -172,11 +172,9 @@ Window {
                         required property int index
                         width: label.implicitWidth + 24
                         height: 36
-                        Rectangle {
+                        Fill {
                             anchors.fill: parent
-                            radius: Theme.radius
-                            color: Theme.subtleHover
-                            opacity: tabMouse.containsMouse ? 1 : 0
+                            color: tabMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         }
                         Text {
                             id: label
@@ -227,10 +225,10 @@ Window {
                     width: grid.cellWidth
                     height: grid.cellHeight
 
-                    Rectangle {
+                    Fill {
                         anchors { fill: parent; margins: 6 }
                         radius: Theme.radiusOverlay
-                        color: card.chosen ? Qt.rgba(0.36, 0.55, 1.0, 0.18) : cardMouse.containsMouse ? Theme.subtleHover : "transparent"
+                        color: card.chosen ? Qt.rgba(0.36, 0.55, 1.0, 0.18) : cardMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         border.width: card.chosen ? 2 : 0
                         border.color: Theme.accent
                     }
@@ -252,13 +250,11 @@ Window {
                             smooth: true
                             mipmap: true
                         }
-                        Image {
+                        Icon {
                             anchors.centerIn: parent
                             visible: thumbnail.status !== Image.Ready
-                            width: 48
-                            height: 48
-                            source: Theme.icons + encodeURIComponent(card.icon)
-                            sourceSize: Qt.size(width, height)
+                            name: card.icon
+                            size: 48
                         }
                     }
                     Row {
@@ -266,11 +262,8 @@ Window {
                         anchors { top: frame.bottom; topMargin: 10 }
                         width: parent.width - 32
                         spacing: 8
-                        Image {
-                            width: 16
-                            height: 16
-                            source: Theme.icons + encodeURIComponent(card.icon)
-                            sourceSize: Qt.size(width, height)
+                        Icon {
+                            name: card.icon
                         }
                         Text {
                             width: parent.width - 24

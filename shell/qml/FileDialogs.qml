@@ -138,61 +138,33 @@ Window {
         font.pixelSize: Theme.fontBody
         wrapMode: Text.WordWrap
     }
-    // A clickable row with an icon (Share targets, apps).
-    component Choice: Rectangle {
+    // A row with an icon (Share targets, apps); `checked`, the chosen app.
+    component Choice: ListItem {
         id: choice
-        property string icon
-        property string label
-        property bool selected: false
-        signal clicked()
-        signal doubleClicked()
         width: parent.width
         height: 40
-        radius: Theme.radius
-        color: selected ? Theme.subtleHover : choiceMouse.containsMouse ? Theme.subtleHover : "transparent"
-        border.width: selected ? 1 : 0
-        border.color: Theme.accent
-        Image {
+        Rectangle {
+            visible: choice.checked
+            anchors.verticalCenter: parent.verticalCenter
+            width: 3
+            height: 16
+            radius: 1.5
+            color: Theme.accentFill
+        }
+        Icon {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
-            width: 24
-            height: 24
-            source: Theme.icons + encodeURIComponent(choice.icon)
-            sourceSize: Qt.size(width, height)
+            name: choice.icon.name
+            size: 24
         }
         Text {
             x: 44
             width: parent.width - 52
             anchors.verticalCenter: parent.verticalCenter
-            text: choice.label
+            text: choice.text
             color: Theme.text
             font.pixelSize: Theme.fontBody
             elide: Text.ElideRight
-        }
-        MouseArea {
-            id: choiceMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: choice.clicked()
-            onDoubleClicked: choice.doubleClicked()
-        }
-    }
-    // A text field whose border lights up.
-    component Field: Rectangle {
-        property alias input: field
-        property alias text: field.text
-        width: parent.width
-        height: 32
-        radius: Theme.radius
-        color: Theme.control
-        border.width: 1
-        border.color: field.activeFocus ? Theme.accent : Theme.stroke
-        MenuTextField {
-            id: field
-            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-            verticalAlignment: TextInput.AlignVCenter
-            mapToScreen: (x, y) => root.screenPoint(field, x, y)
-            onAccepted: root.shortcutNext()
         }
     }
 
@@ -234,12 +206,12 @@ Window {
             Keys.onEscapePressed: root.close()
 
             // Close, at the top right.
-            Rectangle {
+            Fill {
                 anchors { right: parent.right; top: parent.top; margins: 8 }
                 width: 32
                 height: 32
                 radius: Theme.radius
-                color: closeMouse.containsMouse ? "#c42b1c" : "transparent"
+                color: closeMouse.containsMouse ? "#c42b1c" : "#00c42b1c"
                 Text {
                     anchors.centerIn: parent
                     text: "✕"
@@ -297,7 +269,7 @@ Window {
                     spacing: 8
                     Repeater {
                         model: FileActions.devices
-                        delegate: Rectangle {
+                        delegate: Fill {
                             id: device
                             required property var modelData
                             width: 112
@@ -306,12 +278,10 @@ Window {
                             color: deviceMouse.containsMouse ? Theme.subtleHover : Theme.control
                             border.width: 1
                             border.color: Theme.stroke
-                            Image {
+                            Icon {
                                 anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 14 }
-                                width: 32
-                                height: 32
-                                source: Theme.icons + "smartphone"
-                                sourceSize: Qt.size(width, height)
+                                name: "smartphone"
+                                size: 32
                             }
                             Text {
                                 anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 12 }
@@ -338,14 +308,14 @@ Window {
                 Section { text: qsTr("Share using") }
                 Choice {
                     visible: FileActions.canEmail()
-                    icon: "mail-message-new"
-                    label: qsTr("Email")
+                    icon.name: "mail-message-new"
+                    text: qsTr("Email")
                     onClicked: { FileActions.sendByEmail(root.paths); root.close() }
                 }
                 Choice {
                     visible: FileActions.canBluetooth() && Status.bluetoothAvailable
-                    icon: "preferences-system-bluetooth"
-                    label: qsTr("Bluetooth")
+                    icon.name: "preferences-system-bluetooth"
+                    text: qsTr("Bluetooth")
                     onClicked: { FileActions.sendByBluetooth(root.paths); root.close() }
                 }
                 Note {
@@ -384,9 +354,9 @@ Window {
                             model: root.suggested
                             delegate: Choice {
                                 required property var modelData
-                                icon: modelData.icon
-                                label: modelData.name
-                                selected: root.chosen === modelData.id
+                                icon.name: modelData.icon
+                                text: modelData.name
+                                checked: root.chosen === modelData.id
                                 onClicked: root.chosen = modelData.id
                                 onDoubleClicked: { root.chosen = modelData.id; root.launchChosen(false) }
                             }
@@ -396,9 +366,9 @@ Window {
                             model: root.others
                             delegate: Choice {
                                 required property var modelData
-                                icon: modelData.icon
-                                label: modelData.name
-                                selected: root.chosen === modelData.id
+                                icon.name: modelData.icon
+                                text: modelData.name
+                                checked: root.chosen === modelData.id
                                 onClicked: root.chosen = modelData.id
                                 onDoubleClicked: { root.chosen = modelData.id; root.launchChosen(false) }
                             }
@@ -435,8 +405,20 @@ Window {
                     color: Theme.text
                     font.pixelSize: Theme.fontBody
                 }
-                Field { id: targetFieldBox; visible: root.step === 0 }
-                Field { id: nameFieldBox; visible: root.step === 1 }
+                MenuTextBox {
+                    id: targetField
+                    visible: root.step === 0
+                    width: parent.width
+                    mapToScreen: (x, y) => root.screenPoint(targetField, x, y)
+                    onAccepted: root.shortcutNext()
+                }
+                MenuTextBox {
+                    id: nameField
+                    visible: root.step === 1
+                    width: parent.width
+                    mapToScreen: (x, y) => root.screenPoint(nameField, x, y)
+                    onAccepted: root.shortcutNext()
+                }
                 Text {
                     visible: root.error !== ""
                     width: parent.width
@@ -452,7 +434,7 @@ Window {
                     Button {
                         text: root.step === 0 ? qsTr("Next") : qsTr("Finish")
                         accent: true
-                        usable: (root.step === 0 ? targetFieldBox.text : nameFieldBox.text).trim() !== ""
+                        usable: (root.step === 0 ? targetField.text : nameField.text).trim() !== ""
                         onClicked: root.shortcutNext()
                     }
                     Button {
@@ -462,7 +444,7 @@ Window {
                                 root.close()
                             } else {
                                 root.step = 0
-                                targetFieldBox.input.forceActiveFocus()
+                                targetField.forceActiveFocus()
                             }
                         }
                     }
@@ -470,8 +452,4 @@ Window {
             }
         }
     }
-
-    // The wizard's two fields, by name.
-    property alias targetField: targetFieldBox.input
-    property alias nameField: nameFieldBox.input
 }

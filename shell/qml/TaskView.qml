@@ -232,11 +232,11 @@ Window {
                         y: place.y
                         width: place.width
                         height: place.height
-                        Behavior on x { enabled: root.dragging === "" && Theme.motion > 0; NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
-                        Behavior on y { enabled: root.dragging === "" && Theme.motion > 0; NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+                        Behavior on x { enabled: root.dragging === "" && Theme.motion > 0; Eased {} }
+                        Behavior on y { enabled: root.dragging === "" && Theme.motion > 0; Eased {} }
 
                         // The one being dragged: a copy following the mouse.
-                        Rectangle {
+                        Fill {
                             id: frame
                             width: card.width
                             height: card.height
@@ -244,6 +244,7 @@ Window {
                             color: hover.hovered || cardMouse.drag.active ? Theme.taskCardHover : Theme.taskCard
                             border.width: hover.hovered ? 2 : 1
                             border.color: hover.hovered ? Theme.accent : Theme.stroke
+                            Behavior on border.color { ColorAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
                             scale: cardMouse.drag.active ? 0.5 : 1
                             Behavior on scale { NumberAnimation { duration: Theme.fast } }
                             Drag.active: cardMouse.drag.active
@@ -257,11 +258,8 @@ Window {
                                 y: 10
                                 width: parent.width - 52
                                 spacing: 8
-                                Image {
-                                    width: 16
-                                    height: 16
-                                    source: Theme.icons + encodeURIComponent(card.modelData.icon)
-                                    sourceSize: Qt.size(width, height)
+                                Icon {
+                                    name: card.modelData.icon
                                 }
                                 Text {
                                     width: parent.width - 24
@@ -293,13 +291,13 @@ Window {
                                 }
                             }
                             // Close, on hover.
-                            Rectangle {
+                            Fill {
                                 visible: hover.hovered && !cardMouse.drag.active
                                 anchors { right: parent.right; top: parent.top; margins: 6 }
                                 width: 28
                                 height: 24
                                 radius: Theme.radius
-                                color: closeMouse.containsMouse ? "#c42b1c" : "transparent"
+                                color: closeMouse.containsMouse ? "#c42b1c" : "#00c42b1c"
                                 Text {
                                     anchors.centerIn: parent
                                     text: "✕"
@@ -400,7 +398,7 @@ Window {
                                     }
                                 }
                                 // Close the desktop, on hover.
-                                Rectangle {
+                                Fill {
                                     visible: deskHover.hovered && Desktops.count > 1
                                     anchors { right: parent.right; top: parent.top; margins: 6 }
                                     width: 24
@@ -509,13 +507,14 @@ Window {
                     // desktop).
                     Column {
                         spacing: 8
-                        Rectangle {
+                        Fill {
                             width: desktops.cardWidth
                             height: desktops.cardHeight
                             radius: Theme.radiusOverlay
                             color: newMouse.containsMouse || newDrop.containsDrag ? Theme.taskCardHover : Theme.taskCard
                             border.width: newDrop.containsDrag ? 2 : 1
                             border.color: newDrop.containsDrag ? Theme.accent : Theme.stroke
+                            Behavior on border.color { ColorAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
                             Text {
                                 anchors.centerIn: parent
                                 text: "+"

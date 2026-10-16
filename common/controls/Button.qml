@@ -5,8 +5,9 @@ import QtQuick
 import QtQuick.Templates as T
 
 // Windows 11's button: standard (gray), accent, or subtle (no background,
-// like the cards' "..." buttons), with text, an icon (`icon.name`, from
-// Theme.icons) or both. Qt's button (input, Space and focus, accessibility),
+// like the cards' "..." buttons; `checked`, what it opens is open, rests on
+// the hover color), with text, an icon (`icon.name`, from Theme.icons) or
+// both. Qt's button (input, Space and focus, accessibility),
 // Vela's look: its color fades between states (Fill). Tab gives it the focus
 // and a ring, a click doesn't, so the keyboard stays where it was; Enter
 // activates it too, like Space.
@@ -26,12 +27,13 @@ T.Button {
     opacity: enabled ? 1 : 0.45
     icon.width: 16
     icon.height: 16
+    font.pixelSize: Theme.fontBody
 
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()
 
     background: Fill {
-        color: control.subtle ? (control.down ? Theme.subtlePressed : control.hovered ? Theme.subtleHover : Theme.subtleRest)
+        color: control.subtle ? (control.down ? Theme.subtlePressed : control.hovered || control.checked ? Theme.subtleHover : Theme.subtleRest)
              : control.accent ? (control.hovered ? Theme.accentFillHover : Theme.accentFill)
              : (control.down ? Theme.controlPressed : control.hovered ? Theme.controlHover : Theme.control)
         border.width: control.subtle ? 0 : 1
@@ -52,13 +54,14 @@ T.Button {
                 anchors.verticalCenter: parent.verticalCenter
                 name: control.icon.name
                 size: control.icon.width
+                onAccent: control.accent
             }
             Text {
                 visible: control.text !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 text: control.text
                 color: control.accent ? Theme.accentText : Theme.text
-                font.pixelSize: Theme.fontBody
+                font: control.font
             }
         }
     }

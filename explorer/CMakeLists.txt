@@ -90,6 +90,16 @@ if(VELA_BUILD_TOOLS)
     target_link_options(vela-files-test PRIVATE "LINKER:--wrap=renameat2")
     add_test(NAME files-copies COMMAND vela-files-test)
     set_tests_properties(files-copies PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # The views under Qt Quick Test (tests/tst_*.qml), on the QML in qml/:
+    # recycled delegates take their state without a fade.
+    find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
+    qt_add_executable(vela-files-views-test tests/views_test.cpp)
+    target_compile_definitions(vela-files-views-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    target_compile_options(vela-files-views-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-files-views-test PRIVATE vela-files-core vela-controls vela-controlsplugin Qt6::QuickTest)
+    add_test(NAME files-views COMMAND vela-files-views-test)
+    set_tests_properties(files-views PROPERTIES TIMEOUT 120)
 endif()
 
 install(TARGETS vela-files RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

@@ -6,9 +6,10 @@ import QtTest
 import Vela.Controls
 import "colors.js" as Colors
 
-// ListItem: subtle, or the control's colors when highlighted, by precedence
-// and faded; Qt's keys and focus. And the small pieces the controls are made
-// of: Icon, Chevron, FocusRing (docs/visual-coherence.md §6.8).
+// ListItem: subtle (resting on the hover color when checked), or the
+// control's colors when highlighted, by precedence and faded; Qt's keys and
+// focus. And the small pieces the controls are made of: Icon, Chevron,
+// FocusRing (docs/visual-coherence.md §6.8).
 Item {
     id: root
     width: 400
@@ -17,6 +18,7 @@ Item {
     Item { id: start; focus: true; activeFocusOnTab: true; width: 10; height: 10 }
     ListItem { id: row; x: 20; y: 20; width: 200; height: 40; text: "Row" }
     ListItem { id: chosen; x: 20; y: 70; width: 200; height: 40; text: "Chosen"; highlighted: true }
+    ListItem { id: current; x: 20; y: 120; width: 200; height: 40; text: "Current"; checked: true }
     SignalSpy { id: clicks; target: row; signalName: "clicked" }
     Icon { id: icon; name: "go-previous"; size: 18 }
     Icon { id: none }
@@ -33,11 +35,13 @@ Item {
             clicks.clear()
             tryVerify(() => Colors.same(row.background.color, Theme.subtleRest), 2000)
             tryVerify(() => Colors.same(chosen.background.color, Theme.control), 2000)
+            tryVerify(() => Colors.same(current.background.color, Theme.subtleHover), 2000)
         }
 
         function test_states_reach_their_colors() {
             for (const [item, rest, hover, pressed] of [[row, Theme.subtleRest, Theme.subtleHover, Theme.subtlePressed],
-                                                       [chosen, Theme.control, Theme.controlHover, Theme.controlPressed]]) {
+                                                       [chosen, Theme.control, Theme.controlHover, Theme.controlPressed],
+                                                       [current, Theme.subtleHover, Theme.subtleHover, Theme.subtlePressed]]) {
                 mouseMove(item, 10, 10)
                 tryVerify(() => Colors.same(item.background.color, hover), 2000, item.text + " hovered")
                 mousePress(item, 10, 10)
@@ -46,6 +50,11 @@ Item {
                 mouseMove(root, 390, 290)
                 tryVerify(() => Colors.same(item.background.color, rest), 2000, item.text + " back at rest")
             }
+        }
+
+        function test_a_click_keeps_checked() {
+            mouseClick(current)
+            verify(current.checked, "the caller's binding decides, not a click")
         }
 
         function test_hover_fades() {

@@ -145,29 +145,23 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 36
                 height: 36
-                Rectangle {
+                Fill {
                     anchors.fill: parent
-                    radius: Theme.radius
-                    color: Theme.subtleHover
-                    opacity: speakerMouse.containsMouse ? 1 : 0
+                    color: speakerMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 }
-                Image {
+                Icon {
                     anchors.centerIn: parent
-                    width: 18
-                    height: 18
+                    size: 18
                     opacity: root.app && root.app.muted ? 0.45 : 1
-                    source: Theme.icons + encodeURIComponent(root.app ? root.app.icon
+                    name: root.app ? root.app.icon
                         : root.microphone ? (Audio.inputMuted ? "microphone-sensitivity-muted" : "audio-input-microphone")
-                        : Audio.iconName)
-                    sourceSize: Qt.size(width, height)
+                        : Audio.iconName
                 }
-                Image {
+                Icon {
                     visible: !!root.app && root.app.muted
                     anchors { right: parent.right; bottom: parent.bottom; margins: 5 }
-                    width: 12
-                    height: 12
-                    source: Theme.icons + "audio-volume-muted"
-                    sourceSize: Qt.size(width, height)
+                    name: "audio-volume-muted"
+                    size: 12
                 }
                 MouseArea {
                     id: speakerMouse

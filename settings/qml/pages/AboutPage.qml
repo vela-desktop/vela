@@ -11,13 +11,11 @@ Page {
     Item {
         width: parent.width
         height: 84
-        Image {
+        Icon {
             id: deviceIcon
             anchors.verticalCenter: parent.verticalCenter
-            width: 64
-            height: 64
-            source: Theme.icons + About.chassisIcon
-            sourceSize: Qt.size(width, height)
+            name: About.chassisIcon
+            size: 64
         }
         Column {
             anchors { left: deviceIcon.right; leftMargin: 16; verticalCenter: parent.verticalCenter }

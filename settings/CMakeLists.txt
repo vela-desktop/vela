@@ -69,6 +69,7 @@ set(SETTINGS_QML_FILES
     qml/CardGroup.qml
     qml/LinkCard.qml
     qml/Choice.qml
+    qml/RadioButton.qml
     qml/LevelBar.qml
     qml/PageHeader.qml
     qml/Page.qml
@@ -146,6 +147,15 @@ qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-disp
     LUPDATE_TARGET vela-settings_lupdate
     LRELEASE_TARGET vela-settings_lrelease
     LUPDATE_OPTIONS -source-language en -target-language it -no-obsolete -locations none)
+
+# Settings' own controls (tests/tst_*.qml) under Vela.Controls' Qt Quick Test
+# runner, with animation effects on and off.
+if(VELA_BUILD_TOOLS AND TARGET vela-controls-test)
+    add_test(NAME settings-controls COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    add_test(NAME settings-controls-no-effects COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    set_tests_properties(settings-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(settings-controls settings-controls-no-effects PROPERTIES TIMEOUT 60)
+endif()
 
 if(VELA_BUILD_TOOLS AND VELA_BUILD_COMPOSITOR)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)

@@ -100,29 +100,17 @@ Window {
     }
 
     // An entry of the power menu.
-    component PowerEntry: Item {
+    // `icon.name` from the theme; without one, the symbol drawn inside.
+    component PowerEntry: ListItem {
         id: entry
-        property string icon // from the theme; empty: the symbol drawn inside
-        property string label
         default property alias glyph: glyphSlot.data
-        signal activated()
         width: parent ? parent.width : 0
         height: 36
 
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radius
-            color: entryMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-            opacity: entryMouse.containsMouse ? 1 : 0
-        }
-        Image {
+        Icon {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
-            width: 16
-            height: 16
-            visible: entry.icon !== ""
-            source: entry.icon !== "" ? Theme.icons + entry.icon : ""
-            sourceSize: Qt.size(width, height)
+            name: entry.icon.name
         }
         Item {
             id: glyphSlot
@@ -134,15 +122,9 @@ Window {
         Text {
             x: 36
             anchors.verticalCenter: parent.verticalCenter
-            text: entry.label
+            text: entry.text
             color: Theme.text
             font.pixelSize: Theme.fontBody
-        }
-        MouseArea {
-            id: entryMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: entry.activated()
         }
     }
 
@@ -416,55 +398,43 @@ Window {
 
                 // Power, where Windows has its button: sleep, sign out (closes
                 // Vela, not the computer), restart, shut down.
-                Item {
+                Button {
                     id: powerButton
                     anchors { right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter }
                     width: 40
                     height: 40
+                    padding: 0
+                    subtle: true
+                    checked: menuOpen
                     property bool menuOpen: false
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.radius
-                        color: powerMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-                        opacity: powerMouse.containsMouse || powerButton.menuOpen ? 1 : 0
-                        Behavior on opacity {
-                            NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-                        }
-                    }
+                    Accessible.name: qsTr("Power")
+                    onClicked: menuOpen = !menuOpen
 
                     // The power symbol: a circle open at the top and a bar.
-                    Shape {
-                        anchors.centerIn: parent
-                        width: 20
-                        height: 20
-                        preferredRendererType: Shape.CurveRenderer
-                        scale: powerMouse.pressed ? 1 - 0.1 * Theme.motion : 1
-                        Behavior on scale {
-                            NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+                    contentItem: Item {
+                        Shape {
+                            anchors.centerIn: parent
+                            width: 20
+                            height: 20
+                            preferredRendererType: Shape.CurveRenderer
+                            scale: powerButton.down ? 1 - 0.1 * Theme.motion : 1
+                            Behavior on scale { Eased {} }
+                            ShapePath {
+                                strokeColor: Theme.text
+                                strokeWidth: 1.5
+                                fillColor: "transparent"
+                                capStyle: ShapePath.RoundCap
+                                PathAngleArc { centerX: 10; centerY: 11; radiusX: 6.5; radiusY: 6.5; startAngle: -50; sweepAngle: 280 }
+                            }
+                            ShapePath {
+                                strokeColor: Theme.text
+                                strokeWidth: 1.5
+                                fillColor: "transparent"
+                                capStyle: ShapePath.RoundCap
+                                startX: 10; startY: 3
+                                PathLine { x: 10; y: 10 }
+                            }
                         }
-                        ShapePath {
-                            strokeColor: Theme.text
-                            strokeWidth: 1.5
-                            fillColor: "transparent"
-                            capStyle: ShapePath.RoundCap
-                            PathAngleArc { centerX: 10; centerY: 11; radiusX: 6.5; radiusY: 6.5; startAngle: -50; sweepAngle: 280 }
-                        }
-                        ShapePath {
-                            strokeColor: Theme.text
-                            strokeWidth: 1.5
-                            fillColor: "transparent"
-                            capStyle: ShapePath.RoundCap
-                            startX: 10; startY: 3
-                            PathLine { x: 10; y: 10 }
-                        }
-                    }
-
-                    MouseArea {
-                        id: powerMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: powerButton.menuOpen = !powerButton.menuOpen
                     }
 
                     Rectangle {
@@ -478,9 +448,7 @@ Window {
                         border.color: Theme.stroke
                         opacity: powerButton.menuOpen ? 1 : 0
                         visible: opacity > 0
-                        Behavior on opacity {
-                            NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-                        }
+                        Behavior on opacity { Eased { duration: Theme.fast } }
 
                         Column {
                             id: powerEntries
@@ -489,14 +457,14 @@ Window {
                             width: parent.width - 8
 
                             PowerEntry {
-                                icon: "system-suspend"
-                                label: qsTr("Sleep")
+                                icon.name: "system-suspend"
+                                text: qsTr("Sleep")
                                 visible: root.canSuspend
-                                onActivated: { root.close(); Shell.suspend() }
+                                onClicked: { root.close(); Shell.suspend() }
                             }
                             PowerEntry {
-                                label: qsTr("Sign out")
-                                onActivated: Shell.logout()
+                                text: qsTr("Sign out")
+                                onClicked: Shell.logout()
 
                                 // An open door and an arrow going out.
                                 Shape {
@@ -528,14 +496,14 @@ Window {
                                 }
                             }
                             PowerEntry {
-                                icon: "system-reboot"
-                                label: qsTr("Restart")
-                                onActivated: Shell.reboot()
+                                icon.name: "system-reboot"
+                                text: qsTr("Restart")
+                                onClicked: Shell.reboot()
                             }
                             PowerEntry {
-                                icon: "system-shutdown"
-                                label: qsTr("Shut down")
-                                onActivated: Shell.powerOff()
+                                icon.name: "system-shutdown"
+                                text: qsTr("Shut down")
+                                onClicked: Shell.powerOff()
                             }
                         }
                     }
