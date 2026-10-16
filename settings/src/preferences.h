@@ -38,6 +38,7 @@ class Preferences : public QObject {
     Q_PROPERTY(bool endTask READ endTask WRITE setEndTask NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskView READ taskView WRITE setTaskView NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens WRITE setTaskbarAllScreens NOTIFY taskbarChanged)
+    Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner WRITE setShowDesktopCorner NOTIFY taskbarChanged)
     // --- Notifications ---
     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
     // --- Power ---
@@ -116,6 +117,8 @@ public:
     void setTaskView(bool on);
     bool taskbarAllScreens() const { return m_taskbarAllScreens; }
     void setTaskbarAllScreens(bool on);
+    bool showDesktopCorner() const { return m_showDesktopCorner; }
+    void setShowDesktopCorner(bool on);
 
     bool doNotDisturb() const { return m_doNotDisturb; }
     void setDoNotDisturb(bool on);
@@ -237,6 +240,7 @@ private:
     bool m_endTask = true;
     bool m_taskView = true;
     bool m_taskbarAllScreens = true;
+    bool m_showDesktopCorner = true;
     bool m_doNotDisturb = false;
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;
