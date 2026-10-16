@@ -14,6 +14,6 @@ Rectangle {
     radius: Theme.radius
     Behavior on color {
         enabled: animated
-        ColorAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+        ColorFade {}
     }
 }

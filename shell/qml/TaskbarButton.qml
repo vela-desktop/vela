@@ -63,9 +63,7 @@ Item {
             enabled: Theme.motion > 0
             Eased {}
         }
-        Behavior on color {
-            ColorAnimation { duration: Theme.fast }
-        }
+        Behavior on color { ColorFade {} }
         Behavior on opacity {
             NumberAnimation { duration: Theme.fast }
         }

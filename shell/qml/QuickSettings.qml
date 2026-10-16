@@ -256,9 +256,7 @@ Window {
                 color: "transparent"
                 border.width: 1
                 border.color: tile.checked ? Qt.rgba(Theme.stroke.r, Theme.stroke.g, Theme.stroke.b, 0) : Theme.stroke
-                Behavior on border.color {
-                    ColorAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-                }
+                Behavior on border.color { ColorFade {} }
             }
             Fill {
                 visible: tile.split

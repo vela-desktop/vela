@@ -325,7 +325,7 @@ Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`)
 | Piece | What it is |
 |---|---|
 | `Fill` | A background whose color, chosen by the control from its state, fades in `Theme.fast` |
-| `Icon`, `Chevron`, `FocusRing`, `Eased` | What controls are made of: a theme icon at its size, the ">" and "v" arrows, the keyboard focus ring, an animation on Vela's curve |
+| `Icon`, `Chevron`, `FocusRing`, `Eased`, `ColorFade` | What controls are made of: a theme icon at its size, the ">" and "v" arrows, the keyboard focus ring, a number and a color animated on Vela's curve |
 | `Button`, `Switch`, `Slider` | Templates' controls on `Fill`; `usable` is an alias of `enabled`; a subtle `Button` that is `checked` (what it opens is open) rests on the hover color |
 | `ListItem` | A row of a list on `Fill`: subtle (resting on the hover color when `checked`, the current one), or the control's colors when `highlighted` |
 | `TextBox` | A restyled Basic `TextField` |

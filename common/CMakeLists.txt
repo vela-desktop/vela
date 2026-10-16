@@ -47,6 +47,7 @@ set(CONTROLS_QML_FILES
     controls/Theme.qml
     controls/Fill.qml
     controls/Eased.qml
+    controls/ColorFade.qml
     controls/Icon.qml
     controls/Chevron.qml
     controls/FocusRing.qml

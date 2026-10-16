@@ -717,6 +717,7 @@ programs' own) can reach it:
 |---|---|---|
 | `Icon` (`name`, `size`, `onAccent`) | a theme icon at its size in the output's pixels | as an `Image` with `Theme.icons`, `encodeURIComponent` and `sourceSize`, 68 times in 34 files |
 | `Eased` | a `NumberAnimation` on `Theme.decelerate`, `normal` unless given | with the curve spelled out, 53 times in 23 files |
+| `ColorFade` (after PR 11's review) | a `ColorAnimation` on `Theme.decelerate` in `fast`: `Fill`'s fade, and a border's | as `ColorAnimation` with the curve spelled out, or without it, in five places |
 | `FocusRing` | the keyboard focus ring, 3 units outside its parent with its corners | as a 9-line `Rectangle` in each control |
 | `Chevron` (`down`, `color`) | the ">" of what opens a page, the "v" of what opens a list | as a `Shape` in Quick Settings, Task View, the Notification Center and Files' address bar |
 

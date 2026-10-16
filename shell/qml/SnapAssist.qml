@@ -169,7 +169,7 @@ Window {
                             color: cardMouse.containsMouse ? Theme.taskCardHover : Theme.taskCard
                             border.width: cardMouse.containsMouse ? 2 : 1
                             border.color: cardMouse.containsMouse ? Theme.accent : Theme.stroke
-                            Behavior on border.color { ColorAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+                            Behavior on border.color { ColorFade {} }
                             Row {
                                 x: 10
                                 y: 8

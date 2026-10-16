@@ -244,7 +244,7 @@ Window {
                             color: hover.hovered || cardMouse.drag.active ? Theme.taskCardHover : Theme.taskCard
                             border.width: hover.hovered ? 2 : 1
                             border.color: hover.hovered ? Theme.accent : Theme.stroke
-                            Behavior on border.color { ColorAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+                            Behavior on border.color { ColorFade {} }
                             scale: cardMouse.drag.active ? 0.5 : 1
                             Behavior on scale { NumberAnimation { duration: Theme.fast } }
                             Drag.active: cardMouse.drag.active
@@ -514,7 +514,7 @@ Window {
                             color: newMouse.containsMouse || newDrop.containsDrag ? Theme.taskCardHover : Theme.taskCard
                             border.width: newDrop.containsDrag ? 2 : 1
                             border.color: newDrop.containsDrag ? Theme.accent : Theme.stroke
-                            Behavior on border.color { ColorAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+                            Behavior on border.color { ColorFade {} }
                             Text {
                                 anchors.centerIn: parent
                                 text: "+"

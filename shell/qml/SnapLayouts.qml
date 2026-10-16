@@ -188,7 +188,7 @@ Window {
                                 height: (modelData[3] - modelData[1]) * unitY - 4
                                 radius: 3
                                 color: zoneMouse.containsMouse || focused ? Theme.accent : Theme.light ? Qt.rgba(0, 0, 0, 0.16) : Qt.rgba(1, 1, 1, 0.22)
-                                Behavior on color { ColorAnimation { duration: Theme.fast } }
+                                Behavior on color { ColorFade {} }
                                 MouseArea {
                                     id: zoneMouse
                                     anchors.fill: parent
