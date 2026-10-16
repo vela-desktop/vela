@@ -690,7 +690,7 @@ Window {
         }
     }
 
-// The show-desktop strip is available at the far right of every taskbar.
+    // The show-desktop strip is available at the far right of every taskbar.
     // It overlays the unused margin beside the clock without shifting layout.
     Item {
         id: showDesktop
