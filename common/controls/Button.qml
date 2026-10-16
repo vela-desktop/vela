@@ -22,6 +22,7 @@ T.Button {
     rightPadding: 12
     spacing: 8
     focusPolicy: Qt.TabFocus
+    hoverEnabled: true // not dependent on platform style hints (also works offscreen)
     opacity: enabled ? 1 : 0.45
     icon.width: 16
     icon.height: 16
