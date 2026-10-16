@@ -33,15 +33,17 @@ Item {
             active: GraphicsInfo.api !== GraphicsInfo.Unknown
                 && GraphicsInfo.api !== GraphicsInfo.Software
                 && GraphicsInfo.api !== GraphicsInfo.Null
-            sourceComponent: RectangularShadow {
-                x: root.reach - strip.x
-                y: root.reach - strip.y
-                width: root.target.width
-                height: root.target.height
-                radius: root.radius
-                blur: root.blur
-                offset: root.offset
-                color: root.color
+            sourceComponent: Component {
+                RectangularShadow {
+                    x: root.reach - strip.x
+                    y: root.reach - strip.y
+                    width: root.target.width
+                    height: root.target.height
+                    radius: root.radius
+                    blur: root.blur
+                    offset: root.offset
+                    color: root.color
+                }
             }
         }
     }
