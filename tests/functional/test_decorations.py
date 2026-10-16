@@ -216,6 +216,40 @@ class ShellColors(unittest.TestCase):
             self.assertEqual(vela.pixels().at(*spot(second)), (0x10, 0x20, 0x30))
             self.assertEqual(vela.pixels().at(*spot(first)), (0x40, 0x50, 0x60))
 
+    def test_bar_images_follow_what_they_are_drawn_from(self):
+        # The glyphs take the text's color: from the mode and the window's
+        # state, not from Mica, which only recolors the background.
+        with Session() as vela:
+            vela.command("theme dark dark")
+            window = vela.open_window(400, 300, decorated=True)
+            w = vela.wait_for(lambda s: s["focused"] == window).window(window)
+            minimize = (w["x"] + w["w"] - 3 * BUTTON + BUTTON // 2, w["y"] + BAR // 2)
+            background = (w["x"] + w["w"] - 3 * BUTTON - 10, w["y"] + BAR // 2)
+
+            def glyph():
+                # The minimize line (one pixel, over two rows: blended with
+                # the bar), the pixel farthest from the bar's color.
+                image = vela.pixels()
+                bar = sum(image.at(*background))
+                column = [image.at(minimize[0], minimize[1] + dy) for dy in range(-3, 4)]
+                return max(column, key=lambda p: abs(sum(p) - bar))
+
+            def settled(test, what):
+                vela.wait_for(lambda _: test(glyph()), read_state=False, what=what)
+
+            settled(lambda p: min(p) > 160, "a white glyph, dark and active")
+            vela.command("mica #102030 #405060")
+            vela.wait_for(lambda _: vela.pixels().at(*background) == (0x10, 0x20, 0x30), read_state=False,
+                          what="Mica's color")
+            self.assertGreater(min(glyph()), 160, "Mica leaves the glyph as it is")
+            vela.command("theme light light")
+            settled(lambda p: max(p) < 120, "a dark glyph, light")
+            vela.command("theme dark dark #ff0000")
+            settled(lambda p: min(p) > 160, "white again")
+            other = vela.open_window(200, 150, decorated=True)
+            vela.wait_for(lambda s: s["focused"] == other)
+            settled(lambda p: 110 < min(p) and max(p) < 150, "gray, inactive")
+
     def test_the_close_hover_fades(self):
         for hz in (60, 180):
             with self.subTest(hz=hz), Session(size=f"1920x1080@{hz}", env={"VELA_DEBUG_ANIMATION": "1"}) as vela:

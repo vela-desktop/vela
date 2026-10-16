@@ -99,6 +99,7 @@ struct vela_decoration {
     char *app_id;
     bool has_icon;
     uint32_t look_version; // the theme and Mica it's drawn with
+    uint32_t text_color; // the title's and the glyphs'
     bool active;
     bool maximized;
     bool drawn;
@@ -343,24 +344,30 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
     float scale = state->scale;
     bool active = state->active;
     bool maximized = state->maximized;
+    // Each image is drawn again only when what it is drawn from changes: a
+    // new Mica or accent changes colors, not images.
+    bool first = !decoration->drawn;
     bool resized = width != decoration->width;
-    bool restyled = !decoration->drawn || scale != decoration->scale || active != decoration->active
-        || decoration->look_version != server->look_version;
+    bool rescaled = first || scale != decoration->scale;
+    bool reactivated = first || active != decoration->active;
+    bool relooked = first || decoration->look_version != server->look_version;
+    bool remaximized = first || maximized != decoration->maximized;
     bool new_app = !same_text(state->app_id, decoration->app_id);
     bool new_title = !same_text(state->title, decoration->title_text);
+    const struct palette *colors = palette(server);
+    uint32_t text_color = active ? colors->active_text : colors->inactive_text;
+    bool recolored = first || text_color != decoration->text_color;
     decoration->width = width;
     if (resized) {
         vela_rect_node_set_size(decoration->background, width, HEIGHT);
     }
-    const struct palette *colors = palette(server);
-    uint32_t text_color = active ? colors->active_text : colors->inactive_text;
-    if (restyled) {
+    if (relooked || reactivated) {
         struct wlr_render_color background = background_color(server, active);
         vela_rect_node_set_color(decoration->background, &background);
     }
 
     // The app icon, drawn at the exact physical size (§9.6).
-    if (restyled || new_app) {
+    if (rescaled || new_app) {
         int pixels = vela_max(1, (int)lround(VELA_DECORATION_ICON_SIZE * scale));
         const struct vela_image *icon = vela_icons_app(icon_loader(server), state->app_id, pixels);
         decoration->has_icon = icon->pixels != NULL;
@@ -370,16 +377,18 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
             memcpy(copy.pixels, icon->pixels, bytes);
             set_image(decoration, &decoration->icon, &copy, VELA_DECORATION_ICON_X,
                 (HEIGHT - VELA_DECORATION_ICON_SIZE) / 2.0, VELA_DECORATION_ICON_SIZE, VELA_DECORATION_ICON_SIZE);
-            vela_node_set_opacity(&decoration->icon.node->node, active ? 1.0f : 0.6f);
         } else {
             clear_image(&decoration->icon);
         }
+    }
+    if (decoration->icon.node) {
+        vela_node_set_opacity(&decoration->icon.node->node, active ? 1.0f : 0.6f);
     }
     int title_x = decoration->has_icon ? TITLE_AFTER_ICON : TITLE_MARGIN;
 
     // The title, rasterized at the output's physical pixels.
     struct vela_text *text = text_engine(server);
-    if (text && (restyled || resized || new_title || new_app)) {
+    if (text && (recolored || rescaled || resized || new_title || new_app)) {
         int max_width = (int)((width - title_x - 3 * BUTTON_WIDTH - 8) * scale);
         if (max_width > 0 && state->title[0]) {
             struct vela_image image = { 0 };
@@ -393,23 +402,31 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
         }
     }
 
-    // The button glyphs, and Close's white one, shown as much as its red is.
-    if (restyled || maximized != decoration->maximized) {
+    // The button glyphs in the text's color; Close's white one, shown as much
+    // as its red is, only from the scale and the state.
+    bool glyphs = recolored || rescaled || remaximized;
+    if (glyphs) {
         for (int i = 0; i < 3; ++i) {
             struct vela_image pixels = draw_glyph(button_parts[i], maximized, scale, text_color);
             set_image(decoration, &decoration->glyphs[i], &pixels, 0, 0, GLYPH_SIZE, GLYPH_SIZE);
         }
+    }
+    bool close_white = rescaled || remaximized;
+    if (close_white) {
         struct vela_image white = draw_glyph(VELA_DECORATION_CLOSE, maximized, scale, CLOSE_HOVER_TEXT);
         set_image(decoration, &decoration->close_white, &white, 0, 0, GLYPH_SIZE, GLYPH_SIZE);
+    }
+    if (glyphs || close_white || relooked) {
         for (int i = 0; i < 3; ++i) {
             apply_fade(decoration, i); // the mode's hover color, and the white glyph's opacity
         }
     }
-    if (resized || restyled || maximized != decoration->maximized) {
+    if (resized || glyphs || close_white) {
         layout_buttons(decoration);
     }
 
     decoration->scale = scale;
+    decoration->text_color = text_color;
     decoration->active = active;
     decoration->maximized = maximized;
     if (new_title) {
