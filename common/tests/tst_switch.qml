@@ -102,6 +102,22 @@ Item {
             compare(knob.x, knobEnd())
         }
 
+        function test_knob_size_is_instant_without_effects() {
+            if (Theme.animationEffects)
+                skip("with effects on")
+            mouseMove(track, 5, 5)
+            compare(control.hovered, true)
+            compare(knob.width, 14)
+            compare(knob.height, 14)
+            mousePress(track, 5, 5)
+            compare(knob.width, 17)
+            mouseRelease(track, 5, 5)
+            compare(knob.width, 14)
+            mouseMove(root, 390, 290)
+            compare(knob.width, 12)
+            compare(knob.height, 12)
+        }
+
         function test_knob_follows_a_drag() {
             const y = track.height / 2
             mousePress(track, 6, y)
