@@ -291,9 +291,13 @@ class X11(unittest.TestCase):
         game = next(w["id"] for w in state.windows if w["title"] == "vela-x11")
         out = state.output
         points = ((out["w"] // 2, out["h"] // 2), (5, 5), (out["w"] - 5, out["h"] - 5))
-        self.vela.wait_for(lambda s: s["focused"] == game and all(
-            self.vela.pixels().at(*point) == ORANGE for point in points),
-            what="game initially visible over managed backdrop")
+        def game_visible(state):
+            if state["focused"] != game:
+                return False
+            image = self.vela.pixels()
+            return all(image.at(*point) == ORANGE for point in points)
+
+        self.vela.wait_for(game_visible, what="game initially visible over managed backdrop")
         with open(path, encoding="ascii") as ids:
             backdrop = ids.read().strip()
 
@@ -310,9 +314,8 @@ class X11(unittest.TestCase):
         self.vela.wait_for(lambda s: len(s.windows) == 2 and any(
             w["below"] for w in s.windows if w["id"] != game),
             what="backdrop became managed and retained BELOW")
-        self.vela.wait_for(lambda s: all(
-            self.vela.pixels().at(*point) == ORANGE for point in points),
-            what="game remains visible after backdrop promotion")
+        self.vela.wait_for(game_visible,
+                           what="game remains visible after backdrop promotion")
 
     def test_x11_override_redirect_switches_kind_without_unmapping(self):
         """An already mapped X11 surface can become unmanaged and managed
