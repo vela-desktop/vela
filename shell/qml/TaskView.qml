@@ -135,6 +135,7 @@ Window {
             { text: qsTr("&Move to"), enabled: w.workspace !== -1, children: moveTo },
             { text: qsTr("&Show this window on all desktops"), checked: w.workspace === -1, action: () => Desktops.setWindowSticky(w.id, w.workspace !== -1) },
             { text: qsTr("Show windows from this &app on all desktops"), checked: appSticky, enabled: w.appId !== "", action: () => Desktops.setAppSticky(w.id, !appSticky) },
+            { text: qsTr("Always on &top"), checked: !!w.alwaysOnTop, action: () => Shell.windowAction(w.id, w.alwaysOnTop ? "always-on-top off" : "always-on-top on") },
             { separator: true },
             { text: qsTr("&Close"), icon: "window-close", action: () => Shell.windowAction(w.id, "close") }
         ]

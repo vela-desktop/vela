@@ -16,6 +16,7 @@
 // and close values are the worst case for any filter.
 //
 // Usage: vela-pattern [--scale1] [--app-id ID] [--decorated] [--popup X,Y]
+//                     [--fullscreen]
 //                     [WIDTH HEIGHT]   (logical; default 401x301)
 //
 // --scale1: like an old app, always draws at scale 1 (the compositor must
@@ -67,6 +68,7 @@ static int popupWanted;
 static int popupX;
 static int popupY;
 static struct wl_surface* popupSurface;
+static int fullscreenWanted;
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
@@ -281,6 +283,8 @@ int main(int argc, char** argv)
             && sscanf(argv[arg + 1], "%d,%d", &popupX, &popupY) == 2) {
             popupWanted = 1;
             ++arg;
+        } else if (!strcmp(argv[arg], "--fullscreen")) {
+            fullscreenWanted = 1;
         } else if (!strcmp(argv[arg], "--app-id") && arg + 1 < argc) {
             // For tests that depend on the app (system dialogs).
             appId = argv[++arg];
@@ -314,6 +318,9 @@ int main(int argc, char** argv)
     xdg_toplevel_add_listener(toplevel, &toplevelListener, NULL);
     xdg_toplevel_set_title(toplevel, "vela-pattern");
     xdg_toplevel_set_app_id(toplevel, appId);
+    if (fullscreenWanted) {
+        xdg_toplevel_set_fullscreen(toplevel, NULL);
+    }
     if (decorated) {
         if (!decorationManager) {
             fprintf(stderr, "vela-pattern: no xdg-decoration\n");

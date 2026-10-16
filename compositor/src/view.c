@@ -112,6 +112,26 @@ const char *vela_view_app_id(const struct vela_view *view)
     return id ? id : "";
 }
 
+void vela_view_set_always_on_top(struct vela_view *view, bool on)
+{
+    view->always_on_top = on;
+    if (on) {
+        vela_views_raise_always_on_top(view->server);
+    }
+}
+
+void vela_views_raise_always_on_top(struct vela_server *server)
+{
+    // server->views is most recent first: raise from the least recent, so
+    // they keep their relative order. Fullscreen ones are in another layer.
+    struct vela_view *view;
+    wl_list_for_each_reverse (view, &server->views, link) {
+        if (view->always_on_top && view->mapped && !view->fullscreen) {
+            vela_node_raise_to_top(&view->tree->node);
+        }
+    }
+}
+
 bool vela_view_is_system_prompt(const struct vela_view *view)
 {
     // By app id (Wayland) or class (X11): KWallet and ksecretd, KDE's polkit
@@ -839,6 +859,7 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         wlr_foreign_toplevel_handle_v1_set_fullscreen(view->handle, false);
     }
     vela_node_reparent(&view->tree->node, view->server->layers.windows);
+    vela_views_raise_always_on_top(view->server); // the flag was kept
     if (view->maximized) {
         apply_maximized(view);
     } else if (!vela_snap_is_none(view->snap)) {
@@ -1039,6 +1060,7 @@ void vela_view_unmapped(struct vela_view *view)
     }
     view->close_animated = false;
     view->mapped = false;
+    view->always_on_top = false;
     view->animating = false;
     if (view->minimized) {
         view->minimized = false;

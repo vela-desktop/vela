@@ -63,6 +63,21 @@ static bool starts_with(const char *text, const char *prefix)
 
 // -------------------------------------------------------------- answers --
 
+// Position of the window in the scene, from the bottom (fullscreen ones are in
+// a layer above): tests read the stacking order from it.
+static int stack_index(struct vela_server *server, const struct vela_view *view)
+{
+    int index = 0;
+    struct vela_node *node;
+    wl_list_for_each (node, &server->layers.windows->children, link) {
+        if (node == &view->tree->node) {
+            return index;
+        }
+        ++index;
+    }
+    return -1;
+}
+
 static void state_json(struct vela_server *server, struct vela_buffer *json)
 {
     const char *t = "true";
@@ -121,7 +136,8 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         } else {
             vela_buffer_appendf(json, "[%d,%d,%d,%d]", view->snap.x0, view->snap.y0, view->snap.x1, view->snap.y1);
         }
-        vela_buffer_appendf(json, ",\"snapGroup\":%u}", view->snap_group);
+        vela_buffer_appendf(json, ",\"snapGroup\":%u,\"alwaysOnTop\":%s,\"z\":%d}", view->snap_group,
+            view->always_on_top ? t : f, stack_index(server, view));
         first = false;
     }
     // The layer-shell surfaces, bottom to top, and the one with the keyboard.
@@ -200,6 +216,9 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         window_rects_json(server, &reply);
     } else if (strcmp(line, "state") == 0) {
         state_json(server, &reply);
+    } else if (strcmp(line, "always-on-top status") == 0) {
+        struct vela_view *active = vela_views_focused(server);
+        vela_buffer_append(&reply, active && active->always_on_top ? "on" : "off");
     } else if (strcmp(line, "accessibility") == 0) {
         char json[512];
         if (!vela_a11y_json(server->a11y, json, sizeof(json))) {
@@ -368,7 +387,8 @@ static void run_command(struct vela_server *server, const char *line)
     } else if (strcmp(line, "paste") == 0) {
         vela_input_paste(server->input); // Win+V: the shell has put the item on the clipboard
     } else if (strcmp(line, "modifiers") == 0 || strcmp(line, "workspaces") == 0
-        || strcmp(line, "accessibility") == 0 || strcmp(line, "window-rects") == 0) {
+        || strcmp(line, "accessibility") == 0 || strcmp(line, "window-rects") == 0
+        || strcmp(line, "always-on-top status") == 0) {
         // already answered to whoever asked
     } else if (starts_with(line, "workspace ")) {
         workspace(server, line);
@@ -389,6 +409,12 @@ static void run_command(struct vela_server *server, const char *line)
         vela_a11y_set_magnifier(a11y, wanted(line + 10, a11y->magnifier));
     } else if (starts_with(line, "sticky-keys ")) {
         vela_a11y_set_sticky_keys(a11y, wanted(line + 12, a11y->sticky_keys), true);
+    } else if (starts_with(line, "always-on-top ")) {
+        // on|off|toggle for the active window (also "window <id> always-on-top ...").
+        struct vela_view *active = vela_views_focused(server);
+        if (active && !server->locked) {
+            vela_view_set_always_on_top(active, wanted(line + 14, active->always_on_top));
+        }
     } else if (starts_with(line, "switcher-pick ")) {
         // A click on an Alt+Tab preview: switch to that window.
         vela_switcher_pick(server, atoi(line + 14));

@@ -22,6 +22,7 @@ Those nested alternatives are active only in nested mode; in a normal Vela sessi
 | Resize any window | <kbd>Super</kbd>+right-drag | — |
 | Window menu | <kbd>Alt</kbd>+<kbd>Space</kbd> | <kbd>Alt</kbd>+<kbd>Space</kbd> |
 | Close window | <kbd>Alt</kbd>+<kbd>F4</kbd> | <kbd>Alt</kbd>+<kbd>Q</kbd> |
+| Always on top (toggle) | none; the window menu and the socket command `always-on-top on\|off\|toggle\|status` | same |
 
 ## Shell and apps
 

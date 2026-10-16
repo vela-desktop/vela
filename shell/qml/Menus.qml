@@ -112,13 +112,16 @@ QtObject {
 
     // The window menu (title bar, Alt+Space, Shift+right click on the taskbar
     // button). act(action) runs it.
-    function windowEntries(maximized, minimized, resizable, act) {
+    // onTop: whether it is always on top; undefined when the caller does not
+    // know (the taskbar button), which leaves the entry out.
+    function windowEntries(maximized, minimized, resizable, act, onTop) {
         return [
             { text: qsTr("&Restore"), icon: "window-restore", enabled: maximized || minimized, action: () => act("restore") },
             { text: qsTr("&Move"), enabled: !maximized && !minimized, action: () => act("move") },
             { text: qsTr("&Size"), enabled: !maximized && !minimized && resizable, action: () => act("resize") },
             { text: qsTr("Mi&nimize"), icon: "window-minimize", enabled: !minimized, action: () => act("minimize") },
             { text: qsTr("Ma&ximize"), icon: "window-maximize", enabled: !maximized && resizable, action: () => act("maximize") },
+            ...(onTop === undefined ? [] : [{ text: qsTr("Always on &top"), checked: onTop, action: () => act(onTop ? "always-on-top off" : "always-on-top on") }]),
             { separator: true },
             { text: qsTr("&Close"), icon: "window-close", shortcut: "Alt+F4", action: () => act("close") }
         ]

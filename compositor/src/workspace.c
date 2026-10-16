@@ -414,6 +414,7 @@ static void finish_switch(struct vela_server *server)
         }
         vela_node_set_enabled(&view->tree->node, vela_view_on_current_workspace(view) && !view->minimized);
     }
+    vela_views_raise_always_on_top(server);
     ws->outgoing_count = 0;
     vela_node_set_position(&layers->windows_out->node, 0, 0);
     vela_node_set_opacity(&layers->windows_out->node, 1.0f);

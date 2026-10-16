@@ -64,6 +64,9 @@ struct vela_view {
     bool maximized;
     bool fullscreen;
     bool minimized;
+    // "Always on top": stays above normal windows (below panels and fullscreen
+    // ones). Not kept across unmap: a window that reopens starts normal.
+    bool always_on_top;
     struct vela_snap snap; // where it is, if snapped (snap.h)
     // Snap group, like Windows 11: the windows arranged together with Snap
     // Assist; the taskbar shows them and brings them forward together. 0:
@@ -187,6 +190,10 @@ int vela_view_title_bar_height(const struct vela_view *view);
 // (it already follows the cursor).
 void vela_view_set_maximized(struct vela_view *view, bool on, bool animate);
 void vela_view_set_fullscreen(struct vela_view *view, bool on);
+// Always on top (view.c): the flag, and raising every such window over the
+// normal ones, in their usual order. focus.c calls the second after any raise.
+void vela_view_set_always_on_top(struct vela_view *view, bool on);
+void vela_views_raise_always_on_top(struct vela_server *server);
 // Like Windows: the window disappears, goes to the end of the Alt+Tab order
 // and the keyboard moves to the next one.
 void vela_view_set_minimized(struct vela_view *view, bool on);

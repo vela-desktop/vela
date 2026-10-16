@@ -98,12 +98,12 @@ class Interaction(unittest.TestCase):
         self.vela.input("move", x + 120, y + 16, "sleep", "50", "click", "right")
         line = self.shell.wait_for("window-menu ")
         self.assertEqual(line.split()[1:3], [window, "HEADLESS-1"])
-        self.assertEqual(line.split()[3:], [str(x + 120), str(y + 16), "0", "1", "0"])
+        self.assertEqual(line.split()[3:], [str(x + 120), str(y + 16), "0", "1", "0", "0"])  # ... maximized, resizable, keyboard, always on top
         self.shell.clear()
         self.vela.keys("alt+space")
         line = self.shell.wait_for("window-menu ")
         self.assertEqual(line.split()[1], window)
-        self.assertEqual(line.split()[-1], "1") # from the keyboard
+        self.assertEqual(line.split()[-2], "1") # from the keyboard
 
     def test_drag_to_edge_snaps_and_offers_assist(self):
         other = self.vela.open_window(401, 301)
