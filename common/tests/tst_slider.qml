@@ -53,6 +53,13 @@ Item {
 
         function init() {
             mouseMove(root, 390, 290)
+            // Qt Quick Test's synthetic click can leave this slider's
+            // PointHandler hover cached between test functions offscreen.
+            // Reset the hover subscription, not the production control's
+            // geometry or bindings, before asserting the rest state.
+            control.hoverEnabled = false
+            control.hoverEnabled = true
+            tryCompare(control, "hovered", false, 2000)
             start.forceActiveFocus()
             root.backing = 3
             root.committed = 2
