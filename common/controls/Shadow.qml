@@ -24,16 +24,25 @@ Item {
     anchors.margins: -reach
 
     component Strip: Item {
+        id: strip
         clip: true
-        RectangularShadow {
-            x: root.reach - parent.x
-            y: root.reach - parent.y
-            width: root.target.width
-            height: root.target.height
-            radius: root.radius
-            blur: root.blur
-            offset: root.offset
-            color: root.color
+        // RectangularShadow is shader-backed. The software scene graph
+        // cannot render it; avoid instantiating four unused ShaderEffects
+        // (and their Qt-side allocations) in offscreen/CPU rendering.
+        Loader {
+            active: GraphicsInfo.api !== GraphicsInfo.Unknown
+                && GraphicsInfo.api !== GraphicsInfo.Software
+                && GraphicsInfo.api !== GraphicsInfo.Null
+            sourceComponent: RectangularShadow {
+                x: root.reach - strip.x
+                y: root.reach - strip.y
+                width: root.target.width
+                height: root.target.height
+                radius: root.radius
+                blur: root.blur
+                offset: root.offset
+                color: root.color
+            }
         }
     }
 
