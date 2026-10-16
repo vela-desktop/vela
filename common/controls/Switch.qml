@@ -46,23 +46,11 @@ T.Switch {
             x: 4 + control.visualPosition * (track.width - width - 8)
             color: control.checked ? Theme.accentText : Theme.textSecondary
             // motion: the knob follows a drag; it slides only on its own.
-            Behavior on x {
-                enabled: !control.down && Theme.motion > 0
-                NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-            }
-            Behavior on width { enabled: Theme.motion > 0; NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
-            Behavior on height { enabled: Theme.motion > 0; NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+            Behavior on x { enabled: !control.down && Theme.motion > 0; Eased { duration: Theme.fast } }
+            Behavior on width { enabled: Theme.motion > 0; Eased { duration: Theme.fast } }
+            Behavior on height { enabled: Theme.motion > 0; Eased { duration: Theme.fast } }
         }
-        // Keyboard focus: a ring around the track, like Windows.
-        Rectangle {
-            visible: control.visualFocus
-            anchors.fill: parent
-            anchors.margins: -3
-            radius: height / 2
-            color: "transparent"
-            border.width: 2
-            border.color: Theme.text
-        }
+        FocusRing { visible: control.visualFocus }
     }
 
     // As wide as the longer word, so the switch doesn't move when it toggles.

@@ -25,9 +25,15 @@ Item {
     readonly property bool closing: exit.running
     // Showing or entering, not leaving.
     readonly property bool opened: d.opened
-    // The rectangle the panel covers along its whole travel, in the parent's
-    // coordinates: the blur region, which then never changes during a slide.
-    readonly property rect area: {
+    // Entering or leaving.
+    readonly property bool moving: enter.running || exit.running
+    // The blur region, in the parent's coordinates. While the panel moves,
+    // the rectangle it covers along its whole travel, so the region never
+    // changes during a slide; at rest the panel itself, so its Shadow (in the
+    // same surface, and the compositor blurs under any of its alpha) is not
+    // blurred. Two changes per entrance, none per frame.
+    readonly property rect area: moving ? travel : Qt.rect(x, y, width, height)
+    readonly property rect travel: {
         const dx = offset.x * Theme.motion
         const dy = offset.y * Theme.motion
         const grow = Math.max(0, scaleFrom - 1) * Theme.motion
@@ -90,13 +96,13 @@ Item {
 
     ParallelAnimation {
         id: enter
-        NumberAnimation { target: motion; property: "away"; to: 0; duration: motion.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        NumberAnimation { target: motion; property: "opacity"; to: 1; duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+        Eased { target: motion; property: "away"; to: 0; duration: motion.duration }
+        Eased { target: motion; property: "opacity"; to: 1; duration: Theme.fast }
     }
     ParallelAnimation {
         id: exit
-        NumberAnimation { target: motion; property: "away"; to: 1; duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        NumberAnimation { target: motion; property: "opacity"; to: 0; duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+        Eased { target: motion; property: "away"; to: 1 }
+        Eased { target: motion; property: "opacity"; to: 0 }
         onFinished: motion.closed() // open() stops it: never after a reopening
     }
 

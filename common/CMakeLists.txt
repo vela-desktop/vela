@@ -46,10 +46,15 @@ qt_add_library(vela-controls STATIC)
 set(CONTROLS_QML_FILES
     controls/Theme.qml
     controls/Fill.qml
+    controls/Eased.qml
+    controls/Icon.qml
+    controls/Chevron.qml
+    controls/FocusRing.qml
     controls/Button.qml
     controls/Switch.qml
     controls/Slider.qml
     controls/TextBox.qml
+    controls/ListItem.qml
     controls/Shadow.qml
     controls/PanelMotion.qml
     controls/Dialog.qml)

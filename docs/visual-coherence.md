@@ -8,7 +8,8 @@ they are made and with how each is verified.
 
 > **Status:** approved design, implemented in the order of §8; done: PR 1
 > (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4), PR 5 (§6.5), PR 6 (§6.6),
-> PR 7 (§6.7), PR 8 (the shared pieces of §6.8 and §6.9, §6.11 reporting).
+> PR 7 (§6.7), PR 8 (the shared pieces of §6.8 and §6.9, §6.11 reporting),
+> PR 9 (§6.10).
 > Each change has one explanation, in §6; the plan in §8 only says which pull
 > request carries it.
 
@@ -696,9 +697,24 @@ otherwise with their program, built on Templates and `Fill`:
 | `ToolButton` | `T.ToolButton` + `Fill` | Files | Files' `ToolButton` |
 | `CheckBox` | `T.CheckBox` + `Fill` | shell (Properties) | Properties' `Check` |
 | `RadioButton` | `T.RadioButton` + `Fill` | Settings | the night light page's `Radio` |
-| rows | `T.ItemDelegate` + `Fill` | Quick Settings, Settings | device, network and output rows; clickable cards |
+| `ListItem` (`highlighted`: the chosen one) | `T.ItemDelegate` + `Fill` | `Vela.Controls` (PR 9: used by Quick Settings now, Settings and Files in PR 10–11) | device, network and output rows; clickable cards; the `containsMouse ? Theme.subtleHover` rows of the shell, Settings and Files |
 | `Tile`, `Link` | `T.AbstractButton` + `Fill` | Quick Settings | its private `Tile` and `Link` |
 | the file dialogs' field | `TextBox` | shell | `FileDialogs`' `Field` |
+
+**The pieces controls are made of** (PR 9). Writing Quick Settings on the
+pieces above showed what every control repeats, so it is written once in
+`Vela.Controls`, where both its users (the shared controls themselves and the
+programs' own) can reach it:
+
+| Piece | What it is | Was written |
+|---|---|---|
+| `Icon` (`name`, `size`, `onAccent`) | a theme icon at its size in the output's pixels | as an `Image` with `Theme.icons`, `encodeURIComponent` and `sourceSize`, 68 times in 34 files |
+| `Eased` | a `NumberAnimation` on `Theme.decelerate`, `normal` unless given | with the curve spelled out, 53 times in 23 files |
+| `FocusRing` | the keyboard focus ring, 3 units outside its parent with its corners | as a 9-line `Rectangle` in each control |
+| `Chevron` (`down`, `color`) | the ">" of what opens a page, the "v" of what opens a list | as a `Shape` in Quick Settings, Task View, the Notification Center and Files' address bar |
+
+The shell, Settings and Files take them with the rest of their private
+controls (PR 10–11).
 
 The API callers use (`text`, `accent`, `subtle`, `usable`, `clicked`) stays,
 so call sites change only where a private control is replaced. Three names are
@@ -708,8 +724,10 @@ Templates' `icon` group is final and can't become a string); `toggled()` and
 binding on `checked` or `value` survives the user's input, where the
 hand-made copies assigned to the property and broke it. `Slider` keeps its
 `released(value)`, emitted once the user is done (released, a key, a notch of
-the wheel), and `origin`, `mark` and `resetValue`; a double click on the knob
-emits `released(resetValue)` and lets the caller's binding move the knob. A
+the wheel), and `origin`, `mark` and `resetValue`, and gains `fillColor` (the
+filled part and the knob's center: gray for Quick Settings' muted volume); a
+double click on the knob emits `released(resetValue)` and lets the caller's
+binding move the knob. A
 click gives no keyboard focus (`focusPolicy: Qt.TabFocus`), as before: Tab
 does, with the ring, so a click on a toolbar button doesn't take the keys from
 a view. `TextBox` takes `Fill` as its background.
@@ -758,17 +776,23 @@ Its whole interface:
 | `duration` (`Theme.slow`) | the entering movement's; dialogs and menus pass `Theme.normal`. The fade in is always `fast`, the exit always `normal` |
 | `instantExit` (false) | menus, previews, Alt+Tab, Task View (K5) |
 | `open()`, `close()`, `closing`, `closed()` | `open()` during a close turns back from the current values; the content takes no input while `closing`; `closed()` when an exit finishes and no reopening came |
-| `area` | the rectangle covering the panel along its whole travel, for the blur region |
+| `moving`, `area` | entering or leaving; the blur region: while `moving` the rectangle covering the panel along its whole travel, at rest the panel |
 
 No modes, no recipe table: each panel's three numbers are written where the
 panel is (K8). Toasts are list items with their own add and remove transitions,
 and the polkit prompt keeps its lifecycle (K13): neither uses it.
 
-**Blur during the slide (D17).** The compositor clips the blur with the panel's
-alpha, so a region larger than the panel shows nothing more. Each panel sets
-its region to `motion.area` (several panels in one window, like the context
-menus, send the list of theirs). `area` changes only when the panel's size
-does: never during a slide; on every frame of Quick Settings' height change,
+**Blur during the slide (D17).** The compositor clips the blur with the
+surface's alpha (`blur_mix.frag`: full blur from alpha 0.5), so a region larger
+than the panel shows nothing more where the surface is transparent; but the
+panel's `Shadow` is in the same surface, and under its alpha the region blurs
+too. So `area` covers the whole travel only while the panel moves, and is the
+panel itself at rest: two region changes per entrance, none per frame, and a
+resting shadow over the wallpaper as it is (during the slide the shadow's part
+inside the travel is blurred a little, for a quarter of a second). Each panel
+sets its region to `motion.area` (several panels in one window, like the
+context menus, send the list of theirs). `area` doesn't change during a slide;
+it follows the panel's size, on every frame of Quick Settings' height change
 like Start's updates today. Start drops its per-frame updates.
 
 **`Shadow.qml`** is `PanelShadow` moved into `Vela.Controls` (so the polkit
@@ -819,9 +843,45 @@ On the pieces above, in `QuickSettings.qml`:
 - the Wi-Fi password field opens with a height animation in `normal`,
   × `Theme.motion`.
 
+How it is written (PR 9):
+
+- **The window** is the panel plus `Shadow.reach` (46) above and to the left,
+  and 12 to the right and below, where the output's edge and the taskbar cut
+  the shadow. A click in that room closes the panel; one on the panel's own
+  background doesn't.
+- **The height** follows a target, the page's height *when its animations are
+  over*: for the Wi-Fi page, the networks' list as it will be once an opening
+  network has finished growing. Any change of the target (a page, a network
+  opening, an app starting to play) animates the panel in `normal` and resizes
+  the window at most twice: larger at once, smaller when the animation
+  finishes. With animation effects off both jump together.
+- **Tiles** keep their colors: the accent when on, with white 8% on hover and
+  6% pressed; off, `control`, `controlHover`, `controlPressed`. Each half of a
+  split tile is its own button, with Tab focus and a ring; a right click on
+  either opens the tile's Settings page.
+- **The sliders** are a row: a subtle `Button` (mute), the shared `Slider`
+  (its `fillColor` gray when muted), the value above the knob while it's
+  pressed, the level bar under the track, and the details `Button`. The wheel
+  keeps the volume keys' steps (`Audio.stepVolume`), a notch at a time, so the
+  `Slider`'s own wheel is off.
+- **Rows** (networks, outputs, the accessibility options) are `ListItem`s; an
+  open network is `highlighted`, and a click on its password field or button
+  doesn't close it. Links are WinUI's HyperlinkButton, `T.AbstractButton` with
+  a subtle `Fill` and `Theme.link` text. Icons, arrows, focus rings and
+  animations are the pieces of §6.8.
+
 **Verified by** the tests of §6.8 and §6.9, plus a functional test that goes to a
 page and back and checks the window's height during and after the change and
-the panel's size at the end.
+the panel's size at the end. In `test_shell.py`: Start's three tests repeated
+(opening and closing ten times; reopening during the exit turns back, its
+window never unmapped; the surface released when hidden, already in
+`test_other_panels_can_reopen_after_native_surface_release`); a click in the
+shadow's room closes it and one on the panel doesn't; going to the sound page
+and back, the window takes exactly two sizes, the panel passes through heights
+in between, and it ends as the panel plus its room; `PanelBlur`, on a striped
+wallpaper, finds blur behind every row of the panel in every frame of the
+entrance, also below where it rests, and at rest a region that is the panel
+only and an unblurred shadow. Each test fails with its feature taken out.
 
 ### 6.11 Keeping it so
 

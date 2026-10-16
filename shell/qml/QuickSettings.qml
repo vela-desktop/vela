@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
-import QtQuick.Shapes
+import QtQuick.Templates as T
 import Vela.Audio
 import Vela.Controls
 
@@ -16,8 +16,12 @@ import Vela.Controls
 Window {
     id: root
     visible: false
-    width: 384
-    height: panel.height + 24
+    // The panel with room for its shadow around it, cut where the window
+    // meets the taskbar and the output's edge (docs/visual-coherence.md
+    // §6.9): the panel rests 12 units from both.
+    readonly property real room: shadow.reach
+    width: room + 360 + 12
+    height: room + d.roomHeight + 12
     color: "transparent"
 
     // "" the quick settings; "wifi", "sound" and "accessibility" their pages.
@@ -25,22 +29,27 @@ Window {
 
     function open() {
         Menus.notificationCenterOpen = false
-        page = ""
-        Menus.placeOnTargetScreen(root)
+        // Reopened while leaving: it turns back from where it is, as it was.
+        if (!motion.closing) {
+            page = ""
+            d.settle()
+            Menus.placeOnTargetScreen(root)
+        }
         visible = true
         Menus.quickSettingsOpen = true
-        panel.opacity = 0
-        slide.y = 12 * Theme.motion
-        appear.restart()
+        motion.open()
         panel.forceActiveFocus()
         updateBlur()
     }
     function close() {
-        visible = false
+        if (!motion.opened) {
+            return
+        }
         Menus.quickSettingsOpen = false
+        motion.close()
     }
     function toggle() {
-        if (visible) {
+        if (motion.opened) {
             close()
         } else {
             open()
@@ -48,16 +57,21 @@ Window {
     }
     // Win+Ctrl+V, "Open volume mixer": straight to the sound page.
     function toggleSound() {
-        if (visible && page === "sound") {
+        if (motion.opened && page === "sound") {
             close()
             return
         }
-        if (!visible) {
+        if (!motion.opened) {
             open()
         }
         showPage("sound")
     }
+    // Forward a page comes in from the right, back from the left.
     function showPage(name) {
+        if (name === page) {
+            return
+        }
+        pageSlideIn.from = (name === "" ? -24 : 24) * Theme.motion
         page = name
         pageIn.restart()
         if (name === "wifi") {
@@ -114,30 +128,94 @@ Window {
     }
 
     onActiveChanged: {
-        if (!active && visible && !Menus.isOpen) {
+        if (!active && motion.opened && !Menus.isOpen) {
             close()
         }
     }
 
+    // The blurred background: the panel's travel while it slides, the panel
+    // at rest (PanelMotion.area), inside the window.
     function updateBlur() {
-        Effects.setBlur(root, [Qt.rect(panel.x, panel.y, panel.width, panel.height)])
+        const a = motion.area
+        const top = Math.max(0, a.y)
+        Effects.setBlur(root, [Qt.rect(a.x, top, a.width, Math.max(0, Math.min(a.y + a.height, root.height) - top))])
     }
 
-    ParallelAnimation {
-        id: appear
-        NumberAnimation { target: panel; property: "opacity"; to: 1; duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        NumberAnimation { target: slide; property: "y"; to: 0; duration: Theme.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+    // The panel's height follows its page (docs/visual-coherence.md §6.10):
+    // between pages, and when a page grows or shrinks, it animates in
+    // `normal`, at once without animation effects. The window grows to the
+    // larger height before the panel animates and shrinks after it: two
+    // configures per change, none per frame, and at rest the window is just
+    // the panel and its shadow, so clicks above it reach what is below.
+    readonly property real targetHeight: page === "" ? content.height + 24 + footer.height
+        : (page === "wifi" ? wifiPage.finalHeight : page === "sound" ? soundPage.height : accessPage.height) + 32
+    onTargetHeightChanged: d.fit()
+
+    QtObject {
+        id: d
+        property real panelHeight: 0
+        property real roomHeight: 0
+
+        function settle() {
+            heightAnimation.stop()
+            panelHeight = root.targetHeight
+            roomHeight = panelHeight
+        }
+        function fit() {
+            if (!root.visible || Theme.motion === 0) {
+                settle()
+                return
+            }
+            if (heightAnimation.running && heightAnimation.to === root.targetHeight) {
+                return
+            }
+            roomHeight = Math.max(roomHeight, panelHeight, root.targetHeight)
+            heightAnimation.to = root.targetHeight
+            heightAnimation.restart()
+        }
     }
-    // A page comes in from the right (back: like the others, it's short).
+    Eased {
+        id: heightAnimation
+        target: d
+        property: "panelHeight"
+        onFinished: d.roomHeight = d.panelHeight // stopped by a new change: not yet
+    }
+    // A page comes in sliding and fading; the old one goes at once.
     ParallelAnimation {
         id: pageIn
-        NumberAnimation { target: pages; property: "opacity"; from: 0; to: 1; duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        NumberAnimation { target: pageSlide; property: "x"; from: 24 * Theme.motion; to: 0; duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+        Eased { target: pages; property: "opacity"; from: 0; to: 1; duration: Theme.fast }
+        Eased { id: pageSlideIn; target: pageSlide; property: "x"; to: 0 }
+    }
+
+    // One part of a tile (both halves of a split one): Qt's button, the
+    // accent when on, every change of color faded (Fill).
+    component TileButton: T.AbstractButton {
+        id: half
+        property bool on
+        property bool roundLeft: true
+        property bool roundRight: true
+        height: parent.height
+        z: visualFocus ? 1 : 0 // the ring above the other half
+        hoverEnabled: true
+        focusPolicy: Qt.TabFocus
+        Keys.onReturnPressed: clicked()
+        Keys.onEnterPressed: clicked()
+        background: Fill {
+            topLeftRadius: half.roundLeft ? Theme.radius : 0
+            bottomLeftRadius: half.roundLeft ? Theme.radius : 0
+            topRightRadius: half.roundRight ? Theme.radius : 0
+            bottomRightRadius: half.roundRight ? Theme.radius : 0
+            color: half.on ? (half.down ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.06))
+                              : half.hovered ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.08)) : Theme.accent)
+                 : (half.down ? Theme.controlPressed : half.hovered ? Theme.controlHover : Theme.control)
+            FocusRing { visible: half.visualFocus }
+        }
     }
 
     // A tile: on (accent color) or off, with the label below. `split`: an
     // arrow on the right opening its page (Wi-Fi); `menu`: the whole tile
-    // opens the page (Accessibility).
+    // opens the page (Accessibility). Turning on fades to the accent, hover
+    // and press fade; a right click opens its Settings page.
     component Tile: Item {
         id: tile
         property string icon
@@ -153,99 +231,73 @@ Window {
         height: 82
         opacity: usable ? 1 : 0.45
 
-        Rectangle {
-            id: button
+        Item {
+            id: face
             width: parent.width
             height: 48
-            radius: Theme.radius
-            color: tile.checked ? Theme.accent : Theme.control
-            border.width: tile.checked ? 0 : 1
-            border.color: Theme.stroke
-            clip: true
 
-            // The two halves (or the whole tile), each with its hover.
-            Rectangle {
-                x: 0
+            TileButton {
+                id: mainButton
                 width: tile.split ? parent.width - 36 : parent.width
-                height: parent.height
-                radius: parent.radius
-                color: tile.checked ? "white" : Theme.overlay
-                opacity: mainMouse.pressed ? 0.06 : mainMouse.containsMouse && tile.usable ? 0.08 : 0
+                on: tile.checked
+                roundRight: !tile.split
+                enabled: tile.usable
+                Accessible.name: tile.label
+                Accessible.checkable: !tile.menu
+                Accessible.checked: tile.checked
+                onClicked: tile.menu ? tile.details() : tile.toggled()
             }
-            Rectangle {
+            TileButton {
                 visible: tile.split
                 x: parent.width - 36
                 width: 36
-                height: parent.height
-                radius: parent.radius
-                color: tile.checked ? "white" : Theme.overlay
-                opacity: detailsMouse.pressed ? 0.06 : detailsMouse.containsMouse && tile.usable ? 0.08 : 0
+                on: tile.checked
+                roundLeft: false
+                enabled: tile.usable
+                Accessible.name: qsTr("%1 settings").arg(tile.label)
+                onClicked: tile.details()
             }
+            // Off: a thin border, which fades away as the tile turns on.
             Rectangle {
+                anchors.fill: parent
+                radius: Theme.radius
+                color: "transparent"
+                border.width: 1
+                border.color: tile.checked ? Qt.rgba(Theme.stroke.r, Theme.stroke.g, Theme.stroke.b, 0) : Theme.stroke
+                Behavior on border.color {
+                    ColorAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+                }
+            }
+            Fill {
                 visible: tile.split
                 x: parent.width - 36
                 y: 10
                 width: 1
                 height: parent.height - 20
+                radius: 0
                 color: tile.checked ? Qt.rgba(1, 1, 1, 0.35) : Theme.stroke
             }
-            Image {
+            Icon {
                 x: (tile.split ? parent.width - 36 : parent.width) / 2 - width / 2
                 anchors.verticalCenter: parent.verticalCenter
-                width: 18
-                height: 18
-                source: (tile.checked ? Theme.iconsOnAccent : Theme.icons) + encodeURIComponent(tile.icon)
-                sourceSize: Qt.size(width, height)
+                name: tile.icon
+                size: 18
+                onAccent: tile.checked
             }
-            // The ">" arrow.
-            Shape {
+            Chevron {
                 visible: tile.split || tile.menu
                 x: tile.split ? parent.width - 21 : parent.width - 18
                 anchors.verticalCenter: parent.verticalCenter
-                width: 6
-                height: 10
-                preferredRendererType: Shape.CurveRenderer
-                ShapePath {
-                    strokeColor: tile.checked ? "white" : Theme.text
-                    strokeWidth: 1.2
-                    fillColor: "transparent"
-                    capStyle: ShapePath.RoundCap
-                    joinStyle: ShapePath.RoundJoin
-                    startX: 1; startY: 1
-                    PathLine { x: 5; y: 5 }
-                    PathLine { x: 1; y: 9 }
-                }
+                color: tile.checked ? "white" : Theme.text
             }
-            MouseArea {
-                id: mainMouse
-                width: tile.split ? parent.width - 36 : parent.width
-                height: parent.height
-                hoverEnabled: true
+            TapHandler {
+                acceptedButtons: Qt.RightButton
                 enabled: tile.usable
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                onClicked: mouse => {
-                    if (mouse.button === Qt.RightButton) {
-                        tile.contextMenu()
-                    } else if (tile.menu) {
-                        tile.details()
-                    } else {
-                        tile.toggled()
-                    }
-                }
-            }
-            MouseArea {
-                id: detailsMouse
-                visible: tile.split
-                x: parent.width - 36
-                width: 36
-                height: parent.height
-                hoverEnabled: true
-                enabled: tile.usable
-                onClicked: tile.details()
+                onTapped: tile.contextMenu()
             }
         }
         Text {
-            anchors { top: button.bottom; topMargin: 6; horizontalCenter: parent.horizontalCenter }
+            anchors { top: face.bottom; topMargin: 6; horizontalCenter: parent.horizontalCenter }
             width: parent.width
             text: tile.label
             color: Theme.text
@@ -258,9 +310,10 @@ Window {
     // A slider (brightness, volume, an app's volume) with its icon on the
     // left: a click on it mutes. `details`: an arrow on the right opening a
     // page (the volume's: the sound page). While it's dragged the number shows
-    // above the knob, like Windows.
-    component Slider: Item {
-        id: slider
+    // above the knob, like Windows. The wheel steps it like the volume keys
+    // (`wheeled`), a step every notch.
+    component SliderRow: Item {
+        id: row
         property string icon
         property real value
         property bool muted: false
@@ -274,188 +327,93 @@ Window {
         signal wheeled(int direction)
         signal iconClicked()
         signal detailsClicked()
-        readonly property real shown: Math.max(0, Math.min(1, value))
         width: parent.width
         height: 36
 
-        Item {
+        Button {
             id: iconButton
+            subtle: true
             width: 36
             height: 36
-            Rectangle {
-                anchors.fill: parent
-                radius: Theme.radius
-                color: Theme.subtleHover
-                opacity: iconMouse.containsMouse ? 1 : 0
-            }
-            Image {
+            icon.name: row.muted && row.appIcon ? "" : row.icon
+            icon.width: 18
+            icon.height: 18
+            Accessible.name: row.muted ? qsTr("Unmute") : qsTr("Mute")
+            onClicked: row.iconClicked()
+            Icon {
+                visible: row.muted && row.appIcon
                 anchors.centerIn: parent
-                width: 18
-                height: 18
-                opacity: slider.muted && slider.appIcon ? 0.45 : 1
-                source: Theme.icons + encodeURIComponent(slider.icon)
-                sourceSize: Qt.size(width, height)
+                name: row.icon
+                size: 18
+                opacity: 0.45
             }
-            Image {
-                visible: slider.muted && slider.appIcon
+            Icon {
+                visible: row.muted && row.appIcon
                 anchors { right: parent.right; bottom: parent.bottom; margins: 5 }
-                width: 12
-                height: 12
-                source: Theme.icons + "audio-volume-muted"
-                sourceSize: Qt.size(width, height)
-            }
-            MouseArea {
-                id: iconMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: slider.iconClicked()
+                name: "audio-volume-muted"
+                size: 12
             }
         }
-        Item {
-            id: track
-            anchors { left: iconButton.right; leftMargin: 12; right: detailsButton.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-            height: 20
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width
-                height: 4
-                radius: 2
-                color: Theme.stroke
+        // The level: a thin bar under the track, below the knob.
+        Rectangle {
+            visible: row.level >= 0
+            x: slider.x + slider.trackStart
+            y: slider.y + slider.height / 2 + 5
+            width: slider.trackLength * Math.max(0, Math.min(1, row.level))
+            height: 2
+            radius: 1
+            color: Theme.accentFill
+            opacity: 0.6
+        }
+        // The track starts 12 after the icon: the knob's half-width earlier.
+        Slider {
+            id: slider
+            anchors { left: iconButton.right; leftMargin: 2; right: detailsButton.left; rightMargin: -2; verticalCenter: parent.verticalCenter }
+            value: row.value
+            wheelEnabled: false
+            fillColor: row.muted ? Theme.textSecondary : Theme.accentFill
+            onMoved: row.moved(value)
+        }
+        Rectangle {
+            visible: slider.pressed
+            x: slider.x + slider.handle.x + slider.handle.width / 2 - width / 2
+            y: slider.y + slider.handle.y - 6 - height
+            width: valueText.implicitWidth + 16
+            height: 26
+            radius: Theme.radius
+            color: Theme.popup
+            border.width: 1
+            border.color: Theme.stroke
+            Text {
+                id: valueText
+                anchors.centerIn: parent
+                text: Math.round(slider.value * 100)
+                color: Theme.text
+                font.pixelSize: Theme.fontCaption
             }
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width * slider.shown
-                height: 4
-                radius: 2
-                color: slider.muted ? Theme.textSecondary : Theme.accent
-            }
-            // The level: a thin bar under the track.
-            Rectangle {
-                visible: slider.level >= 0
-                y: parent.height / 2 + 5
-                width: parent.width * Math.max(0, Math.min(1, slider.level))
-                height: 2
-                radius: 1
-                color: Theme.accent
-                opacity: 0.6
-            }
-            Rectangle {
-                id: knob
-                x: parent.width * slider.shown - width / 2
-                anchors.verticalCenter: parent.verticalCenter
-                width: 18
-                height: 18
-                radius: 9
-                color: Theme.popup
-                border.width: 1
-                border.color: Theme.stroke
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: trackMouse.pressed ? 8 : 10
-                    height: width
-                    radius: width / 2
-                    color: slider.muted ? Theme.textSecondary : Theme.accent
-                }
-            }
-            Rectangle {
-                visible: trackMouse.pressed
-                anchors { bottom: knob.top; bottomMargin: 6; horizontalCenter: knob.horizontalCenter }
-                width: valueText.implicitWidth + 16
-                height: 26
-                radius: Theme.radius
-                color: Theme.popup
-                border.width: 1
-                border.color: Theme.stroke
-                Text {
-                    id: valueText
-                    anchors.centerIn: parent
-                    text: Math.round(slider.shown * 100)
-                    color: Theme.text
-                    font.pixelSize: Theme.fontCaption
-                }
-            }
-            MouseArea {
-                id: trackMouse
-                anchors { fill: parent; margins: -8 }
-                function update(x) { slider.moved(Math.max(0, Math.min(1, (x - 8) / track.width))) }
-                onPressed: mouse => update(mouse.x)
-                onPositionChanged: mouse => { if (pressed) update(mouse.x) }
-                // A step every notch (120), touchpads add up their small ones.
-                property real wheelRest: 0
-                onWheel: wheel => {
-                    wheelRest += wheel.angleDelta.y
-                    while (Math.abs(wheelRest) >= 120) {
-                        slider.wheeled(wheelRest > 0 ? 1 : -1)
-                        wheelRest -= wheelRest > 0 ? 120 : -120
-                    }
+        }
+        WheelHandler {
+            target: null
+            // Touchpads add up their small steps.
+            property real rest: 0
+            onWheel: event => {
+                rest += event.angleDelta.y
+                while (Math.abs(rest) >= 120) {
+                    row.wheeled(rest > 0 ? 1 : -1)
+                    rest -= rest > 0 ? 120 : -120
                 }
             }
         }
-        Item {
+        Button {
             id: detailsButton
             anchors.right: parent.right
-            width: slider.details ? 36 : 0
+            visible: row.details
+            subtle: true
+            width: row.details ? 36 : 0
             height: 36
-            visible: slider.details
-            Rectangle {
-                anchors.fill: parent
-                radius: Theme.radius
-                color: Theme.subtleHover
-                opacity: detailsMouse.containsMouse ? 1 : 0
-            }
-            Shape {
-                anchors.centerIn: parent
-                width: 6
-                height: 10
-                preferredRendererType: Shape.CurveRenderer
-                ShapePath {
-                    strokeColor: Theme.text
-                    strokeWidth: 1.2
-                    fillColor: "transparent"
-                    capStyle: ShapePath.RoundCap
-                    joinStyle: ShapePath.RoundJoin
-                    startX: 1; startY: 1
-                    PathLine { x: 5; y: 5 }
-                    PathLine { x: 1; y: 9 }
-                }
-            }
-            MouseArea {
-                id: detailsMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: slider.detailsClicked()
-            }
-        }
-    }
-
-    // A toggle switch like Windows 11's.
-    component Switch: Item {
-        id: toggle
-        property bool checked
-        signal toggled()
-        width: 40
-        height: 20
-        Rectangle {
-            anchors.fill: parent
-            radius: height / 2
-            color: toggle.checked ? Theme.accent : "transparent"
-            border.width: toggle.checked ? 0 : 1
-            border.color: Theme.textSecondary
-            Rectangle {
-                x: toggle.checked ? parent.width - width - 4 : 4
-                anchors.verticalCenter: parent.verticalCenter
-                width: switchMouse.containsMouse ? 14 : 12
-                height: width
-                radius: width / 2
-                color: toggle.checked ? "white" : Theme.textSecondary
-                Behavior on x { enabled: Theme.motion > 0; NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
-            }
-        }
-        MouseArea {
-            id: switchMouse
-            anchors { fill: parent; margins: -4 }
-            hoverEnabled: true
-            onClicked: toggle.toggled()
+            Accessible.name: qsTr("Sound output")
+            onClicked: row.detailsClicked()
+            Chevron { anchors.centerIn: parent }
         }
     }
 
@@ -466,30 +424,15 @@ Window {
         default property alias trailing: trailingSlot.data
         width: parent.width
         height: 36
-        Item {
+        Button {
             id: back
+            subtle: true
             width: 32
             height: 32
             anchors.verticalCenter: parent.verticalCenter
-            Rectangle {
-                anchors.fill: parent
-                radius: Theme.radius
-                color: Theme.subtleHover
-                opacity: backMouse.containsMouse ? 1 : 0
-            }
-            Image {
-                anchors.centerIn: parent
-                width: 16
-                height: 16
-                source: Theme.icons + "go-previous"
-                sourceSize: Qt.size(width, height)
-            }
-            MouseArea {
-                id: backMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: root.showPage("")
-            }
+            icon.name: "go-previous"
+            Accessible.name: qsTr("Back")
+            onClicked: root.showPage("")
         }
         Text {
             anchors { left: back.right; leftMargin: 8; verticalCenter: parent.verticalCenter }
@@ -508,264 +451,329 @@ Window {
 
     // Where an app's sound goes or comes from, in the mixer: a small button
     // with an arrow, which opens the list.
-    component DeviceChooser: Rectangle {
+    component DeviceChooser: T.AbstractButton {
         id: chooser
-        property alias text: chooserLabel.text
-        signal clicked()
         anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
-        width: visible ? Math.min(chooserLabel.implicitWidth, soundColumn.width * 0.45) + 28 : 0
+        width: visible ? Math.min(chooserMetrics.advanceWidth, soundColumn.width * 0.45) + 28 : 0
         height: 22
-        radius: Theme.radius
-        color: chooserMouse.containsMouse ? Theme.subtleHover : "transparent"
-        Text {
-            id: chooserLabel
-            x: 8
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - 28
-            color: Theme.textSecondary
+        hoverEnabled: true
+        focusPolicy: Qt.TabFocus
+        background: Fill {
+            color: chooser.down ? Theme.subtlePressed : chooser.hovered ? Theme.subtleHover : Theme.subtleRest
+            FocusRing { visible: chooser.visualFocus }
+        }
+        TextMetrics {
+            id: chooserMetrics
+            text: chooser.text
             font.pixelSize: Theme.fontCaption
-            elide: Text.ElideRight
         }
-        // The "v" arrow.
-        Shape {
-            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-            width: 9
-            height: 5
-            preferredRendererType: Shape.CurveRenderer
-            ShapePath {
-                strokeColor: Theme.textSecondary
-                strokeWidth: 1.2
-                fillColor: "transparent"
-                capStyle: ShapePath.RoundCap
-                joinStyle: ShapePath.RoundJoin
-                startX: 1; startY: 1
-                PathLine { x: 4.5; y: 4.5 }
-                PathLine { x: 8; y: 1 }
+        contentItem: Item {
+            Text {
+                id: chooserLabel
+                x: 8
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - 28
+                text: chooser.text
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontCaption
+                elide: Text.ElideRight
             }
-        }
-        MouseArea {
-            id: chooserMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: chooser.clicked()
+            Chevron {
+                anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                down: true
+                color: Theme.textSecondary
+            }
         }
     }
 
-    // A link at the bottom of a page ("More settings...").
-    component Link: Text {
+    // A link at the bottom of a page ("More settings..."), like WinUI's
+    // HyperlinkButton: its background fades in under the pointer. The text
+    // stays aligned with the page.
+    component Link: T.AbstractButton {
         id: link
         property string target
-        color: linkMouse.containsMouse ? Theme.accentFill : Theme.accent
-        font.pixelSize: Theme.fontBody
-        font.underline: linkMouse.containsMouse
-        MouseArea {
-            id: linkMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.openSettings(link.target)
+        x: -leftPadding
+        leftPadding: 6
+        rightPadding: 6
+        topPadding: 4
+        bottomPadding: 4
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        implicitHeight: implicitContentHeight + topPadding + bottomPadding
+        hoverEnabled: true
+        focusPolicy: Qt.TabFocus
+        Keys.onReturnPressed: clicked()
+        Keys.onEnterPressed: clicked()
+        background: Fill {
+            color: link.down ? Theme.subtlePressed : link.hovered ? Theme.subtleHover : Theme.subtleRest
+            FocusRing { visible: link.visualFocus }
+        }
+        contentItem: Text {
+            text: link.text
+            color: Theme.link
+            opacity: link.down ? 0.8 : 1
+            font.pixelSize: Theme.fontBody
+        }
+        onClicked: root.openSettings(link.target)
+    }
+
+    // A click in the shadow's room closes the panel, like a click outside
+    // (ContextMenu.qml does the same for its whole window).
+    MouseArea {
+        anchors.fill: parent
+        onPressed: mouse => {
+            if (mouse.x >= motion.x && mouse.x < motion.x + motion.width
+                    && mouse.y >= motion.y && mouse.y < motion.y + motion.height) {
+                mouse.accepted = false // the panel's own background
+                return
+            }
+            root.close()
         }
     }
 
-    Rectangle {
-        id: panel
-        x: 12
-        y: 12
-        width: root.width - 24
-        height: root.page === "" ? content.height + 24 + footer.height
-            : (root.page === "wifi" ? wifiPage.height : root.page === "sound" ? soundPage.height : accessPage.height) + 32
-        radius: Theme.radiusOverlay
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.stroke
-        transform: Translate { id: slide }
-        focus: true
-        clip: true
-        Keys.onEscapePressed: {
-            if (root.page !== "") {
-                root.showPage("")
-            } else {
-                root.close()
-            }
+    // It rises 48 units from behind the taskbar, where the window cuts it,
+    // like Start, and leaves the same way.
+    PanelMotion {
+        id: motion
+        x: root.room
+        y: root.height - 12 - height
+        width: 360
+        height: d.panelHeight
+        offset: Qt.point(0, 48)
+        onClosed: {
+            root.visible = false
+            d.settle()
         }
-        onHeightChanged: root.updateBlur()
+        onAreaChanged: root.updateBlur()
 
-        Item {
-            id: pages
+        Shadow {
+            id: shadow
+            target: panel
+        }
+
+        Rectangle {
+            id: panel
             anchors.fill: parent
-            transform: Translate { id: pageSlide }
-
-            // ---------------------------------------------------------- main --
-            Column {
-                id: content
-                visible: root.page === ""
-                x: 16
-                y: 16
-                width: parent.width - 32
-                spacing: 16
-
-                Grid {
-                    columns: 3
-                    columnSpacing: 8
-                    rowSpacing: 4
-
-                    Tile {
-                        visible: Status.wifiAvailable
-                        icon: Status.wifiEnabled ? "network-wireless" : "network-wireless-disconnected"
-                        label: Status.networkWireless && Status.networkName !== "" ? Status.networkName : qsTr("Wi-Fi")
-                        checked: Status.wifiEnabled
-                        split: Network.available
-                        onToggled: Status.setWifiEnabled(!Status.wifiEnabled)
-                        onDetails: root.showPage("wifi")
-                        onContextMenu: root.openSettings("network")
-                    }
-                    // Without Wi-Fi (a wired desktop): the network as it is,
-                    // for information.
-                    Tile {
-                        visible: !Status.wifiAvailable
-                        icon: Status.networkIconName
-                        label: Status.networkConnected ? (Status.networkName !== "" ? Status.networkName : qsTr("Network")) : qsTr("Not connected")
-                        checked: Status.networkConnected
-                        onToggled: root.openSettings("network")
-                        onContextMenu: root.openSettings("network")
-                    }
-                    Tile {
-                        visible: Status.bluetoothAvailable
-                        icon: Status.bluetoothEnabled ? "network-bluetooth" : "network-bluetooth-inactive"
-                        label: qsTr("Bluetooth")
-                        checked: Status.bluetoothEnabled
-                        split: true
-                        onToggled: Status.setBluetoothEnabled(!Status.bluetoothEnabled)
-                        onDetails: root.openSettings("bluetooth-settings")
-                        onContextMenu: root.openSettings("bluetooth-settings")
-                    }
-                    Tile {
-                        visible: Status.wifiAvailable || Status.bluetoothAvailable
-                        icon: "network-flightmode-on"
-                        label: qsTr("Airplane mode")
-                        checked: Status.airplane
-                        onToggled: Status.setAirplaneMode(!Status.airplane)
-                    }
-                    Tile {
-                        visible: Status.powerSaverAvailable
-                        icon: "battery-profile-powersave"
-                        label: qsTr("Energy saver")
-                        checked: Status.powerSaver
-                        onToggled: Status.setPowerSaver(!Status.powerSaver)
-                        onContextMenu: root.openSettings("power")
-                    }
-                    Tile {
-                        icon: "redshift-status-on"
-                        label: qsTr("Night light")
-                        checked: Access.nightLight
-                        onToggled: Access.nightLight = !Access.nightLight
-                        onContextMenu: root.openSettings("night-light-settings")
-                    }
-                    Tile {
-                        icon: "preferences-desktop-accessibility"
-                        label: qsTr("Accessibility")
-                        checked: Access.magnifier || Access.colorFilter || Access.stickyKeys
-                        menu: true
-                        onDetails: root.showPage("accessibility")
-                        onContextMenu: root.openSettings("accessibility-settings")
-                    }
-                }
-
-                Slider {
-                    visible: Status.brightnessAvailable
-                    icon: "brightness-high"
-                    value: Status.brightness
-                    onMoved: value => Status.setBrightness(value)
-                    onWheeled: direction => Status.setBrightness(Math.max(0, Math.min(1, Status.brightness + direction * 0.02)))
-                }
-                // The arrow opens the sound page: outputs and the mixer.
-                Slider {
-                    visible: Audio.available && Audio.defaultOutput !== ""
-                    icon: Audio.iconName
-                    value: Audio.volume
-                    muted: Audio.muted
-                    details: Audio.available
-                    onMoved: value => root.setSystemVolume(value)
-                    onWheeled: direction => Audio.stepVolume("output", Audio.defaultOutput, direction)
-                    onIconClicked: Audio.setMuted("output", Audio.defaultOutput, !Audio.muted)
-                    onDetailsClicked: root.showPage("sound")
+            radius: Theme.radiusOverlay
+            color: Theme.surface
+            border.width: 1
+            border.color: Theme.stroke
+            focus: true
+            clip: true
+            Keys.onEscapePressed: {
+                if (root.page !== "") {
+                    root.showPage("")
+                } else {
+                    root.close()
                 }
             }
 
-            // --------------------------------------------- Wi-Fi networks --
-            Column {
-                id: wifiPage
-                visible: root.page === "wifi"
-                x: 16
-                y: 16
-                width: parent.width - 32
-                spacing: 8
-                property string expanded: "" // the open network
-                property string connecting: "" // the network being connected to
-                property string password: ""
+            Item {
+                id: pages
+                anchors.fill: parent
+                transform: Translate { id: pageSlide }
 
-                PageHeader {
-                    title: qsTr("Wi-Fi")
-                    Switch {
-                        checked: Status.wifiEnabled
-                        onToggled: Status.setWifiEnabled(!Status.wifiEnabled)
+                // ---------------------------------------------------------- main --
+                Column {
+                    id: content
+                    visible: root.page === ""
+                    x: 16
+                    y: 16
+                    width: parent.width - 32
+                    spacing: 16
+
+                    Grid {
+                        columns: 3
+                        columnSpacing: 8
+                        rowSpacing: 4
+
+                        Tile {
+                            visible: Status.wifiAvailable
+                            icon: Status.wifiEnabled ? "network-wireless" : "network-wireless-disconnected"
+                            label: Status.networkWireless && Status.networkName !== "" ? Status.networkName : qsTr("Wi-Fi")
+                            checked: Status.wifiEnabled
+                            split: Network.available
+                            onToggled: Status.setWifiEnabled(!Status.wifiEnabled)
+                            onDetails: root.showPage("wifi")
+                            onContextMenu: root.openSettings("network")
+                        }
+                        // Without Wi-Fi (a wired desktop): the network as it is,
+                        // for information.
+                        Tile {
+                            visible: !Status.wifiAvailable
+                            icon: Status.networkIconName
+                            label: Status.networkConnected ? (Status.networkName !== "" ? Status.networkName : qsTr("Network")) : qsTr("Not connected")
+                            checked: Status.networkConnected
+                            onToggled: root.openSettings("network")
+                            onContextMenu: root.openSettings("network")
+                        }
+                        Tile {
+                            visible: Status.bluetoothAvailable
+                            icon: Status.bluetoothEnabled ? "network-bluetooth" : "network-bluetooth-inactive"
+                            label: qsTr("Bluetooth")
+                            checked: Status.bluetoothEnabled
+                            split: true
+                            onToggled: Status.setBluetoothEnabled(!Status.bluetoothEnabled)
+                            onDetails: root.openSettings("bluetooth-settings")
+                            onContextMenu: root.openSettings("bluetooth-settings")
+                        }
+                        Tile {
+                            visible: Status.wifiAvailable || Status.bluetoothAvailable
+                            icon: "network-flightmode-on"
+                            label: qsTr("Airplane mode")
+                            checked: Status.airplane
+                            onToggled: Status.setAirplaneMode(!Status.airplane)
+                        }
+                        Tile {
+                            visible: Status.powerSaverAvailable
+                            icon: "battery-profile-powersave"
+                            label: qsTr("Energy saver")
+                            checked: Status.powerSaver
+                            onToggled: Status.setPowerSaver(!Status.powerSaver)
+                            onContextMenu: root.openSettings("power")
+                        }
+                        Tile {
+                            icon: "redshift-status-on"
+                            label: qsTr("Night light")
+                            checked: Access.nightLight
+                            onToggled: Access.nightLight = !Access.nightLight
+                            onContextMenu: root.openSettings("night-light-settings")
+                        }
+                        Tile {
+                            icon: "preferences-desktop-accessibility"
+                            label: qsTr("Accessibility")
+                            checked: Access.magnifier || Access.colorFilter || Access.stickyKeys
+                            menu: true
+                            onDetails: root.showPage("accessibility")
+                            onContextMenu: root.openSettings("accessibility-settings")
+                        }
+                    }
+
+                    SliderRow {
+                        visible: Status.brightnessAvailable
+                        icon: "brightness-high"
+                        value: Status.brightness
+                        onMoved: value => Status.setBrightness(value)
+                        onWheeled: direction => Status.setBrightness(Math.max(0, Math.min(1, Status.brightness + direction * 0.02)))
+                    }
+                    // The arrow opens the sound page: outputs and the mixer.
+                    SliderRow {
+                        visible: Audio.available && Audio.defaultOutput !== ""
+                        icon: Audio.iconName
+                        value: Audio.volume
+                        muted: Audio.muted
+                        details: Audio.available
+                        onMoved: value => root.setSystemVolume(value)
+                        onWheeled: direction => Audio.stepVolume("output", Audio.defaultOutput, direction)
+                        onIconClicked: Audio.setMuted("output", Audio.defaultOutput, !Audio.muted)
+                        onDetailsClicked: root.showPage("sound")
                     }
                 }
-                Text {
-                    visible: !Status.wifiEnabled || Network.wifiNetworks.length === 0
-                    width: parent.width
-                    topPadding: 8
-                    bottomPadding: 8
-                    text: !Status.wifiEnabled ? qsTr("Wi-Fi is turned off.")
-                        : Network.scanning ? qsTr("Looking for networks...") : qsTr("No networks found.")
-                    color: Theme.textSecondary
-                    font.pixelSize: Theme.fontBody
-                    wrapMode: Text.WordWrap
-                }
-                Flickable {
-                    visible: Status.wifiEnabled && Network.wifiNetworks.length > 0
-                    width: parent.width
-                    height: Math.min(contentHeight, 340)
-                    contentHeight: networks.height
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
 
-                    Column {
-                        id: networks
+                // --------------------------------------------- Wi-Fi networks --
+                Column {
+                    id: wifiPage
+                    visible: root.page === "wifi"
+                    x: 16
+                    y: 16
+                    width: parent.width - 32
+                    spacing: 8
+                    property string expanded: "" // the open network
+                    property string connecting: "" // the network being connected to
+                    property string password: ""
+                    // Its height once the networks have finished opening or
+                    // closing: the panel goes there at once, not frame by frame.
+                    readonly property real finalHeight: height
+                        + (networksView.visible ? Math.min(networks.finalHeight, 340) - networksView.height : 0)
+
+                    PageHeader {
+                        title: qsTr("Wi-Fi")
+                        Switch {
+                            showLabel: false
+                            checked: Status.wifiEnabled
+                            Accessible.name: qsTr("Wi-Fi")
+                            onToggled: Status.setWifiEnabled(checked)
+                        }
+                    }
+                    Text {
+                        visible: !Status.wifiEnabled || Network.wifiNetworks.length === 0
                         width: parent.width
-                        spacing: 2
-                        Repeater {
-                            model: Network.wifiNetworks
-                            delegate: Rectangle {
-                                id: net
-                                required property var modelData
-                                readonly property bool open: wifiPage.expanded === modelData.ssid
-                                readonly property bool needsPassword: modelData.secure && !modelData.active
-                                    && (!modelData.known || Network.passwordRequiredSsid === modelData.ssid)
-                                readonly property bool busy: wifiPage.connecting === modelData.ssid && Network.connectResult === ""
-                                width: networks.width
-                                height: open ? row.height + actions.height + 12 : row.height
-                                radius: Theme.radius
-                                color: open ? Theme.control : netMouse.containsMouse ? Theme.subtleHover : "transparent"
-                                clip: true
+                        topPadding: 8
+                        bottomPadding: 8
+                        text: !Status.wifiEnabled ? qsTr("Wi-Fi is turned off.")
+                            : Network.scanning ? qsTr("Looking for networks...") : qsTr("No networks found.")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontBody
+                        wrapMode: Text.WordWrap
+                    }
+                    Flickable {
+                        id: networksView
+                        visible: Status.wifiEnabled && Network.wifiNetworks.length > 0
+                        width: parent.width
+                        height: Math.min(contentHeight, 340)
+                        contentHeight: networks.height
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
 
-                                Item {
-                                    id: row
-                                    width: parent.width
-                                    height: 52
-                                    Image {
+                        Column {
+                            id: networks
+                            width: parent.width
+                            spacing: 2
+                            // Its height once every network has finished
+                            // opening or closing.
+                            readonly property real finalHeight: {
+                                let h = height
+                                for (let i = 0; i < networkRows.count; ++i) {
+                                    const item = networkRows.itemAt(i)
+                                    if (item) {
+                                        h += item.fullHeight - item.height
+                                    }
+                                }
+                                return h
+                            }
+                            Repeater {
+                                id: networkRows
+                                model: Network.wifiNetworks
+                                // A network: a click opens it, with its
+                                // password field and button, in `normal`.
+                                delegate: ListItem {
+                                    id: net
+                                    required property var modelData
+                                    readonly property bool open: wifiPage.expanded === modelData.ssid
+                                    readonly property bool needsPassword: modelData.secure && !modelData.active
+                                        && (!modelData.known || Network.passwordRequiredSsid === modelData.ssid)
+                                    readonly property bool busy: wifiPage.connecting === modelData.ssid && Network.connectResult === ""
+                                    readonly property real fullHeight: open ? 52 + actions.height + 12 : 52
+                                    readonly property bool usable: !busy && (!needsPassword || wifiPage.password.length >= 8)
+                                    width: networks.width
+                                    height: fullHeight
+                                    highlighted: open
+                                    text: modelData.ssid
+                                    Behavior on height { enabled: Theme.motion > 0; Eased {} }
+                                    onClicked: {
+                                        wifiPage.expanded = open ? "" : modelData.ssid
+                                        wifiPage.password = ""
+                                    }
+                                    function activate() {
+                                        if (!usable) return
+                                        if (modelData.active) {
+                                            Network.disconnectWifi(modelData.ssid)
+                                        } else {
+                                            wifiPage.connecting = modelData.ssid
+                                            Network.connectWifi(modelData.ssid, needsPassword ? wifiPage.password : "")
+                                        }
+                                    }
+
+                                    Icon {
                                         x: 12
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 20
-                                        height: 20
-                                        source: Theme.icons + (net.modelData.signal > 75 ? "network-wireless-signal-excellent"
+                                        y: 16
+                                        size: 20
+                                        name: net.modelData.signal > 75 ? "network-wireless-signal-excellent"
                                             : net.modelData.signal > 50 ? "network-wireless-signal-good"
-                                            : net.modelData.signal > 25 ? "network-wireless-signal-ok" : "network-wireless-signal-weak")
-                                        sourceSize: Qt.size(width, height)
+                                            : net.modelData.signal > 25 ? "network-wireless-signal-ok" : "network-wireless-signal-weak"
                                     }
                                     Column {
                                         x: 44
-                                        anchors.verticalCenter: parent.verticalCenter
+                                        y: (52 - height) / 2
                                         width: parent.width - 56
                                         Text {
                                             width: parent.width
@@ -782,422 +790,362 @@ Window {
                                             font.pixelSize: Theme.fontCaption
                                         }
                                     }
+
+                                    // Shown while open, and while it closes; a click there
+                                    // doesn't close it.
                                     MouseArea {
-                                        id: netMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: {
-                                            wifiPage.expanded = net.open ? "" : net.modelData.ssid
-                                            wifiPage.password = ""
+                                        y: 52
+                                        width: parent.width
+                                        height: parent.height - 52
+                                        clip: true
+                                        Column {
+                                            id: actions
+                                            visible: net.open || net.height > 52
+                                            x: 44
+                                            width: parent.width - 56
+                                            spacing: 8
+
+                                            // Ask for a key only on first join or if a
+                                            // saved connection fails authentication.
+                                            Rectangle {
+                                                visible: net.needsPassword
+                                                width: parent.width
+                                                height: 32
+                                                radius: Theme.radius
+                                                color: Theme.control
+                                                border.width: 1
+                                                border.color: passwordField.activeFocus ? Theme.accent : Theme.stroke
+                                                MenuTextField {
+                                                    id: passwordField
+                                                    anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                                    verticalAlignment: TextInput.AlignVCenter
+                                                    echoMode: TextInput.Password
+                                                    text: wifiPage.password
+                                                    onTextEdited: wifiPage.password = text
+                                                    onAccepted: net.activate()
+                                                    mapToScreen: (x, y) => root.screenPoint(passwordField, x, y)
+                                                }
+                                                Text {
+                                                    anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
+                                                    visible: passwordField.text === ""
+                                                    text: qsTr("Enter the network security key")
+                                                    color: Theme.textSecondary
+                                                    font.pixelSize: Theme.fontCaption
+                                                }
+                                            }
+                                            Text {
+                                                visible: wifiPage.connecting === net.modelData.ssid && Network.connectResult !== "" && Network.connectResult !== "ok"
+                                                width: parent.width
+                                                text: Network.connectResult
+                                                color: Theme.light ? "#c42b1c" : "#ff99a4"
+                                                font.pixelSize: Theme.fontCaption
+                                                wrapMode: Text.WordWrap
+                                            }
+                                            Button {
+                                                anchors.right: parent.right
+                                                width: 120
+                                                accent: !net.modelData.active
+                                                usable: net.usable
+                                                text: net.modelData.active ? qsTr("Disconnect") : net.needsPassword ? qsTr("Next") : qsTr("Connect")
+                                                onClicked: net.activate()
+                                            }
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    Item { width: 1; height: 4 }
+                    Link {
+                        text: qsTr("More Wi-Fi settings")
+                        target: "network"
+                    }
+                }
 
-                                Column {
-                                    id: actions
-                                    visible: net.open
-                                    x: 44
-                                    y: row.height
-                                    width: parent.width - 56
-                                    spacing: 8
+                // ------------------------------------------------------- sound --
+                // Like Windows 11's: where the sound goes, then the volume of the
+                // output and of each app playing.
+                Column {
+                    id: soundPage
+                    visible: root.page === "sound"
+                    x: 16
+                    y: 16
+                    width: parent.width - 32
+                    spacing: 8
 
-                                    // Ask for a key only on first join or if a
-                                    // saved connection fails authentication.
+                    PageHeader { title: qsTr("Sound output") }
+                    Flickable {
+                        width: parent.width
+                        height: Math.min(contentHeight, 440)
+                        contentHeight: soundColumn.height
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        Column {
+                            id: soundColumn
+                            width: parent.width
+                            spacing: 2
+
+                            Repeater {
+                                model: Audio.outputs
+                                delegate: ListItem {
+                                    id: output
+                                    required property var modelData
+                                    width: soundColumn.width
+                                    height: 44
+                                    text: modelData.description
+                                    highlighted: modelData.isDefault
+                                    onClicked: Audio.setDefault("output", output.modelData.name)
+                                    // The chosen one: the accent line on the left,
+                                    // like a selected item on Windows.
                                     Rectangle {
-                                        visible: net.needsPassword
-                                        width: parent.width
-                                        height: 32
-                                        radius: Theme.radius
-                                        color: Theme.control
-                                        border.width: 1
-                                        border.color: passwordField.activeFocus ? Theme.accent : Theme.stroke
-                                        MenuTextField {
-                                            id: passwordField
-                                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                            verticalAlignment: TextInput.AlignVCenter
-                                            echoMode: TextInput.Password
-                                            text: wifiPage.password
-                                            onTextEdited: wifiPage.password = text
-                                            onAccepted: connectButton.activate()
-                                            mapToScreen: (x, y) => root.screenPoint(passwordField, x, y)
+                                        visible: output.modelData.isDefault
+                                        x: 0
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 3
+                                        height: 16
+                                        radius: 1.5
+                                        color: Theme.accent
+                                    }
+                                    Icon {
+                                        x: 12
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        name: output.modelData.icon
+                                        size: 18
+                                    }
+                                    Text {
+                                        x: 44
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - 56 - (battery.visible ? battery.width + 8 : 0)
+                                        text: output.modelData.description
+                                        color: Theme.text
+                                        font.pixelSize: Theme.fontBody
+                                        elide: Text.ElideRight
+                                    }
+                                    // A Bluetooth headset's charge, when it
+                                    // reports it.
+                                    Row {
+                                        id: battery
+                                        visible: output.modelData.battery >= 0
+                                        anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                        spacing: 4
+                                        Icon {
+                                            name: output.modelData.battery >= 90 ? "battery-full"
+                                                : output.modelData.battery >= 40 ? "battery-good"
+                                                : output.modelData.battery >= 15 ? "battery-low" : "battery-caution"
+                                            size: 16
                                         }
                                         Text {
-                                            anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
-                                            visible: passwordField.text === ""
-                                            text: qsTr("Enter the network security key")
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: output.modelData.battery + "%"
                                             color: Theme.textSecondary
                                             font.pixelSize: Theme.fontCaption
                                         }
                                     }
-                                    Text {
-                                        visible: wifiPage.connecting === net.modelData.ssid && Network.connectResult !== "" && Network.connectResult !== "ok"
+                                }
+                            }
+
+                            Item { width: 1; height: 12 }
+                            Text {
+                                text: qsTr("Volume mixer")
+                                color: Theme.text
+                                font.pixelSize: Theme.fontBody
+                                font.weight: Font.DemiBold
+                                bottomPadding: 4
+                            }
+                            // The output's volume first, then the apps'.
+                            Text {
+                                text: (Audio.outputs.find(o => o.isDefault) || { description: qsTr("Speakers") }).description
+                                width: parent.width
+                                leftPadding: 48
+                                color: Theme.textSecondary
+                                font.pixelSize: Theme.fontCaption
+                                elide: Text.ElideRight
+                            }
+                            SliderRow {
+                                icon: Audio.iconName
+                                value: Audio.volume
+                                muted: Audio.muted
+                                onMoved: value => root.setSystemVolume(value)
+                                onWheeled: direction => Audio.stepVolume("output", Audio.defaultOutput, direction)
+                                onIconClicked: Audio.setMuted("output", Audio.defaultOutput, !Audio.muted)
+                            }
+                            Repeater {
+                                model: Audio.apps
+                                delegate: Column {
+                                    id: app
+                                    required property var modelData
+                                    width: soundColumn.width
+                                    topPadding: 6
+                                    // The name, and on the right where its sound
+                                    // goes: a click chooses another output.
+                                    Item {
                                         width: parent.width
-                                        text: Network.connectResult
-                                        color: Theme.light ? "#c42b1c" : "#ff99a4"
-                                        font.pixelSize: Theme.fontCaption
-                                        wrapMode: Text.WordWrap
-                                    }
-                                    Rectangle {
-                                        id: connectButton
-                                        anchors.right: parent.right
-                                        width: 120
-                                        height: 32
-                                        radius: Theme.radius
-                                        readonly property bool primary: !net.modelData.active
-                                        readonly property bool usable: !net.busy && (!net.needsPassword || wifiPage.password.length >= 8)
-                                        opacity: usable ? 1 : 0.5
-                                        color: primary ? (buttonMouse.containsMouse ? Qt.lighter(Theme.accent, 1.1) : Theme.accent)
-                                            : buttonMouse.containsMouse ? Theme.subtleHover : Theme.control
-                                        border.width: primary ? 0 : 1
-                                        border.color: Theme.stroke
-                                        function activate() {
-                                            if (!usable) return
-                                            if (net.modelData.active) {
-                                                Network.disconnectWifi(net.modelData.ssid)
-                                            } else {
-                                                wifiPage.connecting = net.modelData.ssid
-                                                Network.connectWifi(net.modelData.ssid, net.needsPassword ? wifiPage.password : "")
-                                            }
-                                        }
+                                        height: 20
                                         Text {
-                                            anchors.centerIn: parent
-                                            text: net.modelData.active ? qsTr("Disconnect") : net.needsPassword ? qsTr("Next") : qsTr("Connect")
-                                            color: connectButton.primary ? "white" : Theme.text
-                                            font.pixelSize: Theme.fontBody
+                                            x: 48
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 48 - appOutput.width - 12
+                                            text: app.modelData.name
+                                            color: Theme.textSecondary
+                                            font.pixelSize: Theme.fontCaption
+                                            elide: Text.ElideRight
                                         }
-                                        MouseArea {
-                                            id: buttonMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            onClicked: connectButton.activate()
+                                        DeviceChooser {
+                                            id: appOutput
+                                            visible: app.modelData.playing && (Audio.outputs.length > 1 || app.modelData.output !== "")
+                                            text: app.modelData.output === "" ? qsTr("Default output") : app.modelData.outputDescription
+                                            onClicked: root.chooseAppDevice(app.modelData, appOutput, false)
+                                        }
+                                    }
+                                    LevelMeter {
+                                        id: appLevel
+                                        audio: Audio
+                                        kind: "app"
+                                        name: app.modelData.key
+                                        active: root.visible && soundPage.visible && app.modelData.playing
+                                    }
+                                    SliderRow {
+                                        visible: app.modelData.playing
+                                        icon: app.modelData.icon
+                                        appIcon: true
+                                        value: app.modelData.volume
+                                        level: appLevel.level
+                                        muted: app.modelData.muted
+                                        onMoved: value => Audio.setAppVolume(app.modelData.key, value)
+                                        onWheeled: direction => Audio.stepAppVolume(app.modelData.key, direction)
+                                        onIconClicked: Audio.setAppMuted(app.modelData.key, !app.modelData.muted)
+                                    }
+                                    // An app that records: where its sound comes
+                                    // from.
+                                    Item {
+                                        visible: app.modelData.recording && (Audio.inputs.length > 1 || app.modelData.input !== "")
+                                        width: parent.width
+                                        height: visible ? 24 : 0
+                                        Icon {
+                                            x: 15
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            name: app.modelData.playing ? "audio-input-microphone" : app.modelData.icon
+                                            size: 16
+                                        }
+                                        DeviceChooser {
+                                            id: appInput
+                                            anchors.right: undefined
+                                            x: 40
+                                            text: app.modelData.input === "" ? qsTr("Default input") : app.modelData.inputDescription
+                                            onClicked: root.chooseAppDevice(app.modelData, appInput, true)
                                         }
                                     }
                                 }
+                            }
+                            Text {
+                                visible: Audio.apps.length === 0
+                                width: parent.width
+                                topPadding: 8
+                                leftPadding: 48
+                                text: qsTr("No apps are playing sound.")
+                                color: Theme.textSecondary
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.WordWrap
                             }
                         }
                     }
-                }
-                Item { width: 1; height: 4 }
-                Link {
-                    text: qsTr("More Wi-Fi settings")
-                    target: "network"
-                }
-            }
-
-            // ------------------------------------------------------- sound --
-            // Like Windows 11's: where the sound goes, then the volume of the
-            // output and of each app playing.
-            Column {
-                id: soundPage
-                visible: root.page === "sound"
-                x: 16
-                y: 16
-                width: parent.width - 32
-                spacing: 8
-
-                PageHeader { title: qsTr("Sound output") }
-                Flickable {
-                    width: parent.width
-                    height: Math.min(contentHeight, 440)
-                    contentHeight: soundColumn.height
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-
-                    Column {
-                        id: soundColumn
-                        width: parent.width
-                        spacing: 2
-
-                        Repeater {
-                            model: Audio.outputs
-                            delegate: Rectangle {
-                                id: output
-                                required property var modelData
-                                width: soundColumn.width
-                                height: 44
-                                radius: Theme.radius
-                                color: outputMouse.containsMouse ? Theme.subtleHover : output.modelData.isDefault ? Theme.control : "transparent"
-                                // The chosen one: the accent line on the left,
-                                // like a selected item on Windows.
-                                Rectangle {
-                                    visible: output.modelData.isDefault
-                                    x: 0
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 3
-                                    height: 16
-                                    radius: 1.5
-                                    color: Theme.accent
-                                }
-                                Image {
-                                    x: 12
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 18
-                                    height: 18
-                                    source: Theme.icons + encodeURIComponent(output.modelData.icon)
-                                    sourceSize: Qt.size(width, height)
-                                }
-                                Text {
-                                    x: 44
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - 56 - (battery.visible ? battery.width + 8 : 0)
-                                    text: output.modelData.description
-                                    color: Theme.text
-                                    font.pixelSize: Theme.fontBody
-                                    elide: Text.ElideRight
-                                }
-                                // A Bluetooth headset's charge, when it
-                                // reports it.
-                                Row {
-                                    id: battery
-                                    visible: output.modelData.battery >= 0
-                                    anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                                    spacing: 4
-                                    Image {
-                                        width: 16
-                                        height: 16
-                                        source: Theme.icons + (output.modelData.battery >= 90 ? "battery-full"
-                                            : output.modelData.battery >= 40 ? "battery-good"
-                                            : output.modelData.battery >= 15 ? "battery-low" : "battery-caution")
-                                        sourceSize: Qt.size(width, height)
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: output.modelData.battery + "%"
-                                        color: Theme.textSecondary
-                                        font.pixelSize: Theme.fontCaption
-                                    }
-                                }
-                                MouseArea {
-                                    id: outputMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    onClicked: Audio.setDefault("output", output.modelData.name)
-                                }
-                            }
-                        }
-
-                        Item { width: 1; height: 12 }
-                        Text {
-                            text: qsTr("Volume mixer")
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                            font.weight: Font.DemiBold
-                            bottomPadding: 4
-                        }
-                        // The output's volume first, then the apps'.
-                        Text {
-                            text: (Audio.outputs.find(o => o.isDefault) || { description: qsTr("Speakers") }).description
-                            width: parent.width
-                            leftPadding: 48
-                            color: Theme.textSecondary
-                            font.pixelSize: Theme.fontCaption
-                            elide: Text.ElideRight
-                        }
-                        Slider {
-                            icon: Audio.iconName
-                            value: Audio.volume
-                            muted: Audio.muted
-                            onMoved: value => root.setSystemVolume(value)
-                            onWheeled: direction => Audio.stepVolume("output", Audio.defaultOutput, direction)
-                            onIconClicked: Audio.setMuted("output", Audio.defaultOutput, !Audio.muted)
-                        }
-                        Repeater {
-                            model: Audio.apps
-                            delegate: Column {
-                                id: app
-                                required property var modelData
-                                width: soundColumn.width
-                                topPadding: 6
-                                // The name, and on the right where its sound
-                                // goes: a click chooses another output.
-                                Item {
-                                    width: parent.width
-                                    height: 20
-                                    Text {
-                                        x: 48
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 48 - appOutput.width - 12
-                                        text: app.modelData.name
-                                        color: Theme.textSecondary
-                                        font.pixelSize: Theme.fontCaption
-                                        elide: Text.ElideRight
-                                    }
-                                    DeviceChooser {
-                                        id: appOutput
-                                        visible: app.modelData.playing && (Audio.outputs.length > 1 || app.modelData.output !== "")
-                                        text: app.modelData.output === "" ? qsTr("Default output") : app.modelData.outputDescription
-                                        onClicked: root.chooseAppDevice(app.modelData, appOutput, false)
-                                    }
-                                }
-                                LevelMeter {
-                                    id: appLevel
-                                    audio: Audio
-                                    kind: "app"
-                                    name: app.modelData.key
-                                    active: root.visible && soundPage.visible && app.modelData.playing
-                                }
-                                Slider {
-                                    visible: app.modelData.playing
-                                    icon: app.modelData.icon
-                                    appIcon: true
-                                    value: app.modelData.volume
-                                    level: appLevel.level
-                                    muted: app.modelData.muted
-                                    onMoved: value => Audio.setAppVolume(app.modelData.key, value)
-                                    onWheeled: direction => Audio.stepAppVolume(app.modelData.key, direction)
-                                    onIconClicked: Audio.setAppMuted(app.modelData.key, !app.modelData.muted)
-                                }
-                                // An app that records: where its sound comes
-                                // from.
-                                Item {
-                                    visible: app.modelData.recording && (Audio.inputs.length > 1 || app.modelData.input !== "")
-                                    width: parent.width
-                                    height: visible ? 24 : 0
-                                    Image {
-                                        x: 15
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 16
-                                        height: 16
-                                        source: Theme.icons + (app.modelData.playing ? "audio-input-microphone" : encodeURIComponent(app.modelData.icon))
-                                        sourceSize: Qt.size(width, height)
-                                    }
-                                    DeviceChooser {
-                                        id: appInput
-                                        anchors.right: undefined
-                                        x: 40
-                                        text: app.modelData.input === "" ? qsTr("Default input") : app.modelData.inputDescription
-                                        onClicked: root.chooseAppDevice(app.modelData, appInput, true)
-                                    }
-                                }
-                            }
-                        }
-                        Text {
-                            visible: Audio.apps.length === 0
-                            width: parent.width
-                            topPadding: 8
-                            leftPadding: 48
-                            text: qsTr("No apps are playing sound.")
-                            color: Theme.textSecondary
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.WordWrap
-                        }
+                    Item { width: 1; height: 4 }
+                    Link {
+                        text: qsTr("More volume settings")
+                        target: "volume-mixer" // Settings' Volume mixer, like Windows
                     }
                 }
-                Item { width: 1; height: 4 }
-                Link {
-                    text: qsTr("More volume settings")
-                    target: "volume-mixer" // Settings' Volume mixer, like Windows
-                }
-            }
 
-            // ------------------------------------------------ accessibility --
-            Column {
-                id: accessPage
-                visible: root.page === "accessibility"
-                x: 16
-                y: 16
-                width: parent.width - 32
-                spacing: 4
+                // ------------------------------------------------ accessibility --
+                Column {
+                    id: accessPage
+                    visible: root.page === "accessibility"
+                    x: 16
+                    y: 16
+                    width: parent.width - 32
+                    spacing: 4
 
-                PageHeader { title: qsTr("Accessibility") }
-                Item { width: 1; height: 4 }
-                Repeater {
-                    model: [
-                        { icon: "zoom-in", text: qsTr("Magnifier"), key: "magnifier" },
-                        { icon: "preferences-desktop-color", text: qsTr("Color filters"), key: "colorFilter" },
-                        { icon: "input-keyboard", text: qsTr("Sticky keys"), key: "stickyKeys" }
-                    ]
-                    delegate: Rectangle {
-                        id: option
-                        required property var modelData
-                        width: accessPage.width
-                        height: 48
-                        radius: Theme.radius
-                        color: optionMouse.containsMouse ? Theme.subtleHover : "transparent"
-                        Image {
-                            x: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 18
-                            height: 18
-                            source: Theme.icons + option.modelData.icon
-                            sourceSize: Qt.size(width, height)
-                        }
-                        Text {
-                            x: 44
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: option.modelData.text
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                        }
-                        MouseArea {
-                            id: optionMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
+                    PageHeader { title: qsTr("Accessibility") }
+                    Item { width: 1; height: 4 }
+                    Repeater {
+                        model: [
+                            { icon: "zoom-in", text: qsTr("Magnifier"), key: "magnifier" },
+                            { icon: "preferences-desktop-color", text: qsTr("Color filters"), key: "colorFilter" },
+                            { icon: "input-keyboard", text: qsTr("Sticky keys"), key: "stickyKeys" }
+                        ]
+                        delegate: ListItem {
+                            id: option
+                            required property var modelData
+                            width: accessPage.width
+                            height: 48
+                            text: modelData.text
                             onClicked: Access[option.modelData.key] = !Access[option.modelData.key]
-                        }
-                        Switch {
-                            anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                            checked: Access[option.modelData.key]
-                            onToggled: Access[option.modelData.key] = !Access[option.modelData.key]
+                            Icon {
+                                x: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: option.modelData.icon
+                                size: 18
+                            }
+                            Text {
+                                x: 44
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: option.modelData.text
+                                color: Theme.text
+                                font.pixelSize: Theme.fontBody
+                            }
+                            Switch {
+                                anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                showLabel: false
+                                checked: Access[option.modelData.key]
+                                Accessible.name: option.modelData.text
+                                onToggled: Access[option.modelData.key] = checked
+                            }
                         }
                     }
-                }
-                Item { width: 1; height: 8 }
-                Link {
-                    text: qsTr("More accessibility settings")
-                    target: "accessibility-settings"
-                }
-            }
-        }
-
-        // At the bottom: battery on the left, Settings on the right.
-        Rectangle {
-            id: footer
-            visible: root.page === ""
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 1 }
-            height: 48
-            color: Theme.footer
-            bottomLeftRadius: Theme.radiusOverlay - 1
-            bottomRightRadius: Theme.radiusOverlay - 1
-
-            Row {
-                visible: Status.batteryPresent
-                anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
-                spacing: 8
-                Image {
-                    width: 18
-                    height: 18
-                    source: Theme.icons + encodeURIComponent(Status.batteryCharging ? "battery-good-charging" : "battery-good")
-                    sourceSize: Qt.size(width, height)
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Status.batteryPercent + "%"
-                    color: Theme.text
-                    font.pixelSize: Theme.fontCaption
+                    Item { width: 1; height: 8 }
+                    Link {
+                        text: qsTr("More accessibility settings")
+                        target: "accessibility-settings"
+                    }
                 }
             }
-            Item {
-                anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                width: 36
-                height: 36
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Theme.radius
-                    color: Theme.subtleHover
-                    opacity: settingsMouse.containsMouse ? 1 : 0
+
+            // At the bottom: battery on the left, Settings on the right.
+            Rectangle {
+                id: footer
+                visible: root.page === ""
+                opacity: pages.opacity // it comes back with its page
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 1 }
+                height: 48
+                color: Theme.footer
+                bottomLeftRadius: Theme.radiusOverlay - 1
+                bottomRightRadius: Theme.radiusOverlay - 1
+
+                Row {
+                    visible: Status.batteryPresent
+                    anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
+                    spacing: 8
+                    Icon {
+                        name: Status.batteryCharging ? "battery-good-charging" : "battery-good"
+                        size: 18
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Status.batteryPercent + "%"
+                        color: Theme.text
+                        font.pixelSize: Theme.fontCaption
+                    }
                 }
-                Image {
-                    anchors.centerIn: parent
-                    width: 18
-                    height: 18
-                    source: Theme.icons + "configure"
-                    sourceSize: Qt.size(width, height)
-                }
-                MouseArea {
-                    id: settingsMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
+                Button {
+                    anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                    subtle: true
+                    width: 36
+                    height: 36
+                    icon.name: "configure"
+                    icon.width: 18
+                    icon.height: 18
+                    Accessible.name: qsTr("Settings")
                     onClicked: root.openSettings("settings")
                 }
             }

@@ -36,17 +36,8 @@ T.Button {
              : (control.down ? Theme.controlPressed : control.hovered ? Theme.controlHover : Theme.control)
         border.width: control.subtle ? 0 : 1
         border.color: control.accent ? Qt.rgba(0, 0, 0, 0.1) : Theme.controlStroke
-        // Keyboard focus: a ring around it, like Windows. At once, like a
-        // disabled look: both must read immediately.
-        Rectangle {
-            visible: control.visualFocus
-            anchors.fill: parent
-            anchors.margins: -3
-            radius: parent.radius + 3
-            color: "transparent"
-            border.width: 2
-            border.color: Theme.text
-        }
+        // At once, like a disabled look: both must read immediately.
+        FocusRing { visible: control.visualFocus }
     }
 
     contentItem: Item {
@@ -56,13 +47,11 @@ T.Button {
             id: row
             anchors.centerIn: parent
             spacing: control.spacing
-            Image {
-                visible: control.icon.name !== ""
+            Icon {
+                visible: name !== ""
                 anchors.verticalCenter: parent.verticalCenter
-                width: control.icon.width
-                height: control.icon.height
-                source: control.icon.name !== "" ? Theme.icons + encodeURIComponent(control.icon.name) : ""
-                sourceSize: Qt.size(width, height)
+                name: control.icon.name
+                size: control.icon.width
             }
             Text {
                 visible: control.text !== ""

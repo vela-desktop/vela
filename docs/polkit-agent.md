@@ -331,7 +331,8 @@ had drifted apart; Files also compiles `MenuPanel.qml` straight from
     the veil behind system dialogs;
   - `Button` (standard, accent or subtle, with text and/or an icon) and
     `TextBox` (with `password: true`), since joined by `Fill`, `Switch`,
-    `Slider`, `Shadow`, `PanelMotion` and `Dialog`
+    `Slider`, `Shadow`, `PanelMotion`, `Dialog`, `ListItem` and the pieces
+    controls are made of (`Icon`, `Chevron`, `FocusRing`, `Eased`)
     ([development](development.md#controls));
   - the C++ singletons `Style` (`Appearance`: light or dark, accent, Mica,
     icon mode; system UI follows the shell's mode, apps their own) and

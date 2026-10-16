@@ -22,6 +22,9 @@ T.Slider {
     // A tick under the track at a value worth finding again (the suggested
     // one); NaN: none.
     property real mark: NaN
+    // The filled part and the knob's center: the accent, or gray for a muted
+    // volume (Quick Settings).
+    property color fillColor: Theme.accentFill
     property alias usable: control.enabled
     signal released(real value)
 
@@ -99,7 +102,7 @@ T.Slider {
             width: control.trackLength * Math.abs(position - originRatio)
             height: 4
             radius: 2
-            color: Theme.accentFill
+            color: control.fillColor
         }
     }
 
@@ -117,18 +120,9 @@ T.Slider {
             width: control.pressed ? 10 : control.hovered ? 14 : 12
             height: width
             radius: width / 2
-            color: Theme.accentFill
-            Behavior on width { enabled: Theme.motion > 0; NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+            color: control.fillColor
+            Behavior on width { enabled: Theme.motion > 0; Eased { duration: Theme.fast } }
         }
-        // Keyboard focus: a ring around the knob, like Windows.
-        Rectangle {
-            visible: control.visualFocus
-            anchors.fill: parent
-            anchors.margins: -3
-            radius: width / 2
-            color: "transparent"
-            border.width: 2
-            border.color: Theme.text
-        }
+        FocusRing { visible: control.visualFocus }
     }
 }

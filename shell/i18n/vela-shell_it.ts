@@ -503,6 +503,22 @@
         <translation>Ingresso predefinito</translation>
     </message>
     <message>
+        <source>%1 settings</source>
+        <translation>Impostazioni di %1</translation>
+    </message>
+    <message>
+        <source>Unmute</source>
+        <translation>Riattiva audio</translation>
+    </message>
+    <message>
+        <source>Mute</source>
+        <translation>Disattiva audio</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>Indietro</translation>
+    </message>
+    <message>
         <source>Wi-Fi</source>
         <translation>Wi-Fi</translation>
     </message>
@@ -585,6 +601,10 @@
     <message>
         <source>More Wi-Fi settings</source>
         <translation>Altre impostazioni Wi-Fi</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Impostazioni</translation>
     </message>
     <message>
         <source>Sound output</source>

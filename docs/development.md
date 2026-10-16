@@ -325,7 +325,9 @@ Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`)
 | Piece | What it is |
 |---|---|
 | `Fill` | A background whose color, chosen by the control from its state, fades in `Theme.fast` |
+| `Icon`, `Chevron`, `FocusRing`, `Eased` | What controls are made of: a theme icon at its size, the ">" and "v" arrows, the keyboard focus ring, an animation on Vela's curve |
 | `Button`, `Switch`, `Slider` | Templates' controls on `Fill`; `usable` is an alias of `enabled` |
+| `ListItem` | A row of a list on `Fill`: subtle, or the control's colors when `highlighted` |
 | `TextBox` | A restyled Basic `TextField` |
 | `Shadow` | What floats casts it outside itself; `depth` is one of `Theme.shadow`'s |
 | `PanelMotion` | A panel's entrance, exit and turning back, and its blur `area` ([§6.9](visual-coherence.md#69-panels-panelmotion-shadow-dialog-d14d18)) |

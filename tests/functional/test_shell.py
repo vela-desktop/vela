@@ -23,8 +23,18 @@ OUTPUT_CASES = (("normal", 1, "above"), ("90", 1, "above"), ("180", 1.25, "right
                 ("flipped-180", 1.5, "left"), ("flipped-270", 1, "below"))
 
 
+GRADIENT = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+            '<linearGradient id="g" x2="1" y2="1">'
+            '<stop stop-color="#15324a"/><stop offset="1" stop-color="#da805a"/>'
+            '</linearGradient><path fill="url(#g)" d="M0 0H100V100H0Z"/></svg>')
+
+
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
-class QtShell(unittest.TestCase):
+class RealShell(unittest.TestCase):
+    """The real Qt desktop on a headless output: its setup, no tests."""
+
+    wallpaper = GRADIENT
+
     def setUp(self):
         self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
@@ -46,10 +56,7 @@ class QtShell(unittest.TestCase):
             file.write(f'XDG_PICTURES_DIR="{pictures}"\nXDG_DESKTOP_DIR="{desktop}"\n')
         wallpaper = os.path.join(self.vela.directory, "wallpaper.svg")
         with open(wallpaper, "w") as file:
-            file.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
-                       '<linearGradient id="g" x2="1" y2="1">'
-                       '<stop stop-color="#15324a"/><stop offset="1" stop-color="#da805a"/>'
-                       '</linearGradient><path fill="url(#g)" d="M0 0H100V100H0Z"/></svg>')
+            file.write(self.wallpaper)
         env = dict(self.vela.client_env, QT_QPA_PLATFORM="wayland",
                    QT_WAYLAND_SHELL_INTEGRATION="layer-shell", QT_WAYLAND_RECONNECT="0",
                    QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
@@ -79,6 +86,30 @@ class QtShell(unittest.TestCase):
         self.assertTrue(self.mapped(state, "vela-wallpaper"))
         self.assertNotIn("layer_surface has never been configured", self.vela.log_text())
 
+    def slow_animations(self):
+        """animation-duration=300 (Settings' slider), so captures land inside
+        the animations."""
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write("animation-duration=300\n")
+        self.vela.command("reload-config")
+        time.sleep(1.0) # the shell sees the file
+
+    def background_input(self, *actions):
+        """vela-input running while the test watches: one virtual keyboard
+        for the whole sequence (a new one takes the focus from the panels)."""
+        process = subprocess.Popen([tool("vela-input"), *map(str, actions)], env=self.vela.client_env,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(process.wait)
+        return process
+
+    @staticmethod
+    def layer(state, namespace):
+        return next((layer for layer in state["layers"] if layer["namespace"] == namespace and layer["mapped"]), None)
+
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class QtShell(RealShell):
     def secondary_output(self, transform="90", scale=1, side="above", size=(1920, 1080)):
         """Configure a real Qt desktop at any side of the main output. Above or
         left of it means a negative position: the compositor then moves the
@@ -479,11 +510,7 @@ class QtShell(unittest.TestCase):
         just appear (docs/visual-coherence.md K5): at 300% (Settings' slider,
         so a capture lands inside the animation) the panel's first frames still
         show what's behind its top edge."""
-        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
-        with open(self.vela.config_path(), "w") as conf:
-            conf.write("animation-duration=300\n")
-        self.vela.command("reload-config")
-        time.sleep(1.0) # the shell sees the file
+        self.slow_animations()
         for name, key, namespace in (("Start", "super", "vela-start-menu"),
                                      ("Quick Settings", "super+a", "vela-quick-settings"),
                                      ("the notification center", "super+n", "vela-notification-center"),
@@ -572,6 +599,223 @@ class QtShell(unittest.TestCase):
                     surface = re.escape(creation[1])
                     self.assertRegex(log, rf'wl_surface{surface}\.attach\(wl_buffer')
                     self.assertRegex(log, rf'wl_surface{surface}\.destroy\(\)')
+
+    # ------------------------------------------------------ Quick Settings --
+    # docs/visual-coherence.md §6.9 and §6.10. Its window is the panel with
+    # 46 units of room for the shadow, cut 12 units from the output's edge and
+    # from the taskbar.
+
+    QS = "vela-quick-settings"
+    ROOM = 46
+
+    def panel_box(self, layer):
+        """Where the panel rests in its window, in output pixels (scale 1)."""
+        return (layer["x"] + self.ROOM, layer["y"] + self.ROOM,
+                layer["x"] + layer["w"] - 12, layer["y"] + layer["h"] - 12)
+
+    def test_quick_settings_repeatedly_opens_and_closes(self):
+        actions = []
+        for _ in range(10):
+            actions += ["key", "super+a", "sleep", "400", "key", "super+a", "sleep", "350"]
+        self.vela.input(*actions)
+        self.check_desktop()
+        self.vela.wait_for(lambda s: not self.mapped(s, self.QS), what="Quick Settings closed")
+
+    def test_reopening_quick_settings_during_its_exit_turns_back(self):
+        """Reopened while leaving, it turns back: its window never goes away."""
+        process = self.background_input("key", "super+a", "sleep", "600", "key", "super+a", "sleep", "60",
+                                        "key", "super+a", "sleep", "800")
+        self.vela.wait_for(lambda s: self.mapped(s, self.QS), what="Quick Settings open")
+        while process.poll() is None:
+            self.assertTrue(self.mapped(self.vela.state(), self.QS), "it closed before turning back")
+        self.check_desktop()
+        self.assertTrue(self.mapped(self.vela.state(), self.QS))
+
+    def test_a_click_in_quick_settings_shadow_closes_it(self):
+        """The room around the panel is its window's: a click there closes it
+        like a click outside; on the panel's own background it doesn't."""
+        self.vela.input("key", "super+a")
+        layer = self.settled_layer(self.QS)
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, self.QS), what="Quick Settings closed")
+        left, top, right, bottom = self.panel_box(layer)
+        # On the panel, in its margin left of the tiles.
+        self.vela.input("key", "super+a", "sleep", "900", "move", left + 6, (top + bottom) // 2,
+                        "click", "left", "sleep", "700")
+        self.assertTrue(self.mapped(self.vela.state(), self.QS), "a click on the panel closed it")
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, self.QS), what="Quick Settings closed")
+        # In the shadow's room, left of the panel.
+        self.vela.input("key", "super+a", "sleep", "900", "move", layer["x"] + 20, (top + bottom) // 2,
+                        "click", "left", "sleep", "700")
+        self.vela.wait_for(lambda s: not self.mapped(s, self.QS), timeout=3,
+                           what="Quick Settings closed by a click in its shadow")
+        self.check_desktop()
+
+    def settled_layer(self, namespace):
+        """The layer once its geometry has stayed the same for a second (the
+        volume's row appears when the audio service answers)."""
+        last, since = None, time.monotonic()
+        deadline = since + 10
+        while time.monotonic() < deadline:
+            layer = self.layer(self.vela.state(), namespace)
+            box = layer and (layer["x"], layer["y"], layer["w"], layer["h"])
+            if box != last:
+                last, since = box, time.monotonic()
+            elif layer and time.monotonic() - since >= 1.0:
+                return layer
+            time.sleep(0.05)
+        self.fail(f"{namespace} doesn't settle: {last}")
+
+    def panel_top(self, image, x0, y0, y1):
+        """The panel's top edge in a capture: the first row of [y0, y1) whose
+        color jumps from the row above (the shadow only darkens smoothly)."""
+        for y in range(y0 + 1, y1):
+            if max(abs(a - b) for a, b in zip(image.at(x0, y), image.at(x0, y - 1))) > 25:
+                return y
+        return None
+
+    def test_quick_settings_height_between_pages(self):
+        """Going to a page and back, the window changes height twice, before
+        the panel grows and after it shrinks, never on a frame of the panel's
+        animation, and ends as the panel plus its shadow's room."""
+        self.vela.input("key", "super+a")
+        main = self.settled_layer(self.QS)
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, self.QS), what="Quick Settings closed")
+        output = self.vela.state().output
+        self.assertEqual(main["x"] + main["w"], output["w"], "not at the output's right edge")
+        self.assertEqual(main["y"] + main["h"], output["h"] - 48, "not on the taskbar")
+        x = main["x"] + self.ROOM + 10 # in the panel's left margin
+        main_top = main["y"] + self.ROOM
+
+        # Win+Ctrl+V: the sound page, which every machine has (it's taller).
+        process = self.background_input("key", "super+a", "sleep", "900", "key", "super+ctrl+v", "sleep", "1200",
+                                        "key", "Escape", "sleep", "1200")
+        heights, tops = [], []
+        while process.poll() is None:
+            layer = self.layer(self.vela.state(), self.QS)
+            if layer is None:
+                continue
+            if not heights or heights[-1] != (layer["y"], layer["h"]):
+                heights.append((layer["y"], layer["h"]))
+            if layer["h"] > main["h"] and len(tops) < 12:
+                # The panel's top while it grows, in a thin strip.
+                path = os.path.join(self.vela.directory, "strip.png")
+                self.vela.screenshot(path, region=(x, 0, 1, layer["y"] + layer["h"]))
+                tops.append(self.panel_top(Image.read(path), 0, layer["y"] + 1, layer["y"] + layer["h"]))
+        self.check_desktop()
+        self.assertEqual(len(heights), 3, f"the window resized on the panel's frames: {heights}")
+        self.assertEqual(heights[0], (main["y"], main["h"]))
+        self.assertEqual(heights[2], (main["y"], main["h"]))
+        page_y, page_h = heights[1]
+        self.assertGreater(page_h, main["h"])
+        self.assertEqual(page_y + page_h, main["y"] + main["h"], "the window's bottom moved")
+        page_top = page_y + self.ROOM
+        # The panel grew inside the larger window: some frames in between.
+        self.assertTrue(any(t is not None and page_top < t < main_top for t in tops),
+                        f"the panel jumped to its height: tops {tops}, from {main_top} to {page_top}")
+        # Back on the main page, still open: the panel fills its window but
+        # the room.
+        layer = self.settled_layer(self.QS)
+        self.assertEqual((layer["y"], layer["h"]), (main["y"], main["h"]))
+        image = self.vela.pixels()
+        self.assertEqual(self.panel_top(image, x, layer["y"] + 1, layer["y"] + layer["h"]), main_top)
+
+
+# Black and white stripes 4 pixels wide: blurred they become one gray, seen
+# through a translucent panel or a shadow they stay stripes.
+STRIPES = ('<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">'
+           '<pattern id="p" width="8" height="8" patternUnits="userSpaceOnUse">'
+           '<rect width="4" height="8" fill="#fff"/></pattern>'
+           '<rect width="1920" height="1080" fill="#000"/><rect width="1920" height="1080" fill="url(#p)"/></svg>')
+
+
+class PanelBlur(RealShell):
+    """The blur under a sliding panel (docs/visual-coherence.md §6.9, D17)."""
+
+    wallpaper = STRIPES
+    # How much of the stripes a row shows (0-255): through the panel with blur
+    # behind it nothing; through the panel without blur about 110; through its
+    # shadow or nothing, more than 130 (one row of the panel's antialiased
+    # edge can be anything).
+    BLURRED = 6
+    UNCOVERED = 125
+
+    def blur_regions(self, namespace):
+        """The blur regions the shell asked for this layer's latest surface,
+        in order, from the protocol log: each a list of (x, y, w, h)."""
+        log = self.vela.log_text()
+        surface = re.findall(rf'get_layer_surface\(.*?wl_surface[@#](\d+).*?"{namespace}"', log)[-1]
+        effect = re.findall(r'get_background_effect\(new id ext_background_effect_surface_v1[@#](\d+), '
+                            rf'wl_surface[@#]{surface}\)', log)[-1]
+        start = log.rindex(f"ext_background_effect_surface_v1#{effect}, wl_surface#{surface}")
+        rects, regions = {}, []
+        for line in log[start:].splitlines():
+            add = re.search(r'-> wl_region[@#](\d+)\.add\((-?\d+), (-?\d+), (\d+), (\d+)\)', line)
+            if add:
+                rects.setdefault(add[1], []).append(tuple(int(v) for v in add.groups()[1:]))
+            region = re.search(rf'-> ext_background_effect_surface_v1[@#]{effect}\.set_blur_region\('
+                               r'wl_region[@#](\d+)\)', line)
+            if region:
+                regions.append(rects.pop(region[1], []))
+        return regions
+
+    @staticmethod
+    def stripes(image, x):
+        """For each row, the contrast between the 8 pixels from x and the
+        stripes 4 pixels further."""
+        return [max(max(abs(a - b) for a, b in zip(image.at(x + i, y), image.at(x + i + 4, y))) for i in range(4))
+                for y in range(image.height)]
+
+    def test_quick_settings_has_blur_behind_it_while_it_slides(self):
+        """Every frame of the entrance has blur behind the whole panel, also
+        below where it rests (it rises from behind the taskbar); at rest its
+        shadow there isn't blurred."""
+        self.slow_animations()
+        self.vela.input("key", "super+a")
+        layer = self.vela.wait_for(lambda s: self.layer(s, "vela-quick-settings"), what="Quick Settings open")
+        layer = self.layer(layer, "vela-quick-settings")
+        # A strip in the panel's left margin, where it is plain surface.
+        x = layer["x"] + 46 + 8
+        bottom = layer["y"] + layer["h"] # the window's, on the taskbar
+        rest_bottom = bottom - 12
+        path = os.path.join(self.vela.directory, "strip.png")
+        frames = []
+        deadline = time.monotonic() + 1.2
+        while time.monotonic() < deadline:
+            self.vela.screenshot(path, region=(x, 0, 12, bottom))
+            frames.append(self.stripes(Image.read(path), 0))
+        time.sleep(1.5)
+        settled = self.layer(self.vela.state(), "vela-quick-settings")
+        self.assertEqual((settled["y"], settled["h"]), (layer["y"], layer["h"]), "the window changed size")
+        self.vela.screenshot(path, region=(x, 0, 12, bottom))
+        rest = self.stripes(Image.read(path), 0)
+        top = next(y for y, c in enumerate(rest) if c <= self.BLURRED)
+        self.assertGreater(sum(1 for c in rest if c <= self.BLURRED), 200)
+        # At rest the blur is the panel's only: its shadow, in the same
+        # surface, shows the stripes, darker.
+        shadow = rest[rest_bottom + 2:bottom]
+        self.assertTrue(all(c > self.UNCOVERED for c in shadow), f"the shadow is blurred: {shadow}")
+        regions = self.blur_regions("vela-quick-settings")
+        self.assertEqual(regions[-1], [(46, 46, 360, layer["h"] - 46 - 12)], "the region at rest isn't the panel")
+
+        sliding = 0
+        for number, rows in enumerate(frames):
+            blurred = [y for y, c in enumerate(rows) if c <= self.BLURRED]
+            if len(blurred) < 200:
+                continue # still faint: the blur follows its opacity
+            if blurred[0] <= top + 1:
+                continue # at rest
+            # Below the blurred rows down to the window's bottom: the shadow
+            # or the wallpaper, never the panel without blur (one row of
+            # antialiased edge).
+            unblurred = [y for y in range(blurred[-1] + 1, bottom) if rows[y] <= self.UNCOVERED]
+            self.assertLessEqual(len(unblurred), 1, f"frame {number}: the panel without blur at rows {unblurred} "
+                                                    f"({[rows[y] for y in unblurred]})")
+            if blurred[-1] > rest_bottom + 2:
+                sliding += 1
+        self.assertGreater(sliding, 0, "no capture landed while the panel was below where it rests")
 
 
 if __name__ == "__main__":

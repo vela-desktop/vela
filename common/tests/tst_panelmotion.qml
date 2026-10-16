@@ -139,9 +139,12 @@ Item {
             compare(area.height, 150)
         }
 
-        function test_area_covers_the_whole_travel() {
+        function test_area_covers_the_whole_travel_while_moving() {
             if (!Theme.animationEffects)
                 skip("with effects on")
+            motion.open()
+            popup.open()
+            verify(motion.moving)
             const a = motion.area
             compare(a.x, 100)
             compare(a.y, 100)
@@ -150,6 +153,20 @@ Item {
             const p = popup.area
             compare(p.x, 350 - 2.5)
             compare(p.width, 105)
+            // The same on every frame of the entrance.
+            while (motion.moving) {
+                compare(motion.area, a)
+                wait(16)
+            }
+            motion.close()
+            verify(motion.moving)
+            compare(motion.area, a)
+        }
+
+        function test_area_is_the_panel_at_rest() {
+            openFully()
+            tryVerify(() => !motion.moving, 3000)
+            compare(motion.area, Qt.rect(100, 100, 200, 150))
         }
 
         function test_instant_exit() {
