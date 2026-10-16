@@ -76,10 +76,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          # The packaging-tests job in Build owns this suite for PRs.
-          # Explicit manual runs remain self-contained.
-          exclude='^(functional|sharpness)$'
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            exclude='^(functional|sharpness|packaging-update)$'
-          fi
-          ctest --test-dir build-fedora --output-on-failure --parallel 2 -E "$exclude"
+          # The packaging-tests job in Build owns the updater suite for
+          # PRs and main pushes. Its Arch-oriented mocks cannot be re-run
+          # against Fedora's native RPM/DNF backend.
+          # Fedora's RPM smoke job exercises actual DNF transactions.
+          ctest --test-dir build-fedora --output-on-failure --parallel 2 -E '^(functional|sharpness|packaging-update)$'

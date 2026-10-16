@@ -74,17 +74,20 @@ int main(int argc, char *argv[])
         }
     }
 
-    // wl_event_loop_add_signal() blocks SIGUSR1 only on the calling thread.
+    // wl_event_loop_add_signal() blocks a signal only on the calling thread.
     // Vulkan/DRM may start worker threads *before* the event loop registers
-    // the redraw handler. Block it before initializing those libraries, so
-    // their threads inherit the mask and SIGUSR1 reaches Wayland's signalfd
-    // instead of taking its default action (terminating the whole process).
+    // its handlers. Block SIGUSR1 (redraw) and SIGINT/SIGTERM (clean exit,
+    // server.c) before initializing those libraries, so their threads inherit
+    // the mask and process-directed signals reach Wayland's signalfd instead
+    // of taking the default action (terminating without a clean exit).
     // Vela's fork/exec helpers clear signal masks in launched applications.
-    sigset_t redraw_mask;
-    sigemptyset(&redraw_mask);
-    sigaddset(&redraw_mask, SIGUSR1);
-    if (sigprocmask(SIG_BLOCK, &redraw_mask, NULL) != 0) {
-        perror("vela-compositor: cannot block SIGUSR1");
+    sigset_t handled_signals;
+    sigemptyset(&handled_signals);
+    sigaddset(&handled_signals, SIGUSR1);
+    sigaddset(&handled_signals, SIGINT);
+    sigaddset(&handled_signals, SIGTERM);
+    if (sigprocmask(SIG_BLOCK, &handled_signals, NULL) != 0) {
+        perror("vela-compositor: cannot block signals");
         return 1;
     }
 
