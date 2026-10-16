@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Standalone Package Test
-# PR validation only; post-merge build and packaging run in build.yml.
+# Manual diagnostic only. Build already tests the same Arch package on PRs.
 on:
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read

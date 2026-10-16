@@ -116,10 +116,12 @@ class Supervisor(unittest.TestCase):
             with open(f"/proc/{compositor_pid}/comm") as name:
                 self.assertEqual(name.read().strip(), "vela-compositor")
 
-            # The main thread AND GPU worker threads must block SIGUSR1:
-            # Wayland's signalfd can only receive a process-directed signal
-            # reliably when another thread cannot handle it instead.
+            # The main thread AND GPU worker threads must block SIGUSR1 and
+            # SIGINT/SIGTERM: Wayland's signalfd can only receive a
+            # process-directed signal reliably when another thread cannot
+            # handle it instead.
             redraw_bit = 1 << (signal.SIGUSR1 - 1)
+            exit_bits = (1 << (signal.SIGINT - 1)) | (1 << (signal.SIGTERM - 1))
             for tid in os.listdir(f"/proc/{compositor_pid}/task"):
                 try:
                     with open(f"/proc/{compositor_pid}/task/{tid}/status") as status:
@@ -128,6 +130,8 @@ class Supervisor(unittest.TestCase):
                     continue  # A worker thread can exit while inspecting.
                 self.assertNotEqual(int(line.split()[1], 16) & redraw_bit, 0,
                                     f"SIGUSR1 unblocked by compositor thread {tid}")
+                self.assertEqual(int(line.split()[1], 16) & exit_bits, exit_bits,
+                                 f"SIGINT/SIGTERM unblocked by compositor thread {tid}")
 
             # An accidental direct signal to the supervisor must not log out.
             os.kill(supervisor_pid, signal.SIGUSR1)
@@ -142,6 +146,20 @@ class Supervisor(unittest.TestCase):
             self.assertIsNone(vela.process.poll())
             self.assertEqual(child_compositor(supervisor_pid), compositor_pid)
             self.assertNotIn("the compositor crashed", vela.log_text())
+
+    def test_termination_signals_exit_cleanly(self):
+        # Both signals must reach Wayland's signalfd and shut down the
+        # compositor without being mistaken for a crash by the supervisor.
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=signal.Signals(signum).name):
+                with Session(supervise=True) as vela:
+                    compositor_pid = child_compositor(vela.process.pid)
+                    self.assertIsNotNone(compositor_pid)
+                    os.kill(compositor_pid, signum)
+                    self.assertEqual(vela.process.wait(timeout=15), 0)
+                    log = vela.log_text()
+                    self.assertNotIn("the compositor crashed", log)
+                    self.assertNotIn("restarting it", log)
 
     def test_restart_after_crash(self):
         with Session(supervise=True) as vela:

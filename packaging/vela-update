@@ -2,17 +2,19 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# Updates Vela installed as a package (vela-git): fetches the new commits,
-# shows what changes, builds the package with makepkg and installs it with
-# pacman (asks for the password). The new version starts at the next session.
+# Updates Vela installed as vela-git on Arch or Fedora: fetch the selected
+# Git revision, verify any downloaded package's signed provenance, otherwise
+# build an Arch package with makepkg or a Fedora RPM with rpmbuild.
+# The new version starts at the next session.
 #
-# If GitHub Actions has already built that commit's package (and gh is there,
-# logged into the account), it asks whether to download it instead of building:
+# If GitHub Actions has built that commit's public release, it can download
+# the signed package without GitHub CLI. Private workflow artifacts optionally
+# use an authenticated gh session only for retrieval, never verification:
 # no minutes of compiling, and no compiler crashes.
 #
 # The repository is kept in ~/.cache/vela-update, so each time only new commits
-# are fetched; the last packages stay there too, to go back: sudo pacman -U
-# ~/.cache/vela-update/packages/<file>.
+# are fetched; the last packages stay there too, for rollback with native tools
+# from ~/.cache/vela-update/packages/<file>.
 
 set -eu
 
@@ -27,7 +29,7 @@ usage() {
     cat << EOF
 Usage: vela-update [options]
 
-Updates Vela to the repository's default branch and installs it.
+Updates Vela to the repository's default branch and installs it (Arch/Fedora).
 
   --branch NAME       install the latest commit of this branch, just this time
   --commit SHA        install this exact commit (full or abbreviated SHA),
@@ -37,8 +39,8 @@ Updates Vela to the repository's default branch and installs it.
   --force             rebuild and reinstall even if Vela is up to date
   --build             always build here, even if GitHub has the package
   --download          if GitHub has the package, download it without asking
-  --jobs N            parallel compile jobs (otherwise those of
-                      /etc/makepkg.conf); 1 is slow but safe
+  --jobs N            parallel compile jobs (makepkg or rpmbuild);
+                      1 is slow but safe
   --source URL|DIR    where to get Vela from: a git repository or a folder
                       (its commits, not uncommitted changes). Remembered
                       for next time. GitHub URLs always use HTTPS.
@@ -105,6 +107,65 @@ if [ -n "$jobs" ]; then
     *[!0-9]* | 0) echo "vela-update: --jobs needs a number" >&2; exit 2 ;;
     esac
 fi
+
+# Select the native package manager. RPM/DNF presence alone is insufficient:
+# Fedora's RPM must not be installed on unrelated DNF-based distributions.
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+else
+    ID=""
+fi
+case "${ID:-}" in
+fedora) backend=fedora ;;
+arch|cachyos|endeavouros) backend=arch ;;
+*) if command -v pacman >/dev/null 2>&1; then
+       backend=arch
+   else
+       echo "vela-update: unsupported distribution (requires Arch/pacman or Fedora 44)." >&2
+       exit 1
+   fi ;;
+esac
+if [ "$backend" = arch ] && ! command -v pacman >/dev/null 2>&1; then
+    echo "vela-update: pacman is missing." >&2; exit 1
+fi
+if [ "$backend" = fedora ]; then
+    if ! command -v rpm >/dev/null 2>&1 || ! command -v dnf >/dev/null 2>&1; then
+        echo "vela-update: Fedora needs rpm and dnf." >&2; exit 1
+    fi
+    # Having DNF installed does not imply compatible Fedora libraries.
+    fedora_release=$(rpm --eval '%{?fedora}' 2>/dev/null || true)
+    if [ "$fedora_release" != 44 ]; then
+        echo "vela-update: Fedora 44 is the only supported RPM target (detected: ${fedora_release:-unknown})." >&2
+        exit 1
+    fi
+fi
+
+packageVersion() {
+    if [ "$backend" = arch ]; then
+        pacman -Q vela-git 2>/dev/null | cut -d' ' -f2
+    else
+        rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git 2>/dev/null
+    fi
+}
+installPackage() {
+    if [ "$backend" = arch ]; then
+        sudo pacman -U "$1"
+    elif [ "$force" = 1 ] && [ -n "$installed" ] &&
+         [ "${latestFull#"$installed"}" != "$latestFull" ]; then
+        # DNF 'install' deliberately skips an already installed identical NEVRA.
+        sudo dnf reinstall -y "$1"
+    else
+        # An explicit local file can upgrade or downgrade an existing RPM.
+        sudo dnf install -y "$1"
+    fi
+}
+packageLabel() {
+    if [ "$backend" = arch ]; then
+        printf '%s' 'sudo pacman -U'
+    else
+        printf '%s' 'sudo dnf install'
+    fi
+}
 
 # Serialize every cache/config operation, including --check. Two updater
 # processes must never delete each other's build directory or modify the
@@ -259,7 +320,7 @@ fi
 # the same history twice during the first installation.
 bootstrap=""
 if [ "$source" = "$DEFAULT_SOURCE" ] && [ ! -d "$MIRROR" ]; then
-    candidate=$(CDPATH= cd "$(dirname "$0")/../.." 2> /dev/null && pwd) || candidate=""
+    candidate=$(CDPATH= cd "$(dirname "$0")/.." 2> /dev/null && pwd) || candidate=""
     if [ -n "$candidate" ] && [ -d "$candidate/.git" ] \
         && [ "$(git -C "$candidate" rev-parse --show-toplevel 2> /dev/null || true)" = "$candidate" ]; then
         origin=$(git -C "$candidate" remote get-url origin 2> /dev/null || true)
@@ -430,10 +491,15 @@ fi
 
 latest=$(git -C "$MIRROR" rev-parse --short=7 "$latestFull")
 echo ":: Selected revision: ${branch:-${commit:-default branch}} ($latestFull)"
-installed=$(pacman -Q vela-git 2> /dev/null | sed -n 's/.*\.g\([0-9a-f]*\)-[0-9]*$/\1/p')
+installed_version=$(packageVersion || true)
+if [ "$backend" = arch ]; then
+    installed=$(printf '%s\n' "$installed_version" | sed -n 's/.*\.g\([0-9a-f]*\)-[0-9]*$/\1/p')
+else
+    installed=$(printf '%s\n' "$installed_version" | sed -n 's/.*\.g\([0-9a-f]*\)\(\.fc[0-9]*\)\?$/\1/p')
+fi
 
 if [ -n "$installed" ] && [ "${latestFull#"$installed"}" != "$latestFull" ] && [ "$force" = 0 ]; then
-    echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2))."
+    echo ":: Vela is up to date ($(packageVersion))."
     [ "$check" = 1 ] && exit 1
     exit 0
 fi
@@ -447,7 +513,7 @@ if [ -n "$installed" ] && git -C "$MIRROR" cat-file -e "$installed^{commit}" 2> 
         git -C "$MIRROR" log --format='   %s' "$installed..$latestFull"
     fi
 elif [ -n "$installed" ]; then
-    echo ":: Installed version: $(pacman -Q vela-git | cut -d' ' -f2); new: $latest"
+    echo ":: Installed version: $(packageVersion); new: $latest"
 else
     echo ":: Vela isn't installed as a package: installing it ($latest)."
 fi
@@ -463,30 +529,37 @@ githubRepo() {
     printf '%s\n' "$url" | sed -n -E 's#^(ssh://git@github\.com/|git@github\.com:|https://github\.com/)([^/]+/[^/]+)$#\2#p' | sed 's/\.git$//'
 }
 
-# Official releases are named after the source commit. An HTTPS SHA256SUMS
-# manifest alone is NOT a trust anchor: an attacker replacing both the
-# manifest and the package could bypass a checksum-only check. Require a
-# GitHub/Sigstore build provenance attestation before installing any binary.
-# Without gh or a valid attestation, fall back to building verified Git source.
+# A checksum manifest alone is not a trust anchor. The release is only trusted
+# after cryptographic Sigstore verification of GitHub's artifact attestation,
+# including the package digest, workflow identity and exact selected revision.
+# This path needs curl, Python and cosign, but never a GitHub login or gh.
 repo=$(githubRepo)
 verifyProvenance() {
     artifact_path="$1"
     source_kind="$2"
-    if ! command -v gh >/dev/null 2>&1; then
-        echo "vela-update: GitHub CLI (gh) is required for signed package verification." >&2
+    if ! command -v cosign >/dev/null 2>&1; then
+        echo "vela-update: cosign is required for signed binary verification; building locally instead." >&2
         return 1
     fi
-    # The certificate must identify this repository's build.yml workflow,
-    # and the signed source SHA must equal the revision selected above.
-    # This checks the artifact digest cryptographically (not just its name).
-    set -- "$artifact_path" --repo "$repo" \
-        --signer-workflow "$repo/.github/workflows/build.yml" \
-        --source-digest "$latestFull" --deny-self-hosted-runners
-    if [ "$source_kind" = release ]; then
-        # Public alpha releases are published exclusively from main.
-        set -- "$@" --source-ref refs/heads/main
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "vela-update: Python 3 is required for signed binary verification." >&2
+        return 1
     fi
-    if ! gh attestation verify "$@" >/dev/null; then
+    helper=""
+    # Bootstrap from an ordinary checkout, or run after installation.
+    for candidate in "$(dirname "$0")/verify-attestation.py" \
+        /usr/libexec/vela/verify-attestation.py /usr/lib/vela/verify-attestation.py; do
+        if [ -f "$candidate" ]; then
+            helper="$candidate"
+            break
+        fi
+    done
+    if [ -z "$helper" ]; then
+        echo "vela-update: missing installed Sigstore verifier; refusing downloaded binary." >&2
+        return 1
+    fi
+    if ! python3 "$helper" --repository "$repo" --commit "$latestFull" \
+        --kind "$source_kind" "$artifact_path"; then
         echo "vela-update: package provenance verification failed for $latestFull; refusing binary." >&2
         return 1
     fi
@@ -494,19 +567,36 @@ verifyProvenance() {
 release_package=""
 release_url=""
 release_digest=""
+manifest_name=SHA256SUMS
+artifact_name=vela-git
+if [ "$backend" = fedora ]; then
+    manifest_name=SHA256SUMS-fedora
+    artifact_name=vela-fedora-rpm
+fi
 if [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1; then
     release_url="https://github.com/$repo/releases/download/alpha-$latestFull"
     manifest="$CACHE/public-release-SHA256SUMS"
     # curl exit 22 covers every HTTP error, not only missing prereleases.
     # Record the final response code, and suppress only an actual HTTP 404.
     if response_code=$(curl -fsSL --write-out '%{http_code}' --connect-timeout 5 --max-time 20 \
-        -o "$manifest" "$release_url/SHA256SUMS" 2>"$CACHE/release-lookup-error.log"); then
+        -o "$manifest" "$release_url/$manifest_name" 2>"$CACHE/release-lookup-error.log"); then
         if [ "$(wc -l < "$manifest")" -eq 1 ]; then
             release_digest=$(awk 'NR == 1 {print $1}' "$manifest")
             release_package=$(awk 'NR == 1 {print $2}' "$manifest")
-            if ! printf '%s\n' "$release_digest" | grep -Eq '^[0-9a-f]{64}$' ||
-                ! printf '%s\n' "$release_package" |
+            package_name_valid=0
+            if [ "$backend" = arch ]; then
+                if printf '%s\n' "$release_package" |
                     grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}-[[:digit:]]+-x86_64\.pkg\.tar\.zst$"; then
+                    package_name_valid=1
+                fi
+            else
+                if printf '%s\n' "$release_package" |
+                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}(\.fc[[:digit:]]+)?\.x86_64\.rpm$"; then
+                    package_name_valid=1
+                fi
+            fi
+            if ! printf '%s\n' "$release_digest" | grep -Eq '^[0-9a-f]{64}$' ||
+                [ "$package_name_valid" != 1 ]; then
                 echo "vela-update: invalid public release manifest for $latestFull (checksum or package name); trying alternatives." >&2
                 release_package=""
             fi
@@ -530,18 +620,25 @@ fi
 ciRun=""
 if [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
     && command -v gh > /dev/null && gh auth status > /dev/null 2>&1; then
-    if run=$(gh run list -R "$repo" -w build.yml -c "$latestFull" -s success -L 1 \
-        --json databaseId -q '.[0].databaseId' 2>"$CACHE/gh-lookup-error.log"); then
-        if [ -n "$run" ]; then
-            if artifacts=$(gh api "repos/$repo/actions/runs/$run/artifacts" \
-                -q '.artifacts[] | select(.name == "vela-git" and .expired == false) | .id' \
+    # PR package artifacts are deliberately unsigned. Select only main-push
+    # or manually dispatched builds (which attest their outputs), and search
+    # several successful runs in case a newer one lacks this distribution.
+    if runs=$(gh run list -R "$repo" -w build.yml -c "$latestFull" -s success -L 20 \
+        --json databaseId,event -q '.[] | select(.event == "push" or .event == "workflow_dispatch") | .databaseId' \
+        2>"$CACHE/gh-lookup-error.log"); then
+        for run in $runs; do
+            if artifacts=$(gh api "repos/$repo/actions/runs/$run/artifacts?per_page=100" \
+                -q ".artifacts[] | select(.name == \"$artifact_name\" and .expired == false) | .id" \
                 2>"$CACHE/gh-lookup-error.log"); then
-                [ -z "$artifacts" ] || ciRun="$run"
+                if [ -n "$artifacts" ]; then
+                    ciRun="$run"
+                    break
+                fi
             else
-                echo "vela-update: optional GitHub Actions artifact lookup failed:" >&2
+                echo "vela-update: optional GitHub Actions artifact lookup failed for run $run:" >&2
                 cat "$CACHE/gh-lookup-error.log" >&2
             fi
-        fi
+        done
     else
         echo "vela-update: optional GitHub Actions run lookup failed:" >&2
         cat "$CACHE/gh-lookup-error.log" >&2
@@ -566,7 +663,11 @@ fi
 
 # Only the last packages, to be able to go back.
 prune() {
-    ls -t "$PACKAGES"/vela-git-*.pkg.tar.* 2> /dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+    if [ "$backend" = arch ]; then
+        ls -t "$PACKAGES"/vela-git-*.pkg.tar.* 2> /dev/null
+    else
+        ls -t "$PACKAGES"/vela-git-*.rpm 2> /dev/null
+    fi | tail -n +$((KEEP + 1)) | while read -r old; do
         rm -f "$old"
     done
 }
@@ -585,13 +686,13 @@ if [ -n "$release_package" ]; then
         rm -rf -- "$DOWNLOAD"
         DOWNLOAD=""
         package="$PACKAGES/$release_package"
-        if ! sudo pacman -U "$package"; then
+        if ! installPackage "$package"; then
             echo "vela-update: the verified package was downloaded but not installed. To install it:" >&2
-            echo "   sudo pacman -U $package" >&2
+            echo "   $(packageLabel) $package" >&2
             exit 1
         fi
         prune
-        echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
+        echo ":: Vela is up to date ($(packageVersion)). The new version"
         echo "   starts with your next session: sign out and back in."
         exit 0
     fi
@@ -616,21 +717,27 @@ fi
 if [ -n "$ciRun" ]; then
     DOWNLOAD=$(mktemp -d "$CACHE/download.XXXXXXXX")
     echo ":: Downloading the package from GitHub"
-    if gh run download "$ciRun" -R "$repo" -n vela-git -D "$DOWNLOAD" \
-        && package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1) \
-        && [ -n "$package" ] \
-        && verifyProvenance "$package" workflow; then
+    if gh run download "$ciRun" -R "$repo" -n "$artifact_name" -D "$DOWNLOAD"; then
+        if [ "$backend" = arch ]; then
+            package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1)
+        else
+            package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2> /dev/null | head -n 1)
+        fi
+    else
+        package=""
+    fi
+    if [ -n "$package" ] && verifyProvenance "$package" workflow; then
         mv -f "$package" "$PACKAGES/"
         rm -rf -- "$DOWNLOAD"
         DOWNLOAD=""
         package="$PACKAGES/$(basename "$package")"
-        if ! sudo pacman -U "$package"; then
+        if ! installPackage "$package"; then
             echo "vela-update: the package was downloaded but not installed. To install it:" >&2
-            echo "   sudo pacman -U $package" >&2
+            echo "   $(packageLabel) $package" >&2
             exit 1
         fi
         prune
-        echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
+        echo ":: Vela is up to date ($(packageVersion)). The new version"
         echo "   starts with your next session: sign out and back in."
         exit 0
     fi
@@ -639,52 +746,97 @@ if [ -n "$ciRun" ]; then
     echo ":: The GitHub package is unavailable or not verified: building it here." >&2
 fi
 
-# The build, with the new version's PKGBUILD.
+# Build exactly the selected commit with the distribution's native tooling.
 WORK=$(mktemp -d "$CACHE/build.XXXXXXXX")
-if ! git -C "$MIRROR" show "$latestFull:packaging/arch/PKGBUILD" > "$WORK/PKGBUILD"; then
-    echo "vela-update: cannot read PKGBUILD from selected revision $latestFull." >&2
-    exit 1
-fi
-# Advertise the selected commit to makepkg's mirror clone even when it was
-# fetched by SHA and no branch points to it anymore.
-git -C "$MIRROR" update-ref refs/vela-update/selected "$latestFull"
-cd "$WORK"
-export VELA_GIT_URL="file://$MIRROR#commit=$latestFull"
-if [ -n "$jobs" ]; then
-    export MAKEFLAGS="-j$jobs"
-fi
-echo ":: Building the package (a few minutes)"
-if [ -t 0 ]; then
-    # setsid would detach /dev/tty, breaking sudo authentication and makepkg
-    # prompts. Preserve the existing foreground terminal's process group.
-    BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-        makepkg --syncdeps --install --clean --force <&0 9>&- &
-    build_isolated=0
-else
-    if ! command -v setsid >/dev/null 2>&1; then
-        echo "vela-update: setsid (util-linux) is required for unattended builds" >&2
+if [ "$backend" = arch ]; then
+    if ! git -C "$MIRROR" show "$latestFull:packaging/arch/PKGBUILD" > "$WORK/PKGBUILD"; then
+        echo "vela-update: cannot read PKGBUILD from selected revision $latestFull." >&2
         exit 1
     fi
-    # Without a controlling tty, we can safely isolate the whole build in a
-    # new process group, allowing group-wide cancellation on INT/TERM/HUP.
-    BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-        setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
+    git -C "$MIRROR" update-ref refs/vela-update/selected "$latestFull"
+    export VELA_GIT_URL="file://$MIRROR#commit=$latestFull"
+    if [ -n "$jobs" ]; then export MAKEFLAGS="-j$jobs"; fi
+else
+    if ! command -v rpmbuild >/dev/null 2>&1; then
+        echo "vela-update: install RPM build tools first: sudo dnf install rpm-build dnf5-plugins" >&2
+        exit 1
+    fi
+    mkdir -p "$WORK"/BUILD "$WORK"/BUILDROOT "$WORK"/RPMS "$WORK"/SOURCES "$WORK"/SPECS
+    if ! git -C "$MIRROR" show "$latestFull:packaging/fedora/vela.spec" > "$WORK/SPECS/vela.spec"; then
+        echo "vela-update: this revision has no Fedora RPM spec ($latestFull)." >&2
+        exit 1
+    fi
+    version=$(git -C "$MIRROR" show "$latestFull:CMakeLists.txt" |
+        sed -n 's/^[[:space:]]*VERSION[[:space:]]\([0-9][0-9.]*\).*/\1/p' | head -n 1)
+    if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+(\.[0-9]+)+$'; then
+        echo "vela-update: invalid or missing project version in selected revision." >&2
+        exit 1
+    fi
+    if ! git -C "$MIRROR" archive --format=tar.gz --prefix="vela-$version/" "$latestFull" > "$WORK/SOURCES/vela-$version.tar.gz"; then
+        echo "vela-update: could not archive revision $latestFull for rpmbuild." >&2
+        exit 1
+    fi
+    # The SPEC requires vela_version even when DNF is only resolving BuildRequires.
+    if ! sudo dnf builddep -y --define "vela_version $version" "$WORK/SPECS/vela.spec"; then
+        echo "vela-update: unable to install Fedora build dependencies (requires dnf5-plugins)." >&2
+        exit 1
+    fi
+    count=$(git -C "$MIRROR" rev-list --count "$latestFull")
+    RPM_BUILD_NCPUS=$(nproc)
+    [ -z "$jobs" ] || RPM_BUILD_NCPUS="$jobs"
+    export RPM_BUILD_NCPUS
+fi
+cd "$WORK"
+echo ":: Building the $backend package"
+if [ ! -t 0 ] && ! command -v setsid >/dev/null 2>&1; then
+    echo "vela-update: setsid (util-linux) is required for unattended builds" >&2
+    exit 1
+fi
+if [ "$backend" = arch ]; then
+    if [ -t 0 ]; then
+        BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
+            makepkg --syncdeps --install --clean --force <&0 9>&- &
+        build_isolated=0
+    else
+        BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
+            setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
+        build_isolated=1
+    fi
+elif [ -t 0 ]; then
+    rpmbuild -bb "$WORK/SPECS/vela.spec" \
+        --define "_topdir $WORK" --define "vela_version $version" --define "vela_commit $latestFull" \
+        --define "vela_short $latest" --define "vela_count $count" <&0 9>&- &
+    build_isolated=0
+else
+    setsid --wait rpmbuild -bb "$WORK/SPECS/vela.spec" \
+        --define "_topdir $WORK" --define "vela_version $version" --define "vela_commit $latestFull" \
+        --define "vela_short $latest" --define "vela_count $count" <&0 9>&- &
     build_isolated=1
 fi
 makepkg_pid=$!
-if wait "$makepkg_pid"; then
-    build_ok=1
-else
-    build_ok=0
-fi
+if wait "$makepkg_pid"; then build_ok=1; else build_ok=0; fi
 makepkg_pid=""
+if [ "$backend" = fedora ] && [ "$build_ok" = 1 ]; then
+    built=$(ls "$WORK"/RPMS/x86_64/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
+    if [ -z "$built" ]; then
+        echo "vela-update: rpmbuild did not produce the selected revision." >&2
+        build_ok=0
+    else
+        mv -f "$built" "$PACKAGES/"
+        built="$PACKAGES/$(basename "$built")"
+        if ! installPackage "$built"; then build_ok=0; fi
+    fi
+fi
 if [ "$build_ok" = 0 ]; then
     echo >&2
-    # Built, but pacman didn't install it (cancelled, wrong password).
-    built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1)
+    if [ "$backend" = arch ]; then
+        built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2>/dev/null | head -n 1)
+    else
+        built=$(ls -t "$PACKAGES"/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
+    fi
     if [ -n "$built" ]; then
         echo "vela-update: the package is ready but wasn't installed. To install it:" >&2
-        echo "   sudo pacman -U $built" >&2
+        echo "   $(packageLabel) $built" >&2
         exit 1
     fi
     echo "vela-update: the update failed (see the messages above)." >&2
@@ -695,8 +847,6 @@ fi
 cd "$CACHE"
 rm -rf -- "$WORK"
 WORK=""
-
 prune
-
-echo ":: Vela is up to date ($(pacman -Q vela-git | cut -d' ' -f2)). The new version"
+echo ":: Vela is up to date ($(packageVersion)). The new version"
 echo "   starts with your next session: sign out and back in."

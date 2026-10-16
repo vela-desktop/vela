@@ -18,8 +18,8 @@ import time
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[3]
-UPDATER = ROOT / "packaging/arch/vela-update"
+ROOT = Path(__file__).resolve().parents[2]
+UPDATER = ROOT / "packaging/vela-update"
 HTTPS_SOURCE = "https://github.com/vela-desktop/vela.git"
 GIT_STUB = r'''#!/usr/bin/env python3
 import json, os, pathlib, subprocess, sys
@@ -84,6 +84,34 @@ if name == "pacman":
     if not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
+elif name == "rpm":
+    if args[:2] == ["--eval", "%{?fedora}"]:
+        print(os.environ.get("TEST_FEDORA_RELEASE", "44"))
+        sys.exit(0)
+    if not os.environ.get("TEST_INSTALLED"):
+        sys.exit(1)
+    print("0.1.0-1.1.g" + os.environ["TEST_INSTALLED"] + ".fc44")
+elif name == "rpmbuild":
+    values = {}
+    for idx, value in enumerate(args[:-1]):
+        if value == "--define":
+            key, _, entry = args[idx + 1].partition(" ")
+            values[key] = entry
+    sha = values["vela_commit"]
+    topdir = pathlib.Path(values["_topdir"])
+    version = values["vela_version"]
+    assert (topdir / ("SOURCES/vela-" + version + ".tar.gz")).is_file()
+    assert (topdir / "SPECS/vela.spec").is_file()
+    record(sha=sha, jobs=os.environ.get("RPM_BUILD_NCPUS"),
+           spec=(topdir / "SPECS/vela.spec").read_text())
+    if os.environ.get("TEST_FAIL_BUILD"):
+        sys.exit(1)
+    rpm_dir = topdir / "RPMS/x86_64"
+    rpm_dir.mkdir(parents=True, exist_ok=True)
+    (rpm_dir / ("vela-git-" + version + "-1.1.g" + sha[:7] + ".fc44.x86_64.rpm")).touch()
+    # Fedora also emits these debug subpackages by default: ignore both.
+    for suffix in ("-debuginfo", "-debugsource"):
+        (rpm_dir / ("vela-git" + suffix + "-" + version + "-1.1.g" + sha[:7] + ".fc44.x86_64.rpm")).touch()
 elif name == "makepkg":
     if os.environ.get("TEST_REQUIRE_TTY"):
         # sudo authenticates through /dev/tty, not necessarily stdin.
@@ -140,19 +168,40 @@ while True:
         dest.mkdir(parents=True, exist_ok=True)
         (dest / ("vela-git-0.1.0.r1.g" + sha[:7] + "-1-x86_64.pkg.tar.zst")).touch()
         sys.exit(1)
+elif name == "cosign":
+    record()
+    if args[:1] != ["verify-blob-attestation"]:
+        sys.exit("Unexpected cosign command")
+    sha = args[args.index("--certificate-github-workflow-sha") + 1]
+    pkg = pathlib.Path(args[-1])
+    if (".g" + sha[:7] + "-" not in pkg.name and
+            ".g" + sha[:7] + "." not in pkg.name):
+        sys.exit("Attestation commit mismatch")
+    if args[args.index("--certificate-github-workflow-repository") + 1] != "vela-desktop/vela":
+        sys.exit("Unexpected repository identity")
+    if args[args.index("--certificate-oidc-issuer") + 1] != "https://token.actions.githubusercontent.com":
+        sys.exit("Unexpected OIDC issuer")
+    if os.environ.get("TEST_REJECT_ATTEST") or os.environ.get("TEST_WRONG_ATTEST_SHA"):
+        sys.exit("simulated cosign attestation rejection")
+    if os.environ.get("TEST_REQUIRE_MAIN_REF") and (
+        "--certificate-github-workflow-ref" not in args or
+        args[args.index("--certificate-github-workflow-ref") + 1] != "refs/heads/main"
+    ):
+        sys.exit("Expected main source ref")
 elif name == "gh":
     record()
     if args[:2] == ["attestation", "verify"]:
         # Simulate the GitHub CLI's verified identity + source commit policy,
         # NOT the underlying Sigstore cryptography. A failure must fail closed.
         if os.environ.get("TEST_REJECT_ATTEST"):
-            sys.exit("simulated gh attestation rejection")
+            sys.exit("simulated cosign attestation rejection")
         if args[args.index("--repo") + 1] != "vela-desktop/vela":
             sys.exit("Unexpected attestation repository")
         if args[args.index("--signer-workflow") + 1] != "vela-desktop/vela/.github/workflows/build.yml":
             sys.exit("Unexpected signer workflow")
-        sha = args[args.index("--source-digest") + 1]
-        if ".g" + sha[:7] + "-" not in pathlib.Path(args[2]).name:
+        sha = args[args.index("--certificate-github-workflow-sha") + 1]
+        if (".g" + sha[:7] + "-" not in pathlib.Path(args[2]).name and
+                ".g" + sha[:7] + "." not in pathlib.Path(args[2]).name):
             sys.exit("Attestation source does not match the artifact")
         if os.environ.get("TEST_WRONG_ATTEST_SHA"):
             sys.exit(1)
@@ -164,20 +213,48 @@ elif name == "gh":
         ):
             sys.exit("Expected main source ref")
     elif args[:2] == ["auth", "status"]:
-        sys.exit(0 if os.environ.get("TEST_CI_RUN") else 1)
+        sys.exit(0 if (os.environ.get("TEST_CI_RUN") or os.environ.get("TEST_CI_RUNS")) else 1)
     if args[:2] == ["run", "list"]:
-        print(os.environ["TEST_CI_RUN"])
+        # The real gh CLI prints one run ID per line after the jq event filter.
+        print((os.environ.get("TEST_CI_RUNS") or os.environ.get("TEST_CI_RUN", "")).replace(",", "\n"))
     elif args[0] == "api":
-        print("99")
+        missing = os.environ.get("TEST_CI_MISSING_RUNS", "").split(",")
+        run_id = args[1].split("/runs/", 1)[1].split("/", 1)[0]
+        if run_id not in missing:
+            print("99")
     elif args[:2] == ["run", "download"]:
         if os.environ.get("TEST_FAIL_DOWNLOAD"):
             sys.exit(1)
         dest = pathlib.Path(args[args.index("-D") + 1])
         dest.mkdir(parents=True, exist_ok=True)
         sha = os.environ["TEST_DOWNLOAD_SHA"]
-        (dest / ("vela-git-0.1.0.r1.g" + sha + "-1-x86_64.pkg.tar.zst")).touch()
+        if os.environ.get("TEST_FEDORA"):
+            (dest / ("vela-git-0.1.0-1.1.g" + sha + ".fc44.x86_64.rpm")).touch()
+        else:
+            (dest / ("vela-git-0.1.0.r1.g" + sha + "-1-x86_64.pkg.tar.zst")).touch()
 elif name == "curl":
     record()
+    import hashlib
+    url = args[-1]
+    if url.startswith("https://api.github.com/repos/vela-desktop/vela/attestations/sha256:"):
+        print(json.dumps({"attestations": [{"bundle_url":
+              "https://vela-test.blob.core.windows.net/attestations/bundle.json"}]}))
+        sys.exit(0)
+    if url == "https://vela-test.blob.core.windows.net/attestations/bundle.json":
+        import base64
+        digest = os.environ.get("TEST_EXPECTED_DIGEST", "")
+        if not digest:
+            # Workflow artifacts are empty fake packages in this fixture.
+            release_sha = os.environ.get("TEST_RELEASE_SHA")
+            digest = hashlib.sha256(("package for " + release_sha).encode() if release_sha else b"").hexdigest()
+        runner = "self-hosted" if os.environ.get("TEST_SELF_HOSTED") else "github-hosted"
+        statement = {"predicateType": "https://slsa.dev/provenance/v1",
+                     "subject": [{"digest": {"sha256": digest}}],
+                     "predicate": {"buildDefinition": {"internalParameters":
+                                  {"github": {"runner_environment": runner}}}}}
+        print(json.dumps({"dsseEnvelope": {"payload":
+              base64.b64encode(json.dumps(statement).encode()).decode()}}))
+        sys.exit(0)
     import hashlib
     sha = os.environ.get("TEST_RELEASE_SHA")
     if os.environ.get("TEST_RELEASE_TIMEOUT"):
@@ -198,12 +275,16 @@ elif name == "curl":
         sys.exit("Unexpected public release URL: " + url)
     output = pathlib.Path(args[args.index("-o") + 1])
     advertised = os.environ.get("TEST_RELEASE_PKG_SHA") or sha
-    package = "vela-git-0.1.0.r1.g" + advertised[:7] + "-1-x86_64.pkg.tar.zst"
+    if os.environ.get("TEST_FEDORA"):
+        package = "vela-git-0.1.0-1.1.g" + advertised[:7] + ".fc44.x86_64.rpm"
+    else:
+        package = "vela-git-0.1.0.r1.g" + advertised[:7] + "-1-x86_64.pkg.tar.zst"
     data = ("package for " + sha).encode()
     digest = hashlib.sha256(data).hexdigest()
     if os.environ.get("TEST_BAD_RELEASE_DIGEST"):
         digest = "f" * 64
-    if url == prefix + "SHA256SUMS":
+    manifest_name = "SHA256SUMS-fedora" if os.environ.get("TEST_FEDORA") else "SHA256SUMS"
+    if url == prefix + manifest_name:
         mode = os.environ.get("TEST_BAD_RELEASE_MANIFEST")
         if mode == "invalid-digest":
             digest = "not-a-sha256"
@@ -236,7 +317,7 @@ class UpdateFixture(unittest.TestCase):
         self.source.mkdir()
         bin_dir = self.directory / "bin"
         bin_dir.mkdir()
-        for name in ("pacman", "makepkg", "gh", "sudo", "curl", "git", "mv"):
+        for name in ("pacman", "makepkg", "gh", "cosign", "sudo", "curl", "git", "mv"):
             stub = bin_dir / name
             stub.write_text(GIT_STUB if name == "git" else MV_STUB if name == "mv" else STUB)
             stub.chmod(0o755)
@@ -244,6 +325,7 @@ class UpdateFixture(unittest.TestCase):
         # explicit bootstrap test below runs the updater from a Git checkout.
         self.update_script = bin_dir / "vela-update-under-test"
         shutil.copyfile(UPDATER, self.update_script)
+        shutil.copyfile(ROOT / "packaging/verify-attestation.py", bin_dir / "verify-attestation.py")
         self.calls_file = self.directory / "calls.jsonl"
         # Ignore the developer's Git rewrites, SSH keys, credentials and test
         # controls. Git is restricted to file transport even if a stub errs.
@@ -271,7 +353,8 @@ class UpdateFixture(unittest.TestCase):
         packaging.mkdir(parents=True)
         self.pkgbuild = packaging / "PKGBUILD"
         self.pkgbuild.write_text((ROOT / "packaging/arch/PKGBUILD").read_text())
-        shutil.copyfile(UPDATER, packaging / "vela-update")
+        shutil.copyfile(UPDATER, self.source / "packaging/vela-update")
+        shutil.copyfile(ROOT / "packaging/verify-attestation.py", self.source / "packaging/verify-attestation.py")
         self.base = self.commit("base")
         self.pkgbuild.write_text(self.pkgbuild.read_text() + "\n# main package\n")
         self.main = self.commit("main update")
@@ -412,6 +495,34 @@ class UpdateRevision(UpdateFixture):
         self.assertIn(".g" + self.nvidia[:7] + "-", self.calls("sudo")[0]["args"][-1])
         self.assertEqual(self.calls("makepkg"), [])
 
+    def test_artifact_lookup_skips_recent_runs_without_a_package(self):
+        self.env.update(TEST_CI_RUNS="303,202,101",
+                        TEST_CI_MISSING_RUNS="303,202",
+                        TEST_DOWNLOAD_SHA=self.nvidia[:7])
+        self.run_update("--branch", "fix/nvidia", "--download")
+        calls = self.calls("gh")
+        listing = next(c for c in calls if c["args"][:2] == ["run", "list"])
+        self.assertEqual(listing["args"][listing["args"].index("-L") + 1], "20")
+        self.assertIn("event", listing["args"][listing["args"].index("--json") + 1])
+        self.assertIn('select(.event == "push" or .event == "workflow_dispatch")',
+                      listing["args"][listing["args"].index("-q") + 1])
+        lookups = [c["args"][1] for c in calls if c["args"][0] == "api"]
+        self.assertEqual(lookups, [
+            f"repos/vela-desktop/vela/actions/runs/{run}/artifacts?per_page=100"
+            for run in ("303", "202", "101")
+        ])
+        download = next(c for c in calls if c["args"][:2] == ["run", "download"])
+        self.assertEqual(download["args"][2], "101")
+        self.assertEqual(self.calls("makepkg"), [])
+        self.assertEqual(self.calls("sudo")[0]["args"][:2], ["pacman", "-U"])
+
+    def test_artifact_lookup_without_matching_run_builds_selected_revision(self):
+        self.env.update(TEST_CI_RUNS="303,202",
+                        TEST_CI_MISSING_RUNS="303,202")
+        self.run_update("--branch", "fix/nvidia", "--download")
+        self.assertFalse(any(c["args"][:2] == ["run", "download"] for c in self.calls("gh")))
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.nvidia)
+
     def test_workflow_artifact_with_invalid_attestation_is_never_installed(self):
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.nvidia[:7],
                         TEST_REJECT_ATTEST="1")
@@ -425,7 +536,7 @@ class UpdateRevision(UpdateFixture):
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.nvidia[:7],
                         TEST_REJECT_ATTEST="1")
         result = self.run_update("--branch", "fix/nvidia", "--download")
-        self.assertIn("simulated gh attestation rejection", result.stderr)
+        self.assertIn("simulated cosign attestation rejection", result.stderr)
         self.assertIn("provenance verification failed", result.stderr)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.nvidia)
@@ -433,11 +544,11 @@ class UpdateRevision(UpdateFixture):
     def test_workflow_artifact_attestation_is_tied_to_selected_sha(self):
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.nvidia[:7])
         self.run_update("--branch", "fix/nvidia", "--download")
-        verification = next(call for call in self.calls("gh")
-                            if call["args"][:2] == ["attestation", "verify"])
+        verification = next(call for call in self.calls("cosign")
+                            if call["args"][:1] == ["verify-blob-attestation"])
         args = verification["args"]
-        self.assertEqual(args[args.index("--source-digest") + 1], self.nvidia)
-        self.assertNotIn("--source-ref", args)  # manual branch packages
+        self.assertEqual(args[args.index("--certificate-github-workflow-sha") + 1], self.nvidia)
+        self.assertNotIn("--certificate-github-workflow-ref", args)  # manual branch packages
         self.assertEqual(self.calls("makepkg"), [])
 
     def test_failed_download_builds_selected_commit(self):
@@ -472,7 +583,7 @@ class UpdateRevision(UpdateFixture):
 class UpdateSources(UpdateFixture):
     def test_checkout_bootstrap_reuses_git_objects_and_tracks_remote(self):
         result = subprocess.run(
-            ["sh", str(self.source / "packaging/arch/vela-update"), "--check"],
+            ["sh", str(self.source / "packaging/vela-update"), "--check"],
             env=self.env, input="", text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("Reusing Git objects from the checkout", result.stdout)
@@ -887,12 +998,12 @@ class UpdatePublicReleases(UpdateFixture):
     def test_public_package_installs_without_gh_login_or_build(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_REQUIRE_MAIN_REF="1")
         self.run_update("--download", source=False)
-        self.assertEqual(len(self.calls("curl")), 2)
-        self.assertTrue(all("/alpha-" + self.main + "/" in c["args"][-1]
+        self.assertEqual(len(self.calls("curl")), 4)
+        self.assertTrue(any("/alpha-" + self.main + "/" in c["args"][-1]
                             for c in self.calls("curl")))
-        verification = next(call for call in self.calls("gh")
-                            if call["args"][:2] == ["attestation", "verify"])
-        self.assertEqual(verification["args"][verification["args"].index("--source-digest") + 1],
+        verification = next(call for call in self.calls("cosign")
+                            if call["args"][:1] == ["verify-blob-attestation"])
+        self.assertEqual(verification["args"][verification["args"].index("--certificate-github-workflow-sha") + 1],
                          self.main)
         self.assertEqual(self.calls("makepkg"), [])
         self.assertEqual(len(self.calls("sudo")), 1)
@@ -937,19 +1048,18 @@ class UpdatePublicReleases(UpdateFixture):
         self.env["TEST_RELEASE_SHA"] = self.main
         self.run_update("--download", source=False)
         self.assertEqual(self.config.read_text(), f"source={HTTPS_SOURCE}\n")
-        verification = next(call for call in self.calls("gh")
-                            if call["args"][:2] == ["attestation", "verify"])
+        verification = next(call for call in self.calls("cosign")
+                            if call["args"][:1] == ["verify-blob-attestation"])
         args = verification["args"]
-        self.assertEqual(args[args.index("--repo") + 1], "vela-desktop/vela")
-        self.assertEqual(args[args.index("--signer-workflow") + 1],
-                         "vela-desktop/vela/.github/workflows/build.yml")
+        self.assertEqual(args[args.index("--certificate-github-workflow-repository") + 1], "vela-desktop/vela")
+        self.assertIn("--certificate-identity", args)
         self.assertEqual(self.calls("makepkg"), [])
         self.assertEqual(len(self.calls("sudo")), 1)
 
     def test_public_release_attestation_failure_shows_reason_and_builds(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_REJECT_ATTEST="1")
         result = self.run_update("--download")
-        self.assertIn("simulated gh attestation rejection", result.stderr)
+        self.assertIn("simulated cosign attestation rejection", result.stderr)
         self.assertIn("provenance verification failed", result.stderr)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
@@ -962,23 +1072,27 @@ class UpdatePublicReleases(UpdateFixture):
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
         self.assertFalse(list((self.mirror.parent / "packages").glob("*.pkg.tar.zst")))
 
+    def test_signed_self_hosted_runner_is_rejected(self):
+        self.env.update(TEST_RELEASE_SHA=self.main, TEST_SELF_HOSTED="1")
+        result = self.run_update("--download")
+        self.assertIn("non-GitHub-hosted runner", result.stderr)
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
     def test_public_release_with_wrong_source_provenance_falls_back(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_WRONG_ATTEST_SHA="1")
         self.run_update("--download", source=False)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
-    def test_unavailable_or_unusable_gh_never_installs_unattested_binary(self):
+    def test_missing_cosign_never_installs_unattested_binary(self):
         self.env["TEST_RELEASE_SHA"] = self.main
-        # The real GitHub CLI may already be installed on the CI runner.
-        # Removing our fixture stub therefore means either no CLI or an
-        # unauthenticated/unusable CLI, both of which must fail closed.
-        gh_path = self.directory / "bin/gh"
-        gh_path.rename(self.directory / "bin/gh.unavailable")
+        # Make the verification executable unusable; a missing verifier must
+        # fall back to local sources even if GitHub serves a valid checksum.
+        cosign = self.directory / "bin/cosign"
+        cosign.write_text("not an executable")
         result = self.run_update("--download", source=False)
-        self.assertTrue("gh) is required" in result.stderr or
-                        "provenance verification failed" in result.stderr,
-                        result.stderr)
+        self.assertIn("provenance verification failed", result.stderr)
         self.assertEqual(self.calls("sudo"), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
