@@ -278,6 +278,42 @@ class X11(unittest.TestCase):
         time.sleep(0.4)
         self.assertEqual(self.vela.pixels().at(out["w"] // 2, out["h"] // 2), ORANGE)
 
+    def test_wine_below_backdrop_stays_under_game_when_demoted(self):
+        """A mapped BELOW backdrop must remain behind fullscreen when it
+        switches back to override-redirect, then to managed again."""
+        path = os.path.join(self.vela.directory, "backdrop-xid")
+        self.vela.clients.append(subprocess.Popen(
+            [tool("vela-x11"), "--wine-backdrop", "--backdrop-id-file", path, "300", "200"], env=self.env))
+        state = self.vela.wait_for(
+            lambda s: len(s.windows) == 2 and all(w["fullscreen"] for w in s.windows)
+            and any(w["below"] for w in s.windows),
+            timeout=15, what="fullscreen game and BELOW backdrop")
+        game = next(w["id"] for w in state.windows if w["title"] == "vela-x11")
+        out = state.output
+        points = ((out["w"] // 2, out["h"] // 2), (5, 5), (out["w"] - 5, out["h"] - 5))
+        self.vela.wait_for(lambda s: s["focused"] == game and all(
+            self.vela.pixels().at(*point) == ORANGE for point in points),
+            what="game initially visible over managed backdrop")
+        with open(path, encoding="ascii") as ids:
+            backdrop = ids.read().strip()
+
+        frame = self.vela.state().output["frames"]
+        self.x11_control("--override-redirect", backdrop, "on")
+        self.vela.wait_for(lambda s: len(s.windows) == 1 and s.has(game),
+                           what="mapped BELOW backdrop became unmanaged")
+        self.vela.wait_for(lambda s: s.output["frames"] > frame,
+                           what="frame after backdrop demotion")
+        self.assertTrue(all(self.vela.pixels().at(*point) == ORANGE for point in points))
+        self.assertEqual(self.vela.state()["focused"], game)
+
+        self.x11_control("--override-redirect", backdrop, "off")
+        self.vela.wait_for(lambda s: len(s.windows) == 2 and any(
+            w["below"] for w in s.windows if w["id"] != game),
+            what="backdrop became managed and retained BELOW")
+        self.vela.wait_for(lambda s: all(
+            self.vela.pixels().at(*point) == ORANGE for point in points),
+            what="game remains visible after backdrop promotion")
+
     def test_x11_override_redirect_switches_kind_without_unmapping(self):
         """An already mapped X11 surface can become unmanaged and managed
         again without a new Wayland buffer or an X11 unmap/map cycle."""
@@ -324,10 +360,12 @@ class X11(unittest.TestCase):
         self.x11_control("--state", xid, "below", "on")
         self.vela.wait_for(lambda s: s["focused"] == first,
                            what="BELOW view yields keyboard focus")
-        self.assertTrue(self.vela.state().has(second))
+        self.assertTrue(self.vela.state().window(second)["below"])
 
         self.x11_control("--state", xid, "below", "off")
         self.x11_control("--state", xid, "skip-taskbar", "off")
+        self.vela.wait_for(lambda s: not s.window(second)["below"],
+                           what="compositor has applied removal of BELOW")
         self.vela.keys("alt+Tab")
         self.vela.wait_for(lambda s: s["focused"] == second,
                            what="view is selectable again when BELOW is cleared")
