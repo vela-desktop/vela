@@ -87,6 +87,14 @@ TEST(Color, MatrixMultiplyWithIdentity)
 }
 
 /** Check shader repaint policy on fade completion and backend switches. */
+TEST(NightLightBackend, FadesInTheShaderAndCommitsTheLutOnce)
+{
+    EXPECT_FALSE(vela_night_light_force_shader(false, false)); // steady: the LUT
+    EXPECT_TRUE(vela_night_light_force_shader(false, true)); // fading: no LUT per frame
+    EXPECT_TRUE(vela_night_light_force_shader(true, false));
+    EXPECT_TRUE(vela_night_light_force_shader(true, true));
+}
+
 TEST(NightLightBackend, FullRepaintOnShaderFadeAndBackendSwitch)
 {
     EXPECT_TRUE(vela_night_light_repaint_required(false, true, true, true, false, false));

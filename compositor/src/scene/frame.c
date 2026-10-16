@@ -737,7 +737,11 @@ static void prepare_night_light(struct vela_output_frame *frame)
     struct wlr_output_state test;
     wlr_output_state_init(&test);
     wlr_output_state_set_color_transform(&test, transform);
+    int64_t test_start = vela_now_ns();
     bool ok = wlr_output_test_state(frame->output, &test);
+    if (vela_env_flag("VELA_STATS")) {
+        wlr_log(WLR_INFO, "%s: gamma LUT test: %.2f ms", frame->output->name, (double)(vela_now_ns() - test_start) / 1e6);
+    }
     wlr_output_state_finish(&test);
     if (!ok) {
         wlr_log(WLR_INFO, "%s: the monitor doesn't accept night light in the gamma LUT, rendering applies it",
@@ -1236,7 +1240,14 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
                 wlr_presentation_surface_textured_on_output(surface, output);
             }
         }
+        // VELA_STATS=1: how long a commit with a new gamma LUT holds the
+        // compositor (on amdgpu it waits for every output's flips).
+        int64_t commit_start = frame->night_commit_pending ? vela_now_ns() : 0;
         ok = wlr_output_commit_state(output, state);
+        if (commit_start && vela_env_flag("VELA_STATS")) {
+            wlr_log(WLR_INFO, "%s: commit with a gamma LUT: %.2f ms", output->name,
+                (double)(vela_now_ns() - commit_start) / 1e6);
+        }
         if (!ok && frame->night_commit_pending) {
             // A commit can fail for reasons unrelated to gamma. Try the same
             // buffer/mode without changing the color transform before deciding

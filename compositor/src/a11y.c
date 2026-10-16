@@ -8,6 +8,7 @@
 #include "input.h"
 #include "output.h"
 #include "scene/frame.h"
+#include "scene/night_light_policy.h"
 #include "server.h"
 #include "shell.h"
 #include "sun.h"
@@ -104,8 +105,9 @@ static void apply_color(struct vela_a11y *a11y)
     bool filter_changed = a11y->color_filter != scene->color_filtered
         || (a11y->color_filter && memcmp(m, scene->color_filter, sizeof(m)) != 0);
     bool night_changed = night != scene->night_active || memcmp(gains, scene->night_gains, sizeof(gains)) != 0;
-    bool backend_changed = a11y->night_nvidia_fix != scene->night_force_shader;
-    scene->night_force_shader = a11y->night_nvidia_fix;
+    bool force_shader = vela_night_light_force_shader(a11y->night_nvidia_fix, a11y->level_animating);
+    bool backend_changed = force_shader != scene->night_force_shader;
+    scene->night_force_shader = force_shader;
     scene->color_filtered = a11y->color_filter;
     memcpy(scene->color_filter, m, sizeof(m));
     scene->night_active = night;
@@ -122,7 +124,9 @@ static void apply_color(struct vela_a11y *a11y)
             if (backend_changed) {
                 vela_output_frame_retry_night_light(output->frame);
             }
-            vela_output_frame_color_changed(output->frame, filter_changed, night_changed || backend_changed);
+            // Between shader and LUT every pixel is drawn anew.
+            vela_output_frame_color_changed(output->frame, filter_changed || backend_changed,
+                night_changed || backend_changed);
         }
     }
 }

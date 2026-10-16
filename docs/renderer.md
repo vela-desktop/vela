@@ -622,7 +622,13 @@ red, green and blue remains at the chosen temperature).
   shows it as such): the gains are those of a black body at that temperature
   relative to 6500 K.
 - The transition (one second, like Windows) is an animation of §4.2: a new value
-  on every frame, and the whole output redrawn (or just a new gamma).
+  on every frame, drawn by the **shader** even where the monitor takes the LUT,
+  with the whole output redrawn; the LUT is committed once, when the fade ends
+  (and removed once, when a fade starts from it). A new gamma on every frame
+  stalled the whole display on amdgpu: each color change revalidates the planes
+  and waits, inside the ioctl, for the flips in flight on every output, so for a
+  second the cursor and every animation stuttered. `VELA_STATS=1` logs how long
+  each gamma test and commit takes.
 
 ## 8. Effects
 

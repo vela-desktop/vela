@@ -7,6 +7,19 @@
 #include <stdbool.h>
 
 /**
+ * Return whether night light is drawn by the shader instead of the gamma LUT:
+ * with the NVIDIA workaround, and during a fade. A new LUT on every frame
+ * stalls the whole display on amdgpu: each color change revalidates the
+ * planes and waits for the flips in flight on every output, inside the ioctl,
+ * so for a second the cursor and every animation stutter. The LUT is
+ * committed once, when the fade ends.
+ */
+static inline bool vela_night_light_force_shader(bool nvidia_fix, bool fading)
+{
+    return nvidia_fix || fading;
+}
+
+/**
  * Return whether a color change must repaint the rendered buffer.
  * The final shader fade tick still changes every pixel, whereas a gamma-only
  * commit can reuse an unmodified buffer.
