@@ -9,7 +9,7 @@ they are made and with how each is verified.
 > **Status:** approved design, implemented in the order of §8; done: PR 1
 > (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4), PR 5 (§6.5), PR 6 (§6.6),
 > PR 7 (§6.7), PR 8 (the shared pieces of §6.8 and §6.9, §6.11 reporting),
-> PR 9 (§6.10).
+> PR 9 (§6.10), PR 10 (§6.9 for the other panels).
 > Each change has one explanation, in §6; the plan in §8 only says which pull
 > request carries it.
 
@@ -816,13 +816,62 @@ Enter chooses the accent button only then, Esc chooses `"cancel"`, and
 `close()` without a value closes it without choosing (what Settings' callers
 do once the work is done elsewhere, as a paired Bluetooth device).
 
+**How it is written** (PR 10). Every panel of the shell is a `PanelMotion`
+holding its `Shadow` and its panel, and its window leaves the shadow's `reach`
+around it (46 units for `flyout`, 72 for `dialog`), cut where the window meets
+the taskbar or the output's edge; there the panel rests 12 units away (the
+taskbar's tooltip 8). What each one passes:
+
+| Panel | Comes from | Duration | Exit | Shadow |
+|---|---|---|---|---|
+| Start | 140 below, behind the taskbar | `slow` | animated | `flyout` (was 40/8/50%) |
+| Quick Settings, clipboard | 48 below, behind the taskbar | `slow` | animated | `flyout` |
+| Notification Center | 24 to the right | `slow` | animated | `flyout`, one per panel |
+| volume OSD | 12 below | `slow` | animated | `flyout` |
+| desktop OSD | fades | — | animated | `flyout` |
+| Run, Confirm, Properties, the screen-share chooser, the file dialogs | scale 1.05 | `normal` | animated | `dialog` |
+| Snap Layouts | 6 above, under the button | `normal` | animated | `flyout` |
+| menus (shell and Files) | 8, from the side they open on | `normal` | at once | `flyout` (was 16/4/40%) |
+| taskbar previews | 8 below | `normal` | at once | `flyout` (was 24/4) |
+| the taskbar's tooltip | fades | — | at once | `flyout` |
+| Alt+Tab | scale 0.96 | `normal` | at once | `flyout` |
+| Task View (all but its backdrop, which fades with it) | scale 1.03 | `slow` | at once | — |
+
+What writing them showed:
+
+- **`ShadowRoom`** (`shell/qml`): the `MouseArea` under the `PanelMotion` that
+  turns a press in the room into `outside()`, and lets one on the panel (or on
+  any of `panels`) through. Each window says what outside means: close, or
+  cancel for Confirm; the screen-share chooser does nothing, since the app is
+  waiting for an answer.
+- **`PanelMotion.visibleArea`**: `area` cut to the window, which every panel
+  sends as its blur region. The Notification Center sends it while moving and
+  its two panels at rest, so the 12 units between them aren't blurred.
+- **`Shadow`'s `above` and `below`**: the Notification Center's two shadows
+  stop halfway between its panels; each would otherwise fall on the other,
+  which is translucent.
+- **`close(true)`**: at once, without the exit. The clipboard's paste needs it:
+  the compositor sends Ctrl+V 120 ms later to whoever has the keyboard, and a
+  panel still leaving would have it.
+- **Windows placed by the shell**: Start rests 12 units above the taskbar (it
+  was 22) and, with the taskbar at the left, its window touches the output's
+  edge (`atLeft`, set by `placeStartMenu`); Run and the volume OSD lose their
+  layer margins, their windows touching the taskbar and the edge. Task View,
+  Alt+Tab, Snap Layouts and the menus cover the output and need no room.
+- **What it fixed on the way**: the clipboard rose 12 units where K8 says 48;
+  Run's "Browse..." was written in Italian outside `qsTr`.
+
 **Verified by** Qt Quick Test for `PanelMotion` (reopening during a close turns
 back from the current offset and opacity and doesn't emit `closed()`; with
-effects off only opacity changes) and by functional tests: Start's three tests
-in `test_shell.py` repeated for Quick Settings, Notification Center and
-Clipboard; a click in a panel's shadow room closes it; frames captured during a
-panel's entrance have blur behind every pixel where the panel isn't fully
-transparent.
+effects off only opacity changes; `visibleArea` is cut by the parent;
+`close(true)` skips the exit) and `Shadow` (reach, cut above and below), and by
+functional tests: Start's three tests in `test_shell.py` repeated for Quick
+Settings, Notification Center and Clipboard; a click in a panel's shadow room
+closes it, one on the panel doesn't; frames captured during a panel's entrance
+have blur behind every pixel where the panel isn't fully transparent (Quick
+Settings, Start and the clipboard row by row, the Notification Center column by
+column); Run, Properties and the clipboard leave in `normal`, the desktop menu
+and Task View at once.
 
 ### 6.10 Quick Settings (D13)
 
@@ -939,7 +988,7 @@ its behavior touches. This document goes with the first.
 | 8. Shared QML pieces | `Fill`, `Button`, `Switch`, `Slider`, `Shadow`, `Dialog`, `PanelMotion`; §6.11 reporting only | Qt Quick Test for them | Settings and Files with the new `Button`, `Switch`, `Slider`, `Dialog` | development.md (where controls live) |
 | 9. Quick Settings | §6.10 | §6.9 and §6.10 tests | every page, both themes, effects on and off | — |
 | 10. Other panels | §6.9 for the rest | Start's tests for the edge panels; shadow-room click; blur during entrance | every panel, both themes | — |
-| 11. Settings, Files, polkit | the remaining private controls of §6.8; §6.11 failing | Files reuse test; check script | both apps and the prompt, effects on and off | — |
+| 11. Settings, Files, polkit, the shell's controls | the remaining private controls of §6.8, the shell's too (the Notification Center's `SmallButton`, Properties' `Check`, the file dialogs' `Field` and `Choice`, Start's power entries, the shell's `containsMouse` rows); §6.11 failing | Files reuse test; check script | both apps and the prompt, effects on and off | — |
 
 Order: 1–3 fix the compositor without touching a color. 4 before 5 (the switch
 caps the tokens) and 5 before 8 (`PanelMotion` reads `Theme.motion`). 6 and 7
@@ -1018,7 +1067,13 @@ are independent of each other and of the QML work. 8–11, the largest part, las
   `vela-` layer surface. True today; a future Vela app window with blur would
   get the plain one.
 - **Shadow room (§6.9).** Larger transparent windows cost Qt more pixels during
-  a panel's animation (PR 10's benchmark). Start's shadow changes from its
+  a panel's animation. PR 10's benchmark: 25 openings and closings (Start,
+  Quick Settings, Notification Center, clipboard, Run), five runs each,
+  headless at 100 Hz: the shell's CPU time from 0.45 s to 0.55 s (median;
+  0.41–0.46 against 0.52–0.63), about 4 ms per opening and closing, the exits
+  that are now animated included; the compositor's CPU time and frame cost
+  unchanged (0.09 → 0.10 s, 0.32 → 0.31 ms), and nothing at idle, since a
+  hidden panel gives its surface back. Start's shadow changes from its
   private recipe to `flyout`: to approve by eye.
 - **Quick Settings' resize (§6.10).** The window must have grown before the
   panel does; if the configure arrives late, one frame of the growth is clipped.

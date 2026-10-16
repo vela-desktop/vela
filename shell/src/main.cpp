@@ -143,8 +143,9 @@ const Panel panels[] = {
     // Right-click menus: the whole output, transparent, above everything; a
     // click outside closes them. Arrows, Enter and Esc.
     { "ContextMenu", "vela-context-menu", layerOverlay, fill, -1, keysOnDemand },
-    // "Run", at the bottom left above the taskbar, like in Windows.
-    { "RunDialog", "vela-run", layerTop, bottomLeft, 0, keysOnDemand, QMargins(12, 0, 0, 12) },
+    // "Run", at the bottom left above the taskbar, like in Windows; the
+    // window touches both, the dialog rests 12 units from them.
+    { "RunDialog", "vela-run", layerTop, bottomLeft, 0, keysOnDemand },
     // Questions such as "Empty Recycle Bin", and what to share on screen.
     { "ConfirmDialog", "vela-confirm", layerOverlay, centered, 0, keysOnDemand },
     { "SourceChooser", "vela-share", layerOverlay, centered, 0, keysOnDemand },
@@ -157,8 +158,9 @@ const Panel panels[] = {
     // The desktop's name in the center of the output.
     { "DesktopOsd", "vela-desktop-osd", layerOverlay, centered, -1, keysNone, {}, true },
     // The volume: above fullscreen windows too, like Windows 11. It takes the
-    // mouse (drag, mute, wheel).
-    { "VolumeOsd", "vela-volume-osd", layerOverlay, bottom, 0, keysNone, QMargins(0, 0, 0, 12) },
+    // mouse (drag, mute, wheel). The window touches the taskbar, the pill
+    // rests 12 units above it.
+    { "VolumeOsd", "vela-volume-osd", layerOverlay, bottom, 0, keysNone },
     // The whole output, transparent: a click outside the panel closes it.
     // The keyboard for Win+Z.
     { "SnapLayouts", "vela-snap-layouts", layerOverlay, fill, -1, keysOnDemand },
@@ -202,13 +204,15 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
     return window;
 }
 
-// With the taskbar aligned left, Start opens at the bottom left.
+// With the taskbar aligned left, Start opens at the bottom left: its window
+// touches the output's edge, and the panel rests 12 units from it
+// (StartMenu.qml's `atLeft`).
 void placeStartMenu(QQuickWindow* window, const QString& alignment)
 {
     LayerWindow* layer = LayerWindow::get(window);
     const bool left = alignment == QLatin1String("left");
     layer->setAnchors(left ? bottomLeft : bottom);
-    layer->setMargins(QMargins(left ? 12 : 0, 0, 0, 0));
+    window->setProperty("atLeft", left);
 }
 
 } // namespace

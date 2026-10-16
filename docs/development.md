@@ -329,11 +329,11 @@ Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`)
 | `Button`, `Switch`, `Slider` | Templates' controls on `Fill`; `usable` is an alias of `enabled` |
 | `ListItem` | A row of a list on `Fill`: subtle, or the control's colors when `highlighted` |
 | `TextBox` | A restyled Basic `TextField` |
-| `Shadow` | What floats casts it outside itself; `depth` is one of `Theme.shadow`'s |
-| `PanelMotion` | A panel's entrance, exit and turning back, and its blur `area` ([§6.9](visual-coherence.md#69-panels-panelmotion-shadow-dialog-d14d18)) |
+| `Shadow` | What floats casts it outside itself; `depth` is one of `Theme.shadow`'s, `above` and `below` cut it next to another panel |
+| `PanelMotion` | A panel's entrance, exit and turning back, and its blur `area` (`visibleArea`: cut to its window) ([§6.9](visual-coherence.md#69-panels-panelmotion-shadow-dialog-d14d18)) |
 | `Dialog` | A window's dialog: title, text, content, `buttons` and `chosen(value)` |
 
-A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) reports what doesn't, and a line that differs on purpose says why with a `// motion:` comment. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`).
+A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`. Every shell panel is a `PanelMotion` holding its `Shadow` and its panel, in a window that leaves the shadow's `reach` around it; the shell's `ShadowRoom` makes a press in that room a press outside. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) reports what doesn't, and a line that differs on purpose says why with a `// motion:` comment. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`).
 
 ## Debugging rendering
 

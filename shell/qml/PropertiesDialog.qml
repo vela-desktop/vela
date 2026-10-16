@@ -12,8 +12,11 @@ import Vela.Controls
 Window {
     id: root
     visible: false
-    width: 440
-    height: 600
+    // The dialog with room for its shadow around it (docs/visual-coherence.md
+    // §6.9).
+    readonly property real room: shadow.reach
+    width: room + 440 + room
+    height: room + 600 + room
     color: "transparent"
 
     property var paths: []
@@ -39,6 +42,7 @@ Window {
             root.load(paths)
             root.tab = 0
             root.visible = true
+            motion.open()
             panel.forceActiveFocus()
         }
     }
@@ -107,9 +111,13 @@ Window {
         return Qt.point((Screen.width - root.width) / 2 + p.x, (Screen.height - root.height) / 2 + p.y)
     }
 
+    function close() {
+        motion.close()
+    }
+
     onActiveChanged: {
-        if (!active && visible && !Menus.isOpen) {
-            visible = false
+        if (!active && motion.opened && !Menus.isOpen) {
+            close()
         }
     }
 
@@ -169,262 +177,286 @@ Window {
         }
     }
 
-    Rectangle {
-        id: panel
-        anchors.fill: parent
-        radius: Theme.radiusOverlay
-        color: Theme.dialog
-        border.width: 1
-        border.color: Theme.stroke
-        focus: true
-        Keys.onEscapePressed: root.visible = false
-        Keys.onReturnPressed: { root.apply(); root.visible = false }
+    // A click in the shadow's room closes it, like a click outside.
+    ShadowRoom {
+        panels: [panel]
+        onOutside: root.close()
+    }
 
-        Text {
-            x: 24
-            y: 16
-            text: qsTr("Properties - ") + (root.info.name || "")
-            color: Theme.text
-            font.pixelSize: Theme.fontBody
-            font.weight: Font.DemiBold
-            width: parent.width - 48
-            elide: Text.ElideMiddle
+    // It grows in from 1.05, like Windows 11's dialogs, and fades out.
+    PanelMotion {
+        id: motion
+        x: root.room
+        y: root.room
+        width: 440
+        height: 600
+        scaleFrom: 1.05
+        duration: Theme.normal
+        onClosed: root.visible = false
+
+        Shadow {
+            id: shadow
+            target: panel
+            depth: Theme.shadow.dialog
         }
 
-        // Tabs
-        Row {
-            x: 20
-            y: 44
-            spacing: 4
-            Repeater {
-                model: root.single ? [qsTr("General"), qsTr("Permissions"), qsTr("Details")] : [qsTr("General")]
-                delegate: Item {
-                    required property string modelData
-                    required property int index
-                    width: tabLabel.implicitWidth + 24
-                    height: 34
-                    Text {
-                        id: tabLabel
-                        anchors.centerIn: parent
-                        text: parent.modelData
-                        color: root.tab === parent.index ? Theme.text : Theme.textSecondary
-                        font.pixelSize: Theme.fontBody
-                        font.weight: root.tab === parent.index ? Font.DemiBold : Font.Normal
-                    }
-                    Rectangle {
-                        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
-                        width: 20
-                        height: 3
-                        radius: 1.5
-                        color: Theme.accent
-                        visible: root.tab === parent.index
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: root.tab = parent.index
+        Rectangle {
+            id: panel
+            anchors.fill: parent
+            radius: Theme.radiusOverlay
+            color: Theme.dialog
+            border.width: 1
+            border.color: Theme.stroke
+            focus: true
+            Keys.onEscapePressed: root.close()
+            Keys.onReturnPressed: { root.apply(); root.close() }
+
+            Text {
+                x: 24
+                y: 16
+                text: qsTr("Properties - ") + (root.info.name || "")
+                color: Theme.text
+                font.pixelSize: Theme.fontBody
+                font.weight: Font.DemiBold
+                width: parent.width - 48
+                elide: Text.ElideMiddle
+            }
+
+            // Tabs
+            Row {
+                x: 20
+                y: 44
+                spacing: 4
+                Repeater {
+                    model: root.single ? [qsTr("General"), qsTr("Permissions"), qsTr("Details")] : [qsTr("General")]
+                    delegate: Item {
+                        required property string modelData
+                        required property int index
+                        width: tabLabel.implicitWidth + 24
+                        height: 34
+                        Text {
+                            id: tabLabel
+                            anchors.centerIn: parent
+                            text: parent.modelData
+                            color: root.tab === parent.index ? Theme.text : Theme.textSecondary
+                            font.pixelSize: Theme.fontBody
+                            font.weight: root.tab === parent.index ? Font.DemiBold : Font.Normal
+                        }
+                        Rectangle {
+                            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
+                            width: 20
+                            height: 3
+                            radius: 1.5
+                            color: Theme.accent
+                            visible: root.tab === parent.index
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: root.tab = parent.index
+                        }
                     }
                 }
             }
-        }
 
-        // --- General ---
-        Column {
-            visible: root.tab === 0
-            x: 24
-            y: 92
-            spacing: 12
+            // --- General ---
+            Column {
+                visible: root.tab === 0
+                x: 24
+                y: 92
+                spacing: 12
 
-            Row {
-                spacing: 16
-                Image {
-                    width: 40
-                    height: 40
-                    source: "image://fileicon/" + encodeURIComponent(root.info.icon || "unknown")
-                    sourceSize: Qt.size(width, height)
-                }
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 336
-                    height: 32
-                    radius: Theme.radius
-                    color: Theme.control
-                    border.width: 1
-                    border.color: nameField.activeFocus ? Theme.accent : Theme.stroke
-                    MenuTextField {
-                        id: nameField
-                        anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                        text: root.newName
-                        readOnly: !root.single
-                        mapToScreen: (x, y) => root.screenPoint(nameField, x, y)
-                        onTextEdited: root.newName = text
-                    }
-                }
-            }
-            Line {}
-            Row { Label { text: qsTr("Type:") } Value { text: root.info.type || "" } }
-            Row {
-                visible: root.defaultApp !== ""
-                height: 28
-                Label { text: qsTr("Opens with:"); anchors.verticalCenter: parent.verticalCenter }
                 Row {
-                    width: 260
-                    spacing: 8
-                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 16
                     Image {
-                        width: 16
-                        height: 16
-                        anchors.verticalCenter: parent.verticalCenter
-                        source: root.defaultAppIcon !== "" ? Theme.icons + encodeURIComponent(root.defaultAppIcon) : ""
+                        width: 40
+                        height: 40
+                        source: "image://fileicon/" + encodeURIComponent(root.info.icon || "unknown")
                         sourceSize: Qt.size(width, height)
                     }
-                    Text {
-                        width: 150
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.defaultApp
-                        color: Theme.text
-                        font.pixelSize: Theme.fontBody
-                        elide: Text.ElideRight
-                    }
                     Rectangle {
-                        id: changeButton
-                        width: 80
-                        height: 28
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 336
+                        height: 32
                         radius: Theme.radius
-                        color: changeMouse.containsMouse ? Theme.subtleHover : Theme.control
+                        color: Theme.control
                         border.width: 1
-                        border.color: Theme.stroke
-                        Text { anchors.centerIn: parent; text: qsTr("Change…"); color: Theme.text; font.pixelSize: Theme.fontCaption }
-                        MouseArea {
-                            id: changeMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: {
-                                const path = root.paths[0]
-                                const p = root.screenPoint(changeButton, 0, changeButton.height + 2)
-                                Menus.open(Apps.appsForFile(path).map(a => ({
-                                    text: a.name.replace(/&/g, "&&"), icon: a.icon, radio: true, checked: a.isDefault,
-                                    action: () => { Properties.setDefaultApp(path, a.id); root.defaultApp = a.name; root.defaultAppIcon = a.icon }
-                                })), p.x, p.y)
+                        border.color: nameField.activeFocus ? Theme.accent : Theme.stroke
+                        MenuTextField {
+                            id: nameField
+                            anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                            text: root.newName
+                            readOnly: !root.single
+                            mapToScreen: (x, y) => root.screenPoint(nameField, x, y)
+                            onTextEdited: root.newName = text
+                        }
+                    }
+                }
+                Line {}
+                Row { Label { text: qsTr("Type:") } Value { text: root.info.type || "" } }
+                Row {
+                    visible: root.defaultApp !== ""
+                    height: 28
+                    Label { text: qsTr("Opens with:"); anchors.verticalCenter: parent.verticalCenter }
+                    Row {
+                        width: 260
+                        spacing: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        Image {
+                            width: 16
+                            height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            source: root.defaultAppIcon !== "" ? Theme.icons + encodeURIComponent(root.defaultAppIcon) : ""
+                            sourceSize: Qt.size(width, height)
+                        }
+                        Text {
+                            width: 150
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.defaultApp
+                            color: Theme.text
+                            font.pixelSize: Theme.fontBody
+                            elide: Text.ElideRight
+                        }
+                        Rectangle {
+                            id: changeButton
+                            width: 80
+                            height: 28
+                            radius: Theme.radius
+                            color: changeMouse.containsMouse ? Theme.subtleHover : Theme.control
+                            border.width: 1
+                            border.color: Theme.stroke
+                            Text { anchors.centerIn: parent; text: qsTr("Change…"); color: Theme.text; font.pixelSize: Theme.fontCaption }
+                            MouseArea {
+                                id: changeMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: {
+                                    const path = root.paths[0]
+                                    const p = root.screenPoint(changeButton, 0, changeButton.height + 2)
+                                    Menus.open(Apps.appsForFile(path).map(a => ({
+                                        text: a.name.replace(/&/g, "&&"), icon: a.icon, radio: true, checked: a.isDefault,
+                                        action: () => { Properties.setDefaultApp(path, a.id); root.defaultApp = a.name; root.defaultAppIcon = a.icon }
+                                    })), p.x, p.y)
+                                }
+                            }
+                        }
+                    }
+                }
+                Line {}
+                Row { Label { text: qsTr("Location:") } Value { text: root.info.location || "" } }
+                Row { Label { text: qsTr("Size:") } Value { text: root.sizeText } }
+                Row { Label { text: qsTr("Size on disk:") } Value { text: root.diskText } }
+                Row {
+                    visible: !!root.info.hasFolders || root.paths.length > 1
+                    Label { text: qsTr("Contains:") }
+                    Value { text: root.contentText }
+                }
+                Line { visible: root.single }
+                Row { visible: root.single && !!root.info.created; Label { text: qsTr("Created:") } Value { text: root.info.created || "" } }
+                Row { visible: root.single; Label { text: qsTr("Modified:") } Value { text: root.info.modified || "" } }
+                Row { visible: root.single; Label { text: qsTr("Accessed:") } Value { text: root.info.accessed || "" } }
+                Line {}
+                Row {
+                    spacing: 16
+                    Label { text: qsTr("Attributes:"); width: 104; anchors.verticalCenter: parent.verticalCenter }
+                    Check {
+                        label: qsTr("Read-only")
+                        checked: root.readOnly
+                        onToggled: root.readOnly = !root.readOnly
+                    }
+                    // On Linux "hidden" is the dot at the start of the name.
+                    Check {
+                        label: qsTr("Hidden")
+                        checked: !!root.info.hidden
+                        usable: false
+                    }
+                }
+                // A program or script starts with a double click only if it's
+                // executable: the same "Execute" bit as in Permissions, for those
+                // who can already read it.
+                Row {
+                    visible: root.single && !root.info.isDir
+                    spacing: 16
+                    Label { text: ""; width: 104 }
+                    Check {
+                        label: qsTr("Allow executing as a program")
+                        usable: !!root.info.mine
+                        checked: (root.permissions & 0o111) !== 0
+                        onToggled: {
+                            if ((root.permissions & 0o111) !== 0)
+                                root.permissions = root.permissions & ~0o111
+                            else
+                                root.permissions = root.permissions | ((root.permissions & 0o444) >> 2) | 0o100
+                        }
+                    }
+                }
+            }
+
+            // --- Permissions ---
+            Column {
+                visible: root.tab === 1
+                x: 24
+                y: 92
+                spacing: 14
+
+                Row { Label { text: qsTr("Owner:") } Value { text: root.info.owner || "" } }
+                Row { Label { text: qsTr("Group:") } Value { text: root.info.group || "" } }
+                Line {}
+                Text {
+                    text: root.info.mine ? qsTr("Who can do what:") : qsTr("Only the owner can change the permissions.")
+                    color: Theme.textSecondary
+                    font.pixelSize: Theme.fontBody
+                }
+                Repeater {
+                    model: [{ who: qsTr("Owner"), shift: 6 }, { who: qsTr("Group"), shift: 3 }, { who: qsTr("Others"), shift: 0 }]
+                    delegate: Row {
+                        required property var modelData
+                        spacing: 16
+                        Label { text: modelData.who; width: 104 }
+                        Repeater {
+                            model: [{ what: qsTr("Read"), bit: 4 }, { what: qsTr("Write"), bit: 2 }, { what: root.info.isDir ? qsTr("Open") : qsTr("Execute"), bit: 1 }]
+                            delegate: Check {
+                                required property var modelData
+                                readonly property int mask: modelData.bit << parent.modelData.shift
+                                label: modelData.what
+                                usable: !!root.info.mine
+                                checked: (root.permissions & mask) !== 0
+                                onToggled: root.permissions = root.permissions ^ mask
                             }
                         }
                     }
                 }
             }
-            Line {}
-            Row { Label { text: qsTr("Location:") } Value { text: root.info.location || "" } }
-            Row { Label { text: qsTr("Size:") } Value { text: root.sizeText } }
-            Row { Label { text: qsTr("Size on disk:") } Value { text: root.diskText } }
+
+            // --- Details ---
+            Column {
+                visible: root.tab === 2
+                x: 24
+                y: 92
+                spacing: 12
+                Row { Label { text: qsTr("Name:") } Value { text: root.info.name || "" } }
+                Row { Label { text: qsTr("MIME type:") } Value { text: root.info.mimeName || "" } }
+                Row { visible: !!root.info.imageSize; Label { text: qsTr("Size:") } Value { text: (root.info.imageSize || "") + qsTr(" pixels") } }
+                Row { Label { text: qsTr("File size:") } Value { text: root.sizeText } }
+            }
+
             Row {
-                visible: !!root.info.hasFolders || root.paths.length > 1
-                Label { text: qsTr("Contains:") }
-                Value { text: root.contentText }
-            }
-            Line { visible: root.single }
-            Row { visible: root.single && !!root.info.created; Label { text: qsTr("Created:") } Value { text: root.info.created || "" } }
-            Row { visible: root.single; Label { text: qsTr("Modified:") } Value { text: root.info.modified || "" } }
-            Row { visible: root.single; Label { text: qsTr("Accessed:") } Value { text: root.info.accessed || "" } }
-            Line {}
-            Row {
-                spacing: 16
-                Label { text: qsTr("Attributes:"); width: 104; anchors.verticalCenter: parent.verticalCenter }
-                Check {
-                    label: qsTr("Read-only")
-                    checked: root.readOnly
-                    onToggled: root.readOnly = !root.readOnly
+                anchors { right: parent.right; bottom: parent.bottom; margins: 20 }
+                spacing: 8
+
+                Button {
+                    text: "OK"
+                    accent: true
+                    onClicked: { root.apply(); root.close() }
                 }
-                // On Linux "hidden" is the dot at the start of the name.
-                Check {
-                    label: qsTr("Hidden")
-                    checked: !!root.info.hidden
-                    usable: false
+                Button {
+                    text: qsTr("Cancel")
+                    onClicked: root.close()
                 }
-            }
-            // A program or script starts with a double click only if it's
-            // executable: the same "Execute" bit as in Permissions, for those
-            // who can already read it.
-            Row {
-                visible: root.single && !root.info.isDir
-                spacing: 16
-                Label { text: ""; width: 104 }
-                Check {
-                    label: qsTr("Allow executing as a program")
-                    usable: !!root.info.mine
-                    checked: (root.permissions & 0o111) !== 0
-                    onToggled: {
-                        if ((root.permissions & 0o111) !== 0)
-                            root.permissions = root.permissions & ~0o111
-                        else
-                            root.permissions = root.permissions | ((root.permissions & 0o444) >> 2) | 0o100
-                    }
+                Button {
+                    text: qsTr("Apply")
+                    usable: root.changed
+                    onClicked: root.apply()
                 }
-            }
-        }
-
-        // --- Permissions ---
-        Column {
-            visible: root.tab === 1
-            x: 24
-            y: 92
-            spacing: 14
-
-            Row { Label { text: qsTr("Owner:") } Value { text: root.info.owner || "" } }
-            Row { Label { text: qsTr("Group:") } Value { text: root.info.group || "" } }
-            Line {}
-            Text {
-                text: root.info.mine ? qsTr("Who can do what:") : qsTr("Only the owner can change the permissions.")
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontBody
-            }
-            Repeater {
-                model: [{ who: qsTr("Owner"), shift: 6 }, { who: qsTr("Group"), shift: 3 }, { who: qsTr("Others"), shift: 0 }]
-                delegate: Row {
-                    required property var modelData
-                    spacing: 16
-                    Label { text: modelData.who; width: 104 }
-                    Repeater {
-                        model: [{ what: qsTr("Read"), bit: 4 }, { what: qsTr("Write"), bit: 2 }, { what: root.info.isDir ? qsTr("Open") : qsTr("Execute"), bit: 1 }]
-                        delegate: Check {
-                            required property var modelData
-                            readonly property int mask: modelData.bit << parent.modelData.shift
-                            label: modelData.what
-                            usable: !!root.info.mine
-                            checked: (root.permissions & mask) !== 0
-                            onToggled: root.permissions = root.permissions ^ mask
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- Details ---
-        Column {
-            visible: root.tab === 2
-            x: 24
-            y: 92
-            spacing: 12
-            Row { Label { text: qsTr("Name:") } Value { text: root.info.name || "" } }
-            Row { Label { text: qsTr("MIME type:") } Value { text: root.info.mimeName || "" } }
-            Row { visible: !!root.info.imageSize; Label { text: qsTr("Size:") } Value { text: (root.info.imageSize || "") + qsTr(" pixels") } }
-            Row { Label { text: qsTr("File size:") } Value { text: root.sizeText } }
-        }
-
-        Row {
-            anchors { right: parent.right; bottom: parent.bottom; margins: 20 }
-            spacing: 8
-
-            Button {
-                text: "OK"
-                accent: true
-                onClicked: { root.apply(); root.visible = false }
-            }
-            Button {
-                text: qsTr("Cancel")
-                onClicked: root.visible = false
-            }
-            Button {
-                text: qsTr("Apply")
-                usable: root.changed
-                onClicked: root.apply()
             }
         }
     }

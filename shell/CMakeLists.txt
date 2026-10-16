@@ -130,7 +130,8 @@ set(VELA_QML_FILES
     qml/TaskbarTooltip.qml
     qml/FileDialogs.qml
     qml/ClipboardPanel.qml
-    qml/SnipOverlay.qml)
+    qml/SnipOverlay.qml
+    qml/ShadowRoom.qml)
 
 # The files are in qml/ for tidiness, but in the module they must be at the
 # root: so they see each other without imports.

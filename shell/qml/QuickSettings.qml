@@ -39,7 +39,7 @@ Window {
         Menus.quickSettingsOpen = true
         motion.open()
         panel.forceActiveFocus()
-        updateBlur()
+        Effects.setBlur(root, [motion.visibleArea])
     }
     function close() {
         if (!motion.opened) {
@@ -131,14 +131,6 @@ Window {
         if (!active && motion.opened && !Menus.isOpen) {
             close()
         }
-    }
-
-    // The blurred background: the panel's travel while it slides, the panel
-    // at rest (PanelMotion.area), inside the window.
-    function updateBlur() {
-        const a = motion.area
-        const top = Math.max(0, a.y)
-        Effects.setBlur(root, [Qt.rect(a.x, top, a.width, Math.max(0, Math.min(a.y + a.height, root.height) - top))])
     }
 
     // The panel's height follows its page (docs/visual-coherence.md §6.10):
@@ -516,18 +508,9 @@ Window {
         onClicked: root.openSettings(link.target)
     }
 
-    // A click in the shadow's room closes the panel, like a click outside
-    // (ContextMenu.qml does the same for its whole window).
-    MouseArea {
-        anchors.fill: parent
-        onPressed: mouse => {
-            if (mouse.x >= motion.x && mouse.x < motion.x + motion.width
-                    && mouse.y >= motion.y && mouse.y < motion.y + motion.height) {
-                mouse.accepted = false // the panel's own background
-                return
-            }
-            root.close()
-        }
+    ShadowRoom {
+        panels: [panel]
+        onOutside: root.close()
     }
 
     // It rises 48 units from behind the taskbar, where the window cuts it,
@@ -543,7 +526,7 @@ Window {
             root.visible = false
             d.settle()
         }
-        onAreaChanged: root.updateBlur()
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the panel at rest
 
         Shadow {
             id: shadow

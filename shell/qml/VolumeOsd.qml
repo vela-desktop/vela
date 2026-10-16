@@ -13,8 +13,12 @@ import Vela.Controls
 Window {
     id: root
     visible: false
-    width: 232
-    height: 64 // the pill and the room it rises from
+    // The pill with room for its shadow around it, cut where the window
+    // meets the taskbar (docs/visual-coherence.md §6.9): the pill rests 12
+    // units above it.
+    readonly property real room: shadow.reach
+    width: room + 232 + room
+    height: room + 52 + 12
     color: "transparent"
 
     // What it shows: "" the system volume, "microphone", or an app's key
@@ -62,32 +66,19 @@ Window {
         }
     }
 
+    // Shown again while leaving, it turns back from where it is.
     function show() {
-        if (!visible) {
-            Menus.placeOnTargetScreen(root)
+        if (!motion.opened) {
+            if (!motion.closing) {
+                Menus.placeOnTargetScreen(root)
+            }
             visible = true
-            Effects.setBlur(root, [Qt.rect(pill.x, 12, pill.width, pill.height)])
-            pill.opacity = 0
-            slide.y = 12 * Theme.motion
-            fade.stop()
-            appear.restart()
-        } else if (fade.running) {
-            fade.stop()
-            appear.restart()
+            motion.open()
+            Effects.setBlur(root, [motion.visibleArea])
         }
         hideTimer.restart()
     }
 
-    ParallelAnimation {
-        id: appear
-        NumberAnimation { target: pill; property: "opacity"; to: 1; duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        NumberAnimation { target: slide; property: "y"; to: 0; duration: Theme.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-    }
-    SequentialAnimation {
-        id: fade
-        NumberAnimation { target: pill; property: "opacity"; to: 0; duration: Theme.normal }
-        ScriptAction { script: root.visible = false }
-    }
     Timer {
         id: hideTimer
         interval: 2000
@@ -95,7 +86,7 @@ Window {
             if (hover.hovered || barMouse.pressed) {
                 restart()
             } else {
-                fade.start()
+                motion.close()
             }
         }
     }
@@ -111,137 +102,155 @@ Window {
         hideTimer.restart()
     }
 
-    Rectangle {
-        id: pill
-        x: 0
-        y: 12
-        width: parent.width
+    ShadowRoom {
+        panels: [pill]
+        onOutside: motion.close()
+    }
+
+    // It rises 12 units, and leaves the same way.
+    PanelMotion {
+        id: motion
+        x: root.room
+        y: root.room
+        width: 232
         height: 52
-        radius: Theme.radiusOverlay
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.stroke
-        transform: Translate { id: slide }
+        offset: Qt.point(0, 12)
+        onClosed: root.visible = false
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the pill at rest
 
-        HoverHandler { id: hover }
-        MouseArea {
+        Shadow {
+            id: shadow
+            target: pill
+        }
+
+        Rectangle {
+            id: pill
             anchors.fill: parent
-            onWheel: wheel => root.wheel(wheel.angleDelta.y)
-        }
+            radius: Theme.radiusOverlay
+            color: Theme.surface
+            border.width: 1
+            border.color: Theme.stroke
 
-        // The speaker (or the app's icon): a click mutes, like the one in
-        // quick settings.
-        Item {
-            id: speaker
-            x: 8
-            anchors.verticalCenter: parent.verticalCenter
-            width: 36
-            height: 36
-            Rectangle {
-                anchors.fill: parent
-                radius: Theme.radius
-                color: Theme.subtleHover
-                opacity: speakerMouse.containsMouse ? 1 : 0
-            }
-            Image {
-                anchors.centerIn: parent
-                width: 18
-                height: 18
-                opacity: root.app && root.app.muted ? 0.45 : 1
-                source: Theme.icons + encodeURIComponent(root.app ? root.app.icon
-                    : root.microphone ? (Audio.inputMuted ? "microphone-sensitivity-muted" : "audio-input-microphone")
-                    : Audio.iconName)
-                sourceSize: Qt.size(width, height)
-            }
-            Image {
-                visible: !!root.app && root.app.muted
-                anchors { right: parent.right; bottom: parent.bottom; margins: 5 }
-                width: 12
-                height: 12
-                source: Theme.icons + "audio-volume-muted"
-                sourceSize: Qt.size(width, height)
-            }
+            HoverHandler { id: hover }
             MouseArea {
-                id: speakerMouse
                 anchors.fill: parent
-                hoverEnabled: true
-                onClicked: {
-                    root.toggleMute()
-                    hideTimer.restart()
-                }
-            }
-        }
-
-        // The microphone: on or off, no slider.
-        Text {
-            visible: root.microphone
-            anchors { left: speaker.right; leftMargin: 10; right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
-            text: Audio.inputMuted ? qsTr("Microphone off") : qsTr("Microphone on")
-            color: Theme.text
-            font.pixelSize: Theme.fontBody
-            elide: Text.ElideRight
-        }
-
-        Item {
-            id: bar
-            visible: !root.microphone
-            readonly property real shown: Math.max(0, Math.min(1, root.volume))
-            anchors { left: speaker.right; leftMargin: 10; right: number.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
-            height: 20
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width
-                height: 4
-                radius: 2
-                color: Theme.stroke
-            }
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width * bar.shown
-                height: 4
-                radius: 2
-                color: root.muted ? Theme.textSecondary : Theme.accent
-            }
-            Rectangle {
-                x: parent.width * bar.shown - width / 2
-                anchors.verticalCenter: parent.verticalCenter
-                width: 18
-                height: 18
-                radius: 9
-                color: Theme.popup
-                border.width: 1
-                border.color: Theme.stroke
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: barMouse.pressed ? 8 : 10
-                    height: width
-                    radius: width / 2
-                    color: root.muted ? Theme.textSecondary : Theme.accent
-                }
-            }
-            MouseArea {
-                id: barMouse
-                anchors { fill: parent; margins: -8 }
-                function update(x) {
-                    root.setVolume(Math.max(0, Math.min(1, (x - 8) / bar.width)))
-                    hideTimer.restart()
-                }
-                onPressed: mouse => update(mouse.x)
-                onPositionChanged: mouse => { if (pressed) update(mouse.x) }
                 onWheel: wheel => root.wheel(wheel.angleDelta.y)
             }
-        }
 
-        Text {
-            id: number
-            visible: !root.microphone
-            anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
-            width: 28 // "100" without the bar moving
-            horizontalAlignment: Text.AlignRight
-            text: Math.round(root.volume * 100)
-            color: root.muted ? Theme.textSecondary : Theme.text
-            font.pixelSize: Theme.fontBody
-            font.features: { "tnum": 1 }
+            // The speaker (or the app's icon): a click mutes, like the one in
+            // quick settings.
+            Item {
+                id: speaker
+                x: 8
+                anchors.verticalCenter: parent.verticalCenter
+                width: 36
+                height: 36
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radius
+                    color: Theme.subtleHover
+                    opacity: speakerMouse.containsMouse ? 1 : 0
+                }
+                Image {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    opacity: root.app && root.app.muted ? 0.45 : 1
+                    source: Theme.icons + encodeURIComponent(root.app ? root.app.icon
+                        : root.microphone ? (Audio.inputMuted ? "microphone-sensitivity-muted" : "audio-input-microphone")
+                        : Audio.iconName)
+                    sourceSize: Qt.size(width, height)
+                }
+                Image {
+                    visible: !!root.app && root.app.muted
+                    anchors { right: parent.right; bottom: parent.bottom; margins: 5 }
+                    width: 12
+                    height: 12
+                    source: Theme.icons + "audio-volume-muted"
+                    sourceSize: Qt.size(width, height)
+                }
+                MouseArea {
+                    id: speakerMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: {
+                        root.toggleMute()
+                        hideTimer.restart()
+                    }
+                }
+            }
+
+            // The microphone: on or off, no slider.
+            Text {
+                visible: root.microphone
+                anchors { left: speaker.right; leftMargin: 10; right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                text: Audio.inputMuted ? qsTr("Microphone off") : qsTr("Microphone on")
+                color: Theme.text
+                font.pixelSize: Theme.fontBody
+                elide: Text.ElideRight
+            }
+
+            Item {
+                id: bar
+                visible: !root.microphone
+                readonly property real shown: Math.max(0, Math.min(1, root.volume))
+                anchors { left: speaker.right; leftMargin: 10; right: number.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                height: 20
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width
+                    height: 4
+                    radius: 2
+                    color: Theme.stroke
+                }
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width * bar.shown
+                    height: 4
+                    radius: 2
+                    color: root.muted ? Theme.textSecondary : Theme.accent
+                }
+                Rectangle {
+                    x: parent.width * bar.shown - width / 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 18
+                    height: 18
+                    radius: 9
+                    color: Theme.popup
+                    border.width: 1
+                    border.color: Theme.stroke
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: barMouse.pressed ? 8 : 10
+                        height: width
+                        radius: width / 2
+                        color: root.muted ? Theme.textSecondary : Theme.accent
+                    }
+                }
+                MouseArea {
+                    id: barMouse
+                    anchors { fill: parent; margins: -8 }
+                    function update(x) {
+                        root.setVolume(Math.max(0, Math.min(1, (x - 8) / bar.width)))
+                        hideTimer.restart()
+                    }
+                    onPressed: mouse => update(mouse.x)
+                    onPositionChanged: mouse => { if (pressed) update(mouse.x) }
+                    onWheel: wheel => root.wheel(wheel.angleDelta.y)
+                }
+            }
+
+            Text {
+                id: number
+                visible: !root.microphone
+                anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                width: 28 // "100" without the bar moving
+                horizontalAlignment: Text.AlignRight
+                text: Math.round(root.volume * 100)
+                color: root.muted ? Theme.textSecondary : Theme.text
+                font.pixelSize: Theme.fontBody
+                font.features: { "tnum": 1 }
+            }
         }
     }
 }

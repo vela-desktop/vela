@@ -9,6 +9,8 @@ import QtQuick.Effects
 // RectangularShadow (analytic, like the compositor's) clipped into four strips
 // around the target. `depth` is one of Theme.shadow's (flyout, dialog); the
 // window must leave `reach` around the target, or the shadow is cut.
+// `above` and `below` cut it closer above and below the target, where it
+// would fall on another translucent panel (the Notification Center's two).
 Item {
     id: root
 
@@ -19,6 +21,8 @@ Item {
     property vector2d offset: Qt.vector2d(0, depth.offset)
     property color color: Qt.rgba(0, 0, 0, depth.opacity)
     readonly property real reach: blur + Math.max(Math.abs(offset.x), Math.abs(offset.y)) + 8
+    property real above: reach
+    property real below: reach
 
     anchors.fill: target
     anchors.margins: -reach
@@ -48,8 +52,8 @@ Item {
         }
     }
 
-    Strip { x: 0; y: 0; width: root.width; height: root.reach }
-    Strip { x: 0; y: root.reach + root.target.height; width: root.width; height: root.reach }
+    Strip { x: 0; y: root.reach - height; width: root.width; height: Math.min(root.above, root.reach) }
+    Strip { x: 0; y: root.reach + root.target.height; width: root.width; height: Math.min(root.below, root.reach) }
     Strip { x: 0; y: root.reach; width: root.reach; height: root.target.height }
     Strip { x: root.reach + root.target.width; y: root.reach; width: root.reach; height: root.target.height }
 }

@@ -131,16 +131,9 @@ Item {
         return Math.round(Math.max(margin, Math.min(areaHeight - height - margin, top)))
     }
 
-    // It comes in fading and sliding slightly from the side it starts from.
-    opacity: 0
-    property real slide: (above ? 8 : -8) * Theme.motion
-    transform: Translate { y: panel.slide }
-    Component.onCompleted: appear.start()
-    ParallelAnimation {
-        id: appear
-        NumberAnimation { target: panel; property: "opacity"; to: 1; duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        NumberAnimation { target: panel; property: "slide"; to: 0; duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-    }
+    // The blur region, in the container's coordinates: the travel while it
+    // slides in (PanelMotion.area), the panel at rest.
+    readonly property rect area: Qt.rect(x + motion.area.x, y + motion.area.y, motion.area.width, motion.area.height)
 
     // --- keyboard ---
     function move(step) {
@@ -221,274 +214,282 @@ Item {
     }
 
     // --- look ---
-    Shadow {
-        target: panel
-        radius: Theme.radiusOverlay
-        blur: 16
-        offset: Qt.vector2d(0, 4)
-        color: Qt.rgba(0, 0, 0, 0.4)
-    }
-
-    Rectangle {
+    // It comes in fading and sliding slightly from the side it starts from,
+    // and goes at once (docs/visual-coherence.md K5): ContextMenu destroys it.
+    PanelMotion {
+        id: motion
         anchors.fill: parent
-        radius: Theme.radiusOverlay
-        color: panel.fill
-        border.width: 1
-        border.color: Theme.stroke
-    }
+        offset: Qt.point(0, panel.above ? 8 : -8)
+        duration: Theme.normal
+        instantExit: true
+        Component.onCompleted: open()
 
-    // Clicks on the panel don't close the menu.
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.AllButtons
-    }
+        Shadow {
+            target: look
+        }
 
-    Column {
-        x: 0
-        y: panel.padding
-        width: panel.width
+        Rectangle {
+            id: look
+            anchors.fill: parent
+            radius: Theme.radiusOverlay
+            color: panel.fill
+            border.width: 1
+            border.color: Theme.stroke
+        }
 
-        Repeater {
-            model: panel.entries
+        // Clicks on the panel don't close the menu.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+        }
 
-            delegate: Item {
-                id: row
-                required property var modelData
-                required property int index
-                readonly property var entry: modelData
-                readonly property bool isCurrent: panel.currentIndex === index
-                readonly property bool usable: entry.enabled !== false
-                width: panel.width
-                height: panel.rowHeightOf(entry)
+        Column {
+            x: 0
+            y: panel.padding
+            width: panel.width
 
-                // Separator
-                Rectangle {
-                    visible: row.entry.separator === true
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: 0
-                    width: parent.width
-                    height: 1
-                    color: Theme.stroke
-                }
+            Repeater {
+                model: panel.entries
 
-                // The icon row of file menus: Cut, Copy, Rename...
-                Row {
-                    visible: !!row.entry.iconRow
-                    x: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
-                    Repeater {
-                        model: row.entry.iconRow || []
-                        delegate: Item {
-                            id: iconButton
-                            required property var modelData
-                            readonly property bool usable: modelData.enabled !== false
-                            width: 36
-                            height: 36
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: Theme.radius
-                                color: iconMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-                                opacity: iconMouse.containsMouse && iconButton.usable ? 1 : 0
-                            }
-                            Image {
-                                anchors.centerIn: parent
-                                width: 16
-                                height: 16
-                                opacity: iconButton.usable ? 1 : 0.4
-                                source: Theme.icons + encodeURIComponent(iconButton.modelData.icon)
-                                sourceSize: Qt.size(width, height)
-                            }
-                            MouseArea {
-                                id: iconMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                enabled: iconButton.usable
-                                onClicked: panel.activated(iconButton.modelData, -1)
-                            }
-                        }
-                    }
-                }
+                delegate: Item {
+                    id: row
+                    required property var modelData
+                    required property int index
+                    readonly property var entry: modelData
+                    readonly property bool isCurrent: panel.currentIndex === index
+                    readonly property bool usable: entry.enabled !== false
+                    width: panel.width
+                    height: panel.rowHeightOf(entry)
 
-                // Group title
-                Text {
-                    visible: row.entry.header !== undefined
-                    x: 16
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: row.entry.header || ""
-                    color: Theme.textSecondary
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Font.DemiBold
-                }
-
-                Item {
-                    visible: !row.entry.separator && row.entry.header === undefined && !row.entry.iconRow
-                    anchors.fill: parent
-
+                    // Separator
                     Rectangle {
-                        x: 4
-                        width: parent.width - 8
-                        height: parent.height
-                        radius: Theme.radius
-                        color: rowMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-                        opacity: row.isCurrent && row.usable ? 1 : 0
+                        visible: row.entry.separator === true
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: 0
+                        width: parent.width
+                        height: 1
+                        color: Theme.stroke
                     }
 
-                    // Icon, or the check mark or dot of choice entries.
-                    Item {
-                        x: 16
-                        width: 16
-                        height: 16
+                    // The icon row of file menus: Cut, Copy, Rename...
+                    Row {
+                        visible: !!row.entry.iconRow
+                        x: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        visible: panel.hasIcons
-                        opacity: row.usable ? 1 : 0.4
-                        Image {
-                            anchors.fill: parent
-                            visible: row.entry.checked === undefined && !!row.entry.icon
-                            source: row.entry.icon
-                                ? (row.entry.icon.indexOf(":") > 0 ? row.entry.icon : Theme.icons + encodeURIComponent(row.entry.icon))
-                                : ""
-                            sourceSize: Qt.size(width, height)
-                            smooth: true
+                        spacing: 4
+                        Repeater {
+                            model: row.entry.iconRow || []
+                            delegate: Item {
+                                id: iconButton
+                                required property var modelData
+                                readonly property bool usable: modelData.enabled !== false
+                                width: 36
+                                height: 36
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: Theme.radius
+                                    color: iconMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
+                                    opacity: iconMouse.containsMouse && iconButton.usable ? 1 : 0
+                                }
+                                Image {
+                                    anchors.centerIn: parent
+                                    width: 16
+                                    height: 16
+                                    opacity: iconButton.usable ? 1 : 0.4
+                                    source: Theme.icons + encodeURIComponent(iconButton.modelData.icon)
+                                    sourceSize: Qt.size(width, height)
+                                }
+                                MouseArea {
+                                    id: iconMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    enabled: iconButton.usable
+                                    onClicked: panel.activated(iconButton.modelData, -1)
+                                }
+                            }
                         }
+                    }
+
+                    // Group title
+                    Text {
+                        visible: row.entry.header !== undefined
+                        x: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: row.entry.header || ""
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Font.DemiBold
+                    }
+
+                    Item {
+                        visible: !row.entry.separator && row.entry.header === undefined && !row.entry.iconRow
+                        anchors.fill: parent
+
+                        Rectangle {
+                            x: 4
+                            width: parent.width - 8
+                            height: parent.height
+                            radius: Theme.radius
+                            color: rowMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
+                            opacity: row.isCurrent && row.usable ? 1 : 0
+                        }
+
+                        // Icon, or the check mark or dot of choice entries.
+                        Item {
+                            x: 16
+                            width: 16
+                            height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: panel.hasIcons
+                            opacity: row.usable ? 1 : 0.4
+                            Image {
+                                anchors.fill: parent
+                                visible: row.entry.checked === undefined && !!row.entry.icon
+                                source: row.entry.icon
+                                    ? (row.entry.icon.indexOf(":") > 0 ? row.entry.icon : Theme.icons + encodeURIComponent(row.entry.icon))
+                                    : ""
+                                sourceSize: Qt.size(width, height)
+                                smooth: true
+                            }
+                            Shape {
+                                anchors.fill: parent
+                                visible: row.entry.checked === true && !row.entry.radio
+                                preferredRendererType: Shape.CurveRenderer
+                                ShapePath {
+                                    strokeColor: Theme.text
+                                    strokeWidth: 1.5
+                                    fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap
+                                    joinStyle: ShapePath.RoundJoin
+                                    startX: 3; startY: 8.5
+                                    PathLine { x: 6.5; y: 12 }
+                                    PathLine { x: 13; y: 4.5 }
+                                }
+                            }
+                            Rectangle {
+                                visible: row.entry.checked === true && row.entry.radio === true
+                                anchors.centerIn: parent
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: Theme.text
+                            }
+                        }
+
+                        Text {
+                            x: panel.textLeft
+                            width: parent.width - x - 16 - (row.entry.children || row.entry.pin ? 28 : 0) - shortcutText.implicitWidth
+                            anchors.verticalCenter: parent.verticalCenter
+                            // The keyboard letter shows only when the menu was
+                            // opened from the keyboard.
+                            textFormat: panel.keyboardMode ? Text.StyledText : Text.PlainText
+                            text: panel.keyboardMode ? panel.styledText(row.entry.text) : panel.plainText(row.entry.text)
+                            color: row.usable ? Theme.text : Theme.textSecondary
+                            font.pixelSize: Theme.fontBody
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            id: shortcutText
+                            anchors { right: parent.right; rightMargin: row.entry.children ? 36 : 16; verticalCenter: parent.verticalCenter }
+                            text: row.entry.shortcut || ""
+                            color: Theme.textSecondary
+                            font.pixelSize: Theme.fontCaption
+                        }
+                        // Submenu arrow.
                         Shape {
-                            anchors.fill: parent
-                            visible: row.entry.checked === true && !row.entry.radio
+                            visible: !!row.entry.children
+                            anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                            width: 8
+                            height: 10
                             preferredRendererType: Shape.CurveRenderer
                             ShapePath {
-                                strokeColor: Theme.text
-                                strokeWidth: 1.5
+                                strokeColor: Theme.textSecondary
+                                strokeWidth: 1.2
                                 fillColor: "transparent"
                                 capStyle: ShapePath.RoundCap
                                 joinStyle: ShapePath.RoundJoin
-                                startX: 3; startY: 8.5
-                                PathLine { x: 6.5; y: 12 }
-                                PathLine { x: 13; y: 4.5 }
+                                startX: 2; startY: 1
+                                PathLine { x: 6; y: 5 }
+                                PathLine { x: 2; y: 9 }
                             }
                         }
-                        Rectangle {
-                            visible: row.entry.checked === true && row.entry.radio === true
-                            anchors.centerIn: parent
-                            width: 6
-                            height: 6
-                            radius: 3
-                            color: Theme.text
-                        }
                     }
 
-                    Text {
-                        x: panel.textLeft
-                        width: parent.width - x - 16 - (row.entry.children || row.entry.pin ? 28 : 0) - shortcutText.implicitWidth
-                        anchors.verticalCenter: parent.verticalCenter
-                        // The keyboard letter shows only when the menu was
-                        // opened from the keyboard.
-                        textFormat: panel.keyboardMode ? Text.StyledText : Text.PlainText
-                        text: panel.keyboardMode ? panel.styledText(row.entry.text) : panel.plainText(row.entry.text)
-                        color: row.usable ? Theme.text : Theme.textSecondary
-                        font.pixelSize: Theme.fontBody
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        id: shortcutText
-                        anchors { right: parent.right; rightMargin: row.entry.children ? 36 : 16; verticalCenter: parent.verticalCenter }
-                        text: row.entry.shortcut || ""
-                        color: Theme.textSecondary
-                        font.pixelSize: Theme.fontCaption
-                    }
-                    // Submenu arrow.
-                    Shape {
-                        visible: !!row.entry.children
-                        anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
-                        width: 8
-                        height: 10
-                        preferredRendererType: Shape.CurveRenderer
-                        ShapePath {
-                            strokeColor: Theme.textSecondary
-                            strokeWidth: 1.2
-                            fillColor: "transparent"
-                            capStyle: ShapePath.RoundCap
-                            joinStyle: ShapePath.RoundJoin
-                            startX: 2; startY: 1
-                            PathLine { x: 6; y: 5 }
-                            PathLine { x: 2; y: 9 }
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: rowMouse
-                    anchors.fill: parent
-                    enabled: !row.entry.separator && row.entry.header === undefined && !row.entry.iconRow
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onEntered: {
-                        panel.currentIndex = row.usable ? row.index : -1
-                        panel.hovered(row.index, row.y + panel.padding)
-                    }
-                    onExited: {
-                        if (panel.currentIndex === row.index && !row.entry.children) {
-                            panel.currentIndex = -1
-                        }
-                    }
-                    onClicked: mouse => {
-                        // Right button: the entry's menu (such as a jump list
-                        // file); if it has none, it acts like the left one.
-                        if (mouse.button === Qt.RightButton && row.entry.context) {
-                            const p = mapToItem(panel.parent, mouse.x, mouse.y)
-                            panel.contextRequested(row.entry, p.x, p.y)
-                            return
-                        }
-                        panel.trigger(row.index, false)
-                    }
-                }
-
-                // The pin (jump list): shown on hover.
-                Item {
-                    visible: !!row.entry.pin && (rowMouse.containsMouse || pinMouse.containsMouse)
-                    anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                    width: 28
-                    height: 28
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.radius
-                        color: Theme.subtleHover
-                        opacity: pinMouse.containsMouse ? 1 : 0
-                    }
-                    Shape {
-                        anchors.centerIn: parent
-                        width: 14
-                        height: 14
-                        rotation: row.entry.pin && row.entry.pin.pinned ? 0 : 45
-                        preferredRendererType: Shape.CurveRenderer
-                        ShapePath {
-                            strokeColor: Theme.text
-                            strokeWidth: 1.2
-                            fillColor: row.entry.pin && row.entry.pin.pinned ? Theme.text : "transparent"
-                            joinStyle: ShapePath.RoundJoin
-                            capStyle: ShapePath.RoundCap
-                            startX: 4.5; startY: 1
-                            PathLine { x: 9.5; y: 1 }
-                            PathLine { x: 9; y: 6 }
-                            PathLine { x: 11.5; y: 8.5 }
-                            PathLine { x: 2.5; y: 8.5 }
-                            PathLine { x: 5; y: 6 }
-                            PathLine { x: 4.5; y: 1 }
-                        }
-                        ShapePath {
-                            strokeColor: Theme.text
-                            strokeWidth: 1.2
-                            capStyle: ShapePath.RoundCap
-                            startX: 7; startY: 8.5
-                            PathLine { x: 7; y: 13 }
-                        }
-                    }
                     MouseArea {
-                        id: pinMouse
+                        id: rowMouse
                         anchors.fill: parent
+                        enabled: !row.entry.separator && row.entry.header === undefined && !row.entry.iconRow
                         hoverEnabled: true
-                        onClicked: {
-                            row.entry.pin.toggle()
-                            panel.pinToggled()
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onEntered: {
+                            panel.currentIndex = row.usable ? row.index : -1
+                            panel.hovered(row.index, row.y + panel.padding)
+                        }
+                        onExited: {
+                            if (panel.currentIndex === row.index && !row.entry.children) {
+                                panel.currentIndex = -1
+                            }
+                        }
+                        onClicked: mouse => {
+                            // Right button: the entry's menu (such as a jump list
+                            // file); if it has none, it acts like the left one.
+                            if (mouse.button === Qt.RightButton && row.entry.context) {
+                                const p = mapToItem(panel.parent, mouse.x, mouse.y)
+                                panel.contextRequested(row.entry, p.x, p.y)
+                                return
+                            }
+                            panel.trigger(row.index, false)
+                        }
+                    }
+
+                    // The pin (jump list): shown on hover.
+                    Item {
+                        visible: !!row.entry.pin && (rowMouse.containsMouse || pinMouse.containsMouse)
+                        anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                        width: 28
+                        height: 28
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.radius
+                            color: Theme.subtleHover
+                            opacity: pinMouse.containsMouse ? 1 : 0
+                        }
+                        Shape {
+                            anchors.centerIn: parent
+                            width: 14
+                            height: 14
+                            rotation: row.entry.pin && row.entry.pin.pinned ? 0 : 45
+                            preferredRendererType: Shape.CurveRenderer
+                            ShapePath {
+                                strokeColor: Theme.text
+                                strokeWidth: 1.2
+                                fillColor: row.entry.pin && row.entry.pin.pinned ? Theme.text : "transparent"
+                                joinStyle: ShapePath.RoundJoin
+                                capStyle: ShapePath.RoundCap
+                                startX: 4.5; startY: 1
+                                PathLine { x: 9.5; y: 1 }
+                                PathLine { x: 9; y: 6 }
+                                PathLine { x: 11.5; y: 8.5 }
+                                PathLine { x: 2.5; y: 8.5 }
+                                PathLine { x: 5; y: 6 }
+                                PathLine { x: 4.5; y: 1 }
+                            }
+                            ShapePath {
+                                strokeColor: Theme.text
+                                strokeWidth: 1.2
+                                capStyle: ShapePath.RoundCap
+                                startX: 7; startY: 8.5
+                                PathLine { x: 7; y: 13 }
+                            }
+                        }
+                        MouseArea {
+                            id: pinMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                row.entry.pin.toggle()
+                                panel.pinToggled()
+                            }
                         }
                     }
                 }

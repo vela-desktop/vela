@@ -96,19 +96,16 @@ Window {
             panel.move(1)
         }
         panels.push(panel)
-        panel.xChanged.connect(updateBlur)
-        panel.yChanged.connect(updateBlur)
-        panel.widthChanged.connect(updateBlur)
-        panel.heightChanged.connect(updateBlur)
+        panel.areaChanged.connect(updateBlur)
         updateBlur()
         panel.forceActiveFocus()
         return panel
     }
 
     // The blurred background under the open menus (the window covers the
-    // output).
+    // output): each one's travel while it slides in, the menu at rest.
     function updateBlur() {
-        Effects.setBlur(root, panels.map(p => Qt.rect(p.x, p.y, p.width, p.height)))
+        Effects.setBlur(root, panels.map(p => p.area))
     }
 
     function openSubmenu(parentPanel, index, rowY, keyboard) {

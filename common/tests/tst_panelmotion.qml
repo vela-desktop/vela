@@ -163,6 +163,19 @@ Item {
             compare(motion.area, a)
         }
 
+        function test_visible_area_is_cut_by_the_parent() {
+            if (!Theme.animationEffects)
+                skip("with effects on")
+            motion.y = 380 // the travel goes 28 below the parent
+            motion.open()
+            verify(motion.moving)
+            compare(motion.area.height, 150 + 48)
+            compare(motion.visibleArea, Qt.rect(100, 380, 200, 120))
+            tryVerify(() => !motion.moving, 3000)
+            compare(motion.visibleArea, Qt.rect(100, 380, 200, 120))
+            motion.y = 100
+        }
+
         function test_area_is_the_panel_at_rest() {
             openFully()
             tryVerify(() => !motion.moving, 3000)
@@ -176,6 +189,15 @@ Item {
             compare(popup.opacity, 0)
             compare(popupClosed.count, 1)
             verify(!popup.closing)
+        }
+
+        function test_close_at_once() {
+            openFully()
+            motion.close(true)
+            compare(motion.opacity, 0)
+            compare(motion.away, 1)
+            compare(closed.count, 1)
+            verify(!motion.closing)
         }
 
         Component { id: spyComponent; SignalSpy {} }

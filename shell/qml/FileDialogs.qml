@@ -13,8 +13,11 @@ import Vela.Controls
 Window {
     id: root
     visible: false
-    width: panel.width + 64
-    height: panel.height + 64
+    // The dialog with room for its shadow around it (docs/visual-coherence.md
+    // §6.9).
+    readonly property real room: shadow.reach
+    width: room + motion.width + room
+    height: room + motion.height + room
     color: "transparent"
 
     property string mode: "" // "share", "openWith" or "shortcut"
@@ -46,14 +49,11 @@ Window {
 
     function show() {
         visible = true
-        panel.opacity = 0
-        panel.scale = 1 - 0.04 * Theme.motion
-        appear.restart()
+        motion.open()
         panel.forceActiveFocus()
     }
     function close() {
-        visible = false
-        mode = ""
+        motion.close()
     }
     function openShare(list) {
         paths = list
@@ -114,15 +114,9 @@ Window {
     }
 
     onActiveChanged: {
-        if (!active && visible && !Menus.isOpen) {
+        if (!active && motion.opened && !Menus.isOpen) {
             close()
         }
-    }
-
-    ParallelAnimation {
-        id: appear
-        NumberAnimation { target: panel; property: "opacity"; to: 1; duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        NumberAnimation { target: panel; property: "scale"; to: 1; duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
     }
 
     component Title: Text {
@@ -202,253 +196,274 @@ Window {
         }
     }
 
-    Shadow {
-        target: panel
-        opacity: panel.opacity
+    // A click in the shadow's room closes it, like a click outside.
+    ShadowRoom {
+        panels: [panel]
+        onOutside: root.close()
     }
 
-    Rectangle {
-        id: panel
-        anchors.centerIn: parent
+    // It grows in from 1.05, like Windows 11's dialogs, and fades out; its
+    // size is the page's.
+    PanelMotion {
+        id: motion
+        x: root.room
+        y: root.room
         width: root.mode === "openWith" ? 440 : root.mode === "shortcut" ? 500 : 420
         height: (root.mode === "share" ? share.height : root.mode === "openWith" ? openWith.height : shortcut.height) + 48
-        radius: Theme.radiusOverlay
-        color: Theme.dialog
-        border.width: 1
-        border.color: Theme.stroke
-        focus: true
-        Keys.onEscapePressed: root.close()
-
-        // Close, at the top right.
-        Rectangle {
-            anchors { right: parent.right; top: parent.top; margins: 8 }
-            width: 32
-            height: 32
-            radius: Theme.radius
-            color: closeMouse.containsMouse ? "#c42b1c" : "transparent"
-            Text {
-                anchors.centerIn: parent
-                text: "✕"
-                color: closeMouse.containsMouse ? "white" : Theme.text
-                font.pixelSize: 12
-            }
-            MouseArea {
-                id: closeMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: root.close()
-            }
+        scaleFrom: 1.05
+        duration: Theme.normal
+        onClosed: {
+            root.visible = false
+            root.mode = ""
         }
 
-        // ---------------------------------------------------------- Share --
-        Column {
-            id: share
-            visible: root.mode === "share"
-            x: 24
-            y: 24
-            width: parent.width - 48
-            spacing: 8
+        Shadow {
+            id: shadow
+            target: panel
+            depth: Theme.shadow.dialog
+        }
 
-            Title { text: qsTr("Share") }
-            Row {
-                spacing: 10
-                Image {
-                    width: 32
-                    height: 32
-                    source: root.paths.length === 1 ? "image://fileicon/" + encodeURIComponent(FileActions.iconFor(root.paths[0])) : Theme.icons + "document-multiple"
-                    sourceSize: Qt.size(width, height)
-                }
+        Rectangle {
+            id: panel
+            anchors.fill: parent
+            radius: Theme.radiusOverlay
+            color: Theme.dialog
+            border.width: 1
+            border.color: Theme.stroke
+            focus: true
+            Keys.onEscapePressed: root.close()
+
+            // Close, at the top right.
+            Rectangle {
+                anchors { right: parent.right; top: parent.top; margins: 8 }
+                width: 32
+                height: 32
+                radius: Theme.radius
+                color: closeMouse.containsMouse ? "#c42b1c" : "transparent"
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: share.width - 42
-                    text: root.paths.length === 1 ? root.paths[0].substring(root.paths[0].lastIndexOf("/") + 1) : root.paths.length + qsTr(" items")
-                    color: Theme.text
-                    font.pixelSize: Theme.fontBody
-                    elide: Text.ElideMiddle
+                    anchors.centerIn: parent
+                    text: "✕"
+                    color: closeMouse.containsMouse ? "white" : Theme.text
+                    font.pixelSize: 12
+                }
+                MouseArea {
+                    id: closeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: root.close()
                 }
             }
 
-            Section { text: qsTr("Nearby sharing") }
-            Note {
-                visible: !FileActions.canKdeConnect()
-                text: qsTr("To send files to your phone or another computer, install KDE Connect and pair them.")
-            }
-            Note {
-                visible: FileActions.canKdeConnect() && FileActions.devices.length === 0
-                text: FileActions.searching ? qsTr("Looking for devices...")
-                    : qsTr("No devices nearby. Pair your phone or computer with KDE Connect.")
-            }
-            Flow {
-                width: parent.width
+            // ---------------------------------------------------------- Share --
+            Column {
+                id: share
+                visible: root.mode === "share"
+                x: 24
+                y: 24
+                width: parent.width - 48
                 spacing: 8
-                Repeater {
-                    model: FileActions.devices
-                    delegate: Rectangle {
-                        id: device
-                        required property var modelData
-                        width: 112
-                        height: 92
-                        radius: Theme.radius
-                        color: deviceMouse.containsMouse ? Theme.subtleHover : Theme.control
-                        border.width: 1
-                        border.color: Theme.stroke
-                        Image {
-                            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 14 }
-                            width: 32
-                            height: 32
-                            source: Theme.icons + "smartphone"
-                            sourceSize: Qt.size(width, height)
-                        }
-                        Text {
-                            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 12 }
-                            width: parent.width - 12
-                            text: device.modelData.name
-                            color: Theme.text
-                            font.pixelSize: Theme.fontCaption
-                            horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
-                        }
-                        MouseArea {
-                            id: deviceMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: {
-                                FileActions.sendToDevice(device.modelData.id, root.paths)
-                                root.close()
+
+                Title { text: qsTr("Share") }
+                Row {
+                    spacing: 10
+                    Image {
+                        width: 32
+                        height: 32
+                        source: root.paths.length === 1 ? "image://fileicon/" + encodeURIComponent(FileActions.iconFor(root.paths[0])) : Theme.icons + "document-multiple"
+                        sourceSize: Qt.size(width, height)
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: share.width - 42
+                        text: root.paths.length === 1 ? root.paths[0].substring(root.paths[0].lastIndexOf("/") + 1) : root.paths.length + qsTr(" items")
+                        color: Theme.text
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideMiddle
+                    }
+                }
+
+                Section { text: qsTr("Nearby sharing") }
+                Note {
+                    visible: !FileActions.canKdeConnect()
+                    text: qsTr("To send files to your phone or another computer, install KDE Connect and pair them.")
+                }
+                Note {
+                    visible: FileActions.canKdeConnect() && FileActions.devices.length === 0
+                    text: FileActions.searching ? qsTr("Looking for devices...")
+                        : qsTr("No devices nearby. Pair your phone or computer with KDE Connect.")
+                }
+                Flow {
+                    width: parent.width
+                    spacing: 8
+                    Repeater {
+                        model: FileActions.devices
+                        delegate: Rectangle {
+                            id: device
+                            required property var modelData
+                            width: 112
+                            height: 92
+                            radius: Theme.radius
+                            color: deviceMouse.containsMouse ? Theme.subtleHover : Theme.control
+                            border.width: 1
+                            border.color: Theme.stroke
+                            Image {
+                                anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 14 }
+                                width: 32
+                                height: 32
+                                source: Theme.icons + "smartphone"
+                                sourceSize: Qt.size(width, height)
+                            }
+                            Text {
+                                anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 12 }
+                                width: parent.width - 12
+                                text: device.modelData.name
+                                color: Theme.text
+                                font.pixelSize: Theme.fontCaption
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                            }
+                            MouseArea {
+                                id: deviceMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: {
+                                    FileActions.sendToDevice(device.modelData.id, root.paths)
+                                    root.close()
+                                }
                             }
                         }
                     }
                 }
+
+                Section { text: qsTr("Share using") }
+                Choice {
+                    visible: FileActions.canEmail()
+                    icon: "mail-message-new"
+                    label: qsTr("Email")
+                    onClicked: { FileActions.sendByEmail(root.paths); root.close() }
+                }
+                Choice {
+                    visible: FileActions.canBluetooth() && Status.bluetoothAvailable
+                    icon: "preferences-system-bluetooth"
+                    label: qsTr("Bluetooth")
+                    onClicked: { FileActions.sendByBluetooth(root.paths); root.close() }
+                }
+                Note {
+                    visible: !FileActions.canEmail() && !(FileActions.canBluetooth() && Status.bluetoothAvailable)
+                    text: qsTr("No apps to share with.")
+                }
             }
 
-            Section { text: qsTr("Share using") }
-            Choice {
-                visible: FileActions.canEmail()
-                icon: "mail-message-new"
-                label: qsTr("Email")
-                onClicked: { FileActions.sendByEmail(root.paths); root.close() }
-            }
-            Choice {
-                visible: FileActions.canBluetooth() && Status.bluetoothAvailable
-                icon: "preferences-system-bluetooth"
-                label: qsTr("Bluetooth")
-                onClicked: { FileActions.sendByBluetooth(root.paths); root.close() }
-            }
-            Note {
-                visible: !FileActions.canEmail() && !(FileActions.canBluetooth() && Status.bluetoothAvailable)
-                text: qsTr("No apps to share with.")
-            }
-        }
+            // -------------------------------------------- Choose another app --
+            Column {
+                id: openWith
+                visible: root.mode === "openWith"
+                x: 24
+                y: 24
+                width: parent.width - 48
+                spacing: 8
 
-        // -------------------------------------------- Choose another app --
-        Column {
-            id: openWith
-            visible: root.mode === "openWith"
-            x: 24
-            y: 24
-            width: parent.width - 48
-            spacing: 8
+                Title {
+                    width: parent.width - 32
+                    text: qsTr("Select an app to open this file") + (FileActions.extension(root.path) !== "" ? " " + FileActions.extension(root.path) : "")
+                }
+                Note { text: FileActions.typeName(root.path) }
 
-            Title {
-                width: parent.width - 32
-                text: qsTr("Select an app to open this file") + (FileActions.extension(root.path) !== "" ? " " + FileActions.extension(root.path) : "")
-            }
-            Note { text: FileActions.typeName(root.path) }
-
-            Flickable {
-                width: parent.width
-                height: 340
-                contentHeight: appList.height
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                Column {
-                    id: appList
+                Flickable {
                     width: parent.width
-                    spacing: 2
-                    Section { visible: root.suggested.length > 0; text: qsTr("Suggested apps"); topPadding: 0; bottomPadding: 4 }
-                    Repeater {
-                        model: root.suggested
-                        delegate: Choice {
-                            required property var modelData
-                            icon: modelData.icon
-                            label: modelData.name
-                            selected: root.chosen === modelData.id
-                            onClicked: root.chosen = modelData.id
-                            onDoubleClicked: { root.chosen = modelData.id; root.launchChosen(false) }
+                    height: 340
+                    contentHeight: appList.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    Column {
+                        id: appList
+                        width: parent.width
+                        spacing: 2
+                        Section { visible: root.suggested.length > 0; text: qsTr("Suggested apps"); topPadding: 0; bottomPadding: 4 }
+                        Repeater {
+                            model: root.suggested
+                            delegate: Choice {
+                                required property var modelData
+                                icon: modelData.icon
+                                label: modelData.name
+                                selected: root.chosen === modelData.id
+                                onClicked: root.chosen = modelData.id
+                                onDoubleClicked: { root.chosen = modelData.id; root.launchChosen(false) }
+                            }
                         }
-                    }
-                    Section { text: qsTr("Other apps"); bottomPadding: 4 }
-                    Repeater {
-                        model: root.others
-                        delegate: Choice {
-                            required property var modelData
-                            icon: modelData.icon
-                            label: modelData.name
-                            selected: root.chosen === modelData.id
-                            onClicked: root.chosen = modelData.id
-                            onDoubleClicked: { root.chosen = modelData.id; root.launchChosen(false) }
+                        Section { text: qsTr("Other apps"); bottomPadding: 4 }
+                        Repeater {
+                            model: root.others
+                            delegate: Choice {
+                                required property var modelData
+                                icon: modelData.icon
+                                label: modelData.name
+                                selected: root.chosen === modelData.id
+                                onClicked: root.chosen = modelData.id
+                                onDoubleClicked: { root.chosen = modelData.id; root.launchChosen(false) }
+                            }
                         }
                     }
                 }
-            }
-            Row {
-                anchors.right: parent.right
-                spacing: 8
-                Button { text: qsTr("Always"); accent: true; usable: root.chosen !== ""; onClicked: root.launchChosen(true) }
-                Button { text: qsTr("Just once"); usable: root.chosen !== ""; onClicked: root.launchChosen(false) }
-            }
-        }
-
-        // ------------------------------------------------ New shortcut --
-        Column {
-            id: shortcut
-            visible: root.mode === "shortcut"
-            x: 24
-            y: 24
-            width: parent.width - 48
-            spacing: 10
-
-            Title {
-                width: parent.width - 32
-                text: root.step === 0 ? qsTr("What item would you like to create a shortcut for?") : qsTr("What would you like to name the shortcut?")
-            }
-            Note {
-                visible: root.step === 0
-                text: qsTr("You can create shortcuts to files, folders and programs, on this computer or on a network, and to Internet addresses.")
-            }
-            Text {
-                text: root.step === 0 ? qsTr("Type the location of the item:") : qsTr("Type a name for this shortcut:")
-                color: Theme.text
-                font.pixelSize: Theme.fontBody
-            }
-            Field { id: targetFieldBox; visible: root.step === 0 }
-            Field { id: nameFieldBox; visible: root.step === 1 }
-            Text {
-                visible: root.error !== ""
-                width: parent.width
-                text: root.error
-                color: Theme.light ? "#c42b1c" : "#ff99a4"
-                font.pixelSize: Theme.fontCaption
-                wrapMode: Text.WordWrap
-            }
-            Item { width: 1; height: 8 }
-            Row {
-                anchors.right: parent.right
-                spacing: 8
-                Button {
-                    text: root.step === 0 ? qsTr("Next") : qsTr("Finish")
-                    accent: true
-                    usable: (root.step === 0 ? targetFieldBox.text : nameFieldBox.text).trim() !== ""
-                    onClicked: root.shortcutNext()
+                Row {
+                    anchors.right: parent.right
+                    spacing: 8
+                    Button { text: qsTr("Always"); accent: true; usable: root.chosen !== ""; onClicked: root.launchChosen(true) }
+                    Button { text: qsTr("Just once"); usable: root.chosen !== ""; onClicked: root.launchChosen(false) }
                 }
-                Button {
-                    text: root.step === 0 ? qsTr("Cancel") : qsTr("Back")
-                    onClicked: {
-                        if (root.step === 0) {
-                            root.close()
-                        } else {
-                            root.step = 0
-                            targetFieldBox.input.forceActiveFocus()
+            }
+
+            // ------------------------------------------------ New shortcut --
+            Column {
+                id: shortcut
+                visible: root.mode === "shortcut"
+                x: 24
+                y: 24
+                width: parent.width - 48
+                spacing: 10
+
+                Title {
+                    width: parent.width - 32
+                    text: root.step === 0 ? qsTr("What item would you like to create a shortcut for?") : qsTr("What would you like to name the shortcut?")
+                }
+                Note {
+                    visible: root.step === 0
+                    text: qsTr("You can create shortcuts to files, folders and programs, on this computer or on a network, and to Internet addresses.")
+                }
+                Text {
+                    text: root.step === 0 ? qsTr("Type the location of the item:") : qsTr("Type a name for this shortcut:")
+                    color: Theme.text
+                    font.pixelSize: Theme.fontBody
+                }
+                Field { id: targetFieldBox; visible: root.step === 0 }
+                Field { id: nameFieldBox; visible: root.step === 1 }
+                Text {
+                    visible: root.error !== ""
+                    width: parent.width
+                    text: root.error
+                    color: Theme.light ? "#c42b1c" : "#ff99a4"
+                    font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.WordWrap
+                }
+                Item { width: 1; height: 8 }
+                Row {
+                    anchors.right: parent.right
+                    spacing: 8
+                    Button {
+                        text: root.step === 0 ? qsTr("Next") : qsTr("Finish")
+                        accent: true
+                        usable: (root.step === 0 ? targetFieldBox.text : nameFieldBox.text).trim() !== ""
+                        onClicked: root.shortcutNext()
+                    }
+                    Button {
+                        text: root.step === 0 ? qsTr("Cancel") : qsTr("Back")
+                        onClicked: {
+                            if (root.step === 0) {
+                                root.close()
+                            } else {
+                                root.step = 0
+                                targetFieldBox.input.forceActiveFocus()
+                            }
                         }
                     }
                 }

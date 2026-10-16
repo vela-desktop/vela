@@ -33,6 +33,17 @@ Item {
     // same surface, and the compositor blurs under any of its alpha) is not
     // blurred. Two changes per entrance, none per frame.
     readonly property rect area: moving ? travel : Qt.rect(x, y, width, height)
+    // `area` cut to the parent (the window, where the panel rises from
+    // behind the taskbar): what a panel sends as its blur region.
+    readonly property rect visibleArea: {
+        const a = area
+        const w = parent ? parent.width : 0
+        const h = parent ? parent.height : 0
+        const left = Math.max(0, a.x)
+        const top = Math.max(0, a.y)
+        return Qt.rect(left, top, Math.max(0, Math.min(a.x + a.width, w) - left),
+                       Math.max(0, Math.min(a.y + a.height, h) - top))
+    }
     readonly property rect travel: {
         const dx = offset.x * Theme.motion
         const dy = offset.y * Theme.motion
@@ -74,12 +85,14 @@ Item {
         }
         enter.restart()
     }
-    function close() {
+    // `atOnce`: without the exit, when what comes next happens elsewhere at
+    // once (the clipboard's paste needs the keyboard back in the app).
+    function close(atOnce) {
         if (!d.opened)
             return
         d.opened = false
         enter.stop()
-        if (instantExit) {
+        if (instantExit || atOnce) {
             exit.stop()
             opacity = 0
             away = 1

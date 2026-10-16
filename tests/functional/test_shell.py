@@ -11,6 +11,7 @@ from contextlib import contextmanager
 import json
 import os
 import re
+import socket
 import subprocess
 import time
 import unittest
@@ -106,6 +107,14 @@ class RealShell(unittest.TestCase):
     @staticmethod
     def layer(state, namespace):
         return next((layer for layer in state["layers"] if layer["namespace"] == namespace and layer["mapped"]), None)
+
+    def shell_command(self, line):
+        """A line on the shell's own socket, as Files sends them
+        ("properties [...]")."""
+        path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), f"vela-shell-{self.vela.display}.sock")
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.connect(path)
+            connection.sendall(line.encode() + b"\n")
 
 
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
@@ -585,7 +594,7 @@ class QtShell(RealShell):
 
     def test_other_panels_can_reopen_after_native_surface_release(self):
         for key, namespace in [("super+r", "vela-run"), ("super+a", "vela-quick-settings"),
-                               ("super+n", "vela-notification-center")]:
+                               ("super+n", "vela-notification-center"), ("super+v", "vela-clipboard")]:
             with self.subTest(panel=namespace):
                 for _ in range(3):
                     offset = len(self.vela.log_text())
@@ -651,6 +660,93 @@ class QtShell(RealShell):
         self.vela.wait_for(lambda s: not self.mapped(s, self.QS), timeout=3,
                            what="Quick Settings closed by a click in its shadow")
         self.check_desktop()
+
+    # ---------------------------------------------------- the other panels --
+    # docs/visual-coherence.md §6.9: Start, the Notification Center and the
+    # clipboard on PanelMotion, like Quick Settings: (key, namespace, units
+    # of shadow room left of the panel). Start is centered: room on both
+    # sides; the others touch the output's right edge.
+
+    EDGE_PANELS = (("super", "vela-start-menu"), ("super+n", "vela-notification-center"),
+                   ("super+v", "vela-clipboard"))
+
+    def test_edge_panels_repeatedly_open_and_close(self):
+        for key, namespace in self.EDGE_PANELS[1:]: # Start: test_super_repeatedly_opens_and_closes_the_real_menu
+            with self.subTest(panel=namespace):
+                actions = []
+                for _ in range(10):
+                    actions += ["key", key, "sleep", "400", "key", key, "sleep", "350"]
+                self.vela.input(*actions)
+                self.check_desktop()
+                self.vela.wait_for(lambda s: not self.mapped(s, namespace), what=f"{namespace} closed")
+
+    def test_reopening_edge_panels_during_their_exit_turns_back(self):
+        """Reopened while leaving, each turns back: its window never goes
+        away."""
+        for key, namespace in self.EDGE_PANELS:
+            with self.subTest(panel=namespace):
+                process = self.background_input("key", key, "sleep", "600", "key", key, "sleep", "60",
+                                                "key", key, "sleep", "800")
+                self.vela.wait_for(lambda s: self.mapped(s, namespace), what=f"{namespace} open")
+                while process.poll() is None:
+                    self.assertTrue(self.mapped(self.vela.state(), namespace), "it closed before turning back")
+                self.check_desktop()
+                self.assertTrue(self.mapped(self.vela.state(), namespace))
+                self.vela.input("key", "Escape")
+                self.vela.wait_for(lambda s: not self.mapped(s, namespace), what=f"{namespace} closed")
+
+    def test_a_click_in_an_edge_panels_shadow_closes_it(self):
+        """As for Quick Settings: a click in the room left of the panel
+        closes it, one on the panel's own background doesn't."""
+        for key, namespace in self.EDGE_PANELS:
+            with self.subTest(panel=namespace):
+                self.vela.input("key", key)
+                layer = self.settled_layer(namespace)
+                self.vela.input("key", "Escape")
+                self.vela.wait_for(lambda s: not self.mapped(s, namespace), what=f"{namespace} closed")
+                left, top, right, bottom = self.panel_box(layer)
+                # Low in the panel: the Notification Center's calendar, below
+                # the gap between its two panels.
+                y = bottom - 40
+                self.vela.input("key", key, "sleep", "900", "move", left + 6, y, "click", "left", "sleep", "700")
+                self.assertTrue(self.mapped(self.vela.state(), namespace), "a click on the panel closed it")
+                self.vela.input("key", "Escape")
+                self.vela.wait_for(lambda s: not self.mapped(s, namespace), what=f"{namespace} closed")
+                self.vela.input("key", key, "sleep", "900", "move", layer["x"] + 20, y, "click", "left",
+                                "sleep", "700")
+                self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=3,
+                                   what=f"{namespace} closed by a click in its shadow")
+                self.check_desktop()
+
+    def test_dialogs_leave_animated_menus_and_task_view_at_once(self):
+        """docs/visual-coherence.md D16 and K5: dialogs and panels leave with
+        an animation (`normal`, 600 ms at 300%), menus and Task View vanish
+        at once."""
+        self.slow_animations()
+        cases = (("Run", lambda: self.vela.input("key", "super+r"), "vela-run", True),
+                 ("Properties", lambda: self.shell_command(f'properties {json.dumps([self.vela.directory])}'),
+                  "vela-properties", True),
+                 ("the clipboard", lambda: self.vela.input("key", "super+v"), "vela-clipboard", True),
+                 ("the desktop menu", lambda: self.vela.input("move", 900, 500, "sleep", "300", "click", "right"),
+                  "vela-context-menu", False),
+                 ("Task View", lambda: self.vela.input("key", "super+Tab"), "vela-task-view", False))
+        took = {}
+        for name, show, namespace, _ in cases:
+            show()
+            self.vela.wait_for(lambda s: self.mapped(s, namespace), what=f"{name} open")
+            time.sleep(1.5)
+            start = time.monotonic()
+            self.vela.input("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{name} closed")
+            took[name] = time.monotonic() - start
+            time.sleep(0.5)
+        self.check_desktop()
+        for name, _, _, animated in cases:
+            with self.subTest(panel=name):
+                if animated:
+                    self.assertGreater(took[name], 0.45, f"{name} vanished at once: {took}")
+                else:
+                    self.assertLess(took[name], 0.3, f"{name} left with an animation: {took}")
 
     def settled_layer(self, namespace):
         """The layer once its geometry has stayed the same for a second (the
@@ -741,6 +837,8 @@ class PanelBlur(RealShell):
     # edge can be anything).
     BLURRED = 6
     UNCOVERED = 125
+    EDGE = 3
+    PARTIAL = 60 # the panel over the output's edge
 
     def blur_regions(self, namespace):
         """The blur regions the shell asked for this layer's latest surface,
@@ -768,16 +866,16 @@ class PanelBlur(RealShell):
         return [max(max(abs(a - b) for a, b in zip(image.at(x + i, y), image.at(x + i + 4, y))) for i in range(4))
                 for y in range(image.height)]
 
-    def test_quick_settings_has_blur_behind_it_while_it_slides(self):
+    def rising_blur(self, key, namespace, room_left=46, width=360, inset=8):
         """Every frame of the entrance has blur behind the whole panel, also
         below where it rests (it rises from behind the taskbar); at rest its
-        shadow there isn't blurred."""
+        shadow there isn't blurred. A strip `inset` units into the panel,
+        where it is plain surface."""
         self.slow_animations()
-        self.vela.input("key", "super+a")
-        layer = self.vela.wait_for(lambda s: self.layer(s, "vela-quick-settings"), what="Quick Settings open")
-        layer = self.layer(layer, "vela-quick-settings")
-        # A strip in the panel's left margin, where it is plain surface.
-        x = layer["x"] + 46 + 8
+        self.vela.input("key", key)
+        layer = self.vela.wait_for(lambda s: self.layer(s, namespace), what=f"{namespace} open")
+        layer = self.layer(layer, namespace)
+        x = layer["x"] + room_left + inset
         bottom = layer["y"] + layer["h"] # the window's, on the taskbar
         rest_bottom = bottom - 12
         path = os.path.join(self.vela.directory, "strip.png")
@@ -787,35 +885,114 @@ class PanelBlur(RealShell):
             self.vela.screenshot(path, region=(x, 0, 12, bottom))
             frames.append(self.stripes(Image.read(path), 0))
         time.sleep(1.5)
-        settled = self.layer(self.vela.state(), "vela-quick-settings")
+        settled = self.layer(self.vela.state(), namespace)
         self.assertEqual((settled["y"], settled["h"]), (layer["y"], layer["h"]), "the window changed size")
         self.vela.screenshot(path, region=(x, 0, 12, bottom))
         rest = self.stripes(Image.read(path), 0)
         top = next(y for y, c in enumerate(rest) if c <= self.BLURRED)
-        self.assertGreater(sum(1 for c in rest if c <= self.BLURRED), 200)
+        panel_rows = rest_bottom - (layer["y"] + 46)
+        enough = panel_rows * 3 // 4
+        self.assertGreater(sum(1 for c in rest if c <= self.BLURRED), enough)
         # At rest the blur is the panel's only: its shadow, in the same
         # surface, shows the stripes, darker.
         shadow = rest[rest_bottom + 2:bottom]
         self.assertTrue(all(c > self.UNCOVERED for c in shadow), f"the shadow is blurred: {shadow}")
-        regions = self.blur_regions("vela-quick-settings")
-        self.assertEqual(regions[-1], [(46, 46, 360, layer["h"] - 46 - 12)], "the region at rest isn't the panel")
+        regions = self.blur_regions(namespace)
+        self.assertEqual(regions[-1], [(room_left, 46, width, layer["h"] - 46 - 12)],
+                         "the region at rest isn't the panel")
 
         sliding = 0
         for number, rows in enumerate(frames):
             blurred = [y for y, c in enumerate(rows) if c <= self.BLURRED]
-            if len(blurred) < 200:
+            if len(blurred) < enough:
                 continue # still faint: the blur follows its opacity
             if blurred[0] <= top + 1:
                 continue # at rest
             # Below the blurred rows down to the window's bottom: the shadow
-            # or the wallpaper, never the panel without blur (one row of
-            # antialiased edge).
+            # or the wallpaper, never the panel without blur. EDGE rows: the
+            # panel's antialiased edge and the shadow just below it, blurred
+            # a little inside the travel (§6.9); without the travel the
+            # band would be as tall as the slide.
             unblurred = [y for y in range(blurred[-1] + 1, bottom) if rows[y] <= self.UNCOVERED]
-            self.assertLessEqual(len(unblurred), 1, f"frame {number}: the panel without blur at rows {unblurred} "
-                                                    f"({[rows[y] for y in unblurred]})")
+            self.assertLessEqual(len(unblurred), self.EDGE, f"frame {number}: the panel without blur at rows "
+                                                            f"{unblurred} ({[rows[y] for y in unblurred]})")
             if blurred[-1] > rest_bottom + 2:
                 sliding += 1
         self.assertGreater(sliding, 0, "no capture landed while the panel was below where it rests")
+
+    def test_quick_settings_has_blur_behind_it_while_it_slides(self):
+        self.rising_blur("super+a", "vela-quick-settings")
+
+    def test_start_has_blur_behind_it_while_it_rises(self):
+        self.rising_blur("super", "vela-start-menu", width=640)
+
+    def test_the_clipboard_has_blur_behind_it_while_it_rises(self):
+        # Left of its title: 3 units in.
+        self.rising_blur("super+v", "vela-clipboard", inset=3)
+
+    def test_the_notification_center_has_blur_behind_it_while_it_slides(self):
+        """It comes from the right: every frame has blur behind the whole
+        panel, also right of where it rests (the window cuts it at the
+        output's edge); at rest its shadow there isn't blurred."""
+        self.slow_animations()
+        namespace = "vela-notification-center"
+        self.vela.input("key", "super+n")
+        layer = self.vela.wait_for(lambda s: self.layer(s, namespace), what="the Notification Center open")
+        layer = self.layer(layer, namespace)
+        # A row in the calendar's bottom margin, from the window's left edge
+        # to the output's.
+        y = layer["y"] + layer["h"] - 12 - 6
+        x0, right = layer["x"], layer["x"] + layer["w"]
+        rest_right = right - 12 - x0
+        path = os.path.join(self.vela.directory, "row.png")
+
+        def columns():
+            """For each column, the contrast with the stripe 4 pixels to its
+            right (to its left in the last 4, at the output's edge)."""
+            self.vela.screenshot(path, region=(x0, y, layer["w"], 1))
+            image = Image.read(path)
+            return [max(abs(a - b) for a, b in zip(image.at(x, 0), image.at(x + 4 if x + 4 < image.width else x - 4, 0)))
+                    for x in range(image.width)]
+
+        frames = []
+        deadline = time.monotonic() + 1.2
+        while time.monotonic() < deadline:
+            frames.append(columns())
+        time.sleep(1.5)
+        rest = columns()
+        resting = [x for x, c in enumerate(rest) if c <= self.BLURRED]
+        left = resting[0]
+        self.assertLessEqual(abs(left - 47), 1, f"the panel doesn't rest where expected: {left}") # after its border
+        # How many columns from the first are blurred when all of the panel
+        # is in the window.
+        span = resting[-1] - left
+        shadow = rest[rest_right + 2:]
+        self.assertTrue(all(c > self.UNCOVERED for c in shadow), f"the shadow is blurred: {shadow}")
+        regions = self.blur_regions(namespace)
+        self.assertEqual(len(regions[-1]), 2, "at rest the region isn't the two panels")
+        for rect in regions[-1]:
+            self.assertEqual((rect[0], rect[2]), (46, 360))
+        self.assertEqual(sum(r[3] for r in regions[-1]) + 12, layer["h"] - 46 - 12, "not the two panels")
+
+        sliding = 0
+        for number, cols in enumerate(frames):
+            blurred = [x for x, c in enumerate(cols) if c <= self.BLURRED]
+            if len(blurred) < 300:
+                continue # still faint: the blur follows its opacity
+            if blurred[0] <= left + 1:
+                continue # at rest
+            # As many columns as at rest, from where the panel is in this
+            # frame, cut by the output's edge: blurred, if only partly at
+            # the edge (the blur there reads the pixels it has), but for its
+            # right edge and the columns that read past it (4). Without the
+            # travel the 12 and more right of where it rests show the
+            # stripes.
+            unblurred = [x for x in range(blurred[0], min(blurred[0] + span, len(cols)))
+                         if cols[x] > self.PARTIAL]
+            self.assertLessEqual(len(unblurred), 4, f"frame {number}: the panel without blur at columns "
+                                                    f"{unblurred} ({[cols[x] for x in unblurred]})")
+            sliding += 1
+        self.assertGreater(sliding, 0, "no capture landed while the panel was sliding")
 
 
 if __name__ == "__main__":

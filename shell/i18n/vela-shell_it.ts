@@ -650,6 +650,10 @@
         <translation>Sfoglia</translation>
     </message>
     <message>
+        <source>Browse...</source>
+        <translation>Sfoglia...</translation>
+    </message>
+    <message>
         <source>Type the name of a program, folder, document or Internet resource, and Vela will open it for you.</source>
         <translation>Digita il nome di un programma, cartella, documento o risorsa Internet e Vela lo aprirà.</translation>
     </message>
