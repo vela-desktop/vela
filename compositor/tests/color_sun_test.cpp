@@ -20,6 +20,21 @@ TEST(Color, NightKelvinFromStrength)
     EXPECT_EQ(vela_night_kelvin(500), 1700.0);
 }
 
+TEST(Color, NightTemperatureInKelvinOrFromTheOlderStrength)
+{
+    EXPECT_EQ(vela_night_temperature(nullptr, nullptr), 4200);
+    EXPECT_EQ(vela_night_temperature("", ""), 4200);
+    EXPECT_EQ(vela_night_temperature("3400", nullptr), 3400);
+    EXPECT_EQ(vela_night_temperature("3449", "100"), 3400); // the kelvin win, in steps of 100
+    EXPECT_EQ(vela_night_temperature("3450", nullptr), 3500);
+    EXPECT_EQ(vela_night_temperature("900", nullptr), 1700);
+    EXPECT_EQ(vela_night_temperature("9000", nullptr), 6500);
+    EXPECT_EQ(vela_night_temperature("warm", nullptr), 1700);
+    EXPECT_EQ(vela_night_temperature(nullptr, "48"), 4200); // 4196 K
+    EXPECT_EQ(vela_night_temperature(nullptr, "100"), 1700);
+    EXPECT_EQ(vela_night_temperature("", "0"), 6500);
+}
+
 TEST(Color, NightGainsAreNeutralAt6500AndWarmBelow)
 {
     float gains[3];

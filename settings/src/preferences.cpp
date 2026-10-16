@@ -5,6 +5,7 @@
 #include "../../common/privatefile.h"
 
 extern "C" {
+#include "color.h"
 #include "legacy_names.h"
 }
 
@@ -207,7 +208,11 @@ void Preferences::reloadCompositor()
     emit keyboardChanged();
 
     m_nightLight = flag(QStringLiteral("night-light"), false);
-    m_nightStrength = std::clamp(value(QStringLiteral("night-light-strength"), QStringLiteral("48")).toInt(), 0, 100);
+    {
+        const QByteArray temperature = value(QStringLiteral("night-light-temperature"), {}).toUtf8();
+        const QByteArray strength = value(QStringLiteral("night-light-strength"), {}).toUtf8();
+        m_nightTemperature = vela_night_temperature(temperature.constData(), strength.constData());
+    }
     m_nightNvidiaFix = flag(QStringLiteral("night-light-nvidia-fix"), false);
     m_nightSchedule = value(QStringLiteral("night-light-schedule"), QStringLiteral("no"));
     m_nightFrom = value(QStringLiteral("night-light-from"), QStringLiteral("21:00"));
@@ -627,12 +632,12 @@ void Preferences::setNightLight(bool on)
     }
 }
 
-void Preferences::setNightStrength(int strength)
+void Preferences::setNightTemperature(int kelvin)
 {
-    strength = std::clamp(strength, 0, 100);
-    if (strength != m_nightStrength) {
-        m_nightStrength = strength;
-        saveCompositor({ { QStringLiteral("night-light-strength"), QString::number(strength) } });
+    kelvin = std::clamp((kelvin + 50) / 100 * 100, VELA_NIGHT_KELVIN_MIN, VELA_NIGHT_KELVIN_MAX);
+    if (kelvin != m_nightTemperature) {
+        m_nightTemperature = kelvin;
+        saveCompositor({ { QStringLiteral("night-light-temperature"), QString::number(kelvin) } });
         emit nightLightChanged();
     }
 }

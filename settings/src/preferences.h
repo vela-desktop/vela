@@ -53,7 +53,8 @@ class Preferences : public QObject {
     Q_PROPERTY(int repeatRate READ repeatRate WRITE setRepeatRate NOTIFY keyboardChanged)
     // --- Display: night light and games ---
     Q_PROPERTY(bool nightLight READ nightLight WRITE setNightLight NOTIFY nightLightChanged)
-    Q_PROPERTY(int nightStrength READ nightStrength WRITE setNightStrength NOTIFY nightLightChanged)
+    // Kelvin, 1700-6500 (night-light-temperature; the older strength without it).
+    Q_PROPERTY(int nightTemperature READ nightTemperature WRITE setNightTemperature NOTIFY nightLightChanged)
     Q_PROPERTY(bool nightNvidiaFix READ nightNvidiaFix WRITE setNightNvidiaFix NOTIFY nightLightChanged)
     // "no", "sunset" (from sunset to sunrise) or "hours"
     Q_PROPERTY(QString nightSchedule READ nightSchedule WRITE setNightSchedule NOTIFY nightLightChanged)
@@ -141,8 +142,8 @@ public:
 
     bool nightLight() const { return m_nightLight; }
     void setNightLight(bool on);
-    int nightStrength() const { return m_nightStrength; }
-    void setNightStrength(int strength);
+    int nightTemperature() const { return m_nightTemperature; }
+    void setNightTemperature(int kelvin);
     /** Whether Night Light uses Vulkan tinting instead of the DRM gamma LUT. */
     bool nightNvidiaFix() const { return m_nightNvidiaFix; }
     void setNightNvidiaFix(bool on);
@@ -252,7 +253,7 @@ private:
     int m_repeatDelay = 400;
     int m_repeatRate = 30;
     bool m_nightLight = false;
-    int m_nightStrength = 48;
+    int m_nightTemperature = 4200;
     bool m_nightNvidiaFix = false;
     QString m_nightSchedule = QStringLiteral("no");
     QString m_nightFrom = QStringLiteral("21:00");

@@ -73,15 +73,28 @@ Page {
         }
         Card {
             icon: "color-management"
-            title: qsTr("Strength")
-            trailing: Slider {
-                width: 220
-                from: 0
-                to: 100
-                stepSize: 1
-                live: false
-                value: Prefs.nightStrength
-                onReleased: value => Prefs.nightStrength = Math.round(value)
+            title: qsTr("Color temperature")
+            description: qsTr("Lower is warmer; 6500 K is the screen's normal white")
+            trailing: Row {
+                spacing: 12
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    // Where the knob is, also during a drag (the value changes on release).
+                    text: qsTr("%1 K").arg(Math.round(temperature.valueAt(temperature.position) / 100) * 100)
+                    color: Theme.text
+                    font.pixelSize: Theme.fontBody
+                }
+                Slider {
+                    id: temperature
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 220
+                    from: 1700
+                    to: 6500
+                    stepSize: 100
+                    live: false
+                    value: Prefs.nightTemperature
+                    onReleased: value => Prefs.nightTemperature = Math.round(value)
+                }
             }
         }
         Card {

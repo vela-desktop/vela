@@ -92,7 +92,7 @@ class Accessibility(unittest.TestCase):
     def test_night_light_headless_fallback_pixels(self):
         # A headless output has no DRM gamma LUT. The Vulkan fallback must
         # tint rendered pixels, then restore the originals when turned off.
-        self.start(["night-light-strength=100"])
+        self.start(["night-light-temperature=1700"])
         identifier = self.vela.open_window(400, 300,
                                            command=[tool("vela-pattern"), "--scale1", "400", "300"])
         window = self.vela.state().window(identifier)
@@ -131,13 +131,13 @@ class Accessibility(unittest.TestCase):
         # The experimental override is opt-in, persists in vela.conf and can be
         # switched without restarting the compositor. Headless always renders
         # using Vulkan; real DRM/NVIDIA validation needs physical hardware.
-        self.start(["night-light-nvidia-fix=yes", "night-light-strength=100"])
+        self.start(["night-light-nvidia-fix=yes", "night-light-temperature=1700"])
         self.assertTrue(self.a11y()["nightLightNvidiaFix"])
         self.vela.command("night-light on")
         self.vela.wait_for(lambda _: self.a11y()["nightLight"], what="Night light enabled",
                            read_state=False)
         with open(self.vela.config_path(), "w") as conf:
-            conf.write("night-light=yes\nnight-light-strength=100\nnight-light-nvidia-fix=no\n")
+            conf.write("night-light=yes\nnight-light-temperature=1700\nnight-light-nvidia-fix=no\n")
         self.vela.command("reload-config")
         self.vela.wait_for(lambda _: not self.a11y()["nightLightNvidiaFix"],
                            what="experimental NVIDIA fix disabled by reload",
@@ -150,6 +150,7 @@ class Accessibility(unittest.TestCase):
         # Headless has no hardware LUT, but switching the option while warm
         # must preserve the visible tint and a final fade must restore every
         # pixel. The actual DRM gamma -> Vulkan transition needs hardware.
+        # The older key, still read without night-light-temperature: 1700 K.
         self.start(["night-light-strength=100", "night-light-nvidia-fix=yes"])
         identifier = self.vela.open_window(400, 300,
                                            command=[tool("vela-pattern"), "--scale1", "400", "300"])
@@ -170,7 +171,7 @@ class Accessibility(unittest.TestCase):
             # Record the frame count before reload to detect a fresh frame.
             frames_before_reload = self.vela.state()["outputs"][0]["frames"]
             with open(self.vela.config_path(), "w") as conf:
-                conf.write("night-light=yes\nnight-light-strength=100\n"
+                conf.write("night-light=yes\nnight-light-temperature=1700\n"
                            f"night-light-nvidia-fix={'yes' if enabled else 'no'}\n")
             self.vela.command("reload-config")
             self.vela.wait_for(lambda _: self.a11y()["nightLightNvidiaFix"] == enabled,

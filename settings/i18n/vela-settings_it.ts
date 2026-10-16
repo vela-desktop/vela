@@ -1797,8 +1797,16 @@ Specifiche sistema
         <translation>Attiva ora</translation>
     </message>
     <message>
-        <source>Strength</source>
-        <translation>Intensità</translation>
+        <source>Color temperature</source>
+        <translation>Temperatura colore</translation>
+    </message>
+    <message>
+        <source>Lower is warmer; 6500 K is the screen&apos;s normal white</source>
+        <translation>Più è bassa, più è calda; 6500 K è il bianco normale dello schermo</translation>
+    </message>
+    <message>
+        <source>%1 K</source>
+        <translation>%1 K</translation>
     </message>
     <message>
         <source>Experimental NVIDIA fix</source>

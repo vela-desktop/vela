@@ -99,7 +99,7 @@ static void apply_color(struct vela_a11y *a11y)
     float gains[3] = { 1.0f, 1.0f, 1.0f };
     bool night = a11y->night_level > 0.0;
     if (night) {
-        vela_night_gains(6500.0 + (vela_night_kelvin(a11y->night_strength) - 6500.0) * a11y->night_level, gains);
+        vela_night_gains(6500.0 + (a11y->night_kelvin - 6500.0) * a11y->night_level, gains);
     }
     bool filter_changed = a11y->color_filter != scene->color_filtered
         || (a11y->color_filter && memcmp(m, scene->color_filter, sizeof(m)) != 0);
@@ -197,7 +197,7 @@ struct vela_a11y *vela_a11y_create(struct vela_server *server)
 {
     struct vela_a11y *a11y = calloc(1, sizeof(*a11y));
     a11y->server = server;
-    a11y->night_strength = 48;
+    a11y->night_kelvin = VELA_NIGHT_KELVIN_DEFAULT;
     snprintf(a11y->schedule, sizeof(a11y->schedule), "no");
     a11y->night_from = 21 * 60;
     a11y->night_to = 7 * 60;
@@ -237,7 +237,8 @@ void vela_a11y_load(struct vela_a11y *a11y)
 {
     struct vela_config settings;
     vela_config_read(&settings);
-    a11y->night_strength = vela_clamp(atoi(vela_config_get(&settings, "night-light-strength", "48")), 0, 100);
+    a11y->night_kelvin = vela_night_temperature(vela_config_get(&settings, "night-light-temperature", NULL),
+        vela_config_get(&settings, "night-light-strength", NULL));
     a11y->night_nvidia_fix = vela_config_flag(&settings, "night-light-nvidia-fix", false);
     snprintf(a11y->schedule, sizeof(a11y->schedule), "%s", vela_config_get(&settings, "night-light-schedule", "no"));
     a11y->night_from = vela_parse_clock(vela_config_get(&settings, "night-light-from", ""), 21 * 60);

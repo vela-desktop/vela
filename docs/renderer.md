@@ -618,6 +618,9 @@ red, green and blue remains at the chosen temperature).
   atomically with the newly shader-tinted frame; a failed clear leaves the
   shader off until a safe retry. This is a diagnostic workaround for drivers
   that accept the LUT but display corrupted colors.
+- The temperature is `night-light-temperature`, in kelvin (1700–6500; Settings
+  shows it as such): the gains are those of a black body at that temperature
+  relative to 6500 K.
 - The transition (one second, like Windows) is an animation of §4.2: a new value
   on every frame, and the whole output redrawn (or just a new gamma).
 

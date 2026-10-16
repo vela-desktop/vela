@@ -6,6 +6,7 @@
 #include "util.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 const float vela_identity[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
@@ -52,6 +53,18 @@ void vela_night_gains(double kelvin, float out[3])
 double vela_night_kelvin(int strength)
 {
     return 6500.0 - vela_clamp(strength, 0, 100) / 100.0 * (6500.0 - 1700.0);
+}
+
+int vela_night_temperature(const char *temperature, const char *strength)
+{
+    double kelvin = VELA_NIGHT_KELVIN_DEFAULT;
+    if (temperature && *temperature) {
+        kelvin = atoi(temperature);
+    } else if (strength && *strength) {
+        kelvin = vela_night_kelvin(atoi(strength));
+    }
+    int rounded = (int)lround(kelvin / 100.0) * 100;
+    return vela_clamp(rounded, VELA_NIGHT_KELVIN_MIN, VELA_NIGHT_KELVIN_MAX);
 }
 
 void vela_matrix_multiply(const float a[9], const float b[9], float out[9])
