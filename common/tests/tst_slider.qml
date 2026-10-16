@@ -141,6 +141,21 @@ Item {
             tryCompare(dot, "width", 14, 2000)
         }
 
+        function test_hover_is_instant_without_effects() {
+            if (Theme.animationEffects)
+                skip("with effects on")
+            const x = handleCenter(control)
+            mouseMove(control, x, control.height / 2)
+            compare(control.hovered, true)
+            compare(dot.width, 14)
+            mousePress(control, x, control.height / 2)
+            compare(dot.width, 10)
+            mouseRelease(control, x, control.height / 2)
+            compare(dot.width, 14)
+            mouseMove(root, 390, 290)
+            compare(dot.width, 12)
+        }
+
         function test_tab_focuses_and_shows_the_ring() {
             const ring = control.handle.children[1]
             verify(!ring.visible)
