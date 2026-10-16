@@ -116,6 +116,7 @@ void Preferences::reload()
     m_endTask = settings.value(QStringLiteral("taskbar/endTask"), true).toBool();
     m_taskView = settings.value(QStringLiteral("taskbar/taskView"), true).toBool();
     m_taskbarAllScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
+    m_showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
     emit taskbarChanged();
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
     emit doNotDisturbChanged();
@@ -425,6 +426,15 @@ void Preferences::setTaskbarAllScreens(bool on)
     if (on != m_taskbarAllScreens) {
         m_taskbarAllScreens = on;
         setShell(QStringLiteral("taskbar/allScreens"), on);
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setShowDesktopCorner(bool on)
+{
+    if (on != m_showDesktopCorner) {
+        m_showDesktopCorner = on;
+        setShell(QStringLiteral("taskbar/showDesktopCorner"), on);
         emit taskbarChanged();
     }
 }
