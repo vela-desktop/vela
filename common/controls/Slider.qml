@@ -29,6 +29,7 @@ T.Slider {
     implicitHeight: 32
     padding: 0
     focusPolicy: Qt.TabFocus
+    hoverEnabled: true // do not inherit platform-dependent hover defaults
     wheelEnabled: true
     opacity: enabled ? 1 : 0.45
 
@@ -117,7 +118,7 @@ T.Slider {
             height: width
             radius: width / 2
             color: Theme.accentFill
-            Behavior on width { NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
+            Behavior on width { enabled: Theme.motion > 0; NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate } }
         }
         // Keyboard focus: a ring around the knob, like Windows.
         Rectangle {
