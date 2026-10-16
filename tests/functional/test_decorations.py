@@ -188,6 +188,10 @@ class ShellColors(unittest.TestCase):
             vela.wait_for(lambda _: vela.pixels().at(*spot(second)) == (0x10, 0x20, 0x30), read_state=False,
                           what="the active bar in Mica's active color")
             self.assertEqual(vela.pixels().at(*spot(first)), (0x40, 0x50, 0x60), "the inactive one")
+            # Malformed hex must not be partially parsed and applied.
+            vela.command("mica #12zzzz #abcdef")
+            self.assertEqual(vela.pixels().at(*spot(second)), (0x10, 0x20, 0x30))
+            self.assertEqual(vela.pixels().at(*spot(first)), (0x40, 0x50, 0x60))
 
     def test_the_close_hover_fades(self):
         for hz in (60, 180):
