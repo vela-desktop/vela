@@ -482,7 +482,7 @@ int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "--test") == 0) return test_diff();
     if (argc != 4) {
-        fprintf(stderr, "usage: %s ELEMENTS OUTPUTS SCENARIO\nscenarios: stable move rotate reverse churn-quarter replace-all insert-front insert-middle remove-front restack-window popup-open-close animation-churn\n", argv[0]);
+        fprintf(stderr, "usage: %s ELEMENTS OUTPUTS SCENARIO\nscenarios: stable move rotate reverse churn-quarter replace-all insert-front insert-middle remove-front restack-window popup-open-close animation-churn duplicate-keys\n", argv[0]);
         return 1;
     }
     char *end;
