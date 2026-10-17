@@ -179,6 +179,30 @@
 <context>
     <name>Files</name>
     <message>
+        <source>File transfer did not start</source>
+        <translation>Impossibile avviare il trasferimento</translation>
+    </message>
+    <message>
+        <source>A drive is being ejected or the transfer lock is unavailable. Try again.</source>
+        <translation>È in corso l'espulsione di un'unità oppure il blocco del trasferimento non è disponibile. Riprova.</translation>
+    </message>
+    <message>
+        <source>Invalid transfer request.</source>
+        <translation>Richiesta di trasferimento non valida.</translation>
+    </message>
+    <message>
+        <source>The destination folder does not exist.</source>
+        <translation>La cartella di destinazione non esiste.</translation>
+    </message>
+    <message>
+        <source>The source files are no longer available.</source>
+        <translation>I file sorgente non sono più disponibili.</translation>
+    </message>
+    <message>
+        <source>Could not open the file transfer window.</source>
+        <translation>Impossibile aprire la finestra del trasferimento.</translation>
+    </message>
+    <message>
         <source>This drive is being ejected. Wait for ejection to finish before transferring files.</source>
         <translation>È in corso l&apos;espulsione di questa unità. Attendi che termini prima di trasferire i file.</translation>
     </message>
