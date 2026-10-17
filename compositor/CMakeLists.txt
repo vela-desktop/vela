@@ -276,6 +276,13 @@ if(VELA_BUILD_TOOLS)
     target_link_options(vela-scene-diff-test PRIVATE -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free)
     add_test(NAME compositor.scene-diff COMMAND vela-scene-diff-test --test)
 
+    # The locker recovery state machine must be exercised on CPU-only CI.
+    add_executable(vela-lock-retry-test tests/lock_retry_policy_test.c)
+    target_include_directories(vela-lock-retry-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    set_target_properties(vela-lock-retry-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    target_compile_options(vela-lock-retry-test PRIVATE -Wall -Wextra -Werror)
+    add_test(NAME compositor.lock-retry-policy COMMAND vela-lock-retry-test)
+
     find_package(GTest)
     if(GTest_FOUND)
         add_executable(vela-compositor-tests
