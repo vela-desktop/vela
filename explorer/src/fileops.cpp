@@ -255,7 +255,7 @@ FileOps::FileOps(AppModel* apps, QObject* parent)
     , m_jobModel(new TransferJobsModel(this))
 {
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FileOps::clipboardChanged);
-    const QDBusConnection bus = QDBusConnection::sessionBus();
+    QDBusConnection bus = QDBusConnection::sessionBus();
     if (bus.isConnected()) {
         bus.registerObject(QStringLiteral("/org/vela/Files/Transfers"), this,
             QDBusConnection::ExportScriptableSlots);
@@ -331,7 +331,7 @@ void FileOps::setEjectGuard(std::function<bool(const QStringList&, const QString
 
 void FileOps::publishJob(int id, bool snapshot) const
 {
-    const QDBusConnection bus = QDBusConnection::sessionBus();
+    QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected()) return;
     for (const auto& job : m_jobs) {
         if (job->id != id) continue;
@@ -347,7 +347,7 @@ void FileOps::publishJob(int id, bool snapshot) const
 
 void FileOps::publishRemoved(int id) const
 {
-    const QDBusConnection bus = QDBusConnection::sessionBus();
+    QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected()) return;
     QDBusMessage msg = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
         QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("Removed"));
