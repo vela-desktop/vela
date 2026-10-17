@@ -18,6 +18,12 @@ Window {
     title: current ? current.title + qsTr(" - File Explorer") : qsTr("File Explorer")
 
     onActiveChanged: Theme.windowActive = active
+    onClosing: close => {
+        if (Ops.activeJobCount > 0) {
+            close.accepted = false
+            activeTransfersDialog.open()
+        }
+    }
 
     // --- preferences, remembered across launches ---
     Settings {
@@ -60,6 +66,10 @@ Window {
         currentIndex = tabs.length - 1
     }
     function closeTab(index) {
+        if (tabs.length === 1 && Ops.activeJobCount > 0) {
+            activeTransfersDialog.open()
+            return
+        }
         const tab = tabs[index]
         const rest = tabs.slice()
         rest.splice(index, 1)
@@ -218,6 +228,13 @@ Window {
     }
 
     // --- dialogs ---
+    Dialog {
+        id: activeTransfersDialog
+        title: qsTr("File transfer in progress")
+        text: qsTr("Files are still being copied or moved. Keep File Explorer open until they finish, or cancel the transfer first.")
+        buttons: [{ text: qsTr("Keep copying"), accent: true, value: "ok" }]
+    }
+
     function showError(message) {
         errorDialog.text = message
         errorDialog.open()

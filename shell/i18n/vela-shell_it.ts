@@ -62,6 +62,10 @@
 <context>
     <name>Desktop</name>
     <message>
+        <source>Could not launch Vela Files to transfer the selected items.</source>
+        <translation>Impossibile avviare Vela Files per trasferire gli elementi selezionati.</translation>
+    </message>
+    <message>
         <source>Couldn&apos;t create the shortcut.</source>
         <translation>Impossibile creare il collegamento.</translation>
     </message>
@@ -124,6 +128,13 @@
     <message>
         <source>Couldn&apos;t create the shortcut here.</source>
         <translation>Impossibile creare il collegamento qui.</translation>
+    </message>
+</context>
+<context>
+    <name>Files</name>
+    <message>
+        <source>File transfer did not start</source>
+        <translation>Impossibile avviare il trasferimento</translation>
     </message>
 </context>
 <context>
@@ -1405,6 +1416,21 @@
     <message>
         <source>Yes</source>
         <translation>Sì</translation>
+    </message>
+</context>
+<context>
+    <name>Shell</name>
+    <message>
+        <source>File transfer complete</source>
+        <translation>Trasferimento file completato</translation>
+    </message>
+    <message>
+        <source>File transfer interrupted</source>
+        <translation>Trasferimento file interrotto</translation>
+    </message>
+    <message>
+        <source>File Explorer closed before this transfer finished.</source>
+        <translation>Esplora file è stato chiuso prima del completamento del trasferimento.</translation>
     </message>
 </context>
 </TS>

@@ -4,73 +4,96 @@
 import QtQuick
 import Vela.Controls
 
-// Copies and moves in progress, at the bottom right: title, percentage, the
-// current file, and the X to cancel; like Windows' progress dialog, in small.
-Column {
+// The overlay is always sized explicitly. A long-running copy must stay
+// visible even if an implicit size or Repeater layout would otherwise collapse.
+Item {
     id: root
-    spacing: 8
-    width: 340
+    objectName: "transferProgressPanel"
+    width: Math.min(380, Math.max(220, parent ? parent.width - 32 : 380))
+    // The backend maintains active jobs first with granular row updates.
+    readonly property int jobCount: jobList.count
+    readonly property int cardHeight: 116
+    readonly property int gap: 8
+    height: Math.min(Math.max(0, parent ? parent.height - 96 : 500),
+                     jobCount * cardHeight + Math.max(0, jobCount - 1) * gap)
+    visible: jobCount > 0
 
-    Repeater {
-        model: Ops.jobs
+    ListView {
+        id: jobList
+        objectName: "transferJobsList"
+        anchors.fill: parent
+        spacing: root.gap
+        clip: true
+        model: Ops.jobModel
+        interactive: contentHeight > height
+        // Even if the user was scrolled down through old errors, new jobs
+        // take focus at the top rather than remaining outside the viewport.
+        onCountChanged: if (count > 0) Qt.callLater(() => positionViewAtBeginning())
+
         delegate: Rectangle {
             id: card
             required property var modelData
-            readonly property real fraction: modelData.total > 0 ? Math.min(1, modelData.done / modelData.total) : 0
-            width: root.width
-            height: content.height + 24
+            objectName: "transferJob:" + modelData.id
+            readonly property real fraction: modelData.total > 0
+                ? Math.max(0, Math.min(1, modelData.done / modelData.total)) : 0
+            width: ListView.view.width
+            height: root.cardHeight
             radius: Theme.radiusOverlay
             color: Theme.dialog
             border.width: 1
-            border.color: Qt.rgba(0, 0, 0, 0.45)
+            border.color: Theme.dialogStroke
 
-            Column {
-                id: content
+            Text {
                 x: 16
                 y: 12
+                width: parent.width - 64
+                height: 36
+                text: card.modelData.error !== "" ? card.modelData.error
+                    : card.modelData.finished ? card.modelData.doneTitle
+                    : card.modelData.title
+                color: card.modelData.error !== "" ? Theme.critical : Theme.text
+                font.pixelSize: Theme.fontBody
+                maximumLineCount: 2
+                wrapMode: Text.Wrap
+                elide: Text.ElideRight
+            }
+            ToolButton {
+                objectName: "transferCancelButton:" + card.modelData.id
+                anchors { right: parent.right; top: parent.top; rightMargin: 8; topMargin: 8 }
+                width: 32
+                height: 32
+                icon.name: "window-close"
+                tooltip: card.modelData.finished ? qsTr("Dismiss") : qsTr("Cancel transfer")
+                onClicked: card.modelData.finished
+                    ? Ops.dismissJob(card.modelData.id) : Ops.cancelJob(card.modelData.id)
+            }
+            Text {
+                x: 16
+                y: 53
                 width: parent.width - 32
-                spacing: 6
-                Item {
-                    width: parent.width
-                    height: titleText.height
-                    Text {
-                        id: titleText
-                        width: parent.width - 32
-                        text: card.modelData.error !== "" ? card.modelData.error
-                            : card.modelData.finished ? card.modelData.doneTitle
-                            : card.modelData.title
-                        color: card.modelData.error !== "" ? Theme.critical : Theme.text
-                        font.pixelSize: Theme.fontBody
-                        elide: Text.ElideRight
-                    }
-                    ToolButton {
-                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                        width: 28
-                        height: 28
-                        icon.name: "window-close"
-                        onClicked: card.modelData.finished ? Ops.dismissJob(card.modelData.id) : Ops.cancelJob(card.modelData.id)
-                    }
-                }
-                Text {
-                    text: Math.round(card.fraction * 100) + qsTr("% complete") + (card.modelData.current !== "" ? " · " + card.modelData.current : "")
-                    visible: !card.modelData.finished
-                    width: parent.width
-                    color: Theme.textSecondary
-                    font.pixelSize: Theme.fontCaption
-                    elide: Text.ElideMiddle
-                }
+                text: card.modelData.finished
+                    ? (card.modelData.error !== "" ? qsTr("Transfer incomplete") : qsTr("Completed"))
+                    : card.modelData.total <= 0 ? qsTr("Preparing transfer…")
+                    : Math.round(card.fraction * 100) + qsTr("% complete")
+                        + (card.modelData.current !== "" ? " · " + card.modelData.current : "")
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontCaption
+                elide: Text.ElideMiddle
+            }
+            Rectangle {
+                x: 16
+                y: 90
+                width: parent.width - 32
+                height: 6
+                radius: 3
+                color: Theme.control
+                clip: true
                 Rectangle {
-                    width: parent.width
-                    height: 4
-                    radius: 2
-                    color: Theme.control
-                    Rectangle {
-                        width: parent.width * card.fraction
-                        height: parent.height
-                        radius: 2
-                        color: card.modelData.error !== "" ? Theme.critical : Theme.accentFill
-                        Behavior on width { NumberAnimation { duration: Theme.normal } }
-                    }
+                    width: parent.width * card.fraction
+                    height: parent.height
+                    radius: 3
+                    color: card.modelData.error !== "" ? Theme.critical : Theme.accentFill
+                    Behavior on width { NumberAnimation { duration: Theme.normal } }
                 }
             }
         }
