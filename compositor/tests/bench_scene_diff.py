@@ -28,7 +28,11 @@ def main():
     binaries = [("candidate", args.candidate.resolve())]
     if args.baseline:
         binaries.insert(0, ("baseline", args.baseline.resolve()))
-    scenarios = ["stable", "move", "rotate", "reverse", "churn-quarter", "replace-all"]
+    scenarios = [
+        "stable", "move", "rotate", "reverse", "churn-quarter", "replace-all",
+        "insert-front", "insert-middle", "remove-front", "restack-window",
+        "popup-open-close", "animation-churn",
+    ]
     fields = ["binary", "run", "scenario", "elements", "outputs", "ticks_per_sample", "samples",
               "median_ns_per_tick", "p95_batch_ns_per_tick"]
     with args.csv.open("w", newline="") as output:
