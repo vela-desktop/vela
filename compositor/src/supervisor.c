@@ -400,6 +400,11 @@ int vela_supervise(int argc, char **argv)
             exit_code = VELA_EXIT_UNSUPPORTED_GPU;
             break; // restarting cannot make the GPU support Vulkan
         }
+        if (WIFEXITED(status) && WEXITSTATUS(status) == VELA_EXIT_LOCK_UNSAFE) {
+            say("secure lock state could not be persisted; ending session, never restarting unlocked");
+            exit_code = VELA_EXIT_LOCK_UNSAFE;
+            break;
+        }
         if (WIFSIGNALED(status)) {
             say("the compositor crashed (%s)", strsignal(WTERMSIG(status)));
         } else {
