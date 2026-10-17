@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QVariantList>
 #include <QList>
+#include <QElapsedTimer>
 #include <QString>
 
 // Aggregates transfer updates from every vela-files process over session D-Bus.
@@ -40,6 +41,9 @@ private:
         QString current;
         bool finished = false;
         QString error;
+        QElapsedTimer sampleClock;
+        qlonglong sampleDone = 0;
+        double speedBytesPerSecond = 0;
     };
     QList<Job> m_jobs;
 };
