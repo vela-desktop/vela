@@ -298,6 +298,28 @@ void FileOps::resolveConflict(const QString& choice)
     }
 }
 
+// Work units use the same rules as copyOne: each directory and symlink
+// contributes one unit, nonempty regular files contribute their byte size.
+qint64 transferWorkUnits(const QString& source)
+{
+    const QFileInfo info(source);
+    if (info.isSymLink()) {
+        return 1;
+    }
+    if (!info.isDir()) {
+        return std::max<qint64>(1, info.size());
+    }
+    qint64 total = 1;
+    QDirIterator it(source, QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
+        QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        const QFileInfo entry = it.fileInfo();
+        total += entry.isSymLink() || entry.isDir() ? 1 : std::max<qint64>(1, entry.size());
+    }
+    return total;
+}
+
 void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
 {
     auto job = std::make_shared<Job>();
@@ -330,23 +352,12 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
             Qt::QueuedConnection);
     };
     QThreadPool::globalInstance()->start([self, job, transfer, policy, post] {
-        // How much there is to do (only what really has to be copied).
+        // Count every directory and symlink as one unit, and files by bytes.
+        // This exactly matches copyOne(), including empty nested directories.
+        // A same-device move may fall back to copying if rename fails.
         qint64 total = 0;
         for (const QString& source : transfer.sources) {
-            const QFileInfo info(source);
-            if (transfer.move && sameDevice(source, transfer.directory)) {
-                total += 1;
-            } else if (info.isDir() && !info.isSymLink()) {
-                QDirIterator it(source, QDir::Files | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories);
-                while (it.hasNext()) {
-                    it.next();
-                    total += std::max<qint64>(1, it.fileInfo().size());
-                }
-                total += 1;
-            } else {
-                total += std::max<qint64>(1, info.size());
-            }
+            total += transferWorkUnits(source);
         }
         qint64 done = 0;
         QElapsedTimer lastPost;
