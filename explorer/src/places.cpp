@@ -5,6 +5,7 @@
 
 #include "foldermodel.h"
 #include "links.h"
+#include "transferlocks.h"
 
 #include <QCoreApplication>
 #include <QDBusArgument>
@@ -30,6 +31,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 using ManagedObjects = QMap<QDBusObjectPath, QMap<QString, QVariantMap>>;
@@ -391,10 +393,18 @@ void Places::eject(const QString& device)
         }
     }
 
-    // Reserve the affected filesystems until the asynchronous unmount/eject
-    // finishes. FileOps consults this set before creating any new copy job.
+    // Acquire all sibling filesystem locks *before* starting UDisks.
+    // LOCK_EX conflicts with transfers in any vela-files process and stays
+    // reserved until the asynchronous eject finishes.
+    auto locks = std::make_shared<vela::files::DeviceLocks>();
+    if (!locks->acquire(related.values(), vela::files::DeviceLocks::Mode::Exclusive)) {
+        emit ejected(QCoreApplication::translate("Files",
+            "A file transfer is using this drive. Wait for it to finish or cancel it before ejecting."));
+        return;
+    }
     m_ejecting.unite(related);
-    const auto finish = [this, related](const QString& error) {
+    const auto finish = [this, related, locks](const QString& error) {
+        locks->release();
         for (const QString& name : related) {
             m_ejecting.remove(name);
         }
