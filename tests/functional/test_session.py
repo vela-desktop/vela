@@ -138,7 +138,7 @@ class Lock(unittest.TestCase):
     def test_registered_locker_crash_is_retried(self):
         with tempfile.TemporaryDirectory(prefix="vela-lock-crash-") as directory:
             pid_path = os.path.join(directory, "locker.pid")
-            launcher = f"echo $ > '{pid_path}'; exec '{tool('vela-testlock')}' 20000"
+            launcher = f"echo $$ > '{pid_path}'; exec '{tool('vela-testlock')}' 20000"
             with Session(env={"VELA_LOCK": launcher}) as vela:
                 vela.command("lock")
                 vela.wait_for_log("vela-testlock: locked")
