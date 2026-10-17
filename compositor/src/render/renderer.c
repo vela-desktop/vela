@@ -241,9 +241,8 @@ static void destroy(struct vela_renderer *r)
     }
     vela_renderer_collect(r);
 
-    // Buffers still alive (such as the outputs'): we detach from all of them.
-    // (The renderer is destroyed only with VELA_VULKAN_VALIDATION: see
-    // vela_server_destroy.)
+    // Detach any lingering targets before releasing renderer resources.
+    // The backend outputs and their buffer listeners are already destroyed.
     struct vela_target *target, *target_tmp;
     wl_list_for_each_safe (target, target_tmp, &r->targets, link) {
         destroy_target(target);
