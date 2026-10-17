@@ -55,6 +55,8 @@ qt_add_executable(vela-shell
     src/velatool.h
     src/systemstatus.cpp
     src/systemstatus.h
+    src/transfermonitor.cpp
+    src/transfermonitor.h
     src/taskbarmodel.cpp
     src/tray.cpp
     src/taskbarmodel.h
