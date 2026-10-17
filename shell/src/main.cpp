@@ -310,6 +310,8 @@ int main(int argc, char* argv[])
     DesktopModel desktop(&apps);
     QObject::connect(&shell, &ShellController::desktopTransferUndoReceived,
         &desktop, &DesktopModel::recordExternalTransfer);
+    QObject::connect(&shell, &ShellController::desktopTransferReadyReceived,
+        &desktop, &DesktopModel::acknowledgeTransferStart);
     QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, &ShellController::openWithRequested);
     desktopModel = &desktop;
     ServiceMenus serviceMenus;
