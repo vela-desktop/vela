@@ -108,3 +108,42 @@ comparison. The search remains unchanged; these cases provide a baseline for
 a separate optimization if actual scene sizes and frame measurements justify
 it. Check the complete renderer on GPU hardware with `VELA_STATS=1`, comparing
 the same workload and output configuration on both revisions.
+
+## Indexed matching for structural scene changes (2026-10-17)
+
+The scene diff still flattens and compares each output's elements each frame.
+No scene graph or damage-tracking architecture has changed.
+
+Previously every current element searched the old list circularly starting at
+its expected position. Stable frames were fast, but even a single insertion
+at the front could shift all subsequent positions and trigger approximately
+quadratic work. The new matching logic keeps the direct same-position check
+and builds a per-output hash index of the old elements **only if a key is
+missing at its expected position**. Buckets and links are reused across frames.
+Matching is expected O(N) for both stable and structurally changed scenes,
+with hash collisions affecting constants; the construction is not performed
+for stable ordered scenes. Duplicate keys use the same circular first-match
+rule as before. Existing damage and restacking decisions remain unchanged.
+
+### Additional functional and benchmark coverage
+
+The `compositor.scene-diff` test now exercises changes to the flattened lists:
+
+- `insert-front` and `insert-middle`: inserting an element shifts older elements
+  without incorrectly damaging them.
+- `remove-front`: removal reports the correct damage and surface-forget event.
+- `restack-window`: raising an existing middle element tests z-order damage.
+- `popup-open-close`: two temporary inserted layers appear and disappear.
+- `animation-churn`: several transient layers appear, change appearance and
+  disappear while the existing elements retain their order.
+- Duplicate-key regression: matching preserves the original circular search's
+  choice, including which old surface gets forgotten.
+- Allocation regression: steady scenes retain the original allocation-free
+  fast path; once warmed, structurally changed scenes reuse index buffers.
+
+These six new scenarios are also available through `vela-scene-diff-bench`
+and `compositor/tests/bench_scene_diff.py`. The historic CSV linked above
+contains **only the original six scenarios and the previous implementation**;
+it has not been retroactively changed. To get comparable measurements, rerun
+the suite against a compatible baseline on the same CPU and build setup.
+Real frame-time conclusions still require compositor/GPU measurement.
