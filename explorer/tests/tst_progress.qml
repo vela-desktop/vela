@@ -72,6 +72,17 @@ Item {
             verify(active.y >= 0 && active.y < panel.height, "new copy is onscreen")
         }
 
+        function test_new_copy_is_visible_among_many_active_jobs() {
+            const busy = []
+            for (let i = 1; i <= 6; ++i)
+                busy.push(job(i, 10, 1000, false, ""))
+            Ops.jobs = busy.concat([job(88, 0, 1000, false, "")])
+            tryVerify(() => findChild(panel, "transferJob:88") !== null)
+            const newest = findChild(panel, "transferJob:88")
+            verify(newest.y >= 0 && newest.y < panel.height,
+                   "newly started transfer must be visible above older active jobs")
+        }
+
         function test_failed_copy_is_not_reported_as_completed() {
             Ops.jobs = [job(52, 300, 1000, true, "Disk full")]
             tryVerify(() => panel.visible)
