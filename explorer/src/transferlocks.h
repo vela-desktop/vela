@@ -49,7 +49,16 @@ inline QStringList transferDevices(const QStringList& sources, const QString& de
             devices.insert(canonicalDevice(QFile::decodeName(immediate.device())));
         }
         const QFileInfo entry(path);
-        if (!entry.isDir() || entry.isSymLink()) {
+        if (entry.isSymLink()) {
+            // Copying a symlink reads the link itself, not only its target.
+            // Keep the filesystem containing that directory protected too.
+            const QStorageInfo owner(entry.absolutePath());
+            if (owner.isValid() && !owner.device().isEmpty()) {
+                devices.insert(canonicalDevice(QFile::decodeName(owner.device())));
+            }
+            continue;
+        }
+        if (!entry.isDir()) {
             continue;
         }
         const QString root = entry.canonicalFilePath();
