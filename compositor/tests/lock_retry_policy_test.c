@@ -5,10 +5,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-// CTest builds with NDEBUG in RelWithDebInfo, so CHECK() would skip checks.
+// CTest builds with NDEBUG in RelWithDebInfo, so assert() would skip checks.
 #define CHECK(expr) do { \
     if (!(expr)) { \
-        fprintf(stderr, "FAILED: %s (%s:%d)\\n", #expr, __FILE__, __LINE__); \
+        fprintf(stderr, "FAILED: %s (%s:%d)\n", #expr, __FILE__, __LINE__); \
         return EXIT_FAILURE; \
     } \
 } while (0)
