@@ -6,8 +6,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum scenario { STABLE, MOVE, ROTATE, REVERSE, CHURN, REPLACE };
-static const char *names[] = {"stable", "move", "rotate", "reverse", "churn-quarter", "replace-all"};
+enum scenario {
+    STABLE, MOVE, ROTATE, REVERSE, CHURN, REPLACE,
+    INSERT_FRONT, INSERT_MIDDLE, REMOVE_FRONT, RESTACK_WINDOW, POPUP, ANIMATION_CHURN, SCENARIO_COUNT
+};
+static const char *names[] = {
+    "stable", "move", "rotate", "reverse", "churn-quarter", "replace-all",
+    "insert-front", "insert-middle", "remove-front", "restack-window", "popup-open-close", "animation-churn"
+};
 
 struct fixture {
     struct vela_output_frame frame;
@@ -40,12 +46,13 @@ void __wrap_free(void *ptr)
 static void init_fixture(struct fixture *f, int count, enum scenario scenario)
 {
     memset(f, 0, sizeof(*f));
-    f->keys = calloc((size_t)(count * 2 + 1), 1);
-    f->frame.last.items = calloc((size_t)(count + 1), sizeof(struct vela_element));
-    f->frame.current.items = calloc((size_t)(count + 1), sizeof(struct vela_element));
+    // Room for temporary scene nodes, including a popup and animation layers.
+    f->keys = calloc((size_t)(count * 2 + 8), 1);
+    f->frame.last.items = calloc((size_t)(count + 5), sizeof(struct vela_element));
+    f->frame.current.items = calloc((size_t)(count + 5), sizeof(struct vela_element));
     if (!f->keys || !f->frame.last.items || !f->frame.current.items) abort();
-    f->frame.last.count = f->frame.current.count = count;
-    f->frame.last.capacity = f->frame.current.capacity = count + 1;
+    f->frame.last.count = count;
+    f->frame.last.capacity = f->frame.current.capacity = count + 5;
     wlr_damage_ring_init(&f->frame.ring);
     pixman_region32_init(&f->frame.scene_damage);
     for (int i = 0; i < count; ++i) {
@@ -55,16 +62,53 @@ static void init_fixture(struct fixture *f, int count, enum scenario scenario)
         };
         f->frame.last.items[i] = e;
     }
-    for (int i = 0; i < count; ++i) {
-        int old = i;
-        if (scenario == ROTATE) old = (i + 1) % count;
-        if (scenario == REVERSE) old = count - i - 1;
-        struct vela_element e = f->frame.last.items[old];
+
+    int inserts = scenario == INSERT_FRONT || scenario == INSERT_MIDDLE ? 1
+        : scenario == POPUP ? 2 : scenario == ANIMATION_CHURN ? 4 : 0;
+    int new_count = count + inserts - (scenario == REMOVE_FRONT && count > 0 ? 1 : 0);
+    f->frame.current.count = new_count;
+    int insert_at[4] = { -1, -1, -1, -1 };
+    if (scenario == INSERT_FRONT) insert_at[0] = 0;
+    if (scenario == INSERT_MIDDLE) insert_at[0] = count / 2;
+    if (scenario == POPUP) {
+        insert_at[0] = count / 2;
+        insert_at[1] = count / 2 + 1;
+    }
+    if (scenario == ANIMATION_CHURN) {
+        insert_at[0] = 0;
+        insert_at[1] = (count + 4) / 3;
+        insert_at[2] = (count + 4) * 2 / 3;
+        insert_at[3] = count + 3;
+    }
+
+    int inserted = 0;
+    int old_cursor = scenario == REMOVE_FRONT && count > 0 ? 1 : 0;
+    for (int i = 0; i < new_count; ++i) {
+        struct vela_element e;
+        if (inserted < inserts && i == insert_at[inserted]) {
+            int n = count + inserted;
+            e = (struct vela_element) {
+                .key = &f->keys[n],
+                .opacity = scenario == ANIMATION_CHURN ? 0.5f + 0.1f * inserted : 1.0f,
+                .box = { (n % 64) * 16, (n / 64) * 16, 16, 16 },
+            };
+            ++inserted;
+        } else {
+            int old = old_cursor++;
+            if (scenario == ROTATE && count > 0) old = (i + 1) % count;
+            if (scenario == REVERSE) old = count - i - 1;
+            if (scenario == RESTACK_WINDOW && count > 1) {
+                int selected = count / 2;
+                old = i == 0 ? selected : i <= selected ? i - 1 : i;
+            }
+            e = f->frame.last.items[old];
+            if (scenario == MOVE) ++e.box.x;
+            if (scenario == REPLACE || (scenario == CHURN && i % 4 == 0)) e.key = &f->keys[count + i];
+        }
         e.order = i;
-        if (scenario == MOVE) ++e.box.x;
-        if (scenario == REPLACE || (scenario == CHURN && i % 4 == 0)) e.key = &f->keys[count + i];
         f->frame.current.items[i] = e;
     }
+    if (inserted != inserts) abort();
 }
 
 static void finish_fixture(struct fixture *f)
@@ -74,6 +118,8 @@ static void finish_fixture(struct fixture *f)
     free(f->frame.last.items);
     free(f->frame.current.items);
     free(f->frame.found);
+    free(f->frame.match_heads);
+    free(f->frame.match_next);
     free(f->keys);
 }
 
@@ -151,6 +197,66 @@ static int test_diff(void)
     CHECK(!pixman_region32_not_empty(&f.frame.scene_damage));
     finish_fixture(&f);
 
+    // A front insertion shifts every surviving element's position.
+    init_fixture(&f, 3, INSERT_FRONT);
+    tick(&f);
+    CHECK(f.frame.last.count == 4 && damage_is(&f, 48, 0, 16, 16));
+    memcpy(f.frame.current.items, f.frame.last.items, 4 * sizeof(struct vela_element));
+    f.frame.current.count = 4;
+    tick(&f);
+    CHECK(!pixman_region32_not_empty(&f.frame.scene_damage));
+    finish_fixture(&f);
+
+    init_fixture(&f, 4, INSERT_MIDDLE);
+    tick(&f);
+    CHECK(f.frame.last.count == 5 && damage_is(&f, 64, 0, 16, 16));
+    finish_fixture(&f);
+
+    init_fixture(&f, 4, REMOVE_FRONT);
+    forgotten = vela_test_forgotten();
+    f.frame.last.items[0].surface = vela_test_surface();
+    tick(&f);
+    CHECK(f.frame.last.count == 3 && damage_is(&f, 0, 0, 16, 16));
+    CHECK(vela_test_forgotten() == forgotten + 1);
+    finish_fixture(&f);
+
+    // A middle window is raised above its predecessors.
+    init_fixture(&f, 4, RESTACK_WINDOW);
+    tick(&f);
+    CHECK(damage_is(&f, 0, 0, 32, 16));
+    finish_fixture(&f);
+
+    init_fixture(&f, 4, POPUP);
+    tick(&f);
+    CHECK(f.frame.last.count == 6 && damage_is(&f, 64, 0, 32, 16));
+    finish_fixture(&f);
+
+    init_fixture(&f, 4, ANIMATION_CHURN);
+    tick(&f);
+    CHECK(f.frame.last.count == 8 && damage_is(&f, 64, 0, 64, 16));
+    memcpy(f.frame.current.items, f.frame.last.items, 8 * sizeof(struct vela_element));
+    f.frame.current.count = 8;
+    f.frame.current.items[0].opacity -= 0.25f;
+    tick(&f);
+    CHECK(damage_is(&f, 64, 0, 16, 16));
+    f.frame.current.count = 4; // the pre-animation list becomes visible again
+    tick(&f);
+    CHECK(damage_is(&f, 64, 0, 64, 16));
+    finish_fixture(&f);
+
+    // Match the original circular search even if two old elements share a key.
+    init_fixture(&f, 3, STABLE);
+    forgotten = vela_test_forgotten();
+    f.frame.last.items[2].key = f.frame.last.items[0].key;
+    f.frame.last.items[0].surface = vela_test_surface();
+    f.frame.current.items[0] = f.frame.last.items[1];
+    f.frame.current.items[1] = f.frame.last.items[2];
+    f.frame.current.count = 2;
+    tick(&f);
+    CHECK(damage_is(&f, 0, 0, 16, 16));
+    CHECK(vela_test_forgotten() == forgotten + 1);
+    finish_fixture(&f);
+
     // Empty scenes also swap safely.
     init_fixture(&f, 0, STABLE);
 #ifdef VELA_DIFF_ALLOCATION_TEST
@@ -211,7 +317,23 @@ static int test_diff(void)
     finish_fixture(&f);
     finish_fixture(&other);
 #endif
-    puts("scene diff: damage, ordering, removal and empty/growing scenes passed");
+    // A reordered scene builds its index only on demand and reuses it.
+#ifdef VELA_DIFF_ALLOCATION_TEST
+    init_fixture(&f, 32, INSERT_FRONT);
+    tick(&f);
+    tick(&f); // warm both list lengths before tracking steady allocations
+    CHECK(f.frame.match_heads && f.frame.match_next);
+    int *heads = f.frame.match_heads;
+    int *links = f.frame.match_next;
+    allocations = frees = 0;
+    track_allocations = true;
+    for (int i = 0; i < 240; ++i) tick(&f);
+    track_allocations = false;
+    CHECK(allocations == 0 && frees == 0);
+    CHECK(f.frame.match_heads == heads && f.frame.match_next == links);
+    finish_fixture(&f);
+#endif
+    puts("scene diff: damage, reorder, insert/remove, popup, animation and scratch reuse passed");
     return 0;
 }
 
@@ -241,7 +363,7 @@ int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "--test") == 0) return test_diff();
     if (argc != 4) {
-        fprintf(stderr, "usage: %s ELEMENTS OUTPUTS SCENARIO\nscenarios: stable move rotate reverse churn-quarter replace-all\n", argv[0]);
+        fprintf(stderr, "usage: %s ELEMENTS OUTPUTS SCENARIO\nscenarios: stable move rotate reverse churn-quarter replace-all insert-front insert-middle remove-front restack-window popup-open-close animation-churn\n", argv[0]);
         return 1;
     }
     char *end;
@@ -250,8 +372,8 @@ int main(int argc, char **argv)
     long outputs = strtol(argv[2], &end, 10);
     if (*end || outputs < 1 || outputs > 16) return 1;
     int scenario;
-    for (scenario = 0; scenario < 6; ++scenario) if (strcmp(names[scenario], argv[3]) == 0) break;
-    if (scenario == 6) return 1;
+    for (scenario = 0; scenario < SCENARIO_COUNT; ++scenario) if (strcmp(names[scenario], argv[3]) == 0) break;
+    if (scenario == SCENARIO_COUNT) return 1;
     struct fixture *fixtures = calloc((size_t)outputs, sizeof(*fixtures));
     if (!fixtures) abort();
     for (int i = 0; i < outputs; ++i) init_fixture(&fixtures[i], (int)count, scenario);
