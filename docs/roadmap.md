@@ -14,6 +14,7 @@ GPU and driver: see [hardware coverage](hardware.md) for the current limits.
 | Work | Design | Pull request | Status |
 |---|---|---|---|
 | **Display brightness**: a slider per monitor, over DDC/CI for external monitors and the kernel backlight for built-in screens | in the PR | [#45](https://github.com/vela-desktop/vela/pull/45) | design done; stages B0–B4 to do |
+| **Touch and pen**: touchscreens in every app and on Vela's own surfaces, the pen as a mouse, edge and multi-finger gestures; then the pen over `tablet-v2` and tablet mode | [touch](touch.md) | — | design draft |
 | **Visual coherence**: the same pixels, clock and motion across compositor, shell and apps | in the PR | [#40](https://github.com/vela-desktop/vela/pull/40) | steps 1–3 of 11 done |
 
 ## Next
@@ -37,8 +38,6 @@ direction, not a promise.
   the GPU per app.
 - Projection shortcut (Super+P): duplicate, extend, second screen only.
 - Mirrored outputs.
-- Touchscreens: touch gestures, automatic rotation from the orientation sensor.
-- Drawing tablets and pens (`tablet-v2`), with a Settings page.
 - More Wayland protocols, such as `fifo`, `commit-timing`, `security-context`,
   `xdg-foreign`, `xdg-toplevel-icon` and `xdg-dialog`.
 
