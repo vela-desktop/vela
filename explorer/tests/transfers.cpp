@@ -18,9 +18,14 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QGuiApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QStorageInfo>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
@@ -303,6 +308,51 @@ private slots:
             return;
         }
         QSKIP("No second mounted filesystem available");
+    }
+
+    void desktopUndoReportsCommittedConflictNames()
+    {
+        const QString original = path("in/note.txt");
+        const QString destination = path("out");
+        write(original, "new");
+        write(destination + "/note.txt", "old");
+        m_policy = QStringLiteral("keep");
+
+        const QByteArray previousDisplay = qgetenv("WAYLAND_DISPLAY");
+        const QByteArray display = "vela-files-test-" + QFileInfo(m_dir->path()).fileName().toUtf8();
+        qputenv("WAYLAND_DISPLAY", display);
+        const QString socketPath = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation)
+            + QStringLiteral("/vela-shell-") + QString::fromUtf8(display) + QStringLiteral(".sock");
+        QLocalServer server;
+        server.setSocketOptions(QLocalServer::UserAccessOption);
+        const bool listening = server.listen(socketPath);
+        // Restore the surrounding test environment even on setup failure.
+        if (!listening) {
+            qputenv("WAYLAND_DISPLAY", previousDisplay);
+            QFAIL("Cannot listen for desktop Undo events");
+        }
+
+        m_ops->dropFromDesktop({ QUrl::fromLocalFile(original).toString() }, destination, 1);
+        const bool received = QTest::qWaitFor([&] { return server.hasPendingConnections(); }, 30000);
+        QByteArray message;
+        if (received) {
+            QLocalSocket* peer = server.nextPendingConnection();
+            const bool ready = QTest::qWaitFor([&] { return peer->canReadLine(); }, 3000);
+            if (ready) {
+                message = peer->readLine().trimmed();
+            }
+            peer->deleteLater();
+        }
+        server.close();
+        qputenv("WAYLAND_DISPLAY", previousDisplay);
+        QVERIFY2(received, "a desktop transfer must send its Undo step to the shell");
+        QVERIFY(message.startsWith("desktop-transfer-undo "));
+        const auto document = QJsonDocument::fromJson(message.mid(sizeof("desktop-transfer-undo ") - 1));
+        QVERIFY(document.isObject());
+        QCOMPARE(document.object().value(QStringLiteral("created")).toArray().first().toString(),
+            path("out/note (2).txt"));
+        QCOMPARE(read(path("out/note.txt")), QByteArray("old"));
+        QCOMPARE(read(path("out/note (2).txt")), QByteArray("new"));
     }
 
     void interprocessEjectLock()
