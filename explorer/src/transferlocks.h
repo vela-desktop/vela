@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QList>
 #include <QSet>
 #include <QStandardPaths>
 #include <QStorageInfo>
