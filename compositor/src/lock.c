@@ -76,10 +76,20 @@ static void set_desktop_enabled(struct vela_server *server, bool enabled)
 #define VELA_LOCK_FATAL_TIMEOUT_MS 2000
 #define VELA_LOCK_FATAL_SCANOUT_GRACE_MS 200
 
+static void lock_unsafe_exit(struct vela_lock *lock)
+{
+    // Older supervisors do not understand exit 77 and would restart unlocked.
+    // Their existing SIGTERM handler ends the session instead. Only signal
+    // the supervisor after blackout, immediately before our terminal exit.
+    if (lock->server->runtime_dir_fd >= 0 && getenv("VELA_WAYLAND_SOCKET_FD") && getppid() > 1) {
+        kill(getppid(), SIGTERM);
+    }
+    _exit(VELA_EXIT_LOCK_UNSAFE);
+}
+
 static int handle_lock_fatal_exit(void *data)
 {
-    (void)data;
-    _exit(VELA_EXIT_LOCK_UNSAFE);
+    lock_unsafe_exit(data);
 }
 
 static void lock_fatal_shutdown(struct vela_lock *lock)
@@ -118,13 +128,13 @@ static void lock_fatal_shutdown(struct vela_lock *lock)
     }
     if (lock->fatal_waiting_count == 0) {
         wlr_log(WLR_ERROR, "Lock: no active outputs to blank before terminating session");
-        _exit(VELA_EXIT_LOCK_UNSAFE);
+        lock_unsafe_exit(lock);
     }
     lock->fatal_timer = wl_event_loop_add_timer(server->loop, handle_lock_fatal_exit, lock);
     if (!lock->fatal_timer ||
         wl_event_source_timer_update(lock->fatal_timer, VELA_LOCK_FATAL_TIMEOUT_MS) < 0) {
         wlr_log_errno(WLR_ERROR, "Lock: cannot schedule bounded session shutdown");
-        _exit(VELA_EXIT_LOCK_UNSAFE);
+        lock_unsafe_exit(lock);
     }
     wlr_log(WLR_ERROR, "Lock: ending session after the black backdrop is committed");
 }
@@ -744,7 +754,7 @@ void vela_lock_output_rendered(struct vela_lock *lock, struct vela_output *outpu
                 // Permit scanout to catch up with the committed black frames.
                 if (!lock->fatal_timer ||
                     wl_event_source_timer_update(lock->fatal_timer, VELA_LOCK_FATAL_SCANOUT_GRACE_MS) < 0) {
-                    _exit(VELA_EXIT_LOCK_UNSAFE);
+                    lock_unsafe_exit(lock);
                 }
             }
             break;
