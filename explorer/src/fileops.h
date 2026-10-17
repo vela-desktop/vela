@@ -60,6 +60,8 @@ public:
     // Files dropped here (dragged): `action` 1 copy, 2 move, 0 like Windows
     // (moved if on the same disk, otherwise copied).
     Q_INVOKABLE void drop(const QStringList& urls, const QString& directory, int action);
+    // Only shell-initiated transfers report their committed Undo step to DesktopModel.
+    void dropFromDesktop(const QStringList& urls, const QString& directory, int action);
 
     // New: they return the path, to rename it right away.
     Q_INVOKABLE QString createFolder(const QString& directory);
@@ -137,11 +139,13 @@ private:
         QStringList sources;
         QString directory;
         bool move = false;
+        bool fromDesktop = false;
     };
 
     void pushUndo(UndoStep step);
     void startTransfer(const Transfer& transfer, const QString& policy);
     void requestTransfer(const Transfer& transfer);
+    void dropInternal(const QStringList& urls, const QString& directory, int action, bool fromDesktop);
     void updateJob(int id, qint64 done, qint64 total, const QString& current, bool finished, const QString& error);
     QVariantMap jobAsMap(const Job& job) const;
 
