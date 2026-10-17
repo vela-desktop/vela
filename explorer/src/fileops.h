@@ -24,6 +24,7 @@ class TransferJobsModel;
 // first what to do.
 class FileOps : public QObject {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.vela.Files.Transfers")
     Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
     Q_PROPERTY(QString undoText READ undoText NOTIFY undoChanged)
     // [{id, title, done, total, current, finished, error}]
@@ -115,6 +116,11 @@ public:
     Q_INVOKABLE QString previewText(const QString& path) const;
     Q_INVOKABLE bool isImage(const QString& path) const;
 
+public Q_SLOTS:
+    Q_SCRIPTABLE void Cancel(int id);
+private Q_SLOTS:
+    void publishSnapshot();
+
 signals:
     void clipboardChanged();
     void undoChanged();
@@ -142,6 +148,8 @@ private:
         bool fromDesktop = false;
     };
 
+    void publishJob(int id, bool snapshot = false) const;
+    void publishRemoved(int id) const;
     void pushUndo(UndoStep step);
     void startTransfer(const Transfer& transfer, const QString& policy);
     void requestTransfer(const Transfer& transfer);

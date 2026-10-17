@@ -12,6 +12,8 @@
 #include <QClipboard>
 #include <QCollator>
 #include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
@@ -253,6 +255,14 @@ FileOps::FileOps(AppModel* apps, QObject* parent)
     , m_jobModel(new TransferJobsModel(this))
 {
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FileOps::clipboardChanged);
+    const QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.isConnected()) {
+        bus.registerObject(QStringLiteral("/org/vela/Files/Transfers"), this,
+            QDBusConnection::ExportScriptableSlots);
+        bus.connect(QString(), QStringLiteral("/org/vela/Files/Transfers"),
+            QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("RequestSnapshot"),
+            this, SLOT(publishSnapshot()));
+    }
 }
 
 FileOps::~FileOps()
@@ -319,6 +329,42 @@ void FileOps::setEjectGuard(std::function<bool(const QStringList&, const QString
     m_ejectGuard = std::move(guard);
 }
 
+void FileOps::publishJob(int id, bool snapshot) const
+{
+    const QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) return;
+    for (const auto& job : m_jobs) {
+        if (job->id != id) continue;
+        QDBusMessage msg = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
+            QStringLiteral("org.vela.Files.Transfers"),
+            snapshot ? QStringLiteral("Snapshot") : QStringLiteral("Changed"));
+        msg << bus.baseService() << job->id << job->title << qlonglong(job->done)
+            << qlonglong(job->total) << job->current << job->finished << job->error;
+        bus.send(msg);
+        break;
+    }
+}
+
+void FileOps::publishRemoved(int id) const
+{
+    const QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) return;
+    QDBusMessage msg = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
+        QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("Removed"));
+    msg << bus.baseService() << id;
+    bus.send(msg);
+}
+
+void FileOps::publishSnapshot()
+{
+    for (const auto& job : m_jobs) publishJob(job->id, true);
+}
+
+void FileOps::Cancel(int id)
+{
+    cancelJob(id);
+}
+
 void FileOps::updateJob(int id, qint64 done, qint64 total, const QString& current, bool finished, const QString& error)
 {
     for (const auto& job : std::as_const(m_jobs)) {
@@ -333,6 +379,7 @@ void FileOps::updateJob(int id, qint64 done, qint64 total, const QString& curren
         }
     }
     emit jobsChanged();
+    publishJob(id);
 }
 
 void FileOps::cancelJob(int id)
@@ -346,9 +393,13 @@ void FileOps::cancelJob(int id)
 
 void FileOps::dismissJob(int id)
 {
+    const qsizetype before = m_jobs.size();
     m_jobs.removeIf([id](const std::shared_ptr<Job>& job) { return job->id == id && job->finished; });
-    m_jobModel->dismiss(id);
-    emit jobsChanged();
+    if (m_jobs.size() != before) {
+        m_jobModel->dismiss(id);
+        publishRemoved(id);
+        emit jobsChanged();
+    }
 }
 
 // Before copying or moving: is there already something with the same name?
@@ -440,6 +491,7 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
     m_jobs.append(job);
     m_jobModel->add(jobAsMap(*job));
     emit jobsChanged();
+    publishJob(job->id);
 
     QPointer<FileOps> self(this);
     auto post = [self, id = job->id](qint64 done, qint64 total, QString current, bool finished, QString error) {
