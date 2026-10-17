@@ -93,34 +93,6 @@ Window {
         if (Audio.muted) Audio.setMuted("output", Audio.defaultOutput, false)
         Audio.setVolume("output", Audio.defaultOutput, value)
     }
-    // Caffeine for a while: the arrow on its tile lists durations under it.
-    // Keep the selected preset separate from the decreasing remaining time.
-    function caffeineMatches(minutes) {
-        return Access.caffeine && Access.caffeineDurationSecs === minutes * 60
-    }
-    function openCaffeineMenu(tile) {
-        const presets = [30, 60, 120, 300]
-        const names = [qsTr("30 minutes"), qsTr("1 hour"), qsTr("2 hours"), qsTr("5 hours")]
-        const entries = []
-        if (Access.caffeine && Access.caffeineSecs > 0)
-            entries.push({ header: qsTr("%1 minutes remaining").arg(Math.ceil(Access.caffeineSecs / 60)) })
-        entries.push({ text: qsTr("Indefinitely"), radio: true,
-                           checked: Access.caffeine && Access.caffeineSecs < 0,
-                           action: () => Access.caffeine = true },
-                         { separator: true })
-        for (let i = 0; i < presets.length; i++) {
-            const mins = presets[i]
-            entries.push({ text: names[i], radio: true, checked: caffeineMatches(mins),
-                           action: () => Access.setCaffeineMinutes(mins) })
-        }
-        entries.push({ separator: true },
-                     { text: qsTr("Custom..."), action: () => root.showPage("caffeine") },
-                     { separator: true },
-                     { text: qsTr("Turn off"), enabled: Access.caffeine,
-                       action: () => Access.caffeine = false })
-        const p = screenPoint(tile, 0, tile.height + 4)
-        Menus.open(entries, p.x, p.y, { minWidth: 220, screen: root.screen ? root.screen.name : "" })
-    }
     function openSettings(name) {
         close()
         System.trigger(name)
@@ -601,8 +573,7 @@ Window {
         y: 12
         width: root.width - 24
         height: root.page === "" ? content.height + 24 + footer.height
-            : (root.page === "wifi" ? wifiPage.height : root.page === "sound" ? soundPage.height
-                : root.page === "caffeine" ? caffeinePage.height : accessPage.height) + 32
+            : (root.page === "wifi" ? wifiPage.height : root.page === "sound" ? soundPage.height : accessPage.height) + 32
         radius: Theme.radiusOverlay
         color: Theme.surface
         border.width: 1
@@ -689,22 +660,6 @@ Window {
                         checked: Access.nightLight
                         onToggled: Access.nightLight = !Access.nightLight
                         onContextMenu: root.openSettings("night-light-settings")
-                    }
-                    // Keep awake: no lock nor screen off until turned off (only
-                    // for this session). Breeze's only cup is KTeaTime's. The
-                    // left half toggles indefinitely, the arrow lists
-                    // durations (openCaffeineMenu).
-                    Tile {
-                        id: caffeineTile
-                        icon: "kteatime-symbolic"
-                        label: Access.caffeine && Access.caffeineSecs > 0
-                            ? qsTr("Caffeine %1m").arg(Math.ceil(Access.caffeineSecs / 60))
-                            : qsTr("Caffeine")
-                        checked: Access.caffeine
-                        split: true
-                        onToggled: Access.caffeine = !Access.caffeine
-                        onDetails: root.openCaffeineMenu(caffeineTile)
-                        onContextMenu: root.openSettings("power")
                     }
                     Tile {
                         icon: "preferences-desktop-accessibility"
@@ -1191,83 +1146,6 @@ Window {
                 Link {
                     text: qsTr("More accessibility settings")
                     target: "accessibility-settings"
-                }
-            }
-
-            // ---------------------------------------------------- caffeine --
-            // Custom duration (the menu's "Custom..."): minutes to stay awake.
-            Column {
-                id: caffeinePage
-                visible: root.page === "caffeine"
-                x: 16
-                y: 16
-                width: parent.width - 32
-                spacing: 8
-                property string minutes: "30"
-
-                PageHeader { title: qsTr("Keep awake") }
-                Text {
-                    width: parent.width
-                    text: qsTr("Stay awake for these minutes, then let the screen lock and turn off again.")
-                    color: Theme.textSecondary
-                    font.pixelSize: Theme.fontCaption
-                    wrapMode: Text.WordWrap
-                }
-                Row {
-                    width: parent.width
-                    spacing: 8
-                    Rectangle {
-                        width: parent.width - startButton.width - 8
-                        height: 32
-                        radius: Theme.radius
-                        color: Theme.control
-                        border.width: 1
-                        border.color: minutesField.activeFocus ? Theme.accent : Theme.stroke
-                        MenuTextField {
-                            id: minutesField
-                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                            verticalAlignment: TextInput.AlignVCenter
-                            inputMethodHints: Qt.ImhDigitsOnly
-                            validator: IntValidator { bottom: 1; top: 24 * 60 }
-                            text: caffeinePage.minutes
-                            onTextEdited: caffeinePage.minutes = text
-                            onAccepted: startButton.activate()
-                            mapToScreen: (x, y) => root.screenPoint(minutesField, x, y)
-                        }
-                        Text {
-                            anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
-                            visible: minutesField.text === ""
-                            text: qsTr("Minutes")
-                            color: Theme.textSecondary
-                            font.pixelSize: Theme.fontCaption
-                        }
-                    }
-                    Rectangle {
-                        id: startButton
-                        width: 120
-                        height: 32
-                        radius: Theme.radius
-                        readonly property bool usable: minutesField.acceptableInput
-                        opacity: usable ? 1 : 0.5
-                        color: buttonMouse.containsMouse && usable ? Qt.lighter(Theme.accent, 1.1) : Theme.accent
-                        function activate() {
-                            if (!usable) return
-                            Access.setCaffeineMinutes(parseInt(caffeinePage.minutes, 10))
-                            root.showPage("")
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            text: qsTr("Start")
-                            color: "white"
-                            font.pixelSize: Theme.fontBody
-                        }
-                        MouseArea {
-                            id: buttonMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: startButton.activate()
-                        }
-                    }
                 }
             }
         }
