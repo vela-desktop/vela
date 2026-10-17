@@ -131,6 +131,13 @@
     </message>
 </context>
 <context>
+    <name>Files</name>
+    <message>
+        <source>File transfer did not start</source>
+        <translation>Impossibile avviare il trasferimento</translation>
+    </message>
+</context>
+<context>
     <name>FileDialogs</name>
     <message>
         <source>Share</source>
