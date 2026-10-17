@@ -461,6 +461,9 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
     }
 
     struct vela_target *target = calloc(1, sizeof(*target));
+    if (!target) {
+        return NULL;
+    }
     target->renderer = r;
     target->format = format->srgb;
     target->dmabuf_fd = dmabuf.fd[0];
@@ -485,7 +488,14 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
         .format = format->srgb,
         .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
     };
-    vkCreateImageView(r->vk->device, &view_info, NULL, &target->view);
+    VkResult view_result = vkCreateImageView(r->vk->device, &view_info, NULL, &target->view);
+    if (view_result != VK_SUCCESS) {
+        wlr_log(WLR_ERROR, "Renderer: vkCreateImageView for target failed: VkResult=%d", (int)view_result);
+        vkDestroyImage(r->vk->device, target->image, NULL);
+        vkFreeMemory(r->vk->device, target->memory, NULL);
+        free(target);
+        return NULL;
+    }
 
     wlr_addon_init(&target->addon, &buffer->addons, r, &target_addon_impl);
     wl_list_insert(&r->targets, &target->link);
