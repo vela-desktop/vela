@@ -1457,8 +1457,8 @@ Specifiche sistema
         <translation>layout lingua input digitazione ripetizione tasti</translation>
     </message>
     <message>
-        <source>pointer speed primary button left-handed wheel scrolling lines acceleration precision</source>
-        <translation>puntatore velocità pulsante principale mancino rotellina scorrimento righe accelerazione precisione</translation>
+        <source>pointer speed primary button left-handed wheel scrolling lines acceleration precision middle click autoscroll</source>
+        <translation>puntatore velocità pulsante principale mancino rotellina scorrimento righe accelerazione precisione clic centrale scorrimento automatico</translation>
     </message>
     <message>
         <source>tap click gestures fingers scrolling laptop trackpad</source>
@@ -1586,6 +1586,34 @@ Specifiche sistema
     <message>
         <source>For each notch of the wheel</source>
         <translation>Per ogni scatto della rotellina</translation>
+    </message>
+    <message>
+        <source>Autoscroll with the middle button</source>
+        <translation>Scorrimento automatico con il pulsante centrale</translation>
+    </message>
+    <message>
+        <source>Move the mouse away from where you pressed the wheel to scroll that way. Terminals keep pasting</source>
+        <translation>Allontana il mouse dal punto in cui hai premuto la rotellina per scorrere in quella direzione. Nei terminali incolla ancora</translation>
+    </message>
+    <message>
+        <source>Start with a middle click (instead of new tab or paste)</source>
+        <translation>Avvia con un clic centrale (invece di nuova scheda o incolla)</translation>
+    </message>
+    <message>
+        <source>Click again or press Esc to stop</source>
+        <translation>Fai di nuovo clic o premi Esc per fermarti</translation>
+    </message>
+    <message>
+        <source>Scroll by holding and dragging</source>
+        <translation>Scorri tenendo premuto e trascinando</translation>
+    </message>
+    <message>
+        <source>Stops when you let go of the button</source>
+        <translation>Si ferma quando rilasci il pulsante</translation>
+    </message>
+    <message>
+        <source>Autoscroll speed</source>
+        <translation>Velocità dello scorrimento automatico</translation>
     </message>
     <message>
         <source>Related settings</source>

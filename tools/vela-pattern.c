@@ -16,6 +16,7 @@
 // and close values are the worst case for any filter.
 //
 // Usage: vela-pattern [--scale1] [--app-id ID] [--decorated] [--popup X,Y]
+//                     [--pointer-log FILE]
 //                     [WIDTH HEIGHT]   (logical; default 401x301)
 //
 // --scale1: like an old app, always draws at scale 1 (the compositor must
@@ -27,10 +28,12 @@
 
 #define _GNU_SOURCE
 #include <math.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <wayland-client.h>
@@ -67,6 +70,8 @@ static int popupWanted;
 static int popupX;
 static int popupY;
 static struct wl_surface* popupSurface;
+static struct wl_seat* seat;
+static FILE* pointerLog;
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
@@ -80,6 +85,8 @@ static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, co
         wmBase = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
     } else if (!strcmp(interface, wp_viewporter_interface.name)) {
         viewporter = wl_registry_bind(registry, name, &wp_viewporter_interface, 1);
+    } else if (!strcmp(interface, wl_seat_interface.name) && pointerLog && !seat) {
+        seat = wl_registry_bind(registry, name, &wl_seat_interface, version < 9 ? version : 9);
     } else if (!strcmp(interface, wp_fractional_scale_manager_v1_interface.name)) {
         fractionalManager = wl_registry_bind(registry, name, &wp_fractional_scale_manager_v1_interface, 1);
     }
@@ -213,6 +220,69 @@ static void openPopup(void)
     wl_surface_commit(popupSurface);
 }
 
+// ------------------------------------------------------------ pointer log --
+
+static void logLine(const char* format, ...) __attribute__((format(printf, 1, 2)));
+static void logLine(const char* format, ...)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    fprintf(pointerLog, "%lld ", (long long)now.tv_sec * 1000000 + now.tv_nsec / 1000);
+    va_list args;
+    va_start(args, format);
+    vfprintf(pointerLog, format, args);
+    va_end(args);
+    fputc('\n', pointerLog);
+    fflush(pointerLog);
+}
+
+static void onEnter(void* d, struct wl_pointer* p, uint32_t serial, struct wl_surface* s, wl_fixed_t x, wl_fixed_t y)
+{
+    logLine("enter %.3f %.3f", wl_fixed_to_double(x), wl_fixed_to_double(y));
+}
+static void onLeave(void* d, struct wl_pointer* p, uint32_t serial, struct wl_surface* s) { logLine("leave"); }
+static void onMotion(void* d, struct wl_pointer* p, uint32_t time, wl_fixed_t x, wl_fixed_t y)
+{
+    logLine("motion %.3f %.3f", wl_fixed_to_double(x), wl_fixed_to_double(y));
+}
+static void onButton(void* d, struct wl_pointer* p, uint32_t serial, uint32_t time, uint32_t button, uint32_t state)
+{
+    logLine("button %u %u", button, state);
+}
+static void onAxis(void* d, struct wl_pointer* p, uint32_t time, uint32_t axis, wl_fixed_t value)
+{
+    logLine("axis %u %.6f", axis, wl_fixed_to_double(value));
+}
+static void onFrame(void* d, struct wl_pointer* p) { logLine("frame"); }
+static void onAxisSource(void* d, struct wl_pointer* p, uint32_t source) { logLine("source %u", source); }
+static void onAxisStop(void* d, struct wl_pointer* p, uint32_t time, uint32_t axis) { logLine("stop %u", axis); }
+static void onAxisDiscrete(void* d, struct wl_pointer* p, uint32_t axis, int32_t n)
+{
+    logLine("discrete %u %d", axis, n);
+}
+static void onAxisValue120(void* d, struct wl_pointer* p, uint32_t axis, int32_t n)
+{
+    logLine("value120 %u %d", axis, n);
+}
+static void onAxisDirection(void* d, struct wl_pointer* p, uint32_t axis, uint32_t direction) { }
+
+static const struct wl_pointer_listener pointerListener = {
+    .enter = onEnter, .leave = onLeave, .motion = onMotion, .button = onButton, .axis = onAxis, .frame = onFrame,
+    .axis_source = onAxisSource, .axis_stop = onAxisStop, .axis_discrete = onAxisDiscrete,
+    .axis_value120 = onAxisValue120, .axis_relative_direction = onAxisDirection,
+};
+
+static void onSeatCapabilities(void* data, struct wl_seat* s, uint32_t capabilities)
+{
+    static struct wl_pointer* pointer;
+    if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
+        pointer = wl_seat_get_pointer(s);
+        wl_pointer_add_listener(pointer, &pointerListener, NULL);
+    }
+}
+static void onSeatName(void* data, struct wl_seat* s, const char* name) { }
+static const struct wl_seat_listener seatListener = { onSeatCapabilities, onSeatName };
+
 static void onPreferredScale(void* data, struct wp_fractional_scale_v1* fractional, uint32_t scale)
 {
     if (legacy || scale == scale120) {
@@ -281,6 +351,12 @@ int main(int argc, char** argv)
             && sscanf(argv[arg + 1], "%d,%d", &popupX, &popupY) == 2) {
             popupWanted = 1;
             ++arg;
+        } else if (!strcmp(argv[arg], "--pointer-log") && arg + 1 < argc) {
+            pointerLog = fopen(argv[++arg], "w");
+            if (!pointerLog) {
+                perror("vela-pattern: --pointer-log");
+                return 1;
+            }
         } else if (!strcmp(argv[arg], "--app-id") && arg + 1 < argc) {
             // For tests that depend on the app (system dialogs).
             appId = argv[++arg];
@@ -302,6 +378,9 @@ int main(int argc, char** argv)
         return 1;
     }
     xdg_wm_base_add_listener(wmBase, &wmBaseListener, NULL);
+    if (seat) {
+        wl_seat_add_listener(seat, &seatListener, NULL);
+    }
 
     surface = wl_compositor_create_surface(compositor);
     viewport = wp_viewporter_get_viewport(viewporter, surface);

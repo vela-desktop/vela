@@ -142,7 +142,8 @@ Decisions already taken. Each design document explains why.
 - **Desktop**: Settings, Files, desktop icons, virtual desktops, Task View,
   snap layouts and Snap Assist, modern context menus, light mode.
 - **Daily comfort**: clipboard history, snipping tool, touchpad gestures,
-  mouse and touchpad settings.
+  mouse and touchpad settings, Windows-style middle-click autoscroll
+  (`middle-click-autoscroll`, see [configuration](configuration.md)).
 - **Audio**: one [native backend](audio.md) for the shell and Settings, with
   per-app inputs and outputs, levels, microphone in use, device profiles,
   codecs and sample rates.

@@ -3,6 +3,7 @@
 
 #include "keyboard.h"
 
+#include "autoscroll.h"
 #include "listen.h"
 #include "switcher.h"
 #include "lock.h"
@@ -308,6 +309,10 @@ static void handle_key(struct wl_listener *listener, void *data)
         stop_repeat(keyboard);
     }
 
+    // Esc ends middle-click autoscroll.
+    if (vela_autoscroll_key(server->autoscroll, syms, count, pressed)) {
+        return;
+    }
     // Keyboard "Move"/"Size": all keys belong to the compositor.
     if (vela_interact_keyboard(server, syms, count, mods, pressed)) {
         return;

@@ -4,6 +4,7 @@
 #include "command.h"
 
 #include "a11y.h"
+#include "autoscroll.h"
 #include "bindings.h"
 #include "buffer.h"
 #include "decoration.h"
@@ -188,6 +189,7 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     } else {
         vela_buffer_append(json, "null");
     }
+    vela_buffer_appendf(json, ",\"autoscroll\":%s", vela_autoscroll_active(server->autoscroll) ? t : f);
     vela_buffer_append(json, "}");
 }
 
@@ -455,6 +457,7 @@ static void run_command(struct vela_server *server, const char *line)
         wlr_log(WLR_INFO, "Settings: reloading vela.conf");
         vela_lock_load_settings(server->lock);
         vela_input_reload(server->input); // keyboards, mice and touchpads
+        vela_autoscroll_load_settings(server->autoscroll);
         vela_output_load_settings(server);
         vela_a11y_load(a11y);
     } else if (starts_with(line, "night-light ")) {

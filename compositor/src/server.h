@@ -23,6 +23,7 @@
 #include "shell.h"
 
 struct vela_a11y;
+struct vela_autoscroll;
 struct vela_commands;
 struct vela_icons;
 struct vela_input;
@@ -186,6 +187,7 @@ struct vela_server {
     struct vela_layer_surface *focused_layer;
     struct vela_layer_surface *previous_layer;
     struct vela_interaction *interaction; // the pointer on windows (interact.h)
+    struct vela_autoscroll *autoscroll; // middle-click autoscroll (autoscroll.h)
     struct vela_switcher *switcher; // Alt+Tab (switcher.h)
     struct vela_snapping *snapping; // preview, assist, snap layouts (snap.h)
 

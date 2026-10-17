@@ -191,7 +191,7 @@ Window {
         { page: "datetime", text: qsTr("Date & time"), keys: qsTr("clock time zone sync ntp") },
         { page: "time-language", text: qsTr("Language"), keys: qsTr("language english italian italiano inglese translation") },
             { page: "keyboard", text: qsTr("Keyboard"), keys: qsTr("layout language input typing key repeat") },
-        { page: "mouse", text: qsTr("Mouse"), keys: qsTr("pointer speed primary button left-handed wheel scrolling lines acceleration precision") },
+        { page: "mouse", text: qsTr("Mouse"), keys: qsTr("pointer speed primary button left-handed wheel scrolling lines acceleration precision middle click autoscroll") },
         { page: "touchpad", text: qsTr("Touchpad"), keys: qsTr("tap click gestures fingers scrolling laptop trackpad") },
         { page: "touchpad", text: qsTr("Touchpad gestures"), keys: qsTr("three fingers four fingers switch desktops apps") },
         { page: "clipboard", text: qsTr("Clipboard"), keys: qsTr("clipboard history win+v copy paste") },

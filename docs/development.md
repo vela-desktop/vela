@@ -175,7 +175,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 | `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`. |
 | `vela-windows` | Inspect windows and compositor-visible state. |
 | `vela-screen-dump` | Capture an output or region to PNG. |
-| `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window). |
+| `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window, `--pointer-log FILE` writes every `wl_pointer` event with its arrival time in µs). |
 | `vela-panel` | Fake shell pieces on wlr-layer-shell: `wallpaper`, and `taskbar [--blur]` with a reserved area and background blur. |
 | `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu; `--wine-backdrop` adds Wine's black fullscreen backdrop (override-redirect, then managed with fullscreen, skip-taskbar and below). |
 | `vela-randr` | Configure outputs like Settings > Display (wlr-output-management): list them, or `--output NAME` with `--on`/`--off`, `--scale`, `--pos X,Y`, `--mode WxH`. |
@@ -281,6 +281,7 @@ compositor/src/     compositor core, in C (see c-core.md)
   snapshot.c        frozen window images for close/minimize/maximize animations
   focus.c           keyboard focus between windows and shell pieces
   interact.c        pointer on windows: move, resize, title bar, keyboard move
+  autoscroll.c      middle-click autoscroll, ticking on the output's vblank grid
   bindings.c        shortcuts, window menu and window actions
   switcher.c        Alt+Tab
   snap.c            snap, Snap Assist, snap layouts and snap groups
