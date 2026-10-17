@@ -12,7 +12,7 @@ import tempfile
 import time
 import unittest
 
-from harness import Session
+from harness import Session, tool
 
 
 def child_compositor(supervisor_pid):
@@ -75,6 +75,38 @@ class Lock(unittest.TestCase):
             time.sleep(0.3)
             self.assertTrue(vela.state()["locked"])
             self.assertIsNone(vela.state()["focused"])
+
+    def test_repeated_requests_do_not_launch_duplicate_lockers(self):
+        with tempfile.TemporaryDirectory(prefix="vela-lock-retries-") as directory:
+            attempts = os.path.join(directory, "attempts")
+            with Session(env={"VELA_LOCK": f"echo launch >> '{attempts}'; exit 1"}) as vela:
+                vela.command("lock")
+                vela.wait_for(lambda _: os.path.exists(attempts), read_state=False, what="first launcher")
+                for _ in range(4):
+                    vela.command("lock")
+                time.sleep(0.4)
+                with open(attempts) as record:
+                    self.assertEqual(len(record.readlines()), 1, "duplicate lockers were launched")
+                vela.wait_for(lambda _: os.path.exists(attempts) and
+                              len(open(attempts).readlines()) >= 2,
+                              read_state=False, timeout=9, what="automatic retry")
+                self.assertTrue(vela.state()["locked"])
+
+    def test_nonregistering_locker_recovers_when_available(self):
+        with tempfile.TemporaryDirectory(prefix="vela-lock-recovery-") as directory:
+            ready = os.path.join(directory, "ready")
+            # First invocation exits without registering; the second starts
+            # the real ext-session-lock test client as soon as it is ready.
+            launcher = f"if [ -e '{ready}' ]; then exec '{tool('vela-testlock')}' 2000; else exit 1; fi"
+            with Session(env={"VELA_LOCK": launcher}) as vela:
+                vela.command("lock")
+                vela.wait_for_log("Locking the screen")
+                with open(ready, "w"):
+                    pass
+                vela.wait_for_log("vela-testlock: locked", timeout=14)
+                vela.wait_for(lambda s: not s["locked"], timeout=9, what="locker unlocks")
+                self.assertEqual(vela.log_text().count("Locking the screen:"), 2,
+                                 "the retry timer should stop on registration")
 
     def test_volume_keys_work_while_locked(self):
         with Session(lock_hold_ms=3000) as vela:
@@ -313,6 +345,7 @@ class Supervisor(unittest.TestCase):
                 self.assertEqual(vela.process.wait(timeout=12), 77)
                 log = vela.log_text()
                 self.assertIn("secure lock state could not be persisted", log)
+                self.assertIn("blackout committed on all active outputs", log)
                 self.assertNotIn("restarting it", log)
             finally:
                 os.rmdir(marker)
