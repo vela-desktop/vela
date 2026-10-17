@@ -349,7 +349,7 @@ private slots:
         QVERIFY(message.startsWith("desktop-transfer-undo "));
         const auto document = QJsonDocument::fromJson(message.mid(sizeof("desktop-transfer-undo ") - 1));
         QVERIFY(document.isObject());
-        QCOMPARE(document.object().value(QStringLiteral("created")).toArray().first().toString(),
+        QCOMPARE(document.object().value(QStringLiteral("created")).toArray().at(0).toString(),
             path("out/note (2).txt"));
         QCOMPARE(read(path("out/note.txt")), QByteArray("old"));
         QCOMPARE(read(path("out/note (2).txt")), QByteArray("new"));
