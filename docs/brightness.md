@@ -7,8 +7,7 @@ of a laptop through its kernel backlight. The compositor owns the state of
 every output. This document comes before the code: decisions are made here,
 and the code follows them.
 
-> **Status:** design proposed, waiting for approval. Nothing is implemented
-> yet (§15).
+> **Status:** design approved; B0 in progress (§15).
 
 ## 1. Goals
 
@@ -42,7 +41,7 @@ and the code follows them.
 | DDC/CI | **Vela's own**, straight on `/dev/i2c-N` | no libddcutil: no 2–2.5 s start-up scanning every bus, no global state, timings measured and chosen by us (§3, §5.2) |
 | Built-in backlight | **sysfs to read, logind `SetBrightness` to write** | no root; moves from the shell into the helper (§5.3) |
 | Monitors without brightness | **no slider**; Settings says why (§8) | a monitor that answered and then stops shows a **locked** slider |
-| Writes while dragging | **the latest value wins**, at most one DDC/CI write every **120 ms**, then a **read back** once the slider rests | smooth slider, no lost final value (§5.4) |
+| Writes while dragging | **the latest value wins**, at most one DDC/CI write every **120 ms**, then a **read back** 1 s after the slider rests | smooth slider, no lost final value (§5.4) |
 | Live sync | **while a brightness slider is on screen**, its outputs are read **once a second** | the monitor's own buttons move the slider (§5.5) |
 | What Vela remembers | **nothing**: no saved brightness, no cache of monitors or timings | the monitor stores its brightness; Vela reads it and never imposes a value |
 | All monitors together | **no** | each slider is one output |
@@ -267,14 +266,16 @@ helper:
    interval;
 3. after each write, takes the newest target and goes back to 2 if it
    changed (a drag gives about eight writes a second);
-4. when no new target came for **150 ms** after the last write, reads the
+4. when no new target came for **1 s** after the last write, reads the
    value back. A different value means the write was dropped: write again
-   (step 2);
+   (step 2). The pause is long because a monitor may still be applying the
+   write: a read right after one sometimes fails or takes ~1.2 s on the Mi
+   (§3). B0 starts at 1 s and tries to shorten it on the monitors of §3;
 5. reports the confirmed value with the sequence number of the target it
    confirms.
 
-**Budget:** a target gets at most **4 rewrites and 3 s**, whichever comes
-first. Then the helper reports the value it read as `refused` (§7.1): the
+**Budget:** a target gets at most **4 rewrites and 8 s**, whichever comes
+first (with the 1 s pause, a rewrite costs about 1.5 s). Then the helper reports the value it read as `refused` (§7.1): the
 monitor locks its brightness (HDR, some picture modes) or keeps losing
 writes. If reads keep failing, the output is `not-responding`.
 
@@ -298,11 +299,21 @@ skips some intermediate values.
   then left alone until something changes (§7.1).
 - **Live sync:** while at least one client shows a brightness slider (§7.2),
   the output is read **once a second**, never while a write is pending and
-  not within 1 s of the last one (the monitor might still be applying it). A
+  not within 1 s of the last one (the monitor might still be applying it,
+  §5.4). A
   good reply with a different value updates the model, so the slider follows
   the monitor's buttons. Bad replies never move a slider.
 - **Wake-up:** when the compositor turns the output back on, or the session
   becomes active again, one read after 2 s.
+- **System suspend:** the compositor doesn't know when the computer sleeps
+  (only the shell listens to logind's `PrepareForSleep`, to lock the
+  screen), and monitors take a few seconds to answer DDC/CI after resume.
+  The helper notices on its own: `CLOCK_BOOTTIME` counts the time spent
+  suspended and `CLOCK_MONOTONIC` doesn't, so a growing difference between
+  them means the computer slept. It then behaves as on wake-up: nothing for
+  2 s, then one read, and failures in that window count neither towards
+  `not-responding` nor towards a write's budget. No D-Bus in the compositor
+  for this.
 
 ### 5.6 Lines between the compositor and `vela-brightness`
 
@@ -406,10 +417,13 @@ New lines on the command socket (`command.h`):
 | `watch brightness` | the connection stays open and receives the same JSON line after every change |
 | `brightness-live on\|off` | this connection is showing a slider, or no longer is |
 
-- **`watch` is new:** today the compositor pushes lines only to the shell
-  (`vela_shell_send`), and Settings asks questions. The shell and Settings
-  both use `watch brightness`, so they get the same updates through the same
-  code.
+- **`watch` is new, and generic:** today the compositor pushes lines only
+  to the shell (`vela_shell_send`), and Settings asks questions. `watch
+  <topic>` is built in B1 as a mechanism of the command socket, not of
+  brightness: a topic is a name and a function that writes its whole state as
+  one line, and brightness is the first topic. The shell and Settings both
+  use `watch brightness`, so they get the same updates through the same
+  code; later topics (outputs, night light) reuse it.
 - **A slow watcher can't block the compositor:** every line is the whole
   state, so for each watcher the compositor keeps only the latest line not
   yet written, writes without blocking, and replaces it when a newer one
@@ -421,13 +435,16 @@ New lines on the command socket (`command.h`):
 
 ## 8. What the user sees
 
+- **Sliders** are the shared `Slider` of Vela.Controls
+  (`common/controls/Slider.qml`), in quick settings and in Settings.
 - **Quick settings:** one slider, for the output the panel opens on. If that
   output has no brightness, no slider. With more than one output with
   brightness, the slider has an arrow (like the volume) that opens a
   **Brightness** page with a slider per output, named as in Settings →
   Display. The wheel moves it by the same step as today. Live sync while the
   panel is open.
-- **Settings → Display:** the "Brightness" card follows the output selected
+- **Settings → Display:** the "Brightness" card ("Brightness & color"
+  section) follows the output selected
   in the arrangement, with live sync while the page is visible. When that
   output has no slider, the card explains why, once, without a slider:
   - `no-answer`: "Brightness is controlled by the display's buttons. If its
@@ -455,6 +472,12 @@ New lines on the command socket (`command.h`):
   others.
 - Writes from QML go out at once; coalescing is the helper's job (§5.4), so
   the model stays simple and every client behaves the same.
+- **What the slider shows** follows the rule of the service-backed switches
+  (`shell/src/requested.h`): the value asked for at once, then the
+  compositor's once it confirms or refuses that request; an answer to an
+  older request leaves the newest alone. Here the sequence numbers and the
+  `pending` flag come from the compositor (§7.1), and the helper's budget
+  (§5.4) takes the place of the switch's timeout.
 
 ## 10. Later
 
@@ -493,7 +516,8 @@ is in scope for B0, and its output goes into the bug report in B4.
   during a drag, the 120 ms interval, the read back and the rewrite after a
   dropped write, the budget and `refused`, a stale read back with an old
   `seq`, `not-responding` and its recovery, live sync skipping a pending or
-  recent write, `flock` busy.
+  recent write, `flock` busy, a suspend (the boot clock jumping ahead of the
+  monotonic one) in the middle of a drag and of live sync.
 - **Fake monitors:** a fake backend, chosen with
   `VELA_BRIGHTNESS_FAKE=<file>`, describes monitors and their faults, from §3,
   with a **fixed seed** so every run is the same: ignore a write that comes
@@ -518,7 +542,7 @@ is in scope for B0, and its output goes into the bug report in B4.
 - **Manual, on real hardware** (added to [hardware](hardware.md)): every
   monitor gets a slider or the right reason, a drag ends on the value shown,
   0% and back, the monitor's buttons move an open slider, unplug and replug,
-  idle off and back on, VT switch, `ddcutil getvcp 10` agreeing with the
+  idle off and back on, VT switch, suspend and resume with Settings open, `ddcutil getvcp 10` agreeing with the
   slider; NVIDIA (the `read()`/`write()` fallback) and Intel; a laptop
   (backlight choice, minimum, OLED if available); a dock or MST hub
   (#165). `ddcutil` is the reference, not a dependency.
@@ -532,6 +556,8 @@ is in scope for B0, and its output goes into the bug report in B4.
     rule as ddcutil's, harmless if both are installed);
   - `/usr/lib/modules-load.d/vela-i2c.conf`: `i2c-dev`.
 - PKGBUILD: `systemd-libs` for `sd-bus` in the helper (§5.3).
+- Fedora (`packaging/fedora/vela.spec`): `BuildRequires: systemd-devel`, and
+  the udev rule and the `modules-load.d` file in `%files`.
 - [hardware](hardware.md):
   - many monitors ship with **DDC/CI turned off** in their own menu;
   - with NVIDIA's proprietary driver, I²C may need the driver options that
