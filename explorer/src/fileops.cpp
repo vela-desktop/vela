@@ -200,12 +200,10 @@ public:
 
     void add(const QVariantMap& job)
     {
-        int at = 0;
-        while (at < m_rows.size() && !m_rows.at(at).value(QStringLiteral("finished")).toBool()) {
-            ++at;
-        }
-        beginInsertRows({}, at, at);
-        m_rows.insert(at, job);
+        // The newest copy must be visible even if several other jobs fill
+        // the viewport; completed and failed cards remain below active jobs.
+        beginInsertRows({}, 0, 0);
+        m_rows.prepend(job);
         endInsertRows();
     }
     void update(int id, const QVariantMap& job)
