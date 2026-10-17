@@ -11,6 +11,9 @@
 #include <QClipboard>
 #include <QCryptographicHash>
 #include <QImageReader>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QCollator>
 #include <QDir>
 #include <QFile>
@@ -119,6 +122,8 @@ bool launchFileTransfer(const QStringList& sources, const QString& directory, ve
     const bool launched = runDetached(executable, vela::files::transferArguments(action, directory, sources), directory);
     if (!launched) {
         qWarning("vela-shell: unable to start the tracked file transfer in vela-files");
+        vela::files::notifyTransferStartupFailure(
+            QCoreApplication::translate("Desktop", "Could not launch Vela Files to transfer the selected items."));
     }
     return launched;
 }
@@ -647,6 +652,38 @@ QString DesktopModel::undoText() const
     return m_undo.isEmpty() ? QString() : m_undo.last().label;
 }
 
+// Called by the shell command socket after vela-files commits a desktop
+// transfer. Paths come from the actual completed operation, so conflict
+// renames, skips and partial failures are reflected accurately.
+void DesktopModel::recordExternalTransfer(const QByteArray& json)
+{
+    QJsonParseError error {};
+    const QJsonDocument document = QJsonDocument::fromJson(json, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject()) {
+        return;
+    }
+    const QJsonObject data = document.object();
+    UndoStep step;
+    step.label = data.value(QStringLiteral("label")).toString();
+    for (const QJsonValue& value : data.value(QStringLiteral("moves")).toArray()) {
+        const QJsonArray move = value.toArray();
+        if (move.size() != 2 || !move.at(0).isString() || !move.at(1).isString()) {
+            return;
+        }
+        step.moves.append({ move.at(0).toString(), move.at(1).toString() });
+    }
+    for (const QJsonValue& value : data.value(QStringLiteral("created")).toArray()) {
+        if (!value.isString()) {
+            return;
+        }
+        step.created.append(value.toString());
+    }
+    if (step.label.isEmpty() || (step.moves.isEmpty() && step.created.isEmpty())) {
+        return;
+    }
+    pushUndo(std::move(step));
+}
+
 void DesktopModel::undo()
 {
     if (m_undo.isEmpty()) {
@@ -655,8 +692,13 @@ void DesktopModel::undo()
     const UndoStep step = m_undo.takeLast();
     emit undoChanged();
     for (const auto& [current, original] : step.moves) {
-        if (!QFileInfo::exists(original)) {
-            QFile::rename(current, original);
+        if (!QFileInfo::exists(original) && !QFile::rename(current, original)) {
+            // An inter-filesystem move cannot be reversed with rename().
+            // Route it through the same tracked FileOps worker as any move.
+            if (QFileInfo::exists(current)) {
+                launchFileTransfer({ current }, QFileInfo(original).absolutePath(),
+                    vela::files::TransferAction::Move);
+            }
         }
     }
     for (const QString& path : step.created) {
