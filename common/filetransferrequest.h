@@ -6,6 +6,8 @@
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QLocalSocket>
+#include <QStandardPaths>
 #include <QStringList>
 #include <QVariantMap>
 
@@ -54,6 +56,21 @@ inline bool parseTransferArguments(const QStringList& args, TransferRequest* out
     }
     *out = { action, args.at(2), args.mid(4) };
     return true;
+}
+
+// Explorer acknowledges startup only after the QML transfer window exists.
+// Without this acknowledgement, a successful startDetached() would hide a
+// failed dynamic loader or an early process crash from the desktop.
+inline void acknowledgeTransferStartup()
+{
+    const QString runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
+    QLocalSocket socket;
+    socket.connectToServer(runtime + QStringLiteral("/vela-shell-") + display + QStringLiteral(".sock"));
+    if (socket.waitForConnected(300)) {
+        socket.write("desktop-transfer-ready " + QByteArray::number(QCoreApplication::applicationPid()) + '\\n');
+        socket.waitForBytesWritten(300);
+    }
 }
 
 // Both the shell (spawn failed) and Explorer (invalid startup request) use a
