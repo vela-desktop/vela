@@ -44,16 +44,23 @@ public:
         m_jobs = jobs;
         m_model.clear();
         m_model.setItemRoleNames({ { Qt::UserRole + 1, QByteArrayLiteral("modelData") } });
-        // Mirror production ordering: all active transfers before old errors.
-        for (bool finished : { false, true }) {
-            for (const QVariant& job : jobs) {
-                if (job.toMap().value(QStringLiteral("finished")).toBool() != finished) {
-                    continue;
-                }
-                auto* item = new QStandardItem;
-                item->setData(job.toMap(), Qt::UserRole + 1);
-                m_model.appendRow(item);
+        // Mirror production ordering: newest active first, then old results.
+        for (qsizetype i = jobs.size(); i > 0; --i) {
+            const QVariant& job = jobs[i - 1];
+            if (job.toMap().value(QStringLiteral("finished")).toBool()) {
+                continue;
             }
+            auto* item = new QStandardItem;
+            item->setData(job.toMap(), Qt::UserRole + 1);
+            m_model.appendRow(item);
+        }
+        for (const QVariant& job : jobs) {
+            if (!job.toMap().value(QStringLiteral("finished")).toBool()) {
+                continue;
+            }
+            auto* item = new QStandardItem;
+            item->setData(job.toMap(), Qt::UserRole + 1);
+            m_model.appendRow(item);
         }
         emit jobsChanged();
     }
