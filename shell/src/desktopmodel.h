@@ -96,6 +96,8 @@ public:
     Q_INVOKABLE void emptyTrash();
     Q_INVOKABLE bool trashEmpty() const;
     Q_INVOKABLE void undo();
+    // Receive committed transfer steps from the separate vela-files process.
+    void recordExternalTransfer(const QByteArray& json);
     // New: they return the path, to rename it right away.
     Q_INVOKABLE QString createFolder();
     Q_INVOKABLE QString createFile(const QString& templatePath); // empty: text document
