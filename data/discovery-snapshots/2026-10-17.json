@@ -1,0 +1,105 @@
+{
+  "collected_at": "2026-10-17T07:46:43+00:00",
+  "coverage": "top_10_only",
+  "popular_paths": [
+    {
+      "count": 303,
+      "path": "/vela-desktop/vela/pulls",
+      "title": "/pulls",
+      "uniques": 7
+    },
+    {
+      "count": 117,
+      "path": "/vela-desktop/vela",
+      "title": "Overview",
+      "uniques": 85
+    },
+    {
+      "count": 63,
+      "path": "/BrandoDev/vela/pulls",
+      "title": "/pulls",
+      "uniques": 2
+    },
+    {
+      "count": 43,
+      "path": "/vela-desktop/vela/issues",
+      "title": "/issues",
+      "uniques": 7
+    },
+    {
+      "count": 30,
+      "path": "/BrandoDev/vela",
+      "title": "Overview",
+      "uniques": 5
+    },
+    {
+      "count": 25,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 8
+    },
+    {
+      "count": 25,
+      "path": "/vela-desktop/vela/pull/47",
+      "title": "/pull/47",
+      "uniques": 1
+    },
+    {
+      "count": 23,
+      "path": "/vela-desktop/vela/pull/40",
+      "title": "/pull/40",
+      "uniques": 2
+    },
+    {
+      "count": 17,
+      "path": "/BrandoDev/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 2
+    },
+    {
+      "count": 15,
+      "path": "/vela-desktop/vela/issues/50",
+      "title": "/issues/50",
+      "uniques": 3
+    }
+  ],
+  "referrers": [
+    {
+      "count": 30,
+      "referrer": "github.com",
+      "uniques": 9
+    },
+    {
+      "count": 28,
+      "referrer": "velade.org",
+      "uniques": 22
+    },
+    {
+      "count": 16,
+      "referrer": "reddit.com",
+      "uniques": 14
+    },
+    {
+      "count": 14,
+      "referrer": "com.reddit.frontpage",
+      "uniques": 12
+    },
+    {
+      "count": 1,
+      "referrer": "DuckDuckGo",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "org.telegram.messenger",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "search.brave.com",
+      "uniques": 1
+    }
+  ],
+  "schema_version": 1,
+  "window": "rolling_14_days"
+}
