@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QList>
 #include <QPointF>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -99,6 +100,7 @@ public:
     Q_INVOKABLE void undo();
     // Receive committed transfer steps from the separate vela-files process.
     void recordExternalTransfer(const QByteArray& json);
+    void acknowledgeTransferStart(qint64 pid);
     // New: they return the path, to rename it right away.
     Q_INVOKABLE QString createFolder();
     Q_INVOKABLE QString createFile(const QString& templatePath); // empty: text document
@@ -155,6 +157,7 @@ private:
     QString uniqueName(const QString& name) const;
     static QString uniqueNameIn(const QString& dir, const QString& name);
     void pushUndo(UndoStep step);
+    bool startTrackedTransfer(const QStringList& sources, const QString& directory, int action);
 
     AppModel* m_apps;
     QString m_dir;
@@ -170,6 +173,7 @@ private:
     qreal m_areaWidth = 0;
     qreal m_areaHeight = 0;
     QList<UndoStep> m_undo;
+    QSet<qint64> m_pendingTransferStarts;
     QString m_pendingSelect; // file just created, to announce when it appears
     bool m_pendingRename = false;
 };
