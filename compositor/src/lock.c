@@ -68,7 +68,7 @@ static void set_desktop_enabled(struct vela_server *server, bool enabled)
 }
 
 // An unsafe supervisor marker (or a broken retry timer) ends the session.
- // First submit an opaque black frame for every active output. Committing a
+// First submit an opaque black frame for every active output. Committing a
  // frame isn't proof of physical scanout, so allow another few refresh cycles
  // before exit; a bounded fallback avoids hanging on a failed GPU/connector.
 #define VELA_LOCK_FATAL_TIMEOUT_MS 2000
@@ -87,7 +87,23 @@ static void lock_fatal_shutdown(struct vela_lock *lock)
     }
     lock->fatal_exit_pending = true;
     struct vela_server *server = lock->server;
-    // Called after the scene has switched to the opaque lock backdrop.
+    // Suppress any currently displayed lock-client surfaces as well: a
+    // terminal failure must leave only the compositor's opaque backdrop.
+    set_desktop_enabled(server, false);
+    vela_node_set_enabled(&server->layers.lock->node, true);
+    if (lock->lock) {
+        struct wlr_session_lock_surface_v1 *surface;
+        wl_list_for_each (surface, &lock->lock->surfaces, link) {
+            struct lock_surface *mapped = surface->data;
+            if (mapped) {
+                vela_node_set_enabled(&mapped->tree->node, false);
+            }
+        }
+    }
+    wlr_seat_keyboard_clear_focus(server->seat);
+    wlr_seat_pointer_clear_focus(server->seat);
+    vela_lock_update_layout(lock);
+    vela_scene_changed(server->scene);
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
         if (!output->wlr->enabled || !output->powered) {
