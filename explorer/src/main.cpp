@@ -111,6 +111,14 @@ int main(int argc, char* argv[])
     FileOps ops(&apps);
     Places places;
     places.setTransferGuard([&ops](const QString& device) { return ops.activeOnDevice(device); });
+    ops.setEjectGuard([&places](const QStringList& sources, const QString& destination) {
+        for (const QString& device : places.ejectingDevices()) {
+            if (FileOps::pathsOnDevice(sources, destination, device)) {
+                return true;
+            }
+        }
+        return false;
+    });
     SystemActions system;
     ServiceMenus serviceMenus;
 
