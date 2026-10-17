@@ -219,6 +219,13 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-service-models-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
     add_test(NAME shell-service-models COMMAND vela-service-models-test)
     set_tests_properties(shell-service-models PROPERTIES TIMEOUT 90)
+
+    qt_add_executable(vela-notification-silence-test
+        tests/notification_silence.cpp src/notifications.cpp src/notifications.h)
+    target_include_directories(vela-notification-silence-test PRIVATE src)
+    target_compile_options(vela-notification-silence-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-notification-silence-test PRIVATE Qt6::Core Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
+    add_test(NAME shell-notification-silence COMMAND vela-notification-silence-test)
 endif()
 
 # Italian translation: strings in the code are in English, Italian lives

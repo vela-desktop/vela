@@ -59,9 +59,8 @@ direction, not a promise.
 - Taskbar: progress and unread badges on app buttons, auto-hide, vertical
   taskbar, never combine buttons.
 - Notifications grouped by app, and Do Not Disturb turned on automatically
-  during fullscreen games and screen sharing.
+  during fullscreen games (it is already silenced while the screen is shared).
 - Calendar events in the notification center.
-- An indicator when the screen is being shared or recorded.
 - Brightness keys with an on-screen indicator, on the monitor under the pointer.
 - Keyboard backlight control.
 

@@ -62,6 +62,8 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `touchpad-natural-scroll` | `yes` | Natural scrolling. |
 | `touchpad-three-fingers` | `app` | Three-finger gesture mode: `app`, `desktop` or `no`. |
 | `touchpad-four-fingers` | `desktop` | Four-finger gesture mode. |
+| `capture-indicator` | `yes` | Show an indicator in the taskbar while the screen is shared or recorded (Settings > Taskbar > Screen sharing). `no` also disables `capture-dnd`. |
+| `capture-dnd` | `yes` | Silence notification popups while the screen is shared or recorded; they wait in the notification center. Added to the user's own Do Not Disturb, never replaces it. |
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
 

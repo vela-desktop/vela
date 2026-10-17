@@ -125,18 +125,26 @@ Window {
                 y: 10
                 width: parent.width - 32
                 height: 36
-                Text {
+                Column {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Notifications")
-                    color: Theme.text
-                    font.pixelSize: Theme.fontBody
-                    font.weight: Font.DemiBold
+                    Text {
+                        text: qsTr("Notifications")
+                        color: Theme.text
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        visible: Notifications.captureSilenced
+                        text: qsTr("Silenced while your screen is shared")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                    }
                 }
                 Row {
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                     spacing: 4
                     SmallButton {
-                        icon: Notifications.doNotDisturb ? "notifications-disabled" : "notifications"
+                        icon: Notifications.silenced ? "notifications-disabled" : "notifications"
                         checked: Notifications.doNotDisturb
                         onClicked: Notifications.doNotDisturb = !Notifications.doNotDisturb
                     }

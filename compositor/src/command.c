@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "capture_watch.h"
 #include "command.h"
 
 #include "a11y.h"
@@ -423,6 +424,7 @@ static void run_command(struct vela_server *server, const char *line)
         vela_input_reload(server->input); // keyboards, mice and touchpads
         vela_output_load_settings(server);
         vela_a11y_load(a11y);
+        vela_capture_watch_load(server->capture_watch);
     } else if (starts_with(line, "night-light ")) {
         // From quick settings: night-light on|off|toggle (and likewise
         // filters, magnifier, sticky keys).

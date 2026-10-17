@@ -36,6 +36,9 @@
 //   touchpad-speed=10, touchpad-tap=yes, touchpad-natural-scroll=yes
 //   touchpad-three-fingers=app  gestures: app, desktop, no
 //   touchpad-four-fingers=desktop
+//   capture-indicator=yes    a taskbar indicator while the screen is shared or
+//                            recorded (capture_watch.c)
+//   capture-dnd=yes          and notifications are silenced meanwhile
 //   language=                it, en, or empty (like the system)
 //   polkit-agent=yes         start Vela's polkit agent (docs/polkit-agent.md)
 //

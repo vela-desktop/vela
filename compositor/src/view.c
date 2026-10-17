@@ -3,6 +3,7 @@
 
 #include "view.h"
 
+#include "capture_watch.h"
 #include "interact.h"
 #include "focus.h"
 #include "bindings.h"
@@ -1366,7 +1367,7 @@ void vela_views_init(struct vela_server *server)
     // Output and window capture (Alt+Tab previews, and later screen sharing):
     // the standard ext-* protocols.
     server->ext_toplevels = wlr_ext_foreign_toplevel_list_v1_create(display, 1);
-    wlr_ext_image_copy_capture_manager_v1_create(display, 1);
+    vela_capture_watch_copy_capture(server->capture_watch, wlr_ext_image_copy_capture_manager_v1_create(display, 1));
     wlr_ext_output_image_capture_source_manager_v1_create(display, 1);
     struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 *capture
         = wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(display, 1);

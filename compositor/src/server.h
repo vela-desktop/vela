@@ -22,6 +22,7 @@
 #include "shell.h"
 
 struct vela_a11y;
+struct vela_capture_watch;
 struct vela_commands;
 struct vela_icons;
 struct vela_input;
@@ -125,6 +126,7 @@ struct vela_server {
     struct vela_input *input; // devices, keyboards, gestures (input.h)
     struct vela_a11y *a11y; // night light, filters, magnifier, sticky keys (a11y.h)
     struct vela_lock *lock; // screen lock and inactivity (lock.h)
+    struct vela_capture_watch *capture_watch; // screen sharing indicator (capture_watch.h)
     // Locked (ext-session-lock-v1): only the lock program shows.
     bool locked;
 

@@ -4,6 +4,7 @@
 #include "server.h"
 
 #include "a11y.h"
+#include "capture_watch.h"
 #include "command.h"
 #include "config.h"
 #include "error_screen.h"
@@ -211,6 +212,7 @@ static bool init(struct vela_server *server)
     wlr_viewporter_create(display);
     wlr_single_pixel_buffer_manager_v1_create(display);
     wlr_fractional_scale_manager_v1_create(display, 1);
+    server->capture_watch = vela_capture_watch_create(server);
     wlr_screencopy_manager_v1_create(display);
     wlr_presentation_create(display, server->backend, 2);
 
@@ -435,6 +437,8 @@ void vela_server_destroy(struct vela_server *server)
     server->input = NULL;
     vela_a11y_destroy(server->a11y);
     server->a11y = NULL;
+    vela_capture_watch_destroy(server->capture_watch);
+    server->capture_watch = NULL;
 
     wlr_xcursor_manager_destroy(server->cursor_manager);
     wlr_cursor_destroy(server->cursor);

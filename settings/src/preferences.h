@@ -76,6 +76,8 @@ class Preferences : public QObject {
     Q_PROPERTY(bool touchpadWithMouse READ touchpadWithMouse WRITE setTouchpadWithMouse NOTIFY inputChanged)
     Q_PROPERTY(int touchpadSpeed READ touchpadSpeed WRITE setTouchpadSpeed NOTIFY inputChanged)
     Q_PROPERTY(bool touchpadTap READ touchpadTap WRITE setTouchpadTap NOTIFY inputChanged)
+    Q_PROPERTY(bool captureIndicator READ captureIndicator WRITE setCaptureIndicator NOTIFY inputChanged)
+    Q_PROPERTY(bool captureDnd READ captureDnd WRITE setCaptureDnd NOTIFY inputChanged)
     Q_PROPERTY(bool touchpadNatural READ touchpadNatural WRITE setTouchpadNatural NOTIFY inputChanged)
     // "app", "desktop" or "no"
     Q_PROPERTY(QString threeFingers READ threeFingers WRITE setThreeFingers NOTIFY inputChanged)
@@ -189,6 +191,10 @@ public:
     void setTouchpadSpeed(int value);
     bool touchpadTap() const { return m_touchpadTap; }
     void setTouchpadTap(bool on);
+    bool captureIndicator() const { return m_captureIndicator; }
+    void setCaptureIndicator(bool on);
+    bool captureDnd() const { return m_captureDnd; }
+    void setCaptureDnd(bool on);
     bool touchpadNatural() const { return m_touchpadNatural; }
     void setTouchpadNatural(bool on);
     QString threeFingers() const { return m_threeFingers; }
@@ -274,6 +280,8 @@ private:
     int m_touchpadSpeed = 10;
     bool m_touchpadTap = true;
     bool m_touchpadNatural = true;
+    bool m_captureIndicator = true;
+    bool m_captureDnd = true;
     QString m_threeFingers = QStringLiteral("app");
     QString m_fourFingers = QStringLiteral("desktop");
     bool m_clipboardHistory = false;

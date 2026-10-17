@@ -401,7 +401,7 @@ Window {
     Row {
         id: tray
         visible: root.primary
-        anchors { right: microphone.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
+        anchors { right: screenShare.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
 
         Repeater {
             model: Tray
@@ -460,6 +460,63 @@ Window {
                     onWheel: wheel => Tray.scroll(trayItem.index, wheel.angleDelta.y)
                 }
             }
+        }
+    }
+
+    // The screen being shared or recorded, like Windows 11: a red dot over a
+    // screen, "Your screen is being shared" in the tooltip (the compositor
+    // says when, capture_watch.c).
+    Item {
+        id: screenShare
+        visible: root.primary && Shell.screenCaptured
+        anchors { right: microphone.left; top: parent.top; bottom: parent.bottom }
+        width: visible ? 32 : 0
+
+        function showTooltip() {
+            const p = screenShare.mapToItem(null, screenShare.width / 2, 0)
+            Menus.tooltip = { text: Notifications.captureSilenced ? qsTr("Your screen is being shared. Notifications are silenced.") : qsTr("Your screen is being shared"), center: p.x, screen: root.screenName, owner: "screenShare" }
+        }
+        function hideTooltip() {
+            shareTooltipDelay.stop()
+            if (Menus.tooltip && Menus.tooltip.owner === "screenShare") {
+                Menus.tooltip = null
+            }
+        }
+        onVisibleChanged: if (!visible) hideTooltip()
+
+        Timer {
+            id: shareTooltipDelay
+            interval: 500
+            onTriggered: screenShare.showTooltip()
+        }
+        Rectangle {
+            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            radius: Theme.radius
+            color: shareMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
+            opacity: shareMouse.containsMouse ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+        }
+        Image {
+            anchors.centerIn: parent
+            width: 16
+            height: 16
+            source: Theme.icons + "video-display"
+            sourceSize: Qt.size(width, height)
+        }
+        Rectangle {
+            width: 7
+            height: 7
+            radius: 3.5
+            color: "#e81123"
+            x: parent.width / 2 + 2
+            y: parent.height / 2 + 1
+        }
+        MouseArea {
+            id: shareMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onContainsMouseChanged: containsMouse ? shareTooltipDelay.restart() : screenShare.hideTooltip()
+            onClicked: screenShare.showTooltip()
         }
     }
 
@@ -627,15 +684,15 @@ Window {
         // Notifications to read: a number next to the clock, like Windows 11
         // (with "Do not disturb" a muted bell).
         Rectangle {
-            visible: Notifications.history.count > 0 || Notifications.doNotDisturb
+            visible: Notifications.history.count > 0 || Notifications.silenced
             anchors { right: parent.right; rightMargin: -2; verticalCenter: parent.verticalCenter }
             width: 18
             height: 18
             radius: 9
-            color: Notifications.doNotDisturb ? "transparent" : Theme.accent
+            color: Notifications.silenced ? "transparent" : Theme.accent
             Text {
                 anchors.centerIn: parent
-                visible: !Notifications.doNotDisturb
+                visible: !Notifications.silenced
                 text: Math.min(Notifications.history.count, 9)
                 color: "white"
                 font.pixelSize: 10
@@ -643,7 +700,7 @@ Window {
             }
             Image {
                 anchors.centerIn: parent
-                visible: Notifications.doNotDisturb
+                visible: Notifications.silenced
                 width: 14
                 height: 14
                 source: Theme.icons + "notifications-disabled"

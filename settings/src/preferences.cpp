@@ -229,6 +229,8 @@ void Preferences::reloadCompositor()
     m_touchpadSpeed = std::clamp(value(QStringLiteral("touchpad-speed"), QStringLiteral("10")).toInt(), 1, 20);
     m_touchpadTap = flag(QStringLiteral("touchpad-tap"), true);
     m_touchpadNatural = flag(QStringLiteral("touchpad-natural-scroll"), true);
+    m_captureIndicator = flag(QStringLiteral("capture-indicator"), true);
+    m_captureDnd = flag(QStringLiteral("capture-dnd"), true);
     m_threeFingers = value(QStringLiteral("touchpad-three-fingers"), QStringLiteral("app"));
     m_fourFingers = value(QStringLiteral("touchpad-four-fingers"), QStringLiteral("desktop"));
     emit inputChanged();
@@ -827,6 +829,24 @@ void Preferences::setTouchpadTap(bool on)
     if (on != m_touchpadTap) {
         m_touchpadTap = on;
         saveCompositor({ { QStringLiteral("touchpad-tap"), yesNo(on) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setCaptureDnd(bool on)
+{
+    if (on != m_captureDnd) {
+        m_captureDnd = on;
+        saveCompositor({ { QStringLiteral("capture-dnd"), yesNo(on) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setCaptureIndicator(bool on)
+{
+    if (on != m_captureIndicator) {
+        m_captureIndicator = on;
+        saveCompositor({ { QStringLiteral("capture-indicator"), yesNo(on) } });
         emit inputChanged();
     }
 }

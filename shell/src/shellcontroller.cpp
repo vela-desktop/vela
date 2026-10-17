@@ -298,6 +298,14 @@ void ShellController::handleCommand(const QByteArray& command)
         emit volumeKeyPressed(QString::fromLatin1(parts.at(1)));
     } else if (parts.first() == "media" && parts.size() == 2) {
         emit mediaKeyPressed(QString::fromLatin1(parts.at(1)));
+    } else if (parts.first() == "capture" && parts.size() >= 2) {
+        const bool on = parts.at(1) == "on";
+        const bool dnd = on && parts.size() > 2 && parts.at(2) == "dnd";
+        if (on != m_screenCaptured || dnd != m_captureDnd) {
+            m_screenCaptured = on;
+            m_captureDnd = dnd;
+            emit screenCapturedChanged();
+        }
     } else if (command == "task-view") {
         emit taskViewRequested();
     } else if (parts.first() == "workspaces") {

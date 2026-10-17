@@ -302,6 +302,10 @@ int main(int argc, char* argv[])
     notifications.registerService();
     notifications.setDoNotDisturb(config.doNotDisturb());
     QObject::connect(&config, &Config::doNotDisturbChanged, &notifications, &NotificationServer::setDoNotDisturb);
+    // Sharing the screen with capture-dnd=yes: popups held back (the center keeps them).
+    auto silenceForSharing = [&] { notifications.setCaptureSilenced(shell.captureSilence()); };
+    QObject::connect(&shell, &ShellController::screenCapturedChanged, &notifications, silenceForSharing);
+    silenceForSharing();
     TrayModel tray;
     tray.start();
     SystemActions system;

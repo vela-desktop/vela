@@ -302,6 +302,10 @@
         <translation>Notifiche</translation>
     </message>
     <message>
+        <source>Silenced while your screen is shared</source>
+        <translation>Silenziate mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
         <source>Clear all</source>
         <translation>Cancella tutto</translation>
     </message>
