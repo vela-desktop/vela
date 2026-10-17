@@ -255,8 +255,13 @@ private slots:
         // output may legitimately be chosen.
         const QString initial = client->primaryOutput();
         QVERIFY(initial == QLatin1String("HEADLESS-1") || initial == QLatin1String("HEADLESS-2"));
+        QCOMPARE(client->preferredPrimaryOutput(), QString());
         QVERIFY(!client->setPrimaryOutput(QStringLiteral("not-connected")));
         QSignalSpy changed(client.get(), &Displays::primaryOutputChanged);
+
+        // Choosing even the existing Qt fallback must pin it explicitly.
+        QVERIFY(client->setPrimaryOutput(initial));
+        QCOMPARE(client->preferredPrimaryOutput(), initial);
 
         // Verify that an explicit choice overrides the initial fallback,
         // regardless of the order in which Qt enumerates the outputs.
@@ -264,15 +269,26 @@ private slots:
         QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-1"));
         QVERIFY(client->setPrimaryOutput(QStringLiteral("HEADLESS-2")));
         QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-2"));
-        QCOMPARE(QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))
-                     .value(QStringLiteral("display/primaryOutput")).toString(), QStringLiteral("HEADLESS-2"));
+        QCOMPARE(client->preferredPrimaryOutput(), QStringLiteral("HEADLESS-2"));
         QVERIFY(changed.count() >= 1);
+
+        // Toggle the same connector: "add" would create HEADLESS-3 and
+        // would not exercise restoration of the preferred HEADLESS-2.
+        command("disable HEADLESS-2");
+        QTRY_VERIFY(!output("HEADLESS-2").value("enabled").toBool());
+        QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-1"));
+        QCOMPARE(client->preferredPrimaryOutput(), QStringLiteral("HEADLESS-2"));
+        QVERIFY(!client->setPrimaryOutput(QStringLiteral("HEADLESS-2")));
+        command("enable HEADLESS-2");
+        QTRY_VERIFY(output("HEADLESS-2").value("enabled").toBool());
+        QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-2"));
+        QCOMPARE(client->preferredPrimaryOutput(), QStringLiteral("HEADLESS-2"));
+
+        // A real connector removal also falls back without erasing the choice.
         command("remove HEADLESS-2");
         QTRY_COMPARE(client->outputs().size(), 1);
         QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-1"));
-        QCOMPARE(QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))
-                     .value(QStringLiteral("display/primaryOutput")).toString(), QStringLiteral("HEADLESS-2"));
-        QVERIFY(!client->setPrimaryOutput(QStringLiteral("HEADLESS-2")));
+        QCOMPARE(client->preferredPrimaryOutput(), QStringLiteral("HEADLESS-2"));
         command("add");
         QTRY_COMPARE(client->outputs().size(), 2);
         QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-1"));

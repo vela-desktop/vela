@@ -384,10 +384,13 @@ int Displays::secondsRemaining() const
 }
 QString Displays::error() const { return m_client->error; }
 QVariantList Displays::outputs() const { return m_client->published; }
+QString Displays::preferredPrimaryOutput() const
+{
+    return QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))
+        .value(QStringLiteral("display/primaryOutput")).toString();
+}
 QString Displays::primaryOutput() const
 {
-    const QString saved = QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))
-                              .value(QStringLiteral("display/primaryOutput")).toString();
     QStringList enabled;
     for (const QVariant& v : m_client->published) {
         const QVariantMap head = v.toMap();
@@ -395,7 +398,7 @@ QString Displays::primaryOutput() const
             enabled.append(head.value(QStringLiteral("name")).toString());
     }
     const QScreen* qt = QGuiApplication::primaryScreen();
-    return vela::primaryOutputName(saved, enabled, qt ? qt->name() : QString());
+    return vela::primaryOutputName(preferredPrimaryOutput(), enabled, qt ? qt->name() : QString());
 }
 bool Displays::setPrimaryOutput(const QString& name)
 {

@@ -255,9 +255,10 @@ Page {
             title: qsTr("Make this my main display")
             description: qsTr("Show notifications and the main taskbar on this display")
             trailing: Button {
-                text: page.output && page.output.name === Displays.primaryOutput
+                // An implicit fallback can already be main without being saved.
+                text: page.output && page.output.name === Displays.preferredPrimaryOutput
                     ? qsTr("Main display") : qsTr("Make main")
-                usable: page.output && page.output.name !== Displays.primaryOutput
+                usable: page.output && page.output.name !== Displays.preferredPrimaryOutput
                 onClicked: Displays.setPrimaryOutput(page.output.name)
             }
         }

@@ -25,6 +25,7 @@ Window {
         field.text = System.runHistory()[0] || ""
         field.selectAll()
         historyIndex = -1
+        Menus.placeOnTargetScreen(root)
         visible = true
         motion.open()
         field.forceActiveFocus()
