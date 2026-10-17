@@ -54,6 +54,7 @@ struct vela_lock {
     struct vela_output **waiting;
     int waiting_count;
     int waiting_capacity;
+    pid_t launcher_pid; // child process group for a pending locker launch
     struct wl_event_source *respawn; // relaunches vela-lock if it goes away
     int64_t respawns[VELA_LOCK_RESPAWNS]; // when (ms), so as not to insist forever
     int respawn_count;
