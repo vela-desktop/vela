@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QDBusPendingCall>
 #include <QLocalSocket>
 #include <QStandardPaths>
 #include <QStringList>
