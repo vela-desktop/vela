@@ -44,10 +44,16 @@ public:
         m_jobs = jobs;
         m_model.clear();
         m_model.setItemRoleNames({ { Qt::UserRole + 1, QByteArrayLiteral("modelData") } });
-        for (const QVariant& job : jobs) {
-            auto* item = new QStandardItem;
-            item->setData(job.toMap(), Qt::UserRole + 1);
-            m_model.appendRow(item);
+        // Mirror production ordering: all active transfers before old errors.
+        for (bool finished : { false, true }) {
+            for (const QVariant& job : jobs) {
+                if (job.toMap().value(QStringLiteral("finished")).toBool() != finished) {
+                    continue;
+                }
+                auto* item = new QStandardItem;
+                item->setData(job.toMap(), Qt::UserRole + 1);
+                m_model.appendRow(item);
+            }
         }
         emit jobsChanged();
     }
@@ -72,7 +78,13 @@ public:
         for (qsizetype i = 0; i < m_jobs.size(); ++i) {
             if (m_jobs[i].toMap().value(QStringLiteral("id")).toInt() == id) {
                 m_jobs.removeAt(i);
-                m_model.removeRow(i);
+                for (int row = 0; row < m_model.rowCount(); ++row) {
+                    if (m_model.item(row)->data(Qt::UserRole + 1).toMap()
+                        .value(QStringLiteral("id")).toInt() == id) {
+                        m_model.removeRow(row);
+                        break;
+                    }
+                }
                 emit jobsChanged();
                 break;
             }
