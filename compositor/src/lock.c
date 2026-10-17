@@ -226,6 +226,9 @@ static void handle_unlock(struct wl_listener *listener, void *data)
 static void handle_lock_destroy(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, destroy);
+    // This wlroots lock is being torn down. A timer-arm failure may initiate
+    // terminal blackout, which must never walk surfaces on the dying object.
+    lock->lock = NULL;
     // If it didn't unlock (crash), everything stays locked and black: a new
     // vela-lock can take its place.
     if (lock->server->locked) {
@@ -250,7 +253,6 @@ static void handle_lock_destroy(struct wl_listener *listener, void *data)
             lock_arm_retry(lock, VELA_LOCK_RETRY_COOLDOWN_MS);
         }
     }
-    lock->lock = NULL;
     lock->waiting_count = 0;
     wl_list_remove(&lock->new_surface.link);
     wl_list_remove(&lock->unlock.link);
