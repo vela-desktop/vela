@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "frame_diff_driver.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 enum scenario {
     STABLE, MOVE, ROTATE, REVERSE, CHURN, REPLACE,
-    INSERT_FRONT, INSERT_MIDDLE, REMOVE_FRONT, RESTACK_WINDOW, POPUP, ANIMATION_CHURN, SCENARIO_COUNT
+    INSERT_FRONT, INSERT_MIDDLE, REMOVE_FRONT, RESTACK_WINDOW, POPUP, ANIMATION_CHURN,
+    DUPLICATE_KEYS, SCENARIO_COUNT
 };
 static const char *names[] = {
     "stable", "move", "rotate", "reverse", "churn-quarter", "replace-all",
-    "insert-front", "insert-middle", "remove-front", "restack-window", "popup-open-close", "animation-churn"
+    "insert-front", "insert-middle", "remove-front", "restack-window", "popup-open-close", "animation-churn",
+    "duplicate-keys"
 };
 
 struct fixture {
@@ -63,6 +66,13 @@ static void init_fixture(struct fixture *f, int count, enum scenario scenario)
         f->frame.last.items[i] = e;
     }
 
+    // Deliberately non-unique keys for stress-testing the circular match rule.
+    if (scenario == DUPLICATE_KEYS) {
+        for (int i = 0; i < count; ++i) {
+            f->frame.last.items[i].key = &f->keys[i % 8];
+        }
+    }
+
     int inserts = scenario == INSERT_FRONT || scenario == INSERT_MIDDLE ? 1
         : scenario == POPUP ? 2 : scenario == ANIMATION_CHURN ? 4 : 0;
     int new_count = count + inserts - (scenario == REMOVE_FRONT && count > 0 ? 1 : 0);
@@ -96,7 +106,7 @@ static void init_fixture(struct fixture *f, int count, enum scenario scenario)
         } else {
             int old = old_cursor++;
             if (scenario == ROTATE && count > 0) old = (i + 1) % count;
-            if (scenario == REVERSE) old = count - i - 1;
+            if (scenario == REVERSE || scenario == DUPLICATE_KEYS) old = count - i - 1;
             if (scenario == RESTACK_WINDOW && count > 1) {
                 int selected = count / 2;
                 old = i == 0 ? selected : i <= selected ? i - 1 : i;
@@ -142,6 +152,63 @@ static bool damage_is(struct fixture *f, int x, int y, unsigned width, unsigned 
     bool equal = pixman_region32_equal(&expected, &f->frame.scene_damage);
     pixman_region32_fini(&expected);
     return equal;
+}
+
+// Independent reference for the original O(N^2) circular key search. Synthetic
+// fixtures only vary boxes and opacity; every other visual field is identical.
+static void reference_add_box(pixman_region32_t *region, const struct wlr_box *box)
+{
+    pixman_region32_union_rect(region, region, box->x, box->y,
+        (unsigned)(box->width > 0 ? box->width : 0),
+        (unsigned)(box->height > 0 ? box->height : 0));
+}
+
+static bool reference_same_look(const struct vela_element *a, const struct vela_element *b)
+{
+    return a->box.x == b->box.x && a->box.y == b->box.y
+        && a->box.width == b->box.width && a->box.height == b->box.height
+        && a->opacity == b->opacity;
+}
+
+static void reference_diff_damage(const struct vela_elements *last, const struct vela_elements *current,
+    pixman_region32_t *damage)
+{
+    bool *found = calloc((size_t)last->count + 1, sizeof(*found));
+    if (!found) abort();
+    int highest_old_order = 0;
+    for (int i = 0; i < current->count; ++i) {
+        const struct vela_element *e = &current->items[i];
+        const struct vela_element *old = NULL;
+        for (int k = 0; k < last->count; ++k) {
+            int j = (i + k) % last->count;
+            if (last->items[j].key == e->key) {
+                old = &last->items[j];
+                found[j] = true;
+                break;
+            }
+        }
+        if (!old) {
+            reference_add_box(damage, &e->box);
+            continue;
+        }
+        if (!reference_same_look(e, old)) {
+            reference_add_box(damage, &old->box);
+            reference_add_box(damage, &e->box);
+        } else if (old->order < highest_old_order) {
+            reference_add_box(damage, &e->box);
+        }
+        if (old->order > highest_old_order) highest_old_order = old->order;
+    }
+    for (int j = 0; j < last->count; ++j) {
+        if (!found[j]) reference_add_box(damage, &last->items[j].box);
+    }
+    free(found);
+}
+
+static uint32_t next_random(uint32_t *state)
+{
+    *state = *state * UINT32_C(1664525) + UINT32_C(1013904223);
+    return *state;
 }
 
 static int test_diff(void)
@@ -235,6 +302,8 @@ static int test_diff(void)
     finish_fixture(&f);
 
     init_fixture(&f, 4, ANIMATION_CHURN);
+    struct vela_element before_animation[4];
+    memcpy(before_animation, f.frame.last.items, sizeof(before_animation));
     tick(&f);
     CHECK(f.frame.last.count == 8 && damage_is(&f, 64, 0, 64, 16));
     memcpy(f.frame.current.items, f.frame.last.items, 8 * sizeof(struct vela_element));
@@ -242,7 +311,10 @@ static int test_diff(void)
     f.frame.current.items[0].opacity -= 0.25f;
     tick(&f);
     CHECK(damage_is(&f, 64, 0, 16, 16));
-    f.frame.current.count = 4; // the pre-animation list becomes visible again
+    // Removing transient layers must restore the actual original scene,
+    // not merely truncate the animated list (which still contains layers).
+    memcpy(f.frame.current.items, before_animation, sizeof(before_animation));
+    f.frame.current.count = 4;
     tick(&f);
     CHECK(damage_is(&f, 64, 0, 64, 16));
     finish_fixture(&f);
@@ -259,6 +331,50 @@ static int test_diff(void)
     CHECK(damage_is(&f, 0, 0, 16, 16));
     CHECK(vela_test_forgotten() == forgotten + 1);
     finish_fixture(&f);
+
+    // Differential regression against the pre-index circular search. Vary list
+    // lengths, duplicate-key multiplicities, permutations and appearance. A
+    // fixed seed makes failures reproducible on every CI environment.
+    uint32_t random_state = UINT32_C(0x86a5e11a);
+    for (int trial = 0; trial < 1000; ++trial) {
+        int count = (int)(next_random(&random_state) % 24);
+        init_fixture(&f, count, STABLE);
+        int distinct_keys = count < 6 ? count : 6;
+        for (int j = 0; j < count; ++j) {
+            int key_index = (int)(next_random(&random_state) % (unsigned)distinct_keys);
+            f.frame.last.items[j].key = &f.keys[key_index];
+        }
+        int new_count = (int)(next_random(&random_state) % (unsigned)(count + 5));
+        f.frame.current.count = new_count;
+        for (int i = 0; i < new_count; ++i) {
+            struct vela_element e = { 0 };
+            if (count > 0 && next_random(&random_state) % 4 != 0) {
+                e = f.frame.last.items[next_random(&random_state) % (unsigned)count];
+            } else {
+                int key_index = count + (int)(next_random(&random_state) % 4);
+                e.key = &f.keys[key_index];
+                e.box = (struct wlr_box) { 256 + i * 16, 0, 16, 16 };
+                e.opacity = 1.0f;
+            }
+            if (next_random(&random_state) % 5 == 0) e.box.x += 3;
+            if (next_random(&random_state) % 7 == 0) e.opacity = 0.75f;
+            e.order = i;
+            f.frame.current.items[i] = e;
+        }
+        pixman_region32_t expected;
+        pixman_region32_init(&expected);
+        reference_diff_damage(&f.frame.last, &f.frame.current, &expected);
+        tick(&f);
+        bool matches = f.frame.last.count == new_count
+            && pixman_region32_equal(&f.frame.scene_damage, &expected);
+        pixman_region32_fini(&expected);
+        finish_fixture(&f);
+        if (!matches) {
+            fprintf(stderr, "scene diff mismatch in randomized case %d (old=%d, new=%d)\n",
+                trial, count, new_count);
+            return 1;
+        }
+    }
 
     // Empty scenes also swap safely.
     init_fixture(&f, 0, STABLE);
@@ -336,7 +452,7 @@ static int test_diff(void)
     CHECK(f.frame.match_heads == heads && f.frame.match_next == links);
     finish_fixture(&f);
 #endif
-    puts("scene diff: damage, reorder, insert/remove, popup, animation and scratch reuse passed");
+    puts("scene diff: damage, reorder, animation, differential matching and scratch reuse passed");
     return 0;
 }
 
