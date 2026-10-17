@@ -186,7 +186,15 @@ static pid_t *children(int *count)
         }
         if (*count == capacity) {
             capacity = capacity ? capacity * 2 : 16;
-            result = realloc(result, (size_t)capacity * sizeof(*result));
+            pid_t *grown = realloc(result, (size_t)capacity * sizeof(*result));
+            if (!grown) {
+                // Never write through NULL or lose track of live children.
+                // In severe OOM, fail fast rather than silently skipping
+                // shutdown of the processes adopted by this supervisor.
+                say("out of memory while enumerating session children");
+                abort();
+            }
+            result = grown;
         }
         result[(*count)++] = pid;
     }
