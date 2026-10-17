@@ -144,3 +144,6 @@ private:
 
 // A free name in the folder: "name (2).ext", like Windows.
 QString uniqueNameIn(const QString& directory, const QString& name);
+
+// Progress work units; the same accounting is used by recursive copying.
+qint64 transferWorkUnits(const QString& source);
