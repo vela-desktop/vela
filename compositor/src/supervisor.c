@@ -390,6 +390,11 @@ int vela_supervise(int argc, char **argv)
         child_pid = 0;
 
         if (stop_requested) {
+            // An unsafe-lock exit may have signalled an older supervisor to
+            // prevent restart; preserve the dedicated status on new versions.
+            if (WIFEXITED(status) && WEXITSTATUS(status) == VELA_EXIT_LOCK_UNSAFE) {
+                exit_code = VELA_EXIT_LOCK_UNSAFE;
+            }
             break; // the session is closing (logout, shutdown)
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
