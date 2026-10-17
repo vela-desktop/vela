@@ -8,16 +8,25 @@
 //   ctest --test-dir build -R files-copies   (or build/explorer/vela-files-test)
 
 #include "appmodel.h"
+#include "../../common/filetransferrequest.h"
 #include "fileops.h"
 #include "systemactions.h"
+#include "../src/transferlocks.h"
 
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
 #include <QGuiApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QStorageInfo>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
@@ -150,6 +159,55 @@ private slots:
         delete m_dir;
     }
 
+    void shellTransferRequest_data()
+    {
+        QTest::addColumn<int>("action");
+        QTest::newRow("copy") << 1;
+        QTest::newRow("move") << 2;
+        QTest::newRow("auto") << 0;
+    }
+
+    void shellTransferRequest()
+    {
+        QFETCH(int, action);
+        const QString source = path("source/- file with spaces.txt");
+        const QString destination = path("destination");
+        write(source, "tracked transfer");
+        QVERIFY(QDir().mkpath(destination));
+
+        const auto expected = static_cast<vela::files::TransferAction>(action);
+        const QStringList args = vela::files::transferArguments(expected, destination, { source });
+        QCOMPARE(args.at(0), QStringLiteral("--vela-transfer"));
+        QCOMPARE(args.at(3), QStringLiteral("--")); // paths cannot become flags
+        vela::files::TransferRequest decoded;
+        QVERIFY(vela::files::parseTransferArguments(args, &decoded));
+        QCOMPARE(static_cast<int>(decoded.action), action);
+        QCOMPARE(decoded.directory, destination);
+        QCOMPARE(decoded.sources, QStringList { source });
+
+        // Exactly the path used by Explorer drops and the desktop shell.
+        QCOMPARE(transfer(decoded.sources, decoded.directory, static_cast<int>(decoded.action)), QString());
+        QCOMPARE(read(path("destination/- file with spaces.txt")), QByteArray("tracked transfer"));
+        QCOMPARE(QFileInfo::exists(source), action == 1); // automatic move on the same filesystem
+        QCOMPARE(m_ops->activeJobCount(), 0);
+        QVERIFY(leftovers(m_dir->path()).isEmpty());
+    }
+
+    void malformedShellTransferRequest()
+    {
+        vela::files::TransferRequest request;
+        QVERIFY(!vela::files::parseTransferArguments({}, &request));
+        QVERIFY(!vela::files::parseTransferArguments(
+            { QStringLiteral("--vela-transfer"), QStringLiteral("oops"), path("destination"),
+              QStringLiteral("--"), path("source") }, &request));
+        QVERIFY(!vela::files::parseTransferArguments(
+            { QStringLiteral("--vela-transfer"), QStringLiteral("copy"), path("destination"),
+              QStringLiteral("-not-delimiter"), path("source") }, &request));
+        QVERIFY(!vela::files::parseTransferArguments(
+            { QStringLiteral("--vela-transfer"), QStringLiteral("copy"), path("destination"),
+              QStringLiteral("--") }, &request));
+    }
+
     void copyNewFile()
     {
         write(path("a/photo.jpg"), "content");
@@ -219,6 +277,136 @@ private slots:
         QVERIFY(!error.isEmpty());
         QVERIFY(!QFileInfo::exists(path("b/folder")));
         QVERIFY(leftovers(m_dir->path()).isEmpty());
+    }
+
+    void ejectPendingRefusesNewTransfer()
+    {
+        write(path("source/file.bin"), "copy me");
+        QDir().mkpath(path("target"));
+        m_ops->setEjectGuard([](const QStringList&, const QString&) { return true; });
+        QSignalSpy failed(m_ops, &FileOps::failed);
+        m_ops->drop({ QUrl::fromLocalFile(path("source/file.bin")).toString() }, path("target"), 1);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(m_ops->activeJobCount(), 0);
+        QVERIFY(!QFileInfo::exists(path("target/file.bin")));
+    }
+
+    void detectsFilesystemsMountedBelowCopiedFolders()
+    {
+        const QStorageInfo outer(QStringLiteral("/"));
+        if (!outer.isValid()) {
+            QSKIP("Root filesystem not available");
+        }
+        for (const QStorageInfo& mount : QStorageInfo::mountedVolumes()) {
+            if (!mount.isValid() || mount.device().isEmpty()
+                || mount.rootPath() == QLatin1String("/")
+                || mount.device() == outer.device()) {
+                continue;
+            }
+            const QString device = QFile::decodeName(mount.device());
+            QVERIFY2(FileOps::pathsOnDevice({ QStringLiteral("/") }, path("target"), device),
+                "Recursive transfer of / must detect a nested mounted filesystem");
+            return;
+        }
+        QSKIP("No second mounted filesystem available");
+    }
+
+    void desktopUndoReportsCommittedConflictNames()
+    {
+        const QString original = path("in/note.txt");
+        const QString destination = path("out");
+        write(original, "new");
+        write(destination + "/note.txt", "old");
+        m_policy = QStringLiteral("keep");
+
+        const QByteArray previousDisplay = qgetenv("WAYLAND_DISPLAY");
+        const QByteArray display = "vela-files-test-" + QFileInfo(m_dir->path()).fileName().toUtf8();
+        qputenv("WAYLAND_DISPLAY", display);
+        const QString socketPath = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation)
+            + QStringLiteral("/vela-shell-") + QString::fromUtf8(display) + QStringLiteral(".sock");
+        QLocalServer server;
+        server.setSocketOptions(QLocalServer::UserAccessOption);
+        const bool listening = server.listen(socketPath);
+        // Restore the surrounding test environment even on setup failure.
+        if (!listening) {
+            qputenv("WAYLAND_DISPLAY", previousDisplay);
+            QFAIL("Cannot listen for desktop Undo events");
+        }
+
+        m_ops->dropFromDesktop({ QUrl::fromLocalFile(original).toString() }, destination, 1);
+        const bool received = QTest::qWaitFor([&] { return server.hasPendingConnections(); }, 30000);
+        QByteArray message;
+        if (received) {
+            QLocalSocket* peer = server.nextPendingConnection();
+            const bool ready = QTest::qWaitFor([&] { return peer->canReadLine(); }, 3000);
+            if (ready) {
+                message = peer->readLine().trimmed();
+            }
+            peer->deleteLater();
+        }
+        server.close();
+        qputenv("WAYLAND_DISPLAY", previousDisplay);
+        QVERIFY2(received, "a desktop transfer must send its Undo step to the shell");
+        QVERIFY(message.startsWith("desktop-transfer-undo "));
+        const auto document = QJsonDocument::fromJson(message.mid(sizeof("desktop-transfer-undo ") - 1));
+        QVERIFY(document.isObject());
+        QCOMPARE(document.object().value(QStringLiteral("created")).toArray().at(0).toString(),
+            path("out/note (2).txt"));
+        QCOMPARE(read(path("out/note.txt")), QByteArray("old"));
+        QCOMPARE(read(path("out/note (2).txt")), QByteArray("new"));
+    }
+
+    void interprocessEjectLock()
+    {
+        // A separate Explorer must not eject a filesystem being copied to.
+        const QString device = QStringLiteral("/dev/vela-test-") + QFileInfo(m_dir->path()).fileName();
+        QProcess child;
+        child.start(QCoreApplication::applicationFilePath(),
+            { QStringLiteral("--transfer-lock-child"), device });
+        QVERIFY(child.waitForStarted());
+        QVERIFY2(child.waitForReadyRead(5000), child.readAllStandardError().constData());
+        QCOMPARE(child.readAllStandardOutput(), QByteArray("lock-ready\n"));
+
+        vela::files::DeviceLocks eject;
+        QVERIFY(!eject.acquire({ device }, vela::files::DeviceLocks::Mode::Exclusive));
+        // An exclusive eject lock also prevents new transfers, until release.
+        child.write("x");
+        QVERIFY(child.waitForBytesWritten(5000));
+        QVERIFY(child.waitForFinished(5000));
+        QCOMPARE(child.exitCode(), 0);
+        QVERIFY(eject.acquire({ device }, vela::files::DeviceLocks::Mode::Exclusive));
+        vela::files::DeviceLocks transfer;
+        QVERIFY(!transfer.acquire({ device }, vela::files::DeviceLocks::Mode::Shared));
+        eject.release();
+        QVERIFY(transfer.acquire({ device }, vela::files::DeviceLocks::Mode::Shared));
+    }
+
+    void sameDeviceMoveAvoidsRecursiveEstimate()
+    {
+        const QString source = path("from/tree");
+        for (int i = 0; i < 200; ++i) {
+            write(source + QStringLiteral("/file-%1").arg(i), "content");
+        }
+        QVERIFY(QDir().mkpath(path("to")));
+        QCOMPARE(transfer({ source }, path("to"), 2), QString());
+        const QVariantMap job = m_ops->jobs().last().toMap();
+        // A rename is one unit regardless of the number of descendants.
+        QCOMPARE(job.value(QStringLiteral("total")).toDouble(), 1.0);
+        QCOMPARE(job.value(QStringLiteral("done")).toDouble(), 1.0);
+        QVERIFY(QFileInfo::exists(path("to/tree/file-199")));
+    }
+
+    void recursiveTransferWorkCountsDirectoriesAndLinks()
+    {
+        write(path("tree/file.bin"), QByteArray(7, 'a'));
+        QDir().mkpath(path("tree/empty/child/grandchild"));
+        QVERIFY(QFile::link(QStringLiteral("file.bin"), path("tree/link")));
+        // Four directories (including the root), one link, seven bytes.
+        QCOMPARE(transferWorkUnits(path("tree")), qint64(12));
+        QCOMPARE(transferWorkUnits(path("tree/link")), qint64(1));
+        QDir().mkpath(path("out"));
+        QCOMPARE(transfer({ path("tree") }, path("out"), 1), QString());
+        QCOMPARE(read(path("out/tree/file.bin")), QByteArray(7, 'a'));
     }
 
     void copyFolderTree()
@@ -503,6 +691,16 @@ int main(int argc, char* argv[])
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
+    if (argc == 3 && QByteArray(argv[1]) == "--transfer-lock-child") {
+        vela::files::DeviceLocks lock;
+        if (!lock.acquire({ QString::fromLocal8Bit(argv[2]) }, vela::files::DeviceLocks::Mode::Shared)) {
+            return 3;
+        }
+        constexpr char ready[] = "lock-ready\n";
+        ::write(STDOUT_FILENO, ready, sizeof(ready) - 1);
+        char byte = 0;
+        return ::read(STDIN_FILENO, &byte, 1) == 1 ? 0 : 4;
+    }
     if (argc == 6 && QByteArray(argv[1]) == "--replacement-child") {
         pauseExchange = QByteArray(argv[2]).toInt();
         AppModel apps;

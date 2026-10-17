@@ -120,6 +120,10 @@ struct vela_pass *vela_renderer_begin_pass(struct vela_renderer *renderer, struc
         return NULL;
     }
     struct vela_pass *pass = calloc(1, sizeof(*pass));
+    if (!pass) {
+        wlr_log_errno(WLR_ERROR, "Renderer: allocating render pass");
+        return NULL;
+    }
     wlr_render_pass_init(&pass->base, &pass_impl);
     pass->renderer = renderer;
     pass->target = target;

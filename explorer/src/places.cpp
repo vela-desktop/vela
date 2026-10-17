@@ -5,6 +5,7 @@
 
 #include "foldermodel.h"
 #include "links.h"
+#include "transferlocks.h"
 
 #include <QCoreApplication>
 #include <QDBusArgument>
@@ -30,6 +31,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <memory>
+#include <utility>
 
 using ManagedObjects = QMap<QDBusObjectPath, QMap<QString, QVariantMap>>;
 Q_DECLARE_METATYPE(ManagedObjects)
@@ -355,6 +358,11 @@ void Places::mount(const QString& volume)
     });
 }
 
+void Places::setTransferGuard(std::function<bool(const QString&)> guard)
+{
+    m_transferGuard = std::move(guard);
+}
+
 void Places::eject(const QString& device)
 {
     const QVariantMap known = m_devices.value(device);
@@ -362,30 +370,74 @@ void Places::eject(const QString& device)
         emit ejected(QCoreApplication::translate("Files", "Couldn't find the drive."));
         return;
     }
+    // Eject powers off the entire drive, not merely the selected partition.
+    // Both PreferredDevice and Device aliases are registered in m_devices.
+    QSet<QString> related { device };
+    const QString drive = known.value(QStringLiteral("drive")).toString();
+    if (!drive.isEmpty() && drive != QLatin1String("/")) {
+        for (auto it = m_devices.cbegin(); it != m_devices.cend(); ++it) {
+            if (it.value().value(QStringLiteral("drive")).toString() == drive) {
+                related.insert(it.key());
+            }
+        }
+    }
+    for (const QString& name : std::as_const(related)) {
+        if (m_ejecting.contains(name)) {
+            emit ejected(QCoreApplication::translate("Files", "Drive ejection is already in progress."));
+            return;
+        }
+        if (m_transferGuard && m_transferGuard(name)) {
+            emit ejected(QCoreApplication::translate("Files",
+                "A file transfer is using this drive. Wait for it to finish or cancel it before ejecting."));
+            return;
+        }
+    }
+
+    // Acquire all sibling filesystem locks *before* starting UDisks.
+    // LOCK_EX conflicts with transfers in any vela-files process and stays
+    // reserved until the asynchronous eject finishes.
+    auto locks = std::make_shared<vela::files::DeviceLocks>();
+    if (!locks->acquire(related.values(), vela::files::DeviceLocks::Mode::Exclusive)) {
+        emit ejected(QCoreApplication::translate("Files",
+            "A file transfer is using this drive. Wait for it to finish or cancel it before ejecting."));
+        return;
+    }
+    m_ejecting.unite(related);
+    const auto finish = [this, related, locks](const QString& error) {
+        locks->release();
+        for (const QString& name : related) {
+            m_ejecting.remove(name);
+        }
+        emit ejected(error);
+        refreshDrives();
+    };
     QDBusMessage unmount = QDBusMessage::createMethodCall(udisks, known.value(QStringLiteral("block")).toString(),
         QStringLiteral("org.freedesktop.UDisks2.Filesystem"), QStringLiteral("Unmount"));
     unmount << QVariantMap {};
     auto* watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(unmount), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, known] {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, known, finish] {
         watcher->deleteLater();
         const QDBusPendingReply<> reply = *watcher;
         if (reply.isError()) {
-            emit ejected(reply.error().name().endsWith(QLatin1String("DeviceBusy"))
+            finish(reply.error().name().endsWith(QLatin1String("DeviceBusy"))
                     ? QCoreApplication::translate("Files", "The drive is in use: close any open files and try again.")
                     : QCoreApplication::translate("Files", "Couldn't eject the drive: ") + reply.error().message());
-            refreshDrives();
             return;
         }
-        // Unmounted: it can be removed now (sticks also power off).
         const QString drive = known.value(QStringLiteral("drive")).toString();
-        if (!drive.isEmpty() && drive != QLatin1String("/")) {
-            QDBusMessage eject = QDBusMessage::createMethodCall(udisks, drive,
-                QStringLiteral("org.freedesktop.UDisks2.Drive"), QStringLiteral("Eject"));
-            eject << QVariantMap {};
-            QDBusConnection::systemBus().asyncCall(eject);
+        if (drive.isEmpty() || drive == QLatin1String("/")) {
+            finish({});
+            return;
         }
-        emit ejected({});
-        refreshDrives();
+        QDBusMessage eject = QDBusMessage::createMethodCall(udisks, drive,
+            QStringLiteral("org.freedesktop.UDisks2.Drive"), QStringLiteral("Eject"));
+        eject << QVariantMap {};
+        auto* ejectWatcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(eject), this);
+        connect(ejectWatcher, &QDBusPendingCallWatcher::finished, this, [ejectWatcher, finish] {
+            ejectWatcher->deleteLater();
+            // As before, an unsupported power-off does not undo a successful unmount.
+            finish({});
+        });
     });
 }
 

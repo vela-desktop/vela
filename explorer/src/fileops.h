@@ -3,15 +3,18 @@
 
 #pragma once
 
+#include <QAbstractItemModel>
 #include <QObject>
 #include <QSet>
 #include <QStringList>
 #include <QVariantList>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 class AppModel;
+class TransferJobsModel;
 
 // What File Explorer does with files, like Windows: open, clipboard (cut,
 // copy, paste, also to and from Dolphin and Nautilus), New, rename, Recycle
@@ -21,10 +24,13 @@ class AppModel;
 // first what to do.
 class FileOps : public QObject {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.vela.Files.Transfers")
     Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
     Q_PROPERTY(QString undoText READ undoText NOTIFY undoChanged)
     // [{id, title, done, total, current, finished, error}]
     Q_PROPERTY(QVariantList jobs READ jobs NOTIFY jobsChanged)
+    Q_PROPERTY(QAbstractItemModel* jobModel READ jobModel CONSTANT)
+    Q_PROPERTY(int activeJobCount READ activeJobCount NOTIFY jobsChanged)
 
 public:
     explicit FileOps(AppModel* apps, QObject* parent = nullptr);
@@ -34,6 +40,13 @@ public:
     QSet<QString> cutPaths() const;
     QString undoText() const;
     QVariantList jobs() const;
+    QAbstractItemModel* jobModel() const;
+    int activeJobCount() const;
+    bool activeOnDevice(const QString& device) const;
+    // Includes mounted filesystems nested below a copied directory.
+    static bool pathsOnDevice(const QStringList& sources, const QString& destination, const QString& device);
+    // Refuse transfers started while UDisks is unmounting their filesystem.
+    void setEjectGuard(std::function<bool(const QStringList&, const QString&)> guard);
 
     // Opening: folders are opened by Explorer itself; files with the default
     // app.
@@ -48,6 +61,8 @@ public:
     // Files dropped here (dragged): `action` 1 copy, 2 move, 0 like Windows
     // (moved if on the same disk, otherwise copied).
     Q_INVOKABLE void drop(const QStringList& urls, const QString& directory, int action);
+    // Only shell-initiated transfers report their committed Undo step to DesktopModel.
+    void dropFromDesktop(const QStringList& urls, const QString& directory, int action);
 
     // New: they return the path, to rename it right away.
     Q_INVOKABLE QString createFolder(const QString& directory);
@@ -101,6 +116,11 @@ public:
     Q_INVOKABLE QString previewText(const QString& path) const;
     Q_INVOKABLE bool isImage(const QString& path) const;
 
+public Q_SLOTS:
+    Q_SCRIPTABLE void Cancel(int id);
+private Q_SLOTS:
+    void publishSnapshot();
+
 signals:
     void clipboardChanged();
     void undoChanged();
@@ -125,19 +145,29 @@ private:
         QStringList sources;
         QString directory;
         bool move = false;
+        bool fromDesktop = false;
     };
 
+    void publishJob(int id, bool snapshot = false) const;
+    void publishRemoved(int id) const;
     void pushUndo(UndoStep step);
     void startTransfer(const Transfer& transfer, const QString& policy);
     void requestTransfer(const Transfer& transfer);
+    void dropInternal(const QStringList& urls, const QString& directory, int action, bool fromDesktop);
     void updateJob(int id, qint64 done, qint64 total, const QString& current, bool finished, const QString& error);
+    QVariantMap jobAsMap(const Job& job) const;
 
     AppModel* m_apps;
     QList<UndoStep> m_undo;
     QList<std::shared_ptr<Job>> m_jobs;
+    TransferJobsModel* m_jobModel = nullptr;
     int m_nextJob = 1;
     Transfer m_pending; // waiting for the answer to the conflict
+    std::function<bool(const QStringList&, const QString&)> m_ejectGuard;
 };
 
 // A free name in the folder: "name (2).ext", like Windows.
 QString uniqueNameIn(const QString& directory, const QString& name);
+
+// Progress work units; the same accounting is used by recursive copying.
+qint64 transferWorkUnits(const QString& source);

@@ -390,6 +390,11 @@ int vela_supervise(int argc, char **argv)
         child_pid = 0;
 
         if (stop_requested) {
+            // An unsafe-lock exit may have signalled an older supervisor to
+            // prevent restart; preserve the dedicated status on new versions.
+            if (WIFEXITED(status) && WEXITSTATUS(status) == VELA_EXIT_LOCK_UNSAFE) {
+                exit_code = VELA_EXIT_LOCK_UNSAFE;
+            }
             break; // the session is closing (logout, shutdown)
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
@@ -399,6 +404,11 @@ int vela_supervise(int argc, char **argv)
             say("Vulkan 1.4 or required dmabuf support is unavailable; returning to login");
             exit_code = VELA_EXIT_UNSUPPORTED_GPU;
             break; // restarting cannot make the GPU support Vulkan
+        }
+        if (WIFEXITED(status) && WEXITSTATUS(status) == VELA_EXIT_LOCK_UNSAFE) {
+            say("secure lock state could not be persisted; ending session, never restarting unlocked");
+            exit_code = VELA_EXIT_LOCK_UNSAFE;
+            break;
         }
         if (WIFSIGNALED(status)) {
             say("the compositor crashed (%s)", strsignal(WTERMSIG(status)));

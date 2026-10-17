@@ -63,6 +63,10 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
 
     // Explicit modifiers only: Vulkan must know how the buffer is laid out.
     uint64_t *modifiers = calloc(format->len ? format->len : 1, sizeof(*modifiers));
+    if (!modifiers) {
+        wlr_log_errno(WLR_ERROR, "Allocator: allocating modifiers");
+        return NULL;
+    }
     unsigned count = 0;
     bool has_linear = false;
     for (size_t i = 0; i < format->len; ++i) {
@@ -97,6 +101,10 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
     }
 
     struct gbm_buffer *buffer = calloc(1, sizeof(*buffer));
+    if (!buffer) {
+        gbm_bo_destroy(bo);
+        return NULL;
+    }
     buffer->bo = bo;
     struct wlr_dmabuf_attributes *d = &buffer->dmabuf;
     d->width = width;
@@ -104,6 +112,12 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
     d->format = format->format;
     d->modifier = gbm_bo_get_modifier(bo);
     d->n_planes = gbm_bo_get_plane_count(bo);
+    if (d->n_planes < 1 || d->n_planes > WLR_DMABUF_MAX_PLANES) {
+        wlr_log(WLR_ERROR, "Allocator: invalid GBM plane count %d", d->n_planes);
+        gbm_bo_destroy(bo);
+        free(buffer);
+        return NULL;
+    }
     for (int i = 0; i < d->n_planes; ++i) {
         d->fd[i] = gbm_bo_get_fd_for_plane(bo, i);
         d->offset[i] = gbm_bo_get_offset(bo, i);
@@ -142,6 +156,11 @@ struct wlr_allocator *vela_gbm_allocator_create(int render_fd)
         return NULL;
     }
     struct gbm_allocator *alloc = calloc(1, sizeof(*alloc));
+    if (!alloc) {
+        wlr_log_errno(WLR_ERROR, "Allocator: allocating GBM allocator");
+        gbm_device_destroy(gbm);
+        return NULL;
+    }
     alloc->gbm = gbm;
     wlr_allocator_init(&alloc->base, &allocator_impl, WLR_BUFFER_CAP_DMABUF);
     return &alloc->base;

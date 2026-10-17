@@ -579,14 +579,24 @@ bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dm
 {
     *image = VK_NULL_HANDLE;
     *memory = VK_NULL_HANDLE;
+    if (dmabuf->n_planes < 1 || dmabuf->n_planes > WLR_DMABUF_MAX_PLANES) {
+        wlr_log(WLR_ERROR, "DMABUF import: invalid plane count %d", dmabuf->n_planes);
+        return false;
+    }
     // No "disjoint" images: RGB formats don't need them.
     struct stat first;
-    fstat(dmabuf->fd[0], &first);
+    if (fstat(dmabuf->fd[0], &first) < 0) {
+        wlr_log_errno(WLR_ERROR, "DMABUF import: fstat plane 0 fd=%d", dmabuf->fd[0]);
+        return false;
+    }
     for (int i = 1; i < dmabuf->n_planes; ++i) {
         struct stat other;
-        fstat(dmabuf->fd[i], &other);
-        if (other.st_ino != first.st_ino) {
-            wlr_log(WLR_ERROR, "dmabuf with planes in different buffers: not supported");
+        if (fstat(dmabuf->fd[i], &other) < 0) {
+            wlr_log_errno(WLR_ERROR, "DMABUF import: fstat plane %d fd=%d", i, dmabuf->fd[i]);
+            return false;
+        }
+        if (other.st_dev != first.st_dev || other.st_ino != first.st_ino) {
+            wlr_log(WLR_ERROR, "DMABUF import: planes in different buffers (plane %d): not supported", i);
             return false;
         }
     }
@@ -621,7 +631,9 @@ bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dm
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
-    if (vkCreateImage(vk->device, &image_info, NULL, image) != VK_SUCCESS) {
+    VkResult image_result = vkCreateImage(vk->device, &image_info, NULL, image);
+    if (image_result != VK_SUCCESS) {
+        wlr_log(WLR_ERROR, "DMABUF import: vkCreateImage failed: VkResult=%d", (int)image_result);
         *image = VK_NULL_HANDLE;
         return false;
     }
@@ -629,11 +641,31 @@ bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dm
     VkMemoryRequirements requirements;
     vkGetImageMemoryRequirements(vk->device, *image, &requirements);
     VkMemoryFdPropertiesKHR fd_props = { .sType = VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR };
-    vk->get_memory_fd_properties(vk->device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, dmabuf->fd[0], &fd_props);
-    uint32_t memory_type = vela_vulkan_memory_type(vk, requirements.memoryTypeBits & fd_props.memoryTypeBits, 0);
+    VkResult fd_result = vk->get_memory_fd_properties(
+        vk->device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, dmabuf->fd[0], &fd_props);
+    if (fd_result != VK_SUCCESS) {
+        wlr_log(WLR_ERROR, "DMABUF import: vkGetMemoryFdPropertiesKHR failed: VkResult=%d", (int)fd_result);
+        vkDestroyImage(vk->device, *image, NULL);
+        *image = VK_NULL_HANDLE;
+        return false;
+    }
+    uint32_t allowed_types = requirements.memoryTypeBits & fd_props.memoryTypeBits;
+    uint32_t memory_type = vela_vulkan_memory_type(vk, allowed_types, 0);
+    if (memory_type == UINT32_MAX) {
+        wlr_log(WLR_ERROR, "DMABUF import: no compatible Vulkan memory type (mask=0x%x)", allowed_types);
+        vkDestroyImage(vk->device, *image, NULL);
+        *image = VK_NULL_HANDLE;
+        return false;
+    }
 
-    // Vulkan takes ownership of the descriptor: we give it a copy.
+    // Vulkan takes ownership of the descriptor on successful import, so give it a copy.
     int fd = fcntl(dmabuf->fd[0], F_DUPFD_CLOEXEC, 0);
+    if (fd < 0) {
+        wlr_log_errno(WLR_ERROR, "DMABUF import: cannot duplicate fd=%d", dmabuf->fd[0]);
+        vkDestroyImage(vk->device, *image, NULL);
+        *image = VK_NULL_HANDLE;
+        return false;
+    }
     const VkMemoryDedicatedAllocateInfo dedicated = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
         .image = *image,
@@ -650,16 +682,25 @@ bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dm
         .allocationSize = requirements.size,
         .memoryTypeIndex = memory_type,
     };
-    if (fd < 0 || memory_type == UINT32_MAX || vkAllocateMemory(vk->device, &alloc_info, NULL, memory) != VK_SUCCESS) {
-        if (fd >= 0) {
-            close(fd);
-        }
+    VkResult allocate_result = vkAllocateMemory(vk->device, &alloc_info, NULL, memory);
+    if (allocate_result != VK_SUCCESS) {
+        wlr_log(WLR_ERROR, "DMABUF import: vkAllocateMemory failed: VkResult=%d", (int)allocate_result);
+        // Vulkan consumes the duplicated FD only if the import succeeds.
+        close(fd);
         vkDestroyImage(vk->device, *image, NULL);
         *image = VK_NULL_HANDLE;
         *memory = VK_NULL_HANDLE;
         return false;
     }
-    vkBindImageMemory(vk->device, *image, *memory, 0);
+    VkResult bind_result = vkBindImageMemory(vk->device, *image, *memory, 0);
+    if (bind_result != VK_SUCCESS) {
+        wlr_log(WLR_ERROR, "DMABUF import: vkBindImageMemory failed: VkResult=%d", (int)bind_result);
+        vkDestroyImage(vk->device, *image, NULL);
+        vkFreeMemory(vk->device, *memory, NULL);
+        *image = VK_NULL_HANDLE;
+        *memory = VK_NULL_HANDLE;
+        return false;
+    }
     return true;
 }
 

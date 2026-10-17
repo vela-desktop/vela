@@ -6,6 +6,8 @@
 
 // Unsupported GPUs cannot recover by restarting the compositor.
 #define VELA_EXIT_UNSUPPORTED_GPU 78
+// A failed secure lock marker must end the session without compositor restart.
+#define VELA_EXIT_LOCK_UNSAFE 77
 
 // Best-effort error message using DRM dumb buffers, no Vulkan or Wayland.
 void vela_error_screen_no_vulkan(int drm_fd);

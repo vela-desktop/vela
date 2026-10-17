@@ -391,6 +391,102 @@ Window {
         }
     }
 
+    // Transfers remain tracked by FileOps; the shell only aggregates status.
+    Item {
+        id: transferIndicator
+        objectName: "transferIndicator"
+        visible: root.primary && Transfers.activeCount > 0
+        anchors { right: tray.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
+        width: visible ? 68 : 0
+        readonly property var running: Transfers.jobs.filter(job => !job.finished)
+        readonly property real progress: {
+            if (running.length !== 1 || running[0].total <= 0) return -1
+            return Math.max(0, Math.min(100, Math.round(100 * running[0].done / running[0].total)))
+        }
+        function readableSize(bytes) {
+            if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + " GB"
+            if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB"
+            if (bytes >= 1024) return (bytes / 1024).toFixed(1) + " KB"
+            return Math.round(bytes) + " B"
+        }
+        function jobById(owner, id) {
+            return Transfers.jobs.find(job => job.owner === owner && job.id === id)
+        }
+        function openTransferMenu() {
+            const entries = [{ header: qsTr("File transfers") }]
+            for (const initial of running) {
+                const owner = initial.owner
+                const id = initial.id
+                entries.push({
+                    text: initial.title, enabled: false,
+                    liveText: () => {
+                        const j = jobById(owner, id)
+                        if (!j) return qsTr("Transfer removed")
+                        return j.title + " · " + (j.finished ? qsTr("Finished")
+                            : j.total > 0 ? Math.round(100 * j.done / j.total) + "%" : qsTr("Preparing"))
+                    }
+                })
+                entries.push({
+                    text: initial.current || qsTr("Preparing"), enabled: false,
+                    liveText: () => {
+                        const j = jobById(owner, id)
+                        return j ? (j.current || (j.finished ? qsTr("Finished") : qsTr("Preparing"))) : ""
+                    }
+                })
+                entries.push({
+                    text: qsTr("Bytes transferred"), enabled: false,
+                    liveText: () => {
+                        const j = jobById(owner, id)
+                        return j ? readableSize(j.done) + " / " +
+                            (j.total > 0 ? readableSize(j.total) : qsTr("calculating")) : ""
+                    }
+                })
+                entries.push({
+                    text: qsTr("Calculating speed"), enabled: false,
+                    liveText: () => {
+                        const j = jobById(owner, id)
+                        if (!j) return ""
+                        if (j.finished) return qsTr("Transfer finished")
+                        if (j.speed <= 0) return qsTr("Calculating transfer speed…")
+                        const eta = j.eta < 0 ? qsTr("time unknown")
+                            : j.eta < 60 ? qsTr("%1 seconds remaining").arg(Math.ceil(j.eta))
+                            : qsTr("%1 minutes remaining").arg(Math.ceil(j.eta / 60))
+                        return readableSize(j.speed) + "/s · " + eta
+                    }
+                })
+                entries.push({ text: qsTr("Cancel transfer"), icon: "process-stop",
+                               action: () => Transfers.cancel(owner, id) })
+                entries.push({ separator: true })
+            }
+            root.openAbove(entries, transferIndicator, true, { minWidth: 360 })
+        }
+        Fill {
+            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            radius: Theme.radius
+            color: transferMouse.pressed ? Theme.subtlePressed
+                : transferMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+        }
+        Icon {
+            x: 7
+            anchors.verticalCenter: parent.verticalCenter
+            name: "document-save"
+            size: 16
+        }
+        Text {
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: 6 }
+            text: transferIndicator.progress >= 0 ? transferIndicator.progress + "%"
+                : String(Transfers.activeCount)
+            color: Theme.text
+            font.pixelSize: Theme.fontCaption
+        }
+        MouseArea {
+            id: transferMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: transferIndicator.openTransferMenu()
+        }
+    }
+
     // Notification area: the apps' icons (Telegram, Discord, Steam...), left
     // of the clock like on Windows.
     Row {
