@@ -381,6 +381,28 @@ class X11(unittest.TestCase):
         self.assertEqual(image.at(105, 125), GREEN)
         self.assertNotEqual(image.at(95, 160), GREEN)
 
+    def test_flipped_frame_without_damage_is_shown(self):
+        # Xwayland flips a presented pixmap as the window's new buffer and
+        # damages only the update region, here empty: the new frame is shown.
+        if not os.path.exists(tool("vela-x11-present")):
+            self.skipTest("vela-x11-present not built (needs xcb-present, xcb-xfixes)")
+        app = subprocess.Popen([tool("vela-x11-present"), "400", "300"], env=self.env,
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.vela.clients.append(app)
+        self.addCleanup(app.stdout.close)
+        self.addCleanup(app.stdin.close)
+        if app.stdout.readline().split() != ["orange", "1"]:
+            self.skipTest("Xwayland copies instead of flipping (no glamor)")
+        w = self.vela.wait_for(lambda s: s.windows, what="the X11 window").windows[0]
+        point = (w["x"] + w["w"] // 2, w["y"] + w["h"] - 60)
+        self.vela.wait_for(lambda _: self.vela.pixels().at(*point) == ORANGE, read_state=False,
+                           what="the first frame")
+        app.stdin.write("next\n")
+        app.stdin.flush()
+        self.assertEqual(app.stdout.readline().split(), ["green", "1"])
+        self.vela.wait_for(lambda _: self.vela.pixels().at(*point) == GREEN, read_state=False,
+                           what="the frame flipped without damage")
+
 
 if __name__ == "__main__":
     unittest.main()
