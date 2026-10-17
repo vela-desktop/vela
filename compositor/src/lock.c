@@ -158,7 +158,7 @@ static void handle_lock_destroy(struct wl_listener *listener, void *data)
             }
         }
         lock->respawn_count = kept;
-        if (lock->respawn_count < VELA_LOCK_RESPAWNS) {
+        if (lock->respawn_count < VELA_LOCK_RESPAWNS && lock->respawn) {
             lock->respawns[lock->respawn_count++] = now;
             wl_event_source_timer_update(lock->respawn, 1000);
         }
