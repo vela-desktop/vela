@@ -104,7 +104,7 @@ private slots:
 
     void receivesRealSessionBusSignal()
     {
-        const QDBusConnection bus = QDBusConnection::sessionBus();
+        QDBusConnection bus = QDBusConnection::sessionBus();
         if (!bus.isConnected()) QSKIP("Session D-Bus unavailable");
         TransferMonitor monitor;
         QDBusMessage message = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
@@ -118,7 +118,7 @@ private slots:
 
     void remoteCancellationReachesExplorerEndpoint()
     {
-        const QDBusConnection bus = QDBusConnection::sessionBus();
+        QDBusConnection bus = QDBusConnection::sessionBus();
         if (!bus.isConnected()) QSKIP("Session D-Bus unavailable");
         TransferEndpoint endpoint;
         const QString path = QStringLiteral("/org/vela/Files/Transfers");
@@ -133,7 +133,7 @@ private slots:
 
     void snapshotOverDbusDoesNotNotify()
     {
-        const QDBusConnection bus = QDBusConnection::sessionBus();
+        QDBusConnection bus = QDBusConnection::sessionBus();
         if (!bus.isConnected()) QSKIP("Session D-Bus unavailable");
         TransferMonitor monitor;
         QSignalSpy completed(&monitor, &TransferMonitor::completed);
