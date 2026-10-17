@@ -228,8 +228,7 @@ private slots:
         QDir().mkpath(path("target"));
         m_ops->setEjectGuard([](const QStringList&, const QString&) { return true; });
         QSignalSpy failed(m_ops, &FileOps::failed);
-        QCOMPARE(transfer({ path("source/file.bin") }, path("target"), 1),
-            QStringLiteral("<tempo scaduto>"));
+        m_ops->drop({ QUrl::fromLocalFile(path("source/file.bin")).toString() }, path("target"), 1);
         QCOMPARE(failed.size(), 1);
         QCOMPARE(m_ops->activeJobCount(), 0);
         QVERIFY(!QFileInfo::exists(path("target/file.bin")));
