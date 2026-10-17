@@ -38,6 +38,7 @@ struct wlr_session_lock_manager_v1;
 struct wlr_session_lock_v1;
 
 #define VELA_LOCK_RESPAWNS 5 // at most, in one minute
+#define VELA_CAFFEINE_MAX_MINUTES 1440.0 // 24 hours; fits the event-loop timer
 
 struct vela_lock {
     struct vela_server *server;
@@ -65,6 +66,7 @@ struct vela_lock {
     bool screens_off;
     bool caffeine; // for this session only
     int64_t caffeine_until_ns; // CLOCK_MONOTONIC deadline, 0: no deadline
+    int caffeine_duration_s; // originally chosen duration; 0 if indefinite or off
     struct wl_event_source *caffeine_timer; // turns itself off when time is up
 
     struct wl_listener new_lock;

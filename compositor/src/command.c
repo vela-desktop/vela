@@ -20,6 +20,8 @@
 #include "view.h"
 #include "workspace.h"
 
+#include <errno.h>
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -397,10 +399,22 @@ static void run_command(struct vela_server *server, const char *line)
         // is indefinite, "caffeine on <minutes>" turns itself off after that
         // long (fractions for tests).
         const char *arg = line + 9;
-        if (starts_with(arg, "on ") && atof(arg + 3) > 0) {
-            vela_lock_set_caffeine_for(server->lock, atof(arg + 3));
-        } else {
+        if (starts_with(arg, "on ")) {
+            const char *value = arg + 3;
+            char *end = NULL;
+            errno = 0;
+            const double minutes = strtod(value, &end);
+            if (end == value || *end != '\0' || errno == ERANGE || !isfinite(minutes)
+                || minutes <= 0 || minutes > VELA_CAFFEINE_MAX_MINUTES) {
+                wlr_log(WLR_ERROR, "Invalid caffeine duration (expected >0 to 1440 minutes)");
+                return; // an invalid command must never disable existing caffeine
+            }
+            vela_lock_set_caffeine_for(server->lock, minutes);
+        } else if (strcmp(arg, "on") == 0 || strcmp(arg, "off") == 0 || strcmp(arg, "toggle") == 0) {
             vela_lock_set_caffeine(server->lock, wanted(arg, server->lock->caffeine));
+        } else {
+            wlr_log(WLR_ERROR, "Unknown caffeine command");
+            return;
         }
         vela_a11y_announce(a11y);
     } else if (starts_with(line, "switcher-pick ")) {

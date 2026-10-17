@@ -94,18 +94,20 @@ Window {
         Audio.setVolume("output", Audio.defaultOutput, value)
     }
     // Caffeine for a while: the arrow on its tile lists durations under it.
-    // The remaining seconds count down, so a preset reads as set when the
-    // time left is close to it.
+    // Keep the selected preset separate from the decreasing remaining time.
     function caffeineMatches(minutes) {
-        return Access.caffeine && Access.caffeineSecs > 0 && Math.abs(Access.caffeineSecs - minutes * 60) < 120
+        return Access.caffeine && Access.caffeineDurationSecs === minutes * 60
     }
     function openCaffeineMenu(tile) {
         const presets = [30, 60, 120, 300]
         const names = [qsTr("30 minutes"), qsTr("1 hour"), qsTr("2 hours"), qsTr("5 hours")]
-        const entries = [{ text: qsTr("Indefinitely"), radio: true,
+        const entries = []
+        if (Access.caffeine && Access.caffeineSecs > 0)
+            entries.push({ header: qsTr("%1 minutes remaining").arg(Math.ceil(Access.caffeineSecs / 60)) })
+        entries.push({ text: qsTr("Indefinitely"), radio: true,
                            checked: Access.caffeine && Access.caffeineSecs < 0,
                            action: () => Access.caffeine = true },
-                         { separator: true }]
+                         { separator: true })
         for (let i = 0; i < presets.length; i++) {
             const mins = presets[i]
             entries.push({ text: names[i], radio: true, checked: caffeineMatches(mins),
@@ -695,7 +697,9 @@ Window {
                     Tile {
                         id: caffeineTile
                         icon: "kteatime-symbolic"
-                        label: qsTr("Caffeine")
+                        label: Access.caffeine && Access.caffeineSecs > 0
+                            ? qsTr("Caffeine %1m").arg(Math.ceil(Access.caffeineSecs / 60))
+                            : qsTr("Caffeine")
                         checked: Access.caffeine
                         split: true
                         onToggled: Access.caffeine = !Access.caffeine

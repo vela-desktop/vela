@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <QElapsedTimer>
 #include <QObject>
+#include <QTimer>
 
 // Night light, color filters, magnifier and sticky keys as the shell sees
 // them: the compositor applies them (compositor/src/a11y.c) and sends the
@@ -20,6 +22,7 @@ class Accessibility : public QObject {
     // Seconds left, updated with the state: 0 when off, -1 when on with no
     // deadline (read-only; the shell never sends it).
     Q_PROPERTY(int caffeineSecs READ caffeineSecs NOTIFY changed)
+    Q_PROPERTY(int caffeineDurationSecs READ caffeineDurationSecs NOTIFY changed)
 
 public:
     explicit Accessibility(QObject* parent = nullptr);
@@ -38,6 +41,7 @@ public:
     // the toggle, the compositor confirms and counts down.
     Q_INVOKABLE void setCaffeineMinutes(double minutes);
     int caffeineSecs() const { return m_caffeineSecs; }
+    int caffeineDurationSecs() const { return m_caffeineDurationSecs; }
 
     // The state sent by the compositor.
     void update(const QByteArray& json);
@@ -48,10 +52,16 @@ signals:
     void changed();
 
 private:
+    void resetCaffeineCountdown();
+
     bool m_nightLight = false;
     bool m_colorFilter = false;
     bool m_magnifier = false;
     bool m_stickyKeys = false;
     bool m_caffeine = false;
     int m_caffeineSecs = 0;
+    int m_caffeineDurationSecs = 0;
+    int m_caffeineStartSecs = 0;
+    QElapsedTimer m_caffeineElapsed;
+    QTimer m_caffeineTicker;
 };

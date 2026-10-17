@@ -103,6 +103,50 @@ class Caffeine(unittest.TestCase):
                           what="caffeine off by itself")
             vela.wait_for(lambda s: not s.output["powered"], timeout=6, what="screen off after time is up")
 
+    def test_caffeine_prevents_automatic_lock(self):
+        # Test lock-on-idle itself, not just monitor power (the other tests
+        # explicitly disable idle locking).
+        with Session(env={"VELA_SCREEN_OFF": "0.05"}, lock_hold_ms=4000) as vela:
+            vela.command("caffeine on")
+            vela.wait_for(lambda _: vela.query("accessibility")["caffeine"],
+                          read_state=False, what="caffeine enabled")
+            time.sleep(3.5)
+            self.assertFalse(vela.state()["locked"])
+            vela.command("caffeine off")
+            vela.wait_for(lambda s: s["locked"], timeout=7, what="automatic lock after caffeine")
+
+    def test_caffeine_presets_and_invalid_durations(self):
+        with Session() as vela:
+            vela.command("caffeine on 30")
+            vela.wait_for(lambda _: vela.query("accessibility")["caffeineDurationSecs"] == 1800,
+                          read_state=False, what="30 minute duration")
+            for value in ("bogus", "-1", "0", "1e309", "1441", "30junk"):
+                vela.command("caffeine on " + value)
+                # The command socket is asynchronous; checking after a small
+                # delay ensures the bad command was handled.
+                time.sleep(0.05)
+                status = vela.query("accessibility")
+                self.assertTrue(status["caffeine"])
+                self.assertEqual(status["caffeineDurationSecs"], 1800)
+            vela.command("caffeine on 60")
+            vela.wait_for(lambda _: vela.query("accessibility")["caffeineDurationSecs"] == 3600,
+                          read_state=False, what="renewed 60 minute duration")
+            vela.command("caffeine on")
+            vela.wait_for(lambda _: vela.query("accessibility")["caffeineSecs"] == -1,
+                          read_state=False, what="indefinite caffeine")
+            self.assertEqual(vela.query("accessibility")["caffeineDurationSecs"], 0)
+            vela.command("caffeine off")
+            vela.wait_for(lambda _: not vela.query("accessibility")["caffeine"],
+                          read_state=False, what="caffeine disabled")
+
+    def test_caffeine_submillisecond_timer_is_not_stuck(self):
+        # Fractional durations must expire even if the millisecond timer
+        # fires before the CLOCK_MONOTONIC deadline.
+        with Session() as vela:
+            vela.command("caffeine on 0.000025")  # 1.5 ms
+            vela.wait_for_log("Caffeine time is up", timeout=5)
+            self.assertFalse(vela.query("accessibility")["caffeine"])
+
 
 class Shell(unittest.TestCase):
     """The startup command (the shell): relaunched when it fails, but not
