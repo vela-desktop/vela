@@ -298,6 +298,9 @@ int FileOps::activeJobCount() const
 
 bool FileOps::pathsOnDevice(const QStringList& sources, const QString& destination, const QString& device)
 {
+    if (device.isEmpty()) {
+        return false;
+    }
     return vela::files::transferDevices(sources, destination).contains(vela::files::canonicalDevice(device));
 }
 
