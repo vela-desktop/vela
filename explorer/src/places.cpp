@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <utility>
 
 using ManagedObjects = QMap<QDBusObjectPath, QMap<QString, QVariantMap>>;
 Q_DECLARE_METATYPE(ManagedObjects)
@@ -355,8 +356,18 @@ void Places::mount(const QString& volume)
     });
 }
 
+void Places::setTransferGuard(std::function<bool(const QString&)> guard)
+{
+    m_transferGuard = std::move(guard);
+}
+
 void Places::eject(const QString& device)
 {
+    if (m_transferGuard && m_transferGuard(device)) {
+        emit ejected(QCoreApplication::translate("Files",
+            "A file transfer is using this drive. Wait for it to finish or cancel it before ejecting."));
+        return;
+    }
     const QVariantMap known = m_devices.value(device);
     if (known.isEmpty()) {
         emit ejected(QCoreApplication::translate("Files", "Couldn't find the drive."));
