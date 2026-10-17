@@ -250,9 +250,18 @@ private slots:
     {
         start();
         QTRY_VERIFY(client->available());
-        QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-1"));
+        // Qt does not define a stable primary-screen ordering on the
+        // offscreen backend. With no explicit preference, either enabled
+        // output may legitimately be chosen.
+        const QString initial = client->primaryOutput();
+        QVERIFY(initial == QLatin1String("HEADLESS-1") || initial == QLatin1String("HEADLESS-2"));
         QVERIFY(!client->setPrimaryOutput(QStringLiteral("not-connected")));
         QSignalSpy changed(client.get(), &Displays::primaryOutputChanged);
+
+        // Verify that an explicit choice overrides the initial fallback,
+        // regardless of the order in which Qt enumerates the outputs.
+        QVERIFY(client->setPrimaryOutput(QStringLiteral("HEADLESS-1")));
+        QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-1"));
         QVERIFY(client->setPrimaryOutput(QStringLiteral("HEADLESS-2")));
         QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-2"));
         QCOMPARE(QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))
