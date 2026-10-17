@@ -229,6 +229,9 @@ static int test_diff(void)
     init_fixture(&f, 4, POPUP);
     tick(&f);
     CHECK(f.frame.last.count == 6 && damage_is(&f, 64, 0, 32, 16));
+    // The fixture's original list is now current: close both popup layers.
+    tick(&f);
+    CHECK(f.frame.last.count == 4 && damage_is(&f, 64, 0, 32, 16));
     finish_fixture(&f);
 
     init_fixture(&f, 4, ANIMATION_CHURN);
