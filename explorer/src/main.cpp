@@ -99,10 +99,14 @@ int main(int argc, char* argv[])
     const bool transferMode = vela::files::parseTransferArguments(args, &externalTransfer);
     if (!args.isEmpty() && args.first() == QLatin1String("--vela-transfer") && !transferMode) {
         qCritical("vela-files: invalid transfer request");
+        vela::files::notifyTransferStartupFailure(
+            QCoreApplication::translate("Files", "Invalid transfer request."));
         return 2;
     }
     if (transferMode && !QFileInfo(externalTransfer.directory).isDir()) {
         qCritical("vela-files: destination folder does not exist");
+        vela::files::notifyTransferStartupFailure(
+            QCoreApplication::translate("Files", "The destination folder does not exist."));
         return 2;
     }
     if (transferMode) {
@@ -152,6 +156,10 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("StartSelection"), select);
     engine.loadFromModule("Vela.Files", "Main");
     if (engine.rootObjects().isEmpty()) {
+        if (transferMode) {
+            vela::files::notifyTransferStartupFailure(
+                QCoreApplication::translate("Files", "Could not open the file transfer window."));
+        }
         return 1;
     }
     // A desktop paste/drop uses exactly the same FileOps requestTransfer()
@@ -167,10 +175,12 @@ int main(int argc, char* argv[])
         }
         if (urls.isEmpty()) {
             qCritical("vela-files: no valid source files for transfer");
+            vela::files::notifyTransferStartupFailure(
+                QCoreApplication::translate("Files", "The source files are no longer available."));
             return 2;
         }
         QTimer::singleShot(0, &ops, [&ops, urls, externalTransfer] {
-            ops.drop(urls, externalTransfer.directory, static_cast<int>(externalTransfer.action));
+            ops.dropFromDesktop(urls, externalTransfer.directory, static_cast<int>(externalTransfer.action));
         });
     }
 
