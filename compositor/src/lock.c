@@ -26,6 +26,8 @@
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <sys/wait.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -127,6 +129,38 @@ static void lock_fatal_shutdown(struct vela_lock *lock)
     wlr_log(WLR_ERROR, "Lock: ending session after the black backdrop is committed");
 }
 
+// Own a pending locker launcher so a non-registering process cannot survive
+// into the next attempt. The shell is launched in its own session.
+static void lock_stop_launcher(struct vela_lock *lock)
+{
+    if (lock->launcher_pid <= 0) {
+        return;
+    }
+    pid_t pid = lock->launcher_pid;
+    lock->launcher_pid = 0;
+    // Signal before reaping to prevent PID reuse across retries.
+    if (kill(-pid, SIGKILL) < 0 && errno != ESRCH) {
+        wlr_log_errno(WLR_ERROR, "Lock: failed to stop launcher process group");
+    }
+    if (kill(pid, SIGKILL) < 0 && errno != ESRCH) {
+        wlr_log_errno(WLR_ERROR, "Lock: failed to stop launcher");
+    }
+    while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
+}
+
+static void lock_start_launcher(struct vela_lock *lock, const char *command)
+{
+    pid_t pid = fork();
+    if (pid < 0) {
+        wlr_log_errno(WLR_ERROR, "Lock: unable to launch locker");
+        return; // retry already scheduled
+    }
+    if (pid == 0) {
+        vela_exec_shell(command);
+    }
+    lock->launcher_pid = pid;
+}
+
 // All retry paths share this arm operation, including crashes after registration.
 static bool lock_arm_retry(struct vela_lock *lock, int delay_ms)
 {
@@ -208,6 +242,7 @@ static void handle_unlock(struct wl_listener *listener, void *data)
     if (lock->fatal_exit_pending) {
         return; // never show desktop after an unsafe lock transition
     }
+    lock_stop_launcher(lock);
     // Really unlocked: the desktop is back as it was.
     server->locked = false;
     if (server->runtime_dir_fd >= 0
@@ -226,6 +261,7 @@ static void handle_unlock(struct wl_listener *listener, void *data)
 static void handle_lock_destroy(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, destroy);
+    lock_stop_launcher(lock);
     // This wlroots lock is being torn down. A timer-arm failure may initiate
     // terminal blackout, which must never walk surfaces on the dying object.
     lock->lock = NULL;
@@ -313,6 +349,7 @@ static void handle_new_lock(struct wl_listener *listener, void *data)
 static int handle_respawn(void *data)
 {
     struct vela_lock *lock = data;
+    lock_stop_launcher(lock);
     vela_lock_retry_timer_fired(&lock->retry);
     vela_lock_screen(lock);
     return 0;
@@ -580,6 +617,7 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
 
 void vela_lock_destroy(struct vela_lock *lock)
 {
+    lock_stop_launcher(lock);
     if (!lock) {
         return;
     }
@@ -690,7 +728,7 @@ void vela_lock_screen(struct vela_lock *lock)
         return;
     }
     wlr_log(WLR_INFO, "Locking the screen: %s", command);
-    vela_spawn(command);
+    lock_start_launcher(lock, command);
 }
 
 void vela_lock_output_rendered(struct vela_lock *lock, struct vela_output *output)
