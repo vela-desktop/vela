@@ -7,6 +7,7 @@
 #include "foldermodel.h"
 #include "links.h"
 #include "systemactions.h"
+#include "transferlocks.h"
 
 #include <QClipboard>
 #include <QCollator>
@@ -21,6 +22,7 @@
 #include <QImageReader>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocalSocket>
 #include <QMimeData>
 #include <QMimeDatabase>
@@ -172,6 +174,7 @@ struct FileOps::Job {
     QString error;
     QStringList sources;
     QString destination;
+    std::shared_ptr<vela::files::DeviceLocks> deviceLocks;
     std::atomic<bool> cancelled { false };
 };
 
@@ -293,61 +296,9 @@ int FileOps::activeJobCount() const
         [](const std::shared_ptr<Job>& job) { return !job->finished; }));
 }
 
-namespace {
-
-// UDisks can use /dev/dm-0 while QStorageInfo reports /dev/mapper/name.
-QString canonicalDevice(const QString& device)
-{
-    const QString canonical = QFileInfo(device).canonicalFilePath();
-    return canonical.isEmpty() ? device : canonical;
-}
-
-bool containsPath(const QString& ancestor, const QString& path)
-{
-    return path == ancestor || path.startsWith(ancestor == QLatin1String("/")
-        ? QStringLiteral("/") : ancestor + u'/');
-}
-
-} // namespace
-
 bool FileOps::pathsOnDevice(const QStringList& sources, const QString& destination, const QString& device)
 {
-    if (device.isEmpty()) {
-        return false;
-    }
-    const QString wanted = canonicalDevice(device);
-    const auto matches = [&wanted](const QByteArray& name) {
-        return !name.isEmpty() && canonicalDevice(QFile::decodeName(name)) == wanted;
-    };
-    QStringList paths = sources;
-    paths.append(destination);
-    const QList<QStorageInfo> volumes = QStorageInfo::mountedVolumes();
-    for (const QString& path : paths) {
-        const QStorageInfo immediate(path);
-        if (immediate.isValid() && matches(immediate.device())) {
-            return true;
-        }
-        const QFileInfo entry(path);
-        if (!entry.isDir() || entry.isSymLink()) {
-            continue;
-        }
-        const QString canonicalPath = entry.canonicalFilePath();
-        if (canonicalPath.isEmpty()) {
-            continue;
-        }
-        // A recursive source may include a different drive mounted under it.
-        // Conservatively guard destination submounts, too (folder merging).
-        for (const QStorageInfo& volume : volumes) {
-            if (!volume.isValid() || !matches(volume.device())) {
-                continue;
-            }
-            const QString mountPoint = QFileInfo(volume.rootPath()).canonicalFilePath();
-            if (!mountPoint.isEmpty() && containsPath(canonicalPath, mountPoint)) {
-                return true;
-            }
-        }
-    }
-    return false;
+    return vela::files::transferDevices(sources, destination).contains(vela::files::canonicalDevice(device));
 }
 
 bool FileOps::activeOnDevice(const QString& device) const
@@ -458,7 +409,17 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
             "This drive is being ejected. Wait for ejection to finish before transferring files."));
         return;
     }
+    // The lock must be held before the job becomes visible, and through the
+    // worker's final sync. Eject in another Explorer process takes LOCK_EX.
+    auto locks = std::make_shared<vela::files::DeviceLocks>();
+    if (!locks->acquire(vela::files::transferDevices(transfer.sources, transfer.directory),
+            vela::files::DeviceLocks::Mode::Shared)) {
+        emit failed(QCoreApplication::translate("Files",
+            "A drive is being ejected or the transfer lock is unavailable. Try again."));
+        return;
+    }
     auto job = std::make_shared<Job>();
+    job->deviceLocks = std::move(locks);
     job->id = m_nextJob++;
     job->sources = transfer.sources;
     job->destination = transfer.directory;
@@ -493,8 +454,15 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
         // This exactly matches copyOne(), including empty nested directories.
         // A same-device move may fall back to copying if rename fails.
         qint64 total = 0;
+        QSet<QString> estimatedRenames;
         for (const QString& source : transfer.sources) {
-            total += transferWorkUnits(source);
+            if (transfer.move && sameDevice(source, transfer.directory)) {
+                // Common same-filesystem moves are O(1) renames, not tree walks.
+                estimatedRenames.insert(source);
+                total += 1;
+            } else {
+                total += transferWorkUnits(source);
+            }
         }
         qint64 done = 0;
         QElapsedTimer lastPost;
@@ -655,6 +623,11 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
                 continue;
             }
 
+            // A failed/unavailable rename must use full copy accounting.
+            if (estimatedRenames.contains(source)) {
+                total += transferWorkUnits(source) - 1;
+                post(done, total, info.fileName(), false, QString());
+            }
             bool copied = false;
             if (merging || (!sourceIsDir && (!replacing || sameKind))) {
                 // Merging folders, or a file (also replacing another file):
@@ -728,18 +701,35 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
         if (!step.created.isEmpty()) {
             syncDirectory(transfer.directory);
         }
+        // No filesystem work remains: release shared locks before the UI
+        // publishes completion. Retained result cards must not block eject.
+        job->deviceLocks.reset();
         const bool cancelled = job->cancelled;
         const QString result = error.isEmpty() && cancelled ? QCoreApplication::translate("Files", "Canceled") : error;
         // Preserve progress on cancellation/failure; never claim 100%.
         post(error.isEmpty() && !cancelled ? total : done, total, QString(), true, result);
         QMetaObject::invokeMethod(
             qApp,
-            [self, step, firstArrived, id = job->id, ok = error.isEmpty() && !cancelled] {
+            [self, step, firstArrived, fromDesktop = transfer.fromDesktop, id = job->id, ok = error.isEmpty() && !cancelled] {
                 if (!self) {
                     return;
                 }
                 if (!step.moves.isEmpty() || !step.created.isEmpty()) {
                     self->pushUndo(step);
+                    if (fromDesktop) {
+                        QJsonArray moves;
+                        for (const auto& [current, original] : step.moves) {
+                            moves.append(QJsonArray { current, original });
+                        }
+                        QJsonObject payload {
+                            { QStringLiteral("label"), step.label },
+                            { QStringLiteral("moves"), moves },
+                            { QStringLiteral("created"), QJsonArray::fromStringList(step.created) }
+                        };
+                        // Report only committed operations, including the
+                        // successful subset of a later failed transfer.
+                        sendToShell("desktop-transfer-undo " + QJsonDocument(payload).toJson(QJsonDocument::Compact));
+                    }
                 }
                 if (!firstArrived.isEmpty()) {
                     emit self->created(firstArrived, false);
@@ -910,6 +900,16 @@ void FileOps::copyAsPath(const QStringList& paths)
 
 void FileOps::drop(const QStringList& urls, const QString& directory, int action)
 {
+    dropInternal(urls, directory, action, false);
+}
+
+void FileOps::dropFromDesktop(const QStringList& urls, const QString& directory, int action)
+{
+    dropInternal(urls, directory, action, true);
+}
+
+void FileOps::dropInternal(const QStringList& urls, const QString& directory, int action, bool fromDesktop)
+{
     QStringList paths;
     for (const QString& text : urls) {
         const QUrl url(text);
@@ -926,6 +926,7 @@ void FileOps::drop(const QStringList& urls, const QString& directory, int action
     }
     Transfer transfer;
     transfer.directory = directory;
+    transfer.fromDesktop = fromDesktop;
     transfer.move = action == 2 || (action == 0 && sameDevice(paths.first(), directory));
     for (const QString& path : std::as_const(paths)) {
         // Dropped in the folder they're already in: nothing to do.
