@@ -25,6 +25,7 @@ class FileOps : public QObject {
     Q_PROPERTY(QString undoText READ undoText NOTIFY undoChanged)
     // [{id, title, done, total, current, finished, error}]
     Q_PROPERTY(QVariantList jobs READ jobs NOTIFY jobsChanged)
+    Q_PROPERTY(int activeJobCount READ activeJobCount NOTIFY jobsChanged)
 
 public:
     explicit FileOps(AppModel* apps, QObject* parent = nullptr);
@@ -34,6 +35,8 @@ public:
     QSet<QString> cutPaths() const;
     QString undoText() const;
     QVariantList jobs() const;
+    int activeJobCount() const;
+    bool activeOnDevice(const QString& device) const;
 
     // Opening: folders are opened by Explorer itself; files with the default
     // app.
