@@ -8,6 +8,15 @@
 #include <QSignalSpy>
 #include <QtTest>
 
+class TransferEndpoint : public QObject {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.vela.Files.Transfers")
+public:
+    int cancelledId = -1;
+public Q_SLOTS:
+    Q_SCRIPTABLE void Cancel(int id) { cancelledId = id; }
+};
+
 class Transfers : public QObject {
     Q_OBJECT
 private slots:
@@ -105,6 +114,36 @@ private slots:
         QVERIFY(bus.send(message));
         QTRY_COMPARE(monitor.activeCount(), 1);
         QCOMPARE(monitor.jobs().first().toMap().value(QStringLiteral("owner")).toString(), bus.baseService());
+    }
+
+    void remoteCancellationReachesExplorerEndpoint()
+    {
+        const QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected()) QSKIP("Session D-Bus unavailable");
+        TransferEndpoint endpoint;
+        const QString path = QStringLiteral("/org/vela/Files/Transfers");
+        QVERIFY(bus.registerObject(path, &endpoint, QDBusConnection::ExportScriptableSlots));
+        TransferMonitor monitor;
+        monitor.onChanged(bus.baseService(), 93, QStringLiteral("Copying"),
+            1, 100, {}, false, {});
+        monitor.cancel(bus.baseService(), 93);
+        QTRY_COMPARE(endpoint.cancelledId, 93);
+        bus.unregisterObject(path);
+    }
+
+    void snapshotOverDbusDoesNotNotify()
+    {
+        const QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected()) QSKIP("Session D-Bus unavailable");
+        TransferMonitor monitor;
+        QSignalSpy completed(&monitor, &TransferMonitor::completed);
+        QDBusMessage message = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
+            QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("Snapshot"));
+        message << bus.baseService() << 94 << QStringLiteral("Old copy")
+                << qlonglong(100) << qlonglong(100) << QString() << true << QString();
+        QVERIFY(bus.send(message));
+        QTRY_COMPARE(monitor.jobs().size(), 1);
+        QCOMPARE(completed.size(), 0);
     }
 
     void ignoresMalformedJobs()
