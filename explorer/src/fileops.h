@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <QAbstractItemModel>
 #include <QObject>
 #include <QSet>
 #include <QStringList>
@@ -13,6 +14,7 @@
 #include <memory>
 
 class AppModel;
+class TransferJobsModel;
 
 // What File Explorer does with files, like Windows: open, clipboard (cut,
 // copy, paste, also to and from Dolphin and Nautilus), New, rename, Recycle
@@ -26,6 +28,7 @@ class FileOps : public QObject {
     Q_PROPERTY(QString undoText READ undoText NOTIFY undoChanged)
     // [{id, title, done, total, current, finished, error}]
     Q_PROPERTY(QVariantList jobs READ jobs NOTIFY jobsChanged)
+    Q_PROPERTY(QAbstractItemModel* jobModel READ jobModel CONSTANT)
     Q_PROPERTY(int activeJobCount READ activeJobCount NOTIFY jobsChanged)
 
 public:
@@ -36,6 +39,7 @@ public:
     QSet<QString> cutPaths() const;
     QString undoText() const;
     QVariantList jobs() const;
+    QAbstractItemModel* jobModel() const;
     int activeJobCount() const;
     bool activeOnDevice(const QString& device) const;
     // Includes mounted filesystems nested below a copied directory.
@@ -139,10 +143,12 @@ private:
     void startTransfer(const Transfer& transfer, const QString& policy);
     void requestTransfer(const Transfer& transfer);
     void updateJob(int id, qint64 done, qint64 total, const QString& current, bool finished, const QString& error);
+    QVariantMap jobAsMap(const Job& job) const;
 
     AppModel* m_apps;
     QList<UndoStep> m_undo;
     QList<std::shared_ptr<Job>> m_jobs;
+    TransferJobsModel* m_jobModel = nullptr;
     int m_nextJob = 1;
     Transfer m_pending; // waiting for the answer to the conflict
     std::function<bool(const QStringList&, const QString&)> m_ejectGuard;
