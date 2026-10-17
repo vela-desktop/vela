@@ -3,7 +3,11 @@
 
 #pragma once
 
+#include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QStringList>
+#include <QVariantMap>
 
 namespace vela::files {
 
@@ -50,6 +54,21 @@ inline bool parseTransferArguments(const QStringList& args, TransferRequest* out
     }
     *out = { action, args.at(2), args.mid(4) };
     return true;
+}
+
+// Both the shell (spawn failed) and Explorer (invalid startup request) use a
+// visible desktop notification, rather than relying on journal-only errors.
+inline void notifyTransferStartupFailure(const QString& detail)
+{
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("/org/freedesktop/Notifications"),
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("Notify"));
+    message << QStringLiteral("Vela Files") << uint(0) << QStringLiteral("dialog-error")
+            << QCoreApplication::translate("Files", "File transfer did not start")
+            << detail << QStringList {} << QVariantMap {} << 10000;
+    QDBusConnection::sessionBus().asyncCall(message);
 }
 
 } // namespace vela::files
