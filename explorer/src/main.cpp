@@ -110,6 +110,7 @@ int main(int argc, char* argv[])
     AppModel apps;
     FileOps ops(&apps);
     Places places;
+    places.setTransferGuard([&ops](const QString& device) { return ops.activeOnDevice(device); });
     SystemActions system;
     ServiceMenus serviceMenus;
 
