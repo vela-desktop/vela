@@ -6,6 +6,8 @@ supervisor restarting the compositor after a crash (locked too)."""
 
 import os
 import signal
+import socket
+import struct
 import tempfile
 import time
 import unittest
@@ -191,6 +193,21 @@ class Shell(unittest.TestCase):
         runs, log = self.runs("exit 0")
         self.assertEqual(runs, 1)
         self.assertNotIn("restarting it", log)
+
+
+class CommandSocket(unittest.TestCase):
+    def test_client_that_hangs_up_before_the_reply_does_not_kill_the_session(self):
+        # A large reply ("state" with windows) to clients that reset the
+        # connection at once: writing to them must not raise SIGPIPE.
+        with Session() as vela:
+            for _ in range(20):
+                vela.open_window(200, 150)
+            for _ in range(50):
+                with socket.socket(socket.AF_UNIX) as client:
+                    client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+                    client.connect(vela.socket_path)
+                    client.sendall(b"state\n")
+            self.assertEqual(len(vela.state().windows), 20)
 
 
 class Supervisor(unittest.TestCase):

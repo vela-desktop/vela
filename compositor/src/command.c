@@ -253,7 +253,7 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         return false;
     }
     vela_buffer_append(&reply, "\n");
-    (void)!write(fd, reply.data, reply.length);
+    (void)!send(fd, reply.data, reply.length, MSG_NOSIGNAL);
     vela_buffer_finish(&reply);
     return true;
 }
