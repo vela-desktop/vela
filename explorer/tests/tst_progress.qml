@@ -50,6 +50,17 @@ Item {
             verify(panel.height <= root.height - 96)
         }
 
+        function test_new_copy_is_above_old_errors() {
+            const old = []
+            for (let i = 1; i <= 6; ++i)
+                old.push(job(i, 20, 1000, true, "Failed"))
+            Ops.jobs = old.concat([job(77, 100, 1000, false, "")])
+            tryVerify(() => panel.visible)
+            const active = findChild(panel, "transferJob:77")
+            verify(active !== null, "new active transfer must be inside the visible viewport")
+            verify(active.y >= 0 && active.y < panel.height, "new copy is onscreen")
+        }
+
         function test_failed_copy_is_not_reported_as_completed() {
             Ops.jobs = [job(52, 300, 1000, true, "Disk full")]
             tryVerify(() => panel.visible)
