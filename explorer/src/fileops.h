@@ -9,6 +9,7 @@
 #include <QVariantList>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 class AppModel;
@@ -37,6 +38,10 @@ public:
     QVariantList jobs() const;
     int activeJobCount() const;
     bool activeOnDevice(const QString& device) const;
+    // Includes mounted filesystems nested below a copied directory.
+    static bool pathsOnDevice(const QStringList& sources, const QString& destination, const QString& device);
+    // Refuse transfers started while UDisks is unmounting their filesystem.
+    void setEjectGuard(std::function<bool(const QStringList&, const QString&)> guard);
 
     // Opening: folders are opened by Explorer itself; files with the default
     // app.
@@ -140,6 +145,7 @@ private:
     QList<std::shared_ptr<Job>> m_jobs;
     int m_nextJob = 1;
     Transfer m_pending; // waiting for the answer to the conflict
+    std::function<bool(const QStringList&, const QString&)> m_ejectGuard;
 };
 
 // A free name in the folder: "name (2).ext", like Windows.
