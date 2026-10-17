@@ -271,16 +271,18 @@ static void handle_new_lock(struct wl_listener *listener, void *data)
         return;
     }
     lock->lock = wlr;
-    vela_lock_retry_registered(&lock->retry);
-    if (lock->respawn && wl_event_source_timer_update(lock->respawn, 0) < 0) {
-        wlr_log_errno(WLR_ERROR, "Lock: could not cancel pending retry timer");
-        lock_fatal_shutdown(lock);
+    // Establish the black, input-isolated state before any cancellation error
+    // can enter the terminal failure path, including unsolicited clients.
+    vela_lock_engage(lock);
+    if (lock->fatal_exit_pending) {
         wlr_session_lock_v1_destroy(wlr);
         lock->lock = NULL;
         return;
     }
-    vela_lock_engage(lock);
-    if (lock->fatal_exit_pending) {
+    vela_lock_retry_registered(&lock->retry);
+    if (lock->respawn && wl_event_source_timer_update(lock->respawn, 0) < 0) {
+        wlr_log_errno(WLR_ERROR, "Lock: could not cancel pending retry timer");
+        lock_fatal_shutdown(lock);
         wlr_session_lock_v1_destroy(wlr);
         lock->lock = NULL;
         return;
