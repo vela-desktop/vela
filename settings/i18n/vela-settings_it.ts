@@ -744,6 +744,22 @@ Specifiche sistema
 <context>
     <name>DisplayPage</name>
     <message>
+        <source>Make this my main display</source>
+        <translation>Imposta come schermo principale</translation>
+    </message>
+    <message>
+        <source>Show notifications and the main taskbar on this display</source>
+        <translation>Mostra le notifiche e la barra delle applicazioni principale su questo schermo</translation>
+    </message>
+    <message>
+        <source>Main display</source>
+        <translation>Schermo principale</translation>
+    </message>
+    <message>
+        <source>Make main</source>
+        <translation>Imposta come principale</translation>
+    </message>
+    <message>
         <source>Landscape</source>
         <translation>Orizzontale</translation>
     </message>
