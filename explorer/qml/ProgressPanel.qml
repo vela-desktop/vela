@@ -10,11 +10,8 @@ Item {
     id: root
     objectName: "transferProgressPanel"
     width: Math.min(380, Math.max(220, parent ? parent.width - 32 : 380))
-    // Incomplete transfers take priority over retained failures; a fresh
-    // multi-minute copy must never be hidden below older error cards.
-    readonly property var jobs: Ops.jobs.filter(job => !job.finished)
-        .concat(Ops.jobs.filter(job => job.finished))
-    readonly property int jobCount: jobs.length
+    // The backend maintains active jobs first with granular row updates.
+    readonly property int jobCount: jobList.count
     readonly property int cardHeight: 116
     readonly property int gap: 8
     height: Math.min(Math.max(0, parent ? parent.height - 96 : 500),
@@ -27,7 +24,7 @@ Item {
         anchors.fill: parent
         spacing: root.gap
         clip: true
-        model: root.jobs
+        model: Ops.jobModel
         interactive: contentHeight > height
 
         delegate: Rectangle {
