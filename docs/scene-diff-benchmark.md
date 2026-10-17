@@ -138,12 +138,20 @@ The `compositor.scene-diff` test now exercises changes to the flattened lists:
   disappear while the existing elements retain their order.
 - Duplicate-key regression: matching preserves the original circular search's
   choice, including which old surface gets forgotten.
+- Differential regression: 1,000 deterministic randomized scene comparisons
+  against the original circular-search reference, including duplicated keys,
+  insertions, removals, restacks, and visual changes.
 - Allocation regression: steady scenes retain the original allocation-free
   fast path; once warmed, structurally changed scenes reuse index buffers.
 
-These six new scenarios are also available through `vela-scene-diff-bench`
-and `compositor/tests/bench_scene_diff.py`. The historic CSV linked above
+These six structural scenarios are also available through
+`vela-scene-diff-bench` and `compositor/tests/bench_scene_diff.py`.
+The additional `duplicate-keys` stress case uses eight repeating keys in a
+reversed list: matching semantics must remain correct, but worst-case work
+can still grow quadratically with many duplicate keys. The historic CSV linked above
 contains **only the original six scenarios and the previous implementation**;
-it has not been retroactively changed. To get comparable measurements, rerun
-the suite against a compatible baseline on the same CPU and build setup.
+it has not been retroactively changed. When `--baseline` points to the earlier version, the runner compares only
+the six scenarios both binaries understand; new scenarios run candidate-only
+rather than terminating the sweep. For comparable measurements, rerun the
+shared scenarios on the same CPU and build setup.
 Real frame-time conclusions still require compositor/GPU measurement.
