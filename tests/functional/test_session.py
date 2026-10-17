@@ -95,6 +95,29 @@ class Lock(unittest.TestCase):
                 vela.wait_for(attempted_twice, read_state=False, timeout=9, what="automatic retry")
                 self.assertTrue(vela.state()["locked"])
 
+    def test_nonregistering_live_locker_is_stopped_before_retry(self):
+        # A locker that stays alive without ext-session-lock registration must
+        # be terminated before launching its replacement.
+        with tempfile.TemporaryDirectory(prefix="vela-lock-live-") as directory:
+            attempts = os.path.join(directory, "attempts")
+            launcher = f"echo $ >> '{attempts}'; exec sleep 30"
+            with Session(env={"VELA_LOCK": launcher}) as vela:
+                vela.command("lock")
+                def pids():
+                    if not os.path.exists(attempts):
+                        return []
+                    with open(attempts) as record:
+                        return [int(line.strip()) for line in record if line.strip()]
+                vela.wait_for(lambda _: len(pids()) >= 1, read_state=False, what="first live launcher")
+                first_pid = pids()[0]
+                vela.wait_for(lambda _: len(pids()) >= 2, read_state=False,
+                              timeout=9, what="replacement live launcher")
+                self.assertNotEqual(first_pid, pids()[1])
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(first_pid, 0)
+                self.assertTrue(vela.state()["locked"])
+                self.assertIsNone(vela.state()["focused"])
+
     def test_nonregistering_locker_recovers_when_available(self):
         with tempfile.TemporaryDirectory(prefix="vela-lock-recovery-") as directory:
             ready = os.path.join(directory, "ready")
