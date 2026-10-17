@@ -179,6 +179,18 @@
 <context>
     <name>Files</name>
     <message>
+        <source>This drive is being ejected. Wait for ejection to finish before transferring files.</source>
+        <translation>È in corso l&apos;espulsione di questa unità. Attendi che termini prima di trasferire i file.</translation>
+    </message>
+    <message>
+        <source>Drive ejection is already in progress.</source>
+        <translation>Espulsione dell&apos;unità già in corso.</translation>
+    </message>
+    <message>
+        <source>A file transfer is using this drive. Wait for it to finish or cancel it before ejecting.</source>
+        <translation>Un trasferimento di file sta utilizzando questa unità. Attendi che termini o annullalo prima di espellerla.</translation>
+    </message>
+    <message>
         <source>File Explorer</source>
         <translation>Esplora file</translation>
     </message>
@@ -460,6 +472,18 @@
 <context>
     <name>Main</name>
     <message>
+        <source>File transfer in progress</source>
+        <translation>Trasferimento di file in corso</translation>
+    </message>
+    <message>
+        <source>Files are still being copied or moved. Keep File Explorer open until they finish, or cancel the transfer first.</source>
+        <translation>La copia o lo spostamento dei file è ancora in corso. Tieni aperto Esplora file fino al termine oppure annulla il trasferimento.</translation>
+    </message>
+    <message>
+        <source>Keep copying</source>
+        <translation>Continua la copia</translation>
+    </message>
+    <message>
         <source> - File Explorer</source>
         <translation> - Esplora file</translation>
     </message>
@@ -628,6 +652,26 @@
 </context>
 <context>
     <name>ProgressPanel</name>
+    <message>
+        <source>Dismiss</source>
+        <translation>Rimuovi</translation>
+    </message>
+    <message>
+        <source>Cancel transfer</source>
+        <translation>Annulla trasferimento</translation>
+    </message>
+    <message>
+        <source>Transfer incomplete</source>
+        <translation>Trasferimento incompleto</translation>
+    </message>
+    <message>
+        <source>Completed</source>
+        <translation>Completato</translation>
+    </message>
+    <message>
+        <source>Preparing transfer…</source>
+        <translation>Preparazione del trasferimento…</translation>
+    </message>
     <message>
         <source>% complete</source>
         <translation>% completato</translation>
