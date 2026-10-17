@@ -110,7 +110,8 @@ bool runDetached(const QString& program, const QStringList& arguments, const QSt
 // Both desktop Ctrl+V and drag/drop must go through FileOps in vela-files.
 // A tracked Explorer window owns the transfer and stays open until completion;
 // launching detached cp/mv loses progress, cancellation and error reporting.
-bool launchFileTransfer(const QStringList& sources, const QString& directory, vela::files::TransferAction action)
+bool launchFileTransfer(const QStringList& sources, const QString& directory,
+    vela::files::TransferAction action, qint64* pid)
 {
     if (sources.isEmpty()) {
         return false;
@@ -119,7 +120,8 @@ bool launchFileTransfer(const QStringList& sources, const QString& directory, ve
     if (!QFileInfo(executable).isExecutable()) {
         executable = QStringLiteral("vela-files"); // development / separate install prefix
     }
-    const bool launched = runDetached(executable, vela::files::transferArguments(action, directory, sources), directory);
+    const bool launched = QProcess::startDetached(
+        executable, vela::files::transferArguments(action, directory, sources), directory, pid);
     if (!launched) {
         qWarning("vela-shell: unable to start the tracked file transfer in vela-files");
         vela::files::notifyTransferStartupFailure(
@@ -129,6 +131,32 @@ bool launchFileTransfer(const QStringList& sources, const QString& directory, ve
 }
 
 } // namespace
+
+bool DesktopModel::startTrackedTransfer(const QStringList& sources, const QString& directory, int action)
+{
+    qint64 pid = 0;
+    if (!launchFileTransfer(sources, directory, static_cast<vela::files::TransferAction>(action), &pid)) {
+        return false;
+    }
+    if (pid > 0) {
+        m_pendingTransferStarts.insert(pid);
+        // A detached process can exit before main() or fail during QML load,
+        // even though startDetached() returned true. Do not block the shell UI.
+        QTimer::singleShot(15000, this, [this, pid] {
+            if (m_pendingTransferStarts.remove(pid)) {
+                vela::files::notifyTransferStartupFailure(
+                    QCoreApplication::translate("Desktop",
+                        "Vela Files did not confirm that the transfer window opened."));
+            }
+        });
+    }
+    return true;
+}
+
+void DesktopModel::acknowledgeTransferStart(qint64 pid)
+{
+    m_pendingTransferStarts.remove(pid);
+}
 
 DesktopModel::DesktopModel(AppModel* apps, QObject* parent)
     : QAbstractListModel(parent)
@@ -696,8 +724,7 @@ void DesktopModel::undo()
             // An inter-filesystem move cannot be reversed with rename().
             // Route it through the same tracked FileOps worker as any move.
             if (QFileInfo::exists(current)) {
-                launchFileTransfer({ current }, QFileInfo(original).absolutePath(),
-                    vela::files::TransferAction::Move);
+                startTrackedTransfer({ current }, QFileInfo(original).absolutePath(), 2);
             }
         }
     }
@@ -847,9 +874,7 @@ void DesktopModel::paste()
         }
         sources.append(info.absoluteFilePath());
     }
-    if (launchFileTransfer(sources, m_dir,
-            cut ? vela::files::TransferAction::Move : vela::files::TransferAction::Copy)
-        && cut) {
+    if (startTrackedTransfer(sources, m_dir, cut ? 2 : 1) && cut) {
         QGuiApplication::clipboard()->clear(); // only clear if handed to vela-files
     }
 }
@@ -928,7 +953,7 @@ void DesktopModel::drop(const QStringList& urls, const QString& target, qreal x,
         }
         valid.append(source);
     }
-    if (!launchFileTransfer(valid, dir, vela::files::TransferAction::Automatic)) {
+    if (!startTrackedTransfer(valid, dir, 0)) {
         return;
     }
     // Retain requested icon placement for conflict-free drops onto the desktop.
