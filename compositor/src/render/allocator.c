@@ -97,6 +97,10 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
     }
 
     struct gbm_buffer *buffer = calloc(1, sizeof(*buffer));
+    if (!buffer) {
+        gbm_bo_destroy(bo);
+        return NULL;
+    }
     buffer->bo = bo;
     struct wlr_dmabuf_attributes *d = &buffer->dmabuf;
     d->width = width;
@@ -104,6 +108,12 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
     d->format = format->format;
     d->modifier = gbm_bo_get_modifier(bo);
     d->n_planes = gbm_bo_get_plane_count(bo);
+    if (d->n_planes < 1 || d->n_planes > WLR_DMABUF_MAX_PLANES) {
+        wlr_log(WLR_ERROR, "Allocator: invalid GBM plane count %d", d->n_planes);
+        gbm_bo_destroy(bo);
+        free(buffer);
+        return NULL;
+    }
     for (int i = 0; i < d->n_planes; ++i) {
         d->fd[i] = gbm_bo_get_fd_for_plane(bo, i);
         d->offset[i] = gbm_bo_get_offset(bo, i);
