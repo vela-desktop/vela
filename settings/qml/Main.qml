@@ -198,6 +198,7 @@ Window {
         { page: "clipboard", text: qsTr("Snipping Tool"), keys: qsTr("screenshot capture print screen snip") },
         { page: "night-light", text: qsTr("Night light"), keys: qsTr("night warm colors blue evening schedule sunset") },
         { page: "display", text: qsTr("Tearing in games"), keys: qsTr("games tearing latency full screen vsync") },
+        { page: "display", text: qsTr("Direct scanout"), keys: qsTr("direct scanout black screen glitch game full screen flicker") },
         { page: "accessibility", text: qsTr("Accessibility"), keys: qsTr("low vision color blindness") },
         { page: "accessibility", text: qsTr("Magnifier"), keys: qsTr("zoom magnify magnifier") },
         { page: "accessibility", text: qsTr("Color filters"), keys: qsTr("grayscale color blindness deuteranopia protanopia tritanopia") },

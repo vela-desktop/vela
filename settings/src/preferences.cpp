@@ -220,6 +220,7 @@ void Preferences::reloadCompositor()
     m_nightTo = value(QStringLiteral("night-light-to"), QStringLiteral("07:00"));
     m_tearing = flag(QStringLiteral("tearing"), true);
     m_vrr = value(QStringLiteral("variable-refresh"), QStringLiteral("games"));
+    m_directScanout = value(QStringLiteral("direct-scanout"), QStringLiteral("auto"));
     m_colorFilter = flag(QStringLiteral("color-filters"), false);
     m_colorFilterKind = value(QStringLiteral("color-filter"), QStringLiteral("grayscale"));
     m_colorFilterShortcut = flag(QStringLiteral("color-filters-shortcut"), false);
@@ -703,6 +704,15 @@ void Preferences::setVrr(const QString& mode)
     if (mode != m_vrr) {
         m_vrr = mode;
         saveCompositor({ { QStringLiteral("variable-refresh"), mode } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setDirectScanout(const QString& mode)
+{
+    if (mode != m_directScanout) {
+        m_directScanout = mode;
+        saveCompositor({ { QStringLiteral("direct-scanout"), mode } });
         emit accessibilityChanged();
     }
 }

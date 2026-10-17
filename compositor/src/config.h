@@ -31,6 +31,9 @@
 //                            (no: they only fade, briefly)
 //   animation-duration=100   50-300: percent of Vela's animation durations
 //   tearing=yes              for fullscreen games that ask for it
+//   direct-scanout=auto      auto, yes (the same) or no: never put a fullscreen
+//                            app's buffer straight on screen (black screen or
+//                            glitches in a game); VELA_SCANOUT=0 wins
 //   variable-refresh=games   VRR: no, games (fullscreen apps), always
 //   mouse-speed=10           1-20, like the Windows pointer
 //   mouse-precision=yes      pointer acceleration

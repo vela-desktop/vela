@@ -894,6 +894,18 @@ Specifiche sistema
         <translation>I giochi che lo chiedono vanno sullo schermo senza aspettare il monitor: meno latenza, con qualche strappo nell&apos;immagine (tearing)</translation>
     </message>
     <message>
+        <source>Direct scanout</source>
+        <translation>Scanout diretto</translation>
+    </message>
+    <message>
+        <source>A full-screen game goes to the screen without being redrawn. If a game shows a black screen or garbled pictures, turn it off</source>
+        <translation>Un gioco a schermo intero va sullo schermo senza essere ridisegnato. Se un gioco mostra schermo nero o immagini corrotte, disattivalo</translation>
+    </message>
+    <message>
+        <source>direct scanout black screen glitch game full screen flicker</source>
+        <translation>scanout diretto schermo nero glitch gioco schermo intero</translation>
+    </message>
+    <message>
         <source>Related settings</source>
         <translation>Impostazioni correlate</translation>
     </message>

@@ -1395,6 +1395,10 @@ static const struct vela_element *scanout_candidate(struct vela_output_frame *fr
     if (vela_env_off("VELA_SCANOUT")) {
         return NULL;
     }
+    if (!frame->scene->allow_scanout) {
+        note_scanout_reason(frame, "turned off in vela.conf (direct-scanout=no)");
+        return NULL;
+    }
     const char *reason = NULL;
     const struct vela_element *found = NULL;
     for (int i = 0; i < elements->count; ++i) {

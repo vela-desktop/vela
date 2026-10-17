@@ -15,7 +15,8 @@
 // compositor waited for the fence in its frame, it would miss vblanks (Vela's
 // "state" counts them per output).
 //
-// Usage: vela-slowgpu [MS] [--implicit]    (150 ms by default)
+// Usage: vela-slowgpu [MS] [--implicit] [--fullscreen]    (150 ms by default)
+// --fullscreen: on an output of exactly 512x320, a direct scanout candidate.
 
 #define _GNU_SOURCE
 #include <errno.h>
@@ -57,6 +58,7 @@ static struct wl_surface* surface;
 static struct wp_linux_drm_syncobj_surface_v1* syncobjSurface;
 static struct xdg_surface* xdgSurface;
 static struct xdg_toplevel* toplevel;
+static int wantFullscreen;
 
 static dev_t mainDevice;
 static int haveMainDevice;
@@ -586,10 +588,12 @@ int main(int argc, char* argv[])
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--implicit")) {
             implicitSync = 1;
+        } else if (!strcmp(argv[i], "--fullscreen")) {
+            wantFullscreen = 1;
         } else if (atof(argv[i]) > 0) {
             targetMs = atof(argv[i]);
         } else {
-            fprintf(stderr, "usage: vela-slowgpu [MS] [--implicit]\n");
+            fprintf(stderr, "usage: vela-slowgpu [MS] [--implicit] [--fullscreen]\n");
             return 2;
         }
     }
@@ -644,6 +648,9 @@ int main(int argc, char* argv[])
     xdg_toplevel_add_listener(toplevel, &toplevelListener, NULL);
     xdg_toplevel_set_title(toplevel, "vela-slowgpu");
     xdg_toplevel_set_app_id(toplevel, "vela.slowgpu");
+    if (wantFullscreen) {
+        xdg_toplevel_set_fullscreen(toplevel, NULL);
+    }
     wl_surface_commit(surface);
     while (!configured && wl_display_dispatch(display) >= 0) {
     }

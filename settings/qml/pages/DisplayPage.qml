@@ -338,6 +338,17 @@ Page {
             }
         }
         Card {
+            icon: "video-display"
+            title: qsTr("Direct scanout")
+            description: qsTr("A full-screen game goes to the screen without being redrawn. If a game shows a black screen or garbled pictures, turn it off")
+            trailing: Choice {
+                readonly property var modes: ["auto", "no"]
+                model: [qsTr("Automatic"), qsTr("Off")]
+                currentIndex: Math.max(0, modes.indexOf(Prefs.directScanout))
+                onChosen: index => Prefs.directScanout = modes[index]
+            }
+        }
+        Card {
             icon: "input-gaming"
             title: qsTr("Show every frame right away in full-screen games")
             description: qsTr("Games that ask for it reach the screen without waiting for the monitor: less latency, with some tearing in the picture")

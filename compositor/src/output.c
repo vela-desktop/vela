@@ -148,6 +148,8 @@ void vela_output_load_settings(struct vela_server *server)
     }
     vela_server_schedule_frames(server);
     server->scene->allow_tearing = vela_config_flag(&settings, "tearing", true) && !vela_env_off("VELA_TEARING");
+    // auto (default) and yes: when possible. no: always composite.
+    server->scene->allow_scanout = strcmp(vela_config_get(&settings, "direct-scanout", "auto"), "no") != 0;
     vela_config_finish(&settings);
 }
 

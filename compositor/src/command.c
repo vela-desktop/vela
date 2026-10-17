@@ -115,10 +115,11 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         vela_buffer_append_json(json, output->wlr->name);
         vela_buffer_appendf(json,
             ",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"scale\":%g,\"transform\":%d,\"enabled\":%s,\"powered\":%s,\"frames\":%llu,"
-            "\"missed\":%llu}",
+            "\"missed\":%llu,\"scanout\":%s}",
             box.x, box.y, box.width, box.height, (double)output->wlr->scale, (int)output->wlr->transform, output->wlr->enabled ? t : f,
             output->powered ? t : f, (unsigned long long)output->clock.frames_total,
-            (unsigned long long)output->clock.missed_total);
+            (unsigned long long)output->clock.missed_total,
+            output->frame && output->frame->scanout ? t : f);
         first = false;
     }
     vela_buffer_append(json, "],\"windows\":[");
