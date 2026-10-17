@@ -30,6 +30,7 @@
 #include <QStandardPaths>
 #include <QThreadPool>
 #include <QStorageInfo>
+#include <QAbstractListModel>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantMap>
@@ -174,9 +175,81 @@ struct FileOps::Job {
     std::atomic<bool> cancelled { false };
 };
 
+// A stable item model: ordinary progress emits dataChanged for one row,
+// rather than replacing the ListView's whole JavaScript array every 100 ms.
+class TransferJobsModel final : public QAbstractListModel {
+public:
+    explicit TransferJobsModel(QObject* parent) : QAbstractListModel(parent) {}
+
+    int rowCount(const QModelIndex& parent = {}) const override
+    {
+        return parent.isValid() ? 0 : int(m_rows.size());
+    }
+    QVariant data(const QModelIndex& index, int role) const override
+    {
+        if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.size()
+            || role != Qt::UserRole + 1) {
+            return {};
+        }
+        return m_rows.at(index.row());
+    }
+    QHash<int, QByteArray> roleNames() const override
+    {
+        return { { Qt::UserRole + 1, QByteArrayLiteral("modelData") } };
+    }
+
+    void add(const QVariantMap& job)
+    {
+        int at = 0;
+        while (at < m_rows.size() && !m_rows.at(at).value(QStringLiteral("finished")).toBool()) {
+            ++at;
+        }
+        beginInsertRows({}, at, at);
+        m_rows.insert(at, job);
+        endInsertRows();
+    }
+    void update(int id, const QVariantMap& job)
+    {
+        for (int row = 0; row < m_rows.size(); ++row) {
+            if (m_rows.at(row).value(QStringLiteral("id")).toInt() != id) {
+                continue;
+            }
+            if (job.value(QStringLiteral("finished")).toBool()
+                && !m_rows.at(row).value(QStringLiteral("finished")).toBool()
+                && row != m_rows.size() - 1) {
+                const int last = int(m_rows.size());
+                beginMoveRows({}, row, row, {}, last);
+                m_rows.move(row, last - 1);
+                endMoveRows();
+                row = last - 1;
+            }
+            m_rows[row] = job;
+            emit dataChanged(index(row), index(row), { Qt::UserRole + 1 });
+            return;
+        }
+    }
+    void dismiss(int id)
+    {
+        for (int row = 0; row < m_rows.size(); ++row) {
+            if (m_rows.at(row).value(QStringLiteral("id")).toInt() != id
+                || !m_rows.at(row).value(QStringLiteral("finished")).toBool()) {
+                continue;
+            }
+            beginRemoveRows({}, row, row);
+            m_rows.removeAt(row);
+            endRemoveRows();
+            return;
+        }
+    }
+
+private:
+    QList<QVariantMap> m_rows;
+};
+
 FileOps::FileOps(AppModel* apps, QObject* parent)
     : QObject(parent)
     , m_apps(apps)
+    , m_jobModel(new TransferJobsModel(this))
 {
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FileOps::clipboardChanged);
 }
@@ -188,22 +261,32 @@ FileOps::~FileOps()
     }
 }
 
+QVariantMap FileOps::jobAsMap(const Job& job) const
+{
+    return {
+        { QStringLiteral("id"), job.id },
+        { QStringLiteral("title"), job.title },
+        { QStringLiteral("doneTitle"), job.doneTitle },
+        { QStringLiteral("done"), double(job.done) },
+        { QStringLiteral("total"), double(job.total) },
+        { QStringLiteral("current"), job.current },
+        { QStringLiteral("finished"), job.finished },
+        { QStringLiteral("error"), job.error },
+    };
+}
+
 QVariantList FileOps::jobs() const
 {
     QVariantList out;
     for (const auto& job : m_jobs) {
-        out.append(QVariantMap {
-            { QStringLiteral("id"), job->id },
-            { QStringLiteral("title"), job->title },
-            { QStringLiteral("doneTitle"), job->doneTitle },
-            { QStringLiteral("done"), double(job->done) },
-            { QStringLiteral("total"), double(job->total) },
-            { QStringLiteral("current"), job->current },
-            { QStringLiteral("finished"), job->finished },
-            { QStringLiteral("error"), job->error },
-        });
+        out.append(jobAsMap(*job));
     }
     return out;
+}
+
+QAbstractItemModel* FileOps::jobModel() const
+{
+    return m_jobModel;
 }
 
 int FileOps::activeJobCount() const
@@ -293,6 +376,8 @@ void FileOps::updateJob(int id, qint64 done, qint64 total, const QString& curren
             job->current = current;
             job->finished = finished;
             job->error = error;
+            m_jobModel->update(id, jobAsMap(*job));
+            break;
         }
     }
     emit jobsChanged();
@@ -310,6 +395,7 @@ void FileOps::cancelJob(int id)
 void FileOps::dismissJob(int id)
 {
     m_jobs.removeIf([id](const std::shared_ptr<Job>& job) { return job->id == id && job->finished; });
+    m_jobModel->dismiss(id);
     emit jobsChanged();
 }
 
@@ -390,6 +476,7 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
                      .arg(items, where);
     job->doneTitle = QCoreApplication::translate("Files", "Done: %1 to %2").arg(items, where);
     m_jobs.append(job);
+    m_jobModel->add(jobAsMap(*job));
     emit jobsChanged();
 
     QPointer<FileOps> self(this);
