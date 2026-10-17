@@ -128,7 +128,8 @@ signals:
     void propertiesRequested(const QStringList& paths); // from Explorer
     void shareRequested(const QStringList& paths); // "Share", from Explorer
     void openWithRequested(const QString& path); // "Choose another app", from Explorer
-    void newShortcutRequested(const QString& folder); // "New > Shortcut", from Explorer
+    void newShortcutRequested(const QString& folder);
+    void desktopTransferUndoReceived(const QByteArray& json); // "New > Shortcut", from Explorer
     void accessibilityReceived(const QByteArray& json); // from the compositor
     void clipboardRequested(); // Win+V
     void snipRequested(); // Win+Shift+S, Print
