@@ -104,6 +104,11 @@ public:
     Q_INVOKABLE QString previewText(const QString& path) const;
     Q_INVOKABLE bool isImage(const QString& path) const;
 
+public Q_SLOTS:
+    Q_SCRIPTABLE void Cancel(int id); // session D-Bus, for the shell's cancel button
+private Q_SLOTS:
+    void publishSnapshot();
+
 signals:
     void clipboardChanged();
     void undoChanged();
@@ -134,6 +139,8 @@ private:
     void startTransfer(const Transfer& transfer, const QString& policy);
     void requestTransfer(const Transfer& transfer);
     void updateJob(int id, qint64 done, qint64 total, const QString& current, bool finished, const QString& error);
+    void publishJob(int id) const;
+    void publishRemoved(int id) const;
 
     AppModel* m_apps;
     QList<UndoStep> m_undo;
