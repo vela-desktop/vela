@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QByteArray>
 #include <QDateTime>
 #include <QFileSystemWatcher>
 #include <QHash>
