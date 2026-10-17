@@ -252,7 +252,6 @@ static void handle_unlock(struct wl_listener *listener, void *data)
     if (lock->fatal_exit_pending) {
         return; // never show desktop after an unsafe lock transition
     }
-    lock_stop_launcher(lock);
     // Really unlocked: the desktop is back as it was.
     server->locked = false;
     if (server->runtime_dir_fd >= 0
