@@ -8,6 +8,7 @@
 //   ctest --test-dir build -R files-copies   (or build/explorer/vela-files-test)
 
 #include "appmodel.h"
+#include "../../common/filetransferrequest.h"
 #include "fileops.h"
 #include "systemactions.h"
 
@@ -149,6 +150,55 @@ private slots:
     {
         delete m_ops;
         delete m_dir;
+    }
+
+    void shellTransferRequest_data()
+    {
+        QTest::addColumn<int>("action");
+        QTest::newRow("copy") << 1;
+        QTest::newRow("move") << 2;
+        QTest::newRow("auto") << 0;
+    }
+
+    void shellTransferRequest()
+    {
+        QFETCH(int, action);
+        const QString source = path("source/- file with spaces.txt");
+        const QString destination = path("destination");
+        write(source, "tracked transfer");
+        QVERIFY(QDir().mkpath(destination));
+
+        const auto expected = static_cast<vela::files::TransferAction>(action);
+        const QStringList args = vela::files::transferArguments(expected, destination, { source });
+        QCOMPARE(args.at(0), QStringLiteral("--vela-transfer"));
+        QCOMPARE(args.at(3), QStringLiteral("--")); // paths cannot become flags
+        vela::files::TransferRequest decoded;
+        QVERIFY(vela::files::parseTransferArguments(args, &decoded));
+        QCOMPARE(static_cast<int>(decoded.action), action);
+        QCOMPARE(decoded.directory, destination);
+        QCOMPARE(decoded.sources, QStringList { source });
+
+        // Exactly the path used by Explorer drops and the desktop shell.
+        QCOMPARE(transfer(decoded.sources, decoded.directory, static_cast<int>(decoded.action)), QString());
+        QCOMPARE(read(path("destination/- file with spaces.txt")), QByteArray("tracked transfer"));
+        QCOMPARE(QFileInfo::exists(source), action == 1); // automatic move on the same filesystem
+        QCOMPARE(m_ops->activeJobCount(), 0);
+        QVERIFY(leftovers(m_dir->path()).isEmpty());
+    }
+
+    void malformedShellTransferRequest()
+    {
+        vela::files::TransferRequest request;
+        QVERIFY(!vela::files::parseTransferArguments({}, &request));
+        QVERIFY(!vela::files::parseTransferArguments(
+            { QStringLiteral("--vela-transfer"), QStringLiteral("oops"), path("destination"),
+              QStringLiteral("--"), path("source") }, &request));
+        QVERIFY(!vela::files::parseTransferArguments(
+            { QStringLiteral("--vela-transfer"), QStringLiteral("copy"), path("destination"),
+              QStringLiteral("-not-delimiter"), path("source") }, &request));
+        QVERIFY(!vela::files::parseTransferArguments(
+            { QStringLiteral("--vela-transfer"), QStringLiteral("copy"), path("destination"),
+              QStringLiteral("--") }, &request));
     }
 
     void copyNewFile()
