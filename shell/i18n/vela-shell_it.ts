@@ -62,6 +62,10 @@
 <context>
     <name>Desktop</name>
     <message>
+        <source>Could not launch Vela Files to transfer the selected items.</source>
+        <translation>Impossibile avviare Vela Files per trasferire gli elementi selezionati.</translation>
+    </message>
+    <message>
         <source>Couldn&apos;t create the shortcut.</source>
         <translation>Impossibile creare il collegamento.</translation>
     </message>
