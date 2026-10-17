@@ -536,8 +536,6 @@ Window {
             anchors.fill: parent
             radius: Theme.radiusOverlay
             color: Theme.surface
-            border.width: 1
-            border.color: Theme.stroke
             focus: true
             clip: true
             Keys.onEscapePressed: {
@@ -1097,11 +1095,11 @@ Window {
                 id: footer
                 visible: root.page === ""
                 opacity: pages.opacity // it comes back with its page
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 1 }
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                 height: 48
                 color: Theme.footer
-                bottomLeftRadius: Theme.radiusOverlay - 1
-                bottomRightRadius: Theme.radiusOverlay - 1
+                bottomLeftRadius: Theme.radiusOverlay
+                bottomRightRadius: Theme.radiusOverlay
 
                 Row {
                     visible: Status.batteryPresent
