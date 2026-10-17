@@ -21,6 +21,7 @@ class AppModel;
 // first what to do.
 class FileOps : public QObject {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.vela.Files.Transfers")
     Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
     Q_PROPERTY(QString undoText READ undoText NOTIFY undoChanged)
     // [{id, title, done, total, current, finished, error}]
