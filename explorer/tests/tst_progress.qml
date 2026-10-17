@@ -44,6 +44,7 @@ Item {
 
         function test_progress_update_preserves_the_delegate() {
             Ops.jobs = [job(61, 10, 100, false, "")]
+            tryVerify(() => findChild(panel, "transferJob:61") !== null)
             const original = findChild(panel, "transferJob:61")
             verify(original !== null)
             Ops.updateJob(61, 55, 100)
