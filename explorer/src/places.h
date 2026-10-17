@@ -5,6 +5,8 @@
 
 #include <QHash>
 #include <QObject>
+#include <QSet>
+#include <QStringList>
 #include <QVariantMap>
 #include <QVariantList>
 
@@ -31,6 +33,7 @@ class Places : public QObject {
 public:
     explicit Places(QObject* parent = nullptr);
     void setTransferGuard(std::function<bool(const QString&)> guard);
+    QStringList ejectingDevices() const { return m_ejecting.values(); }
 
     QVariantList quickAccess() const { return m_quickAccess; }
     QVariantList drives() const { return m_drives; }
@@ -84,6 +87,7 @@ private:
     // removable}
     QHash<QString, QVariantMap> m_devices;
     std::function<bool(const QString&)> m_transferGuard;
+    QSet<QString> m_ejecting; // includes sibling partitions until UDisks completes
     bool m_watchingVolumes = false;
     bool m_readingVolumes = false;
 };
