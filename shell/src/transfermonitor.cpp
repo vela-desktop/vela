@@ -7,10 +7,12 @@
 #include <QDBusMessage>
 #include <QVariantMap>
 #include <algorithm>
+#include <iterator>
+#include <utility>
 
 namespace {
 const QString path = QStringLiteral("/org/vela/Files/Transfers");
-const QString interface = QStringLiteral("org.vela.Files.Transfers");
+const QString transferInterface = QStringLiteral("org.vela.Files.Transfers");
 }
 
 TransferMonitor::TransferMonitor(QObject* parent)
@@ -20,15 +22,15 @@ TransferMonitor::TransferMonitor(QObject* parent)
     if (!bus.isConnected()) {
         return;
     }
-    bus.connect(QString(), path, interface, QStringLiteral("Changed"), this,
+    bus.connect(QString(), path, transferInterface, QStringLiteral("Changed"), this,
         SLOT(onChanged(QString,int,QString,qlonglong,qlonglong,QString,bool,QString)));
-    bus.connect(QString(), path, interface, QStringLiteral("Removed"), this,
+    bus.connect(QString(), path, transferInterface, QStringLiteral("Removed"), this,
         SLOT(onRemoved(QString,int)));
     bus.connect(QStringLiteral("org.freedesktop.DBus"), QStringLiteral("/org/freedesktop/DBus"),
         QStringLiteral("org.freedesktop.DBus"), QStringLiteral("NameOwnerChanged"),
         this, SLOT(onOwnerChanged(QString,QString,QString)));
     // Recover active jobs if the shell was restarted while Explorer was copying.
-    bus.send(QDBusMessage::createSignal(path, interface, QStringLiteral("RequestSnapshot")));
+    bus.send(QDBusMessage::createSignal(path, transferInterface, QStringLiteral("RequestSnapshot")));
 }
 
 QVariantList TransferMonitor::jobs() const
@@ -44,6 +46,9 @@ QVariantList TransferMonitor::jobs() const
             { QStringLiteral("current"), job.current },
             { QStringLiteral("finished"), job.finished },
             { QStringLiteral("error"), job.error },
+            { QStringLiteral("speed"), job.speedBytesPerSecond },
+            { QStringLiteral("eta"), job.speedBytesPerSecond > 0 && job.total > job.done
+                ? double(job.total - job.done) / job.speedBytesPerSecond : -1.0 },
         });
     }
     return result;
@@ -70,6 +75,16 @@ void TransferMonitor::onChanged(const QString& owner, int id, const QString& tit
         }
         m_jobs.append(Job {});
         it = std::prev(m_jobs.end());
+    }
+    if (!it->sampleClock.isValid()) {
+        it->sampleDone = done;
+        it->sampleClock.start();
+    } else if (!finished && done >= it->sampleDone && it->sampleClock.elapsed() >= 400) {
+        const double sampled = double(done - it->sampleDone) * 1000.0 / it->sampleClock.elapsed();
+        it->speedBytesPerSecond = it->speedBytesPerSecond == 0 ? sampled
+            : 0.65 * it->speedBytesPerSecond + 0.35 * sampled;
+        it->sampleDone = done;
+        it->sampleClock.restart();
     }
     it->owner = owner;
     it->id = id;
@@ -120,7 +135,7 @@ void TransferMonitor::cancel(const QString& owner, int id)
             [&](const Job& job) { return job.owner == owner && job.id == id && !job.finished; })) {
         return;
     }
-    QDBusMessage msg = QDBusMessage::createMethodCall(owner, path, interface, QStringLiteral("Cancel"));
+    QDBusMessage msg = QDBusMessage::createMethodCall(owner, path, transferInterface, QStringLiteral("Cancel"));
     msg << id;
     QDBusConnection::sessionBus().asyncCall(msg);
 }
