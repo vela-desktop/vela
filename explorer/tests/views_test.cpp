@@ -13,6 +13,7 @@
 
 #include <QDir>
 #include <QVariantList>
+#include <QStandardItemModel>
 #include <QFile>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -29,10 +30,41 @@ QString folder;
 class TestTransferOps : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList jobs READ jobs WRITE setJobs NOTIFY jobsChanged)
+    Q_PROPERTY(QAbstractItemModel* jobModel READ jobModel CONSTANT)
     Q_PROPERTY(int lastCancelled READ lastCancelled NOTIFY cancelledChanged)
 public:
+    TestTransferOps()
+    {
+        m_model.setItemRoleNames({ { Qt::UserRole + 1, QByteArrayLiteral("modelData") } });
+    }
     QVariantList jobs() const { return m_jobs; }
-    void setJobs(const QVariantList& jobs) { m_jobs = jobs; emit jobsChanged(); }
+    QAbstractItemModel* jobModel() { return &m_model; }
+    void setJobs(const QVariantList& jobs)
+    {
+        m_jobs = jobs;
+        m_model.clear();
+        m_model.setItemRoleNames({ { Qt::UserRole + 1, QByteArrayLiteral("modelData") } });
+        for (const QVariant& job : jobs) {
+            auto* item = new QStandardItem;
+            item->setData(job.toMap(), Qt::UserRole + 1);
+            m_model.appendRow(item);
+        }
+        emit jobsChanged();
+    }
+    Q_INVOKABLE void updateJob(int id, int done, int total)
+    {
+        for (int row = 0; row < m_model.rowCount(); ++row) {
+            QStandardItem* item = m_model.item(row);
+            QVariantMap data = item->data(Qt::UserRole + 1).toMap();
+            if (data.value(QStringLiteral("id")).toInt() != id) {
+                continue;
+            }
+            data[QStringLiteral("done")] = done;
+            data[QStringLiteral("total")] = total;
+            item->setData(data, Qt::UserRole + 1);
+            return;
+        }
+    }
     int lastCancelled() const { return m_lastCancelled; }
     Q_INVOKABLE void cancelJob(int id) { m_lastCancelled = id; emit cancelledChanged(); }
     Q_INVOKABLE void dismissJob(int id)
@@ -40,6 +72,7 @@ public:
         for (qsizetype i = 0; i < m_jobs.size(); ++i) {
             if (m_jobs[i].toMap().value(QStringLiteral("id")).toInt() == id) {
                 m_jobs.removeAt(i);
+                m_model.removeRow(i);
                 emit jobsChanged();
                 break;
             }
@@ -50,6 +83,7 @@ signals:
     void cancelledChanged();
 private:
     QVariantList m_jobs;
+    QStandardItemModel m_model;
     int m_lastCancelled = -1;
 };
 
