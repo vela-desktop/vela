@@ -73,6 +73,7 @@ Window {
         id: showTimer
         interval: 300 // at most: if a capture doesn't arrive, it opens anyway
         onTriggered: {
+            Shell.placeOnScreen(root, Shell.primaryScreen)
             root.visible = true
             motion.open()
             panel.forceActiveFocus()

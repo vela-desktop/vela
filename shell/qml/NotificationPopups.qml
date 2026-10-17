@@ -11,7 +11,8 @@ Window {
     id: root
     width: 380
     height: Math.max(1, stack.implicitHeight + 24)
-    visible: Notifications.count > 0
+    // C++ controls visibility so the layer can remap without losing notifications.
+    visible: false
     color: "transparent"
 
     // The blurred background under the tiles: the whole window, the tiles give

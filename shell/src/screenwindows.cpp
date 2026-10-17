@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "screenwindows.h"
+#include "../../common/primaryoutput.h"
 
 #include <LayerShellQt/Window>
 
@@ -33,7 +34,10 @@ ScreenWindows::ScreenWindows(QQmlEngine* engine, const char* component, Setup se
         m_retries = 0;
         scheduleSync();
     });
-    connect(qGuiApp, &QGuiApplication::screenRemoved, this, &ScreenWindows::remove);
+    connect(qGuiApp, &QGuiApplication::screenRemoved, this, [this](QScreen* screen) {
+        remove(screen);
+        scheduleSync();
+    });
     connect(qGuiApp, &QGuiApplication::primaryScreenChanged, this, &ScreenWindows::scheduleSync);
 }
 
@@ -55,6 +59,14 @@ void ScreenWindows::setPrimaryOnly(bool on)
     }
 }
 
+void ScreenWindows::setPreferredPrimary(const QString& name)
+{
+    if (name != m_preferredPrimary) {
+        m_preferredPrimary = name;
+        scheduleSync();
+    }
+}
+
 void ScreenWindows::scheduleSync()
 {
     m_syncTimer.start();
@@ -69,7 +81,7 @@ void ScreenWindows::remove(QScreen* screen)
 
 void ScreenWindows::sync()
 {
-    QScreen* primary = QGuiApplication::primaryScreen();
+    QScreen* primary = vela::primaryOutputScreen(m_preferredPrimary);
     for (QScreen* screen : QGuiApplication::screens()) {
         if (!realScreen(screen)) {
             continue;

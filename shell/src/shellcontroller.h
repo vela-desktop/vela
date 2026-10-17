@@ -61,6 +61,7 @@ public:
 
     QString userName() const;
     QString primaryScreen() const;
+    void setPreferredPrimaryOutput(const QString& name);
     QString userInitial() const;
 
     bool startMenuOpen() const { return m_startMenuOpen; }
@@ -149,6 +150,7 @@ private Q_SLOTS:
     void onPrepareForSleep(bool starting);
 
 private:
+    QString m_preferredPrimaryOutput;
     void handleCommand(const QByteArray& command);
     void takeSleepDelay();
     void startChooser(QLocalSocket* socket);

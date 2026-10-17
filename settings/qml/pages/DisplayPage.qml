@@ -248,6 +248,23 @@ Page {
     }
 
     CardGroup {
+        visible: page.outputs.length > 1 && page.output !== null && page.output.enabled
+        enabled: Displays.available && !Displays.pending
+        Card {
+            icon: "video-display"
+            title: qsTr("Make this my main display")
+            description: qsTr("Show notifications and the main taskbar on this display")
+            trailing: Button {
+                // An implicit fallback can already be main without being saved.
+                text: page.output && page.output.name === Displays.preferredPrimaryOutput
+                    ? qsTr("Main display") : qsTr("Make main")
+                usable: page.output && page.output.name !== Displays.preferredPrimaryOutput
+                onClicked: Displays.setPrimaryOutput(page.output.name)
+            }
+        }
+    }
+
+    CardGroup {
         visible: page.output !== null
         enabled: Displays.available && !Displays.pending
         title: qsTr("Scale & layout")

@@ -31,6 +31,8 @@ Window {
         id: showDelay
         interval: 100
         onTriggered: {
+            // Alt+Tab has no taskbar origin: always use the primary output.
+            Shell.placeOnScreen(root, Shell.primaryScreen)
             root.visible = true
             motion.open()
             Effects.setBlur(root, [motion.visibleArea])

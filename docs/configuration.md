@@ -92,6 +92,14 @@ Files written before October 2026 used Italian names (`schermi.conf`, and Italia
 
 Normally this file should be managed through **Settings → Displays** rather than edited by hand.
 
+Settings > System > Display lets you mark any enabled monitor as the main
+display. The connector name is stored under `display/primaryOutput` in
+`~/.config/Vela/vela-shell.conf`. The shell uses the selected screen for
+notification popups, main taskbar/desktop icons and keyboard-invoked panels.
+If unavailable, it falls back temporarily without erasing the preference,
+then restores it when the monitor reconnects. The Settings button can also
+pin the current Qt default as an explicit preference.
+
 Vela keeps the *relative* monitor arrangement while shifting its global layout
 so the upper-left corner of the enabled display group is always at (0,0).
 For example, a 1920×1080 monitor physically **above** a 2048×1152 primary

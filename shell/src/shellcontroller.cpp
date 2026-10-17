@@ -4,6 +4,7 @@
 #include "shellcontroller.h"
 
 #include "mica.h"
+#include "../../common/primaryoutput.h"
 
 #include <QCoreApplication>
 #include <QImage>
@@ -54,6 +55,8 @@ ShellController::ShellController(QObject* parent)
     , m_startPins(QSettings().value(QStringLiteral("start/pinned"), defaultStartPins).toStringList())
 {
     connect(qGuiApp, &QGuiApplication::primaryScreenChanged, this, &ShellController::primaryScreenChanged);
+    connect(qGuiApp, &QGuiApplication::screenAdded, this, &ShellController::primaryScreenChanged);
+    connect(qGuiApp, &QGuiApplication::screenRemoved, this, &ShellController::primaryScreenChanged);
     connect(&m_server, &QLocalServer::newConnection, this, [this] {
         while (QLocalSocket* socket = m_server.nextPendingConnection()) {
             connect(socket, &QLocalSocket::readyRead, this, [this, socket] {
@@ -388,8 +391,16 @@ void ShellController::placeOnScreen(QWindow* window, const QString& name)
 
 QString ShellController::primaryScreen() const
 {
-    const QScreen* screen = QGuiApplication::primaryScreen();
+    const QScreen* screen = vela::primaryOutputScreen(m_preferredPrimaryOutput);
     return screen ? screen->name() : QString();
+}
+
+void ShellController::setPreferredPrimaryOutput(const QString& name)
+{
+    if (name != m_preferredPrimaryOutput) {
+        m_preferredPrimaryOutput = name;
+        emit primaryScreenChanged();
+    }
 }
 
 QString ShellController::userName() const

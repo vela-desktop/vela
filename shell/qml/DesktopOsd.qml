@@ -34,6 +34,7 @@ Window {
 
     // Shown again while leaving, it turns back from where it is.
     function show() {
+        Shell.placeOnScreen(root, Shell.primaryScreen)
         visible = true
         motion.open()
         Effects.setBlur(root, [motion.visibleArea])

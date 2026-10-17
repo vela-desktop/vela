@@ -94,7 +94,18 @@ static int command(int fd, uint32_t mask, void *data)
     if (n <= 0) { wl_display_terminate(server->display); return 0; }
     line[strcspn(line, "\n")] = '\0';
     if (!strcmp(line, "add")) add_output(server);
-    else if (!strncmp(line, "remove ", 7)) {
+    else if (!strncmp(line, "enable ", 7) || !strncmp(line, "disable ", 8)) {
+        bool on = !strncmp(line, "enable ", 7);
+        struct vela_output *output = vela_output_named(server, line + (on ? 7 : 8));
+        if (output) {
+            struct wlr_output_state state;
+            wlr_output_state_init(&state);
+            wlr_output_state_set_enabled(&state, on);
+            if (!wlr_output_commit_state(output->wlr, &state)) abort();
+            wlr_output_state_finish(&state);
+            vela_output_manager_update(server);
+        }
+    } else if (!strncmp(line, "remove ", 7)) {
         struct vela_output *output = vela_output_named(server, line + 7);
         if (output) wlr_output_destroy(output->wlr);
         vela_output_manager_update(server);
