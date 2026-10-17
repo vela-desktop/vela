@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QSignalSpy>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -214,6 +215,8 @@ private slots:
     void init()
     {
         QVERIFY(runtime.isValid());
+        qputenv("XDG_CONFIG_HOME", (runtime.path() + "/settings-config").toUtf8());
+        QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell")).clear();
         failNextFlush = false;
         flushError = EPIPE;
         injectedFlushFailures = dispatchDepth = failedFlushesDuringDispatch = disconnectsDuringDispatch = 0;
@@ -243,6 +246,29 @@ private slots:
         QVERIFY(output("HEADLESS-2").isEmpty());
         QVERIFY(!output("HEADLESS-3").isEmpty());
     }
+    void primaryDisplaySelectionAndHotplug()
+    {
+        start();
+        QTRY_VERIFY(client->available());
+        QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-1"));
+        QVERIFY(!client->setPrimaryOutput(QStringLiteral("not-connected")));
+        QSignalSpy changed(client.get(), &Displays::primaryOutputChanged);
+        QVERIFY(client->setPrimaryOutput(QStringLiteral("HEADLESS-2")));
+        QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-2"));
+        QCOMPARE(QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))
+                     .value(QStringLiteral("display/primaryOutput")).toString(), QStringLiteral("HEADLESS-2"));
+        QVERIFY(changed.count() >= 1);
+        command("remove HEADLESS-2");
+        QTRY_COMPARE(client->outputs().size(), 1);
+        QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-1"));
+        QCOMPARE(QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))
+                     .value(QStringLiteral("display/primaryOutput")).toString(), QStringLiteral("HEADLESS-2"));
+        QVERIFY(!client->setPrimaryOutput(QStringLiteral("HEADLESS-2")));
+        command("add");
+        QTRY_COMPARE(client->outputs().size(), 2);
+        QCOMPARE(client->primaryOutput(), QStringLiteral("HEADLESS-1"));
+    }
+
     void confirmPersistsOnlyAfterAcceptance()
     {
         start();
