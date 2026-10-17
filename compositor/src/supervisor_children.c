@@ -3,6 +3,7 @@
 
 #include "supervisor_children.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -34,6 +35,9 @@ int vela_supervisor_children(int signal)
     _Alignas(8) char entries[8192];
     for (;;) {
         ssize_t size = syscall(SYS_getdents64, proc, entries, sizeof(entries));
+        if (size < 0 && errno == EINTR) {
+            continue;
+        }
         if (size < 0) {
             close(proc);
             return -1;
@@ -60,7 +64,10 @@ int vela_supervisor_children(int signal)
                 continue; // exited during enumeration
             }
             char line[1024];
-            ssize_t length = read(stat_fd, line, sizeof(line) - 1);
+            ssize_t length;
+            do {
+                length = read(stat_fd, line, sizeof(line) - 1);
+            } while (length < 0 && errno == EINTR);
             close(stat_fd);
             if (length <= 0) {
                 continue;
