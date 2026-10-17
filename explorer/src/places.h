@@ -8,6 +8,8 @@
 #include <QVariantMap>
 #include <QVariantList>
 
+#include <functional>
+
 // Explorer's places, like Windows 11: Quick access (the user's folders and the
 // added ones, remembered), Favorites (files), the drives of "This PC" with
 // their free space, also those not mounted yet (from udisks: they're mounted
@@ -28,6 +30,7 @@ class Places : public QObject {
 
 public:
     explicit Places(QObject* parent = nullptr);
+    void setTransferGuard(std::function<bool(const QString&)> guard);
 
     QVariantList quickAccess() const { return m_quickAccess; }
     QVariantList drives() const { return m_drives; }
@@ -80,6 +83,7 @@ private:
     // device (/dev/...) -> {block: object, drive: the disk's object,
     // removable}
     QHash<QString, QVariantMap> m_devices;
+    std::function<bool(const QString&)> m_transferGuard;
     bool m_watchingVolumes = false;
     bool m_readingVolumes = false;
 };
