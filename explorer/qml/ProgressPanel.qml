@@ -26,6 +26,9 @@ Item {
         clip: true
         model: Ops.jobModel
         interactive: contentHeight > height
+        // Even if the user was scrolled down through old errors, new jobs
+        // take focus at the top rather than remaining outside the viewport.
+        onCountChanged: if (count > 0) Qt.callLater(() => positionViewAtBeginning())
 
         delegate: Rectangle {
             id: card
