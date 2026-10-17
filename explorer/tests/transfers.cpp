@@ -18,6 +18,7 @@
 #include <QGuiApplication>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QStorageInfo>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
@@ -219,6 +220,39 @@ private slots:
         QVERIFY(!error.isEmpty());
         QVERIFY(!QFileInfo::exists(path("b/folder")));
         QVERIFY(leftovers(m_dir->path()).isEmpty());
+    }
+
+    void ejectPendingRefusesNewTransfer()
+    {
+        write(path("source/file.bin"), "copy me");
+        QDir().mkpath(path("target"));
+        m_ops->setEjectGuard([](const QStringList&, const QString&) { return true; });
+        QSignalSpy failed(m_ops, &FileOps::failed);
+        QCOMPARE(transfer({ path("source/file.bin") }, path("target"), 1),
+            QStringLiteral("<tempo scaduto>"));
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(m_ops->activeJobCount(), 0);
+        QVERIFY(!QFileInfo::exists(path("target/file.bin")));
+    }
+
+    void detectsFilesystemsMountedBelowCopiedFolders()
+    {
+        const QStorageInfo outer(QStringLiteral("/"));
+        if (!outer.isValid()) {
+            QSKIP("Root filesystem not available");
+        }
+        for (const QStorageInfo& mount : QStorageInfo::mountedVolumes()) {
+            if (!mount.isValid() || mount.device().isEmpty()
+                || mount.rootPath() == QLatin1String("/")
+                || mount.device() == outer.device()) {
+                continue;
+            }
+            const QString device = QFile::decodeName(mount.device());
+            QVERIFY2(FileOps::pathsOnDevice({ QStringLiteral("/") }, path("target"), device),
+                "Recursive transfer of / must detect a nested mounted filesystem");
+            return;
+        }
+        QSKIP("No second mounted filesystem available");
     }
 
     void recursiveTransferWorkCountsDirectoriesAndLinks()
