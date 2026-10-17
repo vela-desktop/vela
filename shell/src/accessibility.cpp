@@ -5,6 +5,7 @@
 
 #include "shellcontroller.h"
 
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocalSocket>
@@ -105,14 +106,50 @@ void Accessibility::setStickyKeys(bool on)
     ShellController::sendToCompositor(on ? "sticky-keys on" : "sticky-keys off");
 }
 
+bool Accessibility::sendCaffeineCommand(const QByteArray& command)
+{
+    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
+    QLocalSocket socket;
+    socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
+    bool confirmed = false;
+    if (socket.waitForConnected(300)) {
+        QByteArray request("caffeine-set ");
+        request += command;
+        request += '\n';
+        if (socket.write(request) == request.size()
+            && (socket.bytesToWrite() == 0 || socket.waitForBytesWritten(300))) {
+            QByteArray reply;
+            while (!reply.contains('\n') && socket.waitForReadyRead(300)) {
+                reply += socket.readAll();
+            }
+            const QJsonObject response = QJsonDocument::fromJson(reply.trimmed()).object();
+            if (response.value(QStringLiteral("state")).isObject()
+                && response.value(QStringLiteral("ok")).isBool()) {
+                // The compositor applied or rejected the request before
+                // generating this state. Never display a speculative "off".
+                update(QJsonDocument(response.value(QStringLiteral("state")).toObject())
+                    .toJson(QJsonDocument::Compact));
+                confirmed = true;
+                if (!response.value(QStringLiteral("ok")).toBool()) {
+                    qWarning() << "vela-shell: compositor rejected caffeine command:" << command;
+                }
+                return response.value(QStringLiteral("ok")).toBool();
+            }
+        }
+    }
+    if (!confirmed) {
+        qWarning() << "vela-shell: caffeine state unconfirmed; keeping last known state:" << command;
+        // The compositor may have applied a request despite a lost reply.
+        QTimer::singleShot(250, this, &Accessibility::query);
+        QTimer::singleShot(1000, this, &Accessibility::query);
+    }
+    return false;
+}
+
 void Accessibility::setCaffeine(bool on)
 {
-    m_caffeine = on;
-    m_caffeineSecs = on ? -1 : 0;
-    m_caffeineDurationSecs = 0;
-    resetCaffeineCountdown();
-    emit changed();
-    ShellController::sendToCompositor(on ? "caffeine on" : "caffeine off");
+    sendCaffeineCommand(on ? "on" : "off");
 }
 
 void Accessibility::setCaffeineMinutes(double minutes)
@@ -120,10 +157,5 @@ void Accessibility::setCaffeineMinutes(double minutes)
     if (!std::isfinite(minutes) || minutes <= 0 || minutes > 1440.0) {
         return;
     }
-    m_caffeine = true;
-    m_caffeineSecs = (int)std::ceil(minutes * 60.0);
-    m_caffeineDurationSecs = m_caffeineSecs;
-    resetCaffeineCountdown();
-    emit changed();
-    ShellController::sendToCompositor(QStringLiteral("caffeine on %1").arg(minutes).toUtf8());
+    sendCaffeineCommand(QStringLiteral("on %1").arg(minutes).toUtf8());
 }

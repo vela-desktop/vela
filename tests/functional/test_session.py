@@ -139,6 +139,23 @@ class Caffeine(unittest.TestCase):
             vela.wait_for(lambda _: not vela.query("accessibility")["caffeine"],
                           read_state=False, what="caffeine disabled")
 
+    def test_caffeine_confirmed_commands_report_authoritative_state(self):
+        with Session() as vela:
+            enabled = vela.query("caffeine-set on 30")
+            self.assertTrue(enabled["ok"])
+            self.assertTrue(enabled["state"]["caffeine"])
+            self.assertEqual(enabled["state"]["caffeineDurationSecs"], 1800)
+
+            # A rejected request must report failure and the existing state.
+            invalid = vela.query("caffeine-set on bogus")
+            self.assertFalse(invalid["ok"])
+            self.assertTrue(invalid["state"]["caffeine"])
+
+            disabled = vela.query("caffeine-set off")
+            self.assertTrue(disabled["ok"])
+            self.assertFalse(disabled["state"]["caffeine"])
+            self.assertEqual(disabled["state"]["caffeineSecs"], 0)
+
     def test_caffeine_submillisecond_timer_is_not_stuck(self):
         # Fractional durations must expire even if the millisecond timer
         # fires before the CLOCK_MONOTONIC deadline.

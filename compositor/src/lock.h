@@ -89,9 +89,9 @@ void vela_lock_engage(struct vela_lock *lock);
 void vela_lock_note_activity(struct vela_lock *lock);
 // Caffeine: no inactivity (no lock, outputs on, apps never told idle).
 void vela_lock_set_caffeine(struct vela_lock *lock, bool on);
-// Caffeine for a while: like above, but turns itself off after `minutes`
-// (fractions for tests). Non-positive minutes mean indefinite (as above).
-void vela_lock_set_caffeine_for(struct vela_lock *lock, double minutes);
+// Caffeine for a while: accept only positive finite minutes and only if its
+// expiry timer was armed successfully. On timer failure, fail closed (off).
+bool vela_lock_set_caffeine_for(struct vela_lock *lock, double minutes);
 // Seconds left (rounded up): 0 when off, -1 when on with no deadline.
 int vela_lock_caffeine_remaining_s(struct vela_lock *lock);
 // Rereads vela.conf (the "reload-config" command).

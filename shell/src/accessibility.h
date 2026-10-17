@@ -37,8 +37,8 @@ public:
     void setStickyKeys(bool on);
     bool caffeine() const { return m_caffeine; }
     void setCaffeine(bool on);
-    // Caffeine for a while (minutes, whole or fractional): optimistic like
-    // the toggle, the compositor confirms and counts down.
+    // Caffeine for a while (minutes, whole or fractional): state changes only
+    // after a compositor acknowledgement, never optimistically.
     Q_INVOKABLE void setCaffeineMinutes(double minutes);
     int caffeineSecs() const { return m_caffeineSecs; }
     int caffeineDurationSecs() const { return m_caffeineDurationSecs; }
@@ -53,6 +53,9 @@ signals:
 
 private:
     void resetCaffeineCountdown();
+    // Synchronous request + authoritative JSON reply. On transport failure,
+    // keep the last confirmed state and attempt a bounded reconciliation.
+    bool sendCaffeineCommand(const QByteArray& command);
 
     bool m_nightLight = false;
     bool m_colorFilter = false;
