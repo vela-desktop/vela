@@ -26,6 +26,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include "lock_retry_policy.h"
 #include <wayland-server-core.h>
 
