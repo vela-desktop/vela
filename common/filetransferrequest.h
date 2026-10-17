@@ -68,7 +68,7 @@ inline void acknowledgeTransferStartup()
     QLocalSocket socket;
     socket.connectToServer(runtime + QStringLiteral("/vela-shell-") + display + QStringLiteral(".sock"));
     if (socket.waitForConnected(300)) {
-        socket.write("desktop-transfer-ready " + QByteArray::number(QCoreApplication::applicationPid()) + '\\n');
+        socket.write("desktop-transfer-ready " + QByteArray::number(QCoreApplication::applicationPid()) + '\n');
         socket.waitForBytesWritten(300);
     }
 }
