@@ -387,7 +387,7 @@ jobs:
           test -f /usr/share/wayland-sessions/vela.desktop
           test -f /etc/pam.d/vela-lock
           test -f /etc/xdg/xdg-desktop-portal-wlr/Vela
-          for helper in vela-polkit-agent vela-polkit-prompt vela-report-gui vela-session-env; do
+          for helper in vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui vela-session-env; do
             test -x "/usr/libexec/vela/$helper"
           done
           test -f /usr/libexec/vela/report/vela_report/cli.py

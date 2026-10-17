@@ -7,7 +7,8 @@ of a laptop through its kernel backlight. The compositor owns the state of
 every output. This document comes before the code: decisions are made here,
 and the code follows them.
 
-> **Status:** design approved; B0 in progress (§15).
+> **Status:** design approved; B0 done, its timings measured with `--bench`
+> on the monitors of §3 (§15).
 
 ## 1. Goals
 
@@ -41,7 +42,7 @@ and the code follows them.
 | DDC/CI | **Vela's own**, straight on `/dev/i2c-N` | no libddcutil: no 2–2.5 s start-up scanning every bus, no global state, timings measured and chosen by us (§3, §5.2) |
 | Built-in backlight | **sysfs to read, logind `SetBrightness` to write** | no root; moves from the shell into the helper (§5.3) |
 | Monitors without brightness | **no slider**; Settings says why (§8) | a monitor that answered and then stops shows a **locked** slider |
-| Writes while dragging | **the latest value wins**, at most one DDC/CI write every **120 ms**, then a **read back** 1 s after the slider rests | smooth slider, no lost final value (§5.4) |
+| Writes while dragging | **the latest value wins**, at most one DDC/CI write every **250 ms**, then a **read back** 500 ms after the slider rests | smooth slider, no lost final value (§5.4) |
 | Live sync | **while a brightness slider is on screen**, its outputs are read **once a second** | the monitor's own buttons move the slider (§5.5) |
 | What Vela remembers | **nothing**: no saved brightness, no cache of monitors or timings | the monitor stores its brightness; Vela reads it and never imposes a value |
 | All monitors together | **no** | each slider is one output |
@@ -62,8 +63,11 @@ Taken on 2026-10-13 on the main development machine (RX 9070 XT, amdgpu,
 | Vela's prototype: read | **42 ms** | **56–160 ms** (retries included) |
 | Vela's prototype: write | < 1 ms (the bus returns, the monitor works on it) | 7–11 ms |
 
-The prototype used `read()`/`write()` on the device; §5.2 uses the `ioctl()`
-interface first, to be measured again in B0.
+The prototype used `read()`/`write()` on the device. Measured again on
+2026-10-17 with `vela-brightness --probe`, which uses the `I2C_RDWR`
+`ioctl()` (§5.2): a read of the LG takes 42 ms in one attempt, a read of the
+Mi 150–260 ms, because its first one or two replies are the fixed block
+below. Opening the device, taking the lock and closing it costs about 1 µs.
 
 **The LG ignores a write that follows another by 5 to 50 ms.** Two writes,
 90 then 70, with a pause between them, final value read 500 ms later (two
@@ -76,14 +80,39 @@ rounds each):
 
 (✗: the read failed four attempts in a row; 100: neither write was kept.)
 
-So the LG needs about 100 ms between writes. DDC/CI asks for 50 ms, so the LG
-needs twice what the standard says. This also explains the libddcutil drag
-(a write every ~51 ms) that left the LG at 95 instead of 100: every other
-write was ignored, the last one included. The Mi drops writes at random at
-any pause. **No fixed interval is enough: only a read back tells.**
+Measured again on 2026-10-18 with `vela-brightness --bench` (§11), which
+writes with the `ioctl()` of §5.2: 90 then 80, final value read 1.5 s later,
+three rounds each, then a second run around the edge:
+
+| Pause (ms) | 0 | 20 | 50 | 100 | 150 | 160 | 170 | 180 | 190 | 200 | 250 | 300 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| LG | 80 80 80 | 90 90 90 | 90 90 90 | 90 90 90 | 90 90 90, 80 80 80 | 90 90 90 | 90 90 80 | 90 90 90 | 80 80 90 | 80 80 80 ×2 | 80 80 80 | 80 80 80 |
+| Mi | 80 90 90 | 80 80 80 | 80 80 80 | 80 90 80 | 90 80 90 | | | | | 80 90 80 | | |
+
+So the LG ignores a write that comes up to about 190 ms after another, and
+keeps every one from 200 ms. That is four times the 50 ms DDC/CI asks for,
+and twice what the read()/write() prototype suggested. It also explains the
+libddcutil drag (a write every ~51 ms) that left the LG at 95 instead of 100:
+most writes were ignored, the last one included. The Mi drops writes at
+random at any pause. **No fixed interval is enough: only a read back tells.**
+
+In a second run of the Mi, reads after two writes less than 180 ms apart
+failed all six attempts 6 times in 21; from 180 ms, never in 15. Writing too
+close together costs the Mi its replies too.
+
+**A read right after a write tells the truth.** A write, a pause, a read,
+four rounds per pause from 50 to 1000 ms: the LG returned the new value in
+28 reads of 28 (two attempts up to 100 ms, one from 200 ms); the Mi returned
+the old value now and then at any pause, from 100 to 750 ms, as a dropped
+write does. Then one write followed by a read at 50, 300, 500, 750, 1000,
+1500, 2000 and 3000 ms, eight rounds on the Mi: in seven the new value was
+there from 50 ms to the end, in one the old value from 50 ms to the end.
+The Mi never applied a write and then undid it, so whatever the first read
+says stays.
 
 **Half of the Mi's replies are not replies.** About 10 in 20 reads return a
-block of bytes that is always the same (`2f 9a 2d 3a b5 ff 9d 37 …`), or
+block of bytes that is always the same
+(`2f 9a 2d 3a b5 ff 9d 37 b3 63 23`), or
 fail with an I/O error, whatever the wait before reading (40, 60, 80 or
 120 ms). The checksum rejects them every time; the next attempt gets the real
 reply (`6e 88 02 00 10 00 00 64 00 64 a4`). The LG returned 2 bad replies
@@ -162,7 +191,7 @@ non-zero write (OLED panels) it raises the value by one, up to three times.
 | COSMIC #150 | one target for several monitors doesn't work | one target, one process per output |
 | COSMIC backlight | 0 can switch a panel off | the built-in minimum and the OLED guard (§5.3) |
 | KDE | DDC/CI outside the compositor | `vela-brightness` (§6) |
-| KDE | (no read back, 500 ms steps, permanent removal) | read back, 120 ms, `not-responding` recovers by itself (§5.4, §7.1) |
+| KDE | (no read back, 500 ms steps, permanent removal) | read back, 250 ms, `not-responding` recovers by itself (§5.4, §7.1) |
 
 ## 5. `vela-brightness`
 
@@ -233,12 +262,15 @@ Only what brightness needs, from the DDC/CI and MCCS standards:
   failed now and then (§3).
 - **The device is held only for a transaction**: open, `flock()`, one read or
   one write, unlock, close. Nothing is open while the helper waits, between
-  the writes of a drag, or between live reads (COSMIC #165, §4.3). Opening
-  `/dev/i2c-N` costs microseconds; measured again in B0.
+  the writes of a drag, or between live reads (COSMIC #165, §4.3). Opening,
+  locking and closing `/dev/i2c-N` costs about 1 µs (§3).
 - **`flock()` is non-blocking**, retried every 50 ms for up to 1 s: another
   program (`ddcutil` from a terminal) is using the bus. That is `busy`, not
   a failure: a live read is skipped, a write waits within its budget (§5.4).
-  Whether ddcutil takes the same lock is checked in B0.
+  ddcutil 3.0 takes the same lock on the same device by default (its
+  "cross-instance locking"): with the bus held, it retried 32 times in 3 s
+  and gave up with `DDCRC_FLOCKED`. So Vela and ddcutil never talk over each
+  other.
 
 ### 5.3 Built-in backlight
 
@@ -261,23 +293,25 @@ Every `set` from the compositor carries a sequence number (§5.6). The
 helper:
 
 1. waits for a target different from the confirmed value;
-2. writes the target, unless the previous write is less than **120 ms** old
-   (the LG's 100 ms with a margin); then it waits for the rest of the
+2. writes the target, unless the previous write is less than **250 ms** old
+   (the LG's 200 ms with a margin, §3); then it waits for the rest of the
    interval;
 3. after each write, takes the newest target and goes back to 2 if it
-   changed (a drag gives about eight writes a second);
-4. when no new target came for **1 s** after the last write, reads the
+   changed (a drag gives four writes a second);
+4. when no new target came for **500 ms** after the last write, reads the
    value back. A different value means the write was dropped: write again
-   (step 2). The pause is long because a monitor may still be applying the
-   write: a read right after one sometimes fails or takes ~1.2 s on the Mi
-   (§3). B0 starts at 1 s and tries to shorten it on the monitors of §3;
+   (step 2). Both monitors of §3 answer the truth 50 ms after a write, and
+   it doesn't change later; the pause, two write intervals, tells a slider
+   at rest from a drag that only slows down, so a drag doesn't pay for read
+   backs between its writes;
 5. reports the confirmed value with the sequence number of the target it
    confirms.
 
 **Budget:** a target gets at most **4 rewrites and 8 s**, whichever comes
-first (with the 1 s pause, a rewrite costs about 1.5 s). Then the helper reports the value it read as `refused` (§7.1): the
-monitor locks its brightness (HDR, some picture modes) or keeps losing
-writes. If reads keep failing, the output is `not-responding`.
+first (with the 500 ms pause, a rewrite costs about 1 s on the Mi). Then the helper
+reports the value it read as `refused` (§7.1): the monitor locks its
+brightness (HDR, some picture modes) or keeps losing writes. If reads keep
+failing, the output is `not-responding`.
 
 **The user comes first.** A new target always replaces the old one: a read
 back still running finishes (a transaction can't be interrupted), but its
@@ -299,9 +333,8 @@ skips some intermediate values.
   then left alone until something changes (§7.1).
 - **Live sync:** while at least one client shows a brightness slider (§7.2),
   the output is read **once a second**, never while a write is pending and
-  not within 1 s of the last one (the monitor might still be applying it,
-  §5.4). A
-  good reply with a different value updates the model, so the slider follows
+  not within 1 s of the last one (the read back covers that second, §5.4).
+  A good reply with a different value updates the model, so the slider follows
   the monitor's buttons. Bad replies never move a slider.
 - **Wake-up:** when the compositor turns the output back on, or the session
   becomes active again, one read after 2 s.
@@ -503,9 +536,11 @@ New lines on the command socket (`command.h`):
 - **Contrast, input source, color presets** and other VCP features.
 - **USB monitors** (DDC/CI over USB HID).
 
-`vela-brightness --probe [connector]` (each connector, its bus, the
-transfer mode, the reply, attempts, latencies, timeouts and refused writes)
-is in scope for B0, and its output goes into the bug report in B4.
+`vela-brightness --probe [connector]` is in scope: each connector, its bus,
+the transfer mode, and one read with every attempt, its bytes and its
+latency. It only reads, so it is safe anywhere, and its output goes into the
+bug report in B4. `vela-brightness --bench <connector>` measures the timings
+of §5.4 on a real monitor: it writes, and puts the starting value back.
 
 ## 12. Tests
 
@@ -513,7 +548,7 @@ is in scope for B0, and its output goes into the bug report in B4.
   replies captured in §3, the good ones, the Mi's fixed block, null messages,
   short reads.
 - **Scheduler, pure:** §5.4 against a fake clock and a fake bus: coalescing
-  during a drag, the 120 ms interval, the read back and the rewrite after a
+  during a drag, the 250 ms interval, the read back and the rewrite after a
   dropped write, the budget and `refused`, a stale read back with an old
   `seq`, `not-responding` and its recovery, live sync skipping a pending or
   recent write, `flock` busy, a suspend (the boot clock jumping ahead of the
@@ -574,9 +609,9 @@ is in scope for B0, and its output goes into the bug report in B4.
   transfer fallback cover a lot of it; what they don't cover shows up in the
   manual tests and in `--probe` reports. ddcutil's sources and issues are
   the reference when a monitor misbehaves.
-- **EEPROM wear.** Many monitors save each change. About eight writes a
-  second while dragging is more than PowerDevil's two, for a few seconds at a
-  time; if that proves a concern, the interval in §5.4 grows and the read
+- **EEPROM wear.** Many monitors save each change. Four writes a second
+  while dragging is more than PowerDevil's two, for a few seconds at a time;
+  if that proves a concern, the interval in §5.4 grows and the read
   back still guarantees the final value.
 - **Live sync traffic.** One read a second per output, only while a slider is
   on screen. To check that it never disturbs the picture or the monitor's own
@@ -592,7 +627,7 @@ is in scope for B0, and its output goes into the bug report in B4.
 
 | Stage | Content | |
 |---|---|---|
-| B0 | `vela-brightness`: DDC/CI protocol and transfers, scheduler, fake backend and their unit tests, `--probe`; numbers tuned on the monitors of §3 | |
+| B0 | `vela-brightness`: DDC/CI protocol and transfers, scheduler, fake backend and their unit tests, `--probe`; numbers tuned on the monitors of §3 | done |
 | B1 | Compositor: a helper per output with its watchdog, the lines of §5.6, the model, `brightness`, `watch brightness`, `brightness-live`, `brightness-probe`; functional tests | |
 | B2 | Backlight backend (§5.3); shell: `Brightness` model, quick settings slider for the panel's output and the Brightness page, live sync; backlight out of `SystemStatus` | |
 | B3 | Settings: the Display page card for the selected output, with the reasons of §8 | |

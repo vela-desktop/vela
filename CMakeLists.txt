@@ -51,6 +51,7 @@ endif()
 
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
+    add_subdirectory(brightness)
     add_subdirectory(session)
 endif()
 option(VELA_BUILD_POLKIT "Build the polkit agent (needs polkit-agent-1; the prompt also needs the shell's Qt)" ON)

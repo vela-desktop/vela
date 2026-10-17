@@ -24,11 +24,12 @@ done
 grep -Fq 'Exec=/usr/bin/vela-session' /usr/share/wayland-sessions/vela.desktop \
     || fail "Session entry does not launch /usr/bin/vela-session"
 vela-report --help >/dev/null || fail "The reporting CLI cannot load its Python modules"
-for helper in vela-polkit-agent vela-polkit-prompt vela-report-gui; do
+for helper in vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui; do
     test -x "/usr/lib/vela/$helper" || fail "Missing helper: /usr/lib/vela/$helper"
 done
 for program in vela-compositor vela-shell vela-files vela-settings vela-lock \
-    /usr/lib/vela/vela-polkit-agent /usr/lib/vela/vela-polkit-prompt /usr/lib/vela/vela-report-gui; do
+    /usr/lib/vela/vela-brightness /usr/lib/vela/vela-polkit-agent /usr/lib/vela/vela-polkit-prompt \
+    /usr/lib/vela/vela-report-gui; do
     path=$(command -v "$program")
     if ldd "$path" | grep -q 'not found'; then
         ldd "$path" >&2
