@@ -111,8 +111,50 @@ class Lock(unittest.TestCase):
                     pass
                 vela.wait_for_log("vela-testlock: locked", timeout=14)
                 vela.wait_for(lambda s: not s["locked"], timeout=9, what="locker unlocks")
+                # The original 5-second watchdog must have been disarmed,
+                # otherwise it could re-lock the already unlocked desktop.
+                time.sleep(5.5)
+                self.assertFalse(vela.state()["locked"])
                 self.assertEqual(vela.log_text().count("Locking the screen:"), 2,
                                  "the retry timer should stop on registration")
+
+    def test_failed_locker_uses_five_fast_attempts_then_cools_down(self):
+        with tempfile.TemporaryDirectory(prefix="vela-lock-throttle-") as directory:
+            attempts = os.path.join(directory, "attempts")
+            with Session(env={"VELA_LOCK": f"echo launch >> '{attempts}'; exit 1"}) as vela:
+                vela.command("lock")
+                def launch_count():
+                    if not os.path.exists(attempts):
+                        return 0
+                    with open(attempts) as record:
+                        return len(record.readlines())
+                vela.wait_for(lambda _: launch_count() == 5, read_state=False,
+                              timeout=30, what="five unsuccessful locker launches")
+                time.sleep(5.5)
+                self.assertEqual(launch_count(), 5, "cooldown must suppress the sixth fast launch")
+                self.assertTrue(vela.state()["locked"])
+                self.assertIsNone(vela.state()["focused"])
+
+    def test_registered_locker_crash_is_retried(self):
+        with tempfile.TemporaryDirectory(prefix="vela-lock-crash-") as directory:
+            pid_path = os.path.join(directory, "locker.pid")
+            launcher = f"echo $ > '{pid_path}'; exec '{tool('vela-testlock')}' 20000"
+            with Session(env={"VELA_LOCK": launcher}) as vela:
+                vela.command("lock")
+                vela.wait_for_log("vela-testlock: locked")
+                with open(pid_path) as record:
+                    first_pid = int(record.read().strip())
+                os.kill(first_pid, signal.SIGKILL)
+                def relaunched(_):
+                    try:
+                        with open(pid_path) as record:
+                            return int(record.read().strip()) != first_pid
+                    except (OSError, ValueError):
+                        return False
+                vela.wait_for(relaunched, read_state=False, timeout=9,
+                              what="new locker after previous registered locker crashed")
+                self.assertTrue(vela.state()["locked"])
+                self.assertGreaterEqual(vela.log_text().count("Locking the screen:"), 2)
 
     def test_volume_keys_work_while_locked(self):
         with Session(lock_hold_ms=3000) as vela:
