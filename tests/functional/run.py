@@ -5,6 +5,8 @@
 """Vela's functional tests, for ctest.
 
     run.py              the scenarios (windows, outputs, session)
+    run.py test_brightness  only these modules (each of SEPARATE has its own
+                        ctest entry, and run.py alone leaves it out)
     run.py --sharpness  the bit-for-bit test of scripts/test-sharpness.sh
 
 Needs a GPU with Vulkan 1.4: the renderer has no software fallback. Without
@@ -19,6 +21,9 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 SKIP = 77
+# Modules with a ctest entry of their own, so the main one stays within its
+# timeout.
+SEPARATE = ("test_brightness",)
 
 sys.path.insert(0, HERE)
 from harness import gpu_available # noqa: E402
@@ -37,7 +42,14 @@ def main():
         env = {key: value for key, value in os.environ.items() if key not in ("WAYLAND_DISPLAY", "DISPLAY")}
         env["VELA_TEST_MARK"] = "menu"
         return subprocess.run(["sh", "scripts/test-sharpness.sh"], cwd=ROOT, env=env).returncode
-    suite = unittest.defaultTestLoader.discover(HERE, top_level_dir=HERE)
+    modules = [argument for argument in sys.argv[1:] if not argument.startswith("-")]
+    loader = unittest.defaultTestLoader
+    if modules:
+        suite = loader.loadTestsFromNames(modules)
+    else:
+        suite = loader.loadTestsFromNames(sorted(name[:-3] for name in os.listdir(HERE)
+                                                 if name.startswith("test_") and name.endswith(".py")
+                                                 and name[:-3] not in SEPARATE))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

@@ -5,6 +5,7 @@
 
 #include "a11y.h"
 #include "bindings.h"
+#include "brightness.h"
 #include "buffer.h"
 #include "decoration.h"
 #include "input.h"
@@ -41,6 +42,18 @@
 
 #define MAX_LINE 4096 // a connection sending more is closed
 
+// What a connection can follow with "watch <topic>" (docs/brightness.md
+// §7.2): a name, and the whole state as one line.
+struct topic {
+    const char *name;
+    void (*write)(struct vela_server *server, struct vela_buffer *line);
+};
+
+static const struct topic topics[] = {
+    { "brightness", vela_brightness_json },
+};
+#define TOPICS ((int)(sizeof(topics) / sizeof(topics[0])))
+
 // A connection to the command socket.
 struct client {
     struct wl_list link; // vela_commands.clients
@@ -49,6 +62,13 @@ struct client {
     struct wl_event_source *source;
     char buffer[MAX_LINE];
     size_t length;
+    // Watching: per topic, the newest line not yet started (only the newest
+    // matters, every line is the whole state), and the line being written.
+    bool watching[TOPICS];
+    char *queued[TOPICS];
+    char *out;
+    size_t out_length, out_done;
+    bool brightness_live; // shows a brightness slider (brightness-live on)
 };
 
 struct vela_commands {
@@ -231,6 +251,8 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         window_rects_json(server, &reply);
     } else if (strcmp(line, "state") == 0) {
         state_json(server, &reply);
+    } else if (strcmp(line, "brightness") == 0) {
+        vela_brightness_json(server, &reply);
     } else if (strcmp(line, "caffeine status") == 0) {
         vela_buffer_append(&reply, server->lock->caffeine ? "on" : "off");
     } else if (starts_with(line, "caffeine-set ")) {
@@ -432,6 +454,24 @@ static void end_task(struct vela_server *server, const char *app_id)
     free(pids);
 }
 
+// brightness <output> <value>, value from 0 to 1 (docs/brightness.md §7.2).
+static void brightness(struct vela_server *server, const char *arguments)
+{
+    const char *space = strrchr(arguments, ' ');
+    char name[64];
+    if (!space || space == arguments || (size_t)(space - arguments) >= sizeof(name)) {
+        return;
+    }
+    memcpy(name, arguments, (size_t)(space - arguments));
+    name[space - arguments] = '\0';
+    char *end = NULL;
+    errno = 0;
+    double value = strtod(space + 1, &end);
+    if (end == space + 1 || *end != '\0' || errno == ERANGE || !vela_brightness_set(server, name, value)) {
+        wlr_log(WLR_DEBUG, "Brightness: \"%s\" not applied", arguments);
+    }
+}
+
 static void run_command(struct vela_server *server, const char *line)
 {
     struct vela_a11y *a11y = server->a11y;
@@ -446,8 +486,13 @@ static void run_command(struct vela_server *server, const char *line)
         vela_input_paste(server->input); // Win+V: the shell has put the item on the clipboard
     } else if (strcmp(line, "modifiers") == 0 || strcmp(line, "workspaces") == 0
         || strcmp(line, "accessibility") == 0 || strcmp(line, "window-rects") == 0
-        || strcmp(line, "caffeine status") == 0 || starts_with(line, "caffeine-set ")) {
-        // already answered to whoever asked
+        || strcmp(line, "caffeine status") == 0 || starts_with(line, "caffeine-set ")
+        || strcmp(line, "brightness") == 0 || starts_with(line, "watch ") || starts_with(line, "brightness-live ")) {
+        // already answered to whoever asked, or about the connection itself
+    } else if (starts_with(line, "brightness-probe ")) {
+        vela_brightness_probe(server, line + 17); // Settings is showing this output
+    } else if (starts_with(line, "brightness ")) {
+        brightness(server, line + 11);
     } else if (starts_with(line, "workspace ")) {
         workspace(server, line);
     } else if (strcmp(line, "reload-config") == 0) {
@@ -456,6 +501,7 @@ static void run_command(struct vela_server *server, const char *line)
         vela_lock_load_settings(server->lock);
         vela_input_reload(server->input); // keyboards, mice and touchpads
         vela_output_load_settings(server);
+        vela_brightness_load_settings(server);
         vela_a11y_load(a11y);
     } else if (starts_with(line, "night-light ")) {
         // From quick settings: night-light on|off|toggle (and likewise
@@ -496,13 +542,155 @@ static void run_command(struct vela_server *server, const char *line)
     }
 }
 
+// -------------------------------------------------------------- watching --
+
+static int topic_index(const char *name)
+{
+    for (int i = 0; i < TOPICS; ++i) {
+        if (strcmp(topics[i].name, name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void stop_watching(struct client *client)
+{
+    for (int i = 0; i < TOPICS; ++i) {
+        client->watching[i] = false;
+        free(client->queued[i]);
+        client->queued[i] = NULL;
+    }
+    free(client->out);
+    client->out = NULL;
+}
+
+// Writes what it can without blocking; the rest when the socket has room. A
+// watcher that stops reading misses states in between, never the last one.
+static void flush(struct client *client)
+{
+    for (;;) {
+        if (!client->out) {
+            for (int i = 0; i < TOPICS && !client->out; ++i) {
+                if (client->queued[i]) {
+                    client->out = client->queued[i];
+                    client->out_length = strlen(client->out);
+                    client->out_done = 0;
+                    client->queued[i] = NULL;
+                }
+            }
+            if (!client->out) {
+                break;
+            }
+        }
+        ssize_t n = send(client->fd, client->out + client->out_done, client->out_length - client->out_done,
+            MSG_NOSIGNAL | MSG_DONTWAIT);
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            break;
+        }
+        if (n <= 0) {
+            stop_watching(client); // gone: the hangup closes it
+            break;
+        }
+        client->out_done += (size_t)n;
+        if (client->out_done == client->out_length) {
+            free(client->out);
+            client->out = NULL;
+        }
+    }
+    wl_event_source_fd_update(client->source, WL_EVENT_READABLE | (client->out ? WL_EVENT_WRITABLE : 0));
+}
+
+static void queue(struct client *client, int topic, const char *line)
+{
+    free(client->queued[topic]);
+    client->queued[topic] = strdup(line);
+    flush(client);
+}
+
+static char *topic_line(struct vela_server *server, int topic)
+{
+    struct vela_buffer line = { 0 };
+    topics[topic].write(server, &line);
+    vela_buffer_append(&line, "\n");
+    char *text = strdup(vela_buffer_text(&line));
+    vela_buffer_finish(&line);
+    return text;
+}
+
+void vela_commands_notify(struct vela_server *server, const char *name)
+{
+    int topic = topic_index(name);
+    if (!server->commands || topic < 0) {
+        return;
+    }
+    char *line = NULL;
+    struct client *client;
+    wl_list_for_each (client, &server->commands->clients, link) {
+        if (client->watching[topic]) {
+            if (!line) {
+                line = topic_line(server, topic);
+            }
+            queue(client, topic, line);
+        }
+    }
+    free(line);
+}
+
+static void watch(struct client *client, const char *name)
+{
+    int topic = topic_index(name);
+    if (topic < 0) {
+        wlr_log(WLR_DEBUG, "Nothing to watch called \"%s\"", name);
+        return;
+    }
+    client->watching[topic] = true;
+    char *line = topic_line(client->server, topic);
+    queue(client, topic, line); // the state now, then every change
+    free(line);
+}
+
+// Live sync is on while any connection shows a slider: a client that closes
+// counts as off (§7.2).
+static void update_brightness_live(struct vela_server *server)
+{
+    bool live = false;
+    struct client *client;
+    wl_list_for_each (client, &server->commands->clients, link) {
+        live = live || client->brightness_live;
+    }
+    vela_brightness_live(server, live);
+}
+
+// Lines about the connection itself: false if the line isn't one of them.
+static bool connection_line(struct client *client, const char *line)
+{
+    if (starts_with(line, "watch ")) {
+        watch(client, line + 6);
+    } else if (strcmp(line, "brightness-live on") == 0 || strcmp(line, "brightness-live off") == 0) {
+        client->brightness_live = strcmp(line, "brightness-live on") == 0;
+        update_brightness_live(client->server);
+    } else {
+        return false;
+    }
+    return true;
+}
+
 // --------------------------------------------------------------- socket --
 
 static void client_destroy(struct client *client)
 {
+    bool live = client->brightness_live;
     wl_list_remove(&client->link);
     wl_event_source_remove(client->source);
     close(client->fd);
+    stop_watching(client);
+    if (live && client->server->commands) {
+        update_brightness_live(client->server);
+    }
     free(client);
 }
 
@@ -510,6 +698,9 @@ static int handle_client(int fd, uint32_t mask, void *data)
 {
     struct client *client = data;
     struct vela_server *server = client->server;
+    if (mask & WL_EVENT_WRITABLE) {
+        flush(client);
+    }
     char chunk[256];
     ssize_t n = 0;
     while ((n = read(fd, chunk, sizeof(chunk))) > 0 && client->length < MAX_LINE) {
@@ -531,7 +722,9 @@ static int handle_client(int fd, uint32_t mask, void *data)
         memmove(client->buffer, newline + 1, client->length);
     }
     for (size_t at = 0; at < lines_length; at += strlen(lines + at) + 1) {
-        answer(server, fd, lines + at);
+        if (!connection_line(client, lines + at)) {
+            answer(server, fd, lines + at);
+        }
     }
     bool closed = n == 0 || (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) || client->length >= MAX_LINE;
     if (closed) {

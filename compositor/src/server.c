@@ -4,6 +4,7 @@
 #include "server.h"
 
 #include "a11y.h"
+#include "brightness.h"
 #include "command.h"
 #include "config.h"
 #include "error_screen.h"
@@ -402,6 +403,7 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
         vela_shell_start(server, startup_command);
     }
     vela_polkit_agent_start(server);
+    vela_brightness_start(server);
     return true;
 }
 
@@ -416,6 +418,7 @@ void vela_server_destroy(struct vela_server *server)
     // relaunched.
     vela_shell_stop(server);
     vela_child_stop(&server->polkit_agent);
+    vela_brightness_destroy(server);
     vela_commands_stop(server);
     if (server->session) {
         vela_session_run_hook("stop");
@@ -493,6 +496,7 @@ void vela_server_destroy(struct vela_server *server)
 
 void vela_server_output_destroyed(struct vela_server *server, struct vela_output *output)
 {
+    vela_brightness_output_removed(output); // its helper goes too
     // The shell surfaces tied to this output must be closed.
     vela_layers_close_output(server, output);
     // At shutdown the backend destroys the outputs after snapping and

@@ -8,7 +8,7 @@ every output. This document comes before the code: decisions are made here,
 and the code follows them.
 
 > **Status:** design approved; B0 done, its timings measured with `--bench`
-> on the monitors of §3 (§15).
+> on the monitors of §3; B1 done, tested on fake monitors (§15).
 
 ## 1. Goals
 
@@ -377,17 +377,22 @@ Helper → compositor:
 - **One `vela_child` per output** (`process.h`). The compositor starts it
   when an output appears (DRM outputs only, unless the fake backend is in
   use), and stops it when the output is unplugged or disabled: the process
-  exits and nothing stays open on the device.
+  exits and nothing stays open on the device. The compositor closes its end
+  of the socket and sends `SIGTERM`, and `SIGKILL` after 5 s if it is still
+  there. An output turned off for idle keeps its process (`power off`).
 - It talks to the compositor on a socketpair it inherits (the fd number in
-  `VELA_BRIGHTNESS_FD`). `vela_child` needs a small extension to keep that fd
-  across `exec`.
+  `VELA_BRIGHTNESS_FD`): `vela_child` keeps that fd across `exec`
+  (`keep_fd`), and leaves relaunching to the brightness code (`exited`),
+  since every process gets a new socket.
 - **Watchdog, per output:** a transaction `busy` for more than **5 s** is a
   hung transfer. The compositor kills that process only; the output becomes
   `not-responding`; the other monitors don't notice.
 - **No restart loops:** a process killed by the watchdog, or one that
-  crashes repeatedly, is not relaunched until the output is plugged in
-  again, wakes up, or the session becomes active again. While an old process
-  still exists, no new one is started for that output.
+  exits three times in a row within 5 s of starting, is not relaunched until
+  the output is plugged in again, turned back on (idle or Settings), the
+  session becomes active again, or Settings probes it (`brightness-probe`).
+  While an old process still exists, no new one is started for that
+  connector.
 - **What a process can't fix:** a thread stuck in the kernel in D state
   doesn't die on `SIGKILL` until the kernel lets go. The compositor never
   waits for it: the output stays `not-responding`, and Vela holds no other
@@ -397,7 +402,8 @@ Helper → compositor:
   or a restart can't apply a stale value.
 - `brightness=no` in `vela.conf` starts no helper; `VELA_BRIGHTNESS`
   (another command, or `0` for none) works like `VELA_POLKIT_AGENT`. By
-  default it runs only in a real (DRM) session.
+  default it runs only in a real (DRM) session; `VELA_BRIGHTNESS_FAKE` (§12)
+  starts it in any session, for every output, without touching hardware.
 - Access to `/dev/i2c-*` needs no root: a udev rule gives the session's user
   `uaccess` on the buses of display adapters, and `i2c-dev` is loaded at boot
   (§13).
@@ -444,7 +450,7 @@ New lines on the command socket (`command.h`):
 
 | Line | |
 |---|---|
-| `brightness` | question: every output, one JSON line: `{"outputs":[{"name":"DP-3","state":"ready","value":0.8,"pending":false,"refused":false,"max":100}]}` |
+| `brightness` | question: every output that has a helper, one JSON line: `{"outputs":[{"name":"DP-3","state":"ready","value":0.8,"pending":false,"refused":false,"max":100,"seq":3}]}`; `value` is `null` until the monitor answered, `seq` is the latest target's number (§7.1) |
 | `brightness <output> <value>` | set, `value` from 0 to 1; the compositor rounds to the device's units |
 | `brightness-probe <output>` | probe again (Settings, §8) |
 | `watch brightness` | the connection stays open and receives the same JSON line after every change |
@@ -628,7 +634,7 @@ of §5.4 on a real monitor: it writes, and puts the starting value back.
 | Stage | Content | |
 |---|---|---|
 | B0 | `vela-brightness`: DDC/CI protocol and transfers, scheduler, fake backend and their unit tests, `--probe`; numbers tuned on the monitors of §3 | done |
-| B1 | Compositor: a helper per output with its watchdog, the lines of §5.6, the model, `brightness`, `watch brightness`, `brightness-live`, `brightness-probe`; functional tests | |
+| B1 | Compositor: a helper per output with its watchdog, the lines of §5.6, the model, `brightness`, `watch brightness`, `brightness-live`, `brightness-probe`; functional tests | done |
 | B2 | Backlight backend (§5.3); shell: `Brightness` model, quick settings slider for the panel's output and the Brightness page, live sync; backlight out of `SystemStatus` | |
 | B3 | Settings: the Display page card for the selected output, with the reasons of §8 | |
 | B4 | udev rule, `modules-load.d`, PKGBUILD, docs, `--probe` in the bug report (§13); the user's tests on real hardware | |

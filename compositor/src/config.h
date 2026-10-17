@@ -42,6 +42,7 @@
 //   touchpad-four-fingers=desktop
 //   language=                it, en, or empty (like the system)
 //   polkit-agent=yes         start Vela's polkit agent (docs/polkit-agent.md)
+//   brightness=yes           drive the monitors' brightness (docs/brightness.md)
 //
 // The old Italian names are still read (legacy_names.h).
 

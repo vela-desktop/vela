@@ -78,9 +78,11 @@ if(VELA_BUILD_TOOLS)
     if(VELA_BUILD_COMPOSITOR)
         if(Python3_FOUND)
             add_test(NAME functional COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/functional/run.py)
+            add_test(NAME functional-brightness
+                COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/functional/run.py test_brightness)
             add_test(NAME sharpness COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/functional/run.py --sharpness)
             add_test(NAME sharpness-cpu COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/functional/run.py --sharpness)
-            set_tests_properties(functional sharpness sharpness-cpu PROPERTIES
+            set_tests_properties(functional functional-brightness sharpness sharpness-cpu PROPERTIES
                 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}"
                 SKIP_RETURN_CODE 77
                 TIMEOUT 600

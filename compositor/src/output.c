@@ -3,6 +3,7 @@
 
 #include "output.h"
 
+#include "brightness.h"
 #include "config.h"
 #include "geometry.h"
 #include "layer.h"
@@ -233,6 +234,7 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
         output->nested = vela_nested_create(output);
     }
     output->usable = vela_output_box(output);
+    vela_brightness_output_added(output);
     vela_output_schedule_frame(output);
 }
 
