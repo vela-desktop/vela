@@ -221,6 +221,19 @@ private slots:
         QVERIFY(leftovers(m_dir->path()).isEmpty());
     }
 
+    void recursiveTransferWorkCountsDirectoriesAndLinks()
+    {
+        write(path("tree/file.bin"), QByteArray(7, 'a'));
+        QDir().mkpath(path("tree/empty/child/grandchild"));
+        QVERIFY(QFile::link(QStringLiteral("file.bin"), path("tree/link")));
+        // Four directories (including the root), one link, seven bytes.
+        QCOMPARE(transferWorkUnits(path("tree")), qint64(12));
+        QCOMPARE(transferWorkUnits(path("tree/link")), qint64(1));
+        QDir().mkpath(path("out"));
+        QCOMPARE(transfer({ path("tree") }, path("out"), 1), QString());
+        QCOMPARE(read(path("out/tree/file.bin")), QByteArray(7, 'a'));
+    }
+
     void copyFolderTree()
     {
         write(path("a/project/one.txt"), "1");
