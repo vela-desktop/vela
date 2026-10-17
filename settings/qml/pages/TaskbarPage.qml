@@ -42,6 +42,15 @@ Page {
             }
         }
         Card {
+            icon: "user-desktop"
+            title: qsTr("Show desktop from taskbar corner")
+            description: qsTr("Click the far-right edge of any taskbar to show or restore your windows (also with Super+D)")
+            trailing: Toggle {
+                checked: Prefs.showDesktopCorner
+                onToggled: on => Prefs.showDesktopCorner = on
+            }
+        }
+        Card {
             icon: "process-stop"
             title: qsTr("End task")
             description: qsTr("In the taskbar buttons' menu, to close an app that isn't responding right away")

@@ -661,4 +661,76 @@ Window {
             }
         }
     }
+
+    // The show-desktop strip is available at the far right of every taskbar.
+    // It overlays the unused margin beside the clock without shifting layout.
+    Item {
+        id: showDesktop
+        anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+        width: 8
+        visible: Config.showDesktopCorner
+
+        function showTooltip() {
+            const p = showDesktop.mapToItem(null, showDesktop.width / 2, 0)
+            Menus.tooltip = {
+                text: qsTr("Show desktop"),
+                center: p.x,
+                screen: root.screenName,
+                owner: "show-desktop"
+            }
+        }
+        function hideTooltip() {
+            showDesktopTooltipDelay.stop()
+            // Do not clear a tooltip belonging to another screen or component.
+            if (Menus.tooltip && Menus.tooltip.owner === "show-desktop"
+                    && Menus.tooltip.screen === root.screenName) {
+                Menus.tooltip = null
+            }
+        }
+        onVisibleChanged: if (!visible) hideTooltip()
+        Component.onDestruction: hideTooltip()
+
+        // The taskbar is a Window: hiding it does not change Item.visible.
+        Connections {
+            target: root
+            function onVisibleChanged() {
+                if (!root.visible) showDesktop.hideTooltip()
+            }
+        }
+        Timer {
+            id: showDesktopTooltipDelay
+            interval: 500
+            onTriggered: {
+                if (root.visible && showDesktop.visible && showDesktopMouse.containsMouse) {
+                    showDesktop.showTooltip()
+                }
+            }
+        }
+        Rectangle {
+            anchors { right: parent.right; rightMargin: 2; verticalCenter: parent.verticalCenter }
+            width: 2
+            height: 18
+            radius: 1
+            color: Theme.textSecondary
+            opacity: showDesktopMouse.containsMouse ? 0.9 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+        }
+        MouseArea {
+            id: showDesktopMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton
+            onContainsMouseChanged: {
+                if (containsMouse) {
+                    showDesktopTooltipDelay.restart()
+                } else {
+                    showDesktop.hideTooltip()
+                }
+            }
+            onClicked: {
+                showDesktop.hideTooltip()
+                Tasks.toggleDesktop()
+            }
+        }
+    }
 }

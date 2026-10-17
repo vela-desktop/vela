@@ -17,7 +17,7 @@ Those nested alternatives are active only in nested mode; in a normal Vela sessi
 | Previous / next desktop | <kbd>Super</kbd>+<kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>→</kbd> | <kbd>Alt</kbd>+<kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>→</kbd> |
 | New desktop | <kbd>Super</kbd>+<kbd>Ctrl</kbd>+<kbd>D</kbd> | <kbd>Alt</kbd>+<kbd>Ctrl</kbd>+<kbd>D</kbd> |
 | Close desktop | <kbd>Super</kbd>+<kbd>Ctrl</kbd>+<kbd>F4</kbd> | — |
-| Show desktop | <kbd>Super</kbd>+<kbd>D</kbd> | <kbd>Alt</kbd>+<kbd>D</kbd> |
+| Show desktop (also: the far-right taskbar corner, if enabled in Settings → Personalization → Taskbar) | <kbd>Super</kbd>+<kbd>D</kbd> | <kbd>Alt</kbd>+<kbd>D</kbd> |
 | Move any window | <kbd>Super</kbd>+drag | — |
 | Resize any window | <kbd>Super</kbd>+right-drag | — |
 | Window menu | <kbd>Alt</kbd>+<kbd>Space</kbd> | <kbd>Alt</kbd>+<kbd>Space</kbd> |
