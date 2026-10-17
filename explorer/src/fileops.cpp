@@ -29,6 +29,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QThreadPool>
+#include <QStorageInfo>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantMap>
@@ -166,6 +167,8 @@ struct FileOps::Job {
     QString current;
     bool finished = false;
     QString error;
+    QStringList sources;
+    QString destination;
     std::atomic<bool> cancelled { false };
 };
 
@@ -199,6 +202,38 @@ QVariantList FileOps::jobs() const
         });
     }
     return out;
+}
+
+int FileOps::activeJobCount() const
+{
+    return int(std::count_if(m_jobs.cbegin(), m_jobs.cend(),
+        [](const std::shared_ptr<Job>& job) { return !job->finished; }));
+}
+
+bool FileOps::activeOnDevice(const QString& device) const
+{
+    const QByteArray deviceName = QFile::encodeName(device);
+    if (deviceName.isEmpty()) {
+        return false;
+    }
+    const auto onDevice = [&deviceName](const QString& path) {
+        const QStorageInfo storage(path);
+        return storage.isValid() && storage.device() == deviceName;
+    };
+    for (const auto& job : m_jobs) {
+        if (job->finished) {
+            continue;
+        }
+        if (onDevice(job->destination)) {
+            return true;
+        }
+        for (const QString& source : job->sources) {
+            if (onDevice(source)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void FileOps::updateJob(int id, qint64 done, qint64 total, const QString& current, bool finished, const QString& error)
@@ -266,6 +301,8 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
 {
     auto job = std::make_shared<Job>();
     job->id = m_nextJob++;
+    job->sources = transfer.sources;
+    job->destination = transfer.directory;
     const int count = int(transfer.sources.size());
     const QString where = QFileInfo(transfer.directory).fileName().isEmpty() ? transfer.directory
                                                                               : QFileInfo(transfer.directory).fileName();
@@ -544,7 +581,8 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
         }
         const bool cancelled = job->cancelled;
         const QString result = error.isEmpty() && cancelled ? QCoreApplication::translate("Files", "Canceled") : error;
-        post(total, total, QString(), true, result);
+        // Preserve progress on cancellation/failure; never claim 100%.
+        post(error.isEmpty() && !cancelled ? total : done, total, QString(), true, result);
         QMetaObject::invokeMethod(
             qApp,
             [self, step, firstArrived, id = job->id, ok = error.isEmpty() && !cancelled] {
