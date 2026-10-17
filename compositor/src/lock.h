@@ -56,6 +56,7 @@ struct vela_lock {
     struct wl_event_source *respawn; // relaunches vela-lock if it goes away
     int64_t respawns[VELA_LOCK_RESPAWNS]; // when (ms), so as not to insist forever
     int respawn_count;
+    int pending_attempts; // launch attempts without ext-session-lock registration
 
     struct wlr_idle_notifier_v1 *idle_notifier;
     struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
