@@ -42,6 +42,16 @@ Item {
             compare(Ops.lastCancelled, 51)
         }
 
+        function test_progress_update_preserves_the_delegate() {
+            Ops.jobs = [job(61, 10, 100, false, "")]
+            const original = findChild(panel, "transferJob:61")
+            verify(original !== null)
+            Ops.updateJob(61, 55, 100)
+            tryCompare(original, "fraction", 0.55)
+            verify(findChild(panel, "transferJob:61") === original,
+                   "progress updates must not recreate the delegate")
+        }
+
         function test_long_job_list_is_clipped_to_window() {
             Ops.jobs = [job(1, 0, 1000, false, ""), job(2, 0, 1000, false, ""),
                         job(3, 0, 1000, false, ""), job(4, 0, 1000, false, ""),
