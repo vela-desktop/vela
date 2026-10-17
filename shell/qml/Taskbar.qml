@@ -405,6 +405,11 @@ Window {
             return Math.max(0, Math.min(100, Math.round(100 * running[0].done / running[0].total)))
         }
 
+        function readableSize(bytes) {
+            if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB"
+            if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB"
+            return Math.round(bytes / 1024) + " KB"
+        }
         function openTransferMenu() {
             const entries = [{ header: qsTr("File transfers") }]
             for (const job of running) {
@@ -412,6 +417,13 @@ Window {
                 entries.push({ text: job.title + " · " + percent, enabled: false })
                 if (job.current !== "")
                     entries.push({ text: job.current, enabled: false })
+                if (job.total > 0)
+                    entries.push({ text: readableSize(job.done) + " / " + readableSize(job.total), enabled: false })
+                if (job.speed > 0 && job.eta >= 0) {
+                    const remaining = job.eta < 60 ? qsTr("%1 seconds remaining").arg(Math.ceil(job.eta))
+                        : qsTr("%1 minutes remaining").arg(Math.ceil(job.eta / 60))
+                    entries.push({ text: readableSize(job.speed) + "/s · " + remaining, enabled: false })
+                }
                 entries.push({ text: qsTr("Cancel transfer"), icon: "process-stop",
                                action: () => Transfers.cancel(job.owner, job.id) })
                 entries.push({ separator: true })
