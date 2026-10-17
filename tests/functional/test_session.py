@@ -301,6 +301,22 @@ class Supervisor(unittest.TestCase):
                                    read_state=False, what="a new compositor")
             vela.wait_for(lambda s: s["outputs"], what="the new compositor responds")
 
+    def test_unwritable_lock_marker_ends_session_without_restart(self):
+        # Replacing a non-empty directory with the marker must fail.
+        # This exercises the real marker code without fault-injection hooks.
+        with Session(supervise=True, expected_exit=77) as vela:
+            runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+            marker = os.path.join(runtime, f"vela-locked-{vela.display}")
+            os.mkdir(marker, 0o700)
+            try:
+                vela.command("lock")
+                self.assertEqual(vela.process.wait(timeout=12), 77)
+                log = vela.log_text()
+                self.assertIn("secure lock state could not be persisted", log)
+                self.assertNotIn("restarting it", log)
+            finally:
+                os.rmdir(marker)
+
     def test_crash_while_locked_restarts_locked(self):
         # The test lock program stays 3 s, then unlocks by itself.
         with Session(supervise=True, lock_hold_ms=3000) as vela:
