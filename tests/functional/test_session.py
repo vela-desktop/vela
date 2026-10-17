@@ -54,6 +54,28 @@ class Lock(unittest.TestCase):
             image = vela.pixels()
             self.assertEqual(image.at(image.width // 2, image.height // 2), (16, 32, 64))
 
+    def test_missing_locker_never_exposes_desktop(self):
+        # A failed launcher must hide windows and revoke keyboard focus even
+        # when no ext-session-lock client has connected.
+        with Session(env={"VELA_LOCK": "/nonexistent/vela-test-lock-missing"}) as vela:
+            window = vela.open_window()
+            vela.wait_for(lambda s: s["focused"] == window)
+            vela.command("lock")
+            state = vela.wait_for(lambda s: s["locked"], what="locked without locker")
+            self.assertIsNone(state["focused"])
+            image = vela.pixels()
+            self.assertEqual(image.at(image.width // 2, image.height // 2), (0, 0, 0))
+            self.assertIn("Locking the screen", vela.log_text())
+
+    def test_locker_exits_without_registering_stays_locked(self):
+        with Session(env={"VELA_LOCK": "exit 1"}) as vela:
+            vela.open_window()
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            time.sleep(0.3)
+            self.assertTrue(vela.state()["locked"])
+            self.assertIsNone(vela.state()["focused"])
+
     def test_volume_keys_work_while_locked(self):
         with Session(lock_hold_ms=3000) as vela:
             shell = vela.fake_shell()
