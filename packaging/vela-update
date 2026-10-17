@@ -1,0 +1,852 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Updates Vela installed as vela-git on Arch or Fedora: fetch the selected
+# Git revision, verify any downloaded package's signed provenance, otherwise
+# build an Arch package with makepkg or a Fedora RPM with rpmbuild.
+# The new version starts at the next session.
+#
+# If GitHub Actions has built that commit's public release, it can download
+# the signed package without GitHub CLI. Private workflow artifacts optionally
+# use an authenticated gh session only for retrieval, never verification:
+# no minutes of compiling, and no compiler crashes.
+#
+# The repository is kept in ~/.cache/vela-update, so each time only new commits
+# are fetched; the last packages stay there too, for rollback with native tools
+# from ~/.cache/vela-update/packages/<file>.
+
+set -eu
+
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/vela/updates.conf"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/vela-update"
+MIRROR="$CACHE/vela.git"
+PACKAGES="$CACHE/packages"
+DEFAULT_SOURCE="https://github.com/vela-desktop/vela.git"
+KEEP=3 # old packages to keep
+
+usage() {
+    cat << EOF
+Usage: vela-update [options]
+
+Updates Vela to the repository's default branch and installs it (Arch/Fedora).
+
+  --branch NAME       install the latest commit of this branch, just this time
+  --commit SHA        install this exact commit (full or abbreviated SHA),
+                      just this time; cannot be combined with --branch
+  --check             only tell whether there is an update and what changed
+                      (exits with 0 if there is one, 1 if Vela is up to date)
+  --force             rebuild and reinstall even if Vela is up to date
+  --build             always build here, even if GitHub has the package
+  --download          if GitHub has the package, download it without asking
+  --jobs N            parallel compile jobs (makepkg or rpmbuild);
+                      1 is slow but safe
+  --source URL|DIR    where to get Vela from: a git repository or a folder
+                      (its commits, not uncommitted changes). Remembered
+                      for next time. GitHub URLs always use HTTPS.
+                      Default: $DEFAULT_SOURCE
+EOF
+}
+
+check=0
+force=0
+prefer=""
+jobs=""
+source=""
+branch=""
+commit=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --check) check=1 ;;
+    --force) force=1 ;;
+    --build) prefer=build ;;
+    --download) prefer=download ;;
+    --branch | --commit)
+        option="$1"
+        if [ $# -lt 2 ] || [ -z "$2" ]; then
+            echo "vela-update: $option needs a value" >&2; exit 2
+        fi
+        shift
+        case "$option" in
+        --branch) branch="$1" ;;
+        --commit) commit="$1" ;;
+        esac
+        ;;
+    --branch=*) branch="${1#*=}"; [ -n "$branch" ] || { echo "vela-update: --branch needs a value" >&2; exit 2; } ;;
+    --commit=*) commit="${1#*=}"; [ -n "$commit" ] || { echo "vela-update: --commit needs a value" >&2; exit 2; } ;;
+    --jobs)
+        [ "$#" -ge 2 ] || { echo "vela-update: --jobs needs a value" >&2; exit 2; }
+        shift
+        jobs="$1"
+        [ -n "$jobs" ] || { echo "vela-update: --jobs needs a value" >&2; exit 2; }
+        ;;
+    --jobs=*) jobs="${1#*=}"; [ -n "$jobs" ] || { echo "vela-update: --jobs needs a value" >&2; exit 2; } ;;
+    --source)
+        [ "$#" -ge 2 ] || { echo "vela-update: --source needs a value" >&2; exit 2; }
+        shift
+        source="$1"
+        case "$source" in ""|-*) echo "vela-update: --source needs a value" >&2; exit 2 ;; esac
+        ;;
+    --source=*) source="${1#*=}"; [ -n "$source" ] || { echo "vela-update: --source needs a value" >&2; exit 2; } ;;
+    -h | --help) usage; exit 0 ;;
+    *) echo "vela-update: unknown option: $1" >&2; usage >&2; exit 2 ;;
+    esac
+    shift
+done
+if [ -n "$branch" ] && [ -n "$commit" ]; then
+    echo "vela-update: use either --branch or --commit, not both" >&2; exit 2
+fi
+if [ -n "$branch" ] && ! git check-ref-format --branch "$branch" > /dev/null 2>&1; then
+    echo "vela-update: invalid branch name: $branch" >&2; exit 2
+fi
+case "$commit" in
+*[!0-9a-fA-F]*) echo "vela-update: --commit needs a full or abbreviated commit SHA" >&2; exit 2 ;;
+esac
+if [ -n "$jobs" ]; then
+    case "$jobs" in
+    *[!0-9]* | 0) echo "vela-update: --jobs needs a number" >&2; exit 2 ;;
+    esac
+fi
+
+# Select the native package manager. RPM/DNF presence alone is insufficient:
+# Fedora's RPM must not be installed on unrelated DNF-based distributions.
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+else
+    ID=""
+fi
+case "${ID:-}" in
+fedora) backend=fedora ;;
+arch|cachyos|endeavouros) backend=arch ;;
+*) if command -v pacman >/dev/null 2>&1; then
+       backend=arch
+   else
+       echo "vela-update: unsupported distribution (requires Arch/pacman or Fedora 44)." >&2
+       exit 1
+   fi ;;
+esac
+if [ "$backend" = arch ] && ! command -v pacman >/dev/null 2>&1; then
+    echo "vela-update: pacman is missing." >&2; exit 1
+fi
+if [ "$backend" = fedora ]; then
+    if ! command -v rpm >/dev/null 2>&1 || ! command -v dnf >/dev/null 2>&1; then
+        echo "vela-update: Fedora needs rpm and dnf." >&2; exit 1
+    fi
+    # Having DNF installed does not imply compatible Fedora libraries.
+    fedora_release=$(rpm --eval '%{?fedora}' 2>/dev/null || true)
+    if [ "$fedora_release" != 44 ]; then
+        echo "vela-update: Fedora 44 is the only supported RPM target (detected: ${fedora_release:-unknown})." >&2
+        exit 1
+    fi
+fi
+
+packageVersion() {
+    if [ "$backend" = arch ]; then
+        pacman -Q vela-git 2>/dev/null | cut -d' ' -f2
+    else
+        rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git 2>/dev/null
+    fi
+}
+installPackage() {
+    if [ "$backend" = arch ]; then
+        sudo pacman -U "$1"
+    elif [ "$force" = 1 ] && [ -n "$installed" ] &&
+         [ "${latestFull#"$installed"}" != "$latestFull" ]; then
+        # DNF 'install' deliberately skips an already installed identical NEVRA.
+        sudo dnf reinstall -y "$1"
+    else
+        # An explicit local file can upgrade or downgrade an existing RPM.
+        sudo dnf install -y "$1"
+    fi
+}
+packageLabel() {
+    if [ "$backend" = arch ]; then
+        printf '%s' 'sudo pacman -U'
+    else
+        printf '%s' 'sudo dnf install'
+    fi
+}
+
+# Serialize every cache/config operation, including --check. Two updater
+# processes must never delete each other's build directory or modify the
+# same Git mirror while a build is reading it.
+mkdir -p "$CACHE"
+if ! command -v flock >/dev/null 2>&1; then
+    echo "vela-update: flock (util-linux) is required" >&2
+    exit 1
+fi
+exec 9>"$CACHE/update.lock"
+if ! flock -n 9; then
+    echo "vela-update: another update is already running (try again later)" >&2
+    exit 1
+fi
+
+STAGED_MIRROR=""
+BACKUP_MIRROR=""
+DOWNLOAD=""
+WORK=""
+TEMP_CONFIG=""
+SWAP_UNCOMMITTED=0
+CONFIG_BACKUP=""
+CONFIG_HAD_PREVIOUS=0
+CONFIG_ROLLBACK_ARMED=0
+makepkg_pid=""
+build_isolated=0
+stop_makepkg() {
+    [ -n "$makepkg_pid" ] || return 0
+    if [ "$build_isolated" = 1 ]; then
+        # In unattended runs, setsid puts makepkg and its ordinary compiler
+        # descendants in a dedicated process group.
+        kill -TERM "-$makepkg_pid" 2>/dev/null || true
+    else
+        # Keep the controlling terminal for interactive makepkg/sudo prompts.
+        # On Linux, enumerate the child tree before signalling the parent;
+        # targeting only makepkg would leave compiler processes behind.
+        pending="$makepkg_pid"
+        build_pids=""
+        while [ -n "$pending" ]; do
+            next=""
+            for child_pid in $pending; do
+                build_pids="$build_pids $child_pid"
+                children=$(cat "/proc/$child_pid/task/$child_pid/children" 2>/dev/null || true)
+                [ -z "$children" ] || next="$next $children"
+            done
+            pending="${next# }"
+        done
+        for child_pid in $build_pids; do
+            kill -TERM "$child_pid" 2>/dev/null || true
+        done
+    fi
+    # Bound shutdown even when children ignore TERM; reap the launcher before
+    # removing its workspace. PID reuse during this short grace is unlikely.
+    sleep 1
+    if [ "$build_isolated" = 1 ]; then
+        kill -KILL "-$makepkg_pid" 2>/dev/null || true
+    else
+        for child_pid in $build_pids; do
+            kill -KILL "$child_pid" 2>/dev/null || true
+        done
+    fi
+    wait "$makepkg_pid" 2>/dev/null || true
+    makepkg_pid=""
+}
+cleanup() {
+    [ -z "$WORK" ] || rm -rf -- "$WORK"
+    [ -z "$DOWNLOAD" ] || rm -rf -- "$DOWNLOAD"
+    [ -z "$STAGED_MIRROR" ] || rm -rf -- "$STAGED_MIRROR"
+    [ -z "$TEMP_CONFIG" ] || rm -f -- "$TEMP_CONFIG"
+    # When writing the new source fails, restore the original mirror even
+    # though the replacement already occupies the active path.
+    if [ "$SWAP_UNCOMMITTED" = 1 ] && [ -d "$MIRROR" ]; then
+        rm -rf -- "$MIRROR" || true
+    fi
+    # The rollback pathname is recorded *before* its rename. An interrupted
+    # rename can leave the active mirror in place and the backup nonexistent.
+    if [ -n "$BACKUP_MIRROR" ] && [ -e "$BACKUP_MIRROR" ]; then
+        if [ ! -e "$MIRROR" ]; then
+            mv -- "$BACKUP_MIRROR" "$MIRROR" || {
+                echo "vela-update: previous mirror is preserved at $BACKUP_MIRROR" >&2
+            }
+        elif [ "$SWAP_UNCOMMITTED" = 1 ] || [ "$mirror_corrupt" = 1 ]; then
+            # Corrupt mirrors are evidence, not disposable temporary backups.
+            # Preserve them even if interrupted just after committing a swap.
+            echo "vela-update: previous mirror is preserved at $BACKUP_MIRROR" >&2
+        else
+            rm -rf -- "$BACKUP_MIRROR"
+        fi
+    fi
+    # A signal can arrive after the config's atomic rename but before the
+    # mirror swap is committed. Roll back both paths as one transaction.
+    if [ "$SWAP_UNCOMMITTED" = 1 ] && [ "$CONFIG_ROLLBACK_ARMED" = 1 ]; then
+        if [ "$CONFIG_HAD_PREVIOUS" = 1 ]; then
+            if ! mv -f -- "$CONFIG_BACKUP" "$CONFIG"; then
+                echo "vela-update: cannot restore config; previous copy preserved at $CONFIG_BACKUP" >&2
+                CONFIG_BACKUP="" # Do not delete the only remaining copy.
+            fi
+        else
+            rm -f -- "$CONFIG" || echo "vela-update: cannot remove uncommitted config $CONFIG" >&2
+        fi
+    fi
+    [ -z "$CONFIG_BACKUP" ] || rm -f -- "$CONFIG_BACKUP"
+}
+trap 'status=$?; cleanup; exit "$status"' 0
+trap 'stop_makepkg; exit 130' INT
+trap 'stop_makepkg; exit 143' TERM
+trap 'stop_makepkg; exit 129' HUP
+
+# From where: the one given now (and remembered), the remembered one, GitHub.
+# The old file was called aggiornamenti.conf (key sorgente=).
+githubHTTPS() {
+    # Only the official repository is canonicalized across case and transport.
+    # Other GitHub repositories, including forks, retain their own identity.
+    case "$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in
+    https://github.com/vela-desktop/vela|https://github.com/vela-desktop/vela.git|ssh://git@github.com/vela-desktop/vela|ssh://git@github.com/vela-desktop/vela.git|git@github.com:vela-desktop/vela|git@github.com:vela-desktop/vela.git)
+        printf '%s\n' "$DEFAULT_SOURCE"
+        return ;;
+    esac
+    case "$1" in
+    ssh://git@github.com/*) printf 'https://github.com/%s\n' "${1#ssh://git@github.com/}" ;;
+    git@github.com:*) printf 'https://github.com/%s\n' "${1#git@github.com:}" ;;
+    *) printf '%s\n' "$1" ;;
+    esac
+}
+OLD_CONFIG="$(dirname "$CONFIG")/aggiornamenti.conf"
+migrate_legacy=0
+remember=0
+if [ -n "$source" ]; then
+    remember=1
+    if [ -d "$source" ]; then
+        source=$(cd "$source" && pwd)
+    fi
+elif [ -f "$CONFIG" ]; then
+    source=$(sed -n 's/^source=//p' "$CONFIG" | head -n 1)
+elif [ -f "$OLD_CONFIG" ]; then
+    source=$(sed -n 's/^sorgente=//p' "$OLD_CONFIG" | head -n 1)
+    migrate_legacy=1
+    remember=1
+fi
+source="${source:-$DEFAULT_SOURCE}"
+# Normalize saved or explicit official GitHub URLs (including SSH and
+# case variants) to the canonical HTTPS repository.
+https_source=$(githubHTTPS "$source")
+if [ "$https_source" != "$source" ]; then
+    source="$https_source"
+    remember=1
+fi
+
+# If launched from a fresh checkout of the official repository, seed the
+# private mirror from its local Git objects. The mirror remains independent of
+# the checkout, and tracks public HTTPS for later updates. This avoids fetching
+# the same history twice during the first installation.
+bootstrap=""
+if [ "$source" = "$DEFAULT_SOURCE" ] && [ ! -d "$MIRROR" ]; then
+    candidate=$(CDPATH= cd "$(dirname "$0")/.." 2> /dev/null && pwd) || candidate=""
+    if [ -n "$candidate" ] && [ -d "$candidate/.git" ] \
+        && [ "$(git -C "$candidate" rev-parse --show-toplevel 2> /dev/null || true)" = "$candidate" ]; then
+        origin=$(git -C "$candidate" remote get-url origin 2> /dev/null || true)
+        case "$(githubHTTPS "$origin")" in
+        "$DEFAULT_SOURCE"|https://github.com/vela-desktop/vela)
+            bootstrap="$candidate" ;;
+        esac
+    fi
+fi
+
+# Fetch into a separate mirror when switching origins, so a failed source
+# cannot destroy a known-good cache. The active mirror stays untouched until
+# the new source and requested revision have both been verified.
+# Mirror clones normally fetch +refs/*:refs/*, and --prune will then try
+# to delete our private selected-commit ref. Fetch only remote heads and tags.
+# Apply this to existing caches too, before their first prune.
+configure_mirror_fetch() {
+    git -C "$1" config --replace-all remote.origin.fetch '+refs/heads/*:refs/heads/*' &&
+        git -C "$1" config --add remote.origin.fetch '+refs/tags/*:refs/tags/*'
+}
+stage_mirror() {
+    STAGED_MIRROR=$(mktemp -d "$CACHE/vela-mirror.XXXXXXXX") || return 1
+    active_mirror="$STAGED_MIRROR"
+    if [ -n "$bootstrap" ]; then
+        echo ":: Reusing Git objects from the checkout (no second full download)"
+        git clone --quiet --mirror --no-hardlinks "$bootstrap" "$STAGED_MIRROR" &&
+            git -C "$STAGED_MIRROR" remote set-url origin "$source" &&
+            configure_mirror_fetch "$STAGED_MIRROR" &&
+            git -C "$STAGED_MIRROR" remote update --prune
+    else
+        git clone --quiet --mirror "$source" "$STAGED_MIRROR" &&
+            configure_mirror_fetch "$STAGED_MIRROR"
+    fi
+}
+fetch_failed() {
+    [ -z "$previous_origin" ] || git -C "$MIRROR" remote set-url origin "$previous_origin" || true
+    echo "vela-update: can't download Vela from $source (see Git error above)." >&2
+    exit 1
+}
+report_corrupt_mirror() {
+    echo "vela-update: cached Git mirror is corrupt; attempting a clean clone." >&2
+    cat "$CACHE/git-fsck-error.log" >&2
+}
+
+active_mirror="$MIRROR"
+new_mirror=0
+mirror_corrupt=0
+previous_origin=""
+if [ -d "$MIRROR" ]; then
+    cached_source=$(git -C "$MIRROR" config remote.origin.url 2>/dev/null || true)
+    if [ "$cached_source" != "$source" ]; then
+        if [ "$(githubHTTPS "$cached_source")" = "$source" ]; then
+            previous_origin="$cached_source"
+            git -C "$MIRROR" remote set-url origin "$source"
+        else
+            new_mirror=1
+        fi
+    fi
+    if [ "$new_mirror" = 0 ] &&
+        ! git -C "$MIRROR" fsck --full --no-reflogs --no-progress > /dev/null 2>"$CACHE/git-fsck-error.log"; then
+        # Check integrity before modifying the live mirror. Do not mistake a
+        # network failure for corruption, or destroy a usable offline cache.
+        report_corrupt_mirror
+        new_mirror=1
+        mirror_corrupt=1
+    fi
+else
+    new_mirror=1
+fi
+
+echo ":: Checking for updates in $source"
+if [ "$new_mirror" = 1 ]; then
+    stage_mirror || fetch_failed
+else
+    if ! configure_mirror_fetch "$MIRROR" ||
+       ! git -C "$MIRROR" remote update --prune; then
+        # A failed fetch may be a network outage, but it can also reveal
+        # previously undetected disk corruption. Recover only in the latter case.
+        if git -C "$MIRROR" fsck --full --no-reflogs --no-progress > /dev/null 2>"$CACHE/git-fsck-error.log"; then
+            fetch_failed
+        fi
+        report_corrupt_mirror
+        mirror_corrupt=1
+        new_mirror=1
+        stage_mirror || fetch_failed
+    fi
+fi
+
+# Resolve once: the changelog, CI artifact and local build must all use the
+# same commit. Selecting a test version never changes the mirror's HEAD.
+target=HEAD
+if [ -n "$branch" ]; then
+    target="refs/heads/$branch"
+elif [ -n "$commit" ]; then
+    target="$commit"
+fi
+if ! latestFull=$(git -C "$active_mirror" rev-parse --verify "$target^{commit}" 2> /dev/null); then
+    # A full SHA may still be fetchable after its branch has been deleted.
+    if [ -z "$commit" ] || ! git -C "$active_mirror" fetch --quiet origin "$commit" \
+        || ! latestFull=$(git -C "$active_mirror" rev-parse --verify "$target^{commit}" 2> /dev/null); then
+        [ -z "$previous_origin" ] || git -C "$MIRROR" remote set-url origin "$previous_origin" || true
+        echo "vela-update: can't find the requested revision: $target" >&2
+        exit 1
+    fi
+fi
+# A valid staged mirror may now replace the old one. Keep the old one in a
+# backup until the replacement is in place, and restore it in the exit trap
+# if the second rename fails.
+if [ -n "$STAGED_MIRROR" ]; then
+    if [ -d "$MIRROR" ]; then
+        if [ "$mirror_corrupt" = 1 ]; then
+            backup_slot=$(mktemp -d "$CACHE/vela-corrupt.XXXXXXXX")
+        else
+            backup_slot=$(mktemp -d "$CACHE/vela-backup.XXXXXXXX")
+        fi
+        rmdir "$backup_slot"
+        # Record the rollback path before renaming the old mirror. A signal
+        # during mv must not leave an untracked backup.
+        BACKUP_MIRROR="$backup_slot"
+        mv -- "$MIRROR" "$backup_slot"
+    fi
+    # Mark the swap uncommitted *before* the staged rename. If interrupted
+    # between mv and the next statement, cleanup can still roll it back.
+    SWAP_UNCOMMITTED=1
+    mv -- "$STAGED_MIRROR" "$MIRROR"
+    STAGED_MIRROR=""
+fi
+
+# Save a new source only after its fetch and revision resolution succeeded.
+# Write via rename so interrupted writes cannot truncate the old config.
+if [ "$remember" = 1 ]; then
+    mkdir -p "$(dirname "$CONFIG")"
+    TEMP_CONFIG=$(mktemp "$(dirname "$CONFIG")/.updates.conf.XXXXXXXX")
+    chmod 600 "$TEMP_CONFIG"
+    printf 'source=%s\n' "$source" > "$TEMP_CONFIG"
+    if [ "$SWAP_UNCOMMITTED" = 1 ]; then
+        # Snapshot the exact previous config before exposing the new one.
+        # Arm rollback only after the snapshot is complete, so a failed copy
+        # cannot cause cleanup to discard the original.
+        if [ -f "$CONFIG" ]; then
+            CONFIG_BACKUP=$(mktemp "$(dirname "$CONFIG")/.updates.conf.backup.XXXXXXXX")
+            cp -p -- "$CONFIG" "$CONFIG_BACKUP"
+            CONFIG_HAD_PREVIOUS=1
+        fi
+        CONFIG_ROLLBACK_ARMED=1
+    fi
+    mv -f -- "$TEMP_CONFIG" "$CONFIG"
+    TEMP_CONFIG=""
+fi
+# Source and mirror now agree. On signals before this point, the EXIT
+# handler restores the original config together with the original mirror.
+SWAP_UNCOMMITTED=0
+if [ -n "$CONFIG_BACKUP" ]; then
+    rm -f -- "$CONFIG_BACKUP"
+    CONFIG_BACKUP=""
+fi
+if [ -n "$BACKUP_MIRROR" ]; then
+    if [ "$mirror_corrupt" = 1 ]; then
+        echo "vela-update: corrupt mirror preserved at $BACKUP_MIRROR" >&2
+    else
+        rm -rf -- "$BACKUP_MIRROR"
+    fi
+    BACKUP_MIRROR=""
+fi
+if [ "$migrate_legacy" = 1 ]; then
+    rm -f -- "$OLD_CONFIG"
+fi
+
+latest=$(git -C "$MIRROR" rev-parse --short=7 "$latestFull")
+echo ":: Selected revision: ${branch:-${commit:-default branch}} ($latestFull)"
+installed_version=$(packageVersion || true)
+if [ "$backend" = arch ]; then
+    installed=$(printf '%s\n' "$installed_version" | sed -n 's/.*\.g\([0-9a-f]*\)-[0-9]*$/\1/p')
+else
+    installed=$(printf '%s\n' "$installed_version" | sed -n 's/.*\.g\([0-9a-f]*\)\(\.fc[0-9]*\)\?$/\1/p')
+fi
+
+if [ -n "$installed" ] && [ "${latestFull#"$installed"}" != "$latestFull" ] && [ "$force" = 0 ]; then
+    echo ":: Vela is up to date ($(packageVersion))."
+    [ "$check" = 1 ] && exit 1
+    exit 0
+fi
+
+# What's new: the commits after the installed one (if it's among them).
+if [ -n "$installed" ] && git -C "$MIRROR" cat-file -e "$installed^{commit}" 2> /dev/null \
+    && git -C "$MIRROR" merge-base --is-ancestor "$installed" "$latestFull" 2> /dev/null; then
+    count=$(git -C "$MIRROR" rev-list --count "$installed..$latestFull")
+    if [ "$count" -gt 0 ]; then
+        echo ":: What's new ($count):"
+        git -C "$MIRROR" log --format='   %s' "$installed..$latestFull"
+    fi
+elif [ -n "$installed" ]; then
+    echo ":: Installed version: $(packageVersion); new: $latest"
+else
+    echo ":: Vela isn't installed as a package: installing it ($latest)."
+fi
+
+# The repository on GitHub ("owner/name"): from the source, or from its origin
+# if it's a directory. Empty if it isn't on GitHub.
+githubRepo() {
+    url="$source"
+    if [ -d "$source" ]; then
+        url=$(git -C "$source" remote get-url origin 2> /dev/null || true)
+    fi
+    url=$(githubHTTPS "$url")
+    printf '%s\n' "$url" | sed -n -E 's#^(ssh://git@github\.com/|git@github\.com:|https://github\.com/)([^/]+/[^/]+)$#\2#p' | sed 's/\.git$//'
+}
+
+# A checksum manifest alone is not a trust anchor. The release is only trusted
+# after cryptographic Sigstore verification of GitHub's artifact attestation,
+# including the package digest, workflow identity and exact selected revision.
+# This path needs curl, Python and cosign, but never a GitHub login or gh.
+repo=$(githubRepo)
+verifyProvenance() {
+    artifact_path="$1"
+    source_kind="$2"
+    if ! command -v cosign >/dev/null 2>&1; then
+        echo "vela-update: cosign is required for signed binary verification; building locally instead." >&2
+        return 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "vela-update: Python 3 is required for signed binary verification." >&2
+        return 1
+    fi
+    helper=""
+    # Bootstrap from an ordinary checkout, or run after installation.
+    for candidate in "$(dirname "$0")/verify-attestation.py" \
+        /usr/libexec/vela/verify-attestation.py /usr/lib/vela/verify-attestation.py; do
+        if [ -f "$candidate" ]; then
+            helper="$candidate"
+            break
+        fi
+    done
+    if [ -z "$helper" ]; then
+        echo "vela-update: missing installed Sigstore verifier; refusing downloaded binary." >&2
+        return 1
+    fi
+    if ! python3 "$helper" --repository "$repo" --commit "$latestFull" \
+        --kind "$source_kind" "$artifact_path"; then
+        echo "vela-update: package provenance verification failed for $latestFull; refusing binary." >&2
+        return 1
+    fi
+}
+release_package=""
+release_url=""
+release_digest=""
+manifest_name=SHA256SUMS
+artifact_name=vela-git
+if [ "$backend" = fedora ]; then
+    manifest_name=SHA256SUMS-fedora
+    artifact_name=vela-fedora-rpm
+fi
+if [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1; then
+    release_url="https://github.com/$repo/releases/download/alpha-$latestFull"
+    manifest="$CACHE/public-release-SHA256SUMS"
+    # curl exit 22 covers every HTTP error, not only missing prereleases.
+    # Record the final response code, and suppress only an actual HTTP 404.
+    if response_code=$(curl -fsSL --write-out '%{http_code}' --connect-timeout 5 --max-time 20 \
+        -o "$manifest" "$release_url/$manifest_name" 2>"$CACHE/release-lookup-error.log"); then
+        if [ "$(wc -l < "$manifest")" -eq 1 ]; then
+            release_digest=$(awk 'NR == 1 {print $1}' "$manifest")
+            release_package=$(awk 'NR == 1 {print $2}' "$manifest")
+            package_name_valid=0
+            if [ "$backend" = arch ]; then
+                if printf '%s\n' "$release_package" |
+                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}-[[:digit:]]+-x86_64\.pkg\.tar\.zst$"; then
+                    package_name_valid=1
+                fi
+            else
+                if printf '%s\n' "$release_package" |
+                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}(\.fc[[:digit:]]+)?\.x86_64\.rpm$"; then
+                    package_name_valid=1
+                fi
+            fi
+            if ! printf '%s\n' "$release_digest" | grep -Eq '^[0-9a-f]{64}$' ||
+                [ "$package_name_valid" != 1 ]; then
+                echo "vela-update: invalid public release manifest for $latestFull (checksum or package name); trying alternatives." >&2
+                release_package=""
+            fi
+        else
+            echo "vela-update: invalid public release manifest for $latestFull (expected exactly one checksum entry); trying alternatives." >&2
+        fi
+    else
+        status=$?
+        # A 404 is normal; 403, 429, 5xx, TLS, DNS and timeouts are not.
+        # All failures still fall back safely to the local build.
+        if [ "$status" -ne 22 ] || [ "$response_code" != 404 ]; then
+            echo "vela-update: optional public release lookup failed (HTTP ${response_code:-unknown}, curl exit $status):" >&2
+            cat "$CACHE/release-lookup-error.log" >&2
+        fi
+    fi
+    rm -f "$manifest" "$CACHE/release-lookup-error.log"
+fi
+
+# Legacy 14-day workflow artifacts are an optional authenticated fallback,
+# mainly useful for manually built test branches without a public release.
+ciRun=""
+if [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
+    && command -v gh > /dev/null && gh auth status > /dev/null 2>&1; then
+    # PR package artifacts are deliberately unsigned. Select only main-push
+    # or manually dispatched builds (which attest their outputs), and search
+    # several successful runs in case a newer one lacks this distribution.
+    if runs=$(gh run list -R "$repo" -w build.yml -c "$latestFull" -s success -L 20 \
+        --json databaseId,event -q '.[] | select(.event == "push" or .event == "workflow_dispatch") | .databaseId' \
+        2>"$CACHE/gh-lookup-error.log"); then
+        for run in $runs; do
+            if artifacts=$(gh api "repos/$repo/actions/runs/$run/artifacts?per_page=100" \
+                -q ".artifacts[] | select(.name == \"$artifact_name\" and .expired == false) | .id" \
+                2>"$CACHE/gh-lookup-error.log"); then
+                if [ -n "$artifacts" ]; then
+                    ciRun="$run"
+                    break
+                fi
+            else
+                echo "vela-update: optional GitHub Actions artifact lookup failed for run $run:" >&2
+                cat "$CACHE/gh-lookup-error.log" >&2
+            fi
+        done
+    else
+        echo "vela-update: optional GitHub Actions run lookup failed:" >&2
+        cat "$CACHE/gh-lookup-error.log" >&2
+    fi
+    rm -f "$CACHE/gh-lookup-error.log"
+fi
+
+if [ "$check" = 1 ]; then
+    if [ -n "$release_package" ]; then
+        echo ":: Public alpha package found (signature is checked before installation)."
+    elif [ -n "$ciRun" ]; then
+        echo ":: GitHub already has the package: vela-update downloads it instead of building."
+    fi
+    exit 0
+fi
+
+mkdir -p "$PACKAGES"
+if [ -d "$CACHE/pacchetti" ]; then
+    mv -f "$CACHE"/pacchetti/* "$PACKAGES"/ 2> /dev/null || true
+    rm -rf "$CACHE/pacchetti" "$CACHE/scaricato" "$CACHE/costruzione" "$CACHE/sorgenti"
+fi
+
+# Only the last packages, to be able to go back.
+prune() {
+    if [ "$backend" = arch ]; then
+        ls -t "$PACKAGES"/vela-git-*.pkg.tar.* 2> /dev/null
+    else
+        ls -t "$PACKAGES"/vela-git-*.rpm 2> /dev/null
+    fi | tail -n +$((KEEP + 1)) | while read -r old; do
+        rm -f "$old"
+    done
+}
+
+# Prefer a public release if its checksum AND signed build provenance verify.
+# Failed verification must never install or cache an untrusted package.
+if [ -n "$release_package" ]; then
+    DOWNLOAD=$(mktemp -d "$CACHE/download.XXXXXXXX")
+    printf '%s  %s\n' "$release_digest" "$release_package" > "$DOWNLOAD/SHA256SUMS"
+    echo ":: Downloading public alpha package for $latestFull"
+    if curl -fsSL --retry 2 --connect-timeout 5 --max-time 180 \
+        -o "$DOWNLOAD/$release_package" "$release_url/$release_package" \
+        && (cd "$DOWNLOAD" && sha256sum --check --quiet SHA256SUMS) \
+        && verifyProvenance "$DOWNLOAD/$release_package" release; then
+        mv -f "$DOWNLOAD/$release_package" "$PACKAGES/"
+        rm -rf -- "$DOWNLOAD"
+        DOWNLOAD=""
+        package="$PACKAGES/$release_package"
+        if ! installPackage "$package"; then
+            echo "vela-update: the verified package was downloaded but not installed. To install it:" >&2
+            echo "   $(packageLabel) $package" >&2
+            exit 1
+        fi
+        prune
+        echo ":: Vela is up to date ($(packageVersion)). The new version"
+        echo "   starts with your next session: sign out and back in."
+        exit 0
+    fi
+    echo ":: Public package unavailable, unverified or corrupt; building or checking alternatives." >&2
+    rm -rf -- "$DOWNLOAD"
+    DOWNLOAD=""
+fi
+
+# Package ready on GitHub Actions: download it or build? Without a terminal
+# (or with --download) it's downloaded.
+if [ -n "$ciRun" ]; then
+    answer=d
+    if [ "$prefer" != download ] && [ -t 0 ]; then
+        printf ':: GitHub already has the package built for this version.\n'
+        printf '   Download and install it [D], or build it here [b]? '
+        read -r answer || answer=d
+    fi
+    case "$answer" in
+    b | B | build) ciRun="" ;;
+    esac
+fi
+if [ -n "$ciRun" ]; then
+    DOWNLOAD=$(mktemp -d "$CACHE/download.XXXXXXXX")
+    echo ":: Downloading the package from GitHub"
+    if gh run download "$ciRun" -R "$repo" -n "$artifact_name" -D "$DOWNLOAD"; then
+        if [ "$backend" = arch ]; then
+            package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest"-*.pkg.tar.* 2> /dev/null | head -n 1)
+        else
+            package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2> /dev/null | head -n 1)
+        fi
+    else
+        package=""
+    fi
+    if [ -n "$package" ] && verifyProvenance "$package" workflow; then
+        mv -f "$package" "$PACKAGES/"
+        rm -rf -- "$DOWNLOAD"
+        DOWNLOAD=""
+        package="$PACKAGES/$(basename "$package")"
+        if ! installPackage "$package"; then
+            echo "vela-update: the package was downloaded but not installed. To install it:" >&2
+            echo "   $(packageLabel) $package" >&2
+            exit 1
+        fi
+        prune
+        echo ":: Vela is up to date ($(packageVersion)). The new version"
+        echo "   starts with your next session: sign out and back in."
+        exit 0
+    fi
+    rm -rf -- "$DOWNLOAD"
+    DOWNLOAD=""
+    echo ":: The GitHub package is unavailable or not verified: building it here." >&2
+fi
+
+# Build exactly the selected commit with the distribution's native tooling.
+WORK=$(mktemp -d "$CACHE/build.XXXXXXXX")
+if [ "$backend" = arch ]; then
+    if ! git -C "$MIRROR" show "$latestFull:packaging/arch/PKGBUILD" > "$WORK/PKGBUILD"; then
+        echo "vela-update: cannot read PKGBUILD from selected revision $latestFull." >&2
+        exit 1
+    fi
+    git -C "$MIRROR" update-ref refs/vela-update/selected "$latestFull"
+    export VELA_GIT_URL="file://$MIRROR#commit=$latestFull"
+    if [ -n "$jobs" ]; then export MAKEFLAGS="-j$jobs"; fi
+else
+    if ! command -v rpmbuild >/dev/null 2>&1; then
+        echo "vela-update: install RPM build tools first: sudo dnf install rpm-build dnf5-plugins" >&2
+        exit 1
+    fi
+    mkdir -p "$WORK"/BUILD "$WORK"/BUILDROOT "$WORK"/RPMS "$WORK"/SOURCES "$WORK"/SPECS
+    if ! git -C "$MIRROR" show "$latestFull:packaging/fedora/vela.spec" > "$WORK/SPECS/vela.spec"; then
+        echo "vela-update: this revision has no Fedora RPM spec ($latestFull)." >&2
+        exit 1
+    fi
+    version=$(git -C "$MIRROR" show "$latestFull:CMakeLists.txt" |
+        sed -n 's/^[[:space:]]*VERSION[[:space:]]\([0-9][0-9.]*\).*/\1/p' | head -n 1)
+    if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+(\.[0-9]+)+$'; then
+        echo "vela-update: invalid or missing project version in selected revision." >&2
+        exit 1
+    fi
+    if ! git -C "$MIRROR" archive --format=tar.gz --prefix="vela-$version/" "$latestFull" > "$WORK/SOURCES/vela-$version.tar.gz"; then
+        echo "vela-update: could not archive revision $latestFull for rpmbuild." >&2
+        exit 1
+    fi
+    # The SPEC requires vela_version even when DNF is only resolving BuildRequires.
+    if ! sudo dnf builddep -y --define "vela_version $version" "$WORK/SPECS/vela.spec"; then
+        echo "vela-update: unable to install Fedora build dependencies (requires dnf5-plugins)." >&2
+        exit 1
+    fi
+    count=$(git -C "$MIRROR" rev-list --count "$latestFull")
+    RPM_BUILD_NCPUS=$(nproc)
+    [ -z "$jobs" ] || RPM_BUILD_NCPUS="$jobs"
+    export RPM_BUILD_NCPUS
+fi
+cd "$WORK"
+echo ":: Building the $backend package"
+if [ ! -t 0 ] && ! command -v setsid >/dev/null 2>&1; then
+    echo "vela-update: setsid (util-linux) is required for unattended builds" >&2
+    exit 1
+fi
+if [ "$backend" = arch ]; then
+    if [ -t 0 ]; then
+        BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
+            makepkg --syncdeps --install --clean --force <&0 9>&- &
+        build_isolated=0
+    else
+        BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
+            setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
+        build_isolated=1
+    fi
+elif [ -t 0 ]; then
+    rpmbuild -bb "$WORK/SPECS/vela.spec" \
+        --define "_topdir $WORK" --define "vela_version $version" --define "vela_commit $latestFull" \
+        --define "vela_short $latest" --define "vela_count $count" <&0 9>&- &
+    build_isolated=0
+else
+    setsid --wait rpmbuild -bb "$WORK/SPECS/vela.spec" \
+        --define "_topdir $WORK" --define "vela_version $version" --define "vela_commit $latestFull" \
+        --define "vela_short $latest" --define "vela_count $count" <&0 9>&- &
+    build_isolated=1
+fi
+makepkg_pid=$!
+if wait "$makepkg_pid"; then build_ok=1; else build_ok=0; fi
+makepkg_pid=""
+if [ "$backend" = fedora ] && [ "$build_ok" = 1 ]; then
+    built=$(ls "$WORK"/RPMS/x86_64/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
+    if [ -z "$built" ]; then
+        echo "vela-update: rpmbuild did not produce the selected revision." >&2
+        build_ok=0
+    else
+        mv -f "$built" "$PACKAGES/"
+        built="$PACKAGES/$(basename "$built")"
+        if ! installPackage "$built"; then build_ok=0; fi
+    fi
+fi
+if [ "$build_ok" = 0 ]; then
+    echo >&2
+    if [ "$backend" = arch ]; then
+        built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2>/dev/null | head -n 1)
+    else
+        built=$(ls -t "$PACKAGES"/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
+    fi
+    if [ -n "$built" ]; then
+        echo "vela-update: the package is ready but wasn't installed. To install it:" >&2
+        echo "   $(packageLabel) $built" >&2
+        exit 1
+    fi
+    echo "vela-update: the update failed (see the messages above)." >&2
+    echo "If the compiler crashed (\"internal compiler error\"), try again" >&2
+    echo "with fewer parallel jobs: vela-update --jobs 2" >&2
+    exit 1
+fi
+cd "$CACHE"
+rm -rf -- "$WORK"
+WORK=""
+prune
+echo ":: Vela is up to date ($(packageVersion)). The new version"
+echo "   starts with your next session: sign out and back in."

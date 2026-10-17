@@ -160,7 +160,7 @@ Window {
 
                     Repeater {
                         model: root.candidates
-                        delegate: Rectangle {
+                        delegate: Fill {
                             id: card
                             required property var modelData
                             width: space.cardWidth
@@ -169,16 +169,14 @@ Window {
                             color: cardMouse.containsMouse ? Theme.taskCardHover : Theme.taskCard
                             border.width: cardMouse.containsMouse ? 2 : 1
                             border.color: cardMouse.containsMouse ? Theme.accent : Theme.stroke
+                            Behavior on border.color { ColorFade {} }
                             Row {
                                 x: 10
                                 y: 8
                                 width: parent.width - 20
                                 spacing: 8
-                                Image {
-                                    width: 16
-                                    height: 16
-                                    source: Theme.icons + encodeURIComponent(card.modelData.icon)
-                                    sourceSize: Qt.size(width, height)
+                                Icon {
+                                    name: card.modelData.icon
                                 }
                                 Text {
                                     width: parent.width - 24

@@ -118,13 +118,18 @@ Item {
             width: view.cellWidth
             height: view.cellHeight
             readonly property bool small: view.mode === "small"
+            // A recycled cell takes its new file's state at once.
+            GridView.onPooled: fill.animated = false
+            GridView.onReused: fill.animated = true
 
-            Rectangle {
+            Fill {
+                id: fill
+                objectName: "cellFill"
                 anchors { fill: parent; margins: 2 }
                 radius: Theme.radius
                 color: cellDrop.containsDrag ? Theme.selectionHover
                     : cell.selected ? (cellMouse.containsMouse ? Theme.selectionHover : Theme.selection)
-                    : cellMouse.containsMouse ? Theme.subtleHover : "transparent"
+                    : cellMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 border.width: view.model.currentIndex === cell.index && view.tab.viewFocused ? 1 : 0
                 border.color: Theme.focusRing
             }

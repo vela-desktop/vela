@@ -2,17 +2,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
-execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    OUTPUT_VARIABLE VELA_REPORT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-if(NOT VELA_REPORT_COMMIT)
-    set(VELA_REPORT_COMMIT "unknown")
-endif()
-execute_process(COMMAND git status --porcelain --untracked-files=normal
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    OUTPUT_VARIABLE VELA_REPORT_CHANGES ERROR_QUIET)
+# An RPM archive is an immutable snapshot. When extracted within the CI Git
+# checkout, git status would inspect its parent repository and mark the RPM
+# dirty because of untracked rpmbuild/ files. Use explicit package provenance.
 set(VELA_REPORT_DIRTY "false")
-if(VELA_REPORT_CHANGES)
-    set(VELA_REPORT_DIRTY "true")
+if(DEFINED VELA_PACKAGE_COMMIT AND NOT VELA_PACKAGE_COMMIT STREQUAL "")
+    set(VELA_REPORT_COMMIT "${VELA_PACKAGE_COMMIT}")
+else()
+    execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        OUTPUT_VARIABLE VELA_REPORT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT VELA_REPORT_COMMIT)
+        set(VELA_REPORT_COMMIT "unknown")
+    endif()
+    execute_process(COMMAND git status --porcelain --untracked-files=normal
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        OUTPUT_VARIABLE VELA_REPORT_CHANGES ERROR_QUIET)
+    if(VELA_REPORT_CHANGES)
+        set(VELA_REPORT_DIRTY "true")
+    endif()
 endif()
 configure_file(vela-report.in vela-report @ONLY)
 file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/vela-report PERMISSIONS

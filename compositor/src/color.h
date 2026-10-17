@@ -16,8 +16,17 @@ float vela_srgb_to_linear(float c);
 // relative to the screen's normal white (6500 K).
 void vela_night_gains(double kelvin, float out[3]);
 
-// Windows' strength (0-100) in kelvin: from 6500 K (off) down to 1700 K.
+// The older setting, Windows' strength (0-100), in kelvin: from 6500 K
+// (off) down to 1700 K.
 double vela_night_kelvin(int strength);
+// Night light's color temperature from vela.conf: night-light-temperature in
+// kelvin, else the older night-light-strength (NULL or empty: absent; both
+// absent: 4200 K), clamped to VELA_NIGHT_KELVIN_MIN..MAX and rounded to
+// 100 K.
+#define VELA_NIGHT_KELVIN_MIN 1700
+#define VELA_NIGHT_KELVIN_MAX 6500
+#define VELA_NIGHT_KELVIN_DEFAULT 4200
+int vela_night_temperature(const char *temperature, const char *strength);
 
 extern const float vela_identity[9];
 

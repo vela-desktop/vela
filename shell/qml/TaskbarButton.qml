@@ -32,15 +32,10 @@ Item {
     width: 44
     height: 40
 
-    Rectangle {
+    Fill {
         anchors.fill: parent
         radius: Theme.radius
-        color: mouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-        opacity: mouse.containsMouse || root.active ? 1 : 0
-
-        Behavior on opacity {
-            NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        }
+        color: mouse.pressed ? Theme.subtlePressed : mouse.containsMouse || root.active ? Theme.subtleHover : Theme.subtleRest
     }
 
     Item {
@@ -48,11 +43,9 @@ Item {
         anchors.centerIn: parent
         width: 26
         height: 26
-        scale: mouse.pressed ? 0.84 : 1
+        scale: mouse.pressed ? 1 - 0.16 * Theme.motion : 1
 
-        Behavior on scale {
-            NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        }
+        Behavior on scale { Eased {} }
     }
 
     // Indicator under the icon: app open / active (or Start menu open)
@@ -67,11 +60,10 @@ Item {
         opacity: root.active || root.running ? 1 : 0
 
         Behavior on width {
-            NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
+            enabled: Theme.motion > 0
+            Eased {}
         }
-        Behavior on color {
-            ColorAnimation { duration: Theme.fast }
-        }
+        Behavior on color { ColorFade {} }
         Behavior on opacity {
             NumberAnimation { duration: Theme.fast }
         }

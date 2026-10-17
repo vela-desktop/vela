@@ -46,7 +46,7 @@ Page {
             spacing: 8
             Button {
                 subtle: true
-                icon: system.icon
+                icon.name: system.icon
                 Accessible.name: system.device && system.device.muted ? qsTr("Unmute") : qsTr("Mute")
                 usable: system.device !== undefined && !system.device.mutePending && !system.device.defaultError
                 onClicked: Audio.setMuted(system.kind, system.device.name, !system.device.muted)
@@ -57,7 +57,7 @@ Page {
                 to: 1
                 stepSize: system.device ? 1 / Math.min(50, system.device.intervals) : 0.02
                 value: system.device ? system.device.volume : 0
-                onMoved: value => Audio.setVolume(system.kind, system.device.name, value)
+                onMoved: Audio.setVolume(system.kind, system.device.name, value)
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -121,7 +121,7 @@ Page {
                     spacing: 8
                     Button {
                         subtle: true
-                        icon: app.modelData.muted ? "audio-volume-muted" : "audio-volume-high"
+                        icon.name: app.modelData.muted ? "audio-volume-muted" : "audio-volume-high"
                         Accessible.name: app.modelData.muted ? qsTr("Unmute") : qsTr("Mute")
                         onClicked: Audio.setAppMuted(app.modelData.key, !app.modelData.muted)
                     }
@@ -133,7 +133,7 @@ Page {
                             to: 1
                             stepSize: 0.02
                             value: app.modelData.volume
-                            onMoved: value => Audio.setAppVolume(app.modelData.key, value)
+                            onMoved: Audio.setAppVolume(app.modelData.key, value)
                         }
                         LevelBar {
                             x: 10

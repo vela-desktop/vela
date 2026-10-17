@@ -53,8 +53,10 @@ struct vela_element {
     struct wlr_box shadow_window;
     float shadow_sigma;
     // Blur behind the surface (ext-background-effect, §8.3): where, in pixels
-    // (empty: none).
+    // (empty: none), and whether it gets Vela's acrylic recipe (saturation and
+    // gray tint): only Vela's own surfaces do (docs/visual-coherence.md §6.7).
     struct wlr_box blur_box;
+    bool acrylic;
     bool visible; // not entirely covered
     int64_t visible_area; // uncovered pixels
     int order; // position in the list, from the bottom
@@ -109,9 +111,11 @@ struct vela_output_frame {
     struct vela_renderer *renderer;
     struct wlr_output *output;
     struct vela_output *owner;
-    struct wlr_damage_ring ring;
+    struct wlr_damage_ring ring; // buffer-age history in swapchain-buffer coordinates
+    pixman_region32_t scene_damage; // current scene damage in upright output coordinates
     int width, height;
     float scale;
+    enum wl_output_transform transform; // damage history is bound to this orientation
 
     // The previous frame and the one being built (they swap): the damage comes
     // from them.

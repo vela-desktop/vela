@@ -55,8 +55,9 @@ static inline bool vela_snap_valid(struct vela_snap s)
 struct vela_area vela_snap_area(const struct vela_output *output, struct vela_snap snap);
 
 // Snaps (or unsnaps, with vela_snap_none) the window; `output`: the output, if
-// not the one it's on.
-void vela_view_set_snap(struct vela_view *view, struct vela_snap side, struct vela_output *output);
+// not the one it's on. animate: false when it leaves its snap because it's
+// being dragged (it already follows the cursor).
+void vela_view_set_snap(struct vela_view *view, struct vela_snap side, struct vela_output *output, bool animate);
 // Realigns it to its snap on `output`.
 void vela_view_apply_snap(struct vela_view *view, struct vela_output *output);
 // Moved elsewhere: it's no longer with its group (a group of one window is no
@@ -85,7 +86,10 @@ struct vela_snapping {
     enum vela_snap_zone zone;
     struct vela_snap tile;
     struct vela_output *output;
-    struct vela_rect_node *rect; // below the dragged window, or NULL
+    // Below the dragged window, or NULL: a rectangle in a tree with rounded
+    // corners (radius 8, as Vela's other floating things), no shadow.
+    struct vela_tree *preview;
+    struct vela_rect_node *rect;
     double target_x, target_y, target_width, target_height; // the target area
     struct vela_tween tween;
     // Snap layouts with the mouse resting on Maximize.
@@ -101,9 +105,9 @@ void vela_snapping_destroy(struct vela_snapping *snapping);
 void vela_snap_keyboard(struct vela_server *server, struct vela_view *view, uint32_t sym);
 // While dragging: the preview according to where the cursor is.
 void vela_snap_update_zone(struct vela_server *server);
-// The preview lighting up (true while it animates) and whether there is one.
+// The preview lighting up at `now_ms` (true while it animates). Nothing to
+// retire: it ends with the drag.
 bool vela_snap_tick_preview(struct vela_server *server, double now_ms);
-bool vela_snap_preview_shown(const struct vela_server *server);
 // End of the drag; apply: the window snaps where it points.
 void vela_snap_end_zone(struct vela_server *server, bool apply);
 // After a snap: Snap Assist offers the other windows in the free spaces.

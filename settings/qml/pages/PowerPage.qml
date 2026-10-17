@@ -41,9 +41,9 @@ Page {
             icon: "system-lock-screen"
             title: qsTr("Lock the screen when it turns off")
             description: qsTr("You'll need your password to get back in")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.lockOnIdle
-                onToggled: on => Prefs.lockOnIdle = on
+                onToggled: Prefs.lockOnIdle = checked
             }
         }
         Card {

@@ -9,8 +9,11 @@ import Vela.Controls
 Window {
     id: root
     visible: false
-    width: label.implicitWidth + 64
-    height: 64
+    // The pill with room for its shadow around it (docs/visual-coherence.md
+    // §6.9).
+    readonly property real room: shadow.reach
+    width: room + motion.width + room
+    height: room + motion.height + room
     color: "transparent"
 
     property int last: -1 // not a binding: it's compared with the new one
@@ -29,37 +32,45 @@ Window {
         }
     }
 
+    // Shown again while leaving, it turns back from where it is.
     function show() {
         visible = true
-        Effects.setBlur(root, [Qt.rect(0, 0, width, height)])
-        pill.opacity = 0
-        fade.stop()
-        appear.restart()
+        motion.open()
+        Effects.setBlur(root, [motion.visibleArea])
         hideTimer.restart()
     }
+    Timer { id: hideTimer; interval: 900; onTriggered: motion.close() }
 
-    NumberAnimation { id: appear; target: pill; property: "opacity"; to: 1; duration: Theme.fast }
-    SequentialAnimation {
-        id: fade
-        NumberAnimation { target: pill; property: "opacity"; to: 0; duration: Theme.normal }
-        ScriptAction { script: root.visible = false }
-    }
-    Timer { id: hideTimer; interval: 900; onTriggered: fade.start() }
+    // It only fades.
+    PanelMotion {
+        id: motion
+        x: root.room
+        y: root.room
+        width: label.implicitWidth + 64
+        height: 64
+        onClosed: root.visible = false
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea])
 
-    Rectangle {
-        id: pill
-        anchors.fill: parent
-        radius: Theme.radiusOverlay
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.stroke
-        Text {
-            id: label
-            anchors.centerIn: parent
-            text: Desktops.names[Desktops.current] || ""
-            color: Theme.text
-            font.pixelSize: 20
-            font.weight: Font.DemiBold
+        Shadow {
+            id: shadow
+            target: pill
+        }
+
+        Rectangle {
+            id: pill
+            anchors.fill: parent
+            radius: Theme.radiusOverlay
+            color: Theme.surface
+            border.width: 1
+            border.color: Theme.stroke
+            Text {
+                id: label
+                anchors.centerIn: parent
+                text: Desktops.names[Desktops.current] || ""
+                color: Theme.text
+                font.pixelSize: 20
+                font.weight: Font.DemiBold
+            }
         }
     }
 }

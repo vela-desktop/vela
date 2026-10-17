@@ -7,6 +7,7 @@
 #include "geometry.h"
 #include "layer.h"
 #include "listen.h"
+#include "motion.h"
 #include "nested.h"
 #include "output_config.h"
 #include "output_key.h"
@@ -376,16 +377,27 @@ static void handle_idle_frame(void *data)
     on_frame_event(output);
 }
 
+static void request_frame(struct vela_output *output);
+
 void vela_output_schedule_frame(struct vela_output *output)
 {
-    output->frame_requested = true;
+    if (output->server->ticking) {
+        output->animation_requested = true;
+    } else {
+        output->frame_requested = true;
+    }
+    request_frame(output);
+}
+
+static void request_frame(struct vela_output *output)
+{
     // Like wlroots with DRM: if no delivered frame is still waiting for the
     // vblank, "frame" comes at once; otherwise with the page flip.
     // wlr_output_schedule_frame isn't used: it would mark the output as
     // needing a commit even when nothing on it changes (an empty commit, which
     // with DRM blocks until the vblank).
     bool waiting = output->vblank_fd >= 0 ? output->awaiting_present : output->wlr->frame_pending;
-    if (!waiting && !output->latch_armed && !output->idle_frame) {
+    if (!waiting && !output->drawing && !output->latch_armed && !output->idle_frame) {
         output->idle_frame = wl_event_loop_add_idle(output->server->loop, handle_idle_frame, output);
     }
 }
@@ -427,7 +439,8 @@ static int handle_latch_timer(int fd, uint32_t mask, void *data)
 
 static void on_frame_event(struct vela_output *output)
 {
-    if (output->latch_armed || (!output->frame_requested && !output->wlr->needs_frame)) {
+    if (output->latch_armed
+        || (!output->frame_requested && !output->animation_requested && !output->wlr->needs_frame)) {
         return; // already planned, or nothing to do
     }
     collect_costs(output);
@@ -441,7 +454,13 @@ static void on_frame_event(struct vela_output *output)
         return;
     }
     int64_t now = vela_now_ns();
-    output->plan = vela_frame_clock_plan(&output->clock, now, output->latching);
+    // For the animations alone, after an empty frame, from its vblank: planned
+    // from now, an output with nothing to draw while an animation runs
+    // elsewhere would draw the same moment again and again until that vblank.
+    // A change is planned from now: it may still make that vblank.
+    bool animations_only = !output->frame_requested && !output->wlr->needs_frame;
+    int64_t from = animations_only && output->empty_until > now ? output->empty_until : now;
+    output->plan = vela_frame_clock_plan(&output->clock, from, output->latching);
     output->planned = true;
     if (output->plan.start - now > 50000) {
         arm_latch(output, output->plan.start);
@@ -514,9 +533,15 @@ static void on_frame(struct vela_output *output)
     struct vela_frame_plan plan = output->planned ? output->plan : vela_frame_clock_plan(&output->clock, now, false);
     output->planned = false;
     output->frame_requested = false;
+    output->animation_requested = false;
 
     // First every animation advances to the moment this frame will become
     // light (docs/renderer.md §4.2), then it draws.
+    if (vela_motion_logger) {
+        wlr_log(WLR_INFO, "animation: frame %s present %.6f wall %.6f", output->wlr->name, plan.present / 1e6,
+            now / 1e6);
+    }
+    output->drawing = true;
     vela_server_animate(output->server, plan.present);
 
     struct wlr_box area = vela_output_box(output);
@@ -526,6 +551,11 @@ static void on_frame(struct vela_output *output)
     bool vrr_change = vrr_state(output, &vrr);
     bool rendered = vela_output_frame_render(output->frame, area.x, area.y, vrr_change ? &vrr : NULL);
     wlr_output_state_finish(&vrr);
+    output->drawing = false;
+    output->empty_until = rendered ? 0 : plan.deadline;
+    if (!rendered && (output->frame_requested || output->animation_requested)) {
+        request_frame(output); // nothing delivered: no vblank will ask
+    }
     if (rendered) {
         vela_server_output_rendered(output->server, output);
         const struct vela_frame_delivered *delivered = &output->frame->delivered;

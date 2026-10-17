@@ -272,13 +272,39 @@ struct vela_output *vela_view_output(struct vela_view *view)
     return output ? output : vela_output_under_cursor(view->server);
 }
 
+// The taskbar showing a window's button, if it still exists.
+static struct vela_layer_surface *taskbar_layer(struct vela_server *server, struct wlr_surface *surface)
+{
+    struct vela_layer_surface *layer;
+    wl_list_for_each (layer, &server->layer_surfaces, link) {
+        if (layer->wlr->surface == surface) {
+            return layer;
+        }
+    }
+    return NULL;
+}
+
 struct wlr_box vela_view_minimize_target(struct vela_view *view)
 {
-    if (view->taskbar_rect.width > 0) {
-        return view->taskbar_rect;
+    // Its button on the taskbar of its own output: every output has a
+    // taskbar, and a window flying to another output's would leave the screen
+    // at once.
+    struct vela_output *output = vela_view_output(view);
+    for (int i = 0; output && i < VELA_TASKBAR_BUTTONS; ++i) {
+        struct vela_layer_surface *layer = view->taskbar_buttons[i].surface
+            ? taskbar_layer(view->server, view->taskbar_buttons[i].surface)
+            : NULL;
+        if (layer && layer->mapped && layer->wlr->output == output->wlr) {
+            double lx = 0.0;
+            double ly = 0.0;
+            vela_node_coords(&layer->tree->node, &lx, &ly);
+            struct wlr_box box = view->taskbar_buttons[i].box;
+            box.x += (int)lround(lx);
+            box.y += (int)lround(ly);
+            return box;
+        }
     }
     // Unknown button: the center of the output's bottom edge.
-    struct vela_output *output = vela_view_output(view);
     struct wlr_box area = output ? vela_output_box(output) : (struct wlr_box) { 0, 0, 1920, 1080 };
     return (struct wlr_box) { area.x + area.width / 2 - 24, area.y + area.height - 48, 48, 48 };
 }
@@ -298,7 +324,14 @@ struct wlr_box vela_view_restore_box(struct vela_view *view)
     }
     const struct wlr_box area = output->usable;
     struct wlr_box frame = { 0, 0, area.width * 2 / 3, area.height * 2 / 3 };
-    if (view->x11 && view->x11_initial.width > 0 && view->x11_initial.height > 0) {
+    // A game opened directly in fullscreen may report its monitor-sized
+    // geometry as the "initial" X11 size. Restoring that would recreate the
+    // same oversized window instead of making a usable normal window.
+    struct wlr_box full = vela_output_box(output);
+    bool initial_fullscreen = view->x11 && view->x11_initial.width >= full.width
+        && view->x11_initial.height >= full.height;
+    if (view->x11 && !initial_fullscreen && view->x11_initial.width > 0
+        && view->x11_initial.height > 0) {
         frame.width = view->x11_initial.width;
         frame.height = view->x11_initial.height + (view->decoration ? VELA_DECORATION_HEIGHT : 0);
     }
@@ -508,31 +541,36 @@ static void handle_taskbar_rectangle(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, handle_rectangle);
     struct wlr_foreign_toplevel_handle_v1_set_rectangle_event *event = data;
-    // The taskbar tells us where this window's button is, in its surface
-    // coordinates: we bring it to global coordinates.
-    view->taskbar_rect = (struct wlr_box) { 0 };
-    if (event->width <= 0 || event->height <= 0) {
-        return;
-    }
-    struct vela_layer_surface *layer;
-    wl_list_for_each (layer, &view->server->layer_surfaces, link) {
-        if (layer->wlr->surface == event->surface) {
-            double lx = 0.0;
-            double ly = 0.0;
-            vela_node_coords(&layer->tree->node, &lx, &ly);
-            view->taskbar_rect = (struct wlr_box) {
-                (int)lround(lx) + event->x,
-                (int)lround(ly) + event->y,
-                event->width,
-                event->height,
-            };
-            return;
+    // A taskbar tells us where this window's button is, in its surface
+    // coordinates; each taskbar (one per output) its own. An empty one: no
+    // button there.
+    int slot = -1;
+    for (int i = 0; i < VELA_TASKBAR_BUTTONS; ++i) {
+        struct wlr_surface *surface = view->taskbar_buttons[i].surface;
+        if (surface == event->surface) {
+            slot = i;
+            break;
+        }
+        // A free slot, or one of a taskbar that is gone.
+        if (slot < 0 && (!surface || !taskbar_layer(view->server, surface))) {
+            slot = i;
         }
     }
+    if (slot < 0) {
+        return;
+    }
+    bool shown = event->width > 0 && event->height > 0;
+    view->taskbar_buttons[slot].surface = shown ? event->surface : NULL;
+    view->taskbar_buttons[slot].box = (struct wlr_box) { event->x, event->y, event->width, event->height };
 }
 
 static void create_taskbar_handle(struct vela_view *view)
 {
+#if WLR_HAS_XWAYLAND
+    if (view->x11 && view->x11->skip_taskbar) {
+        return; // _NET_WM_STATE_SKIP_TASKBAR (Wine's fullscreen backdrop)
+    }
+#endif
     struct wlr_foreign_toplevel_handle_v1 *handle
         = wlr_foreign_toplevel_handle_v1_create(view->server->foreign_toplevels);
     view->handle = handle;
@@ -567,7 +605,7 @@ static void destroy_taskbar_handle(struct vela_view *view)
     vela_unlisten(&view->handle_rectangle);
     wlr_foreign_toplevel_handle_v1_destroy(view->handle);
     view->handle = NULL;
-    view->taskbar_rect = (struct wlr_box) { 0 };
+    memset(view->taskbar_buttons, 0, sizeof(view->taskbar_buttons));
 }
 
 static void create_handles(struct vela_view *view)
@@ -615,17 +653,24 @@ void vela_view_set_activated(struct vela_view *view, bool on)
 
 static void apply_open_frame(struct vela_view *view, double progress)
 {
-    // Maximized and fullscreen windows only fade in.
-    int rise = (view->maximized || view->fullscreen) ? 0 : VELA_WINDOW_OPEN_RISE;
-    vela_node_set_position(&view->tree->node, view->target_x, view->target_y + round((1.0 - progress) * rise));
+    // Maximized and fullscreen windows only fade in, and so does every window
+    // without animation effects.
+    int rise = (view->maximized || view->fullscreen || !vela_motion_effects()) ? 0 : VELA_WINDOW_OPEN_RISE;
+    double y = view->target_y + (1.0 - progress) * rise;
+    vela_node_set_position(&view->tree->node, view->target_x, y);
     // Opacity reaches 1 a little before the motion ends: the window is
     // readable at once, the final motion is just "settling".
-    vela_node_set_opacity(&view->tree->node, (float)fmin(1.0, progress * 1.4));
+    float opacity = (float)fmin(1.0, progress * 1.4);
+    vela_node_set_opacity(&view->tree->node, opacity);
+    if (vela_motion_logger) {
+        wlr_log(WLR_INFO, "animation: open #%u geometry %.3f %.3f 1 1 opacity %.3f", view->open_tween.serial,
+            view->target_x, y, opacity);
+    }
 }
 
 static void start_open_animation(struct vela_view *view)
 {
-    vela_tween_start(&view->open_tween, VELA_WINDOW_OPEN_MS, &vela_decelerate);
+    vela_tween_start(&view->open_tween, "open", vela_motion_ms(VELA_WINDOW_OPEN_MS), &vela_decelerate);
     view->animating = true;
     view->open_frames = 0;
     apply_open_frame(view, 0.0);
@@ -641,17 +686,20 @@ void vela_view_finish_open_animation(struct vela_view *view)
     apply_open_frame(view, 1.0);
 }
 
-bool vela_views_tick(struct vela_server *server, double now_ms)
+bool vela_views_tick(struct vela_server *server, double now_ms, double wall_ms)
 {
     bool running = false;
     struct vela_view *view, *next;
     wl_list_for_each_safe (view, next, &server->views, link) {
+        if (view->decoration) {
+            running |= vela_decoration_tick(view->decoration, now_ms, wall_ms);
+        }
         if (!view->animating) {
             continue;
         }
         apply_open_frame(view, vela_tween_progress(&view->open_tween, now_ms));
         ++view->open_frames;
-        if (vela_tween_finished(&view->open_tween, now_ms)) {
+        if (vela_tween_retired(&view->open_tween, wall_ms)) {
             wlr_log(WLR_DEBUG, "Open animation: %d frames", view->open_frames);
             vela_view_finish_open_animation(view);
         } else {
@@ -661,29 +709,23 @@ bool vela_views_tick(struct vela_server *server, double now_ms)
     return running;
 }
 
-bool vela_views_animating(struct vela_server *server)
+// Apps with their own shadow margins (GTK) keep their own corners too.
+static bool has_own_shadow(const struct vela_view *view)
 {
-    struct vela_view *view;
-    wl_list_for_each (view, &server->views, link) {
-        if (view->animating) {
-            return true;
-        }
+    if (!view->xdg || !view->xdg->base->surface) {
+        return false;
     }
-    return false;
+    struct wlr_box g = view->xdg->base->geometry;
+    int width = view->xdg->base->surface->current.width;
+    int height = view->xdg->base->surface->current.height;
+    return g.x > 0 || g.y > 0 || (g.width > 0 && g.width < width) || (g.height > 0 && g.height < height);
 }
 
 void vela_view_update_shape(struct vela_view *view)
 {
     struct vela_shape shape = { 0 };
-    bool own_shadow = false;
-    if (view->xdg && view->xdg->base->surface) {
-        struct wlr_box g = view->xdg->base->geometry;
-        int width = view->xdg->base->surface->current.width;
-        int height = view->xdg->base->surface->current.height;
-        own_shadow = g.x > 0 || g.y > 0 || (g.width > 0 && g.width < width) || (g.height > 0 && g.height < height);
-    }
     if (view->mapped && !view->minimized && !view->maximized && !view->fullscreen && vela_snap_is_none(view->snap)
-        && !own_shadow) {
+        && !has_own_shadow(view)) {
         struct wlr_box g = vela_view_geometry(view);
         if (g.width > 0 && g.height > 0) {
             shape.enabled = true;
@@ -709,21 +751,33 @@ static void apply_maximized(struct vela_view *view)
     }
     vela_view_send_maximized(view, true);
     struct vela_placement place = vela_output_place(output, vela_output_usable_area(output));
+    // Set the scene position first. vela_view_configure_size() sends an X11
+    // ConfigureWindow request using the scene node's *current* coordinates.
+    // Sending the new size first leaves Xwayland at the old window position.
+    vela_view_keep_in_place(view);
     vela_view_configure_size(view, place.width, place.height);
     if (view->handle) {
         wlr_foreign_toplevel_handle_v1_set_maximized(view->handle, true);
     }
-    vela_view_keep_in_place(view);
 }
 
 // Back to the free frame it had before being maximized or fullscreen.
 static void restore(struct vela_view *view)
 {
     struct wlr_box back = vela_view_restore_box(view);
-    vela_view_configure_size(view, back.width, back.height);
     if (view->mapped && back.width > 0) {
         struct wlr_box geometry = vela_view_geometry(view);
         vela_node_set_position(&view->tree->node, back.x - geometry.x, back.y - geometry.y);
+    }
+    // For X11, configure after positioning: size-only then move-only
+    // configurations can leave the X11 window offset from Vela's scene.
+    vela_view_configure_size(view, back.width, back.height);
+}
+
+void vela_view_morph(struct vela_view *view, struct wlr_box to, bool corners)
+{
+    if (view->mapped && !view->minimized && view->tree->node.enabled && vela_view_on_current_workspace(view)) {
+        vela_snapshot_morph(view->server, view, to, corners && !has_own_shadow(view) ? CORNER_RADIUS : 0.0);
     }
 }
 
@@ -740,18 +794,13 @@ void vela_view_set_maximized(struct vela_view *view, bool on, bool animate)
         return;
     }
     vela_view_finish_open_animation(view);
-    // Like Windows 11: the window morphs into the new frame.
-    animate = animate && view->mapped && !view->minimized && view->tree->node.enabled
-        && vela_view_on_current_workspace(view);
 
     if (on) {
-        if (animate) {
-            struct vela_output *output = vela_view_output(view);
-            if (output) {
-                struct vela_placement place = vela_output_place(output, vela_output_usable_area(output));
-                vela_snapshot_morph(view->server, view,
-                    (struct wlr_box) { (int)lround(place.x), (int)lround(place.y), place.width, place.height });
-            }
+        struct vela_output *output = vela_view_output(view);
+        if (animate && output) {
+            struct vela_placement place = vela_output_place(output, vela_output_usable_area(output));
+            vela_view_morph(
+                view, (struct wlr_box) { (int)lround(place.x), (int)lround(place.y), place.width, place.height }, false);
         }
         vela_view_leave_snap_group(view);
         if (view->mapped && vela_snap_is_none(view->snap)) {
@@ -768,7 +817,7 @@ void vela_view_set_maximized(struct vela_view *view, bool on, bool animate)
     }
 
     if (animate) {
-        vela_snapshot_morph(view->server, view, vela_view_restore_box(view));
+        vela_view_morph(view, vela_view_restore_box(view), true);
     }
     view->maximized = false;
     vela_view_send_maximized(view, false);
@@ -783,6 +832,12 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
 {
     if (!vela_view_configurable(view)) {
         return;
+    }
+    // Actual fullscreen state changes override an outstanding Wine restore
+    // hint. Redundant requests must not: Wine can echo fullscreen-off after
+    // Vela reconciled a popup -> decorated style change.
+    if (on != view->fullscreen) {
+        view->x11_wine_restore_fullscreen = false;
     }
     if (on == view->fullscreen) {
         if (view->xdg) {
@@ -802,13 +857,16 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         if (view->handle) {
             wlr_foreign_toplevel_handle_v1_set_fullscreen(view->handle, true);
         }
+        // Above taskbar and panels. Position the scene before configuring
+        // the X11 window so it gets the final fullscreen origin (not the
+        // old centered windowed origin) in the same ConfigureWindow request.
+        vela_node_reparent(&view->tree->node, view->server->layers.fullscreen);
+        vela_view_keep_below(view); // Wine's backdrop must not cover the game
+        vela_view_keep_in_place(view);
         if (output) {
             struct vela_placement place = vela_output_place(output, vela_output_full_area(output));
             vela_view_configure_size(view, place.width, place.height);
         }
-        // Above taskbar and panels.
-        vela_node_reparent(&view->tree->node, view->server->layers.fullscreen);
-        vela_view_keep_in_place(view);
         vela_view_refresh_decoration(view); // fullscreen hides the bar
         return;
     }
@@ -819,6 +877,7 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         wlr_foreign_toplevel_handle_v1_set_fullscreen(view->handle, false);
     }
     vela_node_reparent(&view->tree->node, view->server->layers.windows);
+    vela_view_keep_below(view);
     if (view->maximized) {
         apply_maximized(view);
     } else if (!vela_snap_is_none(view->snap)) {
@@ -907,7 +966,7 @@ static void move_to_output(struct vela_view *view, struct vela_output *output, i
 
 // Every listener of a view: they all start disconnected, so all of them
 // can be disconnected at the end.
-enum { VIEW_LISTENERS = 28 };
+enum { VIEW_LISTENERS = 32 };
 
 static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTENERS])
 {
@@ -932,8 +991,12 @@ static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTE
         &view->associate,
         &view->dissociate,
         &view->request_configure,
+        &view->map_request,
         &view->request_activate,
         &view->set_decorations,
+        &view->set_override_redirect,
+        &view->request_below,
+        &view->request_skip_taskbar,
         &view->handle_activate,
         &view->handle_close,
         &view->handle_maximize,
@@ -942,6 +1005,27 @@ static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTE
         &view->handle_rectangle,
     };
     memcpy(out, all, sizeof(all));
+}
+
+bool vela_view_stays_below(const struct vela_view *view)
+{
+#if WLR_HAS_XWAYLAND
+    return view->x11 && view->x11->below;
+#else
+    return false;
+#endif
+}
+
+void vela_view_keep_below(struct vela_view *view)
+{
+    struct vela_tree *parent = view->tree->node.parent;
+    if (!vela_view_stays_below(view) || !parent) {
+        return;
+    }
+    struct vela_node *bottom = wl_container_of(parent->children.next, bottom, link);
+    if (bottom != &view->tree->node) {
+        vela_node_place_below(&view->tree->node, bottom);
+    }
 }
 
 void vela_view_init(struct vela_view *view, struct vela_server *server)
@@ -1003,7 +1087,11 @@ void vela_view_mapped(struct vela_view *view)
     wl_list_insert(&server->views, &view->link);
     vela_workspaces_view_mapped(server, view);
     create_handles(view);
-    vela_focus_new_view(server, view);
+    if (vela_view_stays_below(view)) {
+        vela_view_keep_below(view); // no keyboard either: it is a backdrop
+    } else {
+        vela_focus_new_view(server, view);
+    }
     start_open_animation(view);
     vela_workspaces_announce(server);
 }

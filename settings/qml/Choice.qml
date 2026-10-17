@@ -29,8 +29,7 @@ C.ComboBox {
     }
     FontMetrics { id: metrics; font.pixelSize: Theme.fontBody }
 
-    background: Rectangle {
-        radius: Theme.radius
+    background: Fill {
         color: combo.pressed ? Theme.controlPressed : combo.hovered ? Theme.controlHover : Theme.control
         border.width: 1
         border.color: Theme.controlStroke
@@ -45,13 +44,11 @@ C.ComboBox {
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
     }
-    indicator: Text {
+    indicator: Chevron {
         x: combo.width - width - 12
         anchors.verticalCenter: parent.verticalCenter
-        text: "⌄"
+        down: true
         color: Theme.textSecondary
-        font.pixelSize: 14
-        topPadding: -6
     }
     delegate: C.ItemDelegate {
         id: entry
@@ -61,9 +58,8 @@ C.ComboBox {
         x: 4
         height: 36
         highlighted: combo.highlightedIndex === index
-        background: Rectangle {
-            radius: Theme.radius
-            color: entry.highlighted || entry.hovered ? Theme.subtleHover : "transparent"
+        background: Fill {
+            color: entry.highlighted || entry.hovered ? Theme.subtleHover : Theme.subtleRest
             Rectangle {
                 visible: combo.currentIndex === entry.index
                 anchors.verticalCenter: parent.verticalCenter

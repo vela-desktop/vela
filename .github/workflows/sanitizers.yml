@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Sanitizer Tests
-# PR validation only; post-merge build and packaging run in build.yml.
+# CPU-only sanitizer checks for PRs and cache priming on main.
 on:
   pull_request:
+  # Prime a reusable sanitizer cache on the default branch so PRs can restore it.
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -11,12 +14,42 @@ concurrency:
   group: sanitizer-tests-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      heavy: ${{ steps.paths.outputs.heavy }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 3
+      - id: paths
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != pull_request ] || ! git rev-parse 'HEAD^2' >/dev/null 2>&1; then
+            echo 'heavy=true' >> "$GITHUB_OUTPUT"
+          else
+            # Capture all changed paths; avoid grep -q / SIGPIPE with pipefail.
+            non_docs=$(git diff --name-only 'HEAD^1' 'HEAD^2' |
+                grep -Ev '^(docs/|README\.md$|CONTRIBUTING\.md$|SECURITY\.md$|.*\.md$)' || true)
+            if [ -n "$non_docs" ]; then
+              echo 'heavy=true' >> "$GITHUB_OUTPUT"
+            else
+              echo 'heavy=false' >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
   asan-ubsan:
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-sanitizers
-      CCACHE_MAXSIZE: 500M
+      CCACHE_MAXSIZE: 1G
       ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
       QT_QPA_PLATFORM: offscreen
@@ -37,14 +70,15 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache-sanitizers
-          key: ccache-arch-asan-ubsan-debug-v1-${{ github.sha }}
+          key: ccache-arch-asan-ubsan-debug-v2-${{ github.event.pull_request.base.sha || github.sha }}
           restore-keys: |
-            ccache-arch-asan-ubsan-debug-v1-
+            ccache-arch-asan-ubsan-debug-v2-
 
       - name: Configure ASan and UBSan
         run: >-
           cmake -S . -B build-sanitized -DCMAKE_BUILD_TYPE=Debug
           -DVELA_BUILD_TOOLS=ON
+          -DVELA_BUILD_GPU_TEST_TOOLS=OFF
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_C_FLAGS=-fsanitize=address,undefined\ -fno-omit-frame-pointer
@@ -64,13 +98,55 @@ jobs:
 
       - name: CPU-only sanitizer tests
         run: |
-          # The packaging-tests job in Build owns this suite for PRs.
-          # Explicit manual runs remain self-contained.
-          exclude='^(functional|sharpness)$'
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            exclude='^(functional|sharpness|packaging-update)$'
+          # The Build workflow owns packaging-update on PRs and on main.
+          # Keep explicit workflow_dispatch runs self-contained.
+          exclude='^
+      - name: Upload sanitizer test timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sanitizer-ctest-results
+          path: build-sanitized/sanitizer-ctest.xml
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Save failed test logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sanitizer-ctest-logs
+          path: build-sanitized/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 14
+
+          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
+            exclude='^packaging-update
+      - name: Upload sanitizer test timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sanitizer-ctest-results
+          path: build-sanitized/sanitizer-ctest.xml
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Save failed test logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sanitizer-ctest-logs
+          path: build-sanitized/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 14
+
           fi
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2 -E "$exclude"
+          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180 --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-ctest.xml" -LE gpu -E "$exclude"
+      - name: Upload sanitizer test timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sanitizer-ctest-results
+          path: build-sanitized/sanitizer-ctest.xml
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Save failed test logs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

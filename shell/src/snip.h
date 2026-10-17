@@ -9,6 +9,7 @@
 #include <QPointer>
 #include <QQmlComponent>
 #include <QQuickImageProvider>
+#include <QTimer>
 #include <QVariantList>
 
 class Clipboard;
@@ -61,6 +62,7 @@ private:
     bool m_active = false;
     QString m_mode = QStringLiteral("rect");
     int m_waiting = 0;
+    QTimer m_captureTimeout;
     QVariantList m_windows;
     QList<QPointer<QQuickWindow>> m_overlays;
     QHash<uint, QString> m_saved; // notification -> saved file

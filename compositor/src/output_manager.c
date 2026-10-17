@@ -11,6 +11,8 @@
 #include "server.h"
 #include "view.h"
 
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <wlr/backend/headless.h>
@@ -51,11 +53,43 @@ void vela_output_manager_update(struct vela_server *server)
     }
 }
 
+// Unlike Wayland's arbitrary global coordinates, XWayland's X11 root uses
+// 0,0 as its origin. Keep the *relative* monitor arrangement (including an
+// output above the primary), but translate the entire enabled layout so its
+// top-left enabled pixel is (0,0). Do not independently clamp heads: that
+// would overlap monitors and break window/output correspondence.
+static void configuration_origin(const struct wlr_output_configuration_v1 *config, int *x, int *y)
+{
+    int min_x = INT_MAX, min_y = INT_MAX;
+    struct wlr_output_configuration_head_v1 *head;
+    wl_list_for_each (head, &config->heads, link) {
+        if (!head->state.enabled) {
+            continue;
+        }
+        if (head->state.x < min_x) {
+            min_x = head->state.x;
+        }
+        if (head->state.y < min_y) {
+            min_y = head->state.y;
+        }
+    }
+    *x = min_x == INT_MAX ? 0 : min_x;
+    *y = min_y == INT_MAX ? 0 : min_y;
+}
+
 static bool test_configuration(const struct wlr_output_configuration_v1 *config)
 {
+    int origin_x, origin_y;
+    configuration_origin(config, &origin_x, &origin_y);
     struct wlr_output_configuration_head_v1 *head;
     wl_list_for_each (head, &config->heads, link) {
         if (!head->state.output->data) {
+            return false;
+        }
+        // The normalized coordinates must remain representable in the
+        // output layout's signed 32-bit positions.
+        if (head->state.enabled && ((int64_t)head->state.x - origin_x > INT_MAX
+            || (int64_t)head->state.y - origin_y > INT_MAX)) {
             return false;
         }
         struct wlr_output_state state;
@@ -70,6 +104,15 @@ static bool test_configuration(const struct wlr_output_configuration_v1 *config)
     return true;
 }
 
+// Remember each mapped window's original output coordinates. A normalization
+// translates every monitor together, so its windows (including restored frame
+// positions) must follow that output rather than remaining in the old area.
+struct vela_tracked_view {
+    struct vela_view *view;
+    struct wlr_output *output;
+    int x, y;
+};
+
 static bool commit_configuration(struct vela_server *server, const struct wlr_output_configuration_v1 *config,
     bool restoring)
 {
@@ -77,6 +120,22 @@ static bool commit_configuration(struct vela_server *server, const struct wlr_ou
     // the caller retains a snapshot for restoration in that case.
     if (!test_configuration(config)) {
         return false;
+    }
+    int origin_x, origin_y;
+    configuration_origin(config, &origin_x, &origin_y);
+    int tracked_count = wl_list_length(&server->views);
+    struct vela_tracked_view *tracked = calloc((size_t)tracked_count + 1, sizeof(*tracked));
+    if (!tracked) {
+        return false;
+    }
+    struct vela_view *view;
+    int n = 0;
+    wl_list_for_each (view, &server->views, link) {
+        struct vela_output *old = vela_view_output(view);
+        if (old && old->wlr->enabled && wlr_output_layout_get(server->output_layout, old->wlr)) {
+            struct wlr_box box = vela_output_box(old);
+            tracked[n++] = (struct vela_tracked_view) { view, old->wlr, box.x, box.y };
+        }
     }
     bool ok = true;
     struct wlr_output_configuration_head_v1 *head;
@@ -88,7 +147,8 @@ static bool commit_configuration(struct vela_server *server, const struct wlr_ou
         wlr_output_head_v1_state_apply(wanted, &state);
         if (wanted->enabled) {
             // Render the first new frame at its intended position.
-            wlr_output_layout_add(server->output_layout, wanted->output, wanted->x, wanted->y);
+            wlr_output_layout_add(server->output_layout, wanted->output,
+                wanted->x - origin_x, wanted->y - origin_y);
             ok = vela_output_commit_mode(output, &state);
         } else {
             struct wlr_box previous = { 0 };
@@ -110,14 +170,41 @@ static bool commit_configuration(struct vela_server *server, const struct wlr_ou
             break;
         }
     }
+    // Windows must travel with their output when we shift the coordinate
+    // origin. Restore boxes are *absolute* frame coordinates as well.
+    // This also keeps preview rollback stable when the old layout returns.
+    for (int i = 0; i < n; ++i) {
+        struct vela_tracked_view *entry = &tracked[i];
+        struct wlr_output_layout_output *layout
+            = wlr_output_layout_get(server->output_layout, entry->output);
+        if (!layout || !entry->output->enabled) {
+            continue; // A disabled head is rescued by check_outputs below.
+        }
+        struct wlr_box new_box = { 0 };
+        wlr_output_layout_get_box(server->output_layout, entry->output, &new_box);
+        int dx = new_box.x - entry->x;
+        int dy = new_box.y - entry->y;
+        if (dx || dy) {
+            view = entry->view;
+            vela_node_set_position(&view->tree->node, view->tree->node.x + dx, view->tree->node.y + dy);
+            if (view->restore.width > 0 && view->restore.height > 0) {
+                view->restore.x += dx;
+                view->restore.y += dy;
+            }
+            view->target_x += dx;
+            view->target_y += dy;
+            vela_view_sync_x11(view);
+        }
+    }
+    free(tracked);
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
         vela_output_arrange_layers(output);
     }
     vela_views_check_outputs(server);
-    struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
         vela_view_keep_in_place(view);
+        vela_view_sync_x11(view);
     }
     vela_scene_changed(server->scene);
     // Scale/rotation alone may not cause a layout-change notification.
@@ -259,8 +346,9 @@ void vela_test_output_command(struct vela_server *server, const char *arguments)
     }
     int width = 0;
     int height = 0;
+    double hz = 0.0; // add 1920x1080@180: with that refresh rate
     char name[64] = "";
-    if (sscanf(arguments, "add %dx%d", &width, &height) == 2 && width > 0 && height > 0) {
+    if (sscanf(arguments, "add %dx%d@%lf", &width, &height, &hz) >= 2 && width > 0 && height > 0) {
         struct wlr_output *wlr = wlr_headless_add_output(headless, (unsigned)width, (unsigned)height);
         // VELA_OUTPUT_SIZE applies to the initial outputs: this one has its
         // own.
@@ -268,11 +356,11 @@ void vela_test_output_command(struct vela_server *server, const char *arguments)
         if (output) {
             struct wlr_output_state state;
             wlr_output_state_init(&state);
-            wlr_output_state_set_custom_mode(&state, width, height, 0);
+            wlr_output_state_set_custom_mode(&state, width, height, (int32_t)(hz * 1000.0));
             vela_output_commit_mode(output, &state);
             wlr_output_state_finish(&state);
         }
-        wlr_log(WLR_INFO, "test-output: connected %s (%dx%d)", wlr ? wlr->name : "(none)", width, height);
+        wlr_log(WLR_INFO, "test-output: connected %s (%dx%d@%g)", wlr ? wlr->name : "(none)", width, height, hz);
     } else if (sscanf(arguments, "remove %63s", name) == 1) {
         struct vela_output *output = vela_output_named(server, name);
         if (output) {

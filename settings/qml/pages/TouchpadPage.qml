@@ -23,17 +23,17 @@ Page {
         Card {
             icon: "input-touchpad"
             title: qsTr("Touchpad")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.touchpad
-                onToggled: on => Prefs.touchpad = on
+                onToggled: Prefs.touchpad = checked
             }
         }
         Card {
             icon: "input-mouse"
             title: qsTr("Leave the touchpad on when a mouse is connected")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.touchpadWithMouse
-                onToggled: on => Prefs.touchpadWithMouse = on
+                onToggled: Prefs.touchpadWithMouse = checked
             }
         }
         Card {
@@ -57,9 +57,9 @@ Page {
             icon: "input-touchpad"
             title: qsTr("Tap with a single finger to single-click")
             description: qsTr("Two fingers for a right-click, tap and drag to move things")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.touchpadTap
-                onToggled: on => Prefs.touchpadTap = on
+                onToggled: Prefs.touchpadTap = checked
             }
         }
         Card {

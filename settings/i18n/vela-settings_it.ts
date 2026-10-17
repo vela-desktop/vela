@@ -117,6 +117,10 @@ Specifiche sistema
         <translation>Avanti</translation>
     </message>
     <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
         <source>Your PC&apos;s current name is </source>
         <translation>Il nome attuale del PC è </translation>
     </message>
@@ -194,6 +198,34 @@ Specifiche sistema
     <message>
         <source>Interaction</source>
         <translation>Interazione</translation>
+    </message>
+    <message>
+        <source>Visual effects</source>
+        <translation>Effetti visivi</translation>
+    </message>
+    <message>
+        <source>Animation effects</source>
+        <translation>Effetti di animazione</translation>
+    </message>
+    <message>
+        <source>Animation duration</source>
+        <translation>Durata delle animazioni</translation>
+    </message>
+    <message>
+        <source>How long they take, compared with Vela&apos;s suggested durations (the mark). Double-click the knob to go back to them</source>
+        <translation>Quanto durano, rispetto alle durate consigliate da Vela (la tacca). Doppio clic sul cursore per tornarci</translation>
+    </message>
+    <message>
+        <source>%1% (suggested)</source>
+        <translation>%1% (consigliata)</translation>
+    </message>
+    <message>
+        <source>%1%</source>
+        <translation>%1%</translation>
+    </message>
+    <message>
+        <source>Windows and panels move as they open, close and change. Off, they only fade, briefly</source>
+        <translation>Finestre e pannelli si muovono quando si aprono, si chiudono e cambiano. Disattivati, svaniscono soltanto, in breve</translation>
     </message>
     <message>
         <source>Sticky keys</source>
@@ -705,8 +737,8 @@ Specifiche sistema
 <context>
     <name>Dialog</name>
     <message>
-        <source>Cancel</source>
-        <translation>Annulla</translation>
+        <source>OK</source>
+        <translation>OK</translation>
     </message>
 </context>
 <context>
@@ -893,6 +925,10 @@ Specifiche sistema
 <context>
     <name>Displays</name>
     <message>
+        <source>Move this display to make room before changing its size or orientation.</source>
+        <translation>Sposta questo schermo per creare spazio prima di modificarne le dimensioni o l’orientamento.</translation>
+    </message>
+    <message>
         <source>The display connection was lost. Reopen Settings to try again.</source>
         <translation>La connessione agli schermi è stata interrotta. Riapri Impostazioni per riprovare.</translation>
     </message>
@@ -1017,6 +1053,10 @@ Specifiche sistema
     <message>
         <source>Uninstall </source>
         <translation>Disinstalla </translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
     </message>
     <message>
         <source>This app and its related info will be uninstalled. You may be asked for your password.</source>
@@ -1485,6 +1525,22 @@ Specifiche sistema
         <translation>sticky keys maiusc ctrl alt tastiera</translation>
     </message>
     <message>
+        <source>Animation effects</source>
+        <translation>Effetti di animazione</translation>
+    </message>
+    <message>
+        <source>animations motion reduce movement visual effects</source>
+        <translation>animazioni movimento ridurre effetti visivi</translation>
+    </message>
+    <message>
+        <source>Animation duration</source>
+        <translation>Durata delle animazioni</translation>
+    </message>
+    <message>
+        <source>animations speed slow fast duration</source>
+        <translation>animazioni velocità lente veloci durata</translation>
+    </message>
+    <message>
         <source>Local account</source>
         <translation>Account locale</translation>
     </message>
@@ -1714,6 +1770,10 @@ Specifiche sistema
         <translation>Avanti</translation>
     </message>
     <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
         <source>Enter the network security key</source>
         <translation>Immetti la chiave di sicurezza di rete</translation>
     </message>
@@ -1737,8 +1797,24 @@ Specifiche sistema
         <translation>Attiva ora</translation>
     </message>
     <message>
-        <source>Strength</source>
-        <translation>Intensità</translation>
+        <source>Color temperature</source>
+        <translation>Temperatura colore</translation>
+    </message>
+    <message>
+        <source>Lower is warmer; 6500 K is the screen&apos;s normal white</source>
+        <translation>Più è bassa, più è calda; 6500 K è il bianco normale dello schermo</translation>
+    </message>
+    <message>
+        <source>%1 K</source>
+        <translation>%1 K</translation>
+    </message>
+    <message>
+        <source>Experimental NVIDIA fix</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use Vulkan instead of the monitor&apos;s gamma LUT if Night light causes broken colors. May disable direct scanout.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Schedule night light</source>
@@ -2096,6 +2172,10 @@ Specifiche sistema
         <translation>Rinomina il dispositivo</translation>
     </message>
     <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
         <source>Leave it empty to use the device&apos;s own name. Other apps show the new name after you sign in again.</source>
         <translation>Lascialo vuoto per usare il nome del dispositivo. Le altre app mostrano il nuovo nome dopo il prossimo accesso.</translation>
     </message>
@@ -2236,6 +2316,17 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>Switch</name>
+    <message>
+        <source>On</source>
+        <translation>Attivato</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Disattivato</translation>
+    </message>
+</context>
+<context>
     <name>System</name>
     <message>
         <source>; echo; read -r -p &apos;Press Enter to close&apos; _</source>
@@ -2336,6 +2427,14 @@ Specifiche sistema
         <translation>Con più monitor: Start, le app e l&apos;orologio su ognuno; area di notifica sul principale</translation>
     </message>
     <message>
+        <source>Show desktop from taskbar corner</source>
+        <translation>Mostra il desktop dall'angolo della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Click the far-right edge of any taskbar to show or restore your windows (also with Super+D)</source>
+        <translation>Fai clic sul bordo destro di una barra delle applicazioni per mostrare o ripristinare le finestre (anche con Super+D)</translation>
+    </message>
+    <message>
         <source>End task</source>
         <translation>Termina attività</translation>
     </message>
@@ -2373,17 +2472,6 @@ Specifiche sistema
     <message>
         <source>Keyboard layouts, key repeat</source>
         <translation>Layout di tastiera, ripetizione dei tasti</translation>
-    </message>
-</context>
-<context>
-    <name>Toggle</name>
-    <message>
-        <source>On</source>
-        <translation>Attivato</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation>Disattivato</translation>
     </message>
 </context>
 <context>

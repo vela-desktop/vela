@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <QColor>
 #include <QDBusUnixFileDescriptor>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -85,9 +86,9 @@ public:
     // shut down or restart the computer.
     Q_INVOKABLE void logout();
     Q_INVOKABLE void lock(); // Win+L from the shell
-    // The wallpaper's average color to the compositor: the title bars' tint
-    // (Mica, docs/renderer.md §9.4).
-    void sendWallpaperTint(const QString& wallpaper) const;
+    // The wallpaper's average color (the Mica tint, docs/renderer.md §9.4),
+    // also left in the cache for Vela's apps; invalid if it can't be read.
+    QColor wallpaperTint(const QString& wallpaper) const;
     // Locks the screen before the computer suspends.
     void watchSleep();
     // The computer, through systemd-logind (polkit asks for the password if

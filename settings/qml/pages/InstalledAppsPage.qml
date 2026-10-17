@@ -57,8 +57,8 @@ Page {
         property string appId
         property string appName
         title: qsTr("Uninstall ") + appName
-        primaryText: qsTr("Uninstall")
-        onAccepted: System.uninstall(Apps.desktopFile(appId))
+        buttons: [{ text: qsTr("Uninstall"), accent: true, value: "ok" }, { text: qsTr("Cancel"), value: "cancel" }]
+        onChosen: value => { if (value === "ok") System.uninstall(Apps.desktopFile(appId)) }
         Text {
             width: parent.width
             text: qsTr("This app and its related info will be uninstalled. You may be asked for your password.")

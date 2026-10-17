@@ -96,8 +96,7 @@ Page {
         id: addDialog
         parent: root.contentItem
         title: qsTr("Add a keyboard")
-        primaryText: ""
-        secondaryText: qsTr("Cancel")
+        buttons: [{ text: qsTr("Cancel"), value: "cancel" }]
         dialogWidth: 520
         readonly property var all: visible ? Layouts.all() : []
         readonly property var matches: {
@@ -120,13 +119,13 @@ Page {
                 clip: true
                 model: addDialog.matches
                 boundsBehavior: Flickable.StopAtBounds
-                delegate: Rectangle {
+                delegate: Fill {
                     id: layoutEntry
                     required property var modelData
                     width: layoutList.width
                     height: 36
                     radius: Theme.radius
-                    color: entryMouse.containsMouse ? Theme.subtleHover : "transparent"
+                    color: entryMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                     Text {
                         x: 12
                         width: parent.width - 24

@@ -44,10 +44,10 @@ Page {
             icon: "chronometer"
             title: qsTr("Set time automatically")
             description: DateTime.canNtp ? qsTr("Sync the clock with a time server on the Internet") : qsTr("No time sync service installed")
-            trailing: Toggle {
+            trailing: Switch {
                 usable: DateTime.canNtp
                 checked: DateTime.ntp
-                onToggled: on => DateTime.setNtp(on)
+                onToggled: DateTime.setNtp(checked)
             }
         }
         Card {

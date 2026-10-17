@@ -12,9 +12,9 @@ Page {
             icon: "edit-paste"
             title: qsTr("Clipboard history")
             description: qsTr("Save multiple items to the clipboard to use later. Press Win+V to see and paste them")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.clipboardHistory
-                onToggled: on => Prefs.clipboardHistory = on
+                onToggled: Prefs.clipboardHistory = checked
             }
         }
         Card {

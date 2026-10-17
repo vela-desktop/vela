@@ -17,36 +17,27 @@ Item {
     signal activated()
     signal contextRequested(real x, real y) // right button, in the tile's coordinates
 
-    Rectangle {
+    Fill {
         anchors.fill: parent
         anchors.margins: 3
         radius: Theme.radius
-        color: mouse.pressed ? Theme.subtlePressed : Theme.subtleHover
-        opacity: mouse.containsMouse || root.current ? 1 : 0
+        color: mouse.pressed ? Theme.subtlePressed : mouse.containsMouse || root.current ? Theme.subtleHover : Theme.subtleRest
         border.width: root.current ? 1 : 0
         border.color: Theme.stroke
-
-        Behavior on opacity {
-            NumberAnimation { duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        }
     }
 
     Column {
         anchors.centerIn: parent
         width: parent.width - 12
         spacing: 8
-        scale: mouse.pressed ? 0.92 : 1
+        scale: mouse.pressed ? 1 - 0.08 * Theme.motion : 1
 
-        Behavior on scale {
-            NumberAnimation { duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        }
+        Behavior on scale { Eased {} }
 
-        Image {
+        Icon {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: 36
-            height: 36
-            source: Theme.icons + encodeURIComponent(root.iconName)
-            sourceSize: Qt.size(width, height)
+            name: root.iconName
+            size: 36
             smooth: true
             mipmap: true
         }

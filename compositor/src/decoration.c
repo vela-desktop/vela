@@ -4,6 +4,7 @@
 #include "decoration.h"
 
 #include "icons.h"
+#include "motion.h"
 #include "render/pixel_buffer.h"
 #include "scene/scene.h"
 #include "server.h"
@@ -17,6 +18,7 @@
 #include <wlr/render/wlr_texture.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/util/addon.h>
+#include <wlr/util/log.h>
 
 #define HEIGHT VELA_DECORATION_HEIGHT
 #define BUTTON_WIDTH VELA_DECORATION_BUTTON_WIDTH
@@ -24,7 +26,14 @@
 #define TITLE_MARGIN 12 // without an icon
 #define TITLE_AFTER_ICON (VELA_DECORATION_ICON_X + VELA_DECORATION_ICON_SIZE + 8)
 
-// Colors like Windows 11, in dark and light theme (the apps' mode).
+// The buttons' hover: WinUI's SubtleFillColorSecondary, Theme.subtleHover in
+// QML (white in dark mode, black in light mode; scripts/check-shared-values.py
+// keeps them equal).
+#define HOVER_DARK_ALPHA 0.061f
+#define HOVER_LIGHT_ALPHA 0.037f
+
+// Colors like Windows 11, in dark and light theme (the apps' mode). The
+// backgrounds without Mica (no shell, or before it sends the colors).
 struct palette {
     struct wlr_render_color active_background;
     struct wlr_render_color inactive_background;
@@ -36,7 +45,7 @@ struct palette {
 static const struct palette dark_palette = {
     { 0.125f, 0.125f, 0.125f, 1.0f }, // #202020
     { 0.169f, 0.169f, 0.169f, 1.0f }, // #2b2b2b
-    { 0.08f, 0.08f, 0.08f, 0.08f }, // white at 8%
+    { HOVER_DARK_ALPHA, HOVER_DARK_ALPHA, HOVER_DARK_ALPHA, HOVER_DARK_ALPHA },
     0xffffffff,
     0xff9a9a9a,
 };
@@ -44,11 +53,12 @@ static const struct palette dark_palette = {
 static const struct palette light_palette = {
     { 0.953f, 0.953f, 0.953f, 1.0f }, // #f3f3f3
     { 0.976f, 0.976f, 0.976f, 1.0f }, // #f9f9f9
-    { 0.0f, 0.0f, 0.0f, 0.06f }, // black at 6%
+    { 0.0f, 0.0f, 0.0f, HOVER_LIGHT_ALPHA },
     0xff1a1a1a,
     0xff8f8f8f,
 };
 
+// Close's red is its hover; on it the glyph is white.
 static const struct wlr_render_color close_hover_color = { 0.769f, 0.169f, 0.110f, 1.0f }; // #c42b1c
 #define CLOSE_HOVER_TEXT 0xffffffffu
 
@@ -63,12 +73,22 @@ struct image {
     struct vela_buffer_node *node;
 };
 
+// A button's hover, faded (docs/visual-coherence.md §6.6): `amount` goes from
+// 0 (none) to 1 (its hover color), retargeted from where it is.
+struct fade {
+    double from, to, amount;
+    struct vela_tween tween;
+    bool running;
+};
+
 struct vela_decoration {
     struct vela_server *server;
     struct vela_tree *tree;
     struct vela_rect_node *background;
     struct vela_rect_node *hover_rects[3]; // minimize, maximize, close
+    struct fade fades[3];
     struct image glyphs[3];
+    struct image close_white; // above Close's glyph, faded with its red
     struct image title;
     struct image icon;
 
@@ -78,7 +98,8 @@ struct vela_decoration {
     char *title_text;
     char *app_id;
     bool has_icon;
-    uint32_t tint_version; // the wallpaper tint it's drawn with
+    uint32_t look_version; // the theme and Mica it's drawn with
+    uint32_t text_color; // the title's and the glyphs'
     bool active;
     bool maximized;
     bool drawn;
@@ -187,31 +208,33 @@ static struct vela_image draw_glyph(enum vela_decoration_part part, bool maximiz
 
 // ---------------------------------------------------------------- colors --
 
-// The bar's colors with the wallpaper tint (Mica, docs/renderer.md §9.4): the
-// tint made "safe" for text (less saturated, lightness in the theme's dark
-// band, or the light one) and mixed with Windows 11's gray; when inactive it
-// weighs more. The same computation is in shell/src/mica.h, for Vela's apps.
-static struct wlr_render_color mica_color(struct wlr_render_color base, const struct vela_server *server,
-    float weight)
+// The bar's background: Mica as the shell computed it (docs/renderer.md
+// §9.4), or Windows 11's gray.
+static struct wlr_render_color background_color(const struct vela_server *server, bool active)
 {
-    if (!server->has_wallpaper_tint) {
-        return base;
+    const struct palette *colors = palette(server);
+    if (!server->has_mica) {
+        return active ? colors->active_background : colors->inactive_background;
     }
-    const float *t = server->wallpaper_tint;
-    float luma = 0.2126f * t[0] + 0.7152f * t[1] + 0.0722f * t[2];
-    float safe[3];
-    for (int i = 0; i < 3; ++i) {
-        float desaturated = luma + (t[i] - luma) * 0.5f;
-        safe[i] = server->light_apps
-            ? vela_clampf(1.0f - (1.0f - desaturated) * (0.10f / fmaxf(1.0f - luma, 0.02f)), 0.82f, 1.0f)
-            : vela_clampf(desaturated * (0.16f / fmaxf(luma, 0.02f)), 0.0f, 0.32f);
+    return active ? server->mica_active : server->mica_inactive;
+}
+
+// A button's hover color at `amount` (premultiplied: a scaled color fades).
+static struct wlr_render_color hover_color(const struct vela_server *server, int button, double amount)
+{
+    struct wlr_render_color full
+        = button_parts[button] == VELA_DECORATION_CLOSE ? close_hover_color : palette(server)->hover;
+    float a = (float)amount;
+    return (struct wlr_render_color) { full.r * a, full.g * a, full.b * a, full.a * a };
+}
+
+static void apply_fade(struct vela_decoration *decoration, int button)
+{
+    struct wlr_render_color color = hover_color(decoration->server, button, decoration->fades[button].amount);
+    vela_rect_node_set_color(decoration->hover_rects[button], &color);
+    if (button_parts[button] == VELA_DECORATION_CLOSE && decoration->close_white.node) {
+        vela_node_set_opacity(&decoration->close_white.node->node, (float)decoration->fades[button].amount);
     }
-    return (struct wlr_render_color) {
-        base.r + (safe[0] - base.r) * weight,
-        base.g + (safe[1] - base.g) * weight,
-        base.b + (safe[2] - base.b) * weight,
-        1.0f,
-    };
 }
 
 // ----------------------------------------------------------------- images --
@@ -296,6 +319,11 @@ static void layout_buttons(struct vela_decoration *decoration)
                 (HEIGHT - GLYPH_SIZE) / 2.0);
         }
     }
+    if (decoration->close_white.node) {
+        double x = decoration->width - BUTTON_WIDTH;
+        vela_node_set_position(&decoration->close_white.node->node, x + (BUTTON_WIDTH - GLYPH_SIZE) / 2.0,
+            (HEIGHT - GLYPH_SIZE) / 2.0);
+    }
 }
 
 static bool same_text(const char *a, const char *b)
@@ -316,25 +344,30 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
     float scale = state->scale;
     bool active = state->active;
     bool maximized = state->maximized;
+    // Each image is drawn again only when what it is drawn from changes: a
+    // new Mica or accent changes colors, not images.
+    bool first = !decoration->drawn;
     bool resized = width != decoration->width;
-    bool restyled = !decoration->drawn || scale != decoration->scale || active != decoration->active
-        || decoration->tint_version != server->wallpaper_tint_version;
+    bool rescaled = first || scale != decoration->scale;
+    bool reactivated = first || active != decoration->active;
+    bool relooked = first || decoration->look_version != server->look_version;
+    bool remaximized = first || maximized != decoration->maximized;
     bool new_app = !same_text(state->app_id, decoration->app_id);
     bool new_title = !same_text(state->title, decoration->title_text);
+    const struct palette *colors = palette(server);
+    uint32_t text_color = active ? colors->active_text : colors->inactive_text;
+    bool recolored = first || text_color != decoration->text_color;
     decoration->width = width;
     if (resized) {
         vela_rect_node_set_size(decoration->background, width, HEIGHT);
     }
-    const struct palette *colors = palette(server);
-    uint32_t text_color = active ? colors->active_text : colors->inactive_text;
-    if (restyled) {
-        struct wlr_render_color background = active ? mica_color(colors->active_background, server, 0.30f)
-                                                    : mica_color(colors->inactive_background, server, 0.45f);
+    if (relooked || reactivated) {
+        struct wlr_render_color background = background_color(server, active);
         vela_rect_node_set_color(decoration->background, &background);
     }
 
     // The app icon, drawn at the exact physical size (§9.6).
-    if (restyled || new_app) {
+    if (rescaled || new_app) {
         int pixels = vela_max(1, (int)lround(VELA_DECORATION_ICON_SIZE * scale));
         const struct vela_image *icon = vela_icons_app(icon_loader(server), state->app_id, pixels);
         decoration->has_icon = icon->pixels != NULL;
@@ -344,16 +377,18 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
             memcpy(copy.pixels, icon->pixels, bytes);
             set_image(decoration, &decoration->icon, &copy, VELA_DECORATION_ICON_X,
                 (HEIGHT - VELA_DECORATION_ICON_SIZE) / 2.0, VELA_DECORATION_ICON_SIZE, VELA_DECORATION_ICON_SIZE);
-            vela_node_set_opacity(&decoration->icon.node->node, active ? 1.0f : 0.6f);
         } else {
             clear_image(&decoration->icon);
         }
+    }
+    if (decoration->icon.node) {
+        vela_node_set_opacity(&decoration->icon.node->node, active ? 1.0f : 0.6f);
     }
     int title_x = decoration->has_icon ? TITLE_AFTER_ICON : TITLE_MARGIN;
 
     // The title, rasterized at the output's physical pixels.
     struct vela_text *text = text_engine(server);
-    if (text && (restyled || resized || new_title || new_app)) {
+    if (text && (recolored || rescaled || resized || new_title || new_app)) {
         int max_width = (int)((width - title_x - 3 * BUTTON_WIDTH - 8) * scale);
         if (max_width > 0 && state->title[0]) {
             struct vela_image image = { 0 };
@@ -367,22 +402,31 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
         }
     }
 
-    // The button glyphs.
-    if (restyled || maximized != decoration->maximized) {
+    // The button glyphs in the text's color; Close's white one, shown as much
+    // as its red is, only from the scale and the state.
+    bool glyphs = recolored || rescaled || remaximized;
+    if (glyphs) {
         for (int i = 0; i < 3; ++i) {
-            // On Close's red the glyph is always white.
-            bool close_hovered
-                = button_parts[i] == VELA_DECORATION_CLOSE && decoration->hover == VELA_DECORATION_CLOSE;
-            struct vela_image pixels
-                = draw_glyph(button_parts[i], maximized, scale, close_hovered ? CLOSE_HOVER_TEXT : text_color);
+            struct vela_image pixels = draw_glyph(button_parts[i], maximized, scale, text_color);
             set_image(decoration, &decoration->glyphs[i], &pixels, 0, 0, GLYPH_SIZE, GLYPH_SIZE);
         }
     }
-    if (resized || restyled || maximized != decoration->maximized) {
+    bool close_white = rescaled || remaximized;
+    if (close_white) {
+        struct vela_image white = draw_glyph(VELA_DECORATION_CLOSE, maximized, scale, CLOSE_HOVER_TEXT);
+        set_image(decoration, &decoration->close_white, &white, 0, 0, GLYPH_SIZE, GLYPH_SIZE);
+    }
+    if (glyphs || close_white || relooked) {
+        for (int i = 0; i < 3; ++i) {
+            apply_fade(decoration, i); // the mode's hover color, and the white glyph's opacity
+        }
+    }
+    if (resized || glyphs || close_white) {
         layout_buttons(decoration);
     }
 
     decoration->scale = scale;
+    decoration->text_color = text_color;
     decoration->active = active;
     decoration->maximized = maximized;
     if (new_title) {
@@ -393,7 +437,7 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
         free(decoration->app_id);
         decoration->app_id = strdup(state->app_id);
     }
-    decoration->tint_version = server->wallpaper_tint_version;
+    decoration->look_version = server->look_version;
     decoration->drawn = true;
 }
 
@@ -424,6 +468,7 @@ void vela_decoration_destroy(struct vela_decoration *decoration)
     }
     clear_image(&decoration->icon);
     clear_image(&decoration->title);
+    clear_image(&decoration->close_white);
     for (int i = 0; i < 3; ++i) {
         clear_image(&decoration->glyphs[i]);
     }
@@ -478,27 +523,44 @@ void vela_decoration_set_hover(struct vela_decoration *decoration, enum vela_dec
     if (part == decoration->hover) {
         return;
     }
-    bool close_changed = (part == VELA_DECORATION_CLOSE) != (decoration->hover == VELA_DECORATION_CLOSE);
     decoration->hover = part;
-    const struct palette *colors = palette(decoration->server);
+    // Each button fades toward its new state from where it is (a hover left
+    // halfway turns back from there), in `fast`, like Vela's other hovers.
+    static const char *const names[3] = { "minimize-hover", "maximize-hover", "close-hover" };
     for (int i = 0; i < 3; ++i) {
-        bool hovered = button_parts[i] == part;
-        bool close = button_parts[i] == VELA_DECORATION_CLOSE;
-        struct wlr_render_color hover = { 0 };
-        if (hovered) {
-            hover = close ? close_hover_color : colors->hover;
+        struct fade *fade = &decoration->fades[i];
+        double to = button_parts[i] == part ? 1.0 : 0.0;
+        if (to == fade->to && (fade->running || fade->amount == to)) {
+            continue;
         }
-        vela_rect_node_set_color(decoration->hover_rects[i], &hover);
+        fade->from = fade->amount;
+        fade->to = to;
+        fade->running = true;
+        vela_tween_start(&fade->tween, names[i], vela_motion_ms(VELA_MOTION_FAST_MS), &vela_decelerate);
     }
-    // On red the Close glyph turns white (in dark theme it already is, when
-    // active).
-    if (close_changed && decoration->drawn && (decoration->server->light_apps || !decoration->active)) {
-        float scale = decoration->scale > 0.0f ? decoration->scale : 1.0f;
-        uint32_t color = part == VELA_DECORATION_CLOSE ? CLOSE_HOVER_TEXT
-            : decoration->active                       ? colors->active_text
-                                                       : colors->inactive_text;
-        struct vela_image pixels = draw_glyph(VELA_DECORATION_CLOSE, decoration->maximized, scale, color);
-        set_image(decoration, &decoration->glyphs[2], &pixels, 0, 0, GLYPH_SIZE, GLYPH_SIZE);
-        layout_buttons(decoration);
+    vela_server_schedule_frames(decoration->server);
+}
+
+bool vela_decoration_tick(struct vela_decoration *decoration, double now_ms, double wall_ms)
+{
+    bool running = false;
+    for (int i = 0; i < 3; ++i) {
+        struct fade *fade = &decoration->fades[i];
+        if (!fade->running) {
+            continue;
+        }
+        double p = vela_tween_progress(&fade->tween, now_ms);
+        fade->amount = fade->from + (fade->to - fade->from) * p;
+        if (vela_motion_logger) {
+            wlr_log(WLR_INFO, "animation: %s #%u fill %.4f", fade->tween.name, fade->tween.serial, fade->amount);
+        }
+        if (vela_tween_retired(&fade->tween, wall_ms)) {
+            fade->amount = fade->to;
+            fade->running = false;
+        } else {
+            running = true;
+        }
+        apply_fade(decoration, i);
     }
+    return running;
 }

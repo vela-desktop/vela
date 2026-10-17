@@ -6,7 +6,7 @@
 //
 // Usage: vela-randr                          lists the outputs
 //        vela-randr --output NAME [--on | --off] [--scale S] [--pos X,Y]
-//                   [--mode WxH]
+//                   [--mode WxH] [--transform normal|90|180|270|flipped|flipped-90|flipped-180|flipped-270]
 //
 // The other outputs stay as they are. Exits with 0 if Vela applies the
 // configuration, 1 if it refuses it.
@@ -186,8 +186,21 @@ static const struct wl_registry_listener registryListener = { onGlobal, onGlobal
 
 static void usage(void)
 {
-    fprintf(stderr, "usage: vela-randr [--output NAME [--on | --off] [--scale S] [--pos X,Y] [--mode WxH]]\n");
+    fprintf(stderr, "usage: vela-randr [--output NAME [--on | --off] [--scale S] [--pos X,Y] [--mode WxH] [--transform ROTATION]]\n");
     exit(2);
+}
+
+static int parseTransform(const char* name)
+{
+    static const char* const transforms[] = {
+        "normal", "90", "180", "270", "flipped", "flipped-90", "flipped-180", "flipped-270"
+    };
+    for (int i = 0; i < 8; ++i) {
+        if (!strcmp(name, transforms[i])) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 int main(int argc, char** argv)
@@ -197,6 +210,7 @@ int main(int argc, char** argv)
     double scale = 0.0;
     int hasPosition = 0, x = 0, y = 0;
     int width = 0, height = 0;
+    int transform = -1;
     for (int i = 1; i < argc; ++i) {
         const char* arg = argv[i];
         const char* value = i + 1 < argc ? argv[i + 1] : NULL;
@@ -212,6 +226,8 @@ int main(int argc, char** argv)
             hasPosition = 1;
             ++i;
         } else if (!strcmp(arg, "--mode") && value && sscanf(value, "%dx%d", &width, &height) == 2) {
+            ++i;
+        } else if (!strcmp(arg, "--transform") && value && (transform = parseTransform(value)) >= 0) {
             ++i;
         } else {
             usage();
@@ -268,6 +284,9 @@ int main(int argc, char** argv)
         }
         if (width > 0 && height > 0) {
             zwlr_output_configuration_head_v1_set_custom_mode(wanted, width, height, 0);
+        }
+        if (transform >= 0) {
+            zwlr_output_configuration_head_v1_set_transform(wanted, transform);
         }
     }
     if (!found) {

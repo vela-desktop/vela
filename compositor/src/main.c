@@ -6,6 +6,7 @@
 #include "supervisor.h"
 
 #include <getopt.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,6 +72,23 @@ int main(int argc, char *argv[])
             print_usage(argv[0]);
             return 1;
         }
+    }
+
+    // wl_event_loop_add_signal() blocks a signal only on the calling thread.
+    // Vulkan/DRM may start worker threads *before* the event loop registers
+    // its handlers. Block SIGUSR1 (redraw) and SIGINT/SIGTERM (clean exit,
+    // server.c) before initializing those libraries, so their threads inherit
+    // the mask and process-directed signals reach Wayland's signalfd instead
+    // of taking the default action (terminating without a clean exit).
+    // Vela's fork/exec helpers clear signal masks in launched applications.
+    sigset_t handled_signals;
+    sigemptyset(&handled_signals);
+    sigaddset(&handled_signals, SIGUSR1);
+    sigaddset(&handled_signals, SIGINT);
+    sigaddset(&handled_signals, SIGTERM);
+    if (sigprocmask(SIG_BLOCK, &handled_signals, NULL) != 0) {
+        perror("vela-compositor: cannot block signals");
+        return 1;
     }
 
     // Late latching wakes the compositor at a precise moment before the

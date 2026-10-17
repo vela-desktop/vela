@@ -24,13 +24,7 @@ Window {
         color: Theme.veil
         opacity: 0
         Component.onCompleted: opacity = Qt.binding(() => Request.closing ? 0 : 1)
-        Behavior on opacity {
-            NumberAnimation {
-                duration: Request.closing ? Theme.normal : Theme.slow
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Request.closing ? Theme.accelerate : Theme.decelerate
-            }
-        }
+        Behavior on opacity { Eased { duration: Request.closing ? Theme.normal : Theme.slow } }
     }
     // No clicking or scrolling underneath.
     MouseArea {

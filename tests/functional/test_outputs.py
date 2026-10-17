@@ -68,20 +68,54 @@ class Outputs(unittest.TestCase):
         state = self.vela.wait_for(lambda s: any(o["name"] == "HEADLESS-2" and o["scale"] == 2 for o in s["outputs"]),
                                    what="the second output at 200%")
         second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
-        self.assertEqual((second["x"], second["y"], second["w"], second["h"]), (960, -540, 960, 540))
+        # Output coordinates are rebased to the first nonnegative desktop
+        # quadrant, but the relative "above and right-aligned" arrangement stays.
+        self.assertEqual((second["x"], second["y"], second["w"], second["h"]), (960, 0, 960, 540))
+        primary = next(o for o in state["outputs"] if o["name"] == "HEADLESS-1")
+        self.assertEqual((primary["x"], primary["y"]), (0, 540))
         listed = dict(line.split(" ", 1) for line in self.vela.randr().splitlines())
-        self.assertEqual(listed["HEADLESS-2"], "1920x1080@0.000 960,-540 2.0000")
+        self.assertEqual(listed["HEADLESS-2"], "1920x1080@0.000 960,0 2.0000")
         # A window maximized there fills exactly its pixels.
         window = self.vela.open_window(300, 200)
         start = self.vela.state().window(window)
         grab_x, grab_y = start["x"] + 50, start["y"] + 50
         self.vela.input("move", grab_x, grab_y, "keydown", "super", "down", "sleep", "50",
-                        "move", 1200, -300, "sleep", "100", "up", "keyup", "super")
+                        "move", 1200, 300, "sleep", "100", "up", "keyup", "super")
         self.vela.wait_for(lambda s: s.window(window)["output"] == "HEADLESS-2", what="on the second output")
         self.vela.keys("super+up")
         state = self.vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized")
         maximized = state.window(window)
         self.assertEqual((maximized["x"], maximized["w"]), (960, 960))
+
+    def test_above_layout_normalizes_origin_without_moving_window_to_other_monitor(self):
+        # Reproduces Isaac's original topology: secondary 1920x1080 located
+        # at y=-1080 above primary 1920x1080 at (0,0). XWayland and Wine
+        # cannot use the negative monitor origin as a valid X11 root extent.
+        window = self.vela.open_window(300, 200)
+        before = self.vela.state().window(window)
+        self.assertEqual(before["output"], "HEADLESS-1")
+        self.add_second()
+        self.vela.randr("--output", "HEADLESS-2", "--scale", "1", "--pos", "0,-1080")
+        state = self.vela.wait_for(lambda s: any(
+            o["name"] == "HEADLESS-1" and o["y"] == 1080 for o in s["outputs"]),
+            what="negative request rebased to zero")
+        positions = {o["name"]: (o["x"], o["y"]) for o in state["outputs"]}
+        self.assertEqual(positions, {"HEADLESS-1": (0, 1080), "HEADLESS-2": (0, 0)})
+        self.assertEqual((state.window(window)["x"], state.window(window)["y"]),
+                         (before["x"], before["y"] + 1080))
+        self.assertEqual(state.window(window)["output"], "HEADLESS-1")
+        listed = dict(line.split(" ", 1) for line in self.vela.randr().splitlines())
+        self.assertIn("0,1080", listed["HEADLESS-1"])
+        self.assertIn("0,0", listed["HEADLESS-2"])
+        # Move the same display right of the primary: the layout no longer needs
+        # the shift, both return to y = 0 and the window with its output.
+        self.vela.randr("--output", "HEADLESS-2", "--pos", "1920,1080")
+        state = self.vela.wait_for(lambda s: any(
+            o["name"] == "HEADLESS-1" and o["y"] == 0 for o in s["outputs"]),
+            what="restored nonnegative side-by-side output layout")
+        self.assertEqual((state.window(window)["x"], state.window(window)["y"]),
+                         (before["x"], before["y"]))
+        self.assertEqual(state.window(window)["output"], "HEADLESS-1")
 
     def settings_preview(self):
         executable = os.path.join(BUILD, "settings", "vela-displays-test")

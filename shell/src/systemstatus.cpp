@@ -8,7 +8,9 @@
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusInterface>
+#include <QDBusMessage>
 #include <QDBusMetaType>
+#include <QDBusPendingCallWatcher>
 #include <QDBusReply>
 #include <QDBusVariant>
 #include <QDir>
@@ -91,6 +93,7 @@ void SystemStatus::refreshNetwork()
     const uint state = dbusGet(system, nm, nmPath, nm, QStringLiteral("State")).toUInt();
     m_networkConnected = state >= 60; // NM_STATE_CONNECTED_SITE and above
     m_wifiEnabled = dbusGet(system, nm, nmPath, nm, QStringLiteral("WirelessEnabled")).toBool();
+    m_wifiRequest.reported(m_wifiEnabled);
     m_wifiAvailable = dbusGet(system, nm, nmPath, nm, QStringLiteral("WirelessHardwareEnabled")).toBool();
     m_networkName.clear();
     m_networkWireless = false;
@@ -113,7 +116,16 @@ void SystemStatus::refreshNetwork()
 
 void SystemStatus::setWifiEnabled(bool on)
 {
-    dbusSet(QDBusConnection::systemBus(), nm, nmPath, nm, QStringLiteral("WirelessEnabled"), on);
+    const Requested::Id request = m_wifiRequest.ask(on);
+    QDBusMessage call = QDBusMessage::createMethodCall(nm, nmPath, propertiesInterface, QStringLiteral("Set"));
+    call << nm << QStringLiteral("WirelessEnabled") << QVariant::fromValue(QDBusVariant(on));
+    auto* reply = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call), this);
+    connect(reply, &QDBusPendingCallWatcher::finished, this, [this, request](QDBusPendingCallWatcher* w) {
+        w->deleteLater();
+        if (w->isError()) {
+            m_wifiRequest.refused(request);
+        }
+    });
 }
 
 QString SystemStatus::networkIcon() const
@@ -152,18 +164,26 @@ void SystemStatus::refreshBluetooth()
     if (!m_adapter.isEmpty()) {
         m_bluetoothEnabled
             = dbusGet(system, QStringLiteral("org.bluez"), m_adapter, QStringLiteral("org.bluez.Adapter1"), QStringLiteral("Powered")).toBool();
+        m_bluetoothRequest.reported(m_bluetoothEnabled);
     }
     emit bluetoothChanged();
 }
 
 void SystemStatus::setBluetoothEnabled(bool on)
 {
-    vela::bluetooth::setPowered(m_adapter, on); // even if blocked by rfkill
+    if (m_adapter.isEmpty()) {
+        return;
+    }
+    const Requested::Id request = m_bluetoothRequest.ask(on);
+    // Even if blocked by rfkill.
+    vela::bluetooth::setPowered(
+        this, m_adapter, on, [this, request] { return m_bluetoothRequest.pending(request); },
+        [this, request] { m_bluetoothRequest.refused(request); });
 }
 
 bool SystemStatus::airplaneMode() const
 {
-    return (!m_wifiAvailable || !m_wifiEnabled) && (m_adapter.isEmpty() || !m_bluetoothEnabled)
+    return (!m_wifiAvailable || !wifiEnabled()) && (m_adapter.isEmpty() || !bluetoothEnabled())
         && (m_wifiAvailable || !m_adapter.isEmpty());
 }
 

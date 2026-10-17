@@ -94,7 +94,8 @@ struct vela_quad_push {
     float dst[4]; // x, y, width, height in target pixels
     float target[2]; // target size
     float alpha;
-    // bit 0: bicubic magnification; bit 1: rounded clip; bit 2: color filter
+    // bit 0: bicubic magnification; bit 1: rounded clip; bit 2: color filter;
+    // bit 3: the blur gets Vela's acrylic recipe (blur_mix.frag)
     uint32_t flags;
     float uv_origin[2]; // texture coordinates of the top left corner
     float uv_x[2]; // step along the top edge

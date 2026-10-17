@@ -63,7 +63,7 @@ void vela_switcher_step(struct vela_server *server, int direction)
     switcher->count = 0;
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
-        if (view->mapped && view->ext_handle && vela_view_on_current_workspace(view)) {
+        if (view->mapped && view->ext_handle && vela_view_on_current_workspace(view) && !vela_view_stays_below(view)) {
             switcher->views = vela_grow(switcher->views, &switcher->capacity, switcher->count + 1,
                 sizeof(*switcher->views));
             switcher->views[switcher->count++] = view;

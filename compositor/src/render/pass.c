@@ -378,6 +378,9 @@ void vela_pass_add_blur(struct vela_pass *pass, const struct vela_texture_draw *
     draw.blend = true;
     draw.linear = true;
     draw.push.flags &= ~1u; // the panel is read only for its alpha
+    if (tint) {
+        draw.push.flags |= 8u; // Vela's acrylic: more saturation, and the tint
+    }
     draw.blur_op = pass->blur_count;
     pass->blur_ops = vela_grow(pass->blur_ops, &pass->blur_capacity, pass->blur_count + 1, sizeof(*pass->blur_ops));
     pass->blur_ops[pass->blur_count++] = (struct blur_op) { source, strength };
@@ -387,7 +390,8 @@ void vela_pass_add_blur(struct vela_pass *pass, const struct vela_texture_draw *
     draw.push.pad[1] = (float)source.y;
     draw.push.shape[2] = 0.5f / (float)level0->width;
     draw.push.shape[3] = 0.5f / (float)level0->height;
-    linear_color(tint, 0.001f, draw.push.color);
+    const struct wlr_render_color none = { 0 };
+    linear_color(tint ? tint : &none, tint ? 0.001f : 0.0f, draw.push.color);
     add_draw(pass, &draw, &panel->dst, region);
 }
 

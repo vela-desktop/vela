@@ -5,11 +5,17 @@
 // without the Qt shell cover layers, reserved space and blur
 // (ext-background-effect).
 //
-// Usage: vela-panel wallpaper          fullscreen wallpaper, a striped
-//                                     gradient (something to blur)
-//        vela-panel taskbar [--blur]   48-high translucent bottom bar,
+// Usage: vela-panel wallpaper [--color RRGGBB]
+//                                     fullscreen wallpaper, a striped
+//                                     gradient (something to blur), or one
+//                                     flat color
+//        vela-panel taskbar [--blur] [--clear] [--namespace NAME]
+//                                     48-high translucent bottom bar,
 //                                     reserving 48 units; --blur asks to
-//                                     blur what lies behind
+//                                     blur what lies behind; --clear: black
+//                                     at 50% instead of a dark gray (what's
+//                                     below shows unchanged, halved); the
+//                                     layer namespace, vela-panel by default
 //
 // Draws at scale 1 in shared memory and stays until closed.
 
@@ -34,6 +40,8 @@ static struct wl_surface* surface;
 static struct zwlr_layer_surface_v1* layerSurface;
 static struct ext_background_effect_surface_v1* effect; // with --blur
 static int wallpaper;
+static int flat = -1; // the wallpaper's one color (--color), or -1
+static int clear;
 static int running = 1;
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
@@ -73,15 +81,17 @@ static void draw(uint32_t width, uint32_t height)
     for (uint32_t y = 0; y < height; ++y) {
         for (uint32_t x = 0; x < width; ++x) {
             uint32_t color;
-            if (wallpaper) {
+            if (wallpaper && flat >= 0) {
+                color = 0xff000000u | (uint32_t)flat;
+            } else if (wallpaper) {
                 // Colored bands changing along x and y: the blur shows.
                 const uint32_t r = (x * 255 / width) & 0xff;
                 const uint32_t g = ((y / 24) % 2) ? 0xc0 : 0x30;
                 const uint32_t b = (255 - y * 255 / height) & 0xff;
                 color = 0xff000000u | r << 16 | g << 8 | b;
             } else {
-                // Dark gray at 50%, premultiplied.
-                color = 0x80101018u;
+                // Dark gray (or black) at 50%, premultiplied.
+                color = clear ? 0x80000000u : 0x80101018u;
             }
             pixels[(size_t)y * width + x] = color;
         }
@@ -124,11 +134,27 @@ static const struct zwlr_layer_surface_v1_listener layerListener = { onConfigure
 int main(int argc, char** argv)
 {
     if (argc < 2 || (strcmp(argv[1], "wallpaper") && strcmp(argv[1], "taskbar"))) {
-        fprintf(stderr, "usage: vela-panel wallpaper | taskbar [--blur]\n");
+        fprintf(stderr, "usage: vela-panel wallpaper [--color RRGGBB] | taskbar [--blur] [--clear] "
+                        "[--namespace NAME]\n");
         return 2;
     }
     wallpaper = !strcmp(argv[1], "wallpaper");
-    const int blur = argc > 2 && !strcmp(argv[2], "--blur");
+    int blur = 0;
+    const char* name = "vela-panel";
+    for (int i = 2; i < argc; ++i) {
+        if (!strcmp(argv[i], "--blur")) {
+            blur = 1;
+        } else if (!strcmp(argv[i], "--clear")) {
+            clear = 1;
+        } else if (!strcmp(argv[i], "--namespace") && i + 1 < argc) {
+            name = argv[++i];
+        } else if (!strcmp(argv[i], "--color") && i + 1 < argc) {
+            flat = (int)(strtoul(argv[++i], NULL, 16) & 0xffffff);
+        } else {
+            fprintf(stderr, "vela-panel: unknown option %s\n", argv[i]);
+            return 2;
+        }
+    }
 
     struct wl_display* display = wl_display_connect(NULL);
     if (!display) {
@@ -144,7 +170,7 @@ int main(int argc, char** argv)
 
     surface = wl_compositor_create_surface(compositor);
     layerSurface = zwlr_layer_shell_v1_get_layer_surface(layerShell, surface, NULL,
-        wallpaper ? ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND : ZWLR_LAYER_SHELL_V1_LAYER_TOP, "vela-panel");
+        wallpaper ? ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND : ZWLR_LAYER_SHELL_V1_LAYER_TOP, name);
     zwlr_layer_surface_v1_add_listener(layerSurface, &layerListener, NULL);
     if (wallpaper) {
         zwlr_layer_surface_v1_set_anchor(layerSurface, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM

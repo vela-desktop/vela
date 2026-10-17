@@ -131,6 +131,7 @@ struct vela_scene {
     // in screenshots, direct scanout kept); where that isn't possible, into
     // drawing like the filters. The version changes with the values.
     bool night_active;
+    bool night_force_shader; // no gamma LUT: the NVIDIA workaround, or a fade in progress (a11y.c)
     float night_gains[3];
     uint32_t night_version;
     // wp-tearing-control: fullscreen apps that ask to show every frame at

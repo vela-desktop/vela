@@ -86,7 +86,7 @@ TEST(Motion, DecelerateIsMonotonicAndFrontLoaded)
 TEST(Motion, TweenStartsAtFirstRead)
 {
     vela_tween tween;
-    vela_tween_start(&tween, 250.0, &vela_decelerate);
+    vela_tween_start(&tween, "test", 250.0, &vela_decelerate);
     EXPECT_FALSE(vela_tween_finished(&tween, 1000.0)); // not read yet: it hasn't started
     EXPECT_EQ(vela_tween_progress(&tween, 1000.0), 0.0); // the first frame is the initial state
     EXPECT_GT(vela_tween_progress(&tween, 1100.0), 0.0);
@@ -98,8 +98,32 @@ TEST(Motion, TweenStartsAtFirstRead)
 TEST(Motion, TweenWithoutCurveIsLinear)
 {
     vela_tween tween;
-    vela_tween_start(&tween, 100.0, nullptr);
+    vela_tween_start(&tween, "test", 100.0, nullptr);
     EXPECT_EQ(vela_tween_progress(&tween, 0.0), 0.0);
     EXPECT_DOUBLE_EQ(vela_tween_progress(&tween, 25.0), 0.25);
     EXPECT_DOUBLE_EQ(vela_tween_progress(&tween, 100.0), 1.0);
+}
+
+// Two outputs read the same tween at their own presentation times, in
+// wall-clock order (docs/visual-coherence.md §6.2): the state may go back from
+// one to the next, the end waits for the wall clock.
+TEST(Motion, TweenSampledByOutputsRetiresOnTheWallClock)
+{
+    vela_tween tween;
+    vela_tween_start(&tween, "test", 100.0, nullptr);
+    EXPECT_EQ(vela_tween_progress(&tween, 22.0), 0.0); // the first read fixes the start
+    EXPECT_EQ(vela_tween_progress(&tween, 11.0), 0.0); // an earlier frame: the initial state, not a jump back
+    EXPECT_DOUBLE_EQ(vela_tween_progress(&tween, 72.0), 0.5);
+    EXPECT_DOUBLE_EQ(vela_tween_progress(&tween, 61.0), 0.39); // the other output, its own time
+    EXPECT_EQ(vela_tween_progress(&tween, 130.0), 1.0);
+    EXPECT_FALSE(vela_tween_retired(&tween, 121.0)); // a frame presented at 125 is still to come
+    EXPECT_TRUE(vela_tween_retired(&tween, 122.0));
+    EXPECT_TRUE(vela_tween_retired(&tween, 123.0));
+}
+
+TEST(Motion, TweenNotReadIsNotRetired)
+{
+    vela_tween tween;
+    vela_tween_start(&tween, "test", 100.0, nullptr);
+    EXPECT_FALSE(vela_tween_retired(&tween, 1e9)); // no frame has shown it yet
 }

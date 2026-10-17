@@ -47,7 +47,7 @@ Column {
                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                         width: 28
                         height: 28
-                        icon: "window-close"
+                        icon.name: "window-close"
                         onClicked: card.modelData.finished ? Ops.dismissJob(card.modelData.id) : Ops.cancelJob(card.modelData.id)
                     }
                 }

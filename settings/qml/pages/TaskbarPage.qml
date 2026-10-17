@@ -14,9 +14,9 @@ Page {
             icon: "view-grid"
             title: qsTr("Task view")
             description: qsTr("Open windows and virtual desktops (also with Win+Tab)")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.taskView
-                onToggled: on => Prefs.taskView = on
+                onToggled: Prefs.taskView = checked
             }
         }
     }
@@ -36,18 +36,27 @@ Page {
             icon: "video-display"
             title: qsTr("Show the taskbar on all displays")
             description: qsTr("With multiple monitors: Start, apps and the clock on each one; notification area on the main one")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.taskbarAllScreens
-                onToggled: on => Prefs.taskbarAllScreens = on
+                onToggled: Prefs.taskbarAllScreens = checked
+            }
+        }
+        Card {
+            icon: "user-desktop"
+            title: qsTr("Show desktop from taskbar corner")
+            description: qsTr("Click the far-right edge of any taskbar to show or restore your windows (also with Super+D)")
+            trailing: Switch {
+                checked: Prefs.showDesktopCorner
+                onToggled: Prefs.showDesktopCorner = checked
             }
         }
         Card {
             icon: "process-stop"
             title: qsTr("End task")
             description: qsTr("In the taskbar buttons' menu, to close an app that isn't responding right away")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.endTask
-                onToggled: on => Prefs.endTask = on
+                onToggled: Prefs.endTask = checked
             }
         }
     }

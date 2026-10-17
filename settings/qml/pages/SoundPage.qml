@@ -73,37 +73,17 @@ Page {
             Item { width: 8; height: 1 }
             // The device's properties: the arrow of the cards that lead to a
             // page, as a button of its own.
-            Rectangle {
+            Button {
                 id: propertiesButton
+                subtle: true
                 width: 32
-                height: 32
-                radius: Theme.radius
-                activeFocusOnTab: true
-                color: propertiesMouse.pressed ? Theme.subtlePressed : propertiesMouse.containsMouse ? Theme.subtleHover : "transparent"
-                border.width: activeFocus ? 2 : 0
-                border.color: Theme.accentFill
-                Accessible.role: Accessible.Button
+                padding: 0
                 Accessible.name: qsTr("Properties")
-                function openProperties() {
-                    root.showSoundDevice(device.kind, device.modelData.name, device.modelData.device)
-                }
-                Keys.onReturnPressed: propertiesButton.openProperties()
-                Keys.onEnterPressed: propertiesButton.openProperties()
-                Keys.onSpacePressed: propertiesButton.openProperties()
-                Text {
-                    anchors.centerIn: parent
-                    text: "›"
-                    color: Theme.textSecondary
-                    font.pixelSize: 22
-                }
-                MouseArea {
-                    id: propertiesMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        propertiesButton.forceActiveFocus()
-                        propertiesButton.openProperties()
+                onClicked: root.showSoundDevice(device.kind, device.modelData.name, device.modelData.device)
+                contentItem: Item {
+                    Chevron {
+                        anchors.centerIn: parent
+                        color: Theme.textSecondary
                     }
                 }
             }
@@ -126,7 +106,7 @@ Page {
             spacing: 8
             Button {
                 subtle: true
-                icon: volumeCard.device && volumeCard.device.muted ? (volumeCard.kind === "output" ? "audio-volume-muted" : "microphone-sensitivity-muted") : (volumeCard.kind === "output" ? "audio-volume-high" : "audio-input-microphone")
+                icon.name: volumeCard.device && volumeCard.device.muted ? (volumeCard.kind === "output" ? "audio-volume-muted" : "microphone-sensitivity-muted") : (volumeCard.kind === "output" ? "audio-volume-high" : "audio-input-microphone")
                 Accessible.name: volumeCard.device && volumeCard.device.muted ? qsTr("Unmute") : qsTr("Mute")
                 usable: volumeCard.device !== undefined && !volumeCard.device.mutePending
                     && !volumeCard.device.defaultPending && !volumeCard.device.defaultError
@@ -141,7 +121,7 @@ Page {
                 // the device's own positions when they are fewer.
                 stepSize: volumeCard.device ? 1 / Math.min(50, volumeCard.device.intervals) : 0.02
                 value: volumeCard.device ? volumeCard.device.volume : 0
-                onMoved: value => Audio.setVolume(volumeCard.kind, volumeCard.device.name, value)
+                onMoved: Audio.setVolume(volumeCard.kind, volumeCard.device.name, value)
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter

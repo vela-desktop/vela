@@ -19,6 +19,8 @@
 //
 // Desktops and their names are remembered in ~/.config/vela/desktop.conf.
 
+#include "motion.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -42,7 +44,7 @@ struct vela_workspaces {
     struct vela_view **outgoing;
     int outgoing_count;
     int outgoing_capacity;
-    double start_ms; // -1: at the first frame
+    struct vela_tween tween; // linear: the slide applies the curve, the fade in doesn't
     int direction; // +1: moving right (the new desktop comes in from the right); 0: still
 };
 
@@ -67,8 +69,9 @@ void vela_workspaces_view_mapped(struct vela_server *server, struct vela_view *v
 void vela_workspaces_forget(struct vela_server *server, struct vela_view *view);
 bool vela_view_on_current_workspace(const struct vela_view *view);
 
-// The animated switch at `now_ms`: false once it's over.
-bool vela_workspaces_tick(struct vela_server *server, double now_ms);
+// The animated switch at `now_ms` (the frame's time); the outgoing windows go
+// back to their layer at `wall_ms`. false once it's over.
+bool vela_workspaces_tick(struct vela_server *server, double now_ms, double wall_ms);
 
 // The state for the shell: {"current":0,"names":[...],"windows":{...},...}.
 void vela_workspaces_json(struct vela_server *server, struct vela_buffer *out);

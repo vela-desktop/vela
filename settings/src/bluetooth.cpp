@@ -95,6 +95,7 @@ void Bluetooth::onInterfacesAdded(const QDBusObjectPath& path, const QMap<QStrin
         m_adapter = p;
         m_adapterName = adapter[QStringLiteral("Alias")].toString();
         m_powered = adapter[QStringLiteral("Powered")].toBool();
+        m_poweredRequest.reported(m_powered);
         m_discovering = adapter[QStringLiteral("Discovering")].toBool();
     }
     if (interfaces.contains(deviceInterface)) {
@@ -129,6 +130,7 @@ void Bluetooth::onPropertiesChanged(const QString& interface, const QVariantMap&
     const QString path = message().path();
     if (interface == adapterInterface && path == m_adapter) {
         m_powered = changedProperties.value(QStringLiteral("Powered"), m_powered).toBool();
+        m_poweredRequest.reported(m_powered);
         m_discovering = changedProperties.value(QStringLiteral("Discovering"), m_discovering).toBool();
         m_adapterName = changedProperties.value(QStringLiteral("Alias"), m_adapterName).toString();
     } else if (interface == deviceInterface && m_devices.contains(path)) {
@@ -208,7 +210,14 @@ void Bluetooth::fail(const QString& message)
 
 void Bluetooth::setPowered(bool on)
 {
-    vela::bluetooth::setPowered(m_adapter, on); // even if blocked by rfkill
+    if (m_adapter.isEmpty()) {
+        return;
+    }
+    const Requested::Id request = m_poweredRequest.ask(on);
+    // Even if blocked by rfkill.
+    vela::bluetooth::setPowered(
+        this, m_adapter, on, [this, request] { return m_poweredRequest.pending(request); },
+        [this, request] { m_poweredRequest.refused(request); });
 }
 
 void Bluetooth::startDiscovery()

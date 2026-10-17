@@ -54,13 +54,13 @@ Item {
         x: 8
         anchors.verticalCenter: parent.verticalCenter
         spacing: 2
-        ToolButton { icon: "go-previous"; tooltip: qsTr("Back (Alt+Left Arrow)"); usable: bar.tab.canGoBack; onClicked: bar.tab.back(); width: 36 }
-        ToolButton { icon: "go-next"; tooltip: qsTr("Forward (Alt+Right Arrow)"); usable: bar.tab.canGoForward; onClicked: bar.tab.forward(); width: 36 }
-        ToolButton { icon: "go-up"; tooltip: qsTr("Up (Alt+Up Arrow)"); usable: bar.tab.canGoUp; onClicked: bar.tab.up(); width: 36 }
-        ToolButton { icon: "view-refresh"; tooltip: qsTr("Refresh (F5)"); onClicked: bar.tab.refresh(); width: 36 }
+        ToolButton { icon.name: "go-previous"; tooltip: qsTr("Back (Alt+Left Arrow)"); usable: bar.tab.canGoBack; onClicked: bar.tab.back(); width: 36 }
+        ToolButton { icon.name: "go-next"; tooltip: qsTr("Forward (Alt+Right Arrow)"); usable: bar.tab.canGoForward; onClicked: bar.tab.forward(); width: 36 }
+        ToolButton { icon.name: "go-up"; tooltip: qsTr("Up (Alt+Up Arrow)"); usable: bar.tab.canGoUp; onClicked: bar.tab.up(); width: 36 }
+        ToolButton { icon.name: "view-refresh"; tooltip: qsTr("Refresh (F5)"); onClicked: bar.tab.refresh(); width: 36 }
     }
 
-    Rectangle {
+    Fill {
         id: address
         anchors { left: buttons.right; leftMargin: 8; right: searchBox.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
         height: 32
@@ -94,12 +94,12 @@ Item {
                         required property var modelData
                         required property int index
                         height: parent.height
-                        Rectangle {
+                        Fill {
                             height: 26
                             anchors.verticalCenter: parent.verticalCenter
                             width: crumbContent.width + 12
                             radius: Theme.radius
-                            color: crumbMouse.containsMouse || crumbDrop.containsDrag ? Theme.subtleHover : "transparent"
+                            color: crumbMouse.containsMouse || crumbDrop.containsDrag ? Theme.subtleHover : Theme.subtleRest
                             Row {
                                 id: crumbContent
                                 anchors.centerIn: parent
@@ -139,18 +139,16 @@ Item {
                             }
                         }
                         // The arrow: this piece's subfolders.
-                        Rectangle {
+                        Fill {
                             visible: crumb.modelData.location.startsWith("/") && crumb.modelData.location !== Places.trash
                             height: 26
                             width: 18
                             anchors.verticalCenter: parent.verticalCenter
                             radius: Theme.radius
-                            color: chevronMouse.containsMouse ? Theme.subtleHover : "transparent"
-                            Text {
+                            color: chevronMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                            Chevron {
                                 anchors.centerIn: parent
-                                text: "›"
                                 color: Theme.textSecondary
-                                font.pixelSize: 16
                             }
                             MouseArea {
                                 id: chevronMouse
@@ -201,7 +199,7 @@ Item {
     }
 
     // Search: in this folder and its subfolders.
-    Rectangle {
+    Fill {
         id: searchBox
         anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
         width: Math.min(280, bar.width * 0.25)
@@ -245,12 +243,9 @@ Item {
                 function onLocationChanged() { search.text = ""; searchDelay.stop() }
             }
         }
-        Image {
+        Icon {
             anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-            width: 16
-            height: 16
-            source: Theme.icons + "edit-find"
-            sourceSize: Qt.size(width, height)
+            name: "edit-find"
             opacity: 0.8
         }
     }

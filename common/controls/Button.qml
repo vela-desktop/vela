@@ -2,72 +2,67 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import QtQuick.Templates as T
 
 // Windows 11's button: standard (gray), accent, or subtle (no background,
-// like the cards' "..." buttons), with text, an icon or both. Also works from
-// the keyboard (Space, Enter) when it has the focus, with a focus ring.
-Rectangle {
-    id: button
-    property string text
-    property string icon
+// like the cards' "..." buttons; `checked`, what it opens is open, rests on
+// the hover color), with text, an icon (`icon.name`, from Theme.icons) or
+// both. Qt's button (input, Space and focus, accessibility),
+// Vela's look: its color fades between states (Fill). Tab gives it the focus
+// and a ring, a click doesn't, so the keyboard stays where it was; Enter
+// activates it too, like Space.
+T.Button {
+    id: control
     property bool accent: false
     property bool subtle: false
-    property bool usable: true
-    signal clicked()
+    property alias usable: control.enabled
 
-    implicitWidth: Math.max(subtle && text === "" ? 32 : 96, content.implicitWidth + 24)
+    implicitWidth: Math.max(subtle && text === "" ? 32 : 96, implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: 32
-    radius: Theme.radius
-    opacity: usable ? 1 : 0.45
-    color: subtle ? (mouse.pressed ? Theme.subtlePressed : mouse.containsMouse ? Theme.subtleHover : "transparent")
-         : accent ? (mouse.containsMouse && usable ? Theme.accentFillHover : Theme.accentFill)
-         : (mouse.pressed ? Theme.controlPressed : mouse.containsMouse ? Theme.controlHover : Theme.control)
-    border.width: subtle ? 0 : 1
-    border.color: accent ? Qt.rgba(0, 0, 0, 0.1) : Theme.controlStroke
-    activeFocusOnTab: usable
+    leftPadding: 12
+    rightPadding: 12
+    spacing: 8
+    focusPolicy: Qt.TabFocus
+    hoverEnabled: true // not dependent on platform style hints (also works offscreen)
+    opacity: enabled ? 1 : 0.45
+    icon.width: 16
+    icon.height: 16
+    font.pixelSize: Theme.fontBody
 
-    Accessible.role: Accessible.Button
-    Accessible.name: text
-    Accessible.onPressAction: if (usable) clicked()
-    Keys.onSpacePressed: if (usable) clicked()
-    Keys.onReturnPressed: if (usable) clicked()
-    Keys.onEnterPressed: if (usable) clicked()
+    Keys.onReturnPressed: clicked()
+    Keys.onEnterPressed: clicked()
 
-    Row {
-        id: content
-        anchors.centerIn: parent
-        spacing: 8
-        Image {
-            visible: button.icon !== ""
-            anchors.verticalCenter: parent.verticalCenter
-            width: 16
-            height: 16
-            source: button.icon !== "" ? Theme.icons + encodeURIComponent(button.icon) : ""
-            sourceSize: Qt.size(width, height)
-        }
-        Text {
-            visible: button.text !== ""
-            anchors.verticalCenter: parent.verticalCenter
-            text: button.text
-            color: button.accent ? Theme.accentText : Theme.text
-            font.pixelSize: Theme.fontBody
-        }
+    background: Fill {
+        color: control.subtle ? (control.down ? Theme.subtlePressed : control.hovered || control.checked ? Theme.subtleHover : Theme.subtleRest)
+             : control.accent ? (control.hovered ? Theme.accentFillHover : Theme.accentFill)
+             : (control.down ? Theme.controlPressed : control.hovered ? Theme.controlHover : Theme.control)
+        border.width: control.subtle ? 0 : 1
+        border.color: control.accent ? Qt.rgba(0, 0, 0, 0.1) : Theme.controlStroke
+        // At once, like a disabled look: both must read immediately.
+        FocusRing { visible: control.visualFocus }
     }
-    // Keyboard focus: a ring around it, like Windows.
-    Rectangle {
-        visible: button.activeFocus
-        anchors.fill: parent
-        anchors.margins: -3
-        radius: button.radius + 3
-        color: "transparent"
-        border.width: 2
-        border.color: Theme.text
-    }
-    MouseArea {
-        id: mouse
-        anchors.fill: parent
-        hoverEnabled: true
-        enabled: button.usable
-        onClicked: button.clicked()
+
+    contentItem: Item {
+        implicitWidth: row.implicitWidth
+        implicitHeight: row.implicitHeight
+        Row {
+            id: row
+            anchors.centerIn: parent
+            spacing: control.spacing
+            Icon {
+                visible: name !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                name: control.icon.name
+                size: control.icon.width
+                onAccent: control.accent
+            }
+            Text {
+                visible: control.text !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                text: control.text
+                color: control.accent ? Theme.accentText : Theme.text
+                font: control.font
+            }
+        }
     }
 }

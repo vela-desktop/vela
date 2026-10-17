@@ -22,8 +22,7 @@ C.TextField {
     echoMode: password ? TextInput.Password : TextInput.Normal
     passwordCharacter: "●"
     inputMethodHints: password ? (Qt.ImhHiddenText | Qt.ImhSensitiveData | Qt.ImhNoPredictiveText) : Qt.ImhNone
-    background: Rectangle {
-        radius: Theme.radius
+    background: Fill {
         color: field.activeFocus ? (Theme.light ? "#ffffff" : Qt.rgba(0.12, 0.12, 0.12, 0.7)) : field.hovered ? Theme.controlHover : Theme.control
         border.width: 1
         border.color: Theme.controlStroke

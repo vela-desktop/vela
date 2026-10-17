@@ -6,8 +6,10 @@
 #include "color.h"
 #include "config.h"
 #include "input.h"
+#include "lock.h"
 #include "output.h"
 #include "scene/frame.h"
+#include "scene/night_light_policy.h"
 #include "server.h"
 #include "shell.h"
 #include "sun.h"
@@ -83,8 +85,11 @@ static bool timezone_coordinates(double *latitude, double *longitude)
 
 // ----------------------------------------------------------------- color --
 
-// Filters change the rendered pixels. Night light only does so on outputs
-// where the gamma LUT is unavailable; DRM outputs only need another commit.
+/**
+ * Publish color-filter and Night Light state to the scene and each output.
+ * Switching backends invalidates rendering even if the gains remain constant
+ * and explicitly retries any previously rejected hardware LUT clear.
+ */
 static void apply_color(struct vela_a11y *a11y)
 {
     struct vela_scene *scene = a11y->server->scene;
@@ -96,22 +101,33 @@ static void apply_color(struct vela_a11y *a11y)
     float gains[3] = { 1.0f, 1.0f, 1.0f };
     bool night = a11y->night_level > 0.0;
     if (night) {
-        vela_night_gains(6500.0 + (vela_night_kelvin(a11y->night_strength) - 6500.0) * a11y->night_level, gains);
+        vela_night_gains(6500.0 + (a11y->night_kelvin - 6500.0) * a11y->night_level, gains);
     }
     bool filter_changed = a11y->color_filter != scene->color_filtered
         || (a11y->color_filter && memcmp(m, scene->color_filter, sizeof(m)) != 0);
     bool night_changed = night != scene->night_active || memcmp(gains, scene->night_gains, sizeof(gains)) != 0;
+    bool force_shader = vela_night_light_force_shader(a11y->night_nvidia_fix, a11y->level_animating);
+    bool backend_changed = force_shader != scene->night_force_shader;
+    scene->night_force_shader = force_shader;
     scene->color_filtered = a11y->color_filter;
     memcpy(scene->color_filter, m, sizeof(m));
     scene->night_active = night;
     memcpy(scene->night_gains, gains, sizeof(gains));
-    if (night_changed) {
+    if (night_changed || backend_changed) {
         ++scene->night_version;
     }
-    if (filter_changed || night_changed) {
+    if (filter_changed || night_changed || backend_changed) {
         struct vela_output *output;
         wl_list_for_each (output, &a11y->server->outputs, link) {
-            vela_output_frame_color_changed(output->frame, filter_changed, night_changed);
+            // A manual switch in either direction must retry a previously
+            // rejected LUT clear. Otherwise enabling the workaround can leave
+            // the broken hardware LUT installed until the periodic retry.
+            if (backend_changed) {
+                vela_output_frame_retry_night_light(output->frame);
+            }
+            // Between shader and LUT every pixel is drawn anew.
+            vela_output_frame_color_changed(output->frame, filter_changed || backend_changed,
+                night_changed || backend_changed);
         }
     }
 }
@@ -186,7 +202,7 @@ struct vela_a11y *vela_a11y_create(struct vela_server *server)
 {
     struct vela_a11y *a11y = calloc(1, sizeof(*a11y));
     a11y->server = server;
-    a11y->night_strength = 48;
+    a11y->night_kelvin = VELA_NIGHT_KELVIN_DEFAULT;
     snprintf(a11y->schedule, sizeof(a11y->schedule), "no");
     a11y->night_from = 21 * 60;
     a11y->night_to = 7 * 60;
@@ -216,16 +232,19 @@ void vela_a11y_destroy(struct vela_a11y *a11y)
 static void start_night_transition(struct vela_a11y *a11y)
 {
     a11y->level_from = a11y->night_level;
-    vela_tween_start(&a11y->level_tween, 1000.0, &vela_decelerate);
+    vela_tween_start(&a11y->level_tween, "night-light", 1000.0, &vela_decelerate);
     a11y->level_animating = true;
     vela_server_schedule_frames(a11y->server);
 }
 
+/** Reload accessibility preferences, including the optional Night Light backend. */
 void vela_a11y_load(struct vela_a11y *a11y)
 {
     struct vela_config settings;
     vela_config_read(&settings);
-    a11y->night_strength = vela_clamp(atoi(vela_config_get(&settings, "night-light-strength", "48")), 0, 100);
+    a11y->night_kelvin = vela_night_temperature(vela_config_get(&settings, "night-light-temperature", NULL),
+        vela_config_get(&settings, "night-light-strength", NULL));
+    a11y->night_nvidia_fix = vela_config_flag(&settings, "night-light-nvidia-fix", false);
     snprintf(a11y->schedule, sizeof(a11y->schedule), "%s", vela_config_get(&settings, "night-light-schedule", "no"));
     a11y->night_from = vela_parse_clock(vela_config_get(&settings, "night-light-from", ""), 21 * 60);
     a11y->night_to = vela_parse_clock(vela_config_get(&settings, "night-light-to", ""), 7 * 60);
@@ -236,6 +255,9 @@ void vela_a11y_load(struct vela_a11y *a11y)
     bool night = vela_config_flag(&settings, "night-light", false);
     bool filter = vela_config_flag(&settings, "color-filters", false);
     bool sticky = vela_config_flag(&settings, "sticky-keys", false);
+    vela_motion_set_effects(vela_config_flag(&settings, "animation-effects", true));
+    int duration = vela_clamp(atoi(vela_config_get(&settings, "animation-duration", "100")), 50, 300);
+    vela_motion_set_duration(duration / 100.0);
     vela_config_finish(&settings);
 
     // A new (or changed) schedule decides at once; otherwise the file's value
@@ -256,10 +278,10 @@ void vela_a11y_load(struct vela_a11y *a11y)
     }
     check_night_schedule(a11y);
     // No gradual change at startup: as it was.
-    if (a11y->night_level == 0.0 && a11y->night_light && !a11y->level_animating
-        && a11y->server->animation_now_ms == 0.0) {
+    if (a11y->night_level == 0.0 && a11y->night_light && !a11y->level_animating && !a11y->loaded) {
         a11y->night_level = 1.0;
     }
+    a11y->loaded = true;
     if (a11y->night_light != (a11y->night_level > 0.5) && !a11y->level_animating) {
         start_night_transition(a11y);
     }
@@ -331,6 +353,12 @@ void vela_a11y_set_sticky_keys(struct vela_a11y *a11y, bool on, bool save)
 
 // ------------------------------------------------------------- magnifier --
 
+// Zooming is movement: without animation effects it happens at once.
+static double zoom_ms(void)
+{
+    return vela_motion_effects() ? vela_motion_ms(VELA_MAGNIFIER_MS) : 0.0;
+}
+
 void vela_a11y_set_magnifier(struct vela_a11y *a11y, bool on)
 {
     if (on == a11y->magnifier) {
@@ -340,7 +368,7 @@ void vela_a11y_set_magnifier(struct vela_a11y *a11y, bool on)
     // Like Windows: it starts at double.
     a11y->zoom_target = on ? 1.0 + a11y->zoom_step / 100.0 : 1.0;
     a11y->zoom_from = a11y->zoom;
-    vela_tween_start(&a11y->zoom_tween, VELA_MAGNIFIER_MS, &vela_decelerate);
+    vela_tween_start(&a11y->zoom_tween, "magnifier", zoom_ms(), &vela_decelerate);
     a11y->zoom_animating = true;
     struct wlr_cursor *cursor = a11y->server->cursor;
     if (on && !a11y->zoom_output) {
@@ -370,7 +398,7 @@ void vela_a11y_zoom(struct vela_a11y *a11y, int direction)
     }
     a11y->zoom_target = target;
     a11y->zoom_from = a11y->zoom;
-    vela_tween_start(&a11y->zoom_tween, VELA_MAGNIFIER_MS, &vela_decelerate);
+    vela_tween_start(&a11y->zoom_tween, "magnifier", zoom_ms(), &vela_decelerate);
     a11y->zoom_animating = true;
     vela_server_schedule_frames(a11y->server);
 }
@@ -436,19 +464,14 @@ void vela_a11y_update_magnifier(struct vela_a11y *a11y)
     }
 }
 
-bool vela_a11y_animating(const struct vela_a11y *a11y)
-{
-    return a11y->level_animating || a11y->zoom_animating;
-}
-
-bool vela_a11y_tick(struct vela_a11y *a11y, double now_ms)
+bool vela_a11y_tick(struct vela_a11y *a11y, double now_ms, double wall_ms)
 {
     bool running = false;
     if (a11y->level_animating) {
         double p = vela_tween_progress(&a11y->level_tween, now_ms);
         double target = a11y->night_light ? 1.0 : 0.0;
         a11y->night_level = a11y->level_from + (target - a11y->level_from) * p;
-        if (vela_tween_finished(&a11y->level_tween, now_ms)) {
+        if (vela_tween_retired(&a11y->level_tween, wall_ms)) {
             a11y->night_level = target;
             a11y->level_animating = false;
         }
@@ -458,7 +481,7 @@ bool vela_a11y_tick(struct vela_a11y *a11y, double now_ms)
     if (a11y->zoom_animating) {
         double p = vela_tween_progress(&a11y->zoom_tween, now_ms);
         a11y->zoom = a11y->zoom_from + (a11y->zoom_target - a11y->zoom_from) * p;
-        if (vela_tween_finished(&a11y->zoom_tween, now_ms)) {
+        if (vela_tween_retired(&a11y->zoom_tween, wall_ms)) {
             a11y->zoom = a11y->zoom_target;
             a11y->zoom_animating = false;
         }
@@ -470,6 +493,9 @@ bool vela_a11y_tick(struct vela_a11y *a11y, double now_ms)
         }
         if (!a11y->zoom_animating && a11y->zoom <= 1.0 && !a11y->magnifier) {
             a11y->zoom = 1.0;
+            // Closed: the next opening anchors at the pointer, not at the
+            // point this one kept still.
+            a11y->zoom_output = NULL;
         }
         update_magnifier(a11y);
         running = running || a11y->zoom_animating;
@@ -565,6 +591,7 @@ bool vela_a11y_sticky_key(struct vela_a11y *a11y, struct wlr_keyboard *keyboard,
 
 // ------------------------------------------------------------ the shell --
 
+/** Serialize accessibility flags, the NVIDIA fallback setting, and sun times. */
 bool vela_a11y_json(const struct vela_a11y *a11y, char *out, size_t size)
 {
     // Today's sun times, for the night light page ("Sunset to sunrise").
@@ -578,9 +605,12 @@ bool vela_a11y_json(const struct vela_a11y *a11y, char *out, size_t size)
     const char *t = "true";
     const char *f = "false";
     return vela_format(out, size,
-        "{\"nightLight\":%s,\"colorFilter\":%s,\"magnifier\":%s,\"stickyKeys\":%s,\"touchpad\":%s%s}",
-        a11y->night_light ? t : f, a11y->color_filter ? t : f, a11y->magnifier ? t : f, a11y->sticky_keys ? t : f,
-        vela_input_has_touchpad(a11y->server->input) ? t : f, sun);
+        "{\"nightLight\":%s,\"nightLightNvidiaFix\":%s,\"colorFilter\":%s,\"magnifier\":%s,\"stickyKeys\":%s,\"touchpad\":%s,"
+        "\"caffeine\":%s,\"caffeineSecs\":%d,\"caffeineDurationSecs\":%d%s}",
+        a11y->night_light ? t : f, a11y->night_nvidia_fix ? t : f, a11y->color_filter ? t : f,
+        a11y->magnifier ? t : f, a11y->sticky_keys ? t : f,
+        vela_input_has_touchpad(a11y->server->input) ? t : f, a11y->server->lock->caffeine ? t : f,
+        vela_lock_caffeine_remaining_s(a11y->server->lock), a11y->server->lock->caffeine_duration_s, sun);
 }
 
 static void announce(struct vela_a11y *a11y)
@@ -590,4 +620,9 @@ static void announce(struct vela_a11y *a11y)
     if (vela_a11y_json(a11y, line + used, sizeof(line) - used)) {
         vela_shell_send(a11y->server, line);
     }
+}
+
+void vela_a11y_announce(struct vela_a11y *a11y)
+{
+    announce(a11y);
 }

@@ -25,7 +25,7 @@ Item {
         color: Theme.scrollTrack
         visible: hover.hovered || drag.active
     }
-    Rectangle {
+    Fill {
         id: thumb
         x: 2
         width: parent.width - 4

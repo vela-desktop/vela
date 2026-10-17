@@ -36,7 +36,8 @@ struct vela_a11y {
     struct vela_server *server;
 
     bool night_light; // on, by hand or by the schedule
-    int night_strength; // 0-100, like Windows' "Strength"
+    int night_kelvin; // the color temperature when fully on
+    bool night_nvidia_fix; // opt-in Vulkan rendering, bypass hardware gamma
     char schedule[16]; // "no", "sunset" (from sunset to sunrise), "hours"
     int night_from; // minutes after midnight
     int night_to;
@@ -47,6 +48,7 @@ struct vela_a11y {
     double level_from;
     struct vela_tween level_tween;
     bool level_animating;
+    bool loaded; // vela.conf read once: what it says at startup is shown at once
 
     bool color_filter;
     char color_filter_kind[32]; // grayscale, deuteranopia, protanopia, tritanopia
@@ -88,13 +90,15 @@ void vela_a11y_set_color_filter(struct vela_a11y *a11y, bool on, bool save);
 void vela_a11y_set_sticky_keys(struct vela_a11y *a11y, bool on, bool save);
 void vela_a11y_set_magnifier(struct vela_a11y *a11y, bool on);
 void vela_a11y_zoom(struct vela_a11y *a11y, int direction); // +1 Win+plus, -1 Win+minus
+// Sends the quick settings' state to the shell (also caffeine, which is in
+// lock.c).
+void vela_a11y_announce(struct vela_a11y *a11y);
 
 // The zoomed area follows the cursor (after each movement).
 void vela_a11y_update_magnifier(struct vela_a11y *a11y);
-// Animations (night light fading, magnifier opening) at `now_ms`: false when
-// nothing is left to animate.
-bool vela_a11y_tick(struct vela_a11y *a11y, double now_ms);
-bool vela_a11y_animating(const struct vela_a11y *a11y);
+// Animations (night light fading, magnifier opening) at `now_ms` (the frame's
+// time), ended at `wall_ms`: false when nothing is left to animate.
+bool vela_a11y_tick(struct vela_a11y *a11y, double now_ms, double wall_ms);
 void vela_a11y_output_destroyed(struct vela_a11y *a11y, struct vela_output *output);
 
 // Sticky keys: every key goes through here before the shortcuts. true if Win

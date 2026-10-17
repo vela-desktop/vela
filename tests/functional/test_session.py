@@ -6,6 +6,8 @@ supervisor restarting the compositor after a crash (locked too)."""
 
 import os
 import signal
+import socket
+import struct
 import tempfile
 import time
 import unittest
@@ -74,6 +76,97 @@ class Lock(unittest.TestCase):
             self.assertTrue(vela.state().has(window))
 
 
+class Caffeine(unittest.TestCase):
+    """Caffeine (quick settings): inactivity turns nothing off until it's
+    turned off again, or its minutes run out (lock.c)."""
+
+    def test_caffeine_holds_off_inactivity(self):
+        # 3 seconds of inactivity; headless it needs VELA_SCREEN_OFF.
+        with Session(env={"VELA_SCREEN_OFF": "0.05", "VELA_LOCK_ON_IDLE": "no"}) as vela:
+            self.assertFalse(vela.query("accessibility")["caffeine"])
+            vela.command("caffeine on")
+            vela.wait_for(lambda s: vela.query("accessibility")["caffeine"], read_state=False, what="caffeine on")
+            self.assertEqual(vela.query("accessibility")["caffeineSecs"], -1)
+            vela.wait_for(lambda s: s.output["powered"], what="screen on")
+            time.sleep(4.5)
+            self.assertTrue(vela.state().output["powered"])
+            vela.command("caffeine toggle")
+            vela.wait_for(lambda s: not s.output["powered"], timeout=6, what="screen off without caffeine")
+            self.assertFalse(vela.query("accessibility")["caffeine"])
+
+    def test_caffeine_turns_itself_off(self):
+        # 0.04 minutes are about 2.4 seconds; the screen (3 seconds of
+        # inactivity) must still be on just after, and off once time is up.
+        with Session(env={"VELA_SCREEN_OFF": "0.05", "VELA_LOCK_ON_IDLE": "no"}) as vela:
+            vela.command("caffeine on 0.04")
+            vela.wait_for(lambda s: vela.query("accessibility")["caffeine"], read_state=False, what="timed caffeine on")
+            self.assertGreater(vela.query("accessibility")["caffeineSecs"], 0)
+            vela.wait_for(lambda s: not vela.query("accessibility")["caffeine"], read_state=False, timeout=10,
+                          what="caffeine off by itself")
+            vela.wait_for(lambda s: not s.output["powered"], timeout=6, what="screen off after time is up")
+
+    def test_caffeine_prevents_automatic_lock(self):
+        # Test lock-on-idle itself, not just monitor power (the other tests
+        # explicitly disable idle locking).
+        with Session(env={"VELA_SCREEN_OFF": "0.05"}, lock_hold_ms=4000) as vela:
+            vela.command("caffeine on")
+            vela.wait_for(lambda _: vela.query("accessibility")["caffeine"],
+                          read_state=False, what="caffeine enabled")
+            time.sleep(3.5)
+            self.assertFalse(vela.state()["locked"])
+            vela.command("caffeine off")
+            vela.wait_for(lambda s: s["locked"], timeout=7, what="automatic lock after caffeine")
+
+    def test_caffeine_presets_and_invalid_durations(self):
+        with Session() as vela:
+            vela.command("caffeine on 30")
+            vela.wait_for(lambda _: vela.query("accessibility")["caffeineDurationSecs"] == 1800,
+                          read_state=False, what="30 minute duration")
+            for value in ("bogus", "-1", "0", "1e309", "1441", "30junk"):
+                vela.command("caffeine on " + value)
+                # The command socket is asynchronous; checking after a small
+                # delay ensures the bad command was handled.
+                time.sleep(0.05)
+                status = vela.query("accessibility")
+                self.assertTrue(status["caffeine"])
+                self.assertEqual(status["caffeineDurationSecs"], 1800)
+            vela.command("caffeine on 60")
+            vela.wait_for(lambda _: vela.query("accessibility")["caffeineDurationSecs"] == 3600,
+                          read_state=False, what="renewed 60 minute duration")
+            vela.command("caffeine on")
+            vela.wait_for(lambda _: vela.query("accessibility")["caffeineSecs"] == -1,
+                          read_state=False, what="indefinite caffeine")
+            self.assertEqual(vela.query("accessibility")["caffeineDurationSecs"], 0)
+            vela.command("caffeine off")
+            vela.wait_for(lambda _: not vela.query("accessibility")["caffeine"],
+                          read_state=False, what="caffeine disabled")
+
+    def test_caffeine_confirmed_commands_report_authoritative_state(self):
+        with Session() as vela:
+            enabled = vela.query("caffeine-set on 30")
+            self.assertTrue(enabled["ok"])
+            self.assertTrue(enabled["state"]["caffeine"])
+            self.assertEqual(enabled["state"]["caffeineDurationSecs"], 1800)
+
+            # A rejected request must report failure and the existing state.
+            invalid = vela.query("caffeine-set on bogus")
+            self.assertFalse(invalid["ok"])
+            self.assertTrue(invalid["state"]["caffeine"])
+
+            disabled = vela.query("caffeine-set off")
+            self.assertTrue(disabled["ok"])
+            self.assertFalse(disabled["state"]["caffeine"])
+            self.assertEqual(disabled["state"]["caffeineSecs"], 0)
+
+    def test_caffeine_submillisecond_timer_is_not_stuck(self):
+        # Fractional durations must expire even if the millisecond timer
+        # fires before the CLOCK_MONOTONIC deadline.
+        with Session() as vela:
+            vela.command("caffeine on 0.000025")  # 1.5 ms
+            vela.wait_for_log("Caffeine time is up", timeout=5)
+            self.assertFalse(vela.query("accessibility")["caffeine"])
+
+
 class Shell(unittest.TestCase):
     """The startup command (the shell): relaunched when it fails, but not
     when it exits cleanly nor when it keeps failing right after starting
@@ -102,7 +195,80 @@ class Shell(unittest.TestCase):
         self.assertNotIn("restarting it", log)
 
 
+class CommandSocket(unittest.TestCase):
+    def test_client_that_hangs_up_before_the_reply_does_not_kill_the_session(self):
+        # A large reply ("state" with windows) to clients that reset the
+        # connection at once: writing to them must not raise SIGPIPE.
+        with Session() as vela:
+            for _ in range(20):
+                vela.open_window(200, 150)
+            for _ in range(50):
+                with socket.socket(socket.AF_UNIX) as client:
+                    client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+                    client.connect(vela.socket_path)
+                    client.sendall(b"state\n")
+            self.assertEqual(len(vela.state().windows), 20)
+
+
 class Supervisor(unittest.TestCase):
+    def test_redraw_signal_keeps_supervised_session_alive(self):
+        # pkill -x matches /proc/<pid>/comm, not argv. Never run pkill in
+        # tests: it could signal a real desktop running outside this session.
+        with Session(supervise=True) as vela:
+            supervisor_pid = vela.process.pid
+            vela.wait_for(lambda _: child_compositor(supervisor_pid) is not None,
+                          read_state=False, what="supervised compositor")
+            compositor_pid = child_compositor(supervisor_pid)
+            with open(f"/proc/{supervisor_pid}/comm") as name:
+                self.assertEqual(name.read().strip(), "vela-supervise")
+            with open(f"/proc/{compositor_pid}/comm") as name:
+                self.assertEqual(name.read().strip(), "vela-compositor")
+
+            # The main thread AND GPU worker threads must block SIGUSR1 and
+            # SIGINT/SIGTERM: Wayland's signalfd can only receive a
+            # process-directed signal reliably when another thread cannot
+            # handle it instead.
+            redraw_bit = 1 << (signal.SIGUSR1 - 1)
+            exit_bits = (1 << (signal.SIGINT - 1)) | (1 << (signal.SIGTERM - 1))
+            for tid in os.listdir(f"/proc/{compositor_pid}/task"):
+                try:
+                    with open(f"/proc/{compositor_pid}/task/{tid}/status") as status:
+                        line = next(line for line in status if line.startswith("SigBlk:"))
+                except (FileNotFoundError, ProcessLookupError):
+                    continue  # A worker thread can exit while inspecting.
+                self.assertNotEqual(int(line.split()[1], 16) & redraw_bit, 0,
+                                    f"SIGUSR1 unblocked by compositor thread {tid}")
+                self.assertEqual(int(line.split()[1], 16) & exit_bits, exit_bits,
+                                 f"SIGINT/SIGTERM unblocked by compositor thread {tid}")
+
+            # An accidental direct signal to the supervisor must not log out.
+            os.kill(supervisor_pid, signal.SIGUSR1)
+            time.sleep(0.2)
+            self.assertIsNone(vela.process.poll())
+            self.assertEqual(child_compositor(supervisor_pid), compositor_pid)
+
+            # Targeting the real compositor must only request a redraw.
+            os.kill(compositor_pid, signal.SIGUSR1)
+            time.sleep(0.2)
+            vela.state()
+            self.assertIsNone(vela.process.poll())
+            self.assertEqual(child_compositor(supervisor_pid), compositor_pid)
+            self.assertNotIn("the compositor crashed", vela.log_text())
+
+    def test_termination_signals_exit_cleanly(self):
+        # Both signals must reach Wayland's signalfd and shut down the
+        # compositor without being mistaken for a crash by the supervisor.
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=signal.Signals(signum).name):
+                with Session(supervise=True) as vela:
+                    compositor_pid = child_compositor(vela.process.pid)
+                    self.assertIsNotNone(compositor_pid)
+                    os.kill(compositor_pid, signum)
+                    self.assertEqual(vela.process.wait(timeout=15), 0)
+                    log = vela.log_text()
+                    self.assertNotIn("the compositor crashed", log)
+                    self.assertNotIn("restarting it", log)
+
     def test_restart_after_crash(self):
         with Session(supervise=True) as vela:
             first = child_compositor(vela.process.pid)
@@ -126,7 +292,7 @@ class Supervisor(unittest.TestCase):
             vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
 
     def test_gives_up_after_three_quick_crashes(self):
-        with Session(supervise=True) as vela:
+        with Session(supervise=True, expected_exit=1) as vela:
             for _ in range(3):
                 vela.wait_for(lambda s: child_compositor(vela.process.pid), read_state=False, what="the compositor")
                 child = child_compositor(vela.process.pid)
@@ -135,7 +301,7 @@ class Supervisor(unittest.TestCase):
                 while child_compositor(vela.process.pid) == child and time.monotonic() < deadline:
                     time.sleep(0.05)
             vela.process.wait(10)
-            self.assertNotEqual(vela.process.returncode, 0)
+            self.assertEqual(vela.process.returncode, 1)
             self.assertIn("giving up", vela.log_text())
             runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
             self.assertFalse(os.path.exists(os.path.join(runtime, vela.display))) # Wayland socket removed

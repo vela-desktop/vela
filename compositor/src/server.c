@@ -12,6 +12,7 @@
 #include "layer.h"
 #include "listen.h"
 #include "lock.h"
+#include "motion.h"
 #include "output.h"
 #include "output_manager.h"
 #include "path_security.h"
@@ -33,7 +34,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <math.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdio.h>
@@ -120,6 +120,12 @@ static void handle_layout_change(struct wl_listener *listener, void *data)
 // build, a game): realtime scheduling, at low priority, for the main thread,
 // like KWin. What Vela launches (shell, apps) doesn't inherit it. Needs
 // RLIMIT_RTPRIO or CAP_SYS_NICE; VELA_REALTIME=0 turns it off.
+// VELA_DEBUG_ANIMATION=1 (motion.h).
+static void log_animation(const char *line)
+{
+    wlr_log(WLR_INFO, "animation: %s", line);
+}
+
 static void make_realtime(void)
 {
     if (vela_env_off("VELA_REALTIME")) {
@@ -150,6 +156,8 @@ static bool init(struct vela_server *server)
     server->interaction = vela_interaction_create();
     server->switcher = vela_switcher_create();
     server->snapping = vela_snapping_create();
+    // Vela's accent until the shell sends the user's (Theme.qml's default).
+    server->accent = (struct wlr_render_color) { 0x5b / 255.0f, 0x8c / 255.0f, 1.0f, 1.0f };
     server->vrr_mode = 1;
     server->display = wl_display_create();
     server->loop = wl_display_get_event_loop(server->display);
@@ -254,7 +262,10 @@ static bool init(struct vela_server *server)
     // Seat, cursor, mice, keyboards, gestures (input.c).
     server->input = vela_input_create(server);
 
-    wl_event_loop_add_signal(server->loop, SIGUSR1, handle_redraw_all, server);
+    if (!wl_event_loop_add_signal(server->loop, SIGUSR1, handle_redraw_all, server)) {
+        wlr_log_errno(WLR_ERROR, "Cannot register SIGUSR1 handler");
+        return false;
+    }
     vela_xwayland_init(server); // X11 apps (xwayland.c)
     server->lock = vela_lock_create(server); // lock and inactivity (lock.c)
     // Accessibility and screen color (a11y.c); VRR and tearing.
@@ -263,9 +274,18 @@ static bool init(struct vela_server *server)
     vela_output_load_settings(server);
     vela_a11y_load(server->a11y);
     server->workspaces = vela_workspaces_create(server); // virtual desktops (workspace.c)
+    if (vela_env_one("VELA_DEBUG_ANIMATION")) {
+        vela_motion_logger = log_animation;
+    }
 
-    wl_event_loop_add_signal(server->loop, SIGINT, handle_terminate, display);
-    wl_event_loop_add_signal(server->loop, SIGTERM, handle_terminate, display);
+    if (!wl_event_loop_add_signal(server->loop, SIGINT, handle_terminate, display)) {
+        wlr_log_errno(WLR_ERROR, "Cannot register SIGINT handler");
+        return false;
+    }
+    if (!wl_event_loop_add_signal(server->loop, SIGTERM, handle_terminate, display)) {
+        wlr_log_errno(WLR_ERROR, "Cannot register SIGTERM handler");
+        return false;
+    }
     make_realtime();
     return true;
 }
@@ -503,18 +523,19 @@ void vela_server_animate(struct vela_server *server, int64_t present_ns)
     wl_list_for_each (view, &server->views, link) {
         vela_view_update_shape(view); // corners and shadow for the current state
     }
-    server->animation_now_ms = fmax(server->animation_now_ms, present_ns / 1e6);
-    if (!vela_views_animating(server) && !vela_snapshots_running(server) && !vela_snap_preview_shown(server)
-        && server->workspaces->direction == 0 && !vela_a11y_animating(server->a11y)) {
-        return;
-    }
-    double now_ms = server->animation_now_ms;
-    bool accessibility = vela_a11y_tick(server->a11y, now_ms);
-    bool opening = vela_views_tick(server, now_ms);
-    vela_snapshots_tick(server, now_ms);
-    bool previewing = vela_snap_tick_preview(server, now_ms);
-    bool switching = vela_workspaces_tick(server, now_ms);
-    if (opening || vela_snapshots_running(server) || switching || accessibility || previewing) {
+    // What this frame shows (docs/renderer.md §4.2), and what can be retired:
+    // no frame still to come, on any output, is presented before the wall
+    // clock (docs/visual-coherence.md §6.2).
+    double now_ms = present_ns / 1e6;
+    double wall_ms = vela_now_ns() / 1e6;
+    server->ticking = true;
+    bool running = vela_a11y_tick(server->a11y, now_ms, wall_ms);
+    running |= vela_views_tick(server, now_ms, wall_ms);
+    running |= vela_snapshots_tick(server, now_ms, wall_ms);
+    running |= vela_snap_tick_preview(server, now_ms);
+    running |= vela_workspaces_tick(server, now_ms, wall_ms);
+    if (running) {
         vela_server_schedule_frames(server);
     }
+    server->ticking = false;
 }

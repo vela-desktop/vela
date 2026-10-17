@@ -6,7 +6,54 @@ For renderer design and frame scheduling, see [renderer.md](renderer.md). For th
 
 ## Build
 
-Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3. Distribution package lists are in the [README](../README.md#build-from-source).
+Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3. Distribution package lists are below in [distribution dependencies](#distribution-dependencies).
+
+## Distribution dependencies
+
+These packages are for **building Vela from source**, not the much smaller requirements of the [user installer](installation.md). Keep them synchronized with the CI's build dependencies.
+
+<details>
+<summary><b>Arch / CachyOS / EndeavourOS</b></summary>
+
+```sh
+sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland wayland-protocols \
+    libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
+    vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
+    pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
+    pipewire wireplumber
+```
+</details>
+
+<details>
+<summary><b>Fedora</b></summary>
+
+```sh
+sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
+    wlroots-devel wayland-devel wayland-protocols-devel libxkbcommon-devel \
+    pixman-devel libinput-devel libdrm-devel mesa-libgbm-devel \
+    qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel \
+    qt6-qttools-devel qt6-qtsvg-devel qt6-qtwayland-devel layer-shell-qt-devel \
+    vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
+    fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
+    zlib-devel gtest-devel python3 python3-numpy python3-pillow shared-mime-info \
+    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber
+```
+</details>
+
+<details>
+<summary><b>openSUSE Tumbleweed (experimental; not currently validated by CI)</b></summary>
+
+```sh
+sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
+    libxkbcommon-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
+    qt6-svg-devel qt6-waylandclient-devel layer-shell-qt6-devel \
+    vulkan-headers vulkan-devel shaderc libgbm-devel libdrm-devel \
+    freetype2-devel harfbuzz-devel fontconfig-devel pam-devel librsvg-devel \
+    zlib-devel gtest python3
+```
+</details>
+
+## Build commands
 
 The normal development build is:
 
@@ -130,7 +177,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 | `vela-screen-dump` | Capture an output or region to PNG. |
 | `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window). |
 | `vela-panel` | Fake shell pieces on wlr-layer-shell: `wallpaper`, and `taskbar [--blur]` with a reserved area and background blur. |
-| `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu. |
+| `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu; `--wine-backdrop` adds Wine's black fullscreen backdrop (override-redirect, then managed with fullscreen, skip-taskbar and below). |
 | `vela-randr` | Configure outputs like Settings > Display (wlr-output-management): list them, or `--output NAME` with `--on`/`--off`, `--scale`, `--pos X,Y`, `--mode WxH`. |
 | `vela-testlock` | Test the lock path without requiring a password; it unlocks itself. |
 | `vela-slowgpu` | An app whose GPU finishes each frame late (Vulkan compute job, explicit or `--implicit` sync), to check that the screen never waits for it. |
@@ -150,9 +197,68 @@ test-output remove HEADLESS-2
 test-power off
 test-power on
 reload-config
+caffeine on [minutes]
+caffeine off
+caffeine toggle
+caffeine status
 ```
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
+
+### Wine/Proton fullscreen style transitions
+
+Wine/Proton exports its native Windows window styles through
+`_WINE_HWND_STYLE`. A fullscreen Windows popup can turn into a captioned
+overlapped window even when Wine does not issue an EWMH fullscreen change.
+Vela observes those property notifications on managed X11 windows and
+reconciles its fullscreen state after an observed `WS_POPUP →`
+decorated style transition while already fullscreen. The reverse change
+re-enters fullscreen **only when it undoes that specific automatic exit**:
+a popup window by itself never implies fullscreen. Actual fullscreen
+state changes clear that restore hint, while redundant requests which
+reaffirm the existing state do not. The armed return also survives
+intermediate non-popup Wine styles. Non-Wine windows, other style changes,
+and unknown initial styles are left alone. Property replies are polled
+asynchronously to avoid blocking the compositor's event loop.
+
+The X11 geometry must agree with Vela's scene: when transitioning into
+fullscreen, maximizing, or restoring, Vela now places the scene node *before*
+calling `vela_view_configure_size` so the X11 configure request contains the
+**final position and size together**, avoiding a stale root position. The
+functional X11 helper can independently query root-relative geometry to detect
+a mismatch after either direction of a mode change.
+
+This also updates the window's size and scene layer through the ordinary
+`vela_view_set_fullscreen` path.
+
+The compatibility handling is based on the
+documented Windows style flags, not game names or opaque pixel inspection.
+The isolated `test_x11.py` tests exercise both transitions, fullscreen
+at initial map, popup windows that must stay windowed, deleted style
+properties and unrelated style changes.
+
+### Wine/Proton fullscreen backdrop
+
+Wine puts a black, screen-sized window with the game's `WM_CLASS` under a
+fullscreen game. It is created override-redirect and made managed later,
+then asks for `_NET_WM_STATE_FULLSCREEN`, `SKIP_TASKBAR`, `SKIP_PAGER` and,
+after mapping, `BELOW`. Vela follows wlroots' `set_override_redirect`: an X11
+window that changes kind is recreated as a view or as an unmanaged surface,
+keeping its surface and map state (otherwise the backdrop stays an
+override-redirect surface above the game). Any X11 view with
+`_NET_WM_STATE_BELOW` stays at the bottom of its layer (on map, on
+fullscreen changes and when the state arrives later), never takes the
+keyboard and is left out of Alt+Tab; `SKIP_TASKBAR` views get no taskbar
+handle. `test_x11.py` reproduces the sequence with `vela-x11 --wine-backdrop`.
+Even if a mapped BELOW backdrop switches back to override-redirect, it stays
+in the ordinary window layer below fullscreen rather than in the X11 popup
+layer above fullscreen. Other override-redirect menus retain their normal
+popup stacking. `--backdrop-id-file PATH` exposes the backdrop XID for the
+mapped transition regression test.
+The mapped-state regression tests also use `vela-x11 --override-redirect XID on|off`
+and `vela-x11 --state XID below|skip-taskbar on|off` to exercise transitions
+without first unmapping the X11 window. Switching to override-redirect does
+not create a close-animation snapshot: the same surface remains visible.
 
 ## Project layout
 
@@ -194,7 +300,9 @@ polkit/             vela-polkit-agent and vela-polkit-prompt (docs/polkit-agent.
 common/             Vela.Controls: theme, controls and blur shared by the Qt Quick apps;
                     audio/: vela-audio, the shell's and Settings' audio backend (docs/audio.md)
 session/            login entry, systemd target and portal integration
-packaging/arch/     PKGBUILD and vela-update
+packaging/          cross-distro vela-update and shared updater tests
+packaging/arch/     Arch Linux PKGBUILD
+packaging/fedora/   Fedora RPM spec and RPM-specific tests
 report/             vela-report: shared Python core/CLI and standalone Qt Widgets GUI
 tools/              development and test clients
 tests/functional/   headless functional scenarios
@@ -237,7 +345,30 @@ The compositor owns its scene graph, Vulkan renderer, frame clock, damage handli
 
 The renderer design is documented in detail in [renderer.md](renderer.md).
 
+## Controls
+
+Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`): `Theme` (colors, radii, shadows, durations) and the pieces more than one program uses. Their behavior is Qt's (Qt Quick Templates: input, keyboard, focus, accessibility); their look and their timing are Vela's ([visual coherence](visual-coherence.md#68-controls-qt-behaves-vela-looks-d12)).
+
+| Piece | What it is |
+|---|---|
+| `Fill` | A background whose color, chosen by the control from its state, fades in `Theme.fast` |
+| `Icon`, `Chevron`, `FocusRing`, `Eased`, `ColorFade` | What controls are made of: a theme icon at its size, the ">" and "v" arrows, the keyboard focus ring, a number and a color animated on Vela's curve |
+| `Button`, `Switch`, `Slider` | Templates' controls on `Fill`; `usable` is an alias of `enabled`; a subtle `Button` that is `checked` (what it opens is open) rests on the hover color |
+| `ListItem` | A row of a list on `Fill`: subtle (resting on the hover color when `checked`, the current one), or the control's colors when `highlighted` |
+| `TextBox` | A restyled Basic `TextField` |
+| `Shadow` | What floats casts it outside itself; `depth` is one of `Theme.shadow`'s, `above` and `below` cut it next to another panel |
+| `PanelMotion` | A panel's entrance, exit and turning back, and its blur `area` (`visibleArea`: cut to its window) ([§6.9](visual-coherence.md#69-panels-panelmotion-shadow-dialog-d14d18)) |
+| `Dialog` | A window's dialog: title, text, content, `buttons` and `chosen(value)` |
+
+A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`: Files' `ToolButton`, the shell's `CheckBox` and `MenuTextBox` (a `TextBox` with the right-click menu of `TextMenu`), Settings' `RadioButton`. Every shell panel is a `PanelMotion` holding its `Shadow` and its panel, in a window that leaves the shadow's `reach` around it; the shell's `ShadowRoom` makes a press in that room a press outside. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) fails on what doesn't, and a line that differs on purpose says why with a `// motion:` comment. A recycled delegate (`reuseItems`) sets its `Fill`'s `animated` to false when pooled and back to true when reused. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`); the programs' own controls with the same runner (`shell/tests`, `settings/tests`) and Files' views with their own (`explorer/tests`, ctest `files-views`).
+
 ## Debugging rendering
+
+`SIGUSR1` forces a full redraw for damage-tracking diagnostics. The real
+compositor is named `vela-compositor`; its session supervisor is named
+`vela-supervise`. When debugging a running compositor, target its **exact
+PID**, not a broad `pkill` that could reach other sessions. Prefer a nested
+session for potentially disruptive compositor tests.
 
 Several environment variables are intended specifically for renderer diagnosis. The most useful ones are:
 

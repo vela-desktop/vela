@@ -11,13 +11,11 @@ Page {
     Item {
         width: parent.width
         height: 84
-        Image {
+        Icon {
             id: deviceIcon
             anchors.verticalCenter: parent.verticalCenter
-            width: 64
-            height: 64
-            source: Theme.icons + About.chassisIcon
-            sourceSize: Qt.size(width, height)
+            name: About.chassisIcon
+            size: 64
         }
         Column {
             anchors { left: deviceIcon.right; leftMargin: 16; verticalCenter: parent.verticalCenter }
@@ -121,10 +119,13 @@ Page {
     Dialog {
         id: renameDialog
         parent: root.contentItem
+        readonly property bool valid: /^[A-Za-z0-9][A-Za-z0-9-]{0,62}$/.test(nameField.text)
         title: qsTr("Rename your PC")
-        primaryText: qsTr("Next")
-        primaryEnabled: /^[A-Za-z0-9][A-Za-z0-9-]{0,62}$/.test(nameField.text)
-        onAccepted: About.rename(nameField.text)
+        buttons: [
+            { text: qsTr("Next"), accent: true, value: "ok", enabled: renameDialog.valid },
+            { text: qsTr("Cancel"), value: "cancel" }
+        ]
+        onChosen: value => { if (value === "ok") About.rename(nameField.text) }
         Column {
             width: parent.width
             spacing: 12
@@ -138,7 +139,7 @@ Page {
             TextBox {
                 id: nameField
                 width: parent.width
-                Keys.onReturnPressed: if (renameDialog.primaryEnabled) { renameDialog.close(); About.rename(text) }
+                Keys.onReturnPressed: renameDialog.accept()
             }
         }
     }
@@ -154,8 +155,7 @@ Page {
         id: errorDialog
         parent: root.contentItem
         title: qsTr("Couldn't rename the PC")
-        primaryText: ""
-        secondaryText: qsTr("Close")
+        buttons: [{ text: qsTr("Close"), value: "cancel" }]
         Text {
             id: errorText
             width: parent.width

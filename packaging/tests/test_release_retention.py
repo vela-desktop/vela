@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 PRUNE = ROOT / "scripts/prune-alpha-releases.sh"
 REPO = "vela-desktop/vela"
 CURRENT = f"{9:040x}"

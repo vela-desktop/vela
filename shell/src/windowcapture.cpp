@@ -9,7 +9,9 @@
 #include <QtGui/qguiapplication_platform.h>
 #include <QtGui/qscreen_platform.h>
 
+#include <cstddef>
 #include <cstring>
+#include <limits>
 #include "vela/capture.h"
 
 #include <wayland-client.h>
@@ -47,6 +49,77 @@ QImage::Format imageFormat(uint32_t shmFormat)
     case WL_SHM_FORMAT_ABGR8888: return QImage::Format_RGBA8888_Premultiplied;
     default: return QImage::Format_Invalid;
     }
+}
+
+/** Copy an output capture upright, validating metadata once per frame.
+ * Non-upright transforms use precomputed signed source strides instead of
+ * revalidating and switching on the transform for every pixel.
+ */
+QImage uprightImage(const vela_capture_frame* frame)
+{
+    uint32_t width = 0, height = 0;
+    if (!vela_capture_frame_dimensions(frame, &width, &height)
+        || width > static_cast<uint32_t>(std::numeric_limits<int>::max())
+        || height > static_cast<uint32_t>(std::numeric_limits<int>::max())
+        || frame->stride > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return {};
+    }
+    const QImage::Format format = imageFormat(frame->format);
+    if (frame->transform == WL_OUTPUT_TRANSFORM_NORMAL) {
+        return QImage(frame->pixels, int(width), int(height), int(frame->stride), format).copy();
+    }
+    QImage image(int(width), int(height), format);
+    if (image.isNull()) return {};
+
+    const std::ptrdiff_t stride = static_cast<std::ptrdiff_t>(frame->stride);
+    const uchar* first = frame->pixels;
+    std::ptrdiff_t xStep = 4, yStep = stride;
+    switch (frame->transform) {
+    case WL_OUTPUT_TRANSFORM_90:
+        first += size_t(frame->height - 1) * frame->stride;
+        xStep = -stride; yStep = 4;
+        break;
+    case WL_OUTPUT_TRANSFORM_180:
+        first += size_t(frame->height - 1) * frame->stride + size_t(frame->width - 1) * 4;
+        xStep = -4; yStep = -stride;
+        break;
+    case WL_OUTPUT_TRANSFORM_270:
+        first += size_t(frame->width - 1) * 4;
+        xStep = stride; yStep = -4;
+        break;
+    case WL_OUTPUT_TRANSFORM_FLIPPED:
+        first += size_t(frame->width - 1) * 4;
+        xStep = -4;
+        break;
+    case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+        xStep = stride; yStep = 4;
+        break;
+    case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+        first += size_t(frame->height - 1) * frame->stride;
+        yStep = -stride;
+        break;
+    case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+        first += size_t(frame->height - 1) * frame->stride + size_t(frame->width - 1) * 4;
+        xStep = -stride; yStep = -4;
+        break;
+    default:
+        return {};
+    }
+
+    for (uint32_t y = 0; y < height; ++y) {
+        uchar* dst = image.scanLine(int(y));
+        const uchar* src = first;
+        if (xStep == 4) {
+            memcpy(dst, src, size_t(width) * 4);
+        } else {
+            for (uint32_t x = 0; x < width; ++x) {
+                memcpy(dst + size_t(x) * 4, src, 4);
+                if (x + 1 < width) src += xStep;
+            }
+        }
+        if (y + 1 < height) first += yStep;
+    }
+    return image;
 }
 
 } // namespace
@@ -244,6 +317,21 @@ void WindowCapture::captureScreens()
     }
 }
 
+/** Clear snapshots and cancel outstanding full-screen captures without signals. */
+void WindowCapture::clearFull()
+{
+    // A cancelled/timed-out snip must not complete into a subsequent one.
+    const QList<Job*> jobs = m_jobs;
+    for (Job* job : jobs) {
+        if (job->full) {
+            vela_capture_end(job->capture);
+            m_jobs.removeOne(job);
+            delete job;
+        }
+    }
+    m_full.clear();
+}
+
 /** Queue complete output images for the interactive Snipping Tool. */
 int WindowCapture::captureScreensFull()
 {
@@ -281,13 +369,13 @@ int WindowCapture::captureScreensFull()
 void WindowCapture::finishJob(Job* job, bool ok)
 {
     const vela_capture_frame* frame = vela_capture_pixels(job->capture);
-    // QImage may only see dimensions whose rows fit the actual SHM mapping.
-    if (ok && vela_capture_frame_valid(frame) && frame->transform == WL_OUTPUT_TRANSFORM_NORMAL) {
-        const QImage full(frame->pixels, int(frame->width), int(frame->height),
-            int(frame->stride), imageFormat(frame->format));
+    // Capture buffers are in raw orientation. Normalize once before Qt reads
+    // thumbnails or the Snipping Tool's full-size images.
+    if (ok) {
+        QImage full = uprightImage(frame);
         if (!full.isNull()) {
             if (job->full) {
-                m_full.insert(job->identifier, full.copy().convertToFormat(QImage::Format_RGB32));
+                m_full.insert(job->identifier, full.convertToFormat(QImage::Format_RGB32));
             } else {
                 m_thumbnails.insert(job->identifier,
                     full.scaled(thumbnailSize, thumbnailSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));

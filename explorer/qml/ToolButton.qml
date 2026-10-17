@@ -2,68 +2,75 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import QtQuick.Templates as T
 import Vela.Controls
 
 // A command bar or address bar button, like Windows 11: no background until
-// hovered; icon, optional text, an arrow if it opens a menu.
-Rectangle {
+// hovered; an icon (`icon.name`), optional text, an arrow if it opens a menu;
+// `checked` (a pane or a view that is on) rests on the hover color. Qt's tool
+// button: a click, Space or Enter activate it; Tab gives it the focus and a
+// ring, a click doesn't, so the keyboard stays with the view. Its color fades
+// between states (Fill).
+T.ToolButton {
     id: button
-    property string icon
-    property string text
-    property bool usable: true
+    property alias usable: button.enabled
     property bool menu: false // with the little arrow: opens a menu
-    property bool checked: false
     property string tooltip
-    signal clicked()
 
-    implicitWidth: content.width + (text !== "" ? 20 : 16)
+    implicitWidth: implicitContentWidth + leftPadding + rightPadding
     implicitHeight: 32
-    width: implicitWidth
-    height: implicitHeight
-    radius: Theme.radius
-    color: mouse.pressed && usable ? Theme.subtlePressed : (mouse.containsMouse && usable) || checked ? Theme.subtleHover : "transparent"
-    opacity: usable ? 1 : 0.4
+    leftPadding: text !== "" ? 10 : 8
+    rightPadding: leftPadding
+    spacing: 8
+    focusPolicy: Qt.TabFocus
+    hoverEnabled: true
+    opacity: enabled ? 1 : 0.4
+    icon.width: 16
+    icon.height: 16
+    Accessible.name: text !== "" ? text : tooltip
 
-    Row {
-        id: content
-        anchors.centerIn: parent
-        spacing: 8
-        Image {
-            visible: button.icon !== ""
-            anchors.verticalCenter: parent.verticalCenter
-            width: 16
-            height: 16
-            source: button.icon !== "" ? Theme.icons + encodeURIComponent(button.icon) : ""
-            sourceSize: Qt.size(width, height)
-        }
-        Text {
-            visible: button.text !== ""
-            anchors.verticalCenter: parent.verticalCenter
-            text: button.text
-            color: Theme.text
-            font.pixelSize: Theme.fontBody
-        }
-        Text {
-            visible: button.menu
-            anchors.verticalCenter: parent.verticalCenter
-            text: "⌄"
-            color: Theme.textSecondary
-            font.pixelSize: 12
-            topPadding: -5
+    Keys.onReturnPressed: clicked()
+    Keys.onEnterPressed: clicked()
+    onClicked: { tipTimer.stop(); tip.visible = false }
+    onHoveredChanged: {
+        if (hovered && tooltip !== "") {
+            tipTimer.restart()
+        } else {
+            tipTimer.stop()
+            tip.visible = false
         }
     }
-    MouseArea {
-        id: mouse
-        anchors.fill: parent
-        hoverEnabled: true
-        enabled: button.usable
-        onClicked: { tipTimer.stop(); tip.visible = false; button.clicked() }
-        onContainsMouseChanged: {
-            if (containsMouse && button.tooltip !== "") {
-                tipTimer.restart()
-            } else {
-                tipTimer.stop()
-                tip.visible = false
+
+    background: Fill {
+        color: button.down ? Theme.subtlePressed : button.hovered || button.checked ? Theme.subtleHover : Theme.subtleRest
+        FocusRing { visible: button.visualFocus }
+    }
+
+    contentItem: Item {
+        implicitWidth: content.implicitWidth
+        implicitHeight: content.implicitHeight
+        Row {
+            id: content
+            anchors.centerIn: parent
+            spacing: button.spacing
+            Icon {
+                visible: name !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                name: button.icon.name
+                size: button.icon.width
+            }
+            Text {
+                visible: button.text !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                text: button.text
+                color: Theme.text
+                font.pixelSize: Theme.fontBody
+            }
+            Chevron {
+                visible: button.menu
+                anchors.verticalCenter: parent.verticalCenter
+                down: true
+                color: Theme.textSecondary
             }
         }
     }
@@ -85,6 +92,7 @@ Rectangle {
     }
     Rectangle {
         id: tip
+        objectName: "tooltip"
         visible: false
         z: 1000
         width: tipText.implicitWidth + 16

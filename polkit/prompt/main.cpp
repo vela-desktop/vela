@@ -36,7 +36,8 @@ using LayerWindow = LayerShellQt::Window;
 
 namespace {
 
-// The fade-out duration (Theme.normal) plus a margin for the last frame.
+// The fade-out duration (Theme.normal) plus a margin for the last frame, at
+// Vela's durations (times Style.animationDuration).
 constexpr int fadeOutMs = 200 + 60;
 
 void configure(QWindow* window, bool dialog, QScreen* screen)
@@ -152,7 +153,7 @@ int main(int argc, char* argv[])
     Request request(&app);
     QQmlEngine engine;
     vela::language::install(QStringLiteral("vela-polkit-prompt"), [&engine] { engine.retranslate(); });
-    vela::controls::install(engine, Appearance::Mode::Shell);
+    const Appearance* style = vela::controls::install(engine, Appearance::Mode::Shell);
 
     Windows windows(engine);
     bool shown = false;
@@ -166,7 +167,8 @@ int main(int argc, char* argv[])
     });
     QObject::connect(&request, &Request::closingChanged, &app, [&] {
         // Without windows (closed before "show") exit at once.
-        QTimer::singleShot(shown ? fadeOutMs : 0, &app, [] { QCoreApplication::exit(0); });
+        const qreal duration = style->animationEffects() ? style->animationDuration() : 1.0;
+        QTimer::singleShot(shown ? qRound(fadeOutMs * duration) : 0, &app, [] { QCoreApplication::exit(0); });
     });
     request.listen();
     return app.exec();

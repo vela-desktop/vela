@@ -121,8 +121,9 @@ For a low-risk first look, [build from source](#build-from-source) and
 Nested mode is convenient for exploration, but cannot validate physical DRM,
 direct scanout or every driver-specific path.
 
-For a full session, use the [Arch package](#arch-linux-cachyos-endeavouros) or
-[install from source](#other-distributions), then select Vela at the login
+For a full session, use the [Arch package](#arch-linux-cachyos-endeavouros),
+the [Fedora RPM](#fedora-44) or [install from source](#other-distributions),
+then select Vela at the login
 screen. If something fails, [report it](#reporting-a-problem) using
 `vela-report`, reviewing any diagnostics before sharing them.
 
@@ -276,84 +277,31 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
 
 ## Install
 
-Vela needs a GPU with **Vulkan 1.4**: AMD or Intel with Mesa ≥ 25.0, or NVIDIA with the
-proprietary driver ≥ 570 or NVK. Sound needs **PipeWire and WirePlumber**: PulseAudio
-without PipeWire is not supported. Once installed, **Vela** appears on the login screen
-(SDDM or Plasma Login) next to Plasma.
+Vela needs a GPU with **Vulkan 1.4**: AMD or Intel with Mesa ≥ 25.0, or NVIDIA with the proprietary driver ≥ 570 or NVK. Sound needs **PipeWire and WirePlumber**. Once installed, choose **Vela** from the login screen.
 
 ### Arch Linux, CachyOS, EndeavourOS
 
-Vela installs as a native `vela-git` package. Install `git`, `curl` and `base-devel` first, then run:
-
 ```sh
+sudo pacman -S --needed git curl base-devel cosign
 git clone https://github.com/vela-desktop/vela.git
-sh vela/packaging/arch/vela-update
+sh vela/packaging/vela-update
 ```
 
-**`vela-update` also handles the first installation**; you do not need to build Vela
-or install a package separately. On first run it reuses Git objects from the
-checkout instead of downloading the full repository twice. It checks for a
-public, commit-matched alpha package built on `main` (no GitHub login required)
-and verifies its SHA-256 checksum before installing with pacman. If there is no
-matching public package, it can use a temporary CI artifact through an
-authenticated [GitHub CLI](https://cli.github.com/) or build the native package
-locally. The public alpha packages are published only after successful `main` builds;
-experimental branches normally build locally unless you have access to a matching
-CI artifact.
+### Fedora 44
 
-Once installed, use **`vela-update`** to fetch new commits and install updates.
-
-Repository downloads use public HTTPS and need no GitHub account or SSH keys.
-Saved GitHub SSH URLs and cached mirrors from older versions are migrated to
-HTTPS automatically. `--source` can still select a local Git copy.
+Only Fedora 44 x86_64 is currently supported by the native RPM updater; other Fedora versions and immutable variants are not supported by this installer.
 
 ```sh
-vela-update                 # update if something new is available
-vela-update --check         # only check, and list the changes
-vela-update --download      # download a matching public package, or build if unavailable
-vela-update --build         # always build locally
-vela-update --jobs 2        # fewer parallel compile jobs
-vela-update --branch YOUR_TEST_BRANCH --download  # replace with an existing branch
-vela-update --commit abc1234 --download    # test an exact commit
+sudo dnf install git curl rpm-build dnf5-plugins
+git clone https://github.com/vela-desktop/vela.git
+sh vela/packaging/vela-update
 ```
-
-`--branch` and `--commit` apply only to that invocation and cannot be combined.
-The next plain `vela-update` returns to the repository's default branch (`main`
-on GitHub), including when this means installing an older version. Commit SHAs
-may be full or abbreviated, provided the abbreviation is unambiguous.
-Both options also work with `--check` and `--build`; local builds use the exact
-selected commit too. `--download` uses that commit's CI package if available,
-otherwise it builds locally as usual.
-
-To prepare a package for a test branch, run the **Build** workflow manually in
-GitHub Actions, selecting that branch (or run
-`gh workflow run build.yml --ref YOUR_TEST_BRANCH`). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce the same
-`vela-git` artifact as pushes to `main`; workflow artifacts expire after 14 days.
-Public `main` packages are also published as per-commit GitHub prereleases
-(tagged `alpha-<full-commit-sha>`) and can be downloaded without a GitHub account.
-Only the **five most recently published Vela alpha releases** are kept; older
-ones and their tags are removed automatically. For an older commit, `vela-update`
-falls back to an available workflow artifact or a local build.
-The tester needs a version of `vela-update` that already supports these options.
-
-The last three packages stay in `~/.cache/vela-update/packages/` for rollback.
-You can restore a known-good package with `sudo pacman -U /path/to/vela-git-*.pkg.tar.zst`
-(select the exact cached package file rather than installing every match).
 
 ### Other distributions
 
-Build from source (below), then:
+See [build from source](#build-from-source); there is currently no native package updater for these systems.
 
-```sh
-sudo cmake --install build   # into /usr/local, plus /etc/pam.d and /etc/xdg
-```
-
-If the session doesn't show up, your display manager may not look in `/usr/local`:
-
-```sh
-sudo ln -s /usr/local/share/wayland-sessions/vela.desktop /usr/share/wayland-sessions/
-```
-
+`vela-update` installs Vela on first run and handles subsequent updates. It uses Sigstore/Cosign to verify downloaded packages (no GitHub CLI required) and falls back to a local build if verification is unavailable. Fedora 44 users should install Cosign from its official upstream RPM before the first download; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
 ## Reporting a problem
 
 Run `vela-report` to create a diagnostic ZIP with a description and the evidence
@@ -364,58 +312,14 @@ See [Vela Report](docs/reporting.md) for privacy details, options and limits.
 
 ## Build from source
 
-You need CMake ≥ 3.22, Ninja, a C17 and C++20 compiler, **wlroots 0.20**, Qt ≥ 6.7 with its Linguist tools, LayerShellQt,
-the Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and
-PAM. librsvg is optional (app icons in the title bar). The diagnostic reporter needs
-Python 3.10 or newer; the tests also use GoogleTest. The pixel sharpness
-suites additionally require NumPy and Pillow for Python 3.
-
-<details>
-<summary><b>Arch / CachyOS / EndeavourOS</b></summary>
-
-```sh
-sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland wayland-protocols \
-    libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
-    vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
-    pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme xorg-xwayland \
-    pipewire wireplumber
-```
-</details>
-
-<details>
-<summary><b>Fedora</b></summary>
-
-```sh
-sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
-    wlroots-devel wayland-devel wayland-protocols-devel libxkbcommon-devel \
-    pixman-devel libinput-devel libdrm-devel mesa-libgbm-devel \
-    qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel \
-    qt6-qttools-devel qt6-qtsvg-devel qt6-qtwayland-devel layer-shell-qt-devel \
-    vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
-    fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
-    zlib-devel gtest-devel python3 python3-numpy python3-pillow \
-    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber
-```
-</details>
-
-<details>
-<summary><b>openSUSE Tumbleweed (experimental; not currently validated by CI)</b></summary>
-
-```sh
-sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
-    libxkbcommon-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
-    qt6-svg-devel qt6-waylandclient-devel layer-shell-qt6-devel \
-    vulkan-headers vulkan-devel shaderc libgbm-devel libdrm-devel \
-    freetype2-devel harfbuzz-devel fontconfig-devel pam-devel librsvg-devel \
-    zlib-devel gtest python3
-```
-</details>
+The source build requires wlroots **0.20**, Qt **6.7+**, Vulkan headers and loader, and the other dependencies listed in the [developer guide](docs/development.md#distribution-dependencies).
 
 ```sh
 cmake -B build -G Ninja
 cmake --build build
 ```
 
+To install system-wide or run a nested session, follow the [installation guide](docs/installation.md#other-distributions) or the instructions below.
 ### Try it without logging out
 
 From a running Wayland session (Plasma, for example), Vela opens in a window like a
@@ -528,9 +432,10 @@ see the documentation below.
 
 | Document | Contents |
 |---|---|
+| **[Install and update](docs/installation.md)** | Installation, verified updates, test branches and rollback. |
 | **[Alpha hardware coverage](docs/hardware.md)** | Driver validation scope, optional services and manual smoke tests. |
 | **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
-| **[Roadmap](docs/roadmap.md)** | Completed milestones and planned features. |
+| **[Roadmap](docs/roadmap.md)** | Work in progress, what comes next, what is not planned, and what is done. |
 | **[Contributing](CONTRIBUTING.md)** | Development workflow, PR checklist, testing and DCO. |
 | **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
@@ -551,6 +456,17 @@ Some older comments are in Italian; contributions translating them are welcome.
 Please sign off your commits (`git commit -s`, the
 [Developer Certificate of Origin](https://developercertificate.org/)): contributions
 are accepted under the project's license, GPL-3.0-or-later.
+
+## AI Disclosure
+
+AI tools are actively used in Vela's development, including code generation,
+refactoring, debugging, code review, and documentation.
+
+The project's vision, architecture, and technical direction remain human-driven.
+AI-assisted code is not inherently trusted: it is subject to the same review,
+testing, and quality expectations as any other contribution.
+
+AI is a development tool, not a substitute for engineering judgment.
 
 ## Acknowledgements
 

@@ -129,16 +129,17 @@ Window {
 
             Repeater {
                 model: root.tabs
-                delegate: Rectangle {
+                delegate: Fill {
                     id: tabButton
                     required property var modelData
                     required property int index
                     readonly property bool active: root.currentIndex === index
                     width: tabRow.tabWidth
                     height: 34
+                    radius: 0
                     topLeftRadius: Theme.radiusOverlay
                     topRightRadius: Theme.radiusOverlay
-                    color: active ? Theme.layer : tabMouse.containsMouse ? Theme.subtleHover : "transparent"
+                    color: active ? Theme.layer : tabMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                     Image {
                         x: 12
                         anchors.verticalCenter: parent.verticalCenter
@@ -185,9 +186,8 @@ Window {
                         anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
                         width: 24
                         height: 24
-                        icon: "window-close"
+                        icon.name: "window-close"
                         visible: tabMouse.containsMouse || tabButton.active || hovered
-                        property bool hovered: false
                         onClicked: root.closeTab(tabButton.index)
                     }
                     // Dragging files onto a tab opens it.
@@ -201,7 +201,7 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 32
                 height: 28
-                icon: "list-add"
+                icon.name: "list-add"
                 onClicked: root.newTab("home:", "")
             }
         }

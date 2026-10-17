@@ -237,6 +237,10 @@ class PromptTests(unittest.TestCase):
         prompt = Prompt(self.vela)
         prompt.show()
         self.vela.wait_for(lambda s: s.window(window)["x"] == x, what="the window back in place")
+        # The same race the other way round: typing replaces the keyboard
+        # (the seat still has the one vela.keys made), so not while the dialog
+        # opens.
+        time.sleep(0.5)
         type_and_enter(self.vela, PASSWORD)
         self.assertEqual(prompt.read_line(), "response " + PASSWORD)
         # Under the dialog, the window menu can't start another one.

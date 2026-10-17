@@ -72,13 +72,21 @@ struct vela_output {
     struct wlr_output_mode *mode_before_off;
     int custom_before_off[3]; // width, height, mHz (outputs without modes)
     bool latching; // VELA_LATCH=0: draw right away, as before S3
-    bool frame_requested;
+    bool frame_requested; // something changed
+    bool animation_requested; // the animations need their next vblank
     struct wl_event_source *idle_frame; // "frame" right away, if the output was idle
     int latch_fd;
     struct wl_event_source *latch_source;
     bool latch_armed;
     struct vela_frame_plan plan;
     bool planned;
+    // The vblank an empty frame (nothing changed here) stood for: what the
+    // animations show at that moment is on screen already, their next frame is
+    // planned from it. 0: the last frame was drawn.
+    int64_t empty_until;
+    // In on_frame: a frame asked for meanwhile (the animations ask every
+    // output, this one too) is planned after the drawing, by its vblank.
+    bool drawing;
     struct vela_delivery deliveries[VELA_OUTPUT_DELIVERIES];
     int delivery_count;
     // What the cost is made of (VELA_STATS): late wakeup, CPU up to the

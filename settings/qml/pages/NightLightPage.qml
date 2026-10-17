@@ -18,49 +18,6 @@ Page {
         return list
     }
 
-    // A single-choice option (radio button).
-    component Radio: Item {
-        id: radio
-        property string text
-        property bool checked
-        property bool usable: true
-        signal clicked()
-        width: parent.width
-        height: 32
-        opacity: usable ? 1 : 0.45
-        Rectangle {
-            id: dot
-            anchors.verticalCenter: parent.verticalCenter
-            width: 20
-            height: 20
-            radius: 10
-            color: radio.checked ? Theme.accentFill : Theme.control
-            border.width: radio.checked ? 0 : 1
-            border.color: Theme.controlStrokeStrong
-            Rectangle {
-                visible: radio.checked
-                anchors.centerIn: parent
-                width: radioMouse.containsMouse ? 10 : 8
-                height: width
-                radius: width / 2
-                color: Theme.accentText
-            }
-        }
-        Text {
-            anchors { left: dot.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
-            text: radio.text
-            color: Theme.text
-            font.pixelSize: Theme.fontBody
-        }
-        MouseArea {
-            id: radioMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            enabled: radio.usable
-            onClicked: radio.clicked()
-        }
-    }
-
     CardGroup {
         Card {
             icon: "redshift-status-on"
@@ -73,36 +30,58 @@ Page {
         }
         Card {
             icon: "color-management"
-            title: qsTr("Strength")
-            trailing: Slider {
-                width: 220
-                from: 0
-                to: 100
-                stepSize: 1
-                live: false
-                value: Prefs.nightStrength
-                onReleased: value => Prefs.nightStrength = Math.round(value)
+            title: qsTr("Color temperature")
+            description: qsTr("Lower is warmer; 6500 K is the screen's normal white")
+            trailing: Row {
+                spacing: 12
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    // Where the knob is, also during a drag (the value changes on release).
+                    text: qsTr("%1 K").arg(Math.round(temperature.valueAt(temperature.position) / 100) * 100)
+                    color: Theme.text
+                    font.pixelSize: Theme.fontBody
+                }
+                Slider {
+                    id: temperature
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 220
+                    from: 1700
+                    to: 6500
+                    stepSize: 100
+                    live: false
+                    value: Prefs.nightTemperature
+                    onReleased: value => Prefs.nightTemperature = Math.round(value)
+                }
+            }
+        }
+        Card {
+            icon: "applications-graphics"
+            title: qsTr("Experimental NVIDIA fix")
+            description: qsTr("Use Vulkan instead of the monitor's gamma LUT if Night light causes broken colors. May disable direct scanout.")
+            trailing: Switch {
+                checked: Prefs.nightNvidiaFix
+                onToggled: Prefs.nightNvidiaFix = checked
             }
         }
         Card {
             icon: "chronometer"
             title: qsTr("Schedule night light")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.nightSchedule !== "no"
-                onToggled: on => Prefs.nightSchedule = on ? (Prefs.sunset !== "" ? "sunset" : "hours") : "no"
+                onToggled: Prefs.nightSchedule = checked ? (Prefs.sunset !== "" ? "sunset" : "hours") : "no"
             }
             contentItem: Column {
                 visible: Prefs.nightSchedule !== "no"
                 x: 36
                 width: parent.width - 36
                 spacing: 4
-                Radio {
+                RadioButton {
                     text: qsTr("Sunset to sunrise") + (Prefs.sunset !== "" ? " (" + Prefs.sunset + " - " + Prefs.sunrise + ")" : "")
                     usable: Prefs.sunset !== ""
                     checked: Prefs.nightSchedule === "sunset"
                     onClicked: Prefs.nightSchedule = "sunset"
                 }
-                Radio {
+                RadioButton {
                     text: qsTr("Set hours")
                     checked: Prefs.nightSchedule === "hours"
                     onClicked: Prefs.nightSchedule = "hours"

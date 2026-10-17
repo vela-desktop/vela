@@ -39,7 +39,8 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `keyboard-repeat-delay` | `400` | Key-repeat delay in milliseconds. |
 | `keyboard-repeat-rate` | `30` | Key repeats per second. |
 | `night-light` | `no` | Enable Night light. |
-| `night-light-strength` | `48` | Night-light strength, 0–100. |
+| `night-light-temperature` | `4200` | Night light's color temperature in kelvin, 1700–6500 in steps of 100 (6500 is the screen's normal white). Without it, the older `night-light-strength` (0–100: 6500 to 1700 K) is read. |
+| `night-light-nvidia-fix` | `no` | Experimental NVIDIA workaround: apply Night light in Vulkan instead of the monitor's DRM gamma LUT (may disable direct scanout). |
 | `night-light-schedule` | `no` | Night-light schedule: `no`, `sunset` or `hours`. |
 | `night-light-from` | `21:00` | Manual Night-light start time. |
 | `night-light-to` | `07:00` | Manual Night-light end time. |
@@ -48,6 +49,8 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `color-filters-shortcut` | `no` | Allow Super+Ctrl+C to toggle color filters. |
 | `magnifier-step` | `100` | Magnifier step in percent. |
 | `sticky-keys` | `no` | Sticky modifier keys. |
+| `animation-effects` | `yes` | Windows and the shell's panels move as they open, close and change. `no`: nothing moves (no rise, slide, scale, flight to the taskbar or magnifier zoom) and what fades takes at most 120 ms ([visual coherence](visual-coherence.md#65-animation-effects-one-switch-d11)). Settings > Accessibility > Visual effects. |
+| `animation-duration` | `100` | How long animations take, in percent of Vela's durations: 50–300 (Settings' slider, in steps of 25). With `animation-effects=no` fades stay at 120 ms. |
 | `tearing` | `yes` | Allow fullscreen apps that explicitly request tearing. |
 | `variable-refresh` | `games` | VRR policy: `no`, `games` or `always`. |
 | `mouse-speed` | `10` | Pointer speed, 1–20. |
@@ -88,6 +91,16 @@ Supported rotation names are `normal`, `90`, `180`, `270`, `flipped`, `flipped-9
 Files written before October 2026 used Italian names (`schermi.conf`, and Italian keys and values in `vela.conf`). Vela still reads them and rewrites them with the English names.
 
 Normally this file should be managed through **Settings → Displays** rather than edited by hand.
+
+Vela keeps the *relative* monitor arrangement while shifting its global layout
+so the upper-left corner of the enabled display group is always at (0,0).
+For example, a 1920×1080 monitor physically **above** a 2048×1152 primary
+will appear as (0,0) and (0,1080) respectively. This avoids exposing
+negative monitor coordinates to XWayland/Wine while leaving the perceived
+screen arrangement unchanged. Existing saved configurations with negative
+positions are normalized when loaded; new positions are saved normalized.
+Windows on a translated output move with it, including during Settings
+preview/revert.
 
 Settings talks directly to `wlr-output-management`; no external display utility
 is required. Changes are previewed for 15 seconds. Vela's compositor keeps the
@@ -134,7 +147,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_LATCH=0` | Disable late latching and render when the backend frame event arrives. |
 | `VELA_LATCH_MARGIN` | Minimum late-latching safety margin in milliseconds. Default: `1`; the frame clock can grow the effective margin after late frames. |
 | `VELA_REALTIME=0` | Disable realtime scheduling for the compositor main thread. |
-| `VELA_SCREEN_OFF` | Override idle timeout in minutes. Default is 10 if no stored setting exists; `0` disables idle screen-off. |
+| `VELA_SCREEN_OFF` | Override idle timeout in minutes (fractions allowed). Default is 10 if no stored setting exists; `0` disables idle screen-off. Set, it also enables the idle timeout nested and headless (tests). |
 | `VELA_LOCK_ON_IDLE=0` | Turn displays off on idle without locking first. |
 | `VELA_LOCK` | Use another locker instead of `vela-lock`, for example `swaylock`. |
 | `VELA_POLKIT_AGENT` | Start this polkit agent instead of `vela-polkit-agent`; `0` starts none. Without it, Vela's agent starts only in a real (DRM) session, never nested or headless. |
@@ -158,6 +171,7 @@ These variables are for diagnosis rather than normal user configuration.
 | `VELA_DEBUG=1` | Enable verbose wlroots logging. |
 | `VELA_DEBUG_SCANOUT=1` | Log why a fullscreen surface is not eligible for direct scanout. |
 | `VELA_DEBUG_DAMAGE=1` | Force full-output damage every frame, bypassing normal damage reduction for diagnosis. |
+| `VELA_DEBUG_ANIMATION=1` | Log, per output and frame, the presentation and wall times and each running animation's progress and geometry (position, scale, opacity), and a line when an animation retires (`tests/functional/test_animation.py` reads it). |
 | `VELA_DEBUG_SYNC=1` | Make the CPU wait for the GPU on every renderer submission; useful when isolating synchronization problems. |
 | `VELA_DEBUG_LINEAR=1` | Force linear render buffers instead of normal tiled/modifier allocation; useful for allocator/modifier diagnosis. |
 | `VELA_DEBUG_INPUT=1` | Enable the virtual keyboard/pointer protocol used by `vela-input`. Off by default for security. |

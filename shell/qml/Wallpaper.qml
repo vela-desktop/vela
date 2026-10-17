@@ -37,9 +37,7 @@ Window {
         smooth: false // it's already the right size
 
         opacity: status === Image.Ready ? 1 : 0
-        Behavior on opacity {
-            NumberAnimation { duration: Theme.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        }
+        Behavior on opacity { Eased { duration: Theme.slow } }
     }
 
     // --- menus (docs/renderer.md §14.9) ---
@@ -577,14 +575,13 @@ Window {
                 z: selected ? 1 : 0
 
                 // Highlight: on hover, and stronger if selected.
-                Rectangle {
+                Fill {
                     anchors.fill: content
                     anchors.margins: -2
                     radius: 4
-                    color: icon.selected ? Qt.rgba(0.36, 0.55, 1.0, 0.30) : Qt.rgba(1, 1, 1, 0.12)
+                    color: icon.selected ? Qt.rgba(0.36, 0.55, 1.0, 0.30) : iconMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0)
                     border.width: icon.selected ? 1 : 0
                     border.color: Qt.rgba(0.6, 0.75, 1.0, 0.6)
-                    visible: icon.selected || iconMouse.containsMouse
                 }
 
                 Column {

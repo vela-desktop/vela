@@ -46,6 +46,8 @@ qt_add_executable(vela-settings
     src/keyboardlayouts.h
     src/preferences.cpp
     src/preferences.h
+    ${PROJECT_SOURCE_DIR}/compositor/src/color.c # night light's temperature, read as the compositor does
+    ${PROJECT_SOURCE_DIR}/compositor/src/color.h
     ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.c
     ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.h
     ${SHELL_SRC}/appmodel.cpp
@@ -66,13 +68,11 @@ set(SETTINGS_QML_FILES
     qml/Card.qml
     qml/CardGroup.qml
     qml/LinkCard.qml
-    qml/Toggle.qml
     qml/Choice.qml
-    qml/Slider.qml
+    qml/RadioButton.qml
     qml/LevelBar.qml
     qml/PageHeader.qml
     qml/Page.qml
-    qml/Dialog.qml
     qml/pages/HomePage.qml
     qml/pages/SystemPage.qml
     qml/pages/DisplayPage.qml
@@ -141,12 +141,21 @@ install(FILES vela-settings.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applica
 # shell/src/language.h). After changing texts:
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
-qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-displays
+qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-displays vela-controls
     TS_FILES i18n/vela-settings_it.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-settings_lupdate
     LRELEASE_TARGET vela-settings_lrelease
     LUPDATE_OPTIONS -source-language en -target-language it -no-obsolete -locations none)
+
+# Settings' own controls (tests/tst_*.qml) under Vela.Controls' Qt Quick Test
+# runner, with animation effects on and off.
+if(VELA_BUILD_TOOLS AND TARGET vela-controls-test)
+    add_test(NAME settings-controls COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    add_test(NAME settings-controls-no-effects COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    set_tests_properties(settings-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(settings-controls settings-controls-no-effects PROPERTIES TIMEOUT 60)
+endif()
 
 if(VELA_BUILD_TOOLS AND VELA_BUILD_COMPOSITOR)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)

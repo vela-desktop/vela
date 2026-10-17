@@ -56,6 +56,9 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
 enum vela_decoration_part vela_decoration_part_at(const struct vela_decoration *decoration, double lx, double ly);
 // The button under the mouse lights up (Close in red).
 void vela_decoration_set_hover(struct vela_decoration *decoration, enum vela_decoration_part part);
+// The buttons' hover fades at the frame's time (docs/visual-coherence.md
+// §6.2); whether any is still running.
+bool vela_decoration_tick(struct vela_decoration *decoration, double now_ms, double wall_ms);
 // The Maximize button in global coordinates (snap layouts open below it).
 struct wlr_box vela_decoration_maximize_box(const struct vela_decoration *decoration);
 

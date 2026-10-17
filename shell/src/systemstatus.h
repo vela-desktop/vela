@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "requested.h"
+
 #include <QDBusObjectPath>
 #include <QObject>
 #include <QString>
@@ -52,11 +54,12 @@ public:
     QString networkName() const { return m_networkName; }
     int wifiStrength() const { return m_wifiStrength; }
     bool wifiAvailable() const { return m_wifiAvailable; }
-    bool wifiEnabled() const { return m_wifiEnabled; }
+    // What the user asked for until NetworkManager or BlueZ has done it (requested.h).
+    bool wifiEnabled() const { return m_wifiRequest.value(m_wifiEnabled); }
     Q_INVOKABLE void setWifiEnabled(bool on);
 
     bool bluetoothAvailable() const { return !m_adapter.isEmpty(); }
-    bool bluetoothEnabled() const { return m_bluetoothEnabled; }
+    bool bluetoothEnabled() const { return m_bluetoothRequest.value(m_bluetoothEnabled); }
     Q_INVOKABLE void setBluetoothEnabled(bool on);
 
     // Airplane mode: no Wi-Fi or Bluetooth.
@@ -105,9 +108,11 @@ private:
     int m_wifiStrength = 0;
     bool m_wifiAvailable = false;
     bool m_wifiEnabled = false;
+    Requested m_wifiRequest { [this] { emit networkChanged(); } };
 
     QString m_adapter; // BlueZ adapter path
     bool m_bluetoothEnabled = false;
+    Requested m_bluetoothRequest { [this] { emit bluetoothChanged(); } };
 
     bool m_batteryPresent = false;
     int m_batteryPercent = 0;

@@ -29,13 +29,11 @@ Page {
     Item {
         width: parent.width
         height: 96
-        Image {
+        Icon {
             id: statusIcon
             anchors.verticalCenter: parent.verticalCenter
-            width: 64
-            height: 64
-            source: Theme.icons + encodeURIComponent(Status.networkIconName)
-            sourceSize: Qt.size(width, height)
+            name: Status.networkIconName
+            size: 64
         }
         Column {
             anchors { left: statusIcon.right; leftMargin: 16; verticalCenter: parent.verticalCenter }
@@ -66,11 +64,11 @@ Page {
         icon: "network-wireless"
         title: qsTr("Wi-Fi")
         description: Status.wifiEnabled ? (page.wifiDevice && page.wifiDevice.connection !== "" ? qsTr("Connected to ") + page.wifiDevice.connection : qsTr("Not connected")) : qsTr("Off")
-        trailing: Toggle {
+        trailing: Switch {
             checked: Status.wifiEnabled
-            onToggled: on => {
-                Status.setWifiEnabled(on)
-                if (on) scanLater.start()
+            onToggled: {
+                Status.setWifiEnabled(checked)
+                if (checked) scanLater.start()
             }
         }
         Timer { id: scanLater; interval: 2000; onTriggered: Network.scan() }
@@ -90,22 +88,20 @@ Page {
             spacing: 2
             Repeater {
                 model: Network.wifiNetworks
-                delegate: Rectangle {
+                delegate: Fill {
                     id: net
                     required property var modelData
                     width: parent.width
                     height: 48
                     radius: Theme.radius
-                    color: netMouse.containsMouse ? Theme.subtleHover : "transparent"
-                    Image {
+                    color: netMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    Icon {
                         x: 4
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 20
-                        height: 20
-                        source: Theme.icons + (net.modelData.signal > 75 ? "network-wireless-signal-excellent"
+                        size: 20
+                        name: net.modelData.signal > 75 ? "network-wireless-signal-excellent"
                             : net.modelData.signal > 50 ? "network-wireless-signal-good"
-                            : net.modelData.signal > 25 ? "network-wireless-signal-ok" : "network-wireless-signal-weak")
-                        sourceSize: Qt.size(width, height)
+                            : net.modelData.signal > 25 ? "network-wireless-signal-ok" : "network-wireless-signal-weak"
                     }
                     Column {
                         x: 36
@@ -237,9 +233,11 @@ Page {
         parent: root.contentItem
         property string ssid
         title: qsTr("Connect to ") + ssid
-        primaryText: qsTr("Next")
-        primaryEnabled: password.text.length >= 8
-        onAccepted: Network.connectWifi(ssid, password.text)
+        buttons: [
+            { text: qsTr("Next"), accent: true, value: "ok", enabled: password.text.length >= 8 },
+            { text: qsTr("Cancel"), value: "cancel" }
+        ]
+        onChosen: value => { if (value === "ok") Network.connectWifi(ssid, password.text) }
         Column {
             width: parent.width
             spacing: 8
@@ -252,7 +250,7 @@ Page {
                 id: password
                 width: parent.width
                 echoMode: TextInput.Password
-                Keys.onReturnPressed: if (passwordDialog.primaryEnabled) { passwordDialog.close(); Network.connectWifi(passwordDialog.ssid, text) }
+                Keys.onReturnPressed: passwordDialog.accept()
             }
         }
     }

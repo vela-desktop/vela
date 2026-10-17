@@ -35,11 +35,10 @@ Page {
             opacity: status === Image.Ready ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: Theme.fast } }
         }
-        Rectangle {
+        Fill {
             anchors.fill: parent
             radius: parent.radius
-            color: "white"
-            opacity: thumbMouse.containsMouse ? 0.08 : 0
+            color: thumbMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0)
         }
         MouseArea {
             id: thumbMouse

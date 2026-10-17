@@ -6,8 +6,47 @@
 #include "util.h"
 
 #include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
 
-const struct vela_curve vela_decelerate = { 0.0, 0.0, 0.2, 1.0 };
+const struct vela_curve vela_decelerate = { VELA_DECELERATE_CURVE };
+
+void (*vela_motion_logger)(const char *line);
+
+static bool effects = true;
+static double duration = 1.0;
+
+void vela_motion_set_effects(bool on)
+{
+    effects = on;
+}
+
+bool vela_motion_effects(void)
+{
+    return effects;
+}
+
+void vela_motion_set_duration(double factor)
+{
+    duration = factor;
+}
+
+double vela_motion_ms(double duration_ms)
+{
+    return effects ? duration_ms * duration : fmin(duration_ms, VELA_MOTION_FAST_MS);
+}
+
+static void log_line(const char *format, ...) __attribute__((format(printf, 1, 2)));
+
+static void log_line(const char *format, ...)
+{
+    char line[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(line, sizeof(line), format, args);
+    va_end(args);
+    vela_motion_logger(line);
+}
 
 // The coefficients of one axis' polynomial: ((a t + b) t + c) t.
 struct axis {
@@ -79,11 +118,15 @@ double vela_curve_eval(const struct vela_curve *curve, double x)
     return sample(ay, solve_t(ax, x));
 }
 
-void vela_tween_start(struct vela_tween *tween, double duration_ms, const struct vela_curve *curve)
+void vela_tween_start(struct vela_tween *tween, const char *name, double duration_ms, const struct vela_curve *curve)
 {
+    static unsigned serial;
     tween->start_ms = -1.0;
     tween->duration_ms = duration_ms;
     tween->curve = curve;
+    tween->name = name;
+    tween->serial = ++serial;
+    tween->retired = false;
 }
 
 double vela_tween_progress(struct vela_tween *tween, double now_ms)
@@ -91,11 +134,32 @@ double vela_tween_progress(struct vela_tween *tween, double now_ms)
     if (tween->start_ms < 0.0) {
         tween->start_ms = now_ms;
     }
-    double x = vela_clampd((now_ms - tween->start_ms) / tween->duration_ms, 0.0, 1.0);
-    return tween->curve ? vela_curve_eval(tween->curve, x) : x;
+    double x = tween->duration_ms > 0.0
+        ? vela_clampd((now_ms - tween->start_ms) / tween->duration_ms, 0.0, 1.0)
+        : 1.0;
+    double progress = tween->curve ? vela_curve_eval(tween->curve, x) : x;
+    if (vela_motion_logger) {
+        const struct vela_curve *c = tween->curve ? tween->curve : &(const struct vela_curve) { 0.0, 0.0, 1.0, 1.0 };
+        log_line("%s #%u start %.6f duration %.3f curve %g,%g,%g,%g x %.9f progress %.9f", tween->name,
+            tween->serial, tween->start_ms, tween->duration_ms, c->x1, c->y1, c->x2, c->y2, x, progress);
+    }
+    return progress;
 }
 
 bool vela_tween_finished(const struct vela_tween *tween, double now_ms)
 {
     return tween->start_ms >= 0.0 && now_ms - tween->start_ms >= tween->duration_ms;
+}
+
+bool vela_tween_retired(struct vela_tween *tween, double wall_ms)
+{
+    if (!vela_tween_finished(tween, wall_ms)) {
+        return false;
+    }
+    if (!tween->retired && vela_motion_logger) {
+        log_line("%s #%u retired wall %.6f end %.6f", tween->name, tween->serial, wall_ms,
+            tween->start_ms + tween->duration_ms);
+    }
+    tween->retired = true;
+    return true;
 }

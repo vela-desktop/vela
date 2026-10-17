@@ -68,16 +68,57 @@ def package_section(content: str, prefix: str, suffix: str) -> set[str]:
     return set(re.findall(r'[A-Za-z0-9_+.-]+', chunk.replace('\\\n', ' ')))
 
 
+def documented_build_dependencies(markdown: str, command: str, marker: str) -> set[str]:
+    """Find one complete source-build command inside a shell Markdown fence."""
+    # Markdown closing fences use the opening character and at least its length.
+    # Track non-shell fences too, so embedded shell examples are not misread.
+    opener = re.compile(r'^[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<info>[^`\r\n]*)$')
+    closer = re.compile(r'^[ ]{0,3}(?P<fence>`{3,}|~{3,})[ \t]*$')
+    candidates = []
+    opening_fence = ''
+    shell_fence = False
+    body_lines = []
+    for line in markdown.splitlines():
+        if not opening_fence:
+            start = opener.fullmatch(line)
+            if start:
+                opening_fence = start.group('fence')
+                shell_fence = start.group('info').strip() in ('', 'sh', 'bash', 'shell')
+                body_lines = []
+            continue
+        end = closer.fullmatch(line)
+        if end and end.group('fence')[0] == opening_fence[0] and len(end.group('fence')) >= len(opening_fence):
+            if shell_fence:
+                body = re.sub(r'\\\n[ \t]*', ' ', '\n'.join(body_lines))
+                for command_line in body.splitlines():
+                    found = re.match(r'^\s*sudo\s+' + re.escape(command) + r'\s+(.+)$', command_line)
+                    if found:
+                        packages = set(re.findall(r'[A-Za-z0-9_+.-]+', found.group(1)))
+                        if marker in packages:
+                            candidates.append(packages)
+            opening_fence = ''
+            continue
+        body_lines.append(line)
+    if len(candidates) != 1:
+        raise ValueError(
+            f'expected one full source-build dependency block for {command!r} '
+            f'(identified by {marker!r}), found {len(candidates)}'
+        )
+    return candidates[0]
+
+
 def build_checks() -> list[str]:
     failures = []
-    readme = (ROOT / 'README.md').read_text()
+    development = (ROOT / 'docs/development.md').read_text(encoding='utf-8')
     arch = (ROOT / '.github/workflows/build.yml').read_text()
     fedora = (ROOT / '.github/workflows/fedora.yml').read_text()
     try:
         arch_required = package_section(arch, '  DEPENDENCIES: >-', '\n\njobs:')
         fedora_required = package_section(fedora, '          dnf install -y', '\n\n      - uses:')
-        arch_documented = package_section(readme, 'sudo pacman -S --needed ', '\n```')
-        fedora_documented = package_section(readme, 'sudo dnf install ', '\n```')
+        arch_documented = documented_build_dependencies(
+            development, 'pacman -S --needed', 'wlroots0.20')
+        fedora_documented = documented_build_dependencies(
+            development, 'dnf install', 'wlroots-devel')
     except ValueError as e:
         return [str(e)]
     for name, required, documented in [
@@ -88,7 +129,7 @@ def build_checks() -> list[str]:
         # CI-only tools are not required for a user's build.
         missing -= {'ccache', 'dbus-daemon'}
         if missing:
-            failures.append(f'{name}: README dependency list omits CI build dependencies: {sorted(missing)}')
+            failures.append(f'{name}: source-build dependency list omits CI build dependencies: {sorted(missing)}')
     return failures
 
 

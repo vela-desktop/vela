@@ -85,3 +85,52 @@ class Damage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def to_linear(c):
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def to_srgb(c):
+    c = max(0.0, c)
+    return round(255 * (c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055))
+
+
+class BlurPolicy(unittest.TestCase):
+    """docs/visual-coherence.md §6.7: every client asking for blur gets the
+    blur; Vela's acrylic recipe (saturation 1.25 and the gray tint) is only for
+    Vela's surfaces, layer surfaces named vela-... Over a flat wallpaper the
+    blur leaves the color as it is, so each pixel under a 50% black panel is
+    computable: the wallpaper's for a client, the acrylic value for Vela."""
+
+    WALLPAPER = (0x40, 0x80, 0xc0)
+    TINT = (0.11, 0.11, 0.12, 0.55) # the dark shell's (scene.c), straight sRGB and amount
+
+    def expected(self, acrylic):
+        """Per channel, the lowest and highest value the dither allows: it adds
+        up to 1/255 either way in linear light, before the panel."""
+        c = [to_linear(v / 255) for v in self.WALLPAPER]
+        if acrylic:
+            luma = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+            c = [luma + (v - luma) * 1.25 for v in c]
+            amount = self.TINT[3]
+            c = [v * (1 - amount) + to_linear(t) * amount for v, t in zip(c, self.TINT[:3])]
+        under = 1 - 128 / 255 # the panel's black at 50%
+        return [(to_srgb((v - 1 / 255) * under) - 1, to_srgb((v + 1 / 255) * under) + 1) for v in c]
+
+    def test_acrylic_only_for_vela(self):
+        for namespace, acrylic in (("vela-test", True), ("test", False)):
+            with self.subTest(namespace=namespace), Session() as vela:
+                color = "%02x%02x%02x" % self.WALLPAPER
+                for args in (["wallpaper", "--color", color],
+                             ["taskbar", "--blur", "--clear", "--namespace", namespace]):
+                    vela.clients.append(subprocess.Popen([tool("vela-panel"), *args], env=vela.client_env))
+                vela.wait_for(lambda s: s.output["frames"] > 0)
+                time.sleep(0.6)
+                image = vela.pixels()
+                expected = self.expected(acrylic)
+                for y in range(image.height - BAR + 8, image.height - 8, 6):
+                    for x in range(40, image.width - 40, 97):
+                        pixel = image.at(x, y)
+                        self.assertTrue(all(lo <= v <= hi for v, (lo, hi) in zip(pixel, expected)),
+                                        f"{namespace} at ({x}, {y}): {pixel}, expected within {expected}")

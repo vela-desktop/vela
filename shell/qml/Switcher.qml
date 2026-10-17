@@ -32,7 +32,8 @@ Window {
         interval: 100
         onTriggered: {
             root.visible = true
-            appear.restart()
+            motion.open()
+            Effects.setBlur(root, [motion.visibleArea])
         }
     }
 
@@ -57,7 +58,7 @@ Window {
         }
         function onSwitcherHidden() {
             showDelay.stop()
-            root.visible = false
+            motion.close()
         }
     }
 
@@ -72,110 +73,103 @@ Window {
         }
     }
 
-    ParallelAnimation {
-        id: appear
-        NumberAnimation { target: panel; property: "opacity"; from: 0; to: 1; duration: Theme.fast }
-        NumberAnimation {
-            target: panel; property: "scale"; from: 0.96; to: 1; duration: Theme.normal
-            easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate
-        }
-    }
-
+    // It grows in from 0.96, and goes at once (docs/visual-coherence.md K5).
     // The blurred background only under the panel (the window covers the
     // output).
-    function updateBlur() {
-        Effects.setBlur(root, [Qt.rect(panel.x, panel.y, panel.width, panel.height)])
-    }
-
-    Rectangle {
-        id: panel
-        onXChanged: root.updateBlur()
-        onYChanged: root.updateBlur()
-        onWidthChanged: root.updateBlur()
-        onHeightChanged: root.updateBlur()
+    PanelMotion {
+        id: motion
         anchors.centerIn: parent
         width: flow.width + 32
         height: flow.height + 32
-        radius: Theme.radiusOverlay
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.stroke
+        scaleFrom: 0.96
+        duration: Theme.normal
+        instantExit: true
+        onClosed: root.visible = false
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea])
 
-        Flow {
-            id: flow
-            anchors.centerIn: parent
-            width: root.perRow * root.cardWidth + (root.perRow - 1) * root.spacing
-            spacing: root.spacing
+        Shadow {
+            target: panel
+        }
 
-            Repeater {
-                model: windows
+        Rectangle {
+            id: panel
+            anchors.fill: parent
+            radius: Theme.radiusOverlay
+            color: Theme.surface
+            border.width: 1
+            border.color: Theme.stroke
 
-                Rectangle {
-                    id: card
-                    required property int index
-                    required property string identifier
-                    required property string title
-                    required property string icon
-                    required property int revision
-                    readonly property bool current: index === root.selected
+            Flow {
+                id: flow
+                anchors.centerIn: parent
+                width: root.perRow * root.cardWidth + (root.perRow - 1) * root.spacing
+                spacing: root.spacing
 
-                    width: root.cardWidth
-                    height: root.cardHeight
-                    radius: Theme.radiusOverlay
-                    color: current || cardMouse.containsMouse ? Theme.subtleHover : "transparent"
-                    border.width: current ? 2 : 0
-                    border.color: Theme.accent
+                Repeater {
+                    model: windows
 
-                    // A click on a preview takes us there at once.
-                    MouseArea {
-                        id: cardMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: Shell.pickSwitcher(card.index)
-                    }
+                    Fill {
+                        id: card
+                        required property int index
+                        required property string identifier
+                        required property string title
+                        required property string icon
+                        required property int revision
+                        readonly property bool current: index === root.selected
 
-                    // Icon and title above the preview.
-                    Row {
-                        id: header
-                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
-                        spacing: 8
+                        width: root.cardWidth
+                        height: root.cardHeight
+                        radius: Theme.radiusOverlay
+                        color: current || cardMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                        border.width: current ? 2 : 0
+                        border.color: Theme.accent
 
-                        Image {
-                            width: 16
-                            height: 16
-                            anchors.verticalCenter: parent.verticalCenter
-                            source: Theme.icons + encodeURIComponent(card.icon)
-                            sourceSize: Qt.size(width, height)
-                        }
-                        Text {
-                            width: header.width - 24
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: card.title
-                            color: Theme.text
-                            font.pixelSize: Theme.fontCaption
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    Item {
-                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; top: header.bottom; margins: 12 }
-
-                        Image {
-                            id: thumbnail
+                        // A click on a preview takes us there at once.
+                        MouseArea {
+                            id: cardMouse
                             anchors.fill: parent
-                            fillMode: Image.PreserveAspectFit
-                            source: card.revision > 0 ? "image://thumbnail/" + card.identifier + "/" + card.revision : ""
-                            cache: false
-                            smooth: true
+                            hoverEnabled: true
+                            onClicked: Shell.pickSwitcher(card.index)
                         }
-                        // Until the preview exists: the big icon.
-                        Image {
-                            anchors.centerIn: parent
-                            width: 48
-                            height: 48
-                            visible: thumbnail.status !== Image.Ready
-                            source: Theme.icons + encodeURIComponent(card.icon)
-                            sourceSize: Qt.size(width, height)
+
+                        // Icon and title above the preview.
+                        Row {
+                            id: header
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                            spacing: 8
+
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: card.icon
+                            }
+                            Text {
+                                width: header.width - 24
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: card.title
+                                color: Theme.text
+                                font.pixelSize: Theme.fontCaption
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        Item {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; top: header.bottom; margins: 12 }
+
+                            Image {
+                                id: thumbnail
+                                anchors.fill: parent
+                                fillMode: Image.PreserveAspectFit
+                                source: card.revision > 0 ? "image://thumbnail/" + card.identifier + "/" + card.revision : ""
+                                cache: false
+                                smooth: true
+                            }
+                            // Until the preview exists: the big icon.
+                            Icon {
+                                anchors.centerIn: parent
+                                visible: thumbnail.status !== Image.Ready
+                                name: card.icon
+                                size: 48
+                            }
                         }
                     }
                 }

@@ -47,7 +47,6 @@ struct vela_workspaces *vela_workspaces_create(struct vela_server *server)
     struct vela_workspaces *ws = calloc(1, sizeof(*ws));
     ws->server = server;
     ws->next_map_serial = 1;
-    ws->start_ms = -1.0;
     // desktop=<name> for each desktop (empty: "Desktop N");
     // sticky-app=<app_id>.
     char path[PATH_MAX];
@@ -340,7 +339,7 @@ void vela_workspaces_switch(struct vela_server *server, int index, bool refocus_
         server->cursor_mode = VELA_CURSOR_PASSTHROUGH;
     }
 
-    ws->start_ms = -1.0; // at the first frame
+    vela_tween_start(&ws->tween, "desktop", vela_motion_ms(VELA_WORKSPACE_SWITCH_MS), NULL);
     vela_node_set_position(&server->layers.windows_out->node, 0, 0);
     vela_node_set_opacity(&server->layers.windows_out->node, 1.0f);
     vela_node_set_opacity(&server->layers.windows->node, 0.0f);
@@ -357,16 +356,13 @@ void vela_workspaces_switch(struct vela_server *server, int index, bool refocus_
     vela_workspaces_announce(server);
 }
 
-bool vela_workspaces_tick(struct vela_server *server, double now_ms)
+bool vela_workspaces_tick(struct vela_server *server, double now_ms, double wall_ms)
 {
     struct vela_workspaces *ws = server->workspaces;
     if (ws->direction == 0) {
         return false;
     }
-    if (ws->start_ms < 0.0) {
-        ws->start_ms = now_ms;
-    }
-    double x = vela_clampd((now_ms - ws->start_ms) / VELA_WORKSPACE_SWITCH_MS, 0.0, 1.0);
+    double x = vela_tween_progress(&ws->tween, now_ms);
     double t = vela_curve_eval(&vela_decelerate, x);
     int narrowest = 0;
     struct vela_output *output;
@@ -376,15 +372,21 @@ bool vela_workspaces_tick(struct vela_server *server, double now_ms)
         wlr_output_effective_resolution(output->wlr, &width, &height);
         narrowest = narrowest == 0 ? width : vela_min(narrowest, width);
     }
-    double distance = narrowest * VELA_WORKSPACE_SLIDE_FRACTION * ws->direction;
+    // Without animation effects the desktops cross-fade where they are.
+    double distance = vela_motion_effects() ? narrowest * VELA_WORKSPACE_SLIDE_FRACTION * ws->direction : 0.0;
     struct vela_layers *layers = &server->layers;
-    vela_node_set_position(&layers->windows_out->node, round(-distance * t), 0);
+    vela_node_set_position(&layers->windows_out->node, -distance * t, 0);
     vela_node_set_opacity(&layers->windows_out->node, (float)(1.0 - t));
     // The new ones turn opaque at once: fading together they would show
     // through each other.
-    vela_node_set_position(&layers->windows->node, round(distance * (1.0 - t)), 0);
+    vela_node_set_position(&layers->windows->node, distance * (1.0 - t), 0);
     vela_node_set_opacity(&layers->windows->node, (float)fmin(1.0, x * 4.0));
-    if (x >= 1.0) {
+    if (vela_motion_logger) {
+        // The two desktops' offsets, the one being left and the new one.
+        wlr_log(WLR_INFO, "animation: desktop #%u geometry %.3f %.3f 1 1 opacity %.3f", ws->tween.serial,
+            -distance * t, distance * (1.0 - t), 1.0 - t);
+    }
+    if (vela_tween_retired(&ws->tween, wall_ms)) {
         finish_switch(server);
         return false;
     }

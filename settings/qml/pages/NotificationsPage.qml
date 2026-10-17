@@ -16,9 +16,9 @@ Page {
             icon: "notifications-disabled"
             title: qsTr("Do not disturb")
             description: qsTr("Notifications go straight to the notification center, without popping up")
-            trailing: Toggle {
+            trailing: Switch {
                 checked: Prefs.doNotDisturb
-                onToggled: on => Prefs.doNotDisturb = on
+                onToggled: Prefs.doNotDisturb = checked
             }
         }
     }

@@ -47,6 +47,7 @@ static void init_fixture(struct fixture *f, int count, enum scenario scenario)
     f->frame.last.count = f->frame.current.count = count;
     f->frame.last.capacity = f->frame.current.capacity = count + 1;
     wlr_damage_ring_init(&f->frame.ring);
+    pixman_region32_init(&f->frame.scene_damage);
     for (int i = 0; i < count; ++i) {
         struct vela_element e = {
             .key = &f->keys[i], .opacity = 1,
@@ -69,6 +70,7 @@ static void init_fixture(struct fixture *f, int count, enum scenario scenario)
 static void finish_fixture(struct fixture *f)
 {
     wlr_damage_ring_finish(&f->frame.ring);
+    pixman_region32_fini(&f->frame.scene_damage);
     free(f->frame.last.items);
     free(f->frame.current.items);
     free(f->frame.found);
@@ -77,6 +79,8 @@ static void finish_fixture(struct fixture *f)
 
 static void tick(struct fixture *f)
 {
+    pixman_region32_clear(&f->frame.scene_damage);
+    // A compatible reference driver may still accumulate damage in the ring.
     pixman_region32_clear(&f->frame.ring.current);
     vela_test_diff(&f->frame);
 }
@@ -89,7 +93,7 @@ static bool damage_is(struct fixture *f, int x, int y, unsigned width, unsigned 
 {
     pixman_region32_t expected;
     pixman_region32_init_rect(&expected, x, y, width, height);
-    bool equal = pixman_region32_equal(&expected, &f->frame.ring.current);
+    bool equal = pixman_region32_equal(&expected, &f->frame.scene_damage);
     pixman_region32_fini(&expected);
     return equal;
 }
@@ -101,7 +105,7 @@ static int test_diff(void)
     struct vela_element *built = f.frame.current.items;
     tick(&f);
     CHECK(f.frame.last.items == built);
-    CHECK(!pixman_region32_not_empty(&f.frame.ring.current));
+    CHECK(!pixman_region32_not_empty(&f.frame.scene_damage));
     f.frame.current.items[0].opacity = 0.5f;
     tick(&f);
     CHECK(damage_is(&f, 0, 0, 16, 16));
@@ -129,13 +133,13 @@ static int test_diff(void)
     CHECK(vela_test_forgotten() == forgotten + 1);
     f.frame.current.count = 7;
     tick(&f);
-    CHECK(!pixman_region32_not_empty(&f.frame.ring.current));
+    CHECK(!pixman_region32_not_empty(&f.frame.scene_damage));
     f.frame.current.count = 0;
     tick(&f);
     CHECK(damage_is(&f, 0, 0, 112, 16));
     f.frame.current.count = 0;
     tick(&f);
-    CHECK(!pixman_region32_not_empty(&f.frame.ring.current));
+    CHECK(!pixman_region32_not_empty(&f.frame.scene_damage));
     f.frame.current.count = 8;
     // Clear the fake surface before reintroducing the element.
     f.frame.current.items[7].surface = NULL;
@@ -144,7 +148,7 @@ static int test_diff(void)
     f.frame.current.count = 8;
     f.frame.current.items[7].surface = NULL;
     tick(&f);
-    CHECK(!pixman_region32_not_empty(&f.frame.ring.current));
+    CHECK(!pixman_region32_not_empty(&f.frame.scene_damage));
     finish_fixture(&f);
 
     // Empty scenes also swap safely.
@@ -159,7 +163,7 @@ static int test_diff(void)
     CHECK(allocations == 0 && frees == 0);
     CHECK(f.frame.found == NULL && f.frame.found_capacity == 0);
 #endif
-    CHECK(!pixman_region32_not_empty(&f.frame.ring.current));
+    CHECK(!pixman_region32_not_empty(&f.frame.scene_damage));
     finish_fixture(&f);
 
 #ifdef VELA_DIFF_ALLOCATION_TEST

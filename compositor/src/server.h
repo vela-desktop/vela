@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <wayland-server-core.h>
+#include <wlr/render/pass.h>
 #include <wlr/util/box.h>
 
 #include "process.h"
@@ -129,25 +130,29 @@ struct vela_server {
     bool locked;
 
     // The theme chosen in Settings ("Choose your mode"), sent by the shell:
-    // light shell (acrylic tint) and light apps (title bars).
+    // light shell (acrylic tint) and light apps (title bars), and the accent
+    // (the snap preview; sRGB, opaque).
     bool light_shell;
     bool light_apps;
-    // The desktop wallpaper's tint (Mica, docs/renderer.md §9.4): the average
-    // color, in sRGB, sent by the shell. The version changes with it and with
-    // the theme: title bars redraw.
-    bool has_wallpaper_tint;
-    float wallpaper_tint[3];
-    uint32_t wallpaper_tint_version;
+    struct wlr_render_color accent;
+    // The title bars' Mica colors, active and inactive (docs/renderer.md
+    // §9.4): computed by the shell from the wallpaper, in the apps' mode, as
+    // Vela's apps compute their content's. Without them the bars keep their
+    // base grays. The version changes with them and with the theme: title
+    // bars redraw.
+    bool has_mica;
+    struct wlr_render_color mica_active;
+    struct wlr_render_color mica_inactive;
+    uint32_t look_version;
     // Title bar text and icons, loaded on first use (decoration.c);
     // text_loaded: tried, even if there is no font.
     struct vela_text *text;
     bool text_loaded;
     struct vela_icons *icons;
-    // Animation time: the moment the frame being prepared will become light
-    // (docs/renderer.md §4.2). It never goes back, even when different outputs
-    // predict different moments; 0 before the first.
-    double animation_now_ms;
     struct wl_list snapshot_animations; // the snapshot animations (snapshot.h)
+    // In vela_server_animate's ticks: the frames they ask for are the
+    // animations', one per vblank (output.c), not those of a change.
+    bool ticking;
 
     // The windows (view.h): in order of recent use, the first is the active
     // one; the protocols that bring them.
@@ -165,6 +170,11 @@ struct vela_server {
     struct wl_listener xwayland_new_surface;
     struct wl_listener xwayland_shell_surface;
     uint32_t xwayland_wake_atom; // the root property that wakes the X window manager (xwayland.c)
+    uint32_t xwayland_wine_style_atom; // _WINE_HWND_STYLE, interned on Xwayland ready
+    // _NET_WM_STATE and its FULLSCREEN, MAXIMIZED_VERT and MAXIMIZED_HORZ, for
+    // the state an app sets before mapping (xwayland.c)
+    uint32_t xwayland_state_atoms[4];
+    struct wl_event_source *xwayland_property_timer; // non-blocking property reply polling
     struct wl_event_source *output_check;
     struct vela_seen_output *seen_outputs;
     int seen_output_count;
@@ -212,8 +222,8 @@ void vela_server_destroy(struct vela_server *server);
 // longer waits for its frame.
 void vela_server_output_destroyed(struct vela_server *server, struct vela_output *output);
 
-// Before every frame: animations advance to the moment the frame will become
-// light (docs/renderer.md §4.2).
+// Before every frame: animations show the moment the frame will become light
+// (docs/renderer.md §4.2), and retire on the wall clock.
 void vela_server_animate(struct vela_server *server, int64_t present_ns);
 
 // On every delivered frame (the lock waits for black on every output).

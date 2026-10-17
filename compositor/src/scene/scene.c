@@ -220,6 +220,13 @@ void vela_rect_node_set_size(struct vela_rect_node *rect, double width, double h
 
 void vela_rect_node_set_color(struct vela_rect_node *rect, const struct wlr_render_color *color)
 {
+    // Like every setter: the same value again is no change. An animation
+    // that keeps setting its last color (the snap preview while it rests)
+    // would otherwise plan a frame at every vblank.
+    if (color->r == rect->color.r && color->g == rect->color.g && color->b == rect->color.b
+        && color->a == rect->color.a) {
+        return;
+    }
     rect->color = *color;
     vela_scene_changed(rect->node.scene);
 }

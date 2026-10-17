@@ -20,6 +20,8 @@
 #include "view.h"
 #include "workspace.h"
 
+#include <errno.h>
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,6 +63,35 @@ static bool starts_with(const char *text, const char *prefix)
     return strncmp(text, prefix, strlen(prefix)) == 0;
 }
 
+// Apply a caffeine request on the compositor thread. The confirmed command
+// socket variant returns the authoritative resulting state to the shell.
+static bool set_caffeine_command(struct vela_server *server, const char *arg)
+{
+    if (starts_with(arg, "on ")) {
+        const char *value = arg + 3;
+        char *end = NULL;
+        errno = 0;
+        const double minutes = strtod(value, &end);
+        if (end == value || *end != '\0' || errno == ERANGE || !isfinite(minutes)
+            || minutes <= 0 || minutes > VELA_CAFFEINE_MAX_MINUTES) {
+            wlr_log(WLR_ERROR, "Invalid caffeine duration (expected >0 to 1440 minutes)");
+            return false; // Never mutate existing state for invalid input.
+        }
+        if (!vela_lock_set_caffeine_for(server->lock, minutes)) {
+            vela_a11y_announce(server->a11y); // Includes fail-closed timer errors.
+            return false;
+        }
+    } else if (strcmp(arg, "on") == 0 || strcmp(arg, "off") == 0 || strcmp(arg, "toggle") == 0) {
+        const bool on = strcmp(arg, "toggle") == 0 ? !server->lock->caffeine : strcmp(arg, "on") == 0;
+        vela_lock_set_caffeine(server->lock, on);
+    } else {
+        wlr_log(WLR_ERROR, "Unknown caffeine command");
+        return false;
+    }
+    vela_a11y_announce(server->a11y);
+    return true;
+}
+
 // -------------------------------------------------------------- answers --
 
 static void state_json(struct vela_server *server, struct vela_buffer *json)
@@ -83,9 +114,9 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         vela_buffer_append(json, first ? "{\"name\":" : ",{\"name\":");
         vela_buffer_append_json(json, output->wlr->name);
         vela_buffer_appendf(json,
-            ",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"scale\":%g,\"enabled\":%s,\"powered\":%s,\"frames\":%llu,"
+            ",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"scale\":%g,\"transform\":%d,\"enabled\":%s,\"powered\":%s,\"frames\":%llu,"
             "\"missed\":%llu}",
-            box.x, box.y, box.width, box.height, (double)output->wlr->scale, output->wlr->enabled ? t : f,
+            box.x, box.y, box.width, box.height, (double)output->wlr->scale, (int)output->wlr->transform, output->wlr->enabled ? t : f,
             output->powered ? t : f, (unsigned long long)output->clock.frames_total,
             (unsigned long long)output->clock.missed_total);
         first = false;
@@ -113,9 +144,9 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
             vela_buffer_append(json, "null");
         }
         vela_buffer_appendf(json,
-            ",\"workspace\":%d,\"sticky\":%s,\"maximized\":%s,\"minimized\":%s,\"fullscreen\":%s,\"snap\":",
+            ",\"workspace\":%d,\"sticky\":%s,\"maximized\":%s,\"minimized\":%s,\"fullscreen\":%s,\"below\":%s,\"snap\":",
             view->workspace, view->sticky ? t : f, view->maximized ? t : f, view->minimized ? t : f,
-            view->fullscreen ? t : f);
+            view->fullscreen ? t : f, vela_view_stays_below(view) ? t : f);
         if (vela_snap_is_none(view->snap)) {
             vela_buffer_append(json, "null");
         } else {
@@ -142,7 +173,10 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         } else {
             vela_buffer_append(json, "null");
         }
-        vela_buffer_append(json, "}");
+        double lx = 0, ly = 0;
+        vela_node_coords(&layer->tree->node, &lx, &ly);
+        vela_buffer_appendf(json, ",\"x\":%g,\"y\":%g,\"w\":%d,\"h\":%d}", lx, ly,
+            wlr->surface->current.width, wlr->surface->current.height);
         if (keyboard_surface && wlr->surface == keyboard_surface) {
             keyboard_layer = layer;
         }
@@ -197,6 +231,18 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         window_rects_json(server, &reply);
     } else if (strcmp(line, "state") == 0) {
         state_json(server, &reply);
+    } else if (strcmp(line, "caffeine status") == 0) {
+        vela_buffer_append(&reply, server->lock->caffeine ? "on" : "off");
+    } else if (starts_with(line, "caffeine-set ")) {
+        // Unlike the fire-and-forget CLI, the shell waits for this reply.
+        // Apply first, then report the resulting compositor state, not the
+        // requested one. A failed delivery cannot masquerade as "off".
+        const bool ok = set_caffeine_command(server, line + 13);
+        char json[512];
+        if (!vela_a11y_json(server->a11y, json, sizeof(json))) {
+            return true;
+        }
+        vela_buffer_appendf(&reply, "{\"ok\":%s,\"state\":%s}", ok ? "true" : "false", json);
     } else if (strcmp(line, "accessibility") == 0) {
         char json[512];
         if (!vela_a11y_json(server->a11y, json, sizeof(json))) {
@@ -207,7 +253,7 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         return false;
     }
     vela_buffer_append(&reply, "\n");
-    (void)!write(fd, reply.data, reply.length);
+    (void)!send(fd, reply.data, reply.length, MSG_NOSIGNAL);
     vela_buffer_finish(&reply);
     return true;
 }
@@ -222,44 +268,78 @@ static void refresh_decorations(struct vela_server *server)
     }
 }
 
-// wallpaper-tint R G B (0-255): the wallpaper's average color, for the title
-// bars.
-static void wallpaper_tint(struct vela_server *server, const char *arguments)
+// "#rrggbb" as an opaque color.
+static bool parse_color(const char *text, struct wlr_render_color *color)
 {
-    int r = 0;
-    int g = 0;
-    int b = 0;
-    if (sscanf(arguments, "%d %d %d", &r, &g, &b) != 3) {
+    unsigned rgb = 0;
+    if (strlen(text) != 7 || text[0] != '#' || strspn(text + 1, "0123456789abcdefABCDEF") != 6
+        || sscanf(text, "#%6x", &rgb) != 1) {
+        return false;
+    }
+    *color = (struct wlr_render_color) {
+        ((rgb >> 16) & 0xff) / 255.0f,
+        ((rgb >> 8) & 0xff) / 255.0f,
+        (rgb & 0xff) / 255.0f,
+        1.0f,
+    };
+    return true;
+}
+
+static bool same_color(const struct wlr_render_color *a, const struct wlr_render_color *b)
+{
+    return a->r == b->r && a->g == b->g && a->b == b->b && a->a == b->a;
+}
+
+// mica #active #inactive: the title bars' colors, computed by the shell
+// (shell/src/mica.h, micaFromTint) in the apps' mode.
+static void mica(struct vela_server *server, const char *arguments)
+{
+    char active_text[16] = "";
+    char inactive_text[16] = "";
+    struct wlr_render_color active;
+    struct wlr_render_color inactive;
+    if (sscanf(arguments, "%15s %15s", active_text, inactive_text) != 2 || !parse_color(active_text, &active)
+        || !parse_color(inactive_text, &inactive)) {
         return;
     }
-    server->wallpaper_tint[0] = vela_clamp(r, 0, 255) / 255.0f;
-    server->wallpaper_tint[1] = vela_clamp(g, 0, 255) / 255.0f;
-    server->wallpaper_tint[2] = vela_clamp(b, 0, 255) / 255.0f;
-    server->has_wallpaper_tint = true;
-    ++server->wallpaper_tint_version;
+    if (server->has_mica && same_color(&active, &server->mica_active)
+        && same_color(&inactive, &server->mica_inactive)) {
+        return;
+    }
+    server->has_mica = true;
+    server->mica_active = active;
+    server->mica_inactive = inactive;
+    ++server->look_version;
     refresh_decorations(server);
 }
 
-// theme <shell> <apps>, "light" or "dark": Vela's mode and the apps' mode.
+// theme <shell> <apps> [<accent>]: "light" or "dark", Vela's mode and the
+// apps' mode, and the accent as #rrggbb (an older shell doesn't send it: the
+// default stays).
 static void theme(struct vela_server *server, const char *arguments)
 {
     char shell_mode[16] = "";
     char app_mode[16] = "";
-    if (sscanf(arguments, "%15s %15s", shell_mode, app_mode) != 2) {
+    char accent_text[16] = "";
+    if (sscanf(arguments, "%15s %15s %15s", shell_mode, app_mode, accent_text) < 2) {
         return;
     }
     bool shell_light = strcmp(shell_mode, "light") == 0;
     bool apps_light = strcmp(app_mode, "light") == 0;
-    if (shell_light == server->light_shell && apps_light == server->light_apps) {
+    struct wlr_render_color accent = server->accent;
+    parse_color(accent_text, &accent);
+    if (shell_light == server->light_shell && apps_light == server->light_apps
+        && same_color(&accent, &server->accent)) {
         return;
     }
+    server->accent = accent;
     server->light_shell = shell_light;
     server->light_apps = apps_light;
     // Windows 11's acrylic tint, dark or light (premultiplied sRGB).
     server->scene->acrylic_tint = shell_light
         ? (struct wlr_render_color) { 0.95f * 0.55f, 0.95f * 0.55f, 0.96f * 0.55f, 0.55f }
         : (struct wlr_render_color) { 0.11f * 0.55f, 0.11f * 0.55f, 0.12f * 0.55f, 0.55f };
-    ++server->wallpaper_tint_version;
+    ++server->look_version;
     refresh_decorations(server);
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
@@ -358,14 +438,15 @@ static void run_command(struct vela_server *server, const char *line)
     if (strcmp(line, "logout") == 0) {
         wlr_log(WLR_INFO, "Exit requested by the shell");
         wl_display_terminate(server->display);
-    } else if (starts_with(line, "wallpaper-tint ")) {
-        wallpaper_tint(server, line + 15);
+    } else if (starts_with(line, "mica ")) {
+        mica(server, line + 5);
     } else if (starts_with(line, "theme ")) {
         theme(server, line + 6);
     } else if (strcmp(line, "paste") == 0) {
         vela_input_paste(server->input); // Win+V: the shell has put the item on the clipboard
     } else if (strcmp(line, "modifiers") == 0 || strcmp(line, "workspaces") == 0
-        || strcmp(line, "accessibility") == 0 || strcmp(line, "window-rects") == 0) {
+        || strcmp(line, "accessibility") == 0 || strcmp(line, "window-rects") == 0
+        || strcmp(line, "caffeine status") == 0 || starts_with(line, "caffeine-set ")) {
         // already answered to whoever asked
     } else if (starts_with(line, "workspace ")) {
         workspace(server, line);
@@ -386,6 +467,10 @@ static void run_command(struct vela_server *server, const char *line)
         vela_a11y_set_magnifier(a11y, wanted(line + 10, a11y->magnifier));
     } else if (starts_with(line, "sticky-keys ")) {
         vela_a11y_set_sticky_keys(a11y, wanted(line + 12, a11y->sticky_keys), true);
+    } else if (starts_with(line, "caffeine ")) {
+        // Existing CLI remains fire-and-forget; only the shell uses the
+        // caffeine-set command with a synchronized state reply.
+        (void)set_caffeine_command(server, line + 9);
     } else if (starts_with(line, "switcher-pick ")) {
         // A click on an Alt+Tab preview: switch to that window.
         vela_switcher_pick(server, atoi(line + 14));

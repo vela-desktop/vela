@@ -26,6 +26,9 @@ QtObject {
     readonly property color controlStrokeStrong: light ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(1, 1, 1, 0.55)
     readonly property color subtleHover: light ? Qt.rgba(0, 0, 0, 0.037) : Qt.rgba(1, 1, 1, 0.061)
     readonly property color subtlePressed: light ? Qt.rgba(0, 0, 0, 0.024) : Qt.rgba(1, 1, 1, 0.042)
+    // subtleHover at alpha 0: what a subtle control fades from ("transparent"
+    // is black at alpha 0, and a fade from it would pass through gray).
+    readonly property color subtleRest: light ? Qt.rgba(0, 0, 0, 0) : Qt.rgba(1, 1, 1, 0)
     readonly property color stroke: light ? Qt.rgba(0, 0, 0, 0.09) : Qt.rgba(1, 1, 1, 0.09) // panels and menus
     readonly property color divider: light ? Qt.rgba(0, 0, 0, 0.08) : Qt.rgba(1, 1, 1, 0.084)
     readonly property color card: light ? Qt.rgba(1, 1, 1, 0.7) : Qt.rgba(1, 1, 1, 0.051)
@@ -104,19 +107,37 @@ QtObject {
     readonly property int radius: 4 // controls
     readonly property int radiusCard: 6
     readonly property int radiusOverlay: 8 // menus, flyouts, dialogs, panels
+    // Shadows (Shadow.qml): WinUI's elevations for what floats. Flyouts:
+    // menus, panels, previews; dialogs: above a window or the screen. The
+    // compositor gives windows their own (scene/, two layers).
+    readonly property var shadow: ({
+        flyout: { blur: 32, offset: 6, opacity: 0.45 },
+        dialog: { blur: 48, offset: 16, opacity: 0.45 }
+    })
     readonly property int fontCaption: 12
     readonly property int fontBody: 14
     readonly property int fontBodyLarge: 18
     readonly property int fontSubtitle: 20
     readonly property int fontTitle: 28
 
-    // --- motion: the same curves and durations as the compositor's
-    // (compositor/src/motion.h), so windows and shell move the same way ---
-    readonly property int fast: 120
-    readonly property int normal: 200
-    readonly property int slow: 250 // panels and windows entering the scene
-    // cubic-bezier(0, 0, 0.2, 1): a decisive start, a soft landing
+    // --- motion: four durations and one curve, the same as the compositor's
+    // (compositor/src/motion.h), so windows and shell move the same way.
+    // scripts/check-shared-values.py fails if the two copies disagree. ---
+    readonly property var scale: ({ fast: 120, normal: 200, slow: 250, long: 300 })
+    // Animation effects off (Settings > Accessibility > Visual effects; the
+    // compositor reads the same keys): nothing moves, and what fades takes at
+    // most `fast`. Every movement is multiplied by `motion` (1 or 0): a
+    // panel's offset and scale, a page's slide, a layout change's duration.
+    // On, every duration is Vela's times `duration` (Settings' slider; 1 is
+    // Vela's).
+    readonly property bool animationEffects: Style.animationEffects
+    readonly property real motion: animationEffects ? 1 : 0
+    readonly property real duration: animationEffects ? Style.animationDuration : 1
+    readonly property int fast: Math.round(scale.fast * duration) // fades in, state fills
+    readonly property int normal: animationEffects ? Math.round(scale.normal * duration) : fast // exits, popups, dialogs, page changes
+    readonly property int slow: animationEffects ? Math.round(scale.slow * duration) : fast // panels and windows entering the scene
+    readonly property int long: animationEffects ? Math.round(scale.long * duration) : fast // what moves across the whole window
+    // cubic-bezier(0, 0, 0.2, 1): a decisive start, a soft landing. For exits
+    // too, which are shorter: one that starts slowly seems to ignore the click.
     readonly property var decelerate: [0.0, 0.0, 0.2, 1.0, 1.0, 1.0]
-    // for exits: starts slowly and leaves fast
-    readonly property var accelerate: [0.7, 0.0, 0.84, 0.0, 1.0, 1.0]
 }

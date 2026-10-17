@@ -24,6 +24,7 @@
 #include "language.h"
 #include "levelmeter.h"
 #include "mediakeys.h"
+#include "mica.h"
 #include "network.h"
 #include "notifications.h"
 #include "servicemenus.h"
@@ -142,8 +143,9 @@ const Panel panels[] = {
     // Right-click menus: the whole output, transparent, above everything; a
     // click outside closes them. Arrows, Enter and Esc.
     { "ContextMenu", "vela-context-menu", layerOverlay, fill, -1, keysOnDemand },
-    // "Run", at the bottom left above the taskbar, like in Windows.
-    { "RunDialog", "vela-run", layerTop, bottomLeft, 0, keysOnDemand, QMargins(12, 0, 0, 12) },
+    // "Run", at the bottom left above the taskbar, like in Windows; the
+    // window touches both, the dialog rests 12 units from them.
+    { "RunDialog", "vela-run", layerTop, bottomLeft, 0, keysOnDemand },
     // Questions such as "Empty Recycle Bin", and what to share on screen.
     { "ConfirmDialog", "vela-confirm", layerOverlay, centered, 0, keysOnDemand },
     { "SourceChooser", "vela-share", layerOverlay, centered, 0, keysOnDemand },
@@ -156,8 +158,9 @@ const Panel panels[] = {
     // The desktop's name in the center of the output.
     { "DesktopOsd", "vela-desktop-osd", layerOverlay, centered, -1, keysNone, {}, true },
     // The volume: above fullscreen windows too, like Windows 11. It takes the
-    // mouse (drag, mute, wheel).
-    { "VolumeOsd", "vela-volume-osd", layerOverlay, bottom, 0, keysNone, QMargins(0, 0, 0, 12) },
+    // mouse (drag, mute, wheel). The window touches the taskbar, the pill
+    // rests 12 units above it.
+    { "VolumeOsd", "vela-volume-osd", layerOverlay, bottom, 0, keysNone },
     // The whole output, transparent: a click outside the panel closes it.
     // The keyboard for Win+Z.
     { "SnapLayouts", "vela-snap-layouts", layerOverlay, fill, -1, keysOnDemand },
@@ -201,13 +204,15 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
     return window;
 }
 
-// With the taskbar aligned left, Start opens at the bottom left.
+// With the taskbar aligned left, Start opens at the bottom left: its window
+// touches the output's edge, and the panel rests 12 units from it
+// (StartMenu.qml's `atLeft`).
 void placeStartMenu(QQuickWindow* window, const QString& alignment)
 {
     LayerWindow* layer = LayerWindow::get(window);
     const bool left = alignment == QLatin1String("left");
     layer->setAnchors(left ? bottomLeft : bottom);
-    layer->setMargins(QMargins(left ? 12 : 0, 0, 0, 0));
+    window->setProperty("atLeft", left);
 }
 
 } // namespace
@@ -285,14 +290,6 @@ int main(int argc, char* argv[])
     accessibility.query();
     Network network;
     shell.listen();
-    shell.sendWallpaperTint(config.wallpaper());
-    QObject::connect(&config, &Config::wallpaperChanged, &shell, [&] { shell.sendWallpaperTint(config.wallpaper()); });
-    // The mode to the compositor (acrylic tint, title bars).
-    auto sendTheme = [&config] {
-        ShellController::sendToCompositor("theme " + config.shellTheme().toLatin1() + ' ' + config.appTheme().toLatin1());
-    };
-    sendTheme();
-    QObject::connect(&config, &Config::themeChanged, &shell, sendTheme);
     shell.watchSleep();
 
     ForeignToplevelManager windows;
@@ -336,7 +333,27 @@ int main(int argc, char* argv[])
     qmlEngine = &engine;
     // Theme, Style (the shell's mode, accent, icons) and Effects (the blur):
     // Vela.Controls, like the apps.
-    vela::controls::install(engine, Appearance::Mode::Shell)->watch();
+    Appearance* style = vela::controls::install(engine, Appearance::Mode::Shell);
+    style->watch();
+    // The look the compositor draws with, computed here (docs/visual-coherence.md
+    // §6.6): both modes and the accent (acrylic tint, title bars, the snap
+    // preview), and the title bars' Mica colors in the apps' mode, with the
+    // formula Vela's apps use for their content (mica.h).
+    QColor tint = shell.wallpaperTint(config.wallpaper());
+    auto sendLook = [&config, style, &tint] {
+        ShellController::sendToCompositor("theme " + config.shellTheme().toLatin1() + ' '
+            + config.appTheme().toLatin1() + ' ' + style->accent().name().toLatin1());
+        const bool appsLight = config.appTheme() == QLatin1String("light");
+        ShellController::sendToCompositor("mica " + micaFromTint(tint, true, appsLight).name().toLatin1() + ' '
+            + micaFromTint(tint, false, appsLight).name().toLatin1());
+    };
+    sendLook();
+    QObject::connect(&config, &Config::wallpaperChanged, &shell, [&] {
+        tint = shell.wallpaperTint(config.wallpaper());
+        sendLook();
+    });
+    QObject::connect(&config, &Config::themeChanged, &shell, sendLook);
+    QObject::connect(style, &Appearance::changed, &shell, sendLook);
     engine.addImageProvider(QStringLiteral("fileicon"), new IconProvider(32));
     engine.addImageProvider(QStringLiteral("wallpaper"), new WallpaperProvider);
     engine.addImageProvider(QStringLiteral("thumbnail"), new ThumbnailProvider(&capture));

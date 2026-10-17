@@ -38,11 +38,12 @@ void vela_snapshots_finish(struct vela_server *server); // ends them all, at shu
 // doesn't start (window without a size).
 bool vela_snapshot_animate(struct vela_server *server, struct vela_view *view, enum vela_snapshot_kind kind);
 // Maximize and restore: the current content morphs into `to` (global frame)
-// and fades while the real window appears there.
-bool vela_snapshot_morph(struct vela_server *server, struct vela_view *view, struct wlr_box to);
+// and fades while the real window appears there. Its corners go from the
+// window's to `to_radius`, the ones it will have there.
+bool vela_snapshot_morph(struct vela_server *server, struct vela_view *view, struct wlr_box to, double to_radius);
 void vela_snapshot_cancel(struct vela_server *server, struct vela_view *view);
-// Advances the animations to `now_ms`; true while some remain.
-bool vela_snapshots_tick(struct vela_server *server, double now_ms);
-bool vela_snapshots_running(const struct vela_server *server);
+// The animations at `now_ms` (the frame's time), destroyed at `wall_ms`; true
+// while some remain.
+bool vela_snapshots_tick(struct vela_server *server, double now_ms, double wall_ms);
 
 #endif

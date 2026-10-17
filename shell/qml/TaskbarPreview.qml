@@ -12,8 +12,12 @@ import Vela.Controls
 Window {
     id: root
     visible: false
-    width: panel.width + 32
-    height: panel.height + 16
+    // The panel with room for its shadow around it, cut where the window
+    // meets the taskbar (docs/visual-coherence.md §6.9): the panel rests 12
+    // units above it.
+    readonly property real room: shadow.reach
+    width: room + panel.width + room
+    height: room + panel.height + 12
     color: "transparent"
 
     property var windows: [] // [{id, title, icon}]
@@ -102,34 +106,20 @@ Window {
             Shell.placeOnScreen(root, screen.name)
         }
         const screenWidth = screen ? screen.width : Screen.width
-        const w = (windows.length + groups.length) * (cardWidth + 4) + 12 + 32
+        const w = (windows.length + groups.length) * (cardWidth + 4) + 12 + 2 * room
         Shell.placeAtLeft(root, Math.round(Math.max(0, Math.min(screenWidth - w, info.center - w / 2))))
-        if (!visible) {
-            visible = true
-            panel.opacity = 0
-            slide.y = 8
-            appear.restart()
-        }
-        updateBlur()
+        visible = true // again, on another output
+        motion.open()
+        Effects.setBlur(root, [motion.visibleArea])
     }
     function hide() {
         hideTimer.stop()
-        visible = false
+        motion.close()
         Menus.previewHovered = false
     }
 
-    function updateBlur() {
-        Effects.setBlur(root, [Qt.rect(panel.x, panel.y, panel.width, panel.height)])
-    }
-
-    ParallelAnimation {
-        id: appear
-        NumberAnimation { target: panel; property: "opacity"; to: 1; duration: Theme.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-        NumberAnimation { target: slide; property: "y"; to: 0; duration: Theme.normal; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.decelerate }
-    }
-
     // A card: icon, title, Close; the thumbnail (or the group) below.
-    component Card: Rectangle {
+    component Card: Fill {
         id: card
         property string title
         property string icon
@@ -140,7 +130,7 @@ Window {
         width: root.cardWidth
         height: root.cardHeight
         radius: Theme.radiusOverlay
-        color: cardHover.hovered ? Theme.subtleHover : "transparent"
+        color: cardHover.hovered ? Theme.subtleHover : Theme.subtleRest
 
         HoverHandler { id: cardHover }
         Row {
@@ -149,12 +139,9 @@ Window {
             y: 8
             width: parent.width - 20 - (closable ? 24 : 0)
             spacing: 8
-            Image {
-                width: 16
-                height: 16
+            Icon {
                 anchors.verticalCenter: parent.verticalCenter
-                source: Theme.icons + encodeURIComponent(card.icon)
-                sourceSize: Qt.size(width, height)
+                name: card.icon
             }
             Text {
                 width: header.width - 24
@@ -181,13 +168,13 @@ Window {
             }
         }
         // Close, at the top right on hover.
-        Rectangle {
+        Fill {
             visible: card.closable && cardHover.hovered
             anchors { right: parent.right; top: parent.top; margins: 4 }
             width: 28
             height: 24
             radius: Theme.radius
-            color: closeMouse.containsMouse ? "#c42b1c" : "transparent"
+            color: closeMouse.containsMouse ? "#c42b1c" : "#00c42b1c"
             Text {
                 anchors.centerIn: parent
                 text: "✕"
@@ -203,122 +190,130 @@ Window {
         }
     }
 
-    PanelShadow {
-        target: panel
-        opacity: panel.opacity
-        blur: 24
-        offset: Qt.vector2d(0, 4)
-        radius: Theme.radiusOverlay
+    // A click in the shadow's room closes the previews, like one outside.
+    ShadowRoom {
+        panels: [panel]
+        onOutside: Menus.preview = null
     }
 
-    Rectangle {
-        id: panel
-        x: 16
-        y: 4
+    // It rises 8 units, and goes at once (docs/visual-coherence.md K5).
+    PanelMotion {
+        id: motion
+        x: root.room
+        y: root.room
         width: cards.width + 12
         height: root.cardHeight + 12
-        radius: Theme.radiusOverlay
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.stroke
-        transform: Translate { id: slide }
-        onWidthChanged: root.updateBlur()
+        offset: Qt.point(0, 8)
+        duration: Theme.normal
+        instantExit: true
+        onClosed: root.visible = false
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the panel at rest
 
-        HoverHandler {
-            onHoveredChanged: Menus.previewHovered = hovered
+        Shadow {
+            id: shadow
+            target: panel
         }
 
-        Row {
-            id: cards
-            x: 6
-            y: 6
-            spacing: 4
+        Rectangle {
+            id: panel
+            anchors.fill: parent
+            radius: Theme.radiusOverlay
+            color: Theme.surface
+            border.width: 1
+            border.color: Theme.stroke
 
-            Repeater {
-                model: root.windows
-                delegate: Card {
-                    id: windowCard
-                    required property var modelData
-                    title: modelData.title
-                    icon: modelData.icon
-                    onActivated: {
-                        Shell.windowAction(modelData.id, "activate")
-                        Menus.preview = null
-                    }
-                    onCloseRequested: Shell.windowAction(modelData.id, "close")
-
-                    Image {
-                        id: thumbnail
-                        anchors.fill: parent
-                        fillMode: Image.PreserveAspectFit
-                        source: root.ready[windowCard.modelData.id] ? "image://thumbnail/" + windowCard.modelData.id + "/" + root.ready[windowCard.modelData.id] : ""
-                        cache: false
-                        smooth: true
-                    }
-                    Image {
-                        anchors.centerIn: parent
-                        width: 40
-                        height: 40
-                        visible: thumbnail.status !== Image.Ready
-                        source: Theme.icons + encodeURIComponent(windowCard.modelData.icon)
-                        sourceSize: Qt.size(width, height)
-                    }
-                }
+            HoverHandler {
+                onHoveredChanged: Menus.previewHovered = hovered
             }
 
-            // Snap groups: the windows in their places, on a small output.
-            Repeater {
-                model: root.groups
-                delegate: Card {
-                    id: groupCard
-                    required property var modelData
-                    title: modelData.windows.map(m => m.title).join("  ·  ")
-                    icon: modelData.windows.length > 0 ? modelData.windows[0].icon : ""
-                    closable: false
-                    onActivated: {
-                        const ids = Menus.preview ? root.windows.map(w => w.id) : []
-                        // The button's app window focused.
-                        const mine = groupCard.modelData.windows.find(m => ids.indexOf(m.id) >= 0)
-                        Shell.windowAction((mine || groupCard.modelData.windows[0]).id, "activate-group")
-                        Menus.preview = null
-                    }
+            Row {
+                id: cards
+                x: 6
+                y: 6
+                spacing: 4
 
-                    Item {
-                        id: screenShape
-                        anchors.centerIn: parent
-                        // The output's shape (16:9), inside the card's space.
-                        width: Math.min(parent.width, parent.height * 16 / 9)
-                        height: width * 9 / 16
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: 4
-                            color: Theme.light ? Qt.rgba(0, 0, 0, 0.06) : Qt.rgba(1, 1, 1, 0.06)
+                Repeater {
+                    model: root.windows
+                    delegate: Card {
+                        id: windowCard
+                        required property var modelData
+                        title: modelData.title
+                        icon: modelData.icon
+                        onActivated: {
+                            Shell.windowAction(modelData.id, "activate")
+                            Menus.preview = null
                         }
-                        Repeater {
-                            model: groupCard.modelData.windows
-                            delegate: Item {
-                                id: member
-                                required property var modelData
-                                x: modelData.tile[0] / 12 * screenShape.width + 1
-                                y: modelData.tile[1] / 12 * screenShape.height + 1
-                                width: (modelData.tile[2] - modelData.tile[0]) / 12 * screenShape.width - 2
-                                height: (modelData.tile[3] - modelData.tile[1]) / 12 * screenShape.height - 2
-                                clip: true
-                                Image {
-                                    id: memberThumb
-                                    anchors.fill: parent
-                                    fillMode: Image.PreserveAspectCrop
-                                    source: root.ready[member.modelData.id] ? "image://thumbnail/" + member.modelData.id + "/" + root.ready[member.modelData.id] : ""
-                                    cache: false
-                                    smooth: true
-                                }
-                                Image {
-                                    anchors.centerIn: parent
-                                    width: 20
-                                    height: 20
-                                    visible: memberThumb.status !== Image.Ready
-                                    source: Theme.icons + encodeURIComponent(member.modelData.icon)
-                                    sourceSize: Qt.size(width, height)
+                        onCloseRequested: Shell.windowAction(modelData.id, "close")
+
+                        Image {
+                            id: thumbnail
+                            anchors.fill: parent
+                            fillMode: Image.PreserveAspectFit
+                            source: root.ready[windowCard.modelData.id] ? "image://thumbnail/" + windowCard.modelData.id + "/" + root.ready[windowCard.modelData.id] : ""
+                            cache: false
+                            smooth: true
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: thumbnail.status !== Image.Ready
+                            name: windowCard.modelData.icon
+                            size: 40
+                        }
+                    }
+                }
+
+                // Snap groups: the windows in their places, on a small output.
+                Repeater {
+                    model: root.groups
+                    delegate: Card {
+                        id: groupCard
+                        required property var modelData
+                        title: modelData.windows.map(m => m.title).join("  ·  ")
+                        icon: modelData.windows.length > 0 ? modelData.windows[0].icon : ""
+                        closable: false
+                        onActivated: {
+                            const ids = Menus.preview ? root.windows.map(w => w.id) : []
+                            // The button's app window focused.
+                            const mine = groupCard.modelData.windows.find(m => ids.indexOf(m.id) >= 0)
+                            Shell.windowAction((mine || groupCard.modelData.windows[0]).id, "activate-group")
+                            Menus.preview = null
+                        }
+
+                        Item {
+                            id: screenShape
+                            anchors.centerIn: parent
+                            // The output's shape (16:9), inside the card's space.
+                            width: Math.min(parent.width, parent.height * 16 / 9)
+                            height: width * 9 / 16
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 4
+                                color: Theme.light ? Qt.rgba(0, 0, 0, 0.06) : Qt.rgba(1, 1, 1, 0.06)
+                            }
+                            Repeater {
+                                model: groupCard.modelData.windows
+                                delegate: Item {
+                                    id: member
+                                    required property var modelData
+                                    x: modelData.tile[0] / 12 * screenShape.width + 1
+                                    y: modelData.tile[1] / 12 * screenShape.height + 1
+                                    width: (modelData.tile[2] - modelData.tile[0]) / 12 * screenShape.width - 2
+                                    height: (modelData.tile[3] - modelData.tile[1]) / 12 * screenShape.height - 2
+                                    clip: true
+                                    Image {
+                                        id: memberThumb
+                                        anchors.fill: parent
+                                        fillMode: Image.PreserveAspectCrop
+                                        source: root.ready[member.modelData.id] ? "image://thumbnail/" + member.modelData.id + "/" + root.ready[member.modelData.id] : ""
+                                        cache: false
+                                        smooth: true
+                                    }
+                                    Icon {
+                                        anchors.centerIn: parent
+                                        visible: memberThumb.status !== Image.Ready
+                                        name: member.modelData.icon
+                                        size: 20
+                                    }
                                 }
                             }
                         }
