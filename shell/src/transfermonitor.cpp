@@ -8,6 +8,7 @@
 #include <QDBusReply>
 #include <QCoreApplication>
 #include <QFileInfo>
+#include <QDir>
 #include <QStandardPaths>
 #include <QDBusPendingCall>
 #include <QDBusMessage>
