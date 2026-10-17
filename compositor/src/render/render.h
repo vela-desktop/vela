@@ -260,8 +260,9 @@ struct vela_renderer {
 
     // The arrays of a submission, reused (they only grow).
     VkSemaphoreSubmitInfo *wait_infos;
+    int wait_infos_capacity;
     VkSemaphore *wait_semaphores;
-    int wait_capacity;
+    int wait_semaphores_capacity;
 
     struct wlr_drm_syncobj_timeline *sync_timeline;
     uint64_t sync_point;

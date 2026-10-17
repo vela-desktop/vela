@@ -14,6 +14,8 @@ struct wl_display;
 class Displays : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList outputs READ outputs NOTIFY outputsChanged)
+    Q_PROPERTY(QString primaryOutput READ primaryOutput NOTIFY primaryOutputChanged)
+    Q_PROPERTY(QString preferredPrimaryOutput READ preferredPrimaryOutput NOTIFY primaryOutputChanged)
     Q_PROPERTY(bool available READ available NOTIFY stateChanged)
     Q_PROPERTY(bool pending READ pending NOTIFY stateChanged)
     Q_PROPERTY(bool confirming READ confirming NOTIFY stateChanged)
@@ -32,6 +34,9 @@ public:
     int secondsRemaining() const;
     QString error() const;
     QVariantList outputs() const;
+    QString primaryOutput() const;
+    QString preferredPrimaryOutput() const;
+    Q_INVOKABLE bool setPrimaryOutput(const QString& name);
 
     Q_INVOKABLE void refresh();
     // Returns whether the asynchronous request was submitted.
@@ -41,6 +46,7 @@ public:
 
 signals:
     void outputsChanged();
+    void primaryOutputChanged();
     void stateChanged();
     void confirmationRequested();
     void confirmationFinished();

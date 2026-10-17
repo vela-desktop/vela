@@ -163,6 +163,7 @@ add_executable(vela-compositor
     src/snap.c
     src/snapshot.c
     src/supervisor.c
+    src/supervisor_children.c
     src/switcher.c
     src/text.c
     src/view.c
@@ -173,6 +174,7 @@ add_executable(vela-compositor
     src/render/pass.c
     src/render/pixel_buffer.c
     src/render/renderer.c
+    src/render/wait_arrays.c
     src/render/texture.c
     src/render/vulkan.c
     src/scene/capture.c
@@ -282,6 +284,26 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-lock-retry-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     target_compile_options(vela-lock-retry-test PRIVATE -Wall -Wextra -Werror)
     add_test(NAME compositor.lock-retry-policy COMMAND vela-lock-retry-test)
+
+    # CPU-only Vulkan wait-array tests: force failure of either realloc and
+    # verify independent capacities and steady-state allocation reuse.
+    add_executable(vela-wait-arrays-oom-test
+        tests/wait_arrays_oom_test.c src/render/wait_arrays.c)
+    target_include_directories(vela-wait-arrays-oom-test PRIVATE src)
+    target_compile_options(vela-wait-arrays-oom-test PRIVATE -Wall -Wextra -Werror)
+    target_link_options(vela-wait-arrays-oom-test PRIVATE -Wl,--wrap=realloc)
+    target_link_libraries(vela-wait-arrays-oom-test PRIVATE vela-pure PkgConfig::VULKAN)
+    set_target_properties(vela-wait-arrays-oom-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.wait-arrays-oom COMMAND vela-wait-arrays-oom-test)
+
+    # Linux /proc enumeration and SIGTERM/SIGKILL child cleanup, no GPU.
+    add_executable(vela-supervisor-children-test
+        tests/supervisor_children_test.c src/supervisor_children.c)
+    target_include_directories(vela-supervisor-children-test PRIVATE src)
+    target_compile_definitions(vela-supervisor-children-test PRIVATE _GNU_SOURCE)
+    target_compile_options(vela-supervisor-children-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-supervisor-children-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.supervisor-children COMMAND vela-supervisor-children-test)
 
     find_package(GTest)
     if(GTest_FOUND)

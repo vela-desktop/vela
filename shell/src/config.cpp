@@ -73,6 +73,12 @@ void Config::reload()
         emit taskbarChanged();
     }
 
+    const QString primaryOutput = settings.value(QStringLiteral("display/primaryOutput")).toString();
+    if (primaryOutput != m_primaryOutput) {
+        m_primaryOutput = primaryOutput;
+        emit primaryOutputChanged();
+    }
+
     auto mode = [&](const char* key) {
         return settings.value(QLatin1String(key)).toString() == QLatin1String("light") ? QStringLiteral("light")
                                                                                        : QStringLiteral("dark");
