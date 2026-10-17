@@ -175,6 +175,13 @@ install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # volume's steps and the animation effects switch Style reads.
 if(VELA_BUILD_TOOLS)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    qt_add_executable(vela-transfer-monitor-test
+        tests/transfers.cpp src/transfermonitor.cpp src/transfermonitor.h)
+    target_include_directories(vela-transfer-monitor-test PRIVATE src)
+    target_compile_options(vela-transfer-monitor-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-transfer-monitor-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
+    add_test(NAME shell-transfers COMMAND vela-transfer-monitor-test)
+
     qt_add_executable(vela-desktopexec-test tests/desktopexec.cpp src/desktopexec.h)
     target_include_directories(vela-desktopexec-test PRIVATE src)
     target_compile_options(vela-desktopexec-test PRIVATE -Wall -Wextra)
