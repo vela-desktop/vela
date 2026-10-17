@@ -684,11 +684,13 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
     };
 
     // Kernel fences (sync_files) become semaphores the GPU waits for.
-    if (wait_count > r->wait_capacity) {
-        r->wait_infos = realloc(r->wait_infos, (size_t)wait_count * sizeof(*r->wait_infos));
-        r->wait_semaphores = realloc(r->wait_semaphores, (size_t)wait_count * sizeof(*r->wait_semaphores));
-        r->wait_capacity = wait_count;
-    }
+    // Keep independent capacities: a failed realloc must never overwrite a
+    // live pointer, or leave one array smaller than the advertised capacity.
+    // vela_grow follows the compositor's explicit fail-fast OOM policy.
+    r->wait_infos = vela_grow(r->wait_infos, &r->wait_infos_capacity, wait_count,
+        sizeof(*r->wait_infos));
+    r->wait_semaphores = vela_grow(r->wait_semaphores, &r->wait_semaphores_capacity, wait_count,
+        sizeof(*r->wait_semaphores));
     uint32_t waits = 0;
     bool inputs_ready = true;
     for (int i = 0; i < wait_count; ++i) {
