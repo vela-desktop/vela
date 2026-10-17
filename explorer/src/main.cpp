@@ -181,6 +181,7 @@ int main(int argc, char* argv[])
         }
         QTimer::singleShot(0, &ops, [&ops, urls, externalTransfer] {
             ops.dropFromDesktop(urls, externalTransfer.directory, static_cast<int>(externalTransfer.action));
+            vela::files::acknowledgeTransferStartup();
         });
     }
 
