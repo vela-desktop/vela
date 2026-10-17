@@ -23,6 +23,7 @@
 struct gbm_allocator {
     struct wlr_allocator base;
     struct gbm_device *gbm;
+    bool cursor_failed; // cursor-plane allocation gave up: software cursor for good
 };
 
 // wlr_buffer as the first member: wlr_buffer* <-> gbm_buffer*.
@@ -87,14 +88,34 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
         count = 1;
     }
 
-    struct gbm_bo *bo = gbm_bo_create_with_modifiers2(alloc->gbm, (uint32_t)width, (uint32_t)height, format->format,
-        modifiers, count, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+    // Cursor plane buffer (linear-only formats, <= 256x256, as on NVIDIA): its
+    // driver refuses LINEAR together with RENDERING but takes CURSOR (wlroots
+    // then draws into it through our renderer's dmabuf import).
+    bool cursor = count == 1 && modifiers[0] == DRM_FORMAT_MOD_LINEAR && width <= 256 && height <= 256;
+    struct gbm_bo *bo = NULL;
+    if (cursor) {
+        if (alloc->cursor_failed) {
+            free(modifiers);
+            return NULL; // already reported once; wlroots keeps the software cursor
+        }
+        bo = gbm_bo_create_with_modifiers2(alloc->gbm, (uint32_t)width, (uint32_t)height, format->format, modifiers,
+            count, GBM_BO_USE_CURSOR | GBM_BO_USE_WRITE);
+    }
+    if (!bo) {
+        bo = gbm_bo_create_with_modifiers2(alloc->gbm, (uint32_t)width, (uint32_t)height, format->format, modifiers,
+            count, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+    }
     if (!bo) {
         // Some drivers refuse SCANOUT on certain modifiers (such as headless).
         bo = gbm_bo_create_with_modifiers2(alloc->gbm, (uint32_t)width, (uint32_t)height, format->format, modifiers,
             count, GBM_BO_USE_RENDERING);
     }
     free(modifiers);
+    if (!bo && cursor) {
+        alloc->cursor_failed = true;
+        wlr_log(WLR_INFO, "Allocator: no cursor plane buffer (%dx%d), using the software cursor", width, height);
+        return NULL;
+    }
     if (!bo) {
         wlr_log_errno(WLR_ERROR, "Allocator: gbm_bo_create_with_modifiers2 %dx%d", width, height);
         return NULL;

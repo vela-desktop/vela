@@ -470,6 +470,15 @@ the same synchronization. The code is in `compositor/src/render/`:
 | `pass.c` | drawing: textured or solid-color quads, rectangle clipping, barriers, implicit and explicit sync, timing; the `wlr_render_pass` |
 | `allocator.c`, `formats.c`, `pixel_buffer.c` | GBM output buffers, the pixel format table, CPU images as `wlr_buffer` |
 
+**Hardware cursor on NVIDIA.** The cursor plane only takes ARGB8888 LINEAR, and
+NVIDIA's GBM refuses LINEAR with `GBM_BO_USE_RENDERING`. `allocator.c` therefore
+recognizes a cursor request (a single LINEAR modifier, at most 256x256) and
+allocates with `GBM_BO_USE_CURSOR | GBM_BO_USE_WRITE`; wlroots draws the cursor
+image into it with a render pass (dmabuf import in our renderer, not a CPU
+write) only when the cursor image changes; moving it only moves the plane. If
+that allocation fails the allocator logs once and refuses further cursor
+buffers: the software cursor stays.
+
 An output's time (vblank grid, learned latency, late-latching cost and
 margin, the plan of each frame, §4) is `compositor/src/frame_clock.c`.
 
