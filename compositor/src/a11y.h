@@ -90,6 +90,9 @@ void vela_a11y_set_color_filter(struct vela_a11y *a11y, bool on, bool save);
 void vela_a11y_set_sticky_keys(struct vela_a11y *a11y, bool on, bool save);
 void vela_a11y_set_magnifier(struct vela_a11y *a11y, bool on);
 void vela_a11y_zoom(struct vela_a11y *a11y, int direction); // +1 Win+plus, -1 Win+minus
+// Sends the quick settings' state to the shell (also caffeine, which is in
+// lock.c).
+void vela_a11y_announce(struct vela_a11y *a11y);
 
 // The zoomed area follows the cursor (after each movement).
 void vela_a11y_update_magnifier(struct vela_a11y *a11y);

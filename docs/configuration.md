@@ -147,7 +147,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_LATCH=0` | Disable late latching and render when the backend frame event arrives. |
 | `VELA_LATCH_MARGIN` | Minimum late-latching safety margin in milliseconds. Default: `1`; the frame clock can grow the effective margin after late frames. |
 | `VELA_REALTIME=0` | Disable realtime scheduling for the compositor main thread. |
-| `VELA_SCREEN_OFF` | Override idle timeout in minutes. Default is 10 if no stored setting exists; `0` disables idle screen-off. |
+| `VELA_SCREEN_OFF` | Override idle timeout in minutes (fractions allowed). Default is 10 if no stored setting exists; `0` disables idle screen-off. Set, it also enables the idle timeout nested and headless (tests). |
 | `VELA_LOCK_ON_IDLE=0` | Turn displays off on idle without locking first. |
 | `VELA_LOCK` | Use another locker instead of `vela-lock`, for example `swaylock`. |
 | `VELA_POLKIT_AGENT` | Start this polkit agent instead of `vela-polkit-agent`; `0` starts none. Without it, Vela's agent starts only in a real (DRM) session, never nested or headless. |

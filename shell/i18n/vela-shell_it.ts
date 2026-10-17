@@ -913,6 +913,74 @@
 <context>
     <name>Taskbar</name>
     <message>
+        <source>1 minute remaining</source>
+        <translation>1 minuto rimanente</translation>
+    </message>
+    <message>
+        <source>%1 minutes remaining</source>
+        <translation>%1 minuti rimanenti</translation>
+    </message>
+    <message>
+        <source>%1 h remaining</source>
+        <translation>%1 h rimanenti</translation>
+    </message>
+    <message>
+        <source>%1 h %2 min remaining</source>
+        <translation>%1 h %2 min rimanenti</translation>
+    </message>
+    <message>
+        <source>Caffeine: off</source>
+        <translation>Caffeina: disattivata</translation>
+    </message>
+    <message>
+        <source>Caffeine: %1</source>
+        <translation>Caffeina: %1</translation>
+    </message>
+    <message>
+        <source>Caffeine: keeping the computer awake</source>
+        <translation>Caffeina: il computer resta attivo</translation>
+    </message>
+    <message>
+        <source>15 minutes</source>
+        <translation>15 minuti</translation>
+    </message>
+    <message>
+        <source>30 minutes</source>
+        <translation>30 minuti</translation>
+    </message>
+    <message>
+        <source>1 hour</source>
+        <translation>1 ora</translation>
+    </message>
+    <message>
+        <source>2 hours</source>
+        <translation>2 ore</translation>
+    </message>
+    <message>
+        <source>3 hours</source>
+        <translation>3 ore</translation>
+    </message>
+    <message>
+        <source>5 hours</source>
+        <translation>5 ore</translation>
+    </message>
+    <message>
+        <source>8 hours</source>
+        <translation>8 ore</translation>
+    </message>
+    <message>
+        <source>&amp;Indefinitely</source>
+        <translation>A tempo &amp;indeterminato</translation>
+    </message>
+    <message>
+        <source>Turn &amp;off</source>
+        <translation>&amp;Disattiva</translation>
+    </message>
+    <message>
+        <source>&amp;Power settings</source>
+        <translation>Impostazioni di &amp;alimentazione</translation>
+    </message>
+    <message>
         <source>&amp;Open</source>
         <translation>&amp;Apri</translation>
     </message>

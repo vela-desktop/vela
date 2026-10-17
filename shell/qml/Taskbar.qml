@@ -461,7 +461,7 @@ Window {
     Item {
         id: microphone
         visible: root.primary && Audio.microphoneUsers.length > 0
-        anchors { right: systemIcons.left; top: parent.top; bottom: parent.bottom }
+        anchors { right: caffeine.left; top: parent.top; bottom: parent.bottom }
         width: visible ? 32 : 0
 
         readonly property string tooltipText: {
@@ -506,6 +506,101 @@ Window {
             onClicked: {
                 microphone.hideTooltip()
                 System.trigger("sound-settings")
+            }
+        }
+    }
+
+    // Caffeine (keep awake, compositor/src/lock.c): always here, faint while
+    // off. Either click lists the durations; the remaining time is in the
+    // tooltip and at the top of the menu. Breeze's only cup is KTeaTime's.
+    Item {
+        id: caffeine
+        visible: root.primary
+        anchors { right: systemIcons.left; top: parent.top; bottom: parent.bottom }
+        width: visible ? 32 : 0
+
+        function remainingText(secs) {
+            const minutes = Math.ceil(secs / 60)
+            if (minutes < 60) {
+                return minutes === 1 ? qsTr("1 minute remaining") : qsTr("%1 minutes remaining").arg(minutes)
+            }
+            if (minutes % 60 === 0) {
+                return qsTr("%1 h remaining").arg(minutes / 60)
+            }
+            return qsTr("%1 h %2 min remaining").arg(Math.floor(minutes / 60)).arg(minutes % 60)
+        }
+        readonly property string tooltipText: !Access.caffeine ? qsTr("Caffeine: off")
+            : Access.caffeineSecs > 0 ? qsTr("Caffeine: %1").arg(remainingText(Access.caffeineSecs))
+            : qsTr("Caffeine: keeping the computer awake")
+        function showTooltip() {
+            const p = caffeine.mapToItem(null, caffeine.width / 2, 0)
+            Menus.tooltip = { text: caffeine.tooltipText, center: p.x, screen: root.screenName, owner: "caffeine" }
+        }
+        function hideTooltip() {
+            caffeineTooltipDelay.stop()
+            if (Menus.tooltip && Menus.tooltip.owner === "caffeine") {
+                Menus.tooltip = null
+            }
+        }
+        onTooltipTextChanged: if (Menus.tooltip && Menus.tooltip.owner === "caffeine") showTooltip()
+        onVisibleChanged: if (!visible) hideTooltip()
+
+        // The selected preset, not the time left (which keeps decreasing).
+        function openMenu() {
+            const presets = [15, 30, 60, 120, 180, 300, 480]
+            const names = [qsTr("15 minutes"), qsTr("30 minutes"), qsTr("1 hour"), qsTr("2 hours"),
+                           qsTr("3 hours"), qsTr("5 hours"), qsTr("8 hours")]
+            const entries = []
+            if (Access.caffeine && Access.caffeineSecs > 0) {
+                entries.push({ header: remainingText(Access.caffeineSecs) })
+            }
+            entries.push({ text: qsTr("&Indefinitely"), radio: true,
+                           checked: Access.caffeine && Access.caffeineSecs < 0,
+                           action: () => Access.caffeine = true },
+                         { separator: true })
+            for (let i = 0; i < presets.length; i++) {
+                const minutes = presets[i]
+                entries.push({ text: names[i], radio: true,
+                               checked: Access.caffeine && Access.caffeineDurationSecs === minutes * 60,
+                               action: () => Access.setCaffeineMinutes(minutes) })
+            }
+            entries.push({ separator: true },
+                         { text: qsTr("Turn &off"), enabled: Access.caffeine, action: () => Access.caffeine = false },
+                         { text: qsTr("&Power settings"), icon: "preferences-system-power-management",
+                           enabled: System.available("power"), action: () => System.trigger("power") })
+            root.openAbove(entries, caffeine, true, { minWidth: 220 })
+        }
+
+        Timer {
+            id: caffeineTooltipDelay
+            interval: 500
+            onTriggered: caffeine.showTooltip()
+        }
+        Rectangle {
+            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            radius: Theme.radius
+            color: caffeineMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
+            opacity: caffeineMouse.containsMouse ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+        }
+        Image {
+            anchors.centerIn: parent
+            width: 16
+            height: 16
+            source: Theme.icons + "kteatime-symbolic"
+            sourceSize: Qt.size(width, height)
+            opacity: Access.caffeine ? 1 : 0.45
+            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+        }
+        MouseArea {
+            id: caffeineMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onContainsMouseChanged: containsMouse ? caffeineTooltipDelay.restart() : caffeine.hideTooltip()
+            onClicked: {
+                caffeine.hideTooltip()
+                caffeine.openMenu()
             }
         }
     }

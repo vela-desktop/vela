@@ -6,6 +6,7 @@
 #include "color.h"
 #include "config.h"
 #include "input.h"
+#include "lock.h"
 #include "output.h"
 #include "scene/frame.h"
 #include "scene/night_light_policy.h"
@@ -604,10 +605,12 @@ bool vela_a11y_json(const struct vela_a11y *a11y, char *out, size_t size)
     const char *t = "true";
     const char *f = "false";
     return vela_format(out, size,
-        "{\"nightLight\":%s,\"nightLightNvidiaFix\":%s,\"colorFilter\":%s,\"magnifier\":%s,\"stickyKeys\":%s,\"touchpad\":%s%s}",
+        "{\"nightLight\":%s,\"nightLightNvidiaFix\":%s,\"colorFilter\":%s,\"magnifier\":%s,\"stickyKeys\":%s,\"touchpad\":%s,"
+        "\"caffeine\":%s,\"caffeineSecs\":%d,\"caffeineDurationSecs\":%d%s}",
         a11y->night_light ? t : f, a11y->night_nvidia_fix ? t : f, a11y->color_filter ? t : f,
         a11y->magnifier ? t : f, a11y->sticky_keys ? t : f,
-        vela_input_has_touchpad(a11y->server->input) ? t : f, sun);
+        vela_input_has_touchpad(a11y->server->input) ? t : f, a11y->server->lock->caffeine ? t : f,
+        vela_lock_caffeine_remaining_s(a11y->server->lock), a11y->server->lock->caffeine_duration_s, sun);
 }
 
 static void announce(struct vela_a11y *a11y)
@@ -617,4 +620,9 @@ static void announce(struct vela_a11y *a11y)
     if (vela_a11y_json(a11y, line + used, sizeof(line) - used)) {
         vela_shell_send(a11y->server, line);
     }
+}
+
+void vela_a11y_announce(struct vela_a11y *a11y)
+{
+    announce(a11y);
 }

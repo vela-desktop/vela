@@ -197,6 +197,10 @@ test-output remove HEADLESS-2
 test-power off
 test-power on
 reload-config
+caffeine on [minutes]
+caffeine off
+caffeine toggle
+caffeine status
 ```
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
