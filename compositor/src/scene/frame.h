@@ -124,6 +124,12 @@ struct vela_output_frame {
     // Match flags for the previous frame; reused per output, only growing.
     bool *found;
     int found_capacity;
+    // Per-output scratch index for frames with changed element positions.
+    // Built lazily per comparison and retained to avoid steady allocations.
+    int *match_heads;
+    int match_heads_capacity;
+    int *match_next;
+    int match_next_capacity;
     // The surfaces visible in the last frame (for frame callbacks).
     struct wlr_surface **visible_surfaces;
     int visible_count, visible_capacity;

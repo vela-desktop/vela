@@ -34,6 +34,7 @@
 #include "systemactions.h"
 #include "systemstatus.h"
 #include "taskbarmodel.h"
+#include "transfermonitor.h"
 #include "tray.h"
 #include "wallpaperprovider.h"
 #include "screenwindows.h"
@@ -297,6 +298,16 @@ int main(int argc, char* argv[])
     WindowCapture capture;
     NotificationServer notifications;
     notifications.registerService();
+    TransferMonitor transfers;
+    QObject::connect(&transfers, &TransferMonitor::completed, &notifications,
+        [&notifications](const QString& title, const QString& error) {
+            const QString summary = error.isEmpty()
+                ? QCoreApplication::translate("Shell", "File transfer complete")
+                : QCoreApplication::translate("Shell", "File transfer interrupted");
+            notifications.Notify(QStringLiteral("Vela Files"), 0,
+                QStringLiteral("system-file-manager"), summary,
+                error.isEmpty() ? title : error, {}, {}, 6000);
+        });
     notifications.setDoNotDisturb(config.doNotDisturb());
     QObject::connect(&config, &Config::doNotDisturbChanged, &notifications, &NotificationServer::setDoNotDisturb);
     TrayModel tray;
@@ -308,6 +319,10 @@ int main(int argc, char* argv[])
     QObject::connect(&shell, &ShellController::filesRequested, &system, [&system] { system.trigger(QStringLiteral("files")); });
     JumpLists jumps(&apps);
     DesktopModel desktop(&apps);
+    QObject::connect(&shell, &ShellController::desktopTransferUndoReceived,
+        &desktop, &DesktopModel::recordExternalTransfer);
+    QObject::connect(&shell, &ShellController::desktopTransferReadyReceived,
+        &desktop, &DesktopModel::acknowledgeTransferStart);
     QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, &ShellController::openWithRequested);
     desktopModel = &desktop;
     ServiceMenus serviceMenus;
@@ -369,6 +384,7 @@ int main(int argc, char* argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Config"), &config);
     engine.rootContext()->setContextProperty(QStringLiteral("Desktops"), &workspaces);
     engine.rootContext()->setContextProperty(QStringLiteral("Tasks"), &tasks);
+    engine.rootContext()->setContextProperty(QStringLiteral("Transfers"), &transfers);
     engine.rootContext()->setContextProperty(QStringLiteral("Capture"), &capture);
     engine.rootContext()->setContextProperty(QStringLiteral("Notifications"), &notifications);
     engine.rootContext()->setContextProperty(QStringLiteral("Tray"), &tray);

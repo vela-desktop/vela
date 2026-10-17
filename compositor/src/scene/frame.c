@@ -13,6 +13,7 @@
 #include "scene/surface.h"
 #include "util.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -683,6 +684,8 @@ void vela_output_frame_destroy(struct vela_output_frame *frame)
     free(frame->last.items);
     free(frame->current.items);
     free(frame->found);
+    free(frame->match_heads);
+    free(frame->match_next);
     free(frame->visible_surfaces);
     free(frame);
 }
@@ -959,31 +962,100 @@ void vela_output_frame_reset_damage(struct vela_output_frame *frame)
 // The damage: what appeared, disappeared, changed or moved compared with the
 // previous frame (surface content comes from commits). Then `current` becomes
 // `last`.
+// Index only a reordered/changed scene. The common case (matching element
+// at the same position) needs no table and retains its allocation-free path.
+// Chained buckets preserve duplicate-key semantics: use the first matching
+// old position reached by the original circular search starting at i.
+static unsigned diff_key_bucket(const void *key, unsigned mask)
+{
+    uint64_t hash = (uint64_t)(uintptr_t)key;
+    hash ^= hash >> 33;
+    hash *= UINT64_C(0xff51afd7ed558ccd);
+    hash ^= hash >> 33;
+    hash *= UINT64_C(0xc4ceb9fe1a85ec53);
+    hash ^= hash >> 33;
+    return (unsigned)hash & mask;
+}
+
+static int diff_build_index(struct vela_output_frame *frame)
+{
+    int bucket_count = 8;
+    while ((size_t)bucket_count < (size_t)frame->last.count * 2) {
+        if (bucket_count > INT_MAX / 2) {
+            abort();
+        }
+        bucket_count *= 2;
+    }
+    frame->match_heads = vela_grow(frame->match_heads, &frame->match_heads_capacity, bucket_count,
+        sizeof(*frame->match_heads));
+    frame->match_next = vela_grow(frame->match_next, &frame->match_next_capacity, frame->last.count,
+        sizeof(*frame->match_next));
+    for (int bucket = 0; bucket < bucket_count; ++bucket) {
+        frame->match_heads[bucket] = -1;
+    }
+    // Insert backwards so positions sharing a bucket can be scanned ascending.
+    for (int j = frame->last.count - 1; j >= 0; --j) {
+        unsigned bucket = diff_key_bucket(frame->last.items[j].key, (unsigned)(bucket_count - 1));
+        frame->match_next[j] = frame->match_heads[bucket];
+        frame->match_heads[bucket] = j;
+    }
+    return bucket_count;
+}
+
+static int diff_lookup_old(const struct vela_output_frame *frame, const void *key, int i, int bucket_count)
+{
+    int start = i % frame->last.count;
+    int best = -1;
+    int best_distance = frame->last.count;
+    unsigned bucket = diff_key_bucket(key, (unsigned)(bucket_count - 1));
+    for (int j = frame->match_heads[bucket]; j >= 0; j = frame->match_next[j]) {
+        if (frame->last.items[j].key != key) {
+            continue; // hash collision, not the same element
+        }
+        int distance = j >= start ? j - start : frame->last.count - start + j;
+        if (distance < best_distance) {
+            best = j;
+            best_distance = distance;
+            if (distance == 0) {
+                break;
+            }
+        }
+    }
+    return best;
+}
+
+// The damage: what appeared, disappeared, changed or moved compared with the
+// previous frame (surface content comes from commits). Then `current` becomes
+// `last`.
 static void diff_with_last(struct vela_output_frame *frame)
 {
     struct vela_elements *current = &frame->current;
     struct vela_elements *last = &frame->last;
     pixman_region32_t changed;
     pixman_region32_init(&changed);
-    // Which earlier elements are found now; the search starts where they're
-    // expected (usually the order doesn't change).
     frame->found = vela_grow(frame->found, &frame->found_capacity, last->count, sizeof(*frame->found));
     bool *found = frame->found;
     if (last->count > 0) {
         memset(found, 0, (size_t)last->count * sizeof(*found));
     }
+    int bucket_count = 0;
     int highest_old_order = 0;
     for (int i = 0; i < current->count; ++i) {
         struct vela_element *e = &current->items[i];
         e->order = i;
-        const struct vela_element *old = NULL;
-        for (int k = 0; k < last->count; ++k) {
-            int j = (i + k) % last->count;
-            if (last->items[j].key == e->key) {
-                old = &last->items[j];
-                found[j] = true;
-                break;
+        int j = -1;
+        if (i < last->count && last->items[i].key == e->key) {
+            j = i;
+        } else if (last->count > 0) {
+            if (bucket_count == 0) {
+                bucket_count = diff_build_index(frame);
             }
+            j = diff_lookup_old(frame, e->key, i, bucket_count);
+        }
+        const struct vela_element *old = NULL;
+        if (j >= 0) {
+            old = &last->items[j];
+            found[j] = true;
         }
         if (!old) {
             union_box(&changed, &e->box);
