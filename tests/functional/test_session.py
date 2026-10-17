@@ -87,20 +87,26 @@ class Lock(unittest.TestCase):
                 time.sleep(0.4)
                 with open(attempts) as record:
                     self.assertEqual(len(record.readlines()), 1, "duplicate lockers were launched")
-                vela.wait_for(lambda _: os.path.exists(attempts) and
-                              len(open(attempts).readlines()) >= 2,
-                              read_state=False, timeout=9, what="automatic retry")
+                def attempted_twice(_):
+                    if not os.path.exists(attempts):
+                        return False
+                    with open(attempts) as record:
+                        return len(record.readlines()) >= 2
+                vela.wait_for(attempted_twice, read_state=False, timeout=9, what="automatic retry")
                 self.assertTrue(vela.state()["locked"])
 
     def test_nonregistering_locker_recovers_when_available(self):
         with tempfile.TemporaryDirectory(prefix="vela-lock-recovery-") as directory:
             ready = os.path.join(directory, "ready")
-            # First invocation exits without registering; the second starts
-            # the real ext-session-lock test client as soon as it is ready.
-            launcher = f"if [ -e '{ready}' ]; then exec '{tool('vela-testlock')}' 2000; else exit 1; fi"
+            attempts = os.path.join(directory, "attempts")
+            # Wait for the first failed attempt BEFORE making the test locker
+            # available, so the test cannot pass without a genuine retry.
+            launcher = (f"echo launch >> '{attempts}'; "
+                        f"if [ -e '{ready}' ]; then exec '{tool('vela-testlock')}' 2000; else exit 1; fi")
             with Session(env={"VELA_LOCK": launcher}) as vela:
                 vela.command("lock")
-                vela.wait_for_log("Locking the screen")
+                vela.wait_for(lambda _: os.path.exists(attempts), read_state=False,
+                              what="first failed locker launch")
                 with open(ready, "w"):
                     pass
                 vela.wait_for_log("vela-testlock: locked", timeout=14)
