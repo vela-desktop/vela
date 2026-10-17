@@ -576,7 +576,7 @@ Window {
             interval: 500
             onTriggered: caffeine.showTooltip()
         }
-        Rectangle {
+        Fill {
             anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
             radius: Theme.radius
             color: caffeineMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
