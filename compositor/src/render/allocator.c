@@ -63,6 +63,10 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
 
     // Explicit modifiers only: Vulkan must know how the buffer is laid out.
     uint64_t *modifiers = calloc(format->len ? format->len : 1, sizeof(*modifiers));
+    if (!modifiers) {
+        wlr_log_errno(WLR_ERROR, "Allocator: allocating modifiers");
+        return NULL;
+    }
     unsigned count = 0;
     bool has_linear = false;
     for (size_t i = 0; i < format->len; ++i) {
@@ -152,6 +156,11 @@ struct wlr_allocator *vela_gbm_allocator_create(int render_fd)
         return NULL;
     }
     struct gbm_allocator *alloc = calloc(1, sizeof(*alloc));
+    if (!alloc) {
+        wlr_log_errno(WLR_ERROR, "Allocator: allocating GBM allocator");
+        gbm_device_destroy(gbm);
+        return NULL;
+    }
     alloc->gbm = gbm;
     wlr_allocator_init(&alloc->base, &allocator_impl, WLR_BUFFER_CAP_DMABUF);
     return &alloc->base;
