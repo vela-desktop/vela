@@ -11,6 +11,7 @@
 #include "../../common/filetransferrequest.h"
 #include "fileops.h"
 #include "systemactions.h"
+#include "../src/transferlocks.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -302,6 +303,46 @@ private slots:
             return;
         }
         QSKIP("No second mounted filesystem available");
+    }
+
+    void interprocessEjectLock()
+    {
+        // A separate Explorer must not eject a filesystem being copied to.
+        const QString device = QStringLiteral("/dev/vela-test-") + QFileInfo(m_dir->path()).fileName();
+        QProcess child;
+        child.start(QCoreApplication::applicationFilePath(),
+            { QStringLiteral("--transfer-lock-child"), device });
+        QVERIFY(child.waitForStarted());
+        QVERIFY2(child.waitForReadyRead(5000), child.readAllStandardError().constData());
+        QCOMPARE(child.readAllStandardOutput(), QByteArray("lock-ready\n"));
+
+        vela::files::DeviceLocks eject;
+        QVERIFY(!eject.acquire({ device }, vela::files::DeviceLocks::Mode::Exclusive));
+        // An exclusive eject lock also prevents new transfers, until release.
+        child.write("x");
+        QVERIFY(child.waitForBytesWritten(5000));
+        QVERIFY(child.waitForFinished(5000));
+        QCOMPARE(child.exitCode(), 0);
+        QVERIFY(eject.acquire({ device }, vela::files::DeviceLocks::Mode::Exclusive));
+        vela::files::DeviceLocks transfer;
+        QVERIFY(!transfer.acquire({ device }, vela::files::DeviceLocks::Mode::Shared));
+        eject.release();
+        QVERIFY(transfer.acquire({ device }, vela::files::DeviceLocks::Mode::Shared));
+    }
+
+    void sameDeviceMoveAvoidsRecursiveEstimate()
+    {
+        const QString source = path("from/tree");
+        for (int i = 0; i < 200; ++i) {
+            write(source + QStringLiteral("/file-%1").arg(i), "content");
+        }
+        QVERIFY(QDir().mkpath(path("to")));
+        QCOMPARE(transfer({ source }, path("to"), 2), QString());
+        const QVariantMap job = m_ops->jobs().last().toMap();
+        // A rename is one unit regardless of the number of descendants.
+        QCOMPARE(job.value(QStringLiteral("total")).toDouble(), 1.0);
+        QCOMPARE(job.value(QStringLiteral("done")).toDouble(), 1.0);
+        QVERIFY(QFileInfo::exists(path("to/tree/file-199")));
     }
 
     void recursiveTransferWorkCountsDirectoriesAndLinks()
@@ -599,6 +640,16 @@ int main(int argc, char* argv[])
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
+    if (argc == 3 && QByteArray(argv[1]) == "--transfer-lock-child") {
+        vela::files::DeviceLocks lock;
+        if (!lock.acquire({ QString::fromLocal8Bit(argv[2]) }, vela::files::DeviceLocks::Mode::Shared)) {
+            return 3;
+        }
+        constexpr char ready[] = "lock-ready\n";
+        ::write(STDOUT_FILENO, ready, sizeof(ready) - 1);
+        char byte = 0;
+        return ::read(STDIN_FILENO, &byte, 1) == 1 ? 0 : 4;
+    }
     if (argc == 6 && QByteArray(argv[1]) == "--replacement-child") {
         pauseExchange = QByteArray(argv[2]).toInt();
         AppModel apps;
