@@ -111,7 +111,7 @@ void TransferMonitor::onRemoved(const QString& owner, int id)
 
 void TransferMonitor::onOwnerChanged(const QString& name, const QString& oldOwner, const QString& newOwner)
 {
-    Q_UNUSED(oldOwner)
+    Q_UNUSED(oldOwner);
     if (!name.startsWith(QLatin1Char(':')) || !newOwner.isEmpty()) {
         return;
     }
