@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <functional>
+#include <utility>
 
 namespace {
 
@@ -211,30 +212,76 @@ int FileOps::activeJobCount() const
         [](const std::shared_ptr<Job>& job) { return !job->finished; }));
 }
 
-bool FileOps::activeOnDevice(const QString& device) const
+namespace {
+
+// UDisks can use /dev/dm-0 while QStorageInfo reports /dev/mapper/name.
+QString canonicalDevice(const QString& device)
 {
-    const QByteArray deviceName = QFile::encodeName(device);
-    if (deviceName.isEmpty()) {
+    const QString canonical = QFileInfo(device).canonicalFilePath();
+    return canonical.isEmpty() ? device : canonical;
+}
+
+bool containsPath(const QString& ancestor, const QString& path)
+{
+    return path == ancestor || path.startsWith(ancestor == QLatin1String("/")
+        ? QStringLiteral("/") : ancestor + u'/');
+}
+
+} // namespace
+
+bool FileOps::pathsOnDevice(const QStringList& sources, const QString& destination, const QString& device)
+{
+    if (device.isEmpty()) {
         return false;
     }
-    const auto onDevice = [&deviceName](const QString& path) {
-        const QStorageInfo storage(path);
-        return storage.isValid() && storage.device() == deviceName;
+    const QString wanted = canonicalDevice(device);
+    const auto matches = [&wanted](const QByteArray& name) {
+        return !name.isEmpty() && canonicalDevice(QFile::decodeName(name)) == wanted;
     };
-    for (const auto& job : m_jobs) {
-        if (job->finished) {
-            continue;
-        }
-        if (onDevice(job->destination)) {
+    QStringList paths = sources;
+    paths.append(destination);
+    const QList<QStorageInfo> volumes = QStorageInfo::mountedVolumes();
+    for (const QString& path : paths) {
+        const QStorageInfo immediate(path);
+        if (immediate.isValid() && matches(immediate.device())) {
             return true;
         }
-        for (const QString& source : job->sources) {
-            if (onDevice(source)) {
+        const QFileInfo entry(path);
+        if (!entry.isDir() || entry.isSymLink()) {
+            continue;
+        }
+        const QString canonicalPath = entry.canonicalFilePath();
+        if (canonicalPath.isEmpty()) {
+            continue;
+        }
+        // A recursive source may include a different drive mounted under it.
+        // Conservatively guard destination submounts, too (folder merging).
+        for (const QStorageInfo& volume : volumes) {
+            if (!volume.isValid() || !matches(volume.device())) {
+                continue;
+            }
+            const QString mountPoint = QFileInfo(volume.rootPath()).canonicalFilePath();
+            if (!mountPoint.isEmpty() && containsPath(canonicalPath, mountPoint)) {
                 return true;
             }
         }
     }
     return false;
+}
+
+bool FileOps::activeOnDevice(const QString& device) const
+{
+    for (const auto& job : m_jobs) {
+        if (!job->finished && pathsOnDevice(job->sources, job->destination, device)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void FileOps::setEjectGuard(std::function<bool(const QStringList&, const QString&)> guard)
+{
+    m_ejectGuard = std::move(guard);
 }
 
 void FileOps::updateJob(int id, qint64 done, qint64 total, const QString& current, bool finished, const QString& error)
@@ -322,6 +369,11 @@ qint64 transferWorkUnits(const QString& source)
 
 void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
 {
+    if (m_ejectGuard && m_ejectGuard(transfer.sources, transfer.directory)) {
+        emit failed(QCoreApplication::translate("Files",
+            "This drive is being ejected. Wait for ejection to finish before transferring files."));
+        return;
+    }
     auto job = std::make_shared<Job>();
     job->id = m_nextJob++;
     job->sources = transfer.sources;
