@@ -6,6 +6,7 @@
 // times and the wlr_renderer wlroots sees.
 
 #include "render/render.h"
+#include "render/wait_arrays.h"
 #include "sync.h"
 
 #include "util.h"
@@ -684,13 +685,9 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
     };
 
     // Kernel fences (sync_files) become semaphores the GPU waits for.
-    // Keep independent capacities: a failed realloc must never overwrite a
-    // live pointer, or leave one array smaller than the advertised capacity.
-    // vela_grow follows the compositor's explicit fail-fast OOM policy.
-    r->wait_infos = vela_grow(r->wait_infos, &r->wait_infos_capacity, wait_count,
-        sizeof(*r->wait_infos));
-    r->wait_semaphores = vela_grow(r->wait_semaphores, &r->wait_semaphores_capacity, wait_count,
-        sizeof(*r->wait_semaphores));
+    // Both buffers grow independently; on OOM vela_grow fails fast.
+    vela_wait_arrays_reserve(&r->wait_infos, &r->wait_infos_capacity,
+        &r->wait_semaphores, &r->wait_semaphores_capacity, wait_count);
     uint32_t waits = 0;
     bool inputs_ready = true;
     for (int i = 0; i < wait_count; ++i) {
