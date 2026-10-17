@@ -172,7 +172,9 @@ class QtShell(RealShell):
         self.secondary_output(transform="normal", side="right")
         conf_path = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
         with open(conf_path, "w") as conf:
-            conf.write("[display]\\nprimaryOutput=HEADLESS-2\\n")
+            conf.write("[display]\nprimaryOutput=HEADLESS-2\n")
+        # Allow Config's QFileSystemWatcher/debounce to deliver the update.
+        time.sleep(0.5)
 
         self.vela.keys("super+r")
         self.vela.wait_for(
