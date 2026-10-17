@@ -4,6 +4,11 @@
 #include "transfermonitor.h"
 
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusReply>
+#include <QCoreApplication>
+#include <QFileInfo>
+#include <QStandardPaths>
 #include <QDBusPendingCall>
 #include <QDBusMessage>
 #include <QVariantMap>
@@ -16,19 +21,32 @@ const QString path = QStringLiteral("/org/vela/Files/Transfers");
 const QString transferInterface = QStringLiteral("org.vela.Files.Transfers");
 }
 
-TransferMonitor::TransferMonitor(QObject* parent)
+TransferMonitor::TransferMonitor(QObject* parent, const QString& trustedExecutable)
     : QObject(parent)
 {
+    // Files and shell normally live in the same installation directory.
+    // Resolve canonical inode targets: an unrelated process may claim the
+    // interface and forge the payload, but not its bus-assigned PID/executable.
+    QString executable = trustedExecutable;
+    if (executable.isEmpty()) {
+        const QString sibling = QFileInfo(QCoreApplication::applicationFilePath()).dir()
+            .filePath(QStringLiteral("vela-files"));
+        executable = QFileInfo::exists(sibling)
+            ? sibling : QStandardPaths::findExecutable(QStringLiteral("vela-files"));
+    }
+    m_trustedExecutable = QFileInfo(executable).canonicalFilePath();
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected()) {
         return;
     }
+    // QDBusMessage is appended by Qt to signal slots. Its service() is the
+    // authenticated sender set by the bus; the payload owner is untrusted.
     bus.connect(QString(), path, transferInterface, QStringLiteral("Changed"), this,
-        SLOT(onChanged(QString,int,QString,qlonglong,qlonglong,QString,bool,QString)));
+        SLOT(receiveChanged(QString,int,QString,qlonglong,qlonglong,QString,bool,QString,QDBusMessage)));
     bus.connect(QString(), path, transferInterface, QStringLiteral("Snapshot"), this,
-        SLOT(onSnapshot(QString,int,QString,qlonglong,qlonglong,QString,bool,QString)));
+        SLOT(receiveSnapshot(QString,int,QString,qlonglong,qlonglong,QString,bool,QString,QDBusMessage)));
     bus.connect(QString(), path, transferInterface, QStringLiteral("Removed"), this,
-        SLOT(onRemoved(QString,int)));
+        SLOT(receiveRemoved(QString,int,QDBusMessage)));
     bus.connect(QStringLiteral("org.freedesktop.DBus"), QStringLiteral("/org/freedesktop/DBus"),
         QStringLiteral("org.freedesktop.DBus"), QStringLiteral("NameOwnerChanged"),
         this, SLOT(onOwnerChanged(QString,QString,QString)));
@@ -61,6 +79,62 @@ int TransferMonitor::activeCount() const
 {
     return int(std::count_if(m_jobs.cbegin(), m_jobs.cend(),
         [](const Job& job) { return !job.finished; }));
+}
+
+bool TransferMonitor::isTrustedSignal(const QString& claimedOwner, const QDBusMessage& message)
+{
+    // Reject spoofed owner names even if the attacker knows a real Explorer's
+    // unique session-bus name. DBus allocates message.service() itself.
+    if (!claimedOwner.startsWith(QLatin1Char(':')) || message.type() != QDBusMessage::SignalMessage
+        || message.service() != claimedOwner || m_trustedExecutable.isEmpty()) {
+        return false;
+    }
+    if (m_trustedOwners.contains(claimedOwner)) {
+        return true;
+    }
+
+    // One PID lookup per Explorer connection, never once per progress sample.
+    // Checking the actual executable, rather than a self-registered well-known
+    // bus name, prevents a different app from impersonating Vela Files.
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected() || !bus.interface()) {
+        return false;
+    }
+    const QDBusReply<uint> pid = bus.interface()->servicePid(claimedOwner);
+    if (!pid.isValid() || pid.value() == 0) {
+        return false;
+    }
+    const QString actual = QFileInfo(QStringLiteral("/proc/%1/exe").arg(pid.value())).canonicalFilePath();
+    if (actual.isEmpty() || actual != m_trustedExecutable) {
+        return false;
+    }
+    m_trustedOwners.insert(claimedOwner);
+    return true;
+}
+
+void TransferMonitor::receiveChanged(const QString& owner, int id, const QString& title,
+    qlonglong done, qlonglong total, const QString& current, bool finished,
+    const QString& error, const QDBusMessage& message)
+{
+    if (isTrustedSignal(owner, message)) {
+        onChanged(owner, id, title, done, total, current, finished, error);
+    }
+}
+
+void TransferMonitor::receiveSnapshot(const QString& owner, int id, const QString& title,
+    qlonglong done, qlonglong total, const QString& current, bool finished,
+    const QString& error, const QDBusMessage& message)
+{
+    if (isTrustedSignal(owner, message)) {
+        onSnapshot(owner, id, title, done, total, current, finished, error);
+    }
+}
+
+void TransferMonitor::receiveRemoved(const QString& owner, int id, const QDBusMessage& message)
+{
+    if (isTrustedSignal(owner, message)) {
+        onRemoved(owner, id);
+    }
 }
 
 void TransferMonitor::onChanged(const QString& owner, int id, const QString& title,
@@ -133,11 +207,13 @@ void TransferMonitor::onOwnerChanged(const QString& name, const QString& oldOwne
     if (!name.startsWith(QLatin1Char(':')) || !newOwner.isEmpty()) {
         return;
     }
+    m_trustedOwners.remove(name);
     // An unexpectedly closed Explorer process must not leave a fake 'copying'
     // indicator on the taskbar. Warn for interrupted jobs.
     for (const Job& job : std::as_const(m_jobs)) {
         if (job.owner == name && !job.finished) {
-            emit completed(job.title, QStringLiteral("File Explorer closed before this transfer finished."));
+            emit completed(job.title,
+                QCoreApplication::translate("Shell", "File Explorer closed before this transfer finished."));
         }
     }
     const qsizetype before = m_jobs.size();

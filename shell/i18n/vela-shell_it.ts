@@ -1418,4 +1418,19 @@
         <translation>Sì</translation>
     </message>
 </context>
+<context>
+    <name>Shell</name>
+    <message>
+        <source>File transfer complete</source>
+        <translation>Trasferimento file completato</translation>
+    </message>
+    <message>
+        <source>File transfer interrupted</source>
+        <translation>Trasferimento file interrotto</translation>
+    </message>
+    <message>
+        <source>File Explorer closed before this transfer finished.</source>
+        <translation>Esplora file è stato chiuso prima del completamento del trasferimento.</translation>
+    </message>
+</context>
 </TS>

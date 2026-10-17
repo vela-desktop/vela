@@ -3,6 +3,7 @@
 
 #include "transfermonitor.h"
 
+#include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QSignalSpy>
@@ -106,7 +107,8 @@ private slots:
     {
         QDBusConnection bus = QDBusConnection::sessionBus();
         if (!bus.isConnected()) QSKIP("Session D-Bus unavailable");
-        TransferMonitor monitor;
+        // Test process stands in for the installed Explorer executable.
+        TransferMonitor monitor(nullptr, QCoreApplication::applicationFilePath());
         QDBusMessage message = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
             QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("Changed"));
         message << bus.baseService() << 42 << QStringLiteral("Copying")
@@ -114,6 +116,31 @@ private slots:
         QVERIFY(bus.send(message));
         QTRY_COMPARE(monitor.activeCount(), 1);
         QCOMPARE(monitor.jobs().first().toMap().value(QStringLiteral("owner")).toString(), bus.baseService());
+
+        // A malicious session-bus client cannot claim somebody else's owner,
+        // even on the proper interface and object path.
+        QDBusMessage forged = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
+            QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("Changed"));
+        forged << QStringLiteral(":1.999999") << 42 << QStringLiteral("Forged")
+               << qlonglong(99) << qlonglong(100) << QString() << false << QString();
+        QVERIFY(bus.send(forged));
+        QTest::qWait(100);
+        QCOMPARE(monitor.jobs().size(), 1);
+        QCOMPARE(monitor.jobs().first().toMap().value(QStringLiteral("done")).toInt(), 1);
+
+        QDBusMessage forgedRemoval = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
+            QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("Removed"));
+        forgedRemoval << QStringLiteral(":1.999999") << 42;
+        QVERIFY(bus.send(forgedRemoval));
+        QTest::qWait(100);
+        QCOMPARE(monitor.activeCount(), 1);
+
+        // A client whose actual executable is not vela-files is rejected,
+        // even when its payload contains the correct unique bus name.
+        TransferMonitor untrusted(nullptr, QStringLiteral("/nonexistent/vela-files"));
+        QVERIFY(bus.send(message));
+        QTest::qWait(100);
+        QCOMPARE(untrusted.activeCount(), 0);
     }
 
     void remoteCancellationReachesExplorerEndpoint()
@@ -135,7 +162,7 @@ private slots:
     {
         QDBusConnection bus = QDBusConnection::sessionBus();
         if (!bus.isConnected()) QSKIP("Session D-Bus unavailable");
-        TransferMonitor monitor;
+        TransferMonitor monitor(nullptr, QCoreApplication::applicationFilePath());
         QSignalSpy completed(&monitor, &TransferMonitor::completed);
         QDBusMessage message = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
             QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("Snapshot"));
