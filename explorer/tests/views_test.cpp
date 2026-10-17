@@ -12,6 +12,7 @@
 #include "iconprovider.h"
 
 #include <QDir>
+#include <QVariantList>
 #include <QFile>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -25,6 +26,33 @@ namespace {
 QString folder;
 }
 
+class TestTransferOps : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QVariantList jobs READ jobs WRITE setJobs NOTIFY jobsChanged)
+    Q_PROPERTY(int lastCancelled READ lastCancelled NOTIFY cancelledChanged)
+public:
+    QVariantList jobs() const { return m_jobs; }
+    void setJobs(const QVariantList& jobs) { m_jobs = jobs; emit jobsChanged(); }
+    int lastCancelled() const { return m_lastCancelled; }
+    Q_INVOKABLE void cancelJob(int id) { m_lastCancelled = id; emit cancelledChanged(); }
+    Q_INVOKABLE void dismissJob(int id)
+    {
+        for (qsizetype i = 0; i < m_jobs.size(); ++i) {
+            if (m_jobs[i].toMap().value(QStringLiteral("id")).toInt() == id) {
+                m_jobs.removeAt(i);
+                emit jobsChanged();
+                break;
+            }
+        }
+    }
+signals:
+    void jobsChanged();
+    void cancelledChanged();
+private:
+    QVariantList m_jobs;
+    int m_lastCancelled = -1;
+};
+
 class Setup : public QObject {
     Q_OBJECT
 
@@ -34,7 +62,10 @@ public slots:
         vela::controls::install(*engine, Appearance::Mode::Apps);
         engine->addImageProvider(QStringLiteral("fileicon"), new IconProvider(32));
         engine->rootContext()->setContextProperty(QStringLiteral("TestFolder"), folder);
+        engine->rootContext()->setContextProperty(QStringLiteral("Ops"), &m_ops);
     }
+private:
+    TestTransferOps m_ops;
 };
 
 int main(int argc, char** argv)
