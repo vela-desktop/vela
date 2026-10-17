@@ -337,6 +337,9 @@ void ShellController::handleCommand(const QByteArray& command)
         if (!folders.isEmpty()) {
             emit newShortcutRequested(folders.first().toString());
         }
+    } else if (command.startsWith("desktop-transfer-undo ")) {
+        // A completed transfer from vela-files, with actual Undo paths.
+        emit desktopTransferUndoReceived(command.mid(sizeof("desktop-transfer-undo ") - 1));
     } else if (parts.first() == "accessibility") {
         emit accessibilityReceived(command.mid(14));
     } else if (parts.first() == "snap-assist") {
