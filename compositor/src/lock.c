@@ -9,6 +9,7 @@
 #include "snap.h"
 #include "focus.h"
 #include "config.h"
+#include "error_screen.h"
 #include "input.h"
 #include "output.h"
 #include "process.h"
@@ -183,6 +184,10 @@ static void handle_new_lock(struct wl_listener *listener, void *data)
         return;
     }
     lock->lock = wlr;
+    lock->pending_attempts = 0;
+    if (lock->respawn) {
+        wl_event_source_timer_update(lock->respawn, 0);
+    }
     vela_lock_engage(lock);
     // The app is told "locked" once every output has shown black.
     lock->waiting_count = 0;
@@ -441,6 +446,9 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     // First the backdrop, then (above) the lock program's surfaces.
     lock->backdrop_tree = vela_tree_create(server->layers.lock);
     lock->respawn = wl_event_loop_add_timer(server->loop, handle_respawn, lock);
+    if (!lock->respawn) {
+        wlr_log_errno(WLR_ERROR, "Unable to create locker retry timer");
+    }
     wl_list_init(&lock->new_surface.link);
     wl_list_init(&lock->unlock.link);
     wl_list_init(&lock->destroy.link);
@@ -476,6 +484,12 @@ void vela_lock_destroy(struct vela_lock *lock)
     if (lock->caffeine_timer) {
         wl_event_source_remove(lock->caffeine_timer);
     }
+    if (lock->respawn) {
+        wl_event_source_remove(lock->respawn);
+    }
+    if (lock->idle_timer) {
+        wl_event_source_remove(lock->idle_timer);
+    }
     clear_backdrop(lock);
     vela_node_destroy(&lock->backdrop_tree->node);
     free(lock->backdrop);
@@ -501,11 +515,13 @@ void vela_lock_engage(struct vela_lock *lock)
     // Invalidate old isolated window sources; output capture still shows the
     // composed lock screen, but window capture could bypass occlusion.
     vela_views_revoke_capture_on_lock(server);
-    // For the supervisor: if the compositor crashes now, the next one starts
-    // locked (supervisor.c).
+    // Before exposing the locked state to the supervisor, persist its marker.
+    // If we cannot, a compositor restart might reveal the desktop: end the
+    // entire session instead of ever allowing a restart without a marker.
     if (server->runtime_dir_fd >= 0
         && !vela_lock_marker_create_at(server->runtime_dir_fd, server->socket_name)) {
-        wlr_log(WLR_ERROR, "Could not create secure screen-lock marker");
+        wlr_log(WLR_ERROR, "Could not create secure screen-lock marker; terminating session safely");
+        _exit(VELA_EXIT_LOCK_UNSAFE);
     }
     set_desktop_enabled(server, false);
     vela_node_set_enabled(&server->layers.lock->node, true);
@@ -527,6 +543,20 @@ void vela_lock_screen(struct vela_lock *lock)
 {
     if (lock->server->locked && lock->lock) {
         return; // already locked, and the lock program is there
+    }
+    // Lock immediately, BEFORE locating/launching the locker. A missing or
+    // failing launcher must never leave a visible desktop or input focus.
+    vela_lock_engage(lock);
+    if (lock->pending_attempts >= VELA_LOCK_RESPAWNS) {
+        wlr_log(WLR_ERROR, "Lock: locker did not register after %d attempts; staying locked",
+            lock->pending_attempts);
+        return;
+    }
+    ++lock->pending_attempts;
+    // Even a successful shell fork does not mean ext-session-lock registered.
+    // Retry while keeping the black backdrop; handle_new_lock cancels this.
+    if (lock->respawn) {
+        wl_event_source_timer_update(lock->respawn, 5000);
     }
     // VELA_LOCK picks another program (such as swaylock). Otherwise vela-lock
     // next to the compositor (installed) or in the build directory.
@@ -553,7 +583,7 @@ void vela_lock_screen(struct vela_lock *lock)
         }
     }
     if (!command[0]) {
-        wlr_log(WLR_ERROR, "Lock: vela-lock not found (VELA_LOCK picks another locker)");
+        wlr_log(WLR_ERROR, "Lock: vela-lock not found; keeping desktop hidden and retrying");
         return;
     }
     wlr_log(WLR_INFO, "Locking the screen: %s", command);
