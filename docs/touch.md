@@ -45,9 +45,10 @@ here must also be covered by automated tests that run without that hardware
    - **Goal 2:** the pen as a pen, over `tablet-v2`, with pressure (§6).
    - **Last:** tablet mode, where the shell adapts by itself (§7).
 4. **The on-screen keyboard is a separate piece of work, done first**, with its
-   own design document. It is needed here (a device without a keyboard cannot
-   even unlock), and Vela wants it for other reasons too. What touch requires
-   of it is in §8.
+   own design document (`docs/onscreen-keyboard.md`). It is needed here (a
+   device without a keyboard cannot even unlock), and Vela wants it for other
+   reasons too. What touch requires of it, and where that design covers it, is
+   in §8.
 5. **Convertibles use the existing services.** The tablet-mode switch comes
    from libinput, the orientation from `iio-sensor-proxy`. Vela does not read
    sensors itself.
@@ -222,6 +223,9 @@ the defaults:
 | bottom | Start |
 | top | nothing |
 
+Besides opening a panel, an edge can open and close the on-screen keyboard
+(§8).
+
 The edges are the output's as displayed, after rotation. Edge swipes work only
 on mapped touchscreens and never while locked. A touch that starts in the edge
 zone is held back, not sent: if it moves inward past the threshold it is
@@ -295,7 +299,7 @@ who want to see what the screen received.
 | Setting | `vela.conf` | Values | Default |
 |---|---|---|---|
 | Touchscreen | `touchscreen=yes` | yes, no | yes |
-| Right edge | `touchscreen-edge-right=notifications` | `notifications`, `quick-settings`, `task-view`, `start`, `desktop`, `no` | `notifications` |
+| Right edge | `touchscreen-edge-right=notifications` | `notifications`, `quick-settings`, `task-view`, `start`, `desktop`, `keyboard`, `no` | `notifications` |
 | Left edge | `touchscreen-edge-left=task-view` | same | `task-view` |
 | Bottom edge | `touchscreen-edge-bottom=start` | same | `start` |
 | Top edge | `touchscreen-edge-top=no` | same | `no` |
@@ -331,19 +335,21 @@ with a rotation lock in Quick Settings; automatic rotations are not saved to
 
 ## 8. What touch requires of the on-screen keyboard
 
-The on-screen keyboard has its own design document. These requirements come
-from touch:
+The on-screen keyboard has its own design document,
+`docs/onscreen-keyboard.md`. These requirements come from touch, and that
+design covers each of them:
 
-- **It appears only for touch.** It opens by itself when a text field gets the
-  focus from a touch or a pen, never from the mouse or the keyboard, like
-  GNOME. On a laptop with a keyboard it must never get in the way. Vela knows
-  the last device that pressed on the seat, so the compositor can decide when
-  the app enables `text-input-v3`.
-- **It can be opened by hand** from a taskbar button, present when a
-  touchscreen exists.
-- **It works on the lock screen.** `vela-lock` implements `text-input-v3` on
-  its own connection, and only Vela's keyboard may be shown above the lock.
-- In tablet mode it appears for every text field (§7).
+| Requirement | On-screen keyboard |
+|---|---|
+| **It appears only for touch.** It opens by itself when a text field gets the focus from a touch or a pen, never from the mouse or the keyboard, like GNOME; on a laptop with a keyboard it never gets in the way. The compositor knows which device made the last press on the seat. | §5.5, invariant 6 |
+| **It can be opened by hand** from a button in the taskbar's notification area (always, only with a touchscreen, or never), with Win+Ctrl+O, or with the `keyboard` edge action (§5.10). | §5.5, §5.13 |
+| **Tapping it changes nothing else.** A touch on the keyboard neither moves the focus nor closes the shell's panels or the app's menus. | §5.10, invariant 3 |
+| **It works on the lock screen.** `vela-lock` implements `text-input-v3` on its own connection, and only Vela's keyboard is shown above the lock. | §5.11 |
+| **In tablet mode** it appears for every text field (§7). | §5.5 |
+
+Its stages K0–K4 come before T1. Its stage K5, showing by itself after a touch
+and hiding at a physical key, can only work and be tested with touch, so it
+lands together with T1.
 
 ## 9. Not in scope
 
@@ -384,7 +390,8 @@ the existing ones. The scenarios:
 - press and hold sending a right click, and two-finger scrolling;
 - a longer hold time and a larger tolerance from `vela.conf` taking effect
   after a reload, and `touch-hold=no`;
-- each edge swipe opening its panel; an edge set to another action or to `no`;
+- each edge swipe opening its panel; an edge set to another action, to
+  `keyboard` (the on-screen keyboard opening and closing) or to `no`;
   a held-back touch replayed to the app; the three fullscreen choices;
 - three- and four-finger gestures, and the app's fingers cancelled;
 - the pen as a mouse: hover, tip, barrel button;
@@ -402,17 +409,18 @@ Each stage is one pull request with its tests.
 | Stage | Content | Sections |
 |---|---|---|
 | **T0** | `vela-test-input-v1`, `vela-input` touch and pen actions, the touch-aware test client | §10 |
-| **T1** | Touch and tablet devices, seat capability, mapping to outputs, native `wl_touch`, cursor hiding, `touchscreen=` | §5.1–§5.3, §5.7 (cursor) |
+| **T1** | Touch and tablet devices, seat capability, mapping to outputs, native `wl_touch`, cursor hiding, `touchscreen=`; with the on-screen keyboard's K5 | §5.1–§5.3, §5.7 (cursor), §8 |
 | **T2** | Emulated pointer (also X11), the pen as a mouse, title bar and borders by touch, drag and drop | §5.3–§5.5, §5.9 |
 | **T3** | Press and hold with the ring, two-finger scrolling, the touch indicator, Accessibility › Touch | §5.6, §5.10 |
-| **T4** | Edge swipes, multi-finger gestures, the Touchscreen page | §5.7, §5.10 |
+| **T4** | Edge swipes (with the `keyboard` action), multi-finger gestures, the Touchscreen page | §5.7, §5.10 |
 | **T5** | Shell and Vela's apps without hover | §5.8 |
 | **P1** | `tablet-v2`, the Pen page in Settings | §6 |
 | **P2** | The pen on the touchpad, if the hardware allows it | §6 |
 | **M1** | Tablet mode and automatic rotation | §7 |
 
-The on-screen keyboard comes before T1 in its own pull request. Touch does not
-need it for the ProArt, but a touch-only device does.
+The on-screen keyboard's stages K0–K4 come before T1, in their own pull
+requests. Touch does not need them for the ProArt, but a touch-only device
+does.
 
 ## 12. Open questions
 
