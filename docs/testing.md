@@ -131,10 +131,12 @@ Diagnostic reporter and graphical smoke check:
 ctest --test-dir build -R '^reporting' --output-on-failure
 ```
 
-Functional session tests:
+Functional session tests, one ctest entry per module of `tests/functional`
+(`test_shell.py` is `functional-shell`):
 
 ```sh
-ctest --test-dir build -R '^functional$' --output-on-failure
+ctest --test-dir build -L '^functional$' --output-on-failure
+ctest --test-dir build -R '^functional-shell$' --output-on-failure
 ```
 
 Package and updater contracts (also runnable without building Vela):

@@ -80,4 +80,5 @@ jobs:
           # PRs and main pushes. Its Arch-oriented mocks cannot be re-run
           # against Fedora's native RPM/DNF backend.
           # Fedora's RPM smoke job exercises actual DNF transactions.
-          ctest --test-dir build-fedora --output-on-failure --parallel 2 -E '^(functional|sharpness|packaging-update)$'
+          # The GPU-labelled tests (functional-*, sharpness) need a GPU.
+          ctest --test-dir build-fedora --output-on-failure --parallel 2 -LE gpu -E '^packaging-update$'
