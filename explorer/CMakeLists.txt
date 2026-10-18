@@ -9,6 +9,17 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Gui GuiPrivate Network Qml Quick Q
 
 qt_standard_project_setup(REQUIRES 6.5)
 
+# Optional: the PDF first page in the quick preview (Space).
+find_package(Qt6 6.5 QUIET COMPONENTS Pdf PdfQuick)
+if(Qt6Pdf_FOUND AND Qt6PdfQuick_FOUND)
+    set(FILES_HAVE_PDF TRUE)
+endif()
+# Optional: videos and sounds playing in the quick preview.
+find_package(Qt6 6.5 QUIET COMPONENTS Multimedia)
+if(Qt6Multimedia_FOUND)
+    set(FILES_HAVE_MEDIA TRUE)
+endif()
+
 set(SHELL_SRC ${PROJECT_SOURCE_DIR}/shell/src)
 
 # The Explorer's C++ code, shared by the app and its tests.
@@ -17,6 +28,8 @@ add_library(vela-files-core OBJECT
     src/fileops.h
     src/foldermodel.cpp
     src/foldermodel.h
+    src/peek.cpp
+    src/peek.h
     src/places.cpp
     src/places.h
     ${SHELL_SRC}/appmodel.cpp
@@ -31,6 +44,12 @@ add_library(vela-files-core OBJECT
     ${SHELL_SRC}/systemactions.h)
 target_include_directories(vela-files-core PUBLIC src ${SHELL_SRC})
 target_compile_options(vela-files-core PRIVATE -Wall -Wextra)
+if(FILES_HAVE_PDF)
+    target_compile_definitions(vela-files-core PUBLIC VELA_FILES_PDF)
+endif()
+if(FILES_HAVE_MEDIA)
+    target_compile_definitions(vela-files-core PUBLIC VELA_FILES_MEDIA)
+endif()
 target_link_libraries(vela-files-core PUBLIC
     Qt6::DBus
     Qt6::Gui
@@ -40,6 +59,15 @@ target_link_libraries(vela-files-core PUBLIC
     Qt6::Svg)
 
 qt_add_executable(vela-files src/main.cpp)
+
+set(PEEK_PDF_QML "")
+if(FILES_HAVE_PDF)
+    set(PEEK_PDF_QML qml/PeekPdf.qml)
+endif()
+set(PEEK_MEDIA_QML "")
+if(FILES_HAVE_MEDIA)
+    set(PEEK_MEDIA_QML qml/PeekMedia.qml)
+endif()
 
 set(FILES_QML_FILES
     qml/Main.qml
@@ -59,6 +87,9 @@ set(FILES_QML_FILES
     qml/RenameField.qml
     qml/ScrollBar.qml
     qml/PreviewPane.qml
+    qml/QuickPeek.qml
+    ${PEEK_PDF_QML}
+    ${PEEK_MEDIA_QML}
     ${PROJECT_SOURCE_DIR}/shell/qml/MenuPanel.qml)
 
 foreach(file IN LISTS FILES_QML_FILES)
@@ -88,6 +119,10 @@ if(VELA_BUILD_TOOLS)
     # Fault injection and process interruption at the atomic replacement's
     # syscall boundary, without adding test hooks to the application.
     target_link_options(vela-files-test PRIVATE "LINKER:--wrap=renameat2")
+    qt_add_executable(vela-files-peek-test tests/peek.cpp)
+    target_link_libraries(vela-files-peek-test PRIVATE vela-files-core Qt6::Test)
+    add_test(NAME files-peek COMMAND vela-files-peek-test)
+    set_tests_properties(files-peek PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     add_test(NAME files-copies COMMAND vela-files-test)
     set_tests_properties(files-copies PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 

@@ -503,6 +503,13 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
     return target;
 }
 
+// A successful GBM allocation alone is not proof that Vela can render into
+// the BO. This runs the same import path used by the first Vulkan render pass.
+bool vela_renderer_validate_target(struct vela_renderer *renderer, struct wlr_buffer *buffer)
+{
+    return renderer && buffer && vela_renderer_target(renderer, buffer) != NULL;
+}
+
 // ----------------------------------------------------- command buffers --
 
 VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *r)

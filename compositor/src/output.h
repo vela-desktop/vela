@@ -108,6 +108,8 @@ struct vela_output {
 
     struct wl_listener frame_event;
     struct wl_listener request_state;
+    struct wl_listener commit; // retry optional cursor setup after a disabled output is re-enabled
+    bool cursor_setup_attempted;
     struct wl_listener present;
     struct wl_listener destroy;
 };

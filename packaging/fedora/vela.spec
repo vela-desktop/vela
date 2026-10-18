@@ -53,6 +53,7 @@ BuildRequires:  qt6-qtdeclarative-devel
 BuildRequires:  qt6-qtsvg-devel
 BuildRequires:  qt6-qtwayland-devel
 BuildRequires:  qt6-qttools-devel
+BuildRequires:  qt6-qtmultimedia-devel
 BuildRequires:  layer-shell-qt-devel
 BuildRequires:  python3
 BuildRequires:  pipewire-devel
@@ -94,6 +95,8 @@ Recommends:     breeze-icon-theme
 Recommends:     NetworkManager
 Recommends:     bluez
 Recommends:     udisks2
+Recommends:     kf6-kimageformats
+Recommends:     qt6-qtmultimedia
 Recommends:     power-profiles-daemon
 
 %description

@@ -192,6 +192,11 @@ static bool init(struct vela_server *server)
         wlr_log(WLR_ERROR, "Can't create the buffer allocator (GBM)");
         return false;
     }
+    // Optional optimization: keep the normal allocator even if cursor-only
+    // GBM allocations are unavailable. One allocator for all DRM outputs;
+    // swapchains themselves are per-output and hotplug-safe.
+    server->cursor_allocator = vela_gbm_cursor_allocator_create(vela_vulkan_render_fd(server->vulkan),
+        server->renderer);
     wlr_renderer_init_wl_shm(server->wlr_renderer, display);
     // GPU buffers shared with apps, without copies: the formats are those our
     // device can read.
@@ -481,6 +486,7 @@ void vela_server_destroy(struct vela_server *server)
     if (vela_env_flag("VELA_VULKAN_VALIDATION")) {
         // The renderer tells its users (wlr_compositor) and destroys itself.
         wlr_renderer_destroy(server->wlr_renderer);
+        wlr_allocator_destroy(server->cursor_allocator);
         wlr_allocator_destroy(server->allocator);
         vela_vulkan_destroy(server->vulkan); // last: everything else uses its device
     }

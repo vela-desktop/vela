@@ -103,6 +103,7 @@ struct vela_server {
     struct vela_renderer *renderer; // belongs to wlroots: see vela_server_destroy
     struct wlr_renderer *wlr_renderer; // the same, as wlroots sees it
     struct wlr_allocator *allocator;
+    struct wlr_allocator *cursor_allocator; // optional dedicated DRM cursor BOs
     struct wlr_output_layout *output_layout;
     struct vela_scene *scene;
     struct wl_list outputs; // vela_output.link

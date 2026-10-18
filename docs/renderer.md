@@ -470,6 +470,32 @@ the same synchronization. The code is in `compositor/src/render/`:
 | `pass.c` | drawing: textured or solid-color quads, rectangle clipping, barriers, implicit and explicit sync, timing; the `wlr_render_pass` |
 | `allocator.c`, `formats.c`, `pixel_buffer.c` | GBM output buffers, the pixel format table, CPU images as `wlr_buffer` |
 
+**Hardware cursor on NVIDIA and other DRM drivers.** wlroots shares the
+regular output allocator with cursor rendering and provides no allocation
+purpose argument. Vela therefore never infers "cursor" from small LINEAR
+buffers: primary output and window-capture allocations always use the
+normal GBM SCANOUT/RENDERING path. Instead, each DRM output with exactly one
+advertised cursor size (at most 256x256), ARGB8888 LINEAR cursor plane support,
+and Vulkan ARGB8888 LINEAR rendering support gets a dedicated cursor
+swapchain. Its allocator uses `GBM_BO_USE_CURSOR | GBM_BO_USE_WRITE`.
+
+Each cursor buffer is validated against the actual Vulkan DMA-BUF
+color-attachment import *before* it reaches a wlroots render pass. If GBM
+or Vulkan refuses the buffer, wlroots falls back to software for that update;
+a later cursor image update can retry the allocation. A single INFO message
+is logged for an allocator failure, but **future attempts are not globally
+disabled**. The swapchain belongs to its output,
+so unplugging a monitor releases it independently from other displays.
+On drivers advertising multiple cursor sizes or unsupported formats, Vela
+conservatively uses wlroots' original path rather than guessing a size.
+
+A successful allocation/import is **not** proof that the DRM cursor plane
+was used: verify the cursor plane on a real DRM/KMS NVIDIA session, then
+test a monitor hotplug, scale change, a small LINEAR window capture, and
+`VELA_DEBUG_LINEAR=1`. The GPU-free `compositor.cursor-policy` CTest covers
+the allocation policy; it cannot assert actual scanout.
+
+
 An output's time (vblank grid, learned latency, late-latching cost and
 margin, the plan of each frame, §4) is `compositor/src/frame_clock.c`.
 

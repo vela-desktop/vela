@@ -14,6 +14,7 @@
 #include "output_key.h"
 #include "output_manager.h"
 #include "render/renderer.h"
+#include "render/cursor_policy.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "server.h"
@@ -26,6 +27,12 @@
 #include <string.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include <drm_fourcc.h>
+#include <wlr/backend/drm.h>
+#include <wlr/interfaces/wlr_output.h>
+#include <wlr/render/allocator.h>
+#include <wlr/render/drm_format_set.h>
+#include <wlr/render/swapchain.h>
 #include <wlr/backend/headless.h>
 #include <wlr/backend/wayland.h>
 #include <wlr/types/wlr_cursor.h>
@@ -155,8 +162,50 @@ void vela_output_load_settings(struct vela_server *server)
 static void handle_frame_event(struct wl_listener *listener, void *data);
 static void handle_present(struct wl_listener *listener, void *data);
 static void handle_request_state(struct wl_listener *listener, void *data);
+static void handle_output_commit(struct wl_listener *listener, void *data);
 static void handle_destroy(struct wl_listener *listener, void *data);
 static void start_virtual_vblank(struct vela_output *output);
+
+// wlroots uses the output allocator for both cursor and primary buffers, and
+// doesn't tell the allocator which it is requesting. Supply a *dedicated*
+// cursor swapchain only when the DRM backend exposes an unambiguous, fixed
+// cursor format/size. This preserves the ordinary allocator for captures and
+// primary buffers, even small LINEAR buffers.
+static void prepare_cursor_swapchain(struct vela_server *server, struct wlr_output *wlr)
+{
+    if (!server->cursor_allocator || !wlr_output_is_drm(wlr) || !wlr->impl->set_cursor
+        || !wlr->impl->get_cursor_sizes || !wlr->impl->get_cursor_formats || wlr->cursor_swapchain) {
+        return;
+    }
+
+    size_t count = 0;
+    const struct wlr_output_cursor_size *sizes = wlr->impl->get_cursor_sizes(wlr, &count);
+    const struct wlr_drm_format_set *formats
+        = wlr->impl->get_cursor_formats(wlr, WLR_BUFFER_CAP_DMABUF);
+    bool plane_linear = formats && wlr_drm_format_set_has(formats, DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR);
+    bool vulkan_linear = wlr_drm_format_set_has(vela_renderer_render_formats(server->renderer),
+        DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR);
+    int width = sizes && count == 1 ? sizes[0].width : 0;
+    int height = sizes && count == 1 ? sizes[0].height : 0;
+    if (!vela_cursor_swapchain_eligible(true, formats != NULL, count, width, height,
+            plane_linear, vulkan_linear)) {
+        return;
+    }
+
+    uint64_t linear = DRM_FORMAT_MOD_LINEAR;
+    const struct wlr_drm_format format = vela_cursor_swapchain_format(&linear);
+    struct wlr_swapchain *swapchain = wlr_swapchain_create(server->cursor_allocator, width, height, &format);
+    if (!swapchain) {
+        return; // wlroots keeps its ordinary software cursor fallback
+    }
+
+    // Buffers are allocated lazily and individually validated by the cursor
+    // allocator's Vulkan import probe. A transient failure causes software
+    // fallback for that update, but a later cursor update can try again.
+    wlr->cursor_swapchain = swapchain;
+    wlr_log(WLR_INFO, "Output %s: prepared %dx%d ARGB8888 LINEAR hardware cursor buffers",
+        wlr->name, width, height);
+}
 
 void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
 {
@@ -184,6 +233,11 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     // The frame cycle turns VRR on and off (vrr_state).
     wlr_output_commit_state(wlr, &state);
     wlr_output_state_finish(&state);
+    // Query the committed DRM/CRTC cursor plane, not an unconfigured output.
+    if (enabled) {
+        output->cursor_setup_attempted = true;
+        prepare_cursor_swapchain(server, wlr);
+    }
     if (enabled) {
         wlr_log(WLR_INFO, "Output %s: %dx%d @ %.2f Hz, scale %.2f%s", wlr->name, wlr->width, wlr->height,
             wlr->refresh / 1000.0, wlr->scale, saved ? " (as saved)" : "");
@@ -217,6 +271,7 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
         vela_listen(&wlr->events.frame, &output->frame_event, handle_frame_event);
     }
     vela_listen(&wlr->events.request_state, &output->request_state, handle_request_state);
+    vela_listen(&wlr->events.commit, &output->commit, handle_output_commit);
     vela_listen(&wlr->events.destroy, &output->destroy, handle_destroy);
 
     // In the list before entering the layout: the layout change notifies the
@@ -238,6 +293,20 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     vela_output_schedule_frame(output);
 }
 
+// A persisted disabled output is never initialized at creation. Check after
+// its first successful enable, rather than probing the cursor on every frame.
+static void handle_output_commit(struct wl_listener *listener, void *data)
+{
+    struct vela_output *output = wl_container_of(listener, output, commit);
+    (void)data;
+    if (!output->wlr->enabled) {
+        output->cursor_setup_attempted = false;
+    } else if (!output->cursor_setup_attempted) {
+        output->cursor_setup_attempted = true;
+        prepare_cursor_swapchain(output->server, output->wlr);
+    }
+}
+
 static void handle_destroy(struct wl_listener *listener, void *data)
 {
     struct vela_output *output = wl_container_of(listener, output, destroy);
@@ -251,6 +320,7 @@ static void handle_destroy(struct wl_listener *listener, void *data)
     wl_list_remove(&output->frame_event.link);
     wl_list_remove(&output->present.link);
     wl_list_remove(&output->request_state.link);
+    wl_list_remove(&output->commit.link);
     wl_list_remove(&output->destroy.link);
     if (output->vblank_source) {
         wl_event_source_remove(output->vblank_source);

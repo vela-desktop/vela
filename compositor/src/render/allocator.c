@@ -6,6 +6,7 @@
 // for both Vulkan drawing and scanout.
 
 #include "render/renderer.h"
+#include "render/cursor_policy.h"
 
 #include "util.h"
 
@@ -23,6 +24,9 @@
 struct gbm_allocator {
     struct wlr_allocator base;
     struct gbm_device *gbm;
+    struct vela_renderer *renderer; // only for the cursor buffer's Vulkan import probe
+    bool cursor;
+    bool cursor_warning_logged; // log throttling only, never a permanent allocation ban
 };
 
 // wlr_buffer as the first member: wlr_buffer* <-> gbm_buffer*.
@@ -80,23 +84,38 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
         free(modifiers);
         return NULL;
     }
-    // Diagnostics: VELA_DEBUG_LINEAR=1 uses linear buffers, without GPU tiling
-    // or compression (to rule out compatibility problems).
-    if (has_linear && vela_env_one("VELA_DEBUG_LINEAR")) {
+    // Diagnostics apply only to ordinary allocations. Cursor allocations
+    // must already be a single LINEAR ARGB8888 format.
+    if (!alloc->cursor && has_linear && vela_env_one("VELA_DEBUG_LINEAR")) {
         modifiers[0] = DRM_FORMAT_MOD_LINEAR;
         count = 1;
     }
 
+    if (alloc->cursor && !vela_cursor_buffer_format(format->format, modifiers, count, width, height)) {
+        free(modifiers);
+        return NULL;
+    }
+
+    // Cursor use is selected by the dedicated cursor allocator, never inferred
+    // from the dimensions of a window, screenshot, or output buffer.
+    uint32_t flags = vela_gbm_buffer_flags(alloc->cursor, false);
     struct gbm_bo *bo = gbm_bo_create_with_modifiers2(alloc->gbm, (uint32_t)width, (uint32_t)height, format->format,
-        modifiers, count, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
-    if (!bo) {
+        modifiers, count, flags);
+    if (!bo && !alloc->cursor) {
         // Some drivers refuse SCANOUT on certain modifiers (such as headless).
         bo = gbm_bo_create_with_modifiers2(alloc->gbm, (uint32_t)width, (uint32_t)height, format->format, modifiers,
-            count, GBM_BO_USE_RENDERING);
+            count, vela_gbm_buffer_flags(false, true));
     }
     free(modifiers);
     if (!bo) {
-        wlr_log_errno(WLR_ERROR, "Allocator: gbm_bo_create_with_modifiers2 %dx%d", width, height);
+        if (alloc->cursor) {
+            if (!alloc->cursor_warning_logged) {
+                wlr_log(WLR_INFO, "Allocator: cursor GBM allocation unavailable; retaining software cursor");
+                alloc->cursor_warning_logged = true;
+            }
+        } else {
+            wlr_log_errno(WLR_ERROR, "Allocator: gbm_bo_create_with_modifiers2 %dx%d", width, height);
+        }
         return NULL;
     }
 
@@ -133,6 +152,16 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
         }
     }
     wlr_buffer_init(&buffer->base, &buffer_impl, width, height);
+    if (alloc->cursor && !vela_renderer_validate_target(alloc->renderer, &buffer->base)) {
+        // GBM accepting CURSOR|WRITE doesn't prove Vulkan can draw into the
+        // dmabuf. Refuse it before wlroots' render pass, so it can fall back.
+        if (!alloc->cursor_warning_logged) {
+            wlr_log(WLR_INFO, "Allocator: cursor buffer is not a Vulkan render target; using software cursor");
+            alloc->cursor_warning_logged = true;
+        }
+        wlr_buffer_drop(&buffer->base);
+        return NULL;
+    }
     return &buffer->base;
 }
 
@@ -148,7 +177,7 @@ static const struct wlr_allocator_interface allocator_impl = {
     .destroy = allocator_destroy,
 };
 
-struct wlr_allocator *vela_gbm_allocator_create(int render_fd)
+static struct wlr_allocator *allocator_create(int render_fd, bool cursor, struct vela_renderer *renderer)
 {
     struct gbm_device *gbm = gbm_create_device(render_fd);
     if (!gbm) {
@@ -162,6 +191,18 @@ struct wlr_allocator *vela_gbm_allocator_create(int render_fd)
         return NULL;
     }
     alloc->gbm = gbm;
+    alloc->cursor = cursor;
+    alloc->renderer = renderer;
     wlr_allocator_init(&alloc->base, &allocator_impl, WLR_BUFFER_CAP_DMABUF);
     return &alloc->base;
+}
+
+struct wlr_allocator *vela_gbm_allocator_create(int render_fd)
+{
+    return allocator_create(render_fd, false, NULL);
+}
+
+struct wlr_allocator *vela_gbm_cursor_allocator_create(int render_fd, struct vela_renderer *renderer)
+{
+    return renderer ? allocator_create(render_fd, true, renderer) : NULL;
 }

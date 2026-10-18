@@ -6,6 +6,7 @@
 #include "appmodel.h"
 #include "foldermodel.h"
 #include "links.h"
+#include "peek.h"
 #include "systemactions.h"
 #include "transferlocks.h"
 
@@ -1371,12 +1372,15 @@ QVariantMap FileOps::details(const QString& path) const
     } else {
         out[QStringLiteral("size")] = double(info.size());
         out[QStringLiteral("sizeText")] = ::formatSize(info.size());
-        QImageReader reader(path);
-        if (reader.canRead()) {
-            const QSize size = reader.size();
-            if (size.isValid()) {
-                out[QStringLiteral("width")] = size.width();
-                out[QStringLiteral("height")] = size.height();
+        // Only regular files are read: opening a FIFO with no writer blocks.
+        if (info.isFile()) {
+            QImageReader reader(path);
+            if (reader.canRead()) {
+                const QSize size = reader.size();
+                if (size.isValid()) {
+                    out[QStringLiteral("width")] = size.width();
+                    out[QStringLiteral("height")] = size.height();
+                }
             }
         }
     }
@@ -1411,6 +1415,72 @@ QString FileOps::previewText(const QString& path) const
 bool FileOps::isImage(const QString& path) const
 {
     return QImageReader(path).canRead();
+}
+
+bool FileOps::pdfSupported() const
+{
+#ifdef VELA_FILES_PDF
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool FileOps::mediaSupported() const
+{
+#ifdef VELA_FILES_MEDIA
+    return true;
+#else
+    return false;
+#endif
+}
+
+void FileOps::peek(const QString& path)
+{
+    QPointer<FileOps> self(this);
+    QThreadPool::globalInstance()->start([self, path] {
+        if (!self) {
+            return;
+        }
+        QVariantMap out = self->details(path);
+        const bool isDir = out.value(QStringLiteral("isDir")).toBool();
+        // A FIFO, socket or device is never opened: it could block this thread for good.
+        const bool regular = QFileInfo(path).isFile();
+        QString kind = peek::classify(out.value(QStringLiteral("mime")).toString(), isDir,
+            regular && QImageReader(path).canRead(), self->pdfSupported(), self->mediaSupported());
+        if (!isDir && !regular) {
+            kind = QStringLiteral("other");
+        } else if (kind == QLatin1String("other")) {
+            QFile file(path);
+            if (file.open(QIODevice::ReadOnly) && peek::looksLikeText(file.read(peek::sniffBytes))) {
+                kind = QStringLiteral("text");
+            }
+        }
+        out[QStringLiteral("kind")] = kind;
+        if (kind == QLatin1String("folder")) {
+            // A bounded walk: a huge tree must not hold the preview.
+            qint64 total = 0;
+            int seen = 0;
+            QDirIterator it(path, QDir::Files | QDir::Hidden | QDir::NoSymLinks, QDirIterator::Subdirectories);
+            while (it.hasNext() && seen < 20000) {
+                it.next();
+                total += it.fileInfo().size();
+                ++seen;
+            }
+            out[QStringLiteral("sizeText")] = (it.hasNext() ? QStringLiteral("> ") : QString()) + ::formatSize(total);
+        } else if (kind == QLatin1String("text")) {
+            QFile file(path);
+            if (file.open(QIODevice::ReadOnly)) {
+                bool cut = false;
+                const QString text = peek::truncateText(file.read(peek::maxTextBytes), file.size(), peek::maxTextBytes, &cut);
+                out[QStringLiteral("text")] = text.isEmpty() ? QStringLiteral(" ") : text;
+                out[QStringLiteral("truncated")] = cut;
+            }
+        }
+        if (self) {
+            QMetaObject::invokeMethod(self, [self, path, out] { if (self) emit self->peekReady(path, out); }, Qt::QueuedConnection);
+        }
+    });
 }
 
 // ------------------------------------------------------------- misc --
