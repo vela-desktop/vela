@@ -8,8 +8,8 @@ every output. This document comes before the code: decisions are made here,
 and the code follows them.
 
 > **Status:** design approved; B0 done, its timings measured with `--bench`
-> on the monitors of §3; B1, B2 and B3 done, tested on fake monitors and a
-> fake backlight (§15).
+> on the monitors of §3; B1 to B4 done, tested on fake monitors and a
+> fake backlight; the tests on real hardware of §12 remain (§15).
 
 ## 1. Goals
 
@@ -631,13 +631,16 @@ of §5.4 on a real monitor: it writes, and puts the starting value back.
 
 ## 13. Packaging and documentation
 
-- Vela installs its own files; `ddcutil` is not needed:
+- Vela installs its own files (`brightness/`); `ddcutil` is not needed:
   - `/usr/lib/udev/rules.d/70-vela-i2c.rules`:
     `SUBSYSTEM=="i2c-dev", KERNEL=="i2c-[0-9]*", ATTRS{class}=="0x03*", TAG+="uaccess"`
     (the I²C buses of display adapters, for the session's user; the same
     rule as ddcutil's, harmless if both are installed);
   - `/usr/lib/modules-load.d/vela-i2c.conf`: `i2c-dev`.
-- PKGBUILD: `systemd-libs` for `sd-bus` in the helper (§5.3).
+- PKGBUILD: `systemd-libs` for `sd-bus` in the helper (§5.3); without
+  libsystemd at build time the helper can't change a laptop's backlight.
+- Vela Report: an optional "Display brightness" collection with `--probe`
+  and the compositor's `brightness` answer ([reporting](reporting.md#5-collections-and-explanations)).
 - Fedora (`packaging/fedora/vela.spec`): `BuildRequires: systemd-devel`, and
   the udev rule and the `modules-load.d` file in `%files`.
 - [hardware](hardware.md):
@@ -678,4 +681,4 @@ of §5.4 on a real monitor: it writes, and puts the starting value back.
 | B1 | Compositor: a helper per output with its watchdog, the lines of §5.6, the model, `brightness`, `watch brightness`, `brightness-live`, `brightness-probe`; functional tests | done |
 | B2 | Backlight backend (§5.3); shell: `Brightness` model, quick settings slider for the panel's output and the Brightness page, live sync; backlight out of `SystemStatus` | done |
 | B3 | Settings: the Display page card for the selected output, with the reasons of §8 | done |
-| B4 | udev rule, `modules-load.d`, PKGBUILD, docs, `--probe` in the bug report (§13); the user's tests on real hardware | |
+| B4 | udev rule, `modules-load.d`, PKGBUILD, docs, `--probe` in the bug report (§13); the user's tests on real hardware | done but the tests on real hardware |

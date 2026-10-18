@@ -634,6 +634,39 @@ class ReportingTests(unittest.TestCase):
         self.assertNotIn("serial", result["outputs"][0])
         self.assertNotIn("private", json.dumps(result))
 
+    def test_brightness_probes_the_displays_and_asks_the_compositor(self):
+        state = {"outputs": [{"name": "DP-3", "description": "Mi Monitor", "mechanism": "ddc",
+                              "state": "no-answer", "value": None, "max": 0, "seq": 0, "serial": "secret"}]}
+        connection = unittest.mock.MagicMock()
+        connection.__enter__.return_value = connection
+        connection.recv.return_value = (json.dumps(state) + "\n").encode()
+        info = argparse.Namespace(st_mode=stat.S_IFSOCK, st_uid=os.getuid())
+        probe = "DP-3: bus /dev/i2c-9 (aux)\n  result: no-answer in 540 ms (lock 0 ms), transfers rdwr\n"
+        calls = []
+        runner = lambda args, **kwargs: calls.append(args) or Result("collected", probe)
+        self.report.context = {"socket": "/fixture/socket"}
+        with patch("vela_report.collectors.brightness_helper", return_value=Path("/usr/lib/vela/vela-brightness")), \
+                patch("vela_report.collectors.Path.lstat", return_value=info), \
+                patch("vela_report.collectors.socket.socket", return_value=connection):
+            result = Collector(self.report, runner).brightness()
+        self.assertEqual(result.status, "collected")
+        self.assertEqual(calls, [["/usr/lib/vela/vela-brightness", "--probe"]])
+        connection.sendall.assert_called_once_with(b"brightness\n")
+        self.assertIn("no-answer", self.report.preview("system/brightness-probe.txt"))
+        exported = self.report.preview("session/brightness-state.json")
+        self.assertIn("Mi Monitor", exported)
+        self.assertNotIn("secret", exported)
+
+    def test_brightness_without_the_helper_or_a_session(self):
+        def forbidden(*args, **kwargs):
+            self.fail("No helper: nothing to run")
+        with patch("vela_report.collectors.brightness_helper", return_value=None):
+            result = Collector(self.report, forbidden).brightness()
+        self.assertEqual(result.status, "unavailable")
+        self.assertFalse(self.report.artifacts)
+        # Opt-in: it opens every display's bus.
+        self.assertFalse(any("brightness" in collectors.recommended(c) for c in collectors.CATEGORIES))
+
     def test_cancel_plan_does_not_collect_and_cleans_staging(self):
         options = argparse.Namespace(description_file=None, state_dir=None, log=None,
                                      incident_time=None, boot="0", duration=60, output=None)

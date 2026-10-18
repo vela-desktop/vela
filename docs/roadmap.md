@@ -13,7 +13,7 @@ GPU and driver: see [hardware coverage](hardware.md) for the current limits.
 
 | Work | Design | Pull request | Status |
 |---|---|---|---|
-| **Display brightness**: a slider per monitor, over DDC/CI for external monitors and the kernel backlight for built-in screens | in the PR | [#45](https://github.com/vela-desktop/vela/pull/45) | B0–B3 done; B4 (packaging, tests on real hardware) to do |
+| **Display brightness**: a slider per monitor, over DDC/CI for external monitors and the kernel backlight for built-in screens | in the PR | [#45](https://github.com/vela-desktop/vela/pull/45) | B0–B4 done; tests on real hardware to do |
 | **Visual coherence**: the same pixels, clock and motion across compositor, shell and apps | in the PR | [#40](https://github.com/vela-desktop/vela/pull/40) | steps 1–3 of 11 done |
 
 ## Next

@@ -56,4 +56,20 @@ The automated audio tests run on a private PipeWire whose devices are null sinks
 - **Restart audio**: sound comes back, and the shell and Settings follow without restarting.
 - **Rename**: a device's new name shows at once in Vela, and in other apps (pavucontrol, a browser's device list) after logging out and in or "Restart audio"; going back to the device's own name the same way.
 
+### Brightness
+
+The automated brightness tests run on fake monitors and a fake backlight ([brightness](brightness.md#12-tests)). Vela speaks DDC/CI itself, on `/dev/i2c-N`, and installs what it needs: a udev rule that gives the session's user the I²C buses of display adapters (`/usr/lib/udev/rules.d/70-vela-i2c.rules`) and `i2c-dev` at boot (`/usr/lib/modules-load.d/vela-i2c.conf`). `ddcutil` is not needed; it is the reference for checking the slider.
+
+- **No slider for an external monitor**: many monitors ship with **DDC/CI turned off** in their own menu (Settings › Display says so). Turning it on and coming back to Settings is enough. Docks and MST hubs often don't pass DDC/CI through.
+- **"Vela can't reach this display"**: the udev rule or `i2c-dev` isn't active yet; log out and in after installing, or reboot.
+- **NVIDIA's proprietary driver** may need the I²C options that ddcutil documents (its `nvidia-i2c.conf`).
+- `vela-brightness --probe` (in `/usr/lib/vela`, or `/usr/libexec/vela` on Fedora) prints each connector, its bus and one read; it only reads. Vela Report includes it under "Display brightness".
+
+To check on a real machine, with `ddcutil getvcp 10` as the reference:
+
+- Every monitor gets a slider or the right reason; a drag ends on the value shown; 0% and back.
+- The monitor's own buttons move a slider that is on screen.
+- Unplug and replug, idle off and back on, VT switch, suspend and resume with Settings open.
+- NVIDIA (the `read()`/`write()` fallback) and Intel; a laptop: the backlight chosen, its minimum, OLED if available; a dock or MST hub.
+
 See [testing.md](testing.md) and [reporting.md](reporting.md) for automated tests and privacy-aware diagnostics.

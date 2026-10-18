@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# The I2C buses of display adapters (PCI class 0x03), for the user of the
+# active session: vela-brightness speaks DDC/CI on them without root
+# (docs/brightness.md §6, §13). The same rule as ddcutil's, harmless if both
+# are installed. Before 73-seat-late.rules, which applies uaccess.
+SUBSYSTEM=="i2c-dev", KERNEL=="i2c-[0-9]*", ATTRS{class}=="0x03*", TAG+="uaccess"

@@ -36,7 +36,7 @@ env:
     wayland wayland-protocols wlroots0.20 libxkbcommon pixman libinput libdrm
     mesa freetype2 harfbuzz fontconfig librsvg cairo zlib pam polkit
     qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt
-    hicolor-icon-theme shared-mime-info xorg-xwayland pipewire wireplumber
+    hicolor-icon-theme shared-mime-info xorg-xwayland pipewire wireplumber systemd-libs
 
 jobs:
   changes:
@@ -288,7 +288,7 @@ jobs:
           librsvg2-devel cairo-devel zlib-devel pam-devel polkit-devel
           qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel
           qt6-qtsvg-devel qt6-qtwayland-devel qt6-qttools-devel
-          layer-shell-qt-devel python3 pipewire-devel wireplumber-devel
+          layer-shell-qt-devel python3 pipewire-devel wireplumber-devel systemd-devel
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -387,9 +387,13 @@ jobs:
           test -f /usr/share/wayland-sessions/vela.desktop
           test -f /etc/pam.d/vela-lock
           test -f /etc/xdg/xdg-desktop-portal-wlr/Vela
+          test -f /usr/lib/udev/rules.d/70-vela-i2c.rules
+          test -f /usr/lib/modules-load.d/vela-i2c.conf
           for helper in vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui vela-session-env; do
             test -x "/usr/libexec/vela/$helper"
           done
+          # Without sd-bus the helper builds, but can't change a laptop's backlight.
+          ldd /usr/libexec/vela/vela-brightness | grep -F libsystemd.so
           test -f /usr/libexec/vela/report/vela_report/cli.py
           # The archive's source metadata must not inherit CI's parent git state.
           grep -F "\"source_commit\": \"$GITHUB_SHA\"" /usr/bin/vela-report

@@ -29,6 +29,7 @@ depends=(
     'qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'layer-shell-qt'
     'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland'
     'pipewire' 'wireplumber'
+    'systemd-libs' # sd-bus: the laptop backlight through logind (docs/brightness.md §5.3)
 )
 makedepends=('git' 'cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols' 'qt6-tools')
 optdepends=(

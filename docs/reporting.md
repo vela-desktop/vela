@@ -42,13 +42,13 @@ Current limits are 64 MiB for the selected session log, 2 MiB for other text
 sources/commands, 256 MiB per attachment and
 1 GiB of included evidence. Ordinary commands have a ten-second timeout;
 the read-only Vela socket has a two-second timeout, and the NVIDIA tool has a
-120-second timeout. Live sampling runs once per second with a baseline and
+120-second timeout; the displays' brightness probe has 30 seconds. Live sampling runs once per second with a baseline and
 final sample. Stopping recording retains available samples.
 
 Current evidence includes package versions and executable build IDs,
 distribution/kernel information, PCI graphics and NVIDIA driver queries,
 one explicitly chosen retained log, current configuration and an environment
-allowlist, title-free Vela runtime state, bounded journals, current-user crash
+allowlist, title-free Vela runtime state, the displays' brightness probe, bounded journals, current-user crash
 metadata, resource samples, and separately selected NVIDIA reports or
 attachments. Other-desktop and older-boot reports keep incident selectors
 separate from current machine information. A full installed Vela commit is
@@ -253,6 +253,7 @@ issue creation or account login belongs in this workflow.
 | Kernel journal | Entries from the relevant boot and incident time window. Can expose GPU resets, driver errors, OOM events and device failures. | Recommended for crashes, freezes and device problems. |
 | Live process sampling | Selected processes' descriptor counts and types, resource limits, memory and CPU metrics. Reveals growth and exhaustion before a failure. | Optional; recommended for leaks, freezes and performance. |
 | Existing Vela diagnostics | Read-only runtime state and already recorded timing statistics where available. Helps explain frame scheduling and current compositor state. | Recommended when relevant and available. |
+| Display brightness | `vela-brightness --probe`: each connector, its I²C bus, the transfer mode and one read of the brightness with every attempt, its bytes and latency; and the compositor's brightness state (each output's state, value and monitor name). Only reads, under the same lock as the session's helpers ([brightness](brightness.md#11-not-in-scope)). Shows why a slider is missing, locked or wrong. | Optional: it opens every display's bus. |
 | Installation/update evidence | Package metadata and user-selected build or update logs. Helps investigate dependency failures and failed installation. | Recommended for installation/update problems. |
 | Crash metadata | Available executable identity, signal, crash time and stored dump availability. Helps locate a crash without exporting process memory. | Recommended for crashes. |
 | Vendor diagnostics | A separately selected GPU vendor report, such as an NVIDIA bug report. Adds driver-specific evidence. | Optional; offered for the matching hardware. |

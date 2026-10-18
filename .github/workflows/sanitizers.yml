@@ -62,7 +62,7 @@ jobs:
           libxkbcommon pixman libinput libdrm mesa freetype2 harfbuzz
           fontconfig librsvg cairo zlib pam polkit qt6-base qt6-declarative
           qt6-svg qt6-wayland qt6-tools layer-shell-qt hicolor-icon-theme
-          pipewire wireplumber
+          pipewire wireplumber systemd-libs
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
