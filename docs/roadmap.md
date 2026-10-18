@@ -14,6 +14,7 @@ GPU and driver: see [hardware coverage](hardware.md) for the current limits.
 | Work | Design | Pull request | Status |
 |---|---|---|---|
 | **Display brightness**: a slider per monitor, over DDC/CI for external monitors and the kernel backlight for built-in screens | in the PR | [#45](https://github.com/vela-desktop/vela/pull/45) | design done; stages B0–B4 to do |
+| **On-screen keyboard**: typing without a keyboard in every app and on the lock screen, `text-input-v3`, and the groundwork for input methods | [on-screen keyboard](onscreen-keyboard.md) | — | design draft |
 | **Visual coherence**: the same pixels, clock and motion across compositor, shell and apps | in the PR | [#40](https://github.com/vela-desktop/vela/pull/40) | steps 1–3 of 11 done |
 
 ## Next
