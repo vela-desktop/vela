@@ -161,6 +161,7 @@ void vela_output_load_settings(struct vela_server *server)
 static void handle_frame_event(struct wl_listener *listener, void *data);
 static void handle_present(struct wl_listener *listener, void *data);
 static void handle_request_state(struct wl_listener *listener, void *data);
+static void handle_output_commit(struct wl_listener *listener, void *data);
 static void handle_destroy(struct wl_listener *listener, void *data);
 static void start_virtual_vblank(struct vela_output *output);
 
@@ -244,6 +245,7 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     wlr_output_state_finish(&state);
     // Query the committed DRM/CRTC cursor plane, not an unconfigured output.
     if (enabled) {
+        output->cursor_setup_attempted = true;
         prepare_cursor_swapchain(server, wlr);
     }
     if (enabled) {
@@ -279,6 +281,7 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
         vela_listen(&wlr->events.frame, &output->frame_event, handle_frame_event);
     }
     vela_listen(&wlr->events.request_state, &output->request_state, handle_request_state);
+    vela_listen(&wlr->events.commit, &output->commit, handle_output_commit);
     vela_listen(&wlr->events.destroy, &output->destroy, handle_destroy);
 
     // In the list before entering the layout: the layout change notifies the
@@ -299,6 +302,20 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     vela_output_schedule_frame(output);
 }
 
+// A persisted disabled output is never initialized at creation. Check after
+// its first successful enable, rather than probing the cursor on every frame.
+static void handle_output_commit(struct wl_listener *listener, void *data)
+{
+    struct vela_output *output = wl_container_of(listener, output, commit);
+    (void)data;
+    if (!output->wlr->enabled) {
+        output->cursor_setup_attempted = false;
+    } else if (!output->cursor_setup_attempted) {
+        output->cursor_setup_attempted = true;
+        prepare_cursor_swapchain(output->server, output->wlr);
+    }
+}
+
 static void handle_destroy(struct wl_listener *listener, void *data)
 {
     struct vela_output *output = wl_container_of(listener, output, destroy);
@@ -312,6 +329,7 @@ static void handle_destroy(struct wl_listener *listener, void *data)
     wl_list_remove(&output->frame_event.link);
     wl_list_remove(&output->present.link);
     wl_list_remove(&output->request_state.link);
+    wl_list_remove(&output->commit.link);
     wl_list_remove(&output->destroy.link);
     if (output->vblank_source) {
         wl_event_source_remove(output->vblank_source);
