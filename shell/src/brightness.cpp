@@ -45,6 +45,7 @@ Brightness::Brightness(QObject* parent, const QString& socketPath, int timeoutMs
         if (m_live) {
             send("brightness-live on");
         }
+        emit changed();
     });
     connect(&m_socket, &QLocalSocket::readyRead, this, &Brightness::read);
     connect(&m_socket, &QLocalSocket::disconnected, this, [this] {

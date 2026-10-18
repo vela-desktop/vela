@@ -261,9 +261,12 @@ private slots:
         received.clear();
         QTRY_VERIFY(model.outputs().isEmpty());
         QVERIFY(!model.connected());
+        QTRY_COMPARE(changed.count(), 1); // disconnection notified
         accept(); // within a second it is back, and asks again
         QTRY_VERIFY(received.contains("brightness-live on\n"));
         QVERIFY(model.connected());
+        QTRY_COMPARE(changed.count(), 2); // connected, before any state arrives
+        QVERIFY(model.outputs().isEmpty());
         model.setLive(false);
         QTRY_VERIFY(received.contains("brightness-live off\n"));
     }

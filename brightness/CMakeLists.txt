@@ -44,8 +44,8 @@ install(TARGETS vela-brightness RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 # The session's user reaches the displays' I2C buses, and i2c-dev is loaded
 # at boot (§13). Under the prefix's lib/, not libdir: udev and systemd look
 # in /usr/lib on every distribution.
-install(FILES 70-vela-i2c.rules DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/udev/rules.d)
-install(FILES vela-i2c.conf DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/modules-load.d)
+install(FILES 70-vela-i2c.rules DESTINATION lib/udev/rules.d)
+install(FILES vela-i2c.conf DESTINATION lib/modules-load.d)
 
 # Protocol, scheduler, fake monitors and the helper's lines, on a fake clock:
 # no hardware, no waiting (§12).

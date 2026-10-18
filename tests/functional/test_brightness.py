@@ -9,6 +9,7 @@ headless session starts helpers only with VELA_BRIGHTNESS_FAKE."""
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import tempfile
@@ -69,7 +70,10 @@ def helpers(vela):
         except (OSError, IndexError, ValueError):
             continue
         if parent == vela.process.pid and len(arguments) >= 3 and arguments[0].endswith(b"vela-brightness"):
-            found[arguments[2].decode()] = int(entry)
+            target = arguments[2].decode()
+            if target in found:
+                raise AssertionError(f"duplicate vela-brightness helpers for {target}: {found[target]}, {entry}")
+            found[target] = int(entry)
     return found
 
 
@@ -386,6 +390,29 @@ class Backlight(BrightnessTest):
         self.add_output()
         self.assertEqual(self.ready("HEADLESS-2", 0.5)["HEADLESS-2"]["mechanism"], "ddc")
         self.assertEqual(set(helpers(self.vela)), {"test_bl", "HEADLESS-2"})
+
+    def test_reenable_waits_for_previous_backlight_helper(self):
+        """Don't start a second backlight writer while the previous one exits."""
+        self.ready("HEADLESS-1", 0.5)
+        previous = helpers(self.vela)["test_bl"]
+        # Hold the old writer alive after SIGTERM to make the race deterministic.
+        os.kill(previous, signal.SIGSTOP)
+        try:
+            self.vela.randr("--output", "HEADLESS-1", "--off")
+            wait_brightness(self.vela, lambda o: o["HEADLESS-1"]["state"] == "off", "backlight off")
+            self.vela.randr("--output", "HEADLESS-1", "--on")
+            self.vela.query("state") # process the enable before checking helpers
+            time.sleep(0.2)
+            self.assertEqual(helpers(self.vela), {"test_bl": previous})
+        finally:
+            # SIGTERM can complete once the old writer is allowed to run.
+            try:
+                os.kill(previous, signal.SIGCONT)
+            except ProcessLookupError:
+                pass
+        self.ready("HEADLESS-1", 0.5)
+        wait_helpers(self.vela, lambda h: h.get("test_bl") not in (None, previous),
+                     "replacement backlight helper")
 
     def test_live_sync_follows_the_firmware(self):
         self.ready("HEADLESS-1", 0.5)

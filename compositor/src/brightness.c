@@ -40,12 +40,12 @@
 #define HELPER_LINE_MAX 128 // the helper's VELA_LINE_MAX
 
 // One vela-brightness process. It outlives its output when the output goes
-// away: until it has exited, no other one starts for its connector.
+// away: until it has exited, no other one starts for its target.
 struct helper {
     struct wl_list link; // vela_brightness.helpers
     struct vela_brightness *brightness;
     struct vela_brightness_output *owner; // NULL: its output is gone, waiting for it to exit
-    char connector[96];
+    char target[96]; // DRM connector (DDC) or backlight device
     struct vela_child child;
     int fd; // our end of the socketpair; -1 once closed
     struct wl_event_source *source;
@@ -192,7 +192,7 @@ static void send_line(struct helper *helper, const char *line)
     }
     // Lines are a few bytes: a socket that can't take one belongs to a helper
     // that stopped reading long ago.
-    wlr_log(WLR_ERROR, "Brightness %s: the helper doesn't read its lines: stopping it", helper->connector);
+    wlr_log(WLR_ERROR, "Brightness %s: the helper doesn't read its lines: stopping it", helper->target);
     helper->hung = true;
     close_socket(helper);
     kill_helper(helper, SIGKILL);
@@ -224,7 +224,7 @@ static void helper_line(struct helper *helper, const char *line)
     const char *before = vela_brightness_model_state_name(&output->model);
     switch (vela_brightness_model_line(&output->model, line)) {
     case VELA_BRIGHTNESS_LINE_INVALID:
-        wlr_log(WLR_ERROR, "Brightness %s: unknown line \"%s\"", helper->connector, line);
+        wlr_log(WLR_ERROR, "Brightness %s: unknown line \"%s\"", helper->target, line);
         break;
     case VELA_BRIGHTNESS_LINE_BUSY:
         wl_event_source_timer_update(helper->timer, WATCHDOG_MS);
@@ -273,12 +273,12 @@ static int handle_timer(void *data)
 {
     struct helper *helper = data;
     if (!helper->owner) {
-        wlr_log(WLR_ERROR, "Brightness %s: the helper didn't go away: killing it", helper->connector);
+        wlr_log(WLR_ERROR, "Brightness %s: the helper didn't go away: killing it", helper->target);
         kill_helper(helper, SIGKILL);
         return 0;
     }
     // A transfer that hangs (§6): this output only; the others don't notice.
-    wlr_log(WLR_ERROR, "Brightness %s: a transaction took more than %d s: killing the helper", helper->connector,
+    wlr_log(WLR_ERROR, "Brightness %s: a transaction took more than %d s: killing the helper", helper->target,
         WATCHDOG_MS / 1000);
     helper->hung = true;
     close_socket(helper);
@@ -295,7 +295,7 @@ static void helper_exited(struct vela_child *child, int status)
     bool hung = helper->hung;
     struct vela_brightness *brightness = helper->brightness;
     helper_free(helper);
-    // A new output on the same connector may be waiting for this one to go.
+    // A new output on the same target may be waiting for this one to go.
     schedule_sync(brightness);
     if (!output) {
         return;
@@ -320,11 +320,11 @@ static void helper_exited(struct vela_child *child, int status)
     }
 }
 
-static bool connector_in_use(struct vela_brightness *brightness, const char *connector)
+static bool connector_in_use(struct vela_brightness *brightness, const char *target)
 {
     struct helper *helper;
     wl_list_for_each (helper, &brightness->helpers, link) {
-        if (strcmp(helper->connector, connector) == 0) {
+        if (strcmp(helper->target, target) == 0) {
             return true;
         }
     }
@@ -347,7 +347,7 @@ static void start_helper(struct vela_brightness_output *output)
     helper->brightness = brightness;
     helper->fd = fds[0];
     helper->power = helper->session = true;
-    snprintf(helper->connector, sizeof(helper->connector), "%s", output->target);
+    snprintf(helper->target, sizeof(helper->target), "%s", output->target);
     wl_list_insert(brightness->helpers.prev, &helper->link);
     helper->timer = wl_event_loop_add_timer(server->loop, handle_timer, helper);
     vela_child_init(&helper->child, "vela-brightness", SIGTERM, -1);
@@ -398,7 +398,7 @@ static void sync_output(struct vela_brightness_output *output)
         }
         return;
     }
-    if (!output->helper && !output->held && !connector_in_use(brightness, output->connector)) {
+    if (!output->helper && !output->held && !connector_in_use(brightness, output->target)) {
         start_helper(output);
     }
     struct helper *helper = output->helper;
