@@ -584,7 +584,8 @@ of §5.4 on a real monitor: it writes, and puts the starting value back.
   recent write, `flock` busy, a suspend (the boot clock jumping ahead of the
   monotonic one) in the middle of a drag and of live sync.
 - **Fake monitors:** a fake backend, chosen with
-  `VELA_BRIGHTNESS_FAKE=<file>`, describes monitors and their faults, from §3,
+  `VELA_BRIGHTNESS_FAKE=<file>` in builds with the tests (`VELA_BUILD_TOOLS`;
+  the packages' helper never opens a file its environment names), describes monitors and their faults, from §3,
   with a **fixed seed** so every run is the same: ignore a write that comes
   5–50 ms after another (the LG), drop writes and return the fixed block (the
   Mi), no answer for a while after `power on`, a value changed "by the

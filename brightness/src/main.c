@@ -14,9 +14,11 @@
 //
 // With VELA_BRIGHTNESS_FAKE (fake monitors), VELA_BRIGHTNESS_SYSFS names a
 // fake sysfs tree for the backlights, written straight into its files: the
-// tests never reach logind. Without fake monitors it is ignored. Both are
-// read with secure_getenv: a helper ever given privileges (setuid, file
-// capabilities) can't be pointed at other files by its caller.
+// tests never reach logind. Without fake monitors it is ignored. Both exist
+// only in builds with the tests (VELA_BUILD_TOOLS, VELA_BRIGHTNESS_TESTING):
+// an installed helper never opens a file its environment names. They are
+// read with secure_getenv, so even a test build given privileges (setuid,
+// file capabilities) can't be pointed at other files by its caller.
 
 #include "backlight.h"
 #include "device.h"
@@ -68,12 +70,26 @@ static int usage(void)
     return 2;
 }
 
+// The tests' fake monitors, or NULL.
+static const char *fake_monitors(void)
+{
+#ifdef VELA_BRIGHTNESS_TESTING
+    const char *fake = secure_getenv("VELA_BRIGHTNESS_FAKE");
+    return fake && *fake ? fake : NULL;
+#else
+    return NULL;
+#endif
+}
+
 // The tests' fake sysfs tree, or NULL.
 static const char *fake_tree(void)
 {
-    const char *fake = secure_getenv("VELA_BRIGHTNESS_FAKE");
+#ifdef VELA_BRIGHTNESS_TESTING
     const char *tree = secure_getenv("VELA_BRIGHTNESS_SYSFS");
-    return fake && *fake && tree && *tree ? tree : NULL;
+    return fake_monitors() && tree && *tree ? tree : NULL;
+#else
+    return NULL;
+#endif
 }
 
 static int run_helper(bool backlight_mode, const char *name)
@@ -104,7 +120,7 @@ static int run_helper(bool backlight_mode, const char *name)
     } else {
         static struct vela_device device;
         char error[256];
-        if (vela_device_open(&device, name, SYSFS, secure_getenv("VELA_BRIGHTNESS_FAKE"), &vela_system_clock, error,
+        if (vela_device_open(&device, name, SYSFS, fake_monitors(), &vela_system_clock, error,
                 sizeof(error)) < 0) {
             fprintf(stderr, "vela-brightness: %s\n", error);
             return 1;
@@ -146,12 +162,12 @@ int main(int argc, char **argv)
         return run_helper(strcmp(argv[1], "backlight") == 0, argv[2]);
     }
     if ((argc == 2 || argc == 3) && strcmp(argv[1], "--probe") == 0) {
-        return vela_probe(stdout, SYSFS, secure_getenv("VELA_BRIGHTNESS_FAKE"), argc == 3 ? argv[2] : NULL);
+        return vela_probe(stdout, SYSFS, fake_monitors(), argc == 3 ? argv[2] : NULL);
     }
     if (argc == 3 && strcmp(argv[1], "--bench") == 0) {
         static struct vela_device device;
         char error[256];
-        if (vela_device_open(&device, argv[2], SYSFS, secure_getenv("VELA_BRIGHTNESS_FAKE"), &vela_system_clock, error,
+        if (vela_device_open(&device, argv[2], SYSFS, fake_monitors(), &vela_system_clock, error,
                 sizeof(error)) < 0) {
             fprintf(stderr, "vela-brightness: %s\n", error);
             return 1;

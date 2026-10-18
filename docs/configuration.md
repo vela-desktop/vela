@@ -162,8 +162,8 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_POLKIT_AGENT` | Start this polkit agent instead of `vela-polkit-agent`; `0` starts none. Without it, Vela's agent starts only in a real (DRM) session, never nested or headless. |
 | `VELA_POLKIT_PROMPT` | For `vela-polkit-agent`: the dialog to run instead of `vela-polkit-prompt`. |
 | `VELA_BRIGHTNESS` | Start this helper instead of `vela-brightness` for each output (it gets `ddc <connector>` and the socket in `VELA_BRIGHTNESS_FD`); `0` starts none. Without it, helpers start only in a real (DRM) session. Either way, only DRM outputs get one. |
-| `VELA_BRIGHTNESS_FAKE` | A file of fake monitors ([brightness](brightness.md#12-tests)) for `vela-brightness`: helpers then start in any session and for every output, headless included, and never touch the hardware. For tests. |
-| `VELA_BRIGHTNESS_SYSFS` | With `VELA_BRIGHTNESS_FAKE` only: a fake sysfs tree where the compositor looks for backlights and `vela-brightness` reads and writes them, straight into its files (never through logind). For tests. |
+| `VELA_BRIGHTNESS_FAKE` | A file of fake monitors ([brightness](brightness.md#12-tests)) for `vela-brightness`: helpers then start in any session and for every output, headless included, and never touch the hardware. For tests: only builds with `VELA_BUILD_TOOLS=ON` read it; the packages' `vela-brightness` ignores it. |
+| `VELA_BRIGHTNESS_SYSFS` | With `VELA_BRIGHTNESS_FAKE` only: a fake sysfs tree where the compositor looks for backlights and `vela-brightness` reads and writes them, straight into its files (never through logind). For tests, in builds with `VELA_BUILD_TOOLS=ON` only, like `VELA_BRIGHTNESS_FAKE`. |
 
 ### Appearance and shell integration
 

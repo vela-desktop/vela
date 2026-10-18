@@ -35,6 +35,11 @@ add_executable(vela-brightness src/main.c)
 target_compile_options(vela-brightness PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-brightness PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 target_link_libraries(vela-brightness PRIVATE vela-brightness-core)
+# Fake monitors and the fake sysfs tree (§12) only where the tests run: the
+# packages build without the tools, and their helper ignores both variables.
+if(VELA_BUILD_TOOLS)
+    target_compile_definitions(vela-brightness PRIVATE VELA_BRIGHTNESS_TESTING)
+endif()
 install(TARGETS vela-brightness RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 # The session's user reaches the displays' I2C buses, and i2c-dev is loaded
 # at boot (§13). Under the prefix's lib/, not libdir: udev and systemd look
