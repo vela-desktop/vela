@@ -479,12 +479,12 @@ advertised cursor size (at most 256x256), ARGB8888 LINEAR cursor plane support,
 and Vulkan ARGB8888 LINEAR rendering support gets a dedicated cursor
 swapchain. Its allocator uses `GBM_BO_USE_CURSOR | GBM_BO_USE_WRITE`.
 
-Vela eagerly probes the buffer's actual Vulkan DMA-BUF color-attachment import
-before giving the swapchain to wlroots. If GBM or Vulkan refuses the cursor
-buffer, the special swapchain is discarded and wlroots retains its default
-cursor path (typically software on the affected NVIDIA drivers).
-A single INFO message is logged for an allocator failure, but **future
-attempts are not globally disabled**. The swapchain belongs to its output,
+Each cursor buffer is validated against the actual Vulkan DMA-BUF
+color-attachment import *before* it reaches a wlroots render pass. If GBM
+or Vulkan refuses the buffer, wlroots falls back to software for that update;
+a later cursor image update can retry the allocation. A single INFO message
+is logged for an allocator failure, but **future attempts are not globally
+disabled**. The swapchain belongs to its output,
 so unplugging a monitor releases it independently from other displays.
 On drivers advertising multiple cursor sizes or unsupported formats, Vela
 conservatively uses wlroots' original path rather than guessing a size.
