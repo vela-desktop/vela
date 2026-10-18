@@ -149,13 +149,21 @@ int vela_backlight_set_file(void *data, const char *device, const char *dir, uin
     if (snprintf(path, sizeof(path), "%s/brightness", dir) >= (int)sizeof(path)) {
         return -ENAMETOOLONG;
     }
-    FILE *file = fopen(path, "we");
-    if (!file) {
+    // Never O_CREAT: the file is the device's, and a missing one is an error.
+    // O_TRUNC is nothing to sysfs, and keeps a fake tree's file one value.
+    int fd = open(path, O_WRONLY | O_TRUNC | O_CLOEXEC);
+    if (fd < 0) {
         return -errno;
     }
-    int written = fprintf(file, "%u\n", value);
-    int closed = fclose(file);
-    return written < 0 || closed != 0 ? -EIO : 0;
+    char text[16];
+    int length = snprintf(text, sizeof(text), "%u\n", value);
+    ssize_t written = write(fd, text, (size_t)length); // one write: sysfs takes the value whole
+    int e = written < 0 ? errno : EIO;
+    int closed = close(fd);
+    if (written != length) {
+        return -e;
+    }
+    return closed != 0 ? -EIO : 0;
 }
 
 #ifdef VELA_HAVE_SD_BUS

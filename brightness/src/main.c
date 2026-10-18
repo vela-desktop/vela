@@ -14,7 +14,9 @@
 //
 // With VELA_BRIGHTNESS_FAKE (fake monitors), VELA_BRIGHTNESS_SYSFS names a
 // fake sysfs tree for the backlights, written straight into its files: the
-// tests never reach logind. Without fake monitors it is ignored.
+// tests never reach logind. Without fake monitors it is ignored. Both are
+// read with secure_getenv: a helper ever given privileges (setuid, file
+// capabilities) can't be pointed at other files by its caller.
 
 #include "backlight.h"
 #include "device.h"
@@ -69,8 +71,8 @@ static int usage(void)
 // The tests' fake sysfs tree, or NULL.
 static const char *fake_tree(void)
 {
-    const char *fake = getenv("VELA_BRIGHTNESS_FAKE");
-    const char *tree = getenv("VELA_BRIGHTNESS_SYSFS");
+    const char *fake = secure_getenv("VELA_BRIGHTNESS_FAKE");
+    const char *tree = secure_getenv("VELA_BRIGHTNESS_SYSFS");
     return fake && *fake && tree && *tree ? tree : NULL;
 }
 
@@ -102,7 +104,7 @@ static int run_helper(bool backlight_mode, const char *name)
     } else {
         static struct vela_device device;
         char error[256];
-        if (vela_device_open(&device, name, SYSFS, getenv("VELA_BRIGHTNESS_FAKE"), &vela_system_clock, error,
+        if (vela_device_open(&device, name, SYSFS, secure_getenv("VELA_BRIGHTNESS_FAKE"), &vela_system_clock, error,
                 sizeof(error)) < 0) {
             fprintf(stderr, "vela-brightness: %s\n", error);
             return 1;
@@ -144,12 +146,12 @@ int main(int argc, char **argv)
         return run_helper(strcmp(argv[1], "backlight") == 0, argv[2]);
     }
     if ((argc == 2 || argc == 3) && strcmp(argv[1], "--probe") == 0) {
-        return vela_probe(stdout, SYSFS, getenv("VELA_BRIGHTNESS_FAKE"), argc == 3 ? argv[2] : NULL);
+        return vela_probe(stdout, SYSFS, secure_getenv("VELA_BRIGHTNESS_FAKE"), argc == 3 ? argv[2] : NULL);
     }
     if (argc == 3 && strcmp(argv[1], "--bench") == 0) {
         static struct vela_device device;
         char error[256];
-        if (vela_device_open(&device, argv[2], SYSFS, getenv("VELA_BRIGHTNESS_FAKE"), &vela_system_clock, error,
+        if (vela_device_open(&device, argv[2], SYSFS, secure_getenv("VELA_BRIGHTNESS_FAKE"), &vela_system_clock, error,
                 sizeof(error)) < 0) {
             fprintf(stderr, "vela-brightness: %s\n", error);
             return 1;

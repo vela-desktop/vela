@@ -186,13 +186,19 @@ TEST(Backlight, LogindSayingNo)
     EXPECT_EQ(panel.write(500, &applied), VELA_RESULT_NO_ANSWER);
 }
 
+// A shorter value replaces the old one whole, and a missing file is never
+// created.
 TEST(Backlight, TheFakeTreeIsWrittenInPlace)
 {
     Tree tree;
     tree.write("max_brightness", "100\n");
     tree.write("brightness", "50\n");
-    EXPECT_EQ(vela_backlight_set_file(nullptr, "intel_backlight", tree.dir.c_str(), 30), 0);
-    EXPECT_EQ(tree.read("brightness"), "30");
+    EXPECT_EQ(vela_backlight_set_file(nullptr, "intel_backlight", tree.dir.c_str(), 7), 0);
+    std::ifstream file(tree.dir / "brightness");
+    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(file), {}), "7\n");
+    fs::remove(tree.dir / "brightness");
+    EXPECT_EQ(vela_backlight_set_file(nullptr, "intel_backlight", tree.dir.c_str(), 30), -ENOENT);
+    EXPECT_FALSE(fs::exists(tree.dir / "brightness"));
 }
 
 // The helper with a backlight: every value of a drag is written as it comes,
