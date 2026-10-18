@@ -1,26 +1,26 @@
 {
-  "collected_at": "2026-10-17T07:46:43+00:00",
+  "collected_at": "2026-10-18T08:01:14+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 30,
+      "count": 43,
+      "referrer": "velade.org",
+      "uniques": 36
+    },
+    {
+      "count": 31,
       "referrer": "github.com",
       "uniques": 9
     },
     {
-      "count": 28,
-      "referrer": "velade.org",
-      "uniques": 22
-    },
-    {
-      "count": 16,
-      "referrer": "reddit.com",
-      "uniques": 14
-    },
-    {
-      "count": 14,
+      "count": 22,
       "referrer": "com.reddit.frontpage",
-      "uniques": 12
+      "uniques": 20
+    },
+    {
+      "count": 22,
+      "referrer": "reddit.com",
+      "uniques": 20
     },
     {
       "count": 1,
