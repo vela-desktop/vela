@@ -13,6 +13,7 @@
 #include "output_key.h"
 #include "output_manager.h"
 #include "render/renderer.h"
+#include "render/cursor_policy.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "server.h"
@@ -25,6 +26,12 @@
 #include <string.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include <drm_fourcc.h>
+#include <wlr/backend/drm.h>
+#include <wlr/interfaces/wlr_output.h>
+#include <wlr/render/allocator.h>
+#include <wlr/render/drm_format_set.h>
+#include <wlr/render/swapchain.h>
 #include <wlr/backend/headless.h>
 #include <wlr/backend/wayland.h>
 #include <wlr/types/wlr_cursor.h>
@@ -157,6 +164,58 @@ static void handle_request_state(struct wl_listener *listener, void *data);
 static void handle_destroy(struct wl_listener *listener, void *data);
 static void start_virtual_vblank(struct vela_output *output);
 
+// wlroots uses the output allocator for both cursor and primary buffers, and
+// doesn't tell the allocator which it is requesting. Supply a *dedicated*
+// cursor swapchain only when the DRM backend exposes an unambiguous, fixed
+// cursor format/size. This preserves the ordinary allocator for captures and
+// primary buffers, even small LINEAR buffers.
+static void prepare_cursor_swapchain(struct vela_server *server, struct wlr_output *wlr)
+{
+    if (!server->cursor_allocator || !wlr_output_is_drm(wlr) || !wlr->impl->set_cursor
+        || !wlr->impl->get_cursor_sizes || !wlr->impl->get_cursor_formats || wlr->cursor_swapchain) {
+        return;
+    }
+
+    size_t count = 0;
+    const struct wlr_output_cursor_size *sizes = wlr->impl->get_cursor_sizes(wlr, &count);
+    const struct wlr_drm_format_set *formats
+        = wlr->impl->get_cursor_formats(wlr, WLR_BUFFER_CAP_DMABUF);
+    bool plane_linear = formats && wlr_drm_format_set_has(formats, DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR);
+    bool vulkan_linear = wlr_drm_format_set_has(vela_renderer_render_formats(server->renderer),
+        DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR);
+    int width = sizes && count == 1 ? sizes[0].width : 0;
+    int height = sizes && count == 1 ? sizes[0].height : 0;
+    if (!vela_cursor_swapchain_eligible(true, formats != NULL, count, width, height,
+            plane_linear, vulkan_linear)) {
+        return;
+    }
+
+    uint64_t linear = DRM_FORMAT_MOD_LINEAR;
+    const struct wlr_drm_format format = {
+        .format = DRM_FORMAT_ARGB8888,
+        .len = 1,
+        .modifiers = &linear,
+    };
+    struct wlr_swapchain *swapchain = wlr_swapchain_create(server->cursor_allocator, width, height, &format);
+    if (!swapchain) {
+        return; // wlroots keeps its ordinary software cursor fallback
+    }
+
+    // Allocate and import one buffer *now*, before wlroots accepts it.
+    // This catches CURSOR|WRITE BOs which GBM creates but Vulkan cannot draw
+    // into as a color attachment. Never poison the ordinary allocator.
+    struct wlr_buffer *buffer = wlr_swapchain_acquire(swapchain);
+    if (!buffer) {
+        wlr_log(WLR_INFO, "Output %s: cursor-only GBM/Vulkan probe failed; keeping default cursor path", wlr->name);
+        wlr_swapchain_destroy(swapchain);
+        return;
+    }
+    wlr_buffer_unlock(buffer);
+    wlr->cursor_swapchain = swapchain;
+    wlr_log(WLR_INFO, "Output %s: prepared %dx%d ARGB8888 LINEAR hardware cursor buffers",
+        wlr->name, width, height);
+}
+
 void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
 {
     struct vela_output *output = calloc(1, sizeof(*output));
@@ -170,6 +229,7 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     // Everything drawn on this output goes through Vela's renderer, including
     // what wlroots does (cursor, captures).
     wlr_output_init_render(wlr, server->allocator, server->wlr_renderer);
+    prepare_cursor_swapchain(server, wlr);
 
     char key[256];
     vela_output_key(wlr, key, sizeof(key));
