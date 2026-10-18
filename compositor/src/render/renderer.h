@@ -56,6 +56,14 @@ int vela_vulkan_render_fd(const struct vela_vulkan *vk);
 // render_fd.
 struct wlr_allocator *vela_gbm_allocator_create(int render_fd);
 
+// Separate allocator for the optional cursor-only swapchain on DRM outputs.
+// It never allocates scanout/capture buffers and refuses non-renderable BOs.
+struct wlr_allocator *vela_gbm_cursor_allocator_create(int render_fd, struct vela_renderer *renderer);
+
+// Check the *actual* Vulkan DMA-BUF import/color attachment, not only the
+// GBM flags. A successful probe caches the target for later render passes.
+bool vela_renderer_validate_target(struct vela_renderer *renderer, struct wlr_buffer *buffer);
+
 // ----------------------------------------------------------- renderer --
 
 struct vela_renderer *vela_renderer_create(struct vela_vulkan *vk);
