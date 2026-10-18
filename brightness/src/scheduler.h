@@ -10,8 +10,8 @@
 // reports the result. Times in milliseconds on the monotonic clock.
 //
 // - A new target replaces the old one; writes are at least
-//   VELA_WRITE_INTERVAL_MS apart; once no new target came for
-//   VELA_READBACK_MS after the last write, a read back confirms it or writes
+//   `write_interval` apart; once no new target came for
+//   `readback_delay` after the last write, a read back confirms it or writes
 //   it again, VELA_REWRITES times within VELA_BUDGET_MS, then `refused`.
 // - Live sync reads once every VELA_LIVE_MS, never while a target is
 //   pending nor right after a write.
@@ -54,7 +54,7 @@ enum vela_read_kind {
 struct vela_action {
     enum vela_action_kind kind;
     enum vela_read_kind read;
-    uint16_t value;
+    uint32_t value;
     int64_t at;
 };
 
@@ -69,25 +69,30 @@ struct vela_event {
     enum vela_event_kind kind;
     enum vela_state state;
     uint64_t seq;
-    uint16_t value;
-    uint16_t max;
+    uint32_t value;
+    uint32_t max;
 };
 
 struct vela_scheduler {
     void (*emit)(void *data, const struct vela_event *event);
     void *emit_data;
 
+    // VELA_WRITE_INTERVAL_MS and VELA_READBACK_MS for DDC/CI; a backlight
+    // has its own (tuning.h).
+    int64_t write_interval;
+    int64_t readback_delay;
+
     enum vela_state state;
-    uint16_t max;
+    uint32_t max;
     bool known; // `confirmed` was read at least once
-    uint16_t confirmed; // the value last read from the monitor
+    uint32_t confirmed; // the value last read from the monitor
     bool dirty; // written since that read
     uint64_t last_seq; // the newest seq received
 
     // The target (§5.4).
     bool pending;
     uint64_t seq;
-    uint16_t target;
+    uint32_t target;
     bool written; // written, waiting for the read back
     int rewrites;
     int64_t since; // the budget's start
@@ -130,8 +135,11 @@ void vela_scheduler_probe(struct vela_scheduler *scheduler, int64_t now);
 
 // What to do now. A READ or WRITE must be done, then reported.
 struct vela_action vela_scheduler_next(struct vela_scheduler *scheduler, int64_t now);
-void vela_scheduler_read_done(struct vela_scheduler *scheduler, enum vela_result result, uint16_t value,
-    uint16_t max, int64_t now);
-void vela_scheduler_write_done(struct vela_scheduler *scheduler, enum vela_result result, int64_t now);
+void vela_scheduler_read_done(struct vela_scheduler *scheduler, enum vela_result result, uint32_t value,
+    uint32_t max, int64_t now);
+// `applied`: what the device was given, when it isn't the value asked for (a
+// backlight's minimum, its OLED guard); the read back then expects it.
+void vela_scheduler_write_done(struct vela_scheduler *scheduler, enum vela_result result, uint32_t applied,
+    int64_t now);
 
 #endif

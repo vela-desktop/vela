@@ -5,6 +5,7 @@
 # (docs/brightness.md §5). C17 on the C library alone: its own DDC/CI over
 # /dev/i2c-N, no libddcutil.
 add_library(vela-brightness-core STATIC
+    src/backlight.c
     src/ddc.c
     src/device.c
     src/fake.c
@@ -18,6 +19,17 @@ target_include_directories(vela-brightness-core PUBLIC ${CMAKE_CURRENT_SOURCE_DI
 target_compile_definitions(vela-brightness-core PUBLIC _GNU_SOURCE)
 target_compile_options(vela-brightness-core PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-brightness-core PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+# The built-in backlight is written through logind (§5.3), with sd-bus.
+find_package(PkgConfig)
+if(PkgConfig_FOUND)
+    pkg_check_modules(SYSTEMD IMPORTED_TARGET libsystemd)
+endif()
+if(SYSTEMD_FOUND)
+    target_compile_definitions(vela-brightness-core PRIVATE VELA_HAVE_SD_BUS)
+    target_link_libraries(vela-brightness-core PUBLIC PkgConfig::SYSTEMD)
+else()
+    message(STATUS "libsystemd not found: vela-brightness can't change a laptop's backlight")
+endif()
 
 add_executable(vela-brightness src/main.c)
 target_compile_options(vela-brightness PRIVATE -Wall -Wextra -Wno-unused-parameter)
@@ -31,6 +43,7 @@ if(VELA_BUILD_TOOLS)
     find_package(GTest)
     if(GTest_FOUND)
         add_executable(vela-brightness-tests
+            tests/backlight_test.cpp
             tests/ddc_test.cpp
             tests/fake_test.cpp
             tests/helper_test.cpp

@@ -220,17 +220,29 @@ Page {
         description: Displays.error
     }
 
+    Binding {
+        target: Brightness
+        property: "live"
+        value: page.visible
+    }
+
     CardGroup {
         title: qsTr("Brightness & color")
+        // The selected display's (docs/brightness.md §8), read live while
+        // the page is visible.
         Card {
-            visible: Status.brightnessAvailable
+            id: brightnessCard
+            readonly property var brightness: page.output
+                ? Brightness.outputs.find(o => o.name === page.output.name) : undefined
+            visible: brightness !== undefined && brightness.available
             icon: "brightness-high"
             title: qsTr("Brightness")
-            description: qsTr("Adjust the brightness of the built-in display")
+            description: qsTr("Adjust the brightness of this display")
             trailing: Slider {
                 width: 200
-                value: Status.brightness
-                onMoved: Status.setBrightness(value)
+                enabled: brightnessCard.brightness !== undefined && !brightnessCard.brightness.locked
+                value: brightnessCard.brightness !== undefined ? brightnessCard.brightness.value : 0
+                onMoved: Brightness.setValue(page.output.name, value)
             }
         }
         Card {

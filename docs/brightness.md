@@ -8,7 +8,8 @@ every output. This document comes before the code: decisions are made here,
 and the code follows them.
 
 > **Status:** design approved; B0 done, its timings measured with `--bench`
-> on the monitors of §3; B1 done, tested on fake monitors (§15).
+> on the monitors of §3; B1 and B2 done, tested on fake monitors and a
+> fake backlight (§15).
 
 ## 1. Goals
 
@@ -228,12 +229,15 @@ The compositor names what to drive:
   AUX channel: DP-3 → `i2c-9`), otherwise the `ddc` link (HDMI-A-1 →
   `i2c-6`). For DisplayPort the `ddc` link points at a bus that doesn't reach
   the monitor (DP-3's `ddc` is `i2c-5`), so AUX comes first.
-- **Backlight:** for a built-in output (`eDP-*`, `LVDS-*`, `DSI-*`), the
-  compositor picks the device in `/sys/class/backlight`: one whose parent is
-  the same DRM card or connector first, then by `type` in the usual order
-  (`firmware`, `platform`, `raw`). An internal output
-  without a backlight device tries DDC/CI, like an external one. To be
-  checked on laptops in B2: the user's own machine is a desktop.
+- **Backlight** (`compositor/src/backlight_choice.c`): a device in
+  `/sys/class/backlight` whose parent is the connector itself is that
+  output's (i915's `intel_backlight` hangs under `card1-eDP-1`). Otherwise a
+  built-in output (`eDP-*`, `LVDS-*`, `DSI-*`) takes one whose parent is its
+  DRM card or the card's PCI device (amdgpu's `amdgpu_bl1`), then any; each
+  time by `type` in the usual order (`firmware`, `platform`, `raw`), then by
+  name. An internal output without a backlight device tries DDC/CI, like an
+  external one. The user's own machine is a desktop: laptops are checked in
+  B4 (§12).
 
 ### 5.2 DDC/CI
 
@@ -277,15 +281,22 @@ Only what brightness needs, from the DDC/CI and MCCS standards:
 - **Read:** `brightness` and `max_brightness` in sysfs (readable by anyone),
   and `actual_brightness` when present.
 - **Write:** logind's `SetBrightness("backlight", <device>, <value>)` on the
-  session, over D-Bus (`sd-bus`), as the shell does today. No root.
+  session (`/org/freedesktop/login1/session/auto`: the helper is in the
+  compositor's session), over D-Bus (`sd-bus`), with a 2 s timeout. No root.
 - **Minimum:** never 0 when the device has more than 20 levels (a 0 can turn
   the panel off, §4.2); 0 is allowed on coarse devices, where it is a level.
 - **OLED guard:** after a write at or below 5% of the maximum, if
   `actual_brightness` reads 0, raise the value by one, up to three times
   (COSMIC, §4.3).
-- No coalescing is needed (a write takes a D-Bus round trip), but the same
-  lines, states and live sync apply: some laptops change the backlight in
-  firmware, behind Vela's back.
+- No coalescing is needed (a write takes a D-Bus round trip): the scheduler
+  of §5.4 runs with no interval between writes and a read back after
+  100 ms. The same lines, states and live sync apply: some laptops change the
+  backlight in firmware, behind Vela's back.
+- The minimum and the OLED guard can make the device's value differ from
+  the target: the helper then confirms what it applied, so a slider at 0
+  ends at 1.
+- Values are 32-bit everywhere (lines, scheduler, model): `max_brightness`
+  passes 65535 on some Intel panels.
 
 ### 5.4 Writing a value (DDC/CI)
 
@@ -450,7 +461,7 @@ New lines on the command socket (`command.h`):
 
 | Line | |
 |---|---|
-| `brightness` | question: every output that has a helper, one JSON line: `{"outputs":[{"name":"DP-3","state":"ready","value":0.8,"pending":false,"refused":false,"max":100,"seq":3}]}`; `value` is `null` until the monitor answered, `seq` is the latest target's number (§7.1) |
+| `brightness` | question: every output that has a helper, one JSON line: `{"outputs":[{"name":"DP-3","description":"…","mechanism":"ddc","state":"ready","value":0.8,"pending":false,"refused":false,"max":100,"seq":3}]}`; `description` is the monitor's, as Settings shows it; `mechanism` is `ddc` or `backlight`; `value` is `null` until the monitor answered; `seq` is the latest target's number (§7.1) |
 | `brightness <output> <value>` | set, `value` from 0 to 1; the compositor rounds to the device's units |
 | `brightness-probe <output>` | probe again (Settings, §8) |
 | `watch brightness` | the connection stays open and receives the same JSON line after every change |
@@ -513,10 +524,19 @@ New lines on the command socket (`command.h`):
   the model stays simple and every client behaves the same.
 - **What the slider shows** follows the rule of the service-backed switches
   (`shell/src/requested.h`): the value asked for at once, then the
-  compositor's once it confirms or refuses that request; an answer to an
-  older request leaves the newest alone. Here the sequence numbers and the
-  `pending` flag come from the compositor (§7.1), and the helper's budget
-  (§5.4) takes the place of the switch's timeout.
+  compositor's once it has taken that request; an answer to an older
+  request leaves the newest alone. The compositor numbers a target only
+  when it changes what is shown, so the model knows the `seq` its request
+  will get (one more for each value it sends that rounds differently) and
+  ignores every state with a smaller one: a drag never pulls the knob back.
+  From then on `pending` and `refused` are the compositor's (§7.1). A
+  request never taken (the output stopped being ready meanwhile) is dropped
+  after 3 s.
+- **Quick settings** shows the slider of the output it opens on
+  (`QScreen::name()`); the page lists every output with a slider, by count,
+  so a new state never recreates a slider being dragged.
+- The model reconnects every second when the compositor restarts, and
+  sends `watch brightness` and `brightness-live` again.
 
 ## 10. Later
 
@@ -567,19 +587,32 @@ of §5.4 on a real monitor: it writes, and puts the starting value back.
   buttons", a value locked (refused), no DDC/CI at all, a transfer that
   hangs. It binds to outputs by name, so headless outputs (`HEADLESS-1`) get
   a monitor.
+- **Fake backlight:** `VELA_BRIGHTNESS_SYSFS=<tree>` (with fake monitors
+  only) is a sysfs tree of the test's own: the compositor chooses backlights
+  in it and the helper writes its files, never logind. The choice of §5.1 and
+  the backlight backend are unit-tested on trees shaped like i915's, amdgpu's
+  and ACPI's.
+- **The shell's model** (`shell/tests/brightness_model.cpp`): against a fake
+  compositor socket, an older state, a drag, a refusal, a request never
+  taken, a locked output, the wheel's steps, a compositor restart.
 - **Regressions from COSMIC (§4.3):**
   - #165: no device is open while a helper is idle, during the pauses of a
     drag, or after its output is removed;
   - #183: no read overlaps a write on the same device;
   - #1483: the number of transactions in a drag is bounded and known;
   - #150: dragging one output's slider never touches another output.
-- **Functional:** the headless harness (`scripts/run-headless.sh`) with the
-  fake backend: `brightness`, `watch brightness` (including a watcher that
-  stops reading), live sync and its count per connection, hotplug with
-  `test-output` (also two identical monitors, and a fast unplug and replug),
-  `test-power off/on`, the watchdog killing one hung helper while another
-  output keeps working, the quick settings slider and page in screenshots
-  (`vela-shot`).
+- **Functional** (`tests/functional/test_brightness.py`, its own ctest
+  entry `functional-brightness`): the headless harness with the fake
+  backend: `brightness`, `watch brightness` (including a watcher that stops
+  reading), live sync and its count per connection, hotplug with
+  `test-output`, a disabled output, `test-power off/on`, the watchdog killing
+  one hung helper while another output keeps working, a helper that keeps
+  crashing, the fake backlight; in the real shell, the quick settings slider
+  (a click and a drag move the display, found in screenshots), the page with
+  a slider per display, and the slider following the monitor's buttons only
+  while the panel is open. Headless outputs never get the same name twice,
+  so two identical monitors and a fast replug of the same connector are left
+  to the manual tests.
 - **Manual, on real hardware** (added to [hardware](hardware.md)): every
   monitor gets a slider or the right reason, a drag ends on the value shown,
   0% and back, the monitor's buttons move an open slider, unplug and replug,
@@ -635,6 +668,6 @@ of §5.4 on a real monitor: it writes, and puts the starting value back.
 |---|---|---|
 | B0 | `vela-brightness`: DDC/CI protocol and transfers, scheduler, fake backend and their unit tests, `--probe`; numbers tuned on the monitors of §3 | done |
 | B1 | Compositor: a helper per output with its watchdog, the lines of §5.6, the model, `brightness`, `watch brightness`, `brightness-live`, `brightness-probe`; functional tests | done |
-| B2 | Backlight backend (§5.3); shell: `Brightness` model, quick settings slider for the panel's output and the Brightness page, live sync; backlight out of `SystemStatus` | |
+| B2 | Backlight backend (§5.3); shell: `Brightness` model, quick settings slider for the panel's output and the Brightness page, live sync; backlight out of `SystemStatus` | done |
 | B3 | Settings: the Display page card for the selected output, with the reasons of §8 | |
 | B4 | udev rule, `modules-load.d`, PKGBUILD, docs, `--probe` in the bug report (§13); the user's tests on real hardware | |

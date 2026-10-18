@@ -81,7 +81,7 @@ static const char *after(const char *line, const char *word)
 // "<a> <b>" with nothing after.
 static bool parse_pair(const char *text, uint64_t max_a, uint64_t *a, uint64_t *b)
 {
-    return parse_u64(&text, max_a, a) && *text++ == ' ' && parse_u64(&text, UINT16_MAX, b) && *text == '\0';
+    return parse_u64(&text, max_a, a) && *text++ == ' ' && parse_u64(&text, UINT32_MAX, b) && *text == '\0';
 }
 
 // What clients are shown, to tell whether a line changed it.
@@ -137,7 +137,7 @@ enum vela_brightness_line vela_brightness_model_line(struct vela_brightness_mode
     if ((rest = after(line, "state"))) {
         const char *values = after(rest, "ready");
         if (values) {
-            if (!parse_pair(values, UINT16_MAX, &a, &b) || b == 0) {
+            if (!parse_pair(values, UINT32_MAX, &a, &b) || b == 0) {
                 return VELA_BRIGHTNESS_LINE_INVALID;
             }
             ready(model, (uint32_t)a, (uint32_t)b);
@@ -215,11 +215,14 @@ const char *vela_brightness_model_state_name(const struct vela_brightness_model 
 }
 
 void vela_brightness_model_json(const struct vela_brightness_model *model, const char *name,
-    struct vela_buffer *json)
+    const char *description, const char *mechanism, struct vela_buffer *json)
 {
     vela_buffer_append(json, "{\"name\":");
     vela_buffer_append_json(json, name);
-    vela_buffer_appendf(json, ",\"state\":\"%s\",\"value\":", vela_brightness_model_state_name(model));
+    vela_buffer_append(json, ",\"description\":");
+    vela_buffer_append_json(json, description ? description : "");
+    vela_buffer_appendf(json, ",\"mechanism\":\"%s\",\"state\":\"%s\",\"value\":", mechanism,
+        vela_brightness_model_state_name(model));
     if (model->known && model->max > 0) {
         uint32_t value = model->pending ? model->target : model->confirmed;
         vela_buffer_appendf(json, "%.6g", (double)value / model->max);

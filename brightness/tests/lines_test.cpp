@@ -39,10 +39,11 @@ TEST(Lines, ParsesEveryCommand)
     EXPECT_EQ(command.seq, 7u);
     EXPECT_EQ(command.value, 80u);
 
-    command = vela_parse_command("set 18446744073709551615 65535");
+    // A backlight's maximum can pass 16 bits (96000 on some Intel panels).
+    command = vela_parse_command("set 18446744073709551615 4294967295");
     EXPECT_EQ(command.kind, VELA_COMMAND_SET);
     EXPECT_EQ(command.seq, UINT64_MAX);
-    EXPECT_EQ(command.value, 65535u);
+    EXPECT_EQ(command.value, UINT32_MAX);
 
     command = vela_parse_command("live on");
     EXPECT_EQ(command.kind, VELA_COMMAND_LIVE);
@@ -66,7 +67,7 @@ TEST(Lines, ParsesEveryCommand)
 TEST(Lines, RejectsMalformedCommands)
 {
     for (const char* line : {
-             "", "set", "set 1", "set 0 50", "set 1 65536", "set 1 -5", "set -1 5", "set 1 5 ", "set  1 5",
+             "", "set", "set 1", "set 0 50", "set 1 4294967296", "set 1 -5", "set -1 5", "set 1 5 ", "set  1 5",
              "set 1  5", "set 18446744073709551616 5", "set 1 5x", "set x 5", "live", "live maybe", "live on ",
              "power", "power active", "session on", "probe now", " probe", "brightness 5" }) {
         EXPECT_EQ(vela_parse_command(line).kind, VELA_COMMAND_INVALID) << '"' << line << '"';

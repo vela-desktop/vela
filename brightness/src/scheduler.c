@@ -50,7 +50,7 @@ static bool usable(const struct vela_scheduler *scheduler)
     return scheduler->state == VELA_STATE_READY || scheduler->state == VELA_STATE_NOT_RESPONDING;
 }
 
-static void emit(struct vela_scheduler *scheduler, enum vela_event_kind kind, uint64_t seq, uint16_t value)
+static void emit(struct vela_scheduler *scheduler, enum vela_event_kind kind, uint64_t seq, uint32_t value)
 {
     struct vela_event event = {
         .kind = kind,
@@ -93,6 +93,8 @@ void vela_scheduler_init(struct vela_scheduler *scheduler, int64_t now, int64_t 
     memset(scheduler, 0, sizeof(*scheduler));
     scheduler->emit = emit;
     scheduler->emit_data = data;
+    scheduler->write_interval = VELA_WRITE_INTERVAL_MS;
+    scheduler->readback_delay = VELA_READBACK_MS;
     scheduler->state = VELA_STATE_PROBING;
     scheduler->last_write = LONG_AGO;
     scheduler->last_read = LONG_AGO;
@@ -124,7 +126,7 @@ void vela_scheduler_set(struct vela_scheduler *scheduler, uint64_t seq, uint32_t
     if (!usable(scheduler)) {
         return;
     }
-    uint16_t target = value < scheduler->max ? (uint16_t)value : scheduler->max;
+    uint32_t target = value < scheduler->max ? value : scheduler->max;
     if (scheduler->pending && target == scheduler->target) {
         scheduler->seq = seq;
         return;
@@ -240,7 +242,7 @@ struct vela_action vela_scheduler_next(struct vela_scheduler *scheduler, int64_t
     return wait_until(VELA_NEVER);
 }
 
-static void good_read(struct vela_scheduler *scheduler, enum vela_read_kind kind, uint16_t value, uint16_t max,
+static void good_read(struct vela_scheduler *scheduler, enum vela_read_kind kind, uint32_t value, uint32_t max,
     int64_t now)
 {
     scheduler->failed_reads = 0;
@@ -293,8 +295,8 @@ static void good_read(struct vela_scheduler *scheduler, enum vela_read_kind kind
     }
 }
 
-void vela_scheduler_read_done(struct vela_scheduler *scheduler, enum vela_result result, uint16_t value,
-    uint16_t max, int64_t now)
+void vela_scheduler_read_done(struct vela_scheduler *scheduler, enum vela_result result, uint32_t value,
+    uint32_t max, int64_t now)
 {
     enum vela_read_kind kind = scheduler->doing.read;
     scheduler->busy = false;
@@ -332,7 +334,7 @@ void vela_scheduler_read_done(struct vela_scheduler *scheduler, enum vela_result
         if (kind == VELA_READ_WAKE) {
             scheduler->wake_at = now + VELA_WAKE_MS;
         } else if (kind == VELA_READ_BACK) {
-            scheduler->readback_at = now + VELA_READBACK_MS;
+            scheduler->readback_at = now + scheduler->readback_delay;
         }
         return;
     }
@@ -349,7 +351,7 @@ void vela_scheduler_read_done(struct vela_scheduler *scheduler, enum vela_result
         return;
     }
     if (kind == VELA_READ_BACK) {
-        scheduler->readback_at = now + VELA_READBACK_MS;
+        scheduler->readback_at = now + scheduler->readback_delay;
     } else if (kind == VELA_READ_PROBE) {
         scheduler->probe_due = false;
     }
@@ -359,25 +361,27 @@ void vela_scheduler_read_done(struct vela_scheduler *scheduler, enum vela_result
     }
 }
 
-void vela_scheduler_write_done(struct vela_scheduler *scheduler, enum vela_result result, int64_t now)
+void vela_scheduler_write_done(struct vela_scheduler *scheduler, enum vela_result result, uint32_t applied,
+    int64_t now)
 {
-    uint16_t value = scheduler->doing.value;
+    uint32_t value = scheduler->doing.value;
     scheduler->busy = false;
     switch (result) {
     case VELA_RESULT_OK:
         scheduler->last_write = now;
-        scheduler->write_after = now + VELA_WRITE_INTERVAL_MS;
+        scheduler->write_after = now + scheduler->write_interval;
         scheduler->dirty = true;
         if (scheduler->pending && value == scheduler->target) {
+            scheduler->target = applied;
             scheduler->written = true;
-            scheduler->readback_at = now + VELA_READBACK_MS;
+            scheduler->readback_at = now + scheduler->readback_delay;
         }
         return;
     case VELA_RESULT_NO_ANSWER:
         // Nobody acknowledged: try again after the interval, within the
         // budget.
         scheduler->last_write = now;
-        scheduler->write_after = now + VELA_WRITE_INTERVAL_MS;
+        scheduler->write_after = now + scheduler->write_interval;
         scheduler->dirty = true;
         scheduler->written = false;
         return;

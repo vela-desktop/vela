@@ -37,7 +37,7 @@ struct Model {
     std::string json(const char* name = "DP-3") const
     {
         vela_buffer buffer = {};
-        vela_brightness_model_json(&model, name, &buffer);
+        vela_brightness_model_json(&model, name, "Mi Monitor", "ddc", &buffer);
         std::string text = vela_buffer_text(&buffer);
         vela_buffer_finish(&buffer);
         return text;
@@ -48,11 +48,11 @@ TEST(BrightnessModel, ProbingUntilTheMonitorAnswers)
 {
     Model m;
     EXPECT_EQ(m.json(),
-        R"({"name":"DP-3","state":"probing","value":null,"pending":false,"refused":false,"max":0,"seq":0})");
+        R"({"name":"DP-3","description":"Mi Monitor","mechanism":"ddc","state":"probing","value":null,"pending":false,"refused":false,"max":0,"seq":0})");
     EXPECT_EQ(m.set(0.5), "(no)");
     EXPECT_EQ(m.line("state ready 80 100"), VELA_BRIGHTNESS_LINE_CHANGED);
     EXPECT_EQ(m.json(),
-        R"({"name":"DP-3","state":"ready","value":0.8,"pending":false,"refused":false,"max":100,"seq":0})");
+        R"({"name":"DP-3","description":"Mi Monitor","mechanism":"ddc","state":"ready","value":0.8,"pending":false,"refused":false,"max":100,"seq":0})");
 }
 
 TEST(BrightnessModel, SetIsRoundedToTheDeviceAndShownAtOnce)
@@ -206,14 +206,24 @@ TEST(BrightnessModel, BadLinesChangeNothing)
 {
     Model m;
     for (const char* bad : { "", "state", "state ready", "state ready 80", "state ready 80 0",
-             "state ready 80 100 1", "state ready -1 100", "state ready 80 65536", "state sleeping", "value",
-             "value 1", "value x 1", "value 1 70000", "refused 1", "busy now", "set 1 50" }) {
+             "state ready 80 100 1", "state ready -1 100", "state ready 80 4294967296", "state sleeping", "value",
+             "value 1", "value x 1", "value 1 4294967296", "refused 1", "busy now", "set 1 50" }) {
         EXPECT_EQ(m.line(bad), VELA_BRIGHTNESS_LINE_INVALID) << bad;
     }
     EXPECT_EQ(m.model.state, VELA_BRIGHTNESS_PROBING);
     // Before the monitor answered, a value has nothing to update.
     EXPECT_EQ(m.line("value 0 50"), VELA_BRIGHTNESS_LINE_UNCHANGED);
     EXPECT_FALSE(m.model.known);
+}
+
+// A laptop's backlight can have more than 16 bits of levels.
+TEST(BrightnessModel, LargeMaximums)
+{
+    Model m;
+    m.line("state ready 48000 96000");
+    EXPECT_EQ(m.set(0.75), "set 1 72000\n");
+    EXPECT_EQ(m.line("value 1 72000"), VELA_BRIGHTNESS_LINE_CHANGED);
+    EXPECT_NE(m.json().find(R"("value":0.75,"pending":false,"refused":false,"max":96000,)"), std::string::npos);
 }
 
 TEST(BrightnessModel, NamesAreEscaped)

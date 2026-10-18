@@ -55,7 +55,7 @@ struct vela_command vela_parse_command(const char *line)
     } else if ((rest = after(line, "set"))) {
         uint64_t seq, value;
         if (parse_u64(&rest, UINT64_MAX, &seq) && seq > 0 && *rest++ == ' '
-            && parse_u64(&rest, UINT16_MAX, &value) && *rest == '\0') {
+            && parse_u64(&rest, UINT32_MAX, &value) && *rest == '\0') {
             command.kind = VELA_COMMAND_SET;
             command.seq = seq;
             command.value = (uint32_t)value;

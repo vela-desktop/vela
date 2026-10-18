@@ -32,17 +32,17 @@ protected:
         ASSERT_EQ(action.kind, VELA_ACTION_READ) << "at " << now;
         ASSERT_EQ(action.read, kind);
     }
-    void read(vela_result result, uint16_t value = 0, uint16_t max = 100)
+    void read(vela_result result, uint32_t value = 0, uint32_t max = 100)
     {
         vela_scheduler_read_done(&s, result, value, max, now);
     }
-    void expect_write(uint16_t value)
+    void expect_write(uint32_t value)
     {
         vela_action action = next();
         ASSERT_EQ(action.kind, VELA_ACTION_WRITE) << "at " << now;
         ASSERT_EQ(action.value, value);
     }
-    void wrote(vela_result result = VELA_RESULT_OK) { vela_scheduler_write_done(&s, result, now); }
+    void wrote(vela_result result = VELA_RESULT_OK) { vela_scheduler_write_done(&s, result, s.doing.value, now); }
     void expect_wait(int64_t until)
     {
         vela_action action = next();
@@ -51,7 +51,7 @@ protected:
     }
     void set(uint64_t seq, uint32_t value) { vela_scheduler_set(&s, seq, value, now); }
 
-    void ready(uint16_t value = 50)
+    void ready(uint32_t value = 50)
     {
         expect_read(VELA_READ_PROBE);
         read(VELA_RESULT_OK, value);

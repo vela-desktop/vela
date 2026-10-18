@@ -19,6 +19,9 @@
 #define VELA_WRITE_INTERVAL_MS 250 // between two writes: the LG ignores a write 5-190 ms after another
 #define VELA_READBACK_MS 500 // from the last write to the read back: two intervals, a slider at rest
 #define VELA_REWRITES 4 // a target written again at most this many times
+#define VELA_BACKLIGHT_WRITE_INTERVAL_MS 0 // a backlight takes every value of a drag
+#define VELA_BACKLIGHT_READBACK_MS 100 // ... and has it at once
+#define VELA_BACKLIGHT_OLED_WAIT_MS 20 // from a low write to reading actual_brightness (§5.3)
 #define VELA_BUDGET_MS 8000 // ... and for at most this long
 
 // Reading (§5.5).

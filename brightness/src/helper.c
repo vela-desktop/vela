@@ -3,6 +3,7 @@
 
 #include "helper.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -27,15 +28,42 @@ static int64_t tick(struct vela_helper *helper)
     return now;
 }
 
-void vela_helper_init(struct vela_helper *helper, struct vela_transport transport, struct vela_clock *clock,
-    void (*send)(void *data, const char *line), void *data)
+void vela_helper_init_backend(struct vela_helper *helper, struct vela_backend backend, int64_t write_interval,
+    int64_t readback_delay, struct vela_clock *clock, void (*send)(void *data, const char *line), void *data)
 {
     memset(helper, 0, sizeof(*helper));
-    helper->transport = transport;
+    helper->backend = backend;
     helper->clock = clock;
     helper->send = send;
     helper->send_data = data;
     vela_scheduler_init(&helper->scheduler, monotonic(helper), clock->boottime(clock->data), send_event, helper);
+    helper->scheduler.write_interval = write_interval;
+    helper->scheduler.readback_delay = readback_delay;
+}
+
+static enum vela_result ddc_read(void *data, uint32_t *value, uint32_t *max)
+{
+    struct vela_helper *helper = data;
+    uint16_t v = 0, m = 0;
+    enum vela_result result = vela_ddc_read(&helper->transport, helper->clock, &v, &m, NULL);
+    *value = v;
+    *max = m;
+    return result;
+}
+
+static enum vela_result ddc_write(void *data, uint32_t value, uint32_t *applied)
+{
+    struct vela_helper *helper = data;
+    *applied = value;
+    return vela_ddc_write(&helper->transport, helper->clock, value > UINT16_MAX ? UINT16_MAX : (uint16_t)value, NULL);
+}
+
+void vela_helper_init(struct vela_helper *helper, struct vela_transport transport, struct vela_clock *clock,
+    void (*send)(void *data, const char *line), void *data)
+{
+    struct vela_backend backend = { .read = ddc_read, .write = ddc_write, .data = helper };
+    vela_helper_init_backend(helper, backend, VELA_WRITE_INTERVAL_MS, VELA_READBACK_MS, clock, send, data);
+    helper->transport = transport;
 }
 
 void vela_helper_line(struct vela_helper *helper, const char *line)
@@ -86,16 +114,18 @@ int64_t vela_helper_run(struct vela_helper *helper)
     }
     // The compositor's watchdog measures from `busy` (§6).
     helper->send(helper->send_data, "busy\n");
+    struct vela_backend *backend = &helper->backend;
     if (action.kind == VELA_ACTION_READ) {
-        uint16_t value = 0;
-        uint16_t max = 0;
-        enum vela_result result = vela_ddc_read(&helper->transport, helper->clock, &value, &max, NULL);
+        uint32_t value = 0;
+        uint32_t max = 0;
+        enum vela_result result = backend->read(backend->data, &value, &max);
         helper->send(helper->send_data, "idle\n");
         vela_scheduler_read_done(&helper->scheduler, result, value, max, tick(helper));
     } else {
-        enum vela_result result = vela_ddc_write(&helper->transport, helper->clock, action.value, NULL);
+        uint32_t applied = action.value;
+        enum vela_result result = backend->write(backend->data, action.value, &applied);
         helper->send(helper->send_data, "idle\n");
-        vela_scheduler_write_done(&helper->scheduler, result, tick(helper));
+        vela_scheduler_write_done(&helper->scheduler, result, applied, tick(helper));
     }
     return monotonic(helper);
 }

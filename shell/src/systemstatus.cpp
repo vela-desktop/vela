@@ -13,8 +13,6 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusReply>
 #include <QDBusVariant>
-#include <QDir>
-#include <QFile>
 
 namespace {
 
@@ -67,13 +65,6 @@ SystemStatus::SystemStatus(QObject* parent)
     system.connect(QStringLiteral("org.freedesktop.UPower.PowerProfiles"), QStringLiteral("/org/freedesktop/UPower/PowerProfiles"),
         propertiesInterface, QStringLiteral("PropertiesChanged"), this, SLOT(refreshPowerProfile()));
     refreshPowerProfile();
-
-    // --- Brightness: the first backlight (laptops).
-    const QStringList backlights = QDir(QStringLiteral("/sys/class/backlight")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    if (!backlights.isEmpty()) {
-        m_backlight = backlights.first();
-        readBacklight();
-    }
 }
 
 SystemStatus::~SystemStatus() = default;
@@ -251,33 +242,4 @@ void SystemStatus::setPowerProfile(const QString& profile)
     dbusSet(QDBusConnection::systemBus(), QStringLiteral("org.freedesktop.UPower.PowerProfiles"),
         QStringLiteral("/org/freedesktop/UPower/PowerProfiles"), QStringLiteral("org.freedesktop.UPower.PowerProfiles"),
         QStringLiteral("ActiveProfile"), profile);
-}
-
-// -------------------------------------------------------------- brightness --
-
-void SystemStatus::readBacklight()
-{
-    const QString base = QStringLiteral("/sys/class/backlight/") + m_backlight;
-    auto read = [&](const char* name) {
-        QFile file(base + u'/' + QLatin1String(name));
-        return file.open(QIODevice::ReadOnly) ? file.readAll().trimmed().toInt() : 0;
-    };
-    m_maxBrightness = read("max_brightness");
-    m_brightness = m_maxBrightness > 0 ? double(read("brightness")) / m_maxBrightness : 0.0;
-    emit brightnessChanged();
-}
-
-void SystemStatus::setBrightness(double value)
-{
-    if (m_backlight.isEmpty() || m_maxBrightness <= 0) {
-        return;
-    }
-    value = std::clamp(value, 0.01, 1.0); // never entirely off
-    // logind lets the session change the backlight, without root.
-    QDBusInterface session(QStringLiteral("org.freedesktop.login1"), QStringLiteral("/org/freedesktop/login1/session/auto"),
-        QStringLiteral("org.freedesktop.login1.Session"), QDBusConnection::systemBus());
-    session.asyncCall(QStringLiteral("SetBrightness"), QStringLiteral("backlight"), m_backlight,
-        uint(std::lround(value * m_maxBrightness)));
-    m_brightness = value;
-    emit brightnessChanged();
 }

@@ -113,6 +113,7 @@ endforeach()
 # The modules without wlroots or a GPU (pure logic, covered by the tests):
 # shared by the compositor and the tests.
 add_library(vela-pure STATIC
+    src/backlight_choice.c
     src/brightness_model.c
     src/buffer.c
     src/color.c
@@ -310,6 +311,7 @@ if(VELA_BUILD_TOOLS)
     find_package(GTest)
     if(GTest_FOUND)
         add_executable(vela-compositor-tests
+            tests/backlight_choice_test.cpp
             tests/brightness_model_test.cpp
             tests/frame_clock_test.cpp
             tests/motion_test.cpp

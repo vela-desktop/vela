@@ -60,7 +60,9 @@ qt_add_executable(vela-settings
     ${SHELL_SRC}/systemactions.cpp
     ${SHELL_SRC}/systemactions.h
     ${SHELL_SRC}/systemstatus.cpp
-    ${SHELL_SRC}/systemstatus.h)
+    ${SHELL_SRC}/systemstatus.h
+    ${SHELL_SRC}/brightness.cpp
+    ${SHELL_SRC}/brightness.h)
 target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
 
 set(SETTINGS_QML_FILES

@@ -3,6 +3,7 @@
 
 #include "brightness.h"
 
+#include "backlight_choice.h"
 #include "brightness_model.h"
 #include "buffer.h"
 #include "command.h"
@@ -61,7 +62,9 @@ struct vela_brightness_output {
     struct wl_list link; // vela_brightness.outputs
     struct vela_brightness *brightness;
     struct vela_output *output;
-    char connector[96]; // what the helper drives: "card1-DP-3", or the output's name
+    char connector[96]; // the DRM connector, "card1-DP-3", or the output's name
+    const char *mechanism; // "ddc" or "backlight" (§5.1)
+    char target[96]; // what the helper drives: the connector, or the backlight device
     struct vela_brightness_model model;
     struct helper *helper; // NULL: none running
     // Not started again (watchdog, crash loop) until the output is plugged in
@@ -76,6 +79,9 @@ struct vela_brightness {
     struct vela_server *server;
     bool enabled;
     bool fake;
+    // Where backlights are looked for: /sys, the tests' tree with fake
+    // monitors (VELA_BRIGHTNESS_SYSFS), or nowhere with fake monitors alone.
+    char sysfs[PATH_MAX];
     char command[PATH_MAX + 2];
     struct wl_list outputs; // vela_brightness_output.link
     struct wl_list helpers; // helper.link
@@ -102,7 +108,8 @@ void vela_brightness_json(struct vela_server *server, struct vela_buffer *json)
         if (!first) {
             vela_buffer_append(json, ",");
         }
-        vela_brightness_model_json(&output->brightness->model, output->wlr->name, json);
+        const struct vela_brightness_output *entry = output->brightness;
+        vela_brightness_model_json(&entry->model, output->wlr->name, output->wlr->description, entry->mechanism, json);
         first = false;
     }
     vela_buffer_append(json, "]}");
@@ -340,7 +347,7 @@ static void start_helper(struct vela_brightness_output *output)
     helper->brightness = brightness;
     helper->fd = fds[0];
     helper->power = helper->session = true;
-    snprintf(helper->connector, sizeof(helper->connector), "%s", output->connector);
+    snprintf(helper->connector, sizeof(helper->connector), "%s", output->target);
     wl_list_insert(brightness->helpers.prev, &helper->link);
     helper->timer = wl_event_loop_add_timer(server->loop, handle_timer, helper);
     vela_child_init(&helper->child, "vela-brightness", SIGTERM, -1);
@@ -348,8 +355,8 @@ static void start_helper(struct vela_brightness_output *output)
     helper->child.exited = helper_exited;
 
     char command[sizeof(brightness->command) + 192];
-    bool ok = vela_format(command, sizeof(command), "VELA_BRIGHTNESS_FD=%d exec %s ddc '%s'", fds[1],
-                  brightness->command, output->connector)
+    bool ok = vela_format(command, sizeof(command), "VELA_BRIGHTNESS_FD=%d exec %s %s '%s'", fds[1],
+                  brightness->command, output->mechanism, output->target)
         && vela_child_start(&helper->child, server->loop, command);
     close(fds[1]);
     if (!ok) {
@@ -504,6 +511,15 @@ void vela_brightness_output_added(struct vela_output *output)
         }
         snprintf(entry->connector, sizeof(entry->connector), "%s", wlr->name);
     }
+    // A built-in screen's backlight, otherwise DDC/CI (§5.1).
+    entry->mechanism = "ddc";
+    snprintf(entry->target, sizeof(entry->target), "%s", entry->connector);
+    char device[96];
+    if (brightness->sysfs[0] && vela_backlight_choose(brightness->sysfs, entry->connector, device, sizeof(device))) {
+        entry->mechanism = "backlight";
+        snprintf(entry->target, sizeof(entry->target), "%s", device);
+        wlr_log(WLR_INFO, "Brightness %s: backlight %s", wlr->name, device);
+    }
     vela_brightness_model_init(&entry->model);
     vela_listen(&wlr->events.commit, &entry->commit, handle_commit);
     wl_list_insert(brightness->outputs.prev, &entry->link);
@@ -586,6 +602,10 @@ void vela_brightness_load_settings(struct vela_server *server)
     brightness->enabled = false;
     const char *fake = getenv("VELA_BRIGHTNESS_FAKE");
     brightness->fake = fake && *fake;
+    // With fake monitors, never a real backlight: only the tests' tree.
+    const char *tree = getenv("VELA_BRIGHTNESS_SYSFS");
+    snprintf(brightness->sysfs, sizeof(brightness->sysfs), "%s",
+        !brightness->fake ? "/sys" : tree && *tree ? tree : "");
     const char *custom = getenv("VELA_BRIGHTNESS");
     if (custom && *custom) {
         if (strcmp(custom, "0") != 0) {

@@ -796,8 +796,8 @@ Specifiche sistema
         <translation>Luminosità</translation>
     </message>
     <message>
-        <source>Adjust the brightness of the built-in display</source>
-        <translation>Regola la luminosità dello schermo integrato</translation>
+        <source>Adjust the brightness of this display</source>
+        <translation>Regola la luminosità di questo schermo</translation>
     </message>
     <message>
         <source>Night light</source>
@@ -2444,7 +2444,7 @@ Specifiche sistema
     </message>
     <message>
         <source>Show desktop from taskbar corner</source>
-        <translation>Mostra il desktop dall'angolo della barra delle applicazioni</translation>
+        <translation>Mostra il desktop dall&apos;angolo della barra delle applicazioni</translation>
     </message>
     <message>
         <source>Click the far-right edge of any taskbar to show or restore your windows (also with Super+D)</source>

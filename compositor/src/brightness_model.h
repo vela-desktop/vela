@@ -70,11 +70,12 @@ bool vela_brightness_model_ready(const struct vela_brightness_model *model);
 // The state clients see: the helper's, or "off".
 const char *vela_brightness_model_state_name(const struct vela_brightness_model *model);
 
-// One output for the `brightness` answer:
-// {"name":...,"state":...,"value":0.8,"pending":false,"refused":false,"max":100,"seq":3}.
+// One output for the `brightness` answer: {"name":"DP-3","description":...,
+// "mechanism":"ddc","state":...,"value":0.8,"pending":false,"refused":false,
+// "max":100,"seq":3}. `description` is the monitor's, as Settings shows it.
 // `value` is the target while pending, the confirmed value otherwise (§7.1),
 // null until the monitor answered.
 void vela_brightness_model_json(const struct vela_brightness_model *model, const char *name,
-    struct vela_buffer *json);
+    const char *description, const char *mechanism, struct vela_buffer *json);
 
 #endif
