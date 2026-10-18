@@ -15,6 +15,15 @@
 int main(void)
 {
     const uint64_t linear[] = { DRM_FORMAT_MOD_LINEAR };
+    uint64_t cursor_linear = DRM_FORMAT_MOD_LINEAR;
+    // Same constructor used by the DRM output path. wlroots asserts
+    // len <= capacity when copying a cursor swapchain's format.
+    const struct wlr_drm_format format = vela_cursor_swapchain_format(&cursor_linear);
+    CHECK(format.format == DRM_FORMAT_ARGB8888);
+    CHECK(format.len == 1);
+    CHECK(format.capacity >= format.len);
+    CHECK(format.modifiers == &cursor_linear);
+    CHECK(format.modifiers[0] == DRM_FORMAT_MOD_LINEAR);
     const uint64_t tiled[] = { 0x100000000000001ULL };
     const uint64_t many[] = { DRM_FORMAT_MOD_LINEAR, 0x100000000000001ULL };
 
