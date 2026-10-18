@@ -11,6 +11,7 @@
 #include "appmodel.h"
 #include "audio.h"
 #include "audioapps.h"
+#include "brightness.h"
 #include "clipboard.h"
 #include "config.h"
 #include "controls.h"
@@ -339,6 +340,7 @@ int main(int argc, char* argv[])
     QObject::connect(&config, &Config::clipboardChanged, &clipboard,
         [&config, &clipboard] { clipboard.setEnabled(config.clipboardHistory()); });
     SystemStatus status;
+    Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
@@ -402,6 +404,7 @@ int main(int argc, char* argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Clip"), &clipboard);
     engine.rootContext()->setContextProperty(QStringLiteral("Snip"), &snip);
     engine.rootContext()->setContextProperty(QStringLiteral("Status"), &status);
+    engine.rootContext()->setContextProperty(QStringLiteral("Brightness"), &brightness);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Sound"), &sound);
     // The apps' level bars in the quick settings mixer (docs/audio.md §7.1).

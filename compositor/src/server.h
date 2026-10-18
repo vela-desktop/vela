@@ -23,6 +23,7 @@
 #include "shell.h"
 
 struct vela_a11y;
+struct vela_brightness;
 struct vela_commands;
 struct vela_icons;
 struct vela_input;
@@ -193,6 +194,7 @@ struct vela_server {
     struct vela_ready ready;
     struct vela_child shell; // the launched and supervised shell (shell.h)
     struct vela_child polkit_agent; // the polkit agent (polkit.h)
+    struct vela_brightness *brightness; // every output's brightness (brightness.h)
     struct vela_commands *commands; // the command socket (command.h)
     // wlr-output-management (output_manager.h).
     struct wlr_output_manager_v1 *output_manager;

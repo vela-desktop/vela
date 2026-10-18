@@ -12,7 +12,9 @@ import Vela.Controls
 // bottom. An acrylic panel at the bottom right. Some tiles have a page of
 // their own: the Wi-Fi arrow lists the networks to choose one, Accessibility
 // turns on the magnifier, color filters and sticky keys; the arrow next to
-// the volume opens the sound page (outputs and the mixer, Win+Ctrl+V).
+// the volume opens the sound page (outputs and the mixer, Win+Ctrl+V). The
+// brightness is the display the panel opens on (docs/brightness.md §8); with
+// more displays that have one, its arrow opens a slider for each.
 Window {
     id: root
     visible: false
@@ -24,8 +26,19 @@ Window {
     height: room + d.roomHeight + 12
     color: "transparent"
 
-    // "" the quick settings; "wifi", "sound" and "accessibility" their pages.
+    // "" the quick settings; "wifi", "sound", "brightness" and "accessibility"
+    // their pages.
     property string page: ""
+
+    // The brightness of the display the panel is on, and of every display
+    // that has one; read live while the panel is open (§5.5).
+    readonly property var brightnessHere: Brightness.outputs.find(o => o.name === (root.screen ? root.screen.name : ""))
+    readonly property var brightnessOutputs: Brightness.outputs.filter(o => o.available)
+    Binding {
+        target: Brightness
+        property: "live"
+        value: root.visible
+    }
 
     function open() {
         Menus.notificationCenterOpen = false
@@ -140,7 +153,8 @@ Window {
     // configures per change, none per frame, and at rest the window is just
     // the panel and its shadow, so clicks above it reach what is below.
     readonly property real targetHeight: page === "" ? content.height + 24 + footer.height
-        : (page === "wifi" ? wifiPage.finalHeight : page === "sound" ? soundPage.height : accessPage.height) + 32
+        : (page === "wifi" ? wifiPage.finalHeight : page === "sound" ? soundPage.height
+           : page === "brightness" ? brightnessPage.height : accessPage.height) + 32
     onTargetHeightChanged: d.fit()
 
     QtObject {
@@ -311,6 +325,10 @@ Window {
         // speaker; the volume's icon is already the crossed one.
         property bool appIcon: false
         property bool details: false
+        property string detailsName: qsTr("Sound output")
+        property string name // what it changes, for screen readers
+        // Shown, not movable (a display that doesn't answer).
+        property bool locked: false
         // What it plays now, 0-1 (docs/audio.md §7.1); below 0: no bar.
         property real level: -1
         signal moved(real value)
@@ -360,8 +378,10 @@ Window {
             id: slider
             anchors { left: iconButton.right; leftMargin: 2; right: detailsButton.left; rightMargin: -2; verticalCenter: parent.verticalCenter }
             value: row.value
+            enabled: !row.locked
             wheelEnabled: false
             fillColor: row.muted ? Theme.textSecondary : Theme.accentFill
+            Accessible.name: row.name
             onMoved: row.moved(value)
         }
         Rectangle {
@@ -384,6 +404,7 @@ Window {
         }
         WheelHandler {
             target: null
+            enabled: !row.locked
             // Touchpads add up their small steps.
             property real rest: 0
             onWheel: event => {
@@ -401,9 +422,53 @@ Window {
             subtle: true
             width: row.details ? 36 : 0
             height: 36
-            Accessible.name: qsTr("Sound output")
+            Accessible.name: row.detailsName
             onClicked: row.detailsClicked()
             Chevron { anchors.centerIn: parent }
+        }
+    }
+
+    // One display's brightness (docs/brightness.md §8): its slider, locked
+    // while the display doesn't answer, and a line when it moved back.
+    component BrightnessRow: Column {
+        id: brightnessRow
+        required property var output
+        property bool showLabel: false
+        property bool details: false
+        signal detailsClicked()
+        width: parent.width
+        spacing: 0
+
+        Text {
+            visible: brightnessRow.showLabel
+            x: 8
+            width: parent.width - 16
+            text: brightnessRow.output.label
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
+            elide: Text.ElideRight
+        }
+        SliderRow {
+            icon: "brightness-high"
+            name: brightnessRow.showLabel ? qsTr("Brightness of %1").arg(brightnessRow.output.label) : qsTr("Brightness")
+            value: brightnessRow.output.value
+            locked: brightnessRow.output.locked
+            details: brightnessRow.details
+            detailsName: qsTr("Brightness of each display")
+            onMoved: value => Brightness.setValue(brightnessRow.output.name, value)
+            onWheeled: direction => Brightness.step(brightnessRow.output.name, direction)
+            onDetailsClicked: brightnessRow.detailsClicked()
+        }
+        Text {
+            visible: text !== ""
+            x: 38
+            width: parent.width - 38
+            bottomPadding: 4
+            text: brightnessRow.output.locked ? qsTr("This display isn't responding")
+                : brightnessRow.output.refused ? qsTr("The display didn't accept the change") : ""
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
+            wrapMode: Text.WordWrap
         }
     }
 
@@ -627,12 +692,12 @@ Window {
                         }
                     }
 
-                    SliderRow {
-                        visible: Status.brightnessAvailable
-                        icon: "brightness-high"
-                        value: Status.brightness
-                        onMoved: value => Status.setBrightness(value)
-                        onWheeled: direction => Status.setBrightness(Math.max(0, Math.min(1, Status.brightness + direction * 0.02)))
+                    // This display's; the arrow opens every display's.
+                    BrightnessRow {
+                        visible: root.brightnessHere !== undefined && root.brightnessHere.available
+                        output: root.brightnessHere ?? ({ name: "", label: "", value: 0, locked: false, refused: false })
+                        details: root.brightnessOutputs.length > 1
+                        onDetailsClicked: root.showPage("brightness")
                     }
                     // The arrow opens the sound page: outputs and the mixer.
                     SliderRow {
@@ -1033,6 +1098,33 @@ Window {
                     Link {
                         text: qsTr("More volume settings")
                         target: "volume-mixer" // Settings' Volume mixer, like Windows
+                    }
+                }
+
+                // ------------------------------------------------- brightness --
+                Column {
+                    id: brightnessPage
+                    visible: root.page === "brightness"
+                    x: 16
+                    y: 16
+                    width: parent.width - 32
+                    spacing: 8
+
+                    PageHeader { title: qsTr("Brightness") }
+                    // By count: a new state every change must not recreate a
+                    // slider while it is dragged.
+                    Repeater {
+                        model: root.brightnessOutputs.length
+                        delegate: BrightnessRow {
+                            required property int index
+                            output: root.brightnessOutputs[index]
+                            showLabel: true
+                        }
+                    }
+                    Item { width: 1; height: 4 }
+                    Link {
+                        text: qsTr("More display settings")
+                        target: "display"
                     }
                 }
 

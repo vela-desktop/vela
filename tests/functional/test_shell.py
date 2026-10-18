@@ -36,6 +36,7 @@ class RealShell(unittest.TestCase):
     """The real Qt desktop on a headless output: its setup, no tests."""
 
     wallpaper = GRADIENT
+    compositor_env = {} # more for the compositor (fake monitors, test_brightness.py)
 
     def setUp(self):
         self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
@@ -45,7 +46,7 @@ class RealShell(unittest.TestCase):
         self.assertTrue(address, "private D-Bus session failed to start")
         self.vela = Session(size="1920x1080@100", env={
             "VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"), "DBUS_SESSION_BUS_ADDRESS": address,
-            "VELA_DEBUG_ANIMATION": "1"})
+            "VELA_DEBUG_ANIMATION": "1", **self.compositor_env})
         self.vela.start()
         self.addCleanup(self.vela.stop)
         # Snips and desktop files must stay in this isolated test session.

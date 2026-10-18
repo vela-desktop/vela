@@ -19,6 +19,7 @@
 #include <wayland-server-core.h>
 #include <wlr/util/box.h>
 
+struct vela_brightness_output;
 struct vela_nested;
 struct vela_output_frame;
 struct vela_server;
@@ -64,6 +65,8 @@ struct vela_output {
     int last_x, last_y;
     // Only when Vela runs in a window inside another session.
     struct vela_nested *nested;
+    // Its brightness (brightness.h); NULL: none to drive.
+    struct vela_brightness_output *brightness;
     // From the scene to this output's pixels (scene/frame.h).
     struct vela_output_frame *frame;
     struct vela_frame_clock clock;
