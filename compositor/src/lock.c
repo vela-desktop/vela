@@ -76,7 +76,7 @@ static void set_desktop_enabled(struct vela_server *server, bool enabled)
 #define VELA_LOCK_FATAL_TIMEOUT_MS 2000
 #define VELA_LOCK_FATAL_SCANOUT_GRACE_MS 200
 
-static void lock_unsafe_exit(struct vela_lock *lock)
+static __attribute__((noreturn)) void lock_unsafe_exit(struct vela_lock *lock)
 {
     // Older supervisors do not understand exit 77 and would restart unlocked.
     // Their existing SIGTERM handler ends the session instead. Only signal
