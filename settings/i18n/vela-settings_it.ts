@@ -445,6 +445,37 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>BrightnessCard</name>
+    <message>
+        <source>Brightness is controlled by the display&apos;s buttons. If its menu has a DDC/CI option, turning it on lets Vela control it.</source>
+        <translation>La luminosità si regola con i tasti dello schermo. Se il suo menu ha un&apos;opzione DDC/CI, attivandola Vela potrà regolarla.</translation>
+    </message>
+    <message>
+        <source>This display doesn&apos;t allow changing its brightness</source>
+        <translation>Questo schermo non permette di cambiare la luminosità</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t reach this display. The installation may be incomplete</source>
+        <translation>Vela non riesce a comunicare con questo schermo. L&apos;installazione potrebbe essere incompleta</translation>
+    </message>
+    <message>
+        <source>Brightness</source>
+        <translation>Luminosità</translation>
+    </message>
+    <message>
+        <source>This display isn&apos;t responding</source>
+        <translation>Questo schermo non risponde</translation>
+    </message>
+    <message>
+        <source>The display didn&apos;t accept the change</source>
+        <translation>Lo schermo non ha accettato la modifica</translation>
+    </message>
+    <message>
+        <source>Adjust the brightness of this display</source>
+        <translation>Regola la luminosità di questo schermo</translation>
+    </message>
+</context>
+<context>
     <name>ClipboardPage</name>
     <message>
         <source>Clipboard history</source>
@@ -790,14 +821,6 @@ Specifiche sistema
     <message>
         <source>Brightness &amp; color</source>
         <translation>Luminosità e colore</translation>
-    </message>
-    <message>
-        <source>Brightness</source>
-        <translation>Luminosità</translation>
-    </message>
-    <message>
-        <source>Adjust the brightness of this display</source>
-        <translation>Regola la luminosità di questo schermo</translation>
     </message>
     <message>
         <source>Night light</source>
@@ -1291,6 +1314,14 @@ Specifiche sistema
     <message>
         <source>hz refresh rate frequency</source>
         <translation>hz refresh frequenza</translation>
+    </message>
+    <message>
+        <source>Change the brightness</source>
+        <translation>Cambia la luminosità</translation>
+    </message>
+    <message>
+        <source>brightness backlight dim bright monitor ddc</source>
+        <translation>luminosità retroilluminazione scuro luminoso monitor schermo ddc</translation>
     </message>
     <message>
         <source>volume speakers headphones microphone output input sound</source>

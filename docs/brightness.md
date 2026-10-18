@@ -8,7 +8,7 @@ every output. This document comes before the code: decisions are made here,
 and the code follows them.
 
 > **Status:** design approved; B0 done, its timings measured with `--bench`
-> on the monitors of §3; B1 and B2 done, tested on fake monitors and a
+> on the monitors of §3; B1, B2 and B3 done, tested on fake monitors and a
 > fake backlight (§15).
 
 ## 1. Goals
@@ -494,17 +494,21 @@ New lines on the command socket (`command.h`):
   Display. The wheel moves it by the same step as today. Live sync while the
   panel is open.
 - **Settings → Display:** the "Brightness" card ("Brightness & color"
-  section) follows the output selected
+  section, `settings/qml/BrightnessCard.qml`) follows the output selected
   in the arrangement, with live sync while the page is visible. When that
   output has no slider, the card explains why, once, without a slider:
   - `no-answer`: "Brightness is controlled by the display's buttons. If its
-    menu has a DDC/CI option, turning it on lets Vela control it." Opening
-    the page probes again (`brightness-probe`), so turning DDC/CI on and
-    coming back is enough;
+    menu has a DDC/CI option, turning it on lets Vela control it.";
   - `unsupported`: "This display doesn't allow changing its brightness";
   - `no-access`: "Vela can't reach this display. The installation may be
     incomplete";
-  - `no-bus`: no card.
+  - `no-bus`, `probing`, `off`: no card.
+
+  Showing an output probes it again (`brightness-probe`): when the page
+  opens, when another output is selected, and when the Settings window
+  becomes active again. So turning DDC/CI on in the monitor's menu and coming
+  back to Settings is enough, and a helper held after a crash loop (§6) gets
+  another chance.
 - **Refused:** the slider goes back to the monitor's value and says "The
   display didn't accept the change". The text stays until the next change.
 - **Not responding:** the slider is locked and says "This display isn't
@@ -595,6 +599,9 @@ of §5.4 on a real monitor: it writes, and puts the starting value back.
 - **The shell's model** (`shell/tests/brightness_model.cpp`): against a fake
   compositor socket, an older state, a drag, a refusal, a request never
   taken, a locked output, the wheel's steps, a compositor restart.
+- **Settings' card** (`settings/tests/tst_brightnesscard.qml`, Qt Quick
+  Test): the slider and a click on it, locked, refused, the text of each
+  reason, and no card where there is nothing to say.
 - **Regressions from COSMIC (§4.3):**
   - #165: no device is open while a helper is idle, during the pauses of a
     drag, or after its output is removed;
@@ -607,7 +614,8 @@ of §5.4 on a real monitor: it writes, and puts the starting value back.
   reading), live sync and its count per connection, hotplug with
   `test-output`, a disabled output, `test-power off/on`, the watchdog killing
   one hung helper while another output keeps working, a helper that keeps
-  crashing, the fake backlight; in the real shell, the quick settings slider
+  crashing, the fake backlight; Settings' Display page probing a monitor
+  that woke up after the helper's own probes; in the real shell, the quick settings slider
   (a click and a drag move the display, found in screenshots), the page with
   a slider per display, and the slider following the monitor's buttons only
   while the panel is open. Headless outputs never get the same name twice,
@@ -669,5 +677,5 @@ of §5.4 on a real monitor: it writes, and puts the starting value back.
 | B0 | `vela-brightness`: DDC/CI protocol and transfers, scheduler, fake backend and their unit tests, `--probe`; numbers tuned on the monitors of §3 | done |
 | B1 | Compositor: a helper per output with its watchdog, the lines of §5.6, the model, `brightness`, `watch brightness`, `brightness-live`, `brightness-probe`; functional tests | done |
 | B2 | Backlight backend (§5.3); shell: `Brightness` model, quick settings slider for the panel's output and the Brightness page, live sync; backlight out of `SystemStatus` | done |
-| B3 | Settings: the Display page card for the selected output, with the reasons of §8 | |
+| B3 | Settings: the Display page card for the selected output, with the reasons of §8 | done |
 | B4 | udev rule, `modules-load.d`, PKGBUILD, docs, `--probe` in the bug report (§13); the user's tests on real hardware | |

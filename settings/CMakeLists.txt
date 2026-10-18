@@ -68,6 +68,7 @@ target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_D
 set(SETTINGS_QML_FILES
     qml/Main.qml
     qml/Card.qml
+    qml/BrightnessCard.qml
     qml/CardGroup.qml
     qml/LinkCard.qml
     qml/Choice.qml

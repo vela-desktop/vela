@@ -22,6 +22,7 @@ Page {
     Component.onCompleted: {
         Displays.refresh()
         if (Displays.confirming) confirm.open()
+        if (probed !== "") Brightness.probe(probed)
     }
     Component.onDestruction: Displays.revert()
 
@@ -226,24 +227,18 @@ Page {
         value: page.visible
     }
 
+    // Showing a display probes it again (docs/brightness.md §8): turning
+    // DDC/CI on in the monitor's menu and coming back to Settings is enough.
+    readonly property string probed: page.visible && Brightness.connected && page.output
+        && Qt.application.state === Qt.ApplicationActive ? page.output.name : ""
+    onProbedChanged: if (probed !== "") Brightness.probe(probed)
+
     CardGroup {
         title: qsTr("Brightness & color")
-        // The selected display's (docs/brightness.md §8), read live while
-        // the page is visible.
-        Card {
-            id: brightnessCard
-            readonly property var brightness: page.output
-                ? Brightness.outputs.find(o => o.name === page.output.name) : undefined
-            visible: brightness !== undefined && brightness.available
-            icon: "brightness-high"
-            title: qsTr("Brightness")
-            description: qsTr("Adjust the brightness of this display")
-            trailing: Slider {
-                width: 200
-                enabled: brightnessCard.brightness !== undefined && !brightnessCard.brightness.locked
-                value: brightnessCard.brightness !== undefined ? brightnessCard.brightness.value : 0
-                onMoved: Brightness.setValue(page.output.name, value)
-            }
+        // The selected display's, read live while the page is visible.
+        BrightnessCard {
+            brightness: page.output ? Brightness.outputs.find(o => o.name === page.output.name) : undefined
+            onMoved: value => Brightness.setValue(page.output.name, value)
         }
         Card {
             icon: "redshift-status-on"

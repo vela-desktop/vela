@@ -161,6 +161,7 @@ Window {
         { page: "display", text: qsTr("Change the screen resolution"), keys: qsTr("resolution") },
         { page: "display", text: qsTr("Change the scale"), keys: qsTr("scale size text dpi zoom") },
         { page: "display", text: qsTr("Refresh rate"), keys: qsTr("hz refresh rate frequency") },
+        { page: "display", text: qsTr("Change the brightness"), keys: qsTr("brightness backlight dim bright monitor ddc") },
         { page: "sound", text: qsTr("Sound"), keys: qsTr("volume speakers headphones microphone output input sound") },
         { page: "sound", text: qsTr("Choose your output device"), keys: qsTr("output speakers headphones") },
         { page: "sound", text: qsTr("Microphone"), keys: qsTr("input recording level test") },

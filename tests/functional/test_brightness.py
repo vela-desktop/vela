@@ -10,12 +10,13 @@ import json
 import os
 import shutil
 import socket
+import subprocess
 import tempfile
 import time
 import unittest
 
 import test_shell
-from harness import Image, Session, TimeoutError
+from harness import BUILD, Image, Session, TimeoutError
 
 # The LG of §3 on the first output, the Mi on the second (test-output add).
 MONITORS = """
@@ -417,6 +418,28 @@ def knobs(image, box):
             groups.append([(x, y)])
     centers = [(round(sum(p[0] for p in g) / len(g)), round(sum(p[1] for p in g) / len(g))) for g in groups]
     return [(x, y) for x, y in centers if accent(x - 14, y) and not accent(x - 14, y - 5)]
+
+
+class SettingsProbe(BrightnessTest):
+    # Asleep past the helper's own probes (at 0, 2 and 10 s): only Settings'
+    # probe brings it back before the next one, at 30 s (§5.5, §8).
+    monitors = """
+[HEADLESS-1]
+value = 60
+asleep = 13000
+"""
+
+    def test_the_display_page_probes_again(self):
+        wait_brightness(self.vela, lambda o: o.get("HEADLESS-1", {}).get("state") == "no-answer", "no-answer")
+        time.sleep(max(0.0, self.started + 13.5 - time.monotonic()))
+        self.assertEqual(outputs(self.vela)["HEADLESS-1"]["state"], "no-answer")
+        env = dict(self.vela.client_env)
+        env.pop("QT_WAYLAND_RECONNECT", None)
+        settings = subprocess.Popen([os.path.join(BUILD, "settings", "vela-settings"), "--page", "display"], env=env,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.vela.clients.append(settings)
+        self.ready(value=0.6)
+        self.assertLess(time.monotonic() - self.started, 29)
 
 
 class QuickSettings(test_shell.RealShell):
