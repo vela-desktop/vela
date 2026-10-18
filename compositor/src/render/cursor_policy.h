@@ -11,6 +11,19 @@
 #include <stdint.h>
 #include <drm_fourcc.h>
 #include <gbm.h>
+#include <wlr/render/drm_format_set.h>
+
+// A stack-backed single-modifier format must report its array capacity to
+// wlroots: wlr_swapchain_create() copies it and asserts len <= capacity.
+static inline struct wlr_drm_format vela_cursor_swapchain_format(uint64_t *linear_modifier)
+{
+    return (struct wlr_drm_format) {
+        .format = DRM_FORMAT_ARGB8888,
+        .len = 1,
+        .capacity = 1,
+        .modifiers = linear_modifier,
+    };
+}
 
 static inline bool vela_cursor_buffer_format(uint32_t format, const uint64_t *modifiers, unsigned count,
     int width, int height)
