@@ -100,7 +100,7 @@ class Lock(unittest.TestCase):
         # be terminated before launching its replacement.
         with tempfile.TemporaryDirectory(prefix="vela-lock-live-") as directory:
             attempts = os.path.join(directory, "attempts")
-            launcher = f"echo $ >> '{attempts}'; exec sleep 30"
+            launcher = f"echo $$ >> '{attempts}'; exec sleep 30"
             with Session(env={"VELA_LOCK": launcher}) as vela:
                 vela.command("lock")
                 def pids():
