@@ -202,16 +202,9 @@ static void prepare_cursor_swapchain(struct vela_server *server, struct wlr_outp
         return; // wlroots keeps its ordinary software cursor fallback
     }
 
-    // Allocate and import one buffer *now*, before wlroots accepts it.
-    // This catches CURSOR|WRITE BOs which GBM creates but Vulkan cannot draw
-    // into as a color attachment. Never poison the ordinary allocator.
-    struct wlr_buffer *buffer = wlr_swapchain_acquire(swapchain);
-    if (!buffer) {
-        wlr_log(WLR_INFO, "Output %s: cursor-only GBM/Vulkan probe failed; keeping default cursor path", wlr->name);
-        wlr_swapchain_destroy(swapchain);
-        return;
-    }
-    wlr_buffer_unlock(buffer);
+    // Buffers are allocated lazily and individually validated by the cursor
+    // allocator's Vulkan import probe. A transient failure causes software
+    // fallback for that update, but a later cursor update can try again.
     wlr->cursor_swapchain = swapchain;
     wlr_log(WLR_INFO, "Output %s: prepared %dx%d ARGB8888 LINEAR hardware cursor buffers",
         wlr->name, width, height);
