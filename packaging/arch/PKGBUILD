@@ -30,7 +30,7 @@ depends=(
     'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland'
     'pipewire' 'wireplumber'
 )
-makedepends=('git' 'cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols' 'qt6-tools')
+makedepends=('git' 'cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols' 'qt6-tools' 'qt6-multimedia')
 optdepends=(
     'cosign: verify downloaded prebuilt package attestations without gh'
     'xdg-desktop-portal-wlr: screen sharing'
@@ -42,6 +42,8 @@ optdepends=(
     'pipewire-pulse: sound for apps that still use PulseAudio'
     'power-profiles-daemon: energy saver'
     'udisks2: unmounted drives in File Explorer'
+    'kimageformats: AVIF, HEIF, JPEG XL and other pictures in File Explorer (thumbnails, quick preview)'
+    'qt6-multimedia: videos and sounds in the File Explorer quick preview'
     'xdg-utils: share by email, default apps'
     'kdeconnect: share with your phone'
     'bluedevil: share via Bluetooth'

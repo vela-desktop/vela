@@ -36,6 +36,7 @@
 #include <cstdio>
 #include <csignal>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace {
@@ -157,6 +158,18 @@ private slots:
     {
         delete m_ops;
         delete m_dir;
+    }
+
+    // Space on a FIFO with no writer: answered as "other", never opened
+    // (an open would block the worker thread for good).
+    void peekFifo()
+    {
+        const QString fifo = path(QStringLiteral("pipe"));
+        QCOMPARE(mkfifo(QFile::encodeName(fifo).constData(), 0600), 0);
+        QSignalSpy ready(m_ops, &FileOps::peekReady);
+        m_ops->peek(fifo);
+        QVERIFY(ready.wait(5000));
+        QCOMPARE(ready.first().at(1).toMap().value(QStringLiteral("kind")).toString(), QStringLiteral("other"));
     }
 
     void shellTransferRequest_data()

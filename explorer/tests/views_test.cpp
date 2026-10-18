@@ -15,6 +15,10 @@
 #include <QVariantList>
 #include <QStandardItemModel>
 #include <QFile>
+#include <QFileInfo>
+#include <QImage>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QTemporaryDir>
@@ -25,6 +29,8 @@ Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
 
 namespace {
 QString folder;
+QString image; // for the quick preview
+QString pdf; // three pages, empty without QtPdf
 }
 
 class TestTransferOps : public QObject {
@@ -80,6 +86,13 @@ public:
     }
     int lastCancelled() const { return m_lastCancelled; }
     Q_INVOKABLE void cancelJob(int id) { m_lastCancelled = id; emit cancelledChanged(); }
+    // The quick preview's answer, at once: a PDF or else an image.
+    Q_INVOKABLE void peek(const QString& path)
+    {
+        const bool isPdf = path.endsWith(QLatin1String(".pdf"));
+        emit peekReady(path, QVariantMap { { QStringLiteral("kind"), isPdf ? QStringLiteral("pdf") : QStringLiteral("image") },
+                                 { QStringLiteral("name"), QFileInfo(path).fileName() } });
+    }
     Q_INVOKABLE void dismissJob(int id)
     {
         for (qsizetype i = 0; i < m_jobs.size(); ++i) {
@@ -100,6 +113,7 @@ public:
 signals:
     void jobsChanged();
     void cancelledChanged();
+    void peekReady(const QString& path, const QVariantMap& result);
 private:
     QVariantList m_jobs;
     QStandardItemModel m_model;
@@ -115,6 +129,8 @@ public slots:
         vela::controls::install(*engine, Appearance::Mode::Apps);
         engine->addImageProvider(QStringLiteral("fileicon"), new IconProvider(32));
         engine->rootContext()->setContextProperty(QStringLiteral("TestFolder"), folder);
+        engine->rootContext()->setContextProperty(QStringLiteral("TestImage"), image);
+        engine->rootContext()->setContextProperty(QStringLiteral("TestPdf"), pdf);
         engine->rootContext()->setContextProperty(QStringLiteral("Ops"), &m_ops);
     }
 private:
@@ -147,6 +163,24 @@ int main(int argc, char** argv)
             return 1;
         }
     }
+
+    // Outside the folder: the views count its 300 files.
+    image = home.filePath(QStringLiteral("peek.png"));
+    QImage picture(400, 300, QImage::Format_RGB32);
+    picture.fill(Qt::darkCyan);
+    if (!picture.save(image)) {
+        return 1;
+    }
+#ifdef VELA_FILES_PDF
+    pdf = home.filePath(QStringLiteral("peek.pdf"));
+    {
+        QPdfWriter writer(pdf);
+        QPainter painter(&writer);
+        for (int i = 1; i < 3; ++i) {
+            writer.newPage();
+        }
+    }
+#endif
 
     qmlRegisterType<FolderModel>("Vela.Files.Backend", 1, 0, "FolderModel");
     Setup setup;

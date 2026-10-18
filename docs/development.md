@@ -17,7 +17,7 @@ These packages are for **building Vela from source**, not the much smaller requi
 
 ```sh
 sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland wayland-protocols \
-    libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
+    libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt \
     vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
     pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
     pipewire wireplumber
@@ -52,6 +52,8 @@ sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
     zlib-devel gtest python3
 ```
 </details>
+
+Optional: `qt6-multimedia` (Fedora: `qt6-qtmultimedia-devel`) plays videos and sounds in File Explorer's quick preview (Space); without it they show as an icon.
 
 ## Build commands
 

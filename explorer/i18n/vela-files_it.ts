@@ -702,6 +702,21 @@
     </message>
 </context>
 <context>
+    <name>QuickPeek</name>
+    <message>
+        <source> items, </source>
+        <translation> elementi, </translation>
+    </message>
+    <message>
+        <source> x </source>
+        <translation> x </translation>
+    </message>
+    <message>
+        <source>first 64 KB</source>
+        <translation>primi 64 KB</translation>
+    </message>
+</context>
+<context>
     <name>StatusBar</name>
     <message>
         <source>item</source>

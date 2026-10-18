@@ -89,7 +89,6 @@ direction, not a promise.
 ### Files
 - Network locations: SMB, SFTP, WebDAV.
 - Phones and cameras (MTP, PTP).
-- Quick preview with Space.
 - An indexed search that finds files by name and content.
 - Batch rename.
 - Mounting disk images.
@@ -139,7 +138,8 @@ Decisions already taken. Each design document explains why.
 - **Displays and gaming**: native display configuration with compositor-owned
   rollback, multi-monitor hotplug with per-output scale, direct scanout, VRR,
   tearing control, explicit sync, Night Light in the gamma LUT.
-- **Desktop**: Settings, Files, desktop icons, virtual desktops, Task View,
+- **Desktop**: Settings, Files (with a quick preview on Space: pictures, PDFs,
+  text, videos and sounds), desktop icons, virtual desktops, Task View,
   snap layouts and Snap Assist, modern context menus, light mode.
 - **Daily comfort**: clipboard history, snipping tool, touchpad gestures,
   mouse and touchpad settings.
