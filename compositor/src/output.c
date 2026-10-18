@@ -192,11 +192,7 @@ static void prepare_cursor_swapchain(struct vela_server *server, struct wlr_outp
     }
 
     uint64_t linear = DRM_FORMAT_MOD_LINEAR;
-    const struct wlr_drm_format format = {
-        .format = DRM_FORMAT_ARGB8888,
-        .len = 1,
-        .modifiers = &linear,
-    };
+    const struct wlr_drm_format format = vela_cursor_swapchain_format(&linear);
     struct wlr_swapchain *swapchain = wlr_swapchain_create(server->cursor_allocator, width, height, &format);
     if (!swapchain) {
         return; // wlroots keeps its ordinary software cursor fallback
