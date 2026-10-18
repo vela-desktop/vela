@@ -229,7 +229,6 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     // Everything drawn on this output goes through Vela's renderer, including
     // what wlroots does (cursor, captures).
     wlr_output_init_render(wlr, server->allocator, server->wlr_renderer);
-    prepare_cursor_swapchain(server, wlr);
 
     char key[256];
     vela_output_key(wlr, key, sizeof(key));
@@ -243,6 +242,10 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     // The frame cycle turns VRR on and off (vrr_state).
     wlr_output_commit_state(wlr, &state);
     wlr_output_state_finish(&state);
+    // Query the committed DRM/CRTC cursor plane, not an unconfigured output.
+    if (enabled) {
+        prepare_cursor_swapchain(server, wlr);
+    }
     if (enabled) {
         wlr_log(WLR_INFO, "Output %s: %dx%d @ %.2f Hz, scale %.2f%s", wlr->name, wlr->width, wlr->height,
             wlr->refresh / 1000.0, wlr->scale, saved ? " (as saved)" : "");
