@@ -564,6 +564,20 @@ void DesktopModel::open(const QStringList& paths)
                 if (files.isEmpty() || !runDetached(files, { path }, m_dir))
                     qWarning("vela-shell: couldn't open folder %s in Vela Files", qPrintable(path));
             } else if (info.isFile()) {
+                // Executable ELF files (including AppImages) are programs, not documents.
+                // Keep desktop double-click consistent with Vela Files.
+                QFile executable(info.absoluteFilePath());
+                const bool isElf = executable.open(QIODevice::ReadOnly)
+                    && executable.read(4) == QByteArray("\x7f" "ELF", 4)
+                    && !info.fileName().contains(QLatin1String(".so"));
+                if (isElf) {
+                    if (!info.isExecutable()) {
+                        qWarning("vela-shell: program is not executable: %s", qPrintable(path));
+                    } else if (!runDetached(info.absoluteFilePath(), {}, info.absolutePath())) {
+                        qWarning("vela-shell: could not start executable: %s", qPrintable(path));
+                    }
+                    continue;
+                }
                 const QString app = defaultAppFor(QMimeDatabase().mimeTypeForFile(info).name());
                 if (app.isEmpty() || !m_apps->launchWithFile(app, QUrl::fromLocalFile(path).toString()))
                     emit chooseAppRequested(path);
