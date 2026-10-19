@@ -1066,6 +1066,18 @@ void vela_view_mapped(struct vela_view *view)
         vela_view_update_decoration(view); // the bar is part of the frame to place
     }
     struct vela_output *output = vela_output_under_cursor(server);
+    // Transient dialogs belong on the output of their mapped parent, even
+    // when the pointer is on a different monitor. Never retain the parent
+    // view pointer: it may disappear independently of this window.
+    if (view->xdg && view->xdg->parent) {
+        struct vela_view *candidate;
+        wl_list_for_each (candidate, &server->views, link) {
+            if (candidate->mapped && candidate->xdg == view->xdg->parent) {
+                output = vela_view_output(candidate);
+                break;
+            }
+        }
+    }
     struct wlr_box geometry = vela_view_geometry(view);
     if (output && (view->fullscreen || view->maximized)) {
         struct vela_placement place = vela_output_place(output,
