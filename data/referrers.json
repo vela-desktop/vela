@@ -1,30 +1,35 @@
 {
-  "collected_at": "2026-10-18T08:01:14+00:00",
+  "collected_at": "2026-10-19T08:51:33+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 43,
+      "count": 54,
       "referrer": "velade.org",
-      "uniques": 36
+      "uniques": 45
     },
     {
       "count": 31,
       "referrer": "github.com",
-      "uniques": 9
+      "uniques": 10
     },
     {
-      "count": 22,
+      "count": 27,
       "referrer": "com.reddit.frontpage",
-      "uniques": 20
+      "uniques": 25
     },
     {
-      "count": 22,
+      "count": 25,
       "referrer": "reddit.com",
-      "uniques": 20
+      "uniques": 22
     },
     {
       "count": 1,
       "referrer": "DuckDuckGo",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "forum.endeavouros.com",
       "uniques": 1
     },
     {
