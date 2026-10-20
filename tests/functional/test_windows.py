@@ -30,6 +30,23 @@ class Windows(unittest.TestCase):
     def tearDown(self):
         self.vela.stop()
 
+    def test_transient_is_visible_above_fullscreen_parent(self):
+        # A modal XDG toplevel is a regular window, not an xdg_popup. Without
+        # moving it into the fullscreen scene layer it can get keyboard focus
+        # while remaining completely hidden behind the parent.
+        parent = self.vela.open_window(command=[
+            tool("vela-pattern"), "--fullscreen-parent", "--transient-delay", "600", "500", "350"
+        ])
+        state = self.vela.wait_for(lambda s: len(s.windows) == 2, timeout=6,
+                                   what="fullscreen parent and its XDG child")
+        child = next(w["id"] for w in state.windows if w["id"] != parent)
+        self.assertTrue(state.window(parent)["fullscreen"])
+        self.assertEqual(state["focused"], child)
+        self.vela.wait_still(child)
+        w = self.vela.state().window(child)
+        cx, cy = int(w["x"] + w["w"] / 2), int(w["y"] + w["h"] / 2)
+        self.assertEqual(self.vela.pixels().at(cx, cy), (170, 51, 204))
+
     def test_open_window_is_focused_and_centered(self):
         window = self.vela.open_window(400, 300)
         state = self.vela.wait_for(lambda s: s["focused"] == window, what="the new window has focus")
