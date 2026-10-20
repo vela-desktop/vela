@@ -24,7 +24,8 @@ Window {
 
     Connections {
         target: Menus
-        function onConfirmRequested(title, text, yesText, action) {
+        function onConfirmRequested(title, text, yesText, action, screen) {
+            Shell.placeOnScreen(root, screen || Shell.primaryScreen)
             root.title = title
             root.text = text
             root.yesText = yesText || qsTr("Yes")
