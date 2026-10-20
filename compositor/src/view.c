@@ -574,6 +574,30 @@ static void update_transient_layers(struct vela_server *server)
     }
 }
 
+// Focusing a fullscreen parent must not raise it over an existing dialog.
+// Keep each mapped child above the immediate parent, recursively, including
+// when a modal dialog has its own transient descendants.
+static void raise_transient_descendants(struct vela_view *parent, unsigned depth)
+{
+    if (depth >= 32) {
+        return;
+    }
+    struct vela_view *child;
+    wl_list_for_each (child, &parent->server->views, link) {
+        if (!child->mapped || child == parent || view_parent(child) != parent
+            || child->tree->node.parent != parent->tree->node.parent) {
+            continue;
+        }
+        vela_node_raise_to_top(&child->tree->node);
+        raise_transient_descendants(child, depth + 1);
+    }
+}
+
+void vela_views_raise_transients(struct vela_view *view)
+{
+    raise_transient_descendants(view, 0);
+}
+
 void vela_view_parent_changed(struct vela_view *view)
 {
     update_handle_parent(view);
@@ -947,6 +971,7 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         vela_view_refresh_decoration(view); // fullscreen hides the bar
         if (view->mapped) {
             update_transient_layers(view->server);
+            vela_views_raise_transients(view);
         }
         return;
     }
@@ -968,6 +993,7 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
     vela_view_refresh_decoration(view);
     if (view->mapped) {
         update_transient_layers(view->server);
+        vela_views_raise_transients(view);
     }
 }
 
