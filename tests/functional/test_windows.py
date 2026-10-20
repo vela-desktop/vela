@@ -52,6 +52,29 @@ class Windows(unittest.TestCase):
         self.vela.wait_for(lambda s: s["focused"] == parent, what="parent refocused")
         self.assertEqual(self.vela.pixels().at(cx, cy), (170, 51, 204))
 
+    def test_transient_siblings_keep_stacking_order_after_parent_refocus(self):
+        # The last opened sibling is focused and must remain above its older
+        # sibling even after the parent is brought to the front again.
+        parent = self.vela.open_window(command=[
+            tool("vela-pattern"), "--transient-delay", "600",
+            "--transient-siblings", "500", "350"
+        ])
+        state = self.vela.wait_for(lambda s: len(s.windows) == 3, timeout=7,
+                                   what="parent with two sibling XDG dialogs")
+        top = state["focused"]
+        self.assertNotEqual(top, parent)
+        self.vela.wait_still(top)
+        w = self.vela.state().window(top)
+        cx, cy = int(w["x"] + w["w"] / 2), int(w["y"] + w["h"] / 2)
+        newest_color = (51, 204, 102)
+        self.assertEqual(self.vela.pixels().at(cx, cy), newest_color)
+
+        main = self.vela.state().window(parent)
+        # This point is inside the parent but outside the centered dialogs.
+        self.vela.input("move", main["x"] + 20, main["y"] + 20, "down", "up")
+        self.vela.wait_for(lambda s: s["focused"] == parent, what="parent refocused")
+        self.assertEqual(self.vela.pixels().at(cx, cy), newest_color)
+
     def test_transient_inherits_parent_workspace(self):
         parent = self.vela.open_window(command=[
             tool("vela-pattern"), "--transient-delay", "4000", "360", "260"

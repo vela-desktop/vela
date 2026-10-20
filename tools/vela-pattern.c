@@ -27,6 +27,7 @@
 // --transient-delay MS: after the parent maps, opens another xdg_toplevel
 // with xdg_toplevel.set_parent; used by multi-output functional tests.
 // --transient-maximized: initially maximizes that child.
+// --transient-siblings: create two overlapping siblings to test Z-order.
 // --fullscreen-parent: request fullscreen for the parent before mapping.
 
 #define _GNU_SOURCE
@@ -73,11 +74,20 @@ static int popupY;
 static struct wl_surface* popupSurface;
 
 static struct wl_display* connection;
-static struct wl_surface* transientSurface;
+struct transient_window {
+    struct wl_surface* surface;
+    int width, height;
+    uint32_t color;
+};
+
+static struct transient_window transientWindows[2] = {
+    { .width = 320, .height = 240, .color = 0xffaa33ccu },
+    { .width = 320, .height = 240, .color = 0xff33cc66u },
+};
 static int transientDelayMs = -1;
 static int transientMaximized;
+static int transientSiblings;
 static int fullscreenParent;
-static int transientWidth = 320, transientHeight = 240;
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
@@ -226,9 +236,9 @@ static void openPopup(void)
 
 // A second xdg_toplevel, not an xdg_popup: exercises initial placement
 // against the mapped parent's monitor, and the XDG configure handshake.
-static void drawTransient(void)
+static void drawTransient(struct transient_window* window)
 {
-    const int width = transientWidth, height = transientHeight;
+    const int width = window->width, height = window->height;
     const int stride = width * 4;
     const size_t size = (size_t)stride * height;
     const int fd = memfd_create("vela-pattern-transient", MFD_CLOEXEC);
@@ -242,7 +252,7 @@ static void drawTransient(void)
         exit(1);
     }
     for (int i = 0; i < width * height; ++i) {
-        pixels[i] = 0xffaa33ccu;
+        pixels[i] = window->color;
     }
     munmap(pixels, size);
     struct wl_shm_pool* pool = wl_shm_create_pool(shm, fd, (int32_t)size);
@@ -250,24 +260,25 @@ static void drawTransient(void)
     wl_buffer_add_listener(buffer, &bufferListener, NULL);
     wl_shm_pool_destroy(pool);
     close(fd);
-    wl_surface_attach(transientSurface, buffer, 0, 0);
-    wl_surface_damage_buffer(transientSurface, 0, 0, width, height);
-    wl_surface_commit(transientSurface);
+    wl_surface_attach(window->surface, buffer, 0, 0);
+    wl_surface_damage_buffer(window->surface, 0, 0, width, height);
+    wl_surface_commit(window->surface);
 }
 
 static void onTransientSurfaceConfigure(void* data, struct xdg_surface* xdg, uint32_t serial)
 {
     xdg_surface_ack_configure(xdg, serial);
-    drawTransient();
+    drawTransient(data);
 }
 static const struct xdg_surface_listener transientSurfaceListener = { onTransientSurfaceConfigure };
 
 static void onTransientConfigure(void* data, struct xdg_toplevel* t, int32_t width, int32_t height,
     struct wl_array* states)
 {
+    struct transient_window* window = data;
     if (width > 0 && height > 0) {
-        transientWidth = width;
-        transientHeight = height;
+        window->width = width;
+        window->height = height;
     }
 }
 static void onTransientClose(void* data, struct xdg_toplevel* t) { running = 0; }
@@ -276,20 +287,21 @@ static const struct xdg_toplevel_listener transientToplevelListener = {
     .close = onTransientClose,
 };
 
-static void openTransient(void)
+static void openTransient(int index)
 {
-    transientSurface = wl_compositor_create_surface(compositor);
-    struct xdg_surface* xdg = xdg_wm_base_get_xdg_surface(wmBase, transientSurface);
-    xdg_surface_add_listener(xdg, &transientSurfaceListener, NULL);
+    struct transient_window* window = &transientWindows[index];
+    window->surface = wl_compositor_create_surface(compositor);
+    struct xdg_surface* xdg = xdg_wm_base_get_xdg_surface(wmBase, window->surface);
+    xdg_surface_add_listener(xdg, &transientSurfaceListener, window);
     struct xdg_toplevel* child = xdg_surface_get_toplevel(xdg);
-    xdg_toplevel_add_listener(child, &transientToplevelListener, NULL);
+    xdg_toplevel_add_listener(child, &transientToplevelListener, window);
     xdg_toplevel_set_parent(child, toplevel);
-    xdg_toplevel_set_title(child, "vela-pattern-transient");
-    xdg_toplevel_set_app_id(child, "vela.pattern.transient");
+    xdg_toplevel_set_title(child, index ? "vela-pattern-transient-2" : "vela-pattern-transient");
+    xdg_toplevel_set_app_id(child, index ? "vela.pattern.transient.2" : "vela.pattern.transient");
     if (transientMaximized) {
         xdg_toplevel_set_maximized(child);
     }
-    wl_surface_commit(transientSurface);
+    wl_surface_commit(window->surface);
 }
 
 static void onPreferredScale(void* data, struct wp_fractional_scale_v1* fractional, uint32_t scale)
@@ -324,13 +336,16 @@ static void onSurfaceConfigure(void* data, struct xdg_surface* xdg, uint32_t ser
     if (popupWanted && !popupSurface) {
         openPopup();
     }
-    if (transientDelayMs >= 0 && !transientSurface) {
+    if (transientDelayMs >= 0 && !transientWindows[0].surface) {
         // Let the parent map so the harness can move it to another output.
         wl_display_flush(connection);
         if (transientDelayMs > 0) {
             usleep((useconds_t)transientDelayMs * 1000);
         }
-        openTransient();
+        openTransient(0);
+        if (transientSiblings) {
+            openTransient(1);
+        }
     }
 }
 
@@ -376,6 +391,8 @@ int main(int argc, char** argv)
             }
         } else if (!strcmp(argv[arg], "--transient-maximized")) {
             transientMaximized = 1;
+        } else if (!strcmp(argv[arg], "--transient-siblings")) {
+            transientSiblings = 1;
         } else if (!strcmp(argv[arg], "--fullscreen-parent")) {
             fullscreenParent = 1;
         } else if (!strcmp(argv[arg], "--app-id") && arg + 1 < argc) {
