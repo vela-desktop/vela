@@ -34,6 +34,7 @@ void vela_focus_view(struct vela_server *server, struct vela_view *view)
     // Bring it forward and to the head of the list in any case. System dialogs
     // stay above (but the keyboard goes where the user clicked).
     vela_node_raise_to_top(&view->tree->node);
+    vela_views_raise_transients(view);
     wl_list_remove(&view->link);
     wl_list_insert(&server->views, &view->link);
     if (!vela_view_is_system_prompt(view)) {
