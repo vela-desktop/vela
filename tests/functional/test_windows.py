@@ -47,6 +47,23 @@ class Windows(unittest.TestCase):
         cx, cy = int(w["x"] + w["w"] / 2), int(w["y"] + w["h"] / 2)
         self.assertEqual(self.vela.pixels().at(cx, cy), (170, 51, 204))
 
+    def test_transient_inherits_parent_workspace(self):
+        parent = self.vela.open_window(command=[
+            tool("vela-pattern"), "--transient-delay", "4000", "360", "260"
+        ])
+        # A background application opens its transient after the user has
+        # switched desktops. The transient belongs with its parent.
+        self.vela.keys("super+ctrl+d")
+        self.vela.wait_for(lambda s: s["workspace"] == 1, what="new desktop")
+        state = self.vela.wait_for(lambda s: len(s.windows) == 2, timeout=9,
+                                   what="XDG transient on its parent's workspace")
+        child = next(w["id"] for w in state.windows if w["id"] != parent)
+        self.assertEqual(state.window(child)["workspace"], state.window(parent)["workspace"])
+        self.assertEqual(state.window(child)["workspace"], 0)
+        # Focus follows the new dialog back to the parent's desktop.
+        self.vela.wait_for(lambda s: s["workspace"] == 0 and s["focused"] == child,
+                           what="dialog activated on the parent's desktop")
+
     def test_open_window_is_focused_and_centered(self):
         window = self.vela.open_window(400, 300)
         state = self.vela.wait_for(lambda s: s["focused"] == window, what="the new window has focus")
