@@ -32,7 +32,9 @@
 #include <QPointer>
 #include <QProcess>
 #include <QSettings>
+#include <QScreen>
 #include <QStandardPaths>
+#include <QWindow>
 #include <QThreadPool>
 #include <QStorageInfo>
 #include <QAbstractListModel>
@@ -1263,24 +1265,38 @@ void FileOps::undo()
     }
 }
 
+static void sendShellFileDialog(const QByteArray& action, const QStringList& paths)
+{
+    QJsonObject request;
+    request.insert(QStringLiteral("paths"), QJsonArray::fromStringList(paths));
+    // Qt's focused window is the Explorer window where the user acted.
+    // Carry its Wayland output name across the separate shell process.
+    if (QWindow* window = QGuiApplication::focusWindow()) {
+        if (QScreen* screen = window->screen()) {
+            request.insert(QStringLiteral("screen"), screen->name());
+        }
+    }
+    sendToShell(action + ' ' + QJsonDocument(request).toJson(QJsonDocument::Compact));
+}
+
 void FileOps::showProperties(const QStringList& paths)
 {
-    sendToShell("properties " + QJsonDocument(QJsonArray::fromStringList(paths)).toJson(QJsonDocument::Compact));
+    sendShellFileDialog("properties", paths);
 }
 
 void FileOps::share(const QStringList& paths)
 {
-    sendToShell("share " + QJsonDocument(QJsonArray::fromStringList(paths)).toJson(QJsonDocument::Compact));
+    sendShellFileDialog("share", paths);
 }
 
 void FileOps::chooseApp(const QString& path)
 {
-    sendToShell("open-with " + QJsonDocument(QJsonArray::fromStringList({ path })).toJson(QJsonDocument::Compact));
+    sendShellFileDialog("open-with", { path });
 }
 
 void FileOps::newShortcut(const QString& directory)
 {
-    sendToShell("new-shortcut " + QJsonDocument(QJsonArray::fromStringList({ directory })).toJson(QJsonDocument::Compact));
+    sendShellFileDialog("new-shortcut", { directory });
 }
 
 // ---------------------------------------------------------- shortcuts --
