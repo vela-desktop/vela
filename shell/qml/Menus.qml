@@ -47,6 +47,8 @@ QtObject {
     // settings, notification center, Task View): the panel goes there. Empty:
     // the main output (opened from the keyboard).
     property string panelScreen: ""
+    // Remember the source output across the context menu's asynchronous action.
+    property string lastContextScreen: ""
     function targetScreen() {
         const name = panelScreen !== "" ? panelScreen : Shell.primaryScreen
         panelScreen = ""
@@ -65,29 +67,31 @@ QtObject {
     signal openRequested(var entries, real x, real y, var options)
     signal closeRequested()
     // A Yes/No question (such as "Empty Recycle Bin"): ConfirmDialog.qml.
-    signal confirmRequested(string title, string text, string yesText, var action)
+    signal confirmRequested(string title, string text, string yesText, var action, string screen)
 
-    function confirm(title, text, yesText, action) {
-        confirmRequested(title, text, yesText, action)
+    function confirm(title, text, yesText, action, screen) {
+        confirmRequested(title, text, yesText, action, screen || lastContextScreen || Shell.primaryScreen)
     }
 
     // The Properties window (PropertiesDialog.qml) for these files.
-    signal propertiesRequested(var paths)
-    function showProperties(paths) {
-        propertiesRequested(paths)
+    signal propertiesRequested(var paths, string screen)
+    function showProperties(paths, screen) {
+        propertiesRequested(paths, screen || lastContextScreen || Shell.primaryScreen)
     }
 
     // Share, "Choose another app", New > Shortcut (FileDialogs.qml).
-    signal shareRequested(var paths)
-    signal openWithRequested(string path)
-    signal newShortcutRequested(string folder)
-    function share(paths) { shareRequested(paths) }
-    function chooseApp(path) { openWithRequested(path) }
-    function newShortcut(folder) { newShortcutRequested(folder) }
+    signal shareRequested(var paths, string screen)
+    signal openWithRequested(string path, string screen)
+    signal newShortcutRequested(string folder, string screen)
+    function share(paths, screen) { shareRequested(paths, screen || lastContextScreen || Shell.primaryScreen) }
+    function chooseApp(path, screen) { openWithRequested(path, screen || lastContextScreen || Shell.primaryScreen) }
+    function newShortcut(folder, screen) { newShortcutRequested(folder, screen || lastContextScreen || Shell.primaryScreen) }
 
     function open(entries, x, y, options) {
+        const request = options || {}
+        if (request.screen) lastContextScreen = request.screen
         isOpen = true
-        openRequested(entries, x, y, options || {})
+        openRequested(entries, x, y, request)
     }
 
     function close() {
