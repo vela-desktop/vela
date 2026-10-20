@@ -215,7 +215,7 @@ Window {
             if (openWith.length > 0) {
                 openWith.push({ separator: true })
             }
-            openWith.push({ text: qsTr("Choose another app"), action: () => Menus.chooseApp(single.path) })
+            openWith.push({ text: qsTr("Choose another app"), action: () => Menus.chooseApp(single.path, root.screen ? root.screen.name : Shell.primaryScreen) })
             entries.push({ text: qsTr("Open &with"), icon: "document-open", children: openWith })
         }
         if (single && single.isDir) {
@@ -342,7 +342,7 @@ Window {
         }
         function askEmptyTrash() {
             Menus.confirm(qsTr("Delete multiple items"), qsTr("Permanently delete all the items in the Recycle Bin?"), qsTr("Yes"),
-                () => Desktop.emptyTrash())
+                () => Desktop.emptyTrash(), root.screen ? root.screen.name : Shell.primaryScreen)
         }
         // The menu for the selection or the background: the modern one with
         // the Menu key, the full one with Shift+F10 (like Windows 11).
