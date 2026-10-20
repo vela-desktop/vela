@@ -265,6 +265,39 @@ struct wlr_box vela_view_frame_box(struct vela_view *view)
     };
 }
 
+// Resolve a mapped XDG parent by protocol identity, not a retained view
+// pointer. This also works before the child has entered server->views.
+static struct vela_view *mapped_xdg_parent(struct vela_view *view)
+{
+    if (!view->xdg || !view->xdg->parent) {
+        return NULL;
+    }
+    struct vela_view *candidate;
+    wl_list_for_each (candidate, &view->server->views, link) {
+        if (candidate->mapped && candidate->xdg == view->xdg->parent) {
+            return candidate;
+        }
+    }
+    return NULL;
+}
+
+static struct vela_output *initial_output(struct vela_view *view)
+{
+    struct vela_view *parent = mapped_xdg_parent(view);
+    if (!parent) {
+        return vela_output_under_cursor(view->server);
+    }
+    // Layout changes defer window rescue to an idle callback. A transient
+    // can map first, so repair its parent synchronously.
+    struct vela_server *server = view->server;
+    if (server->output_check) {
+        wl_event_source_remove(server->output_check);
+        server->output_check = NULL;
+        vela_views_check_outputs(server);
+    }
+    return vela_view_output(parent);
+}
+
 struct vela_output *vela_view_output(struct vela_view *view)
 {
     struct wlr_box frame = vela_view_frame_box(view);
@@ -499,9 +532,47 @@ void vela_view_app_id_changed(struct vela_view *view)
     update_ext_handle(view);
 }
 
+// Keep a transient above its fullscreen ancestor, but do not globally
+// elevate unrelated windows above fullscreen content.
+static bool transient_has_fullscreen_ancestor(struct vela_view *view)
+{
+    struct vela_view *parent = view_parent(view);
+    for (int depth = 0; parent && depth < 64; ++depth) {
+        if (!parent->mapped) {
+            return false;
+        }
+        if (parent->fullscreen) {
+            return true;
+        }
+        parent = view_parent(parent);
+    }
+    return false;
+}
+
+static void update_transient_layer(struct vela_view *view)
+{
+    if (!view->mapped || view->fullscreen || !view_parent(view)) {
+        return;
+    }
+    struct vela_tree *target = transient_has_fullscreen_ancestor(view)
+        ? view->server->layers.fullscreen : view->server->layers.windows;
+    if (view->tree->node.parent != target) {
+        vela_node_reparent(&view->tree->node, target);
+    }
+}
+
+static void update_transient_layers(struct vela_server *server)
+{
+    struct vela_view *view;
+    wl_list_for_each (view, &server->views, link) {
+        update_transient_layer(view);
+    }
+}
+
 void vela_view_parent_changed(struct vela_view *view)
 {
     update_handle_parent(view);
+    update_transient_layer(view);
 }
 
 static void handle_taskbar_activate(struct wl_listener *listener, void *data)
@@ -745,7 +816,7 @@ void vela_view_update_shape(struct vela_view *view)
 
 static void apply_maximized(struct vela_view *view)
 {
-    struct vela_output *output = view->mapped ? vela_view_output(view) : vela_output_under_cursor(view->server);
+    struct vela_output *output = view->mapped ? vela_view_output(view) : initial_output(view);
     if (!output || !vela_view_configurable(view)) {
         return;
     }
@@ -846,7 +917,7 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         return;
     }
     vela_view_finish_open_animation(view);
-    struct vela_output *output = view->mapped ? vela_view_output(view) : vela_output_under_cursor(view->server);
+    struct vela_output *output = view->mapped ? vela_view_output(view) : initial_output(view);
 
     if (on) {
         if (view->mapped && !view->maximized && vela_snap_is_none(view->snap)) {
@@ -868,6 +939,9 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
             vela_view_configure_size(view, place.width, place.height);
         }
         vela_view_refresh_decoration(view); // fullscreen hides the bar
+        if (view->mapped) {
+            update_transient_layers(view->server);
+        }
         return;
     }
 
@@ -886,6 +960,9 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         restore(view);
     }
     vela_view_refresh_decoration(view);
+    if (view->mapped) {
+        update_transient_layers(view->server);
+    }
 }
 
 // ------------------------------------------------------------ minimize --
@@ -1065,25 +1142,17 @@ void vela_view_mapped(struct vela_view *view)
     if (view->xdg) {
         vela_view_update_decoration(view); // the bar is part of the frame to place
     }
-    struct vela_output *output = vela_output_under_cursor(server);
-    // Transient dialogs belong on the output of their mapped parent, even
-    // when the pointer is on a different monitor. Never retain the parent
-    // view pointer: it may disappear independently of this window.
-    if (view->xdg && view->xdg->parent) {
-        struct vela_view *candidate;
-        wl_list_for_each (candidate, &server->views, link) {
-            if (candidate->mapped && candidate->xdg == view->xdg->parent) {
-                output = vela_view_output(candidate);
-                break;
-            }
-        }
-    }
+    // Initial configure and map must agree on the selected parent output.
+    struct vela_output *output = initial_output(view);
     struct wlr_box geometry = vela_view_geometry(view);
     if (output && (view->fullscreen || view->maximized)) {
         struct vela_placement place = vela_output_place(output,
             view->fullscreen ? vela_output_full_area(output) : vela_output_usable_area(output));
         view->target_x = place.x - geometry.x;
         view->target_y = place.y - geometry.y;
+        if (geometry.width != place.width || geometry.height != place.height) {
+            vela_view_configure_size(view, place.width, place.height);
+        }
     } else if (output) {
         // New windows in the center of the usable area, like Windows; never
         // larger than it (some apps remember the size they had on another
@@ -1098,6 +1167,12 @@ void vela_view_mapped(struct vela_view *view)
     }
     wl_list_insert(&server->views, &view->link);
     vela_workspaces_view_mapped(server, view);
+    struct vela_view *parent = view_parent(view);
+    if (parent && parent->mapped) {
+        view->workspace = parent->workspace;
+        view->sticky = view->sticky || parent->sticky;
+    }
+    update_transient_layer(view);
     create_handles(view);
     if (vela_view_stays_below(view)) {
         vela_view_keep_below(view); // no keyboard either: it is a backdrop
@@ -1105,6 +1180,11 @@ void vela_view_mapped(struct vela_view *view)
         vela_focus_new_view(server, view);
     }
     start_open_animation(view);
+    // The scene node now has its final output coordinates. Decorations were
+    // created before placement, and must be rerasterized at the actual scale.
+    if (view->xdg) {
+        vela_view_refresh_decoration(view);
+    }
     vela_workspaces_announce(server);
 }
 
@@ -1131,6 +1211,7 @@ void vela_view_unmapped(struct vela_view *view)
     vela_window_capture_destroy(view->capture);
     view->capture = NULL;
     forget(view);
+    update_transient_layers(view->server);
     vela_workspaces_announce(view->server);
 }
 
@@ -1153,7 +1234,9 @@ void vela_view_destroy(struct vela_view *view)
     destroy_handles(view);
     vela_window_capture_destroy(view->capture);
     view->capture = NULL;
+    view->mapped = false;
     forget(view);
+    update_transient_layers(view->server);
     struct wl_listener *all[VIEW_LISTENERS];
     listeners(view, all);
     for (int i = 0; i < VIEW_LISTENERS; ++i) {
