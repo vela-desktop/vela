@@ -1267,15 +1267,21 @@ void FileOps::undo()
 
 static void sendShellFileDialog(const QByteArray& action, const QStringList& paths)
 {
+    // Capture before the IPC round trip: another Explorer window might gain
+    // focus while an older shell is being probed.
+    QString sourceScreen;
+    if (QWindow* window = QGuiApplication::focusWindow()) {
+        if (QScreen* screen = window->screen()) sourceScreen = screen->name();
+    }
     const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
     QLocalSocket socket;
     socket.connectToServer(runtimeDir + QStringLiteral("/vela-shell-") + display + QStringLiteral(".sock"));
     if (!socket.waitForConnected(300)) return;
 
-    // A running shell may predate the screen-aware JSON format. Probe it
-    // before sending the action, keeping legacy array requests compatible.
-    socket.write("dialog-protocol\n");
+    // A running shell may predate the screen-aware JSON format. Old shells
+    // silently accept ping but give no reply; new shells answer "2".
+    socket.write("ping\n");
     if (!socket.waitForBytesWritten(300)) return;
     if (!socket.canReadLine()) socket.waitForReadyRead(100);
     const bool screenAware = socket.canReadLine() && socket.readLine().trimmed() == "2";
@@ -1284,11 +1290,7 @@ static void sendShellFileDialog(const QByteArray& action, const QStringList& pat
     if (screenAware) {
         QJsonObject request;
         request.insert(QStringLiteral("paths"), QJsonArray::fromStringList(paths));
-        if (QWindow* window = QGuiApplication::focusWindow()) {
-            if (QScreen* screen = window->screen()) {
-                request.insert(QStringLiteral("screen"), screen->name());
-            }
-        }
+        if (!sourceScreen.isEmpty()) request.insert(QStringLiteral("screen"), sourceScreen);
         payload = QJsonDocument(request).toJson(QJsonDocument::Compact);
     } else {
         payload = QJsonDocument(QJsonArray::fromStringList(paths)).toJson(QJsonDocument::Compact);

@@ -81,8 +81,9 @@ ShellController::ShellController(QObject* parent)
                     const QByteArray line = socket->readLine().trimmed();
                     if (line == "choose-source") {
                         startChooser(socket); // answers when the user chooses
-                    } else if (line == "dialog-protocol") {
-                        // Explorer probes before sending screen-aware dialog JSON.
+                    } else if (line == "ping") {
+                        // Legacy shells ignore ping; the version reply lets
+                        // Explorer safely opt into screen-aware dialog JSON.
                         socket->write("2\n");
                         socket->flush();
                     } else {
