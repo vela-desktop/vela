@@ -245,6 +245,8 @@ bool vela_view_is_system_prompt(const struct vela_view *view);
 bool vela_view_stays_below(const struct vela_view *view);
 // It goes back to the bottom of its layer, if it stays below.
 void vela_view_keep_below(struct vela_view *view);
+// Keep mapped XDG/XWayland transient descendants above a focused parent.
+void vela_views_raise_transients(struct vela_view *view);
 bool vela_view_resizable(const struct vela_view *view); // not if min = max
 pid_t vela_view_pid(const struct vela_view *view); // the process (for "End task")
 // Size of the whole frame (bar included); 0x0: the app chooses.
