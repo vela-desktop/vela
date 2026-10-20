@@ -1267,16 +1267,34 @@ void FileOps::undo()
 
 static void sendShellFileDialog(const QByteArray& action, const QStringList& paths)
 {
-    QJsonObject request;
-    request.insert(QStringLiteral("paths"), QJsonArray::fromStringList(paths));
-    // Qt's focused window is the Explorer window where the user acted.
-    // Carry its Wayland output name across the separate shell process.
-    if (QWindow* window = QGuiApplication::focusWindow()) {
-        if (QScreen* screen = window->screen()) {
-            request.insert(QStringLiteral("screen"), screen->name());
+    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
+    QLocalSocket socket;
+    socket.connectToServer(runtimeDir + QStringLiteral("/vela-shell-") + display + QStringLiteral(".sock"));
+    if (!socket.waitForConnected(300)) return;
+
+    // A running shell may predate the screen-aware JSON format. Probe it
+    // before sending the action, keeping legacy array requests compatible.
+    socket.write("dialog-protocol\n");
+    if (!socket.waitForBytesWritten(300)) return;
+    if (!socket.canReadLine()) socket.waitForReadyRead(100);
+    const bool screenAware = socket.canReadLine() && socket.readLine().trimmed() == "2";
+
+    QByteArray payload;
+    if (screenAware) {
+        QJsonObject request;
+        request.insert(QStringLiteral("paths"), QJsonArray::fromStringList(paths));
+        if (QWindow* window = QGuiApplication::focusWindow()) {
+            if (QScreen* screen = window->screen()) {
+                request.insert(QStringLiteral("screen"), screen->name());
+            }
         }
+        payload = QJsonDocument(request).toJson(QJsonDocument::Compact);
+    } else {
+        payload = QJsonDocument(QJsonArray::fromStringList(paths)).toJson(QJsonDocument::Compact);
     }
-    sendToShell(action + ' ' + QJsonDocument(request).toJson(QJsonDocument::Compact));
+    socket.write(action + ' ' + payload + '\n');
+    socket.waitForBytesWritten(300);
 }
 
 void FileOps::showProperties(const QStringList& paths)

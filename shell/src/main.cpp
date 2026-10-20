@@ -320,17 +320,9 @@ int main(int argc, char* argv[])
     tray.start();
     SystemActions system;
     system.setAppModel(&apps);
-    // Desktop/Run actions originate inside the shell itself: keep the QScreen
-    // of the focused window rather than defaulting to the pointer output.
-    const auto chooseAppOnFocusedScreen = [&shell](const QString& path) {
-        QWindow* source = QGuiApplication::focusWindow();
-        if (source && source->screen()) {
-            emit shell.openWithOnScreenRequested(path, source->screen()->name());
-        } else {
-            emit shell.openWithRequested(path);
-        }
-    };
-    QObject::connect(&system, &SystemActions::chooseAppRequested, &shell, chooseAppOnFocusedScreen);
+    // Use the QML caller's output; keyboard focus can change when a menu closes.
+    QObject::connect(&system, &SystemActions::chooseAppRequested, &shell, &ShellController::openWithRequested);
+    QObject::connect(&system, &SystemActions::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     QObject::connect(&shell, &ShellController::settingsRequested, &system, [&system] { system.trigger(QStringLiteral("settings")); });
     QObject::connect(&shell, &ShellController::filesRequested, &system, [&system] { system.trigger(QStringLiteral("files")); });
     JumpLists jumps(&apps);
@@ -339,7 +331,8 @@ int main(int argc, char* argv[])
         &desktop, &DesktopModel::recordExternalTransfer);
     QObject::connect(&shell, &ShellController::desktopTransferReadyReceived,
         &desktop, &DesktopModel::acknowledgeTransferStart);
-    QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, chooseAppOnFocusedScreen);
+    QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, &ShellController::openWithRequested);
+    QObject::connect(&desktop, &DesktopModel::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     desktopModel = &desktop;
     ServiceMenus serviceMenus;
     FileProperties properties;

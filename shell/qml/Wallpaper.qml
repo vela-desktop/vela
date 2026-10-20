@@ -106,7 +106,7 @@ Window {
         const files = items.map(i => i.path)
         const single = files.length === 1 ? items[0] : null
         const modern = fileEntries(files)
-        const entries = [{ text: qsTr("&Open"), action: () => Desktop.open(files) }]
+        const entries = [{ text: qsTr("&Open"), action: () => Desktop.openOnScreen(files, root.screen ? root.screen.name : Shell.primaryScreen) }]
         const openWith = modern.find(e => e.text === qsTr("Open &with"))
         if (openWith) {
             entries.push(openWith)
@@ -124,7 +124,7 @@ Window {
             { text: qsTr("&Delete"), action: () => Desktop.trash(files) },
             { text: qsTr("Re&name"), enabled: !!single, action: () => icons.startRename(single.path) },
             { separator: true },
-            { text: qsTr("P&roperties"), action: () => Menus.showProperties(files) })
+            { text: qsTr("P&roperties"), action: () => Menus.showProperties(files, root.screen ? root.screen.name : Shell.primaryScreen) })
         return entries
     }
 
@@ -135,7 +135,7 @@ Window {
         const sort = (text, value) => ({ text: text, radio: true, checked: Desktop.sortMode === value, action: () => Desktop.sortBy(value) })
         const newEntries = [
             { text: qsTr("&Folder"), icon: "folder-new", action: () => Desktop.createFolder() },
-            { text: qsTr("&Shortcut"), icon: "insert-link", action: () => Menus.newShortcut(Desktop.directory) },
+            { text: qsTr("&Shortcut"), icon: "insert-link", action: () => Menus.newShortcut(Desktop.directory, root.screen ? root.screen.name : Shell.primaryScreen) },
             { separator: true },
             { text: qsTr("&Text Document"), icon: "text-plain", action: () => Desktop.createFile("") }
         ]
@@ -193,7 +193,7 @@ Window {
         const first = items[0]
         if (first.isTrash && items.length === 1) {
             return [
-                { text: qsTr("&Open"), icon: "document-open", shortcut: qsTr("Enter"), action: () => Desktop.open([first.path]) },
+                { text: qsTr("&Open"), icon: "document-open", shortcut: qsTr("Enter"), action: () => Desktop.openOnScreen([first.path], root.screen ? root.screen.name : Shell.primaryScreen) },
                 { text: qsTr("&Empty Recycle Bin"), icon: "trash-empty", enabled: !Desktop.trashEmpty(), action: () => icons.askEmptyTrash() },
                 { separator: true },
                 { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), enabled: false }
@@ -205,10 +205,10 @@ Window {
             { icon: "edit-cut", text: qsTr("Cut"), action: () => Desktop.cut(files) },
             { icon: "edit-copy", text: qsTr("Copy"), action: () => Desktop.copy(files) },
             { icon: "edit-rename", text: qsTr("Rename"), enabled: !!single, action: () => icons.startRename(single.path) },
-            { icon: "document-share", text: qsTr("Share"), enabled: items.some(i => !i.isDir && !i.isTrash), action: () => Menus.share(items.filter(i => !i.isDir && !i.isTrash).map(i => i.path)) },
+            { icon: "document-share", text: qsTr("Share"), enabled: items.some(i => !i.isDir && !i.isTrash), action: () => Menus.share(items.filter(i => !i.isDir && !i.isTrash).map(i => i.path), root.screen ? root.screen.name : Shell.primaryScreen) },
             { icon: "edit-delete", text: qsTr("Delete"), action: () => Desktop.trash(files) }
         ] }]
-        entries.push({ text: qsTr("&Open"), icon: "document-open", shortcut: qsTr("Enter"), action: () => Desktop.open(files) })
+        entries.push({ text: qsTr("&Open"), icon: "document-open", shortcut: qsTr("Enter"), action: () => Desktop.openOnScreen(files, root.screen ? root.screen.name : Shell.primaryScreen) })
         if (single && !single.isDir && !single.isApp) {
             const apps = Apps.appsForFile(single.path)
             const openWith = apps.map(a => ({ text: a.name.replace(/&/g, "&&"), icon: a.icon, action: () => Apps.launchWithFile(a.id, single.url) }))
@@ -237,7 +237,7 @@ Window {
                 { text: qsTr("&TAR file"), icon: "application-x-tar", action: () => Desktop.compress(files, "tar") }
             ] },
             { text: qsTr("Copy as &path"), icon: "edit-copy-path", shortcut: qsTr("Ctrl+Shift+C"), action: () => Desktop.copyAsPath(files) },
-            { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), action: () => Menus.showProperties(files) },
+            { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), action: () => Menus.showProperties(files, root.screen ? root.screen.name : Shell.primaryScreen) },
             { separator: true },
             { text: qsTr("Show more options"), icon: "view-more-symbolic", shortcut: qsTr("Shift+F10"), action: () => root.showMoreOptions(files) }
         )
@@ -406,10 +406,10 @@ Window {
                 startRename(files[0])
             } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && paths.length > 0
                 && !(event.modifiers & Qt.AltModifier)) {
-                Desktop.open(paths)
+                Desktop.openOnScreen(paths, root.screen ? root.screen.name : Shell.primaryScreen)
             } else if ((event.modifiers & Qt.AltModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
                 if (files.length > 0) {
-                    Menus.showProperties(files)
+                    Menus.showProperties(files, root.screen ? root.screen.name : Shell.primaryScreen)
                 }
             } else if (event.key === Qt.Key_F5) {
                 Desktop.refresh()
@@ -746,7 +746,7 @@ Window {
                     }
                     onDoubleClicked: mouse => {
                         if (mouse.button === Qt.LeftButton) {
-                            Desktop.open([icon.path])
+                            Desktop.openOnScreen([icon.path], root.screen ? root.screen.name : Shell.primaryScreen)
                         }
                     }
 
