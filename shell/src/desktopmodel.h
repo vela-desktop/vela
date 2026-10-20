@@ -93,6 +93,7 @@ public:
     Q_INVOKABLE void moveTo(const QString& path, qreal x, qreal y);
 
     Q_INVOKABLE void open(const QStringList& paths);
+    Q_INVOKABLE void openOnScreen(const QStringList& paths, const QString& screen);
     Q_INVOKABLE bool rename(const QString& path, const QString& newName);
     Q_INVOKABLE void trash(const QStringList& paths);
     Q_INVOKABLE void emptyTrash();
@@ -126,6 +127,7 @@ signals:
     // it renamed.
     void created(const QString& path, bool rename);
     void chooseAppRequested(const QString& path);
+    void chooseAppOnScreenRequested(const QString& path, const QString& screen);
 
 private:
     struct Item {

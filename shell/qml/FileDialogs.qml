@@ -35,19 +35,23 @@ Window {
 
     Connections {
         target: Menus
-        function onShareRequested(paths) { root.openShare(paths) }
-        function onOpenWithRequested(path) { root.openWith(path) }
-        function onNewShortcutRequested(folder) { root.openShortcut(folder) }
+        function onShareRequested(paths, screen) { root.openShare(paths, screen) }
+        function onOpenWithRequested(path, screen) { root.openWith(path, screen) }
+        function onNewShortcutRequested(folder, screen) { root.openShortcut(folder, screen) }
     }
     // From Explorer too.
     Connections {
         target: Shell
-        function onShareRequested(paths) { root.openShare(paths) }
-        function onOpenWithRequested(path) { root.openWith(path) }
-        function onNewShortcutRequested(folder) { root.openShortcut(folder) }
+        function onShareRequested(paths) { root.openShare(paths, Shell.primaryScreen) }
+        function onOpenWithRequested(path) { root.openWith(path, Shell.primaryScreen) }
+        function onNewShortcutRequested(folder) { root.openShortcut(folder, Shell.primaryScreen) }
+        function onShareOnScreenRequested(paths, screen) { root.openShare(paths, screen) }
+        function onOpenWithOnScreenRequested(path, screen) { root.openWith(path, screen) }
+        function onNewShortcutOnScreenRequested(folder, screen) { root.openShortcut(folder, screen) }
     }
 
-    function show() {
+    function show(screen) {
+        Shell.placeOnScreen(root, screen || Shell.primaryScreen)
         visible = true
         motion.open()
         panel.forceActiveFocus()
@@ -55,29 +59,29 @@ Window {
     function close() {
         motion.close()
     }
-    function openShare(list) {
+    function openShare(list, screen) {
         paths = list
         mode = "share"
         FileActions.findDevices()
-        show()
+        show(screen)
     }
-    function openWith(file) {
+    function openWith(file, screen) {
         path = file
         suggested = Apps.appsForFile(file)
         const ids = suggested.map(a => a.id)
         others = Apps.allApps().filter(a => ids.indexOf(a.id) < 0)
         chosen = suggested.length > 0 ? suggested[0].id : ""
         mode = "openWith"
-        show()
+        show(screen)
     }
-    function openShortcut(dir) {
+    function openShortcut(dir, screen) {
         folder = dir
         step = 0
         error = ""
         targetField.text = ""
         nameField.text = ""
         mode = "shortcut"
-        show()
+        show(screen)
         targetField.forceActiveFocus()
     }
     function launchChosen(always) {

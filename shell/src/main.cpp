@@ -320,7 +320,9 @@ int main(int argc, char* argv[])
     tray.start();
     SystemActions system;
     system.setAppModel(&apps);
+    // Use the QML caller's output; keyboard focus can change when a menu closes.
     QObject::connect(&system, &SystemActions::chooseAppRequested, &shell, &ShellController::openWithRequested);
+    QObject::connect(&system, &SystemActions::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     QObject::connect(&shell, &ShellController::settingsRequested, &system, [&system] { system.trigger(QStringLiteral("settings")); });
     QObject::connect(&shell, &ShellController::filesRequested, &system, [&system] { system.trigger(QStringLiteral("files")); });
     JumpLists jumps(&apps);
@@ -330,6 +332,7 @@ int main(int argc, char* argv[])
     QObject::connect(&shell, &ShellController::desktopTransferReadyReceived,
         &desktop, &DesktopModel::acknowledgeTransferStart);
     QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, &ShellController::openWithRequested);
+    QObject::connect(&desktop, &DesktopModel::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     desktopModel = &desktop;
     ServiceMenus serviceMenus;
     FileProperties properties;

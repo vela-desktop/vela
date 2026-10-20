@@ -12,6 +12,7 @@
 #include <LayerShellQt/Window>
 #include <QGuiApplication>
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QScreen>
 #include <QJsonDocument>
 #include <QSettings>
@@ -31,6 +32,22 @@
 namespace {
 
 // At first start: everyday apps, if installed (Start skips the missing ones).
+struct FileDialogRequest {
+    QJsonArray paths;
+    QString screen;
+};
+
+FileDialogRequest parseFileDialogRequest(const QByteArray& payload)
+{
+    const QJsonDocument json = QJsonDocument::fromJson(payload);
+    if (json.isObject()) {
+        const QJsonObject request = json.object();
+        return { request.value(QStringLiteral("paths")).toArray(), request.value(QStringLiteral("screen")).toString() };
+    }
+    // Compatibility with older vela-files versions that sent bare arrays.
+    return { json.array(), {} };
+}
+
 const QStringList defaultStartPins {
     QStringLiteral("firefox.desktop"),
     QStringLiteral("org.mozilla.firefox.desktop"),
@@ -64,6 +81,11 @@ ShellController::ShellController(QObject* parent)
                     const QByteArray line = socket->readLine().trimmed();
                     if (line == "choose-source") {
                         startChooser(socket); // answers when the user chooses
+                    } else if (line == "ping") {
+                        // Legacy shells ignore ping; the version reply lets
+                        // Explorer safely opt into screen-aware dialog JSON.
+                        socket->write("2\n");
+                        socket->flush();
                     } else {
                         handleCommand(line);
                     }
@@ -310,35 +332,32 @@ void ShellController::handleCommand(const QByteArray& command)
         emit snapLayoutsRequested(QString::fromLatin1(parts.at(1)), QString::fromUtf8(parts.at(2)), parts.at(3).toInt(),
             parts.at(4).toInt(), parts.at(5) == "1");
     } else if (parts.first() == "properties") {
-        // properties ["path", ...]: the Properties window, asked for by
-        // Explorer.
+        const FileDialogRequest request = parseFileDialogRequest(command.mid(11));
         QStringList paths;
-        for (const QJsonValue& value : QJsonDocument::fromJson(command.mid(11)).array()) {
-            paths.append(value.toString());
-        }
+        for (const QJsonValue& value : request.paths) paths.append(value.toString());
         if (!paths.isEmpty()) {
-            emit propertiesRequested(paths);
+            if (!request.screen.isEmpty()) emit propertiesOnScreenRequested(paths, request.screen);
+            else emit propertiesRequested(paths);
         }
     } else if (parts.first() == "share") {
-        // share ["path", ...]: Share, asked for by Explorer.
+        const FileDialogRequest request = parseFileDialogRequest(command.mid(6));
         QStringList paths;
-        for (const QJsonValue& value : QJsonDocument::fromJson(command.mid(6)).array()) {
-            paths.append(value.toString());
-        }
+        for (const QJsonValue& value : request.paths) paths.append(value.toString());
         if (!paths.isEmpty()) {
-            emit shareRequested(paths);
+            if (!request.screen.isEmpty()) emit shareOnScreenRequested(paths, request.screen);
+            else emit shareRequested(paths);
         }
     } else if (parts.first() == "open-with") {
-        // open-with ["path"]: "Choose another app", asked for by Explorer.
-        const QJsonArray paths = QJsonDocument::fromJson(command.mid(10)).array();
-        if (!paths.isEmpty()) {
-            emit openWithRequested(paths.first().toString());
+        const FileDialogRequest request = parseFileDialogRequest(command.mid(10));
+        if (!request.paths.isEmpty()) {
+            if (!request.screen.isEmpty()) emit openWithOnScreenRequested(request.paths.first().toString(), request.screen);
+            else emit openWithRequested(request.paths.first().toString());
         }
     } else if (parts.first() == "new-shortcut") {
-        // new-shortcut ["folder"]: "New > Shortcut", asked for by Explorer.
-        const QJsonArray folders = QJsonDocument::fromJson(command.mid(13)).array();
-        if (!folders.isEmpty()) {
-            emit newShortcutRequested(folders.first().toString());
+        const FileDialogRequest request = parseFileDialogRequest(command.mid(13));
+        if (!request.paths.isEmpty()) {
+            if (!request.screen.isEmpty()) emit newShortcutOnScreenRequested(request.paths.first().toString(), request.screen);
+            else emit newShortcutRequested(request.paths.first().toString());
         }
     } else if (parts.first() == "desktop-transfer-ready" && parts.size() == 2) {
         bool ok = false;
@@ -378,13 +397,24 @@ void ShellController::placeOnScreen(QWindow* window, const QString& name)
     if (!window) {
         return;
     }
+    QScreen* target = nullptr;
     for (QScreen* screen : QGuiApplication::screens()) {
         if (screen->name() == name) {
-            window->setScreen(screen);
-            if (auto* layer = LayerShellQt::Window::get(window)) {
-                layer->setScreen(screen);
-            }
-            return;
+            target = screen;
+            break;
+        }
+    }
+    if (!target) {
+        target = vela::primaryOutputScreen(m_preferredPrimaryOutput);
+    }
+    if (target && window->screen() != target) {
+        // A mapped layer-shell wl_surface cannot change output. Destroy only
+        // the native surface (not the QML window), then select the new output.
+        window->hide();
+        window->destroy();
+        window->setScreen(target);
+        if (auto* layer = LayerShellQt::Window::get(window)) {
+            layer->setScreen(target);
         }
     }
 }

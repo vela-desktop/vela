@@ -34,7 +34,7 @@ Window {
         motion.close()
     }
     function accept() {
-        if (System.run(field.text)) {
+        if (System.runOnScreen(field.text, root.screen ? root.screen.name : Shell.primaryScreen)) {
             close()
         }
     }

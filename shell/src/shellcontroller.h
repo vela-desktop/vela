@@ -130,6 +130,12 @@ signals:
     void shareRequested(const QStringList& paths); // "Share", from Explorer
     void openWithRequested(const QString& path); // "Choose another app", from Explorer
     void newShortcutRequested(const QString& folder);
+    // File Explorer passes its originating QScreen with requests for shell
+    // layer-shell dialogs; older clients may still send only file paths.
+    void propertiesOnScreenRequested(const QStringList& paths, const QString& screen);
+    void shareOnScreenRequested(const QStringList& paths, const QString& screen);
+    void openWithOnScreenRequested(const QString& path, const QString& screen);
+    void newShortcutOnScreenRequested(const QString& folder, const QString& screen);
     void desktopTransferUndoReceived(const QByteArray& json);
     void desktopTransferReadyReceived(qint64 pid); // "New > Shortcut", from Explorer
     void accessibilityReceived(const QByteArray& json); // from the compositor

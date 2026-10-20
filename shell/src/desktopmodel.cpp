@@ -552,6 +552,11 @@ void DesktopModel::moveTo(const QString& path, qreal x, qreal y)
 
 void DesktopModel::open(const QStringList& paths)
 {
+    openOnScreen(paths, {});
+}
+
+void DesktopModel::openOnScreen(const QStringList& paths, const QString& screen)
+{
     for (const QString& path : paths) {
         if (path == trashPath) {
             runDetached(velaFilesExecutable(), { trashFilesDir() }, m_dir);
@@ -565,8 +570,10 @@ void DesktopModel::open(const QStringList& paths)
                     qWarning("vela-shell: couldn't open folder %s in Vela Files", qPrintable(path));
             } else if (info.isFile()) {
                 const QString app = defaultAppFor(QMimeDatabase().mimeTypeForFile(info).name());
-                if (app.isEmpty() || !m_apps->launchWithFile(app, QUrl::fromLocalFile(path).toString()))
-                    emit chooseAppRequested(path);
+                if (app.isEmpty() || !m_apps->launchWithFile(app, QUrl::fromLocalFile(path).toString())) {
+                    if (screen.isEmpty()) emit chooseAppRequested(path);
+                    else emit chooseAppOnScreenRequested(path, screen);
+                }
             } else {
                 qWarning("vela-shell: no handler for %s", qPrintable(path));
             }

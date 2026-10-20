@@ -41,6 +41,7 @@ public:
 
     // "Run" (Win+R): a program, a folder, a document or a URL.
     Q_INVOKABLE bool run(const QString& text);
+    Q_INVOKABLE bool runOnScreen(const QString& text, const QString& screen);
     Q_INVOKABLE QStringList runHistory() const;
 
     // "Open file location": the folder in the file manager, with the file
@@ -58,6 +59,7 @@ public:
 
 signals:
     void chooseAppRequested(const QString& path);
+    void chooseAppOnScreenRequested(const QString& path, const QString& screen);
 
 private:
     AppModel* m_apps = nullptr;
