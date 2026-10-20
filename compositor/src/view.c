@@ -583,7 +583,7 @@ static void raise_transient_descendants(struct vela_view *parent, unsigned depth
         return;
     }
     struct vela_view *child;
-    wl_list_for_each (child, &parent->server->views, link) {
+    wl_list_for_each_reverse (child, &parent->server->views, link) {
         if (!child->mapped || child == parent || view_parent(child) != parent
             || child->tree->node.parent != parent->tree->node.parent) {
             continue;
@@ -1204,7 +1204,12 @@ void vela_view_mapped(struct vela_view *view)
         view->workspace = parent->workspace;
         view->sticky = view->sticky || parent->sticky;
     }
-    update_transient_layer(view);
+    // Mapping a transient on another desktop must not expose its scene node
+    // until its workspace is actually selected, including XWayland backdrops.
+    vela_node_set_enabled(&view->tree->node, vela_view_on_current_workspace(view));
+    // An already-mapped child may need to rejoin the fullscreen layer when
+    // its parent maps again after a temporary unmap.
+    update_transient_layers(server);
     create_handles(view);
     if (vela_view_stays_below(view)) {
         vela_view_keep_below(view); // no keyboard either: it is a backdrop

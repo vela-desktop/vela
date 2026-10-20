@@ -1268,7 +1268,7 @@ static void sendShellFileDialog(const QByteArray& action, const QStringList& pat
     // silently accept ping but give no reply; new shells answer "2".
     socket.write("ping\n");
     if (!socket.waitForBytesWritten(300)) return;
-    if (!socket.canReadLine()) socket.waitForReadyRead(100);
+    if (!socket.canReadLine()) socket.waitForReadyRead(300);
     const bool screenAware = socket.canReadLine() && socket.readLine().trimmed() == "2";
 
     QByteArray payload;
