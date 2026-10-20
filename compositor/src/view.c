@@ -551,7 +551,12 @@ static bool transient_has_fullscreen_ancestor(struct vela_view *view)
 
 static void update_transient_layer(struct vela_view *view)
 {
-    if (!view->mapped || view->fullscreen || !view_parent(view)) {
+    if (!view->mapped || view->fullscreen) {
+        return;
+    }
+    // A formerly fullscreen child must return to the normal window layer
+    // when its parent is destroyed or its XDG parent relationship is cleared.
+    if (!view_parent(view) && view->tree->node.parent != view->server->layers.fullscreen) {
         return;
     }
     struct vela_tree *target = transient_has_fullscreen_ancestor(view)
@@ -572,7 +577,8 @@ static void update_transient_layers(struct vela_server *server)
 void vela_view_parent_changed(struct vela_view *view)
 {
     update_handle_parent(view);
-    update_transient_layer(view);
+    // Descendants of this view can also need to leave/enter fullscreen layer.
+    update_transient_layers(view->server);
 }
 
 static void handle_taskbar_activate(struct wl_listener *listener, void *data)
