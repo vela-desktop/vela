@@ -38,7 +38,8 @@ Window {
 
     Connections {
         target: Menus
-        function onPropertiesRequested(paths) {
+        function onPropertiesRequested(paths, screen) {
+            Shell.placeOnScreen(root, screen || Shell.primaryScreen)
             root.load(paths)
             root.tab = 0
             root.visible = true
@@ -49,7 +50,8 @@ Window {
     // From Explorer too (vela-files), through the shell's socket.
     Connections {
         target: Shell
-        function onPropertiesRequested(paths) { Menus.showProperties(paths) }
+        function onPropertiesRequested(paths) { Menus.showProperties(paths, Shell.primaryScreen) }
+        function onPropertiesOnScreenRequested(paths, screen) { Menus.showProperties(paths, screen) }
     }
     Connections {
         target: Properties
