@@ -407,15 +407,21 @@ void ShellController::placeOnScreen(QWindow* window, const QString& name)
     if (!target) {
         target = vela::primaryOutputScreen(m_preferredPrimaryOutput);
     }
-    if (target && window->screen() != target) {
+    if (!target) {
+        return;
+    }
+    if (window->screen() != target) {
         // A mapped layer-shell wl_surface cannot change output. Destroy only
         // the native surface (not the QML window), then select the new output.
         window->hide();
         window->destroy();
-        window->setScreen(target);
-        if (auto* layer = LayerShellQt::Window::get(window)) {
-            layer->setScreen(target);
-        }
+    }
+    // QWindow::screen() may already be the requested output before the first
+    // layer-shell map, while the layer surface has not been explicitly assigned.
+    // Always select the output for both objects, even when Qt reports a match.
+    window->setScreen(target);
+    if (auto* layer = LayerShellQt::Window::get(window)) {
+        layer->setScreen(target);
     }
 }
 

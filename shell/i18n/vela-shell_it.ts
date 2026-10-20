@@ -62,6 +62,18 @@
 <context>
     <name>Desktop</name>
     <message>
+        <source>Couldn&apos;t start “%1”.</source>
+        <translation>Impossibile avviare «%1».</translation>
+    </message>
+    <message>
+        <source>“%1” is a program, but it can&apos;t be run. In Properties, turn on “Allow executing as a program”.</source>
+        <translation>«%1» è un programma, ma non può essere eseguito. In Proprietà, attiva «Consenti l&apos;esecuzione come programma».</translation>
+    </message>
+    <message>
+        <source>Check the executable format and required libraries.</source>
+        <translation>Controlla il formato dell&apos;eseguibile e le librerie necessarie.</translation>
+    </message>
+    <message>
         <source>Could not launch Vela Files to transfer the selected items.</source>
         <translation>Impossibile avviare Vela Files per trasferire gli elementi selezionati.</translation>
     </message>

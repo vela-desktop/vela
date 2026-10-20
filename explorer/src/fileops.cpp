@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "fileops.h"
+#include "../../common/executablefile.h"
 
 #include "appmodel.h"
 #include "foldermodel.h"
@@ -808,22 +809,6 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
 
 // ------------------------------------------------------------ opening --
 
-namespace {
-
-// A Linux program (ELF, AppImages included), not a library: it starts with a
-// double click, like an .exe on Windows. Scripts stay documents: they open
-// with the app for their type.
-bool isProgram(const QFileInfo& info)
-{
-    if (!info.isFile() || info.fileName().contains(QLatin1String(".so"))) {
-        return false;
-    }
-    QFile file(info.absoluteFilePath());
-    return file.open(QIODevice::ReadOnly) && file.read(4) == QByteArray("\x7f" "ELF", 4);
-}
-
-} // namespace
-
 void FileOps::open(const QStringList& paths)
 {
     static const QMimeDatabase mimes;
@@ -832,7 +817,7 @@ void FileOps::open(const QStringList& paths)
         if (path.endsWith(QLatin1String(".desktop")) && m_apps->launchDesktopFile(path)) {
             continue;
         }
-        if (isProgram(info)) {
+        if (vela::files::isProgram(info)) {
             if (!info.isExecutable()) {
                 emit failed(QCoreApplication::translate("Files", "“%1” is a program, but it can't be run. In Properties, turn on “Allow executing as a program”.")
                                 .arg(info.fileName()));
