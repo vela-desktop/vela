@@ -46,6 +46,11 @@ class Windows(unittest.TestCase):
         w = self.vela.state().window(child)
         cx, cy = int(w["x"] + w["w"] / 2), int(w["y"] + w["h"] / 2)
         self.assertEqual(self.vela.pixels().at(cx, cy), (170, 51, 204))
+        # Clicking an uncovered region of the parent raises/focuses it, but
+        # must not cover its still-mapped transient.
+        self.vela.input("move", 20, 20, "down", "up")
+        self.vela.wait_for(lambda s: s["focused"] == parent, what="parent refocused")
+        self.assertEqual(self.vela.pixels().at(cx, cy), (170, 51, 204))
 
     def test_transient_inherits_parent_workspace(self):
         parent = self.vela.open_window(command=[
