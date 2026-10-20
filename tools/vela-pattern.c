@@ -27,6 +27,7 @@
 // --transient-delay MS: after the parent maps, opens another xdg_toplevel
 // with xdg_toplevel.set_parent; used by multi-output functional tests.
 // --transient-maximized: initially maximizes that child.
+// --fullscreen-parent: request fullscreen for the parent before mapping.
 
 #define _GNU_SOURCE
 #include <math.h>
@@ -75,6 +76,7 @@ static struct wl_display* connection;
 static struct wl_surface* transientSurface;
 static int transientDelayMs = -1;
 static int transientMaximized;
+static int fullscreenParent;
 static int transientWidth = 320, transientHeight = 240;
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
@@ -374,6 +376,8 @@ int main(int argc, char** argv)
             }
         } else if (!strcmp(argv[arg], "--transient-maximized")) {
             transientMaximized = 1;
+        } else if (!strcmp(argv[arg], "--fullscreen-parent")) {
+            fullscreenParent = 1;
         } else if (!strcmp(argv[arg], "--app-id") && arg + 1 < argc) {
             // For tests that depend on the app (system dialogs).
             appId = argv[++arg];
@@ -408,6 +412,9 @@ int main(int argc, char** argv)
     xdg_toplevel_add_listener(toplevel, &toplevelListener, NULL);
     xdg_toplevel_set_title(toplevel, "vela-pattern");
     xdg_toplevel_set_app_id(toplevel, appId);
+    if (fullscreenParent) {
+        xdg_toplevel_set_fullscreen(toplevel, NULL);
+    }
     if (decorated) {
         if (!decorationManager) {
             fprintf(stderr, "vela-pattern: no xdg-decoration\n");
