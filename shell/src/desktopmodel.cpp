@@ -5,9 +5,12 @@
 
 #include "appmodel.h"
 #include "../../common/filetransferrequest.h"
+#include "../../common/executablefile.h"
 #include "systemactions.h"
 
 #include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QClipboard>
 #include <QCryptographicHash>
 #include <QImageReader>
@@ -31,6 +34,7 @@
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QUrl>
+#include <QVariantMap>
 #include <QtDebug>
 
 #include <algorithm>
@@ -128,6 +132,21 @@ bool launchFileTransfer(const QStringList& sources, const QString& directory,
             QCoreApplication::translate("Desktop", "Could not launch Vela Files to transfer the selected items."));
     }
     return launched;
+}
+
+// Report startup errors in the desktop UI instead of silently logging them.
+// Vela's notification server provides a visible toast via the standard API.
+void notifyProgramLaunchFailure(const QString& filename, const QString& detail)
+{
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("/org/freedesktop/Notifications"),
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("Notify"));
+    message << QStringLiteral("Vela Desktop") << uint(0) << QStringLiteral("dialog-error")
+            << QCoreApplication::translate("Desktop", "Couldn't start “%1”.").arg(filename)
+            << detail << QStringList {} << QVariantMap {} << 10000;
+    QDBusConnection::sessionBus().asyncCall(message);
 }
 
 } // namespace
@@ -564,17 +583,20 @@ void DesktopModel::open(const QStringList& paths)
                 if (files.isEmpty() || !runDetached(files, { path }, m_dir))
                     qWarning("vela-shell: couldn't open folder %s in Vela Files", qPrintable(path));
             } else if (info.isFile()) {
-                // Executable ELF files (including AppImages) are programs, not documents.
-                // Keep desktop double-click consistent with Vela Files.
-                QFile executable(info.absoluteFilePath());
-                const bool isElf = executable.open(QIODevice::ReadOnly)
-                    && executable.read(4) == QByteArray("\x7f" "ELF", 4)
-                    && !info.fileName().contains(QLatin1String(".so"));
-                if (isElf) {
+                // Share ELF detection with Vela Files; missing chmod +x is
+                // an error to report, not a reason to open the MIME chooser.
+                if (vela::files::isProgram(info)) {
                     if (!info.isExecutable()) {
                         qWarning("vela-shell: program is not executable: %s", qPrintable(path));
+                        notifyProgramLaunchFailure(info.fileName(),
+                            QCoreApplication::translate("Desktop",
+                                "“%1” is a program, but it can't be run. In Properties, turn on “Allow executing as a program”.")
+                                .arg(info.fileName()));
                     } else if (!runDetached(info.absoluteFilePath(), {}, info.absolutePath())) {
                         qWarning("vela-shell: could not start executable: %s", qPrintable(path));
+                        notifyProgramLaunchFailure(info.fileName(),
+                            QCoreApplication::translate("Desktop",
+                                "Check the executable format and required libraries."));
                     }
                     continue;
                 }
