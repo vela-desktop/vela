@@ -1,0 +1,110 @@
+{
+  "collected_at": "2026-10-20T08:31:50+00:00",
+  "coverage": "top_10_only",
+  "popular_paths": [
+    {
+      "count": 429,
+      "path": "/vela-desktop/vela/pulls",
+      "title": "/pulls",
+      "uniques": 9
+    },
+    {
+      "count": 196,
+      "path": "/vela-desktop/vela",
+      "title": "Overview",
+      "uniques": 152
+    },
+    {
+      "count": 63,
+      "path": "/BrandoDev/vela/pulls",
+      "title": "/pulls",
+      "uniques": 2
+    },
+    {
+      "count": 62,
+      "path": "/vela-desktop/vela/issues",
+      "title": "/issues",
+      "uniques": 11
+    },
+    {
+      "count": 39,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 15
+    },
+    {
+      "count": 35,
+      "path": "/vela-desktop/vela/pull/40",
+      "title": "/pull/40",
+      "uniques": 3
+    },
+    {
+      "count": 27,
+      "path": "/BrandoDev/vela",
+      "title": "Overview",
+      "uniques": 5
+    },
+    {
+      "count": 26,
+      "path": "/vela-desktop/vela/pull/47",
+      "title": "/pull/47",
+      "uniques": 2
+    },
+    {
+      "count": 21,
+      "path": "/vela-desktop/vela/issues/50",
+      "title": "/issues/50",
+      "uniques": 5
+    },
+    {
+      "count": 17,
+      "path": "/BrandoDev/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 2
+    }
+  ],
+  "referrers": [
+    {
+      "count": 56,
+      "referrer": "velade.org",
+      "uniques": 47
+    },
+    {
+      "count": 30,
+      "referrer": "github.com",
+      "uniques": 10
+    },
+    {
+      "count": 27,
+      "referrer": "com.reddit.frontpage",
+      "uniques": 25
+    },
+    {
+      "count": 26,
+      "referrer": "reddit.com",
+      "uniques": 23
+    },
+    {
+      "count": 1,
+      "referrer": "DuckDuckGo",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "forum.endeavouros.com",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "org.telegram.messenger",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "search.brave.com",
+      "uniques": 1
+    }
+  ],
+  "schema_version": 1,
+  "window": "rolling_14_days"
+}

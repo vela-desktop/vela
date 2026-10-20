@@ -1,18 +1,18 @@
 {
-  "collected_at": "2026-10-19T08:51:33+00:00",
+  "collected_at": "2026-10-20T08:31:50+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 422,
+      "count": 429,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
       "uniques": 9
     },
     {
-      "count": 191,
+      "count": 196,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 149
+      "uniques": 152
     },
     {
       "count": 63,
@@ -21,16 +21,16 @@
       "uniques": 2
     },
     {
-      "count": 59,
+      "count": 62,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
       "uniques": 11
     },
     {
-      "count": 38,
+      "count": 39,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 14
+      "uniques": 15
     },
     {
       "count": 35,
@@ -39,7 +39,7 @@
       "uniques": 3
     },
     {
-      "count": 28,
+      "count": 27,
       "path": "/BrandoDev/vela",
       "title": "Overview",
       "uniques": 5
@@ -51,7 +51,7 @@
       "uniques": 2
     },
     {
-      "count": 20,
+      "count": 21,
       "path": "/vela-desktop/vela/issues/50",
       "title": "/issues/50",
       "uniques": 5

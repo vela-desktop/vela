@@ -1,17 +1,17 @@
 {
-  "generated_at": "2026-10-19T08:51:33+00:00",
+  "generated_at": "2026-10-20T08:31:50+00:00",
   "popular_paths": [
     {
-      "count": 422,
+      "count": 429,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
       "uniques": 9
     },
     {
-      "count": 191,
+      "count": 196,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 149
+      "uniques": 152
     },
     {
       "count": 63,
@@ -20,16 +20,16 @@
       "uniques": 2
     },
     {
-      "count": 59,
+      "count": 62,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
       "uniques": 11
     },
     {
-      "count": 38,
+      "count": 39,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 14
+      "uniques": 15
     },
     {
       "count": 35,
@@ -38,7 +38,7 @@
       "uniques": 3
     },
     {
-      "count": 28,
+      "count": 27,
       "path": "/BrandoDev/vela",
       "title": "Overview",
       "uniques": 5
@@ -50,7 +50,7 @@
       "uniques": 2
     },
     {
-      "count": 20,
+      "count": 21,
       "path": "/vela-desktop/vela/issues/50",
       "title": "/issues/50",
       "uniques": 5
@@ -65,6 +65,32 @@
   "releases": {
     "asset_count": 20,
     "by_release": [
+      {
+        "assets": [
+          {
+            "downloads": 2,
+            "id": "656628699",
+            "name": "SHA256SUMS"
+          },
+          {
+            "downloads": 0,
+            "id": "656628698",
+            "name": "SHA256SUMS-fedora"
+          },
+          {
+            "downloads": 0,
+            "id": "656628700",
+            "name": "vela-git-0.1.0-1.135.g265513a.fc44.x86_64.rpm"
+          },
+          {
+            "downloads": 2,
+            "id": "656628693",
+            "name": "vela-git-0.1.0.r135.g265513a-1-x86_64.pkg.tar.zst"
+          }
+        ],
+        "downloads_current_assets": 4,
+        "tag": "alpha-265513a32060526dba845fd68d695467664243ed"
+      },
       {
         "assets": [
           {
@@ -95,79 +121,53 @@
         "assets": [
           {
             "downloads": 0,
-            "id": "653609888",
+            "id": "656604497",
             "name": "SHA256SUMS"
           },
           {
             "downloads": 0,
-            "id": "653609891",
+            "id": "656604494",
             "name": "SHA256SUMS-fedora"
           },
           {
             "downloads": 0,
-            "id": "653609890",
-            "name": "vela-git-0.1.0-1.130.g5be0b7e.fc44.x86_64.rpm"
+            "id": "656604491",
+            "name": "vela-git-0.1.0-1.134.g645250e.fc44.x86_64.rpm"
           },
           {
             "downloads": 0,
-            "id": "653609892",
-            "name": "vela-git-0.1.0.r130.g5be0b7e-1-x86_64.pkg.tar.zst"
+            "id": "656604495",
+            "name": "vela-git-0.1.0.r134.g645250e-1-x86_64.pkg.tar.zst"
           }
         ],
         "downloads_current_assets": 0,
-        "tag": "alpha-5be0b7e949d1a38b2a9d0e0078adb6c885e7f5ac"
-      },
-      {
-        "assets": [
-          {
-            "downloads": 3,
-            "id": "651841514",
-            "name": "SHA256SUMS"
-          },
-          {
-            "downloads": 0,
-            "id": "651841506",
-            "name": "SHA256SUMS-fedora"
-          },
-          {
-            "downloads": 0,
-            "id": "651841507",
-            "name": "vela-git-0.1.0-1.128.g794e531.fc44.x86_64.rpm"
-          },
-          {
-            "downloads": 3,
-            "id": "651841505",
-            "name": "vela-git-0.1.0.r128.g794e531-1-x86_64.pkg.tar.zst"
-          }
-        ],
-        "downloads_current_assets": 6,
-        "tag": "alpha-794e531a536ef677dad4c5d6096c00452465c894"
+        "tag": "alpha-645250e4d35ba3fb0baaf52686078ea60a73fe93"
       },
       {
         "assets": [
           {
             "downloads": 0,
-            "id": "653387679",
+            "id": "656581691",
             "name": "SHA256SUMS"
           },
           {
             "downloads": 0,
-            "id": "653387681",
+            "id": "656581698",
             "name": "SHA256SUMS-fedora"
           },
           {
             "downloads": 0,
-            "id": "653387680",
-            "name": "vela-git-0.1.0-1.129.gb4e3a53.fc44.x86_64.rpm"
+            "id": "656581697",
+            "name": "vela-git-0.1.0-1.133.gaf09e54.fc44.x86_64.rpm"
           },
           {
             "downloads": 0,
-            "id": "653387684",
-            "name": "vela-git-0.1.0.r129.gb4e3a53-1-x86_64.pkg.tar.zst"
+            "id": "656581696",
+            "name": "vela-git-0.1.0.r133.gaf09e54-1-x86_64.pkg.tar.zst"
           }
         ],
         "downloads_current_assets": 0,
-        "tag": "alpha-b4e3a53d2f32a80a05eca6f49b4522cbe1078f7a"
+        "tag": "alpha-af09e54f7443fe37f6c6ad225e3826826427ef6e"
       },
       {
         "assets": [
@@ -196,32 +196,32 @@
         "tag": "alpha-eb85cb9b077da2af5a4313e1a9f000a00e6fe5f9"
       }
     ],
-    "downloads_current_assets": 10,
-    "downloads_observed_maxima": 51,
-    "downloads_since_previous_daily_snapshot": 6,
-    "previous_snapshot_date": "2026-10-18",
+    "downloads_current_assets": 8,
+    "downloads_observed_maxima": 55,
+    "downloads_since_previous_daily_snapshot": 4,
+    "previous_snapshot_date": "2026-10-19",
     "release_count": 5
   },
   "repository": "vela-desktop/vela",
   "schema_version": 1,
   "sources": {
     "releases": {
-      "last_collected_at": "2026-10-19T08:51:33+00:00",
+      "last_collected_at": "2026-10-20T08:31:50+00:00",
       "status": "ok"
     },
     "traffic": {
-      "last_collected_at": "2026-10-19T08:51:33+00:00",
+      "last_collected_at": "2026-10-20T08:31:50+00:00",
       "status": "ok"
     }
   },
   "top_referrers": [
     {
-      "count": 54,
+      "count": 56,
       "referrer": "velade.org",
-      "uniques": 45
+      "uniques": 47
     },
     {
-      "count": 31,
+      "count": 30,
       "referrer": "github.com",
       "uniques": 10
     },
@@ -231,9 +231,9 @@
       "uniques": 25
     },
     {
-      "count": 25,
+      "count": 26,
       "referrer": "reddit.com",
-      "uniques": 22
+      "uniques": 23
     },
     {
       "count": 1,
@@ -258,51 +258,51 @@
   ],
   "traffic": {
     "clones": {
-      "growth_vs_previous_7_days_percent": 145.15,
+      "growth_vs_previous_7_days_percent": 102.62,
       "last_30_complete_days": {
         "complete": false,
-        "count": 11742,
-        "end_date": "2026-10-18",
-        "observed_days": 20,
-        "start_date": "2026-09-19"
+        "count": 12374,
+        "end_date": "2026-10-19",
+        "observed_days": 21,
+        "start_date": "2026-09-20"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 8340,
-        "end_date": "2026-10-18",
+        "count": 8285,
+        "end_date": "2026-10-19",
         "observed_days": 7,
-        "start_date": "2026-10-12"
+        "start_date": "2026-10-13"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 3402,
-        "end_date": "2026-10-11",
+        "count": 4089,
+        "end_date": "2026-10-12",
         "observed_days": 7,
-        "start_date": "2026-10-05"
+        "start_date": "2026-10-06"
       }
     },
     "views": {
-      "growth_vs_previous_7_days_percent": 130.72,
+      "growth_vs_previous_7_days_percent": 48.14,
       "last_30_complete_days": {
         "complete": false,
-        "count": 1649,
-        "end_date": "2026-10-18",
-        "observed_days": 20,
-        "start_date": "2026-09-19"
+        "count": 1673,
+        "end_date": "2026-10-19",
+        "observed_days": 21,
+        "start_date": "2026-09-20"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 1149,
-        "end_date": "2026-10-18",
+        "count": 997,
+        "end_date": "2026-10-19",
         "observed_days": 7,
-        "start_date": "2026-10-12"
+        "start_date": "2026-10-13"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 498,
-        "end_date": "2026-10-11",
+        "count": 673,
+        "end_date": "2026-10-12",
         "observed_days": 7,
-        "start_date": "2026-10-05"
+        "start_date": "2026-10-06"
       }
     }
   }
