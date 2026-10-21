@@ -282,10 +282,13 @@ void vela_window_action(struct vela_server *server, struct vela_view *view, cons
         vela_view_set_maximized(view, true, true);
     } else if (strcmp(action, "close") == 0) {
         vela_view_close(view);
-    } else if (strncmp(action, "always-on-top", 13) == 0) {
-        // "always-on-top [on|off|toggle]" (from the window menu: toggle).
-        const char *arg = action[13] == ' ' ? action + 14 : "toggle";
-        bool on = strcmp(arg, "toggle") == 0 ? !view->always_on_top : strcmp(arg, "on") == 0;
+    } else if (strcmp(action, "always-on-top") == 0
+        || strcmp(action, "always-on-top toggle") == 0
+        || strcmp(action, "always-on-top on") == 0
+        || strcmp(action, "always-on-top off") == 0) {
+        bool on = strcmp(action, "always-on-top on") == 0
+            || ((strcmp(action, "always-on-top") == 0
+                    || strcmp(action, "always-on-top toggle") == 0) && !view->always_on_top);
         vela_view_set_always_on_top(view, on);
     } else if (strcmp(action, "move") == 0) {
         vela_interact_begin_keyboard(server, view, VELA_CURSOR_MOVE);
