@@ -410,10 +410,14 @@ static void run_command(struct vela_server *server, const char *line)
     } else if (starts_with(line, "sticky-keys ")) {
         vela_a11y_set_sticky_keys(a11y, wanted(line + 12, a11y->sticky_keys), true);
     } else if (starts_with(line, "always-on-top ")) {
-        // on|off|toggle for the active window (also "window <id> always-on-top ...").
-        struct vela_view *active = vela_views_focused(server);
-        if (active && !server->locked) {
-            vela_view_set_always_on_top(active, wanted(line + 14, active->always_on_top));
+        // Reject unknown values rather than silently interpreting them as off.
+        const char *operation = line + 14;
+        if (strcmp(operation, "on") == 0 || strcmp(operation, "off") == 0
+            || strcmp(operation, "toggle") == 0) {
+            struct vela_view *active = vela_views_focused(server);
+            if (active && !server->locked) {
+                vela_view_set_always_on_top(active, wanted(operation, active->always_on_top));
+            }
         }
     } else if (starts_with(line, "switcher-pick ")) {
         // A click on an Alt+Tab preview: switch to that window.
