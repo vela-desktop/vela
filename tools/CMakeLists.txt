@@ -57,6 +57,12 @@ vela_client_protocol(proto-fractional-scale
 vela_client_protocol(proto-xdg-decoration
     ${TOOLS_WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
     xdg-decoration-unstable-v1)
+vela_client_protocol(proto-relative-pointer
+    ${TOOLS_WAYLAND_PROTOCOLS_DIR}/unstable/relative-pointer/relative-pointer-unstable-v1.xml
+    relative-pointer-unstable-v1)
+vela_client_protocol(proto-keyboard-shortcuts-inhibit
+    ${TOOLS_WAYLAND_PROTOCOLS_DIR}/unstable/keyboard-shortcuts-inhibit/keyboard-shortcuts-inhibit-unstable-v1.xml
+    keyboard-shortcuts-inhibit-unstable-v1)
 
 add_executable(vela-windows vela-windows.c)
 target_link_libraries(vela-windows PRIVATE proto-foreign-toplevel)
@@ -75,7 +81,7 @@ target_link_libraries(vela-testlock PRIVATE proto-session-lock)
 # Sharpness test client (scripts/test-sharpness.sh).
 add_executable(vela-pattern vela-pattern.c)
 target_link_libraries(vela-pattern PRIVATE proto-xdg-shell proto-viewporter proto-fractional-scale
-    proto-xdg-decoration)
+    proto-xdg-decoration proto-relative-pointer proto-keyboard-shortcuts-inhibit)
 
 # Fake shell pieces (wallpaper, blurred taskbar) for tests without the Qt
 # shell.
