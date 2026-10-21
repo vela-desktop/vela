@@ -364,8 +364,11 @@ Page {
         Card {
             icon: "video-display"
             title: qsTr("Direct scanout")
-            description: qsTr("A full-screen game goes to the screen without being redrawn. If a game shows a black screen or garbled pictures, turn it off")
+            description: Prefs.scanoutOverridden
+                ? qsTr("Direct scanout is forced off by VELA_SCANOUT=0. Remove the override and restart Vela to enable it")
+                : qsTr("A full-screen game goes to the screen without being redrawn. If a game shows a black screen or garbled pictures, turn it off")
             trailing: Choice {
+                enabled: !Prefs.scanoutOverridden
                 readonly property var modes: ["auto", "no"]
                 model: [qsTr("Automatic"), qsTr("Off")]
                 currentIndex: Math.max(0, modes.indexOf(Prefs.directScanout))
@@ -375,11 +378,13 @@ Page {
         Card {
             icon: "input-gaming"
             title: qsTr("Show every frame right away in full-screen games")
-            description: Prefs.directScanout === "no"
-                ? qsTr("Unavailable while direct scanout is off. Full-screen games are composited and cannot use asynchronous tearing")
-                : qsTr("Games that ask for it reach the screen without waiting for the monitor: less latency, with some tearing in the picture")
+            description: Prefs.scanoutOverridden
+                ? qsTr("Unavailable: VELA_SCANOUT=0 forces compositing and disables asynchronous tearing")
+                : Prefs.directScanout === "no"
+                    ? qsTr("Unavailable while direct scanout is off. Full-screen games are composited and cannot use asynchronous tearing")
+                    : qsTr("Games that ask for it reach the screen without waiting for the monitor: less latency, with some tearing in the picture")
             trailing: Switch {
-                enabled: Prefs.directScanout !== "no"
+                enabled: !Prefs.scanoutOverridden && Prefs.directScanout !== "no"
                 checked: Prefs.tearing
                 onToggled: Prefs.tearing = checked
             }
