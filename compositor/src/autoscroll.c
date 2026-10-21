@@ -73,7 +73,10 @@ struct vela_autoscroll {
     int64_t last_tick; // on the vblank grid
     int64_t next_tick;
     // Presses it took: their releases are taken too (bit: button - BTN_MOUSE).
-    uint32_t swallowed;
+    // Track every Linux button code, including BTN_TRIGGER_HAPPY* and stylus
+    // buttons: any press we consume must have its release consumed as well.
+    uint32_t swallowed[(KEY_MAX / 32) + 1];
+    bool escape_swallowed;
 
     int timer_fd;
     struct wl_event_source *timer;
@@ -84,9 +87,33 @@ static int64_t max64(int64_t a, int64_t b)
     return a > b ? a : b;
 }
 
-static uint32_t button_bit(uint32_t button)
+static bool valid_button(uint32_t button)
 {
-    return button >= BTN_MOUSE && button < BTN_MOUSE + 32 ? 1u << (button - BTN_MOUSE) : 0;
+    return button >= BTN_MOUSE && button <= KEY_MAX;
+}
+
+static void swallowed_add(struct vela_autoscroll *autoscroll, uint32_t button)
+{
+    if (valid_button(button)) {
+        autoscroll->swallowed[button / 32] |= UINT32_C(1) << (button % 32);
+    }
+}
+
+static bool swallowed_take(struct vela_autoscroll *autoscroll, uint32_t button)
+{
+    if (!valid_button(button)) {
+        return false;
+    }
+    uint32_t mask = UINT32_C(1) << (button % 32);
+    uint32_t *word = &autoscroll->swallowed[button / 32];
+    bool consumed = (*word & mask) != 0;
+    *word &= ~mask;
+    return consumed;
+}
+
+static void swallowed_remove(struct vela_autoscroll *autoscroll, uint32_t button)
+{
+    (void)swallowed_take(autoscroll, button);
 }
 
 // ------------------------------------------------------------- the curve --
@@ -224,7 +251,8 @@ static bool still_valid(struct vela_autoscroll *autoscroll)
         && server->seat->pointer_state.focused_surface == autoscroll->surface
         && vela_views_focused(server) == autoscroll->view && !server->focused_layer
         && server->cursor_mode == VELA_CURSOR_PASSTHROUGH && !server->seat->drag
-        && !server->input->active_constraint && !vela_switcher_active(server)
+        && !server->input->active_constraint && !vela_input_shortcuts_inhibited(server->input)
+        && !vela_switcher_active(server)
         && output_alive(server, autoscroll->output);
 }
 
@@ -358,7 +386,7 @@ static void cancel_pending(struct vela_autoscroll *autoscroll, bool click)
             uint32_t ms = (uint32_t)(vela_now_ns() / VELA_NS_PER_MS);
             wlr_seat_pointer_notify_button(seat, ms, BTN_MIDDLE, WL_POINTER_BUTTON_STATE_RELEASED);
         } else {
-            autoscroll->swallowed &= ~button_bit(BTN_MIDDLE); // its release goes to the app as usual
+            swallowed_remove(autoscroll, BTN_MIDDLE); // its release goes to the app as usual
         }
         wlr_seat_pointer_notify_frame(seat);
     }
@@ -377,7 +405,8 @@ static bool start(struct vela_autoscroll *autoscroll, uint32_t time_msec)
     struct vela_interaction *interaction = server->interaction;
     if (!autoscroll->enabled || !(autoscroll->click || autoscroll->hold) || !autoscroll->timer
         || server->locked || server->cursor_mode != VELA_CURSOR_PASSTHROUGH || seat->drag
-        || seat->pointer_state.button_count > 0 || server->input->active_constraint || interaction->keyboard.view
+        || seat->pointer_state.button_count > 0 || server->input->active_constraint
+        || vela_input_shortcuts_inhibited(server->input) || interaction->keyboard.view
         || interaction->pending_title_drag.view || vela_switcher_active(server)) {
         return false;
     }
@@ -421,12 +450,10 @@ bool vela_autoscroll_active(const struct vela_autoscroll *autoscroll)
 
 bool vela_autoscroll_button(struct vela_autoscroll *autoscroll, const struct wlr_pointer_button_event *event)
 {
-    uint32_t bit = button_bit(event->button);
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-        if (!(autoscroll->swallowed & bit)) {
+        if (!swallowed_take(autoscroll, event->button)) {
             return false;
         }
-        autoscroll->swallowed &= ~bit;
         if (autoscroll->pending && event->button == BTN_MIDDLE) {
             cancel_pending(autoscroll, true); // a click: the app's
         } else if (autoscroll->active && autoscroll->held && event->button == BTN_MIDDLE) {
@@ -447,13 +474,17 @@ bool vela_autoscroll_button(struct vela_autoscroll *autoscroll, const struct wlr
         return false;
     }
     if (autoscroll->active) {
-        // Any button ends it, and the click reaches nobody.
-        autoscroll->swallowed |= bit;
+        // Any button ends it. A non-Linux button code cannot be tracked:
+        // forward that complete click instead of leaking only its release.
         stop(autoscroll);
+        if (!valid_button(event->button)) {
+            return false;
+        }
+        swallowed_add(autoscroll, event->button);
         return true;
     }
     if (event->button == BTN_MIDDLE && start(autoscroll, event->time_msec)) {
-        autoscroll->swallowed |= bit;
+        swallowed_add(autoscroll, event->button);
         return true;
     }
     return false;
@@ -478,11 +509,18 @@ bool vela_autoscroll_motion(struct vela_autoscroll *autoscroll)
 
 bool vela_autoscroll_key(struct vela_autoscroll *autoscroll, const uint32_t *syms, int count, bool pressed)
 {
-    if (!autoscroll->active || !pressed) {
-        return false;
-    }
     for (int i = 0; i < count; ++i) {
-        if (syms[i] == XKB_KEY_Escape) {
+        if (syms[i] != XKB_KEY_Escape) {
+            continue;
+        }
+        // An intercepted key-down must never leave an orphan key-up in the
+        // focused app, even though stopping deactivates autoscroll.
+        if (!pressed && autoscroll->escape_swallowed) {
+            autoscroll->escape_swallowed = false;
+            return true;
+        }
+        if (pressed && autoscroll->active) {
+            autoscroll->escape_swallowed = true;
             stop(autoscroll);
             return true;
         }
