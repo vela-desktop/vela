@@ -42,10 +42,10 @@ class Autoscroll(unittest.TestCase):
     def tearDown(self):
         self.vela.stop()
 
-    def open(self, app_id):
+    def open(self, app_id, *flags):
         log = os.path.join(self.vela.directory, f"{app_id}.log")
         window = self.vela.open_window(command=[tool("vela-pattern"), "--app-id", app_id, "--pointer-log", log,
-                                                "600", "500"])
+                                                *flags, "600", "500"])
         self.vela.wait_for(lambda s: s["focused"] == window, what=f"{app_id} active")
         # The middle of the new window.
         box = next(w for w in self.vela.state()["windows"] if w["id"] == window)
@@ -196,8 +196,56 @@ class Autoscroll(unittest.TestCase):
         self.start()
         _, log = self.open("as-a")
         self.begin(log)
+        since = self.now_us()
         self.vela.keys("esc")
         self.vela.wait_for(lambda s: not s["autoscroll"], what="autoscroll off")
+        time.sleep(0.1)
+        # Linux evdev KEY_ESC=1: neither press nor release may leak.
+        self.assertFalse([e for e in self.events(log, since, "key") if e[2][0] == "1"])
+        # The next Escape is an ordinary app key, both press and release.
+        since = self.now_us()
+        self.vela.keys("esc")
+        time.sleep(0.1)
+        self.assertEqual([e[2][1] for e in self.events(log, since, "key") if e[2][0] == "1"], ["1", "0"])
+
+    def test_extended_button_release_not_leaked(self):
+        self.start()
+        _, log = self.open("as-a")
+        self.begin(log)
+        # BTN_TRIGGER_HAPPY1=704 is well outside the old 32-bit mouse range.
+        self.vela.input("click", "704")
+        self.vela.wait_for(lambda s: not s["autoscroll"], what="extended button ends autoscroll")
+        time.sleep(0.1)
+        self.assertFalse([e for e in self.events(log, kind="button") if e[2][0] == "704"])
+        # Once autoscroll is off, the same button is forwarded in both directions.
+        self.vela.input("click", "704")
+        time.sleep(0.1)
+        self.assertEqual([e[2][1] for e in self.events(log, kind="button") if e[2][0] == "704"], ["1", "0"])
+
+    def test_relative_motion_is_swallowed(self):
+        self.start()
+        _, log = self.open("as-a")
+        self.begin(log)
+        since = self.now_us()
+        self.vela.input("rel", "0", "80")
+        time.sleep(0.2)
+        self.assertFalse(self.events(log, since, "relative"), "relative pointer events leaked during autoscroll")
+        self.vela.input("click", "left")
+        self.vela.wait_for(lambda s: not s["autoscroll"], what="autoscroll off")
+        since = self.now_us()
+        self.vela.input("rel", "0", "-20")
+        time.sleep(0.1)
+        self.assertTrue(self.events(log, since, "relative"), "ordinary relative motion was suppressed")
+
+    def test_shortcuts_inhibitor_preserves_middle_click(self):
+        self.start()
+        _, log = self.open("as-a", "--inhibit-shortcuts")
+        self.vela.wait_for(lambda state: self.events(log, kind="inhibitor"),
+                           what="shortcuts inhibitor activation")
+        self.vela.input("move", *self.center, "sleep", "50", "click", "middle")
+        time.sleep(0.1)
+        self.assertFalse(self.vela.state()["autoscroll"])
+        self.assertEqual(self.middle_buttons(log), [[str(BTN_MIDDLE), "1"], [str(BTN_MIDDLE), "0"]])
 
     def test_terminals_left_out(self):
         self.start()
