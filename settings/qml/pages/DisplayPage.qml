@@ -370,7 +370,7 @@ Page {
             trailing: Choice {
                 enabled: !Prefs.scanoutOverridden
                 readonly property var modes: ["auto", "no"]
-                model: [qsTr("Automatic"), qsTr("Off")]
+                model: [qsTr("Automatic"), qsTr("Off", "direct scanout")]
                 currentIndex: Math.max(0, modes.indexOf(Prefs.directScanout))
                 onChosen: index => Prefs.directScanout = modes[index]
             }
