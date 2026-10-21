@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Middle-click autoscroll (autoscroll.h): off by default (the middle click
-reaches the app); on, the click starts it and reaches nobody, the app gets
+"""Middle-click autoscroll (autoscroll.h): on by default; explicitly set
+middle-click-autoscroll=no to preserve app middle-click behavior. With it on,
+the click starts it and reaches nobody, and the app gets
 fine continuous axis events, faster farther from the start, none in the dead
 zone, no motion; a click, Esc, the release after a drag or the window losing
 the keyboard end it with axis_stop. Terminals are left out. At 120 Hz the
@@ -35,7 +36,7 @@ class Autoscroll(unittest.TestCase):
         self.vela.start()
         os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
         with open(self.vela.config_path(), "w") as config:
-            config.write(("middle-click-autoscroll=yes\n" if enabled else "") + extra)
+            config.write(("" if enabled else "middle-click-autoscroll=no\n") + extra)
         self.vela.command("reload-config")
 
     def tearDown(self):
@@ -71,7 +72,7 @@ class Autoscroll(unittest.TestCase):
         time.sleep(seconds)
         return [float(e[2][1]) for e in self.events(log, since, "axis") if e[2][0] == "0"]
 
-    def test_off_by_default(self):
+    def test_explicitly_disabled(self):
         self.start(enabled=False)
         _, log = self.open("as-a")
         self.vela.input("move", *self.center, "sleep", "50", "click", "middle", "sleep", "50", "rel", 0, 100)
@@ -81,6 +82,13 @@ class Autoscroll(unittest.TestCase):
         self.assertIn([str(BTN_MIDDLE), "1"], buttons)
         self.assertIn([str(BTN_MIDDLE), "0"], buttons)
         self.assertFalse(self.events(log, kind="axis"))
+
+    def test_enabled_by_default(self):
+        # No setting written: a middle click should activate autoscroll.
+        self.start()
+        _, log = self.open("as-a")
+        self.begin(log)
+        self.assertTrue(self.vela.state()["autoscroll"])
 
     def test_scrolls_and_click_ends(self):
         self.start()

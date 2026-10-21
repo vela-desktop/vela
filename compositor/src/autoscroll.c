@@ -107,7 +107,7 @@ void vela_autoscroll_load_settings(struct vela_autoscroll *autoscroll)
 {
     struct vela_config settings;
     vela_config_read(&settings);
-    autoscroll->enabled = vela_config_flag(&settings, "middle-click-autoscroll", false);
+    autoscroll->enabled = vela_config_flag(&settings, "middle-click-autoscroll", true);
     autoscroll->speed = vela_clamp(atoi(vela_config_get(&settings, "autoscroll-speed", "5")), 1, 10);
     autoscroll->click = vela_config_flag(&settings, "autoscroll-click", true);
     autoscroll->hold = vela_config_flag(&settings, "autoscroll-hold", true);

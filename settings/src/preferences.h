@@ -277,7 +277,7 @@ private:
     bool m_mousePrecision = true;
     bool m_mouseLeftHanded = false;
     int m_wheelLines = 3;
-    bool m_middleClickAutoscroll = false;
+    bool m_middleClickAutoscroll = true;
     int m_autoscrollSpeed = 5;
     bool m_autoscrollClick = true;
     bool m_autoscrollHold = true;

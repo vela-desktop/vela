@@ -223,7 +223,7 @@ void Preferences::reloadCompositor()
     m_mousePrecision = flag(QStringLiteral("mouse-precision"), true);
     m_mouseLeftHanded = value(QStringLiteral("mouse-primary-button"), QStringLiteral("left")) == QLatin1String("right");
     m_wheelLines = std::clamp(value(QStringLiteral("mouse-scroll-lines"), QStringLiteral("3")).toInt(), 1, 20);
-    m_middleClickAutoscroll = flag(QStringLiteral("middle-click-autoscroll"), false);
+    m_middleClickAutoscroll = flag(QStringLiteral("middle-click-autoscroll"), true);
     m_autoscrollSpeed = std::clamp(value(QStringLiteral("autoscroll-speed"), QStringLiteral("5")).toInt(), 1, 10);
     m_autoscrollClick = flag(QStringLiteral("autoscroll-click"), true);
     m_autoscrollHold = flag(QStringLiteral("autoscroll-hold"), true);

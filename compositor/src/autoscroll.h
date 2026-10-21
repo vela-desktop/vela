@@ -21,8 +21,8 @@
 // effects stay still) and no cursor changes; on the way out it gets
 // axis_stop, then leave and enter again, so it sets its cursor back.
 //
-// vela.conf: middle-click-autoscroll=no (the default: middle click keeps
-// pasting), autoscroll-speed=5 (1-10);
+// vela.conf: middle-click-autoscroll=yes (the default; set to no to
+// restore normal middle-click behavior), autoscroll-speed=5 (1-10);
 // (terminals are left out unless a rule says yes). Two more, both yes:
 // autoscroll-click (a click turns it on) and autoscroll-hold (held and
 // dragged, it scrolls until the release). With autoscroll-click=no the
