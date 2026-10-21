@@ -128,7 +128,6 @@ static void unhover_decoration(struct vela_interaction *interaction)
 
 void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
 {
-    bool autoscrolling = vela_autoscroll_active(server->autoscroll);
     struct vela_interaction *interaction = server->interaction;
     struct wlr_cursor *cursor = server->cursor;
     struct wlr_seat *seat = server->seat;
