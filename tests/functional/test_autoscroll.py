@@ -237,6 +237,18 @@ class Autoscroll(unittest.TestCase):
         time.sleep(0.1)
         self.assertTrue(self.events(log, since, "relative"), "ordinary relative motion was suppressed")
 
+    def test_pending_hold_swallows_activation_motion(self):
+        self.start(extra="autoscroll-click=no\n")
+        _, log = self.open("as-a")
+        # A 4px+ relative move starts the pending hold gesture: that very
+        # motion must not leak through the relative-pointer protocol.
+        held = self.hold("sleep", "50", "rel", "0", "80", "sleep", "500")
+        self.vela.wait_for(lambda s: s["autoscroll"], what="held autoscroll active")
+        time.sleep(0.15)
+        self.assertFalse(self.events(log, kind="relative"))
+        held.wait(5)
+        self.vela.wait_for(lambda s: not s["autoscroll"], what="held autoscroll off")
+
     def test_shortcuts_inhibitor_preserves_middle_click(self):
         self.start()
         _, log = self.open("as-a", "--inhibit-shortcuts")
