@@ -32,7 +32,7 @@
 //   mouse-precision=yes      pointer acceleration
 //   mouse-primary-button=left|right
 //   mouse-scroll-lines=3     lines per wheel notch
-//   middle-click-autoscroll=no  the middle button scrolls like Windows
+//   middle-click-autoscroll=yes  the middle button scrolls like Windows (default)
 //                            (autoscroll.h)
 //   autoscroll-speed=5       1-10
 //   autoscroll-click=yes     a middle click turns it on (no: the click is the app's)
