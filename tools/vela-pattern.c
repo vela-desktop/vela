@@ -16,7 +16,7 @@
 // and close values are the worst case for any filter.
 //
 // Usage: vela-pattern [--scale1] [--app-id ID] [--decorated] [--popup X,Y]
-//                     [--pointer-log FILE]
+//                     [--pointer-log FILE] [--inhibit-shortcuts]
 //                     [WIDTH HEIGHT]   (logical; default 401x301)
 //
 // --scale1: like an old app, always draws at scale 1 (the compositor must
@@ -39,6 +39,8 @@
 #include <wayland-client.h>
 
 #include "fractional-scale-v1-client-protocol.h"
+#include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
+#include "relative-pointer-unstable-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -72,6 +74,9 @@ static int popupY;
 static struct wl_surface* popupSurface;
 static struct wl_seat* seat;
 static FILE* pointerLog;
+static int inhibitShortcuts;
+static struct zwp_relative_pointer_manager_v1* relativePointerManager;
+static struct zwp_keyboard_shortcuts_inhibit_manager_v1* shortcutsInhibitManager;
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
@@ -85,8 +90,13 @@ static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, co
         wmBase = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
     } else if (!strcmp(interface, wp_viewporter_interface.name)) {
         viewporter = wl_registry_bind(registry, name, &wp_viewporter_interface, 1);
-    } else if (!strcmp(interface, wl_seat_interface.name) && pointerLog && !seat) {
+    } else if (!strcmp(interface, wl_seat_interface.name) && (pointerLog || inhibitShortcuts) && !seat) {
         seat = wl_registry_bind(registry, name, &wl_seat_interface, version < 9 ? version : 9);
+    } else if (!strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) && pointerLog) {
+        relativePointerManager = wl_registry_bind(registry, name, &zwp_relative_pointer_manager_v1_interface, 1);
+    } else if (!strcmp(interface, zwp_keyboard_shortcuts_inhibit_manager_v1_interface.name) && inhibitShortcuts) {
+        shortcutsInhibitManager
+            = wl_registry_bind(registry, name, &zwp_keyboard_shortcuts_inhibit_manager_v1_interface, 1);
     } else if (!strcmp(interface, wp_fractional_scale_manager_v1_interface.name)) {
         fractionalManager = wl_registry_bind(registry, name, &wp_fractional_scale_manager_v1_interface, 1);
     }
@@ -272,12 +282,65 @@ static const struct wl_pointer_listener pointerListener = {
     .axis_value120 = onAxisValue120, .axis_relative_direction = onAxisDirection,
 };
 
+// Logging the less common pointer/keyboard input paths makes it possible to
+// catch compositor bugs where a swallowed press still leaks its release.
+static void onRelativeMotion(void* data, struct zwp_relative_pointer_v1* relative, uint32_t hi, uint32_t lo,
+    wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t unaccelDx, wl_fixed_t unaccelDy)
+{
+    logLine("relative %.3f %.3f", wl_fixed_to_double(dx), wl_fixed_to_double(dy));
+}
+static const struct zwp_relative_pointer_v1_listener relativePointerListener = {
+    .relative_motion = onRelativeMotion,
+};
+
+static void onKeyboardKeymap(void* data, struct wl_keyboard* keyboard, uint32_t format, int32_t fd, uint32_t size)
+{
+    close(fd);
+}
+static void onKeyboardEnter(void* data, struct wl_keyboard* keyboard, uint32_t serial, struct wl_surface* surface,
+    struct wl_array* keys) { }
+static void onKeyboardLeave(void* data, struct wl_keyboard* keyboard, uint32_t serial, struct wl_surface* surface) { }
+static void onKeyboardKey(void* data, struct wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t key,
+    uint32_t state)
+{
+    logLine("key %u %u", key, state);
+}
+static void onKeyboardModifiers(void* data, struct wl_keyboard* keyboard, uint32_t serial, uint32_t depressed,
+    uint32_t latched, uint32_t locked, uint32_t group) { }
+static void onKeyboardRepeatInfo(void* data, struct wl_keyboard* keyboard, int32_t rate, int32_t delay) { }
+static const struct wl_keyboard_listener keyboardListener = {
+    .keymap = onKeyboardKeymap, .enter = onKeyboardEnter, .leave = onKeyboardLeave, .key = onKeyboardKey,
+    .modifiers = onKeyboardModifiers, .repeat_info = onKeyboardRepeatInfo,
+};
+
+static void onInhibitorActive(void* data, struct zwp_keyboard_shortcuts_inhibitor_v1* inhibitor)
+{
+    if (pointerLog) logLine("inhibitor active");
+}
+static void onInhibitorInactive(void* data, struct zwp_keyboard_shortcuts_inhibitor_v1* inhibitor)
+{
+    if (pointerLog) logLine("inhibitor inactive");
+}
+static const struct zwp_keyboard_shortcuts_inhibitor_v1_listener inhibitorListener = {
+    .active = onInhibitorActive, .inactive = onInhibitorInactive,
+};
+
 static void onSeatCapabilities(void* data, struct wl_seat* s, uint32_t capabilities)
 {
     static struct wl_pointer* pointer;
-    if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
+    static struct wl_keyboard* keyboard;
+    static struct zwp_relative_pointer_v1* relativePointer;
+    if (pointerLog && (capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
         pointer = wl_seat_get_pointer(s);
         wl_pointer_add_listener(pointer, &pointerListener, NULL);
+    }
+    if (pointer && relativePointerManager && !relativePointer) {
+        relativePointer = zwp_relative_pointer_manager_v1_get_relative_pointer(relativePointerManager, pointer);
+        zwp_relative_pointer_v1_add_listener(relativePointer, &relativePointerListener, NULL);
+    }
+    if (pointerLog && (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard) {
+        keyboard = wl_seat_get_keyboard(s);
+        wl_keyboard_add_listener(keyboard, &keyboardListener, NULL);
     }
 }
 static void onSeatName(void* data, struct wl_seat* s, const char* name) { }
@@ -347,6 +410,8 @@ int main(int argc, char** argv)
             legacy = 1;
         } else if (!strcmp(argv[arg], "--decorated")) {
             decorated = 1;
+        } else if (!strcmp(argv[arg], "--inhibit-shortcuts")) {
+            inhibitShortcuts = 1;
         } else if (!strcmp(argv[arg], "--popup") && arg + 1 < argc
             && sscanf(argv[arg + 1], "%d,%d", &popupX, &popupY) == 2) {
             popupWanted = 1;
@@ -393,6 +458,15 @@ int main(int argc, char** argv)
     xdg_toplevel_add_listener(toplevel, &toplevelListener, NULL);
     xdg_toplevel_set_title(toplevel, "vela-pattern");
     xdg_toplevel_set_app_id(toplevel, appId);
+    if (inhibitShortcuts) {
+        if (!seat || !shortcutsInhibitManager) {
+            fprintf(stderr, "vela-pattern: shortcut inhibition not supported\n");
+            return 1;
+        }
+        struct zwp_keyboard_shortcuts_inhibitor_v1* inhibitor
+            = zwp_keyboard_shortcuts_inhibit_manager_v1_inhibit_shortcuts(shortcutsInhibitManager, surface, seat);
+        zwp_keyboard_shortcuts_inhibitor_v1_add_listener(inhibitor, &inhibitorListener, NULL);
+    }
     if (decorated) {
         if (!decorationManager) {
             fprintf(stderr, "vela-pattern: no xdg-decoration\n");
