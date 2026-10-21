@@ -176,6 +176,11 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
 // Someone (wlroots) wrote into the output's buffers: none of them holds what
 // we think anymore.
 void vela_output_frame_reset_damage(struct vela_output_frame *frame);
+// After a successful output commit outside the scene renderer (mode fallback,
+// DPMS off), clear previously delivered scanout/tearing state and damage history.
+void vela_output_frame_external_commit(struct vela_output_frame *frame);
+// Immediately restore regular DMA-BUF feedback when scanout is disallowed.
+void vela_output_frame_scanout_policy_changed(struct vela_output_frame *frame);
 void vela_output_frame_damage_whole(struct vela_output_frame *frame);
 // Color changes invalidate pixels only when the effect is drawn in Vulkan.
 void vela_output_frame_color_changed(struct vela_output_frame *frame, bool filter_changed, bool night_changed);
