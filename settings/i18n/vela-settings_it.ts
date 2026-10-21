@@ -775,6 +775,15 @@ Specifiche sistema
 <context>
     <name>DisplayPage</name>
     <message>
+        <source>Automatic</source>
+        <translation>Automatico</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <comment>direct scanout</comment>
+        <translation>Disattivato</translation>
+    </message>
+    <message>
         <source>Make this my main display</source>
         <translation>Imposta come schermo principale</translation>
     </message>
@@ -1203,6 +1212,14 @@ Specifiche sistema
 </context>
 <context>
     <name>Main</name>
+    <message>
+        <source>Direct scanout</source>
+        <translation>Scanout diretto</translation>
+    </message>
+    <message>
+        <source>direct scanout black screen glitch game full screen flicker</source>
+        <translation>scanout diretto schermo nero glitch gioco schermo intero sfarfallio</translation>
+    </message>
     <message>
         <source>Settings</source>
         <translation>Impostazioni</translation>
