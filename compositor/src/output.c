@@ -165,6 +165,7 @@ void vela_output_load_settings(struct vela_server *server)
         // scanout immediately instead of waiting for its next surface commit.
         struct vela_output *output;
         wl_list_for_each (output, &server->outputs, link) {
+            vela_output_frame_scanout_policy_changed(output->frame);
             vela_output_frame_damage_whole(output->frame);
         }
     } else {
@@ -388,21 +389,29 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
         // Fallback (also to turn the output on or off): wlroots puts an empty
         // buffer, which our damage tracking doesn't know about.
         ok = wlr_output_commit_state(output->wlr, state);
-        if (ok && (state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM)) {
-            // The fallback may have committed a color transform even though
-            // the renderer failed earlier. Track what the monitor accepted.
-            output->frame->night_gamma_committed = state->color_transform != NULL;
-            output->frame->night_clear_needed = false;
-            output->frame->night_commit_pending = false;
-            output->frame->night_in_gamma = state->color_transform != NULL;
-        }
         if (!ok && reset_gamma) {
             // If clearing the LUT is also refused, still try the mode change.
             // Keep the old LUT marked as applied for a later clear retry.
             state->committed &= ~WLR_OUTPUT_STATE_COLOR_TRANSFORM;
             ok = wlr_output_commit_state(output->wlr, state);
         }
-        vela_output_frame_reset_damage(output->frame);
+        if (ok) {
+            if (state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) {
+                // The fallback may have committed a color transform even though
+                // the renderer failed earlier. Track what the monitor accepted.
+                output->frame->night_gamma_committed = state->color_transform != NULL;
+                output->frame->night_clear_needed = false;
+                output->frame->night_commit_pending = false;
+                output->frame->night_in_gamma = state->color_transform != NULL;
+            }
+            // A mode/power fallback can replace the primary buffer without
+            // passing through the renderer. Its previous scanout is now gone.
+            vela_output_frame_external_commit(output->frame);
+        } else {
+            // No commit reached the output. Keep the old delivered state and
+            // request another fully composited frame.
+            vela_output_frame_damage_whole(output->frame);
+        }
     }
     vela_frame_clock_set_mode_refresh(&output->clock, output->wlr->refresh);
     vela_output_arrange_layers(output);
@@ -423,13 +432,17 @@ void vela_output_set_powered(struct vela_output *output, bool on)
     struct wlr_output *wlr = output->wlr;
     struct wlr_output_state state;
     wlr_output_state_init(&state);
+    bool ok = false;
     if (!on) {
         output->mode_before_off = wlr->current_mode;
         output->custom_before_off[0] = wlr->width;
         output->custom_before_off[1] = wlr->height;
         output->custom_before_off[2] = wlr->refresh;
         wlr_output_state_set_enabled(&state, false);
-        wlr_output_commit_state(wlr, &state);
+        ok = wlr_output_commit_state(wlr, &state);
+        if (ok) {
+            vela_output_frame_external_commit(output->frame);
+        }
     } else {
         wlr_output_state_set_enabled(&state, true);
         if (output->mode_before_off) {
@@ -438,9 +451,13 @@ void vela_output_set_powered(struct vela_output *output, bool on)
             wlr_output_state_set_custom_mode(&state, output->custom_before_off[0], output->custom_before_off[1],
                 output->custom_before_off[2]);
         }
-        vela_output_commit_mode(output, &state);
+        ok = vela_output_commit_mode(output, &state);
     }
     wlr_output_state_finish(&state);
+    if (!ok) {
+        wlr_log(WLR_ERROR, "%s: failed to %s screen", wlr->name, on ? "power on" : "power off");
+        return;
+    }
     output->powered = on;
     wlr_log(WLR_INFO, "%s: screen %s", wlr->name, on ? "back on" : "off because idle");
 }
