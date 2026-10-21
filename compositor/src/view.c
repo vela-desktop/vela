@@ -114,10 +114,20 @@ const char *vela_view_app_id(const struct vela_view *view)
 
 void vela_view_set_always_on_top(struct vela_view *view, bool on)
 {
-    view->always_on_top = on;
-    if (on) {
-        vela_views_raise_always_on_top(view->server);
+    if (view->always_on_top == on) {
+        return;
     }
+    view->always_on_top = on;
+    // Rebuild the order on both enable and disable; otherwise disabling a
+    // pinned window may leave it above normal windows until the next focus.
+    struct vela_view *other;
+    wl_list_for_each_reverse (other, &view->server->views, link) {
+        if (other->mapped && !other->fullscreen && !other->minimized
+            && !other->always_on_top && !vela_view_is_system_prompt(other)) {
+            vela_node_raise_to_top(&other->tree->node);
+        }
+    }
+    vela_views_raise_always_on_top(view->server);
 }
 
 void vela_views_raise_always_on_top(struct vela_server *server)
@@ -126,7 +136,15 @@ void vela_views_raise_always_on_top(struct vela_server *server)
     // they keep their relative order. Fullscreen ones are in another layer.
     struct vela_view *view;
     wl_list_for_each_reverse (view, &server->views, link) {
-        if (view->always_on_top && view->mapped && !view->fullscreen) {
+        if (view->always_on_top && view->mapped && !view->fullscreen
+            && !view->minimized && !vela_view_is_system_prompt(view)) {
+            vela_node_raise_to_top(&view->tree->node);
+        }
+    }
+    // Authentication and other system prompts must always win over pinned apps.
+    wl_list_for_each_reverse (view, &server->views, link) {
+        if (view->mapped && !view->fullscreen && !view->minimized
+            && vela_view_is_system_prompt(view)) {
             vela_node_raise_to_top(&view->tree->node);
         }
     }
