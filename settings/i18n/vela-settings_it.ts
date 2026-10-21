@@ -941,6 +941,14 @@ Specifiche sistema
         <translation>Scanout diretto</translation>
     </message>
     <message>
+        <source>Direct scanout is forced off by VELA_SCANOUT=0. Remove the override and restart Vela to enable it</source>
+        <translation>Lo scanout diretto è disattivato forzatamente da VELA_SCANOUT=0. Rimuovi l&apos;override e riavvia Vela per abilitarlo</translation>
+    </message>
+    <message>
+        <source>Unavailable: VELA_SCANOUT=0 forces compositing and disables asynchronous tearing</source>
+        <translation>Non disponibile: VELA_SCANOUT=0 forza il compositing e disabilita il tearing asincrono</translation>
+    </message>
+    <message>
         <source>A full-screen game goes to the screen without being redrawn. If a game shows a black screen or garbled pictures, turn it off</source>
         <translation>Un gioco a schermo intero va sullo schermo senza essere ridisegnato. Se un gioco mostra schermo nero o immagini corrotte, disattivalo</translation>
     </message>
