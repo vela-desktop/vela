@@ -390,16 +390,22 @@ static void handle_motion(struct wl_listener *listener, void *data)
     struct vela_server *server = input->server;
     struct wlr_pointer_motion_event *event = data;
     vela_lock_note_activity(server->lock);
-    // Raw motion goes to games even if the cursor doesn't move.
-    wlr_relative_pointer_manager_v1_send_relative_motion(input->relative_pointers, server->seat,
-        (uint64_t)event->time_msec * 1000, event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy);
+    // Check both sides of the motion: an autoscroll pending on a held middle
+    // press can activate on THIS motion. Neither it nor later motion may
+    // reach relative-pointer clients while autoscrolling.
+    bool was_autoscrolling = vela_autoscroll_active(server->autoscroll);
     double dx = event->delta_x;
     double dy = event->delta_y;
-    if (!constrain_motion(input, &dx, &dy)) {
-        return; // pointer locked by the app
+    if (constrain_motion(input, &dx, &dy)) {
+        wlr_cursor_move(server->cursor, &event->pointer->base, dx, dy);
+        vela_interact_motion(server, event->time_msec);
     }
-    wlr_cursor_move(server->cursor, &event->pointer->base, dx, dy);
-    vela_interact_motion(server, event->time_msec);
+    // Games still get raw deltas when the pointer is locked, except while
+    // autoscroll owns the movement.
+    if (!was_autoscrolling && !vela_autoscroll_active(server->autoscroll)) {
+        wlr_relative_pointer_manager_v1_send_relative_motion(input->relative_pointers, server->seat,
+            (uint64_t)event->time_msec * 1000, event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy);
+    }
 }
 
 static void handle_motion_absolute(struct wl_listener *listener, void *data)
