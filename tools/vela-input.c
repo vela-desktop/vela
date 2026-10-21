@@ -10,7 +10,7 @@
 //   rel DX DY                moves the mouse by (DX, DY), like a real mouse
 //                            (relative motion: games see it too)
 //   down|up|click [BUTTON]   mouse button: left (default), right, middle,
-//                            back, forward (the side buttons)
+//                            back, forward, or a numeric Linux evdev button code
 //   key COMBINATION          such as super+Left, alt+F4, Return, super (alone)
 //   keydown|keyup KEY        holds / releases a key (such as alt for Alt+Tab)
 //   type TEXT                types text (us layout)
@@ -21,6 +21,7 @@
 //   vela-input move 640 100 down move 300 100 move 0 300 sleep 200 up
 
 #define _GNU_SOURCE
+#include <errno.h>
 #include <linux/input-event-codes.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -132,6 +133,14 @@ static int buttonCode(const char* name)
     }
     if (!strcmp(name, "forward")) {
         return BTN_EXTRA;
+    }
+    // Exercise less common evdev buttons (e.g. BTN_TRIGGER_HAPPY1 = 704).
+    // All pointer button codes in Linux fall within BTN_MOUSE..KEY_MAX.
+    char* end = NULL;
+    errno = 0;
+    unsigned long number = strtoul(name, &end, 0);
+    if (!errno && end != name && *end == '\0' && number >= BTN_MOUSE && number <= KEY_MAX) {
+        return (int)number;
     }
     return -1;
 }
