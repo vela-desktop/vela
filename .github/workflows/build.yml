@@ -367,9 +367,13 @@ jobs:
           # against a tiny fixture before installing the actual Vela RPM.
           dnf install -y git rpm-build dnf5-plugins
           bash packaging/fedora/tests/ci-updater-local-build.sh
+          # The updater fixture performs several local RPM transactions.
+          # Refresh Fedora metadata before the real runtime dependency install:
+          # cached mirrors can reference packages already superseded (404).
+          dnf clean metadata
           # Use normal DNF defaults so recommended desktop/updater tools
           # are exercised along with the mandatory runtime dependencies.
-          dnf install -y "${rpms[0]}"
+          dnf --refresh install -y "${rpms[0]}"
           rpm -V vela-git
           installed_requires=$(rpm -q --requires vela-git)
           for dependency in git util-linux rpm dnf5; do
