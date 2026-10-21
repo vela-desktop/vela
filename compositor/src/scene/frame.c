@@ -17,6 +17,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <wlr/backend/drm.h>
 #include <wlr/backend/headless.h>
 #include <wlr/render/color.h>
@@ -948,6 +949,35 @@ static void update_surfaces(struct vela_output_frame *frame, const struct vela_e
     }
 }
 
+// A successful commit outside vela_output_frame_render() replaces the buffer
+// (or disables the output). The last scanout/tearing delivery is no longer
+// current, even when the regular Vulkan render path could not run.
+void vela_output_frame_external_commit(struct vela_output_frame *frame)
+{
+    if (frame->scanout) {
+        wlr_log(WLR_INFO, "%s: direct scanout off (external output commit)", frame->output->name);
+    }
+    if (frame->tearing) {
+        wlr_log(WLR_INFO, "%s: tearing off (external output commit)", frame->output->name);
+    }
+    frame->scanout = false;
+    frame->tearing = false;
+    frame->delivered = (struct vela_frame_delivered) { 0, -1, false, false };
+    vela_output_frame_reset_damage(frame);
+}
+
+// A policy change must not leave a fullscreen app using DRM-plane format
+// feedback once the user has requested compositing. This bypasses the normal
+// 30-frame feedback debounce intentionally: an idle app may never reach it.
+void vela_output_frame_scanout_policy_changed(struct vela_output_frame *frame)
+{
+    if (!frame->scene->allow_scanout && frame->feedback_surface) {
+        send_feedback(frame, frame->feedback_surface, false);
+        frame->feedback_surface = NULL;
+        frame->feedback_debounce = 0;
+    }
+}
+
 void vela_output_frame_reset_damage(struct vela_output_frame *frame)
 {
     // All buffers start over: the next frame redraws them whole.
@@ -1315,7 +1345,16 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
         // VELA_STATS=1: how long a commit with a new gamma LUT holds the
         // compositor (on amdgpu it waits for every output's flips).
         int64_t commit_start = frame->night_commit_pending ? vela_now_ns() : 0;
-        ok = wlr_output_commit_state(output, state);
+        // Deterministic fault injection for the GPU functional suite. The
+        // opt-in marker is only honored on a headless test compositor.
+        const char *fail_commit = getenv("VELA_TEST_FAIL_COMPOSE_COMMIT_FILE");
+        if (wlr_output_is_headless(output) && vela_env_one("VELA_TEST_FAULTS")
+            && fail_commit && *fail_commit && access(fail_commit, F_OK) == 0) {
+            wlr_log(WLR_INFO, "%s: injected composed commit failure", output->name);
+            ok = false;
+        } else {
+            ok = wlr_output_commit_state(output, state);
+        }
         if (commit_start && vela_env_flag("VELA_STATS")) {
             wlr_log(WLR_INFO, "%s: commit with a gamma LUT: %.2f ms", output->name,
                 (double)(vela_now_ns() - commit_start) / 1e6);
