@@ -68,6 +68,7 @@ class Preferences : public QObject {
     // Variable refresh rate: "no", "games" (fullscreen apps), "always".
     Q_PROPERTY(QString vrr READ vrr WRITE setVrr NOTIFY accessibilityChanged)
     Q_PROPERTY(QString directScanout READ directScanout WRITE setDirectScanout NOTIFY accessibilityChanged)
+    Q_PROPERTY(bool scanoutOverridden READ scanoutOverridden NOTIFY accessibilityChanged)
     // --- Mouse and touchpad (vela.conf) ---
     Q_PROPERTY(int mouseSpeed READ mouseSpeed WRITE setMouseSpeed NOTIFY inputChanged) // 1-20
     Q_PROPERTY(bool mousePrecision READ mousePrecision WRITE setMousePrecision NOTIFY inputChanged)
@@ -165,6 +166,7 @@ public:
     void setVrr(const QString& mode);
     QString directScanout() const { return m_directScanout; }
     void setDirectScanout(const QString& mode);
+    bool scanoutOverridden() const { return m_scanoutOverridden; }
 
     bool magnifier() const { return m_magnifier; }
     void setMagnifier(bool on);
@@ -270,6 +272,7 @@ private:
     bool m_tearing = true;
     QString m_vrr = QStringLiteral("games");
     QString m_directScanout = QStringLiteral("auto");
+    bool m_scanoutOverridden = false;
     bool m_magnifier = false;
     int m_magnifierStep = 100;
     bool m_colorFilter = false;
