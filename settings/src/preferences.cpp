@@ -259,29 +259,39 @@ QString Preferences::compositorValue(const QString& key) const
 
 void Preferences::queryCompositor()
 {
-    // What isn't in the file: the magnifier (it opens and closes) and sun
-    // times.
+    // Query the actual compositor process: Settings may not inherit its
+    // environment (VELA_SCANOUT=0 is a session-level override).
     const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
-    QLocalSocket socket;
-    socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
-    if (!socket.waitForConnected(200)) {
-        return;
+    const QString socketPath = runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock");
+    auto query = [&socketPath](const QByteArray& command) -> QJsonObject {
+        QLocalSocket socket;
+        socket.connectToServer(socketPath);
+        if (!socket.waitForConnected(200)) {
+            return {};
+        }
+        socket.write(command + '\n');
+        if (!socket.waitForBytesWritten(200)) {
+            return {};
+        }
+        QByteArray reply;
+        while (!reply.contains('\n') && socket.waitForReadyRead(200)) {
+            reply += socket.readAll();
+        }
+        return QJsonDocument::fromJson(reply.trimmed()).object();
+    };
+
+    const QJsonObject state = query("accessibility");
+    if (!state.isEmpty()) {
+        m_magnifier = state[QStringLiteral("magnifier")].toBool();
+        m_hasTouchpad = state[QStringLiteral("touchpad")].toBool();
+        m_sunset = state[QStringLiteral("sunset")].toString();
+        m_sunrise = state[QStringLiteral("sunrise")].toString();
     }
-    socket.write("accessibility\n");
-    socket.waitForBytesWritten(200);
-    QByteArray reply;
-    while (!reply.contains('\n') && socket.waitForReadyRead(200)) {
-        reply += socket.readAll();
+    const QJsonObject policy = query("scanout-policy");
+    if (!policy.isEmpty()) {
+        m_scanoutOverridden = policy[QStringLiteral("envDisabled")].toBool();
     }
-    const QJsonObject state = QJsonDocument::fromJson(reply.trimmed()).object();
-    if (state.isEmpty()) {
-        return;
-    }
-    m_magnifier = state[QStringLiteral("magnifier")].toBool();
-    m_hasTouchpad = state[QStringLiteral("touchpad")].toBool();
-    m_sunset = state[QStringLiteral("sunset")].toString();
-    m_sunrise = state[QStringLiteral("sunrise")].toString();
 }
 
 void Preferences::setShell(const QString& key, const QVariant& value)
