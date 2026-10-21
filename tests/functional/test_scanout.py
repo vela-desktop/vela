@@ -33,12 +33,12 @@ class DirectScanout(unittest.TestCase):
         vela.command("reload-config")
 
     def test_auto_goes_to_scanout(self):
-        with Session(size=SIZE) as vela:
+        with Session(size=SIZE, env={"VELA_SCANOUT": "1"}) as vela:
             self.open_app(vela)
             vela.wait_for(scanning, timeout=8, what="direct scanout")
 
     def test_no_keeps_compositing(self):
-        with Session(size=SIZE) as vela:
+        with Session(size=SIZE, env={"VELA_SCANOUT": "1"}) as vela:
             self.configure(vela, "no")
             self.open_app(vela)
             before = vela.wait_for(lambda s: s.output["frames"] > 20, timeout=8, what="frames")
@@ -47,7 +47,7 @@ class DirectScanout(unittest.TestCase):
             self.assertFalse(scanning(vela.state()))
 
     def test_reload_applies_live(self):
-        with Session(size=SIZE) as vela:
+        with Session(size=SIZE, env={"VELA_SCANOUT": "1"}) as vela:
             self.open_app(vela)
             before = vela.wait_for(scanning, timeout=8, what="direct scanout")
             self.configure(vela, "no")
@@ -62,7 +62,7 @@ class DirectScanout(unittest.TestCase):
                 timeout=8, what="direct scanout restored by reload-config")
 
     def test_reload_from_scanout_with_idle_client(self):
-        with Session(size=SIZE) as vela:
+        with Session(size=SIZE, env={"VELA_SCANOUT": "1"}) as vela:
             self.open_app(vela)
             vela.wait_for(scanning, timeout=8, what="direct scanout")
             # Stop the client without unmapping it. A settings reload must
@@ -80,7 +80,7 @@ class DirectScanout(unittest.TestCase):
 
 
     def test_scanout_feedback_cleared_immediately_on_disable(self):
-        with Session(size=SIZE) as vela:
+        with Session(size=SIZE, env={"VELA_SCANOUT": "1"}) as vela:
             self.open_app(vela)
             vela.wait_for(scanning, timeout=8, what="direct scanout")
             # DMA-BUF feedback is deliberately debounced for normal window
@@ -107,6 +107,7 @@ class DirectScanout(unittest.TestCase):
             fault = os.path.join(tmp, "fail-commit")
             with Session(size=SIZE, env={
                     "VELA_TEST_FAULTS": "1",
+                    "VELA_SCANOUT": "1",
                     "VELA_TEST_FAIL_COMPOSE_COMMIT_FILE": fault}) as vela:
                 self.open_app(vela)
                 vela.wait_for(scanning, timeout=8, what="initial scanout")
@@ -138,6 +139,7 @@ class DirectScanout(unittest.TestCase):
             fault = os.path.join(tmp, "fail-commit")
             with Session(size=SIZE, env={
                     "VELA_TEST_FAULTS": "1",
+                    "VELA_SCANOUT": "1",
                     "VELA_TEST_FAIL_COMPOSE_COMMIT_FILE": fault}) as vela:
                 self.open_app(vela)
                 vela.wait_for(scanning, timeout=8, what="initial scanout")
@@ -156,7 +158,7 @@ class DirectScanout(unittest.TestCase):
                     os.unlink(fault)
 
     def test_yes_alias_keeps_scanout_enabled(self):
-        with Session(size=SIZE) as vela:
+        with Session(size=SIZE, env={"VELA_SCANOUT": "1"}) as vela:
             self.configure(vela, "yes")
             self.open_app(vela)
             vela.wait_for(scanning, timeout=8, what="legacy yes scanout")
