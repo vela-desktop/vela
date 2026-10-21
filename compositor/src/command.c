@@ -135,11 +135,15 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         vela_buffer_append_json(json, output->wlr->name);
         vela_buffer_appendf(json,
             ",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"scale\":%g,\"transform\":%d,\"enabled\":%s,\"powered\":%s,\"frames\":%llu,"
-            "\"missed\":%llu,\"scanout\":%s}",
+            "\"missed\":%llu,\"scanout\":%s,\"tearing\":%s,\"deliveredScanout\":%s,\"deliveredTearing\":%s,\"scanoutFeedback\":%s}",
             box.x, box.y, box.width, box.height, (double)output->wlr->scale, (int)output->wlr->transform, output->wlr->enabled ? t : f,
             output->powered ? t : f, (unsigned long long)output->clock.frames_total,
             (unsigned long long)output->clock.missed_total,
-            output->frame && output->frame->scanout ? t : f);
+            output->frame && output->frame->scanout ? t : f,
+            output->frame && output->frame->tearing ? t : f,
+            output->frame && output->frame->delivered.scanout ? t : f,
+            output->frame && output->frame->delivered.tearing ? t : f,
+            output->frame && output->frame->feedback_surface ? t : f);
         first = false;
     }
     vela_buffer_append(json, "],\"windows\":[");
@@ -252,6 +256,11 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         window_rects_json(server, &reply);
     } else if (strcmp(line, "state") == 0) {
         state_json(server, &reply);
+    } else if (strcmp(line, "scanout-policy") == 0) {
+        // Settings must report the compositor's environment, not its own.
+        vela_buffer_appendf(&reply, "{\"envDisabled\":%s,\"enabled\":%s}",
+            vela_env_off("VELA_SCANOUT") ? "true" : "false",
+            server->scene->allow_scanout ? "true" : "false");
     } else if (strcmp(line, "brightness") == 0) {
         vela_brightness_json(server, &reply);
     } else if (strcmp(line, "caffeine status") == 0) {
