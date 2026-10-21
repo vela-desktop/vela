@@ -315,11 +315,15 @@ static const struct wl_keyboard_listener keyboardListener = {
 
 static void onInhibitorActive(void* data, struct zwp_keyboard_shortcuts_inhibitor_v1* inhibitor)
 {
-    if (pointerLog) logLine("inhibitor active");
+    if (pointerLog) {
+        logLine("inhibitor active");
+    }
 }
 static void onInhibitorInactive(void* data, struct zwp_keyboard_shortcuts_inhibitor_v1* inhibitor)
 {
-    if (pointerLog) logLine("inhibitor inactive");
+    if (pointerLog) {
+        logLine("inhibitor inactive");
+    }
 }
 static const struct zwp_keyboard_shortcuts_inhibitor_v1_listener inhibitorListener = {
     .active = onInhibitorActive, .inactive = onInhibitorInactive,
