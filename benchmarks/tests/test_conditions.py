@@ -53,9 +53,9 @@ class ControlledConditions(unittest.TestCase):
         # Bind as the test runner, then match the simulated greeter's UID/GID.
         # The production ownership checks must remain exercised in root CI.
         if os.geteuid() == 0:
-            runtime.chown(uid, gid)
+            os.chown(runtime, uid, gid)
             for name in ("bus", "wayland-0"):
-                (runtime / name).chown(uid, gid)
+                os.chown(runtime / name, uid, gid)
         return user, session, runtime, run, proc
 
     def test_greeter_fixture_is_unprivileged_and_owns_its_sockets(self):
