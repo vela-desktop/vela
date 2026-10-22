@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-10-21T08:33:47+00:00",
+  "collected_at": "2026-10-22T08:35:53+00:00",
   "coverage": "top_10_only",
   "items": [
     {
@@ -9,10 +9,10 @@
       "uniques": 9
     },
     {
-      "count": 204,
+      "count": 210,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 160
+      "uniques": 166
     },
     {
       "count": 63,
@@ -52,15 +52,15 @@
     },
     {
       "count": 16,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
+      "title": "/blob/main/docs/screenshots/start.webp",
+      "uniques": 16
+    },
+    {
+      "count": 16,
       "path": "/vela-desktop/vela/forks",
       "title": "/forks",
       "uniques": 1
-    },
-    {
-      "count": 15,
-      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
-      "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 15
     }
   ],
   "schema_version": 1,
