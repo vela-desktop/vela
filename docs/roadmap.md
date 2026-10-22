@@ -15,6 +15,7 @@ GPU and driver: see [hardware coverage](hardware.md) for the current limits.
 |---|---|---|---|
 | **Display brightness**: a slider per monitor, over DDC/CI for external monitors and the kernel backlight for built-in screens | in the PR | [#45](https://github.com/vela-desktop/vela/pull/45) | B0–B4 done; tests on real hardware to do |
 | **Visual coherence**: the same pixels, clock and motion across compositor, shell and apps | in the PR | [#40](https://github.com/vela-desktop/vela/pull/40) | steps 1–3 of 11 done |
+| **Automated benchmarks**: one unattended campaign comparing desktop environments and Vela versions across five benchmark families | [design](benchmark-suite.md) | — | P0 and P1 campaign-core acceptance passed on the initial Vela/Plasma machine (2026-10-22): eight P0 blocks plus four fast and six normal P1 exercise blocks with verified restoration; checkpoint/resume contract tested; P2's six-block real-TTY fast acceptance passed with raw-data audits and restoration, normal repetition acceptance deferred by the operator; P3 implemented desktop actions passed real-TTY fast acceptance across separate responsiveness/motion campaigns; P4 scaling/overhead and full family coverage pending |
 
 ## Next
 

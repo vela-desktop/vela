@@ -323,7 +323,7 @@ static void usage(const char* program)
     fprintf(stderr,
         "Usage: %s ACTION [ACTION...]\n"
         "  move X Y | down [left|right|middle|back|forward] | up [...] | click [...]\n"
-        "  key COMBO (e.g. super+Left) | keydown|keyup KEY | type TEXT | scroll N | sleep MS\n",
+        "  key COMBO (e.g. super+Left) | keydown|keyup KEY | keycode EVDEV_CODE | type TEXT | scroll N | sleep MS\n",
         program);
 }
 
@@ -395,6 +395,17 @@ int main(int argc, char** argv)
             }
         } else if (!strcmp(action, "key") && arg1) {
             ok = pressCombo(arg1);
+            ++i;
+        } else if (!strcmp(action, "keycode") && arg1) {
+            char* end;
+            long code = strtol(arg1, &end, 10);
+            if (!*arg1 || *end || code < 1 || code > KEY_MAX) {
+                fprintf(stderr, "vela-input: invalid evdev keycode\n");
+                ok = 0;
+            } else {
+                sendKey((int)code + 8, 1);
+                sendKey((int)code + 8, 0);
+            }
             ++i;
         } else if ((!strcmp(action, "keydown") || !strcmp(action, "keyup")) && arg1) {
             ok = pressKey(arg1, !strcmp(action, "keydown"));
