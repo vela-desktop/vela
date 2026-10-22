@@ -31,7 +31,12 @@ def encoded(rows):
 
 class ControlledConditions(unittest.TestCase):
     def greeter_fixture(self, base, user_name="plasmalogin"):
-        user = SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_name=user_name, pw_dir="/var/lib/" + user_name)
+        # CI containers can run as root, but greeter_environment intentionally
+        # refuses UID 0. Keep fixtures unprivileged on every test runner.
+        uid, gid = os.getuid(), os.getgid()
+        if uid == 0:
+            uid, gid = 65534, 65534
+        user = SimpleNamespace(pw_uid=uid, pw_gid=gid, pw_name=user_name, pw_dir="/var/lib/" + user_name)
         session = {"Id": "c4", "User": str(user.pw_uid), "VTNr": "1", "Class": "greeter", "Type": "wayland",
                    "Remote": "no", "Seat": "seat0", "State": "online"}
         run, proc = base / "run", base / "proc"
@@ -45,7 +50,31 @@ class ControlledConditions(unittest.TestCase):
                 endpoint.bind(str(runtime / name))
             except PermissionError:
                 self.skipTest("sandbox denies Unix socket fixtures; rerun outside the sandbox")
+        # Bind as the test runner, then match the simulated greeter's UID/GID.
+        # The production ownership checks must remain exercised in root CI.
+        if os.geteuid() == 0:
+            runtime.chown(uid, gid)
+            for name in ("bus", "wayland-0"):
+                (runtime / name).chown(uid, gid)
         return user, session, runtime, run, proc
+
+    def test_greeter_fixture_is_unprivileged_and_owns_its_sockets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            user, _, runtime, _, _ = self.greeter_fixture(Path(temporary))
+            self.assertNotEqual(user.pw_uid, 0)
+            for path in (runtime, runtime / "bus", runtime / "wayland-0"):
+                self.assertEqual(path.lstat().st_uid, user.pw_uid)
+                self.assertEqual(path.lstat().st_gid, user.pw_gid)
+
+    def test_root_greeter_is_rejected_before_querying_user_manager(self):
+        from unittest.mock import Mock
+        host = SimpleNamespace(run=Mock())
+        session = {"Id": "c4", "User": "0", "VTNr": "1", "Class": "greeter", "Type": "wayland",
+                   "Remote": "no", "Seat": "seat0", "State": "online"}
+        root = SimpleNamespace(pw_uid=0, pw_gid=0, pw_name="plasmalogin", pw_dir="/var/lib/plasmalogin")
+        with patch("vela_bench.conditions.pwd.getpwuid", return_value=root), self.assertRaisesRegex(BenchError, "only for Plasma"):
+            greeter_environment([session], host=host)
+        host.run.assert_not_called()
 
     def test_plasma_login_services_use_manager_environment_outside_session_scope(self):
         with tempfile.TemporaryDirectory() as temporary:
