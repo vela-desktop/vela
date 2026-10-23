@@ -309,6 +309,9 @@ static void frameReady(void* data, struct ext_image_copy_capture_frame_v1* f)
     }
     if (!stopping && reallocate && constraintsWaiting) {
         resume();
+    } else if (!reallocate) {
+        // The previous constraints were still valid: no deferred reallocation.
+        constraintsWaiting = false;
     }
 }
 
@@ -391,7 +394,9 @@ static void sessionDone(void* data, struct ext_image_copy_capture_session_v1* s)
         reallocate = true;
     }
     if (frame) {
-        constraintsWaiting = reallocate; // in-flight frame must finish before reallocating
+        // A BUFFER_CONSTRAINTS failure can arrive after session.done even if
+        // size and format appear unchanged. Keep the completion handshake.
+        constraintsWaiting = true;
     } else if (!stopping && (!width || reallocate)) {
         resume();
     }
