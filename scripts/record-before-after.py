@@ -90,8 +90,8 @@ class Scene:
 
 class Maximize(Scene):
     name = "maximize"
-    about = ("maximize at 180 Hz, next to a 60 Hz monitor, without late latching, ten times slower, and a strip "
-             "of 8 refreshes: before, 2 in 3 repeat the previous one")
+    about = ("maximize at 180 Hz while a window maximizes on a 60 Hz monitor too, without late latching, ten times "
+             "slower, and a strip of 8 refreshes: before, 2 in 3 repeat the previous one")
     # Before #111, copying a 1080p output into shared memory took Vela
     # longer than a frame at 180 Hz: record with --pick and that fix.
     size = "1920x1080@180"
@@ -108,23 +108,37 @@ class Maximize(Scene):
     strip = (0.06, 8) # in the middle of the morph
 
     def prepare(self, desktop):
+        vela = desktop.vela
         # Its own rate on each: the old shared clock made the faster one
         # repeat frames. No rate given: 60 Hz on both builds.
-        desktop.vela.command("test-output add 1280x720")
-        desktop.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="the second output")
+        vela.command("test-output add 1280x720")
+        vela.wait_for(lambda s: len(s["outputs"]) == 2, what="the second output")
+        # A window on the 60 Hz monitor too, which maximizes with the other:
+        # with nothing to draw, the old build without late latching planned
+        # its frames at the event loop's speed and starved the 180 Hz one,
+        # a different defect (fixed in #40 as well) that hides this one. New
+        # windows open where the pointer is.
+        second = next(o for o in vela.state()["outputs"] if o["name"] != vela.state().output["name"])
+        vela.input("move", second["x"] + second["w"] // 2, second["y"] + second["h"] // 2)
+        other = vela.open_window(640, 400, decorated=True)
+        placed = vela.state().window(other)
+        if not second["x"] <= placed["x"] < second["x"] + second["w"]:
+            raise RuntimeError("the second window didn't open on the 60 Hz monitor")
+        vela.input("move", 200, 200)
         # Not the home page: it shows the PC's name.
         window = (desktop.open_app("settings/vela-settings", "--page", "personalization", user="Alex")
-                  or desktop.vela.open_window(800, 500, decorated=True))
-        desktop.vela.wait_still(window)
-        if desktop.vela.state().window(window)["maximized"]:
-            desktop.vela.command(f"window {window} restore")
-            desktop.vela.wait_for(lambda s: not s.window(window)["maximized"], what="the window restored")
-            desktop.vela.wait_still(window)
+                  or vela.open_window(800, 500, decorated=True))
+        vela.wait_still(window)
+        if vela.state().window(window)["maximized"]:
+            vela.command(f"window {window} restore")
+            vela.wait_for(lambda s: not s.window(window)["maximized"], what="the window restored")
+            vela.wait_still(window)
         time.sleep(1.0) # its first frames, the bar's colors
-        return None, window
+        return None, (window, other)
 
-    def act(self, desktop, window):
-        desktop.vela.command(f"window {window} maximize")
+    def act(self, desktop, windows):
+        for window in windows:
+            desktop.vela.command(f"window {window} maximize")
         time.sleep(0.35) # the morph is `slow`, 250 ms
 
 
