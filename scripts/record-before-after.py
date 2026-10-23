@@ -231,7 +231,11 @@ SCENES = {scene.name: scene for scene in (Maximize(), TitleBar(), QuickSettings(
 
 # ------------------------------------------------------------------ builds --
 
-def git(*args, cwd=ROOT):
+def git(*args, cwd=None):
+    # Resolve ROOT at call time; regression tests temporarily replace it with
+    # their own isolated Git repository.
+    if cwd is None:
+        cwd = ROOT
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
 
 
