@@ -576,20 +576,39 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
     // Reading uncached memory goes at a fraction of the speed: a 1440p
     // capture took longer than a frame at 180 Hz, and the output missed
     // frames for as long as anyone recorded it.
-    uint32_t type = readback
+    uint32_t cached = readback
         ? vela_vulkan_memory_type(r->vk, requirements.memoryTypeBits, host | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
         : UINT32_MAX;
-    if (type == UINT32_MAX) {
-        type = vela_vulkan_memory_type(r->vk, requirements.memoryTypeBits, host);
-    }
-    const VkMemoryAllocateInfo alloc_info = {
+    uint32_t type = cached;
+    VkMemoryAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = requirements.size,
         .memoryTypeIndex = type,
     };
-    if (type == UINT32_MAX || vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory) != VK_SUCCESS) {
+    bool allocated = type != UINT32_MAX && vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory) == VK_SUCCESS;
+    if (!allocated) {
+        // A compatible cached type can still fail to allocate (e.g. heap
+        // pressure). Try a different host-visible type before giving up.
+        uint32_t fallback_bits = requirements.memoryTypeBits;
+        if (cached != UINT32_MAX) {
+            fallback_bits &= ~(1u << cached);
+        }
+        type = vela_vulkan_memory_type(r->vk, fallback_bits, host);
+        if (type != UINT32_MAX) {
+            alloc_info.memoryTypeIndex = type;
+            allocated = vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory) == VK_SUCCESS;
+        }
+    }
+    if (!allocated) {
         vkDestroyBuffer(device, chunk.buffer, NULL);
         return NULL;
+    }
+    if (readback) {
+        VkPhysicalDeviceMemoryProperties props;
+        vkGetPhysicalDeviceMemoryProperties(r->vk->physical, &props);
+        if (!(props.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+            wlr_log(WLR_INFO, "Vulkan readback staging: uncached fallback (capture performance may be reduced)");
+        }
     }
     vkBindBufferMemory(device, chunk.buffer, chunk.memory, 0);
     void *mapped = NULL;
@@ -918,13 +937,13 @@ void vela_renderer_collect(struct vela_renderer *r)
     }
     r->retired_count = kept;
 
-    // Unused staging blocks: only a few are kept.
-    int idle = 0;
+    // Keep a few idle chunks of each kind, so uploads can't evict readback buffers.
+    int idle[2] = { 0 };
     kept = 0;
     for (int i = 0; i < r->staging_count; ++i) {
         struct staging_chunk chunk = r->staging[i];
         bool unused = chunk.point != UINT64_MAX && chunk.point <= done;
-        if (unused && ++idle > IDLE_STAGING_CHUNKS_KEPT) {
+        if (unused && ++idle[chunk.readback] > IDLE_STAGING_CHUNKS_KEPT) {
             vkDestroyBuffer(device, chunk.buffer, NULL);
             vkFreeMemory(device, chunk.memory, NULL);
             continue;
