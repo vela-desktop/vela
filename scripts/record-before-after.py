@@ -18,7 +18,8 @@ older compositors too), writes every frame with its presentation time. The
 two takes are then lined up on the moment the scene starts, played at the
 scene's speed and put side by side, or one above the other, by FFmpeg: WebM
 (VP9) and MP4 (H.264) for src/components/mdx/Video.astro on the website, and a
-PNG poster.
+PNG poster. Scenes about frame pacing also get a strip: the same refreshes of
+the monitor, one after the other, before above and after below.
 
 Needs what the functional tests need (a GPU with Vulkan 1.4, dbus-daemon),
 the shell built, ffmpeg, PipeWire with WirePlumber, and unprivileged user
@@ -75,6 +76,9 @@ class Scene:
     downscale = 1 # vela-screen-record averages N×N blocks
     stacked = False # one above the other instead of side by side
     poster = 0.0 # seconds after the start: the poster's moment
+    lead = LEAD
+    tail = TAIL
+    strip = None # (seconds after the start, refreshes): a strip of that many
 
     def prepare(self, desktop):
         raise NotImplementedError
@@ -85,12 +89,18 @@ class Scene:
 
 class Maximize(Scene):
     name = "maximize"
-    about = "maximize and restore at 180 Hz, next to a 60 Hz monitor, four times slower"
+    about = ("maximize at 180 Hz, next to a 60 Hz monitor, ten times slower, and a strip of 8 refreshes: "
+             "before, 2 in 3 repeat the previous one")
     # Before #111, copying a 1080p output into shared memory took Vela
     # longer than a frame at 180 Hz: record with --pick and that fix.
     size = "1920x1080@180"
-    speed = 0.25
+    # The old shared clock moved the animation on at 60 Hz: each position
+    # stays for three refreshes. Ten times slower, that's 1/20 s, which shows.
+    speed = 0.1
+    lead = 0.1
+    tail = 0.2
     poster = 0.12
+    strip = (0.06, 8) # in the middle of the morph
 
     def prepare(self, desktop):
         # Its own rate on each: the old shared clock made the faster one
@@ -107,6 +117,38 @@ class Maximize(Scene):
             desktop.vela.wait_still(window)
         time.sleep(1.0) # its first frames, the bar's colors
         return None, window
+
+    def act(self, desktop, window):
+        desktop.vela.command(f"window {window} maximize")
+        time.sleep(0.35) # the morph is `slow`, 250 ms
+
+
+class Corners(Scene):
+    name = "corners"
+    about = "the top left corner while a window maximizes and restores, zoomed in, four times slower"
+    size = "1920x1080@180"
+    speed = 0.25
+    zoom = 4
+    poster = 0.15
+    CORNER = 60 # where the window's corner is taken: away from the edges, which snap
+
+    def prepare(self, desktop):
+        vela = desktop.vela
+        # vela-pattern: Vela's title bar and corners, on light content.
+        window = vela.open_window(800, 500, decorated=True)
+        w = vela.wait_for(lambda s: s["focused"] == window).window(window)
+        # Dragged by its bar (as in test_decorations.py) near the top left,
+        # so the corner's way to (0, 0) is short.
+        x, y = w["x"] + 200, w["y"] + BAR // 2
+        dx, dy = self.CORNER - w["x"], self.CORNER - w["y"]
+        vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x, y + 10, "sleep", "50",
+                   "move", x + dx, y + 10 + dy, "sleep", "50", "up", "sleep", "400",
+                   "move", x + dx + 300, y + dy + 300) # the pointer out of the way
+        vela.wait_still(window)
+        w = vela.state().window(window)
+        time.sleep(0.5)
+        size = math.ceil((max(w["x"], w["y"]) + 40) * self.scale)
+        return (0, 0, size, size), window
 
     def act(self, desktop, window):
         desktop.vela.command(f"window {window} maximize")
@@ -197,7 +239,7 @@ class QuickSettings(Scene):
         desktop.vela.input(*actions)
 
 
-SCENES = {scene.name: scene for scene in (Maximize(), TitleBar(), QuickSettings())}
+SCENES = {scene.name: scene for scene in (Maximize(), Corners(), TitleBar(), QuickSettings())}
 
 
 # ------------------------------------------------------------------ builds --
@@ -379,15 +421,19 @@ class Take:
         self.presented = presented
         self.frame_size = self.width * self.height * 4
 
-    def frames(self, duration, speed):
-        """The frame on screen at each tick of a FPS video, from LEAD before
-        the start, slowed by speed, for duration seconds of video."""
+    def at(self, moments):
+        """The frame on screen at each of these moments: the last one
+        presented by then (the first one, before it)."""
         with open(self.directory / "frames.raw", "rb") as file, \
                 mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
-            for tick in range(round(duration * FPS)):
-                t = self.start - LEAD + tick / FPS * speed
+            for t in moments:
                 index = max(0, bisect.bisect_right(self.times, t) - 1)
                 yield data[index * self.frame_size:(index + 1) * self.frame_size]
+
+    def frames(self, duration, speed, lead=LEAD):
+        """The frame on screen at each tick of a FPS video, from lead before
+        the start, slowed by speed, for duration seconds of video."""
+        return self.at(self.start - lead + tick / FPS * speed for tick in range(round(duration * FPS)))
 
 
 def record(desktop, scene, directory):
@@ -408,11 +454,11 @@ def record(desktop, scene, directory):
             raise RuntimeError("vela-screen-record didn't start recording")
         vela.input("move", 2, 2 + int(time.monotonic() * 10) % 2)
     frames_before = vela.state().output["frames"]
-    time.sleep(LEAD)
+    time.sleep(max(scene.lead, 0.3)) # never less: the first frames settle
     start = time.clock_gettime(time.CLOCK_MONOTONIC)
     scene.act(desktop, context)
     end = time.clock_gettime(time.CLOCK_MONOTONIC)
-    time.sleep(TAIL)
+    time.sleep(scene.tail)
     presented = vela.state().output["frames"] - frames_before
     recorder.send_signal(signal.SIGINT)
     if recorder.wait(timeout=30) != 0:
@@ -427,12 +473,12 @@ def has_drawtext():
     return any(line.split()[1:2] == ["drawtext"] for line in filters.splitlines())
 
 
-def lossless(take, duration, speed, path):
-    """The take as a constant-rate video at the scene's speed (FFV1)."""
+def lossless(take, frames, path):
+    """These frames of the take as a constant-rate video (FFV1)."""
     encoder = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                                 "-f", "rawvideo", "-pix_fmt", take.format, "-s", f"{take.width}x{take.height}",
                                 "-r", str(FPS), "-i", "-", "-c:v", "ffv1", str(path)], stdin=subprocess.PIPE)
-    for frame in take.frames(duration, speed):
+    for frame in frames:
         encoder.stdin.write(frame)
     encoder.stdin.close()
     if encoder.wait() != 0:
@@ -440,9 +486,9 @@ def lossless(take, duration, speed, path):
 
 
 def assemble(scene, before, after, out, work, labels):
-    duration = (LEAD + max(before.end - before.start, after.end - after.start) + TAIL) / scene.speed
-    lossless(before, duration, scene.speed, work / "before.mkv")
-    lossless(after, duration, scene.speed, work / "after.mkv")
+    duration = (scene.lead + max(before.end - before.start, after.end - after.start) + scene.tail) / scene.speed
+    lossless(before, before.frames(duration, scene.speed, scene.lead), work / "before.mkv")
+    lossless(after, after.frames(duration, scene.speed, scene.lead), work / "after.mkv")
     speed = "" if scene.speed == 1 else f" · {scene.speed:g}×"
     chains = []
     for i, label in enumerate(("Before", "After")):
@@ -461,10 +507,39 @@ def assemble(scene, before, after, out, work, labels):
                     str(out / f"{scene.name}.webm")], check=True)
     subprocess.run([*common, "-c:v", "libx264", "-crf", "20", "-preset", "slow", "-movflags", "+faststart",
                     str(out / f"{scene.name}.mp4")], check=True)
-    poster = min((LEAD + scene.poster) / scene.speed, duration - 1 / FPS)
+    poster = min((scene.lead + scene.poster) / scene.speed, duration - 1 / FPS)
     subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{poster:.3f}",
                     "-i", str(out / f"{scene.name}.mp4"), "-frames:v", "1", str(out / f"{scene.name}.png")],
                    check=True)
+
+
+def strip(scene, before, after, out, labels):
+    """Consecutive refreshes of the recorded monitor, from a moment of the
+    scene: before in the first row, after in the second. Returns, for each
+    take, how many refreshes show the same image as the one before."""
+    offset, count = scene.strip
+    hz = float(scene.size.split("@")[1])
+    if (before.width, before.height, before.format) != (after.width, after.height, after.format):
+        raise RuntimeError("the two takes have different sizes or formats: no strip")
+    rows = [list(take.at(take.start + offset + k / hz for k in range(count))) for take in (before, after)]
+    width = before.width * scene.downscale // count # the strip as wide as the output
+    graph = f"scale={width}:-2:flags=area"
+    if labels:
+        for index, label in ((0, "Before"), (count, "After")):
+            graph += (f",drawtext=text='{label}':x=10:y=8:fontsize=20:fontcolor=white:box=1"
+                      f":boxcolor=black@0.55:boxborderw=6:enable='eq(n,{index})'")
+    graph += f",tile={count}x2:padding=4:color=black"
+    encoder = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                                "-f", "rawvideo", "-pix_fmt", before.format, "-s", f"{before.width}x{before.height}",
+                                "-i", "-", "-vf", graph, "-frames:v", "1", str(out / f"{scene.name}-frames.png")],
+                               stdin=subprocess.PIPE)
+    for row in rows:
+        for frame in row:
+            encoder.stdin.write(frame)
+    encoder.stdin.close()
+    if encoder.wait() != 0:
+        raise RuntimeError("ffmpeg failed")
+    return [sum(a == b for a, b in zip(row, row[1:])) for row in rows]
 
 
 # -------------------------------------------------------------------- main --
@@ -520,6 +595,12 @@ def main():
             # (maximize) should capture them all.
             print(f"{name}: {side}, {len(take.times)} frames captured, {take.presented} presented", flush=True)
         assemble(scene, takes["before"], takes["after"], args.out, work, labels)
+        if scene.strip:
+            repeated = strip(scene, takes["before"], takes["after"], args.out, labels)
+            count = scene.strip[1]
+            for side, n in zip(("before", "after"), repeated):
+                print(f"{name}: {side}, {n} of {count - 1} refreshes repeat the previous image", flush=True)
+            print(f"{name}: {args.out / name}-frames.png", flush=True)
         if args.keep:
             shutil.copytree(work, args.out / f"{name}-takes", dirs_exist_ok=True)
         shutil.rmtree(work)

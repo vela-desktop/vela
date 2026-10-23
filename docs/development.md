@@ -224,7 +224,10 @@ scripts/record-before-after.py --list
 It builds each ref in a worktree under `~/.cache/vela-before-after`, runs each
 scene headless with the real shell, as the functional tests do, and records it
 with this checkout's `vela-screen-record`. The takes are lined up on the moment
-the scene starts and encoded by FFmpeg as WebM, MP4 and a PNG poster. It needs
+the scene starts and encoded by FFmpeg as WebM, MP4 and a PNG poster. Scenes
+about frame pacing (`maximize`) also give a strip of consecutive refreshes,
+before above and after below (`maximize-frames.png`), and say how many repeat
+the previous image. It needs
 a GPU, `dbus-daemon`, `ffmpeg`, PipeWire with WirePlumber and unprivileged
 user namespaces. Nothing personal reaches the videos: the text is in English,
 the sound devices are made up on a PipeWire of the session's own, and Settings
