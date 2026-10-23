@@ -26,15 +26,19 @@ class Captures(unittest.TestCase):
             path = os.path.join(vela.directory, "capture.png")
             stop = threading.Event()
             captures = 0
+            capture_error = None
 
             def capture():
                 # The compositor copies the whole output whatever the region:
                 # a small one only keeps PNG encoding out of the measure.
-                nonlocal captures
-                while not stop.is_set():
-                    vela.screenshot(path, region=(0, 0, 8, 8))
-                    captures += 1
-                    time.sleep(0.05)
+                nonlocal captures, capture_error
+                try:
+                    while not stop.is_set():
+                        vela.screenshot(path, region=(0, 0, 8, 8))
+                        captures += 1
+                        time.sleep(0.05)
+                except Exception as error:
+                    capture_error = error
 
             before = vela.state().output["missed"]
             thread = threading.Thread(target=capture)
@@ -48,11 +52,14 @@ class Captures(unittest.TestCase):
             finally:
                 stop.set()
                 thread.join()
+            if capture_error is not None:
+                raise capture_error
             missed = vela.state().output["missed"] - before
-            # Uncached: about 120 missed for 38 captures, every time. Cached:
-            # usually none, a few dozen at worst on a busy machine.
             self.assertGreaterEqual(captures, 20, "too few captures to tell")
-            self.assertLess(missed, captures, f"{missed} vblanks missed during {captures} captures")
+            # Not every Vulkan GPU has a cached, coherent host-visible heap.
+            # Fallback still needs working captures, but can't promise the speedup.
+            if "Vulkan readback staging: uncached fallback" not in vela.log_text():
+                self.assertLess(missed, captures, f"{missed} vblanks missed during {captures} captures")
 
 
 if __name__ == "__main__":
