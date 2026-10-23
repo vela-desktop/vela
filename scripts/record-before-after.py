@@ -79,6 +79,7 @@ class Scene:
     lead = LEAD
     tail = TAIL
     strip = None # (seconds after the start, refreshes): a strip of that many
+    env = {} # more for the compositor
 
     def prepare(self, desktop):
         raise NotImplementedError
@@ -89,11 +90,15 @@ class Scene:
 
 class Maximize(Scene):
     name = "maximize"
-    about = ("maximize at 180 Hz, next to a 60 Hz monitor, ten times slower, and a strip of 8 refreshes: "
-             "before, 2 in 3 repeat the previous one")
+    about = ("maximize at 180 Hz, next to a 60 Hz monitor, without late latching, ten times slower, and a strip "
+             "of 8 refreshes: before, 2 in 3 repeat the previous one")
     # Before #111, copying a 1080p output into shared memory took Vela
     # longer than a frame at 180 Hz: record with --pick and that fix.
     size = "1920x1080@180"
+    # With late latching the two monitors' leads differ by about 1 ms and the
+    # old clock hardly showed (docs/visual-coherence.md D3); without it, as
+    # nested in KWin, they differ by a frame or more.
+    env = {"VELA_LATCH": "0"}
     # The old shared clock moved the animation on at 60 Hz: each position
     # stays for three refreshes. Ten times slower, that's 1/20 s, which shows.
     speed = 0.1
@@ -121,40 +126,6 @@ class Maximize(Scene):
     def act(self, desktop, window):
         desktop.vela.command(f"window {window} maximize")
         time.sleep(0.35) # the morph is `slow`, 250 ms
-
-
-class Corners(Scene):
-    name = "corners"
-    about = "the top left corner while a window maximizes and restores, zoomed in, four times slower"
-    size = "1920x1080@180"
-    speed = 0.25
-    zoom = 4
-    poster = 0.15
-    CORNER = 60 # where the window's corner is taken: away from the edges, which snap
-
-    def prepare(self, desktop):
-        vela = desktop.vela
-        # vela-pattern: Vela's title bar and corners, on light content.
-        window = vela.open_window(800, 500, decorated=True)
-        w = vela.wait_for(lambda s: s["focused"] == window).window(window)
-        # Dragged by its bar (as in test_decorations.py) near the top left,
-        # so the corner's way to (0, 0) is short.
-        x, y = w["x"] + 200, w["y"] + BAR // 2
-        dx, dy = self.CORNER - w["x"], self.CORNER - w["y"]
-        vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x, y + 10, "sleep", "50",
-                   "move", x + dx, y + 10 + dy, "sleep", "50", "up", "sleep", "400",
-                   "move", x + dx + 300, y + dy + 300) # the pointer out of the way
-        vela.wait_still(window)
-        w = vela.state().window(window)
-        time.sleep(0.5)
-        size = math.ceil((max(w["x"], w["y"]) + 40) * self.scale)
-        return (0, 0, size, size), window
-
-    def act(self, desktop, window):
-        desktop.vela.command(f"window {window} maximize")
-        time.sleep(0.8)
-        desktop.vela.command(f"window {window} restore")
-        time.sleep(0.8)
 
 
 class TitleBar(Scene):
@@ -239,7 +210,7 @@ class QuickSettings(Scene):
         desktop.vela.input(*actions)
 
 
-SCENES = {scene.name: scene for scene in (Maximize(), Corners(), TitleBar(), QuickSettings())}
+SCENES = {scene.name: scene for scene in (Maximize(), TitleBar(), QuickSettings())}
 
 
 # ------------------------------------------------------------------ builds --
@@ -315,7 +286,7 @@ class Desktop:
                 raise RuntimeError("the private D-Bus session didn't start")
             self.vela = harness.Session(size=self.scene.size, scale=self.scene.scale,
                                         env={"VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"),
-                                             "DBUS_SESSION_BUS_ADDRESS": address, **ENGLISH})
+                                             "DBUS_SESSION_BUS_ADDRESS": address, **ENGLISH, **self.scene.env})
             self.vela.start()
             os.makedirs(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela"), exist_ok=True)
             # An empty desktop, not the user's icons.
@@ -421,6 +392,19 @@ class Take:
         self.presented = presented
         self.frame_size = self.width * self.height * 4
 
+    def align(self):
+        """Starts the take at its first new image since the scene started:
+        the two builds don't react to the same command in the same
+        millisecond."""
+        with open(self.directory / "frames.raw", "rb") as file, \
+                mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            first = bisect.bisect_right(self.times, self.start)
+            for index in range(max(first, 1), len(self.times)):
+                previous = data[(index - 1) * self.frame_size:index * self.frame_size]
+                if data[index * self.frame_size:(index + 1) * self.frame_size] != previous:
+                    self.start = self.times[index]
+                    return
+
     def at(self, moments):
         """The frame on screen at each of these moments: the last one
         presented by then (the first one, before it)."""
@@ -463,7 +447,9 @@ def record(desktop, scene, directory):
     recorder.send_signal(signal.SIGINT)
     if recorder.wait(timeout=30) != 0:
         raise RuntimeError("vela-screen-record failed")
-    return Take(directory, start, end, presented)
+    take = Take(directory, start, end, presented)
+    take.align()
+    return take
 
 
 # ------------------------------------------------------------------ ffmpeg --

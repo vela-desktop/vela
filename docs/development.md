@@ -223,8 +223,11 @@ scripts/record-before-after.py --list
 
 It builds each ref in a worktree under `~/.cache/vela-before-after`, runs each
 scene headless with the real shell, as the functional tests do, and records it
-with this checkout's `vela-screen-record`. The takes are lined up on the moment
-the scene starts and encoded by FFmpeg as WebM, MP4 and a PNG poster. Scenes
+with this checkout's `vela-screen-record`. The takes are lined up on their
+first new image after the scene starts and encoded by FFmpeg as WebM, MP4 and
+a PNG poster. `maximize` runs without late latching (`VELA_LATCH=0`): with
+it, the two monitors' leads differ by about 1 ms and the old shared clock
+hardly showed (see D3 in [visual-coherence.md](visual-coherence.md)). Scenes
 about frame pacing (`maximize`) also give a strip of consecutive refreshes,
 before above and after below (`maximize-frames.png`), and say how many repeat
 the previous image. It needs

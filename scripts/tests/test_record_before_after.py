@@ -59,5 +59,28 @@ class TimelineTests(unittest.TestCase):
         self.assertEqual(self.shown(recording, 3 / script.FPS, 1.0), [0, 0, 0])
 
 
+class AlignTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.directory)
+
+    def recording(self, pixels, times, start):
+        (self.directory / "frames.raw").write_bytes(b"".join(bytes((p, p, p, 0)) for p in pixels))
+        (self.directory / "frames.txt").write_text("1 1 bgr0\n" + "".join(f"{t:.9f}\n" for t in times))
+        return script.Take(self.directory, start, start + 1, presented=len(times))
+
+    def test_starts_at_the_first_new_image_after_the_command(self):
+        # A change before the command doesn't count, nor a frame that
+        # repeats the image before it.
+        recording = self.recording([0, 5, 5, 5, 9, 9], [0.0, 0.5, 1.0, 1.1, 1.2, 1.3], start=0.9)
+        recording.align()
+        self.assertEqual(recording.start, 1.2)
+
+    def test_without_a_change_it_keeps_the_command(self):
+        recording = self.recording([3, 3, 3], [0.0, 1.0, 2.0], start=0.5)
+        recording.align()
+        self.assertEqual(recording.start, 0.5)
+
+
 if __name__ == "__main__":
     unittest.main()
