@@ -150,7 +150,11 @@ Both C and Qt consumers check dimensions, stride and allocation length before
 reading pixels. Captures are one-shot; callers must end or cancel jobs before
 destroying the Wayland connection, and dispatch that connection on one thread.
 `vela-screen-record` is the exception: it keeps its own session, with two
-buffers, for as long as it records.
+buffers, for as long as it records. It selects outputs by their stable
+`wl_output.name` (`VELA_SCREEN_RECORD_OUTPUT=HEADLESS-1`) or a legacy numeric
+registry index, bounds repeated capture errors, and refuses to overwrite
+existing recording files. The output directory must already exist and the
+`frames.raw` and `frames.txt` files must not.
 
 Both the legacy `wlr-screencopy` protocol and the new
 `ext-image-copy-capture` protocol expose the **composited output**. On
@@ -225,7 +229,11 @@ It builds each ref in a worktree under `~/.cache/vela-before-after`, runs each
 scene headless with the real shell, as the functional tests do, and records it
 with this checkout's `vela-screen-record`. The takes are lined up on their
 first new image after the scene starts and encoded by FFmpeg as WebM, MP4 and
-a PNG poster. `maximize` runs without late latching (`VELA_LATCH=0`): with
+a PNG poster. Each scene also writes a `SCENE-manifest.json` alongside the
+videos, recording exact source commits, requested picks, output name and size,
+capture/presentation counts and pixel format. Cached worktrees are verified
+against their original commit and picked diff before reuse; an interrupted
+cherry-pick is discarded and rebuilt. `maximize` runs without late latching (`VELA_LATCH=0`): with
 it, the two monitors' leads differ by about 1 ms and the old shared clock
 hardly showed (see D3 in [visual-coherence.md](visual-coherence.md)). Scenes
 about frame pacing (`maximize`) also give a strip of consecutive refreshes,

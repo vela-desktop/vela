@@ -3,6 +3,10 @@ the video shows."""
 from __future__ import annotations
 
 import importlib.util
+import io
+import subprocess
+import types
+from unittest import mock
 from pathlib import Path
 import shutil
 import tempfile
@@ -80,6 +84,111 @@ class AlignTests(unittest.TestCase):
         recording = self.recording([3, 3, 3], [0.0, 1.0, 2.0], start=0.5)
         recording.align()
         self.assertEqual(recording.start, 0.5)
+
+
+class WorktreeTests(unittest.TestCase):
+    """A real small git repository verifies that failed picks are not cached."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="vela-worktree-test-")
+        self.addCleanup(self.temporary.cleanup)
+        root = Path(self.temporary.name)
+        self.repo = root / "repo"
+        self.repo.mkdir()
+        self.cache = root / "cache"
+        self._original_root, self._original_cache = script.ROOT, script.CACHE
+        script.ROOT, script.CACHE = self.repo, self.cache
+        self.addCleanup(self.restore_paths)
+        self.git("init", "-q")
+        self.git("config", "user.name", "Vela test")
+        self.git("config", "user.email", "test@example.invalid")
+        (self.repo / "example.txt").write_text("before\n")
+        self.git("add", "example.txt")
+        self.git("commit", "-qm", "base")
+        self.base = self.git("rev-parse", "HEAD")
+        (self.repo / "example.txt").write_text("after\n")
+        self.git("add", "example.txt")
+        self.git("commit", "-qm", "pick")
+        self.pick = self.git("rev-parse", "HEAD")
+
+    def restore_paths(self):
+        script.ROOT, script.CACHE = self._original_root, self._original_cache
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.repo, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def build(self):
+        real_run = subprocess.run
+
+        def run(args, *positional, **keywords):
+            if args[0] == "cmake":
+                if "-B" in args:
+                    folder = Path(args[args.index("-B") + 1])
+                    folder.mkdir(parents=True, exist_ok=True)
+                    (folder / "build.ninja").touch()
+                return subprocess.CompletedProcess(args, 0)
+            return real_run(args, *positional, **keywords)
+
+        with mock.patch.object(script.subprocess, "run", side_effect=run):
+            return script.build(self.base, jobs=1, picks=[self.pick])
+
+    def test_cached_pick_is_reused_only_with_exact_git_diff(self):
+        out = self.build()
+        tree = out.parent
+        self.assertEqual((tree / "example.txt").read_text(), "after\n")
+        self.assertTrue(script.cached_worktree_valid(tree, self.base, [self.pick]))
+        (tree / "example.txt").write_text("tampered\n")
+        self.assertFalse(script.cached_worktree_valid(tree, self.base, [self.pick]))
+        self.assertEqual(self.build(), out)
+        self.assertEqual((tree / "example.txt").read_text(), "after\n")
+        self.assertTrue(script.cached_worktree_valid(tree, self.base, [self.pick]))
+
+    def test_interrupted_pick_is_reapplied(self):
+        tree = self.build().parent
+        (tree / ".vela-before-after-ready.json").unlink()
+        self.assertFalse(script.cached_worktree_valid(tree, self.base, [self.pick]))
+        self.build()
+        self.assertTrue(script.cached_worktree_valid(tree, self.base, [self.pick]))
+
+
+class RecorderLifecycleTests(unittest.TestCase):
+    def test_scene_failure_kills_and_reaps_recorder(self):
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = io.StringIO("recording\n")
+                self.status = None
+                self.killed = False
+                self.reaped = False
+
+            def poll(self):
+                return self.status
+
+            def kill(self):
+                self.killed = True
+                self.status = -9
+
+            def wait(self, timeout=None):
+                self.reaped = True
+                return self.status
+
+        recorder = FakeProcess()
+        vela = mock.Mock()
+        vela.state.return_value = types.SimpleNamespace(output={"name": "HEADLESS-1", "frames": 10})
+        vela.client_env = {}
+        desktop = types.SimpleNamespace(vela=vela)
+        scene = mock.Mock()
+        scene.prepare.return_value = (None, None)
+        scene.lead = 0
+        scene.act.side_effect = ValueError("failed scene")
+        with (tempfile.TemporaryDirectory() as folder,
+              mock.patch.object(script.subprocess, "Popen", return_value=recorder),
+              mock.patch.object(script.time, "sleep")):
+            with self.assertRaisesRegex(ValueError, "failed scene"):
+                script.record(desktop, scene, Path(folder))
+        self.assertTrue(recorder.killed)
+        self.assertTrue(recorder.reaped)
+        self.assertTrue(recorder.stdout.closed)
 
 
 if __name__ == "__main__":

@@ -32,6 +32,8 @@ bus."""
 
 import argparse
 import bisect
+import hashlib
+import json
 import math
 import mmap
 import os
@@ -233,20 +235,52 @@ def git(*args, cwd=ROOT):
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
 
 
+def worktree_digest(tree):
+    """The exact staged and unstaged tracked changes, including --pick changes."""
+    diff = subprocess.run(["git", "diff", "--binary", "HEAD"], cwd=tree, check=True,
+                          capture_output=True).stdout
+    return hashlib.sha256(diff).hexdigest()
+
+
+def cached_worktree_valid(tree, commit, missing):
+    """Reject partial cherry-picks, local edits and caches for other refs."""
+    try:
+        marker = json.loads((tree / ".vela-before-after-ready.json").read_text())
+        return (git("rev-parse", "HEAD", cwd=tree) == commit and
+                marker == {"commit": commit, "picks": missing, "diff": worktree_digest(tree)})
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return False
+
+
 def build(ref, jobs, picks=()):
-    """A worktree of ref under CACHE, with the picks it doesn't contain
-    applied on top (uncommitted), built; returns its build directory."""
+    """Build a checked, reproducible worktree of ref and its missing picks."""
     commit = git("rev-parse", "--verify", f"{ref}^{{commit}}")
-    missing = [pick for pick in picks
-               if subprocess.run(["git", "merge-base", "--is-ancestor", pick, commit], cwd=ROOT).returncode != 0]
+    missing = []
+    for pick in picks:
+        result = subprocess.run(["git", "merge-base", "--is-ancestor", pick, commit], cwd=ROOT)
+        if result.returncode == 1:
+            missing.append(pick)
+        elif result.returncode != 0:
+            raise RuntimeError(f"could not check ancestry of {pick} against {commit}")
     tree = CACHE / "+".join(c[:12] for c in (commit, *missing))
+    CACHE.mkdir(parents=True, exist_ok=True)
+    if tree.exists() and not cached_worktree_valid(tree, commit, missing):
+        print(f"{ref}: discarding incomplete or modified cached worktree {tree}", flush=True)
+        # This is a dedicated cache, not a user's checkout. Remove Git's
+        # worktree registration before recreating it, including failed picks.
+        subprocess.run(["git", "worktree", "remove", "--force", str(tree)], cwd=ROOT,
+                       check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if tree.exists():
+            shutil.rmtree(tree)
+        git("worktree", "prune")
     if not tree.exists():
-        CACHE.mkdir(parents=True, exist_ok=True)
         print(f"{ref}: worktree in {tree}", flush=True)
         git("worktree", "add", "--detach", str(tree), commit)
         for pick in missing:
             print(f"{ref}: applying {pick[:12]}", flush=True)
             git("cherry-pick", "--no-commit", pick, cwd=tree)
+        (tree / ".vela-before-after-ready.json").write_text(json.dumps({
+            "commit": commit, "picks": missing, "diff": worktree_digest(tree)}, sort_keys=True) + "\n")
     out = tree / "build"
     if not (out / "build.ninja").exists():
         subprocess.run(["cmake", "-S", str(tree), "-B", str(out), "-G", "Ninja"], check=True)
@@ -325,15 +359,17 @@ class Desktop:
         return self
 
     def __exit__(self, kind, value, traceback):
-        if self.vela:
-            self.vela.stop(keep_log=kind is not None)
-        self.bus.terminate()
         try:
-            self.bus.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            self.bus.kill()
-            self.bus.wait()
-        self.bus.stdout.close()
+            if self.vela:
+                self.vela.stop(keep_log=kind is not None)
+        finally:
+            self.bus.terminate()
+            try:
+                self.bus.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self.bus.kill()
+                self.bus.wait()
+            self.bus.stdout.close()
         return False
 
     @staticmethod
@@ -435,35 +471,47 @@ class Take:
 
 
 def record(desktop, scene, directory):
-    """Runs the scene while vela-screen-record records it."""
+    """Runs a scene with the correctly identified output; always reap the recorder."""
     area, context = scene.prepare(desktop)
     vela = desktop.vela
-    env = dict(vela.client_env, VELA_SCREEN_RECORD_OUTPUT="0", VELA_SCREEN_RECORD_DOWNSCALE=str(scene.downscale))
+    selected = vela.state().output
+    name = selected.get("name")
+    if not name:
+        raise RuntimeError("the selected output has no stable wl_output name")
+    env = dict(vela.client_env, VELA_SCREEN_RECORD_OUTPUT=name,
+               VELA_SCREEN_RECORD_DOWNSCALE=str(scene.downscale))
     recorder = subprocess.Popen([str(RECORDER), str(directory), *map(str, area or ())], env=env,
                                 stdout=subprocess.PIPE, text=True)
-    started = threading.Event()
-    threading.Thread(target=lambda: recorder.stdout.readline() and started.set(), daemon=True).start()
-    # The first frame comes with the next change on screen: move the pointer
-    # where it doesn't matter until it does.
-    deadline = time.monotonic() + 5
-    while not started.wait(0.1):
-        if recorder.poll() is not None or time.monotonic() > deadline:
+    try:
+        started = threading.Event()
+        threading.Thread(target=lambda: recorder.stdout.readline() and started.set(), daemon=True).start()
+        deadline = time.monotonic() + 5
+        while not started.wait(0.1):
+            if recorder.poll() is not None or time.monotonic() > deadline:
+                raise RuntimeError("vela-screen-record didn't start recording")
+            vela.input("move", 2, 2 + int(time.monotonic() * 10) % 2)
+        frames_before = vela.state().output["frames"]
+        time.sleep(max(scene.lead, 0.3))
+        start = time.clock_gettime(time.CLOCK_MONOTONIC)
+        scene.act(desktop, context)
+        end = time.clock_gettime(time.CLOCK_MONOTONIC)
+        time.sleep(scene.tail)
+        presented = vela.state().output["frames"] - frames_before
+        recorder.send_signal(signal.SIGINT)
+        if recorder.wait(timeout=30) != 0:
+            raise RuntimeError("vela-screen-record failed")
+        take = Take(directory, start, end, presented)
+        take.align()
+        # Record only display metadata, never the user or their real devices.
+        take.output_info = {key: selected[key] for key in ("name", "w", "h", "refresh")
+                            if key in selected}
+        return take
+    finally:
+        if recorder.poll() is None:
             recorder.kill()
-            raise RuntimeError("vela-screen-record didn't start recording")
-        vela.input("move", 2, 2 + int(time.monotonic() * 10) % 2)
-    frames_before = vela.state().output["frames"]
-    time.sleep(max(scene.lead, 0.3)) # never less: the first frames settle
-    start = time.clock_gettime(time.CLOCK_MONOTONIC)
-    scene.act(desktop, context)
-    end = time.clock_gettime(time.CLOCK_MONOTONIC)
-    time.sleep(scene.tail)
-    presented = vela.state().output["frames"] - frames_before
-    recorder.send_signal(signal.SIGINT)
-    if recorder.wait(timeout=30) != 0:
-        raise RuntimeError("vela-screen-record failed")
-    take = Take(directory, start, end, presented)
-    take.align()
-    return take
+            recorder.wait()
+        if recorder.stdout:
+            recorder.stdout.close()
 
 
 # ------------------------------------------------------------------ ffmpeg --
@@ -578,33 +626,52 @@ def main():
         print("This ffmpeg has no drawtext: the videos won't say which side is which.", file=sys.stderr)
 
     picks = [git("rev-parse", "--verify", f"{pick}^{{commit}}") for pick in args.pick]
+    source_refs = {side: git("rev-parse", "--verify", f"{ref}^{{commit}}")
+                   for side, ref in (("before", args.before), ("after", args.after))}
     builds = {side: build(ref, args.jobs, picks) for side, ref in (("before", args.before), ("after", args.after))}
     for name in args.scenes or SCENES:
         scene = SCENES[name]
         work = Path(tempfile.mkdtemp(prefix=f"vela-{name}-"))
-        takes = {}
-        for side, build_dir in builds.items():
-            directory = work / side
-            directory.mkdir()
-            print(f"{name}: recording {side}", flush=True)
-            with Desktop(build_dir, scene) as desktop:
-                takes[side] = take = record(desktop, scene, directory)
-            # Fewer frames than presented means the recording missed some,
-            # or that only the pointer moved: captures leave it out, so
-            # those frames bring nothing new. A scene without pointer moves
-            # (maximize) should capture them all.
-            print(f"{name}: {side}, {len(take.times)} frames captured, {take.presented} presented", flush=True)
-        assemble(scene, takes["before"], takes["after"], args.out, work, labels)
-        if scene.strip:
-            repeated = strip(scene, takes["before"], takes["after"], args.out, labels)
-            count = scene.strip[1]
-            for side, n in zip(("before", "after"), repeated):
-                print(f"{name}: {side}, {n} of {count - 1} refreshes repeat the previous image", flush=True)
-            print(f"{name}: {args.out / name}-frames.png", flush=True)
-        if args.keep:
-            shutil.copytree(work, args.out / f"{name}-takes", dirs_exist_ok=True)
-        shutil.rmtree(work)
-        print(f"{name}: {args.out / name}.webm, .mp4, .png", flush=True)
+        try:
+            takes = {}
+            for side, build_dir in builds.items():
+                directory = work / side
+                directory.mkdir()
+                print(f"{name}: recording {side}", flush=True)
+                with Desktop(build_dir, scene) as desktop:
+                    takes[side] = take = record(desktop, scene, directory)
+                # Pointer-only presentations do not appear in cursor-free
+                # captures; the other output's missing frames matter.
+                print(f"{name}: {side}, {len(take.times)} frames captured, {take.presented} presented",
+                      flush=True)
+            assemble(scene, takes["before"], takes["after"], args.out, work, labels)
+            repeated = None
+            if scene.strip:
+                repeated = strip(scene, takes["before"], takes["after"], args.out, labels)
+                count = scene.strip[1]
+                for side, n in zip(("before", "after"), repeated):
+                    print(f"{name}: {side}, {n} of {count - 1} refreshes repeat the previous image",
+                          flush=True)
+                print(f"{name}: {args.out / name}-frames.png", flush=True)
+            manifest = {
+                "scene": name, "size": scene.size, "scale": scene.scale, "speed": scene.speed,
+                "downscale": scene.downscale, "pick_commits": picks,
+                "sides": {side: {
+                    "commit": source_refs[side], "output": take.output_info,
+                    "frames_captured": len(take.times), "frames_presented": take.presented,
+                    "recorded_width": take.width, "recorded_height": take.height,
+                    "pixel_format": take.format,
+                } for side, take in takes.items()},
+            }
+            if repeated is not None:
+                manifest["repeated_refreshes"] = dict(zip(("before", "after"), repeated))
+            args.out.mkdir(parents=True, exist_ok=True)
+            (args.out / f"{name}-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+            if args.keep:
+                shutil.copytree(work, args.out / f"{name}-takes", dirs_exist_ok=True)
+            print(f"{name}: {args.out / name}.webm, .mp4, .png", flush=True)
+        finally:
+            shutil.rmtree(work)
     return 0
 
 
