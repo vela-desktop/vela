@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-22T08:35:53+00:00",
+  "generated_at": "2026-10-23T08:32:02+00:00",
   "popular_paths": [
     {
-      "count": 431,
+      "count": 432,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
       "uniques": 9
@@ -18,12 +18,6 @@
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
       "uniques": 11
-    },
-    {
-      "count": 62,
-      "path": "/BrandoDev/vela/pulls",
-      "title": "/pulls",
-      "uniques": 2
     },
     {
       "count": 39,
@@ -60,6 +54,12 @@
       "path": "/vela-desktop/vela/forks",
       "title": "/forks",
       "uniques": 1
+    },
+    {
+      "count": 15,
+      "path": "/vela-desktop/vela/pull/45",
+      "title": "/pull/45",
+      "uniques": 1
     }
   ],
   "releases": {
@@ -94,7 +94,7 @@
       {
         "assets": [
           {
-            "downloads": 3,
+            "downloads": 7,
             "id": "663419464",
             "name": "SHA256SUMS"
           },
@@ -109,12 +109,12 @@
             "name": "vela-git-0.1.0-1.137.g6199aea.fc44.x86_64.rpm"
           },
           {
-            "downloads": 3,
+            "downloads": 7,
             "id": "663419477",
             "name": "vela-git-0.1.0.r137.g6199aea-1-x86_64.pkg.tar.zst"
           }
         ],
-        "downloads_current_assets": 8,
+        "downloads_current_assets": 16,
         "tag": "alpha-6199aeae7c492be3ddba41ab9aa8f1d6f050885d"
       },
       {
@@ -196,21 +196,21 @@
         "tag": "alpha-b3b7e162accfcf3bd0662109f355d06a18eca775"
       }
     ],
-    "downloads_current_assets": 32,
-    "downloads_observed_maxima": 83,
-    "downloads_since_previous_daily_snapshot": 12,
-    "previous_snapshot_date": "2026-10-21",
+    "downloads_current_assets": 40,
+    "downloads_observed_maxima": 91,
+    "downloads_since_previous_daily_snapshot": 8,
+    "previous_snapshot_date": "2026-10-22",
     "release_count": 5
   },
   "repository": "vela-desktop/vela",
   "schema_version": 1,
   "sources": {
     "releases": {
-      "last_collected_at": "2026-10-22T08:35:53+00:00",
+      "last_collected_at": "2026-10-23T08:32:02+00:00",
       "status": "ok"
     },
     "traffic": {
-      "last_collected_at": "2026-10-22T08:35:53+00:00",
+      "last_collected_at": "2026-10-23T08:32:02+00:00",
       "status": "ok"
     }
   },
@@ -258,51 +258,51 @@
   ],
   "traffic": {
     "clones": {
-      "growth_vs_previous_7_days_percent": 34.46,
+      "growth_vs_previous_7_days_percent": -2.73,
       "last_30_complete_days": {
         "complete": false,
-        "count": 13463,
-        "end_date": "2026-10-21",
-        "observed_days": 23,
-        "start_date": "2026-09-22"
+        "count": 13646,
+        "end_date": "2026-10-22",
+        "observed_days": 24,
+        "start_date": "2026-09-23"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 7711,
-        "end_date": "2026-10-21",
+        "count": 6491,
+        "end_date": "2026-10-22",
         "observed_days": 7,
-        "start_date": "2026-10-15"
+        "start_date": "2026-10-16"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 5735,
-        "end_date": "2026-10-14",
+        "count": 6673,
+        "end_date": "2026-10-15",
         "observed_days": 7,
-        "start_date": "2026-10-08"
+        "start_date": "2026-10-09"
       }
     },
     "views": {
-      "growth_vs_previous_7_days_percent": -25.61,
+      "growth_vs_previous_7_days_percent": -38.31,
       "last_30_complete_days": {
         "complete": false,
-        "count": 1697,
-        "end_date": "2026-10-21",
-        "observed_days": 23,
-        "start_date": "2026-09-22"
+        "count": 1698,
+        "end_date": "2026-10-22",
+        "observed_days": 24,
+        "start_date": "2026-09-23"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 697,
-        "end_date": "2026-10-21",
+        "count": 570,
+        "end_date": "2026-10-22",
         "observed_days": 7,
-        "start_date": "2026-10-15"
+        "start_date": "2026-10-16"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 937,
-        "end_date": "2026-10-14",
+        "count": 924,
+        "end_date": "2026-10-15",
         "observed_days": 7,
-        "start_date": "2026-10-08"
+        "start_date": "2026-10-09"
       }
     }
   }
