@@ -149,6 +149,8 @@ invalidate the pending frame rather than rewriting its mapping metadata.
 Both C and Qt consumers check dimensions, stride and allocation length before
 reading pixels. Captures are one-shot; callers must end or cancel jobs before
 destroying the Wayland connection, and dispatch that connection on one thread.
+`vela-screen-record` is the exception: it keeps its own session, with two
+buffers, for as long as it records.
 
 Both the legacy `wlr-screencopy` protocol and the new
 `ext-image-copy-capture` protocol expose the **composited output**. On
@@ -177,6 +179,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 | `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`. |
 | `vela-windows` | Inspect windows and compositor-visible state. |
 | `vela-screen-dump` | Capture an output or region to PNG. |
+| `vela-screen-record` | Record an output or region frame by frame, each with its presentation time, until SIGINT (`frames.raw` and `frames.txt` in a directory; `VELA_SCREEN_RECORD_DOWNSCALE=2` for full outputs at high refresh rates). |
 | `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window). |
 | `vela-panel` | Fake shell pieces on wlr-layer-shell: `wallpaper`, and `taskbar [--blur]` with a reserved area and background blur. |
 | `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu; `--wine-backdrop` adds Wine's black fullscreen backdrop (override-redirect, then managed with fullscreen, skip-taskbar and below). |
@@ -206,6 +209,24 @@ caffeine status
 ```
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
+
+### Before/after videos
+
+`scripts/record-before-after.py` records the same scene on two builds and puts
+the takes side by side, for the journal on velade.org:
+
+```sh
+cmake --build build --target vela-screen-record
+scripts/record-before-after.py --before f72a182^ --after main --out ~/videos
+scripts/record-before-after.py --list
+```
+
+It builds each ref in a worktree under `~/.cache/vela-before-after`, runs each
+scene headless with the real shell, as the functional tests do, and records it
+with this checkout's `vela-screen-record`. The takes are lined up on the moment
+the scene starts and encoded by FFmpeg as WebM, MP4 and a PNG poster. It needs
+a GPU, `dbus-daemon` and `ffmpeg`. For each take it prints the frames captured
+and the frames presented: fewer captured means the video misses some.
 
 ### Wine/Proton fullscreen style transitions
 
