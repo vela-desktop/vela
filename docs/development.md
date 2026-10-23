@@ -217,7 +217,7 @@ the takes side by side, for the journal on velade.org:
 
 ```sh
 cmake --build build --target vela-screen-record
-scripts/record-before-after.py --before f72a182^ --after main --out ~/videos
+scripts/record-before-after.py --before f72a182^ --after main --pick 3fb2a40 --out ~/videos
 scripts/record-before-after.py --list
 ```
 
@@ -225,8 +225,18 @@ It builds each ref in a worktree under `~/.cache/vela-before-after`, runs each
 scene headless with the real shell, as the functional tests do, and records it
 with this checkout's `vela-screen-record`. The takes are lined up on the moment
 the scene starts and encoded by FFmpeg as WebM, MP4 and a PNG poster. It needs
-a GPU, `dbus-daemon` and `ffmpeg`. For each take it prints the frames captured
-and the frames presented: fewer captured means the video misses some.
+a GPU, `dbus-daemon`, `ffmpeg`, PipeWire with WirePlumber and unprivileged
+user namespaces. Nothing personal reaches the videos: the text is in English,
+the sound devices are made up on a PipeWire of the session's own, and Settings
+sees a user named Alex.
+
+For each take it prints the frames captured and the frames presented. Frames
+where only the pointer moved are presented but not captured, since captures
+leave the pointer out; otherwise fewer captured means the video misses some.
+Before #111 (`3fb2a40`), copying a 1080p output into shared memory took Vela
+longer than a frame at 180 Hz, so recording a build without it slows that
+build down. `--pick COMMIT` applies a commit to both builds when they don't
+already have it, uncommitted, in their own worktree.
 
 ### Wine/Proton fullscreen style transitions
 
