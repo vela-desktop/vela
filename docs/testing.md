@@ -332,6 +332,12 @@ from `state` the missed vblanks, the frames shown and the commits held back:
 | CPU synchronization (`VELA_SYNC_FILE=0`) | implicit producer fences still respected, at most 2 missed vblanks |
 | `VELA_READY_WAIT=0` | at least 20 missed vblanks: proves the test really detects a stall |
 
+`tests/functional/test_capture.py` checks that capturing the screen doesn't slow it
+down: on a 2560x1440 output at 180 Hz, a window maximizes and restores four times
+while `vela-screen-dump` captures every 50 ms, and fewer vblanks may be missed than
+captures were taken. When readback staging was uncached, each capture cost about
+three.
+
 `tests/functional/test_resources.py` runs both GPU and CPU synchronization
 under a 1024-descriptor limit, renders 1200 frames after warm-up, and checks
 the compositor's actual FD and sync_file counts for bounded growth. Its
