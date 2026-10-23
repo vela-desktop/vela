@@ -332,11 +332,13 @@ from `state` the missed vblanks, the frames shown and the commits held back:
 | CPU synchronization (`VELA_SYNC_FILE=0`) | implicit producer fences still respected, at most 2 missed vblanks |
 | `VELA_READY_WAIT=0` | at least 20 missed vblanks: proves the test really detects a stall |
 
-`tests/functional/test_capture.py` checks that capturing the screen doesn't slow it
-down: on a 2560x1440 output at 180 Hz, a window maximizes and restores four times
-while `vela-screen-dump` captures every 50 ms, and fewer vblanks may be missed than
-captures were taken. When readback staging was uncached, each capture cost about
-three.
+`tests/functional/test_capture.py` captures during four maximize/restore cycles
+at 2560x1440@180 Hz and fails on any capture error. When the allocated readback
+staging memory is cached, it also requires fewer missed vblanks than captures.
+GPUs that fall back to uncached staging must still capture successfully, but
+cannot be expected to meet this performance target. The compositor logs
+`Vulkan readback staging: uncached fallback` when this happens; historically,
+each uncached capture cost about three missed vblanks on the tested AMD GPU.
 
 `tests/functional/test_resources.py` runs both GPU and CPU synchronization
 under a 1024-descriptor limit, renders 1200 frames after warm-up, and checks
