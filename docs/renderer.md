@@ -465,7 +465,7 @@ the same synchronization. The code is in `compositor/src/render/`:
 |---|---|
 | `renderer.h` | the public API the rest of the compositor uses; `render.h` holds the structs the render files share |
 | `vulkan.c` | device, importable formats (textures, render targets, wl_shm), dmabuf import |
-| `renderer.c` | GPU submission with a timeline semaphore, deferred destruction (typed lists of retired images and used semaphores, freed when the timeline reaches their point), staging memory for uploads, dmabuf render targets, pipelines; syncobj timeline for app releases and GPU timestamps (S3); the `wlr_renderer` |
+| `renderer.c` | GPU submission with a timeline semaphore, deferred destruction (typed lists of retired images and used semaphores, freed when the timeline reaches their point), staging memory for uploads (uncached) and for readbacks (cached: captures read it with the CPU), dmabuf render targets, pipelines; syncobj timeline for app releases and GPU timestamps (S3); the `wlr_renderer` |
 | `texture.c` | textures from dmabuf (one import per buffer) and from memory (upload of changed areas only), pixel reads |
 | `pass.c` | drawing: textured or solid-color quads, rectangle clipping, barriers, implicit and explicit sync, timing; the `wlr_render_pass` |
 | `allocator.c`, `formats.c`, `pixel_buffer.c` | GBM output buffers, the pixel format table, CPU images as `wlr_buffer` |

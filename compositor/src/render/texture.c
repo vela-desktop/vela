@@ -356,7 +356,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
     uint32_t bpp = texture->format->bytes_per_pixel;
     size_t row_bytes = (size_t)box.width * bpp;
     struct vela_staging staging;
-    if (box.width <= 0 || box.height <= 0 || !vela_renderer_stage(renderer, row_bytes * (size_t)box.height, &staging)) {
+    if (box.width <= 0 || box.height <= 0 || !vela_renderer_stage_readback(renderer, row_bytes * (size_t)box.height, &staging)) {
         return false;
     }
 
