@@ -25,6 +25,7 @@
 // fullscreen, skip-taskbar/pager and below after mapping.
 
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
