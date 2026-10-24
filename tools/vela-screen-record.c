@@ -608,6 +608,21 @@ int main(int argc, char** argv)
     session = ext_image_copy_capture_manager_v1_create_session(manager, source, 0);
     ext_image_copy_capture_session_v1_add_listener(session, &sessionListener, NULL);
 
+    // Keep termination signals pending between stopping checks. ppoll()
+    // temporarily restores the previous mask atomically with the wait, so a
+    // SIGINT/SIGTERM cannot land just before poll() and strand a still scene.
+    sigset_t blocked, previousMask, waitingMask;
+    sigemptyset(&blocked);
+    sigaddset(&blocked, SIGINT);
+    sigaddset(&blocked, SIGTERM);
+    if (sigprocmask(SIG_BLOCK, &blocked, &previousMask) < 0) {
+        perror("vela-screen-record: sigprocmask");
+        return 1;
+    }
+    waitingMask = previousMask;
+    sigdelset(&waitingMask, SIGINT);
+    sigdelset(&waitingMask, SIGTERM);
+
     const int fd = wl_display_get_fd(display);
     while (!stopping) {
         while (wl_display_prepare_read(display) != 0) {
@@ -627,7 +642,7 @@ int main(int argc, char** argv)
         }
         // When the write buffer is full, wake on POLLOUT to retry flush.
         struct pollfd ready = { fd, (short)(POLLIN | (flush < 0 ? POLLOUT : 0)), 0 };
-        if (poll(&ready, 1, -1) < 0) {
+        if (ppoll(&ready, 1, NULL, &waitingMask) < 0) {
             wl_display_cancel_read(display);
             if (errno == EINTR) continue;
             perror("vela-screen-record");
@@ -650,6 +665,11 @@ int main(int argc, char** argv)
         }
     }
 
+    // Restore the caller's mask now that the wait loop has finished.
+    if (sigprocmask(SIG_SETMASK, &previousMask, NULL) < 0) {
+        perror("vela-screen-record: restore signal mask");
+        failed = true;
+    }
     if (frame) ext_image_copy_capture_frame_v1_destroy(frame);
     ext_image_copy_capture_session_v1_destroy(session);
     ext_image_capture_source_v1_destroy(source);
