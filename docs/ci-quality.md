@@ -38,6 +38,22 @@ artifact into a separate fresh Arch container.
 runtime linking, and no required Plasma/GNOME Shell installation.
 This is a package smoke test, NOT a graphical login or Vulkan test.
 
+## Shared hardware CI requirements
+
+Both GPU workflows use pinned Node.js 24-based GitHub Actions and require a
+**GitHub Actions self-hosted runner >= 2.327.1**. Update the runner before
+dispatching either workflow. Their hardware test jobs set
+`VELA_GPU_CI_STRICT=1`, so even individual Python `unittest` skips and
+empty suites fail CTest (not only CTest-level skips). They also set
+`VELA_GPU_EXPECT_VENDOR` to check the DRM render node actually selected
+by Vela against its sysfs PCI vendor in headless functional and sharpness
+sessions; passing `vulkaninfo` alone is not sufficient.
+
+Install all dependencies needed by the GPU scenarios, including Xwayland,
+`dbus-daemon`, `python-dbus` (the Python `dbus` module) and `gdbus` (from
+GLib), in addition to the normal build packages. Missing optional test
+prerequisites are an error in strict hardware CI, not a silent pass.
+
 ## Manual real-GPU CI (self-hosted AMD)
 
 [GPU CI - AMD (manual)](../.github/workflows/gpu-amd.yml) is **only**
@@ -67,9 +83,39 @@ a dedicated unprivileged runner account without access to personal files
 or secrets; never give the runner passwordless sudo. The GPU suite starts
 isolated headless Wayland sessions, not a physical DRM/KMS test.
 
+## Manual real-GPU CI (self-hosted NVIDIA)
+
+[GPU CI - NVIDIA (manual)](../.github/workflows/gpu-nvidia.yml) is a
+separate `workflow_dispatch` workflow targeting the `vela-nvidia`
+custom runner label (plus `self-hosted`, `linux` and `x64`).
+The runner group must allow the public Vela repository to use it.
+
+The Arch/CachyOS runner needs the
+[normal build dependencies](development.md#distribution-dependencies),
+`vulkan-tools`, the proprietary NVIDIA Vulkan driver (including
+`nvidia-utils` and `nvidia-smi`), `python-numpy` and `python-pillow`.
+Check with `nvidia-smi` and `vulkaninfo --summary` before dispatching;
+the NVIDIA driver and Vulkan device must support Vulkan 1.4 or newer.
+The workflow looks up the NVIDIA ICD manifest, restricts Vulkan device
+discovery to it, and verifies an accessible NVIDIA DRM render node. This
+avoids accidentally treating the Intel iGPU of a hybrid laptop as tested.
+
+It builds the chosen trusted revision, runs the same functional and
+sharpness GPU-labeled CTest entries as the AMD workflow, rejects missing
+or skipped suites, and uploads NVIDIA driver details, Vulkan details,
+CTest diagnostics and JUnit XML. It does not run `sudo` or install packages.
+Its headless Wayland tests do **not** exercise physical display/KMS paths.
+
+To run it after the workflow is merged into `main`, use
+Actions → GPU CI - NVIDIA (manual) → Run workflow, selecting a **trusted**
+branch. As with AMD, do not dispatch unreviewed pull request code to a
+persistent personal machine: the build and tests execute locally. Use
+a restricted unprivileged runner account without personal credentials,
+and keep the laptop awake during a run.
+
 ## Prerequisites
 
 GitHub Actions must be enabled. The normal automatically triggered CI needs
-no self-hosted runner or secrets; the optional manual AMD GPU workflow requires
-the explicitly labeled local runner above. Required check / branch protection
-policy is a separate optional admin setting.
+no self-hosted runners or secrets; the optional manual AMD and NVIDIA GPU
+workflows require their respective explicitly labeled local runners.
+Required check / branch protection policy is a separate optional admin setting.

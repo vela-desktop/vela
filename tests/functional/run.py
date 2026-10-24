@@ -26,6 +26,18 @@ sys.path.insert(0, HERE)
 from harness import gpu_available # noqa: E402
 
 
+def unittest_result_exit_code(result, strict=False):
+    """CTest must not treat an internally skipped unittest suite as a GPU pass."""
+    if strict and not result.testsRun:
+        print("::error::No Python unittest cases executed", file=sys.stderr)
+        return 1
+    if strict and result.skipped:
+        for case, reason in result.skipped:
+            print(f"::error::Python unittest skipped: {case}: {reason}", file=sys.stderr)
+        return 1
+    return 0 if result.wasSuccessful() else 1
+
+
 def main():
     if not gpu_available():
         print("No GPU (/dev/dri/renderD*): functional tests skipped.")
@@ -47,7 +59,7 @@ def main():
         suite = loader.loadTestsFromNames(sorted(name[:-3] for name in os.listdir(HERE)
                                                  if name.startswith("test_") and name.endswith(".py")))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    return unittest_result_exit_code(result, strict=os.environ.get("VELA_GPU_CI_STRICT") == "1")
 
 
 if __name__ == "__main__":
