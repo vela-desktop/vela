@@ -81,6 +81,8 @@ def record(**extra):
     with open(os.environ["TEST_CALLS"], "a") as log:
         log.write(json.dumps(dict(tool=name, args=args, **extra)) + "\n")
 if name == "pacman":
+    if args == ["-Qq", "base-devel"]:
+        sys.exit(0 if os.environ.get("TEST_BASE_DEVEL", "1") == "1" else 1)
     if not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
@@ -428,6 +430,25 @@ class UpdateFixture(unittest.TestCase):
 
 
 class UpdateRevision(UpdateFixture):
+    def test_missing_base_devel_installed_for_local_build(self):
+        self.env["TEST_BASE_DEVEL"] = "0"
+        self.run_update("--build")
+        self.assertTrue(any(c["args"] == ["pacman", "-S", "--needed", "base-devel"]
+                            for c in self.calls("sudo")))
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+
+    def test_present_base_devel_not_reinstalled(self):
+        self.run_update("--build")
+        self.assertFalse(any(c["args"] == ["pacman", "-S", "--needed", "base-devel"]
+                             for c in self.calls("sudo")))
+
+    def test_failed_base_devel_install_stops_before_makepkg(self):
+        self.env["TEST_BASE_DEVEL"] = "0"
+        self.env["TEST_FAIL_INSTALL"] = "1"
+        result = self.run_update("--build", status=1)
+        self.assertIn("could not install base-devel", result.stderr)
+        self.assertEqual(self.calls("makepkg"), [])
+
     def test_default_build_uses_main(self):
         self.run_update("--build")
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
