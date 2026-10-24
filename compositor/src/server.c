@@ -491,8 +491,9 @@ void vela_server_destroy(struct vela_server *server)
         wlr_allocator_destroy(server->cursor_allocator);
         wlr_allocator_destroy(server->allocator);
         vela_vulkan_destroy(server->vulkan); // last: everything else uses its device
+        wlr_log(WLR_INFO, "Shutdown: Vulkan resource cleanup complete");
     } else {
-        wlr_log(WLR_ERROR, "Shutdown: skipping Vulkan resource cleanup (diagnostic override)");
+        wlr_log(WLR_INFO, "WARNING: Shutdown: skipping Vulkan resource cleanup (diagnostic override)");
     }
     wl_display_destroy(server->display);
     if (server->runtime_dir_fd >= 0) {
