@@ -476,19 +476,23 @@ void vela_server_destroy(struct vela_server *server)
     vela_scene_destroy(server->scene);
     server->scene = NULL;
     vela_ready_finish(&server->ready);
-    // Renderer, allocator and Vulkan device are torn down only to look for
-    // leaked resources (VELA_VULKAN_VALIDATION=1). On a normal exit the
-    // process is about to end and the kernel reclaims everything: when nested,
-    // the amdgpu driver sometimes crashed freeing GPU memory (the state RADV
-    // and Mesa's GBM share in the process was already corrupted, most likely
-    // by our buffers never calling wlr_buffer_finish, since fixed), and a
-    // session that closes must not look like a crash.
-    if (vela_env_flag("VELA_VULKAN_VALIDATION")) {
-        // The renderer tells its users (wlr_compositor) and destroys itself.
+    // Renderer, allocator and Vulkan device must be released after outputs,
+    // scene and buffer listeners are gone. An earlier workaround skipped this
+    // on normal exit after a nested amdgpu crash; the dangling buffer-listener
+    // cause was since fixed by pairing buffers with wlr_buffer_finish().
+    //
+    // Keep an emergency hardware-specific opt-out while the driver matrix is
+    // validated: no GPU resources are freed manually when that flag is set,
+    // and the kernel reclaims them on process exit (the previous behavior).
+    if (!vela_env_one("VELA_SKIP_VULKAN_CLEANUP")) {
+        wlr_log(WLR_INFO, "Shutdown: releasing Vulkan renderer, allocator and device");
+        // The renderer notifies its users (wlr_compositor) before teardown.
         wlr_renderer_destroy(server->wlr_renderer);
         wlr_allocator_destroy(server->cursor_allocator);
         wlr_allocator_destroy(server->allocator);
         vela_vulkan_destroy(server->vulkan); // last: everything else uses its device
+    } else {
+        wlr_log(WLR_ERROR, "Shutdown: skipping Vulkan resource cleanup (diagnostic override)");
     }
     wl_display_destroy(server->display);
     if (server->runtime_dir_fd >= 0) {

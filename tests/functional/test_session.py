@@ -201,6 +201,41 @@ class Lock(unittest.TestCase):
             self.assertTrue(vela.state().has(window))
 
 
+class VulkanShutdown(unittest.TestCase):
+    """The renderer/allocator/device are destroyed on every normal exit."""
+
+    def test_normal_logout_releases_gpu_resources(self):
+        with Session() as vela:
+            vela.open_window()
+            os.kill(vela.process.pid, signal.SIGTERM)
+            self.assertEqual(vela.process.wait(timeout=15), 0)
+            self.assertIn("Shutdown: releasing Vulkan renderer, allocator and device",
+                          vela.log_text())
+
+    def test_shutdown_after_locked_output_power_cycle(self):
+        # Regression for the Intel/ANV cursor-memory crash originally seen
+        # after powering an output back on while the desktop was locked.
+        with Session(lock_hold_ms=2000) as vela:
+            vela.open_window()
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            vela.command("test-power off")
+            vela.wait_for(lambda s: not s.output["powered"], what="screen off")
+            vela.command("test-power on")
+            vela.wait_for(lambda s: s.output["powered"], what="screen on")
+            vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked")
+            os.kill(vela.process.pid, signal.SIGTERM)
+            self.assertEqual(vela.process.wait(timeout=15), 0)
+            self.assertIn("Shutdown: releasing Vulkan renderer, allocator and device",
+                          vela.log_text())
+
+    def test_diagnostic_cleanup_opt_out(self):
+        with Session(env={"VELA_SKIP_VULKAN_CLEANUP": "1"}) as vela:
+            os.kill(vela.process.pid, signal.SIGTERM)
+            self.assertEqual(vela.process.wait(timeout=15), 0)
+            self.assertIn("Shutdown: skipping Vulkan resource cleanup", vela.log_text())
+
+
 class Caffeine(unittest.TestCase):
     """Caffeine (quick settings): inactivity turns nothing off until it's
     turned off again, or its minutes run out (lock.c)."""

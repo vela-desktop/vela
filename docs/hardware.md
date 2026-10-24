@@ -73,3 +73,31 @@ To check on a real machine, with `ddcutil getvcp 10` as the reference:
 - NVIDIA (the `read()`/`write()` fallback) and Intel; a laptop: the backlight chosen, its minimum, OLED if available; a dock or MST hub.
 
 See [testing.md](testing.md) and [reporting.md](reporting.md) for automated tests and privacy-aware diagnostics.
+
+## GPU resource cleanup and driver regression checks
+
+The normal compositor shutdown releases its renderer, allocator, and Vulkan
+device in that order, after wlroots backends, buffers, and scene listeners.
+Historically, nested amdgpu sessions sometimes crashed during explicit Vulkan
+cleanup. A dangling `wlr_buffer` destroy-listener bug was subsequently fixed,
+so resource teardown is re-enabled. This does **not** establish that all Mesa
+or driver combinations are free of lifecycle bugs.
+
+`VELA_SKIP_VULKAN_CLEANUP=1` is an emergency diagnostic opt-out for a
+regression on a particular driver: it restores the previous behavior where
+remaining Vulkan objects are left to process teardown. Do not enable this
+by default or describe the opt-out as a fix for the root cause.
+
+The functional suite includes a clean-exit assertion with a live client,
+shutdown after an output power cycle while locked, and the explicit opt-out.
+Before merging a change to teardown behavior, also verify on **AMD RADV,
+NVIDIA proprietary, and Intel ANV** as hardware becomes available:
+
+- Direct DRM session and nested Wayland/X11 session, each exiting cleanly.
+- Multiple successive login/logout cycles with a window open.
+- Lock, monitor power off/on, unlock, then logout without a GPU fault.
+- Check Vulkan validation, compositor exit code, kernel/Mesa journal, and
+  supervisor logs; shutdown must never be reported as a compositor crash.
+
+These physical-hardware checks are separate from and not implied by a green CI
+run using a virtual/headless backend.
