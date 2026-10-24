@@ -34,10 +34,18 @@ jobs:
         run: |
           set -euo pipefail
           command -v vulkaninfo >/dev/null || { echo '::error::Install vulkan-tools'; exit 1; }
-          command -v python3 >/dev/null || { echo '::error::Install python'; exit 1; }
+          # Use the system interpreter: Arch's python-dbus, numpy and
+          # Pillow packages install into /usr/bin/python3, while CMake might
+          # auto-detect a different ~/.local/bin/python3.12.
+          test -x /usr/bin/python3 || { echo '::error::Install the system python package'; exit 1; }
           command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
           command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
-          python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow'; exit 1; }
+          /usr/bin/python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow for system Python'; exit 1; }
+          # Strict GPU CI rejects the nine agent tests if dbus-python or
+          # dbus-daemon is missing. Fail before the expensive GPU test run.
+          /usr/bin/python3 -c 'import dbus' || { echo '::error::System Python D-Bus bindings missing; install python-dbus on the AMD runner'; exit 1; }
+          command -v dbus-daemon >/dev/null || { echo '::error::D-Bus daemon missing on the AMD runner; install dbus'; exit 1; }
+          echo "GPU CTest interpreter: /usr/bin/python3 ($(/usr/bin/python3 --version))"
 
           # Arch/CachyOS use radeon_icd.json; some distros use an x86_64 suffix.
           icd=
@@ -96,6 +104,7 @@ jobs:
           set -euo pipefail
           cmake -S . -B "$RUNNER_TEMP/vela-gpu-build" -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DPython3_EXECUTABLE=/usr/bin/python3 \
             -DVELA_BUILD_COMPOSITOR=ON \
             -DVELA_BUILD_SHELL=ON \
             -DVELA_BUILD_TOOLS=ON \

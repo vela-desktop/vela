@@ -43,13 +43,14 @@ def main():
         print("No GPU (/dev/dri/renderD*): functional tests skipped.")
         return SKIP
     if "--sharpness" in sys.argv:
-        # The pixel check (scripts/sharpness-check.py) runs with the python3 on
-        # PATH: that's where numpy and Pillow are needed.
-        if subprocess.run(["python3", "-c", "import numpy, PIL"], capture_output=True).returncode != 0:
-            print("python3 needs numpy and Pillow: sharpness test skipped.")
+        # Match the CTest-selected interpreter even if PATH resolves python3
+        # to a different installation without NumPy or Pillow.
+        if subprocess.run([sys.executable, "-c", "import numpy, PIL"], capture_output=True).returncode != 0:
+            print(f"{sys.executable} needs numpy and Pillow: sharpness test skipped.")
             return SKIP
         env = {key: value for key, value in os.environ.items() if key not in ("WAYLAND_DISPLAY", "DISPLAY")}
         env["VELA_TEST_MARK"] = "menu"
+        env["VELA_TEST_PYTHON"] = sys.executable
         return subprocess.run(["sh", "scripts/test-sharpness.sh"], cwd=ROOT, env=env).returncode
     modules = [argument for argument in sys.argv[1:] if not argument.startswith("-")]
     loader = unittest.defaultTestLoader

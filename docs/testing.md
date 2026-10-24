@@ -281,6 +281,24 @@ with Session(scale=1.25) as vela:
 - **The agent** (`vela-polkit-agent`) is started by the compositor (`VELA_POLKIT_AGENT`) and registers with `fake_polkitd.py`, a fake polkitd on a private D-Bus bus passed as `DBUS_SYSTEM_BUS_ADDRESS`. `VELA_POLKIT_TEST_PASSWORD` replaces PAM with a session that accepts one password; the agent refuses that mode unless the authority reports itself as the fake one. Covered: registration for the session in Vela's language, authorizing after a wrong password, "No", a request withdrawn by polkit, a crashed dialog counting as "No", queued requests, restart after a crash, no restart when another agent owns the session, test mode refused against another authority.
 
 The agent tests need `dbus-python` and `dbus-daemon`; without them they are skipped.
+Strict self-hosted GPU CI treats these skips as failures. On the Arch/CachyOS AMD
+runner, install the test dependencies **on the host** (not in the workflow):
+
+```sh
+sudo pacman -S --needed python-dbus dbus
+/usr/bin/python3 -c 'import dbus; print("D-Bus Python bindings OK")'
+command -v dbus-daemon
+```
+
+The AMD workflow intentionally pins `-DPython3_EXECUTABLE=/usr/bin/python3`
+for CTest and verifies D-Bus on that exact interpreter before building. This
+prevents CMake from preferring another `~/.local/bin/python3.12` which cannot
+import the system-installed D-Bus bindings (as happened in AMD run 40130281376).
+The interactive `python3` on `PATH` may be different from CMake's selection.
+For CTest sharpness, `tests/functional/run.py` passes its interpreter to
+`scripts/test-sharpness.sh` through `VELA_TEST_PYTHON`, ensuring all NumPy/Pillow
+checks and pixel comparisons use that same interpreter. When run standalone,
+the shell script still defaults to `python3` from `PATH`.
 
 `state` also lists the layer-shell surfaces (`layers`: namespace, layer, keyboard interactivity, output) and the one with the keyboard (`focusedLayer`).
 
