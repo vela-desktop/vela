@@ -1,0 +1,161 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Re-evaluate every open PR when main or a PR changes. The privileged event
+# reads GitHub API metadata only; never check out or run untrusted PR code.
+name: Path-aware branch freshness
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+# One shared queue for push and PR events. Every run checks every open PR.
+concurrency:
+  group: vela-branch-freshness-main
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    name: Check relevant base changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recheck open pull requests
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const statusContext = 'branch-freshness/relevant-base';
+            const targetUrl = context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId;
+            const isIgnorable = path =>
+              /^(README|CONTRIBUTING|SECURITY)\.md$/.test(path) ||
+              path.startsWith('docs/');
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            const publish = (sha, state, description) =>
+              github.rest.repos.createCommitStatus({
+                owner, repo, sha, state, context: statusContext,
+                description: description.slice(0, 140), target_url: targetUrl
+              });
+            
+            // Every run scans all PRs: GitHub may replace a pending push run
+            // with a PR run when both share this concurrency group.
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', base: 'main', per_page: 100
+            });
+            let errors = 0;
+            for (const candidate of prs) {
+              let headSha;
+              let mergeSha;
+              try {
+                const { data: first } = await github.rest.pulls.get({
+                  owner, repo, pull_number: candidate.number
+                });
+                if (first.state !== 'open' || first.base.ref !== 'main') continue;
+                headSha = first.head.sha;
+            
+                // Without a new test-merge status GitHub can fall back to the head.
+                // Clear any reusable success on the head, including from old runs.
+                await publish(headSha, 'pending', 'Awaiting current test-merge freshness result');
+            
+                const { data: main } = await github.rest.repos.getBranch({
+                  owner, repo, branch: 'main'
+                });
+                const baseSha = main.commit.sha;
+            
+                // Reading a PR may regenerate its synthetic merge commit. Verify
+                // its exact two parents so stale merges can never receive success.
+                for (let attempt = 0; attempt < 6; attempt++) {
+                  const { data: pr } = await github.rest.pulls.get({
+                    owner, repo, pull_number: candidate.number
+                  });
+                  if (pr.state !== 'open' || pr.base.ref !== 'main' ||
+                      pr.head.sha !== headSha) {
+                    throw new Error('Pull request changed during evaluation');
+                  }
+                  if (pr.mergeable === true && pr.merge_commit_sha) {
+                    try {
+                      const { data: commit } = await github.rest.git.getCommit({
+                        owner, repo, commit_sha: pr.merge_commit_sha
+                      });
+                      if (commit.parents?.length === 2 &&
+                          commit.parents[0].sha === baseSha &&
+                          commit.parents[1].sha === headSha) {
+                        mergeSha = pr.merge_commit_sha;
+                        break;
+                      }
+                    } catch (error) {
+                      if (error.status !== 404) throw error;
+                    }
+                  }
+                  if (pr.mergeable === false) {
+                    core.warning('PR #' + candidate.number + ': merge conflict; GitHub blocks merge');
+                    break;
+                  }
+                  if (attempt < 5) await sleep(1000);
+                }
+                if (!mergeSha) {
+                  // Head remains pending, preventing a fallback approval.
+                  core.warning('PR #' + candidate.number + ': current test merge unavailable');
+                  continue;
+                }
+            
+                // Compare from the common ancestor to main, excluding PR-only changes.
+                const { data: diff } = await github.rest.repos.compareCommits({
+                  owner, repo, base: headSha, head: baseSha
+                });
+                let state = 'failure';
+                let description;
+                if (diff.ahead_by === 0) {
+                  state = 'success';
+                  description = 'Branch includes current main';
+                } else if (!Number.isInteger(diff.ahead_by) ||
+                           !Array.isArray(diff.files) || diff.files.length >= 300) {
+                  description = 'Base comparison incomplete; update branch';
+                } else {
+                  const relevant = diff.files.filter(file =>
+                    !isIgnorable(file.filename) ||
+                    (file.previous_filename && !isIgnorable(file.previous_filename))
+                  );
+                  if (relevant.length === 0) {
+                    state = 'success';
+                    description = 'Only documentation changed on main';
+                  } else {
+                    description = 'Update branch: ' + relevant.length + ' relevant file(s) changed';
+                  }
+                }
+            
+                // Do not publish a verdict for a superseded PR or base snapshot.
+                const [{ data: latestMain }, { data: latestPr }] = await Promise.all([
+                  github.rest.repos.getBranch({ owner, repo, branch: 'main' }),
+                  github.rest.pulls.get({ owner, repo, pull_number: candidate.number })
+                ]);
+                if (latestMain.commit.sha !== baseSha ||
+                    latestPr.head.sha !== headSha ||
+                    latestPr.state !== 'open' || latestPr.base.ref !== 'main') {
+                  throw new Error('Main or PR head moved during evaluation');
+                }
+                await publish(mergeSha, state, description);
+                core.info('PR #' + candidate.number + ': ' + state + ': ' + description);
+              } catch (error) {
+                errors++;
+                core.error('PR #' + candidate.number + ': ' + error.message);
+                if (mergeSha) {
+                  try {
+                    await publish(mergeSha, 'error', 'Freshness check failed; retry');
+                  } catch (statusError) {
+                    core.error('PR #' + candidate.number + ': ' + statusError.message);
+                  }
+                }
+                // Without a verified merge, the head stays pending.
+              }
+            }
+            if (errors) core.setFailed(errors + ' PR freshness check(s) failed');
