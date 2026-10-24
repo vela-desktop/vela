@@ -27,6 +27,8 @@ import zlib
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUILD = os.environ.get("VELA_BUILD", os.path.join(ROOT, "build"))
 
+from renderer_identity import verify_renderer_vendor
+
 
 def tool(name):
     return os.path.join(BUILD, "tools", name)
@@ -113,6 +115,10 @@ class Session:
         self.process = subprocess.Popen(command, env=env, stdout=self.log, stderr=subprocess.STDOUT,
                                         start_new_session=True)
         self.display = self.wait_for_log(r"WAYLAND_DISPLAY=", lambda line: line.split("WAYLAND_DISPLAY=")[1].split()[0])
+        # On hardware CI, prove which DRM render node Vela itself opened.
+        if expected_vendor := os.environ.get("VELA_GPU_EXPECT_VENDOR"):
+            nodes = verify_renderer_vendor(self.log_text(), expected_vendor)
+            print(f"Vela renderer PCI {expected_vendor} confirmed: {', '.join(nodes)}", flush=True)
         runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
         self.socket_path = os.path.join(runtime, f"vela-{self.display}.sock")
         self.wait_for(lambda _: os.path.exists(self.socket_path), what="the command socket", read_state=False)
