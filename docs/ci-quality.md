@@ -38,6 +38,22 @@ artifact into a separate fresh Arch container.
 runtime linking, and no required Plasma/GNOME Shell installation.
 This is a package smoke test, NOT a graphical login or Vulkan test.
 
+## Shared hardware CI requirements
+
+Both GPU workflows use pinned Node.js 24-based GitHub Actions and require a
+**GitHub Actions self-hosted runner >= 2.327.1**. Update the runner before
+dispatching either workflow. Their hardware test jobs set
+`VELA_GPU_CI_STRICT=1`, so even individual Python `unittest` skips and
+empty suites fail CTest (not only CTest-level skips). They also set
+`VELA_GPU_EXPECT_VENDOR` to check the DRM render node actually selected
+by Vela against its sysfs PCI vendor in headless functional and sharpness
+sessions; passing `vulkaninfo` alone is not sufficient.
+
+Install all dependencies needed by the GPU scenarios, including Xwayland,
+`dbus-daemon`, `python-dbus` (the Python `dbus` module) and `gdbus` (from
+GLib), in addition to the normal build packages. Missing optional test
+prerequisites are an error in strict hardware CI, not a silent pass.
+
 ## Manual real-GPU CI (self-hosted AMD)
 
 [GPU CI - AMD (manual)](../.github/workflows/gpu-amd.yml) is **only**
