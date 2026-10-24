@@ -256,6 +256,33 @@ static void destroy(struct vela_renderer *r)
     }
     vela_renderer_collect(r);
 
+    // Shutdown is different from ordinary retirement: there will be no
+    // further submissions to advance the timeline. In particular, an
+    // unsubmitted SHM upload may have put images at last_point + 1, which
+    // collect() cannot reach even after vkDeviceWaitIdle(). All GPU work is
+    // idle now, so destroy any remaining deferred Vulkan objects directly.
+    if (r->retired_count || r->used_semaphore_count) {
+        wlr_log(WLR_INFO, "Renderer shutdown: releasing %d deferred image(s), %d semaphore(s)",
+            r->retired_count, r->used_semaphore_count);
+    }
+    for (int i = 0; i < r->retired_count; ++i) {
+        const struct retired_image *retired = &r->retired[i];
+        if (retired->view) {
+            vkDestroyImageView(device, retired->view, NULL);
+        }
+        if (retired->image) {
+            vkDestroyImage(device, retired->image, NULL);
+        }
+        if (retired->memory) {
+            vkFreeMemory(device, retired->memory, NULL);
+        }
+    }
+    r->retired_count = 0;
+    for (int i = 0; i < r->used_semaphore_count; ++i) {
+        vkDestroySemaphore(device, r->used_semaphores[i].semaphore, NULL);
+    }
+    r->used_semaphore_count = 0;
+
     for (int i = 0; i < r->staging_count; ++i) {
         vkDestroyBuffer(device, r->staging[i].buffer, NULL);
         vkFreeMemory(device, r->staging[i].memory, NULL);
