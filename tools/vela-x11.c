@@ -248,6 +248,34 @@ int main(int argc, char** argv)
             free(error);
             failed = 1;
         }
+        if (!failed && !strcmp(argv[1], "--override-redirect")) {
+            // ChangeWindowAttributes doesn't itself send an X11 notification
+            // to the window manager. wlroots learns the new override-redirect
+            // value from ConfigureNotify or MapNotify. Exercise a *mapped*
+            // transition by issuing a real ConfigureWindow, without an X11
+            // unmap/remap or a fabricated event. Restore the original size.
+            xcb_get_geometry_reply_t* geometry =
+                xcb_get_geometry_reply(connection, xcb_get_geometry(connection, target), NULL);
+            if (!geometry || !geometry->width || geometry->width == UINT16_MAX) {
+                fprintf(stderr, "vela-x11: cannot configure target after override-redirect change\n");
+                failed = 1;
+            } else {
+                const uint32_t widths[] = { (uint32_t)geometry->width + 1, geometry->width };
+                for (size_t i = 0; i < 2; ++i) {
+                    xcb_void_cookie_t configure = xcb_configure_window_checked(
+                        connection, target, XCB_CONFIG_WINDOW_WIDTH, &widths[i]);
+                    xcb_generic_error_t* configure_error = xcb_request_check(connection, configure);
+                    if (configure_error) {
+                        fprintf(stderr, "vela-x11: override-redirect configure failed (X11 error %d)\n",
+                            configure_error->error_code);
+                        free(configure_error);
+                        failed = 1;
+                        break;
+                    }
+                }
+            }
+            free(geometry);
+        }
         xcb_disconnect(connection);
         return failed;
     }
