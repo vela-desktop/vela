@@ -286,14 +286,15 @@ runner, install the test dependencies **on the host** (not in the workflow):
 
 ```sh
 sudo pacman -S --needed python-dbus dbus
-python3 -c 'import dbus; print("D-Bus Python bindings OK")'
+/usr/bin/python3 -c 'import dbus; print("D-Bus Python bindings OK")'
 command -v dbus-daemon
 ```
 
-The `python3` command above must be the same interpreter the GitHub Actions
-runner uses; if it is a custom virtual environment, installing the system
-package alone may not make its D-Bus bindings importable. The AMD workflow
-checks both prerequisites before configuring or building Vela.
+The AMD workflow intentionally pins `-DPython3_EXECUTABLE=/usr/bin/python3`
+for CTest and verifies D-Bus on that exact interpreter before building. This
+prevents CMake from preferring another `~/.local/bin/python3.12` which cannot
+import the system-installed D-Bus bindings (as happened in AMD run 40130281376).
+The interactive `python3` on `PATH` may be different from CMake's selection.
 
 `state` also lists the layer-shell surfaces (`layers`: namespace, layer, keyboard interactivity, output) and the one with the keyboard (`focusedLayer`).
 
