@@ -105,6 +105,12 @@ static void die(const char* what)
     exit(1);
 }
 
+static void progress(const char* step)
+{
+    fprintf(stderr, "vela-slowgpu: %s\n", step);
+    fflush(stderr);
+}
+
 static void check(VkResult result, const char* what)
 {
     if (result != VK_SUCCESS) {
@@ -278,6 +284,9 @@ static void setupVulkan(void)
     check(vkCreateDevice(physical, &deviceInfo, NULL, &device), "vkCreateDevice");
     vkGetDeviceQueue(device, (uint32_t)chosen, 0, &queue);
     getSemaphoreFd = (PFN_vkGetSemaphoreFdKHR)vkGetDeviceProcAddr(device, "vkGetSemaphoreFdKHR");
+    if (!getSemaphoreFd) {
+        die("VK_KHR_external_semaphore_fd is enabled but vkGetSemaphoreFdKHR is unavailable");
+    }
 
     // The result buffer (64 floats), only so the loop doesn't vanish.
     const VkBufferCreateInfo bufferInfo = {
@@ -466,11 +475,20 @@ static void calibrate(double targetMs)
 
 static void setupBuffers(void)
 {
+    // CPU-painted DMA-BUFs are never Vulkan render targets. Requiring
+    // GBM_BO_USE_RENDERING as well as LINEAR needlessly rejects formats on
+    // drivers that cannot render to linear buffers (notably NVIDIA).
+    const uint32_t usage = GBM_BO_USE_LINEAR;
+    const char* backend = gbm_device_get_backend_name(gbm);
+    fprintf(stderr, "vela-slowgpu: GBM backend=%s, usage=0x%x (LINEAR only)\n",
+            backend ? backend : "unknown", usage);
     for (int i = 0; i < BUFFERS; ++i) {
         struct Buffer* b = &buffers[i];
-        // Linear: the CPU writes the color directly.
-        b->bo = gbm_bo_create(gbm, WIDTH, HEIGHT, GBM_FORMAT_XRGB8888, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING);
+        errno = 0;
+        b->bo = gbm_bo_create(gbm, WIDTH, HEIGHT, GBM_FORMAT_XRGB8888, usage);
         if (!b->bo) {
+            fprintf(stderr, "vela-slowgpu: gbm_bo_create buffer %d failed: %s (errno=%d)\n",
+                    i, strerror(errno), errno);
             die("gbm_bo_create");
         }
         b->fd = gbm_bo_get_fd(b->bo);
@@ -493,8 +511,10 @@ static void fill(struct Buffer* b, uint32_t color)
 {
     uint32_t stride = 0;
     void* mapping = NULL;
+    errno = 0;
     uint32_t* pixels = gbm_bo_map(b->bo, 0, 0, WIDTH, HEIGHT, GBM_BO_TRANSFER_WRITE, &stride, &mapping);
     if (!pixels) {
+        fprintf(stderr, "vela-slowgpu: gbm_bo_map failed: %s (errno=%d)\n", strerror(errno), errno);
         die("gbm_bo_map");
     }
     for (int y = 0; y < HEIGHT; ++y) {
@@ -631,9 +651,13 @@ int main(int argc, char* argv[])
         die("gbm_create_device");
     }
 
+    progress("initializing Vulkan");
     setupVulkan();
+    progress("calibrating compute workload");
     calibrate(targetMs);
+    progress("allocating linear DMA-BUFs");
     setupBuffers();
+    progress("creating Wayland toplevel");
 
     xdg_wm_base_add_listener(wmBase, &wmBaseListener, NULL);
     surface = wl_compositor_create_surface(compositor);
@@ -654,6 +678,7 @@ int main(int argc, char* argv[])
     wl_surface_commit(surface);
     while (!configured && wl_display_dispatch(display) >= 0) {
     }
+    progress("Wayland toplevel configured; submitting first frame");
 
     while (running) {
         if (frameDue) {
