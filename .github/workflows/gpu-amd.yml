@@ -38,6 +38,10 @@ jobs:
           command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
           command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
           python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow'; exit 1; }
+          # Strict GPU CI rejects the nine agent tests if dbus-python or
+          # dbus-daemon is missing. Fail before the expensive GPU test run.
+          python3 -c 'import dbus' || { echo "::error::Python D-Bus bindings missing for $(command -v python3); install python-dbus on the AMD runner"; exit 1; }
+          command -v dbus-daemon >/dev/null || { echo '::error::D-Bus daemon missing on the AMD runner; install dbus'; exit 1; }
 
           # Arch/CachyOS use radeon_icd.json; some distros use an x86_64 suffix.
           icd=
