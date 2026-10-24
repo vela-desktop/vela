@@ -11,12 +11,30 @@
 // stdin it presents a green pixmap with an empty update region and prints
 // "green MODE": a flip shows the whole new pixmap, damaged or not.
 
+#include <errno.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <xcb/present.h>
 #include <xcb/xcb.h>
 #include <xcb/xfixes.h>
+
+static bool parse_dimension(const char* text, int* dimension)
+{
+    if (!text || !*text) {
+        return false;
+    }
+    errno = 0;
+    char* end = NULL;
+    long value = strtol(text, &end, 10);
+    if (errno == ERANGE || end == text || *end != '\0' || value < 1 || value > UINT16_MAX) {
+        return false;
+    }
+    *dimension = (int)value;
+    return true;
+}
 
 static xcb_pixmap_t filled(xcb_connection_t* connection, xcb_screen_t* screen, xcb_window_t window, int width,
     int height, uint32_t color)
@@ -56,8 +74,16 @@ static int present(xcb_connection_t* connection, uint8_t opcode, xcb_window_t wi
 
 int main(int argc, char** argv)
 {
-    int width = argc == 3 ? atoi(argv[1]) : 400;
-    int height = argc == 3 ? atoi(argv[2]) : 300;
+    int width = 400;
+    int height = 300;
+    if (argc != 1 && argc != 3) {
+        fprintf(stderr, "Usage: %s [WIDTH HEIGHT]\n", argv[0]);
+        return 2;
+    }
+    if (argc == 3 && (!parse_dimension(argv[1], &width) || !parse_dimension(argv[2], &height))) {
+        fprintf(stderr, "vela-x11-present: width and height must be integers from 1 to 65535\n");
+        return 2;
+    }
     xcb_connection_t* connection = xcb_connect(NULL, NULL);
     if (xcb_connection_has_error(connection)) {
         fprintf(stderr, "vela-x11-present: no X display (DISPLAY)\n");
