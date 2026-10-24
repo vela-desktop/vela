@@ -11,8 +11,9 @@ made, with how each is verified.
 
 The reference hardware is an ASUS ProArt laptop: a built-in touchscreen, and a
 pen with 4096 pressure levels that also works on the touchpad. Every behavior
-here must also be covered by automated tests that run without that hardware
-(§10).
+that can be simulated is covered by automated tests that run without that
+hardware; what only the hardware can tell is a short manual checklist on the
+ProArt (§10).
 
 ## 1. Goals
 
@@ -36,9 +37,12 @@ here must also be covered by automated tests that run without that hardware
 1. **Touch goes to the apps.** A surface whose client listens to `wl_touch`
    receives touch. A surface whose client doesn't receives an emulated pointer
    from Vela.
-2. **X11 is always emulated.** Xwayland apps, Wine included, always receive
-   the emulated pointer, even though Xwayland itself listens to `wl_touch`:
-   X11 touch support is uneven, and Wine games expect a mouse.
+2. **X11 touch is always emulated.** Xwayland apps, Wine included, always
+   receive the emulated pointer for touch, even though Xwayland itself listens
+   to `wl_touch`: X11 touch support is uneven, and Wine games expect a mouse.
+   The pen is different (goal 2): Xwayland turns `tablet-v2` into XInput
+   tablet devices attached to the core pointer, so X11 drawing apps get the
+   pressure and the others still get ordinary pointer events (§6).
 3. **Two goals, then one last step.**
    - **Goal 1:** touch (native and emulated), the pen *as a mouse* (no pressure),
      gestures, and a shell that works without hover (§5).
@@ -111,7 +115,13 @@ Every change in §5–§7 follows from these.
    emulated press never interleave. A touch that would need emulation while a
    mouse button is held is ignored.
 4. **Locked means locked.** While the screen is locked, touch reaches only the
-   lock surfaces, as the pointer does, and no gesture runs.
+   lock surfaces, as the pointer does, and no gesture runs. Locking ends what
+   is in progress, as it already does for the mouse (`vela_lock_engage`
+   clears the pointer focus): native touches get `wl_touch.cancel`; an
+   emulated pointer leaves the app's surface without a release, so nothing is
+   clicked or dropped; pending holds, held-back edge touches and delayed
+   presses are dropped; the rest of those sequences reaches nobody, not even
+   the lock.
 5. **Nothing in Vela is hover-only.** Every hover action in the compositor, the
    shell and Vela's apps has a touch path.
 6. **No touchscreen, no cost.** Without touch or tablet devices there are no
@@ -222,11 +232,21 @@ does it:
   tolerance before then cancels the hold and continues as a left-button drag.
   The left press is then delayed until the finger moves or the hold is
   decided, so the app sees either a left click, a drag, or a right click,
-  never a mix (§12 discusses the latency). A tap decided at touch up sends the
-  press and the release apart (16 ms as a starting point), never in the same
-  frame: games that read the button state at intervals would miss the click.
+  never a mix. Taps in emulated apps therefore arrive at touch up;
+  `touch-hold=no` brings them back to touch down. A tap decided at touch up
+  sends the press and the release apart (16 ms as a starting point), never in
+  the same frame: games that read the button state at intervals would miss the
+  click.
+- **Two-finger tap = right click**, at once: two fingers put down together
+  (within the wait of §5.3) and lifted before the hold time without moving
+  past the tolerance. Press and hold stays, as on Windows.
 - **Two fingers moving together = scrolling**, sent as continuous axis events,
   in the touchscreen's natural direction.
+- **No hold for games.** While the surface under the finger holds a pointer
+  constraint (`pointer-constraints-v1`, locked or confined), which is almost
+  always a game, the left button goes down at touch down: no hold, no wait, no
+  delay. Other fingers are then ignored (§5.3), so two-finger taps, scrolling
+  and multi-finger gestures don't apply there; edge swipes still do (§5.7).
 
 ### 5.7 Gestures
 
@@ -263,7 +283,8 @@ touchscreen and the touchpad can differ. When the fingers are recognized as
 Vela's gesture, the app's fingers are cancelled (invariant 1).
 
 **The cursor** is hidden as soon as the screen or the pen tip is touched and
-shown again at the first motion of a real mouse or touchpad, as on Windows.
+shown again at the first motion of a real mouse or touchpad, or when the pen
+comes into proximity or moves while hovering, as on Windows.
 Native touch does not move the cursor; the emulated pointer does.
 
 ### 5.8 The shell and Vela's apps without hover
@@ -290,7 +311,8 @@ mode's (§7).
 
 `vela-lock` does not listen to `wl_touch`, so it receives the emulated pointer
 (§5.3): a tap shows the user and the password, as a click does. Typing the
-password with touch only needs the on-screen keyboard (§8).
+password with touch only needs the on-screen keyboard (§8). Touches already
+down when the screen locks end there (invariant 4).
 
 ### 5.10 Settings
 
@@ -311,7 +333,9 @@ time or have less steady hands.
 
 The tolerance also sets how far a drag must go before it starts (§5.5). The
 indicator draws a circle under every finger, for presentations and for people
-who want to see what the screen received.
+who want to see what the screen received. It is not drawn while the screen is
+locked: over the on-screen keyboard it would show the password to whoever is
+watching. The press-and-hold ring reveals nothing and is still drawn.
 
 **Touchscreen** (next to Mouse and Touchpad): what the gestures do.
 
@@ -334,8 +358,9 @@ Vela implements `tablet-v2` (`wlr_tablet_v2`). The decision of §5.3 extends to
 the pen: a surface whose client binds `tablet-v2` for the seat
 (`wlr_surface_accepts_tablet_v2`) receives the tool directly, with proximity,
 tip, pressure, tilt, distance, rotation, the eraser as its own tool type, and
-the buttons; any other surface keeps the emulated pointer of §5.4. The tool's
-cursor is the one the app sets for it.
+the buttons; any other surface keeps the emulated pointer of §5.4. Xwayland
+binds `tablet-v2` too, so X11 apps get the pen (decision 2). The tool's cursor
+is the one the app sets for it.
 
 A **Pen** page in Settings (from the roadmap) holds what to do with the
 buttons, which output the pen belongs to, and the pressure. libinput has no
@@ -399,10 +424,14 @@ actions for it:
 touch down ID X Y | touch move ID X Y | touch up ID | touch cancel
 pen in X Y | pen move X Y | pen down | pen up | pen button N | pen out
 pen pressure P | pen tilt X Y
+touch device internal|external | pen device internal|external
 ```
 
 Pressure and tilt are ignored until goal 2, but the protocol carries them from
-T0, so that P1 does not have to change it.
+T0, so that P1 does not have to change it. Test devices have no udev device,
+so the protocol says whether each is built in, and `test-output add` gains a
+name (`eDP-1`, through `wlr_output_set_name`) for an output standing for the
+built-in panel.
 
 A test client that listens to `wl_touch` and reports what it receives joins
 the existing ones. The scenarios:
@@ -411,10 +440,17 @@ the existing ones. The scenarios:
   fingers;
 - a client without `wl_touch` and an X11 window receiving the emulated pointer;
 - a tap on a 90°-rotated output landing on the right spot;
+- a built-in touchscreen still mapped to `eDP-1` with a second output
+  connected, and a device not built in left unmapped;
 - dragging the title bar, double tap, press and hold for the window menu,
   resizing from the wider band;
 - the cursor hidden on touch and shown again on mouse motion;
-- press and hold sending a right click, and two-finger scrolling;
+- press and hold sending a right click, a two-finger tap sending one at once,
+  and two-finger scrolling;
+- on a surface holding a pointer constraint, the button going down at touch
+  down;
+- a cancel from the device (palm rejection) during a native and an emulated
+  sequence;
 - a tap on an emulated surface arriving as a press and a release in different
   frames;
 - a second finger after the emulated button is down: ignored, no scrolling;
@@ -431,13 +467,18 @@ the existing ones. The scenarios:
 - the pen as a mouse: hover, tip, barrel button;
 - nothing reaching the apps or the gestures while locked; a tap on the lock
   screen showing the password;
+- locking with a finger down on a native and on an emulated app: the first
+  cancelled, the second left without a click, nothing more reaching either;
+  the touch indicator hidden while locked;
 - no touch device: no change in idle cost.
 
-**On the ProArt.** A manual checklist for what can't be simulated: palm
-rejection (libinput pairing the pen with the touchscreen), the built-in
-touchscreen marked `ID_INTEGRATION=internal` and still mapped with an external
-monitor plugged in, the pen on the touchpad, thresholds and band sizes by
-finger.
+**On the ProArt.** A short manual checklist for what only the hardware can
+tell: that udev marks its touchscreen and pen as built in
+(`ID_INTEGRATION=internal`), that libinput pairs the pen with the touchscreen
+(its debug log says so), how the pen on the touchpad is exposed, and the
+thresholds and band sizes tuned by finger. A `libinput record` of the ProArt's
+devices can later be replayed with `libinput replay` on another machine, to
+reproduce a problem without the hardware.
 
 ## 11. Stages
 
@@ -467,16 +508,10 @@ does.
   model in the monitor's EDID, a per-device output choice in the Touchscreen
   page and in `vela.conf`, a "touch the screen you mean" calibration like
   Windows.
-- **Press-and-hold latency.** Delaying the emulated left press until the finger
-  moves or the hold is decided makes taps in emulated apps arrive at touch up.
-  The alternative (press at once, then release and right click) makes the app
-  see a left click before every right click.
 - **The top edge's default.** It is `no` for now. Windows uses it in
   fullscreen apps to show the title bar; Vela could add that as an action.
 - **The magnifier.** With the screen magnified, a touch should land on what is
   shown, and panning needs its own gesture.
-- **X11 and the pen.** Drawing apps under Xwayland (older GIMP, Krita) could get
-  `tablet-v2` through Xwayland's tablet support in goal 2, against decision 2.
 - **Default values** (hold time, tolerance, edge zone width): the defaults of
   §5.10 are to be tuned on the ProArt. They stay in logical pixels, not
   millimeters: the default scale already comes from the panel's DPI, and an
