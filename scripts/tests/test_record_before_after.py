@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import math
 import subprocess
 import types
 from unittest import mock
@@ -84,6 +85,28 @@ class AlignTests(unittest.TestCase):
         recording = self.recording([3, 3, 3], [0.0, 1.0, 2.0], start=0.5)
         recording.align()
         self.assertEqual(recording.start, 0.5)
+
+
+class TitleBarRegionTests(unittest.TestCase):
+    def test_region_includes_the_ten_unit_downward_drag(self):
+        window = {"x": 100, "y": 80, "w": 520}
+        vela = mock.Mock()
+        vela.open_window.return_value = 42
+        vela.wait_for.return_value.window.return_value = window
+        with mock.patch.object(script.time, "sleep"):
+            region, _ = script.TitleBar().prepare(types.SimpleNamespace(vela=vela))
+        lower_edge = region[1] + region[3]
+        expected = math.ceil((window["y"] + script.BAR + 10) * script.TitleBar.scale) + 4
+        self.assertGreaterEqual(lower_edge, expected)
+
+
+class DesktopIsolationTests(unittest.TestCase):
+    def test_both_buses_use_the_private_address_even_if_scene_overrides(self):
+        address = "unix:path=/tmp/vela-test-private-bus"
+        scene = types.SimpleNamespace(env={"DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/host-bus"})
+        env = script.Desktop.bus_environment(address, scene)
+        self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], address)
+        self.assertEqual(env["DBUS_SYSTEM_BUS_ADDRESS"], address)
 
 
 class WorktreeTests(unittest.TestCase):
