@@ -39,11 +39,21 @@ jobs:
           command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
           python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow'; exit 1; }
 
-          icd=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
-          if [[ ! -f "$icd" ]]; then
-            echo '::error::RADV Vulkan ICD missing: install vulkan-radeon'
+          # Arch/CachyOS use radeon_icd.json; some distros use an x86_64 suffix.
+          icd=
+          for candidate in \
+            /usr/share/vulkan/icd.d/radeon_icd.json \
+            /usr/share/vulkan/icd.d/radeon_icd.x86_64.json; do
+            if [[ -f "$candidate" ]]; then
+              icd="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$icd" ]]; then
+            echo '::error::RADV Vulkan ICD manifest not found; check vulkan-radeon installation'
             exit 1
           fi
+          echo "Using RADV ICD manifest: $icd"
           runtime="$RUNNER_TEMP/vela-amd-xdg"
           mkdir -p "$runtime"
           chmod 700 "$runtime"
