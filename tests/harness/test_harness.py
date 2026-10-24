@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 import zlib
 
-from harness import Image, Session
+from harness import Image, Session, State
 
 
 class SessionCleanup(unittest.TestCase):
@@ -82,6 +82,49 @@ class SessionCleanup(unittest.TestCase):
                 session.start()
         self.assertFalse(os.path.exists(session.directory))
         self.assertTrue(session.log.closed)
+
+
+
+
+class ClientStartupDiagnostics(unittest.TestCase):
+    def session(self, directory):
+        # No compositor needed: the harness should explain failures from a
+        # subprocess that never creates a Wayland window.
+        session = Session()
+        session.directory = directory
+        session.client_env = os.environ.copy()
+        session.state = lambda: State({"windows": []})
+        session.log_text = lambda: "test compositor log"
+        return session
+
+    def test_early_client_exit_reports_code_and_stderr(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = self.session(directory)
+            try:
+                with self.assertRaises(AssertionError) as raised:
+                    session.open_window(
+                        command=[sys.executable, "-u", "-c",
+                                 "import sys; print('gbm_bo_create failed', file=sys.stderr); sys.exit(7)"],
+                        timeout=2)
+                self.assertIn("exited with status 7", str(raised.exception))
+                self.assertIn("gbm_bo_create failed", str(raised.exception))
+            finally:
+                session.stop()
+
+    def test_unmapped_live_client_timeout_includes_progress_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = self.session(directory)
+            try:
+                with self.assertRaises(AssertionError) as raised:
+                    session.open_window(
+                        command=[sys.executable, "-u", "-c",
+                                 "import sys,time; print('calibrating compute workload', "
+                                 "file=sys.stderr); time.sleep(5)"],
+                        timeout=0.5)
+                self.assertIn("after 0.5 s", str(raised.exception))
+                self.assertIn("calibrating compute workload", str(raised.exception))
+            finally:
+                session.stop()
 
 
 class ImageChecks(unittest.TestCase):
