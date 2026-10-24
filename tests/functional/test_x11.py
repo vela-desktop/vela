@@ -394,14 +394,41 @@ class X11(unittest.TestCase):
         self.addCleanup(app.stdin.close)
 
         def status():
-            # The helper waits on Present: a line within the deadline, or the test fails.
-            if not select.select([app.stdout], [], [], 15)[0]:
-                app.kill()
-                self.fail("vela-x11-present gave no status")
-            return app.stdout.readline().split()
+            # Read a complete line under one deadline. select() followed by
+            # TextIOWrapper.readline() can still block on a partial line.
+            deadline = time.monotonic() + 15
+            fd = app.stdout.fileno()
+            os.set_blocking(fd, False)
+            line = bytearray()
+            failure = "timed out"
+            while len(line) < 80 and not line.endswith(b"\n"):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([fd], [], [], remaining)[0]:
+                    break
+                try:
+                    chunk = os.read(fd, 1)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    failure = "closed stdout"
+                    break
+                line.extend(chunk)
+            if not line.endswith(b"\n"):
+                if len(line) >= 80:
+                    failure = "status too long"
+                if app.poll() is None:
+                    app.kill()
+                app.wait(timeout=5)
+                self.fail(f"vela-x11-present {failure} before completing status "
+                          f"({bytes(line)!r}; exit={app.returncode})")
+            return line.decode("ascii", errors="replace").split()
 
-        if status() != ["orange", "1"]:
+        first = status()
+        # XCB Present completion modes: 0 = COPY, 1 = FLIP, 3 = SUBOPTIMAL_COPY.
+        # Skipping on EOF, an XCB error (-1), or an unknown mode hides regressions.
+        if first in (["orange", "0"], ["orange", "3"]):
             self.skipTest("Xwayland copies instead of flipping (no glamor)")
+        self.assertEqual(first, ["orange", "1"], "Unexpected Present completion status")
         w = self.vela.wait_for(lambda s: s.windows, what="the X11 window").windows[0]
         point = (w["x"] + w["w"] // 2, w["y"] + w["h"] - 60)
         self.vela.wait_for(lambda _: self.vela.pixels().at(*point) == ORANGE, read_state=False,
