@@ -64,6 +64,8 @@ jobs:
           chmod 700 "$runtime"
           echo "XDG_RUNTIME_DIR=$runtime" >> "$GITHUB_ENV"
           echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VELA_GPU_CI_STRICT=1" >> "$GITHUB_ENV"
+          echo "VELA_GPU_EXPECT_VENDOR=0x10de" >> "$GITHUB_ENV"
           export XDG_RUNTIME_DIR="$runtime" VK_DRIVER_FILES="$icd"
 
           # nvidia-smi alone is not enough: Vela needs an actual NVIDIA
