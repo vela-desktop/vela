@@ -39,6 +39,15 @@ for scale in $SCALES; do
         [ -n "$DISPLAY_NAME" ] && break
     done
     export WAYLAND_DISPLAY=$DISPLAY_NAME
+    # In real-GPU CI, inspect the renderer Vela actually selected, not just vulkaninfo.
+    if [ -n "${VELA_GPU_EXPECT_VENDOR:-}" ]; then
+        if ! python3 tests/functional/renderer_identity.py "$TMP/log" "$VELA_GPU_EXPECT_VENDOR"; then
+            kill "$PID" 2> /dev/null
+            wait "$PID" 2> /dev/null
+            rm -rf "$TMP"
+            exit 1
+        fi
+    fi
     "$BUILD/tools/vela-pattern" 401 301 2> "$TMP/pattern.log" &
     CLIENT=$!
     sleep 1
