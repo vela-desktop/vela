@@ -162,7 +162,7 @@ class TitleBar(Scene):
         left = math.floor((w["x"] + w["w"] - 3 * BUTTON - 100) * self.scale)
         right = math.ceil((w["x"] + w["w"] + self.STEPS + 4) * self.scale)
         top = math.floor(w["y"] * self.scale) - 4
-        bottom = math.ceil((w["y"] + BAR) * self.scale) + 4
+        bottom = math.ceil((w["y"] + BAR + 10) * self.scale) + 4
         return (left, top, right - left, bottom - top), (window, w)
 
     def act(self, desktop, context):
@@ -327,6 +327,15 @@ class Desktop:
         self.build_dir = build_dir
         self.scene = scene
 
+    @staticmethod
+    def bus_environment(address, scene):
+        """Use the private bus for *both* D-Bus types: real network/BT/device
+        names must not appear in a video, and tiles must not change host state."""
+        return {"VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"),
+                **ENGLISH, **scene.env,
+                "DBUS_SESSION_BUS_ADDRESS": address,
+                "DBUS_SYSTEM_BUS_ADDRESS": address}
+
     def __enter__(self):
         harness.BUILD = str(self.build_dir) # tool() and Session read it
         self.vela = None
@@ -337,8 +346,7 @@ class Desktop:
             if not address:
                 raise RuntimeError("the private D-Bus session didn't start")
             self.vela = harness.Session(size=self.scene.size, scale=self.scene.scale,
-                                        env={"VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"),
-                                             "DBUS_SESSION_BUS_ADDRESS": address, **ENGLISH, **self.scene.env})
+                                        env=self.bus_environment(address, self.scene))
             self.vela.start()
             os.makedirs(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela"), exist_ok=True)
             # An empty desktop, not the user's icons.
