@@ -429,8 +429,14 @@ Item {
             const alt = event.modifiers & Qt.AltModifier
             const view = contentLoader.item
             event.accepted = true
+            // Quick preview: Space or Esc closes it; the arrows go on moving the selection.
+            if (peek.visible && (event.key === Qt.Key_Space || event.key === Qt.Key_Escape)) peek.hide()
+            else if (peek.visible && peek.kind === "pdf" && (event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown))
+                peek.pageBy(event.key === Qt.Key_PageUp ? -1 : 1)
+            else if (event.key === Qt.Key_Space && !ctrl && !alt && page.isFolder && folder.selectionCount === 1)
+                peek.show(folder.selectedPaths()[0])
             // Back and Forward (Alt+arrows): Main.qml, for the whole window.
-            if (alt && event.key === Qt.Key_Up) page.up()
+            else if (alt && event.key === Qt.Key_Up) page.up()
             else if (event.key === Qt.Key_Backspace && !page.typed) page.back()
             else if (event.key === Qt.Key_F5 || (ctrl && event.key === Qt.Key_R)) page.refresh()
             else if (alt && event.key === Qt.Key_P) win.togglePane(shift ? "details" : "preview")
@@ -480,6 +486,17 @@ Item {
             else event.accepted = false
         }
     }
+    // The peek follows the selection while it is open.
+    Connections {
+        target: folder
+        function onSelectionVersionChanged() {
+            if (!peek.visible) return
+            if (folder.selectionCount === 1) peek.path = folder.selectedPaths()[0]
+            else peek.hide()
+        }
+    }
+    onLocationChanged: peek.hide()
+    onRenamingPathChanged: if (renamingPath !== "") peek.hide()
     function moveTo(row, shift, ctrl) {
         if (row < 0 || row >= folder.count) return
         if (shift) folder.selectRange(anchorRow >= 0 ? anchorRow : folder.currentIndex, row, ctrl)
@@ -581,6 +598,8 @@ Item {
             onViewRequested: mode => page.win.setViewMode(page.location, mode)
         }
     }
+
+    QuickPeek { id: peek; tab: page }
 
     Component.onCompleted: focusView()
 }

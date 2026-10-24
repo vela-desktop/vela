@@ -4,6 +4,7 @@
 #include "server.h"
 
 #include "a11y.h"
+#include "brightness.h"
 #include "command.h"
 #include "config.h"
 #include "error_screen.h"
@@ -191,6 +192,11 @@ static bool init(struct vela_server *server)
         wlr_log(WLR_ERROR, "Can't create the buffer allocator (GBM)");
         return false;
     }
+    // Optional optimization: keep the normal allocator even if cursor-only
+    // GBM allocations are unavailable. One allocator for all DRM outputs;
+    // swapchains themselves are per-output and hotplug-safe.
+    server->cursor_allocator = vela_gbm_cursor_allocator_create(vela_vulkan_render_fd(server->vulkan),
+        server->renderer);
     wlr_renderer_init_wl_shm(server->wlr_renderer, display);
     // GPU buffers shared with apps, without copies: the formats are those our
     // device can read.
@@ -402,6 +408,7 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
         vela_shell_start(server, startup_command);
     }
     vela_polkit_agent_start(server);
+    vela_brightness_start(server);
     return true;
 }
 
@@ -416,6 +423,7 @@ void vela_server_destroy(struct vela_server *server)
     // relaunched.
     vela_shell_stop(server);
     vela_child_stop(&server->polkit_agent);
+    vela_brightness_destroy(server);
     vela_commands_stop(server);
     if (server->session) {
         vela_session_run_hook("stop");
@@ -480,6 +488,7 @@ void vela_server_destroy(struct vela_server *server)
         wlr_log(WLR_INFO, "Shutdown: releasing Vulkan renderer, allocator and device");
         // The renderer notifies its users (wlr_compositor) before teardown.
         wlr_renderer_destroy(server->wlr_renderer);
+        wlr_allocator_destroy(server->cursor_allocator);
         wlr_allocator_destroy(server->allocator);
         vela_vulkan_destroy(server->vulkan); // last: everything else uses its device
     } else {
@@ -497,6 +506,7 @@ void vela_server_destroy(struct vela_server *server)
 
 void vela_server_output_destroyed(struct vela_server *server, struct vela_output *output)
 {
+    vela_brightness_output_removed(output); // its helper goes too
     // The shell surfaces tied to this output must be closed.
     vela_layers_close_output(server, output);
     // At shutdown the backend destroys the outputs after snapping and

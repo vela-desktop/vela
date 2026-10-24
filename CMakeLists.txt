@@ -51,6 +51,7 @@ endif()
 
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
+    add_subdirectory(brightness)
     add_subdirectory(session)
 endif()
 option(VELA_BUILD_POLKIT "Build the polkit agent (needs polkit-agent-1; the prompt also needs the shell's Qt)" ON)
@@ -76,15 +77,27 @@ if(VELA_BUILD_TOOLS)
     # they are reported as skipped (code 77).
     if(VELA_BUILD_COMPOSITOR)
         if(Python3_FOUND)
-            add_test(NAME functional COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/functional/run.py)
+            # One entry per module (test_shell.py becomes functional-shell),
+            # so each stays well within its timeout however the suite grows.
+            file(GLOB VELA_FUNCTIONAL_MODULES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/tests/functional/test_*.py)
+            set(VELA_FUNCTIONAL_TESTS)
+            foreach(module_path IN LISTS VELA_FUNCTIONAL_MODULES)
+                get_filename_component(module ${module_path} NAME_WE)
+                string(REGEX REPLACE "^test_" "" name ${module})
+                string(REPLACE "_" "-" name ${name})
+                add_test(NAME functional-${name}
+                    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/functional/run.py ${module})
+                list(APPEND VELA_FUNCTIONAL_TESTS functional-${name})
+            endforeach()
             add_test(NAME sharpness COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/functional/run.py --sharpness)
             add_test(NAME sharpness-cpu COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/functional/run.py --sharpness)
-            set_tests_properties(functional sharpness sharpness-cpu PROPERTIES
+            set_tests_properties(${VELA_FUNCTIONAL_TESTS} sharpness sharpness-cpu PROPERTIES
                 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}"
                 SKIP_RETURN_CODE 77
                 TIMEOUT 600
                 LABELS gpu
                 RUN_SERIAL TRUE)
+            set_property(TEST ${VELA_FUNCTIONAL_TESTS} APPEND PROPERTY LABELS functional)
             set_property(TEST sharpness-cpu APPEND PROPERTY ENVIRONMENT "VELA_SYNC_FILE=0")
         endif()
     endif()

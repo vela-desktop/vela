@@ -19,6 +19,7 @@
 #include <wayland-server-core.h>
 #include <wlr/util/box.h>
 
+struct vela_brightness_output;
 struct vela_nested;
 struct vela_output_frame;
 struct vela_server;
@@ -64,6 +65,8 @@ struct vela_output {
     int last_x, last_y;
     // Only when Vela runs in a window inside another session.
     struct vela_nested *nested;
+    // Its brightness (brightness.h); NULL: none to drive.
+    struct vela_brightness_output *brightness;
     // From the scene to this output's pixels (scene/frame.h).
     struct vela_output_frame *frame;
     struct vela_frame_clock clock;
@@ -105,6 +108,8 @@ struct vela_output {
 
     struct wl_listener frame_event;
     struct wl_listener request_state;
+    struct wl_listener commit; // retry optional cursor setup after a disabled output is re-enabled
+    bool cursor_setup_attempted;
     struct wl_listener present;
     struct wl_listener destroy;
 };
@@ -138,8 +143,9 @@ void vela_output_arrange_layers(struct vela_output *output);
 void vela_output_schedule_frame(struct vela_output *output);
 
 // The vela.conf choices that apply to all outputs: "variable-refresh" (no,
-// games, always; VELA_VRR=0/1 wins) and "tearing" (VELA_TEARING=0 turns it
-// off). Then a frame, to apply them.
+// games, always; VELA_VRR=0/1 wins), "tearing" (VELA_TEARING=0 wins), and
+// "direct-scanout" (auto/no; VELA_SCANOUT=0 wins). Then schedule a frame
+// to apply them.
 void vela_output_load_settings(struct vela_server *server);
 
 // Applies a mode or scale change, with the first frame already drawn at the

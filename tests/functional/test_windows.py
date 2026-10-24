@@ -30,6 +30,68 @@ class Windows(unittest.TestCase):
     def tearDown(self):
         self.vela.stop()
 
+    def test_transient_is_visible_above_fullscreen_parent(self):
+        # A modal XDG toplevel is a regular window, not an xdg_popup. Without
+        # moving it into the fullscreen scene layer it can get keyboard focus
+        # while remaining completely hidden behind the parent.
+        parent = self.vela.open_window(command=[
+            tool("vela-pattern"), "--fullscreen-parent", "--transient-delay", "600", "500", "350"
+        ])
+        state = self.vela.wait_for(lambda s: len(s.windows) == 2, timeout=6,
+                                   what="fullscreen parent and its XDG child")
+        child = next(w["id"] for w in state.windows if w["id"] != parent)
+        self.assertTrue(state.window(parent)["fullscreen"])
+        self.assertEqual(state["focused"], child)
+        self.vela.wait_still(child)
+        w = self.vela.state().window(child)
+        cx, cy = int(w["x"] + w["w"] / 2), int(w["y"] + w["h"] / 2)
+        self.assertEqual(self.vela.pixels().at(cx, cy), (170, 51, 204))
+        # Clicking an uncovered region of the parent raises/focuses it, but
+        # must not cover its still-mapped transient.
+        self.vela.input("move", 20, 20, "down", "up")
+        self.vela.wait_for(lambda s: s["focused"] == parent, what="parent refocused")
+        self.assertEqual(self.vela.pixels().at(cx, cy), (170, 51, 204))
+
+    def test_transient_siblings_keep_stacking_order_after_parent_refocus(self):
+        # The last opened sibling is focused and must remain above its older
+        # sibling even after the parent is brought to the front again.
+        parent = self.vela.open_window(command=[
+            tool("vela-pattern"), "--transient-delay", "600",
+            "--transient-siblings", "500", "350"
+        ])
+        state = self.vela.wait_for(lambda s: len(s.windows) == 3, timeout=7,
+                                   what="parent with two sibling XDG dialogs")
+        top = state["focused"]
+        self.assertNotEqual(top, parent)
+        self.vela.wait_still(top)
+        w = self.vela.state().window(top)
+        cx, cy = int(w["x"] + w["w"] / 2), int(w["y"] + w["h"] / 2)
+        newest_color = (51, 204, 102)
+        self.assertEqual(self.vela.pixels().at(cx, cy), newest_color)
+
+        main = self.vela.state().window(parent)
+        # This point is inside the parent but outside the centered dialogs.
+        self.vela.input("move", main["x"] + 20, main["y"] + 20, "down", "up")
+        self.vela.wait_for(lambda s: s["focused"] == parent, what="parent refocused")
+        self.assertEqual(self.vela.pixels().at(cx, cy), newest_color)
+
+    def test_transient_inherits_parent_workspace(self):
+        parent = self.vela.open_window(command=[
+            tool("vela-pattern"), "--transient-delay", "4000", "360", "260"
+        ])
+        # A background application opens its transient after the user has
+        # switched desktops. The transient belongs with its parent.
+        self.vela.keys("super+ctrl+d")
+        self.vela.wait_for(lambda s: s["workspace"] == 1, what="new desktop")
+        state = self.vela.wait_for(lambda s: len(s.windows) == 2, timeout=9,
+                                   what="XDG transient on its parent's workspace")
+        child = next(w["id"] for w in state.windows if w["id"] != parent)
+        self.assertEqual(state.window(child)["workspace"], state.window(parent)["workspace"])
+        self.assertEqual(state.window(child)["workspace"], 0)
+        # Focus follows the new dialog back to the parent's desktop.
+        self.vela.wait_for(lambda s: s["workspace"] == 0 and s["focused"] == child,
+                           what="dialog activated on the parent's desktop")
+
     def test_open_window_is_focused_and_centered(self):
         window = self.vela.open_window(400, 300)
         state = self.vela.wait_for(lambda s: s["focused"] == window, what="the new window has focus")

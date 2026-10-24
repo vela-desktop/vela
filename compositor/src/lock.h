@@ -26,6 +26,8 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include "lock_retry_policy.h"
 #include <wayland-server-core.h>
 
 struct vela_output;
@@ -53,9 +55,16 @@ struct vela_lock {
     struct vela_output **waiting;
     int waiting_count;
     int waiting_capacity;
+    pid_t launcher_pid; // child process group for a pending locker launch
     struct wl_event_source *respawn; // relaunches vela-lock if it goes away
     int64_t respawns[VELA_LOCK_RESPAWNS]; // when (ms), so as not to insist forever
     int respawn_count;
+    struct vela_lock_retry retry; // registration timeout and bounded retry/cooldown
+    bool fatal_exit_pending; // cannot safely continue this session
+    struct wl_event_source *fatal_timer;
+    struct vela_output **fatal_waiting;
+    int fatal_waiting_count;
+    int fatal_waiting_capacity;
 
     struct wlr_idle_notifier_v1 *idle_notifier;
     struct wlr_idle_inhibit_manager_v1 *idle_inhibit;

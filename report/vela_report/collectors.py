@@ -37,6 +37,8 @@ SPECS = [
      "Selected process metrics only; no keystrokes, file targets or full command lines.", 60),
     ("crashes", "Crash metadata", "Crash times, signals and executable identities help locate failures without exporting memory.",
      "Executable paths and identifiers; core memory is excluded.", 10),
+    ("brightness", "Display brightness", "Each display's bus and one read of its brightness show why a slider is missing or wrong.",
+     "Connector and monitor names, I2C bus numbers and the bytes of brightness replies. Only reads; nothing is sent to change the displays.", 15),
     ("vendor", "Generate NVIDIA diagnostic report", "NVIDIA's tool provides driver-specific evidence for NVIDIA hardware.",
      "Sensitive, unredacted vendor archive; may need permissions. No automatic elevation.", 120),
 ]
@@ -65,6 +67,16 @@ def recommended(category):
     if category == "Input":
         result |= {"session_journal", "kernel_journal"}
     return result
+
+
+def brightness_helper():
+    """vela-brightness next to the installed reporter (<libexec>/report/vela_report),
+    or in the build tree (build/report/vela_report, build/brightness)."""
+    base = Path(__file__).resolve().parents[2]
+    for path in (base / "vela-brightness", base / "brightness" / "vela-brightness"):
+        if path.is_file() and os.access(path, os.X_OK):
+            return path
+    return None
 
 
 def process_identity(directory):
@@ -122,14 +134,15 @@ def discover(environment, state_dir=None):
             "vendor_available": bool(shutil.which("nvidia-bug-report.sh"))}
 
 
-def query_state(path, uid):
+def query(path, uid, line):
+    """One question on the selected command socket, its JSON answer."""
     info = Path(path).lstat()
     if not stat.S_ISSOCK(info.st_mode) or info.st_uid != uid:
         raise ValueError("Select a command socket owned by the reporting user.")
     with socket.socket(socket.AF_UNIX) as connection:
         connection.settimeout(2)
         connection.connect(str(path))
-        connection.sendall(b"state\n")
+        connection.sendall(line.encode() + b"\n")
         data = bytearray()
         while b"\n" not in data:
             chunk = connection.recv(min(65536, TEXT_LIMIT + 1 - len(data)))
@@ -138,7 +151,11 @@ def query_state(path, uid):
             data.extend(chunk)
             if len(data) > TEXT_LIMIT:
                 raise ValueError("Runtime state exceeds the size limit.")
-    state = json.loads(data.split(b"\n", 1)[0])
+    return json.loads(data.split(b"\n", 1)[0])
+
+
+def query_state(path, uid):
+    state = query(path, uid, "state")
     # Never export window titles, including when the socket supplies unexpected fields.
     fields = {"locked", "workspace", "workspaces", "held"}
     result = {key: value for key, value in state.items() if key in fields}
@@ -150,6 +167,13 @@ def query_state(path, uid):
                                       "minimized", "snap", "snapGroup", "mapped", "fullscreen", "maximized"}}
                           for window in state.get("windows", [])]
     return result
+
+
+def query_brightness(path, uid):
+    state = query(path, uid, "brightness")
+    fields = {"name", "description", "mechanism", "state", "value", "pending", "refused", "max", "seq"}
+    return {"outputs": [{key: value for key, value in output.items() if key in fields}
+                        for output in state.get("outputs", [])]}
 
 
 def resource_sample(environment, identity):
@@ -416,6 +440,27 @@ class Collector:
                              {"scope": "live selected Vela instance at collection time",
                               "socket": path, "captured_at": timestamp(), "state": state})
         return Result("collected")
+
+    def brightness(self):
+        # --probe only reads, and takes the same lock as the compositor's
+        # helpers: safe while a session is driving the same displays.
+        helper = brightness_helper()
+        if helper:
+            results = [self.command_file("brightness", "system/brightness-probe.txt",
+                                         [str(helper), "--probe"], timeout=30)]
+        else:
+            results = [Result("unavailable", reason="vela-brightness is not installed.")]
+        path = self.report.context.get("socket")
+        if path:
+            try:
+                state = query_brightness(path, self.environment.uid)
+                self.report.add_json("brightness", "session/brightness-state.json",
+                                     {"scope": "live selected Vela instance at collection time",
+                                      "socket": path, "captured_at": timestamp(), "state": state})
+                results.append(Result("collected"))
+            except (OSError, ValueError) as error:
+                results.append(Result("failed", reason=self.report.redactor.text(str(error))))
+        return combine(results, "The displays' probe or the compositor's brightness state is unavailable.")
 
     def journal_args(self):
         context = self.report.context

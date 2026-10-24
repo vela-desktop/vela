@@ -3,6 +3,7 @@
 
 #include "output.h"
 
+#include "brightness.h"
 #include "config.h"
 #include "geometry.h"
 #include "layer.h"
@@ -13,6 +14,7 @@
 #include "output_key.h"
 #include "output_manager.h"
 #include "render/renderer.h"
+#include "render/cursor_policy.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "server.h"
@@ -25,6 +27,12 @@
 #include <string.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include <drm_fourcc.h>
+#include <wlr/backend/drm.h>
+#include <wlr/interfaces/wlr_output.h>
+#include <wlr/render/allocator.h>
+#include <wlr/render/drm_format_set.h>
+#include <wlr/render/swapchain.h>
 #include <wlr/backend/headless.h>
 #include <wlr/backend/wayland.h>
 #include <wlr/types/wlr_cursor.h>
@@ -146,16 +154,72 @@ void vela_output_load_settings(struct vela_server *server)
     if (env && *env) {
         server->vrr_mode = strcmp(env, "0") == 0 ? 0 : strcmp(env, "1") == 0 ? 2 : server->vrr_mode;
     }
-    vela_server_schedule_frames(server);
     server->scene->allow_tearing = vela_config_flag(&settings, "tearing", true) && !vela_env_off("VELA_TEARING");
+    // auto (default) and yes: when possible. no: always composite.
+    bool allow_scanout = strcmp(vela_config_get(&settings, "direct-scanout", "auto"), "no") != 0;
+    bool scanout_changed = server->scene->allow_scanout != allow_scanout;
+    server->scene->allow_scanout = allow_scanout;
     vela_config_finish(&settings);
+    if (scanout_changed) {
+        // The fullscreen client may be idle: force a commit to enter/leave
+        // scanout immediately instead of waiting for its next surface commit.
+        struct vela_output *output;
+        wl_list_for_each (output, &server->outputs, link) {
+            vela_output_frame_scanout_policy_changed(output->frame);
+            vela_output_frame_damage_whole(output->frame);
+        }
+    } else {
+        vela_server_schedule_frames(server);
+    }
 }
 
 static void handle_frame_event(struct wl_listener *listener, void *data);
 static void handle_present(struct wl_listener *listener, void *data);
 static void handle_request_state(struct wl_listener *listener, void *data);
+static void handle_output_commit(struct wl_listener *listener, void *data);
 static void handle_destroy(struct wl_listener *listener, void *data);
 static void start_virtual_vblank(struct vela_output *output);
+
+// wlroots uses the output allocator for both cursor and primary buffers, and
+// doesn't tell the allocator which it is requesting. Supply a *dedicated*
+// cursor swapchain only when the DRM backend exposes an unambiguous, fixed
+// cursor format/size. This preserves the ordinary allocator for captures and
+// primary buffers, even small LINEAR buffers.
+static void prepare_cursor_swapchain(struct vela_server *server, struct wlr_output *wlr)
+{
+    if (!server->cursor_allocator || !wlr_output_is_drm(wlr) || !wlr->impl->set_cursor
+        || !wlr->impl->get_cursor_sizes || !wlr->impl->get_cursor_formats || wlr->cursor_swapchain) {
+        return;
+    }
+
+    size_t count = 0;
+    const struct wlr_output_cursor_size *sizes = wlr->impl->get_cursor_sizes(wlr, &count);
+    const struct wlr_drm_format_set *formats
+        = wlr->impl->get_cursor_formats(wlr, WLR_BUFFER_CAP_DMABUF);
+    bool plane_linear = formats && wlr_drm_format_set_has(formats, DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR);
+    bool vulkan_linear = wlr_drm_format_set_has(vela_renderer_render_formats(server->renderer),
+        DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR);
+    int width = sizes && count == 1 ? sizes[0].width : 0;
+    int height = sizes && count == 1 ? sizes[0].height : 0;
+    if (!vela_cursor_swapchain_eligible(true, formats != NULL, count, width, height,
+            plane_linear, vulkan_linear)) {
+        return;
+    }
+
+    uint64_t linear = DRM_FORMAT_MOD_LINEAR;
+    const struct wlr_drm_format format = vela_cursor_swapchain_format(&linear);
+    struct wlr_swapchain *swapchain = wlr_swapchain_create(server->cursor_allocator, width, height, &format);
+    if (!swapchain) {
+        return; // wlroots keeps its ordinary software cursor fallback
+    }
+
+    // Buffers are allocated lazily and individually validated by the cursor
+    // allocator's Vulkan import probe. A transient failure causes software
+    // fallback for that update, but a later cursor update can try again.
+    wlr->cursor_swapchain = swapchain;
+    wlr_log(WLR_INFO, "Output %s: prepared %dx%d ARGB8888 LINEAR hardware cursor buffers",
+        wlr->name, width, height);
+}
 
 void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
 {
@@ -183,6 +247,11 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     // The frame cycle turns VRR on and off (vrr_state).
     wlr_output_commit_state(wlr, &state);
     wlr_output_state_finish(&state);
+    // Query the committed DRM/CRTC cursor plane, not an unconfigured output.
+    if (enabled) {
+        output->cursor_setup_attempted = true;
+        prepare_cursor_swapchain(server, wlr);
+    }
     if (enabled) {
         wlr_log(WLR_INFO, "Output %s: %dx%d @ %.2f Hz, scale %.2f%s", wlr->name, wlr->width, wlr->height,
             wlr->refresh / 1000.0, wlr->scale, saved ? " (as saved)" : "");
@@ -216,6 +285,7 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
         vela_listen(&wlr->events.frame, &output->frame_event, handle_frame_event);
     }
     vela_listen(&wlr->events.request_state, &output->request_state, handle_request_state);
+    vela_listen(&wlr->events.commit, &output->commit, handle_output_commit);
     vela_listen(&wlr->events.destroy, &output->destroy, handle_destroy);
 
     // In the list before entering the layout: the layout change notifies the
@@ -233,7 +303,22 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
         output->nested = vela_nested_create(output);
     }
     output->usable = vela_output_box(output);
+    vela_brightness_output_added(output);
     vela_output_schedule_frame(output);
+}
+
+// A persisted disabled output is never initialized at creation. Check after
+// its first successful enable, rather than probing the cursor on every frame.
+static void handle_output_commit(struct wl_listener *listener, void *data)
+{
+    struct vela_output *output = wl_container_of(listener, output, commit);
+    (void)data;
+    if (!output->wlr->enabled) {
+        output->cursor_setup_attempted = false;
+    } else if (!output->cursor_setup_attempted) {
+        output->cursor_setup_attempted = true;
+        prepare_cursor_swapchain(output->server, output->wlr);
+    }
 }
 
 static void handle_destroy(struct wl_listener *listener, void *data)
@@ -249,6 +334,7 @@ static void handle_destroy(struct wl_listener *listener, void *data)
     wl_list_remove(&output->frame_event.link);
     wl_list_remove(&output->present.link);
     wl_list_remove(&output->request_state.link);
+    wl_list_remove(&output->commit.link);
     wl_list_remove(&output->destroy.link);
     if (output->vblank_source) {
         wl_event_source_remove(output->vblank_source);
@@ -303,21 +389,29 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
         // Fallback (also to turn the output on or off): wlroots puts an empty
         // buffer, which our damage tracking doesn't know about.
         ok = wlr_output_commit_state(output->wlr, state);
-        if (ok && (state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM)) {
-            // The fallback may have committed a color transform even though
-            // the renderer failed earlier. Track what the monitor accepted.
-            output->frame->night_gamma_committed = state->color_transform != NULL;
-            output->frame->night_clear_needed = false;
-            output->frame->night_commit_pending = false;
-            output->frame->night_in_gamma = state->color_transform != NULL;
-        }
         if (!ok && reset_gamma) {
             // If clearing the LUT is also refused, still try the mode change.
             // Keep the old LUT marked as applied for a later clear retry.
             state->committed &= ~WLR_OUTPUT_STATE_COLOR_TRANSFORM;
             ok = wlr_output_commit_state(output->wlr, state);
         }
-        vela_output_frame_reset_damage(output->frame);
+        if (ok) {
+            if (state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) {
+                // The fallback may have committed a color transform even though
+                // the renderer failed earlier. Track what the monitor accepted.
+                output->frame->night_gamma_committed = state->color_transform != NULL;
+                output->frame->night_clear_needed = false;
+                output->frame->night_commit_pending = false;
+                output->frame->night_in_gamma = state->color_transform != NULL;
+            }
+            // A mode/power fallback can replace the primary buffer without
+            // passing through the renderer. Its previous scanout is now gone.
+            vela_output_frame_external_commit(output->frame);
+        } else {
+            // No commit reached the output. Keep the old delivered state and
+            // request another fully composited frame.
+            vela_output_frame_damage_whole(output->frame);
+        }
     }
     vela_frame_clock_set_mode_refresh(&output->clock, output->wlr->refresh);
     vela_output_arrange_layers(output);
@@ -338,13 +432,17 @@ void vela_output_set_powered(struct vela_output *output, bool on)
     struct wlr_output *wlr = output->wlr;
     struct wlr_output_state state;
     wlr_output_state_init(&state);
+    bool ok = false;
     if (!on) {
         output->mode_before_off = wlr->current_mode;
         output->custom_before_off[0] = wlr->width;
         output->custom_before_off[1] = wlr->height;
         output->custom_before_off[2] = wlr->refresh;
         wlr_output_state_set_enabled(&state, false);
-        wlr_output_commit_state(wlr, &state);
+        ok = wlr_output_commit_state(wlr, &state);
+        if (ok) {
+            vela_output_frame_external_commit(output->frame);
+        }
     } else {
         wlr_output_state_set_enabled(&state, true);
         if (output->mode_before_off) {
@@ -353,9 +451,13 @@ void vela_output_set_powered(struct vela_output *output, bool on)
             wlr_output_state_set_custom_mode(&state, output->custom_before_off[0], output->custom_before_off[1],
                 output->custom_before_off[2]);
         }
-        vela_output_commit_mode(output, &state);
+        ok = vela_output_commit_mode(output, &state);
     }
     wlr_output_state_finish(&state);
+    if (!ok) {
+        wlr_log(WLR_ERROR, "%s: failed to %s screen", wlr->name, on ? "power on" : "power off");
+        return;
+    }
     output->powered = on;
     wlr_log(WLR_INFO, "%s: screen %s", wlr->name, on ? "back on" : "off because idle");
 }

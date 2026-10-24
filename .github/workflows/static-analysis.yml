@@ -93,7 +93,9 @@ jobs:
             compositor/src/config.c compositor/src/frame_clock.c \
             compositor/src/geometry.c compositor/src/legacy_names.c \
             compositor/src/motion.c compositor/src/output_config.c \
-            compositor/src/sun.c compositor/src/util.c
+            compositor/src/sun.c compositor/src/util.c \
+            brightness/src/ddc.c brightness/src/fake.c brightness/src/lines.c \
+            brightness/src/scheduler.c brightness/src/transfer.c
 
       - name: clang-tidy on pure C modules
         shell: bash
@@ -103,11 +105,13 @@ jobs:
             compositor/src/buffer.c compositor/src/color.c \
             compositor/src/config.c compositor/src/frame_clock.c \
             compositor/src/geometry.c compositor/src/output_config.c \
-            compositor/src/sun.c compositor/src/util.c
+            compositor/src/sun.c compositor/src/util.c \
+            brightness/src/ddc.c brightness/src/fake.c brightness/src/lines.c \
+            brightness/src/scheduler.c brightness/src/transfer.c
 
       - name: Upload analyzer reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: clang-analyzer-reports
           path: scan-reports/

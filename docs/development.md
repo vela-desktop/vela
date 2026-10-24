@@ -17,10 +17,10 @@ These packages are for **building Vela from source**, not the much smaller requi
 
 ```sh
 sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland wayland-protocols \
-    libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools layer-shell-qt \
+    libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt \
     vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
     pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
-    pipewire wireplumber
+    pipewire wireplumber systemd-libs
 ```
 </details>
 
@@ -36,7 +36,7 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
     vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
     fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
     zlib-devel gtest-devel python3 python3-numpy python3-pillow shared-mime-info \
-    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber
+    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber systemd-devel
 ```
 </details>
 
@@ -52,6 +52,8 @@ sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
     zlib-devel gtest python3
 ```
 </details>
+
+Optional: `qt6-multimedia` (Fedora: `qt6-qtmultimedia-devel`) plays videos and sounds in File Explorer's quick preview (Space); without it they show as an icon.
 
 ## Build commands
 
@@ -147,6 +149,12 @@ invalidate the pending frame rather than rewriting its mapping metadata.
 Both C and Qt consumers check dimensions, stride and allocation length before
 reading pixels. Captures are one-shot; callers must end or cancel jobs before
 destroying the Wayland connection, and dispatch that connection on one thread.
+`vela-screen-record` is the exception: it keeps its own session, with two
+buffers, for as long as it records. It selects outputs by their stable
+`wl_output.name` (`VELA_SCREEN_RECORD_OUTPUT=HEADLESS-1`) or a legacy numeric
+registry index, bounds repeated capture errors, and refuses to overwrite
+existing recording files. The output directory must already exist and the
+`frames.raw` and `frames.txt` files must not.
 
 Both the legacy `wlr-screencopy` protocol and the new
 `ext-image-copy-capture` protocol expose the **composited output**. On
@@ -175,6 +183,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 | `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`. |
 | `vela-windows` | Inspect windows and compositor-visible state. |
 | `vela-screen-dump` | Capture an output or region to PNG. |
+| `vela-screen-record` | Record an output or region frame by frame, each with its presentation time, until SIGINT (`frames.raw` and `frames.txt` in a directory; `VELA_SCREEN_RECORD_DOWNSCALE=2` for full outputs at high refresh rates). |
 | `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window). |
 | `vela-panel` | Fake shell pieces on wlr-layer-shell: `wallpaper`, and `taskbar [--blur]` with a reserved area and background blur. |
 | `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu; `--wine-backdrop` adds Wine's black fullscreen backdrop (override-redirect, then managed with fullscreen, skip-taskbar and below). |
@@ -204,6 +213,47 @@ caffeine status
 ```
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
+
+### Before/after videos
+
+`scripts/record-before-after.py` records the same scene on two builds and puts
+the takes side by side, for the journal on velade.org:
+
+```sh
+cmake --build build --target vela-screen-record
+scripts/record-before-after.py --before f72a182^ --after main --pick 3fb2a40 --out ~/videos
+scripts/record-before-after.py --list
+```
+
+It builds each ref in a worktree under `~/.cache/vela-before-after`, runs each
+scene headless with the real shell, as the functional tests do, and records it
+with this checkout's `vela-screen-record`. The takes are lined up on their
+first new image after the scene starts and encoded by FFmpeg as WebM, MP4 and
+a PNG poster. Each scene also writes a `SCENE-manifest.json` alongside the
+videos, recording exact source commits, requested picks, output name and size,
+capture/presentation counts and pixel format. Cached worktrees are verified
+against their original commit and picked diff before reuse; an interrupted
+cherry-pick is discarded and rebuilt. `maximize` runs without late latching (`VELA_LATCH=0`): with
+it, the two monitors' leads differ by about 1 ms and the old shared clock
+hardly showed (see D3 in [visual-coherence.md](visual-coherence.md)). Scenes
+about frame pacing (`maximize`) also give a strip of consecutive refreshes,
+before above and after below (`maximize-frames.png`), and say how many repeat
+the previous image. It needs
+a GPU, `dbus-daemon`, `ffmpeg`, PipeWire with WirePlumber and unprivileged
+user namespaces. Both the session and system D-Bus addresses point to the
+take's private bus; NetworkManager, BlueZ and other host services are not
+available to the shell, so real network names and device identities cannot
+appear in Quick Settings (those devices will show as unavailable). The text
+is in English, sound devices are made up on a private PipeWire, and Settings
+sees a user named Alex.
+
+For each take it prints the frames captured and the frames presented. Frames
+where only the pointer moved are presented but not captured, since captures
+leave the pointer out; otherwise fewer captured means the video misses some.
+Before #111 (`3fb2a40`), copying a 1080p output into shared memory took Vela
+longer than a frame at 180 Hz, so recording a build without it slows that
+build down. `--pick COMMIT` applies a commit to both builds when they don't
+already have it, uncommitted, in their own worktree.
 
 ### Wine/Proton fullscreen style transitions
 

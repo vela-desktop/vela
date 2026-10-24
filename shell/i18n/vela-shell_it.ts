@@ -62,8 +62,28 @@
 <context>
     <name>Desktop</name>
     <message>
+        <source>Couldn&apos;t start “%1”.</source>
+        <translation>Impossibile avviare «%1».</translation>
+    </message>
+    <message>
+        <source>“%1” is a program, but it can&apos;t be run. In Properties, turn on “Allow executing as a program”.</source>
+        <translation>«%1» è un programma, ma non può essere eseguito. In Proprietà, attiva «Consenti l&apos;esecuzione come programma».</translation>
+    </message>
+    <message>
+        <source>Check the executable format and required libraries.</source>
+        <translation>Controlla il formato dell&apos;eseguibile e le librerie necessarie.</translation>
+    </message>
+    <message>
+        <source>Could not launch Vela Files to transfer the selected items.</source>
+        <translation>Impossibile avviare Vela Files per trasferire gli elementi selezionati.</translation>
+    </message>
+    <message>
         <source>Couldn&apos;t create the shortcut.</source>
         <translation>Impossibile creare il collegamento.</translation>
+    </message>
+    <message>
+        <source>Vela Files did not confirm that the transfer window opened.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Recycle Bin</source>
@@ -88,22 +108,6 @@
     <message>
         <source>New Text Document.txt</source>
         <translation>Nuovo documento di testo.txt</translation>
-    </message>
-    <message>
-        <source>Move</source>
-        <translation>Sposta</translation>
-    </message>
-    <message>
-        <source>Copy</source>
-        <translation>Copia</translation>
-    </message>
-    <message>
-        <source> - Copy.</source>
-        <translation> - Copia.</translation>
-    </message>
-    <message>
-        <source> - Copy</source>
-        <translation> - Copia</translation>
     </message>
     <message>
         <source>Compress</source>
@@ -526,6 +530,26 @@
         <translation>Disattiva audio</translation>
     </message>
     <message>
+        <source>Brightness of %1</source>
+        <translation>Luminosità di %1</translation>
+    </message>
+    <message>
+        <source>Brightness</source>
+        <translation>Luminosità</translation>
+    </message>
+    <message>
+        <source>Brightness of each display</source>
+        <translation>Luminosità di ogni schermo</translation>
+    </message>
+    <message>
+        <source>This display isn&apos;t responding</source>
+        <translation>Questo schermo non risponde</translation>
+    </message>
+    <message>
+        <source>The display didn&apos;t accept the change</source>
+        <translation>Lo schermo non ha accettato la modifica</translation>
+    </message>
+    <message>
         <source>Back</source>
         <translation>Indietro</translation>
     </message>
@@ -614,6 +638,10 @@
         <translation>Altre impostazioni Wi-Fi</translation>
     </message>
     <message>
+        <source>More display settings</source>
+        <translation>Altre impostazioni dello schermo</translation>
+    </message>
+    <message>
         <source>Settings</source>
         <translation>Impostazioni</translation>
     </message>
@@ -682,6 +710,21 @@
     <message>
         <source>Lock the screen before suspending</source>
         <translation>Blocca lo schermo prima di sospendere</translation>
+    </message>
+</context>
+<context>
+    <name>Shell</name>
+    <message>
+        <source>File transfer complete</source>
+        <translation>Trasferimento file completato</translation>
+    </message>
+    <message>
+        <source>File transfer interrupted</source>
+        <translation>Trasferimento file interrotto</translation>
+    </message>
+    <message>
+        <source>File Explorer closed before this transfer finished.</source>
+        <translation>Esplora file è stato chiuso prima del completamento del trasferimento.</translation>
     </message>
 </context>
 <context>
@@ -1129,6 +1172,54 @@
         <translation>Visualizzazione attività</translation>
     </message>
     <message>
+        <source>File transfers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer removed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Finished</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preparing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bytes transferred</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>calculating</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calculating speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer finished</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calculating transfer speed…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>time unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 seconds remaining</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel transfer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 is using your microphone</source>
         <translation>%1 sta usando il microfono</translation>
     </message>
@@ -1159,6 +1250,10 @@
     <message>
         <source>&amp;Notification settings</source>
         <translation>Impostazioni di &amp;notifica</translation>
+    </message>
+    <message>
+        <source>Show desktop</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>

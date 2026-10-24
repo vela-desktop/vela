@@ -15,31 +15,6 @@
 #include <unistd.h>
 #include <wlr/util/log.h>
 
-// vela-polkit-agent next to the compositor, in the build directory, or
-// installed.
-static bool find_agent(char *command, size_t size)
-{
-    char self[PATH_MAX];
-    ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
-    if (n <= 0) {
-        return false;
-    }
-    self[n] = '\0';
-    char *slash = strrchr(self, '/');
-    if (slash) {
-        *slash = '\0';
-    }
-    const char *candidates[] = { "%s/vela-polkit-agent", "%s/../polkit/vela-polkit-agent" };
-    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
-        char path[PATH_MAX];
-        if (vela_format(path, sizeof(path), candidates[i], self) && access(path, X_OK) == 0) {
-            return vela_format(command, size, "'%s'", path);
-        }
-    }
-    const char *installed = VELA_LIBEXECDIR "/vela-polkit-agent";
-    return access(installed, X_OK) == 0 && vela_format(command, size, "'%s'", installed);
-}
-
 void vela_polkit_agent_start(struct vela_server *server)
 {
     char command[PATH_MAX + 2] = "";
@@ -61,7 +36,7 @@ void vela_polkit_agent_start(struct vela_server *server)
             wlr_log(WLR_INFO, "Polkit agent disabled in vela.conf");
             return;
         }
-        if (!find_agent(command, sizeof(command))) {
+        if (!vela_find_program("vela-polkit-agent", "polkit", command, sizeof(command))) {
             wlr_log(WLR_ERROR, "Polkit agent: vela-polkit-agent not found");
             return;
         }

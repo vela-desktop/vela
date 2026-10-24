@@ -21,11 +21,11 @@
 // compositor that never comes back.
 
 #include "supervisor.h"
+#include "supervisor_children.h"
 #include "error_screen.h"
 #include "diagnostics.h"
 #include "path_security.h"
 
-#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -149,51 +149,6 @@ static bool create_socket(int runtime_fd, struct wayland_socket *s)
     return false;
 }
 
-// The adopted processes still alive (direct children, the compositor
-// excluded): an allocated array, to free; *count how many.
-static pid_t *children(int *count)
-{
-    *count = 0;
-    DIR *proc = opendir("/proc");
-    if (!proc) {
-        return NULL;
-    }
-    pid_t *result = NULL;
-    int capacity = 0;
-    pid_t self = getpid();
-    struct dirent *entry;
-    while ((entry = readdir(proc))) {
-        pid_t pid = (pid_t)atoi(entry->d_name);
-        if (pid <= 0) {
-            continue;
-        }
-        char stat_path[64];
-        snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", (int)pid);
-        FILE *file = fopen(stat_path, "r");
-        if (!file) {
-            continue;
-        }
-        char line[1024] = { 0 };
-        bool read = fgets(line, sizeof(line), file) != NULL;
-        fclose(file);
-        // "pid (name) state ppid ...": the name can contain spaces and
-        // parentheses.
-        const char *end = read ? strrchr(line, ')') : NULL;
-        char state = 0;
-        int parent = 0;
-        if (!end || sscanf(end + 1, " %c %d", &state, &parent) != 2 || parent != self || state == 'Z') {
-            continue;
-        }
-        if (*count == capacity) {
-            capacity = capacity ? capacity * 2 : 16;
-            result = realloc(result, (size_t)capacity * sizeof(*result));
-        }
-        result[(*count)++] = pid;
-    }
-    closedir(proc);
-    return result;
-}
-
 static void reap_all(void)
 {
     while (waitpid(-1, NULL, WNOHANG) > 0) {
@@ -204,26 +159,32 @@ static void reap_all(void)
 // seconds SIGKILL for those that didn't listen).
 static void close_children(void)
 {
-    int count = 0;
-    pid_t *left = children(&count);
+    // No heap allocations: even under severe OOM, session children should
+    // receive SIGTERM and (after the grace period) SIGKILL before we exit.
+    int count = vela_supervisor_children(SIGTERM);
+    if (count < 0) {
+        say("could not enumerate session children for shutdown");
+        return;
+    }
     if (count == 0) {
-        free(left);
         return;
     }
     say("closing the remaining apps (%d)", count);
-    for (int i = 0; i < count; ++i) {
-        kill(left[i], SIGTERM);
-    }
-    for (int round = 0; round < 20 && count > 0; ++round) {
+    for (int round = 0; round < 20; ++round) {
         usleep(100000);
         reap_all();
-        free(left);
-        left = children(&count);
+        count = vela_supervisor_children(0);
+        if (count <= 0) {
+            break;
+        }
     }
-    for (int i = 0; i < count; ++i) {
-        kill(left[i], SIGKILL);
+    if (count < 0) {
+        say("could not enumerate remaining session children");
+        return;
     }
-    free(left);
+    if (count > 0 && vela_supervisor_children(SIGKILL) < 0) {
+        say("could not enumerate session children for SIGKILL");
+    }
     usleep(100000);
     reap_all();
 }
@@ -390,6 +351,11 @@ int vela_supervise(int argc, char **argv)
         child_pid = 0;
 
         if (stop_requested) {
+            // An unsafe-lock exit may have signalled an older supervisor to
+            // prevent restart; preserve the dedicated status on new versions.
+            if (WIFEXITED(status) && WEXITSTATUS(status) == VELA_EXIT_LOCK_UNSAFE) {
+                exit_code = VELA_EXIT_LOCK_UNSAFE;
+            }
             break; // the session is closing (logout, shutdown)
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
@@ -399,6 +365,11 @@ int vela_supervise(int argc, char **argv)
             say("Vulkan 1.4 or required dmabuf support is unavailable; returning to login");
             exit_code = VELA_EXIT_UNSUPPORTED_GPU;
             break; // restarting cannot make the GPU support Vulkan
+        }
+        if (WIFEXITED(status) && WEXITSTATUS(status) == VELA_EXIT_LOCK_UNSAFE) {
+            say("secure lock state could not be persisted; ending session, never restarting unlocked");
+            exit_code = VELA_EXIT_LOCK_UNSAFE;
+            break;
         }
         if (WIFSIGNALED(status)) {
             say("the compositor crashed (%s)", strsignal(WTERMSIG(status)));

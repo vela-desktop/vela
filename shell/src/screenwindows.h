@@ -30,6 +30,7 @@ public:
 
     // Only on the main output (the taskbar, if the user wants it there alone).
     void setPrimaryOnly(bool on);
+    void setPreferredPrimary(const QString& name);
 
 private:
     void sync();
@@ -40,6 +41,7 @@ private:
     QString m_name;
     Setup m_setup;
     bool m_primaryOnly = false;
+    QString m_preferredPrimary;
     QHash<QScreen*, QPointer<QQuickWindow>> m_windows;
     QTimer m_syncTimer;
     int m_retries = 0; // reopenings without a new output

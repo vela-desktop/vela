@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "displays.h"
+#include "../../common/primaryoutput.h"
 
 #include "wlr-output-management-unstable-v1-client-protocol.h"
 #include "vela-output-preview-v1-client-protocol.h"
@@ -9,6 +10,7 @@
 #include <QGuiApplication>
 #include <QPoint>
 #include <QRectF>
+#include <QSettings>
 #include <QSocketNotifier>
 #include <QTimer>
 #include <algorithm>
@@ -315,6 +317,7 @@ struct Displays::Client {
         }
         c->published = list;
         emit c->owner->outputsChanged();
+        emit c->owner->primaryOutputChanged();
         emit c->owner->stateChanged();
     }
     static void managerFinished(void* data, zwlr_output_manager_v1*)
@@ -381,6 +384,39 @@ int Displays::secondsRemaining() const
 }
 QString Displays::error() const { return m_client->error; }
 QVariantList Displays::outputs() const { return m_client->published; }
+QString Displays::preferredPrimaryOutput() const
+{
+    return QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))
+        .value(QStringLiteral("display/primaryOutput")).toString();
+}
+QString Displays::primaryOutput() const
+{
+    QStringList enabled;
+    for (const QVariant& v : m_client->published) {
+        const QVariantMap head = v.toMap();
+        if (head.value(QStringLiteral("enabled")).toBool())
+            enabled.append(head.value(QStringLiteral("name")).toString());
+    }
+    const QScreen* qt = QGuiApplication::primaryScreen();
+    return vela::primaryOutputName(preferredPrimaryOutput(), enabled, qt ? qt->name() : QString());
+}
+bool Displays::setPrimaryOutput(const QString& name)
+{
+    if (name.isEmpty() || pending() || !available()) return false;
+    bool enabled = false;
+    for (const QVariant& v : m_client->published) {
+        const QVariantMap head = v.toMap();
+        if (head.value(QStringLiteral("name")).toString() == name
+            && head.value(QStringLiteral("enabled")).toBool()) { enabled = true; break; }
+    }
+    if (!enabled) return false;
+    QSettings settings(QStringLiteral("Vela"), QStringLiteral("vela-shell"));
+    settings.setValue(QStringLiteral("display/primaryOutput"), name);
+    settings.sync();
+    if (settings.status() != QSettings::NoError) return false;
+    emit primaryOutputChanged();
+    return true;
+}
 void Displays::refresh() { m_client->flush(); }
 
 bool Displays::apply(const QString& name, const QVariantMap& changes)

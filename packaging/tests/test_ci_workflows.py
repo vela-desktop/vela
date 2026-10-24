@@ -28,7 +28,7 @@ class CIUpdaterTestOwnership(unittest.TestCase):
         # Fedora cannot re-run Arch-oriented updater mocks just because the
         # event changes from pull_request to push/dispatch.
         self.assertIn(
-            "-E '^(functional|sharpness|packaging-update)$'",
+            "-LE gpu -E '^packaging-update$'",
             fedora,
         )
         self.assertEqual(fedora.count("ctest --test-dir build-fedora"), 1)

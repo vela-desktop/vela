@@ -38,7 +38,7 @@ jobs:
           qt6-qtdeclarative-devel qt6-qtsvg-devel
           qt6-qtwayland-devel qt6-qttools-devel layer-shell-qt-devel
           gtest-devel python3 dbus-daemon shared-mime-info
-          pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber
+          pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber systemd-devel
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,4 +80,5 @@ jobs:
           # PRs and main pushes. Its Arch-oriented mocks cannot be re-run
           # against Fedora's native RPM/DNF backend.
           # Fedora's RPM smoke job exercises actual DNF transactions.
-          ctest --test-dir build-fedora --output-on-failure --parallel 2 -E '^(functional|sharpness|packaging-update)$'
+          # The GPU-labelled tests (functional-*, sharpness) need a GPU.
+          ctest --test-dir build-fedora --output-on-failure --parallel 2 -LE gpu -E '^packaging-update$'

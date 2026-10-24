@@ -12,7 +12,13 @@
 #include "iconprovider.h"
 
 #include <QDir>
+#include <QVariantList>
+#include <QStandardItemModel>
 #include <QFile>
+#include <QFileInfo>
+#include <QImage>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QTemporaryDir>
@@ -23,7 +29,96 @@ Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
 
 namespace {
 QString folder;
+QString image; // for the quick preview
+QString pdf; // three pages, empty without QtPdf
 }
+
+class TestTransferOps : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QVariantList jobs READ jobs WRITE setJobs NOTIFY jobsChanged)
+    Q_PROPERTY(QAbstractItemModel* jobModel READ jobModel CONSTANT)
+    Q_PROPERTY(int lastCancelled READ lastCancelled NOTIFY cancelledChanged)
+public:
+    TestTransferOps()
+    {
+        m_model.setItemRoleNames({ { Qt::UserRole + 1, QByteArrayLiteral("modelData") } });
+    }
+    QVariantList jobs() const { return m_jobs; }
+    QAbstractItemModel* jobModel() { return &m_model; }
+    void setJobs(const QVariantList& jobs)
+    {
+        m_jobs = jobs;
+        m_model.clear();
+        m_model.setItemRoleNames({ { Qt::UserRole + 1, QByteArrayLiteral("modelData") } });
+        // Mirror production ordering: newest active first, then old results.
+        for (qsizetype i = jobs.size(); i > 0; --i) {
+            const QVariant& job = jobs[i - 1];
+            if (job.toMap().value(QStringLiteral("finished")).toBool()) {
+                continue;
+            }
+            auto* item = new QStandardItem;
+            item->setData(job.toMap(), Qt::UserRole + 1);
+            m_model.appendRow(item);
+        }
+        for (const QVariant& job : jobs) {
+            if (!job.toMap().value(QStringLiteral("finished")).toBool()) {
+                continue;
+            }
+            auto* item = new QStandardItem;
+            item->setData(job.toMap(), Qt::UserRole + 1);
+            m_model.appendRow(item);
+        }
+        emit jobsChanged();
+    }
+    Q_INVOKABLE void updateJob(int id, int done, int total)
+    {
+        for (int row = 0; row < m_model.rowCount(); ++row) {
+            QStandardItem* item = m_model.item(row);
+            QVariantMap data = item->data(Qt::UserRole + 1).toMap();
+            if (data.value(QStringLiteral("id")).toInt() != id) {
+                continue;
+            }
+            data[QStringLiteral("done")] = done;
+            data[QStringLiteral("total")] = total;
+            item->setData(data, Qt::UserRole + 1);
+            return;
+        }
+    }
+    int lastCancelled() const { return m_lastCancelled; }
+    Q_INVOKABLE void cancelJob(int id) { m_lastCancelled = id; emit cancelledChanged(); }
+    // The quick preview's answer, at once: a PDF or else an image.
+    Q_INVOKABLE void peek(const QString& path)
+    {
+        const bool isPdf = path.endsWith(QLatin1String(".pdf"));
+        emit peekReady(path, QVariantMap { { QStringLiteral("kind"), isPdf ? QStringLiteral("pdf") : QStringLiteral("image") },
+                                 { QStringLiteral("name"), QFileInfo(path).fileName() } });
+    }
+    Q_INVOKABLE void dismissJob(int id)
+    {
+        for (qsizetype i = 0; i < m_jobs.size(); ++i) {
+            if (m_jobs[i].toMap().value(QStringLiteral("id")).toInt() == id) {
+                m_jobs.removeAt(i);
+                for (int row = 0; row < m_model.rowCount(); ++row) {
+                    if (m_model.item(row)->data(Qt::UserRole + 1).toMap()
+                        .value(QStringLiteral("id")).toInt() == id) {
+                        m_model.removeRow(row);
+                        break;
+                    }
+                }
+                emit jobsChanged();
+                break;
+            }
+        }
+    }
+signals:
+    void jobsChanged();
+    void cancelledChanged();
+    void peekReady(const QString& path, const QVariantMap& result);
+private:
+    QVariantList m_jobs;
+    QStandardItemModel m_model;
+    int m_lastCancelled = -1;
+};
 
 class Setup : public QObject {
     Q_OBJECT
@@ -34,7 +129,12 @@ public slots:
         vela::controls::install(*engine, Appearance::Mode::Apps);
         engine->addImageProvider(QStringLiteral("fileicon"), new IconProvider(32));
         engine->rootContext()->setContextProperty(QStringLiteral("TestFolder"), folder);
+        engine->rootContext()->setContextProperty(QStringLiteral("TestImage"), image);
+        engine->rootContext()->setContextProperty(QStringLiteral("TestPdf"), pdf);
+        engine->rootContext()->setContextProperty(QStringLiteral("Ops"), &m_ops);
     }
+private:
+    TestTransferOps m_ops;
 };
 
 int main(int argc, char** argv)
@@ -63,6 +163,24 @@ int main(int argc, char** argv)
             return 1;
         }
     }
+
+    // Outside the folder: the views count its 300 files.
+    image = home.filePath(QStringLiteral("peek.png"));
+    QImage picture(400, 300, QImage::Format_RGB32);
+    picture.fill(Qt::darkCyan);
+    if (!picture.save(image)) {
+        return 1;
+    }
+#ifdef VELA_FILES_PDF
+    pdf = home.filePath(QStringLiteral("peek.pdf"));
+    {
+        QPdfWriter writer(pdf);
+        QPainter painter(&writer);
+        for (int i = 1; i < 3; ++i) {
+            writer.newPage();
+        }
+    }
+#endif
 
     qmlRegisterType<FolderModel>("Vela.Files.Backend", 1, 0, "FolderModel");
     Setup setup;

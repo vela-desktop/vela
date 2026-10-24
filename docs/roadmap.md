@@ -13,7 +13,7 @@ GPU and driver: see [hardware coverage](hardware.md) for the current limits.
 
 | Work | Design | Pull request | Status |
 |---|---|---|---|
-| **Display brightness**: a slider per monitor, over DDC/CI for external monitors and the kernel backlight for built-in screens | in the PR | [#45](https://github.com/vela-desktop/vela/pull/45) | design done; stages B0–B4 to do |
+| **Display brightness**: a slider per monitor, over DDC/CI for external monitors and the kernel backlight for built-in screens | in the PR | [#45](https://github.com/vela-desktop/vela/pull/45) | B0–B4 done; tests on real hardware to do |
 | **Visual coherence**: the same pixels, clock and motion across compositor, shell and apps | in the PR | [#40](https://github.com/vela-desktop/vela/pull/40) | steps 1–3 of 11 done |
 
 ## Next
@@ -89,7 +89,6 @@ direction, not a promise.
 ### Files
 - Network locations: SMB, SFTP, WebDAV.
 - Phones and cameras (MTP, PTP).
-- Quick preview with Space.
 - An indexed search that finds files by name and content.
 - Batch rename.
 - Mounting disk images.
@@ -139,7 +138,8 @@ Decisions already taken. Each design document explains why.
 - **Displays and gaming**: native display configuration with compositor-owned
   rollback, multi-monitor hotplug with per-output scale, direct scanout, VRR,
   tearing control, explicit sync, Night Light in the gamma LUT.
-- **Desktop**: Settings, Files, desktop icons, virtual desktops, Task View,
+- **Desktop**: Settings, Files (with a quick preview on Space: pictures, PDFs,
+  text, videos and sounds), desktop icons, virtual desktops, Task View,
   snap layouts and Snap Assist, modern context menus, light mode.
 - **Daily comfort**: clipboard history, snipping tool, touchpad gestures,
   mouse and touchpad settings.

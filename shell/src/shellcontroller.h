@@ -61,6 +61,7 @@ public:
 
     QString userName() const;
     QString primaryScreen() const;
+    void setPreferredPrimaryOutput(const QString& name);
     QString userInitial() const;
 
     bool startMenuOpen() const { return m_startMenuOpen; }
@@ -128,7 +129,15 @@ signals:
     void propertiesRequested(const QStringList& paths); // from Explorer
     void shareRequested(const QStringList& paths); // "Share", from Explorer
     void openWithRequested(const QString& path); // "Choose another app", from Explorer
-    void newShortcutRequested(const QString& folder); // "New > Shortcut", from Explorer
+    void newShortcutRequested(const QString& folder);
+    // File Explorer passes its originating QScreen with requests for shell
+    // layer-shell dialogs; older clients may still send only file paths.
+    void propertiesOnScreenRequested(const QStringList& paths, const QString& screen);
+    void shareOnScreenRequested(const QStringList& paths, const QString& screen);
+    void openWithOnScreenRequested(const QString& path, const QString& screen);
+    void newShortcutOnScreenRequested(const QString& folder, const QString& screen);
+    void desktopTransferUndoReceived(const QByteArray& json);
+    void desktopTransferReadyReceived(qint64 pid); // "New > Shortcut", from Explorer
     void accessibilityReceived(const QByteArray& json); // from the compositor
     void clipboardRequested(); // Win+V
     void snipRequested(); // Win+Shift+S, Print
@@ -147,6 +156,7 @@ private Q_SLOTS:
     void onPrepareForSleep(bool starting);
 
 private:
+    QString m_preferredPrimaryOutput;
     void handleCommand(const QByteArray& command);
     void takeSleepDelay();
     void startChooser(QLocalSocket* socket);

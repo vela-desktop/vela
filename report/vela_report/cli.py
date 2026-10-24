@@ -211,7 +211,7 @@ def interactive(options, build):
             print("Journal window: " + str(context["minutes_before"]) + " minutes before and " +
                   str(context["minutes_after"]) + " minutes after the incident, capped at now. "
                   "Unknown incident time uses the selected log's last write, or the whole selected boot.")
-        if "runtime" in selected:
+        if selected & {"runtime", "brightness"}:
             index = choose("Select the live Vela instance; the host desktop is not assumed to be Vela.",
                            ["No live instance", *info["sockets"]])
             context["socket"] = info["sockets"][index - 1] if index else None

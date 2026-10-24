@@ -14,6 +14,7 @@
 #include "audio.h"
 #include "audioapps.h"
 #include "bluetooth.h"
+#include "brightness.h"
 #include "controls.h"
 #include "datetime.h"
 #include "defaultapps.h"
@@ -169,6 +170,7 @@ int main(int argc, char* argv[])
     DefaultApps defaultApps(&apps);
     KeyboardLayouts layouts;
     SystemStatus status;
+    Brightness brightness;
 
     QQmlApplicationEngine engine;
     qmlEngine = &engine;
@@ -191,6 +193,7 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("DefaultApps"), &defaultApps);
     context->setContextProperty(QStringLiteral("Layouts"), &layouts);
     context->setContextProperty(QStringLiteral("Status"), &status);
+    context->setContextProperty(QStringLiteral("Brightness"), &brightness);
     engine.loadFromModule("Vela.Settings", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;

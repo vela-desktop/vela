@@ -4,11 +4,13 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QByteArray>
 #include <QDateTime>
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QList>
 #include <QPointF>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -91,11 +93,15 @@ public:
     Q_INVOKABLE void moveTo(const QString& path, qreal x, qreal y);
 
     Q_INVOKABLE void open(const QStringList& paths);
+    Q_INVOKABLE void openOnScreen(const QStringList& paths, const QString& screen);
     Q_INVOKABLE bool rename(const QString& path, const QString& newName);
     Q_INVOKABLE void trash(const QStringList& paths);
     Q_INVOKABLE void emptyTrash();
     Q_INVOKABLE bool trashEmpty() const;
     Q_INVOKABLE void undo();
+    // Receive committed transfer steps from the separate vela-files process.
+    void recordExternalTransfer(const QByteArray& json);
+    void acknowledgeTransferStart(qint64 pid);
     // New: they return the path, to rename it right away.
     Q_INVOKABLE QString createFolder();
     Q_INVOKABLE QString createFile(const QString& templatePath); // empty: text document
@@ -121,6 +127,7 @@ signals:
     // it renamed.
     void created(const QString& path, bool rename);
     void chooseAppRequested(const QString& path);
+    void chooseAppOnScreenRequested(const QString& path, const QString& screen);
 
 private:
     struct Item {
@@ -152,6 +159,7 @@ private:
     QString uniqueName(const QString& name) const;
     static QString uniqueNameIn(const QString& dir, const QString& name);
     void pushUndo(UndoStep step);
+    bool startTrackedTransfer(const QStringList& sources, const QString& directory, int action);
 
     AppModel* m_apps;
     QString m_dir;
@@ -167,6 +175,7 @@ private:
     qreal m_areaWidth = 0;
     qreal m_areaHeight = 0;
     QList<UndoStep> m_undo;
+    QSet<qint64> m_pendingTransferStarts;
     QString m_pendingSelect; // file just created, to announce when it appears
     bool m_pendingRename = false;
 };

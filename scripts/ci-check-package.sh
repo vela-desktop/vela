@@ -17,6 +17,8 @@ for path in \
     /usr/lib/vela/report/vela_report/cli.py \
     /usr/share/xdg-desktop-portal/vela-portals.conf \
     /usr/lib/systemd/user/vela-session.target \
+    /usr/lib/udev/rules.d/70-vela-i2c.rules \
+    /usr/lib/modules-load.d/vela-i2c.conf \
     /etc/xdg/xdg-desktop-portal-wlr/Vela \
     /etc/pam.d/vela-lock; do
     test -f "$path" || fail "Missing installed file: $path"
@@ -24,11 +26,15 @@ done
 grep -Fq 'Exec=/usr/bin/vela-session' /usr/share/wayland-sessions/vela.desktop \
     || fail "Session entry does not launch /usr/bin/vela-session"
 vela-report --help >/dev/null || fail "The reporting CLI cannot load its Python modules"
-for helper in vela-polkit-agent vela-polkit-prompt vela-report-gui; do
+for helper in vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui; do
     test -x "/usr/lib/vela/$helper" || fail "Missing helper: /usr/lib/vela/$helper"
 done
+# Without sd-bus the helper builds, but can't change a laptop's backlight.
+ldd /usr/lib/vela/vela-brightness | grep -Fq libsystemd.so \
+    || fail "vela-brightness was built without sd-bus (libsystemd)"
 for program in vela-compositor vela-shell vela-files vela-settings vela-lock \
-    /usr/lib/vela/vela-polkit-agent /usr/lib/vela/vela-polkit-prompt /usr/lib/vela/vela-report-gui; do
+    /usr/lib/vela/vela-brightness /usr/lib/vela/vela-polkit-agent /usr/lib/vela/vela-polkit-prompt \
+    /usr/lib/vela/vela-report-gui; do
     path=$(command -v "$program")
     if ldd "$path" | grep -q 'not found'; then
         ldd "$path" >&2

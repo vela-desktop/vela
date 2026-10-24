@@ -22,6 +22,7 @@ Page {
     Component.onCompleted: {
         Displays.refresh()
         if (Displays.confirming) confirm.open()
+        if (probed !== "") Brightness.probe(probed)
     }
     Component.onDestruction: Displays.revert()
 
@@ -220,18 +221,24 @@ Page {
         description: Displays.error
     }
 
+    Binding {
+        target: Brightness
+        property: "live"
+        value: page.visible
+    }
+
+    // Showing a display probes it again (docs/brightness.md §8): turning
+    // DDC/CI on in the monitor's menu and coming back to Settings is enough.
+    readonly property string probed: page.visible && Brightness.connected && page.output
+        && Qt.application.state === Qt.ApplicationActive ? page.output.name : ""
+    onProbedChanged: if (probed !== "") Brightness.probe(probed)
+
     CardGroup {
         title: qsTr("Brightness & color")
-        Card {
-            visible: Status.brightnessAvailable
-            icon: "brightness-high"
-            title: qsTr("Brightness")
-            description: qsTr("Adjust the brightness of the built-in display")
-            trailing: Slider {
-                width: 200
-                value: Status.brightness
-                onMoved: Status.setBrightness(value)
-            }
+        // The selected display's, read live while the page is visible.
+        BrightnessCard {
+            brightness: page.output ? Brightness.outputs.find(o => o.name === page.output.name) : undefined
+            onMoved: value => Brightness.setValue(page.output.name, value)
         }
         Card {
             icon: "redshift-status-on"
@@ -243,6 +250,23 @@ Page {
             trailing: Switch {
                 checked: Prefs.nightLight
                 onToggled: Prefs.nightLight = checked
+            }
+        }
+    }
+
+    CardGroup {
+        visible: page.outputs.length > 1 && page.output !== null && page.output.enabled
+        enabled: Displays.available && !Displays.pending
+        Card {
+            icon: "video-display"
+            title: qsTr("Make this my main display")
+            description: qsTr("Show notifications and the main taskbar on this display")
+            trailing: Button {
+                // An implicit fallback can already be main without being saved.
+                text: page.output && page.output.name === Displays.preferredPrimaryOutput
+                    ? qsTr("Main display") : qsTr("Make main")
+                usable: page.output && page.output.name !== Displays.preferredPrimaryOutput
+                onClicked: Displays.setPrimaryOutput(page.output.name)
             }
         }
     }
@@ -338,10 +362,29 @@ Page {
             }
         }
         Card {
+            icon: "video-display"
+            title: qsTr("Direct scanout")
+            description: Prefs.scanoutOverridden
+                ? qsTr("Direct scanout is forced off by VELA_SCANOUT=0. Remove the override and restart Vela to enable it")
+                : qsTr("A full-screen game goes to the screen without being redrawn. If a game shows a black screen or garbled pictures, turn it off")
+            trailing: Choice {
+                enabled: !Prefs.scanoutOverridden
+                readonly property var modes: ["auto", "no"]
+                model: [qsTr("Automatic"), qsTr("Off", "direct scanout")]
+                currentIndex: Math.max(0, modes.indexOf(Prefs.directScanout))
+                onChosen: index => Prefs.directScanout = modes[index]
+            }
+        }
+        Card {
             icon: "input-gaming"
             title: qsTr("Show every frame right away in full-screen games")
-            description: qsTr("Games that ask for it reach the screen without waiting for the monitor: less latency, with some tearing in the picture")
+            description: Prefs.scanoutOverridden
+                ? qsTr("Unavailable: VELA_SCANOUT=0 forces compositing and disables asynchronous tearing")
+                : Prefs.directScanout === "no"
+                    ? qsTr("Unavailable while direct scanout is off. Full-screen games are composited and cannot use asynchronous tearing")
+                    : qsTr("Games that ask for it reach the screen without waiting for the monitor: less latency, with some tearing in the picture")
             trailing: Switch {
+                enabled: !Prefs.scanoutOverridden && Prefs.directScanout !== "no"
                 checked: Prefs.tearing
                 onToggled: Prefs.tearing = checked
             }

@@ -113,6 +113,8 @@ endforeach()
 # The modules without wlroots or a GPU (pure logic, covered by the tests):
 # shared by the compositor and the tests.
 add_library(vela-pure STATIC
+    src/backlight_choice.c
+    src/brightness_model.c
     src/buffer.c
     src/color.c
     src/config.c
@@ -140,6 +142,7 @@ add_executable(vela-compositor
     src/a11y.c
     src/error_screen.c
     src/bindings.c
+    src/brightness.c
     src/command.c
     src/decoration.c
     src/focus.c
@@ -163,6 +166,7 @@ add_executable(vela-compositor
     src/snap.c
     src/snapshot.c
     src/supervisor.c
+    src/supervisor_children.c
     src/switcher.c
     src/text.c
     src/view.c
@@ -173,6 +177,7 @@ add_executable(vela-compositor
     src/render/pass.c
     src/render/pixel_buffer.c
     src/render/renderer.c
+    src/render/wait_arrays.c
     src/render/texture.c
     src/render/vulkan.c
     src/scene/capture.c
@@ -223,6 +228,16 @@ install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # sharpness geometry, color, sun, settings. They need GoogleTest (the gtest
 # package) and the test tools enabled.
 if(VELA_BUILD_TOOLS)
+    # GPU-free policy test: verifies that the cursor-specific flags cannot
+    # leak into ordinary output/capture allocations.
+    add_executable(vela-cursor-policy-test tests/cursor_policy_test.c)
+    target_include_directories(vela-cursor-policy-test PRIVATE src)
+    target_compile_definitions(vela-cursor-policy-test PRIVATE WLR_USE_UNSTABLE)
+    target_link_libraries(vela-cursor-policy-test PRIVATE PkgConfig::GBM PkgConfig::LIBDRM PkgConfig::WLROOTS)
+    target_compile_options(vela-cursor-policy-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-cursor-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.cursor-policy COMMAND vela-cursor-policy-test)
+
     # Exercise the actual display protocol and watchdog without Vulkan/DRM.
     add_executable(vela-display-test-server
         ${PROJECT_SOURCE_DIR}/settings/tests/display_server.c
@@ -276,9 +291,38 @@ if(VELA_BUILD_TOOLS)
     target_link_options(vela-scene-diff-test PRIVATE -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free)
     add_test(NAME compositor.scene-diff COMMAND vela-scene-diff-test --test)
 
+    # The locker recovery state machine must be exercised on CPU-only CI.
+    add_executable(vela-lock-retry-test tests/lock_retry_policy_test.c)
+    target_include_directories(vela-lock-retry-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    set_target_properties(vela-lock-retry-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    target_compile_options(vela-lock-retry-test PRIVATE -Wall -Wextra -Werror)
+    add_test(NAME compositor.lock-retry-policy COMMAND vela-lock-retry-test)
+
+    # CPU-only Vulkan wait-array tests: force failure of either realloc and
+    # verify independent capacities and steady-state allocation reuse.
+    add_executable(vela-wait-arrays-oom-test
+        tests/wait_arrays_oom_test.c src/render/wait_arrays.c)
+    target_include_directories(vela-wait-arrays-oom-test PRIVATE src)
+    target_compile_options(vela-wait-arrays-oom-test PRIVATE -Wall -Wextra -Werror)
+    target_link_options(vela-wait-arrays-oom-test PRIVATE -Wl,--wrap=realloc)
+    target_link_libraries(vela-wait-arrays-oom-test PRIVATE vela-pure PkgConfig::VULKAN)
+    set_target_properties(vela-wait-arrays-oom-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.wait-arrays-oom COMMAND vela-wait-arrays-oom-test)
+
+    # Linux /proc enumeration and SIGTERM/SIGKILL child cleanup, no GPU.
+    add_executable(vela-supervisor-children-test
+        tests/supervisor_children_test.c src/supervisor_children.c)
+    target_include_directories(vela-supervisor-children-test PRIVATE src)
+    target_compile_definitions(vela-supervisor-children-test PRIVATE _GNU_SOURCE)
+    target_compile_options(vela-supervisor-children-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-supervisor-children-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.supervisor-children COMMAND vela-supervisor-children-test)
+
     find_package(GTest)
     if(GTest_FOUND)
         add_executable(vela-compositor-tests
+            tests/backlight_choice_test.cpp
+            tests/brightness_model_test.cpp
             tests/frame_clock_test.cpp
             tests/motion_test.cpp
             tests/geometry_test.cpp

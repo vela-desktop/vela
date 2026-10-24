@@ -296,6 +296,7 @@ struct vela_scene *vela_scene_create(void)
     scene->acrylic_tint = (struct wlr_render_color) { 0.11f * 0.55f, 0.11f * 0.55f, 0.12f * 0.55f, 0.55f };
     scene->night_gains[0] = scene->night_gains[1] = scene->night_gains[2] = 1.0f;
     scene->allow_tearing = true;
+    scene->allow_scanout = true;
     scene->root = tree_new(scene, NULL);
     return scene;
 }

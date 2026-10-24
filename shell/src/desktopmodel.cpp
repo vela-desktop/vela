@@ -4,12 +4,19 @@
 #include "desktopmodel.h"
 
 #include "appmodel.h"
+#include "../../common/filetransferrequest.h"
+#include "../../common/executablefile.h"
 #include "systemactions.h"
 
 #include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QClipboard>
 #include <QCryptographicHash>
 #include <QImageReader>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QCollator>
 #include <QDir>
 #include <QFile>
@@ -27,11 +34,11 @@
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QUrl>
+#include <QVariantMap>
 #include <QtDebug>
 
 #include <algorithm>
 #include <cmath>
-#include <sys/stat.h>
 
 namespace {
 
@@ -104,7 +111,71 @@ bool runDetached(const QString& program, const QStringList& arguments, const QSt
     return QProcess::startDetached(program, arguments, directory);
 }
 
+// Both desktop Ctrl+V and drag/drop must go through FileOps in vela-files.
+// A tracked Explorer window owns the transfer and stays open until completion;
+// launching detached cp/mv loses progress, cancellation and error reporting.
+bool launchFileTransfer(const QStringList& sources, const QString& directory,
+    vela::files::TransferAction action, qint64* pid)
+{
+    if (sources.isEmpty()) {
+        return false;
+    }
+    QString executable = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("vela-files"));
+    if (!QFileInfo(executable).isExecutable()) {
+        executable = QStringLiteral("vela-files"); // development / separate install prefix
+    }
+    const bool launched = QProcess::startDetached(
+        executable, vela::files::transferArguments(action, directory, sources), directory, pid);
+    if (!launched) {
+        qWarning("vela-shell: unable to start the tracked file transfer in vela-files");
+        vela::files::notifyTransferStartupFailure(
+            QCoreApplication::translate("Desktop", "Could not launch Vela Files to transfer the selected items."));
+    }
+    return launched;
+}
+
+// Report startup errors in the desktop UI instead of silently logging them.
+// Vela's notification server provides a visible toast via the standard API.
+void notifyProgramLaunchFailure(const QString& filename, const QString& detail)
+{
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("/org/freedesktop/Notifications"),
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("Notify"));
+    message << QStringLiteral("Vela Desktop") << uint(0) << QStringLiteral("dialog-error")
+            << QCoreApplication::translate("Desktop", "Couldn't start “%1”.").arg(filename)
+            << detail << QStringList {} << QVariantMap {} << 10000;
+    QDBusConnection::sessionBus().asyncCall(message);
+}
+
 } // namespace
+
+bool DesktopModel::startTrackedTransfer(const QStringList& sources, const QString& directory, int action)
+{
+    qint64 pid = 0;
+    if (!launchFileTransfer(sources, directory, static_cast<vela::files::TransferAction>(action), &pid)) {
+        return false;
+    }
+    if (pid > 0) {
+        m_pendingTransferStarts.insert(pid);
+        // A detached process can exit before main() or fail during QML load,
+        // even though startDetached() returned true. Do not block the shell UI.
+        QTimer::singleShot(15000, this, [this, pid] {
+            if (m_pendingTransferStarts.remove(pid)) {
+                vela::files::notifyTransferStartupFailure(
+                    QCoreApplication::translate("Desktop",
+                        "Vela Files did not confirm that the transfer window opened."));
+            }
+        });
+    }
+    return true;
+}
+
+void DesktopModel::acknowledgeTransferStart(qint64 pid)
+{
+    m_pendingTransferStarts.remove(pid);
+}
 
 DesktopModel::DesktopModel(AppModel* apps, QObject* parent)
     : QAbstractListModel(parent)
@@ -500,6 +571,11 @@ void DesktopModel::moveTo(const QString& path, qreal x, qreal y)
 
 void DesktopModel::open(const QStringList& paths)
 {
+    openOnScreen(paths, {});
+}
+
+void DesktopModel::openOnScreen(const QStringList& paths, const QString& screen)
+{
     for (const QString& path : paths) {
         if (path == trashPath) {
             runDetached(velaFilesExecutable(), { trashFilesDir() }, m_dir);
@@ -512,9 +588,27 @@ void DesktopModel::open(const QStringList& paths)
                 if (files.isEmpty() || !runDetached(files, { path }, m_dir))
                     qWarning("vela-shell: couldn't open folder %s in Vela Files", qPrintable(path));
             } else if (info.isFile()) {
+                // Share ELF detection with Vela Files; missing chmod +x is
+                // an error to report, not a reason to open the MIME chooser.
+                if (vela::files::isProgram(info)) {
+                    if (!info.isExecutable()) {
+                        qWarning("vela-shell: program is not executable: %s", qPrintable(path));
+                        notifyProgramLaunchFailure(info.fileName(),
+                            QCoreApplication::translate("Desktop",
+                                "“%1” is a program, but it can't be run. In Properties, turn on “Allow executing as a program”.")
+                                .arg(info.fileName()));
+                    } else if (!runDetached(info.absoluteFilePath(), {}, info.absolutePath())) {
+                        qWarning("vela-shell: could not start executable: %s", qPrintable(path));
+                        notifyProgramLaunchFailure(info.fileName(),
+                            QCoreApplication::translate("Desktop",
+                                "Check the executable format and required libraries."));
+                    }
+                    continue;
+                }
                 const QString app = defaultAppFor(QMimeDatabase().mimeTypeForFile(info).name());
                 if (app.isEmpty() || !m_apps->launchWithFile(app, QUrl::fromLocalFile(path).toString()))
-                    emit chooseAppRequested(path);
+                    if (screen.isEmpty()) emit chooseAppRequested(path);
+                    else emit chooseAppOnScreenRequested(path, screen);
             } else {
                 qWarning("vela-shell: no handler for %s", qPrintable(path));
             }
@@ -628,6 +722,38 @@ QString DesktopModel::undoText() const
     return m_undo.isEmpty() ? QString() : m_undo.last().label;
 }
 
+// Called by the shell command socket after vela-files commits a desktop
+// transfer. Paths come from the actual completed operation, so conflict
+// renames, skips and partial failures are reflected accurately.
+void DesktopModel::recordExternalTransfer(const QByteArray& json)
+{
+    QJsonParseError error {};
+    const QJsonDocument document = QJsonDocument::fromJson(json, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject()) {
+        return;
+    }
+    const QJsonObject data = document.object();
+    UndoStep step;
+    step.label = data.value(QStringLiteral("label")).toString();
+    for (const QJsonValue& value : data.value(QStringLiteral("moves")).toArray()) {
+        const QJsonArray move = value.toArray();
+        if (move.size() != 2 || !move.at(0).isString() || !move.at(1).isString()) {
+            return;
+        }
+        step.moves.append({ move.at(0).toString(), move.at(1).toString() });
+    }
+    for (const QJsonValue& value : data.value(QStringLiteral("created")).toArray()) {
+        if (!value.isString()) {
+            return;
+        }
+        step.created.append(value.toString());
+    }
+    if (step.label.isEmpty() || (step.moves.isEmpty() && step.created.isEmpty())) {
+        return;
+    }
+    pushUndo(std::move(step));
+}
+
 void DesktopModel::undo()
 {
     if (m_undo.isEmpty()) {
@@ -636,8 +762,12 @@ void DesktopModel::undo()
     const UndoStep step = m_undo.takeLast();
     emit undoChanged();
     for (const auto& [current, original] : step.moves) {
-        if (!QFileInfo::exists(original)) {
-            QFile::rename(current, original);
+        if (!QFileInfo::exists(original) && !QFile::rename(current, original)) {
+            // An inter-filesystem move cannot be reversed with rename().
+            // Route it through the same tracked FileOps worker as any move.
+            if (QFileInfo::exists(current)) {
+                startTrackedTransfer({ current }, QFileInfo(original).absolutePath(), 2);
+            }
         }
     }
     for (const QString& path : step.created) {
@@ -775,47 +905,19 @@ void DesktopModel::paste()
     }
     const bool cut = mime->data(QStringLiteral("application/x-kde-cutselection")) == "1"
         || mime->data(QStringLiteral("x-special/gnome-copied-files")).startsWith("cut");
-    UndoStep step;
-    step.label = cut ? QCoreApplication::translate("Desktop", "Move") : QCoreApplication::translate("Desktop", "Copy");
-    QString first;
+    QStringList sources;
     for (const QUrl& url : mime->urls()) {
-        if (!url.isLocalFile()) {
+        if (!url.isLocalFile() || !QFileInfo::exists(url.toLocalFile())) {
             continue;
         }
-        const QFileInfo source(url.toLocalFile());
-        const bool sameDir = source.absoluteDir() == QDir(m_dir);
-        if (cut && sameDir) {
-            continue; // already here
+        const QFileInfo info(url.toLocalFile());
+        if (cut && info.absoluteDir() == QDir(m_dir)) {
+            continue; // already on the desktop
         }
-        QString name = source.fileName();
-        if (sameDir) {
-            // Copy here: "photo - Copy.jpg", like in Windows.
-            const bool hasSuffix = !source.suffix().isEmpty() && !source.completeBaseName().isEmpty() && !source.isDir();
-            name = hasSuffix ? source.completeBaseName() + QCoreApplication::translate("Desktop", " - Copy.") + source.suffix()
-                             : name + QCoreApplication::translate("Desktop", " - Copy");
-        }
-        const QString target = QDir(m_dir).filePath(uniqueName(name));
-        // cp and mv in a separate process: a large folder doesn't stall the
-        // shell.
-        if (cut) {
-            runDetached(QStringLiteral("mv"), { QStringLiteral("--"), source.absoluteFilePath(), target }, m_dir);
-            step.moves.append({ target, source.absoluteFilePath() });
-        } else {
-            runDetached(QStringLiteral("cp"), { QStringLiteral("-a"), QStringLiteral("--"), source.absoluteFilePath(), target },
-                m_dir);
-            step.created.append(target);
-        }
-        if (first.isEmpty()) {
-            first = target;
-        }
+        sources.append(info.absoluteFilePath());
     }
-    if (cut) {
-        QGuiApplication::clipboard()->clear(); // moved: they don't paste twice
-    }
-    if (!first.isEmpty()) {
-        pushUndo(step);
-        m_pendingSelect = first;
-        m_pendingRename = false;
+    if (startTrackedTransfer(sources, m_dir, cut ? 2 : 1) && cut) {
+        QGuiApplication::clipboard()->clear(); // only clear if handed to vela-files
     }
 }
 
@@ -860,69 +962,59 @@ void DesktopModel::compress(const QStringList& paths, const QString& format)
 
 // ----------------------------------------------------------- dragging --
 
-namespace {
-
-bool sameDevice(const QString& a, const QString& b)
-{
-    struct stat sa {};
-    struct stat sb {};
-    return ::stat(QFile::encodeName(a).constData(), &sa) == 0 && ::stat(QFile::encodeName(b).constData(), &sb) == 0
-        && sa.st_dev == sb.st_dev;
-}
-
-} // namespace
-
+// Drag/drop and clipboard paste share exactly the same FileOps transport.
 void DesktopModel::drop(const QStringList& urls, const QString& target, qreal x, qreal y)
 {
-    QStringList paths;
+    QStringList sources;
     for (const QString& text : urls) {
         const QUrl url(text);
         if (url.isLocalFile() && QFileInfo::exists(url.toLocalFile())) {
-            paths.append(QFileInfo(url.toLocalFile()).absoluteFilePath());
+            sources.append(QFileInfo(url.toLocalFile()).absoluteFilePath());
         }
     }
-    if (paths.isEmpty()) {
+    if (sources.isEmpty()) {
         return;
     }
     if (target == trashPath) {
-        trash(paths);
+        trash(sources);
         return;
     }
+
     const QString dir = target.isEmpty() ? m_dir : target;
-    UndoStep step;
-    QString first;
-    int placed = 0;
-    for (const QString& source : std::as_const(paths)) {
-        const QFileInfo info(source);
-        if (info.absolutePath() == QDir(dir).absolutePath() || source == dir
-            || dir.startsWith(source + u'/')) {
-            continue; // already there, or a folder inside itself
-        }
-        const QString name = uniqueNameIn(dir, info.fileName());
-        const QString destination = QDir(dir).filePath(name);
-        const bool move = sameDevice(source, dir);
-        if (move) {
-            runDetached(QStringLiteral("mv"), { QStringLiteral("--"), source, destination }, dir);
-            step.moves.append({ destination, source });
-        } else {
-            runDetached(QStringLiteral("cp"), { QStringLiteral("-a"), QStringLiteral("--"), source, destination }, dir);
-            step.created.append(destination);
-        }
-        step.label = move ? QCoreApplication::translate("Desktop", "Move") : QCoreApplication::translate("Desktop", "Copy");
-        // On the desktop: where they were dropped, one below the other.
-        if (target.isEmpty() && !m_autoArrange) {
-            savePosition(name, QPointF(std::max(0.0, x), std::max(0.0, y + placed * cellHeight())));
-            ++placed;
-        }
-        if (first.isEmpty()) {
-            first = destination;
-        }
+    if (!QFileInfo(dir).isDir()) {
+        qWarning("vela-shell: drop target is not a directory");
+        return;
     }
-    if (!first.isEmpty()) {
-        pushUndo(step);
-        if (target.isEmpty()) {
-            m_pendingSelect = first;
-            m_pendingRename = false;
+    QStringList valid;
+    for (const QString& source : std::as_const(sources)) {
+        // No self-drops or recursive copies. Same-folder drops are moves,
+        // hence no-ops; duplicating there is a clipboard Copy + Paste.
+        if (source == dir || dir.startsWith(source + u'/')
+            || QFileInfo(source).absolutePath() == QDir(dir).absolutePath()) {
+            continue;
+        }
+        valid.append(source);
+    }
+    if (!startTrackedTransfer(valid, dir, 0)) {
+        return;
+    }
+    // Retain requested icon placement for conflict-free drops onto the desktop.
+    // FileOps will handle collisions itself via the common conflict dialog.
+    if (target.isEmpty()) {
+        int placed = 0;
+        for (const QString& source : std::as_const(valid)) {
+            const QString name = QFileInfo(source).fileName();
+            if (QFileInfo::exists(QDir(dir).filePath(name))) {
+                continue;
+            }
+            if (!m_autoArrange) {
+                savePosition(name, QPointF(std::max(0.0, x), std::max(0.0, y + placed * cellHeight())));
+                ++placed;
+            }
+            if (m_pendingSelect.isEmpty()) {
+                m_pendingSelect = QDir(dir).filePath(name);
+                m_pendingRename = false;
+            }
         }
     }
 }

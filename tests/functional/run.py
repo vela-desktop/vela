@@ -4,7 +4,9 @@
 
 """Vela's functional tests, for ctest.
 
-    run.py              the scenarios (windows, outputs, session)
+    run.py              every module (ctest runs each on its own, as
+                        functional-<module>)
+    run.py test_shell   only these modules
     run.py --sharpness  the bit-for-bit test of scripts/test-sharpness.sh
 
 Needs a GPU with Vulkan 1.4: the renderer has no software fallback. Without
@@ -37,7 +39,13 @@ def main():
         env = {key: value for key, value in os.environ.items() if key not in ("WAYLAND_DISPLAY", "DISPLAY")}
         env["VELA_TEST_MARK"] = "menu"
         return subprocess.run(["sh", "scripts/test-sharpness.sh"], cwd=ROOT, env=env).returncode
-    suite = unittest.defaultTestLoader.discover(HERE, top_level_dir=HERE)
+    modules = [argument for argument in sys.argv[1:] if not argument.startswith("-")]
+    loader = unittest.defaultTestLoader
+    if modules:
+        suite = loader.loadTestsFromNames(modules)
+    else:
+        suite = loader.loadTestsFromNames(sorted(name[:-3] for name in os.listdir(HERE)
+                                                 if name.startswith("test_") and name.endswith(".py")))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

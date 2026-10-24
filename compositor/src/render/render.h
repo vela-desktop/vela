@@ -225,6 +225,7 @@ struct staging_chunk {
     VkDeviceSize size;
     VkDeviceSize used;
     uint64_t point; // last submission reading it; UINT64_MAX: in use by commands not submitted yet
+    bool readback; // memory the CPU reads quickly (cached), for copies from the GPU
 };
 
 struct pipeline_entry {
@@ -260,8 +261,9 @@ struct vela_renderer {
 
     // The arrays of a submission, reused (they only grow).
     VkSemaphoreSubmitInfo *wait_infos;
+    int wait_infos_capacity;
     VkSemaphore *wait_semaphores;
-    int wait_capacity;
+    int wait_semaphores_capacity;
 
     struct wlr_drm_syncobj_timeline *sync_timeline;
     uint64_t sync_point;
@@ -295,6 +297,9 @@ VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *renderer);
 // submission, before it.
 VkCommandBuffer vela_renderer_upload_commands(struct vela_renderer *renderer);
 bool vela_renderer_stage(struct vela_renderer *renderer, VkDeviceSize size, struct vela_staging *out);
+// The same for copies the CPU reads back (captures): cached memory, where
+// reading is many times faster than from the uncached memory uploads use.
+bool vela_renderer_stage_readback(struct vela_renderer *renderer, VkDeviceSize size, struct vela_staging *out);
 // Submits `cmd` (still recording). wait_fds: sync_files to wait for first,
 // closed by the renderer. release_fd, if not NULL, gets a sync_file signaled
 // at the end of the work (-1 if not available: then the CPU has already

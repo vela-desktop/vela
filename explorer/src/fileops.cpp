@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "fileops.h"
+#include "../../common/executablefile.h"
 
 #include "appmodel.h"
 #include "foldermodel.h"
 #include "links.h"
+#include "peek.h"
 #include "systemactions.h"
+#include "transferlocks.h"
 
 #include <QClipboard>
 #include <QCollator>
 #include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
@@ -21,14 +26,19 @@
 #include <QImageReader>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocalSocket>
 #include <QMimeData>
 #include <QMimeDatabase>
 #include <QPointer>
 #include <QProcess>
 #include <QSettings>
+#include <QScreen>
 #include <QStandardPaths>
+#include <QWindow>
 #include <QThreadPool>
+#include <QStorageInfo>
+#include <QAbstractListModel>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantMap>
@@ -37,8 +47,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <functional>
+#include <utility>
 
 namespace {
 
@@ -166,14 +178,95 @@ struct FileOps::Job {
     QString current;
     bool finished = false;
     QString error;
+    QStringList sources;
+    QString destination;
+    std::shared_ptr<vela::files::DeviceLocks> deviceLocks;
     std::atomic<bool> cancelled { false };
+};
+
+// A stable item model: ordinary progress emits dataChanged for one row,
+// rather than replacing the ListView's whole JavaScript array every 100 ms.
+class TransferJobsModel final : public QAbstractListModel {
+public:
+    explicit TransferJobsModel(QObject* parent) : QAbstractListModel(parent) {}
+
+    int rowCount(const QModelIndex& parent = {}) const override
+    {
+        return parent.isValid() ? 0 : int(m_rows.size());
+    }
+    QVariant data(const QModelIndex& index, int role) const override
+    {
+        if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.size()
+            || role != Qt::UserRole + 1) {
+            return {};
+        }
+        return m_rows.at(index.row());
+    }
+    QHash<int, QByteArray> roleNames() const override
+    {
+        return { { Qt::UserRole + 1, QByteArrayLiteral("modelData") } };
+    }
+
+    void add(const QVariantMap& job)
+    {
+        // The newest copy must be visible even if several other jobs fill
+        // the viewport; completed and failed cards remain below active jobs.
+        beginInsertRows({}, 0, 0);
+        m_rows.prepend(job);
+        endInsertRows();
+    }
+    void update(int id, const QVariantMap& job)
+    {
+        for (int row = 0; row < m_rows.size(); ++row) {
+            if (m_rows.at(row).value(QStringLiteral("id")).toInt() != id) {
+                continue;
+            }
+            if (job.value(QStringLiteral("finished")).toBool()
+                && !m_rows.at(row).value(QStringLiteral("finished")).toBool()
+                && row != m_rows.size() - 1) {
+                const int last = int(m_rows.size());
+                beginMoveRows({}, row, row, {}, last);
+                m_rows.move(row, last - 1);
+                endMoveRows();
+                row = last - 1;
+            }
+            m_rows[row] = job;
+            emit dataChanged(index(row), index(row), { Qt::UserRole + 1 });
+            return;
+        }
+    }
+    void dismiss(int id)
+    {
+        for (int row = 0; row < m_rows.size(); ++row) {
+            if (m_rows.at(row).value(QStringLiteral("id")).toInt() != id
+                || !m_rows.at(row).value(QStringLiteral("finished")).toBool()) {
+                continue;
+            }
+            beginRemoveRows({}, row, row);
+            m_rows.removeAt(row);
+            endRemoveRows();
+            return;
+        }
+    }
+
+private:
+    QList<QVariantMap> m_rows;
 };
 
 FileOps::FileOps(AppModel* apps, QObject* parent)
     : QObject(parent)
     , m_apps(apps)
+    , m_jobModel(new TransferJobsModel(this))
 {
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FileOps::clipboardChanged);
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.isConnected()) {
+        bus.registerObject(QStringLiteral("/org/vela/Files/Transfers"), this,
+            QDBusConnection::ExportScriptableSlots);
+        bus.connect(QString(), QStringLiteral("/org/vela/Files/Transfers"),
+            QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("RequestSnapshot"),
+            this, SLOT(publishSnapshot()));
+    }
 }
 
 FileOps::~FileOps()
@@ -183,22 +276,97 @@ FileOps::~FileOps()
     }
 }
 
+QVariantMap FileOps::jobAsMap(const Job& job) const
+{
+    return {
+        { QStringLiteral("id"), job.id },
+        { QStringLiteral("title"), job.title },
+        { QStringLiteral("doneTitle"), job.doneTitle },
+        { QStringLiteral("done"), double(job.done) },
+        { QStringLiteral("total"), double(job.total) },
+        { QStringLiteral("current"), job.current },
+        { QStringLiteral("finished"), job.finished },
+        { QStringLiteral("error"), job.error },
+    };
+}
+
 QVariantList FileOps::jobs() const
 {
     QVariantList out;
     for (const auto& job : m_jobs) {
-        out.append(QVariantMap {
-            { QStringLiteral("id"), job->id },
-            { QStringLiteral("title"), job->title },
-            { QStringLiteral("doneTitle"), job->doneTitle },
-            { QStringLiteral("done"), double(job->done) },
-            { QStringLiteral("total"), double(job->total) },
-            { QStringLiteral("current"), job->current },
-            { QStringLiteral("finished"), job->finished },
-            { QStringLiteral("error"), job->error },
-        });
+        out.append(jobAsMap(*job));
     }
     return out;
+}
+
+QAbstractItemModel* FileOps::jobModel() const
+{
+    return m_jobModel;
+}
+
+int FileOps::activeJobCount() const
+{
+    return int(std::count_if(m_jobs.cbegin(), m_jobs.cend(),
+        [](const std::shared_ptr<Job>& job) { return !job->finished; }));
+}
+
+bool FileOps::pathsOnDevice(const QStringList& sources, const QString& destination, const QString& device)
+{
+    if (device.isEmpty()) {
+        return false;
+    }
+    return vela::files::transferDevices(sources, destination).contains(vela::files::canonicalDevice(device));
+}
+
+bool FileOps::activeOnDevice(const QString& device) const
+{
+    for (const auto& job : m_jobs) {
+        if (!job->finished && pathsOnDevice(job->sources, job->destination, device)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void FileOps::setEjectGuard(std::function<bool(const QStringList&, const QString&)> guard)
+{
+    m_ejectGuard = std::move(guard);
+}
+
+void FileOps::publishJob(int id, bool snapshot) const
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) return;
+    for (const auto& job : m_jobs) {
+        if (job->id != id) continue;
+        QDBusMessage msg = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
+            QStringLiteral("org.vela.Files.Transfers"),
+            snapshot ? QStringLiteral("Snapshot") : QStringLiteral("Changed"));
+        msg << bus.baseService() << job->id << job->title << qlonglong(job->done)
+            << qlonglong(job->total) << job->current << job->finished << job->error;
+        bus.send(msg);
+        break;
+    }
+}
+
+void FileOps::publishRemoved(int id) const
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) return;
+    QDBusMessage msg = QDBusMessage::createSignal(QStringLiteral("/org/vela/Files/Transfers"),
+        QStringLiteral("org.vela.Files.Transfers"), QStringLiteral("Removed"));
+    msg << bus.baseService() << id;
+    bus.send(msg);
+}
+
+void FileOps::publishSnapshot()
+{
+    for (const auto& job : m_jobs) publishJob(job->id, true);
+}
+
+void FileOps::Cancel(int id)
+{
+    cancelJob(id);
 }
 
 void FileOps::updateJob(int id, qint64 done, qint64 total, const QString& current, bool finished, const QString& error)
@@ -210,9 +378,12 @@ void FileOps::updateJob(int id, qint64 done, qint64 total, const QString& curren
             job->current = current;
             job->finished = finished;
             job->error = error;
+            m_jobModel->update(id, jobAsMap(*job));
+            break;
         }
     }
     emit jobsChanged();
+    publishJob(id);
 }
 
 void FileOps::cancelJob(int id)
@@ -226,8 +397,13 @@ void FileOps::cancelJob(int id)
 
 void FileOps::dismissJob(int id)
 {
+    const qsizetype before = m_jobs.size();
     m_jobs.removeIf([id](const std::shared_ptr<Job>& job) { return job->id == id && job->finished; });
-    emit jobsChanged();
+    if (m_jobs.size() != before) {
+        m_jobModel->dismiss(id);
+        publishRemoved(id);
+        emit jobsChanged();
+    }
 }
 
 // Before copying or moving: is there already something with the same name?
@@ -262,10 +438,49 @@ void FileOps::resolveConflict(const QString& choice)
     }
 }
 
+// Work units use the same rules as copyOne: each directory and symlink
+// contributes one unit, nonempty regular files contribute their byte size.
+qint64 transferWorkUnits(const QString& source)
+{
+    const QFileInfo info(source);
+    if (info.isSymLink()) {
+        return 1;
+    }
+    if (!info.isDir()) {
+        return std::max<qint64>(1, info.size());
+    }
+    qint64 total = 1;
+    QDirIterator it(source, QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
+        QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        const QFileInfo entry = it.fileInfo();
+        total += entry.isSymLink() || entry.isDir() ? 1 : std::max<qint64>(1, entry.size());
+    }
+    return total;
+}
+
 void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
 {
+    if (m_ejectGuard && m_ejectGuard(transfer.sources, transfer.directory)) {
+        emit failed(QCoreApplication::translate("Files",
+            "This drive is being ejected. Wait for ejection to finish before transferring files."));
+        return;
+    }
+    // The lock must be held before the job becomes visible, and through the
+    // worker's final sync. Eject in another Explorer process takes LOCK_EX.
+    auto locks = std::make_shared<vela::files::DeviceLocks>();
+    if (!locks->acquire(vela::files::transferDevices(transfer.sources, transfer.directory),
+            vela::files::DeviceLocks::Mode::Shared)) {
+        emit failed(QCoreApplication::translate("Files",
+            "A drive is being ejected or the transfer lock is unavailable. Try again."));
+        return;
+    }
     auto job = std::make_shared<Job>();
+    job->deviceLocks = std::move(locks);
     job->id = m_nextJob++;
+    job->sources = transfer.sources;
+    job->destination = transfer.directory;
     const int count = int(transfer.sources.size());
     const QString where = QFileInfo(transfer.directory).fileName().isEmpty() ? transfer.directory
                                                                               : QFileInfo(transfer.directory).fileName();
@@ -278,7 +493,9 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
                      .arg(items, where);
     job->doneTitle = QCoreApplication::translate("Files", "Done: %1 to %2").arg(items, where);
     m_jobs.append(job);
+    m_jobModel->add(jobAsMap(*job));
     emit jobsChanged();
+    publishJob(job->id);
 
     QPointer<FileOps> self(this);
     auto post = [self, id = job->id](qint64 done, qint64 total, QString current, bool finished, QString error) {
@@ -292,22 +509,18 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
             Qt::QueuedConnection);
     };
     QThreadPool::globalInstance()->start([self, job, transfer, policy, post] {
-        // How much there is to do (only what really has to be copied).
+        // Count every directory and symlink as one unit, and files by bytes.
+        // This exactly matches copyOne(), including empty nested directories.
+        // A same-device move may fall back to copying if rename fails.
         qint64 total = 0;
+        QSet<QString> estimatedRenames;
         for (const QString& source : transfer.sources) {
-            const QFileInfo info(source);
             if (transfer.move && sameDevice(source, transfer.directory)) {
-                total += 1;
-            } else if (info.isDir() && !info.isSymLink()) {
-                QDirIterator it(source, QDir::Files | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories);
-                while (it.hasNext()) {
-                    it.next();
-                    total += std::max<qint64>(1, it.fileInfo().size());
-                }
+                // Common same-filesystem moves are O(1) renames, not tree walks.
+                estimatedRenames.insert(source);
                 total += 1;
             } else {
-                total += std::max<qint64>(1, info.size());
+                total += transferWorkUnits(source);
             }
         }
         qint64 done = 0;
@@ -469,6 +682,11 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
                 continue;
             }
 
+            // A failed/unavailable rename must use full copy accounting.
+            if (estimatedRenames.contains(source)) {
+                total += transferWorkUnits(source) - 1;
+                post(done, total, info.fileName(), false, QString());
+            }
             bool copied = false;
             if (merging || (!sourceIsDir && (!replacing || sameKind))) {
                 // Merging folders, or a file (also replacing another file):
@@ -542,17 +760,35 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
         if (!step.created.isEmpty()) {
             syncDirectory(transfer.directory);
         }
+        // No filesystem work remains: release shared locks before the UI
+        // publishes completion. Retained result cards must not block eject.
+        job->deviceLocks.reset();
         const bool cancelled = job->cancelled;
         const QString result = error.isEmpty() && cancelled ? QCoreApplication::translate("Files", "Canceled") : error;
-        post(total, total, QString(), true, result);
+        // Preserve progress on cancellation/failure; never claim 100%.
+        post(error.isEmpty() && !cancelled ? total : done, total, QString(), true, result);
         QMetaObject::invokeMethod(
             qApp,
-            [self, step, firstArrived, id = job->id, ok = error.isEmpty() && !cancelled] {
+            [self, step, firstArrived, fromDesktop = transfer.fromDesktop, id = job->id, ok = error.isEmpty() && !cancelled] {
                 if (!self) {
                     return;
                 }
                 if (!step.moves.isEmpty() || !step.created.isEmpty()) {
                     self->pushUndo(step);
+                    if (fromDesktop) {
+                        QJsonArray moves;
+                        for (const auto& [current, original] : step.moves) {
+                            moves.append(QJsonArray { current, original });
+                        }
+                        QJsonObject payload {
+                            { QStringLiteral("label"), step.label },
+                            { QStringLiteral("moves"), moves },
+                            { QStringLiteral("created"), QJsonArray::fromStringList(step.created) }
+                        };
+                        // Report only committed operations, including the
+                        // successful subset of a later failed transfer.
+                        sendToShell("desktop-transfer-undo " + QJsonDocument(payload).toJson(QJsonDocument::Compact));
+                    }
                 }
                 if (!firstArrived.isEmpty()) {
                     emit self->created(firstArrived, false);
@@ -573,22 +809,6 @@ void FileOps::startTransfer(const Transfer& transfer, const QString& policy)
 
 // ------------------------------------------------------------ opening --
 
-namespace {
-
-// A Linux program (ELF, AppImages included), not a library: it starts with a
-// double click, like an .exe on Windows. Scripts stay documents: they open
-// with the app for their type.
-bool isProgram(const QFileInfo& info)
-{
-    if (!info.isFile() || info.fileName().contains(QLatin1String(".so"))) {
-        return false;
-    }
-    QFile file(info.absoluteFilePath());
-    return file.open(QIODevice::ReadOnly) && file.read(4) == QByteArray("\x7f" "ELF", 4);
-}
-
-} // namespace
-
 void FileOps::open(const QStringList& paths)
 {
     static const QMimeDatabase mimes;
@@ -597,7 +817,7 @@ void FileOps::open(const QStringList& paths)
         if (path.endsWith(QLatin1String(".desktop")) && m_apps->launchDesktopFile(path)) {
             continue;
         }
-        if (isProgram(info)) {
+        if (vela::files::isProgram(info)) {
             if (!info.isExecutable()) {
                 emit failed(QCoreApplication::translate("Files", "“%1” is a program, but it can't be run. In Properties, turn on “Allow executing as a program”.")
                                 .arg(info.fileName()));
@@ -723,6 +943,16 @@ void FileOps::copyAsPath(const QStringList& paths)
 
 void FileOps::drop(const QStringList& urls, const QString& directory, int action)
 {
+    dropInternal(urls, directory, action, false);
+}
+
+void FileOps::dropFromDesktop(const QStringList& urls, const QString& directory, int action)
+{
+    dropInternal(urls, directory, action, true);
+}
+
+void FileOps::dropInternal(const QStringList& urls, const QString& directory, int action, bool fromDesktop)
+{
     QStringList paths;
     for (const QString& text : urls) {
         const QUrl url(text);
@@ -739,6 +969,7 @@ void FileOps::drop(const QStringList& urls, const QString& directory, int action
     }
     Transfer transfer;
     transfer.directory = directory;
+    transfer.fromDesktop = fromDesktop;
     transfer.move = action == 2 || (action == 0 && sameDevice(paths.first(), directory));
     for (const QString& path : std::as_const(paths)) {
         // Dropped in the folder they're already in: nothing to do.
@@ -1019,24 +1250,58 @@ void FileOps::undo()
     }
 }
 
+static void sendShellFileDialog(const QByteArray& action, const QStringList& paths)
+{
+    // Capture before the IPC round trip: another Explorer window might gain
+    // focus while an older shell is being probed.
+    QString sourceScreen;
+    if (QWindow* window = QGuiApplication::focusWindow()) {
+        if (QScreen* screen = window->screen()) sourceScreen = screen->name();
+    }
+    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
+    QLocalSocket socket;
+    socket.connectToServer(runtimeDir + QStringLiteral("/vela-shell-") + display + QStringLiteral(".sock"));
+    if (!socket.waitForConnected(300)) return;
+
+    // A running shell may predate the screen-aware JSON format. Old shells
+    // silently accept ping but give no reply; new shells answer "2".
+    socket.write("ping\n");
+    if (!socket.waitForBytesWritten(300)) return;
+    if (!socket.canReadLine()) socket.waitForReadyRead(300);
+    const bool screenAware = socket.canReadLine() && socket.readLine().trimmed() == "2";
+
+    QByteArray payload;
+    if (screenAware) {
+        QJsonObject request;
+        request.insert(QStringLiteral("paths"), QJsonArray::fromStringList(paths));
+        if (!sourceScreen.isEmpty()) request.insert(QStringLiteral("screen"), sourceScreen);
+        payload = QJsonDocument(request).toJson(QJsonDocument::Compact);
+    } else {
+        payload = QJsonDocument(QJsonArray::fromStringList(paths)).toJson(QJsonDocument::Compact);
+    }
+    socket.write(action + ' ' + payload + '\n');
+    socket.waitForBytesWritten(300);
+}
+
 void FileOps::showProperties(const QStringList& paths)
 {
-    sendToShell("properties " + QJsonDocument(QJsonArray::fromStringList(paths)).toJson(QJsonDocument::Compact));
+    sendShellFileDialog("properties", paths);
 }
 
 void FileOps::share(const QStringList& paths)
 {
-    sendToShell("share " + QJsonDocument(QJsonArray::fromStringList(paths)).toJson(QJsonDocument::Compact));
+    sendShellFileDialog("share", paths);
 }
 
 void FileOps::chooseApp(const QString& path)
 {
-    sendToShell("open-with " + QJsonDocument(QJsonArray::fromStringList({ path })).toJson(QJsonDocument::Compact));
+    sendShellFileDialog("open-with", { path });
 }
 
 void FileOps::newShortcut(const QString& directory)
 {
-    sendToShell("new-shortcut " + QJsonDocument(QJsonArray::fromStringList({ directory })).toJson(QJsonDocument::Compact));
+    sendShellFileDialog("new-shortcut", { directory });
 }
 
 // ---------------------------------------------------------- shortcuts --
@@ -1128,12 +1393,15 @@ QVariantMap FileOps::details(const QString& path) const
     } else {
         out[QStringLiteral("size")] = double(info.size());
         out[QStringLiteral("sizeText")] = ::formatSize(info.size());
-        QImageReader reader(path);
-        if (reader.canRead()) {
-            const QSize size = reader.size();
-            if (size.isValid()) {
-                out[QStringLiteral("width")] = size.width();
-                out[QStringLiteral("height")] = size.height();
+        // Only regular files are read: opening a FIFO with no writer blocks.
+        if (info.isFile()) {
+            QImageReader reader(path);
+            if (reader.canRead()) {
+                const QSize size = reader.size();
+                if (size.isValid()) {
+                    out[QStringLiteral("width")] = size.width();
+                    out[QStringLiteral("height")] = size.height();
+                }
             }
         }
     }
@@ -1168,6 +1436,72 @@ QString FileOps::previewText(const QString& path) const
 bool FileOps::isImage(const QString& path) const
 {
     return QImageReader(path).canRead();
+}
+
+bool FileOps::pdfSupported() const
+{
+#ifdef VELA_FILES_PDF
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool FileOps::mediaSupported() const
+{
+#ifdef VELA_FILES_MEDIA
+    return true;
+#else
+    return false;
+#endif
+}
+
+void FileOps::peek(const QString& path)
+{
+    QPointer<FileOps> self(this);
+    QThreadPool::globalInstance()->start([self, path] {
+        if (!self) {
+            return;
+        }
+        QVariantMap out = self->details(path);
+        const bool isDir = out.value(QStringLiteral("isDir")).toBool();
+        // A FIFO, socket or device is never opened: it could block this thread for good.
+        const bool regular = QFileInfo(path).isFile();
+        QString kind = peek::classify(out.value(QStringLiteral("mime")).toString(), isDir,
+            regular && QImageReader(path).canRead(), self->pdfSupported(), self->mediaSupported());
+        if (!isDir && !regular) {
+            kind = QStringLiteral("other");
+        } else if (kind == QLatin1String("other")) {
+            QFile file(path);
+            if (file.open(QIODevice::ReadOnly) && peek::looksLikeText(file.read(peek::sniffBytes))) {
+                kind = QStringLiteral("text");
+            }
+        }
+        out[QStringLiteral("kind")] = kind;
+        if (kind == QLatin1String("folder")) {
+            // A bounded walk: a huge tree must not hold the preview.
+            qint64 total = 0;
+            int seen = 0;
+            QDirIterator it(path, QDir::Files | QDir::Hidden | QDir::NoSymLinks, QDirIterator::Subdirectories);
+            while (it.hasNext() && seen < 20000) {
+                it.next();
+                total += it.fileInfo().size();
+                ++seen;
+            }
+            out[QStringLiteral("sizeText")] = (it.hasNext() ? QStringLiteral("> ") : QString()) + ::formatSize(total);
+        } else if (kind == QLatin1String("text")) {
+            QFile file(path);
+            if (file.open(QIODevice::ReadOnly)) {
+                bool cut = false;
+                const QString text = peek::truncateText(file.read(peek::maxTextBytes), file.size(), peek::maxTextBytes, &cut);
+                out[QStringLiteral("text")] = text.isEmpty() ? QStringLiteral(" ") : text;
+                out[QStringLiteral("truncated")] = cut;
+            }
+        }
+        if (self) {
+            QMetaObject::invokeMethod(self, [self, path, out] { if (self) emit self->peekReady(path, out); }, Qt::QueuedConnection);
+        }
+    });
 }
 
 // ------------------------------------------------------------- misc --

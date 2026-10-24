@@ -139,6 +139,8 @@ struct vela_scene {
     // "tearing").
     struct wlr_tearing_control_manager_v1 *tearing_control;
     bool allow_tearing;
+    // vela.conf "direct-scanout=no": always composite (VELA_SCANOUT=0 wins).
+    bool allow_scanout;
 
     struct wl_listener new_surface;
 };

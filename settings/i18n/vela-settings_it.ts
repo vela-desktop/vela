@@ -445,6 +445,37 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>BrightnessCard</name>
+    <message>
+        <source>Brightness is controlled by the display&apos;s buttons. If its menu has a DDC/CI option, turning it on lets Vela control it.</source>
+        <translation>La luminosità si regola con i tasti dello schermo. Se il suo menu ha un&apos;opzione DDC/CI, attivandola Vela potrà regolarla.</translation>
+    </message>
+    <message>
+        <source>This display doesn&apos;t allow changing its brightness</source>
+        <translation>Questo schermo non permette di cambiare la luminosità</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t reach this display. The installation may be incomplete</source>
+        <translation>Vela non riesce a comunicare con questo schermo. L&apos;installazione potrebbe essere incompleta</translation>
+    </message>
+    <message>
+        <source>Brightness</source>
+        <translation>Luminosità</translation>
+    </message>
+    <message>
+        <source>This display isn&apos;t responding</source>
+        <translation>Questo schermo non risponde</translation>
+    </message>
+    <message>
+        <source>The display didn&apos;t accept the change</source>
+        <translation>Lo schermo non ha accettato la modifica</translation>
+    </message>
+    <message>
+        <source>Adjust the brightness of this display</source>
+        <translation>Regola la luminosità di questo schermo</translation>
+    </message>
+</context>
+<context>
     <name>ClipboardPage</name>
     <message>
         <source>Clipboard history</source>
@@ -744,6 +775,31 @@ Specifiche sistema
 <context>
     <name>DisplayPage</name>
     <message>
+        <source>Automatic</source>
+        <translation>Automatico</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <comment>direct scanout</comment>
+        <translation>Disattivato</translation>
+    </message>
+    <message>
+        <source>Make this my main display</source>
+        <translation>Imposta come schermo principale</translation>
+    </message>
+    <message>
+        <source>Show notifications and the main taskbar on this display</source>
+        <translation>Mostra le notifiche e la barra delle applicazioni principale su questo schermo</translation>
+    </message>
+    <message>
+        <source>Main display</source>
+        <translation>Schermo principale</translation>
+    </message>
+    <message>
+        <source>Make main</source>
+        <translation>Imposta come principale</translation>
+    </message>
+    <message>
         <source>Landscape</source>
         <translation>Orizzontale</translation>
     </message>
@@ -774,14 +830,6 @@ Specifiche sistema
     <message>
         <source>Brightness &amp; color</source>
         <translation>Luminosità e colore</translation>
-    </message>
-    <message>
-        <source>Brightness</source>
-        <translation>Luminosità</translation>
-    </message>
-    <message>
-        <source>Adjust the brightness of the built-in display</source>
-        <translation>Regola la luminosità dello schermo integrato</translation>
     </message>
     <message>
         <source>Night light</source>
@@ -892,6 +940,30 @@ Specifiche sistema
     <message>
         <source>Games that ask for it reach the screen without waiting for the monitor: less latency, with some tearing in the picture</source>
         <translation>I giochi che lo chiedono vanno sullo schermo senza aspettare il monitor: meno latenza, con qualche strappo nell&apos;immagine (tearing)</translation>
+    </message>
+    <message>
+        <source>Unavailable while direct scanout is off. Full-screen games are composited and cannot use asynchronous tearing</source>
+        <translation>Non disponibile quando lo scanout diretto è disattivato. I giochi a schermo intero vengono composti e non possono usare il tearing asincrono</translation>
+    </message>
+    <message>
+        <source>Direct scanout</source>
+        <translation>Scanout diretto</translation>
+    </message>
+    <message>
+        <source>Direct scanout is forced off by VELA_SCANOUT=0. Remove the override and restart Vela to enable it</source>
+        <translation>Lo scanout diretto è disattivato forzatamente da VELA_SCANOUT=0. Rimuovi l&apos;override e riavvia Vela per abilitarlo</translation>
+    </message>
+    <message>
+        <source>Unavailable: VELA_SCANOUT=0 forces compositing and disables asynchronous tearing</source>
+        <translation>Non disponibile: VELA_SCANOUT=0 forza il compositing e disabilita il tearing asincrono</translation>
+    </message>
+    <message>
+        <source>A full-screen game goes to the screen without being redrawn. If a game shows a black screen or garbled pictures, turn it off</source>
+        <translation>Un gioco a schermo intero va sullo schermo senza essere ridisegnato. Se un gioco mostra schermo nero o immagini corrotte, disattivalo</translation>
+    </message>
+    <message>
+        <source>direct scanout black screen glitch game full screen flicker</source>
+        <translation>scanout diretto schermo nero glitch gioco schermo intero</translation>
     </message>
     <message>
         <source>Related settings</source>
@@ -1141,6 +1213,14 @@ Specifiche sistema
 <context>
     <name>Main</name>
     <message>
+        <source>Direct scanout</source>
+        <translation>Scanout diretto</translation>
+    </message>
+    <message>
+        <source>direct scanout black screen glitch game full screen flicker</source>
+        <translation>scanout diretto schermo nero glitch gioco schermo intero sfarfallio</translation>
+    </message>
+    <message>
         <source>Settings</source>
         <translation>Impostazioni</translation>
     </message>
@@ -1275,6 +1355,14 @@ Specifiche sistema
     <message>
         <source>hz refresh rate frequency</source>
         <translation>hz refresh frequenza</translation>
+    </message>
+    <message>
+        <source>Change the brightness</source>
+        <translation>Cambia la luminosità</translation>
+    </message>
+    <message>
+        <source>brightness backlight dim bright monitor ddc</source>
+        <translation>luminosità retroilluminazione scuro luminoso monitor schermo ddc</translation>
     </message>
     <message>
         <source>volume speakers headphones microphone output input sound</source>
@@ -2428,7 +2516,7 @@ Specifiche sistema
     </message>
     <message>
         <source>Show desktop from taskbar corner</source>
-        <translation>Mostra il desktop dall'angolo della barra delle applicazioni</translation>
+        <translation>Mostra il desktop dall&apos;angolo della barra delle applicazioni</translation>
     </message>
     <message>
         <source>Click the far-right edge of any taskbar to show or restore your windows (also with Super+D)</source>

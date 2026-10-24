@@ -38,6 +38,11 @@ add_executable(vela-screen-dump vela-screen-dump.c)
 target_link_libraries(vela-screen-dump PRIVATE vela-capture PkgConfig::TOOLS_ZLIB)
 target_compile_options(vela-screen-dump PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
+# Frame-by-frame recordings for videos (scripts/record-before-after.py).
+add_executable(vela-screen-record vela-screen-record.c)
+target_link_libraries(vela-screen-record PRIVATE vela-capture)
+target_compile_options(vela-screen-record PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
 if(VELA_BUILD_TOOLS)
 
 vela_client_protocol(proto-foreign-toplevel ${PROTOCOLS}/wlr-foreign-toplevel-management-unstable-v1.xml

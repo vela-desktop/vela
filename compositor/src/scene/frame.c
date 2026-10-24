@@ -13,9 +13,11 @@
 #include "scene/surface.h"
 #include "util.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <wlr/backend/drm.h>
 #include <wlr/backend/headless.h>
 #include <wlr/render/color.h>
@@ -683,6 +685,8 @@ void vela_output_frame_destroy(struct vela_output_frame *frame)
     free(frame->last.items);
     free(frame->current.items);
     free(frame->found);
+    free(frame->match_heads);
+    free(frame->match_next);
     free(frame->visible_surfaces);
     free(frame);
 }
@@ -945,6 +949,35 @@ static void update_surfaces(struct vela_output_frame *frame, const struct vela_e
     }
 }
 
+// A successful commit outside vela_output_frame_render() replaces the buffer
+// (or disables the output). The last scanout/tearing delivery is no longer
+// current, even when the regular Vulkan render path could not run.
+void vela_output_frame_external_commit(struct vela_output_frame *frame)
+{
+    if (frame->scanout) {
+        wlr_log(WLR_INFO, "%s: direct scanout off (external output commit)", frame->output->name);
+    }
+    if (frame->tearing) {
+        wlr_log(WLR_INFO, "%s: tearing off (external output commit)", frame->output->name);
+    }
+    frame->scanout = false;
+    frame->tearing = false;
+    frame->delivered = (struct vela_frame_delivered) { 0, -1, false, false };
+    vela_output_frame_reset_damage(frame);
+}
+
+// A policy change must not leave a fullscreen app using DRM-plane format
+// feedback once the user has requested compositing. This bypasses the normal
+// 30-frame feedback debounce intentionally: an idle app may never reach it.
+void vela_output_frame_scanout_policy_changed(struct vela_output_frame *frame)
+{
+    if (!frame->scene->allow_scanout && frame->feedback_surface) {
+        send_feedback(frame, frame->feedback_surface, false);
+        frame->feedback_surface = NULL;
+        frame->feedback_debounce = 0;
+    }
+}
+
 void vela_output_frame_reset_damage(struct vela_output_frame *frame)
 {
     // All buffers start over: the next frame redraws them whole.
@@ -959,31 +992,100 @@ void vela_output_frame_reset_damage(struct vela_output_frame *frame)
 // The damage: what appeared, disappeared, changed or moved compared with the
 // previous frame (surface content comes from commits). Then `current` becomes
 // `last`.
+// Index only a reordered/changed scene. The common case (matching element
+// at the same position) needs no table and retains its allocation-free path.
+// Chained buckets preserve duplicate-key semantics: use the first matching
+// old position reached by the original circular search starting at i.
+static unsigned diff_key_bucket(const void *key, unsigned mask)
+{
+    uint64_t hash = (uint64_t)(uintptr_t)key;
+    hash ^= hash >> 33;
+    hash *= UINT64_C(0xff51afd7ed558ccd);
+    hash ^= hash >> 33;
+    hash *= UINT64_C(0xc4ceb9fe1a85ec53);
+    hash ^= hash >> 33;
+    return (unsigned)hash & mask;
+}
+
+static int diff_build_index(struct vela_output_frame *frame)
+{
+    int bucket_count = 8;
+    while ((size_t)bucket_count < (size_t)frame->last.count * 2) {
+        if (bucket_count > INT_MAX / 2) {
+            abort();
+        }
+        bucket_count *= 2;
+    }
+    frame->match_heads = vela_grow(frame->match_heads, &frame->match_heads_capacity, bucket_count,
+        sizeof(*frame->match_heads));
+    frame->match_next = vela_grow(frame->match_next, &frame->match_next_capacity, frame->last.count,
+        sizeof(*frame->match_next));
+    for (int bucket = 0; bucket < bucket_count; ++bucket) {
+        frame->match_heads[bucket] = -1;
+    }
+    // Insert backwards so positions sharing a bucket can be scanned ascending.
+    for (int j = frame->last.count - 1; j >= 0; --j) {
+        unsigned bucket = diff_key_bucket(frame->last.items[j].key, (unsigned)(bucket_count - 1));
+        frame->match_next[j] = frame->match_heads[bucket];
+        frame->match_heads[bucket] = j;
+    }
+    return bucket_count;
+}
+
+static int diff_lookup_old(const struct vela_output_frame *frame, const void *key, int i, int bucket_count)
+{
+    int start = i % frame->last.count;
+    int best = -1;
+    int best_distance = frame->last.count;
+    unsigned bucket = diff_key_bucket(key, (unsigned)(bucket_count - 1));
+    for (int j = frame->match_heads[bucket]; j >= 0; j = frame->match_next[j]) {
+        if (frame->last.items[j].key != key) {
+            continue; // hash collision, not the same element
+        }
+        int distance = j >= start ? j - start : frame->last.count - start + j;
+        if (distance < best_distance) {
+            best = j;
+            best_distance = distance;
+            if (distance == 0) {
+                break;
+            }
+        }
+    }
+    return best;
+}
+
+// The damage: what appeared, disappeared, changed or moved compared with the
+// previous frame (surface content comes from commits). Then `current` becomes
+// `last`.
 static void diff_with_last(struct vela_output_frame *frame)
 {
     struct vela_elements *current = &frame->current;
     struct vela_elements *last = &frame->last;
     pixman_region32_t changed;
     pixman_region32_init(&changed);
-    // Which earlier elements are found now; the search starts where they're
-    // expected (usually the order doesn't change).
     frame->found = vela_grow(frame->found, &frame->found_capacity, last->count, sizeof(*frame->found));
     bool *found = frame->found;
     if (last->count > 0) {
         memset(found, 0, (size_t)last->count * sizeof(*found));
     }
+    int bucket_count = 0;
     int highest_old_order = 0;
     for (int i = 0; i < current->count; ++i) {
         struct vela_element *e = &current->items[i];
         e->order = i;
-        const struct vela_element *old = NULL;
-        for (int k = 0; k < last->count; ++k) {
-            int j = (i + k) % last->count;
-            if (last->items[j].key == e->key) {
-                old = &last->items[j];
-                found[j] = true;
-                break;
+        int j = -1;
+        if (i < last->count && last->items[i].key == e->key) {
+            j = i;
+        } else if (last->count > 0) {
+            if (bucket_count == 0) {
+                bucket_count = diff_build_index(frame);
             }
+            j = diff_lookup_old(frame, e->key, i, bucket_count);
+        }
+        const struct vela_element *old = NULL;
+        if (j >= 0) {
+            old = &last->items[j];
+            found[j] = true;
         }
         if (!old) {
             union_box(&changed, &e->box);
@@ -1125,6 +1227,9 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
     if (!damaged && !output->needs_frame && !pending) {
         return false;
     }
+    // A failed replacement commit must leave the last delivered state intact.
+    // In particular, scanout and tearing are still active on the output.
+    const struct vela_frame_delivered previous_delivery = frame->delivered;
     frame->delivered = (struct vela_frame_delivered) { 0, -1, false, false };
 
     // The commit's state: the caller's (mode change, drawn at once at the new
@@ -1161,23 +1266,20 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
         return true;
     }
     if (frame->scanout) {
-        // Back to compositing: our buffers haven't seen the scanout frames,
-        // they're redrawn whole.
-        wlr_log(WLR_INFO, "%s: direct scanout off", output->name);
-        frame->scanout = false;
-        if (frame->tearing) {
-            wlr_log(WLR_INFO, "%s: tearing off", output->name);
-            frame->tearing = false;
-        }
+        // Our swapchain is stale after scanout. Render a full replacement
+        // but only report leaving scanout after a successful output commit.
+        // On failure the damage remains pending for the next attempt.
         union_box(&frame->scene_damage, &whole);
     }
 
     if (!wlr_output_configure_primary_swapchain(output, state, &output->swapchain)) {
+        frame->delivered = previous_delivery;
         wlr_output_state_finish(&own);
         return false;
     }
     struct wlr_buffer *buffer = wlr_swapchain_acquire(output->swapchain);
     if (!buffer) {
+        frame->delivered = previous_delivery;
         wlr_output_state_finish(&own);
         return false;
     }
@@ -1243,7 +1345,16 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
         // VELA_STATS=1: how long a commit with a new gamma LUT holds the
         // compositor (on amdgpu it waits for every output's flips).
         int64_t commit_start = frame->night_commit_pending ? vela_now_ns() : 0;
-        ok = wlr_output_commit_state(output, state);
+        // Deterministic fault injection for the GPU functional suite. The
+        // opt-in marker is only honored on a headless test compositor.
+        const char *fail_commit = getenv("VELA_TEST_FAIL_COMPOSE_COMMIT_FILE");
+        if (wlr_output_is_headless(output) && vela_env_one("VELA_TEST_FAULTS")
+            && fail_commit && *fail_commit && access(fail_commit, F_OK) == 0) {
+            wlr_log(WLR_INFO, "%s: injected composed commit failure", output->name);
+            ok = false;
+        } else {
+            ok = wlr_output_commit_state(output, state);
+        }
         if (commit_start && vela_env_flag("VELA_STATS")) {
             wlr_log(WLR_INFO, "%s: commit with a gamma LUT: %.2f ms", output->name,
                 (double)(vela_now_ns() - commit_start) / 1e6);
@@ -1289,8 +1400,19 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
     }
     wlr_buffer_unlock(buffer);
     wlr_output_state_finish(&own);
+    if (ok && frame->scanout) {
+        // The output only leaves direct scanout after a composed commit
+        // succeeds (including a successful gamma-fallback retry).
+        wlr_log(WLR_INFO, "%s: direct scanout off", output->name);
+        frame->scanout = false;
+        if (frame->tearing) {
+            wlr_log(WLR_INFO, "%s: tearing off", output->name);
+            frame->tearing = false;
+        }
+    }
     if (!ok) {
         // The frame didn't reach the output: its damage must be redrawn.
+        frame->delivered = previous_delivery;
         wlr_damage_ring_add(&frame->ring, &frame_damage);
     }
     if (color_commit_failed) {
@@ -1321,6 +1443,10 @@ static const struct vela_element *scanout_candidate(struct vela_output_frame *fr
 {
     // VELA_SCANOUT=0: always composite (diagnostics, comparisons).
     if (vela_env_off("VELA_SCANOUT")) {
+        return NULL;
+    }
+    if (!frame->scene->allow_scanout) {
+        note_scanout_reason(frame, "turned off in vela.conf (direct-scanout=no)");
         return NULL;
     }
     const char *reason = NULL;

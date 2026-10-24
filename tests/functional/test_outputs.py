@@ -11,7 +11,7 @@ import signal
 import subprocess
 import unittest
 
-from harness import BUILD, Session
+from harness import BUILD, Session, tool
 
 
 class Outputs(unittest.TestCase):
@@ -25,6 +25,59 @@ class Outputs(unittest.TestCase):
     def add_second(self):
         self.vela.command("test-output add 1920x1080")
         return self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two outputs")
+
+    def open_transient_pair(self, maximized=False):
+        # The child is a real xdg_toplevel with set_parent, NOT an xdg_popup.
+        # Wait for the mapped parent before moving it during the delay.
+        options = [tool("vela-pattern"), "--transient-delay", "4000"]
+        if maximized:
+            options.append("--transient-maximized")
+        options += ["360", "260"]
+        parent = self.vela.open_window(command=options)
+        return parent
+
+    def move_window_to_second(self, window, output):
+        start = self.vela.state().window(window)
+        grab_x, grab_y = start["x"] + 50, start["y"] + 50
+        target_x, target_y = output["x"] + 200, output["y"] + 200
+        self.vela.input("move", grab_x, grab_y, "keydown", "super", "down", "sleep", "50",
+                        "move", (grab_x + target_x) // 2, (grab_y + target_y) // 2, "sleep", "50",
+                        "move", target_x, target_y, "sleep", "100", "up", "keyup", "super")
+        self.vela.wait_for(lambda s: s.window(window)["output"] == "HEADLESS-2",
+                           what="transient parent moved to output B")
+
+    def child_of(self, parent):
+        state = self.vela.wait_for(
+            lambda s: any(w["id"] != parent for w in s.windows),
+            timeout=10, what="mapped XDG transient child")
+        child = next(w["id"] for w in state.windows if w["id"] != parent)
+        return state, child
+
+    def test_transient_follows_parent_not_cursor_and_uses_output_scale(self):
+        state = self.add_second()
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        parent = self.open_transient_pair()
+        self.move_window_to_second(parent, second)
+        # Leave the pointer on A: a child must still map on its parent's B.
+        self.vela.input("move", 100, 100)
+        state, child = self.child_of(parent)
+        self.assertEqual(state.window(child)["output"], "HEADLESS-2")
+        dialog = state.window(child)
+        self.assertGreaterEqual(dialog["x"], second["x"])
+        self.assertLessEqual(dialog["x"] + dialog["w"], second["x"] + second["w"])
+
+    def test_initially_maximized_transient_uses_parent_output_dimensions(self):
+        state = self.add_second()
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        parent = self.open_transient_pair(maximized=True)
+        self.move_window_to_second(parent, second)
+        self.vela.input("move", 100, 100)
+        state, child = self.child_of(parent)
+        dialog = state.window(child)
+        self.assertEqual(dialog["output"], "HEADLESS-2")
+        self.assertTrue(dialog["maximized"])
+        self.assertEqual((dialog["x"], dialog["y"], dialog["w"], dialog["h"]),
+                         (second["x"], second["y"], second["w"], second["h"]))
 
     def test_hotplug_with_its_own_scale(self):
         state = self.add_second()

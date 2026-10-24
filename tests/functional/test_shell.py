@@ -11,6 +11,7 @@ from contextlib import contextmanager
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import time
@@ -35,6 +36,7 @@ class RealShell(unittest.TestCase):
     """The real Qt desktop on a headless output: its setup, no tests."""
 
     wallpaper = GRADIENT
+    compositor_env = {} # more for the compositor (fake monitors, test_brightness.py)
 
     def setUp(self):
         self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
@@ -44,7 +46,7 @@ class RealShell(unittest.TestCase):
         self.assertTrue(address, "private D-Bus session failed to start")
         self.vela = Session(size="1920x1080@100", env={
             "VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"), "DBUS_SESSION_BUS_ADDRESS": address,
-            "VELA_DEBUG_ANIMATION": "1"})
+            "VELA_DEBUG_ANIMATION": "1", **self.compositor_env})
         self.vela.start()
         self.addCleanup(self.vela.stop)
         # Snips and desktop files must stay in this isolated test session.
@@ -53,6 +55,8 @@ class RealShell(unittest.TestCase):
         os.makedirs(pictures)
         os.makedirs(desktop)
         os.makedirs(self.vela.env["XDG_CONFIG_HOME"], exist_ok=True)
+        # Config watches this directory for atomic preference updates.
+        os.makedirs(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela"), exist_ok=True)
         with open(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "user-dirs.dirs"), "w") as file:
             file.write(f'XDG_PICTURES_DIR="{pictures}"\nXDG_DESKTOP_DIR="{desktop}"\n')
         wallpaper = os.path.join(self.vela.directory, "wallpaper.svg")
@@ -159,6 +163,53 @@ class QtShell(RealShell):
 
         self.vela.wait_for(settled, timeout=8, read_state=False, what="wallpaper loaded and stationary")
         return last
+
+
+    def test_selected_primary_controls_run_dialog_and_notification_remap(self):
+        """The real Qt layers follow the selected output across off/on."""
+        if not shutil.which("gdbus"):
+            self.skipTest("gdbus required for desktop notification")
+
+        self.secondary_output(transform="normal", side="right")
+        conf_path = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+        with open(conf_path, "w") as conf:
+            conf.write("[display]\nprimaryOutput=HEADLESS-2\n")
+        # Allow Config's QFileSystemWatcher/debounce to deliver the update.
+        time.sleep(0.5)
+
+        self.vela.keys("super+r")
+        self.vela.wait_for(
+            lambda s: (layer := self.layer(s, "vela-run")) and layer["output"] == "HEADLESS-2",
+            timeout=8, what="Run dialog on explicitly selected output")
+        self.vela.keys("Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
+
+        subprocess.run([
+            "gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
+            "--object-path", "/org/freedesktop/Notifications",
+            "--method", "org.freedesktop.Notifications.Notify",
+            "Vela functional test", "0", "", "Hotplug notification",
+            "Must remain actionable after remapping", "['default', 'Open']", "{}", "120000",
+        ], env=self.vela.client_env, check=True, capture_output=True, text=True, timeout=8)
+        self.vela.wait_for(
+            lambda s: (layer := self.layer(s, "vela-notifications")) and layer["output"] == "HEADLESS-2",
+            timeout=8, what="popup on explicitly selected output")
+
+        self.vela.randr("--output", "HEADLESS-2", "--off")
+        self.vela.wait_for(
+            lambda s: (layer := self.layer(s, "vela-notifications")) and layer["output"] == "HEADLESS-1",
+            timeout=8, what="existing popup remapped to fallback")
+        self.vela.randr("--output", "HEADLESS-2", "--on")
+        state = self.vela.wait_for(
+            lambda s: (layer := self.layer(s, "vela-notifications")) and layer["output"] == "HEADLESS-2",
+            timeout=8, what="existing popup remapped back to preferred")
+        popup = self.layer(state, "vela-notifications")
+        # The existing QML delegate must retain its default action after remap.
+        self.vela.input("move", popup["x"] + 75, popup["y"] + 55,
+                        "sleep", 100, "click", "left")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-notifications"),
+                           timeout=8, what="notification action dismissed the popup")
+        self.check_desktop()
 
     def test_desktop_selection_matches_coordinates_on_transformed_outputs(self):
         """Growing, shrinking and releasing the band must preserve its coordinates on every transform."""

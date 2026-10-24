@@ -6,6 +6,7 @@
 // times and the wlr_renderer wlroots sees.
 
 #include "render/render.h"
+#include "render/wait_arrays.h"
 #include "sync.h"
 
 #include "util.h"
@@ -501,6 +502,13 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
     return target;
 }
 
+// A successful GBM allocation alone is not proof that Vela can render into
+// the BO. This runs the same import path used by the first Vulkan render pass.
+bool vela_renderer_validate_target(struct vela_renderer *renderer, struct wlr_buffer *buffer)
+{
+    return renderer && buffer && vela_renderer_target(renderer, buffer) != NULL;
+}
+
 // ----------------------------------------------------- command buffers --
 
 VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *r)
@@ -548,10 +556,10 @@ VkCommandBuffer vela_renderer_upload_commands(struct vela_renderer *r)
 
 // ------------------------------------------------------------- staging --
 
-static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDeviceSize size)
+static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDeviceSize size, bool readback)
 {
     VkDevice device = r->vk->device;
-    struct staging_chunk chunk = { .size = size };
+    struct staging_chunk chunk = { .size = size, .readback = readback };
     const VkBufferCreateInfo buffer_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = chunk.size,
@@ -563,16 +571,43 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
     }
     VkMemoryRequirements requirements;
     vkGetBufferMemoryRequirements(device, chunk.buffer, &requirements);
-    uint32_t type = vela_vulkan_memory_type(r->vk, requirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    const VkMemoryAllocateInfo alloc_info = {
+    const VkMemoryPropertyFlags host = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    // Reading uncached memory goes at a fraction of the speed: a 1440p
+    // capture took longer than a frame at 180 Hz, and the output missed
+    // frames for as long as anyone recorded it.
+    uint32_t cached = readback
+        ? vela_vulkan_memory_type(r->vk, requirements.memoryTypeBits, host | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
+        : UINT32_MAX;
+    uint32_t type = cached;
+    VkMemoryAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = requirements.size,
         .memoryTypeIndex = type,
     };
-    if (type == UINT32_MAX || vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory) != VK_SUCCESS) {
+    bool allocated = type != UINT32_MAX && vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory) == VK_SUCCESS;
+    if (!allocated) {
+        // A compatible cached type can still fail to allocate (e.g. heap
+        // pressure). Try a different host-visible type before giving up.
+        uint32_t fallback_bits = requirements.memoryTypeBits;
+        if (cached != UINT32_MAX) {
+            fallback_bits &= ~(1u << cached);
+        }
+        type = vela_vulkan_memory_type(r->vk, fallback_bits, host);
+        if (type != UINT32_MAX) {
+            alloc_info.memoryTypeIndex = type;
+            allocated = vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory) == VK_SUCCESS;
+        }
+    }
+    if (!allocated) {
         vkDestroyBuffer(device, chunk.buffer, NULL);
         return NULL;
+    }
+    if (readback) {
+        VkPhysicalDeviceMemoryProperties props;
+        vkGetPhysicalDeviceMemoryProperties(r->vk->physical, &props);
+        if (!(props.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+            wlr_log(WLR_INFO, "Vulkan readback staging: uncached fallback (capture performance may be reduced)");
+        }
     }
     vkBindBufferMemory(device, chunk.buffer, chunk.memory, 0);
     void *mapped = NULL;
@@ -583,7 +618,7 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
     return &r->staging[r->staging_count++];
 }
 
-bool vela_renderer_stage(struct vela_renderer *r, VkDeviceSize size, struct vela_staging *out)
+static bool stage(struct vela_renderer *r, VkDeviceSize size, bool readback, struct vela_staging *out)
 {
     size = (size + 15) & ~(VkDeviceSize)15;
     uint64_t done = vela_renderer_completed(r);
@@ -592,19 +627,19 @@ bool vela_renderer_stage(struct vela_renderer *r, VkDeviceSize size, struct vela
     // reading, otherwise a new one.
     for (int i = 0; i < r->staging_count && !chosen; ++i) {
         struct staging_chunk *chunk = &r->staging[i];
-        if (chunk->point == UINT64_MAX && chunk->size - chunk->used >= size) {
+        if (chunk->readback == readback && chunk->point == UINT64_MAX && chunk->size - chunk->used >= size) {
             chosen = chunk;
         }
     }
     for (int i = 0; i < r->staging_count && !chosen; ++i) {
         struct staging_chunk *chunk = &r->staging[i];
-        if (chunk->point != UINT64_MAX && chunk->point <= done && chunk->size >= size) {
+        if (chunk->readback == readback && chunk->point != UINT64_MAX && chunk->point <= done && chunk->size >= size) {
             chunk->used = 0;
             chosen = chunk;
         }
     }
     if (!chosen) {
-        chosen = new_staging_chunk(r, size > STAGING_CHUNK_SIZE ? size : STAGING_CHUNK_SIZE);
+        chosen = new_staging_chunk(r, size > STAGING_CHUNK_SIZE ? size : STAGING_CHUNK_SIZE, readback);
         if (!chosen) {
             return false;
         }
@@ -615,6 +650,16 @@ bool vela_renderer_stage(struct vela_renderer *r, VkDeviceSize size, struct vela
     out->data = chosen->data + chosen->used;
     chosen->used += size;
     return true;
+}
+
+bool vela_renderer_stage(struct vela_renderer *r, VkDeviceSize size, struct vela_staging *out)
+{
+    return stage(r, size, false, out);
+}
+
+bool vela_renderer_stage_readback(struct vela_renderer *r, VkDeviceSize size, struct vela_staging *out)
+{
+    return stage(r, size, true, out);
 }
 
 // ---------------------------------------------------------- submission --
@@ -683,11 +728,9 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
     };
 
     // Kernel fences (sync_files) become semaphores the GPU waits for.
-    if (wait_count > r->wait_capacity) {
-        r->wait_infos = realloc(r->wait_infos, (size_t)wait_count * sizeof(*r->wait_infos));
-        r->wait_semaphores = realloc(r->wait_semaphores, (size_t)wait_count * sizeof(*r->wait_semaphores));
-        r->wait_capacity = wait_count;
-    }
+    // Both buffers grow independently; on OOM vela_grow fails fast.
+    vela_wait_arrays_reserve(&r->wait_infos, &r->wait_infos_capacity,
+        &r->wait_semaphores, &r->wait_semaphores_capacity, wait_count);
     uint32_t waits = 0;
     bool inputs_ready = true;
     for (int i = 0; i < wait_count; ++i) {
@@ -893,13 +936,13 @@ void vela_renderer_collect(struct vela_renderer *r)
     }
     r->retired_count = kept;
 
-    // Unused staging blocks: only a few are kept.
-    int idle = 0;
+    // Keep a few idle chunks of each kind, so uploads can't evict readback buffers.
+    int idle[2] = { 0 };
     kept = 0;
     for (int i = 0; i < r->staging_count; ++i) {
         struct staging_chunk chunk = r->staging[i];
         bool unused = chunk.point != UINT64_MAX && chunk.point <= done;
-        if (unused && ++idle > IDLE_STAGING_CHUNKS_KEPT) {
+        if (unused && ++idle[chunk.readback] > IDLE_STAGING_CHUNKS_KEPT) {
             vkDestroyBuffer(device, chunk.buffer, NULL);
             vkFreeMemory(device, chunk.memory, NULL);
             continue;

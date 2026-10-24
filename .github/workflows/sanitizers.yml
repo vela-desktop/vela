@@ -62,7 +62,7 @@ jobs:
           libxkbcommon pixman libinput libdrm mesa freetype2 harfbuzz
           fontconfig librsvg cairo zlib pam polkit qt6-base qt6-declarative
           qt6-svg qt6-wayland qt6-tools layer-shell-qt hicolor-icon-theme
-          pipewire wireplumber
+          pipewire wireplumber systemd-libs
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -107,7 +107,7 @@ jobs:
           ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180 --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-ctest.xml" -LE gpu -E "$exclude"
       - name: Upload sanitizer test timings
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sanitizer-ctest-results
           path: build-sanitized/sanitizer-ctest.xml
@@ -115,7 +115,7 @@ jobs:
           retention-days: 7
       - name: Save failed test logs
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sanitizer-ctest-logs
           path: build-sanitized/Testing/Temporary/

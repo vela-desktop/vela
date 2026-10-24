@@ -220,6 +220,9 @@ void Preferences::reloadCompositor()
     m_nightTo = value(QStringLiteral("night-light-to"), QStringLiteral("07:00"));
     m_tearing = flag(QStringLiteral("tearing"), true);
     m_vrr = value(QStringLiteral("variable-refresh"), QStringLiteral("games"));
+    // "yes" is a compatibility alias for "auto"; there is no force-on mode.
+    const QString scanoutMode = value(QStringLiteral("direct-scanout"), QStringLiteral("auto"));
+    m_directScanout = scanoutMode == QLatin1String("no") ? QStringLiteral("no") : QStringLiteral("auto");
     m_colorFilter = flag(QStringLiteral("color-filters"), false);
     m_colorFilterKind = value(QStringLiteral("color-filter"), QStringLiteral("grayscale"));
     m_colorFilterShortcut = flag(QStringLiteral("color-filters-shortcut"), false);
@@ -256,29 +259,39 @@ QString Preferences::compositorValue(const QString& key) const
 
 void Preferences::queryCompositor()
 {
-    // What isn't in the file: the magnifier (it opens and closes) and sun
-    // times.
+    // Query the actual compositor process: Settings may not inherit its
+    // environment (VELA_SCANOUT=0 is a session-level override).
     const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
-    QLocalSocket socket;
-    socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
-    if (!socket.waitForConnected(200)) {
-        return;
+    const QString socketPath = runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock");
+    auto query = [&socketPath](const QByteArray& command) -> QJsonObject {
+        QLocalSocket socket;
+        socket.connectToServer(socketPath);
+        if (!socket.waitForConnected(200)) {
+            return {};
+        }
+        socket.write(command + '\n');
+        if (!socket.waitForBytesWritten(200)) {
+            return {};
+        }
+        QByteArray reply;
+        while (!reply.contains('\n') && socket.waitForReadyRead(200)) {
+            reply += socket.readAll();
+        }
+        return QJsonDocument::fromJson(reply.trimmed()).object();
+    };
+
+    const QJsonObject state = query("accessibility");
+    if (!state.isEmpty()) {
+        m_magnifier = state[QStringLiteral("magnifier")].toBool();
+        m_hasTouchpad = state[QStringLiteral("touchpad")].toBool();
+        m_sunset = state[QStringLiteral("sunset")].toString();
+        m_sunrise = state[QStringLiteral("sunrise")].toString();
     }
-    socket.write("accessibility\n");
-    socket.waitForBytesWritten(200);
-    QByteArray reply;
-    while (!reply.contains('\n') && socket.waitForReadyRead(200)) {
-        reply += socket.readAll();
+    const QJsonObject policy = query("scanout-policy");
+    if (!policy.isEmpty()) {
+        m_scanoutOverridden = policy[QStringLiteral("envDisabled")].toBool();
     }
-    const QJsonObject state = QJsonDocument::fromJson(reply.trimmed()).object();
-    if (state.isEmpty()) {
-        return;
-    }
-    m_magnifier = state[QStringLiteral("magnifier")].toBool();
-    m_hasTouchpad = state[QStringLiteral("touchpad")].toBool();
-    m_sunset = state[QStringLiteral("sunset")].toString();
-    m_sunrise = state[QStringLiteral("sunrise")].toString();
 }
 
 void Preferences::setShell(const QString& key, const QVariant& value)
@@ -703,6 +716,15 @@ void Preferences::setVrr(const QString& mode)
     if (mode != m_vrr) {
         m_vrr = mode;
         saveCompositor({ { QStringLiteral("variable-refresh"), mode } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setDirectScanout(const QString& mode)
+{
+    if ((mode == QLatin1String("auto") || mode == QLatin1String("no")) && mode != m_directScanout) {
+        m_directScanout = mode;
+        saveCompositor({ { QStringLiteral("direct-scanout"), mode } });
         emit accessibilityChanged();
     }
 }
