@@ -240,8 +240,11 @@ about frame pacing (`maximize`) also give a strip of consecutive refreshes,
 before above and after below (`maximize-frames.png`), and say how many repeat
 the previous image. It needs
 a GPU, `dbus-daemon`, `ffmpeg`, PipeWire with WirePlumber and unprivileged
-user namespaces. Nothing personal reaches the videos: the text is in English,
-the sound devices are made up on a PipeWire of the session's own, and Settings
+user namespaces. Both the session and system D-Bus addresses point to the
+take's private bus; NetworkManager, BlueZ and other host services are not
+available to the shell, so real network names and device identities cannot
+appear in Quick Settings (those devices will show as unavailable). The text
+is in English, sound devices are made up on a private PipeWire, and Settings
 sees a user named Alex.
 
 For each take it prints the frames captured and the frames presented. Frames
