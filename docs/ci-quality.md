@@ -38,8 +38,38 @@ artifact into a separate fresh Arch container.
 runtime linking, and no required Plasma/GNOME Shell installation.
 This is a package smoke test, NOT a graphical login or Vulkan test.
 
+## Manual real-GPU CI (self-hosted AMD)
+
+[GPU CI - AMD (manual)](../.github/workflows/gpu-amd.yml) is **only**
+triggered via `workflow_dispatch`; no push or pull request starts it.
+The runner needs GitHub's standard `self-hosted`, `linux`, `x64` labels
+and an additional custom **`vela-amd`** label (a runner name alone does
+not supply this label). Register it under Settings → Actions → Runners.
+
+The CachyOS/Arch runner must have the normal
+[build dependencies](development.md#distribution-dependencies), plus
+`vulkan-tools`, `vulkan-radeon`, `python-numpy` and `python-pillow`.
+It must be able to access an AMD DRM render node and the RADV Vulkan 1.4
+driver. Install dependencies **on the host**, not inside the workflow;
+the workflow deliberately runs without `sudo` or host package upgrades.
+It uses a private XDG runtime directory and CMake build directory within
+the runner's temporary workspace, then runs the existing
+[GPU-labeled CTest suites](testing.md#run-everything)
+(functional, sharpness and sharpness-cpu). It rejects missing or skipped
+tests instead of reporting a false hardware pass, and uploads diagnostic
+logs and JUnit XML.
+
+After the workflow is present on the default branch, go to Actions →
+GPU CI - AMD (manual) → Run workflow to choose a **trusted** branch.
+Do not dispatch unreviewed pull request code on a persistent self-hosted
+runner: checkout, build scripts and tests execute code locally. Prefer
+a dedicated unprivileged runner account without access to personal files
+or secrets; never give the runner passwordless sudo. The GPU suite starts
+isolated headless Wayland sessions, not a physical DRM/KMS test.
+
 ## Prerequisites
 
-GitHub Actions must be enabled. No secrets or self-hosted runners are
-needed. Required check / branch protection policy is a separate optional
-admin setting.
+GitHub Actions must be enabled. The normal automatically triggered CI needs
+no self-hosted runner or secrets; the optional manual AMD GPU workflow requires
+the explicitly labeled local runner above. Required check / branch protection
+policy is a separate optional admin setting.
