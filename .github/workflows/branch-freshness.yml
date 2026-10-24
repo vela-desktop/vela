@@ -38,7 +38,7 @@ jobs:
             const targetUrl = context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId;
             const isIgnorable = path =>
               /^(README|CONTRIBUTING|SECURITY)\.md$/.test(path) ||
-              /^docs\/.+\.md$/.test(path);
+              path.startsWith('docs/');
             const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
             const publish = (sha, state, description) =>
               github.rest.repos.createCommitStatus({
