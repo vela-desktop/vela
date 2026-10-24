@@ -263,11 +263,35 @@ class Session:
         before = {w["id"] for w in self.state().windows}
         pattern = ([tool("vela-pattern")] + (["--app-id", app_id] if app_id else [])
                    + (["--decorated"] if decorated else []) + [str(width), str(height)])
-        client = subprocess.Popen(command or pattern, env=self.client_env,
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Preserve per-client output: GPU test tools can fail before their
+        # first Wayland surface is mapped, and DEVNULL hides the actual cause.
+        client_log_path = os.path.join(self.directory, f"client-{len(self.clients) + 1}.log")
+        with open(client_log_path, "w") as client_log:
+            client = subprocess.Popen(command or pattern, env=self.client_env,
+                                      stdout=client_log, stderr=subprocess.STDOUT)
         self.clients.append(client)
-        state = self.wait_for(lambda s: {w["id"] for w in s.windows} - before, timeout=timeout,
-                              what="a new window")
+
+        def client_output():
+            with open(client_log_path, errors="replace") as output:
+                return output.read()[-6000:] or "(no client output)"
+
+        def new_window(state):
+            new_ids = {w["id"] for w in state.windows} - before
+            if new_ids:
+                return new_ids
+            status = client.poll()
+            if status is not None:
+                raise AssertionError(
+                    f"client {command or pattern!r} exited with status {status} before mapping a window\n"
+                    f"--- client output ---\n{client_output()}")
+            return False
+
+        try:
+            state = self.wait_for(new_window, timeout=timeout, what="a new window")
+        except TimeoutError as error:
+            raise TimeoutError(
+                f"{error}\nclient {command or pattern!r} (pid={client.pid}, exit={client.poll()})"
+                f"\n--- client output ---\n{client_output()}") from error
         identifier = next(iter({w["id"] for w in state.windows} - before))
         self.wait_still(identifier) # the opening animation is over (it rises a few pixels)
         return identifier
