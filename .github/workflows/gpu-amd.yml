@@ -117,6 +117,15 @@ jobs:
           if not cases:
               print("::error::No GPU tests were executed")
               sys.exit(1)
+
+          names = {case.attrib.get("name", "") for case in cases}
+          missing = [name for name in ("sharpness", "sharpness-cpu")
+                     if name not in names]
+          if not any(name.startswith("functional-") for name in names):
+              missing.append("functional-*")
+          if missing:
+              print("::error::Required GPU suites missing: " + ", ".join(missing))
+              sys.exit(1)
           if skipped:
               print("::error::GPU tests skipped: " + ", ".join(skipped))
               sys.exit(1)
