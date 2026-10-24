@@ -1,24 +1,24 @@
 {
-  "collected_at": "2026-10-23T08:32:02+00:00",
+  "collected_at": "2026-10-24T08:07:14+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 432,
+      "count": 438,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
       "uniques": 9
     },
     {
-      "count": 210,
+      "count": 217,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 166
+      "uniques": 169
     },
     {
-      "count": 63,
+      "count": 65,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 11
+      "uniques": 12
     },
     {
       "count": 39,
@@ -39,7 +39,7 @@
       "uniques": 2
     },
     {
-      "count": 21,
+      "count": 23,
       "path": "/vela-desktop/vela/issues/50",
       "title": "/issues/50",
       "uniques": 5
