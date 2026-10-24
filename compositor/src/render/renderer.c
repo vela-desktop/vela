@@ -239,6 +239,13 @@ static void destroy(struct vela_renderer *r)
     VkDevice device = r->vk->device;
     if (device) {
         vkDeviceWaitIdle(device);
+        // Waiting for the GPU does not submit pending SHM uploads. Discard
+        // every recorded command before their referenced images are freed.
+        // The renderer is closing, so none of these commands may run again.
+        if (r->pool) {
+            vkResetCommandPool(device, r->pool, 0);
+            r->upload = VK_NULL_HANDLE;
+        }
     }
     vela_renderer_collect(r);
 
