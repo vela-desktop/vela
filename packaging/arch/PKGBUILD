@@ -28,16 +28,16 @@ depends=(
     'freetype2' 'harfbuzz' 'fontconfig' 'librsvg' 'cairo'
     'qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'layer-shell-qt'
     'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland'
+    # Desktop defaults (KDE portal currently brings plasma-workspace transitively).
+    'konsole' 'breeze-icons' 'xdg-desktop-portal' 'xdg-desktop-portal-kde' 'xdg-desktop-portal-wlr' 'xdg-utils'
+    # Runtime requirements of vela-update; build toolchain is installed on demand.
+    'git' 'curl' 'sudo' 'util-linux'
     'pipewire' 'wireplumber'
     'systemd-libs' # sd-bus: the laptop backlight through logind (docs/brightness.md §5.3)
 )
-makedepends=('git' 'cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols>=1.37' 'qt6-tools' 'qt6-multimedia')
+makedepends=('cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols>=1.37' 'qt6-tools' 'qt6-multimedia')
 optdepends=(
     'cosign: verify downloaded prebuilt package attestations without gh'
-    'xdg-desktop-portal-wlr: screen sharing'
-    'xdg-desktop-portal-kde: file chooser and other portals for apps'
-    'breeze-icons: Vela icons (breeze and breeze-dark)'
-    'plasma-workspace: light or dark colors for KDE apps'
     'networkmanager: network and Wi-Fi (quick settings and Settings)'
     'bluez: Bluetooth'
     'pipewire-pulse: sound for apps that still use PulseAudio'
@@ -45,10 +45,10 @@ optdepends=(
     'udisks2: unmounted drives in File Explorer'
     'kimageformats: AVIF, HEIF, JPEG XL and other pictures in File Explorer (thumbnails, quick preview)'
     'qt6-multimedia: videos and sounds in the File Explorer quick preview'
-    'xdg-utils: share by email, default apps'
     'kdeconnect: share with your phone'
-    'bluedevil: share via Bluetooth'
-    'konsole: the terminal (Super+Enter)'
+    'bluedevil: share via Bluetooth (requires bluez-obex for transfers)'
+    'bluez-obex: OBEX service for Bluetooth file transfers'
+    'github-cli: optional authenticated GitHub Actions artifact retrieval'
 )
 provides=('vela')
 conflicts=('vela')
