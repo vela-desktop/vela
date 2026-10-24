@@ -28,6 +28,12 @@ option(VELA_BUILD_TOOLS "Build the test tools (vela-screen-dump, vela-windows, v
 if(VELA_BUILD_TOOLS)
     enable_testing()
     find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
+    if(Python3_VERSION VERSION_GREATER_EQUAL "3.11")
+        add_test(NAME benchmark-core COMMAND ${Python3_EXECUTABLE} -m unittest discover
+            -s ${PROJECT_SOURCE_DIR}/benchmarks/tests -v)
+        set_tests_properties(benchmark-core PROPERTIES
+            ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/benchmarks" TIMEOUT 30)
+    endif()
     add_test(NAME packaging-update COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/packaging/tests -v)
     set_tests_properties(packaging-update PROPERTIES TIMEOUT 120)

@@ -2,6 +2,30 @@
 
 Vela measures *observable* behavior rather than treating low memory use or high frame rate as substitutes for visual quality. This page explains the scope of the numbers in the [README](../README.md#performance).
 
+The [automated benchmark suite design](benchmark-suite.md) proposes one
+unattended campaign for desktop comparisons and Vela-version regressions.
+It covers responsiveness, motion, slow applications, fractional scaling and
+desktop overhead. P0 instrument and recovery qualification passed on the
+initial Vela/Plasma machine on 2026-10-22, including independent calibrations,
+coarse capture and crash/hang recovery with verified hardware restoration.
+The common campaign executor and checkpoint/resume are implemented, with
+an instrument-only `--exercise` mode for phase/repetition acceptance. P1's
+campaign-core acceptance also passed on that setup on 2026-10-22: four blocks
+across two phases in fast mode and six blocks in normal mode, with verified
+restoration. P2 now implements native-client responsiveness, animation and
+paired GPU-producer measurements, with warm-up exclusions, raw audits and
+independent-block statistics. A six-block real-TTY P2 fast campaign passed
+on that machine, including raw-data audits and restoration; normal
+three-repetition acceptance was deferred by the operator. P3 adds verified
+native launcher/window/desktop actions through coarse output capture, with
+isolated Vela/KWin tests and initial-machine real-TTY fast acceptance passed.
+P3 responsiveness and motion passed in separate campaigns with different scene
+builds; these are functional checks, not repeated comparative measurements.
+The GPU producer's achieved median
+durations were approximately 77–89 ms rather than the requested 150 ms,
+within the current declared tolerance. Full family coverage and comparative claims remain
+incomplete. There are no new published comparative results.
+
 ## Existing published observations
 
 The README previously reported, from the primary development machine (Ryzen 9 9950X, Radeon RX 9070 XT, CachyOS with Mesa/RADV):

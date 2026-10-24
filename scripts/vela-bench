@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""Source-tree CLI; read-only commands need no installation or elevated access."""
+
+from pathlib import Path
+import sys
+
+if sys.version_info < (3, 11):
+    sys.exit("vela-bench requires Python 3.11 or newer (standard library only)")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "benchmarks"))
+from vela_bench.cli import main
+
+sys.exit(main())
