@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Re-evaluate every open PR whenever main moves, not only when its head moves.
+# Do not check out or execute PR code: pull_request_target may run for forks.
+name: Path-aware branch freshness
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: branch-freshness-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    name: Check relevant base changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recheck affected pull requests
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const statusContext = 'branch-freshness/relevant-base';
+            // Ignore only prose documentation. Never ignore CI, build scripts,
+            // dependencies or executable content, even inside docs/.
+            const isIgnorable = (path) =>
+              /^(README|CONTRIBUTING|SECURITY)\.md$/.test(path) ||
+              /^docs\/.*\.md$/.test(path);
+
+            const prs = context.eventName === 'pull_request_target'
+              ? [context.payload.pull_request]
+              : await github.paginate(github.rest.pulls.list, {
+                  owner, repo, state: 'open', base: 'main', per_page: 100
+                });
+
+            let errors = 0;
+            for (const pr of prs) {
+              if (pr.state !== 'open' || pr.base.ref !== 'main') continue;
+              let state = 'error';
+              let description = 'Unable to verify freshness; update branch or retry';
+              try {
+                // This compares changes made on main since the common ancestor,
+                // excluding commits that exist only on the pull request branch.
+                const diff = await github.rest.repos.compareCommits({
+                  owner, repo, base: pr.head.sha, head: pr.base.sha
+                });
+                const behind = diff.data.ahead_by;
+                const files = diff.data.files;
+                if (behind === 0) {
+                  state = 'success';
+                  description = 'Branch is current with main';
+                } else if (!Array.isArray(files) || files.length >= 300) {
+                  state = 'failure';
+                  description = 'Base diff too large to verify; update branch';
+                } else {
+                  const relevant = files.filter(file =>
+                    !isIgnorable(file.filename) ||
+                    (file.previous_filename && !isIgnorable(file.previous_filename))
+                  );
+                  if (relevant.length === 0) {
+                    state = 'success';
+                    description = 'Only documentation changed on main';
+                  } else {
+                    state = 'failure';
+                    description = `Update branch: ${relevant.length} relevant file(s) changed on main`;
+                  }
+                }
+              } catch (error) {
+                core.error(`PR #${pr.number}: ${error.message}`);
+                errors++;
+              }
+              try {
+                await github.rest.repos.createCommitStatus({
+                  owner, repo, sha: pr.head.sha, state,
+                  context: statusContext, description: description.slice(0, 140),
+                  target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`
+                });
+                core.info(`PR #${pr.number}: ${state}: ${description}`);
+              } catch (error) {
+                errors++;
+                core.error(`Cannot publish PR #${pr.number} status: ${error.message}`);
+              }
+            }
+            if (errors) core.setFailed(`Could not evaluate/publish ${errors} status update(s)`);
