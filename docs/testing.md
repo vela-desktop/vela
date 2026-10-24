@@ -295,6 +295,10 @@ for CTest and verifies D-Bus on that exact interpreter before building. This
 prevents CMake from preferring another `~/.local/bin/python3.12` which cannot
 import the system-installed D-Bus bindings (as happened in AMD run 40130281376).
 The interactive `python3` on `PATH` may be different from CMake's selection.
+For CTest sharpness, `tests/functional/run.py` passes its interpreter to
+`scripts/test-sharpness.sh` through `VELA_TEST_PYTHON`, ensuring all NumPy/Pillow
+checks and pixel comparisons use that same interpreter. When run standalone,
+the shell script still defaults to `python3` from `PATH`.
 
 `state` also lists the layer-shell surfaces (`layers`: namespace, layer, keyboard interactivity, output) and the one with the keyboard (`focusedLayer`).
 
