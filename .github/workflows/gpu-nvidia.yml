@@ -66,6 +66,9 @@ jobs:
           echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
           echo "VELA_GPU_CI_STRICT=1" >> "$GITHUB_ENV"
           echo "VELA_GPU_EXPECT_VENDOR=0x10de" >> "$GITHUB_ENV"
+          # Thirty Vulkan teardown cycles with validation on actual NVIDIA hardware.
+          echo "VELA_SHUTDOWN_STRESS_CYCLES=30" >> "$GITHUB_ENV"
+          echo "VELA_SHUTDOWN_VALIDATE=1" >> "$GITHUB_ENV"
           export XDG_RUNTIME_DIR="$runtime" VK_DRIVER_FILES="$icd"
 
           # nvidia-smi alone is not enough: Vela needs an actual NVIDIA
