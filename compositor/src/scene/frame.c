@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <wlr/backend/drm.h>
 #include <wlr/backend/headless.h>
+#include <wlr/config.h>
 #include <wlr/render/color.h>
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/render/swapchain.h>
@@ -34,6 +35,10 @@
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
+
+#if WLR_HAS_XWAYLAND
+#include <wlr/xwayland/xwayland.h>
+#endif
 
 // ------------------------------------------------------------- helpers --
 
@@ -883,6 +888,16 @@ void vela_output_frame_surface_committed(struct vela_output_frame *frame, struct
     pixman_region32_t region;
     pixman_region32_init(&region);
     wlr_surface_get_effective_damage(surface, &region);
+#if WLR_HAS_XWAYLAND
+    // Xwayland flips a presented pixmap with only the Present update region
+    // as damage, which can be empty: nothing would be redrawn and the window
+    // kept its previous frame. A new buffer from X11 is damaged whole.
+    if (!pixman_region32_not_empty(&region) && (surface->current.committed & WLR_SURFACE_STATE_BUFFER)
+        && wlr_surface_state_has_buffer(&surface->current) && wlr_xwayland_surface_try_from_wlr_surface(surface)) {
+        pixman_region32_union_rect(&region, &region, 0, 0, (unsigned)surface->current.width,
+            (unsigned)surface->current.height);
+    }
+#endif
     if (pixman_region32_not_empty(&region)) {
         bool exact = e->scale_x == floor(e->scale_x) && e->scale_y == floor(e->scale_y)
             && e->origin_x == floor(e->origin_x) && e->origin_y == floor(e->origin_y);

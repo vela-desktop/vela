@@ -103,6 +103,13 @@ if(TOOLS_XCB_FOUND)
     target_link_libraries(vela-x11 PRIVATE PkgConfig::TOOLS_XCB)
     target_compile_options(vela-x11 PRIVATE -Wall -Wextra -Wno-unused-parameter)
 endif()
+# An X11 app that shows its frames with Present, like games, for the flip test.
+pkg_check_modules(TOOLS_XCB_PRESENT IMPORTED_TARGET xcb xcb-present xcb-xfixes)
+if(TOOLS_XCB_PRESENT_FOUND)
+    add_executable(vela-x11-present vela-x11-present.c)
+    target_link_libraries(vela-x11-present PRIVATE PkgConfig::TOOLS_XCB_PRESENT)
+    target_compile_options(vela-x11-present PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
 
 # An app with a slow GPU (tests/functional/test_ready.py): a Vulkan compute job
 # stands in for rendering and its fence comes late.

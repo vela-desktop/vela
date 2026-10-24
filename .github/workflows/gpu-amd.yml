@@ -1,0 +1,156 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Opt-in real-hardware GPU tests. Never run automatically on PRs or pushes.
+# The self-hosted runner must have the custom 'vela-amd' label.
+name: GPU CI - AMD (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vela-amd-gpu-manual
+  cancel-in-progress: false
+
+jobs:
+  gpu-amd:
+    name: RADV functional and sharpness tests
+    runs-on: [self-hosted, linux, x64, vela-amd]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout selected revision (without persisting credentials)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Use an isolated runtime directory rather than a user's Wayland session.
+      # Limit Vulkan discovery to AMD's RADV ICD to avoid a Lavapipe false pass.
+      - name: Qualify hardware Vulkan (AMD RADV >= 1.4)
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v vulkaninfo >/dev/null || { echo '::error::Install vulkan-tools'; exit 1; }
+          command -v python3 >/dev/null || { echo '::error::Install python'; exit 1; }
+          command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
+          command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
+          python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow'; exit 1; }
+
+          # Arch/CachyOS use radeon_icd.json; some distros use an x86_64 suffix.
+          icd=
+          for candidate in \
+            /usr/share/vulkan/icd.d/radeon_icd.json \
+            /usr/share/vulkan/icd.d/radeon_icd.x86_64.json; do
+            if [[ -f "$candidate" ]]; then
+              icd="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$icd" ]]; then
+            echo '::error::RADV Vulkan ICD manifest not found; check vulkan-radeon installation'
+            exit 1
+          fi
+          echo "Using RADV ICD manifest: $icd"
+          runtime="$RUNNER_TEMP/vela-amd-xdg"
+          mkdir -p "$runtime"
+          chmod 700 "$runtime"
+          echo "XDG_RUNTIME_DIR=$runtime" >> "$GITHUB_ENV"
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          export XDG_RUNTIME_DIR="$runtime" VK_DRIVER_FILES="$icd"
+
+          if ! compgen -G '/dev/dri/renderD*' >/dev/null; then
+            echo '::error::No DRM render node under /dev/dri'
+            exit 1
+          fi
+
+          vulkaninfo --summary | tee "$RUNNER_TEMP/vela-amd-vulkan.txt"
+          python3 - "$RUNNER_TEMP/vela-amd-vulkan.txt" <<'PY'
+          import re
+          import sys
+
+          report = open(sys.argv[1], encoding="utf-8").read()
+          devices = re.split(r"(?m)^\s*GPU\d+:\s*$", report)[1:]
+          for device in devices:
+              vendor = re.search(r"(?m)^\s*vendorID\s*=\s*0x1002\b", device)
+              version = re.search(r"(?m)^\s*apiVersion\s*=\s*(\d+)\.(\d+)", device)
+              radv = re.search(r"(?m)^\s*driverID\s*=\s*DRIVER_ID_MESA_RADV\b", device)
+              if vendor and radv and version and tuple(map(int, version.groups())) >= (1, 4):
+                  print("Hardware AMD RADV with Vulkan >= 1.4 confirmed.")
+                  break
+          else:
+              print("::error::No AMD RADV Vulkan >= 1.4 device found", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Configure Vela with GPU tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B "$RUNNER_TEMP/vela-gpu-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DVELA_BUILD_COMPOSITOR=ON \
+            -DVELA_BUILD_SHELL=ON \
+            -DVELA_BUILD_TOOLS=ON \
+            -DVELA_BUILD_GPU_TEST_TOOLS=ON
+
+      - name: Build exact checked-out revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          jobs="$(nproc)"
+          if (( jobs > 8 )); then jobs=8; fi
+          cmake --build "$RUNNER_TEMP/vela-gpu-build" --parallel "$jobs"
+
+      - name: Real GPU functional and sharpness suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \
+            -L '^gpu$' --output-on-failure \
+            --output-junit "$RUNNER_TEMP/vela-amd-junit.xml" \
+            | tee "$RUNNER_TEMP/vela-amd-ctest.log"
+
+      - name: Reject skipped or missing GPU tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/vela-amd-junit.xml" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          cases = list(ET.parse(sys.argv[1]).iter("testcase"))
+          skipped = [case.attrib.get("name", "<unnamed>")
+                     for case in cases if case.find("skipped") is not None]
+          if not cases:
+              print("::error::No GPU tests were executed")
+              sys.exit(1)
+
+          names = {case.attrib.get("name", "") for case in cases}
+          missing = [name for name in ("sharpness", "sharpness-cpu")
+                     if name not in names]
+          if not any(name.startswith("functional-") for name in names):
+              missing.append("functional-*")
+          if missing:
+              print("::error::Required GPU suites missing: " + ", ".join(missing))
+              sys.exit(1)
+          if skipped:
+              print("::error::GPU tests skipped: " + ", ".join(skipped))
+              sys.exit(1)
+          print(f"All {len(cases)} GPU CTest entries were executed (none skipped).")
+          PY
+
+      - name: Upload Vulkan and CTest diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vela-amd-gpu-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/vela-amd-vulkan.txt
+            ${{ runner.temp }}/vela-amd-ctest.log
+            ${{ runner.temp }}/vela-amd-junit.xml
+            ${{ runner.temp }}/vela-gpu-build/Testing/Temporary/LastTest.log
