@@ -50,9 +50,19 @@ by Vela against its sysfs PCI vendor in headless functional and sharpness
 sessions; passing `vulkaninfo` alone is not sufficient.
 
 Install all dependencies needed by the GPU scenarios, including Xwayland,
-`dbus-daemon`, `python-dbus` (the Python `dbus` module) and `gdbus` (from
-GLib), in addition to the normal build packages. Missing optional test
-prerequisites are an error in strict hardware CI, not a silent pass.
+`dbus-daemon`, `python-dbus` (the Python `dbus` module), `gdbus` (from
+GLib) and `VK_LAYER_KHRONOS_validation` (usually the
+`vulkan-validation-layers` package), in addition to the normal build packages.
+Missing optional test prerequisites are an error in strict hardware CI, not a
+silent pass.
+
+The dedicated GPU workflows set `VELA_SHUTDOWN_STRESS_CYCLES=30` and
+`VELA_SHUTDOWN_VALIDATE=1`. The shutdown functional tests repeat 30
+live-window logout cycles, check supervised exit without a compositor restart,
+and require Vulkan validation to be enabled during those tests. The validation
+check fails if the requested layer is missing. These are GPU-backed **headless**
+tests: passing them does not certify direct KMS, real display power cycling or
+Intel ANV. See [the physical hardware matrix](hardware.md#gpu-resource-cleanup-and-driver-regression-checks).
 
 ## Manual real-GPU CI (self-hosted AMD)
 
@@ -64,7 +74,7 @@ not supply this label). Register it under Settings → Actions → Runners.
 
 The CachyOS/Arch runner must have the normal
 [build dependencies](development.md#distribution-dependencies), plus
-`vulkan-tools`, `vulkan-radeon`, `python-numpy` and `python-pillow`.
+`vulkan-tools`, `vulkan-radeon`, `vulkan-validation-layers`, `python-numpy` and `python-pillow`.
 It must be able to access an AMD DRM render node and the RADV Vulkan 1.4
 driver. Install dependencies **on the host**, not inside the workflow;
 the workflow deliberately runs without `sudo` or host package upgrades.
@@ -92,8 +102,9 @@ The runner group must allow the public Vela repository to use it.
 
 The Arch/CachyOS runner needs the
 [normal build dependencies](development.md#distribution-dependencies),
-`vulkan-tools`, the proprietary NVIDIA Vulkan driver (including
-`nvidia-utils` and `nvidia-smi`), `python-numpy` and `python-pillow`.
+`vulkan-tools`, `vulkan-validation-layers`, the proprietary NVIDIA Vulkan
+driver (including `nvidia-utils` and `nvidia-smi`), `python-numpy` and
+`python-pillow`.
 Check with `nvidia-smi` and `vulkaninfo --summary` before dispatching;
 the NVIDIA driver and Vulkan device must support Vulkan 1.4 or newer.
 The workflow looks up the NVIDIA ICD manifest, restricts Vulkan device
