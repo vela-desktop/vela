@@ -88,16 +88,32 @@ regression on a particular driver: it restores the previous behavior where
 remaining Vulkan objects are left to process teardown. Do not enable this
 by default or describe the opt-out as a fix for the root cause.
 
-The functional suite includes a clean-exit assertion with a live client,
-shutdown after an output power cycle while locked, and the explicit opt-out.
-Before merging a change to teardown behavior, also verify on **AMD RADV,
-NVIDIA proprietary, and Intel ANV** as hardware becomes available:
+The functional suite checks shutdown with a live client, normal and supervised
+logout, repeated clean exits, output power-state changes while locked, and the
+explicit opt-out. Every cleanup test asserts the **completion** log, not merely
+the announcement that teardown is about to start. On dedicated GPU CI runners,
+`VELA_SHUTDOWN_STRESS_CYCLES=30 VELA_SHUTDOWN_VALIDATE=1` enables thirty
+consecutive exits and Vulkan validation for these scenarios. Ensure
+`VK_LAYER_KHRONOS_validation` is installed: the harness fails when requested
+validation cannot be enabled. AMD and NVIDIA self-hosted workflows still use
+the **headless** backend and cannot exercise connector power cycling.
 
-- Direct DRM session and nested Wayland/X11 session, each exiting cleanly.
-- Multiple successive login/logout cycles with a window open.
-- Lock, monitor power off/on, unlock, then logout without a GPU fault.
-- Check Vulkan validation, compositor exit code, kernel/Mesa journal, and
-  supervisor logs; shutdown must never be reported as a compositor crash.
+Before merging a change to teardown behavior, verify on **AMD RADV, NVIDIA
+proprietary, and Intel ANV** as hardware becomes available, and record
+driver/Mesa/kernel versions, session type, cycle count and pass/fail:
 
-These physical-hardware checks are separate from and not implied by a green CI
-run using a virtual/headless backend.
+- Direct DRM/KMS session on a dedicated VT and nested Wayland/X11 session,
+  each exiting cleanly with an application still open.
+- At least 30 successive login/logout cycles; check that the supervisor
+  does not restart the compositor on a voluntary logout.
+- Lock, *physically* power the display off/on (including a monitor replug
+  where safe), unlock, and log out. Repeat a logout while still locked.
+- With `VELA_VULKAN_VALIDATION=1`, confirm the layer is enabled and check for
+  errors. Require the `Shutdown: Vulkan resource cleanup complete` line,
+  exit code 0 and no compositor-crash message.
+- Inspect kernel/driver messages (`journalctl -k -b`) and session/supervisor
+  logs for GPU resets, faults or hangs; a clean exit code alone is not enough.
+
+Do not run these physical-display scenarios unattended on a workstation's
+active graphical session. Record **not tested** separately from **passed**.
+A headless GPU CI pass must never be reported as a direct DRM/KMS pass.
