@@ -202,20 +202,56 @@ class Lock(unittest.TestCase):
 
 
 class VulkanShutdown(unittest.TestCase):
-    """The renderer/allocator/device are destroyed on every normal exit."""
+    """Headless shutdown smoke tests; physical DRM/KMS regression tests are separate."""
+
+    @staticmethod
+    def shutdown_env():
+        # Opt-in on the dedicated GPU runners; generic CI may lack the layer.
+        return {"VELA_VULKAN_VALIDATION": "1"} if os.environ.get("VELA_SHUTDOWN_VALIDATE") == "1" else {}
+
+    def assert_cleanup_complete(self, vela):
+        self.assertEqual(vela.process.wait(timeout=20), 0)
+        log = vela.log_text()
+        self.assertIn("Shutdown: releasing Vulkan renderer, allocator and device", log)
+        self.assertEqual(log.count("Shutdown: Vulkan resource cleanup complete"), 1, log[-3000:])
+        self.assertNotIn("Shutdown: skipping Vulkan resource cleanup", log)
+        return log
 
     def test_normal_logout_releases_gpu_resources(self):
-        with Session() as vela:
+        with Session(env=self.shutdown_env()) as vela:
             vela.open_window()
             os.kill(vela.process.pid, signal.SIGTERM)
-            self.assertEqual(vela.process.wait(timeout=15), 0)
-            self.assertIn("Shutdown: releasing Vulkan renderer, allocator and device",
-                          vela.log_text())
+            self.assert_cleanup_complete(vela)
+
+    def test_supervised_logout_does_not_restart(self):
+        # SIGTERM goes to the compositor child, not to its supervisor: this
+        # exercises the normal "Sign out" path and its zero-exit detection.
+        with Session(supervise=True, env=self.shutdown_env()) as vela:
+            vela.open_window()
+            pid = child_compositor(vela.process.pid)
+            self.assertIsNotNone(pid, "the supervised compositor must be running")
+            os.kill(pid, signal.SIGTERM)
+            log = self.assert_cleanup_complete(vela)
+            self.assertNotIn("vela-supervise: restarting it", log)
+            self.assertNotIn("vela-supervise: the compositor crashed", log)
+            self.assertEqual(log.count("Vela running on WAYLAND_DISPLAY="), 1, log[-3000:])
+
+    def test_repeated_normal_logout(self):
+        # Keep generic CI short; dedicated hardware CI runs thirty iterations
+        # with Vulkan validation enabled, with a window alive at shutdown.
+        cycles = int(os.environ.get("VELA_SHUTDOWN_STRESS_CYCLES", "3"))
+        self.assertGreaterEqual(cycles, 1)
+        self.assertLessEqual(cycles, 50)
+        for cycle in range(cycles):
+            with self.subTest(cycle=cycle + 1):
+                with Session(env=self.shutdown_env()) as vela:
+                    vela.open_window()
+                    os.kill(vela.process.pid, signal.SIGTERM)
+                    self.assert_cleanup_complete(vela)
 
     def test_shutdown_after_locked_output_power_cycle(self):
-        # Regression for the Intel/ANV cursor-memory crash originally seen
-        # after powering an output back on while the desktop was locked.
-        with Session(lock_hold_ms=2000) as vela:
+        # Headless power state changes are not real DRM/KMS power cycling.
+        with Session(lock_hold_ms=2000, env=self.shutdown_env()) as vela:
             vela.open_window()
             vela.command("lock")
             vela.wait_for(lambda s: s["locked"])
@@ -225,15 +261,29 @@ class VulkanShutdown(unittest.TestCase):
             vela.wait_for(lambda s: s.output["powered"], what="screen on")
             vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked")
             os.kill(vela.process.pid, signal.SIGTERM)
-            self.assertEqual(vela.process.wait(timeout=15), 0)
-            self.assertIn("Shutdown: releasing Vulkan renderer, allocator and device",
-                          vela.log_text())
+            self.assert_cleanup_complete(vela)
+
+    def test_shutdown_while_locked_after_output_power_cycle(self):
+        # Different lifetime path: shutdown while lock surfaces are still live.
+        with Session(lock_hold_ms=15000, env=self.shutdown_env()) as vela:
+            vela.open_window()
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            vela.command("test-power off")
+            vela.wait_for(lambda s: not s.output["powered"], what="screen off")
+            vela.command("test-power on")
+            vela.wait_for(lambda s: s.output["powered"], what="screen on")
+            self.assertTrue(vela.state()["locked"])
+            os.kill(vela.process.pid, signal.SIGTERM)
+            self.assert_cleanup_complete(vela)
 
     def test_diagnostic_cleanup_opt_out(self):
         with Session(env={"VELA_SKIP_VULKAN_CLEANUP": "1"}) as vela:
             os.kill(vela.process.pid, signal.SIGTERM)
             self.assertEqual(vela.process.wait(timeout=15), 0)
-            self.assertIn("Shutdown: skipping Vulkan resource cleanup", vela.log_text())
+            log = vela.log_text()
+            self.assertIn("Shutdown: skipping Vulkan resource cleanup", log)
+            self.assertNotIn("Shutdown: Vulkan resource cleanup complete", log)
 
 
 class Caffeine(unittest.TestCase):
