@@ -35,7 +35,7 @@ def unittest_result_exit_code(result, strict=False):
         for case, reason in result.skipped:
             print(f"::error::Python unittest skipped: {case}: {reason}", file=sys.stderr)
         return 1
-    return unittest_result_exit_code(result, strict=os.environ.get("VELA_GPU_CI_STRICT") == "1")
+    return 0 if result.wasSuccessful() else 1
 
 
 def main():
@@ -59,7 +59,7 @@ def main():
         suite = loader.loadTestsFromNames(sorted(name[:-3] for name in os.listdir(HERE)
                                                  if name.startswith("test_") and name.endswith(".py")))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    return unittest_result_exit_code(result, strict=os.environ.get("VELA_GPU_CI_STRICT") == "1")
 
 
 if __name__ == "__main__":
