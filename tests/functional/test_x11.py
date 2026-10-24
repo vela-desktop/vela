@@ -330,6 +330,9 @@ class X11(unittest.TestCase):
         point = (position["x"] + 150, position["y"] + position["h"] - 60)
         self.assertEqual(self.vela.pixels().at(*point), ORANGE)
 
+        # The test helper changes the X11 attribute and issues a genuine
+        # ConfigureWindow: ChangeWindowAttributes alone has no XWM event.
+        # No X11 unmap/map occurs; the existing Wayland surface must survive.
         self.x11_control("--override-redirect", xid, "on")
         self.vela.wait_for(lambda s: not s.has(original),
                            what="mapped X11 window became an unmanaged surface")
