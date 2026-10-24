@@ -43,6 +43,7 @@ static void print_usage(const char *program)
            "  VELA_POLKIT_AGENT  polkit agent to start instead of vela-polkit-agent, 0: none\n"
            "                     (by default only in a real session; polkit-agent= in vela.conf)\n"
            "  VELA_VULKAN_VALIDATION=1  Vulkan validation layers (for development)\n"
+           "  VELA_SKIP_VULKAN_CLEANUP=1  diagnostic: skip explicit Vulkan cleanup on exit\n"
            "  VELA_NATURAL_SCROLL=0  classic touchpad scrolling\n"
            "  VELA_STATS=1       every 2 s, per output: fps, frame cost, latency, missed vblanks\n"
            "  VELA_DEBUG=1       verbose log\n"
