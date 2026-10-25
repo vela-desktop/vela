@@ -607,7 +607,10 @@ static void handle_request_start_drag(struct wl_listener *listener, void *data)
     struct vela_input *input = wl_container_of(listener, input, request_start_drag);
     struct wlr_seat_request_start_drag_event *event = data;
     struct wlr_seat *seat = input->server->seat;
-    if (wlr_seat_validate_pointer_grab_serial(seat, event->origin, event->serial)) {
+    // Reject delayed client requests once the session is locked, even if
+    // their pre-lock pointer serial is still considered valid by wlroots.
+    if (!input->server->locked
+        && wlr_seat_validate_pointer_grab_serial(seat, event->origin, event->serial)) {
         wlr_seat_start_pointer_drag(seat, event->drag, event->serial);
     } else if (event->drag->source) {
         wlr_data_source_destroy(event->drag->source);

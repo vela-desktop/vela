@@ -33,6 +33,7 @@
 #include <unistd.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -665,6 +666,22 @@ void vela_lock_engage(struct vela_lock *lock)
         return;
     }
     server->locked = true;
+    // Cancel the active DnD grab before hiding the desktop. Ending the
+    // matching wlroots grab invokes its cancellation path (not its drop path).
+    // The drag may be destroyed by that callback: don't access it afterwards.
+    if (server->seat->drag) {
+        switch (server->seat->drag->grab_type) {
+        case WLR_DRAG_GRAB_KEYBOARD_POINTER:
+            wlr_seat_pointer_end_grab(server->seat);
+            break;
+        case WLR_DRAG_GRAB_KEYBOARD_TOUCH:
+            wlr_seat_touch_end_grab(server->seat);
+            break;
+        case WLR_DRAG_GRAB_KEYBOARD:
+            wlr_seat_keyboard_end_grab(server->seat);
+            break;
+        }
+    }
     // Invalidate old isolated window sources; output capture still shows the
     // composed lock screen, but window capture could bypass occlusion.
     vela_views_revoke_capture_on_lock(server);
