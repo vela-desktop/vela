@@ -109,7 +109,8 @@ def wait_for_settled(read=read_state, *, phase="opened", timeout=6.0,
         elif now - unchanged_since >= quiet:
             return
         sleep(min(poll, max(0, deadline - clock())))
-    raise TimeoutError(f"{phase}: expected state and output frames did not settle")
+    last = last_state and {"windows": last_state.get("windows"), "outputs": last_state.get("outputs")}
+    raise TimeoutError(f"{phase}: expected state and output frames did not settle; last={last}")
 
 
 if __name__ == "__main__":
