@@ -54,21 +54,24 @@ for scale in $SCALES; do
     CLIENT=$!
 
     check() {
-        # Wait for the mapped window and the compositor's last rendered frame,
-        # instead of sleeping a fixed amount after every keyboard shortcut.
-        if ! "$PYTHON" scripts/sharpness_wait.py; then
-            echo "Sharpness output did not settle for $1" >&2
+        phase=$1
+        name=$2
+        # A quiet frame is not enough: require the shortcut's expected state.
+        if ! "$PYTHON" scripts/sharpness_wait.py "$phase"; then
+            echo "Sharpness output did not settle for $name" >&2
             FAILED=1
             return
         fi
         "$BUILD/tools/vela-screen-dump" "$TMP/shot.png" || { echo "capture failed"; FAILED=1; return; }
-        "$PYTHON" scripts/sharpness-check.py "$TMP/shot.png" "$1" "$CORNER" || FAILED=1
+        "$PYTHON" scripts/sharpness-check.py "$TMP/shot.png" "$name" "$CORNER" || FAILED=1
     }
-    check opened
-    "$BUILD/tools/vela-input" key super+Left; check "snapped left"
-    "$BUILD/tools/vela-input" key super+Right key super+Right; check "snapped right"
-    "$BUILD/tools/vela-input" key super+Up; check maximized
-    "$BUILD/tools/vela-input" key super+Down; check restored
+    check opened opened
+    "$BUILD/tools/vela-input" key super+Left; check snapped-left "snapped left"
+    "$BUILD/tools/vela-input" key super+Right key super+Right; check snapped-right "snapped right"
+    # From a half, the first Super+Up enters the upper quarter; the second
+    # actually maximizes. The previous test mislabeled the quarter as maximized.
+    "$BUILD/tools/vela-input" key super+Up key super+Up; check maximized maximized
+    "$BUILD/tools/vela-input" key super+Down; check restored restored
 
     kill $CLIENT 2> /dev/null
     kill $PID
