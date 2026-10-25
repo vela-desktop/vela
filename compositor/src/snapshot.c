@@ -334,6 +334,22 @@ bool vela_snapshots_tick(struct vela_server *server, double now_ms, double wall_
 {
     struct animation *a, *next;
     wl_list_for_each_safe (a, next, &server->snapshot_animations, link) {
+        // An already-expired animation must be retired before sampling the
+        // next output's predicted presentation time. Sampling first adds a
+        // redundant terminal (x=1) frame after the wall clock has reached the
+        // end, which can exceed the 180 Hz restore frame budget.
+        if (vela_tween_retired(&a->tween, wall_ms)) {
+            struct vela_view *owner = a->owner;
+            bool restored = a->kind == VELA_SNAPSHOT_RESTORE;
+            if (a->kind == VELA_SNAPSHOT_MORPH) {
+                vela_node_set_opacity(&owner->tree->node, 1.0f);
+            }
+            animation_destroy(a);
+            if (restored && owner) {
+                vela_view_finish_restore(owner);
+            }
+            continue;
+        }
         double p = vela_tween_progress(&a->tween, now_ms);
         // Opacity runs ahead of motion: what comes in is readable at once,
         // what goes out has vanished before arriving.
@@ -364,18 +380,6 @@ bool vela_snapshots_tick(struct vela_server *server, double now_ms, double wall_
             if (a->snapshot->shape.enabled) {
                 wlr_log(WLR_INFO, "animation: %s #%u radius %.3f", a->tween.name, a->tween.serial, radius);
             }
-        }
-        if (!vela_tween_retired(&a->tween, wall_ms)) {
-            continue;
-        }
-        struct vela_view *owner = a->owner;
-        bool restored = a->kind == VELA_SNAPSHOT_RESTORE;
-        if (a->kind == VELA_SNAPSHOT_MORPH) {
-            vela_node_set_opacity(&owner->tree->node, 1.0f);
-        }
-        animation_destroy(a);
-        if (restored && owner) {
-            vela_view_finish_restore(owner);
         }
     }
     return !wl_list_empty(&server->snapshot_animations);
