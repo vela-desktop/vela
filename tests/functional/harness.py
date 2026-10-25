@@ -269,8 +269,12 @@ class Session:
     # ------------------------------------------------ keyboard and mouse --
 
     def input(self, *actions):
-        subprocess.run([tool("vela-input"), *map(str, actions)], env=self.client_env, check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        began = time.perf_counter()
+        try:
+            subprocess.run([tool("vela-input"), *map(str, actions)], env=self.client_env, check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        finally:
+            _profile("input-gestures", time.perf_counter() - began)
 
     def randr(self, *args):
         """Configures outputs as Settings > Display does (wlr-output-management)."""
