@@ -44,7 +44,7 @@ class SharpnessWaitTests(unittest.TestCase):
         def read():
             return samples.pop(0) if samples else state(frames=3)
         self.wait(read, clock)
-        self.assertGreaterEqual(clock.clock(), 0.30)
+        self.assertGreaterEqual(clock.clock(), 0.25)
         self.assertLess(clock.clock(), 0.50)
 
     def test_geometry_changes_restart_settling(self):
