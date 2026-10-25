@@ -88,7 +88,8 @@ ProArt (§10).
   keyboard (§8).
 - **wlroots already applies rotation.** When an input device is mapped to an
   output (`wlr_cursor_map_input_to_output`), wlroots 0.20 applies the output's
-  transform to touch and tablet coordinates. Vela sets rotation on the
+  transform to touch and tablet coordinates (`apply_output_transform` in its
+  `wlr_cursor.c`, in the touch and tablet handlers). Vela sets rotation on the
   `wlr_output` itself, so a mapped touchscreen follows the rotation with no
   calibration matrix. An unmapped device spans the whole layout and does not.
 - **Tests inject input with `vela-input`** over the virtual pointer and
@@ -104,30 +105,38 @@ Every change in §5–§7 follows from these.
    down and does not change. The only exception is Vela taking it back for a
    gesture, and only while the app can still be told, so that it never sees
    half a sequence as if it were complete. A `wl_touch` client gets
-   `wl_touch.cancel`. An app on the emulated pointer can only be taken back
-   before its button goes down: `wl_pointer` has no cancel, and a release is a
-   click or a drop.
+   `wl_touch.cancel`, which ends all of that client's touches at once
+   (wlroots cancels per client, not per finger): taking back a gesture takes
+   back every finger the client has. An app on the emulated pointer can only
+   be taken back before its button goes down: `wl_pointer` has no cancel, and
+   a release is a click or a drop.
 2. **A touch lands on what is shown.** The same hit test as the pointer, in the
    output's coordinates as displayed: rotation, scale and position. A touch on
    a disabled or unplugged output goes nowhere; it is never spread across the
    layout.
-3. **The pointer has one owner at a time.** A real mouse button and an
-   emulated press never interleave. A touch that would need emulation while a
-   mouse button is held is ignored.
+3. **The pointer has one owner at a time.** Whatever presses first (a mouse
+   button, a finger on the emulated pointer, the pen tip) owns the pointer
+   until its release, and the others are ignored meanwhile, in both
+   directions (§5.3). A real button and an emulated press never interleave.
 4. **Locked means locked.** While the screen is locked, touch reaches only the
-   lock surfaces, as the pointer does, and no gesture runs. Locking ends what
-   is in progress, as it already does for the mouse (`vela_lock_engage`
-   clears the pointer focus): native touches get `wl_touch.cancel`; an
-   emulated pointer leaves the app's surface without a release, so nothing is
-   clicked or dropped; pending holds, held-back edge touches and delayed
-   presses are dropped; the rest of those sequences reaches nobody, not even
-   the lock.
+   lock surfaces, as the pointer does, and no gesture or press and hold runs.
+   Locking ends what is in progress, as it already does for the mouse:
+   `vela_lock_engage` clears the pointer focus and cancels a drag and drop,
+   whether the pointer or a touch drives it (#127). Native touches get
+   `wl_touch.cancel`; an emulated pointer leaves the app's surface without a
+   release, so nothing is clicked or dropped; pending holds, held-back edge
+   touches and delayed presses are dropped; the rest of those sequences
+   reaches nobody, not even the lock.
 5. **Nothing in Vela is hover-only.** Every hover action in the compositor, the
    shell and Vela's apps has a touch path.
 6. **No touchscreen, no cost.** Without touch or tablet devices there are no
    listeners, timers or scene nodes for them.
 7. **Test input stays behind the flag.** Injecting touch and pen input is only
-   possible with `VELA_DEBUG_INPUT=1`, like the virtual pointer.
+   possible with `VELA_DEBUG_INPUT=1`, like the virtual pointer: a flag for
+   test sessions, never set in a normal one. Injected input goes through the
+   same routing as hardware, so it cannot get past the lock or the focus
+   rules. When the test client disconnects, its devices are removed and their
+   sequences cancelled.
 
 ## 5. Goal 1: touch, the pen as a mouse, gestures
 
@@ -169,6 +178,12 @@ once, for the whole sequence (invariant 1):
 | A surface whose client listens to `wl_touch` (`wlr_surface_accepts_touch`) | `wl_touch`, through `wlr_seat_touch_notify_*` |
 | Any other surface | the emulated pointer |
 
+**Each touch device keeps its own state**: its fingers, the surface and client
+each finger started on, the route chosen for it, and the gesture recognizer.
+Gestures count the fingers of one device, never the seat's total, so two
+touchscreens don't mix their fingers. This state comes with T1, which the
+gestures of T4 build on.
+
 **Native touch.** Every finger is its own point, with the implicit grab that
 `wlr_seat` keeps: a finger that leaves the surface keeps talking to it. A touch
 down on a window activates it, like a click.
@@ -183,6 +198,21 @@ lifts. With `touch-hold=no` the press still waits a moment (40 ms as a
 starting point), so that fingers put down together are seen as two or three
 fingers, not as a click followed by a gesture. A cancel from the device itself
 (palm rejection, §5.4) after the button is down can only release it.
+
+**Who owns the pointer** (invariant 3). The mouse, the emulated pointer and the
+pen as a mouse share one cursor on one seat. One place in the input code
+decides every synthetic press, before `vela_interact_button`, so the mouse's
+logic is not duplicated:
+
+| The pointer is held by | New input | What happens |
+|---|---|---|
+| a mouse button | a touch that needs emulation, the pen tip | ignored until the button is released |
+| a finger (emulated) | mouse motion or a mouse button | ignored: the finger's drag goes on |
+| a finger (emulated) | the pen tip | ignored |
+| the pen tip | a touch that needs emulation | ignored (libinput also mutes it, §5.4) |
+| nothing | mouse, pen or touch | routed normally |
+
+Native touch is not on this table: it does not use the pointer.
 
 **Drag and drop** started by touch is accepted: `wlr_seat` validates touch
 serials, and the drag icon follows the finger.
@@ -199,10 +229,15 @@ The pen drives the emulated pointer, never `tablet-v2` (that is goal 2):
 **Palm rejection** is libinput's. It pairs a pen with a touchscreen: the one on
 the same physical device if there is one, otherwise the first it finds. While
 the pen is in proximity, libinput cancels the touches already down and ignores
-new ones, on the whole screen or in an area around the pen, and it accepts
-touches again 90 ms after the pen leaves. wlroots passes the cancellation on
-as a touch cancel, which Vela handles like any other. The ProArt checklist
-(§10) verifies the pairing.
+new ones, on the whole screen or in an area around the pen, until shortly after
+the pen leaves. wlroots passes the cancellation on as a touch cancel, which
+Vela handles like any other. The ProArt checklist (§10) verifies the pairing.
+
+libinput's documentation speaks of device groups, but its code (1.32) pairs a
+pen with an unrelated touchscreen when none shares its device. An external
+drawing tablet can therefore mute the laptop's touchscreen while its pen is
+near the tablet. libinput has no setting for this, and Vela does not work
+around it.
 
 ### 5.5 Vela's title bar and borders
 
@@ -234,9 +269,10 @@ does it:
   decided, so the app sees either a left click, a drag, or a right click,
   never a mix. Taps in emulated apps therefore arrive at touch up;
   `touch-hold=no` brings them back to touch down. A tap decided at touch up
-  sends the press and the release apart (16 ms as a starting point), never in
-  the same frame: games that read the button state at intervals would miss the
-  click.
+  sends the press and the release in separate `wl_pointer.frame` groups,
+  16 ms apart as a starting point. A frame groups events, it is not a display
+  frame: the gap is what lets games that read the button state at intervals
+  see the click.
 - **Two-finger tap = right click**, at once: two fingers put down together
   (within the wait of §5.3) and lifted before the hold time without moving
   past the tolerance. Press and hold stays, as on Windows.
@@ -247,6 +283,23 @@ does it:
   always a game, the left button goes down at touch down: no hold, no wait, no
   delay. Other fingers are then ignored (§5.3), so two-finger taps, scrolling
   and multi-finger gestures don't apply there; edge swipes still do (§5.7).
+- **No hold while locked.** The lock has no context menus: a tap arrives at
+  once, and no ring shows which key of the on-screen keyboard is held.
+
+The emulated press goes through these states, and only these:
+
+| State | The app has seen | Leaves it when |
+|---|---|---|
+| **Pending** | nothing | the finger moves past the tolerance, the wait of §5.3 ends with `touch-hold=no`, or a pointer constraint holds: **Pressed**; the hold completes: **Right click**; touch up: **Tap**; a gesture, the lock or a cancel takes it back: **Cancelled** |
+| **Pressed** | the left button down | touch up or a device cancel: **Released**; the lock: left without a release (invariant 4) |
+| **Tap** | press, then release in another frame | done |
+| **Right click** | a right click at the finger | done |
+| **Released** | the left button up | done |
+| **Cancelled** | nothing | done |
+
+The 40 ms wait, the 16 ms gap and the hold time are starting points. T3
+measures them with real apps (Qt, GTK, Firefox, Xwayland, a Wine game) before
+they become defaults.
 
 ### 5.7 Gestures
 
@@ -279,8 +332,15 @@ over fullscreen apps.
 **Three and four fingers** on the screen do what they do on the touchpad: up
 for Task View, down for the desktop, sideways for app or desktop switching.
 They have their own settings, with the touchpad's choices and defaults, so the
-touchscreen and the touchpad can differ. When the fingers are recognized as
-Vela's gesture, the app's fingers are cancelled (invariant 1).
+touchscreen and the touchpad can differ.
+
+They work only where Vela owns the touch: Vela's desktop and shell, and apps
+on the emulated pointer. An app on native `wl_touch` keeps every finger (§1):
+a drawing app, a map or a browser can use three or four fingers itself. A
+gesture is recognized only if every finger started on such a surface. Then
+the shell's fingers are cancelled, and an emulated app has seen nothing yet
+(invariant 1). Edge swipes work over every app, and they are the way to the
+system from any of them.
 
 **The cursor** is hidden as soon as the screen or the pen tip is touched and
 shown again at the first motion of a real mouse or touchpad, or when the pen
@@ -312,13 +372,16 @@ mode's (§7).
 `vela-lock` does not listen to `wl_touch`, so it receives the emulated pointer
 (§5.3): a tap shows the user and the password, as a click does. Typing the
 password with touch only needs the on-screen keyboard (§8). Touches already
-down when the screen locks end there (invariant 4).
+down when the screen locks end there (invariant 4), and there is no press and
+hold on the lock (§5.6).
 
 ### 5.10 Settings
 
 Everything is in `vela.conf`, read like the other input settings and reloaded
 with them, and shown in two places in Settings. The pages appear only when a
-touchscreen exists, like the Touchpad page's "No touchpad".
+touchscreen is detected, like the Touchpad page's "No touchpad". A touchscreen
+turned off with `touchscreen=no` is still detected, so its page stays and it
+can be turned back on.
 
 **Accessibility › Touch**: how the touch is read, for people who need more
 time or have less steady hands.
@@ -335,7 +398,7 @@ The tolerance also sets how far a drag must go before it starts (§5.5). The
 indicator draws a circle under every finger, for presentations and for people
 who want to see what the screen received. It is not drawn while the screen is
 locked: over the on-screen keyboard it would show the password to whoever is
-watching. The press-and-hold ring reveals nothing and is still drawn.
+watching. Press and hold, and its ring, are off while locked too (§5.6).
 
 **Touchscreen** (next to Mouse and Touchpad): what the gestures do.
 
@@ -359,15 +422,21 @@ the pen: a surface whose client binds `tablet-v2` for the seat
 (`wlr_surface_accepts_tablet_v2`) receives the tool directly, with proximity,
 tip, pressure, tilt, distance, rotation, the eraser as its own tool type, and
 the buttons; any other surface keeps the emulated pointer of §5.4. Xwayland
-binds `tablet-v2` too, so X11 apps get the pen (decision 2). The tool's cursor
-is the one the app sets for it.
+binds `tablet-v2` too, so X11 apps get the pen (decision 2). That X11 apps
+receive the pressure and tilt, not only the motion, is tested in P1 with an
+X11 client that reads them from XInput (§10). The tool's cursor is the one the
+app sets for it.
 
 A **Pen** page in Settings (from the roadmap) holds what to do with the
 buttons, which output the pen belongs to, and the pressure. libinput has no
 pressure curve, only a range (`libinput_tablet_tool_config_pressure_range_set`):
-where the pen starts to register and where it saturates. Vela uses the range
-for that and applies its own curve (soft, linear, firm) to the normalized
-value before `wlr_tablet_v2_tablet_tool_notify_pressure`.
+where the pen starts to register and where it saturates. Vela applies its own
+curve (soft, linear, firm) to the normalized value before
+`wlr_tablet_v2_tablet_tool_notify_pressure`. It leaves libinput's range at its
+default unless the user moves where the pen starts or saturates: a custom
+range puts the tip threshold at the new minimum and turns off libinput's
+automatic pressure-offset detection, which worn pens rely on. The Pen page
+says so next to that setting.
 
 **The pen on the touchpad** is studied here, once it is known how the ProArt
 exposes it: a tablet device of its own, or the touchpad's.
@@ -380,6 +449,12 @@ the panels, and the on-screen keyboard shown for every text field (not only
 those touched, §8). Rotation follows `iio-sensor-proxy` while in tablet mode,
 with a rotation lock in Quick Settings; automatic rotations are not saved to
 `outputs.conf`.
+
+The devices are libinput's job: in tablet mode it suspends the built-in
+keyboard and touchpad, not external ones, and resumes them when the mode ends.
+It also reports the switch's state when the switch appears, so Vela starts in
+the right mode, and the shell gets the current mode again when it restarts.
+Without a tablet-mode switch there is no tablet mode.
 
 ## 8. What touch requires of the on-screen keyboard
 
@@ -439,7 +514,8 @@ the existing ones. The scenarios:
 - a tap and a drag reaching a touch-aware client as `wl_touch`, with several
   fingers;
 - a client without `wl_touch` and an X11 window receiving the emulated pointer;
-- a tap on a 90°-rotated output landing on the right spot;
+- a tap on an output rotated 0°, 90°, 180° and 270°, with a fractional scale,
+  and with two outputs side by side, landing on the right spot;
 - a built-in touchscreen still mapped to `eDP-1` with a second output
   connected, and a device not built in left unmapped;
 - dragging the title bar, double tap, press and hold for the window menu,
@@ -455,22 +531,42 @@ the existing ones. The scenarios:
   frames;
 - a second finger after the emulated button is down: ignored, no scrolling;
   two fingers put down together with `touch-hold=no`: scrolling, no click;
-- a mouse button held while a touch lands on an emulated surface: the touch is
-  ignored and the mouse drag goes on (invariant 3);
+- each row of the pointer's owner table (§5.3): a mouse button held while a
+  touch lands, the mouse moving or clicking while a finger drags, the pen tip
+  during a finger press and the reverse; the owner's drag goes on, and no
+  press appears that nobody made;
 - a longer hold time and a larger tolerance from `vela.conf` taking effect
   after a reload, and `touch-hold=no`;
 - each edge swipe opening its panel; an edge set to another action, to
   `keyboard` (the on-screen keyboard opening and closing) or to `no`;
   a held-back touch replayed to the app with its original timestamps; the
   three fullscreen choices;
-- three- and four-finger gestures, and the app's fingers cancelled;
+- three- and four-finger gestures over the shell and over an emulated app,
+  the shell's fingers cancelled; over a native app every finger reaching the
+  app and no gesture;
 - the pen as a mouse: hover, tip, barrel button;
 - nothing reaching the apps or the gestures while locked; a tap on the lock
   screen showing the password;
 - locking with a finger down on a native and on an emulated app: the first
   cancelled, the second left without a click, nothing more reaching either;
-  the touch indicator hidden while locked;
-- no touch device: no change in idle cost.
+  locking during a press, a drag, an open popup and a drag and drop, and after
+  unlocking no stray button reaching the app; the touch indicator and press
+  and hold off while locked;
+- no touch device: no change in idle cost;
+- in P1, an X11 client reading XInput receiving the pen's pressure and tilt,
+  not only its motion.
+
+Then what must not break:
+
+| Scenario | Checked |
+|---|---|
+| The touchscreen unplugged during a drag | no sequence or button left stuck |
+| The output turned off during a touch | the touch is not moved to another output |
+| The surface destroyed during a hold | the hold ends, nothing points at the old surface |
+| `vela.conf` reloaded with fingers down | the sequences in progress finish with the old values |
+| The pen leaving proximity with the tip down | the button is released and the state cleared |
+| Two touchscreens at once | fingers, IDs and gestures stay per device |
+| The test client disconnecting with fingers down | its devices removed, their sequences cancelled |
 
 **On the ProArt.** A short manual checklist for what only the hardware can
 tell: that udev marks its touchscreen and pen as built in
@@ -487,14 +583,14 @@ Each stage is one pull request with its tests.
 | Stage | Content | Sections |
 |---|---|---|
 | **T0** | `vela-test-input-v1`, `vela-input` touch and pen actions, the touch-aware test client | §10 |
-| **T1** | Touch and tablet devices, seat capability, mapping to outputs, native `wl_touch`, cursor hiding, `touchscreen=`; with the on-screen keyboard's K5 | §5.1–§5.3, §5.7 (cursor), §8 |
-| **T2** | Emulated pointer (also X11), the pen as a mouse, title bar and borders by touch, drag and drop | §5.3–§5.5, §5.9 |
-| **T3** | Press and hold with the ring, two-finger scrolling, the touch indicator, Accessibility › Touch | §5.6, §5.10 |
-| **T4** | Edge swipes (with the `keyboard` action), multi-finger gestures, the Touchscreen page | §5.7, §5.10 |
+| **T1** | First the ProArt checklist and the rotation tests, which confirm the assumptions the rest builds on. Then touch and tablet devices with their per-device state, seat capability, mapping to outputs, native `wl_touch`, cursor hiding, `touchscreen=`; with the on-screen keyboard's K5 | §5.1–§5.3, §5.7 (cursor), §8 |
+| **T2** | First the pointer's owner (invariant 3), on its own, apart from the title bar. Then the emulated pointer (also X11), the pen as a mouse, title bar and borders by touch, drag and drop | §5.3–§5.5, §5.9 |
+| **T3** | Press and hold with the ring, the two-finger tap, two-finger scrolling, the touch indicator, Accessibility › Touch; the timings measured on real apps before they become defaults | §5.6, §5.10 |
+| **T4** | Edge swipes (with the `keyboard` action), multi-finger gestures where Vela owns the touch, the Touchscreen page | §5.7, §5.10 |
 | **T5** | Shell and Vela's apps without hover | §5.8 |
-| **P1** | `tablet-v2`, the Pen page in Settings | §6 |
+| **P1** | `tablet-v2` (Xwayland included, with the XInput test), the pressure curve and range, the Pen page in Settings | §6 |
 | **P2** | The pen on the touchpad, if the hardware allows it | §6 |
-| **M1** | Tablet mode and automatic rotation | §7 |
+| **M1** | Tablet mode (built-in keyboard and touchpad left to libinput) and automatic rotation | §7 |
 
 The on-screen keyboard's stages K0–K4 come before T1, in their own pull
 requests. Touch does not need them for the ProArt, but a touch-only device
