@@ -9,6 +9,7 @@ Run the real shell on a private session bus and isolated configuration.
 
 from contextlib import contextmanager
 import json
+import math
 import os
 import re
 import shutil
@@ -231,19 +232,32 @@ class QtShell(RealShell):
                 actions += ["up", "move", output["x"] + sx, output["y"] + sy]
                 with self.held_input(actions):
                     for ex, ey in ends:
-                        rectangle = tuple(int(v * scale) for v in (sx, sy, ex, ey))
+                        # Screenshot and compositor edges use nearest-pixel
+                        # placement, not truncation. At 125%, e.g. y=950
+                        # maps to pixel 1188, not 1187. The old assertion
+                        # falsely flagged the flipped-90 selection at this
+                        # half-pixel boundary on NVIDIA.
+                        physical = lambda n: math.floor(n * scale + 0.5)
+                        rectangle = tuple(physical(v) for v in (sx, sy, ex, ey))
+                        observed = None
 
                         def correctly_drawn(_):
+                            nonlocal observed
                             image = self.vela.pixels(output=1)
                             # Exact band edges; omit the live taskbar clock.
-                            desktop_height = image.height - int(48 * scale)
-                            return (image.changed_bounds(before, height=desktop_height) == rectangle
-                                    and all(image.at(int(x * scale), int(y * scale))
-                                            != before.at(int(x * scale), int(y * scale))
+                            desktop_height = image.height - physical(48)
+                            observed = image.changed_bounds(before, height=desktop_height)
+                            return (observed == rectangle
+                                    and all(image.at(physical(x), physical(y))
+                                            != before.at(physical(x), physical(y))
                                             for x, y in ((sx + 40, sy + 40), (ex - 40, ey - 40))))
 
-                        self.vela.wait_for(correctly_drawn, timeout=4, read_state=False,
-                                           what=f"desktop selection bounds {rectangle}")
+                        try:
+                            self.vela.wait_for(correctly_drawn, timeout=4, read_state=False,
+                                               what=f"desktop selection bounds {rectangle}")
+                        except AssertionError as error:
+                            self.fail(f"{error}; observed bounds={observed}, "
+                                      f"transform={transform}, scale={scale}, output={output}")
                 desktop_height = before.height - int(48 * scale)
                 self.vela.wait_for(lambda _: self.vela.pixels(output=1).rows[:desktop_height]
                                    == before.rows[:desktop_height],
