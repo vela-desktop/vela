@@ -306,8 +306,14 @@ class X11(unittest.TestCase):
         self.x11_control("--override-redirect", backdrop, "on")
         self.vela.wait_for(lambda s: len(s.windows) == 1 and s.has(game),
                            what="mapped BELOW backdrop became unmanaged")
+        # The backdrop is completely covered by the game. Changing its X11
+        # management mode need not damage any visible pixel, so the compositor
+        # may correctly stay idle. Request a real repaint with cursor damage
+        # before asserting the resulting composition instead of requiring an
+        # unsolicited frame for an invisible scene change.
+        self.vela.input("move", out["w"] // 3, out["h"] // 3)
         self.vela.wait_for(lambda s: s.output["frames"] > frame,
-                           what="frame after backdrop demotion")
+                           what="frame after cursor damage following backdrop demotion")
         self.assertTrue(all(self.vela.pixels().at(*point) == ORANGE for point in points))
         self.assertEqual(self.vela.state()["focused"], game)
 
