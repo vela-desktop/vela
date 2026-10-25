@@ -101,14 +101,12 @@ def drag(vela, w, dx, dy):
     units, where the window is grabbed: from there the cursor moves by (dx, dy)."""
     x = w["x"] + 200
     y = w["y"] + BAR // 2
-    # Super+drag is a real Vela window-move gesture, but does not enter
-    # decoration_press()'s 400 ms double-click/maximize path. The glyph
-    # rasterisation under test is identical to an unmodified title-bar drag.
-    # Avoid 156 unconditional 400 ms sleeps while checking the same positions.
-    vela.input("move", x, y, "keydown", "super", "sleep", "50", "down", "sleep", "50",
+    # Exercise the actual decoration/title-bar drag, as before. Vela now
+    # excludes completed drags from double-click detection, so there is no
+    # need to wait an additional 400 ms between the 156 moves.
+    vela.input("move", x, y, "sleep", "50", "down", "sleep", "50",
                "move", x, y + 10, "sleep", "50",
-               "move", x + dx, y + 10 + dy, "sleep", "50",
-               "up", "keyup", "super")
+               "move", x + dx, y + 10 + dy, "sleep", "50", "up")
     def moved(state):
         now = state.window(w["id"])
         return abs(now["x"] - w["x"] - dx) <= 1 and abs(now["y"] - w["y"] - dy) <= 1
