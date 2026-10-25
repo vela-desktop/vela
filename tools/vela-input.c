@@ -323,8 +323,7 @@ static void usage(const char* program)
     fprintf(stderr,
         "Usage: %s ACTION [ACTION...]\n"
         "  move X Y | down [left|right|middle|back|forward] | up [...] | click [...]\n"
-        "  key COMBO (e.g. super+Left) | keydown|keyup KEY | type TEXT | scroll N | sleep MS\n"
-        "  checkpoint: print READY and wait for an input newline (functional tests)\n",
+        "  key COMBO (e.g. super+Left) | keydown|keyup KEY | type TEXT | scroll N | sleep MS\n",
         program);
 }
 
@@ -410,15 +409,6 @@ int main(int argc, char** argv)
             wl_display_roundtrip(display);
             usleep((useconds_t)atoi(arg1) * 1000);
             ++i;
-        } else if (!strcmp(action, "checkpoint")) {
-            // Test-only synchronization: the compositor must have processed
-            // the preceding virtual input before the test inspects pixels.
-            // Keep this device and its pressed buttons alive until resumed.
-            if (wl_display_roundtrip(display) < 0 || puts("READY") == EOF || fflush(stdout) == EOF
-                || getchar() != '\n') {
-                fprintf(stderr, "vela-input: checkpoint handshake failed\n");
-                ok = 0;
-            }
         } else {
             fprintf(stderr, "vela-input: invalid action '%s'\n", action);
             usage(argv[0]);
