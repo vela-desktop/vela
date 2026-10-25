@@ -234,9 +234,9 @@ class QtShell(RealShell):
                     for ex, ey in ends:
                         # Screenshot and compositor edges use nearest-pixel
                         # placement, not truncation. At 125%, e.g. y=950
-                        # maps to pixel 1188, not 1187. The old assertion
-                        # falsely flagged the flipped-90 selection at this
-                        # half-pixel boundary on NVIDIA.
+                        # maps to pixel 1188, not 1187, with nearest-pixel
+                        # rounding. The old oracle could reject that legitimate
+                        # half-pixel boundary on flipped-90 outputs.
                         physical = lambda n: math.floor(n * scale + 0.5)
                         rectangle = tuple(physical(v) for v in (sx, sy, ex, ey))
                         observed = None
