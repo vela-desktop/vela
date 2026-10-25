@@ -92,9 +92,11 @@ def wait_for_settled(read=read_state, *, phase="opened", timeout=6.0,
     deadline = clock() + timeout
     previous = None
     unchanged_since = None
+    last_state = None
     while clock() < deadline:
         try:
             state = read()
+            last_state = state
             current = frame_signature(state) if phase_matches(state, phase) else None
         except (OSError, ValueError, KeyError):
             current = None  # The command socket or mapping may still be pending.
