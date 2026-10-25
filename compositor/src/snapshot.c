@@ -362,15 +362,15 @@ bool vela_snapshots_tick(struct vela_server *server, double now_ms, double wall_
         // count as extra sampled frames. Still resample on *any* change,
         // including when a different output's earlier timestamp moves x
         // backwards, to preserve per-output predicted-presentation accuracy.
-        double x = a->tween.start_ms < 0.0 ? 0.0
+        double fraction = a->tween.start_ms < 0.0 ? 0.0
             : a->tween.duration_ms > 0.0
                 ? vela_clampd((now_ms - a->tween.start_ms) / a->tween.duration_ms, 0.0, 1.0)
                 : 1.0;
-        if (a->has_sample && (x == 0.0 || x == 1.0) && x == a->last_sample_x) {
+        if (a->has_sample && (fraction == 0.0 || fraction == 1.0) && fraction == a->last_sample_x) {
             continue;
         }
         double p = vela_tween_progress(&a->tween, now_ms);
-        a->last_sample_x = x;
+        a->last_sample_x = fraction;
         a->has_sample = true;
         // Opacity runs ahead of motion: what comes in is readable at once,
         // what goes out has vanished before arriving.
