@@ -52,10 +52,15 @@ for scale in $SCALES; do
     fi
     "$BUILD/tools/vela-pattern" 401 301 2> "$TMP/pattern.log" &
     CLIENT=$!
-    sleep 1
 
     check() {
-        sleep 0.8
+        # Wait for the mapped window and the compositor's last rendered frame,
+        # instead of sleeping a fixed amount after every keyboard shortcut.
+        if ! "$PYTHON" scripts/sharpness_wait.py; then
+            echo "Sharpness output did not settle for $1" >&2
+            FAILED=1
+            return
+        fi
         "$BUILD/tools/vela-screen-dump" "$TMP/shot.png" || { echo "capture failed"; FAILED=1; return; }
         "$PYTHON" scripts/sharpness-check.py "$TMP/shot.png" "$1" "$CORNER" || FAILED=1
     }
