@@ -100,6 +100,26 @@ class Watcher:
     def send(self, line):
         self.socket.sendall((line + "\n").encode())
 
+    def query(self, command, timeout=20.0):
+        """Read a reply on this SAME connection, preserving FIFO ordering.
+
+        Command replies are generated before commands execute in a read
+        callback. Two successive round trips form an execution barrier even
+        when the last command and the first query shared a read callback.
+        """
+        self.socket.settimeout(timeout)
+        try:
+            self.send(command)
+            data = bytearray()
+            while not data.endswith(b"\\n"):
+                piece = self.socket.recv(4096)
+                if not piece:
+                    raise AssertionError(f"command socket closed before {command!r} reply")
+                data.extend(piece)
+            return json.loads(data)
+        finally:
+            self.socket.settimeout(None)
+
     def lines(self, quiet=0.3):
         """Everything received until nothing comes for `quiet` seconds."""
         self.socket.settimeout(quiet)
@@ -258,6 +278,17 @@ class SlowWatcher(BrightnessTest):
         started = time.monotonic()
         self.vela.query("state")
         self.assertLess(time.monotonic() - started, 1.0)
+
+        # This stream contains 3001 commands, possibly spanning many event
+        # loop reads. A query on ANOTHER socket may leapfrog its queued tail:
+        # start the confirmation timer only once the entire originating
+        # stream has been consumed. The first same-socket reply can precede
+        # commands in its own read batch, but a second round trip cannot.
+        commands.query("brightness")
+        applied = commands.query("brightness")
+        current = applied["outputs"][0]
+        self.assertEqual(current["value"], 0.42,
+                         f"latest drag value not applied: {current}")
         self.confirmed("HEADLESS-1", 0.42, timeout=15)
         received = stuck.lines(quiet=1.0)
         self.assertLess(len(received), 3000)
