@@ -159,6 +159,25 @@ class ImageChecks(unittest.TestCase):
                           (20, 30, 40, 50, 60, 70), (25, 35, 45, 55, 65, 75),
                           (30, 40, 50, 20, 70, 35), (50, 10, 90, 80, 60, 30))])
 
+    def test_native_decoder_matches_standard_library_for_all_filters(self):
+        from harness import PillowImage
+        if PillowImage is None:
+            self.skipTest("Pillow unavailable: standard-library path tested above")
+        raw = bytes((0, 10, 20, 30, 40, 50, 60,
+                     1, 15, 25, 35, 30, 30, 30,
+                     2, 5, 5, 5, 5, 5, 5,
+                     3, 15, 20, 25, 18, 18, 18,
+                     4, 5, 5, 5, 221, 5, 216,
+                     4, 20, 226, 40, 30, 20, 196))
+        data = self.png(raw)
+        native = self.read(data)
+        with patch("harness.PillowImage", None):
+            fallback = self.read(data)
+        self.assertEqual(native.rows, fallback.rows)
+        for y in range(native.height):
+            for x in range(native.width):
+                self.assertEqual(native.at(x, y), fallback.at(x, y))
+
     def test_invalid_png_filter_and_scanline_length_are_rejected(self):
         for raw in (bytes((5, 1, 2, 3)), bytes((0, 1, 2))):
             with self.subTest(raw=raw), self.assertRaises(AssertionError):
