@@ -2,11 +2,11 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Wait for sharpness screenshots to see a settled compositor frame.
+"""Wait for the expected sharpness state AND a quiet rendered output.
 
-The graphical test still checks a single screenshot bit for bit. This helper
-waits for the mapped window's geometry and output frame counters to stop
-changing after a shortcut, rather than assuming every animation takes 800 ms.
+A quiet compositor alone is not proof that an input shortcut was processed:
+the previous frame might still be idle. Check the expected snap/maximize
+transition first, then require stable window geometry and output frame counts.
 """
 
 import json
@@ -14,6 +14,11 @@ import os
 import socket
 import sys
 import time
+
+
+PHASES = ("opened", "snapped-left", "snapped-right", "maximized", "restored")
+LEFT = [0, 0, 6, 12]
+RIGHT = [6, 0, 12, 12]
 
 
 def read_state():
@@ -33,12 +38,30 @@ def read_state():
     return json.loads(data)
 
 
-def frame_signature(state):
-    """State whose stability means no window move or frame is still pending."""
-    outputs = state.get("outputs", ())
+def phase_matches(state, phase):
+    if phase not in PHASES:
+        raise ValueError(f"unknown sharpness phase: {phase}")
     windows = state.get("windows", ())
-    if not outputs or not windows:
-        return None
+    if len(windows) != 1 or not state.get("outputs"):
+        return False
+    w = windows[0]
+    if w["minimized"]:
+        return False
+    if phase == "snapped-left":
+        return w["snap"] == LEFT and not w["maximized"]
+    if phase == "snapped-right":
+        return w["snap"] == RIGHT and not w["maximized"]
+    if phase == "maximized":
+        return w["maximized"] and w["snap"] is None
+    # Both the initial and restored window must be free-floating, at the
+    # pattern's requested logical size. No stale snap/quarter may pass.
+    return (not w["maximized"] and w["snap"] is None
+            and (w["w"], w["h"]) == (401, 301))
+
+
+def frame_signature(state):
+    outputs = state["outputs"]
+    windows = state["windows"]
     return (
         tuple((o["name"], o["frames"]) for o in outputs),
         tuple((w["id"], w["x"], w["y"], w["w"], w["h"],
@@ -47,16 +70,20 @@ def frame_signature(state):
     )
 
 
-def wait_for_settled(read=read_state, *, timeout=6.0, quiet=0.15,
-                     poll=0.05, clock=time.monotonic, sleep=time.sleep):
+def wait_for_settled(read=read_state, *, phase="opened", timeout=6.0,
+                     quiet=0.15, poll=0.05, clock=time.monotonic,
+                     sleep=time.sleep):
+    if phase not in PHASES:
+        raise ValueError(f"unknown sharpness phase: {phase}")
     deadline = clock() + timeout
     previous = None
     unchanged_since = None
     while clock() < deadline:
         try:
-            current = frame_signature(read())
-        except (OSError, ValueError):
-            current = None  # The command socket may not be ready yet.
+            state = read()
+            current = frame_signature(state) if phase_matches(state, phase) else None
+        except (OSError, ValueError, KeyError):
+            current = None  # The command socket or mapping may still be pending.
         now = clock()
         if current is None:
             previous = unchanged_since = None
@@ -66,12 +93,15 @@ def wait_for_settled(read=read_state, *, timeout=6.0, quiet=0.15,
         elif now - unchanged_since >= quiet:
             return
         sleep(min(poll, max(0, deadline - clock())))
-    raise TimeoutError("window or output frames did not settle before the deadline")
+    raise TimeoutError(f"{phase}: expected state and output frames did not settle")
 
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2 or sys.argv[1] not in PHASES:
+        print(f"usage: {sys.argv[0]} " + "|".join(PHASES), file=sys.stderr)
+        sys.exit(2)
     try:
-        wait_for_settled()
-    except (TimeoutError, KeyError) as error:
+        wait_for_settled(phase=sys.argv[1])
+    except TimeoutError as error:
         print(f"sharpness: {error}", file=sys.stderr)
         sys.exit(1)
