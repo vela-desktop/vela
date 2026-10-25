@@ -63,10 +63,14 @@ def phase_matches(state, phase):
     if phase == "maximized":
         return (w["maximized"] and w["snap"] is None
                 and all(near(w[key], output[key]) for key in ("x", "y", "w", "h")))
-    # Both the initial and restored window must be free-floating, at the
-    # pattern's requested logical size. No stale snap/quarter may pass.
+    # Both the initial and restored window must be free-floating and back
+    # at the pattern's requested logical dimensions. Wayland clients and
+    # fractional output scaling may round the frame by a logical pixel:
+    # matching (401, 301) exactly rejected valid restores on both GPUs.
+    # The bit-for-bit screenshot check still validates every physical pixel.
     return (not w["maximized"] and w["snap"] is None
-            and (w["w"], w["h"]) == (401, 301))
+            and near(w["w"], 401) and near(w["h"], 301)
+            and w["w"] < output["w"] and w["h"] < output["h"])
 
 
 def frame_signature(state):
