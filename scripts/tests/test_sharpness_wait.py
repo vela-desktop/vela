@@ -24,7 +24,8 @@ class FakeClock:
 
 def state(frames=1, x=100, mapped=True):
     return {
-        "outputs": [{"name": "HEADLESS-1", "frames": frames}],
+        "outputs": [{"name": "HEADLESS-1", "frames": frames,
+                     "x": 0, "y": 0, "w": 1920, "h": 1080}],
         "windows": ([{"id": "pattern", "x": x, "y": 50, "w": 401, "h": 301,
                      "maximized": False, "minimized": False, "snap": None}]
                     if mapped else []),
@@ -95,6 +96,9 @@ class SharpnessWaitTests(unittest.TestCase):
         self.assertFalse(sharpness_wait.phase_matches(original, "maximized"))
         self.assertFalse(sharpness_wait.phase_matches(original, "snapped-left"))
         window["snap"] = [6, 0, 12, 12]
+        # Snap metadata alone must not be accepted before the geometry commits.
+        self.assertFalse(sharpness_wait.phase_matches(original, "snapped-right"))
+        window.update(x=960, y=0, w=960, h=1080)
         self.assertTrue(sharpness_wait.phase_matches(original, "snapped-right"))
         self.assertFalse(sharpness_wait.phase_matches(original, "snapped-left"))
         self.assertFalse(sharpness_wait.phase_matches(original, "maximized"))
@@ -103,9 +107,12 @@ class SharpnessWaitTests(unittest.TestCase):
         self.assertFalse(sharpness_wait.phase_matches(original, "maximized"))
         window["snap"] = None
         window["maximized"] = True
+        self.assertFalse(sharpness_wait.phase_matches(original, "maximized"))
+        window.update(x=0, w=1920)
         self.assertTrue(sharpness_wait.phase_matches(original, "maximized"))
         self.assertFalse(sharpness_wait.phase_matches(original, "restored"))
         window["maximized"] = False
+        window.update(x=300, y=200, w=401, h=301)
         self.assertTrue(sharpness_wait.phase_matches(original, "restored"))
         window["w"] = 999
         self.assertFalse(sharpness_wait.phase_matches(original, "restored"))
@@ -114,7 +121,7 @@ class SharpnessWaitTests(unittest.TestCase):
         clock = FakeClock()
         original = state()
         settled = state()
-        settled["windows"][0]["snap"] = [0, 0, 6, 12]
+        settled["windows"][0].update(snap=[0, 0, 6, 12], x=0, y=0, w=960, h=1080)
         samples = [original, original, settled, settled, settled, settled]
         def read():
             return samples.pop(0) if samples else settled
