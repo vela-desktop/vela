@@ -77,6 +77,7 @@ class AnimationClock(unittest.TestCase):
         last = {} # (output, serial) -> progress
         sampled = {} # serial -> outputs that drew it
         frames = {} # (serial, output) -> how many frames showed it
+        timeline = {} # (serial, output) -> predicted presentation time, progress
         durations = {}
         names = {}
         retirements = {}
@@ -95,6 +96,7 @@ class AnimationClock(unittest.TestCase):
                 last[(output, serial)] = progress
                 sampled.setdefault(serial, set()).add(output)
                 frames[(serial, output)] = frames.get((serial, output), 0) + 1
+                timeline.setdefault((serial, output), []).append((present, x))
                 durations[serial] = duration
                 names[serial] = name
             elif m := RETIRED.search(line):
@@ -109,7 +111,22 @@ class AnimationClock(unittest.TestCase):
         # One frame per vblank, also on an output with nothing to draw (until
         # the wall clock passes the end: a few more).
         for (serial, output), count in frames.items():
-            self.assertLessEqual(count, durations[serial] * HZ[output] / 1000 + 4, f"{names[serial]} #{serial} on {output}")
+            limit = durations[serial] * HZ[output] / 1000 + 4
+            if count > limit:
+                # Keep the original strict bound. Capture whether the extra
+                # samples came from duplicate predicted timestamps, too many
+                # scheduled vblanks, or frames after the animation's end.
+                samples = timeline[(serial, output)]
+                timestamps = [t for t, _ in samples]
+                repeat = sum(a == b for a, b in zip(timestamps, timestamps[1:]))
+                intervals = [(b - a) for a, b in zip(timestamps, timestamps[1:])]
+                self.fail(
+                    f"{names[serial]} #{serial} on {output}: {count} frames > {limit}; "
+                    f"duration={durations[serial]}ms; repeat={repeat}; "
+                    f"present range={timestamps[0]:.6f}..{timestamps[-1]:.6f}ms; "
+                    f"interval min/max={min(intervals, default=0):.4f}/"
+                    f"{max(intervals, default=0):.4f}ms; "
+                    f"sample first/last={samples[:3]}/{samples[-3:]}")
 
 
 class Durations(unittest.TestCase):
