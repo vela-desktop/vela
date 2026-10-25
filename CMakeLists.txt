@@ -97,6 +97,14 @@ if(VELA_BUILD_TOOLS)
                 TIMEOUT 600
                 LABELS gpu
                 RUN_SERIAL TRUE)
+            # Only isolated, state/geometry-oriented suites may overlap on a
+            # single GPU. Timing, animation, rendering parity, resource stress,
+            # sharpness, real Qt shell and driver-sensitive tests stay exclusive.
+            # COST schedules these independent suites together before serial
+            # tests, so --parallel 2 actually overlaps their execution.
+            set_tests_properties(functional-windows PROPERTIES RUN_SERIAL FALSE COST 45)
+            set_tests_properties(functional-outputs PROPERTIES RUN_SERIAL FALSE COST 35)
+            set_tests_properties(functional-apps PROPERTIES RUN_SERIAL FALSE COST 10)
             set_property(TEST ${VELA_FUNCTIONAL_TESTS} APPEND PROPERTY LABELS functional)
             set_property(TEST sharpness-cpu APPEND PROPERTY ENVIRONMENT "VELA_SYNC_FILE=0")
         endif()
