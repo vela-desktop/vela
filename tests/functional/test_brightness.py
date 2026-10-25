@@ -287,6 +287,8 @@ class SlowWatcher(BrightnessTest):
         commands.query("brightness")
         applied = commands.query("brightness")
         current = applied["outputs"][0]
+        self.assertEqual(current["seq"], 3001,
+                         f"the compositor dropped commands from the 3001-value burst: {current}")
         self.assertEqual(current["value"], 0.42,
                          f"latest drag value not applied: {current}")
         self.confirmed("HEADLESS-1", 0.42, timeout=15)
