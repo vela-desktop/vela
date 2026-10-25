@@ -140,6 +140,12 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
     if (dragged
         && hypot(cursor->x - interaction->pending_title_drag.x, cursor->y - interaction->pending_title_drag.y) > 4.0) {
         interaction->pending_title_drag.view = NULL;
+        // A real drag is not the first click of a double-click sequence.
+        // Clearing it also allows repeated small title-bar drags without an
+        // artificial 400 ms delay (important for precision pixel tests).
+        if (interaction->last_title_click.view == dragged) {
+            memset(&interaction->last_title_click, 0, sizeof(interaction->last_title_click));
+        }
         vela_interact_begin(server, dragged, VELA_CURSOR_MOVE, 0, true);
     }
     struct vela_view *grabbed = server->grabbed;
