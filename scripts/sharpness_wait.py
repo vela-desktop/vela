@@ -42,17 +42,27 @@ def phase_matches(state, phase):
     if phase not in PHASES:
         raise ValueError(f"unknown sharpness phase: {phase}")
     windows = state.get("windows", ())
-    if len(windows) != 1 or not state.get("outputs"):
+    outputs = state.get("outputs", ())
+    if len(windows) != 1 or len(outputs) != 1:
         return False
-    w = windows[0]
+    w, output = windows[0], outputs[0]
     if w["minimized"]:
         return False
-    if phase == "snapped-left":
-        return w["snap"] == LEFT and not w["maximized"]
-    if phase == "snapped-right":
-        return w["snap"] == RIGHT and not w["maximized"]
+
+    def near(actual, expected):
+        # Fractionally-scaled outputs may round their logical box by 1 unit.
+        return abs(actual - expected) <= 2
+
+    if phase in ("snapped-left", "snapped-right"):
+        half = output["w"] // 2
+        expected = LEFT if phase == "snapped-left" else RIGHT
+        start = output["x"] if phase == "snapped-left" else output["x"] + half
+        return (w["snap"] == expected and not w["maximized"]
+                and near(w["x"], start) and near(w["y"], output["y"])
+                and near(w["w"], half) and near(w["h"], output["h"]))
     if phase == "maximized":
-        return w["maximized"] and w["snap"] is None
+        return (w["maximized"] and w["snap"] is None
+                and all(near(w[key], output[key]) for key in ("x", "y", "w", "h")))
     # Both the initial and restored window must be free-floating, at the
     # pattern's requested logical size. No stale snap/quarter may pass.
     return (not w["maximized"] and w["snap"] is None
