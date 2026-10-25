@@ -424,8 +424,12 @@ class QtShell(RealShell):
         pointer = subprocess.Popen([tool("vela-input"), *map(str, actions)], env=self.vela.client_env,
                                    stdin=subprocess.PIPE if checkpoints else None,
                                    stdout=subprocess.PIPE if checkpoints else None)
+        failed = False
         try:
             yield pointer
+        except BaseException:
+            failed = True
+            raise
         finally:
             # If a pixel assertion failed inside a checkpoint, closing stdin
             # releases the blocked test client without leaving a held pointer.
@@ -438,7 +442,10 @@ class QtShell(RealShell):
                 pointer.wait()
             if checkpoints:
                 pointer.stdout.close()
-            self.assertEqual(pointer.returncode, 0)
+            # Keep the original pixel assertion and its observed coordinates
+            # rather than replacing it with an expected handshake exit error.
+            if not failed:
+                self.assertEqual(pointer.returncode, 0)
 
     def test_snipping_with_odd_and_4k_output_dimensions(self):
         """Capture sizes need not divide evenly by the fractional scale."""
