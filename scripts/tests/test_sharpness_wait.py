@@ -82,6 +82,46 @@ class SharpnessWaitTests(unittest.TestCase):
         self.wait(read, clock)
         self.assertGreaterEqual(attempts, 5)
 
+    def test_quiet_unprocessed_shortcut_does_not_pass(self):
+        clock = FakeClock()
+        with self.assertRaisesRegex(TimeoutError, "snapped-left"):
+            sharpness_wait.wait_for_settled(lambda: state(), phase="snapped-left",
+                                            timeout=0.35, clock=clock.clock, sleep=clock.sleep)
+
+    def test_requires_expected_snap_and_maximize_states(self):
+        original = state()
+        window = original["windows"][0]
+        self.assertTrue(sharpness_wait.phase_matches(original, "opened"))
+        self.assertFalse(sharpness_wait.phase_matches(original, "maximized"))
+        self.assertFalse(sharpness_wait.phase_matches(original, "snapped-left"))
+        window["snap"] = [6, 0, 12, 12]
+        self.assertTrue(sharpness_wait.phase_matches(original, "snapped-right"))
+        self.assertFalse(sharpness_wait.phase_matches(original, "snapped-left"))
+        self.assertFalse(sharpness_wait.phase_matches(original, "maximized"))
+        # Super+Up from the right half gives a quarter, not maximize.
+        window["snap"] = [6, 0, 12, 6]
+        self.assertFalse(sharpness_wait.phase_matches(original, "maximized"))
+        window["snap"] = None
+        window["maximized"] = True
+        self.assertTrue(sharpness_wait.phase_matches(original, "maximized"))
+        self.assertFalse(sharpness_wait.phase_matches(original, "restored"))
+        window["maximized"] = False
+        self.assertTrue(sharpness_wait.phase_matches(original, "restored"))
+        window["w"] = 999
+        self.assertFalse(sharpness_wait.phase_matches(original, "restored"))
+
+    def test_correct_phase_resets_stability_timer(self):
+        clock = FakeClock()
+        original = state()
+        settled = state()
+        settled["windows"][0]["snap"] = [0, 0, 6, 12]
+        samples = [original, original, settled, settled, settled, settled]
+        def read():
+            return samples.pop(0) if samples else settled
+        sharpness_wait.wait_for_settled(read, phase="snapped-left",
+                                        timeout=1, clock=clock.clock, sleep=clock.sleep)
+        self.assertGreaterEqual(clock.clock(), 0.25)
+
 
 if __name__ == "__main__":
     unittest.main()
