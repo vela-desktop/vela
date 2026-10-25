@@ -59,6 +59,16 @@ class Decorations(unittest.TestCase):
         self.vela.input("move", w["x"] + 150, top + BAR // 2, "sleep", "50", "click", "sleep", "60", "click")
         self.vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized")
 
+    def test_title_drag_does_not_prime_double_click(self):
+        # A completed drag followed by a click within 400 ms must never
+        # maximize: only two genuine title-bar clicks are a double click.
+        window, w, image, top = self.open()
+        drag(self.vela, w, 12, 3)
+        moved = self.vela.state().window(window)
+        self.assertFalse(moved["maximized"])
+        self.vela.input("move", moved["x"] + 150, moved["y"] + BAR // 2, "click")
+        self.assertFalse(self.vela.state().window(window)["maximized"])
+
 
 class BarImagesAtEveryPosition(unittest.TestCase):
     """Title, icon and glyphs are drawn at the output's scale, so they are
