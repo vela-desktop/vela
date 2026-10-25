@@ -665,6 +665,12 @@ void vela_lock_engage(struct vela_lock *lock)
         return;
     }
     server->locked = true;
+    // A wlroots DnD owns a pointer grab independently of Vela's window grab.
+    // Cancel it before focus changes, so releasing a held button after locking
+    // cannot deliver a drop to a client hidden behind the lock screen.
+    if (server->seat->drag) {
+        wlr_seat_pointer_end_grab(server->seat);
+    }
     // Invalidate old isolated window sources; output capture still shows the
     // composed lock screen, but window capture could bypass occlusion.
     vela_views_revoke_capture_on_lock(server);
