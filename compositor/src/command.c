@@ -712,12 +712,22 @@ static int handle_client(int fd, uint32_t mask, void *data)
         flush(client);
     }
     char chunk[256];
-    ssize_t n = 0;
-    while ((n = read(fd, chunk, sizeof(chunk))) > 0 && client->length < MAX_LINE) {
+    ssize_t n = -1;
+    // Bound each event-loop turn to MAX_LINE bytes, not the lifetime of the
+    // socket. A stream may contain thousands of short, valid commands. Do
+    // not read past the remaining capacity: that would silently discard the
+    // tail of a read, then close an otherwise valid connection on a burst.
+    // Once this buffer fills, drain its complete lines below and let the
+    // still-readable fd wake us again for the next batch.
+    while (client->length < MAX_LINE) {
         size_t room = MAX_LINE - client->length;
-        size_t take = (size_t)n < room ? (size_t)n : room;
-        memcpy(client->buffer + client->length, chunk, take);
-        client->length += take;
+        size_t amount = room < sizeof(chunk) ? room : sizeof(chunk);
+        n = read(fd, chunk, amount);
+        if (n <= 0) {
+            break;
+        }
+        memcpy(client->buffer + client->length, chunk, (size_t)n);
+        client->length += (size_t)n;
     }
     // The complete lines; the rest waits for the next piece.
     char lines[MAX_LINE + 1];
@@ -736,6 +746,9 @@ static int handle_client(int fd, uint32_t mask, void *data)
             answer(server, fd, lines + at);
         }
     }
+    // A full buffer of COMPLETE lines is not an overlong request: removing
+    // those lines freed capacity. Only an incomplete line occupying all of
+    // MAX_LINE is malformed and must close this client.
     bool closed = n == 0 || (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) || client->length >= MAX_LINE;
     if (closed) {
         client_destroy(client);
