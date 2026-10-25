@@ -114,6 +114,12 @@ class SharpnessWaitTests(unittest.TestCase):
         window["maximized"] = False
         window.update(x=300, y=200, w=401, h=301)
         self.assertTrue(sharpness_wait.phase_matches(original, "restored"))
+        # A logically rounded Wayland frame has the same physical pattern:
+        # requiring exactly 401x301 caused the five-scale GPU failures.
+        window.update(w=400, h=300)
+        self.assertTrue(sharpness_wait.phase_matches(original, "restored"))
+        window.update(w=403, h=303)
+        self.assertTrue(sharpness_wait.phase_matches(original, "restored"))
         window["w"] = 999
         self.assertFalse(sharpness_wait.phase_matches(original, "restored"))
 
