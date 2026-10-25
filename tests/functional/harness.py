@@ -12,6 +12,7 @@ ones; the state is read with the "state" request on the command socket
 Python standard library only. Needs a GPU with Vulkan 1.4 (Vela's renderer
 has no software fallback): without one, run.py skips the tests."""
 
+import atexit
 import json
 import os
 import shutil
@@ -23,6 +24,30 @@ import tempfile
 import threading
 import time
 import zlib
+
+# Pillow uses a native PNG decoder and is preflight-checked on GPU runners.
+# Keep the original standard-library decoder for developer/CPU environments.
+try:
+    from PIL import Image as PillowImage
+except ImportError:
+    PillowImage = None
+
+_PROFILE = os.environ.get("VELA_FUNCTIONAL_PROFILE") == "1"
+_METRICS = {}
+
+
+def _profile(metric, duration):
+    if _PROFILE:
+        count, seconds = _METRICS.get(metric, (0, 0.0))
+        _METRICS[metric] = (count + 1, seconds + duration)
+
+
+@atexit.register
+def _print_profile():
+    if _PROFILE:
+        for metric, (count, seconds) in sorted(_METRICS.items()):
+            print(f"test-profile {metric}: {seconds:.3f}s / {count} calls", flush=True)
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUILD = os.environ.get("VELA_BUILD", os.path.join(ROOT, "build"))
@@ -76,11 +101,15 @@ class Session:
 
     def start(self):
         """Start a session and clean up partial startup on failure."""
+        began = time.perf_counter()
         try:
-            self._start()
-        except BaseException:
-            self.stop(keep_log=True)
-            raise
+            try:
+                self._start()
+            except BaseException:
+                self.stop(keep_log=True)
+                raise
+        finally:
+            _profile("session-start", time.perf_counter() - began)
 
     def _start(self):
         self.directory = tempfile.mkdtemp(prefix="vela-functional-")
@@ -316,12 +345,16 @@ class Session:
 
     def screenshot(self, path, output=0, region=None, cursor=False):
         """Capture upright output pixels; an optional region is (x, y, width, height)."""
-        env = dict(self.client_env, VELA_SCREEN_DUMP_OUTPUT=str(output),
-                   VELA_SCREEN_DUMP_CURSOR="1" if cursor else "0")
-        args = [tool("vela-screen-dump"), path]
-        if region is not None:
-            args.extend(str(value) for value in region)
-        subprocess.run(args, env=env, check=True)
+        began = time.perf_counter()
+        try:
+            env = dict(self.client_env, VELA_SCREEN_DUMP_OUTPUT=str(output),
+                       VELA_SCREEN_DUMP_CURSOR="1" if cursor else "0")
+            args = [tool("vela-screen-dump"), path]
+            if region is not None:
+                args.extend(str(value) for value in region)
+            subprocess.run(args, env=env, check=True)
+        finally:
+            _profile("screen-dump", time.perf_counter() - began)
 
     def pixels(self, output=0):
         """The chosen output now, as an Image (vela-screen-dump)."""
@@ -399,6 +432,28 @@ class Image:
 
     @staticmethod
     def read(path):
+        began = time.perf_counter()
+        try:
+            return Image._read_impl(path)
+        finally:
+            _profile("png-decode", time.perf_counter() - began)
+
+    @staticmethod
+    def _read_impl(path):
+        if PillowImage is not None:
+            try:
+                with PillowImage.open(path) as png:
+                    assert png.format == "PNG" and png.mode == "RGB", "expected 8-bit RGB PNG"
+                    assert not png.info.get("interlace", 0), "interlaced PNG not supported"
+                    width, height = png.size
+                    pixels = png.tobytes()
+                stride = width * 3
+                assert len(pixels) == height * stride, "invalid PNG scanline size"
+                return Image(width, height,
+                             [pixels[offset:offset + stride]
+                              for offset in range(0, len(pixels), stride)])
+            except (OSError, ValueError) as error:
+                raise AssertionError(f"invalid PNG: {error}") from error
         with open(path, "rb") as file:
             data = file.read()
         assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
