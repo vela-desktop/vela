@@ -59,6 +59,16 @@ class Decorations(unittest.TestCase):
         self.vela.input("move", w["x"] + 150, top + BAR // 2, "sleep", "50", "click", "sleep", "60", "click")
         self.vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized")
 
+    def test_title_drag_does_not_prime_double_click(self):
+        # A completed drag followed by a click within 400 ms must never
+        # maximize: only two genuine title-bar clicks are a double click.
+        window, w, image, top = self.open()
+        drag(self.vela, w, 12, 3)
+        moved = self.vela.state().window(window)
+        self.assertFalse(moved["maximized"])
+        self.vela.input("move", moved["x"] + 150, moved["y"] + BAR // 2, "click")
+        self.assertFalse(self.vela.state().window(window)["maximized"])
+
 
 class BarImagesAtEveryPosition(unittest.TestCase):
     """Title, icon and glyphs are drawn at the output's scale, so they are
@@ -101,8 +111,12 @@ def drag(vela, w, dx, dy):
     units, where the window is grabbed: from there the cursor moves by (dx, dy)."""
     x = w["x"] + 200
     y = w["y"] + BAR // 2
-    vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x, y + 10, "sleep", "50",
-               "move", x + dx, y + 10 + dy, "sleep", "50", "up", "sleep", "400") # no double click with the next one
+    # Exercise the actual decoration/title-bar drag, as before. Vela now
+    # excludes completed drags from double-click detection, so there is no
+    # need to wait an additional 400 ms between the 156 moves.
+    vela.input("move", x, y, "sleep", "50", "down", "sleep", "50",
+               "move", x, y + 10, "sleep", "50",
+               "move", x + dx, y + 10 + dy, "sleep", "50", "up")
     def moved(state):
         now = state.window(w["id"])
         return abs(now["x"] - w["x"] - dx) <= 1 and abs(now["y"] - w["y"] - dy) <= 1
