@@ -111,7 +111,7 @@ class Watcher:
         try:
             self.send(command)
             data = bytearray()
-            while not data.endswith(b"\\n"):
+            while not data.endswith(b"\n"):
                 piece = self.socket.recv(4096)
                 if not piece:
                     raise AssertionError(f"command socket closed before {command!r} reply")
