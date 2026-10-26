@@ -78,7 +78,12 @@ jobs:
           cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
           dpkg-deb --info build-ubuntu/packages/*.deb
           dpkg-deb -f build-ubuntu/packages/*.deb Depends
-          test "$(dpkg-deb -f build-ubuntu/packages/*.deb Version)" = "0.1.0+git${GITHUB_SHA:0:7}"
+          # Verify the commit stamp without hard-coding the next project version.
+          deb_version=$(dpkg-deb -f build-ubuntu/packages/*.deb Version)
+          case "$deb_version" in
+            *"+git${GITHUB_SHA:0:7}") ;;
+            *) echo "Unexpected Ubuntu DEB version: $deb_version" >&2; exit 1 ;;
+          esac
           dpkg-deb --contents build-ubuntu/packages/*.deb > /tmp/vela-deb-files.txt
           cat /tmp/vela-deb-files.txt
           grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
