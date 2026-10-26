@@ -135,7 +135,12 @@ if(VELA_PACKAGE_DEB)
     # Executables and launch scripts require these at runtime even though
     # they are not all linked as ELF libraries (shlibdeps handles the rest).
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+        "git, apt, dpkg, sudo, util-linux, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+    # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
+    install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    install(FILES "${PROJECT_SOURCE_DIR}/packaging/verify-attestation.py"
+        DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
     include(CPack)
 endif()
