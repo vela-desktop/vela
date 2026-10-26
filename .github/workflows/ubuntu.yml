@@ -36,6 +36,7 @@ jobs:
             qt6-svg-dev qt6-wayland-dev qt6-tools-dev qt6-tools-dev-tools \
             qt6-l10n-tools liblayershellqtinterface-dev \
             libpipewire-0.3-dev libwireplumber-0.5-dev \
+            dpkg-dev file \
             python3 python3-numpy python3-pil dbus
           # Fail on missing packages: no distro-specific vendoring/fallbacks.
           pkg-config --modversion wlroots-0.20
@@ -51,7 +52,10 @@ jobs:
             -DVELA_BUILD_SHELL=ON \
             -DVELA_BUILD_POLKIT=ON \
             -DVELA_BUILD_REPORT=ON \
-            -DVELA_BUILD_TOOLS=ON
+            -DVELA_BUILD_TOOLS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_INSTALL_LIBEXECDIR=libexec/vela \
+            -DVELA_PACKAGE_DEB=ON
       - name: Build
         run: cmake --build build-ubuntu --parallel 2
       - name: Non-GPU CTest suite
@@ -67,3 +71,75 @@ jobs:
             exit 1
           fi
           ctest --test-dir build-ubuntu --output-on-failure -LE 'gpu|distro-packaging'
+      - name: Build experimental DEB
+        run: |
+          set -euo pipefail
+          cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
+          dpkg-deb --info build-ubuntu/packages/*.deb
+          dpkg-deb -f build-ubuntu/packages/*.deb Depends
+          dpkg-deb --contents build-ubuntu/packages/*.deb > /tmp/vela-deb-files.txt
+          cat /tmp/vela-deb-files.txt
+          grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
+          grep -q '/usr/share/wayland-sessions/vela.desktop$' /tmp/vela-deb-files.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vela-ubuntu-26.10-deb
+          path: build-ubuntu/packages/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+  ubuntu-package-install:
+    name: Install DEB (clean Ubuntu 26.10)
+    needs: ubuntu-build
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:26.10
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: vela-ubuntu-26.10-deb
+          path: deb
+      - name: Resolve dependencies and install package
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends file dpkg-dev
+          apt-get install -y --no-install-recommends ./deb/*.deb
+          dpkg-query -W -f='${Status}\n' vela-git | grep -Fx 'install ok installed'
+          test -x /usr/bin/vela-compositor
+          test -x /usr/bin/vela-session
+          test -f /usr/share/wayland-sessions/vela.desktop
+          # Ensure session entry references an executable available in the clean image.
+          session_exec=$(sed -n 's/^Exec=//p' /usr/share/wayland-sessions/vela.desktop | head -n 1)
+          test -n "$session_exec"
+          session_bin=${session_exec%% *}
+          case "$session_bin" in
+            /*) test -x "$session_bin" ;;
+            *) command -v "$session_bin" >/dev/null ;;
+          esac
+          # Inspect all installed ELF objects for unresolved DT_NEEDED dependencies.
+          dpkg-query -L vela-git | while IFS= read -r path; do
+            if [ -f "$path" ] && file -b "$path" | grep -q '^ELF '; then
+              if ldd "$path" 2>&1 | grep -q 'not found'; then
+                echo "Missing ELF dependency: $path" >&2
+                ldd "$path" >&2 || true
+                exit 1
+              fi
+            fi
+          done
+          # QML imports are loaded at runtime, so ELF dependency scanning misses them.
+          for module in QtQuick QtQuick/Controls QtQuick/Layouts QtQml/WorkerScript; do
+            test -f "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/qt6/qml/$module/qmldir" || \
+              test -f "/usr/lib/qt6/qml/$module/qmldir" || \
+              { echo "Missing QML module: $module" >&2; exit 1; }
+          done
+      - name: Remove package cleanly
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eu
+          apt-get remove -y vela-git
+          test ! -e /usr/bin/vela-compositor
+          test ! -e /usr/share/wayland-sessions/vela.desktop

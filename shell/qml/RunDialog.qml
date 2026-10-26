@@ -27,6 +27,9 @@ Window {
         historyIndex = -1
         Menus.placeOnTargetScreen(root)
         visible = true
+        // A mapped layer is not necessarily keyboard-active yet. Ask the
+        // compositor to activate this window before focusing the text field.
+        requestActivate()
         motion.open()
         field.forceActiveFocus()
     }
@@ -73,10 +76,24 @@ Window {
         }
     }
 
+    // The field may initially gain activeFocus before Qt's Wayland window is
+    // keyboard-active. Reestablish focus on activation so the first Escape
+    // key after opening is not lost on a slow GPU.
     onActiveChanged: {
-        if (!active && motion.opened && !browsing && !Menus.isOpen) {
+        if (active && visible && !browsing) {
+            field.forceActiveFocus()
+        } else if (!active && motion.opened && !browsing && !Menus.isOpen) {
             close()
         }
+    }
+
+    // Independent of the child text field's focus state. Keep the field's
+    // Escape handler too, but make closing a property of the whole dialog.
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.WindowShortcut
+        enabled: root.visible
+        onActivated: root.close()
     }
 
     FileDialog {
