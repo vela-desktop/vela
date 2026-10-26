@@ -79,38 +79,56 @@ DNF-based installer.
 Once installed, use **`vela-update`** on either distribution to fetch new
 commits and install updates.
 
-## Ubuntu 26.10 (experimental package preview)
+## Ubuntu 26.10 (experimental native DEB updater)
 
-Ubuntu 26.10 has a preliminary **source-built .deb** in the Ubuntu CI workflow.
-It is not yet published as a stable release and `vela-update` does not manage
-Ubuntu installations. Download the `vela-ubuntu-26.10-deb` artifact from a
-successful workflow run on a trusted Vela commit, then on **Ubuntu 26.10 only**:
+Ubuntu **26.10** has an experimental **locally built `.deb` updater**. Enable
+the **universe** repository first. Other Ubuntu releases are not supported.
+Keep a working desktop or TTY available.
+
+Bootstrap from a trusted Vela checkout:
 
 ```sh
 sudo apt update
-sudo apt install ./vela-git_*.deb
+sudo apt install git ca-certificates sudo
+git clone https://github.com/vela-desktop/vela.git
+sh vela/packaging/vela-update
 ```
 
-Alternatively, build locally from a trusted Vela checkout after installing the
-Ubuntu build dependencies listed in [development.md](development.md):
+The updater installs the Ubuntu build dependencies through APT, compiles the
+exact selected Git revision with CMake/CPack, and installs a native DEB.
+The DEB contains `/usr/bin/vela-update` for subsequent updates. Run
+`vela-update --check` to inspect pending changes, `vela-update --force` to
+reinstall the current commit, or `vela-update --commit SHA` to downgrade.
+Commits older than the revision-stamping support cannot be installed
+through this updater unless they produce a correctly stamped DEB.
+
+**On Ubuntu, automatic download of CI preview binaries is intentionally
+disabled.** Even `vela-update --download` builds locally. Those artifacts
+currently lack the release provenance used by Arch/Fedora; do not
+automatically trust or install them. `--build` explicitly opts into the
+same local build path.
+
+The last three locally built DEBs remain in
+`~/.cache/vela-update/packages/` for manual rollback. Select **one exact**
+cached filename; never install every cached package with a wildcard:
 
 ```sh
-cmake -S . -B build-ubuntu -G Ninja \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DCMAKE_INSTALL_PREFIX=/usr \
-    -DCMAKE_INSTALL_LIBEXECDIR=libexec/vela \
-    -DVELA_BUILD_TOOLS=ON -DVELA_PACKAGE_DEB=ON
-cmake --build build-ubuntu --parallel 2
-cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
-sudo apt install ./build-ubuntu/packages/*.deb
+sudo apt-get install -y --allow-downgrades --reinstall \
+  "$HOME/.cache/vela-update/packages/vela-git_VERSION_amd64.deb"
 ```
 
-The CI preview package includes development tools; the updater's local Ubuntu build omits development test tools. The CI checks installed session entry points, ELF dependencies, baseline Qt Quick/QML modules, and package removal in addition to dependency resolution and installation in a fresh
-Ubuntu 26.10 container. **Neither a successful package install nor a
-successful source build proves the graphical session works.** Keep a working
-desktop or TTY available; GPU/DRM, portals, audio, polkit and login-manager
-integration still need tests on a real Ubuntu installation. Do not install
-this preview package on other Ubuntu releases.
+Replace `vela-git_VERSION_amd64.deb` with the actual filename. If a
+previous package transaction left dpkg incomplete, first run
+`sudo dpkg --configure -a`, then retry the update.
+
+CI also publishes **unsigned experimental preview packages** for manual
+testing. Its build includes development tools; updater builds omit them.
+See [development.md](development.md#distribution-dependencies) for the
+manual source build and prerequisites. CI checks compilation, DEB metadata,
+installed entry points, dependency resolution, and removal in a fresh
+Ubuntu 26.10 container. **That does not prove a graphical session works.**
+Real GPU/DRM, portal, audio, polkit and display-manager testing is still
+required. Do not install these packages on other Ubuntu releases.
 
 ## Updating, selecting revisions, and rollback
 
