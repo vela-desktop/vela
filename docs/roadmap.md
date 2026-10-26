@@ -19,15 +19,36 @@ alongside the per-commit alphas.
 - **Feature freeze: 27 October 2026.** From that day `main` takes only bug
   fixes, tests, CI, packaging, documentation and translations until 0.1 is
   released.
-- **Two planned exceptions** can merge after the freeze: the Updates page
-  ([#133](https://github.com/vela-desktop/vela/pull/133)) and Vela's native
-  `xdg-desktop-portal-vela` backend. Both are required for beta 0.1.
+- **Three planned feature exceptions** may merge after the freeze:
+  the Updates page ([#133](https://github.com/vela-desktop/vela/pull/133)),
+  native `xdg-desktop-portal-vela`, and core Wayland text-input/input-method
+  support. These are required for beta 0.1; the emoji picker is not.
 - Other feature pull requests remain open for review but merge after 0.1;
   the same applies to everything under **Next**.
-- GPU-affecting changes require passing AMD and NVIDIA
-  [GPU CI](ci-quality.md#manual-real-gpu-ci-self-hosted-amd) on the candidate
-  revision. Documentation-only and other GPU-unrelated changes do not.
-  Both GPU suites must pass before the beta release.
+- GPU verification follows the
+  [GPU CI policy](ci-quality.md#gpu-ci-policy), including both real-hardware
+  suites on the exact beta release candidate commit.
+
+## Beta 0.1 release blockers and validation
+
+- **Native portal:** design and implementation of `xdg-desktop-portal-vela`
+  are still pending; its backend must replace KDE/wlr for file chooser,
+  screenshots, screen sharing and appearance, verified in a clean Vela session.
+  The detailed portal design is intentionally a separate follow-up.
+- **NVIDIA capture regression:** [#132](https://github.com/vela-desktop/vela/issues/132)
+  documents synchronous Vulkan SHM readback blocking the compositor event loop
+  and missing 180 Hz vblanks in the headless NVIDIA capture test. Do not
+  weaken test thresholds or silently waive this known regression before release.
+- **Release readiness:** passing hosted CI does not replace the required
+  AMD/NVIDIA hardware runs on the release candidate; see the
+  [single GPU CI policy](ci-quality.md#gpu-ci-policy).
+- **Stabilization proposals (drafts, not fixes):**
+  [Bluetooth pairing #146](https://github.com/vela-desktop/vela/pull/146),
+  [Vulkan device loss #147](https://github.com/vela-desktop/vela/pull/147),
+  [OOM contract #148](https://github.com/vela-desktop/vela/pull/148), and
+  [lock wallpaper quality #149](https://github.com/vela-desktop/vela/pull/149).
+  Their acceptance criteria and beta-blocker severity need review; no
+  implementation is implied by opening those documentation PRs.
 
 ## In progress
 
@@ -35,6 +56,7 @@ alongside the per-commit alphas.
 |---|---|---|---|---|
 | **Updates page**: Settings → System → Updates checks for a newer Vela with `vela-update` and starts the update in a terminal | in the PR | [#133](https://github.com/vela-desktop/vela/pull/133) | draft | 0.1 |
 | **Vela native desktop portal**: implement `xdg-desktop-portal-vela` and replace the KDE and wlr portal backends for file chooser, screen sharing, screenshots and appearance settings | design/implementation pending | — | required release blocker; validate portal integration and remove runtime dependencies on KDE/wlr portal backends | 0.1 |
+| **Text input and input methods**: Wayland text-input/input-method support for IME clients and interactive text entry | design/implementation pending | — | required for beta; integration and end-to-end input method tests to define | 0.1 |
 | **Touch and pen**: touch in every app and in the shell, edge gestures, the pen over `tablet-v2`, tablet mode | in the PR | [#94](https://github.com/vela-desktop/vela/pull/94) | design under discussion | after 0.1 |
 | **On-screen keyboard**: `vela-onscreen-keyboard`, opened when a text field is focused by touch | in the PR | [#95](https://github.com/vela-desktop/vela/pull/95) | design under discussion | after 0.1 |
 | **Snipping tool**: text from a capture (OCR), a delay timer, a color picker and screen recording | in the PR | [#118](https://github.com/vela-desktop/vela/pull/118) | draft | after 0.1 |
@@ -73,8 +95,7 @@ direction, not a promise.
 - Picture-in-picture for video players.
 
 ### Shell
-- **Input methods and an emoji panel**: `text-input` and `input-method`, with
-  an emoji picker on Super+. .
+- An emoji picker on Super+. (core text-input/input-method support targets beta 0.1).
 - **Start menu search** across files and settings, and Recommended files.
 - Folders in the Start menu's pinned apps.
 - Widgets: a board with weather, calendar, news and system status.
