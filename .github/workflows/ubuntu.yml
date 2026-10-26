@@ -78,6 +78,15 @@ jobs:
           cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
           dpkg-deb --info build-ubuntu/packages/*.deb
           dpkg-deb -f build-ubuntu/packages/*.deb Depends
+          # These must be strong Depends, not Recommends: the shell's theme
+          # icons are otherwise blank on a minimal Ubuntu installation.
+          for dependency in breeze-icon-theme qt6-svg-plugins; do
+            dpkg-deb -f build-ubuntu/packages/*.deb Depends |
+              tr ',' '\n' | grep -Eq "^[[:space:]]*${dependency}([[:space:]]|$)" || {
+                echo "Missing hard DEB dependency: $dependency" >&2
+                exit 1
+              }
+          done
           # Verify the commit stamp without hard-coding the next project version.
           deb_version=$(dpkg-deb -f build-ubuntu/packages/*.deb Version)
           case "$deb_version" in
@@ -116,6 +125,12 @@ jobs:
           apt-get install -y --no-install-recommends file dpkg-dev
           apt-get install -y --no-install-recommends ./deb/*.deb
           dpkg-query -W -f='${Status}\n' vela-git | grep -Fx 'install ok installed'
+          # --no-install-recommends must still pull in both runtime icon packages.
+          for dependency in breeze-icon-theme qt6-svg-plugins; do
+            dpkg-query -W -f='${Status}\n' "$dependency" | grep -Fx 'install ok installed'
+          done
+          test -f /usr/share/icons/breeze-dark/index.theme
+          test -f "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/qt6/plugins/iconengines/libqsvgicon.so"
           test -x /usr/bin/vela-compositor
           test -x /usr/bin/vela-session
           test -x /usr/bin/vela-update
