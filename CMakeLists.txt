@@ -124,7 +124,10 @@ if(VELA_PACKAGE_DEB)
     # Executables and launch scripts require these at runtime even though
     # they are not all linked as ELF libraries (shlibdeps handles the rest).
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3")
+        "xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, "
+        "python3-numpy, python3-pil, "
+        "qml6-module-qtquick, qml6-module-qtquick-controls, "
+        "qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
     include(CPack)
 endif()
