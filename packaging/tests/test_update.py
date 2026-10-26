@@ -361,7 +361,7 @@ class UpdateFixture(unittest.TestCase):
         packaging.mkdir(parents=True)
         self.pkgbuild = packaging / "PKGBUILD"
         self.pkgbuild.write_text((ROOT / "packaging/arch/PKGBUILD").read_text())
-        shutil.copyfile(UPDATER, self.source / "packaging/vela-update")
+        shutil.copyfile(self.update_script, self.source / "packaging/vela-update")
         shutil.copyfile(ROOT / "packaging/verify-attestation.py", self.source / "packaging/verify-attestation.py")
         self.base = self.commit("base")
         self.pkgbuild.write_text(self.pkgbuild.read_text() + "\n# main package\n")
