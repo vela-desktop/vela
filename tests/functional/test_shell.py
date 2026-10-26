@@ -268,12 +268,10 @@ class QtShell(RealShell):
                         try:
                             self.vela.wait_for(correctly_drawn, timeout=4, read_state=False,
                                                what=f"desktop selection bounds {rectangle}")
-                        except AssertionError as error:
-                            # QWindow logs the event-local/global pointer and
-                            # effective DPR; MouseArea logs the received input
-                            # and the actual QML rectangle. Both are opt-in
-                            # and do not alter rendering or the four-second
-                            # pixel assertion.
+                        except (AssertionError, TimeoutError) as error:
+                            # wait_for raises TimeoutError on pixel mismatches:
+                            # include the observed framebuffer bounds and input
+                            # trace rather than silently losing both on timeout.
                             trace = [
                                 line for line in self.vela.log_text()[trace_offset:].splitlines()
                                 if "VELA_SELECTION " in line
