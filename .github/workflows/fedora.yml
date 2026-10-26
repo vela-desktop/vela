@@ -7,7 +7,19 @@ name: Fedora Build
 # Can also be run independently for debugging without duplicating PR jobs.
 on:
   workflow_call:
+    inputs:
+      audio_diagnostics:
+        description: Run optional audio stress diagnostics
+        type: boolean
+        required: false
+        default: false
   workflow_dispatch:
+    inputs:
+      audio_diagnostics:
+        description: Run optional audio stress diagnostics
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -85,7 +97,7 @@ jobs:
           ctest --test-dir build-fedora --output-on-failure --parallel 2 -LE gpu -E '^packaging-update$'
 
       - name: Compare isolated and full audio-core runs (diagnostic, non-blocking)
-        if: always() && steps.audio_cpu_tests.outcome != 'skipped'
+        if: ${{ inputs.audio_diagnostics && always() && steps.audio_cpu_tests.outcome != 'skipped' }}
         continue-on-error: true
         env:
           QT_QPA_PLATFORM: offscreen
