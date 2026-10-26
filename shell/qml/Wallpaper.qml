@@ -20,13 +20,6 @@ Window {
     color: Theme.desktop // while the image is being prepared
 
     property bool primary: false // set by screenwindows.cpp
-    // The *window's* effective DPR, not Screen.devicePixelRatio: under
-    // Wayland fractional scaling the latter is rounded up (e.g. 2 at 125%).
-    // ScreenWindows publishes the actual Qt Quick render-target DPR.
-    property real renderScale: 1.0
-    function pixelEdge(logical) {
-        return Math.round(logical * renderScale) / renderScale
-    }
 
     Image {
         anchors.fill: parent
@@ -477,8 +470,8 @@ Window {
                 }
                 origin = Qt.point(mouse.x, mouse.y)
                 banding = true
-                band.x = root.pixelEdge(mouse.x)
-                band.y = root.pixelEdge(mouse.y)
+                band.x = mouse.x
+                band.y = mouse.y
                 band.width = 0
                 band.height = 0
             }
@@ -486,18 +479,10 @@ Window {
                 if (!banding) {
                     return
                 }
-                // Snap the two independent edges to *physical* pixels,
-                // rather than leaving a half-pixel bound for QRhi/Vulkan
-                // to rasterize differently between GPUs. Endpoints which
-                // meet exactly in logical space remain adjacent in pixels.
-                const x1 = root.pixelEdge(Math.min(origin.x, mouse.x))
-                const y1 = root.pixelEdge(Math.min(origin.y, mouse.y))
-                const x2 = root.pixelEdge(Math.max(origin.x, mouse.x))
-                const y2 = root.pixelEdge(Math.max(origin.y, mouse.y))
-                band.x = x1
-                band.y = y1
-                band.width = x2 - x1
-                band.height = y2 - y1
+                band.x = Math.min(origin.x, mouse.x)
+                band.y = Math.min(origin.y, mouse.y)
+                band.width = Math.abs(mouse.x - origin.x)
+                band.height = Math.abs(mouse.y - origin.y)
                 const s = {}
                 for (let i = 0; i < repeater.count; ++i) {
                     const it = repeater.itemAt(i)
