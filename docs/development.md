@@ -52,7 +52,7 @@ GPU/DRM functionality.
 ```sh
 sudo apt update
 sudo apt install --no-install-recommends \
-    git build-essential cmake ninja-build pkgconf \
+    ca-certificates git build-essential cmake ninja-build pkgconf \
     libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
     libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
     libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
@@ -63,9 +63,13 @@ sudo apt install --no-install-recommends \
     qt6-l10n-tools liblayershellqtinterface-dev \
     libpipewire-0.3-dev libwireplumber-0.5-dev \
     python3 python3-numpy python3-pil dbus
-cmake -S . -B build -G Ninja -DVELA_BUILD_TOOLS=ON
+cmake -S . -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DVELA_BUILD_COMPOSITOR=ON -DVELA_BUILD_SHELL=ON \
+    -DVELA_BUILD_POLKIT=ON -DVELA_BUILD_REPORT=ON -DVELA_BUILD_TOOLS=ON
 cmake --build build --parallel 2
-ctest --test-dir build --output-on-failure -E '^(functional-|sharpness|packaging-update)'
+ctest --test-dir build -N -LE 'gpu|distro-packaging'
+ctest --test-dir build --output-on-failure -LE 'gpu|distro-packaging'
 ```
 
 Build success alone does not imply Ubuntu runtime support. Validate a real
