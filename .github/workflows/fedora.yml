@@ -73,6 +73,7 @@ jobs:
 
 
       - name: CPU-only tests
+        id: audio_cpu_tests
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
@@ -83,29 +84,40 @@ jobs:
           # The GPU-labelled tests (functional-*, sharpness) need a GPU.
           ctest --test-dir build-fedora --output-on-failure --parallel 2 -LE gpu -E '^packaging-update$'
 
-      - name: Diagnose audio-core crash (non-blocking)
-        if: failure()
+      - name: Stress-test remembered audio output (diagnostic, non-blocking)
+        # Run on successful AND failed ordinary tests. Do not mask the required
+        # CTest result or make this intermittent-bug investigation a release gate.
+        if: always() && steps.audio_cpu_tests.outcome != 'skipped'
         continue-on-error: true
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          # Run only after a failure, never replace or relax the normal CTest gate.
+          set -uo pipefail
           test -x build-fedora/tests/audio/vela-audio-core-test || exit 0
           dnf install -y gdb binutils
-          echo "::group::audio-core executable and symbol information"
-          file build-fedora/tests/audio/vela-audio-core-test
-          addr2line -f -C -e build-fedora/tests/audio/vela-audio-core-test 0x41896a || true
-          echo "::endgroup::"
-          # The Python fixture owns an isolated PipeWire + WirePlumber for EACH
-          # attempt. GDB follows the actual Qt test process, rather than Python.
-          for attempt in 1 2 3; do
-            echo "::group::audio-core GDB reproduction attempt ${attempt}"
+          # Each invocation creates a fresh, private PipeWire/WirePlumber fixture.
+          # GDB runs the targeted Qt test, prints every thread on SIGSEGV,
+          # and exits. The outer loop does not hide failures in its summary.
+          failures=0
+          for attempt in $(seq 1 12); do
+            echo "::group::remembered output / attempt ${attempt}"
             timeout 120s python3 tests/audio/fixture.py -- \
               gdb --quiet --batch \
                 -ex 'set pagination off' \
                 -ex 'set print thread-events off' \
+                -ex 'handle SIGSEGV stop print nopass' \
                 -ex 'run' \
-                -ex 'thread apply all bt 20' \
-                --args build-fedora/tests/audio/vela-audio-core-test chosenOutputIsRemembered || true
+                -ex 'thread apply all bt 30' \
+                -ex 'info registers' \
+                --args build-fedora/tests/audio/vela-audio-core-test chosenOutputIsRemembered
+            rc=$?
+            if (( rc != 0 )); then
+              echo "Diagnostic attempt ${attempt} exited ${rc}"
+              failures=$((failures + 1))
+            fi
             echo "::endgroup::"
           done
+          echo "Diagnostic attempts: 12, nonzero exits: ${failures}"
+          # A reproduction should be visible as a diagnostic-step failure,
+          # not make the otherwise successful Fedora build fail.
+          (( failures == 0 ))
