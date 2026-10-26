@@ -19,15 +19,10 @@ The beta is primarily about stabilizing and packaging what Vela already
 provides, removing unwanted desktop dependencies, and publishing a
 versioned release. Work landing during the 0.1 feature freeze is restricted
 to fixes, tests, CI, packaging, release engineering, documentation,
-translations, and the **two named user-facing feature exceptions** below.
+translations, and the **Updates page exception** below.
 
 **Required for the 0.1 release:**
 
-- **Native desktop portal:** design, implement and validate
-  `xdg-desktop-portal-vela` for file chooser, screenshot, screencast/screen
-  sharing and appearance; replace the KDE/wlr portal backends without
-  retaining their runtime dependency for these functions. The portal
-  architecture/design is pending a dedicated proposal.
 - **Updates page:** complete
   [#133](https://github.com/vela-desktop/vela/pull/133) so Settings can
   inspect the installed and available revision, check for updates, display
@@ -44,9 +39,12 @@ translations, and the **two named user-facing feature exceptions** below.
   coverage with practical physical-session smoke tests.
 - **Packaging and runtime independence:** clean installation and
   correct portal/runtime dependencies, preserving an independent Vela
-  compositor and shell. Review the open
+  compositor and shell. Prefer the GTK portal for generic dialogs and
+  keep `xdg-desktop-portal-wlr` for screencast and screenshots, without
+  requiring `xdg-desktop-portal-kde` or Plasma Workspace. Review the open
   [packaging #120](https://github.com/vela-desktop/vela/pull/120)
-  against the final portal configuration.
+  against this configuration; GTK remains an optional fallback on minimal
+  installations.
 - **Native Bluetooth pairing and device lifecycle:** implement the
   session-scoped BlueZ pairing agent, confirmation/passkey flows and
   robust connection/error handling described in
@@ -69,8 +67,8 @@ publication and rollback/update-channel expectations. Reuse existing
 as absent merely because the release process needs to mature. The exact
 workflow remains to be designed, separately from feature planning.
 
-**Feature-freeze rule:** no new user-facing features besides the native
-portal and Updates page are added to 0.1. Core Wayland
+**Feature-freeze rule:** no new user-facing features besides the Updates
+page are added to 0.1. Core Wayland
 `text-input-v3`/`input-method-v2` and on-screen keyboard work target
 0.2 instead. Existing bug fixes, reliability work and necessary packaging
 are not reclassified as new features.
@@ -128,6 +126,11 @@ and GPU behavior must not regress.
 
 A focused feature release that closes user-facing gaps without a
 large redesign or renderer overhaul. Candidates:
+
+- **Native `xdg-desktop-portal-vela` backend:** design, implement and test
+  Vela's own portal integration as a 0.3 target, replacing the generic GTK
+  backend where it offers a benefit. Retain `xdg-desktop-portal-wlr` for
+  screenshots and screen sharing; its replacement is not part of this work.
 
 - Better window management: app-specific window rules, remembering
   window position/size, moving windows across outputs/desktops by
@@ -207,7 +210,6 @@ own design, cost/maintenance analysis and definition of done.
 | Work | Design | Pull request | Status | Release target |
 |---|---|---|---|---|
 | **Settings Updates page**: installed/latest revision, check, changes and update launch | proposed in the PR | [#133](https://github.com/vela-desktop/vela/pull/133) | draft; **0.1 release blocker** | 0.1 |
-| **Native desktop portal**: replace KDE/wlr backends for chooser, screenshots, screencast and appearance | design pending | — | **0.1 release blocker** | 0.1 |
 | **Release engineering**: versioned beta pipeline, gates, provenance, artifacts and release notes | separate infrastructure design pending | — | release infrastructure, **not a desktop feature** | 0.1 |
 | **Native Bluetooth pairing and device lifecycle** | [#146](https://github.com/vela-desktop/vela/pull/146) | #146 (design) | draft design; implementation and real pairing validation required; **0.1 release requirement** | 0.1 |
 | **Vela Lock wallpaper sharpness and scaling** | [#149](https://github.com/vela-desktop/vela/pull/149) | #149 (design) | draft design; implementation and physical-pixel validation required; **0.1 release requirement** | 0.1 |
