@@ -41,6 +41,44 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
 </details>
 
 <details>
+<summary><b>Ubuntu 26.10 (experimental; CI build validation only)</b></summary>
+
+Use Ubuntu 26.10 (Stonking Stingray) with the `universe` repository enabled.
+The CI uses the official `ubuntu:26.10` container and compiles the compositor,
+shell, lock screen, Settings, Files, polkit agent, reporter, and development
+tools. It does not build a .deb, install a Wayland login session, or validate
+GPU/DRM functionality.
+
+```sh
+sudo apt update
+sudo apt install --no-install-recommends \
+    ca-certificates git build-essential cmake ninja-build pkgconf \
+    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+    libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
+    libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
+    libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev \
+    libpolkit-gobject-1-dev zlib1g-dev libgtest-dev libsystemd-dev \
+    qt6-base-dev qt6-base-private-dev qt6-declarative-dev \
+    qt6-svg-dev qt6-wayland-dev qt6-tools-dev qt6-tools-dev-tools \
+    qt6-l10n-tools liblayershellqtinterface-dev \
+    libpipewire-0.3-dev libwireplumber-0.5-dev \
+    python3 python3-numpy python3-pil dbus
+cmake -S . -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DVELA_BUILD_COMPOSITOR=ON -DVELA_BUILD_SHELL=ON \
+    -DVELA_BUILD_POLKIT=ON -DVELA_BUILD_REPORT=ON -DVELA_BUILD_TOOLS=ON
+cmake --build build --parallel 2
+ctest --test-dir build -N -LE 'gpu|distro-packaging'
+ctest --test-dir build --output-on-failure -LE 'gpu|distro-packaging'
+```
+
+Build success alone does not imply Ubuntu runtime support. Validate a real
+Wayland session, portals, audio, polkit, and GPU-specific behavior separately
+before declaring the distribution supported.
+
+</details>
+
+<details>
 <summary><b>openSUSE Tumbleweed (experimental; not currently validated by CI)</b></summary>
 
 ```sh

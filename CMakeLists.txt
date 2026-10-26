@@ -30,7 +30,7 @@ if(VELA_BUILD_TOOLS)
     find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
     add_test(NAME packaging-update COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/packaging/tests -v)
-    set_tests_properties(packaging-update PROPERTIES TIMEOUT 120)
+    set_tests_properties(packaging-update PROPERTIES TIMEOUT 120 LABELS distro-packaging)
     add_test(NAME script-tests COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/scripts/tests -v)
     add_test(NAME documentation COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-docs.py)
