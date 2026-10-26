@@ -105,7 +105,7 @@ cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
 sudo apt install ./build-ubuntu/packages/*.deb
 ```
 
-The preview package includes development tools, matching the Ubuntu CI build. The CI checks installed session entry points, ELF dependencies, baseline Qt Quick/QML modules, and package removal in addition to dependency resolution and installation in a fresh
+The CI preview package includes development tools; the updater's local Ubuntu build omits development test tools. The CI checks installed session entry points, ELF dependencies, baseline Qt Quick/QML modules, and package removal in addition to dependency resolution and installation in a fresh
 Ubuntu 26.10 container. **Neither a successful package install nor a
 successful source build proves the graphical session works.** Keep a working
 desktop or TTY available; GPU/DRM, portals, audio, polkit and login-manager
