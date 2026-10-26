@@ -89,6 +89,7 @@ jobs:
         continue-on-error: true
         env:
           QT_QPA_PLATFORM: offscreen
+          VELA_AUDIO_DIAGNOSTICS: '1'
         run: |
           set -uo pipefail
           test -x build-fedora/tests/audio/vela-audio-core-test || exit 0
