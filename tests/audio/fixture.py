@@ -469,6 +469,26 @@ def main(argv):
                               file=sys.stderr, flush=True)
                     except Exception as error:
                         print(f"{command}: {error}", file=sys.stderr, flush=True)
+                # Correlate the fake player's node ID with PipeWire registry
+                # entries, even when Vela's Core snapshot fails to see it.
+                try:
+                    nodes = []
+                    for obj in audio.dump():
+                        if obj.get("type") != "PipeWire:Interface:Node":
+                            continue
+                        props = obj.get("info", {}).get("props", {})
+                        nodes.append({
+                            "id": obj.get("id"),
+                            "node.name": props.get("node.name"),
+                            "media.class": props.get("media.class"),
+                            "application.name": props.get("application.name"),
+                            "application.process.binary": props.get("application.process.binary"),
+                            "state": obj.get("info", {}).get("state"),
+                        })
+                    print("PipeWire nodes:", json.dumps(nodes, sort_keys=True),
+                          file=sys.stderr, flush=True)
+                except Exception as error:
+                    print(f"PipeWire node dump failed: {error}", file=sys.stderr, flush=True)
                 # The last daemon messages are useful when a node disappears.
                 print(audio.logs(), file=sys.stderr, flush=True)
 
