@@ -82,3 +82,30 @@ jobs:
           # Fedora's RPM smoke job exercises actual DNF transactions.
           # The GPU-labelled tests (functional-*, sharpness) need a GPU.
           ctest --test-dir build-fedora --output-on-failure --parallel 2 -LE gpu -E '^packaging-update$'
+
+      - name: Diagnose audio-core crash (non-blocking)
+        if: failure()
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          # Run only after a failure, never replace or relax the normal CTest gate.
+          test -x build-fedora/tests/audio/vela-audio-core-test || exit 0
+          dnf install -y gdb binutils
+          echo "::group::audio-core executable and symbol information"
+          file build-fedora/tests/audio/vela-audio-core-test
+          addr2line -f -C -e build-fedora/tests/audio/vela-audio-core-test 0x41896a || true
+          echo "::endgroup::"
+          # The Python fixture owns an isolated PipeWire + WirePlumber for EACH
+          # attempt. GDB follows the actual Qt test process, rather than Python.
+          for attempt in 1 2 3; do
+            echo "::group::audio-core GDB reproduction attempt ${attempt}"
+            timeout 120s python3 tests/audio/fixture.py -- \
+              gdb --quiet --batch \
+                -ex 'set pagination off' \
+                -ex 'set print thread-events off' \
+                -ex 'run' \
+                -ex 'thread apply all bt 20' \
+                --args build-fedora/tests/audio/vela-audio-core-test chosenOutputIsRemembered || true
+            echo "::endgroup::"
+          done
