@@ -10,6 +10,7 @@ Run the real shell on a private session bus and isolated configuration.
 from contextlib import contextmanager
 import json
 import os
+import select
 import re
 import shutil
 import socket
@@ -227,19 +228,25 @@ class QtShell(RealShell):
                 actions = ["move", output["x"] + sx, output["y"] + sy, "sleep", 100,
                            "down", "sleep", 100]
                 for ex, ey in ends:
-                    actions += ["move", output["x"] + ex, output["y"] + ey, "sleep", 2000]
+                    # Keep the virtual button down at each endpoint until the
+                    # test confirms exactly that rendered selection. Previously
+                    # a fixed sleep let the pointer reach the next endpoint or
+                    # release while we were still polling a screenshot.
+                    actions += ["move", output["x"] + ex, output["y"] + ey, "checkpoint"]
                 actions += ["up", "move", output["x"] + sx, output["y"] + sy]
-                with self.held_input(actions):
-                    # An output may have a fractional logical size, so use the
-                    # actual upright framebuffer dimensions for edge placement.
-                    # Qt and Vela round physical edges to the nearest pixel;
-                    # truncation wrongly expected 1187 instead of 1188 for
-                    # 950 logical pixels at 125%. Keep exact bounds, no tolerance.
+                with self.held_input(actions, checkpoints=True) as pointer:
+                    # Qt Quick snaps a half-pixel edge to the nearest EVEN
+                    # physical pixel: 330*1.25=412.5 -> 412, whereas
+                    # 950*1.25=1187.5 -> 1188. Never allow +/-1 tolerance.
                     px = before.width / output["w"]
                     py = before.height / output["h"]
-                    edge_x = lambda x: int(x * px + 0.5)
-                    edge_y = lambda y: int(y * py + 0.5)
+                    edge_x = lambda x: round(x * px)
+                    edge_y = lambda y: round(y * py)
                     for ex, ey in ends:
+                        ready, _, _ = select.select([pointer.stdout], [], [], 5)
+                        self.assertTrue(ready, f"virtual pointer did not reach {ex, ey} checkpoint")
+                        self.assertEqual(pointer.stdout.readline(), b"READY\n",
+                                         "virtual pointer checkpoint failed")
                         rectangle = (edge_x(sx), edge_y(sy), edge_x(ex), edge_y(ey))
                         observed = None
 
@@ -260,7 +267,9 @@ class QtShell(RealShell):
                         except AssertionError as error:
                             self.fail(f"{error}; observed bounds={observed}, "
                                       f"transform={transform}, scale={scale}, output={output}")
-                desktop_height = before.height - int(48 * scale)
+                        pointer.stdin.write(b"\n")
+                        pointer.stdin.flush()
+                desktop_height = before.height - edge_y(48)
                 self.vela.wait_for(lambda _: self.vela.pixels(output=1).rows[:desktop_height]
                                    == before.rows[:desktop_height],
                                    timeout=4, read_state=False, what="selection erased after release")
@@ -420,18 +429,31 @@ class QtShell(RealShell):
                     time.sleep(0.5)
 
     @contextmanager
-    def held_input(self, actions):
-        """Keep a pointer alive while inspecting its drag, then release and reap it."""
-        pointer = subprocess.Popen([tool("vela-input"), *map(str, actions)], env=self.vela.client_env)
+    def held_input(self, actions, checkpoints=False):
+        """Keep a virtual button pressed until each screenshot has been checked."""
+        pointer = subprocess.Popen([tool("vela-input"), *map(str, actions)], env=self.vela.client_env,
+                                   stdin=subprocess.PIPE if checkpoints else None,
+                                   stdout=subprocess.PIPE if checkpoints else None)
+        failed = False
         try:
-            yield
+            yield pointer
+        except BaseException:
+            failed = True
+            raise
         finally:
+            if checkpoints:
+                # EOF unblocks a client paused on checkpoint after a failed
+                # image assertion. Preserve the original assertion failure.
+                pointer.stdin.close()
             try:
                 pointer.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 pointer.kill()
                 pointer.wait()
-            self.assertEqual(pointer.returncode, 0)
+            if checkpoints:
+                pointer.stdout.close()
+            if not failed:
+                self.assertEqual(pointer.returncode, 0)
 
     def test_snipping_with_odd_and_4k_output_dimensions(self):
         """Capture sizes need not divide evenly by the fractional scale."""
