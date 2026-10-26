@@ -475,8 +475,10 @@ def main(argv):
             if diagnose:
                 snapshot("before")
             result = subprocess.run(argv, env=env)
-            if diagnose and result.returncode != 0:
-                snapshot(f"after failure (exit {result.returncode})")
+            if diagnose:
+                # GDB may return zero even if the inferior failed a Qt assertion.
+                # Always retain the after-state in investigation mode.
+                snapshot(f"after (wrapper exit {result.returncode})")
             return result.returncode
         finally:
             control.close()
