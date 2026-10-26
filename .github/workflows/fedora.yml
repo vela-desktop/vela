@@ -96,7 +96,9 @@ jobs:
           # The GPU-labelled tests (functional-*, sharpness) need a GPU.
           ctest --test-dir build-fedora --output-on-failure --parallel 2 -LE gpu -E '^packaging-update$'
 
+      # On-demand diagnostics only; normal required CTest results stay unchanged.
       - name: Compare isolated and full audio-core runs (diagnostic, non-blocking)
+        id: audio_diagnostics
         if: ${{ inputs.audio_diagnostics && always() && steps.audio_cpu_tests.outcome != 'skipped' }}
         continue-on-error: true
         env:
@@ -107,23 +109,25 @@ jobs:
           VELA_AUDIO_HARNESS_DIAGNOSTICS: '1'
         run: |
           set -uo pipefail
-          test -x build-fedora/tests/audio/vela-audio-core-test || exit 0
-          dnf install -y gdb binutils
+          mkdir -p audio-diagnostics
+          if [[ ! -x build-fedora/tests/audio/vela-audio-core-test ]]; then
+            echo "audio-core test executable missing" | tee audio-diagnostics/error.txt
+            exit 1
+          fi
+          dnf install -y gdb binutils || exit 1
           printf 'Diagnostic fake stream: %s\n' "$VELA_AUDIO_FAKE_STREAM"
-          test -x "$VELA_AUDIO_FAKE_STREAM" || { echo "fake-stream executable missing" >&2; exit 1; }
+          test -x "$VELA_AUDIO_FAKE_STREAM" || { echo "fake-stream executable missing" | tee audio-diagnostics/error.txt; exit 1; }
           passes=0
           assertions=0
           crashes=0
           timeouts=0
           other_errors=0
-
-          # All three modes get new independent private audio fixtures.
-          # Repeat the isolated tests to expose order/timing differences.
+          printf 'mode,attempt,outcome,wrapper_exit\n' > audio-diagnostics/summary.csv
           for mode in isolated isolated-gdb full-suite; do
             for attempt in 1 2 3; do
               echo "::group::audio investigation / ${mode} / attempt ${attempt}"
-              log=$(mktemp)
-              if [[ "${mode}" == isolated-gdb ]]; then
+              log="audio-diagnostics/${mode}-${attempt}.log"
+              if [[ "$mode" == isolated-gdb ]]; then
                 args=(gdb --quiet --batch
                   -ex 'set pagination off'
                   -ex 'set print thread-events off'
@@ -131,32 +135,43 @@ jobs:
                   -ex run
                   -ex 'thread apply all bt 30'
                   --args build-fedora/tests/audio/vela-audio-core-test chosenOutputIsRemembered)
-              elif [[ "${mode}" == isolated ]]; then
+              elif [[ "$mode" == isolated ]]; then
                 args=(build-fedora/tests/audio/vela-audio-core-test chosenOutputIsRemembered)
               else
                 args=(build-fedora/tests/audio/vela-audio-core-test)
               fi
-              # Do not let bash -e terminate the stress-test early.
-              set +e
-              timeout 150s python3 tests/audio/fixture.py -- "${args[@]}" 2>&1 | tee "$log"
-              rc=${PIPESTATUS[0]}
-              set -e
-              if grep -Eq 'Program received signal SIG(SEGV|ABRT|BUS|ILL)|Received signal 11|SIGSEGV|SIGABRT' "$log"; then
-                outcome=crash; crashes=$((crashes + 1))
-              elif (( rc == 124 || rc == 137 )); then
+              timeout 150s python3 tests/audio/fixture.py -- "${args[@]}" > "$log" 2>&1
+              rc=$?
+              # A debugger can exit successfully when the inferior failed;
+              # test assertions and inferior exit messages take priority.
+              if (( rc == 124 || rc == 137 )); then
                 outcome=timeout; timeouts=$((timeouts + 1))
+              elif grep -Eq 'Program received signal SIG(SEGV|ABRT|BUS|ILL)|Received signal 11|SIGSEGV|SIGABRT' "$log"; then
+                outcome=crash; crashes=$((crashes + 1))
               elif grep -Eq 'FAIL!  :|Totals: .* [1-9][0-9]* failed' "$log"; then
                 outcome=qt-assertion; assertions=$((assertions + 1))
-              elif grep -Eq 'Totals: .* 0 failed' "$log" &&
-                   { (( rc == 0 )) || { [[ "${mode}" == isolated-gdb ]] && grep -q 'exited normally' "$log"; }; }; then
+              elif [[ "$mode" == isolated-gdb ]] && grep -Eq 'Inferior .* exited with code|Program exited with code|ptrace: Operation not permitted' "$log"; then
+                outcome=other-error; other_errors=$((other_errors + 1))
+              elif (( rc == 0 )) && grep -Eq 'Totals: .* 0 failed' "$log" &&
+                   { [[ "$mode" != isolated-gdb ]] || grep -q 'exited normally' "$log"; }; then
                 outcome=pass; passes=$((passes + 1))
               else
                 outcome=other-error; other_errors=$((other_errors + 1))
               fi
-              echo "Mode=${mode} attempt=${attempt} outcome=${outcome} wrapper-exit=${rc}"
-              rm -f "$log"
+              printf '%s,%s,%s,%s\n' "$mode" "$attempt" "$outcome" "$rc" >> audio-diagnostics/summary.csv
+              echo "Mode=$mode attempt=$attempt outcome=$outcome wrapper-exit=$rc"
+              tail -n 35 "$log"
               echo "::endgroup::"
             done
           done
-          echo "Comparison: pass=${passes} qt-assertion=${assertions} crash=${crashes} timeout=${timeouts} other-error=${other_errors}"
+          echo "Comparison: pass=$passes qt-assertion=$assertions crash=$crashes timeout=$timeouts other-error=$other_errors"
           (( assertions + crashes + timeouts + other_errors == 0 ))
+
+      - name: Upload audio diagnostic logs
+        if: ${{ inputs.audio_diagnostics && always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fedora-audio-diagnostics
+          path: audio-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
