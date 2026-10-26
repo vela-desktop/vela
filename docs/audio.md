@@ -678,3 +678,28 @@ audio or WirePlumber state.
   the rename itself is in the manual tests.
 - **libwireplumber API changes**: 0.4 → 0.5 broke clients. Vela pins
   `wireplumber-0.5` at build time; a 0.6 would mean a port of `Core`.
+
+## 15. Investigating intermittent Fedora audio test failures
+
+The Fedora workflow (`.github/workflows/fedora.yml`) includes **opt-in,
+non-blocking** audio diagnostics. Normal PR and main builds retain the existing
+required CTest gate; they do **not** run the extra stress attempts.
+
+To investigate a failure:
+
+1. Open **Actions → Fedora Build → Run workflow**.
+2. Select the branch containing the diagnostic workflow and set
+   `audio_diagnostics` to `true`.
+3. Inspect the **Compare isolated and full audio-core runs** step and download
+   the `fedora-audio-diagnostics` artifact (retained for seven days).
+
+This runs three fresh private PipeWire/WirePlumber fixtures for each mode:
+`isolated` (the `chosenOutputIsRemembered` test), `isolated-gdb` (the same
+test under GDB), and `full-suite` (the complete audio-core Qt test binary).
+The artifact contains one log per attempt and `summary.csv` with the
+classification (`pass`, `crash`, `qt-assertion`, `timeout`, or
+`other-error`).
+
+GDB may be unavailable due to ptrace restrictions; a non-reproduction is not
+evidence that a timing race is fixed. The optional diagnostic step does not
+replace or relax the original required Fedora CTest checks.
