@@ -422,8 +422,9 @@ ctest --test-dir build --output-on-failure
 
 The GPU-dependent functional and sharpness suites use Vela's real Vulkan renderer. They
 run on two self-hosted GPU CI runners — an AMD Radeon RX 9070 XT with Mesa/RADV and an
-NVIDIA GeForce RTX 4070 Laptop GPU with the proprietary driver — before every merge into
-`main` and before every release. GitHub-hosted CI runs the CPU-only tests and skips GPU
+NVIDIA GeForce RTX 4070 Laptop GPU with the proprietary driver — for GPU-affecting
+changes and before every release. Documentation-only and other GPU-unrelated changes do
+not require GPU CI. GitHub-hosted CI runs the CPU-only tests and skips GPU
 suites because hosted runners do not expose a usable DRM/Vulkan device.
 
 For the full workflow, test harness, command socket, debug switches and project layout,
