@@ -38,8 +38,8 @@ Updates Vela to the repository's default branch and installs it (Arch/Fedora/Ubu
                       (exits with 0 if there is one, 1 if Vela is up to date)
   --force             rebuild and reinstall even if Vela is up to date
   --build             always build here, even if GitHub has the package
-  --download          if GitHub has the package, download it without asking
-  --jobs N            parallel compile jobs (makepkg or rpmbuild);
+  --download          use trusted GitHub package when available; on Ubuntu build locally
+  --jobs N            parallel compile jobs (makepkg, rpmbuild or CMake);
                       1 is slow but safe
   --source URL|DIR    where to get Vela from: a git repository or a folder
                       (its commits, not uncommitted changes). Remembered
@@ -154,7 +154,9 @@ packageVersion() {
     elif [ "$backend" = fedora ]; then
         rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git 2>/dev/null
     else
-        dpkg-query -W -f='${Version}\n' vela-git 2>/dev/null
+        # Only fully configured packages count as installed revisions.
+        dpkg-query -W -f='${Status}\t${Version}\n' vela-git 2>/dev/null |
+            awk -F '\t' '$1 == "install ok installed" { print $2 }'
     fi
 }
 installPackage() {
@@ -178,7 +180,7 @@ packageLabel() {
     elif [ "$backend" = fedora ]; then
         printf '%s' 'sudo dnf install'
     else
-        printf '%s' 'sudo apt-get install'
+        printf '%s' 'sudo apt-get install -y --allow-downgrades --reinstall'
     fi
 }
 
@@ -874,13 +876,24 @@ if wait "$makepkg_pid"; then build_ok=1; else build_ok=0; fi
 makepkg_pid=""
 if [ "$backend" = ubuntu ] && [ "$build_ok" = 1 ]; then
     built=$(find "$WORK/packages" -maxdepth 1 -name 'vela-git_*.deb' -type f -print -quit)
-    if [ -z "$built" ] || [ "$(dpkg-deb -f "$built" Package)" != vela-git ]; then
+    if [ -z "$built" ] || [ "$(dpkg-deb -f "$built" Package 2>/dev/null)" != vela-git ]; then
         echo "vela-update: CPack did not produce a valid vela-git DEB." >&2
         build_ok=0
     else
-        mv -f "$built" "$PACKAGES/"
-        built="$PACKAGES/$(basename "$built")"
-        if ! installPackage "$built"; then build_ok=0; fi
+        # Old commits may ignore VELA_PACKAGE_COMMIT: never install an
+        # unstamped or mismatched package that breaks future --check calls.
+        deb_version=$(dpkg-deb -f "$built" Version 2>/dev/null || true)
+        case "$deb_version" in
+        *"+git$latest") ;;
+        *)
+            echo "vela-update: DEB version '${deb_version:-missing}' does not identify selected commit $latest; refusing installation." >&2
+            build_ok=0 ;;
+        esac
+        if [ "$build_ok" = 1 ]; then
+            mv -f "$built" "$PACKAGES/"
+            built="$PACKAGES/$(basename "$built")"
+            if ! installPackage "$built"; then build_ok=0; fi
+        fi
     fi
 fi
 if [ "$backend" = fedora ] && [ "$build_ok" = 1 ]; then
