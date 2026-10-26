@@ -118,7 +118,9 @@ if(VELA_PACKAGE_DEB)
     # Unstamped local/CI preview builds retain the ordinary project version.
     set(VELA_PACKAGE_COMMIT "" CACHE STRING "Short Git commit for the DEB version")
     if(NOT VELA_PACKAGE_COMMIT STREQUAL "")
-        if(NOT VELA_PACKAGE_COMMIT MATCHES "^[0-9a-f]{7,40}$")
+        string(LENGTH "${VELA_PACKAGE_COMMIT}" VELA_PACKAGE_COMMIT_LENGTH)
+        if(NOT VELA_PACKAGE_COMMIT MATCHES "^[0-9a-f]+$" OR
+           VELA_PACKAGE_COMMIT_LENGTH LESS 7 OR VELA_PACKAGE_COMMIT_LENGTH GREATER 40)
             message(FATAL_ERROR "VELA_PACKAGE_COMMIT must be a hexadecimal Git commit abbreviation")
         endif()
         set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}+git${VELA_PACKAGE_COMMIT}")
