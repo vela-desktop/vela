@@ -48,6 +48,7 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -66,6 +67,35 @@ Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
 namespace {
 
 using LayerWindow = LayerShellQt::Window;
+
+// Opt-in diagnostics for the real functional test: observe the event *before*
+// Qt Quick maps it into MouseArea coordinates. Never adjust or consume input.
+class SelectionInputTrace : public QObject {
+public:
+    explicit SelectionInputTrace(QQuickWindow* window) : QObject(window), m_window(window) {}
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (watched == m_window && (event->type() == QEvent::MouseButtonPress
+                || event->type() == QEvent::MouseButtonRelease || event->type() == QEvent::MouseMove)) {
+            const auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton || (mouse->buttons() & Qt::LeftButton)) {
+                const QPointF local = mouse->position();
+                const QPointF global = mouse->globalPosition();
+                const QString screenName = m_window->screen() ? m_window->screen()->name() : QStringLiteral("none");
+                qInfo("VELA_SELECTION qt event=%d screen=%s local=%.8f,%.8f global=%.8f,%.8f "
+                      "window=%dx%d effectiveDpr=%.8f",
+                      int(event->type()), qPrintable(screenName), local.x(), local.y(), global.x(), global.y(),
+                      m_window->width(), m_window->height(), m_window->effectiveDevicePixelRatio());
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QQuickWindow* m_window;
+};
 
 void releaseHiddenPanel(QQuickWindow* window)
 {
@@ -107,6 +137,10 @@ void setupWallpaper(QQuickWindow* window, QScreen* screen)
     layer->setExclusiveZone(-1); // the whole output, also below the taskbar
     // Desktop icons take the keyboard when clicked (F2, Del, Ctrl+C...).
     layer->setKeyboardInteractivity(LayerWindow::KeyboardInteractivityOnDemand);
+    if (qEnvironmentVariableIsSet("VELA_DEBUG_SELECTION")) {
+        window->setProperty("selectionTraceEnabled", true);
+        window->installEventFilter(new SelectionInputTrace(window));
+    }
 }
 
 // The shell's other windows: one each, made layer-shell surfaces by

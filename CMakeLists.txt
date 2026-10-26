@@ -104,3 +104,27 @@ if(VELA_BUILD_TOOLS)
     # A private PipeWire and WirePlumber for the audio tests (docs/audio.md).
     add_subdirectory(tests/audio)
 endif()
+
+# Experimental Ubuntu 26.10 binary package. Opt-in so other distributions and
+# local builds do not accidentally produce Debian packages.
+option(VELA_PACKAGE_DEB "Enable experimental Debian package generation" OFF)
+if(VELA_PACKAGE_DEB)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "Vela DEB packaging requires Linux")
+    endif()
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_PACKAGE_NAME "vela-git")
+    set(CPACK_PACKAGE_VENDOR "Vela Desktop")
+    set(CPACK_PACKAGE_CONTACT "Vela contributors <dev@velade.org>")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+    set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    # Executables and launch scripts require these at runtime even though
+    # they are not all linked as ELF libraries (shlibdeps handles the rest).
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS
+        "xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+    include(CPack)
+endif()
