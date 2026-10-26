@@ -117,6 +117,10 @@ void ScreenWindows::sync()
                 };
                 connect(screen, &QScreen::logicalDotsPerInchChanged, window, publishScale);
                 connect(window, &QWindow::screenChanged, window, publishScale);
+                // Fractional DPR may only settle after the initial Wayland
+                // configure, when the mapped layer acquires its real size.
+                connect(window, &QWindow::widthChanged, window, publishScale);
+                connect(window, &QWindow::heightChanged, window, publishScale);
                 QTimer::singleShot(0, window, publishScale);
             }
             // Closed by the compositor: put back, but without insisting if it
