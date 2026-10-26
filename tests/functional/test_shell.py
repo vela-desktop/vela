@@ -219,7 +219,13 @@ class QtShell(RealShell):
             with self.subTest(transform=transform, scale=scale, side=side):
                 output = self.secondary_output(transform, scale, side)
                 sx, sy = 120, 160
-                ends = ((500, min(950, output["h"] - 120)), (330, min(560, output["h"] - 240)))
+                # Avoid a half-physical-pixel endpoint in the strict framebuffer
+                # oracle: at 125% scaling, y=950 maps to 1187.5 physical
+                # pixels, which rasterizes to 1187 on RADV and 1188 on NVIDIA
+                # for flipped-90. y=948 maps exactly to 1185 on both, keeping
+                # the zero-tolerance transformed-output assertion meaningful.
+                # A separate rasterization test is needed for half-pixel ties.
+                ends = ((500, min(948, output["h"] - 120)), (330, min(560, output["h"] - 240)))
                 self.vela.input("move", output["x"] + sx, output["y"] + sy)
                 before = self.settled_wallpaper()
                 trace_offset = len(self.vela.log_text())
