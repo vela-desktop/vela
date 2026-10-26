@@ -84,9 +84,7 @@ jobs:
           # The GPU-labelled tests (functional-*, sharpness) need a GPU.
           ctest --test-dir build-fedora --output-on-failure --parallel 2 -LE gpu -E '^packaging-update$'
 
-      - name: Stress-test remembered audio output (diagnostic, non-blocking)
-        # Always investigate after the normal CPU test step, even if it passes.
-        # Diagnostic failures must not override the required CTest result.
+      - name: Compare isolated and full audio-core runs (diagnostic, non-blocking)
         if: always() && steps.audio_cpu_tests.outcome != 'skipped'
         continue-on-error: true
         env:
@@ -99,50 +97,48 @@ jobs:
           assertions=0
           crashes=0
           timeouts=0
-          debugger_errors=0
           other_errors=0
-          for attempt in $(seq 1 6); do
-            echo "::group::remembered output / attempt ${attempt}"
-            log=$(mktemp)
-            # actions/runner invokes bash with -e. Explicitly disable errexit
-            # here so a failed Qt assertion cannot abort subsequent attempts.
-            set +e
-            timeout 120s python3 tests/audio/fixture.py -- \
-              gdb --quiet --batch \
-                -ex 'set pagination off' \
-                -ex 'set print thread-events off' \
-                -ex 'handle SIGSEGV stop print nopass' \
-                -ex 'run' \
-                -ex 'thread apply all bt 30' \
-                -ex 'info registers' \
-                --args build-fedora/tests/audio/vela-audio-core-test chosenOutputIsRemembered \
-              2>&1 | tee "$log"
-            rc=${PIPESTATUS[0]}
-            set -e
-            if grep -Eq 'Program received signal SIG(SEGV|ABRT|BUS|ILL)|received signal SIG(SEGV|ABRT|BUS|ILL)' "$log"; then
-              crashes=$((crashes + 1))
-              outcome=crash
-            elif (( rc == 124 || rc == 137 )); then
-              timeouts=$((timeouts + 1))
-              outcome=timeout
-            elif grep -Eq 'FAIL!  :|Totals: .* [1-9][0-9]* failed' "$log"; then
-              assertions=$((assertions + 1))
-              outcome=qt-assertion
-            elif grep -Eq 'ptrace: Operation not permitted|warning:.*ptrace|During startup program exited|No executable file specified' "$log"; then
-              debugger_errors=$((debugger_errors + 1))
-              outcome=debugger-error
-            elif grep -Eq 'PASS   : CoreTest::chosenOutputIsRemembered' "$log" &&
-                 grep -Eq 'Totals: .* 0 failed' "$log"; then
-              passes=$((passes + 1))
-              outcome=pass
-            else
-              other_errors=$((other_errors + 1))
-              outcome=other-error
-            fi
-            echo "Attempt ${attempt}: ${outcome} (wrapper exit ${rc})"
-            rm -f "$log"
-            echo "::endgroup::"
+
+          # All three modes get new independent private audio fixtures.
+          # Repeat the isolated tests to expose order/timing differences.
+          for mode in isolated isolated-gdb full-suite; do
+            for attempt in 1 2 3; do
+              echo "::group::audio investigation / ${mode} / attempt ${attempt}"
+              log=$(mktemp)
+              if [[ "${mode}" == isolated-gdb ]]; then
+                args=(gdb --quiet --batch
+                  -ex 'set pagination off'
+                  -ex 'set print thread-events off'
+                  -ex 'handle SIGSEGV stop print nopass'
+                  -ex run
+                  -ex 'thread apply all bt 30'
+                  -ex 'info registers'
+                  --args build-fedora/tests/audio/vela-audio-core-test chosenOutputIsRemembered)
+              elif [[ "${mode}" == isolated ]]; then
+                args=(build-fedora/tests/audio/vela-audio-core-test chosenOutputIsRemembered)
+              else
+                args=(build-fedora/tests/audio/vela-audio-core-test)
+              fi
+              # Do not let bash -e terminate the stress-test early.
+              set +e
+              timeout 150s python3 tests/audio/fixture.py -- "${args[@]}" 2>&1 | tee "$log"
+              rc=${PIPESTATUS[0]}
+              set -e
+              if grep -Eq 'Program received signal SIG(SEGV|ABRT|BUS|ILL)|Received signal 11|SIGSEGV|SIGABRT' "$log"; then
+                outcome=crash; crashes=$((crashes + 1))
+              elif (( rc == 124 || rc == 137 )); then
+                outcome=timeout; timeouts=$((timeouts + 1))
+              elif grep -Eq 'FAIL!  :|Totals: .* [1-9][0-9]* failed' "$log"; then
+                outcome=qt-assertion; assertions=$((assertions + 1))
+              elif (( rc == 0 )) && grep -Eq 'Totals: .* 0 failed' "$log"; then
+                outcome=pass; passes=$((passes + 1))
+              else
+                outcome=other-error; other_errors=$((other_errors + 1))
+              fi
+              echo "Mode=${mode} attempt=${attempt} outcome=${outcome} wrapper-exit=${rc}"
+              rm -f "$log"
+              echo "::endgroup::"
+            done
           done
-          echo "Results: pass=${passes} qt-assertion=${assertions} crash=${crashes} timeout=${timeouts} debugger-error=${debugger_errors} other-error=${other_errors}"
-          # The summary remains visible even when a reproduction is found.
-          (( assertions + crashes + timeouts + debugger_errors + other_errors == 0 ))
+          echo "Comparison: pass=${passes} qt-assertion=${assertions} crash=${crashes} timeout=${timeouts} other-error=${other_errors}"
+          (( assertions + crashes + timeouts + other_errors == 0 ))
