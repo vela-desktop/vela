@@ -5,9 +5,10 @@ Vela needs a GPU and driver exposing **Vulkan 1.4** with the dmabuf/DRM capabili
 ## Evidence, not a compatibility guarantee
 
 Two machines run the GPU-labeled suites (functional, sharpness and
-sharpness-cpu) as [GPU CI](ci-quality.md#manual-real-gpu-ci-self-hosted-amd):
-an **AMD Radeon RX 9070 XT** and an **NVIDIA GeForce RTX 4070 Laptop GPU**.
-The workflows are started manually. GPU-affecting changes (compositor, renderer, Vulkan/DRM, GPU synchronization, and GPU-dependent tests) require successful AMD and NVIDIA GPU CI runs on the candidate revision before merge. Documentation-only, translation-only, and other changes with no GPU impact do not require GPU runs. Run both GPU suites before each release.
+sharpness-cpu): an **AMD Radeon RX 9070 XT** and an
+**NVIDIA GeForce RTX 4070 Laptop GPU**. See the
+[GPU CI policy](ci-quality.md#gpu-ci-policy) for mandatory coverage,
+candidate revision checks and release rules.
 
 | Environment | What has been established | What remains uncertain |
 |---|---|---|
