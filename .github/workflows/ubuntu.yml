@@ -80,7 +80,7 @@ jobs:
           cat /tmp/vela-deb-files.txt
           grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
           grep -q '/usr/share/wayland-sessions/vela.desktop$' /tmp/vela-deb-files.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vela-ubuntu-26.10-deb
           path: build-ubuntu/packages/*.deb
@@ -94,7 +94,7 @@ jobs:
     container:
       image: ubuntu:26.10
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: vela-ubuntu-26.10-deb
           path: deb
