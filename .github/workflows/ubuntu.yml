@@ -1,0 +1,69 @@
+name: Ubuntu 26.10 build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-build:
+    name: Compile and test (Ubuntu 26.10)
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:26.10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git build-essential cmake ninja-build pkgconf \
+            libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+            libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
+            libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
+            libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev \
+            libpolkit-gobject-1-dev zlib1g-dev libgtest-dev libsystemd-dev \
+            qt6-base-dev qt6-base-private-dev qt6-declarative-dev \
+            qt6-svg-dev qt6-wayland-dev qt6-tools-dev qt6-tools-dev-tools \
+            qt6-l10n-tools liblayershellqtinterface-dev \
+            libpipewire-0.3-dev libwireplumber-0.5-dev \
+            python3 python3-numpy python3-pil dbus
+          # Fail on missing packages: no distro-specific vendoring/fallbacks.
+          pkg-config --modversion wlroots-0.20
+          pkg-config --modversion vulkan
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure all desktop components
+        run: |
+          cmake -S . -B build-ubuntu -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DVELA_BUILD_COMPOSITOR=ON \
+            -DVELA_BUILD_SHELL=ON \
+            -DVELA_BUILD_POLKIT=ON \
+            -DVELA_BUILD_REPORT=ON \
+            -DVELA_BUILD_TOOLS=ON
+      - name: Build
+        run: cmake --build build-ubuntu --parallel 2
+      - name: Non-GPU CTest suite
+        run: |
+          set -euo pipefail
+          # Test selection is driven by CTest labels, not name prefixes.
+          # Fail closed if the registered non-GPU suite unexpectedly shrinks.
+          ctest --test-dir build-ubuntu -N -LE 'gpu|distro-packaging' > /tmp/vela-ubuntu-tests.txt
+          cat /tmp/vela-ubuntu-tests.txt
+          count=$(sed -n 's/^Total Tests: //p' /tmp/vela-ubuntu-tests.txt)
+          if [[ ! "$count" =~ ^[0-9]+$ ]] || (( count < 200 )); then
+            echo "Expected at least 200 non-GPU tests; discovered ${count:-none}" >&2
+            exit 1
+          fi
+          ctest --test-dir build-ubuntu --output-on-failure -LE 'gpu|distro-packaging'
