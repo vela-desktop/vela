@@ -47,6 +47,18 @@ translations, and the **two named user-facing feature exceptions** below.
   compositor and shell. Review the open
   [packaging #120](https://github.com/vela-desktop/vela/pull/120)
   against the final portal configuration.
+- **Native Bluetooth pairing and device lifecycle:** implement the
+  session-scoped BlueZ pairing agent, confirmation/passkey flows and
+  robust connection/error handling described in
+  [#146](https://github.com/vela-desktop/vela/pull/146). This is a
+  **0.1 release requirement**, not deferred to 0.2; #146 is currently
+  a design-only draft, not an implemented fix.
+- **Vela Lock wallpaper quality:** correct the blurry/low-resolution
+  wallpaper appearance on the clock and lock screens, with physical-
+  pixel/scaling checks across relevant output scales as proposed in
+  [#149](https://github.com/vela-desktop/vela/pull/149). This is a
+  **0.1 release requirement**, not deferred to 0.2; #149 is currently
+  a design-only draft, not an implemented fix.
 
 **Release engineering (0.1 infrastructure, not a desktop feature):**
 design and build a more mature release process for the first beta:
@@ -63,11 +75,9 @@ portal and Updates page are added to 0.1. Core Wayland
 0.2 instead. Existing bug fixes, reliability work and necessary packaging
 are not reclassified as new features.
 
-**Stabilization proposals, not shipped fixes:**
-[Bluetooth pairing #146](https://github.com/vela-desktop/vela/pull/146),
-[Vulkan device loss #147](https://github.com/vela-desktop/vela/pull/147),
-[OOM contract #148](https://github.com/vela-desktop/vela/pull/148) and
-[Vela Lock wallpaper quality #149](https://github.com/vela-desktop/vela/pull/149).
+**Other stabilization proposals, not shipped fixes:**
+[Vulkan device loss #147](https://github.com/vela-desktop/vela/pull/147)
+and [OOM contract #148](https://github.com/vela-desktop/vela/pull/148).
 Their final release-blocker classification depends on review and
 reproducible severity, not just on the existence of a design draft.
 
@@ -199,6 +209,8 @@ own design, cost/maintenance analysis and definition of done.
 | **Settings Updates page**: installed/latest revision, check, changes and update launch | proposed in the PR | [#133](https://github.com/vela-desktop/vela/pull/133) | draft; **0.1 release blocker** | 0.1 |
 | **Native desktop portal**: replace KDE/wlr backends for chooser, screenshots, screencast and appearance | design pending | — | **0.1 release blocker** | 0.1 |
 | **Release engineering**: versioned beta pipeline, gates, provenance, artifacts and release notes | separate infrastructure design pending | — | release infrastructure, **not a desktop feature** | 0.1 |
+| **Native Bluetooth pairing and device lifecycle** | [#146](https://github.com/vela-desktop/vela/pull/146) | #146 (design) | draft design; implementation and real pairing validation required; **0.1 release requirement** | 0.1 |
+| **Vela Lock wallpaper sharpness and scaling** | [#149](https://github.com/vela-desktop/vela/pull/149) | #149 (design) | draft design; implementation and physical-pixel validation required; **0.1 release requirement** | 0.1 |
 | **Text input and input methods**: `text-input-v3`, `input-method-v2`, IME integration | reconcile with OSK design | — | not implemented | 0.2 |
 | **Touch, pressure-sensitive pen and tablet mode**: full agreed #94 stages T0–T5, P1–P2 and M1 | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design under discussion; implementation pending | 0.2 |
 | **On-screen keyboard**: full #95 K0–K5, including touch-only unlocking | [#95](https://github.com/vela-desktop/vela/pull/95) | #95 (design) | design under discussion; implementation pending | 0.2 |
@@ -206,93 +218,18 @@ own design, cost/maintenance analysis and definition of done.
 | **Screen-sharing indicator and notification protection** | in the PR | [#72](https://github.com/vela-desktop/vela/pull/72) | draft; requires review and tests | 0.2 |
 | **Always-on-top** | in the PR | [#108](https://github.com/vela-desktop/vela/pull/108) | draft; requires review and tests | 0.2 |
 
-## Next
+## Next — Not yet assigned to a release
 
-The following is a **feature inventory, not additional release commitments**.
-A suggested version is given to make the ideas comparable; 0.3–0.6 targets
-can change. Features already delivered are in **Done**. Where an existing
-feature is partial, the inventory names only its missing extension.
+Only work **not already described in the 0.1–0.6 release sections**
+belongs here; those sections are the single reference for their respective
+release candidates. This is an unscheduled backlog, not a commitment.
 
-### Graphics and displays
-
-| Candidate | Suggested release |
+| Candidate | Status |
 |---|---|
-| Refine VRR behavior during animations | 0.3 |
-| Allow X11 apps to render at their own fractional scale | 0.3 |
-| Super+P projection choices and output mirroring | 0.3 |
-| External touchscreen mapping beyond the scope of #94 | 0.3 |
-| Live blur behind Vela's compositor-drawn title bar and blur caching | 0.4 |
-| HDR, 10-bit outputs and `color-management-v1` ([renderer](renderer.md#75-color)) | 0.5 |
-| Per-output ICC profiles and HDR brightness semantics ([#45](https://github.com/vela-desktop/vela/pull/45)) | 0.5 |
-| Hybrid graphics, multi-GPU and app GPU selection | 0.5 |
-| More Wayland protocols (`fifo`, `commit-timing`, `security-context`, `xdg-foreign`, `xdg-toplevel-icon`, `xdg-dialog`) | When justified; evaluate individually |
-
-### Windows and multitasking
-
-| Candidate | Suggested release |
-|---|---|
-| App-specific window rules | 0.3 |
-| Remember window position and size (not full application restart) | 0.3 |
-| Keyboard shortcuts to move windows across outputs/desktops | 0.3 |
-| Picture-in-picture policy and UI | 0.3 |
-| Optional per-monitor virtual desktops | 0.5 |
-| Restore applications and session state after login | 0.6 |
-
-### Shell and interaction
-
-| Candidate | Suggested release |
-|---|---|
-| Global emoji picker (not the on-screen keyboard's emoji panel) | 0.3 |
-| Extend existing app search in Start to files/Settings | 0.3 |
-| Taskbar auto-hide | 0.3 |
-| Group notifications; fullscreen-aware Do Not Disturb | 0.3 |
-| Brightness hardware keys with an OSD; keyboard backlight control | 0.3 |
-| Start Recommended files and pinned-app folders | 0.4 |
-| Generic app taskbar progress/badges (Vela Files transfers are already covered) | 0.4 |
-| Vertical taskbar and independent/uncombined taskbar buttons | 0.4 |
-| Calendar events in the notification center (calendar UI already exists) | 0.5 |
-| Widgets: weather, calendar, news, system status | 0.6 |
-
-### Snipping Tool and Files
-
-| Candidate | Suggested release |
-|---|---|
-| Screenshot annotations (pen, highlighter, arrows, crop) | 0.3 |
-| Files batch rename | 0.3 |
-| Files remote SMB/SFTP/WebDAV locations | 0.4 |
-| Phones and cameras via MTP/PTP | 0.4 |
-| Shared indexed file/content search | 0.5 |
-| Disk-image mounting | 0.5 |
-| File tags | 0.6 |
-
-### Settings, services and audio
-
-| Candidate | Suggested release |
-|---|---|
-| Automatic update checks/notifications (manual Updates page is a 0.1 blocker) | 0.3 |
-| Keyboard shortcut editor | 0.3 |
-| Post-crash notice linking to the existing `vela-report` | 0.3 |
-| Font choices and regional number/date formats | 0.4 |
-| Printers and scanners | 0.4 |
-| System sounds and separate volume | 0.4 |
-| Users, accounts, login configuration | 0.5 |
-| Battery health and hardware charge limits | 0.5 |
-| Adaptive power policy: gradual idle dimming, ambient light, automatic profiles | 0.5 |
-| Calendar-event integration | 0.5 |
-| Optional audio ducking during calls ([audio design](audio.md#10-not-in-scope)) | 0.6 if adopted |
-
-### Vela applications, languages and distribution
-
-| Candidate | Suggested release |
-|---|---|
-| Extend/validate existing experimental Ubuntu 26.10 DEB/updater | 0.3 |
-| More languages and a community translation workflow | Continuous from 0.3 |
-| Official pacman package repository | 0.4 |
-| Native Task Manager (processes, CPU/GPU/memory/disk/network/startup) | 0.5 |
-| Standalone image viewer beyond Files quick preview | 0.5 if justified |
-| Debian packaging and installer | 0.5 |
-| Live installer/demo image or supported VM image | 0.5 |
-| Own editor, terminal and calculator | 0.6 only if worthwhile |
+| More Wayland protocols (`fifo`, `commit-timing`, `security-context`, `xdg-foreign`, `xdg-toplevel-icon`, `xdg-dialog`) | Evaluate individually when needed |
+| Live blur behind compositor-drawn title bars and caching of unchanged blurred backgrounds | Unscheduled; evaluate alongside visual work |
+| An official pacman package repository for system-managed updates | Unscheduled |
+| More languages and a community translation workflow | Continuous; no fixed release |
 
 ## Not planned
 
@@ -323,8 +260,7 @@ Decisions already taken. Each design document explains why.
   rollback, multi-monitor hotplug with per-output scale, direct scanout, VRR,
   tearing control, explicit sync, Night Light, and
   [brightness](brightness.md) per monitor over DDC/CI and the kernel backlight
-  (implemented and validated on multiple real devices; the broader
-  [§12 hardware matrix](brightness.md#12-tests) remains useful for coverage).
+  (implemented and tested, including on real hardware).
 - **Desktop**: Settings, Files (with a quick preview on Space: pictures, PDFs,
   text, videos and sounds), desktop icons, virtual desktops, Task View,
   snap layouts and Snap Assist, modern context menus, light mode, a
