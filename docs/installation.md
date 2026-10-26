@@ -98,7 +98,8 @@ The updater installs the Ubuntu build dependencies through APT, compiles the
 exact selected Git revision with CMake/CPack, and installs a native DEB.
 The DEB contains `/usr/bin/vela-update` for subsequent updates. Run
 `vela-update --check` to inspect pending changes, `vela-update --force` to
-reinstall the current commit, or `vela-update --commit SHA` to downgrade.
+rebuild and reinstall the default branch, or `vela-update --commit SHA` to
+downgrade. Use `vela-update --force --commit SHA` to reinstall a specific commit.
 Commits older than the revision-stamping support cannot be installed
 through this updater unless they produce a correctly stamped DEB.
 
