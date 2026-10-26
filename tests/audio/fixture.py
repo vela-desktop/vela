@@ -455,7 +455,51 @@ def main(argv):
         control = _Control(audio)
         try:
             env = dict(audio.env, VELA_AUDIO_FIXTURE_CONTROL=str(control.path))
-            return subprocess.run(argv, env=env).returncode
+            diagnose = os.environ.get("VELA_AUDIO_DIAGNOSTICS") == "1"
+
+            def snapshot(phase):
+                print(f"=== audio fixture snapshot: {phase} ===", file=sys.stderr, flush=True)
+                for command in (("wpctl", "status"), ("pw-metadata", "-n", "default")):
+                    try:
+                        result = subprocess.run(command, env=env, capture_output=True,
+                                                text=True, timeout=8)
+                        print(f"$ {' '.join(command)} (exit {result.returncode})",
+                              file=sys.stderr)
+                        print((result.stdout + result.stderr)[-12000:],
+                              file=sys.stderr, flush=True)
+                    except Exception as error:
+                        print(f"{command}: {error}", file=sys.stderr, flush=True)
+                # Correlate the fake player's node ID with PipeWire registry
+                # entries, even when Vela's Core snapshot fails to see it.
+                try:
+                    nodes = []
+                    for obj in audio.dump():
+                        if obj.get("type") != "PipeWire:Interface:Node":
+                            continue
+                        props = obj.get("info", {}).get("props", {})
+                        nodes.append({
+                            "id": obj.get("id"),
+                            "node.name": props.get("node.name"),
+                            "media.class": props.get("media.class"),
+                            "application.name": props.get("application.name"),
+                            "application.process.binary": props.get("application.process.binary"),
+                            "state": obj.get("info", {}).get("state"),
+                        })
+                    print("PipeWire nodes:", json.dumps(nodes, sort_keys=True),
+                          file=sys.stderr, flush=True)
+                except Exception as error:
+                    print(f"PipeWire node dump failed: {error}", file=sys.stderr, flush=True)
+                # The last daemon messages are useful when a node disappears.
+                print(audio.logs(), file=sys.stderr, flush=True)
+
+            if diagnose:
+                snapshot("before")
+            result = subprocess.run(argv, env=env)
+            if diagnose:
+                # GDB may return zero even if the inferior failed a Qt assertion.
+                # Always retain the after-state in investigation mode.
+                snapshot(f"after (wrapper exit {result.returncode})")
+            return result.returncode
         finally:
             control.close()
 

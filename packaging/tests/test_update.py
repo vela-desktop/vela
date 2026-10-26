@@ -325,6 +325,14 @@ class UpdateFixture(unittest.TestCase):
         # explicit bootstrap test below runs the updater from a Git checkout.
         self.update_script = bin_dir / "vela-update-under-test"
         shutil.copyfile(UPDATER, self.update_script)
+        # Use a disposable fixture identity, never a production override of
+        # /etc/os-release. This also lets Arch tests run on Ubuntu CI hosts.
+        self.os_release = self.directory / "os-release"
+        self.os_release.write_text("ID=arch\n")
+        script = self.update_script.read_text()
+        self.assertEqual(script.count("/etc/os-release"), 2)
+        self.update_script.write_text(
+            script.replace("/etc/os-release", str(self.os_release)))
         shutil.copyfile(ROOT / "packaging/verify-attestation.py", bin_dir / "verify-attestation.py")
         self.calls_file = self.directory / "calls.jsonl"
         # Ignore the developer's Git rewrites, SSH keys, credentials and test
@@ -353,7 +361,7 @@ class UpdateFixture(unittest.TestCase):
         packaging.mkdir(parents=True)
         self.pkgbuild = packaging / "PKGBUILD"
         self.pkgbuild.write_text((ROOT / "packaging/arch/PKGBUILD").read_text())
-        shutil.copyfile(UPDATER, self.source / "packaging/vela-update")
+        shutil.copyfile(self.update_script, self.source / "packaging/vela-update")
         shutil.copyfile(ROOT / "packaging/verify-attestation.py", self.source / "packaging/verify-attestation.py")
         self.base = self.commit("base")
         self.pkgbuild.write_text(self.pkgbuild.read_text() + "\n# main package\n")

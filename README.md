@@ -122,7 +122,8 @@ Nested mode is convenient for exploration, but cannot validate physical DRM,
 direct scanout or every driver-specific path.
 
 For a full session, use the [Arch package](#arch-linux-cachyos-endeavouros),
-the [Fedora RPM](#fedora-44) or [install from source](#other-distributions),
+the [Fedora RPM](#fedora-44), the [Ubuntu DEB](#ubuntu-2610-experimental)
+or [install from source](#other-distributions),
 then select Vela at the login
 screen. If something fails, [report it](#reporting-a-problem) using
 `vela-report`, reviewing any diagnostics before sharing them.
@@ -297,11 +298,24 @@ git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update
 ```
 
+### Ubuntu 26.10 (experimental)
+
+Ubuntu 26.10 with the **universe** repository enabled is supported by an
+experimental native DEB updater. It builds from the selected Git commit
+locally and does **not** automatically install unsigned CI previews.
+
+```sh
+sudo apt update
+sudo apt install git ca-certificates sudo
+git clone https://github.com/vela-desktop/vela.git
+sh vela/packaging/vela-update
+```
+
 ### Other distributions
 
 See [build from source](#build-from-source); there is currently no native package updater for these systems.
 
-`vela-update` installs Vela on first run and handles subsequent updates. It uses Sigstore/Cosign to verify downloaded packages (no GitHub CLI required) and falls back to a local build if verification is unavailable. Fedora 44 users should install Cosign from its official upstream RPM before the first download; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
+`vela-update` installs Vela on first run and handles subsequent updates. On Arch and Fedora it uses Sigstore/Cosign to verify downloaded packages (no GitHub CLI required), falling back to a local build when necessary. On Ubuntu 26.10 it always builds a local DEB. Fedora 44 users should install Cosign from its official upstream RPM before the first download; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
 ## Reporting a problem
 
 Run `vela-report` to create a diagnostic ZIP with a description and the evidence

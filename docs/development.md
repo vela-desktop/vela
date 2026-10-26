@@ -41,12 +41,13 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
 </details>
 
 <details>
-<summary><b>Ubuntu 26.10 (experimental; CI build validation only)</b></summary>
+<summary><b>Ubuntu 26.10 (experimental native DEB updater and CI validation)</b></summary>
 
 Use Ubuntu 26.10 (Stonking Stingray) with the `universe` repository enabled.
 The CI uses the official `ubuntu:26.10` container and compiles the compositor,
 shell, lock screen, Settings, Files, polkit agent, reporter, and development
-tools. It does not build a .deb, install a Wayland login session, or validate
+tools. It also builds an experimental .deb and checks installation and removal in a
+clean Ubuntu 26.10 container. It does not validate a graphical login session or
 GPU/DRM functionality.
 
 ```sh
@@ -62,7 +63,7 @@ sudo apt install --no-install-recommends \
     qt6-svg-dev qt6-wayland-dev qt6-tools-dev qt6-tools-dev-tools \
     qt6-l10n-tools liblayershellqtinterface-dev \
     libpipewire-0.3-dev libwireplumber-0.5-dev \
-    python3 python3-numpy python3-pil dbus
+    dpkg-dev file python3 python3-numpy python3-pil dbus
 cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DVELA_BUILD_COMPOSITOR=ON -DVELA_BUILD_SHELL=ON \
@@ -72,9 +73,9 @@ ctest --test-dir build -N -LE 'gpu|distro-packaging'
 ctest --test-dir build --output-on-failure -LE 'gpu|distro-packaging'
 ```
 
-Build success alone does not imply Ubuntu runtime support. Validate a real
-Wayland session, portals, audio, polkit, and GPU-specific behavior separately
-before declaring the distribution supported.
+Ubuntu 26.10 also has an [experimental DEB updater](installation.md#ubuntu-2610-experimental-native-deb-updater).
+Build success alone does not prove Ubuntu graphical session functionality:
+validate Wayland, portals, audio, polkit and GPU-specific behavior on real hardware.
 
 </details>
 
