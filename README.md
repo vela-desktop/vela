@@ -451,6 +451,7 @@ see the documentation below.
 | **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
 | **[Roadmap](docs/roadmap.md)** | Work in progress, what comes next, what is not planned, and what is done. |
 | **[Contributing](CONTRIBUTING.md)** | Development workflow, PR checklist, testing and DCO. |
+| **[Contributors](CONTRIBUTORS.md)** | Thanks to everyone helping build and improve Vela. |
 | **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
 | **[Polkit agent](docs/polkit-agent.md)** | The User Account Control dialog: agent, dialog, protocol, security notes and tests. |
