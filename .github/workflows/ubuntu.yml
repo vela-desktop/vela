@@ -55,7 +55,8 @@ jobs:
             -DVELA_BUILD_TOOLS=ON \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_INSTALL_LIBEXECDIR=libexec/vela \
-            -DVELA_PACKAGE_DEB=ON
+            -DVELA_PACKAGE_DEB=ON \
+            -DVELA_PACKAGE_COMMIT="${GITHUB_SHA:0:7}"
       - name: Build
         run: cmake --build build-ubuntu --parallel 2
       - name: Non-GPU CTest suite
@@ -77,9 +78,11 @@ jobs:
           cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
           dpkg-deb --info build-ubuntu/packages/*.deb
           dpkg-deb -f build-ubuntu/packages/*.deb Depends
+          test "$(dpkg-deb -f build-ubuntu/packages/*.deb Version)" = "0.1.0+git${GITHUB_SHA:0:7}"
           dpkg-deb --contents build-ubuntu/packages/*.deb > /tmp/vela-deb-files.txt
           cat /tmp/vela-deb-files.txt
           grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
+          grep -q '/usr/bin/vela-update$' /tmp/vela-deb-files.txt
           grep -q '/usr/share/wayland-sessions/vela.desktop$' /tmp/vela-deb-files.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -110,6 +113,8 @@ jobs:
           dpkg-query -W -f='${Status}\n' vela-git | grep -Fx 'install ok installed'
           test -x /usr/bin/vela-compositor
           test -x /usr/bin/vela-session
+          test -x /usr/bin/vela-update
+          /usr/bin/vela-update --help >/dev/null
           test -f /usr/share/wayland-sessions/vela.desktop
           # Ensure session entry references an executable available in the clean image.
           session_exec=$(sed -n 's/^Exec=//p' /usr/share/wayland-sessions/vela.desktop | head -n 1)
@@ -142,4 +147,5 @@ jobs:
           set -eu
           apt-get remove -y vela-git
           test ! -e /usr/bin/vela-compositor
+          test ! -e /usr/bin/vela-update
           test ! -e /usr/share/wayland-sessions/vela.desktop
