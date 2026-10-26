@@ -26,9 +26,10 @@ translations, and the **Updates page exception** below.
 - **Updates page:** complete
   [#133](https://github.com/vela-desktop/vela/pull/133) so Settings can
   inspect the installed and available revision, check for updates, display
-  changes/errors and launch the updater. **This is a release blocker,
-  not a feature that may slip to 0.2.** Automatic polling/notifications
-  remain a later improvement.
+  changes/errors and launch the updater, and so Vela checks for updates
+  in the background and sends a notification when one is available.
+  **This is a release blocker, not a feature that may slip to 0.2**, and
+  the notifications are part of it.
 - **NVIDIA capture performance:** fix and verify
   [#132](https://github.com/vela-desktop/vela/issues/132) (blocking
   synchronous SHM readback and missed 180 Hz virtual vblanks); do not
@@ -144,7 +145,7 @@ large redesign or renderer overhaul. Candidates:
   grouped notifications, fullscreen-aware Do Not Disturb, brightness
   key OSD and keyboard backlight controls, and a shortcut editor.
 - Incremental tools: screenshot annotations, batch rename in Files,
-  opt-in automatic update checks/notifications, and a post-crash
+  and a post-crash
   notification leading to the already implemented `vela-report`.
 - Broaden and physically validate the experimental Ubuntu updater
   and package integration.
@@ -209,7 +210,7 @@ own design, cost/maintenance analysis and definition of done.
 
 | Work | Design | Pull request | Status | Release target |
 |---|---|---|---|---|
-| **Settings Updates page**: installed/latest revision, check, changes and update launch | proposed in the PR | [#133](https://github.com/vela-desktop/vela/pull/133) | draft; **0.1 release blocker** | 0.1 |
+| **Settings Updates page**: installed/latest revision, check, changes, update launch and update notifications | proposed in the PR | [#133](https://github.com/vela-desktop/vela/pull/133) | draft; **0.1 release blocker** | 0.1 |
 | **Release engineering**: versioned beta pipeline, gates, provenance, artifacts and release notes | separate infrastructure design pending | — | release infrastructure, **not a desktop feature** | 0.1 |
 | **Native Bluetooth pairing and device lifecycle** | [#146](https://github.com/vela-desktop/vela/pull/146) | #146 (design) | draft design; implementation and real pairing validation required; **0.1 release requirement** | 0.1 |
 | **Vela Lock wallpaper sharpness and scaling** | [#149](https://github.com/vela-desktop/vela/pull/149) | #149 (design) | draft design; implementation and physical-pixel validation required; **0.1 release requirement** | 0.1 |
