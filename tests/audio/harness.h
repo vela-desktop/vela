@@ -75,7 +75,13 @@ public:
                 }
             }
         });
-        m_process.start(qEnvironmentVariable("VELA_AUDIO_FAKE_STREAM"), arguments);
+        const QString executable = qEnvironmentVariable("VELA_AUDIO_FAKE_STREAM");
+        m_process.start(executable, arguments);
+        if (qEnvironmentVariableIsSet("VELA_AUDIO_HARNESS_DIAGNOSTICS")) {
+            qInfo() << "audio-fake-stream launch" << executable << arguments
+                    << "started" << m_process.waitForStarted(3000)
+                    << "error" << m_process.errorString();
+        }
     }
     ~FakeStream() { close(); }
 
@@ -84,6 +90,12 @@ public:
     {
         static_cast<void>(QTest::qWaitFor([this] { return m_state == QLatin1String("streaming") || m_process.state() == QProcess::NotRunning; },
             5000));
+        if (qEnvironmentVariableIsSet("VELA_AUDIO_HARNESS_DIAGNOSTICS")) {
+            qInfo() << "audio-fake-stream observed" << "node" << m_node
+                    << "state" << m_state << "process-state" << m_process.state()
+                    << "process-error" << m_process.errorString()
+                    << "exit-code" << m_process.exitCode();
+        }
         return m_state == QLatin1String("streaming") ? m_node : 0;
     }
     quint32 node() const { return m_node; }
