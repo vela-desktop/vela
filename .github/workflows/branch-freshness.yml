@@ -55,6 +55,7 @@ jobs:
             for (const candidate of prs) {
               let headSha;
               let mergeSha;
+              let mergeConflict = false;
               try {
                 const { data: first } = await github.rest.pulls.get({
                   owner, repo, pull_number: candidate.number
@@ -97,17 +98,21 @@ jobs:
                     }
                   }
                   if (pr.mergeable === false) {
+                    mergeConflict = true;
                     core.warning('PR #' + candidate.number + ': merge conflict; GitHub blocks merge');
                     break;
                   }
                   if (attempt < 5) await sleep(1000);
                 }
                 if (!mergeSha) {
-                  // Never strand the HEAD in pending. Fail closed if GitHub cannot
-                  // provide a current, verified test merge (including conflicts).
-                  await publish(headSha, 'failure', 'Current test merge unavailable; retry or resolve conflicts');
-                  core.warning('PR #' + candidate.number + ': current test merge unavailable');
-                  continue;
+                  if (mergeConflict) {
+                    // A genuine conflict is a PR failure, not a workflow/API error.
+                    await publish(headSha, 'failure', 'Merge conflict with main; resolve conflicts');
+                    continue;
+                  }
+                  // GitHub may leave mergeability unknown after all retries.
+                  // Fail the workflow and terminate HEAD rather than silently pass.
+                  throw new Error('Current test merge unavailable after retries');
                 }
             
                 // Compare from the common ancestor to main, excluding PR-only changes.
@@ -145,8 +150,10 @@ jobs:
                     latestPr.state !== 'open' || latestPr.base.ref !== 'main') {
                   throw new Error('Main or PR head moved during evaluation');
                 }
-                // GitHub can evaluate required statuses on either HEAD or the
-                // synthetic merge. Both must have a terminal verdict.
+                // GitHub may evaluate HEAD or the synthetic merge. The latter
+                // is tied to the verified base SHA; HEAD alone is NOT a freshness
+                // guarantee after main changes. Require up-to-date branches or
+                // a merge queue in repository protection to close that race.
                 await publish(headSha, state, description);
                 await publish(mergeSha, state, description);
                 core.info('PR #' + candidate.number + ': ' + state + ': ' + description);
