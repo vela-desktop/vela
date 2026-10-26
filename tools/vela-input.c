@@ -323,7 +323,8 @@ static void usage(const char* program)
     fprintf(stderr,
         "Usage: %s ACTION [ACTION...]\n"
         "  move X Y | down [left|right|middle|back|forward] | up [...] | click [...]\n"
-        "  key COMBO (e.g. super+Left) | keydown|keyup KEY | type TEXT | scroll N | sleep MS\n",
+        "  key COMBO (e.g. super+Left) | keydown|keyup KEY | type TEXT | scroll N | sleep MS\n"
+        "  checkpoint: wait for stdin acknowledgement before continuing (functional tests)\n",
         program);
 }
 
@@ -409,6 +410,16 @@ int main(int argc, char** argv)
             wl_display_roundtrip(display);
             usleep((useconds_t)atoi(arg1) * 1000);
             ++i;
+        } else if (!strcmp(action, "checkpoint")) {
+            // A protocol roundtrip confirms the compositor consumed this
+            // virtual-pointer motion; the test must also observe the frame
+            // before the next motion. Keep this device and all its pressed
+            // buttons alive until Python acknowledges the screenshot.
+            if (wl_display_roundtrip(display) < 0 || puts("READY") == EOF || fflush(stdout) == EOF
+                || getchar() != '\n') {
+                fprintf(stderr, "vela-input: checkpoint handshake failed\n");
+                ok = 0;
+            }
         } else {
             fprintf(stderr, "vela-input: invalid action '%s'\n", action);
             usage(argv[0]);
