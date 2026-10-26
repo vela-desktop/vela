@@ -66,6 +66,12 @@ Intel ANV. See [the physical hardware matrix](hardware.md#gpu-resource-cleanup-a
 
 ## Manual real-GPU CI (self-hosted AMD)
 
+Both GPU workflows, AMD here and [NVIDIA](#manual-real-gpu-ci-self-hosted-nvidia)
+below, are dispatched by hand **before every merge into `main` and before
+every release**, on the revision being merged or released. A merge needs both
+to pass. The runners are an AMD Radeon RX 9070 XT (Mesa/RADV, CachyOS) and an
+NVIDIA GeForce RTX 4070 Laptop GPU (proprietary driver, Arch/CachyOS).
+
 [GPU CI - AMD (manual)](../.github/workflows/gpu-amd.yml) is **only**
 triggered via `workflow_dispatch`; no push or pull request starts it.
 The runner needs GitHub's standard `self-hosted`, `linux`, `x64` labels

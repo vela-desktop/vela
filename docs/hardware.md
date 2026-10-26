@@ -4,10 +4,16 @@ Vela needs a GPU and driver exposing **Vulkan 1.4** with the dmabuf/DRM capabili
 
 ## Evidence, not a compatibility guarantee
 
+Two machines run the GPU-labeled suites (functional, sharpness and
+sharpness-cpu) as [GPU CI](ci-quality.md#manual-real-gpu-ci-self-hosted-amd):
+an **AMD Radeon RX 9070 XT** and an **NVIDIA GeForce RTX 4070 Laptop GPU**.
+The workflows are started by hand, but they run before every merge into
+`main` and before every release, and a merge needs both of them.
+
 | Environment | What has been established | What remains uncertain |
 |---|---|---|
-| AMD Radeon RX 9070 XT + Mesa/RADV, CachyOS | Primary development machine; the functional and pixel sharpness suites are exercised there | Not representative of every AMD generation or every multi-display setup |
-| NVIDIA proprietary drivers | Vela has driver-specific synchronization handling and receives manual tester reports | Broader DRM, screen-sharing, suspend/resume and GPU fault-path coverage is not established |
+| AMD Radeon RX 9070 XT + Mesa/RADV, CachyOS | Primary development machine and the AMD GPU CI runner: the GPU suites run on it before every merge and every release, and it is used daily as a DRM session | Not representative of every AMD generation or every multi-display setup |
+| NVIDIA GeForce RTX 4070 Laptop GPU + proprietary driver, Arch/CachyOS | The NVIDIA GPU CI runner: the same GPU suites before every merge and every release; driver-specific synchronization handling; manual tester reports | The runner's suites are headless, so DRM/KMS, screen sharing and suspend/resume rely on manual reports; known failures are tracked as issues (such as [#132](https://github.com/vela-desktop/vela/issues/132)) |
 | Intel + Mesa/ANV | Vulkan support is an intended path | No repeated automated real-hardware matrix is documented |
 | NVK | Listed as an intended Vulkan driver option | Compatibility is not demonstrated by the AMD test runs |
 | VMs and virtio/Venus | Useful experimental debugging environment | Vulkan version, modifiers, dmabuf import and compositor behavior depend on the VM stack |

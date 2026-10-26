@@ -213,17 +213,20 @@ They require:
 
 If the harness cannot find a usable GPU, it exits with status 77. CTest marks that as **skipped**, not failed.
 
-### Primary development hardware
+### GPU CI hardware
 
-The complete GPU-dependent suite is run regularly during development on:
+The complete GPU-dependent suite runs on two machines, through the
+[GPU CI workflows](ci-quality.md#manual-real-gpu-ci-self-hosted-amd):
 
-- **GPU:** AMD Radeon RX 9070 XT
-- **Driver:** Mesa/RADV
-- **OS:** CachyOS
+| GPU | Driver | OS |
+|---|---|---|
+| AMD Radeon RX 9070 XT | Mesa/RADV | CachyOS |
+| NVIDIA GeForce RTX 4070 Laptop GPU | NVIDIA proprietary | Arch/CachyOS |
 
-The functional and sharpness suites currently pass in full on that machine.
+The workflows are started by hand, but they run before every merge into
+`main` and before every release, and a merge needs both of them to pass.
 
-This gives the renderer regular real-hardware coverage during development. It is not the same as a broad hardware matrix: Intel and NVIDIA paths currently receive less repeated real-hardware testing than AMD/RADV.
+This gives the renderer real-hardware coverage on both Vulkan drivers. It is not the same as a broad hardware matrix: Intel paths currently receive no repeated real-hardware testing, and both runners use the headless backend, not DRM/KMS ([hardware coverage](hardware.md)).
 
 ## Headless functional harness
 

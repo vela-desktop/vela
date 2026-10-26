@@ -24,6 +24,9 @@ alongside the per-commit alphas.
   merge after the freeze.
 - Every other feature pull request stays open and keeps being reviewed, but
   merges after 0.1. The same goes for everything under **Next**.
+- Like every merge into `main`, the release needs the GPU suites to pass on
+  both [GPU CI](ci-quality.md#manual-real-gpu-ci-self-hosted-amd) runners, an
+  AMD Radeon RX 9070 XT and an NVIDIA GeForce RTX 4070 Laptop GPU.
 
 ## In progress
 
@@ -68,6 +71,11 @@ direction, not a promise.
 - Picture-in-picture for video players.
 
 ### Shell
+- **Vela's own portal**, `xdg-desktop-portal-vela`, in place of the KDE and
+  wlr backends that apps reach today
+  ([vela-portals.conf](../session/vela-portals.conf)): the file chooser,
+  screen sharing and screenshots with Vela's own picker, appearance settings,
+  and the other portal interfaces apps ask for.
 - **Input methods and an emoji panel**: `text-input` and `input-method`, with
   an emoji picker on Super+. .
 - **Start menu search** across files and settings, and Recommended files.
@@ -167,7 +175,7 @@ Decisions already taken. Each design document explains why.
   [`vela-report`](reporting.md) for guided bug reports, `vela-update`,
   [signed packages with verified provenance](package-provenance.md) for Arch
   and Fedora, and CI with sanitizers, static analysis and real AMD and NVIDIA
-  GPUs.
+  GPUs (RX 9070 XT and RTX 4070 Laptop) before every merge.
 - **Languages**: English and Italian, switched live from Settings.
 
 ## Keeping this page current
