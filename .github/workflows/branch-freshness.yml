@@ -62,9 +62,9 @@ jobs:
                 if (first.state !== 'open' || first.base.ref !== 'main') continue;
                 headSha = first.head.sha;
             
-                // Without a new test-merge status GitHub can fall back to the head.
-                // Clear any reusable success on the head, including from old runs.
-                await publish(headSha, 'pending', 'Awaiting current test-merge freshness result');
+                // Invalidate any previous HEAD success before evaluating the new base.
+                // Always replace this pending state with a terminal status below.
+                await publish(headSha, 'pending', 'Evaluating current base');
             
                 const { data: main } = await github.rest.repos.getBranch({
                   owner, repo, branch: 'main'
@@ -103,7 +103,9 @@ jobs:
                   if (attempt < 5) await sleep(1000);
                 }
                 if (!mergeSha) {
-                  // Head remains pending, preventing a fallback approval.
+                  // Never strand the HEAD in pending. Fail closed if GitHub cannot
+                  // provide a current, verified test merge (including conflicts).
+                  await publish(headSha, 'failure', 'Current test merge unavailable; retry or resolve conflicts');
                   core.warning('PR #' + candidate.number + ': current test merge unavailable');
                   continue;
                 }
@@ -143,19 +145,22 @@ jobs:
                     latestPr.state !== 'open' || latestPr.base.ref !== 'main') {
                   throw new Error('Main or PR head moved during evaluation');
                 }
+                // GitHub can evaluate required statuses on either HEAD or the
+                // synthetic merge. Both must have a terminal verdict.
+                await publish(headSha, state, description);
                 await publish(mergeSha, state, description);
                 core.info('PR #' + candidate.number + ': ' + state + ': ' + description);
               } catch (error) {
                 errors++;
                 core.error('PR #' + candidate.number + ': ' + error.message);
-                if (mergeSha) {
+                // Fail closed and terminate any pending HEAD status on API errors.
+                for (const sha of [headSha, mergeSha].filter(Boolean)) {
                   try {
-                    await publish(mergeSha, 'error', 'Freshness check failed; retry');
+                    await publish(sha, 'error', 'Freshness check failed; retry');
                   } catch (statusError) {
                     core.error('PR #' + candidate.number + ': ' + statusError.message);
                   }
                 }
-                // Without a verified merge, the head stays pending.
               }
             }
             if (errors) core.setFailed(errors + ' PR freshness check(s) failed');
