@@ -41,20 +41,27 @@ for program in vela-compositor vela-shell vela-files vela-settings vela-lock \
         fail "$program has an unresolved runtime library"
     fi
 done
-# The KDE portal intentionally pulls in Plasma Workspace on Arch.
-for required in konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-kde xdg-desktop-portal-wlr plasma-workspace; do
+# GTK is an optional fallback, not a mandatory runtime dependency.
+for required in konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-wlr; do
     pacman -Q "$required" >/dev/null || fail "Missing desktop integration: $required"
 done
-if pacman -Q gnome-shell >/dev/null 2>&1; then
-    fail "Standalone install unexpectedly pulled in GNOME Shell"
-fi
+for foreign_de in xdg-desktop-portal-kde plasma-workspace gnome-shell; do
+    if pacman -Q "$foreign_de" >/dev/null 2>&1; then
+        fail "Standalone install unexpectedly pulled in $foreign_de"
+    fi
+done
 if pacman -Q base-devel >/dev/null 2>&1; then
     fail "base-devel should only be installed when a local build is requested"
 fi
 for executable in git curl sudo flock setsid; do
     command -v "$executable" >/dev/null || fail "Missing vela-update prerequisite: $executable"
 done
-if ! grep -Fq 'default=kde;gtk' /usr/share/xdg-desktop-portal/vela-portals.conf; then
-    fail "Vela portal preferences no longer select KDE first"
+if ! grep -Fxq 'default=gtk' /usr/share/xdg-desktop-portal/vela-portals.conf; then
+    fail "Vela portal preferences must select GTK for generic portals"
 fi
+for interface in ScreenCast Screenshot; do
+    if ! grep -Fxq "org.freedesktop.impl.portal.${interface}=wlr" /usr/share/xdg-desktop-portal/vela-portals.conf; then
+        fail "Vela portal preferences must keep ${interface} on wlr"
+    fi
+done
 echo "Standalone package smoke check passed; graphical login was not tested."
