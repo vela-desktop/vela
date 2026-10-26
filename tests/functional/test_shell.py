@@ -235,13 +235,14 @@ class QtShell(RealShell):
                     actions += ["move", output["x"] + ex, output["y"] + ey, "checkpoint"]
                 actions += ["up", "move", output["x"] + sx, output["y"] + sy]
                 with self.held_input(actions, checkpoints=True) as pointer:
-                    # Qt Quick snaps a half-pixel edge to the nearest EVEN
-                    # physical pixel: 330*1.25=412.5 -> 412, whereas
-                    # 950*1.25=1187.5 -> 1188. Never allow +/-1 tolerance.
+                    # Wallpaper.qml snaps both selection edges to the nearest
+                    # physical pixel (half-up for nonnegative coordinates).
+                    # This removes GPU-dependent rasterization of half-pixel
+                    # bounds. Verify the exact outcome; no +/-1 tolerance.
                     px = before.width / output["w"]
                     py = before.height / output["h"]
-                    edge_x = lambda x: round(x * px)
-                    edge_y = lambda y: round(y * py)
+                    edge_x = lambda x: int(x * px + 0.5)
+                    edge_y = lambda y: int(y * py + 0.5)
                     for ex, ey in ends:
                         ready, _, _ = select.select([pointer.stdout], [], [], 5)
                         self.assertTrue(ready, f"virtual pointer did not reach {ex, ey} checkpoint")
