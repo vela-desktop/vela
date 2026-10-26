@@ -105,6 +105,7 @@ jobs:
         run: |
           set -eu
           apt-get update
+          apt-get install -y --no-install-recommends file dpkg-dev
           apt-get install -y --no-install-recommends ./deb/*.deb
           dpkg-query -W -f='${Status}\n' vela-git | grep -Fx 'install ok installed'
           test -x /usr/bin/vela-compositor
