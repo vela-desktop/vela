@@ -223,8 +223,7 @@ The complete GPU-dependent suite runs on two machines, through the
 | AMD Radeon RX 9070 XT | Mesa/RADV | CachyOS |
 | NVIDIA GeForce RTX 4070 Laptop GPU | NVIDIA proprietary | Arch/CachyOS |
 
-The workflows are started by hand, but they run before every merge into
-`main` and before every release, and a merge needs both of them to pass.
+The workflows are started manually. GPU-affecting changes (compositor, renderer, Vulkan/DRM, GPU synchronization, and GPU-dependent tests) require successful AMD and NVIDIA GPU CI runs on the candidate revision before merge. Documentation-only, translation-only, and other changes with no GPU impact do not require GPU runs. Run both GPU suites before each release.
 
 This gives the renderer real-hardware coverage on both Vulkan drivers. It is not the same as a broad hardware matrix: Intel paths currently receive no repeated real-hardware testing, and both runners use the headless backend, not DRM/KMS ([hardware coverage](hardware.md)).
 
