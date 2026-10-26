@@ -66,7 +66,8 @@ class RealShell(unittest.TestCase):
         env = dict(self.vela.client_env, QT_QPA_PLATFORM="wayland",
                    QT_WAYLAND_SHELL_INTEGRATION="layer-shell", QT_WAYLAND_RECONNECT="0",
                    QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
-                   WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper)
+                   WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
+                   VELA_DEBUG_SELECTION="1")
         self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
         self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar") and self.mapped(s, "vela-wallpaper"),
@@ -221,6 +222,7 @@ class QtShell(RealShell):
                 ends = ((500, min(950, output["h"] - 120)), (330, min(560, output["h"] - 240)))
                 self.vela.input("move", output["x"] + sx, output["y"] + sy)
                 before = self.settled_wallpaper()
+                trace_offset = len(self.vela.log_text())
                 # Keep one virtual pointer alive throughout the complete drag,
                 # including snapshots while its button is held.
                 # Allow Qt to process device creation/focus before the press,
@@ -235,10 +237,11 @@ class QtShell(RealShell):
                     actions += ["move", output["x"] + ex, output["y"] + ey, "checkpoint"]
                 actions += ["up", "move", output["x"] + sx, output["y"] + sy]
                 with self.held_input(actions, checkpoints=True) as pointer:
-                    # Wallpaper.qml snaps both selection edges to the nearest
-                    # physical pixel (half-up for nonnegative coordinates).
-                    # This removes GPU-dependent rasterization of half-pixel
-                    # bounds. Verify the exact outcome; no +/-1 tolerance.
+                    # Deliberately retain the strict existing oracle while
+                    # tracing actual Qt input and QML geometry: the previous
+                    # snapping "fix" produced one-pixel regressions on both
+                    # GPUs. A failure here must distinguish coordinate delivery
+                    # from rasterization instead of guessing another rounding.
                     px = before.width / output["w"]
                     py = before.height / output["h"]
                     edge_x = lambda x: int(x * px + 0.5)
@@ -266,8 +269,20 @@ class QtShell(RealShell):
                             self.vela.wait_for(correctly_drawn, timeout=4, read_state=False,
                                                what=f"desktop selection bounds {rectangle}")
                         except AssertionError as error:
+                            # QWindow logs the event-local/global pointer and
+                            # effective DPR; MouseArea logs the received input
+                            # and the actual QML rectangle. Both are opt-in
+                            # and do not alter rendering or the four-second
+                            # pixel assertion.
+                            trace = [
+                                line for line in self.vela.log_text()[trace_offset:].splitlines()
+                                if "VELA_SELECTION " in line
+                            ]
                             self.fail(f"{error}; observed bounds={observed}, "
-                                      f"transform={transform}, scale={scale}, output={output}")
+                                      f"transform={transform}, scale={scale}, output={output}, "
+                                      f"framebuffer={before.width}x{before.height}, "
+                                      f"requested drag=({sx},{sy})->({ex},{ey}); "
+                                      "Qt/QML selection trace:\n" + "\n".join(trace[-24:]))
                         pointer.stdin.write(b"\n")
                         pointer.stdin.flush()
                 desktop_height = before.height - edge_y(48)
