@@ -79,6 +79,7 @@ class UbuntuFixture(UpdateFixture):
         super().setUp()
         self.os_release.write_text('ID=ubuntu\nVERSION_ID="26.10"\n')
         bin_dir = self.directory / "bin"
+        (bin_dir / "pacman").unlink()  # Other Debian derivatives must not select Arch.
         for name in ("dpkg-query", "dpkg-deb", "apt-get", "cmake", "cpack", "sudo"):
             stub = bin_dir / name
             stub.write_text(UBUNTU_STUB)
