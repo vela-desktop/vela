@@ -56,5 +56,14 @@ jobs:
         run: cmake --build build-ubuntu --parallel 2
       - name: Non-GPU CTest suite
         run: |
-          ctest --test-dir build-ubuntu --output-on-failure \
-            -E '^(functional-|sharpness|packaging-update)'
+          set -euo pipefail
+          # Test selection is driven by CTest labels, not name prefixes.
+          # Fail closed if the registered non-GPU suite unexpectedly shrinks.
+          ctest --test-dir build-ubuntu -N -LE 'gpu|distro-packaging' > /tmp/vela-ubuntu-tests.txt
+          cat /tmp/vela-ubuntu-tests.txt
+          count=$(sed -n 's/^Total Tests: //p' /tmp/vela-ubuntu-tests.txt)
+          if [[ ! "$count" =~ ^[0-9]+$ ]] || (( count < 200 )); then
+            echo "Expected at least 200 non-GPU tests; discovered ${count:-none}" >&2
+            exit 1
+          fi
+          ctest --test-dir build-ubuntu --output-on-failure -LE 'gpu|distro-packaging'
