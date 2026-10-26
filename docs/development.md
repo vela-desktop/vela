@@ -10,7 +10,7 @@ Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20
 
 ## Distribution dependencies
 
-These packages are for **building Vela from source**, not the runtime requirements of the [user installer](installation.md). Arch `vela-git` deliberately installs Core and Desktop together: Konsole, Breeze icons and the KDE/wlr portal backends are default dependencies. `xdg-desktop-portal-kde` currently brings `plasma-workspace` transitively on Arch (not Plasma's running shell). Optional extras include KDE Connect and Bluedevil/BlueZ OBEX. `vela-update --build` installs `base-devel` through pacman only when a local build is required; makepkg installs the selected PKGBUILD's other build dependencies. `git`, `curl`, `sudo` and `util-linux` are runtime dependencies of the updater. Keep them synchronized with the CI's build dependencies.
+These packages are for **building Vela from source**, not the runtime requirements of the [user installer](installation.md). Arch `vela-git` deliberately installs Core and Desktop together: Konsole, Breeze icons, `xdg-desktop-portal` and the wlr screen-capture backend are default dependencies. `xdg-desktop-portal-gtk` is an optional fallback for generic portals, while `xdg-desktop-portal-kde` and Plasma Workspace are not required. Optional extras include KDE Connect and Bluedevil/BlueZ OBEX. `vela-update --build` installs `base-devel` through pacman only when a local build is required; makepkg installs the selected PKGBUILD's other build dependencies. `git`, `curl`, `sudo` and `util-linux` are runtime dependencies of the updater. Keep them synchronized with the CI's build dependencies.
 
 <details>
 <summary><b>Arch / CachyOS / EndeavourOS</b></summary>
