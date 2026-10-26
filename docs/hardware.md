@@ -34,10 +34,12 @@ Different features rely on installed/running system services. On Arch, [vela-git
 | Audio controls and per-app volumes | PipeWire and WirePlumber (PulseAudio without PipeWire is not supported) |
 | X11 apps and older games | Xwayland |
 | Removable and unmounted storage | UDisks2 |
-| Screen sharing / application portals | xdg-desktop-portal, xdg-desktop-portal-kde and xdg-desktop-portal-wlr are installed by default; KDE is preferred for generic portals and wlr for capture |
+| Screen sharing / application portals | `xdg-desktop-portal` and `xdg-desktop-portal-wlr` are installed by default on Arch. `xdg-desktop-portal-gtk` is an optional fallback for generic portals, while wlr handles screenshot and screencast |
 | KDE styling and secrets | Appropriate KDE icon/theme/wallet components |
 
-The default KDE portal on Arch currently pulls in **plasma-workspace** as a transitive package dependency; this does not mean Vela runs Plasma's shell or compositor. Konsole and Breeze icons are also installed as default desktop components. Bluetooth file sharing through Bluedevil remains optional (with bluez-obex).\n\nThe Vela compositor and Vulkan renderer are Vela's own; reusing these Linux/KDE services is an intentional interoperability choice rather than using KDE's compositor or shell.
+Vela does not install `xdg-desktop-portal-kde` or Plasma Workspace. On a minimal installation without `xdg-desktop-portal-gtk`, generic portal dialogs such as file selection are unavailable until GTK is installed. Konsole and Breeze icons remain default desktop components. Bluetooth file sharing through Bluedevil remains optional (with bluez-obex).
+
+The Vela compositor and Vulkan renderer are Vela's own; reusing standard Linux services and selected KDE components does not mean running KDE's compositor or Plasma shell.
 
 ## Suggested manual smoke tests
 
