@@ -99,13 +99,13 @@ cmake -S . -B build-ubuntu -G Ninja \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_INSTALL_LIBEXECDIR=libexec/vela \
-    -DVELA_BUILD_TOOLS=OFF -DVELA_PACKAGE_DEB=ON
+    -DVELA_BUILD_TOOLS=ON -DVELA_PACKAGE_DEB=ON
 cmake --build build-ubuntu --parallel 2
 cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
 sudo apt install ./build-ubuntu/packages/*.deb
 ```
 
-The CI also tests dependency resolution and package installation in a fresh
+The preview package includes development tools, matching the Ubuntu CI build. The CI checks installed session entry points, ELF dependencies, baseline Qt Quick/QML modules, and package removal in addition to dependency resolution and installation in a fresh
 Ubuntu 26.10 container. **Neither a successful package install nor a
 successful source build proves the graphical session works.** Keep a working
 desktop or TTY available; GPU/DRM, portals, audio, polkit and login-manager
