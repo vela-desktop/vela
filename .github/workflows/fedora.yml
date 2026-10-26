@@ -85,8 +85,8 @@ jobs:
           ctest --test-dir build-fedora --output-on-failure --parallel 2 -LE gpu -E '^packaging-update$'
 
       - name: Stress-test remembered audio output (diagnostic, non-blocking)
-        # Run on successful AND failed ordinary tests. Do not mask the required
-        # CTest result or make this intermittent-bug investigation a release gate.
+        # Always investigate after the normal CPU test step, even if it passes.
+        # Diagnostic failures must not override the required CTest result.
         if: always() && steps.audio_cpu_tests.outcome != 'skipped'
         continue-on-error: true
         env:
@@ -95,13 +95,18 @@ jobs:
           set -uo pipefail
           test -x build-fedora/tests/audio/vela-audio-core-test || exit 0
           dnf install -y gdb binutils
-          # Each invocation creates a fresh, private PipeWire/WirePlumber fixture.
-          # GDB runs the targeted Qt test, prints every thread on SIGSEGV,
-          # and exits. The outer loop does not hide failures in its summary.
-          failures=0
+          passes=0
+          assertions=0
+          crashes=0
+          timeouts=0
+          debugger_errors=0
+          other_errors=0
           for attempt in $(seq 1 6); do
             echo "::group::remembered output / attempt ${attempt}"
             log=$(mktemp)
+            # actions/runner invokes bash with -e. Explicitly disable errexit
+            # here so a failed Qt assertion cannot abort subsequent attempts.
+            set +e
             timeout 120s python3 tests/audio/fixture.py -- \
               gdb --quiet --batch \
                 -ex 'set pagination off' \
@@ -113,18 +118,31 @@ jobs:
                 --args build-fedora/tests/audio/vela-audio-core-test chosenOutputIsRemembered \
               2>&1 | tee "$log"
             rc=${PIPESTATUS[0]}
-            if grep -Eq 'Program received signal SIG(SEGV|ABRT)|Inferior.*exited with code [1-9]|ptrace: Operation not permitted' "$log"; then
-              echo "Crash, abnormal exit or unavailable ptrace detected"
-              rc=1
+            set -e
+            if grep -Eq 'Program received signal SIG(SEGV|ABRT|BUS|ILL)|received signal SIG(SEGV|ABRT|BUS|ILL)' "$log"; then
+              crashes=$((crashes + 1))
+              outcome=crash
+            elif (( rc == 124 || rc == 137 )); then
+              timeouts=$((timeouts + 1))
+              outcome=timeout
+            elif grep -Eq 'FAIL!  :|Totals: .* [1-9][0-9]* failed' "$log"; then
+              assertions=$((assertions + 1))
+              outcome=qt-assertion
+            elif grep -Eq 'ptrace: Operation not permitted|warning:.*ptrace|During startup program exited|No executable file specified' "$log"; then
+              debugger_errors=$((debugger_errors + 1))
+              outcome=debugger-error
+            elif grep -Eq 'PASS   : CoreTest::chosenOutputIsRemembered' "$log" &&
+                 grep -Eq 'Totals: .* 0 failed' "$log"; then
+              passes=$((passes + 1))
+              outcome=pass
+            else
+              other_errors=$((other_errors + 1))
+              outcome=other-error
             fi
+            echo "Attempt ${attempt}: ${outcome} (wrapper exit ${rc})"
             rm -f "$log"
-            if (( rc != 0 )); then
-              echo "Diagnostic attempt ${attempt} exited ${rc}"
-              failures=$((failures + 1))
-            fi
             echo "::endgroup::"
           done
-          echo "Diagnostic attempts: 6, failures/crashes: ${failures}"
-          # A reproduction should be visible as a diagnostic-step failure,
-          # not make the otherwise successful Fedora build fail.
-          (( failures == 0 ))
+          echo "Results: pass=${passes} qt-assertion=${assertions} crash=${crashes} timeout=${timeouts} debugger-error=${debugger_errors} other-error=${other_errors}"
+          # The summary remains visible even when a reproduction is found.
+          (( assertions + crashes + timeouts + debugger_errors + other_errors == 0 ))
