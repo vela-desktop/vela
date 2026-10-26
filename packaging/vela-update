@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# Updates Vela installed as vela-git on Arch or Fedora: fetch the selected
+# Updates Vela installed as vela-git on Arch, Fedora or Ubuntu 26.10: fetch the selected
 # Git revision, verify any downloaded package's signed provenance, otherwise
-# build an Arch package with makepkg or a Fedora RPM with rpmbuild.
+# build a native Arch package, Fedora RPM, or Ubuntu 26.10 DEB.
 # The new version starts at the next session.
 #
 # If GitHub Actions has built that commit's public release, it can download
@@ -29,7 +29,7 @@ usage() {
     cat << EOF
 Usage: vela-update [options]
 
-Updates Vela to the repository's default branch and installs it (Arch/Fedora).
+Updates Vela to the repository's default branch and installs it (Arch/Fedora/Ubuntu 26.10).
 
   --branch NAME       install the latest commit of this branch, just this time
   --commit SHA        install this exact commit (full or abbreviated SHA),
@@ -117,16 +117,24 @@ else
 fi
 case "${ID:-}" in
 fedora) backend=fedora ;;
+ubuntu) backend=ubuntu ;;
 arch|cachyos|endeavouros) backend=arch ;;
 *) if command -v pacman >/dev/null 2>&1; then
        backend=arch
    else
-       echo "vela-update: unsupported distribution (requires Arch/pacman or Fedora 44)." >&2
+       echo "vela-update: unsupported distribution (requires Arch/pacman, Fedora 44, or Ubuntu 26.10)." >&2
        exit 1
    fi ;;
 esac
 if [ "$backend" = arch ] && ! command -v pacman >/dev/null 2>&1; then
     echo "vela-update: pacman is missing." >&2; exit 1
+fi
+if [ "$backend" = ubuntu ]; then
+    if [ "${VERSION_ID:-}" != "26.10" ] || ! command -v dpkg-query >/dev/null 2>&1 ||
+       ! command -v apt-get >/dev/null 2>&1; then
+        echo "vela-update: Ubuntu 26.10 with dpkg and apt is required." >&2
+        exit 1
+    fi
 fi
 if [ "$backend" = fedora ]; then
     if ! command -v rpm >/dev/null 2>&1 || ! command -v dnf >/dev/null 2>&1; then
@@ -143,13 +151,18 @@ fi
 packageVersion() {
     if [ "$backend" = arch ]; then
         pacman -Q vela-git 2>/dev/null | cut -d' ' -f2
-    else
+    elif [ "$backend" = fedora ]; then
         rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git 2>/dev/null
+    else
+        dpkg-query -W -f='${Version}\n' vela-git 2>/dev/null
     fi
 }
 installPackage() {
     if [ "$backend" = arch ]; then
         sudo pacman -U "$1"
+    elif [ "$backend" = ubuntu ]; then
+        # apt supports both upgrades and downgrades to an explicit local file.
+        sudo apt-get install -y --allow-downgrades --reinstall "$1"
     elif [ "$force" = 1 ] && [ -n "$installed" ] &&
          [ "${latestFull#"$installed"}" != "$latestFull" ]; then
         # DNF 'install' deliberately skips an already installed identical NEVRA.
@@ -162,8 +175,10 @@ installPackage() {
 packageLabel() {
     if [ "$backend" = arch ]; then
         printf '%s' 'sudo pacman -U'
-    else
+    elif [ "$backend" = fedora ]; then
         printf '%s' 'sudo dnf install'
+    else
+        printf '%s' 'sudo apt-get install'
     fi
 }
 
@@ -494,8 +509,10 @@ echo ":: Selected revision: ${branch:-${commit:-default branch}} ($latestFull)"
 installed_version=$(packageVersion || true)
 if [ "$backend" = arch ]; then
     installed=$(printf '%s\n' "$installed_version" | sed -n 's/.*\.g\([0-9a-f]*\)-[0-9]*$/\1/p')
-else
+elif [ "$backend" = fedora ]; then
     installed=$(printf '%s\n' "$installed_version" | sed -n 's/.*\.g\([0-9a-f]*\)\(\.fc[0-9]*\)\?$/\1/p')
+else
+    installed=$(printf '%s\n' "$installed_version" | sed -n 's/.*+git\([0-9a-f]*\).*$/\1/p')
 fi
 
 if [ -n "$installed" ] && [ "${latestFull#"$installed"}" != "$latestFull" ] && [ "$force" = 0 ]; then
@@ -573,7 +590,7 @@ if [ "$backend" = fedora ]; then
     manifest_name=SHA256SUMS-fedora
     artifact_name=vela-fedora-rpm
 fi
-if [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1; then
+if [ "$backend" != ubuntu ] && [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1; then
     release_url="https://github.com/$repo/releases/download/alpha-$latestFull"
     manifest="$CACHE/public-release-SHA256SUMS"
     # curl exit 22 covers every HTTP error, not only missing prereleases.
@@ -618,7 +635,7 @@ fi
 # Legacy 14-day workflow artifacts are an optional authenticated fallback,
 # mainly useful for manually built test branches without a public release.
 ciRun=""
-if [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
+if [ "$backend" != ubuntu ] && [ -z "$release_package" ] && [ "$prefer" != build ] && [ -n "$repo" ] \
     && command -v gh > /dev/null && gh auth status > /dev/null 2>&1; then
     # PR package artifacts are deliberately unsigned. Select only main-push
     # or manually dispatched builds (which attest their outputs), and search
@@ -665,8 +682,10 @@ fi
 prune() {
     if [ "$backend" = arch ]; then
         ls -t "$PACKAGES"/vela-git-*.pkg.tar.* 2> /dev/null
-    else
+    elif [ "$backend" = fedora ]; then
         ls -t "$PACKAGES"/vela-git-*.rpm 2> /dev/null
+    else
+        ls -t "$PACKAGES"/vela-git_*.deb 2> /dev/null
     fi | tail -n +$((KEEP + 1)) | while read -r old; do
         rm -f "$old"
     done
@@ -756,6 +775,32 @@ if [ "$backend" = arch ]; then
     git -C "$MIRROR" update-ref refs/vela-update/selected "$latestFull"
     export VELA_GIT_URL="file://$MIRROR#commit=$latestFull"
     if [ -n "$jobs" ]; then export MAKEFLAGS="-j$jobs"; fi
+elif [ "$backend" = ubuntu ]; then
+    if ! command -v cmake >/dev/null 2>&1 || ! command -v ninja >/dev/null 2>&1 ||
+       ! command -v cpack >/dev/null 2>&1; then
+        echo "vela-update: Ubuntu needs cmake, ninja-build and CPack." >&2
+        exit 1
+    fi
+    if ! sudo apt-get update || ! sudo apt-get install -y --no-install-recommends \
+        ca-certificates git build-essential cmake ninja-build pkgconf \
+        libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+        libpixman-1-dev libinput-dev libgbm-dev libdrm-dev libvulkan-dev glslc \
+        libfreetype-dev libharfbuzz-dev libfontconfig-dev libcairo2-dev \
+        librsvg2-dev libpam0g-dev libpolkit-agent-1-dev libpolkit-gobject-1-dev \
+        zlib1g-dev libgtest-dev libsystemd-dev qt6-base-dev \
+        qt6-base-private-dev qt6-declarative-dev qt6-svg-dev qt6-wayland-dev \
+        qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
+        liblayershellqtinterface-dev libpipewire-0.3-dev \
+        libwireplumber-0.5-dev dpkg-dev file python3 python3-numpy \
+        python3-pil dbus; then
+        echo "vela-update: failed to install Ubuntu build dependencies." >&2
+        exit 1
+    fi
+    mkdir -p "$WORK/source" "$WORK/build" "$WORK/packages"
+    if ! git -C "$MIRROR" archive "$latestFull" | tar -x -C "$WORK/source"; then
+        echo "vela-update: cannot extract selected source revision." >&2
+        exit 1
+    fi
 else
     if ! command -v rpmbuild >/dev/null 2>&1; then
         echo "vela-update: install RPM build tools first: sudo dnf install rpm-build dnf5-plugins" >&2
@@ -802,6 +847,17 @@ if [ "$backend" = arch ]; then
             setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
         build_isolated=1
     fi
+elif [ "$backend" = ubuntu ]; then
+    # Build from an immutable snapshot, never mutable working-tree content.
+    # A commit-stamped Debian version makes --check and rollback meaningful.
+    ubuntu_jobs="${jobs:-2}"
+    if [ -t 0 ]; then
+        sh -c 'cmake -S "$1/source" -B "$1/build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBEXECDIR=libexec/vela -DVELA_BUILD_TOOLS=OFF -DVELA_PACKAGE_DEB=ON -DVELA_PACKAGE_COMMIT="$2" && cmake --build "$1/build" --parallel "$3" && cpack --config "$1/build/CPackConfig.cmake" -G DEB -B "$1/packages"' sh "$WORK" "$latest" "$ubuntu_jobs" <&0 9>&- &
+        build_isolated=0
+    else
+        setsid --wait sh -c 'cmake -S "$1/source" -B "$1/build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBEXECDIR=libexec/vela -DVELA_BUILD_TOOLS=OFF -DVELA_PACKAGE_DEB=ON -DVELA_PACKAGE_COMMIT="$2" && cmake --build "$1/build" --parallel "$3" && cpack --config "$1/build/CPackConfig.cmake" -G DEB -B "$1/packages"' sh "$WORK" "$latest" "$ubuntu_jobs" <&0 9>&- &
+        build_isolated=1
+    fi
 elif [ -t 0 ]; then
     rpmbuild -bb "$WORK/SPECS/vela.spec" \
         --define "_topdir $WORK" --define "vela_version $version" --define "vela_commit $latestFull" \
@@ -816,6 +872,17 @@ fi
 makepkg_pid=$!
 if wait "$makepkg_pid"; then build_ok=1; else build_ok=0; fi
 makepkg_pid=""
+if [ "$backend" = ubuntu ] && [ "$build_ok" = 1 ]; then
+    built=$(find "$WORK/packages" -maxdepth 1 -name 'vela-git_*.deb' -type f -print -quit)
+    if [ -z "$built" ] || [ "$(dpkg-deb -f "$built" Package)" != vela-git ]; then
+        echo "vela-update: CPack did not produce a valid vela-git DEB." >&2
+        build_ok=0
+    else
+        mv -f "$built" "$PACKAGES/"
+        built="$PACKAGES/$(basename "$built")"
+        if ! installPackage "$built"; then build_ok=0; fi
+    fi
+fi
 if [ "$backend" = fedora ] && [ "$build_ok" = 1 ]; then
     built=$(ls "$WORK"/RPMS/x86_64/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
     if [ -z "$built" ]; then
@@ -831,8 +898,10 @@ if [ "$build_ok" = 0 ]; then
     echo >&2
     if [ "$backend" = arch ]; then
         built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2>/dev/null | head -n 1)
-    else
+    elif [ "$backend" = fedora ]; then
         built=$(ls -t "$PACKAGES"/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2>/dev/null | head -n 1)
+    else
+        built=$(ls -t "$PACKAGES"/vela-git_*+git"$latest"_*.deb 2>/dev/null | head -n 1)
     fi
     if [ -n "$built" ]; then
         echo "vela-update: the package is ready but wasn't installed. To install it:" >&2
