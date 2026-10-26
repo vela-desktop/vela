@@ -237,15 +237,20 @@ class QtShell(RealShell):
                     actions += ["move", output["x"] + ex, output["y"] + ey, "checkpoint"]
                 actions += ["up", "move", output["x"] + sx, output["y"] + sy]
                 with self.held_input(actions, checkpoints=True) as pointer:
-                    # Deliberately retain the strict existing oracle while
-                    # tracing actual Qt input and QML geometry: the previous
-                    # snapping "fix" produced one-pixel regressions on both
-                    # GPUs. A failure here must distinguish coordinate delivery
-                    # from rasterization instead of guessing another rounding.
+                    # GPU traces show Qt/QML receives the requested logical
+                    # coordinates unchanged, while the composited rectangle
+                    # uses truncation at fractional physical-pixel boundaries
+                    # (e.g. 330 * 1.25 -> 412, 950 * 1.25 -> 1187).
+                    # Preserve exact bounds and interior pixel assertions; fix
+                    # only the test's inconsistent round-to-nearest oracle.
                     px = before.width / output["w"]
                     py = before.height / output["h"]
-                    edge_x = lambda x: int(x * px + 0.5)
-                    edge_y = lambda y: int(y * py + 0.5)
+
+                    def edge_x(x):
+                        return int(x * px)
+
+                    def edge_y(y):
+                        return int(y * py)
                     for ex, ey in ends:
                         ready, _, _ = select.select([pointer.stdout], [], [], 5)
                         self.assertTrue(ready, f"virtual pointer did not reach {ex, ey} checkpoint")
