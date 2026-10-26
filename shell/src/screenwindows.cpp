@@ -104,25 +104,6 @@ void ScreenWindows::sync()
                 screen == primary ? " (principale)" : "");
             window->setScreen(screen);
             m_setup(window, screen);
-            if (m_name == QLatin1String("Wallpaper")) {
-                // QScreen::devicePixelRatio rounds 125% to 2, unlike the
-                // actual fractional render-target DPR on QQuickWindow.
-                // Keep the QML selection rectangle aligned to physical
-                // pixels even after a Wayland output-scale change.
-                const QPointer<QQuickWindow> wallpaper = window;
-                auto publishScale = [wallpaper] {
-                    if (wallpaper) {
-                        wallpaper->setProperty("renderScale", wallpaper->effectiveDevicePixelRatio());
-                    }
-                };
-                connect(screen, &QScreen::logicalDotsPerInchChanged, window, publishScale);
-                connect(window, &QWindow::screenChanged, window, publishScale);
-                // Fractional DPR may only settle after the initial Wayland
-                // configure, when the mapped layer acquires its real size.
-                connect(window, &QWindow::widthChanged, window, publishScale);
-                connect(window, &QWindow::heightChanged, window, publishScale);
-                QTimer::singleShot(0, window, publishScale);
-            }
             // Closed by the compositor: put back, but without insisting if it
             // keeps closing it.
             connect(window, &QWindow::visibleChanged, this, [this](bool visible) {
@@ -136,9 +117,6 @@ void ScreenWindows::sync()
         if (!window->isVisible()) {
             window->setScreen(screen);
             window->show();
-        }
-        if (m_name == QLatin1String("Wallpaper")) {
-            window->setProperty("renderScale", window->effectiveDevicePixelRatio());
         }
     }
 }
