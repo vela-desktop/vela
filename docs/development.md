@@ -482,7 +482,10 @@ Run the complete suite with:
 ctest --test-dir build --output-on-failure
 ```
 
-The GPU-dependent functional and sharpness suites are part of CTest as well. They run on two self-hosted GPU CI runners, an AMD Radeon RX 9070 XT with Mesa/RADV and an NVIDIA GeForce RTX 4070 Laptop GPU with the proprietary driver, for GPU-affecting changes and before every release; documentation-only and other GPU-unrelated changes do not require these GPU runs. GitHub-hosted CI skips those suites because it does not expose a usable DRM/Vulkan device.
+The GPU-dependent functional and sharpness suites are part of CTest.
+Hosted runners skip them for lack of a usable DRM/Vulkan device; the
+[GPU CI policy](ci-quality.md#gpu-ci-policy) defines required real-hardware
+testing and per-release verification.
 
 See [testing.md](testing.md) for individual suites, GPU requirements and the headless harness.
 
