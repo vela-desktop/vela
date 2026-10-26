@@ -76,6 +76,7 @@ jobs:
           set -euo pipefail
           cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
           dpkg-deb --info build-ubuntu/packages/*.deb
+          dpkg-deb -f build-ubuntu/packages/*.deb Depends
           dpkg-deb --contents build-ubuntu/packages/*.deb > /tmp/vela-deb-files.txt
           cat /tmp/vela-deb-files.txt
           grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
@@ -109,3 +110,35 @@ jobs:
           test -x /usr/bin/vela-compositor
           test -x /usr/bin/vela-session
           test -f /usr/share/wayland-sessions/vela.desktop
+          # Ensure session entry references an executable available in the clean image.
+          session_exec=$(sed -n 's/^Exec=//p' /usr/share/wayland-sessions/vela.desktop | head -n 1)
+          test -n "$session_exec"
+          session_bin=${session_exec%% *}
+          case "$session_bin" in
+            /*) test -x "$session_bin" ;;
+            *) command -v "$session_bin" >/dev/null ;;
+          esac
+          # Inspect all installed ELF objects for unresolved DT_NEEDED dependencies.
+          dpkg-query -L vela-git | while IFS= read -r path; do
+            if [ -f "$path" ] && file -b "$path" | grep -q '^ELF '; then
+              if ldd "$path" 2>&1 | grep -q 'not found'; then
+                echo "Missing ELF dependency: $path" >&2
+                ldd "$path" >&2 || true
+                exit 1
+              fi
+            fi
+          done
+          # QML imports are loaded at runtime, so ELF dependency scanning misses them.
+          for module in QtQuick QtQuick/Controls QtQuick/Layouts QtQml/WorkerScript; do
+            test -f "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/qt6/qml/$module/qmldir" || \
+              test -f "/usr/lib/qt6/qml/$module/qmldir" || \
+              { echo "Missing QML module: $module" >&2; exit 1; }
+          done
+      - name: Remove package cleanly
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eu
+          apt-get remove -y vela-git
+          test ! -e /usr/bin/vela-compositor
+          test ! -e /usr/share/wayland-sessions/vela.desktop
