@@ -131,8 +131,9 @@ screen. If something fails, [report it](#reporting-a-problem) using
 
 Vela implements its own compositor, Vulkan renderer, Qt Quick shell, Files and
 Settings. It deliberately reuses standard Wayland protocols and Linux services,
-and KDE components such as portals, wallet and themes when beneficial; this does
-not mean it runs on KDE's compositor or Plasma shell. Network, Bluetooth,
+and KDE components such as the wallet and themes when beneficial; generic
+application portals prefer GTK, with screen capture via wlr. This does not
+mean Vela runs on KDE's compositor or Plasma shell. Network, Bluetooth,
 audio, Xwayland, disk mounting and portals depend on their corresponding
 system services (see the [integration table](docs/hardware.md#integration-services)).
 
@@ -272,8 +273,9 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
   dims and blurs and one dialog asks: who is asking, for what, and the password. Nothing
   else takes the keyboard until you answer; requests queue up instead of being refused
   ([design](docs/polkit-agent.md)).
-- **Integrates with KDE's services**: portals, the KDE wallet (so Chrome, Brave and VS
-  Code keep their logins), color schemes and icon themes.
+- **Integrates with desktop services**: GTK for generic application portals
+  (when installed), wlr for screen capture, and the KDE wallet (so Chrome,
+  Brave and VS Code keep their logins), color schemes and icon themes.
 
 ## Install
 
@@ -472,7 +474,7 @@ AI is a development tool, not a substitute for engineering judgment.
 
 Vela stands on the shoulders of [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots),
 [Qt](https://www.qt.io/), [KDE Frameworks and Plasma](https://kde.org/) (LayerShellQt,
-Breeze icons, the portals and the wallet), [Mesa](https://mesa3d.org/) and the Wayland
+Breeze icons and the wallet), [Mesa](https://mesa3d.org/) and the Wayland
 protocols community.
 
 ## License
