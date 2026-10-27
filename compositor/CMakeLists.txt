@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 
 # wlroots changes API at every minor version and installs a pkg-config file
 # with the version in its name. Vela is written for 0.20 (sway 1.12's); with
@@ -176,6 +177,7 @@ add_executable(vela-compositor
     src/render/formats.c
     src/render/pass.c
     src/render/pixel_buffer.c
+    src/render/readback_copy.c
     src/render/renderer.c
     src/render/wait_arrays.c
     src/render/texture.c
@@ -211,7 +213,8 @@ target_link_libraries(vela-compositor PRIVATE
     PkgConfig::VULKAN
     PkgConfig::GBM
     PkgConfig::LIBDRM
-    PkgConfig::FONTS)
+    PkgConfig::FONTS
+    Threads::Threads)
 if(XCB_FOUND)
     target_link_libraries(vela-compositor PRIVATE PkgConfig::XCB)
 endif()
@@ -228,6 +231,16 @@ install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # sharpness geometry, color, sun, settings. They need GoogleTest (the gtest
 # package) and the test tools enabled.
 if(VELA_BUILD_TOOLS)
+    # CPU-only coverage for the opt-in readback memcpy experiment. The real
+    # GPU suite remains the authority on frame timing.
+    add_executable(vela-readback-copy-test
+        tests/readback_copy_test.c src/render/readback_copy.c)
+    target_include_directories(vela-readback-copy-test PRIVATE src)
+    target_compile_options(vela-readback-copy-test PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(vela-readback-copy-test PRIVATE Threads::Threads)
+    set_target_properties(vela-readback-copy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.readback-copy COMMAND vela-readback-copy-test)
+
     # GPU-free policy test: verifies that the cursor-specific flags cannot
     # leak into ordinary output/capture allocations.
     add_executable(vela-cursor-policy-test tests/cursor_policy_test.c)
