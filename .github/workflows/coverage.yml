@@ -55,34 +55,24 @@ jobs:
           # The same packaging-updater exception is used by build.yml.
           ctest --test-dir build-coverage --output-on-failure -E '^packaging-update$'
 
-      - name: Generate Cobertura report
+      - name: Generate first-party coverage and subsystem summary
+        shell: bash
         run: |
-          cd build-coverage
-          # Exclude Qt/CMake-generated source files from the coverage baseline.
-          # gcovr 8.7 raises KeyError during its default internal-function
-          # removal for some GCC/Qt-generated C++ coverage data. Keep those
-          # functions during parsing instead of ignoring coverage errors.
-          # The source filter still removes all generated build sources.
-          gcovr_opts=(--root .. --exclude '(^|/)build-coverage/' --include-internal-functions)
-          gcovr "${gcovr_opts[@]}" --xml-pretty --output ../coverage.xml
-          test -s ../coverage.xml
-          # Do not upload an empty report as if it measured the compositor.
-          grep -q '<class ' ../coverage.xml
-          gcovr "${gcovr_opts[@]}" --print-summary
-
+          bash scripts/coverage-report.sh build-coverage coverage-output
+          cat coverage-output/coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve report for debugging
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-cobertura
-          path: coverage.xml
+          path: coverage-output/
           if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          files: ./coverage.xml
+          files: ./coverage-output/coverage.xml
           flags: cpu-tests
           use_oidc: true
           fail_ci_if_error: false # Non-blocking until the Codecov OSS project is configured
