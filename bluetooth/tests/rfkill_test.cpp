@@ -27,8 +27,8 @@ protected:
 
     void SetUp() override
     {
-        char pattern[] = "/tmp/vela-bluetooth-rfkill-XXXXXX";
-        ASSERT_TRUE(mkdtemp(pattern));
+        std::string pattern = ::testing::TempDir() + "vela-bluetooth-rfkill-XXXXXX";
+        ASSERT_NE(mkdtemp(pattern.data()), nullptr);
         root = pattern;
         // hci0 with switch 3, a dongle hci1 with switch 7, a Wi-Fi switch 1
         // and a platform Bluetooth switch 5 (asus-wmi).

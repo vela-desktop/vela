@@ -154,13 +154,13 @@ static void add_continue(struct vela_bt_daemon *d, struct vela_bt_device *device
             run_step(d, device, VELA_BT_STEP_TRUST);
             return;
         }
-        // fall through
+        __attribute__((fallthrough));
     case VELA_BT_ADD_CONNECT:
         if (!device->connected) {
             run_step(d, device, VELA_BT_STEP_CONNECT);
             return;
         }
-        // fall through
+        __attribute__((fallthrough));
     case VELA_BT_ADD_DONE:
         vela_bt_operation_end(d, device, NULL, false);
         return;
@@ -289,7 +289,10 @@ int vela_bt_operation_start(struct vela_bt_daemon *d, sd_bus_message *call, stru
     }
     bool adopt = kind == VELA_BT_ADD && asking && asking->unsolicited;
     struct vela_bt_operation *operation = calloc(1, sizeof(*operation));
-    if (!operation || (name && !(operation->name = strdup(name)))) {
+    if (operation && name) {
+        operation->name = strdup(name);
+    }
+    if (!operation || (name && !operation->name)) {
         free(operation);
         return -ENOMEM;
     }

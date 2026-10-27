@@ -26,6 +26,12 @@ const char *vela_bt_hci_name(const char *path)
     return path + strlen("/org/bluez/");
 }
 
+// -errno after a failed call; -EIO if it left errno unset.
+static int failure(void)
+{
+    return errno ? -errno : -EIO;
+}
+
 // The first line of a sysfs file, without the newline. 0, or a negative errno.
 static int read_text(const char *dir, const char *name, char *text, size_t size)
 {
@@ -35,10 +41,10 @@ static int read_text(const char *dir, const char *name, char *text, size_t size)
     }
     int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
-        return -errno;
+        return failure();
     }
     ssize_t length = read(fd, text, size - 1);
-    int error = length < 0 ? -errno : 0;
+    int error = length < 0 ? failure() : 0;
     close(fd);
     if (error) {
         return error;
@@ -86,7 +92,7 @@ int vela_bt_adapter_switch(const char *sysfs, const char *hci, struct vela_bt_sw
     }
     DIR *entries = opendir(dir);
     if (!entries) {
-        return -errno;
+        return failure();
     }
     int result = -ENOENT;
     struct dirent *entry;
@@ -113,8 +119,11 @@ static bool is_adapter_switch(const char *sysfs, int index)
         return false;
     }
     bool found = false;
-    struct dirent *entry;
-    while (!found && (entry = readdir(adapters))) {
+    while (!found) {
+        struct dirent *entry = readdir(adapters);
+        if (!entry) {
+            break;
+        }
         struct vela_bt_switch adapter;
         if (entry->d_name[0] != '.' && vela_bt_adapter_switch(sysfs, entry->d_name, &adapter) == 0) {
             found = adapter.index == index;
@@ -135,8 +144,11 @@ int vela_bt_platform_switches(const char *sysfs, struct vela_bt_switch *out, int
         return 0;
     }
     int count = 0;
-    struct dirent *entry;
-    while (count < max && (entry = readdir(entries))) {
+    while (count < max) {
+        struct dirent *entry = readdir(entries);
+        if (!entry) {
+            break;
+        }
         char path[PATH_MAX];
         char type[32];
         struct vela_bt_switch found;

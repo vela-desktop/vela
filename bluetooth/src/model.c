@@ -240,7 +240,10 @@ static struct vela_bt_adapter *add_adapter(struct vela_bt_daemon *d, const char 
 {
     struct vela_bt_adapter *adapter = calloc(1, sizeof(*adapter));
     struct vela_bt_adapter **adapters = realloc(d->adapters, (d->adapter_count + 1) * sizeof(*adapters));
-    if (!adapter || !adapters || !(adapter->path = strdup(path))) {
+    if (adapter) {
+        adapter->path = strdup(path);
+    }
+    if (!adapter || !adapters || !adapter->path) {
         free(adapter);
         if (adapters) {
             d->adapters = adapters;
@@ -263,7 +266,10 @@ static struct vela_bt_device *add_device(struct vela_bt_daemon *d, const char *p
 {
     struct vela_bt_device *device = calloc(1, sizeof(*device));
     struct vela_bt_device **devices = realloc(d->devices, (d->device_count + 1) * sizeof(*devices));
-    if (!device || !devices || !(device->path = strdup(path))) {
+    if (device) {
+        device->path = strdup(path);
+    }
+    if (!device || !devices || !device->path) {
         free(device);
         if (devices) {
             d->devices = devices;
@@ -433,8 +439,11 @@ int vela_bt_read_object(struct vela_bt_daemon *d, const char *path, sd_bus_messa
         if (strcmp(interface, ADAPTER1) == 0) {
             struct vela_bt_adapter *adapter = vela_bt_adapter_find(d, path);
             bool added = !adapter;
-            if (added && !(adapter = add_adapter(d, path))) {
-                return -ENOMEM;
+            if (added) {
+                adapter = add_adapter(d, path);
+                if (!adapter) {
+                    return -ENOMEM;
+                }
             }
             bool was_powered = adapter->powered;
             if ((r = read_properties(m, read_adapter_property, adapter)) < 0) {
@@ -449,8 +458,11 @@ int vela_bt_read_object(struct vela_bt_daemon *d, const char *path, sd_bus_messa
             adapter_changed(d, adapter, was_powered);
         } else if (strcmp(interface, DEVICE1) == 0) {
             struct vela_bt_device *device = vela_bt_device_find(d, path);
-            if (!device && !(device = add_device(d, path))) {
-                return -ENOMEM;
+            if (!device) {
+                device = add_device(d, path);
+                if (!device) {
+                    return -ENOMEM;
+                }
             }
             if ((r = read_properties(m, read_device_property, device)) < 0) {
                 return r;

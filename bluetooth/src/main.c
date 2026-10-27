@@ -100,11 +100,19 @@ int main(void)
         vela_bt_log("event loop: %s", strerror(-r));
         return 1;
     }
-    if ((r = sd_bus_open_system(&d.system)) < 0 || (r = sd_bus_attach_event(d.system, d.event, 0)) < 0) {
+    r = sd_bus_open_system(&d.system);
+    if (r >= 0) {
+        r = sd_bus_attach_event(d.system, d.event, 0);
+    }
+    if (r < 0) {
         vela_bt_log("system bus: %s", strerror(-r));
         return 1;
     }
-    if ((r = sd_bus_open_user(&d.session)) < 0 || (r = sd_bus_attach_event(d.session, d.event, 0)) < 0) {
+    r = sd_bus_open_user(&d.session);
+    if (r >= 0) {
+        r = sd_bus_attach_event(d.session, d.event, 0);
+    }
+    if (r < 0) {
         vela_bt_log("session bus: %s", strerror(-r));
         return 1;
     }

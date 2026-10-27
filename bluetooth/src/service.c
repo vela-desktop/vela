@@ -120,7 +120,10 @@ static int method_set_powered(sd_bus_message *call, void *data, sd_bus_error *er
     struct vela_bt_daemon *d = data;
     int on;
     int r = sd_bus_message_read(call, "b", &on);
-    if (r < 0 || (r = check_acting(d, call, VELA_BT_UNSANDBOXED, error)) < 0) {
+    if (r >= 0) {
+        r = check_acting(d, call, VELA_BT_UNSANDBOXED, error);
+    }
+    if (r < 0) {
         return r;
     }
     return vela_bt_power_set(d, call, on, error);
@@ -131,7 +134,10 @@ static int method_use_adapter(sd_bus_message *call, void *data, sd_bus_error *er
     struct vela_bt_daemon *d = data;
     const char *address;
     int r = sd_bus_message_read(call, "s", &address);
-    if (r < 0 || (r = check_acting(d, call, VELA_BT_UNSANDBOXED, error)) < 0) {
+    if (r >= 0) {
+        r = check_acting(d, call, VELA_BT_UNSANDBOXED, error);
+    }
+    if (r < 0) {
         return r;
     }
     bool found = false;
@@ -225,7 +231,10 @@ static int method_cancel(sd_bus_message *call, void *data, sd_bus_error *error)
     struct vela_bt_daemon *d = data;
     const char *path;
     int r = sd_bus_message_read(call, "o", &path);
-    if (r < 0 || (r = vela_bt_check_caller(call, VELA_BT_UNSANDBOXED, d->ui, error)) < 0) {
+    if (r >= 0) {
+        r = vela_bt_check_caller(call, VELA_BT_UNSANDBOXED, d->ui, error);
+    }
+    if (r < 0) {
         return r;
     }
     struct vela_bt_device *device = listed_device(d, path, error);
@@ -249,7 +258,10 @@ static int method_answer(sd_bus_message *call, void *data, sd_bus_error *error)
     uint64_t id;
     const char *response, *value;
     int r = sd_bus_message_read(call, "tss", &id, &response, &value);
-    if (r < 0 || (r = check_acting(d, call, VELA_BT_VELA_UI, error)) < 0) {
+    if (r >= 0) {
+        r = check_acting(d, call, VELA_BT_VELA_UI, error);
+    }
+    if (r < 0) {
         return r;
     }
     return vela_bt_answer(d, call, id, response, value, error);

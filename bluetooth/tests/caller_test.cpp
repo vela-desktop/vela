@@ -27,8 +27,8 @@ protected:
 
     void SetUp() override
     {
-        char pattern[] = "/tmp/vela-bluetooth-proc-XXXXXX";
-        ASSERT_TRUE(mkdtemp(pattern));
+        std::string pattern = ::testing::TempDir() + "vela-bluetooth-proc-XXXXXX";
+        ASSERT_NE(mkdtemp(pattern.data()), nullptr);
         proc = pattern;
         process(100, "0::/user.slice/user-1000.slice/session-2.scope\n");
         process(200, "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-flatpak-org.example.App-1.scope\n");

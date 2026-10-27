@@ -63,7 +63,11 @@ static int on_managed_objects(sd_bus_message *reply, void *data, sd_bus_error *e
         d->devices[i]->seen = false;
     }
     int r = sd_bus_message_enter_container(reply, 'a', "{oa{sa{sv}}}");
-    while (r >= 0 && (r = sd_bus_message_enter_container(reply, 'e', "oa{sa{sv}}")) > 0) {
+    while (r >= 0) {
+        r = sd_bus_message_enter_container(reply, 'e', "oa{sa{sv}}");
+        if (r <= 0) {
+            break;
+        }
         const char *path;
         r = sd_bus_message_read_basic(reply, 'o', &path);
         if (r >= 0) {

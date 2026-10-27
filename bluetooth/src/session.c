@@ -65,17 +65,23 @@ static int read_state(struct vela_bt_daemon *d, sd_bus_message *m)
     bool active = d->session_active;
     bool locked = d->session_locked;
     int r = sd_bus_message_enter_container(m, 'a', "{sv}");
-    while (r >= 0 && (r = sd_bus_message_enter_container(m, 'e', "sv")) > 0) {
+    while (r >= 0) {
+        r = sd_bus_message_enter_container(m, 'e', "sv");
+        if (r <= 0) {
+            break;
+        }
         const char *name;
         int value;
         if ((r = sd_bus_message_read_basic(m, 's', &name)) < 0) {
             break;
         }
-        bool wanted = strcmp(name, "Active") == 0 || strcmp(name, "LockedHint") == 0;
-        if (wanted && sd_bus_message_read(m, "v", "b", &value) > 0) {
+        if (strcmp(name, "Active") != 0 && strcmp(name, "LockedHint") != 0) {
+            r = sd_bus_message_skip(m, "v");
+            if (r < 0) {
+                break;
+            }
+        } else if (sd_bus_message_read(m, "v", "b", &value) > 0) {
             *(strcmp(name, "Active") == 0 ? &active : &locked) = value != 0;
-        } else if (!wanted && (r = sd_bus_message_skip(m, "v")) < 0) {
-            break;
         }
         r = sd_bus_message_exit_container(m);
     }
@@ -114,8 +120,10 @@ static int on_session(sd_bus_message *reply, void *data, sd_bus_error *error)
     struct vela_bt_daemon *d = data;
     d->session_call = sd_bus_slot_unref(d->session_call);
     const char *path;
-    if (sd_bus_message_is_method_error(reply, NULL) || sd_bus_message_read(reply, "o", &path) <= 0
-        || !(d->login_session = strdup(path))) {
+    if (!sd_bus_message_is_method_error(reply, NULL) && sd_bus_message_read(reply, "o", &path) > 0) {
+        d->login_session = strdup(path);
+    }
+    if (!d->login_session) {
         vela_bt_log("logind session: %s: acting as if it's in front",
             sd_bus_message_is_method_error(reply, NULL) ? sd_bus_message_get_error(reply)->message : "bad reply");
         apply(d, true, false);
