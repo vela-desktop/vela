@@ -27,6 +27,8 @@ class Captures(unittest.TestCase):
             stop = threading.Event()
             captures = 0
             capture_error = None
+            diagnostic = os.environ.get("VELA_READBACK_COPY_DIAG") == "1"
+            capture_times = []
 
             def capture():
                 # The compositor copies the whole output whatever the region:
@@ -34,7 +36,10 @@ class Captures(unittest.TestCase):
                 nonlocal captures, capture_error
                 try:
                     while not stop.is_set():
+                        started = time.perf_counter() if diagnostic else 0.0
                         vela.screenshot(path, region=(0, 0, 8, 8))
+                        if diagnostic:
+                            capture_times.append((time.perf_counter() - started) * 1000.0)
                         captures += 1
                         time.sleep(0.05)
                 except Exception as error:
@@ -55,6 +60,12 @@ class Captures(unittest.TestCase):
             if capture_error is not None:
                 raise capture_error
             missed = vela.state().output["missed"] - before
+            if diagnostic:
+                ordered = sorted(capture_times)
+                median = ordered[(len(ordered) - 1) // 2] if ordered else 0.0
+                print(f"readback-copy diagnostic workers={os.environ.get('VELA_READBACK_COPY_THREADS', '1')} "
+                      f"captures={captures} missed_vblanks={missed} screenshot_p50_ms={median:.3f}",
+                      flush=True)
             # Uncached readback can be slow, so verify repeated successful
             # captures there without imposing the cached path's rate/latency bound.
             uncached = "Vulkan readback staging: uncached fallback" in vela.log_text()
