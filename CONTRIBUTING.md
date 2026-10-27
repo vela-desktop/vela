@@ -29,6 +29,8 @@ sh scripts/run-nested.sh
 
 Details: [testing](docs/testing.md), [configuration and diagnostics](docs/configuration.md), [known hardware coverage](docs/hardware.md).
 
+Code quality integrations (coverage, automated area labels, SonarQube Cloud, DCO) are described in [docs/code-quality-integrations.md](docs/code-quality-integrations.md).
+
 ## Pull request checklist
 
 - Explain what changed, why it changed, and how you tested it.
@@ -39,7 +41,7 @@ Details: [testing](docs/testing.md), [configuration and diagnostics](docs/config
 
 ## Developer Certificate of Origin
 
-Each commit needs a sign-off using the [Developer Certificate of Origin](https://developercertificate.org/):
+Each commit needs a sign-off using the [Developer Certificate of Origin](https://developercertificate.org/). The DCO GitHub App checks all non-exempt commits once the repository owner enables it:
 
 ```sh
 git commit -s -m "Describe the change"
