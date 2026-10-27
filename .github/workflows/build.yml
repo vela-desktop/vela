@@ -393,7 +393,7 @@ jobs:
           test -f /etc/xdg/xdg-desktop-portal-wlr/Vela
           test -f /usr/lib/udev/rules.d/70-vela-i2c.rules
           test -f /usr/lib/modules-load.d/vela-i2c.conf
-          for helper in vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui vela-session-env; do
+          for helper in vela-bluetooth vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui vela-session-env; do
             test -x "/usr/libexec/vela/$helper"
           done
           # Without sd-bus the helper builds, but can't change a laptop's backlight.

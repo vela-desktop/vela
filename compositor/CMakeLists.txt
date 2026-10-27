@@ -142,6 +142,7 @@ add_executable(vela-compositor
     src/a11y.c
     src/error_screen.c
     src/bindings.c
+    src/bluetooth.c
     src/brightness.c
     src/command.c
     src/decoration.c

@@ -5,9 +5,9 @@ settings, and how Vela shares Bluetooth with other desktop sessions. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** design under discussion in PR #146. B0 is done; the daemon
-> is not written yet. Everything in §3 is in scope for beta 0.1. Stages are
-> listed in §12.
+> **Status:** design under discussion in PR #146. B0 and B1 are done: the
+> daemon runs, but no client uses it yet, and it has no agent. Everything
+> in §3 is in scope for beta 0.1. Stages are listed in §12.
 
 ## 1. Why from scratch
 
@@ -179,7 +179,10 @@ common/bluetooth (client library, QML module Vela.Bluetooth)
 - **Cancel:**
   - while pairing, the daemon calls `Device1.CancelPairing` and closes the
     open question;
-  - while connecting, it calls `Disconnect`.
+  - while connecting, it calls `Disconnect`;
+  - while an Add sets `Trusted`, the Add stops there;
+  - Disconnect, Remove and Rename can't be cancelled: they run to their
+    end.
 - **Errors:** BlueZ's error name and message go to the daemon's log. The
   client gets a short, stable code and a plain-words message, for example:
   - "The device isn't responding. Make sure it's on and nearby.";
@@ -211,7 +214,14 @@ register such switches.
   BlueZ's refusal turns it back, as today (`requested.h`).
 
 `VELA_RFKILL` and `VELA_SYSFS` replace `/dev/rfkill` and `/sys` in the tests.
-The daemon runs as the user, so these variables give no extra power.
+Only the test build of the daemon (`vela-bluetooth-testing`, never
+installed) reads them; the shell's own unblock (B0) reads them too, until B4
+removes it.
+
+**Without an adapter**, the property `PlatformBlocked` (§7.1) is true while a
+platform switch of type Bluetooth is blocked: the switch shows Off and can
+be turned on. After it unblocks a platform switch, the daemon turns on the
+adapter that appears within 10 seconds.
 
 ### 6.4 The agent
 
@@ -407,14 +417,20 @@ Served at `/org/vela/Bluetooth` on the session bus. Error names are under
 clients ignore keys they don't know. Signatures are final once B1 is
 merged.
 
+B1 serves everything in §7.1 except `Active` and the searches
+(`StartSearch`, `StopSearch`, `StopBeingVisible`, `SearchEnded`), which come
+with B2 and B5. The questions of §7.2 come with B2.
+
 ### 7.1 Devices, adapter and searches
 
 ```
 properties
   Available       b          BlueZ running with an adapter (§6.2)
+  PlatformBlocked b          no adapter, and a platform Bluetooth switch is blocked (§6.3)
   Active          b          the session is in front: active and not locked (§6.7)
-  Adapters        aa{sv}     address, name, path, in use
-  Adapter         a{sv}      the adapter in use (§6.2)
+  Adapters        aa{sv}     path, address, name, inUse
+  Adapter         a{sv}      the adapter in use (§6.2): path, address, name,
+                             powered, powerState, discoverable, discovering
 methods
   Devices() → a{oa{sv}}
   SetPowered(b on)
@@ -433,9 +449,30 @@ signals
                                                   locked, inactive, adapter-off
 ```
 
-`Add` errors: `Busy` (with the device that is pairing, §6.5), `Inactive`,
-`NotAllowed` (§7.3), `Failed` (with the stable code and message of §6.3),
-`Cancelled`.
+A device's dictionary has `address`, `name`, `icon`, `type` (mouse,
+keyboard, gamepad, tablet, headset, headphones, speaker, phone, computer or
+other), `paired`, `trusted`, `connected` and `blocked`; `battery` (`y`) and
+`rssi` (`n`) when BlueZ reports them; `operation` (the running step:
+`pairing`, `trusting`, `connecting`, `disconnecting`, `removing`,
+`renaming`) while one runs; and `error` and `message` after an operation
+that failed.
+
+Methods that change something return when it is done, with an error if it
+failed. On the way, `OperationChanged` gives each step's state, then
+`done`, `failed` or `cancelled`, with the stable code and the message (§6.3).
+It comes after the `DevicesChanged` that shows the device's new state. The
+same operation asked again on the same device joins the running one.
+
+Errors:
+
+- `Busy`: the message is the object path of the device that is busy, or
+  of the device that is pairing (§6.5);
+- `Failed`: the message is the plain-words message (§6.3), and
+  `OperationChanged` has the code;
+- `Cancelled`, `UnknownDevice`, `UnknownAdapter`, `NotAllowed` (§7.3),
+  `Inactive` (B2);
+- `org.freedesktop.DBus.Error.InvalidArgs` for a name `Rename` refuses:
+  not UTF-8, a control character, or longer than 248 bytes.
 
 ### 7.2 Questions
 
@@ -531,14 +568,20 @@ to Vela's own UI.
   or a `snap.` cgroup. Flatpak's D-Bus proxy normally hides the name
   anyway.
 - **Vela's UI:** the caller's executable is one of the installed paths of
-  `vela-shell` and `vela-settings`, fixed at build time.
+  `vela-shell` and `vela-settings`, fixed at build time. A daemon run from
+  its build directory also trusts the `vela-shell` and `vela-settings`
+  built next to it; an installed daemon never does.
   - The daemon gets the caller's pidfd from the bus
     (`sd_bus_creds_get_pidfd_dup`, the broker's `ProcessFD`) and reads
     `/proc/PID/exe`.
   - It then checks that the pidfd still refers to that process, so a
     reused PID can't pass.
   - Without a pidfd, it falls back to the PID, and only for this check.
-  - The test build of the daemon has its own list.
+    The pidfd needs systemd 256 or later and a bus that gives `ProcessFD`
+    (dbus-broker does, and dbus-daemon 1.16 does).
+  - A binary replaced by an update shows as "*path* (deleted)", and is
+    still accepted: only root installs at that path.
+  - The test build of the daemon has its own list: the test client only.
 - **Signals carrying questions are sent to each allowed client only**
   (unicast, with a destination), never broadcast.
 - Refusals return `org.vela.Bluetooth.Error.NotAllowed` and are logged
@@ -634,9 +677,11 @@ Arch. [installation](installation.md) says it is all Bluetooth needs.
 
 ## 11. Tests
 
-**Fake BlueZ.** This is a shared helper in `tests/harness/`, grown out of
+**Fake BlueZ.** This is `tests/bluetooth/fakebluez.h`, grown out of
 `FakeServices` in `shell/tests/requested_switches.cpp`. It runs on a private
-system bus, in its own thread. It serves:
+system bus, in its own thread. In B1 it serves the ObjectManager,
+`Adapter1`, `Device1` and `Battery1`; the rest of this list comes with B2
+and B5. It serves:
 
 - `ObjectManager`, `AgentManager1`, `Adapter1`, `Device1` and `Battery1`;
 - BlueZ's default-agent stack, and one open request per agent, refusing
@@ -707,13 +752,16 @@ fake itself can stay in Qt, because it is test code. Cases:
   or the adapter's `Alias`, in any test;
 - no operation, lease or question left open after any of the cases above.
 
-**Authorization tests** (§7.3). A small client binary calls the API:
+**Authorization tests** (§7.3):
 
-- as an unknown executable, it reads properties, but can't answer, can't
-  see questions, and can't add with `promptsHere`;
-- under a fake `/.flatpak-info`, it can't change anything;
-- the test build's list lets the test UI answer;
-- question signals reach only the allowed clients.
+- `dbus-send`, an unknown executable, reads the devices and adds without
+  `promptsHere`, but can't add with `promptsHere`; from B2, it can't
+  answer or see questions either;
+- the sandbox checks (`/.flatpak-info`, a `snap.` cgroup) are unit tests on
+  a fake `/proc`;
+- the test build's list lets the test client add with `promptsHere`, and
+  from B2 answer;
+- question signals reach only the allowed clients (B2).
 
 **Client library tests:**
 
@@ -751,7 +799,7 @@ only `bluez`:
 | Stage | Content | |
 |---|---|---|
 | B0 | Remove BlueDevil (§10); the shell's rfkill unblock limited to the adapter's own switch, until B4 replaces it | done |
-| B1 | `vela-bluetooth`: start by the compositor, model, operations, errors, rfkill (§6.3), the `org.vela.Bluetooth` API settled with its authorization (§7.3); the fake BlueZ and the daemon's tests | |
+| B1 | `vela-bluetooth`: start by the compositor, model, operations, errors, rfkill (§6.3), the `org.vela.Bluetooth` API settled with its authorization (§7.3); the fake BlueZ and the daemon's tests | done |
 | B2 | The agent (§6.4), concurrency (§6.5), the questions (§7.2), and the session rules (§6.7), with tests | |
 | B3 | `common/bluetooth`; the Settings page rewritten (§9.1); the old Settings code deleted | |
 | B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | |
