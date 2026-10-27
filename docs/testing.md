@@ -361,19 +361,28 @@ cannot be expected to meet this performance target. The compositor logs
 `Vulkan readback staging: uncached fallback` when this happens; historically,
 each uncached capture cost about three missed vblanks on the tested AMD GPU.
 
-### Capture latency diagnostics (NVIDIA GPU CI)
+### Capture latency diagnostics (AMD and NVIDIA GPU CI)
 
-The manual NVIDIA GPU workflow enables `VELA_CAPTURE_PROFILE_TEST=1` for
-`functional-capture` only. It passes `VELA_CAPTURE_PROFILE=1` to that
+The manual AMD and NVIDIA GPU workflows enable `VELA_CAPTURE_PROFILE_TEST=1`
+for `functional-capture` only. It passes `VELA_CAPTURE_PROFILE=1` to that
 test's **isolated compositor**, leaving other suites unchanged.
 The original strict vblank and minimum-capture assertions remain in force.
 `LastTest.log` contains `capture-profile` summaries: screenshot client latency,
 CPU staging selection, Vulkan command recording, submission, timeline wait,
-CPU pixel copy, and total wall time. Each phase reports count, min, p50,
-p95, max and sum in milliseconds. The Vulkan readback memory type, heap and
-cached/coherent flags are also logged.
-The wait interval includes GPU execution, queueing and CPU scheduling;
-these are CPU wall-clock measurements, **not** Vulkan GPU timestamps.
+per-row `memcpy` from mapped Vulkan staging memory, conditional alpha fixup,
+and total CPU pixel-copy time. Each duration reports count, min, p50, p95, max,
+and sum in milliseconds. The selected Vulkan readback memory type, heap,
+cached/coherent flags, source/destination alpha flags, and fixup count are logged.
+
+`memcpy_mib_s` is effective source-to-destination throughput, **not** a
+read-only GPU-memory bandwidth benchmark: writing destination RAM is included.
+Per-row `CLOCK_MONOTONIC` calls introduce modest profiling overhead, reported
+separately as `copy_overhead_ms` with loop overhead. Both the phase timings and
+the semaphore wait are CPU wall-clock measurements, **not** Vulkan GPU timestamps;
+the wait interval includes GPU execution, queueing and CPU scheduling.
+A long `memcpy` interval cannot by itself distinguish CPU memory bandwidth
+from mapped device-memory/cache behavior. Compare the same mode and build on
+both GPUs before considering optimizations.
 
 Run targeted comparisons on the same hardware without changing assertions:
 
