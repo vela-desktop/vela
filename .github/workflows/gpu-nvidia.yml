@@ -67,6 +67,8 @@ jobs:
           echo "VELA_GPU_CI_STRICT=1" >> "$GITHUB_ENV"
           # Diagnostic-only counters: no change to GPU test scheduling or assertions.
           echo "VELA_FUNCTIONAL_PROFILE=1" >> "$GITHUB_ENV"
+          # Instrument only functional-capture, not screenshot-heavy shell suites.
+          echo "VELA_CAPTURE_PROFILE_TEST=1" >> "$GITHUB_ENV"
           echo "VELA_GPU_EXPECT_VENDOR=0x10de" >> "$GITHUB_ENV"
           # Thirty Vulkan teardown cycles with validation on actual NVIDIA hardware.
           echo "VELA_SHUTDOWN_STRESS_CYCLES=30" >> "$GITHUB_ENV"
