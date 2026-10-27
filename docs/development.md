@@ -483,7 +483,10 @@ Run the complete suite with:
 ctest --test-dir build --output-on-failure
 ```
 
-The GPU-dependent functional and sharpness suites are part of CTest as well. They are run regularly on Vela's primary development machine with an AMD Radeon RX 9070 XT and Mesa/RADV, where they currently pass in full. GitHub-hosted CI skips those suites because it does not expose a usable DRM/Vulkan device.
+The GPU-dependent functional and sharpness suites are part of CTest.
+Hosted runners skip them for lack of a usable DRM/Vulkan device; the
+[GPU CI policy](ci-quality.md#gpu-ci-policy) defines required real-hardware
+testing and per-release verification.
 
 See [testing.md](testing.md) for individual suites, GPU requirements and the headless harness.
 
