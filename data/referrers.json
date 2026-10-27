@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-10-26T08:54:09+00:00",
+  "collected_at": "2026-10-27T08:58:55+00:00",
   "coverage": "top_10_only",
   "items": [
     {
@@ -8,19 +8,19 @@
       "uniques": 50
     },
     {
-      "count": 42,
+      "count": 56,
       "referrer": "reddit.com",
-      "uniques": 39
+      "uniques": 51
     },
     {
-      "count": 35,
+      "count": 42,
       "referrer": "github.com",
-      "uniques": 12
+      "uniques": 15
     },
     {
-      "count": 33,
+      "count": 41,
       "referrer": "com.reddit.frontpage",
-      "uniques": 31
+      "uniques": 38
     },
     {
       "count": 1,

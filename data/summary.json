@@ -1,65 +1,65 @@
 {
-  "generated_at": "2026-10-26T08:54:09+00:00",
+  "generated_at": "2026-10-27T08:58:55+00:00",
   "popular_paths": [
     {
-      "count": 423,
+      "count": 491,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
       "uniques": 9
     },
     {
-      "count": 298,
+      "count": 395,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 200
+      "uniques": 217
     },
     {
-      "count": 66,
+      "count": 70,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 12
+      "uniques": 13
     },
     {
-      "count": 45,
-      "path": "/vela-desktop/vela/commits/main",
-      "title": "/commits/main",
-      "uniques": 16
-    },
-    {
-      "count": 35,
-      "path": "/vela-desktop/vela/pull/40",
-      "title": "/pull/40",
-      "uniques": 3
-    },
-    {
-      "count": 35,
+      "count": 67,
       "path": "/vela-desktop/vela/actions",
       "title": "/actions",
       "uniques": 1
+    },
+    {
+      "count": 34,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 13
+    },
+    {
+      "count": 32,
+      "path": "/vela-desktop/vela/forks",
+      "title": "/forks",
+      "uniques": 1
+    },
+    {
+      "count": 29,
+      "path": "/vela-desktop/vela/actions/workflows/gpu-amd.yml",
+      "title": "/actions/workflows/gpu-amd.yml",
+      "uniques": 1
+    },
+    {
+      "count": 27,
+      "path": "/vela-desktop/vela/pull/40",
+      "title": "/pull/40",
+      "uniques": 2
+    },
+    {
+      "count": 26,
+      "path": "/vela-desktop/vela/issues/50",
+      "title": "/issues/50",
+      "uniques": 6
     },
     {
       "count": 26,
       "path": "/vela-desktop/vela/pull/47",
       "title": "/pull/47",
       "uniques": 2
-    },
-    {
-      "count": 23,
-      "path": "/vela-desktop/vela/issues/50",
-      "title": "/issues/50",
-      "uniques": 5
-    },
-    {
-      "count": 21,
-      "path": "/vela-desktop/vela/forks",
-      "title": "/forks",
-      "uniques": 1
-    },
-    {
-      "count": 19,
-      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
-      "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 19
     }
   ],
   "releases": {
@@ -68,149 +68,149 @@
       {
         "assets": [
           {
-            "downloads": 1,
-            "id": "675521242",
+            "downloads": 3,
+            "id": "678860101",
             "name": "SHA256SUMS"
           },
           {
             "downloads": 0,
-            "id": "675521247",
+            "id": "678860097",
             "name": "SHA256SUMS-fedora"
           },
           {
             "downloads": 0,
-            "id": "675521243",
-            "name": "vela-git-0.1.0-1.153.g204ca09.fc44.x86_64.rpm"
+            "id": "678860107",
+            "name": "vela-git-0.1.0-1.166.g2b54af1.fc44.x86_64.rpm"
+          },
+          {
+            "downloads": 3,
+            "id": "678860094",
+            "name": "vela-git-0.1.0.r166.g2b54af1-1-x86_64.pkg.tar.zst"
+          }
+        ],
+        "downloads_current_assets": 6,
+        "tag": "alpha-2b54af100a31148417763483ab9c92e92d8e5efe"
+      },
+      {
+        "assets": [
+          {
+            "downloads": 0,
+            "id": "679183803",
+            "name": "SHA256SUMS"
+          },
+          {
+            "downloads": 0,
+            "id": "679183813",
+            "name": "SHA256SUMS-fedora"
+          },
+          {
+            "downloads": 0,
+            "id": "679183805",
+            "name": "vela-git-0.1.0-1.168.g9707df3.fc44.x86_64.rpm"
+          },
+          {
+            "downloads": 0,
+            "id": "679183804",
+            "name": "vela-git-0.1.0.r168.g9707df3-1-x86_64.pkg.tar.zst"
+          }
+        ],
+        "downloads_current_assets": 0,
+        "tag": "alpha-9707df341d2fff9ae70a3a0acf1e340501c44b45"
+      },
+      {
+        "assets": [
+          {
+            "downloads": 0,
+            "id": "679289912",
+            "name": "SHA256SUMS"
           },
           {
             "downloads": 1,
-            "id": "675521244",
-            "name": "vela-git-0.1.0.r153.g204ca09-1-x86_64.pkg.tar.zst"
+            "id": "679289908",
+            "name": "SHA256SUMS-fedora"
+          },
+          {
+            "downloads": 1,
+            "id": "679289907",
+            "name": "vela-git-0.1.0-1.169.gbc76fce.fc44.x86_64.rpm"
+          },
+          {
+            "downloads": 0,
+            "id": "679289906",
+            "name": "vela-git-0.1.0.r169.gbc76fce-1-x86_64.pkg.tar.zst"
           }
         ],
         "downloads_current_assets": 2,
-        "tag": "alpha-204ca093d5f89556c3813af6ff9f9ca78b1d08c5"
+        "tag": "alpha-bc76fcebb4a7cb2924e0ba0632b68807e7b73486"
       },
       {
         "assets": [
           {
             "downloads": 2,
-            "id": "676532949",
+            "id": "679783864",
             "name": "SHA256SUMS"
           },
           {
             "downloads": 0,
-            "id": "676532950",
+            "id": "679783865",
             "name": "SHA256SUMS-fedora"
           },
-          {
-            "downloads": 0,
-            "id": "676532953",
-            "name": "vela-git-0.1.0-1.154.g6d4aaa9.fc44.x86_64.rpm"
-          },
-          {
-            "downloads": 2,
-            "id": "676532948",
-            "name": "vela-git-0.1.0.r154.g6d4aaa9-1-x86_64.pkg.tar.zst"
-          }
-        ],
-        "downloads_current_assets": 4,
-        "tag": "alpha-6d4aaa90362723627985436c7aa4b70404df3034"
-      },
-      {
-        "assets": [
-          {
-            "downloads": 0,
-            "id": "677527135",
-            "name": "SHA256SUMS"
-          },
-          {
-            "downloads": 0,
-            "id": "677527130",
-            "name": "SHA256SUMS-fedora"
-          },
-          {
-            "downloads": 0,
-            "id": "677527132",
-            "name": "vela-git-0.1.0-1.156.g75d8931.fc44.x86_64.rpm"
-          },
-          {
-            "downloads": 0,
-            "id": "677527137",
-            "name": "vela-git-0.1.0.r156.g75d8931-1-x86_64.pkg.tar.zst"
-          }
-        ],
-        "downloads_current_assets": 0,
-        "tag": "alpha-75d8931fab87c5d5e987eee0bc1cc276d666e4bb"
-      },
-      {
-        "assets": [
-          {
-            "downloads": 0,
-            "id": "673779023",
-            "name": "SHA256SUMS"
-          },
-          {
-            "downloads": 0,
-            "id": "673779026",
-            "name": "SHA256SUMS-fedora"
-          },
-          {
-            "downloads": 0,
-            "id": "673779024",
-            "name": "vela-git-0.1.0-1.151.gd24b832.fc44.x86_64.rpm"
-          },
-          {
-            "downloads": 0,
-            "id": "673779022",
-            "name": "vela-git-0.1.0.r151.gd24b832-1-x86_64.pkg.tar.zst"
-          }
-        ],
-        "downloads_current_assets": 0,
-        "tag": "alpha-d24b83261107443dab6d651992bf616a377bb36b"
-      },
-      {
-        "assets": [
           {
             "downloads": 1,
-            "id": "673812503",
+            "id": "679783863",
+            "name": "vela-git-0.1.0-1.170.gebfca04.fc44.x86_64.rpm"
+          },
+          {
+            "downloads": 2,
+            "id": "679783866",
+            "name": "vela-git-0.1.0.r170.gebfca04-1-x86_64.pkg.tar.zst"
+          }
+        ],
+        "downloads_current_assets": 5,
+        "tag": "alpha-ebfca0438790b436d056793e40294b243725f589"
+      },
+      {
+        "assets": [
+          {
+            "downloads": 0,
+            "id": "678712926",
             "name": "SHA256SUMS"
           },
           {
             "downloads": 0,
-            "id": "673812502",
+            "id": "678712931",
             "name": "SHA256SUMS-fedora"
           },
           {
             "downloads": 0,
-            "id": "673812500",
-            "name": "vela-git-0.1.0-1.152.gf93ca71.fc44.x86_64.rpm"
+            "id": "678712928",
+            "name": "vela-git-0.1.0-1.165.gf54a353.fc44.x86_64.rpm"
           },
           {
-            "downloads": 2,
-            "id": "673812504",
-            "name": "vela-git-0.1.0.r152.gf93ca71-1-x86_64.pkg.tar.zst"
+            "downloads": 0,
+            "id": "678712927",
+            "name": "vela-git-0.1.0.r165.gf54a353-1-x86_64.pkg.tar.zst"
           }
         ],
-        "downloads_current_assets": 3,
-        "tag": "alpha-f93ca71bbe233d107d1728ae98a54af24869b204"
+        "downloads_current_assets": 0,
+        "tag": "alpha-f54a35339f96bc8f123cb8ef5aec4aef5ce23080"
       }
     ],
-    "downloads_current_assets": 9,
-    "downloads_observed_maxima": 100,
-    "downloads_since_previous_daily_snapshot": 9,
-    "previous_snapshot_date": "2026-10-25",
+    "downloads_current_assets": 13,
+    "downloads_observed_maxima": 113,
+    "downloads_since_previous_daily_snapshot": 13,
+    "previous_snapshot_date": "2026-10-26",
     "release_count": 5
   },
   "repository": "vela-desktop/vela",
   "schema_version": 1,
   "sources": {
     "releases": {
-      "last_collected_at": "2026-10-26T08:54:09+00:00",
+      "last_collected_at": "2026-10-27T08:58:55+00:00",
       "status": "ok"
     },
     "traffic": {
-      "last_collected_at": "2026-10-26T08:54:09+00:00",
+      "last_collected_at": "2026-10-27T08:58:55+00:00",
       "status": "ok"
     }
   },
@@ -221,19 +221,19 @@
       "uniques": 50
     },
     {
-      "count": 42,
+      "count": 56,
       "referrer": "reddit.com",
-      "uniques": 39
+      "uniques": 51
     },
     {
-      "count": 35,
+      "count": 42,
       "referrer": "github.com",
-      "uniques": 12
+      "uniques": 15
     },
     {
-      "count": 33,
+      "count": 41,
       "referrer": "com.reddit.frontpage",
-      "uniques": 31
+      "uniques": 38
     },
     {
       "count": 1,
@@ -253,51 +253,51 @@
   ],
   "traffic": {
     "clones": {
-      "growth_vs_previous_7_days_percent": -44.88,
+      "growth_vs_previous_7_days_percent": -21.59,
       "last_30_complete_days": {
         "complete": false,
-        "count": 16339,
-        "end_date": "2026-10-25",
-        "observed_days": 27,
-        "start_date": "2026-09-26"
+        "count": 18870,
+        "end_date": "2026-10-26",
+        "observed_days": 28,
+        "start_date": "2026-09-27"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 4597,
-        "end_date": "2026-10-25",
+        "count": 6496,
+        "end_date": "2026-10-26",
         "observed_days": 7,
-        "start_date": "2026-10-19"
+        "start_date": "2026-10-20"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 8340,
-        "end_date": "2026-10-18",
+        "count": 8285,
+        "end_date": "2026-10-19",
         "observed_days": 7,
-        "start_date": "2026-10-12"
+        "start_date": "2026-10-13"
       }
     },
     "views": {
-      "growth_vs_previous_7_days_percent": -53.96,
+      "growth_vs_previous_7_days_percent": 2.01,
       "last_30_complete_days": {
         "complete": false,
-        "count": 2178,
-        "end_date": "2026-10-25",
-        "observed_days": 27,
-        "start_date": "2026-09-26"
+        "count": 2690,
+        "end_date": "2026-10-26",
+        "observed_days": 28,
+        "start_date": "2026-09-27"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 529,
-        "end_date": "2026-10-25",
+        "count": 1017,
+        "end_date": "2026-10-26",
         "observed_days": 7,
-        "start_date": "2026-10-19"
+        "start_date": "2026-10-20"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 1149,
-        "end_date": "2026-10-18",
+        "count": 997,
+        "end_date": "2026-10-19",
         "observed_days": 7,
-        "start_date": "2026-10-12"
+        "start_date": "2026-10-13"
       }
     }
   }
