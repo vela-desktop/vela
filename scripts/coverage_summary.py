@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 
 
 def read_coverage(root):
+    """Validate a Cobertura tree and group unique first-party line hits."""
     files = {}
     for cls in root.iter("class"):
         name = (cls.get("filename") or "").replace("\\", "/")
@@ -51,6 +52,7 @@ def read_coverage(root):
 
 
 def to_markdown(report):
+    """Render the validated first-party subsystem totals as Markdown."""
     total = report["total"]
     result = [
         "## Vela first-party C/C++ line coverage",
@@ -73,17 +75,22 @@ def to_markdown(report):
     return "\n".join(result)
 
 
-def main(argv):
-    if len(argv) != 3:
-        raise SystemExit("Usage: coverage_summary.py REPORT.xml SUMMARY.md SUMMARY.json")
-    report = read_coverage(ET.parse(argv[0]).getroot())
-    Path(argv[1]).write_text(to_markdown(report), encoding="utf-8")
-    Path(argv[2]).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+def main():
+    """Consume a report in the working directory using fixed filenames.
+
+    The collector chooses a dedicated output directory before invoking us.
+    Never use user-provided CLI paths for input/output file operations.
+    """
+    report = read_coverage(ET.parse("coverage.xml").getroot())
+    Path("coverage-summary.md").write_text(to_markdown(report), encoding="utf-8")
+    Path("coverage-summary.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
     try:
-        main(sys.argv[1:])
+        if len(sys.argv) != 1:
+            raise SystemExit("Usage: coverage_summary.py (run in coverage report directory)")
+        main()
     except (ET.ParseError, ValueError) as err:
         print(f"::error::Coverage summary failed: {err}", file=sys.stderr)
         raise SystemExit(1) from err
