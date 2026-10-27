@@ -54,8 +54,8 @@ In beta 0.1:
   shows its type and its battery level, if it reports one.
 - The PC is discoverable only while "Add a device" is open.
 - A notification when a nearby device is ready to pair, like Windows' Swift
-  Pair (§6.6). A default BlueZ doesn't allow it yet: decision pending
-  (§14).
+  Pair (§6.6). A default BlueZ doesn't offer it, so the user turns it on
+  in Settings, with the administrator password (§6.7).
 - Quick settings: a Bluetooth device list with connect and disconnect
   (§10.2).
 - Codec and profile of headsets: they already exist in `vela-audio`
@@ -86,7 +86,8 @@ any UI specific to LE Audio. Whatever PipeWire supports still plays.
 | Agent | in the daemon, with capability **`KeyboardDisplay`**, default agent **while the session is active** | every pairing method works. BlueZ asks the agent of `Pair`'s own caller first (`agent_get(sender)` in `src/device.c`), so Vela's pairings use Vela's agent even when another desktop holds the default. Unsolicited requests reach Vela only while it is in front |
 | Where questions appear | **inline in Settings** if Settings started the operation and is open; otherwise a **shell dialog**; requests the user did not start appear first as a **notification** | the user answers where they are looking (§10.3) |
 | Discoverable | **only while "Add a device" is open**, as a lease held by Settings (§6.5) | the PC is not visible to everyone all day |
-| Nearby devices | **BlueZ's `AdvertisementMonitor1`**, watching for Swift Pair beacons, only with patterns offloaded to the controller (§6.6) | no active scan; **not available on a default BlueZ**: how to enable it is still to decide (§14) |
+| Nearby devices | **BlueZ's `AdvertisementMonitor1`**, watching for Swift Pair beacons, only with patterns offloaded to the controller (§6.6) | no active scan |
+| BlueZ's experimental interfaces | **turned on only by the user**, in Settings, after polkit authorization: a root helper checks for offload, then sets `Experimental = true` in `/etc/bluetooth/main.conf` and restarts `bluetoothd` (§6.7) | nothing changes on the system behind the user's back; the PC never turns them on when the adapter couldn't use them |
 | Codec and profile | **stay in `vela-audio`**: PipeWire owns them | the daemon never touches audio |
 | Battery in `vela-audio` | read **from `vela-bluetooth`** instead of BlueZ | one Bluetooth client |
 | BlueDevil | **removed** | §11 |
@@ -255,7 +256,62 @@ active.
   `AdvertisementMonitor1` are experimental. `bluetoothd` creates the
   manager only with `-E` or `Experimental = true` (`src/adapter.c`, 5.86
   and 5.87). Arch (5.87), Fedora 44 (5.86) and Ubuntu 26.10 (5.87) all
-  ship without it. How Vela gets it is an open decision (§14).
+  ship without it. The user turns it on from Settings (§6.7).
+
+### 6.7 Turning on BlueZ's experimental interfaces
+
+This is the only change Vela makes to the system's Bluetooth
+configuration. It happens only when the user asks for it.
+
+- **When it is offered.** "Show notifications to pair nearby devices" is
+  in Settings › Bluetooth › Advanced. If `AdvertisementMonitorManager1` is
+  missing, turning the switch on first explains what will happen:
+  - BlueZ's experimental features are turned on for the whole PC, for
+    every user and every desktop;
+  - Bluetooth restarts, and connected devices disconnect for a moment.
+
+  "Continue" asks the daemon to enable them.
+- **The helper.** The daemon runs `pkexec vela-bluetooth-setup
+  experimental on`. A polkit action, `org.vela.bluetooth.experimental`
+  (`auth_admin`), names the change in the password dialog. The helper is a
+  small C++ program installed in Vela's libexec directory. It runs as
+  root, takes no paths from its caller, and accepts only `on`, `off` and
+  `check`.
+- **Offload is checked first.** `check` and `on` read the kernel's
+  `MGMT_OP_READ_ADV_MONITOR_FEATURES` for each adapter.
+  - The kernel sets `MGMT_ADV_MONITOR_FEATURE_MASK_OR_PATTERNS` only when
+    the controller can filter patterns itself (MSFT extension,
+    `net/bluetooth/mgmt.c`).
+  - The command needs a trusted (root) management socket, so the daemon
+    can't ask by itself.
+  - Without that bit, the helper changes nothing. Settings says: "Your
+    Bluetooth adapter can't watch for nearby devices by itself."
+- **The change.** In `[General]` of `/etc/bluetooth/main.conf`:
+  - an existing `Experimental` line, commented or not, becomes
+    `Experimental = true`, otherwise the line is added;
+  - a comment above it says that Vela set it, and from where;
+  - nothing else in the file changes;
+  - the file is written to a temporary file and renamed, keeping its
+    owner and mode.
+
+  Then the helper runs `systemctl try-restart bluetooth.service`.
+- **Why `main.conf`, not a systemd drop-in.** A drop-in would have to
+  replace `ExecStart`, and `bluetoothd` lives in different places:
+  `/usr/lib/bluetooth/bluetoothd` on Arch, and
+  `/usr/libexec/bluetooth/bluetoothd` on Fedora and Ubuntu. A copied path
+  breaks Bluetooth if a package ever moves it. `main.conf` has no such
+  problem, and all three distributions keep local changes to it across
+  updates:
+  - Arch lists it in `backup`, and updates leave a `.pacnew`;
+  - Fedora marks it `%config(noreplace)`, and updates leave an `.rpmnew`;
+  - Debian and Ubuntu treat it as a `conffile`, and an update that changes
+    it asks which version to keep.
+- **Turning it off.** The switch off only removes Vela's monitor.
+  Advanced also shows "Experimental Bluetooth features: On" with "Turn
+  off" when Vela's comment is in `main.conf`. That runs `pkexec
+  vela-bluetooth-setup experimental off`, which writes
+  `Experimental = false`, and restarts `bluetoothd`. If the user turned
+  them on by hand, Vela never turns them off.
 - `DeviceFound(device)` posts a notification: "*Name* is ready to pair".
   Its actions are "Pair", which starts an Add, and "Dismiss".
   - The same device is notified at most once every 5 minutes.
@@ -355,8 +411,11 @@ The Bluetooth page is rewritten on `Vela.Bluetooth`. The current
   replace the list in the same dialog. On success the dialog closes.
 - **Advanced:**
   - the adapter, if there are two or more;
-  - "Show notifications to pair nearby devices" (§6.6), hidden or disabled
-    with the reason when unavailable.
+  - "Show notifications to pair nearby devices" (§6.6). When BlueZ lacks
+    the interface, turning it on starts §6.7. When the adapter can't
+    offload, it is disabled with the reason;
+  - "Experimental Bluetooth features: On" with "Turn off", when Vela
+    turned them on (§6.7).
 
 ### 10.2 Quick settings
 
@@ -432,6 +491,17 @@ On `Pair`, the fake calls the registered agent as BlueZ does. It can also:
 - each status of §9, and the fixes;
 - no operation or question left open after any of the cases above.
 
+**Helper tests** (`bluetooth-setup`). Editing `main.conf` is a pure
+function, tested on text. The cases:
+
+- the line commented, set to `true`, set to `false`, or missing;
+- `[General]` missing, or a key with the same name in another section;
+- Vela's comment present or absent, for `off`;
+- the rest of the file left byte for byte.
+
+The binary itself has its paths fixed. `pkexec` also clears the
+environment, so no test switch can redirect the root helper.
+
 **Client library tests:**
 
 - the model against the daemon running on the fake;
@@ -466,26 +536,34 @@ only `bluez`:
 | B2 | The agent (§6.4) and the questions, with tests | |
 | B3 | `common/bluetooth`; the Settings page rewritten (§10.1); the old Settings code deleted | |
 | B4 | The shell: `SystemStatus` on the client library, quick settings' list (§10.2), the question dialog and notifications (§10.3); `vela-audio` batteries from the daemon | |
-| B5 | Search leases and discoverability (§6.5), nearby devices (§6.6) | |
+| B5 | Search leases and discoverability (§6.5), nearby devices (§6.6), `vela-bluetooth-setup` and its polkit action (§6.7) | |
 | B6 | Diagnostics and fixes (§9) | |
 | B7 | Docs and packaging: installation, hardware, testing | |
 | B8 | The user tries it on real devices (§12, "by hand") | |
 
 ## 14. Open questions and risks
 
-- **To decide: experimental BlueZ for nearby devices** (§6.6). No
-  supported distribution starts `bluetoothd` with `Experimental`.
-  `main.conf` has no drop-in directory. The options:
-  1. Vela's package adds a systemd drop-in to `bluetooth.service` that
-     passes `-E`. This changes every desktop on the machine and turns on
-     all of BlueZ's experimental interfaces, not only the monitor.
-  2. Settings offers to turn it on, as an explicit choice authorized by
-     polkit. It writes that drop-in and restarts `bluetoothd`.
-  3. Vela doesn't touch BlueZ's configuration. The feature works wherever
-     the interface exists with offload, and is hidden elsewhere.
+- **What else `Experimental` turns on** (§6.7). In BlueZ 5.87, it is not
+  only the advertisement monitor. It also enables:
+  - LE Audio media endpoints, both unicast and broadcast, which PipeWire
+    registers (`profiles/audio/media.c`);
+  - hearing aids over ASHA;
+  - the MICP and MCP profiles;
+  - the admin policy plugin;
+  - experimental advertising parsers;
+  - a few D-Bus methods and properties.
 
-  Which controllers report `controller-patterns` on Linux (the kernel's
-  MSFT extension) also has to be measured on real hardware.
+  A headset that supports LE Audio may then connect differently. B8 must
+  play music on such a headset with the feature on and off, and compare
+  ([audio](audio.md)). The warning in Settings names this.
+- **Which controllers offload patterns.** The kernel turns on the MSFT
+  extension only for some chips: some Intel, Realtek, Qualcomm and
+  MediaTek models (`hci_set_msft_opcode` in `drivers/bluetooth/btintel.c`,
+  `btrtl.c`, `btqca.c` and `btmtk.c`). How common it is on real machines
+  is measured in B8. `vela-bluetooth-setup check` answers for each PC.
+- **Ubuntu's `conffile` question.** A later `bluez` update that changes
+  `main.conf` asks the user which version to keep. Unattended upgrades
+  keep the local one, so the feature stays on.
 - **`0000` refused.** A legacy device that wants another fixed PIN fails
   once. The failure could offer "Try with a PIN". Proposed: add it only if
   B8 finds such a device.
