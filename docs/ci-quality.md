@@ -161,6 +161,19 @@ persistent personal machine: the build and tests execute locally. Use
 a restricted unprivileged runner account without personal credentials,
 and keep the laptop awake during a run.
 
+## First-party CPU/GPU code coverage
+
+The [coverage guide](code-quality-integrations.md#codecov-first-party-cc-coverage-cpu-and-optional-gpus)
+describes GCC line coverage filtered to production C/C++ sources and
+subsystem summaries. The existing GPU test workflows have an optional
+**Collect coverage** dispatch input (off by default). When enabled, their
+instrumented builds collect real AMD/NVIDIA execution hits only if the
+full GPU suite passes with no skips. The report is transferred as a GitHub
+artifact to a separate GitHub-hosted Codecov uploader, never uploaded
+with extra privileges from a self-hosted runner. Install `gcovr` and GCC
+on the runners before opting in; ordinary manual GPU tests are unchanged.
+Codecov GPU flags are tied to the sampled commit SHA and not carried forward.
+
 ## Prerequisites
 
 GitHub Actions must be enabled. The normal automatically triggered CI needs
