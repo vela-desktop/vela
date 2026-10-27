@@ -138,3 +138,43 @@ are not intended as permanent mainline production behavior. Reuse the
 instrumentation selectively as needed to prove that this fix works. The new
 branch is based on `main` so the implementation does not implicitly inherit
 temporary CI workload or source-level profiler overhead.
+
+## 7. First implementation experiment: bounded parallel CPU copy
+
+This draft now includes a **strictly opt-in** parallel staging-to-SHM
+copy experiment, intended to answer whether the NVIDIA readback bottleneck
+can be reduced without changing the protocol. It is **not** the async
+completion architecture described above.
+
+- `compositor/src/render/readback_copy.c` partitions whole rows between
+  up to four short-lived pthread workers. Each worker only calls CPU
+  `memcpy`/optional alpha fixup on disjoint ranges. The original Vulkan
+  timeline wait still happens before those workers begin.
+- All workers join before `wlr_texture_impl.read_pixels` returns, so wlroots
+  still sees a fully initialized destination buffer. Vulkan, Wayland and
+  buffer ownership are never accessed from the worker threads.
+- `VELA_READBACK_COPY_THREADS=2|3|4` opts in. The default is **1**
+  (serial), and small copies under 1 MiB stay serial. Thread creation
+  failure falls back to copying that partition on the caller thread.
+- `compositor.readback-copy` verifies that single/multithreaded results
+  match for contiguous and padded strides, alpha fixup, tiny inputs, full
+  1440p images and excess worker requests. The existing functional capture
+  assertion is unchanged.
+- The **manual NVIDIA workflow on this branch only** runs A/B
+  `functional-capture` for 1 and 4 workers, preserving the logs and marking
+  the measurements non-gating; the full strict GPU suite then runs with four
+  workers. The **manual AMD workflow on this branch only** runs its strict
+  suite with four workers. Outside the branch, both GPU workflows use the
+  unchanged one-worker behavior.
+
+### Decision gate
+
+If NVIDIA still misses vblanks or AMD regresses, do **not** merge this
+experiment as a performance fix. Retain the measured CPU effects and move
+to a Vela-controlled asynchronous output capture path or upstream-compatible
+changes that can delay `ready` until data is actually valid. The current
+wlroots output capture source owns the synchronous SHM copy; returning early
+from `read_pixels` is not a valid shortcut.
+
+The experiment requires new real-hardware runs; passing ordinary CI proves
+only the build and CPU correctness, not the 180 Hz frame deadline.
