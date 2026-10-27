@@ -465,22 +465,46 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
     const double waited_ms = profiling ? capture_profile_now_ms() : 0.0;
 
     uint8_t *dst = wlr_texture_read_pixel_options_get_data(options);
+    double memcpy_ms = 0.0;
+    double alpha_ms = 0.0;
     for (int y = 0; y < box.height; ++y) {
         uint8_t *row = dst + (size_t)y * options->stride;
+        // Keep the original per-row memcpy/fixup ordering. Timestamp each
+        // phase only for the opt-in diagnostic; do not change output pixels.
+        double copy_started_ms = profiling ? capture_profile_now_ms() : 0.0;
         memcpy(row, staging.data + (size_t)y * row_bytes, row_bytes);
+        double copy_finished_ms = profiling ? capture_profile_now_ms() : 0.0;
         if (force_opaque) {
             for (size_t x = 3; x < row_bytes; x += 4) {
                 row[x] = 0xff;
             }
         }
+        if (profiling) {
+            memcpy_ms += copy_finished_ms - copy_started_ms;
+            if (force_opaque) {
+                alpha_ms += capture_profile_now_ms() - copy_finished_ms;
+            }
+        }
     }
     if (profiling) {
         const double copied_ms = capture_profile_now_ms();
+        const double copy_total_ms = copied_ms - waited_ms;
+        const double overhead_ms = copy_total_ms - memcpy_ms - alpha_ms;
+        const size_t bytes = row_bytes * (size_t)box.height;
+        // Effective source-to-destination throughput (not a read-only
+        // bandwidth benchmark): includes the mapped Vulkan buffer as source.
+        const double mib_per_second = memcpy_ms > 0.0
+            ? ((double)bytes / (1024.0 * 1024.0)) * 1000.0 / memcpy_ms : 0.0;
         wlr_log(WLR_INFO, "capture-profile readback width=%d height=%d bytes=%zu foreign=%d "
-            "staging_ms=%.3f record_ms=%.3f submit_ms=%.3f wait_ms=%.3f copy_ms=%.3f total_ms=%.3f",
-            box.width, box.height, row_bytes * (size_t)box.height, (int)texture->foreign,
+            "src_alpha=%d dst_alpha=%d alpha_fixup=%d "
+            "staging_ms=%.3f record_ms=%.3f submit_ms=%.3f wait_ms=%.3f "
+            "memcpy_ms=%.3f alpha_ms=%.3f copy_ms=%.3f copy_overhead_ms=%.3f "
+            "memcpy_mib_s=%.1f total_ms=%.3f",
+            box.width, box.height, bytes, (int)texture->foreign,
+            (int)texture->format->alpha, (int)wanted->alpha, (int)force_opaque,
             staged_ms - started_ms, recorded_ms - staged_ms, submitted_ms - recorded_ms,
-            waited_ms - submitted_ms, copied_ms - waited_ms, copied_ms - started_ms);
+            waited_ms - submitted_ms, memcpy_ms, alpha_ms, copy_total_ms, overhead_ms,
+            mib_per_second, copied_ms - started_ms);
     }
     return true;
 }
