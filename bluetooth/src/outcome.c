@@ -6,10 +6,10 @@
 #include <stddef.h>
 #include <string.h>
 
-static const struct vela_bt_failure no_response
+const struct vela_bt_failure vela_bt_no_response
     = { "no-response", "The device isn't responding. Make sure it's on and nearby." };
 static const struct vela_bt_failure rejected = { "rejected", "Pairing was refused on the device." };
-static const struct vela_bt_failure pairing_cancelled
+const struct vela_bt_failure vela_bt_pairing_cancelled
     = { "pairing-cancelled", "Pairing was cancelled on the device." };
 static const struct vela_bt_failure auth_failed = { "auth-failed", "Pairing didn't work. Check the code and try again." };
 static const struct vela_bt_failure busy = { "busy", "Bluetooth is busy. Try again in a moment." };
@@ -31,6 +31,9 @@ const struct vela_bt_failure vela_bt_hard_blocked
 const struct vela_bt_failure vela_bt_power_on_failed = { "power-failed", "Bluetooth couldn't be turned on." };
 const struct vela_bt_failure vela_bt_power_off_failed = { "power-failed", "Bluetooth couldn't be turned off." };
 const struct vela_bt_failure vela_bt_no_adapter = { "no-adapter", "Bluetooth isn't available on this PC." };
+const struct vela_bt_failure vela_bt_session_inactive
+    = { "inactive", "Stopped because you switched to another session." };
+const struct vela_bt_failure vela_bt_session_locked = { "locked", "Stopped because the screen locked." };
 
 static bool starts_with(const char *text, const char *prefix)
 {
@@ -51,7 +54,7 @@ static const struct vela_bt_failure *connection_reason(const char *message)
         return NULL;
     }
     if (contains(message, "timeout") || contains(message, "by-remote") || contains(message, "refused")) {
-        return &no_response;
+        return &vela_bt_no_response;
     }
     if (contains(message, "profile-unavailable") || contains(message, "not-supported")) {
         return &not_supported;
@@ -89,17 +92,17 @@ const struct vela_bt_failure *vela_bt_failure_of(enum vela_bt_step step, const c
         failure = &vela_bt_not_running;
     } else if (strcmp(dbus_error, "NoReply") == 0 || strcmp(dbus_error, "Timeout") == 0
         || strcmp(dbus_error, "TimedOut") == 0) {
-        failure = &no_response;
+        failure = &vela_bt_no_response;
     } else if (strcmp(dbus_error, "UnknownObject") == 0 || strcmp(error, "DoesNotExist") == 0) {
         failure = &vela_bt_device_gone;
     } else if (strcmp(error, "AuthenticationRejected") == 0 || strcmp(error, "Rejected") == 0) {
         failure = &rejected;
     } else if (strcmp(error, "AuthenticationCanceled") == 0 || strcmp(error, "Canceled") == 0) {
-        failure = &pairing_cancelled;
+        failure = &vela_bt_pairing_cancelled;
     } else if (strcmp(error, "AuthenticationFailed") == 0) {
         failure = &auth_failed;
     } else if (strcmp(error, "AuthenticationTimeout") == 0) {
-        failure = &no_response;
+        failure = &vela_bt_no_response;
     } else if (strcmp(error, "InProgress") == 0 || strcmp(error, "Busy") == 0) {
         failure = &busy;
     } else if (strcmp(error, "Blocked") == 0) {
@@ -114,7 +117,7 @@ const struct vela_bt_failure *vela_bt_failure_of(enum vela_bt_step step, const c
             failure = reason;
         } else if (strcmp(error, "ConnectionAttemptFailed") == 0 || contains(message, "Page Timeout")
             || contains(message, "Host is down")) {
-            failure = &no_response;
+            failure = &vela_bt_no_response;
         } else if (contains(message, "already in progress")) {
             failure = &busy;
         } else if (contains(message, "rfkill") || contains(message, "Blocked")) {

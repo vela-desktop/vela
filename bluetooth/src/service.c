@@ -3,7 +3,8 @@
 
 // org.vela.Bluetooth on the session bus (docs/bluetooth.md §7). Methods
 // that change something return once it's done: the D-Bus reply carries
-// the result, OperationChanged the steps on the way.
+// the result, OperationChanged the steps on the way. While the session is
+// not in front (§6.7) they return Error.Inactive.
 
 #include "daemon.h"
 
@@ -30,6 +31,13 @@ static int get_platform_blocked(sd_bus *bus, const char *path, const char *inter
 {
     struct vela_bt_daemon *d = data;
     return sd_bus_message_append(reply, "b", (int)d->platform_blocked);
+}
+
+static int get_active(sd_bus *bus, const char *path, const char *interface, const char *property,
+    sd_bus_message *reply, void *data, sd_bus_error *error)
+{
+    struct vela_bt_daemon *d = data;
+    return sd_bus_message_append(reply, "b", (int)vela_bt_active(d));
 }
 
 static int get_adapters(sd_bus *bus, const char *path, const char *interface, const char *property,
@@ -69,6 +77,16 @@ static void append_devices(struct vela_bt_daemon *d, sd_bus_message *m, bool onl
     sd_bus_message_close_container(m);
 }
 
+// The caller passes `trust` (§7.3), and the session is in front.
+static int check_acting(struct vela_bt_daemon *d, sd_bus_message *call, enum vela_bt_trust trust, sd_bus_error *error)
+{
+    int r = vela_bt_check_caller(call, trust, d->ui, error);
+    if (r >= 0 && !vela_bt_active(d)) {
+        r = sd_bus_error_set(error, VELA_BT_ERROR("Inactive"), "Bluetooth is in use by another session.");
+    }
+    return r;
+}
+
 // A device of the adapter in use, or an error.
 static struct vela_bt_device *listed_device(struct vela_bt_daemon *d, const char *path, sd_bus_error *error)
 {
@@ -102,7 +120,7 @@ static int method_set_powered(sd_bus_message *call, void *data, sd_bus_error *er
     struct vela_bt_daemon *d = data;
     int on;
     int r = sd_bus_message_read(call, "b", &on);
-    if (r < 0 || (r = vela_bt_check_caller(call, VELA_BT_UNSANDBOXED, d->ui, error)) < 0) {
+    if (r < 0 || (r = check_acting(d, call, VELA_BT_UNSANDBOXED, error)) < 0) {
         return r;
     }
     return vela_bt_power_set(d, call, on, error);
@@ -113,7 +131,7 @@ static int method_use_adapter(sd_bus_message *call, void *data, sd_bus_error *er
     struct vela_bt_daemon *d = data;
     const char *address;
     int r = sd_bus_message_read(call, "s", &address);
-    if (r < 0 || (r = vela_bt_check_caller(call, VELA_BT_UNSANDBOXED, d->ui, error)) < 0) {
+    if (r < 0 || (r = check_acting(d, call, VELA_BT_UNSANDBOXED, error)) < 0) {
         return r;
     }
     bool found = false;
@@ -123,8 +141,9 @@ static int method_use_adapter(sd_bus_message *call, void *data, sd_bus_error *er
     if (!found) {
         return sd_bus_error_set(error, VELA_BT_ERROR("UnknownAdapter"), address);
     }
-    if (d->pairing || d->power.active) {
-        return sd_bus_error_set(error, VELA_BT_ERROR("Busy"), d->pairing ? d->pairing->path : "");
+    if (d->pairing || d->power.active || d->question) {
+        const char *busy = d->pairing ? d->pairing->path : d->question ? d->question->device : "";
+        return sd_bus_error_set(error, VELA_BT_ERROR("Busy"), busy);
     }
     char *chosen = strdup(address);
     if (!chosen) {
@@ -142,7 +161,7 @@ static int method_use_adapter(sd_bus_message *call, void *data, sd_bus_error *er
 static int start_operation(sd_bus_message *call, struct vela_bt_daemon *d, enum vela_bt_kind kind,
     enum vela_bt_trust trust, const char *path, const char *name, sd_bus_error *error)
 {
-    int r = vela_bt_check_caller(call, trust, d->ui, error);
+    int r = check_acting(d, call, trust, error);
     if (r < 0) {
         return r;
     }
@@ -150,7 +169,7 @@ static int start_operation(sd_bus_message *call, struct vela_bt_daemon *d, enum 
     if (!device) {
         return -ENOENT;
     }
-    return vela_bt_operation_start(d, call, device, kind, name, error);
+    return vela_bt_operation_start(d, call, device, kind, name, trust == VELA_BT_VELA_UI, error);
 }
 
 static int method_add(sd_bus_message *call, void *data, sd_bus_error *error)
@@ -213,14 +232,34 @@ static int method_cancel(sd_bus_message *call, void *data, sd_bus_error *error)
     if (!device) {
         return -ENOENT;
     }
-    vela_bt_operation_cancel(d, device);
+    vela_bt_operation_cancel(d, device, NULL);
     return sd_bus_reply_method_return(call, NULL);
+}
+
+static int method_questions(sd_bus_message *call, void *data, sd_bus_error *error)
+{
+    struct vela_bt_daemon *d = data;
+    int r = vela_bt_check_caller(call, VELA_BT_VELA_UI, d->ui, error);
+    return r < 0 ? r : vela_bt_questions(d, call);
+}
+
+static int method_answer(sd_bus_message *call, void *data, sd_bus_error *error)
+{
+    struct vela_bt_daemon *d = data;
+    uint64_t id;
+    const char *response, *value;
+    int r = sd_bus_message_read(call, "tss", &id, &response, &value);
+    if (r < 0 || (r = check_acting(d, call, VELA_BT_VELA_UI, error)) < 0) {
+        return r;
+    }
+    return vela_bt_answer(d, call, id, response, value, error);
 }
 
 static const sd_bus_vtable vtable[] = {
     SD_BUS_VTABLE_START(0),
     SD_BUS_PROPERTY("Available", "b", get_available, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_PROPERTY("PlatformBlocked", "b", get_platform_blocked, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
+    SD_BUS_PROPERTY("Active", "b", get_active, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_PROPERTY("Adapters", "aa{sv}", get_adapters, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_PROPERTY("Adapter", "a{sv}", get_adapter, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_METHOD("Devices", "", "a{oa{sv}}", method_devices, 0),
@@ -232,8 +271,14 @@ static const sd_bus_vtable vtable[] = {
     SD_BUS_METHOD("Remove", "o", "", method_remove, 0),
     SD_BUS_METHOD("Rename", "os", "", method_rename, 0),
     SD_BUS_METHOD("Cancel", "o", "", method_cancel, 0),
+    SD_BUS_METHOD("Questions", "", "a(toa{sv})", method_questions, 0),
+    SD_BUS_METHOD("Answer", "tss", "", method_answer, 0),
     SD_BUS_SIGNAL("DevicesChanged", "a{oa{sv}}ao", 0),
     SD_BUS_SIGNAL("OperationChanged", "osss", 0),
+    // Sent to each of Vela's UI clients only (§7.3).
+    SD_BUS_SIGNAL("Question", "toa{sv}", 0),
+    SD_BUS_SIGNAL("QuestionChanged", "ta{sv}", 0),
+    SD_BUS_SIGNAL("QuestionClosed", "ts", 0),
     SD_BUS_VTABLE_END,
 };
 
@@ -271,7 +316,7 @@ void vela_bt_flush(struct vela_bt_daemon *d)
     if (d->properties_changed) {
         d->properties_changed = false;
         sd_bus_emit_properties_changed(
-            d->session, VELA_BT_PATH, INTERFACE, "Available", "PlatformBlocked", "Adapters", "Adapter", NULL);
+            d->session, VELA_BT_PATH, INTERFACE, "Available", "PlatformBlocked", "Active", "Adapters", "Adapter", NULL);
     }
 }
 

@@ -14,6 +14,7 @@ if(NOT BLUETOOTH_SYSTEMD_FOUND)
 endif()
 
 add_library(vela-bluetooth-core STATIC
+    src/agent.c
     src/bluez.c
     src/caller.c
     src/describe.c
@@ -21,8 +22,10 @@ add_library(vela-bluetooth-core STATIC
     src/operations.c
     src/outcome.c
     src/power.c
+    src/question.c
     src/rfkill.c
-    src/service.c)
+    src/service.c
+    src/session.c)
 target_include_directories(vela-bluetooth-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(vela-bluetooth-core PUBLIC _GNU_SOURCE)
 target_compile_options(vela-bluetooth-core PRIVATE -Wall -Wextra -Wno-unused-parameter)
@@ -70,13 +73,14 @@ if(VELA_BUILD_TOOLS)
     target_compile_definitions(vela-bluetooth-testing PRIVATE VELA_BLUETOOTH_TESTING
         VELA_BT_TEST_UI="${PROJECT_BINARY_DIR}/tests/bluetooth/vela-bluetooth-daemon-test")
 
-    # The pure parts: errors, steps, rfkill, callers, names.
+    # The pure parts: errors, steps, rfkill, callers, names, answers.
     find_package(GTest)
     if(GTest_FOUND)
         add_executable(vela-bluetooth-tests
             tests/caller_test.cpp
             tests/describe_test.cpp
             tests/outcome_test.cpp
+            tests/question_test.cpp
             tests/rfkill_test.cpp)
         target_compile_options(vela-bluetooth-tests PRIVATE -Wall -Wextra)
         target_link_libraries(vela-bluetooth-tests PRIVATE vela-bluetooth-core GTest::gtest_main)

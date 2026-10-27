@@ -64,7 +64,7 @@ static int on_signal(sd_event_source *source, const struct signalfd_siginfo *inf
     struct vela_bt_daemon *d = data;
     // A pairing in progress stops on the device too.
     if (d->pairing) {
-        vela_bt_operation_cancel(d, d->pairing);
+        vela_bt_operation_cancel(d, d->pairing, NULL);
     }
     return sd_event_exit(sd_event_source_get_event(source), 0);
 }
@@ -117,6 +117,11 @@ int main(void)
         vela_bt_log(VELA_BT_NAME ": %s", strerror(-r));
         return 1;
     }
+    if ((r = vela_bt_agent_start(&d)) < 0) {
+        vela_bt_log("agent: %s", strerror(-r));
+        return 1;
+    }
+    vela_bt_session_start(&d);
     if ((r = vela_bt_bluez_start(&d)) < 0) {
         vela_bt_log("following BlueZ: %s", strerror(-r));
         return 1;
@@ -130,7 +135,10 @@ int main(void)
     sd_bus_flush(d.system);
     sd_bus_flush(d.session);
     vela_bt_clear(&d);
+    vela_bt_agent_free(&d);
     vela_bt_model_free(&d);
+    sd_bus_slot_unref(d.session_call);
+    free(d.login_session);
     sd_event_source_disable_unref(d.flush);
     sd_event_source_disable_unref(d.rfkill_watch);
     sd_bus_flush_close_unref(d.system);

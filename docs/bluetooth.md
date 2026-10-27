@@ -5,9 +5,10 @@ settings, and how Vela shares Bluetooth with other desktop sessions. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** design under discussion in PR #146. B0 and B1 are done: the
-> daemon runs, but no client uses it yet, and it has no agent. Everything
-> in §3 is in scope for beta 0.1. Stages are listed in §12.
+> **Status:** design under discussion in PR #146. B0, B1 and B2 are done:
+> the daemon runs with its agent and follows the session, but no client
+> uses it yet. Everything in §3 is in scope for beta 0.1. Stages are listed
+> in §12.
 
 ## 1. Why from scratch
 
@@ -252,6 +253,16 @@ follows the session (§6.7). Every `Agent1` call becomes a **question**
   trusted devices by itself, without the agent (`src/adapter.c`). Devices
   Vela pairs are trusted, so `AuthorizeService` only comes from devices
   paired elsewhere, or from devices the user marked as not trusted.
+- **Shown codes.** BlueZ expects no reply to `DisplayPasskey`, and calls it
+  again as keys are typed on the device: the question stays the same, and
+  `QuestionChanged` gives the digits typed so far. `DisplayPinCode` is
+  answered at once, because BlueZ gives the PIN to the kernel only then.
+  So `show-passkey` and `show-pin` stay open until the device is paired,
+  the Add's `Pair` ends, or 60 seconds pass.
+- **Refused at once** (`org.bluez.Error.Rejected`), and logged: a call to
+  the agent that doesn't come from BlueZ, a request about a device of
+  another adapter than the one in use, any request while the session is
+  inactive, and a request while another question is open.
 - **While the screen is locked** (`LockedHint`, §6.7), requests the user did
   not start are rejected at once (`org.bluez.Error.Rejected`). Nobody is
   there to answer them.
@@ -383,7 +394,11 @@ properties. The session is found as in [polkit agent](polkit-agent.md)
     this today**; it is added in B5.
 - While inactive, the daemon only keeps its model up to date. Reading
   BlueZ changes nothing for anyone. Methods that would change something
-  return `org.vela.Bluetooth.Error.Inactive`.
+  return `org.vela.Bluetooth.Error.Inactive`; so they do while the screen
+  is locked. `Cancel` always works.
+- If logind can't name the session, `XDG_SESSION_ID` is used. With no
+  session at all, or no logind, the daemon acts as if the session were
+  always in front, as Bluetooth did before.
 
 **2. Vela never changes adapter-wide settings on its own.** It never
 writes these:
@@ -417,9 +432,9 @@ Served at `/org/vela/Bluetooth` on the session bus. Error names are under
 clients ignore keys they don't know. Signatures are final once B1 is
 merged.
 
-B1 serves everything in §7.1 except `Active` and the searches
+B1 and B2 serve everything in §7.1 and §7.2 except the searches
 (`StartSearch`, `StopSearch`, `StopBeingVisible`, `SearchEnded`), which come
-with B2 and B5. The questions of §7.2 come with B2.
+with B5.
 
 ### 7.1 Devices, adapter and searches
 
@@ -470,7 +485,7 @@ Errors:
 - `Failed`: the message is the plain-words message (§6.3), and
   `OperationChanged` has the code;
 - `Cancelled`, `UnknownDevice`, `UnknownAdapter`, `NotAllowed` (§7.3),
-  `Inactive` (B2);
+  `Inactive` (§6.7);
 - `org.freedesktop.DBus.Error.InvalidArgs` for a name `Rename` refuses:
   not UTF-8, a control character, or longer than 248 bytes.
 
@@ -492,6 +507,12 @@ signals
 **Ids** are 64-bit and never reused while the daemon runs. When
 `org.vela.Bluetooth` changes owner (the daemon restarted), clients drop
 every question they hold.
+
+**Receiving them.** A client of Vela's UI calls `Questions()` when it
+starts, and again when the daemon restarts. From then on, while it stays
+on the bus, it receives `Question`, `QuestionChanged` and
+`QuestionClosed`. `Add(device, promptsHere = true)` does the same for its
+caller.
 
 **Details:**
 
@@ -536,7 +557,7 @@ gives no error message (§6.3).
 | `answered` | Accepted, rejected or cancelled. All clients close it, wherever it was answered |
 | `cancelled-by-device` | BlueZ's `Cancel`, including its 60-second timeout |
 | `device-gone` | The device disappeared |
-| `bluetooth-gone` | `org.bluez` left the bus, or the adapter went away |
+| `bluetooth-gone` | `org.bluez` left the bus, or the adapter went away. BlueZ removes an adapter's devices first, so an unplugged dongle usually gives `device-gone` |
 | `inactive` | The session stopped being active |
 | `locked` | The screen locked |
 
@@ -583,7 +604,8 @@ to Vela's own UI.
     still accepted: only root installs at that path.
   - The test build of the daemon has its own list: the test client only.
 - **Signals carrying questions are sent to each allowed client only**
-  (unicast, with a destination), never broadcast.
+  (unicast, with a destination), never broadcast: to the callers of
+  `Questions()` and of `Add` with `promptsHere` (§7.2).
 - Refusals return `org.vela.Bluetooth.Error.NotAllowed` and are logged
   with the caller's executable.
 
@@ -679,9 +701,8 @@ Arch. [installation](installation.md) says it is all Bluetooth needs.
 
 **Fake BlueZ.** This is `tests/bluetooth/fakebluez.h`, grown out of
 `FakeServices` in `shell/tests/requested_switches.cpp`. It runs on a private
-system bus, in its own thread. In B1 it serves the ObjectManager,
-`Adapter1`, `Device1` and `Battery1`; the rest of this list comes with B2
-and B5. It serves:
+system bus, in its own thread. Discovery sessions and the `Discoverable`
+filter come with B5; the rest of this list is there since B2. It serves:
 
 - `ObjectManager`, `AgentManager1`, `Adapter1`, `Device1` and `Battery1`;
 - BlueZ's default-agent stack, and one open request per agent, refusing
@@ -800,7 +821,7 @@ only `bluez`:
 |---|---|---|
 | B0 | Remove BlueDevil (§10); the shell's rfkill unblock limited to the adapter's own switch, until B4 replaces it | done |
 | B1 | `vela-bluetooth`: start by the compositor, model, operations, errors, rfkill (§6.3), the `org.vela.Bluetooth` API settled with its authorization (§7.3); the fake BlueZ and the daemon's tests | done |
-| B2 | The agent (§6.4), concurrency (§6.5), the questions (§7.2), and the session rules (§6.7), with tests | |
+| B2 | The agent (§6.4), concurrency (§6.5), the questions (§7.2), and the session rules (§6.7), with tests | done |
 | B3 | `common/bluetooth`; the Settings page rewritten (§9.1); the old Settings code deleted | |
 | B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | |
 | B5 | Search leases and visibility (§6.6); the compositor sets `LockedHint` while the lock screen is up | |

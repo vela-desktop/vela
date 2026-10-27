@@ -1,16 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// vela-bluetooth against a fake BlueZ (docs/bluetooth.md §11): the model,
-// the adapter in use, each operation and the ways it ends early, power and
-// rfkill, and who may call. The real daemon binary runs on two private
-// buses, a fake /dev/rfkill and a fake /sys; this test is the UI the test
-// build trusts.
+// vela-bluetooth against a fake BlueZ and a fake logind (docs/bluetooth.md
+// §11): the model, the adapter in use, each operation and the ways it ends
+// early, power and rfkill, the agent and its questions, concurrent
+// requests, other desktop sessions, and who may call. The real daemon
+// binary runs on two private buses, a fake /dev/rfkill and a fake /sys;
+// this test is the UI the test build trusts.
 
 #include "fakebluez.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
+#include <QDBusContext>
 #include <QDBusMessage>
 #include <QDBusMetaType>
 #include <QDBusPendingCall>
@@ -19,6 +21,7 @@
 #include <QDir>
 #include <QFile>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -54,11 +57,23 @@ struct Operation {
     QString message;
 };
 
+// One Question, or one entry of Questions().
+struct Asked {
+    qulonglong id = 0;
+    QString device;
+    QVariantMap details;
+
+    QString kind() const { return details.value(QStringLiteral("kind")).toString(); }
+};
+
+const QString velaAgent = QStringLiteral("/org/vela/BluetoothAgent");
+const QString a2dpSink = QStringLiteral("0000110b-0000-1000-8000-00805f9b34fb");
+
 } // namespace
 
 Q_DECLARE_METATYPE(DeviceMap)
 
-class BluetoothDaemon : public QObject {
+class BluetoothDaemon : public QObject, protected QDBusContext {
     Q_OBJECT
 
     QProcess systemBus;
@@ -67,9 +82,14 @@ class BluetoothDaemon : public QObject {
     QString sessionAddress;
     QThread fakeThread;
     FakeBluez* fake = nullptr;
+    FakeLogind* logind = nullptr;
     QTemporaryDir home;
     QProcess daemon;
     QList<Operation> operations;
+    QList<Asked> asked; // the Question signals
+    QList<QPair<qulonglong, QVariantMap>> questionChanges;
+    QList<QPair<qulonglong, QString>> closed; // QuestionClosed: id, reason
+    QString daemonName; // its unique name: signals of an earlier daemon don't count
     QString mouse;
     QString headset;
     QString keyboard;
@@ -164,6 +184,77 @@ class BluetoothDaemon : public QObject {
         return writes;
     }
 
+    bool fromDaemon() const { return calledFromDBus() && message().service() == daemonName; }
+
+    QStringList agentLog()
+    {
+        QStringList log;
+        fake->run([&] { log = fake->agentLog; });
+        return log;
+    }
+
+    QString defaultAgent()
+    {
+        QString agent;
+        fake->run([&] { agent = fake->defaultAgent(); });
+        return agent;
+    }
+
+    bool velaIsTheDefaultAgent() { return defaultAgent().endsWith(u' ' + velaAgent); }
+
+    // The device asks by itself, through the default agent.
+    void deviceAsks(const QString& path, const QString& method, const QVariantList& extra = {})
+    {
+        fake->run([&] { fake->ask(path, method, extra); });
+    }
+
+    void setSession(bool active, bool locked)
+    {
+        fake->run([&] { logind->set(active, locked); });
+    }
+
+    static QList<Asked> questionsOf(const QDBusMessage& reply)
+    {
+        QList<Asked> list;
+        const QDBusArgument argument = reply.arguments().value(0).value<QDBusArgument>();
+        argument.beginArray();
+        while (!argument.atEnd()) {
+            Asked entry;
+            QDBusObjectPath device;
+            argument.beginStructure();
+            argument >> entry.id >> device >> entry.details;
+            argument.endStructure();
+            entry.device = device.path();
+            list << entry;
+        }
+        argument.endArray();
+        return list;
+    }
+
+    QList<Asked> openQuestions() const { return questionsOf(call(QStringLiteral("Questions"))); }
+
+    // The next Question signal after `seen` of them.
+    Asked nextQuestion(qsizetype seen)
+    {
+        [&] { QTRY_VERIFY_WITH_TIMEOUT(asked.size() > seen, 10000); }();
+        return asked.size() > seen ? asked.at(seen) : Asked {};
+    }
+
+    QString answer(qulonglong id, const QString& response, const QString& value = {}) const
+    {
+        return errorOf(call(QStringLiteral("Answer"), { id, response, value }));
+    }
+
+    QString closedReason(qulonglong id) const
+    {
+        for (const auto& [closedId, reason] : closed) {
+            if (closedId == id) {
+                return reason;
+            }
+        }
+        return {};
+    }
+
     QString rfkillSwitch(const QString& dir) const { return home.filePath(QStringLiteral("sys/") + dir); }
 
     // What was written to the fake /dev/rfkill since the last call: the
@@ -191,13 +282,21 @@ class BluetoothDaemon : public QObject {
 
     bool startDaemon()
     {
+        // The last test's signals may still be queued here (blocking calls
+        // don't process events): from now on they don't count.
+        daemonName.clear();
         operations.clear();
+        asked.clear();
+        questionChanges.clear();
+        closed.clear();
         QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
         environment.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"), systemAddress);
         environment.insert(QStringLiteral("DBUS_SESSION_BUS_ADDRESS"), sessionAddress);
         environment.insert(QStringLiteral("VELA_RFKILL"), home.filePath(QStringLiteral("rfkill")));
         environment.insert(QStringLiteral("VELA_SYSFS"), home.filePath(QStringLiteral("sys")));
         environment.insert(QStringLiteral("XDG_CONFIG_HOME"), home.filePath(QStringLiteral("config")));
+        // When logind can't name the session, as in a container.
+        environment.insert(QStringLiteral("XDG_SESSION_ID"), QStringLiteral("fake"));
         daemon.setProcessEnvironment(environment);
         daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
         daemon.start(QStringLiteral(VELA_BLUETOOTH_DAEMON), {});
@@ -208,7 +307,9 @@ class BluetoothDaemon : public QObject {
         for (int i = 0; i < 100 && !bus.interface()->isServiceRegistered(service); ++i) {
             QTest::qWait(20);
         }
-        return bus.interface()->isServiceRegistered(service);
+        daemonName = bus.interface()->serviceOwner(service);
+        // As Vela's UI does: from now on the question signals come here.
+        return !daemonName.isEmpty() && errorOf(call(QStringLiteral("Questions"))).isEmpty();
     }
 
     int stopDaemon()
@@ -232,6 +333,7 @@ class BluetoothDaemon : public QObject {
         fake->run([this] {
             fake->calls.clear();
             fake->writes.clear();
+            fake->forgetAgents();
             for (const QString& path : fake->devices.keys()) {
                 fake->removeDevice(path);
             }
@@ -274,7 +376,30 @@ class BluetoothDaemon : public QObject {
 private slots:
     void onOperation(const QDBusObjectPath& device, const QString& state, const QString& error, const QString& message)
     {
-        operations << Operation { device.path(), state, error, message };
+        if (fromDaemon()) {
+            operations << Operation { device.path(), state, error, message };
+        }
+    }
+
+    void onQuestion(qulonglong id, const QDBusObjectPath& device, const QVariantMap& details)
+    {
+        if (fromDaemon()) {
+            asked << Asked { id, device.path(), details };
+        }
+    }
+
+    void onQuestionChanged(qulonglong id, const QVariantMap& details)
+    {
+        if (fromDaemon()) {
+            questionChanges << qMakePair(id, details);
+        }
+    }
+
+    void onQuestionClosed(qulonglong id, const QString& reason)
+    {
+        if (fromDaemon()) {
+            closed << qMakePair(id, reason);
+        }
     }
 
     void initTestCase()
@@ -291,6 +416,12 @@ private slots:
         QVERIFY(bus.isConnected());
         QVERIFY(bus.connect(service, objectPath, service, QStringLiteral("OperationChanged"), this,
             SLOT(onOperation(QDBusObjectPath, QString, QString, QString))));
+        QVERIFY(bus.connect(service, objectPath, service, QStringLiteral("Question"), this,
+            SLOT(onQuestion(qulonglong, QDBusObjectPath, QVariantMap))));
+        QVERIFY(bus.connect(service, objectPath, service, QStringLiteral("QuestionChanged"), this,
+            SLOT(onQuestionChanged(qulonglong, QVariantMap))));
+        QVERIFY(bus.connect(service, objectPath, service, QStringLiteral("QuestionClosed"), this,
+            SLOT(onQuestionClosed(qulonglong, QString))));
 
         // Two adapters with their switches, a Wi-Fi switch, and a laptop's
         // platform Bluetooth switch (asus-wmi): 3, 7, 1 and 5.
@@ -311,19 +442,28 @@ private slots:
         fake = new FakeBluez;
         fake->bus = QStringLiteral("fake-bluez");
         fake->moveToThread(&fakeThread);
+        logind = new FakeLogind;
+        logind->bus = QStringLiteral("fake-logind");
+        logind->moveToThread(&fakeThread);
         bool ok = false;
         fake->run([&] {
             QDBusConnection bluez = QDBusConnection::connectToBus(systemAddress, fake->bus);
             ok = bluez.registerService(QStringLiteral("org.bluez"))
                 && bluez.registerVirtualObject(QStringLiteral("/"), fake, QDBusConnection::SubPath);
+            QDBusConnection login1 = QDBusConnection::connectToBus(systemAddress, logind->bus);
+            ok = ok && login1.registerService(QStringLiteral("org.freedesktop.login1"))
+                && login1.registerVirtualObject(QStringLiteral("/org/freedesktop/login1"), logind, QDBusConnection::SubPath);
         });
         QVERIFY(ok);
     }
 
     void cleanupTestCase()
     {
-        fake->run([this] { QDBusConnection::disconnectFromBus(fake->bus); });
-        QMetaObject::invokeMethod(fake, [this] { delete fake; }, Qt::BlockingQueuedConnection);
+        fake->run([this] {
+            QDBusConnection::disconnectFromBus(fake->bus);
+            QDBusConnection::disconnectFromBus(logind->bus);
+        });
+        QMetaObject::invokeMethod(fake, [this] { delete logind; delete fake; }, Qt::BlockingQueuedConnection);
         fakeThread.quit();
         fakeThread.wait();
         QDBusConnection::disconnectFromBus(QStringLiteral("client"));
@@ -335,7 +475,11 @@ private slots:
 
     void init()
     {
-        fake->run([this] { fake->comeBack(); });
+        fake->run([this] {
+            fake->comeBack();
+            logind->active = true;
+            logind->locked = false;
+        });
         resetFake();
         for (const QString& dir : { QStringLiteral("class/bluetooth/hci0/rfkill3"), QStringLiteral("class/bluetooth/hci1/rfkill7"),
                  QStringLiteral("class/rfkill/rfkill3"), QStringLiteral("class/rfkill/rfkill7"), QStringLiteral("class/rfkill/rfkill1"),
@@ -348,6 +492,8 @@ private slots:
         QVERIFY(startDaemon());
         QTRY_VERIFY(property(QStringLiteral("Available")).toBool());
         QTRY_COMPARE(devices().size(), 3);
+        QTRY_VERIFY(property(QStringLiteral("Active")).toBool());
+        QTRY_VERIFY(velaIsTheDefaultAgent());
     }
 
     void cleanup()
@@ -364,6 +510,7 @@ private slots:
                     return true;
                 }(),
                 5000);
+            QTRY_VERIFY_WITH_TIMEOUT(openQuestions().isEmpty(), 5000);
         }
         // Vela never changes adapter-wide settings on its own (§6.7).
         for (const QString& write : fakeWrites()) {
@@ -413,6 +560,8 @@ private slots:
         fake->run([this] { QVERIFY(fake->comeBack()); });
         QTRY_VERIFY(property(QStringLiteral("Available")).toBool());
         QTRY_COMPARE(devices().size(), 3);
+        // BlueZ came back without agents: Vela's is registered again.
+        QTRY_VERIFY(velaIsTheDefaultAgent());
     }
 
     void startsWithoutBluez()
@@ -752,8 +901,527 @@ private slots:
         QCOMPARE(errorOf(start(QStringLiteral("Add"), { object(keyboard), true })), QString());
     }
 
+    // ---------------------------------------------------- the agent (§6.4) --
+
+    void agentIsRegisteredAsKeyboardDisplay()
+    {
+        QVERIFY(fakeCalls().contains(QStringLiteral("RegisterAgent KeyboardDisplay")));
+        QVERIFY(fakeCalls().contains(QStringLiteral("RequestDefaultAgent")));
+    }
+
+    // Settings draws an Add's question when it asked to (promptsHere).
+    void confirmPasskeyAccepted()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) {
+            device.method = FakeBluez::Device::Confirm;
+            device.passkey = 4321;
+        });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), true });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("confirm-passkey"));
+        QCOMPARE(question.device, mouse);
+        QCOMPARE(question.details.value(QStringLiteral("passkey")).toUInt(), 4321u);
+        QCOMPARE(question.details.value(QStringLiteral("name")).toString(), QStringLiteral("Mouse"));
+        QCOMPARE(question.details.value(QStringLiteral("icon")).toString(), QStringLiteral("input-mouse"));
+        QCOMPARE(question.details.value(QStringLiteral("address")).toString(), mouseAddress);
+        QCOMPARE(question.details.value(QStringLiteral("unsolicited")).toBool(), false);
+        QCOMPARE(question.details.value(QStringLiteral("drawnBy")).toString(), QStringLiteral("settings"));
+        QVERIFY(question.details.value(QStringLiteral("expires")).toULongLong() > 0);
+        // The same question, from Questions().
+        const QList<Asked> open = openQuestions();
+        QCOMPARE(open.size(), 1);
+        QCOMPARE(open.first().id, question.id);
+        QCOMPARE(open.first().details, question.details);
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
+        QCOMPARE(errorOf(add), QString());
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+        QVERIFY(agentLog().contains(QStringLiteral("RequestConfirmation ") + mouse + QStringLiteral(" -> ok")));
+        const QVariantMap entry = devices().value(mouse);
+        QVERIFY(entry.value(QStringLiteral("paired")).toBool());
+        QVERIFY(entry.value(QStringLiteral("connected")).toBool());
+        // Answered once: a second answer finds it closed.
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QStringLiteral("org.vela.Bluetooth.Error.QuestionClosed"));
+        QCOMPARE(answer(question.id + 1, QStringLiteral("accept")), QStringLiteral("org.vela.Bluetooth.Error.UnknownQuestion"));
+        QCOMPARE(answer(0, QStringLiteral("accept")), QStringLiteral("org.vela.Bluetooth.Error.UnknownQuestion"));
+    }
+
+    // The user's own "no" ends the Add with no message.
+    void confirmPasskeyRejected()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) { device.method = FakeBluez::Device::Confirm; });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.details.value(QStringLiteral("drawnBy")).toString(), QStringLiteral("shell"));
+        QCOMPARE(answer(question.id, QStringLiteral("cancel")), QStringLiteral("org.vela.Bluetooth.Error.WrongResponse"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept"), QStringLiteral("1")), QStringLiteral("org.vela.Bluetooth.Error.InvalidValue"));
+        QCOMPARE(answer(question.id, QStringLiteral("reject")), QString());
+        QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("RequestConfirmation ") + mouse + QStringLiteral(" -> org.bluez.Error.Rejected")));
+        QTRY_COMPARE(operations.last().state, QStringLiteral("cancelled"));
+        QVERIFY(operations.last().error.isEmpty());
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+        QVERIFY(!devices().value(mouse).value(QStringLiteral("paired")).toBool());
+        QVERIFY(!devices().value(mouse).contains(QStringLiteral("error")));
+    }
+
+    void enterPasskey()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) {
+            device.method = FakeBluez::Device::EnterPasskey;
+            device.passkey = 42;
+        });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("enter-passkey"));
+        QVERIFY(!question.details.contains(QStringLiteral("passkey")));
+        QCOMPARE(answer(question.id, QStringLiteral("reject")), QStringLiteral("org.vela.Bluetooth.Error.WrongResponse"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept"), QStringLiteral("abc")), QStringLiteral("org.vela.Bluetooth.Error.InvalidValue"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept"), QStringLiteral("1000000")), QStringLiteral("org.vela.Bluetooth.Error.InvalidValue"));
+        // Still open after the refused answers.
+        QCOMPARE(openQuestions().size(), 1);
+        QCOMPARE(answer(question.id, QStringLiteral("accept"), QStringLiteral("000042")), QString());
+        QCOMPARE(errorOf(add), QString());
+        QVERIFY(agentLog().contains(QStringLiteral("RequestPasskey ") + mouse + QStringLiteral(" -> 42")));
+        QVERIFY(devices().value(mouse).value(QStringLiteral("paired")).toBool());
+    }
+
+    void enterPasskeyCancelled()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) { device.method = FakeBluez::Device::EnterPasskey; });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(answer(question.id, QStringLiteral("cancel")), QString());
+        QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("RequestPasskey ") + mouse + QStringLiteral(" -> org.bluez.Error.Canceled")));
+        QTRY_VERIFY(fakeCalls().contains(QStringLiteral("CancelPairing ") + mouse));
+    }
+
+    // A passkey shown here and typed on the device: the digits typed so
+    // far, then it closes once paired.
+    void showPasskey()
+    {
+        onDevice(keyboard, [](FakeBluez::Device& device) {
+            device.method = FakeBluez::Device::ShowPasskey;
+            device.passkey = 7;
+            device.pairDelay = 1500;
+        });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(keyboard), false });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("show-passkey"));
+        QCOMPARE(question.details.value(QStringLiteral("passkey")).toUInt(), 7u);
+        QCOMPARE(question.details.value(QStringLiteral("entered")).toUInt(), 0u);
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QStringLiteral("org.vela.Bluetooth.Error.WrongResponse"));
+        QTRY_COMPARE(questionChanges.size(), 1);
+        QCOMPARE(questionChanges.first().first, question.id);
+        QCOMPARE(questionChanges.first().second, (QVariantMap { { QStringLiteral("entered"), QVariant::fromValue(quint16(3)) } }));
+        QCOMPARE(errorOf(add), QString());
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+        QCOMPARE(asked.size(), 1);
+    }
+
+    // DisplayPinCode: answered at once, the PIN shown until paired.
+    void showPin()
+    {
+        onDevice(keyboard, [](FakeBluez::Device& device) {
+            device.method = FakeBluez::Device::ShowPin;
+            device.pin = QStringLiteral("4321");
+            device.pairDelay = 500;
+        });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(keyboard), false });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("show-pin"));
+        QCOMPARE(question.details.value(QStringLiteral("pin")).toString(), QStringLiteral("4321"));
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("DisplayPinCode ") + keyboard + QStringLiteral(" -> ok")));
+        QCOMPARE(errorOf(add), QString());
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+    }
+
+    // ------------------------------------------------ legacy PIN (§6.4) --
+
+    void legacyPinOfAKeyboardIsShown()
+    {
+        onDevice(keyboard, [](FakeBluez::Device& device) { device.method = FakeBluez::Device::LegacyPin; });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(keyboard), false });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("show-pin"));
+        const QString pin = question.details.value(QStringLiteral("pin")).toString();
+        QVERIFY2(pin.size() == 6 && pin.toUInt() <= 999999 && pin.count(QRegularExpression(QStringLiteral("[0-9]"))) == 6, qPrintable(pin));
+        QCOMPARE(errorOf(add), QString());
+        // The PIN BlueZ got is the one shown.
+        QVERIFY(agentLog().contains(QStringLiteral("RequestPinCode ") + keyboard + QStringLiteral(" -> ") + pin));
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+    }
+
+    void legacyPinOfAMouseIs0000()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) {
+            device.method = FakeBluez::Device::LegacyPin;
+            device.pin = QStringLiteral("0000");
+        });
+        QCOMPARE(errorOf(start(QStringLiteral("Add"), { object(mouse), false })), QString());
+        QVERIFY(agentLog().contains(QStringLiteral("RequestPinCode ") + mouse + QStringLiteral(" -> 0000")));
+        QVERIFY(asked.isEmpty());
+    }
+
+    void legacyPinOfAPhoneIsTyped()
+    {
+        FakeBluez::Device phoneDevice;
+        phoneDevice.adapter = hci0;
+        phoneDevice.address = QStringLiteral("00:11:22:33:44:04");
+        phoneDevice.alias = QStringLiteral("Phone");
+        phoneDevice.icon = QStringLiteral("phone");
+        phoneDevice.method = FakeBluez::Device::LegacyPin;
+        phoneDevice.pin = QStringLiteral("1234");
+        QString phone;
+        fake->run([&] { phone = fake->addDevice(phoneDevice); });
+        QTRY_VERIFY(devices().contains(phone));
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(phone), false });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("enter-pin"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept"), QStringLiteral("12345678901234567")),
+            QStringLiteral("org.vela.Bluetooth.Error.InvalidValue"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept"), QString()), QStringLiteral("org.vela.Bluetooth.Error.InvalidValue"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept"), QStringLiteral("1234")), QString());
+        QCOMPARE(errorOf(add), QString());
+        QVERIFY(devices().value(phone).value(QStringLiteral("paired")).toBool());
+    }
+
+    // A legacy request nobody started: never 0000, the user types it.
+    void unsolicitedLegacyPinIsTyped()
+    {
+        deviceAsks(mouse, QStringLiteral("RequestPinCode"));
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("enter-pin"));
+        QCOMPARE(question.details.value(QStringLiteral("unsolicited")).toBool(), true);
+        QCOMPARE(question.details.value(QStringLiteral("drawnBy")).toString(), QStringLiteral("shell"));
+        QCOMPARE(answer(question.id, QStringLiteral("cancel")), QString());
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("RequestPinCode ") + mouse + QStringLiteral(" -> org.bluez.Error.Canceled")));
+    }
+
+    // ------------------------------------- requests the user didn't start --
+
+    void authorizeService()
+    {
+        deviceAsks(headset, QStringLiteral("AuthorizeService"), { a2dpSink });
+        Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("authorize-service"));
+        QCOMPARE(question.details.value(QStringLiteral("uuid")).toString(), a2dpSink);
+        QCOMPARE(question.details.value(QStringLiteral("service")).toString(), QStringLiteral("audio streaming"));
+        QCOMPARE(question.details.value(QStringLiteral("unsolicited")).toBool(), true);
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("AuthorizeService ") + headset + QStringLiteral(" -> ok")));
+        deviceAsks(headset, QStringLiteral("AuthorizeService"), { a2dpSink });
+        question = nextQuestion(1);
+        QVERIFY(question.id > asked.first().id);
+        QCOMPARE(answer(question.id, QStringLiteral("reject")), QString());
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("AuthorizeService ") + headset + QStringLiteral(" -> org.bluez.Error.Rejected")));
+    }
+
+    // A phone pairs by itself (Just Works from its side).
+    void authorizePairing()
+    {
+        deviceAsks(mouse, QStringLiteral("RequestAuthorization"));
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("authorize-pairing"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
+        QTRY_VERIFY(devices().value(mouse).value(QStringLiteral("paired")).toBool());
+    }
+
+    // An unsolicited passkey shown here closes once the device is paired.
+    void unsolicitedShowPasskeyClosesWhenPaired()
+    {
+        deviceAsks(mouse, QStringLiteral("DisplayPasskey"), { 123u, QVariant::fromValue(quint16(0)) });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("show-passkey"));
+        deviceAsks(mouse, QStringLiteral("DisplayPasskey"), { 123u, QVariant::fromValue(quint16(5)) });
+        QTRY_COMPARE(questionChanges.size(), 1);
+        fake->run([this] { fake->setDevice(mouse, QStringLiteral("Paired"), true); });
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+    }
+
+    // -------------------------------------------- how a question closes --
+
+    void cancelledByTheDevice()
+    {
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
+        const Asked question = nextQuestion(0);
+        fake->run([this] { fake->cancelRequestOn(mouse); });
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("cancelled-by-device"));
+        // Too late (§6.5, rule 7).
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QStringLiteral("org.vela.Bluetooth.Error.QuestionClosed"));
+    }
+
+    void closesWhenTheDeviceGoes()
+    {
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
+        const Asked question = nextQuestion(0);
+        fake->run([this] { fake->removeDevice(mouse); });
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("device-gone"));
+    }
+
+    void closesWhenBluezGoes()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) { device.method = FakeBluez::Device::Confirm; });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
+        const Asked question = nextQuestion(0);
+        fake->run([this] { fake->leave(); });
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("bluetooth-gone"));
+        QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Failed"));
+        fake->run([this] { fake->comeBack(); });
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+    }
+
+    // BlueZ removes an adapter's devices before it.
+    void closesWhenTheAdapterGoes()
+    {
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
+        const Asked question = nextQuestion(0);
+        fake->run([this] { fake->removeAdapter(hci0); });
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("device-gone"));
+        fake->run([this] { fake->addAdapter(hci0, { QStringLiteral("AA:AA:AA:AA:AA:00"), QStringLiteral("vela-pc") }); });
+    }
+
+    // ------------------------------------------ concurrent requests (§6.5) --
+
+    // A phone asking blocks the Adds of other devices.
+    void addWhileADeviceAsks()
+    {
+        deviceAsks(headset, QStringLiteral("RequestConfirmation"), { 99u });
+        const Asked question = nextQuestion(0);
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
+        QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Busy"));
+        QCOMPARE(add.error().message(), headset);
+        QVERIFY(!fakeCalls().contains(QStringLiteral("Pair ") + mouse));
+        QCOMPARE(answer(question.id, QStringLiteral("reject")), QString());
+        // Free again.
+        QCOMPARE(errorOf(start(QStringLiteral("Add"), { object(mouse), false })), QString());
+    }
+
+    // Add on the device that is asking takes its request over: no Pair.
+    void addOnTheDeviceThatAsks()
+    {
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.details.value(QStringLiteral("unsolicited")).toBool(), true);
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), true });
+        const Asked adopted = nextQuestion(1);
+        QCOMPARE(adopted.id, question.id);
+        QCOMPARE(adopted.details.value(QStringLiteral("unsolicited")).toBool(), false);
+        QCOMPARE(adopted.details.value(QStringLiteral("drawnBy")).toString(), QStringLiteral("settings"));
+        QTRY_COMPARE(devices().value(mouse).value(QStringLiteral("operation")).toString(), QStringLiteral("pairing"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
+        QCOMPARE(errorOf(add), QString());
+        QVERIFY(!fakeCalls().contains(QStringLiteral("Pair ") + mouse));
+        const QVariantMap entry = devices().value(mouse);
+        QVERIFY(entry.value(QStringLiteral("paired")).toBool());
+        QVERIFY(entry.value(QStringLiteral("trusted")).toBool());
+        QVERIFY(entry.value(QStringLiteral("connected")).toBool());
+        QTRY_COMPARE(states(mouse),
+            (QStringList { QStringLiteral("pairing"), QStringLiteral("trusting"), QStringLiteral("connecting"), QStringLiteral("done") }));
+    }
+
+    // The user cancels the adopted Add: the device's request is refused.
+    void cancelAnAdoptedAdd()
+    {
+        deviceAsks(headset, QStringLiteral("AuthorizeService"), { a2dpSink });
+        const Asked question = nextQuestion(0);
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(headset), false });
+        nextQuestion(1);
+        QCOMPARE(errorOf(call(QStringLiteral("Cancel"), { object(headset) })), QString());
+        QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("AuthorizeService ") + headset + QStringLiteral(" -> org.bluez.Error.Canceled")));
+        QVERIFY(!fakeCalls().contains(QStringLiteral("CancelPairing ") + headset));
+    }
+
+    // The device gives up on the adopted Add.
+    void adoptedAddCancelledByTheDevice()
+    {
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
+        nextQuestion(0);
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
+        nextQuestion(1);
+        fake->run([this] { fake->cancelRequestOn(mouse); });
+        QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Failed"));
+        QCOMPARE(add.error().message(), QStringLiteral("Pairing was cancelled on the device."));
+    }
+
+    // ---------------------------------------------- who draws (§7.2) --
+
+    // Settings closes while its question is open: the shell draws it.
+    void drawnByMovesToTheShell()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) { device.method = FakeBluez::Device::Confirm; });
+        // No copy of the connection outlives disconnectFromBus: it closes.
+        QDBusConnection::connectToBus(sessionAddress, QStringLiteral("settings"))
+            .asyncCall(method(QStringLiteral("Add"), { object(mouse), true }), 120000);
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.details.value(QStringLiteral("drawnBy")).toString(), QStringLiteral("settings"));
+        QDBusConnection::disconnectFromBus(QStringLiteral("settings"));
+        const Asked again = nextQuestion(1);
+        QCOMPARE(again.id, question.id);
+        QCOMPARE(again.details.value(QStringLiteral("drawnBy")).toString(), QStringLiteral("shell"));
+        // The Add goes on without its caller.
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
+        QTRY_VERIFY(devices().value(mouse).value(QStringLiteral("connected")).toBool());
+    }
+
+    // A client that restarts finds the open question.
+    void questionsAfterAClientRestart()
+    {
+        deviceAsks(mouse, QStringLiteral("RequestAuthorization"));
+        const Asked question = nextQuestion(0);
+        QDBusConnection restarted = QDBusConnection::connectToBus(sessionAddress, QStringLiteral("restarted"));
+        const QList<Asked> open
+            = questionsOf(restarted.call(method(QStringLiteral("Questions")), QDBus::Block, 5000));
+        QDBusConnection::disconnectFromBus(QStringLiteral("restarted"));
+        QCOMPARE(open.size(), 1);
+        QCOMPARE(open.first().id, question.id);
+        QCOMPARE(open.first().device, mouse);
+        QCOMPARE(open.first().kind(), QStringLiteral("authorize-pairing"));
+        QCOMPARE(answer(question.id, QStringLiteral("reject")), QString());
+    }
+
+    // ----------------------------------------- other sessions (§6.7) --
+
+    // Another desktop's agent is the default while Vela is in the
+    // background, and again when Vela goes there.
+    void otherSessionsAgent()
+    {
+        setSession(false, false);
+        QTRY_VERIFY(!property(QStringLiteral("Active")).toBool());
+        QTRY_VERIFY(defaultAgent().isEmpty());
+        QVERIFY(fakeCalls().contains(QStringLiteral("UnregisterAgent")));
+        QDBusConnection plasma = QDBusConnection::connectToBus(systemAddress, QStringLiteral("plasma"));
+        for (const QString& member : { QStringLiteral("RegisterAgent"), QStringLiteral("RequestDefaultAgent") }) {
+            QDBusMessage call = QDBusMessage::createMethodCall(
+                QStringLiteral("org.bluez"), QStringLiteral("/org/bluez"), QStringLiteral("org.bluez.AgentManager1"), member);
+            call << QVariant::fromValue(QDBusObjectPath(QStringLiteral("/modules/bluedevil/Agent")));
+            if (member == QLatin1String("RegisterAgent")) {
+                call << QStringLiteral("DisplayYesNo");
+            }
+            QCOMPARE(errorOf(plasma.call(call, QDBus::Block, 5000)), QString());
+        }
+        const QString plasmaAgent = plasma.baseService() + QStringLiteral(" /modules/bluedevil/Agent");
+        QCOMPARE(defaultAgent(), plasmaAgent);
+        // Nothing changes while in the background.
+        QCOMPARE(errorOf(start(QStringLiteral("Add"), { object(mouse), false })), QStringLiteral("org.vela.Bluetooth.Error.Inactive"));
+        QCOMPARE(errorOf(start(QStringLiteral("SetPowered"), { false })), QStringLiteral("org.vela.Bluetooth.Error.Inactive"));
+        QCOMPARE(errorOf(start(QStringLiteral("Rename"), { object(headset), QStringLiteral("x") })),
+            QStringLiteral("org.vela.Bluetooth.Error.Inactive"));
+        QCOMPARE(answer(1, QStringLiteral("accept")), QStringLiteral("org.vela.Bluetooth.Error.Inactive"));
+        QCOMPARE(devices().size(), 3);
+        QVERIFY(!fakeCalls().contains(QStringLiteral("Pair ") + mouse));
+        // Back in front: Vela's agent is the default, Plasma's under it.
+        setSession(true, false);
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+        QVERIFY(property(QStringLiteral("Active")).toBool());
+        setSession(false, false);
+        QTRY_COMPARE(defaultAgent(), plasmaAgent);
+        setSession(true, false);
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+        QDBusConnection::disconnectFromBus(QStringLiteral("plasma"));
+    }
+
+    void backgroundStopsAnAdd()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) { device.method = FakeBluez::Device::Confirm; });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
+        const Asked question = nextQuestion(0);
+        setSession(false, false);
+        QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Failed"));
+        QCOMPARE(add.error().message(), QStringLiteral("Stopped because you switched to another session."));
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("inactive"));
+        QTRY_VERIFY(fakeCalls().contains(QStringLiteral("CancelPairing ") + mouse));
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("RequestConfirmation ") + mouse + QStringLiteral(" -> org.bluez.Error.Canceled"))
+            || agentLog().contains(QStringLiteral("RequestConfirmation ") + mouse + QStringLiteral(" -> cancelled")));
+        setSession(true, false);
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+    }
+
+    // Locked: the agent stays, an Add stops, requests nobody started are
+    // refused.
+    void lockStopsAnAddAndRefusesRequests()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) { device.method = FakeBluez::Device::Confirm; });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
+        const Asked question = nextQuestion(0);
+        setSession(true, true);
+        QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Failed"));
+        QCOMPARE(add.error().message(), QStringLiteral("Stopped because the screen locked."));
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("locked"));
+        QTRY_VERIFY(!property(QStringLiteral("Active")).toBool());
+        QVERIFY(velaIsTheDefaultAgent());
+        QVERIFY(!fakeCalls().contains(QStringLiteral("UnregisterAgent")));
+        deviceAsks(headset, QStringLiteral("AuthorizeService"), { a2dpSink });
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("AuthorizeService ") + headset + QStringLiteral(" -> org.bluez.Error.Rejected")));
+        QCOMPARE(asked.size(), 1);
+        QCOMPARE(errorOf(start(QStringLiteral("Add"), { object(keyboard), false })), QStringLiteral("org.vela.Bluetooth.Error.Inactive"));
+        setSession(true, false);
+        QTRY_VERIFY(property(QStringLiteral("Active")).toBool());
+    }
+
+    // ------------------------------------------------ who may answer (§7.3) --
+
+    void otherAppsCannotSeeOrAnswerQuestions()
+    {
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
+        const Asked question = nextQuestion(0);
+        auto send = [this](const QStringList& arguments) {
+            QProcess process;
+            process.start(QStringLiteral("dbus-send"),
+                QStringList { QStringLiteral("--bus=") + sessionAddress, QStringLiteral("--print-reply"),
+                    QStringLiteral("--dest=org.vela.Bluetooth"), objectPath }
+                    + arguments);
+            process.waitForFinished(10000);
+            return QString::fromUtf8(process.readAllStandardOutput() + process.readAllStandardError());
+        };
+        const QString list = send({ QStringLiteral("org.vela.Bluetooth.Questions") });
+        QVERIFY2(list.contains(QLatin1String("org.vela.Bluetooth.Error.NotAllowed")), qPrintable(list));
+        const QString reply = send({ QStringLiteral("org.vela.Bluetooth.Answer"), QStringLiteral("uint64:%1").arg(question.id),
+            QStringLiteral("string:accept"), QStringLiteral("string:") });
+        QVERIFY2(reply.contains(QLatin1String("org.vela.Bluetooth.Error.NotAllowed")), qPrintable(reply));
+        QCOMPARE(openQuestions().size(), 1);
+        QCOMPARE(answer(question.id, QStringLiteral("reject")), QString());
+    }
+
+    // The signals go to Vela's UI only, never broadcast: a client that
+    // never asked for them gets none.
+    void questionSignalsAreNotBroadcast()
+    {
+        QDBusConnection observer = QDBusConnection::connectToBus(sessionAddress, QStringLiteral("observer"));
+        QSignalSpy seen(this, &BluetoothDaemon::observed);
+        QVERIFY(observer.connect(service, objectPath, service, QStringLiteral("Question"), this, SIGNAL(observed())));
+        QVERIFY(observer.connect(service, objectPath, service, QStringLiteral("QuestionClosed"), this, SIGNAL(observed())));
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(answer(question.id, QStringLiteral("reject")), QString());
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+        QTest::qWait(200);
+        QCOMPARE(seen.count(), 0);
+        QDBusConnection::disconnectFromBus(QStringLiteral("observer"));
+    }
+
+    // Only BlueZ talks to the agent.
+    void agentAnswersOnlyBluez()
+    {
+        const QString agent = defaultAgent();
+        QDBusConnection intruder = QDBusConnection::connectToBus(systemAddress, QStringLiteral("intruder"));
+        QDBusMessage request = QDBusMessage::createMethodCall(
+            agent.section(u' ', 0, 0), velaAgent, QStringLiteral("org.bluez.Agent1"), QStringLiteral("RequestAuthorization"));
+        request << QVariant::fromValue(QDBusObjectPath(mouse));
+        QCOMPARE(errorOf(intruder.call(request, QDBus::Block, 5000)), QStringLiteral("org.bluez.Error.Rejected"));
+        QDBusMessage release = QDBusMessage::createMethodCall(
+            agent.section(u' ', 0, 0), velaAgent, QStringLiteral("org.bluez.Agent1"), QStringLiteral("Release"));
+        QCOMPARE(errorOf(intruder.call(release, QDBus::Block, 5000)), QStringLiteral("org.bluez.Error.Rejected"));
+        QDBusConnection::disconnectFromBus(QStringLiteral("intruder"));
+        QTest::qWait(100);
+        QVERIFY(asked.isEmpty());
+    }
+
 signals:
     void devicesChanged();
+    void observed();
 };
 
 QTEST_GUILESS_MAIN(BluetoothDaemon)

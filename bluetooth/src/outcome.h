@@ -49,6 +49,10 @@ extern const struct vela_bt_failure vela_bt_hard_blocked; // a hardware switch b
 extern const struct vela_bt_failure vela_bt_power_on_failed;
 extern const struct vela_bt_failure vela_bt_power_off_failed;
 extern const struct vela_bt_failure vela_bt_no_adapter;
+extern const struct vela_bt_failure vela_bt_no_response; // the device didn't answer in time
+extern const struct vela_bt_failure vela_bt_pairing_cancelled; // the device cancelled the pairing
+extern const struct vela_bt_failure vela_bt_session_inactive; // the user switched to another session (§6.7)
+extern const struct vela_bt_failure vela_bt_session_locked; // the screen locked (§6.7)
 
 // What an Add does once `step` has ended, `ok` or not (§6.3):
 // Pair -> Trust -> Connect. Trust goes on to Connect even when it failed.

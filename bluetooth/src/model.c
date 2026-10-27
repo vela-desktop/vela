@@ -310,6 +310,7 @@ static void note_removed(struct vela_bt_daemon *d, const char *path)
 
 void vela_bt_remove_device(struct vela_bt_daemon *d, struct vela_bt_device *device)
 {
+    vela_bt_question_close(d, device->path, "device-gone");
     vela_bt_operations_device_gone(d, device);
     if (vela_bt_device_listed(d, device)) {
         note_removed(d, device->path);
@@ -325,6 +326,11 @@ void vela_bt_remove_device(struct vela_bt_daemon *d, struct vela_bt_device *devi
 
 void vela_bt_remove_adapter(struct vela_bt_daemon *d, struct vela_bt_adapter *adapter)
 {
+    struct vela_bt_question *question = vela_bt_question_on(d, NULL);
+    struct vela_bt_device *asking = question ? vela_bt_device_find(d, question->device) : NULL;
+    if (asking && same(asking->adapter, adapter->path)) {
+        vela_bt_question_close(d, NULL, "bluetooth-gone");
+    }
     // BlueZ removes the devices first; any left go with their adapter.
     for (size_t i = d->device_count; i-- > 0;) {
         struct vela_bt_device *device = d->devices[i];
@@ -348,6 +354,7 @@ void vela_bt_remove_adapter(struct vela_bt_daemon *d, struct vela_bt_adapter *ad
 
 void vela_bt_clear(struct vela_bt_daemon *d)
 {
+    vela_bt_question_close(d, NULL, "bluetooth-gone");
     for (size_t i = d->device_count; i-- > 0;) {
         if (d->devices[i]->operation) {
             vela_bt_operation_end(d, d->devices[i], &vela_bt_not_running, false);
@@ -452,6 +459,9 @@ int vela_bt_read_object(struct vela_bt_daemon *d, const char *path, sd_bus_messa
             if (vela_bt_device_listed(d, device)) {
                 vela_bt_touch(d, device);
             }
+            if (r > 0) {
+                vela_bt_operations_device_changed(d, device);
+            }
         } else if (strcmp(interface, BATTERY1) == 0) {
             if ((r = read_properties(m, read_battery_property, &battery)) < 0) {
                 return r;
@@ -530,8 +540,11 @@ int vela_bt_read_changes(struct vela_bt_daemon *d, const char *path, sd_bus_mess
         if (changed) {
             adapter_changed(d, adapter, was_powered);
         }
-    } else if (changed && vela_bt_device_listed(d, device)) {
-        vela_bt_touch(d, device);
+    } else if (changed) {
+        if (vela_bt_device_listed(d, device)) {
+            vela_bt_touch(d, device);
+        }
+        vela_bt_operations_device_changed(d, device);
     }
     return 0;
 }
@@ -567,7 +580,7 @@ int vela_bt_read_removal(struct vela_bt_daemon *d, const char *path, sd_bus_mess
     return sd_bus_message_exit_container(m);
 }
 
-static void append_entry(sd_bus_message *m, const char *name, const char *type, ...)
+void vela_bt_append_entry(sd_bus_message *m, const char *name, const char *type, ...)
 {
     va_list values;
     va_start(values, type);
@@ -583,26 +596,26 @@ static void append_entry(sd_bus_message *m, const char *name, const char *type, 
 void vela_bt_append_device(sd_bus_message *m, const struct vela_bt_device *device)
 {
     sd_bus_message_open_container(m, 'a', "{sv}");
-    append_entry(m, "address", "s", device->address ? device->address : "");
-    append_entry(m, "name", "s", device->name ? device->name : "");
-    append_entry(m, "icon", "s", device->icon && *device->icon ? device->icon : "bluetooth");
-    append_entry(m, "type", "s", vela_bt_device_type(device->icon, device->class_of_device));
-    append_entry(m, "paired", "b", (int)device->paired);
-    append_entry(m, "trusted", "b", (int)device->trusted);
-    append_entry(m, "connected", "b", (int)device->connected);
-    append_entry(m, "blocked", "b", (int)device->blocked);
+    vela_bt_append_entry(m, "address", "s", device->address ? device->address : "");
+    vela_bt_append_entry(m, "name", "s", device->name ? device->name : "");
+    vela_bt_append_entry(m, "icon", "s", device->icon && *device->icon ? device->icon : "bluetooth");
+    vela_bt_append_entry(m, "type", "s", vela_bt_device_type(device->icon, device->class_of_device));
+    vela_bt_append_entry(m, "paired", "b", (int)device->paired);
+    vela_bt_append_entry(m, "trusted", "b", (int)device->trusted);
+    vela_bt_append_entry(m, "connected", "b", (int)device->connected);
+    vela_bt_append_entry(m, "blocked", "b", (int)device->blocked);
     if (device->battery >= 0) {
-        append_entry(m, "battery", "y", (uint8_t)device->battery);
+        vela_bt_append_entry(m, "battery", "y", (uint8_t)device->battery);
     }
     if (device->has_rssi) {
-        append_entry(m, "rssi", "n", device->rssi);
+        vela_bt_append_entry(m, "rssi", "n", device->rssi);
     }
     if (device->operation) {
-        append_entry(m, "operation", "s", vela_bt_step_state(device->operation->step));
+        vela_bt_append_entry(m, "operation", "s", vela_bt_step_state(device->operation->step));
     }
     if (device->failure) {
-        append_entry(m, "error", "s", device->failure->code);
-        append_entry(m, "message", "s", device->failure->message);
+        vela_bt_append_entry(m, "error", "s", device->failure->code);
+        vela_bt_append_entry(m, "message", "s", device->failure->message);
     }
     sd_bus_message_close_container(m);
 }
@@ -611,13 +624,13 @@ void vela_bt_append_adapter(sd_bus_message *m, const struct vela_bt_adapter *ada
 {
     sd_bus_message_open_container(m, 'a', "{sv}");
     if (adapter) {
-        append_entry(m, "path", "o", adapter->path);
-        append_entry(m, "address", "s", adapter->address ? adapter->address : "");
-        append_entry(m, "name", "s", adapter->name ? adapter->name : "");
-        append_entry(m, "powered", "b", (int)adapter->powered);
-        append_entry(m, "powerState", "s", adapter->power_state ? adapter->power_state : "");
-        append_entry(m, "discoverable", "b", (int)adapter->discoverable);
-        append_entry(m, "discovering", "b", (int)adapter->discovering);
+        vela_bt_append_entry(m, "path", "o", adapter->path);
+        vela_bt_append_entry(m, "address", "s", adapter->address ? adapter->address : "");
+        vela_bt_append_entry(m, "name", "s", adapter->name ? adapter->name : "");
+        vela_bt_append_entry(m, "powered", "b", (int)adapter->powered);
+        vela_bt_append_entry(m, "powerState", "s", adapter->power_state ? adapter->power_state : "");
+        vela_bt_append_entry(m, "discoverable", "b", (int)adapter->discoverable);
+        vela_bt_append_entry(m, "discovering", "b", (int)adapter->discovering);
     }
     sd_bus_message_close_container(m);
 }

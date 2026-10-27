@@ -6,10 +6,12 @@
 
 // vela-bluetooth's state (docs/bluetooth.md §6): BlueZ's adapters and
 // devices as the daemon follows them on the system bus, the operations it
-// runs, and org.vela.Bluetooth on the session bus. One event loop
-// (sd-event), no threads.
+// runs, its agent and the question it asks, the logind session, and
+// org.vela.Bluetooth on the session bus. One event loop (sd-event), no
+// threads.
 
 #include "outcome.h"
+#include "question.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -46,9 +48,36 @@ struct vela_bt_operation {
     enum vela_bt_kind kind;
     enum vela_bt_step step;
     sd_bus_slot *call; // BlueZ's call in flight
-    sd_event_source *timer; // Remove: waiting for Device1 to go
+    // Remove: waiting for Device1 to go. An adopted Add: waiting for Paired.
+    sd_event_source *timer;
     struct vela_bt_waiters waiters;
     char *name; // Rename
+    // Add: the callers that draw its questions (promptsHere, §7.2).
+    sd_bus_track *prompters;
+    // Add: it took over the device's own pairing request instead of calling
+    // Pair (§6.5, rule 4).
+    bool adopted;
+};
+
+// The one open Agent1 request (§6.4, §7.2).
+struct vela_bt_question {
+    uint64_t id;
+    enum vela_bt_question_kind kind;
+    // The device, as it was at the time of the request.
+    char *device;
+    char *name;
+    char *icon;
+    char *address;
+    bool unsolicited; // no Add of the user's behind it
+    uint64_t expires; // CLOCK_MONOTONIC µs
+    uint32_t passkey;
+    uint16_t entered;
+    char pin[17];
+    char *uuid;
+    // BlueZ's call, waiting for the answer. NULL for show-passkey and
+    // show-pin, which BlueZ doesn't wait for, and once replied.
+    sd_bus_message *request;
+    sd_event_source *timer; // expires
 };
 
 struct vela_bt_device {
@@ -120,6 +149,19 @@ struct vela_bt_daemon {
     sd_event_source *rfkill_watch;
     struct vela_bt_power power;
     uint64_t power_on_until; // CLOCK_MONOTONIC µs: power the adapter that appears
+
+    // The agent (§6.4) and its question (§7.2).
+    bool agent_registered;
+    sd_bus_slot *agent_call; // RegisterAgent, RequestDefaultAgent or UnregisterAgent in flight
+    struct vela_bt_question *question;
+    uint64_t question_id; // the last one given
+    sd_bus_track *listeners; // Vela's UI clients the question signals go to
+
+    // The logind session (§6.7).
+    char *login_session; // its object path, while it's known
+    bool session_active;
+    bool session_locked;
+    sd_bus_slot *session_call;
 };
 
 // model.c: adapters and devices.
@@ -141,6 +183,8 @@ void vela_bt_clear(struct vela_bt_daemon *d);
 void vela_bt_choose_adapter(struct vela_bt_daemon *d);
 void vela_bt_touch(struct vela_bt_daemon *d, struct vela_bt_device *device);
 void vela_bt_properties_changed(struct vela_bt_daemon *d);
+// One a{sv} entry: `name` with a variant of `type` holding the value.
+void vela_bt_append_entry(sd_bus_message *m, const char *name, const char *type, ...);
 void vela_bt_append_device(sd_bus_message *m, const struct vela_bt_device *device);
 void vela_bt_append_adapter(sd_bus_message *m, const struct vela_bt_adapter *adapter);
 void vela_bt_model_free(struct vela_bt_daemon *d);
@@ -151,17 +195,50 @@ int vela_bt_bluez_start(struct vela_bt_daemon *d);
 int vela_bt_call(struct vela_bt_daemon *d, sd_bus_slot **slot, const char *path, const char *interface,
     const char *member, uint64_t timeout, sd_bus_message_handler_t reply, void *data, const char *types, ...);
 
-// operations.c (§6.3).
+// operations.c (§6.3, §6.5). `prompts_here`: the caller of an Add draws
+// its questions.
 int vela_bt_operation_start(struct vela_bt_daemon *d, sd_bus_message *call, struct vela_bt_device *device,
-    enum vela_bt_kind kind, const char *name, sd_bus_error *error);
+    enum vela_bt_kind kind, const char *name, bool prompts_here, sd_bus_error *error);
 // Ends the device's operation: done (`failure` NULL), failed, or cancelled.
 void vela_bt_operation_end(
     struct vela_bt_daemon *d, struct vela_bt_device *device, const struct vela_bt_failure *failure, bool cancelled);
-void vela_bt_operation_cancel(struct vela_bt_daemon *d, struct vela_bt_device *device);
-// The model's events that end operations early.
+// Stops pairing and connecting; Disconnect, Remove and Rename run to their
+// end. `failure` NULL: the user's own Cancel, which ends it cancelled;
+// otherwise it fails with `failure` (the session went to the background).
+void vela_bt_operation_cancel(
+    struct vela_bt_daemon *d, struct vela_bt_device *device, const struct vela_bt_failure *failure);
+// The model's events that end operations early, or let them go on.
 void vela_bt_operations_device_gone(struct vela_bt_daemon *d, struct vela_bt_device *device);
+void vela_bt_operations_device_changed(struct vela_bt_daemon *d, struct vela_bt_device *device);
 void vela_bt_operations_adapter_off(struct vela_bt_daemon *d, const char *adapter);
+// The question on `device` closed with `reason` (§7.2).
+void vela_bt_operations_question_closed(struct vela_bt_daemon *d, struct vela_bt_device *device, const char *reason);
 bool vela_bt_operations_running(const struct vela_bt_daemon *d);
+
+// agent.c: the agent and its question (§6.4, §7.2).
+int vela_bt_agent_start(struct vela_bt_daemon *d);
+// Registers the agent while BlueZ is on the bus and the session is active,
+// and unregisters it otherwise (§6.7).
+void vela_bt_agent_update(struct vela_bt_daemon *d);
+// The open question, if its device is `device` (any device if NULL).
+struct vela_bt_question *vela_bt_question_on(struct vela_bt_daemon *d, const char *device);
+// Closes the open question on `device` (any device if NULL) with
+// `reason`, replying Canceled to BlueZ if it still waits.
+void vela_bt_question_close(struct vela_bt_daemon *d, const char *device, const char *reason);
+// Sends the open question again, with the same id: whether it's
+// unsolicited, or who draws it, changed.
+void vela_bt_question_resend(struct vela_bt_daemon *d);
+// `call`'s sender receives the question signals from now on: it's Vela's UI.
+void vela_bt_listen(struct vela_bt_daemon *d, sd_bus_message *call);
+int vela_bt_questions(struct vela_bt_daemon *d, sd_bus_message *call);
+int vela_bt_answer(struct vela_bt_daemon *d, sd_bus_message *call, uint64_t id, const char *response,
+    const char *value, sd_bus_error *error);
+void vela_bt_agent_free(struct vela_bt_daemon *d);
+
+// session.c: the logind session (§6.7).
+int vela_bt_session_start(struct vela_bt_daemon *d);
+// The session is in front: active and not locked.
+bool vela_bt_active(const struct vela_bt_daemon *d);
 
 // power.c: SetPowered and rfkill (§6.3).
 int vela_bt_power_set(struct vela_bt_daemon *d, sd_bus_message *call, bool on, sd_bus_error *error);

@@ -91,6 +91,7 @@ static int on_managed_objects(sd_bus_message *reply, void *data, sd_bus_error *e
     vela_bt_platform_refresh(d);
     vela_bt_properties_changed(d);
     vela_bt_log("BlueZ: %zu adapters, %zu devices", d->adapter_count, d->device_count);
+    vela_bt_agent_update(d);
     return 0;
 }
 
@@ -111,6 +112,7 @@ static void vanished(struct vela_bt_daemon *d)
     vela_bt_clear(d);
     free(d->bluez);
     d->bluez = NULL;
+    vela_bt_agent_update(d);
     vela_bt_platform_refresh(d);
     vela_bt_properties_changed(d);
 }
