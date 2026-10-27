@@ -1,12 +1,12 @@
 # Bluetooth
 
-Design of Vela's Bluetooth, rewritten from scratch. It covers devices,
-pairing, quick settings, nearby devices ready to pair, and diagnostics.
-This document comes before the code: decisions are made here, and the code
+Design of Vela's Bluetooth, rewritten from scratch: devices, pairing, quick
+settings, and how Vela shares Bluetooth with other desktop sessions. This
+document comes before the code: decisions are made here, and the code
 follows them.
 
 > **Status:** design under discussion in PR #146. No code yet. Everything in
-> §3 is in scope for beta 0.1. Stages are listed in §13.
+> §3 is in scope for beta 0.1. Stages are listed in §12.
 
 ## 1. Why from scratch
 
@@ -37,11 +37,11 @@ Bluetooth today is four pieces that don't talk to each other:
 4. **Nothing gets stuck.** Every operation ends in "done", "failed" (in plain
    words) or "cancelled". This holds when the device disappears, the adapter
    is unplugged or `bluetoothd` restarts.
-5. **"Bluetooth doesn't work" always has a reason.** Where Vela can fix it,
-   a button fixes it (§9).
-6. **It costs nothing while idle.** Vela runs no active scan unless the user
-   is looking for a device. Nearby devices are noticed by a passive monitor
-   (§6.6).
+5. **Other desktop sessions are left alone.** Vela acts only while its own
+   session is in front. It never changes adapter-wide settings or BlueZ's
+   configuration on its own (§6.6).
+6. **It costs nothing while idle.** Nothing scans unless the user is looking
+   for a device.
 7. **It can be tested without a radio.** Every automated test runs against a
    fake BlueZ on a private bus.
 
@@ -52,52 +52,46 @@ In beta 0.1:
 - Pairing with Vela's own agent, for every pairing method (§6.4).
 - Connecting, disconnecting, removing and renaming devices. Each device
   shows its type and its battery level, if it reports one.
-- The PC is discoverable only while "Add a device" is open.
-- A notification when a nearby device is ready to pair, like Windows' Swift
-  Pair (§6.6). A default BlueZ doesn't offer it, so the user turns it on
-  in Settings, with the administrator password (§6.7).
+- The PC is discoverable only while "Add a device" is open (§6.5).
 - Quick settings: a Bluetooth device list with connect and disconnect
-  (§10.2).
+  (§9.2).
 - Codec and profile of headsets: they already exist in `vela-audio`
-  ([audio](audio.md) §6.2). The Bluetooth page links to them (§10.1).
-- Diagnostics with fixes (§9).
+  ([audio](audio.md) §6.2). The Bluetooth page links to them (§9.1).
 - Robustness: `bluetoothd` restarts, adapters plugged in and out, several
-  adapters, rfkill.
+  adapters.
 
 Decided out:
 
 - **Battery notifications.** Battery levels are shown, but low battery is
   never notified.
 - **File transfer (OBEX)**, in either direction. "Send via Bluetooth" goes
-  away with BlueDevil (§11).
+  away with BlueDevil (§10).
 
-Not discussed yet, so not in 0.1: tethering (PAN), Google Fast Pair, and
-any UI specific to LE Audio. Whatever PipeWire supports still plays.
+Not discussed yet, so not in 0.1: tethering (PAN), and any UI specific to
+LE Audio. Whatever PipeWire supports still plays.
 
 ## 4. Decisions taken
 
 | Decision | Choice | Consequence |
 |---|---|---|
 | Process | **`vela-bluetooth`**, a session daemon started and supervised by the compositor, like `vela-polkit-agent` | pairings survive Settings and the shell; it is in the compositor's logind session (§6.1) |
-| Language and libraries | **C (C17), with sd-bus and sd-event from `libsystemd`**, like `vela-brightness`. No Qt and no GLib | a process that runs all day links only libc and `libsystemd`. `sd_bus_track` follows who owns a search lease or an Add (§6.5, §7). `sd_bus_add_object_manager` serves the agent and the monitor |
+| Language and libraries | **C (C17), with sd-bus and sd-event from `libsystemd`**, like `vela-brightness`. No Qt and no GLib | a process that runs all day links only libc and `libsystemd`. `sd_bus_track` follows who owns a search lease or an Add (§6.5, §7). `sd_bus_add_object_manager` serves the agent |
 | Who talks to BlueZ | **only `vela-bluetooth`** | one model, one agent, one place for errors |
 | Client API | **`org.vela.Bluetooth`** on the session bus (§7) | Settings, the shell and `vela-audio` are clients |
 | Client library | **`common/bluetooth`**: a C++ model and a QML module | no client parses D-Bus by hand (§8) |
-| Agent | in the daemon, with capability **`KeyboardDisplay`**, default agent **while the session is active** | every pairing method works. BlueZ asks the agent of `Pair`'s own caller first (`agent_get(sender)` in `src/device.c`), so Vela's pairings use Vela's agent even when another desktop holds the default. Unsolicited requests reach Vela only while it is in front |
-| Where questions appear | **inline in Settings** if Settings started the operation and is open; otherwise a **shell dialog**; requests the user did not start appear first as a **notification** | the user answers where they are looking (§10.3) |
-| Discoverable | **only while "Add a device" is open**, as a lease held by Settings (§6.5) | the PC is not visible to everyone all day |
-| Nearby devices | **BlueZ's `AdvertisementMonitor1`**, watching for Swift Pair beacons, only with patterns offloaded to the controller (§6.6) | no active scan |
-| BlueZ's experimental interfaces | **turned on only by the user**, in Settings, after polkit authorization: a root helper checks for offload, then sets `Experimental = true` in `/etc/bluetooth/main.conf` and restarts `bluetoothd` (§6.7) | nothing changes on the system behind the user's back; the PC never turns them on when the adapter couldn't use them |
+| Agent | in the daemon, with capability **`KeyboardDisplay`**, registered and made default **only while the session is active** | every pairing method works. BlueZ asks the agent of `Pair`'s own caller first (`agent_get(sender)` in `src/device.c`). When Vela leaves, the previous default agent is default again (§6.6) |
+| Where questions appear | **inline in Settings** if Settings started the operation and is open; otherwise a **shell dialog**; requests the user did not start appear first as a **notification** | the user answers where they are looking (§9.3) |
+| Discoverable | **only while "Add a device" is open**, through BlueZ's per-client `Discoverable` discovery filter (§6.5) | the PC is not visible all day, and Vela never writes the adapter's `Discoverable` property |
 | Codec and profile | **stay in `vela-audio`**: PipeWire owns them | the daemon never touches audio |
 | Battery in `vela-audio` | read **from `vela-bluetooth`** instead of BlueZ | one Bluetooth client |
-| BlueDevil | **removed** | §11 |
+| BlueDevil | **removed** | §10 |
 
 ## 5. Overview
 
 ```
-bluetoothd (system bus)          systemd, logind, /dev/rfkill
-      ▲  Adapter1, Device1, AgentManager1, AdvertisementMonitorManager1
-      │  ◄── Agent1, AdvertisementMonitor1 (served by vela-bluetooth)
+bluetoothd (system bus)                  logind (session Active)
+      ▲  ObjectManager, Adapter1, Device1, Battery1, AgentManager1
+      │  ◄── Agent1 (served by vela-bluetooth)
       ▼
 vela-bluetooth (child of vela-compositor, no GUI)
       │  org.vela.Bluetooth (session bus)
@@ -120,7 +114,7 @@ common/bluetooth (client library, QML module Vela.Bluetooth)
   user's real Bluetooth. `VELA_BLUETOOTH` names another command, or `0` for
   none. The tests use it with a private system bus.
 - The daemon owns `org.vela.Bluetooth`. A second instance exits.
-- Without `org.bluez` on the bus, it stays running and reports why (§9).
+- Without `org.bluez` on the bus, it stays running with `Available` false.
   When BlueZ appears, it starts working.
 
 ### 6.2 The model
@@ -130,12 +124,14 @@ common/bluetooth (client library, QML module Vela.Bluetooth)
   `InterfacesAdded`, `InterfacesRemoved` and `PropertiesChanged`.
 - When `org.bluez` leaves the bus, adapters and devices are cleared at once.
   Operations fail and questions close (§6.3, §6.4).
+- **`Available`** is true while BlueZ is on the bus with at least one
+  adapter.
 - **The adapter in use:**
   - It is the first adapter in BlueZ's object tree, unless the user chose
     another one.
   - If it disappears, the next adapter is used.
-  - The choice is remembered by address, so a USB dongle that comes back is
-    picked again.
+  - The choice is remembered by address in Vela's own configuration, so a
+    USB dongle that comes back is picked again.
 - **Devices** are those of the adapter in use. Each one has:
   - path, address, name (the `Alias`) and type (from `Icon` and `Class`);
   - paired, trusted, connected and blocked;
@@ -144,7 +140,7 @@ common/bluetooth (client library, QML module Vela.Bluetooth)
   - its operation and its open question, if any.
 - **The adapter** has:
   - name;
-  - powered, and its `PowerState`;
+  - powered;
   - discoverable and searching.
 
 ### 6.3 Operations
@@ -158,15 +154,16 @@ joins the running one. A different request is refused with "busy".
 | **Connect** | `Connect` | |
 | **Disconnect** | `Disconnect` | |
 | **Remove** | `Adapter1.RemoveDevice` | ends when `Device1` disappears |
-| **Rename** | `Set Alias` | |
+| **Rename** | `Set Alias` on the device | |
+| **Power** | `Set Powered` on the adapter | before turning on, the soft rfkill block is removed, as today (`shell/src/bluetoothpower.h`) |
 
 - Every step has a D-Bus timeout longer than BlueZ's own, so BlueZ's error
   normally arrives first. BlueZ gives an agent 60 seconds per question
   (`REQUEST_TIMEOUT` in `src/agent.c`). `Pair` gets 90 seconds; the other
   steps get 30.
 - **An operation ends early** when its device's `Device1` disappears, the
-  adapter stops being powered, or `org.bluez` leaves the bus. Each case has
-  its own message.
+  adapter stops being powered, `org.bluez` leaves the bus, or the session
+  stops being active (§6.6). Each case has its own message.
 - **Cancel:**
   - while pairing, the daemon calls `Device1.CancelPairing` and closes the
     open question;
@@ -182,11 +179,9 @@ joins the running one. A different request is refused with "busy".
 
 ### 6.4 The agent
 
-The agent is served at `/org/vela/BluetoothAgent` on the system bus. It is
-registered with `AgentManager1.RegisterAgent(…, "KeyboardDisplay")` at
-start, and again whenever `org.bluez` reappears. `RequestDefaultAgent` is
-sent while the logind session is active, and again each time it becomes
-active.
+The agent is served at `/org/vela/BluetoothAgent` on the system bus, with
+capability `KeyboardDisplay`. When it is registered, and made default,
+follows the session (§6.6).
 
 | BlueZ call | What the user sees | Answer |
 |---|---|---|
@@ -198,7 +193,7 @@ active.
 | `DisplayPasskey(device, passkey, entered)` | "Type 123456 on *Name*, then Enter", with the digits typed so far | none: it closes when the pairing ends |
 | `DisplayPinCode(device, pincode)` | "Type 0000 on *Name*, then Enter" | empty reply at once |
 | `Cancel()` | the question disappears; the operation fails with "The device isn't responding" | — |
-| `Release()` | — | the daemon registers again when BlueZ comes back |
+| `Release()` | — | the daemon registers again when BlueZ comes back, if the session is active |
 
 - **Legacy PIN** (`RequestPinCode`), only for an Add the user started:
   - a keyboard (`Icon` `input-keyboard`) gets a random 6-digit PIN, shown
@@ -210,117 +205,76 @@ active.
   trusted devices by itself, without the agent (`src/adapter.c`). Devices
   Vela pairs are trusted, so `AuthorizeService` only comes from devices
   paired elsewhere, or from devices the user marked as not trusted.
-- **Unsolicited requests while the session is not active** are rejected.
-  Another session's agent should have them.
 - **Order:** one open question per device. Questions for different devices
   wait in a queue.
 
 ### 6.5 Searching and being discoverable
 
 - Clients don't call `StartDiscovery` themselves. They take a **search
-  lease** with `StartSearch()`, which returns an id.
+  lease** with `StartSearch(discoverable)`, which returns an id.
 - The lease ends with `StopSearch(id)`, or when its owner leaves the bus.
-- While at least one lease is held:
-  - BlueZ discovers;
-  - the adapter is `Discoverable`, with a `DiscoverableTimeout` of
-    180 seconds that the daemon renews.
+- While at least one lease is held, the daemon has its own BlueZ discovery
+  session. If any lease asked for `discoverable`, the daemon sets the
+  discovery filter `{"Discoverable": true}` before `StartDiscovery`.
+  "Add a device" asks for it.
+- **This is the only way Vela makes the PC discoverable.** BlueZ handles
+  the filter per client (`set_discovery_discoverable` in `src/adapter.c`):
+  - it turns discoverability on only if the adapter isn't discoverable
+    already;
+  - it turns it off only if it turned it on itself, when the last
+    discovering client stops or leaves the bus.
 
-  When the last lease ends, both stop. If the daemon crashes, BlueZ's
-  timeout still turns discoverability off.
+  So a daemon crash never leaves the PC visible, and a desktop that made
+  the PC discoverable by itself is not overruled.
 - **Add** suspends discovery while it pairs, because discovery disturbs
   pairing. It resumes it afterwards if leases are still held.
 
-### 6.6 Nearby devices ready to pair
+### 6.6 Other desktop sessions
 
-- While Bluetooth is on and the setting is enabled (on by default), the
-  daemon registers an `AdvertisementMonitor1` with
-  `AdvertisementMonitorManager1`. The monitor is of type `or_patterns` and
-  matches Microsoft's Swift Pair beacon. That is manufacturer data (AD type
-  `0xFF`) made of:
-  - `06 00`: Microsoft's company ID, `0x0006`;
-  - `03`: the Swift Pair beacon ID;
-  - one byte for how the device pairs: `00` LE only, `01` BR/EDR only,
-    `02` both;
-  - `80`, a reserved byte.
+BlueZ is one service for the whole machine. A Plasma or GNOME session on
+another console, or another user's session, uses the same adapter and
+devices. Vela follows three rules.
 
-  The pattern is `06 00 03`, so all three kinds match. Sources: Microsoft's
-  [Swift Pair guide](https://learn.microsoft.com/en-us/windows-hardware/design/component-guidelines/bluetooth-swift-pair)
-  and Nordic's Swift Pair payload (`swift_pair.c` in `sdk-nrf`).
-- **Only with offload.** The monitor is used only when
-  `AdvertisementMonitorManager1.SupportedFeatures` contains
-  `controller-patterns`, meaning the controller filters advertisements
-  itself. Windows does the same: without hardware offload the feature is
-  not offered. Continuous listening on the host costs power and disturbs
-  Wi-Fi on combined radios.
-- **A default BlueZ doesn't offer it.** `AdvertisementMonitorManager1` and
-  `AdvertisementMonitor1` are experimental. `bluetoothd` creates the
-  manager only with `-E` or `Experimental = true` (`src/adapter.c`, 5.86
-  and 5.87). Arch (5.87), Fedora 44 (5.86) and Ubuntu 26.10 (5.87) all
-  ship without it. The user turns it on from Settings (§6.7).
+**1. Vela acts only while its session is active.** The daemon follows the
+`Active` property of its logind session (found as in
+[polkit agent](polkit-agent.md) §4.1).
 
-### 6.7 Turning on BlueZ's experimental interfaces
+- When the session becomes active, the daemon registers its agent
+  (`RegisterAgent`) and asks to be the default (`RequestDefaultAgent`).
+- When the session stops being active (the user switched to another
+  console or user), the daemon:
+  - cancels a running Add and closes its questions;
+  - suspends its discovery session, so BlueZ also drops the
+    discoverability it turned on for Vela (§6.5);
+  - unregisters its agent (`UnregisterAgent`).
+- BlueZ keeps default agents as a stack (`add_default_agent` and
+  `remove_default_agent` in `src/agent.c`). Removing Vela's agent makes the
+  previous default agent, such as Plasma's, the default again. Requests on
+  the other console go to that desktop, never to an inactive Vela.
+- While inactive, the daemon only keeps its model up to date. Reading
+  BlueZ changes nothing for anyone.
 
-This is the only change Vela makes to the system's Bluetooth
-configuration. It happens only when the user asks for it.
+**2. Vela never changes adapter-wide settings on its own.** It never
+writes these:
 
-- **When it is offered.** "Show notifications to pair nearby devices" is
-  in Settings › Bluetooth › Advanced. If `AdvertisementMonitorManager1` is
-  missing, turning the switch on first explains what will happen:
-  - BlueZ's experimental features are turned on for the whole PC, for
-    every user and every desktop;
-  - Bluetooth restarts, and connected devices disconnect for a moment.
+- the adapter's `Discoverable`, `DiscoverableTimeout`, `Pairable`,
+  `PairableTimeout` or `Alias`;
+- BlueZ's configuration files;
+- the state of `bluetooth.service`.
 
-  "Continue" asks the daemon to enable them.
-- **The helper.** The daemon runs `pkexec vela-bluetooth-setup
-  experimental on`. A polkit action, `org.vela.bluetooth.experimental`
-  (`auth_admin`), names the change in the password dialog. The helper is a
-  small C program installed in Vela's libexec directory. It runs as
-  root, takes no paths from its caller, and accepts only `on`, `off` and
-  `check`.
-- **Offload is checked first.** `check` and `on` read the kernel's
-  `MGMT_OP_READ_ADV_MONITOR_FEATURES` for each adapter.
-  - The kernel sets `MGMT_ADV_MONITOR_FEATURE_MASK_OR_PATTERNS` only when
-    the controller can filter patterns itself (MSFT extension,
-    `net/bluetooth/mgmt.c`).
-  - The command needs a trusted (root) management socket, so the daemon
-    can't ask by itself.
-  - Without that bit, the helper changes nothing. Settings says: "Your
-    Bluetooth adapter can't watch for nearby devices by itself."
-- **The change.** In `[General]` of `/etc/bluetooth/main.conf`:
-  - an existing `Experimental` line, commented or not, becomes
-    `Experimental = true`, otherwise the line is added;
-  - a comment above it says that Vela set it, and from where;
-  - nothing else in the file changes;
-  - the file is written to a temporary file and renamed, keeping its
-    owner and mode.
+Discoverability only goes through the per-client filter (§6.5). Discovery
+sessions are per client in BlueZ, so Vela's `StopDiscovery` never stops
+another desktop's search.
 
-  Then the helper runs `systemctl try-restart bluetooth.service`.
-- **Why `main.conf`, not a systemd drop-in.** A drop-in would have to
-  replace `ExecStart`, and `bluetoothd` lives in different places:
-  `/usr/lib/bluetooth/bluetoothd` on Arch, and
-  `/usr/libexec/bluetooth/bluetoothd` on Fedora and Ubuntu. A copied path
-  breaks Bluetooth if a package ever moves it. `main.conf` has no such
-  problem, and all three distributions keep local changes to it across
-  updates:
-  - Arch lists it in `backup`, and updates leave a `.pacnew`;
-  - Fedora marks it `%config(noreplace)`, and updates leave an `.rpmnew`;
-  - Debian and Ubuntu treat it as a `conffile`, and an update that changes
-    it asks which version to keep.
-- **Turning it off.** The switch off only removes Vela's monitor.
-  Advanced also shows "Experimental Bluetooth features: On" with "Turn
-  off" when Vela's comment is in `main.conf`. That runs `pkexec
-  vela-bluetooth-setup experimental off`, which writes
-  `Experimental = false`, and restarts `bluetoothd`. If the user turned
-  them on by hand, Vela never turns them off.
-- `DeviceFound(device)` posts a notification: "*Name* is ready to pair".
-  Its actions are "Pair", which starts an Add, and "Dismiss".
-  - The same device is notified at most once every 5 minutes.
-  - Paired devices are never notified.
-  - Nothing is notified while "Add a device" is open: it already lists the
-    device.
-- If BlueZ doesn't offer `AdvertisementMonitorManager1` (some versions need
-  `Experimental`), or the controller can't filter by itself, the feature is
-  unavailable. Settings says so. Vela never falls back to an active scan.
+**3. What does change the whole machine happens only on the user's
+explicit action in Vela:**
+
+- turning Bluetooth on or off, including the soft rfkill unblock;
+- pairing, which also marks the device trusted;
+- renaming and removing a device.
+
+BlueZ shares these with every desktop by design. Vela doesn't hide that,
+and doesn't do any of it in the background.
 
 ## 7. `org.vela.Bluetooth`
 
@@ -329,23 +283,21 @@ final; the exact signatures are settled in B1.
 
 ```
 properties
-  Status          s          ok, or the problem's code (§9)
+  Available       b          BlueZ running with an adapter (§6.2)
+  Active          b          the session is active (§6.6)
   Adapters        aa{sv}     address, name, path, in use
   Adapter         a{sv}      the adapter in use (§6.2)
-  NearbyPairing   b          setting of §6.6 (read/write)
-  NearbyAvailable b
 methods
   Devices() → a{oa{sv}}
   SetPowered(b on)
   UseAdapter(s address)
-  StartSearch() → u          lease (§6.5)
+  StartSearch(b discoverable) → u   lease (§6.5)
   StopSearch(u lease)
   Add(o device, b promptsHere)
   Connect(o device) / Disconnect(o device) / Remove(o device)
   Rename(o device, s name)
   Cancel(o device)
   Answer(u question, b accept, s value)
-  Fix()                       the fix for the current Status (§9)
 signals
   DevicesChanged(a{oa{sv}} changed, ao removed)
   OperationChanged(o device, s state, s error, s message)
@@ -353,9 +305,11 @@ signals
   QuestionClosed(u id)
 ```
 
-`promptsHere = true` means that the caller draws the questions for this
-operation (§10.3). If the caller leaves the bus while a question is open,
-the question moves to the shell.
+- `promptsHere = true` means that the caller draws the questions for this
+  operation (§9.3). If the caller leaves the bus while a question is open,
+  the question moves to the shell.
+- While `Active` is false, every method that would change something
+  returns `org.vela.Bluetooth.Error.Inactive`.
 
 ## 8. `common/bluetooth`
 
@@ -363,42 +317,25 @@ A client library, like `common/audio` for sound:
 
 - a C++ model of adapters and devices, fed by `DevicesChanged`. This is
   the only C++ part: it lives in Qt processes, like `common/audio`;
-- a QML module, `Vela.Bluetooth`, with `devices`, `paired`, `found`,
-  `status` and the actions;
+- a QML module, `Vela.Bluetooth`, with `available`, `devices`, `paired`,
+  `found` and the actions;
 - the `requested.h` behaviour for switches: shown at once, and returned to
   BlueZ's state if BlueZ refuses or never does it.
 
 Users: `vela-shell` (quick settings, the question dialog and notifications,
 `SystemStatus` for airplane mode), `vela-settings`, and `vela-audio` for
-headset batteries. If the daemon is missing, the model is empty, with status
-`daemon-missing`.
+headset batteries. If the daemon is missing, the model is empty and
+`available` is false.
 
-## 9. Diagnostics
+## 9. UI
 
-`Status` names the first problem found, in this order:
-
-| Status | When | What the user sees | Fix |
-|---|---|---|---|
-| `not-installed` | `org.bluez` is neither on the bus nor activatable | "Bluetooth isn't installed (package `bluez`)." | — |
-| `service-off` | `bluetooth.service` is inactive or disabled (systemd over D-Bus) | "The Bluetooth service is turned off." | **Turn on**: `StartUnit` and `EnableUnitFiles`, authorized by the polkit agent |
-| `no-adapter` | BlueZ runs but has no adapter | "No Bluetooth adapter found." | — |
-| `hard-blocked` | `/dev/rfkill` reports a hard block | "Bluetooth is turned off by a switch or key on the PC." | — |
-| `soft-blocked` | soft block (Plasma leaves it, for example) | the switch shows Off | the switch unblocks it (as today, `bluetoothpower.h`) |
-| `adapter-error` | `PowerState` stays `off-enabling`, or `Powered` is refused, after the retries | "The Bluetooth adapter didn't turn on." | **Try again** |
-| `daemon-missing` | client side: `org.vela.Bluetooth` absent | "Bluetooth isn't available in this session." | — |
-
-The daemon watches `/dev/rfkill` for events. `VELA_RFKILL` replaces it in
-the tests, as it does today.
-
-## 10. UI
-
-### 10.1 Settings
+### 9.1 Settings
 
 The Bluetooth page is rewritten on `Vela.Bluetooth`. The current
 `settings/src/bluetooth.*` is deleted.
 
-- At the top: the switch. A problem from §9 replaces it with its text and
-  fix button.
+- At the top: the switch. When Bluetooth is not available, the page says
+  "Bluetooth isn't available on this PC" instead.
 - **Paired devices**, connected first. Each one shows:
   - its icon, name and state ("Connected", "Paired", "Connecting...",
     "Pairing...", "Waiting for you...", or the last error);
@@ -406,29 +343,23 @@ The Bluetooth page is rewritten on `Vela.Bluetooth`. The current
   - a menu with Connect or Disconnect, Rename and Remove;
   - for headsets, "Sound settings", which opens the audio device page with
     the codec and profile.
-- **Add a device** opens a dialog. It takes a search lease, which also makes
-  the PC discoverable (shown as "Discoverable as *name*"). It lists the
-  devices found, nearest first. Clicking one starts an Add. Its questions
-  replace the list in the same dialog. On success the dialog closes.
-- **Advanced:**
-  - the adapter, if there are two or more;
-  - "Show notifications to pair nearby devices" (§6.6). When BlueZ lacks
-    the interface, turning it on starts §6.7. When the adapter can't
-    offload, it is disabled with the reason;
-  - "Experimental Bluetooth features: On" with "Turn off", when Vela
-    turned them on (§6.7).
+- **Add a device** opens a dialog. It takes a discoverable search lease
+  (shown as "Discoverable as *name*"). It lists the devices found, nearest
+  first. Clicking one starts an Add. Its questions replace the list in the
+  same dialog. On success the dialog closes.
+- **Advanced:** the adapter, if there are two or more.
 
-### 10.2 Quick settings
+### 9.2 Quick settings
 
 - The Bluetooth tile gets an arrow, as Wi-Fi has. It opens a list of paired
   devices with their battery level and connect or disconnect, plus "More
   Bluetooth settings".
 - Unpaired devices are not listed there.
 
-### 10.3 Questions from the agent
+### 9.3 Questions from the agent
 
 - **Settings started the operation and is open:** the question appears
-  inline (§10.1).
+  inline (§9.1).
 - **Otherwise:** a shell dialog. It is a small window centered on the
   primary screen, styled like `ConfirmDialog`, not the full-screen polkit
   prompt.
@@ -444,7 +375,7 @@ The Bluetooth page is rewritten on `Vela.Bluetooth`. The current
     type, the action is "Enter code", which opens the dialog.
   - If the notification closes without an answer, the request is rejected.
 
-## 11. Removing BlueDevil
+## 10. Removing BlueDevil
 
 - Files: the "Bluetooth" entry in Share (`shell/qml/FileDialogs.qml`), and
   `FileActions::canBluetooth` and `sendByBluetooth`
@@ -455,15 +386,18 @@ The Bluetooth page is rewritten on `Vela.Bluetooth`. The current
 `bluez` stays as today: `Recommends` on Fedora and an optional dependency on
 Arch. [installation](installation.md) says it is all Bluetooth needs.
 
-## 12. Tests
+## 11. Tests
 
 **Fake BlueZ.** This is a shared helper in `tests/harness/`, grown out of
 `FakeServices` in `shell/tests/requested_switches.cpp`. It runs on a private
 system bus, in its own thread. It serves:
 
-- `ObjectManager`, `AgentManager1`, `Adapter1`, `Device1`, `Battery1` and
-  `AdvertisementMonitorManager1`;
-- a fake `systemd1` (unit state, `StartUnit`) and a fake logind (`Active`).
+- `ObjectManager`, `AgentManager1` (with BlueZ's default-agent stack),
+  `Adapter1`, `Device1` and `Battery1`;
+- per-client discovery sessions and the `Discoverable` filter, as in §6.5;
+- a fake logind session with `Active`.
+
+It records every property write on the adapter.
 
 Each fake device follows a script:
 
@@ -477,8 +411,7 @@ On `Pair`, the fake calls the registered agent as BlueZ does. It can also:
 - leave the bus and come back;
 - remove a device or the adapter in the middle of an operation;
 - send `Cancel` and `Release`;
-- refuse any call;
-- report an advertisement.
+- refuse any call.
 
 **Daemon tests** (`bluetooth-*`). They run the real `vela-bluetooth` binary
 against the fake. The pure parts (the operation states, the legacy PIN
@@ -489,22 +422,19 @@ in Qt, because it is test code. Cases:
 - the adapter fallback, and remembering the chosen adapter;
 - each row of §6.3, and each early ending;
 - each row of §6.4, and the legacy PIN rule;
-- the default agent following `Active`;
-- search leases ending when their owner leaves;
-- the monitor and its notification limits;
-- each status of §9, and the fixes;
+- search leases ending when their owner leaves, and the `Discoverable`
+  filter set only for discoverable leases;
+- **other sessions (§6.6):**
+  - a second fake agent stands for another desktop;
+  - when the session turns inactive, Vela's agent is unregistered and the
+    other one is default again;
+  - a running Add is cancelled, and discovery stops;
+  - nothing changes while inactive;
+  - Vela is registered and default again when the session is active;
+- the fake's record shows no write to `Discoverable`,
+  `DiscoverableTimeout`, `Pairable`, `PairableTimeout` or the adapter's
+  `Alias`, in any test;
 - no operation or question left open after any of the cases above.
-
-**Helper tests** (`bluetooth-setup`). Editing `main.conf` is a pure
-function, tested on text. The cases:
-
-- the line commented, set to `true`, set to `false`, or missing;
-- `[General]` missing, or a key with the same name in another section;
-- Vela's comment present or absent, for `off`;
-- the rest of the file left byte for byte.
-
-The binary itself has its paths fixed. `pkexec` also clears the
-environment, so no test switch can redirect the root helper.
 
 **Client library tests:**
 
@@ -523,57 +453,36 @@ environment, so no test switch can redirect the root helper.
 only `bluez`:
 
 - an LE mouse, a keyboard (passkey or legacy PIN), a phone (numeric
-  comparison, from both sides), a headset (battery, codec link) and a Swift
-  Pair device;
+  comparison, from both sides) and a headset (battery, codec link);
 - unplugging a USB dongle;
 - `systemctl restart bluetooth` with Settings open;
-- `systemctl disable --now bluetooth`, then the fix button;
-- the hardware switch;
-- a Plasma session on another console at the same time.
+- a Plasma session on another console at the same time:
+  - pairing from Plasma while Vela is in the background works with
+    Plasma's agent;
+  - Plasma's discoverability is not changed by Vela;
+  - switching back to Vela gives Vela the agent again.
 
-## 13. Stages
+## 12. Stages
 
 | Stage | Content | |
 |---|---|---|
-| B0 | Remove BlueDevil (§11) | |
+| B0 | Remove BlueDevil (§10) | |
 | B1 | `vela-bluetooth`: start by the compositor, model, operations, errors, the `org.vela.Bluetooth` API settled; the fake BlueZ and the daemon's tests | |
-| B2 | The agent (§6.4) and the questions, with tests | |
-| B3 | `common/bluetooth`; the Settings page rewritten (§10.1); the old Settings code deleted | |
-| B4 | The shell: `SystemStatus` on the client library, quick settings' list (§10.2), the question dialog and notifications (§10.3); `vela-audio` batteries from the daemon | |
-| B5 | Search leases and discoverability (§6.5), nearby devices (§6.6), `vela-bluetooth-setup` and its polkit action (§6.7) | |
-| B6 | Diagnostics and fixes (§9) | |
-| B7 | Docs and packaging: installation, hardware, testing | |
-| B8 | The user tries it on real devices (§12, "by hand") | |
+| B2 | The agent (§6.4), the questions, and the session rules (§6.6), with tests | |
+| B3 | `common/bluetooth`; the Settings page rewritten (§9.1); the old Settings code deleted | |
+| B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | |
+| B5 | Search leases and discoverability (§6.5) | |
+| B6 | Docs and packaging: installation, hardware, testing | |
+| B7 | The user tries it on real devices (§11, "by hand") | |
 
-## 14. Open questions and risks
+## 13. Open questions and risks
 
-- **What else `Experimental` turns on** (§6.7). In BlueZ 5.87, it is not
-  only the advertisement monitor. It also enables:
-  - LE Audio media endpoints, both unicast and broadcast, which PipeWire
-    registers (`profiles/audio/media.c`);
-  - hearing aids over ASHA;
-  - the MICP and MCP profiles;
-  - the admin policy plugin;
-  - experimental advertising parsers;
-  - a few D-Bus methods and properties.
-
-  A headset that supports LE Audio may then connect differently. B8 must
-  play music on such a headset with the feature on and off, and compare
-  ([audio](audio.md)). The warning in Settings names this.
-- **Which controllers offload patterns.** The kernel turns on the MSFT
-  extension only for some chips: some Intel, Realtek, Qualcomm and
-  MediaTek models (`hci_set_msft_opcode` in `drivers/bluetooth/btintel.c`,
-  `btrtl.c`, `btqca.c` and `btmtk.c`). How common it is on real machines
-  is measured in B8. `vela-bluetooth-setup check` answers for each PC.
-- **Ubuntu's `conffile` question.** A later `bluez` update that changes
-  `main.conf` asks the user which version to keep. Unattended upgrades
-  keep the local one, so the feature stays on.
 - **`0000` refused.** A legacy device that wants another fixed PIN fails
   once. The failure could offer "Try with a PIN". Proposed: add it only if
-  B8 finds such a device.
-- **Default agent with two desktops.** BlueZ has one default agent for the
-  whole system. The last session to ask for it wins. Vela asks again each
-  time it becomes active; Plasma may not.
+  B7 finds such a device.
+- **Two active sessions at once** (several seats). Each one would push its
+  own default agent, and the last one wins. Several seats are not
+  supported in 0.1.
 - **Daemon restart during a pairing.** BlueZ watches the caller of `Pair`.
   If the caller leaves the bus, BlueZ cancels the authentication and
   disconnects the device (`create_bond_req_exit` in `src/device.c`). After

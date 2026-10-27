@@ -456,7 +456,7 @@ see the documentation below.
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
 | **[Polkit agent](docs/polkit-agent.md)** | The User Account Control dialog: agent, dialog, protocol, security notes and tests. |
 | **[Audio](docs/audio.md)** | Design of the shared audio backend on WirePlumber: model, volume rules, levels, microphone in use, tests. |
-| **[Bluetooth](docs/bluetooth.md)** | Design of the `vela-bluetooth` daemon: devices, pairing agent, quick settings, nearby devices, diagnostics, tests. |
+| **[Bluetooth](docs/bluetooth.md)** | Design of the `vela-bluetooth` daemon: devices, pairing agent, quick settings, other desktop sessions, tests. |
 | **[Vela Report](docs/reporting.md)** | Guided diagnostic ZIPs, CLI and GUI, collection choices, privacy and validation. |
 | **[Development](docs/development.md)** | Build options, nested/headless workflows, development tools and repository layout. |
 | **[Testing](docs/testing.md)** | Unit, functional and sharpness suites; GPU requirements; local and CI coverage. |
