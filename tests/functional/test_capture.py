@@ -90,7 +90,7 @@ class Captures(unittest.TestCase):
                     if "capture-profile staging-memory " in line:
                         print(line[line.index("capture-profile staging-memory "):], flush=True)
                     if "capture-profile readback " in line:
-                        for key, value in re.findall(r"\\b(staging|record|submit|wait|copy|total)_ms=([0-9.]+)", line):
+                        for key, value in re.findall(r"\b(staging|record|submit|wait|copy|total)_ms=([0-9.]+)", line):
                             timings[key].append(float(value))
                 for key, values in timings.items():
                     profile_summary(f"readback-{key}", values)
