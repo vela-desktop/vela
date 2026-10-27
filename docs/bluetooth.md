@@ -5,8 +5,9 @@ settings, and how Vela shares Bluetooth with other desktop sessions. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** design under discussion in PR #146. No code yet. Everything in
-> §3 is in scope for beta 0.1. Stages are listed in §12.
+> **Status:** design under discussion in PR #146. B0 is done; the daemon
+> is not written yet. Everything in §3 is in scope for beta 0.1. Stages are
+> listed in §12.
 
 ## 1. Why from scratch
 
@@ -749,7 +750,7 @@ only `bluez`:
 
 | Stage | Content | |
 |---|---|---|
-| B0 | Remove BlueDevil (§10); the shell's rfkill unblock limited to the adapter's own switch, until B4 replaces it | |
+| B0 | Remove BlueDevil (§10); the shell's rfkill unblock limited to the adapter's own switch, until B4 replaces it | done |
 | B1 | `vela-bluetooth`: start by the compositor, model, operations, errors, rfkill (§6.3), the `org.vela.Bluetooth` API settled with its authorization (§7.3); the fake BlueZ and the daemon's tests | |
 | B2 | The agent (§6.4), concurrency (§6.5), the questions (§7.2), and the session rules (§6.7), with tests | |
 | B3 | `common/bluetooth`; the Settings page rewritten (§9.1); the old Settings code deleted | |
