@@ -15,37 +15,60 @@ to create any as-yet missing labels, and `pull-requests: write` to apply them.
 Existing manual labels are preserved. It starts working after the workflow is
 merged to the default branch; the PR introducing it is not labeled retroactively.
 
-## Codecov (code coverage, not static analysis)
+## Codecov (first-party C/C++ coverage: CPU and optional GPUs)
 
-The [Code coverage](../.github/workflows/coverage.yml) workflow uses the same
-Arch Linux base as the normal build, instruments C/C++ code with GCC coverage,
-executes the CPU-test suite, generates a Cobertura XML file with `gcovr`, and
-uploads it using Codecov's GitHub OIDC authentication (no repository upload
-token is needed). The XML is also retained as a workflow artifact. It is
-non-blocking as a third-party upload during initial onboarding.
+The [CPU coverage workflow](../.github/workflows/coverage.yml) compiles
+instrumented C/C++ and runs existing CPU tests. The shared
+[collector](../scripts/coverage-report.sh) excludes `tests/` directories
+(including component-specific test code) and generated Qt/CMake sources,
+while keeping first-party production sources, even when untested (0%).
+The [summary tool](../scripts/coverage_summary.py) deduplicates source line
+numbers and reports execution hits for each Vela subsystem in Actions
+step summaries, as Markdown and JSON artifacts, alongside Cobertura XML.
+Codecov can report different percentages when displaying partial branches.
+Python and QML need different coverage tools and are not counted here.
 
-**Owner action:** [sign in to Codecov](https://app.codecov.io/) with GitHub,
-enable `vela-desktop/vela` for the public open-source repository, and install
-the [Codecov GitHub App](https://github.com/apps/codecov) if prompted to enable
-PR comments/checks. Verify the first `main` and PR uploads are accepted. No
-`CODECOV_TOKEN` secret is required for the configured OIDC method.
+### GPU coverage (opt-in)
 
-Only code that is compiled *and executed* by instrumented tests registers as
-covered. The coverage report excludes generated Qt/CMake sources in
-`build-coverage/`. The current Arch `gcovr 8.7` crashes in its internal-function
-exclusion pass on this project, so the workflow uses
-`--include-internal-functions` as a transparent workaround. This may include
-compiler-generated internal functions in function-level statistics for otherwise
-included first-party source files; do not interpret those percentages as a pure
-developer-authored-function metric. This flag can be removed after the upstream
-failure is fixed and the baseline is rechecked. Tests requiring actual
-AMD/NVIDIA hardware are not exercised on GitHub-hosted runners, so these
-reports must not be presented as GPU coverage.
-Do not make percentage thresholds or Codecov status a merge requirement until
-baseline reports and first-party paths have been inspected.
+Existing [AMD](../.github/workflows/gpu-amd.yml) and
+[NVIDIA](../.github/workflows/gpu-nvidia.yml) workflows remain **manual**:
+the standard RelWithDebInfo GPU suites run unchanged by default. Their
+`collect_coverage` workflow-dispatch input (default **false**) selects a
+fresh GCC Debug `--coverage` build instead and runs the same functional,
+sharpness and sharpness-cpu GPU suites on the actual hardware. Coverage
+is collected only after the existing no-skips/no-missing-tests check succeeds.
 
-Codecov has an [open-source plan](https://about.codecov.io/pricing/) with
-unlimited public repository uploads.
+**Runner prerequisites:** install GCC/G++, `gcov` and `gcovr` on the AMD and
+NVIDIA host systems in addition to their existing build/test dependencies.
+On Arch/CachyOS the host administrator can use
+`sudo pacman -S --needed gcc gcovr` before dispatching. Workflows do not
+invoke sudo, upgrade system packages or change runner credentials.
+
+**To use:** Actions → GPU CI - AMD (manual) or GPU CI - NVIDIA (manual)
+→ Run workflow → select a **trusted, reviewed** branch/SHA (prefer main)
+→ check **Collect coverage**. The hardware workflow exports
+`vela-amd-coverage` / `vela-nvidia-coverage` as downloadable artifacts.
+A separate **GitHub-hosted job** downloads the XML and uploads it to
+Codecov with OIDC, so `id-token: write` does not grant privileges to the
+self-hosted GPU runner. Both workflows retain their original strict GPU
+hardware qualification, tests, and diagnostic artifacts.
+
+Codecov [flags](../.codecov.yml) are `cpu-tests`, `gpu-amd` and
+`gpu-nvidia`; they can be compared separately, and uploads for the
+**same exact Git SHA** can contribute to combined coverage. **No GPU
+result is carried forward** to later commits (all `carryforward: false`).
+An ordinary PR without GPU instrumentation therefore represents CPU-only
+execution. Do not compare mixed CPU+GPU totals across inconsistent commits
+as if the test suites were identical. Instrumented Debug builds add runtime
+overhead and are not GPU performance measurements; headless tests are not
+physical DRM/KMS coverage.
+
+Codecov's public OSS tier supports uploads for this repository. The CPU
+workflow and hosted GPU upload jobs use OIDC and do not need a
+`CODECOV_TOKEN`. Coverage statuses are informational, and no mandatory
+threshold is introduced. The collector retains
+`--include-internal-functions` as a workaround for a `gcovr 8.7` crash;
+function counts can therefore include compiler-generated internals.
 
 ## SonarQube Cloud (maintainability + quality gate)
 
