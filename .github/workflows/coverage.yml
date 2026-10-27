@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Measure actual C/C++ test execution. Complements (does not replace) sanitizer CI.
+name: Code coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # Codecov OIDC upload; no stored upload token required
+
+concurrency:
+  group: coverage-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Match the normal Arch build ABI and its pinned container.
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
+    env:
+      DEPENDENCIES: >-
+        base-devel git cmake shaderc vulkan-headers vulkan-icd-loader gtest python
+        wayland wayland-protocols wlroots0.20 libxkbcommon pixman libinput libdrm
+        mesa freetype2 harfbuzz fontconfig librsvg cairo zlib pam polkit
+        qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt
+        hicolor-icon-theme shared-mime-info xorg-xwayland pipewire wireplumber systemd-libs
+        gcovr gnupg curl
+    steps:
+      - name: Dependencies
+        run: pacman -Syu --noconfirm --needed $DEPENDENCIES
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure instrumented build
+        run: >-
+          cmake -S . -B build-coverage
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_FLAGS=--coverage
+          -DCMAKE_CXX_FLAGS=--coverage
+          -DCMAKE_EXE_LINKER_FLAGS=--coverage
+          -DCMAKE_SHARED_LINKER_FLAGS=--coverage
+          -DVELA_BUILD_TOOLS=ON
+
+      - name: Build and run CPU tests
+        run: |
+          cmake --build build-coverage --parallel 2
+          # GPU-specific functional/sharpness cases skip or cannot run on hosted runners.
+          # The same packaging-updater exception is used by build.yml.
+          ctest --test-dir build-coverage --output-on-failure -E '^packaging-update$'
+
+      - name: Generate Cobertura report
+        run: |
+          cd build-coverage
+          # Exclude Qt/CMake-generated source files from the coverage baseline.
+          # gcovr 8.7 raises KeyError during its default internal-function
+          # removal for some GCC/Qt-generated C++ coverage data. Keep those
+          # functions during parsing instead of ignoring coverage errors.
+          # The source filter still removes all generated build sources.
+          gcovr_opts=(--root .. --exclude '(^|/)build-coverage/' --include-internal-functions)
+          gcovr "${gcovr_opts[@]}" --xml-pretty --output ../coverage.xml
+          test -s ../coverage.xml
+          # Do not upload an empty report as if it measured the compositor.
+          grep -q '<class ' ../coverage.xml
+          gcovr "${gcovr_opts[@]}" --print-summary
+
+      - name: Preserve report for debugging
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-cobertura
+          path: coverage.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ./coverage.xml
+          flags: cpu-tests
+          use_oidc: true
+          fail_ci_if_error: false # Non-blocking until the Codecov OSS project is configured
+          disable_search: true
