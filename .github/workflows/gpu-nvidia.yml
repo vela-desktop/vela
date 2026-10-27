@@ -153,8 +153,33 @@ jobs:
           if (( jobs > 8 )); then jobs=8; fi
           cmake --build "$RUNNER_TEMP/vela-gpu-build" --parallel "$jobs"
 
+      # Diagnostic runs are deliberately non-gating; the unmodified test
+      # assertion still determines the full-suite outcome.
+      - name: NVIDIA readback CPU copy A/B (fix branch only)
+        if: ${{ github.ref == 'refs/heads/fix/async-capture-readback' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for workers in 1 4; do
+            echo "::group::readback-copy workers=$workers"
+            if VELA_READBACK_COPY_THREADS="$workers" VELA_READBACK_COPY_DIAG=1 \
+              ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \
+                -R '^functional-capture$' -L '^gpu$' --verbose \
+                | tee "$RUNNER_TEMP/vela-nvidia-copy-$workers.log"; then
+              echo "workers=$workers result=PASS" >> "$RUNNER_TEMP/vela-nvidia-copy-summary.txt"
+            else
+              echo "workers=$workers result=FAIL" >> "$RUNNER_TEMP/vela-nvidia-copy-summary.txt"
+            fi
+            echo "::endgroup::"
+          done
+          cat "$RUNNER_TEMP/vela-nvidia-copy-summary.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -h 'readback-copy diagnostic workers=' "$RUNNER_TEMP"/vela-nvidia-copy-{1,4}.log >> "$GITHUB_STEP_SUMMARY"
+
       - name: Real GPU functional and sharpness suites
         shell: bash
+        env:
+          # Only this experimental branch runs the full strict suite with 4 workers.
+          VELA_READBACK_COPY_THREADS: ${{ github.ref == 'refs/heads/fix/async-capture-readback' && '4' || '1' }}
         run: |
           set -euo pipefail
           ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \
@@ -221,6 +246,8 @@ jobs:
             ${{ runner.temp }}/vela-nvidia-vulkan.txt
             ${{ runner.temp }}/vela-nvidia-ctest.log
             ${{ runner.temp }}/vela-nvidia-junit.xml
+            ${{ runner.temp }}/vela-nvidia-copy-*.log
+            ${{ runner.temp }}/vela-nvidia-copy-summary.txt
             ${{ runner.temp }}/vela-gpu-build/Testing/Temporary/LastTest.log
 
   publish-nvidia-coverage:
