@@ -18,10 +18,11 @@ command -v gcov >/dev/null || { echo "::error::Install GCC gcov to collect cover
 # The repository contains sources, whereas instrumented .gcda files may
 # live in $RUNNER_TEMP outside the repository on GPU runners. Pass $build
 # explicitly: gcovr defaults its search path to --root, not the current dir.
-# --exclude regexes match from the start of relative source paths, so
-# allow any parent prefix before both top-level and nested tests/ directories.
+# Relative --exclude filters are resolved against the *current directory*,
+# not --root. Run from the source root so build-coverage/ and nested tests/
+# are excluded correctly, even though .gcda files are searched under $build.
 # Keep gcovr 8.7's internal-function workaround to avoid its KeyError.
-cd "$build"
+cd "$root"
 gcovr --root "$root" \
   --exclude '(.*/)?tests/.*' \
   --exclude '(.*/)?(build-coverage|vela-gpu-build)/.*' \
