@@ -41,8 +41,9 @@ class Captures(unittest.TestCase):
         resolution = os.environ.get("VELA_CAPTURE_TEST_SIZE", "2560x1440")
         if not re.fullmatch(r"[1-9][0-9]*x[1-9][0-9]*", resolution):
             raise ValueError("VELA_CAPTURE_TEST_SIZE must be WIDTHxHEIGHT")
-        profiling = os.environ.get("VELA_CAPTURE_PROFILE") == "1"
-        with Session(size=f"{resolution}@{hz}") as vela:
+        profiling = os.environ.get("VELA_CAPTURE_PROFILE_TEST") == "1"
+        with Session(size=f"{resolution}@{hz}",
+                     env={"VELA_CAPTURE_PROFILE": "1"} if profiling else None) as vela:
             window = vela.open_window(400, 300, decorated=True)
             vela.wait_still(window)
             path = os.path.join(vela.directory, "capture.png")
