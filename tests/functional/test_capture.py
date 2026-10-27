@@ -86,15 +86,30 @@ class Captures(unittest.TestCase):
                 print(f"capture-profile test resolution={resolution} hz={hz} "
                       f"captures={captures} missed_vblanks={missed}", flush=True)
                 profile_summary("screenshot-client", client_times)
-                timings = {key: [] for key in ("staging", "record", "submit", "wait", "copy", "total")}
+                phases = ("staging", "record", "submit", "wait", "memcpy", "alpha",
+                          "copy", "copy_overhead", "total")
+                timings = {key: [] for key in phases}
+                bandwidths = []
+                alpha_modes = {0: 0, 1: 0}
                 for line in vela.log_text().splitlines():
                     if "capture-profile staging-memory " in line:
                         print(line[line.index("capture-profile staging-memory "):], flush=True)
                     if "capture-profile readback " in line:
-                        for key, value in re.findall(r"\b(staging|record|submit|wait|copy|total)_ms=([0-9.]+)", line):
+                        for key, value in re.findall(r"\b(staging|record|submit|wait|memcpy|alpha|copy|copy_overhead|total)_ms=([0-9.]+)", line):
                             timings[key].append(float(value))
+                        if mode := re.search(r"\balpha_fixup=([01])\b", line):
+                            alpha_modes[int(mode[1])] += 1
+                        if bandwidth := re.search(r"\bmemcpy_mib_s=([0-9.]+)", line):
+                            bandwidths.append(float(bandwidth[1]))
+                print(f"capture-profile alpha-fixup: off={alpha_modes[0]} on={alpha_modes[1]}", flush=True)
                 for key, values in timings.items():
                     profile_summary(f"readback-{key}", values)
+                if bandwidths:
+                    ordered = sorted(bandwidths)
+                    p95 = ordered[(95 * len(ordered) + 99) // 100 - 1]
+                    print(f"capture-profile memcpy-bandwidth: n={len(ordered)} "
+                          f"min_mib_s={ordered[0]:.1f} p50_mib_s={ordered[(len(ordered) - 1) // 2]:.1f} "
+                          f"p95_mib_s={p95:.1f} max_mib_s={ordered[-1]:.1f}", flush=True)
             # Uncached readback can be slow, so verify repeated successful
             # captures there without imposing the cached path's rate/latency bound.
             uncached = "Vulkan readback staging: uncached fallback" in vela.log_text()
