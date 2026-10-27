@@ -79,7 +79,7 @@ any UI specific to LE Audio. Whatever PipeWire supports still plays.
 | Decision | Choice | Consequence |
 |---|---|---|
 | Process | **`vela-bluetooth`**, a session daemon started and supervised by the compositor, like `vela-polkit-agent` | pairings survive Settings and the shell; it is in the compositor's logind session (§6.1) |
-| Language and libraries | **C++ with QtCore and QtDBus**, no GUI | no KF6 and no BluezQt: Vela doesn't use KDE Frameworks |
+| Language and libraries | **C (C17), with sd-bus and sd-event from `libsystemd`**, like `vela-brightness`. No Qt and no GLib | a process that runs all day links only libc and `libsystemd`. `sd_bus_track` follows who owns a search lease or an Add (§6.5, §7). `sd_bus_add_object_manager` serves the agent and the monitor |
 | Who talks to BlueZ | **only `vela-bluetooth`** | one model, one agent, one place for errors |
 | Client API | **`org.vela.Bluetooth`** on the session bus (§7) | Settings, the shell and `vela-audio` are clients |
 | Client library | **`common/bluetooth`**: a C++ model and a QML module | no client parses D-Bus by hand (§8) |
@@ -274,7 +274,7 @@ configuration. It happens only when the user asks for it.
 - **The helper.** The daemon runs `pkexec vela-bluetooth-setup
   experimental on`. A polkit action, `org.vela.bluetooth.experimental`
   (`auth_admin`), names the change in the password dialog. The helper is a
-  small C++ program installed in Vela's libexec directory. It runs as
+  small C program installed in Vela's libexec directory. It runs as
   root, takes no paths from its caller, and accepts only `on`, `off` and
   `check`.
 - **Offload is checked first.** `check` and `on` read the kernel's
@@ -361,7 +361,8 @@ the question moves to the shell.
 
 A client library, like `common/audio` for sound:
 
-- a C++ model of adapters and devices, fed by `DevicesChanged`;
+- a C++ model of adapters and devices, fed by `DevicesChanged`. This is
+  the only C++ part: it lives in Qt processes, like `common/audio`;
 - a QML module, `Vela.Bluetooth`, with `devices`, `paired`, `found`,
   `status` and the actions;
 - the `requested.h` behaviour for switches: shown at once, and returned to
@@ -479,7 +480,10 @@ On `Pair`, the fake calls the registered agent as BlueZ does. It can also:
 - refuse any call;
 - report an advertisement.
 
-**Daemon tests** (`bluetooth-*`):
+**Daemon tests** (`bluetooth-*`). They run the real `vela-bluetooth` binary
+against the fake. The pure parts (the operation states, the legacy PIN
+rule, error mapping) also have plain C unit tests. The fake itself can stay
+in Qt, because it is test code. Cases:
 
 - the model, and rebuilding it after a restart;
 - the adapter fallback, and remembering the chosen adapter;
