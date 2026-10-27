@@ -139,6 +139,182 @@ jobs:
           if (( jobs > 8 )); then jobs=8; fi
           cmake --build "$RUNNER_TEMP/vela-gpu-build" --parallel "$jobs"
 
+      # Temporary A/B diagnostics for the capture-profiling PR. The normal
+      # strict 1440p@180 GPU suite below remains the only test gate.
+      # Manual-only and branch-scoped: no added workload after merging to main.
+      - name: NVIDIA capture readback A/B (diagnostic branch only)
+        if: ${{ github.ref == 'refs/heads/ci/nvidia-capture-profile' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variant in 1440p180 1080p180 1440p60; do
+            case "$variant" in
+              1440p180) size=2560x1440; hz=180 ;;
+              1080p180) size=1920x1080; hz=180 ;;
+              1440p60)  size=2560x1440; hz=60 ;;
+            esac
+            echo "::group::Capture diagnostic $size@$hz"
+            if VELA_CAPTURE_TEST_SIZE="$size" VELA_CAPTURE_TEST_HZ="$hz" \
+              ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \
+                -R '^functional-capture          set -euo pipefail
+          ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \
+            -L '^gpu$' --output-on-failure \
+            --output-junit "$RUNNER_TEMP/vela-nvidia-junit.xml" \
+            | tee "$RUNNER_TEMP/vela-nvidia-ctest.log"
+
+      - name: Reject skipped or missing GPU tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/vela-nvidia-junit.xml" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          cases = list(ET.parse(sys.argv[1]).iter("testcase"))
+          skipped = [case.attrib.get("name", "<unnamed>")
+                     for case in cases if case.find("skipped") is not None]
+          if not cases:
+              print("::error::No GPU tests were executed")
+              sys.exit(1)
+
+          names = {case.attrib.get("name", "") for case in cases}
+          missing = [name for name in ("sharpness", "sharpness-cpu")
+                     if name not in names]
+          if not any(name.startswith("functional-") for name in names):
+              missing.append("functional-*")
+          if missing:
+              print("::error::Required GPU suites missing: " + ", ".join(missing))
+              sys.exit(1)
+          if skipped:
+              print("::error::GPU tests skipped: " + ", ".join(skipped))
+              sys.exit(1)
+          print(f"All {len(cases)} GPU CTest entries were executed (none skipped).")
+          PY
+
+      - name: Upload Vulkan and CTest diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vela-nvidia-gpu-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/vela-nvidia-driver.txt
+            ${{ runner.temp }}/vela-nvidia-vulkan.txt
+            ${{ runner.temp }}/vela-nvidia-ctest.log
+            ${{ runner.temp }}/vela-nvidia-junit.xml
+            ${{ runner.temp }}/vela-nvidia-ab-*
+            ${{ runner.temp }}/vela-gpu-build/Testing/Temporary/LastTest.log
+ -L '^gpu          set -euo pipefail
+          ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \
+            -L '^gpu$' --output-on-failure \
+            --output-junit "$RUNNER_TEMP/vela-nvidia-junit.xml" \
+            | tee "$RUNNER_TEMP/vela-nvidia-ctest.log"
+
+      - name: Reject skipped or missing GPU tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/vela-nvidia-junit.xml" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          cases = list(ET.parse(sys.argv[1]).iter("testcase"))
+          skipped = [case.attrib.get("name", "<unnamed>")
+                     for case in cases if case.find("skipped") is not None]
+          if not cases:
+              print("::error::No GPU tests were executed")
+              sys.exit(1)
+
+          names = {case.attrib.get("name", "") for case in cases}
+          missing = [name for name in ("sharpness", "sharpness-cpu")
+                     if name not in names]
+          if not any(name.startswith("functional-") for name in names):
+              missing.append("functional-*")
+          if missing:
+              print("::error::Required GPU suites missing: " + ", ".join(missing))
+              sys.exit(1)
+          if skipped:
+              print("::error::GPU tests skipped: " + ", ".join(skipped))
+              sys.exit(1)
+          print(f"All {len(cases)} GPU CTest entries were executed (none skipped).")
+          PY
+
+      - name: Upload Vulkan and CTest diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vela-nvidia-gpu-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/vela-nvidia-driver.txt
+            ${{ runner.temp }}/vela-nvidia-vulkan.txt
+            ${{ runner.temp }}/vela-nvidia-ctest.log
+            ${{ runner.temp }}/vela-nvidia-junit.xml
+            ${{ runner.temp }}/vela-gpu-build/Testing/Temporary/LastTest.log
+ --verbose \
+                --output-junit "$RUNNER_TEMP/vela-nvidia-ab-$variant.xml" \
+                | tee "$RUNNER_TEMP/vela-nvidia-ab-$variant.log"; then
+              echo PASS > "$RUNNER_TEMP/vela-nvidia-ab-$variant.status"
+            else
+              # Expected failure on the 1440p@180 control is recorded rather
+              # than weakening the unchanged strict suite immediately below.
+              echo FAIL > "$RUNNER_TEMP/vela-nvidia-ab-$variant.status"
+            fi
+            echo "::endgroup::"
+          done
+
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import sys
+
+          directory = Path(os.environ["RUNNER_TEMP"])
+          labels = (("1440p180", "2560x1440", 180),
+                    ("1080p180", "1920x1080", 180),
+                    ("1440p60", "2560x1440", 60))
+          lines = [
+              "## NVIDIA capture A/B (diagnostic, not the CI gate)",
+              "",
+              "| Resolution | Hz | Result | Captures | Missed vblanks | Client p50 | Wait p50 | memcpy p50 | Total p50 |",
+              "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+          ]
+          for variant, resolution, hz in labels:
+              log = (directory / f"vela-nvidia-ab-{variant}.log").read_text(encoding="utf-8")
+              status = (directory / f"vela-nvidia-ab-{variant}.status").read_text(encoding="utf-8").strip()
+              counter = re.search(
+                  r"capture-profile test resolution=(\S+) hz=(\d+) captures=(\d+) missed_vblanks=(\d+)",
+                  log,
+              )
+              if not counter or (counter[1], int(counter[2])) != (resolution, hz):
+                  print(f"::error::Missing or mismatched capture counters for {variant}", file=sys.stderr)
+                  sys.exit(1)
+
+              def median(metric):
+                  match = re.search(
+                      rf"capture-profile {re.escape(metric)}:.*?\bp50_ms=([0-9.]+)",
+                      log,
+                  )
+                  if not match:
+                      print(f"::error::Missing {metric} data for {variant}", file=sys.stderr)
+                      sys.exit(1)
+                  return f"{float(match[1]):.3f} ms"
+
+              lines.append(
+                  f"| {resolution} | {hz} | {status} | {counter[3]} | {counter[4]} | "
+                  f"{median('screenshot-client')} | {median('readback-wait')} | "
+                  f"{median('readback-memcpy')} | {median('readback-total')} |"
+              )
+          lines += ["", "The normal 2560x1440@180 suite is run below with its original strict assertion.", ""]
+          report = "\n".join(lines)
+          (directory / "vela-nvidia-ab-summary.md").write_text(report, encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write(report)
+          print(report)
+          PY
+
       - name: Real GPU functional and sharpness suites
         shell: bash
         run: |
