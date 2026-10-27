@@ -58,11 +58,17 @@ jobs:
       - name: Generate Cobertura report
         run: |
           cd build-coverage
-          gcovr --root .. --xml-pretty --output ../coverage.xml
+          # Exclude Qt/CMake-generated source files from the coverage baseline.
+          # gcovr 8.7 raises KeyError during its default internal-function
+          # removal for some GCC/Qt-generated C++ coverage data. Keep those
+          # functions during parsing instead of ignoring coverage errors.
+          # The source filter still removes all generated build sources.
+          gcovr_opts=(--root .. --exclude '(^|/)build-coverage/' --include-internal-functions)
+          gcovr "${gcovr_opts[@]}" --xml-pretty --output ../coverage.xml
           test -s ../coverage.xml
           # Do not upload an empty report as if it measured the compositor.
           grep -q '<class ' ../coverage.xml
-          gcovr --root .. --print-summary
+          gcovr "${gcovr_opts[@]}" --print-summary
 
       - name: Preserve report for debugging
         if: always()

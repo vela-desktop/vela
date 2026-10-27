@@ -31,8 +31,16 @@ PR comments/checks. Verify the first `main` and PR uploads are accepted. No
 `CODECOV_TOKEN` secret is required for the configured OIDC method.
 
 Only code that is compiled *and executed* by instrumented tests registers as
-covered. Tests requiring actual AMD/NVIDIA hardware are not exercised on
-GitHub-hosted runners, so these reports must not be presented as GPU coverage.
+covered. The coverage report excludes generated Qt/CMake sources in
+`build-coverage/`. The current Arch `gcovr 8.7` crashes in its internal-function
+exclusion pass on this project, so the workflow uses
+`--include-internal-functions` as a transparent workaround. This may include
+compiler-generated internal functions in function-level statistics for otherwise
+included first-party source files; do not interpret those percentages as a pure
+developer-authored-function metric. This flag can be removed after the upstream
+failure is fixed and the baseline is rechecked. Tests requiring actual
+AMD/NVIDIA hardware are not exercised on GitHub-hosted runners, so these
+reports must not be presented as GPU coverage.
 Do not make percentage thresholds or Codecov status a merge requirement until
 baseline reports and first-party paths have been inspected.
 
