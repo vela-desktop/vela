@@ -15,18 +15,20 @@ out="$(cd "$2" && pwd)"
 command -v gcovr >/dev/null || { echo "::error::Install gcovr to collect coverage" >&2; exit 1; }
 command -v gcov >/dev/null || { echo "::error::Install GCC gcov to collect coverage" >&2; exit 1; }
 
-# Run inside the instrumented build tree where gcovr can find the .gcda
-# files; filter source paths, not the object files needed to calculate hits.
+# The repository contains sources, whereas instrumented .gcda files may
+# live in $RUNNER_TEMP outside the repository on GPU runners. Pass $build
+# explicitly: gcovr defaults its search path to --root, not the current dir.
+# --exclude regexes match from the start of relative source paths, so
+# allow any parent prefix before both top-level and nested tests/ directories.
 # Keep gcovr 8.7's internal-function workaround to avoid its KeyError.
 cd "$build"
 gcovr --root "$root" \
-  --exclude '(^|/)tests/' \
-  --exclude '(^|/)build-coverage/' \
-  --exclude '(^|/)vela-gpu-build/' \
+  --exclude '(.*/)?tests/.*' \
+  --exclude '(.*/)?(build-coverage|vela-gpu-build)/.*' \
   --include-internal-functions \
-  --xml-pretty --output "$out/coverage.xml"
+  --xml-pretty --output "$out/coverage.xml" \
+  "$build"
 
-test -s "$out/coverage.xml"
-python3 "$root/scripts/coverage_summary.py" "$out/coverage.xml" \
-  "$out/coverage-summary.md" "$out/coverage-summary.json"
+[[ -s "$out/coverage.xml" ]]
+( cd "$out" && python3 "$root/scripts/coverage_summary.py" )
 cat "$out/coverage-summary.md"
