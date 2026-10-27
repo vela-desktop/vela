@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/util/log.h>
@@ -334,6 +335,15 @@ static bool update_from_buffer(struct wlr_texture *wlr, struct wlr_buffer *buffe
 
 // ------------------------------------------------------- pixel readback --
 
+// Monotonic CPU wall-time profiling; not Vulkan GPU execution timestamps.
+// This intentionally runs only with VELA_CAPTURE_PROFILE=1.
+static double capture_profile_now_ms(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (double)now.tv_sec * 1000.0 + (double)now.tv_nsec / 1000000.0;
+}
+
 // For captures (screencopy, previews): copies a zone of the texture to the
 // given memory. The CPU waits for the GPU.
 static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_pixels_options *options)
@@ -341,6 +351,9 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
     struct vela_texture *texture = (struct vela_texture *)wlr;
     struct vela_renderer *renderer = texture->renderer;
     struct vela_vulkan *vk = renderer->vk;
+    const char *profile = getenv("VELA_CAPTURE_PROFILE");
+    const bool profiling = profile && strcmp(profile, "1") == 0;
+    const double started_ms = profiling ? capture_profile_now_ms() : 0.0;
 
     const struct vela_pixel_format *wanted = vela_pixel_format_from_drm(options->format);
     if (!wanted || wanted->unorm != texture->format->unorm) {
@@ -360,6 +373,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
         return false;
     }
 
+    const double staged_ms = profiling ? capture_profile_now_ms() : 0.0;
     VkCommandBuffer cmd = vela_renderer_begin_commands(renderer);
     VkImageLayout rest_layout = texture->foreign ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     uint32_t foreign_family = texture->foreign ? VK_QUEUE_FAMILY_FOREIGN_EXT : VK_QUEUE_FAMILY_IGNORED;
@@ -435,6 +449,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
             waits[wait_count++] = request.fd;
         }
     }
+    const double recorded_ms = profiling ? capture_profile_now_ms() : 0.0;
     int release_fd = -1;
     uint64_t point = vela_renderer_submit(renderer, cmd, waits, wait_count, texture->foreign ? &release_fd : NULL);
     if (point == 0) {
@@ -445,7 +460,9 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
         ioctl(texture->dmabuf_fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &request);
         close(release_fd);
     }
+    const double submitted_ms = profiling ? capture_profile_now_ms() : 0.0;
     vela_renderer_wait(renderer, point);
+    const double waited_ms = profiling ? capture_profile_now_ms() : 0.0;
 
     uint8_t *dst = wlr_texture_read_pixel_options_get_data(options);
     for (int y = 0; y < box.height; ++y) {
@@ -456,6 +473,14 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
                 row[x] = 0xff;
             }
         }
+    }
+    if (profiling) {
+        const double copied_ms = capture_profile_now_ms();
+        wlr_log(WLR_INFO, "capture-profile readback width=%d height=%d bytes=%zu foreign=%d "
+            "staging_ms=%.3f record_ms=%.3f submit_ms=%.3f wait_ms=%.3f copy_ms=%.3f total_ms=%.3f",
+            box.width, box.height, row_bytes * (size_t)box.height, (int)texture->foreign,
+            staged_ms - started_ms, recorded_ms - staged_ms, submitted_ms - recorded_ms,
+            waited_ms - submitted_ms, copied_ms - waited_ms, copied_ms - started_ms);
     }
     return true;
 }
