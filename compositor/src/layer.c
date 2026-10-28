@@ -60,6 +60,7 @@ static void handle_unmap(struct wl_listener *listener, void *data)
 {
     struct vela_layer_surface *layer = wl_container_of(listener, layer, unmap);
     vela_focus_layer_unmapped(layer->server, layer);
+    vela_fullscreen_restack(layer->server);
 }
 
 static void handle_commit(struct wl_listener *listener, void *data)
