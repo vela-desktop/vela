@@ -71,8 +71,9 @@ static void handle_commit(struct wl_listener *listener, void *data)
 
     // The client can change layer (such as from "bottom" to "top"), or ask for
     // the keyboard (and rise above fullscreen).
-    if (wlr->initialized
-        && (committed & (WLR_LAYER_SURFACE_V1_STATE_LAYER | WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY))) {
+    bool stacking_changed = wlr->initialized
+        && (committed & (WLR_LAYER_SURFACE_V1_STATE_LAYER | WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY));
+    if (stacking_changed) {
         layer->layer = wlr->current.layer;
         struct vela_tree *target = layer_tree(layer->server, layer->layer, vela_layer_surface_wants_keyboard(layer));
         if (layer->tree->node.parent != target) {
@@ -88,6 +89,12 @@ static void handle_commit(struct wl_listener *listener, void *data)
         if (output) {
             vela_output_arrange_layers(output);
         }
+    }
+    if (stacking_changed && wlr->surface->mapped) {
+        if (layer->server->focused_layer == layer && !vela_layer_surface_wants_keyboard(layer)) {
+            vela_focus_refocus(layer->server);
+        }
+        vela_fullscreen_restack(layer->server);
     }
 }
 

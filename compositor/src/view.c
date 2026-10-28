@@ -563,7 +563,9 @@ static bool transient_has_visible_fullscreen_ancestor(struct vela_view *view)
 
 static void update_transient_layer(struct vela_view *view)
 {
-    if (!view->mapped || view->fullscreen) {
+    // Outgoing views are owned by the workspace slide until finish_switch.
+    if (!view->mapped || view->fullscreen
+        || view->tree->node.parent == view->server->layers.windows_out) {
         return;
     }
     // A formerly fullscreen child must return to the normal window layer
@@ -1057,6 +1059,9 @@ void vela_view_set_minimized(struct vela_view *view, bool on)
         vela_view_set_activated(view, false);
         vela_focus_refocus(server);
     }
+    // A minimized, nonfocused fullscreen view may have been visually above
+    // the next fullscreen view. Promote the next eligible view immediately.
+    vela_fullscreen_restack(server);
 }
 
 // Brings it to `output` at (x, y) (put back inside the usable area, maximized,
@@ -1211,6 +1216,9 @@ void vela_view_mapped(struct vela_view *view)
         view->target_x = area.x + (area.width - frame.width) / 2 - geometry.x;
         view->target_y = area.y + (area.height - frame.height) / 2 - geometry.y;
     }
+    // Focus/restack must test the real output, not the default (0, 0)
+    // position before the opening animation starts.
+    vela_node_set_position(&view->tree->node, view->target_x, view->target_y);
     wl_list_insert(&server->views, &view->link);
     vela_workspaces_view_mapped(server, view);
     struct vela_view *parent = view_parent(view);
@@ -1689,6 +1697,9 @@ void vela_views_check_outputs(struct vela_server *server)
     free(server->seen_outputs);
     server->seen_outputs = now;
     server->seen_output_count = n;
+    // Hotplug rescue may have moved a fullscreen view into another monitor's
+    // foreground without altering its Wayland fullscreen protocol state.
+    vela_fullscreen_restack(server);
 }
 
 static void handle_output_check(void *data)

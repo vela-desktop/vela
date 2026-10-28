@@ -40,7 +40,16 @@ void vela_fullscreen_preview_start(struct vela_server *server)
         return;
     }
     struct vela_view *active = vela_views_focused(server);
-    if (!active || !active->fullscreen || active->tree->node.parent != server->layers.fullscreen) {
+    if (!active || !active->fullscreen) {
+        return;
+    }
+    if (active->tree->node.parent != server->layers.fullscreen) {
+        // A second Super tap closes Start before it maps: cancel the preview
+        // immediately rather than exposing the taskbar until the timeout.
+        if (server->start_preview) {
+            server->start_preview = false;
+            vela_fullscreen_restack(server);
+        }
         return;
     }
     if (!server->start_preview_timer) {
@@ -75,16 +84,26 @@ static bool view_overlaps_output(struct vela_view *view, struct vela_output *out
 static void background_game_below_windows(struct vela_server *server, struct vela_view *game,
     struct vela_output *output)
 {
+    // Children are bottom-to-top. If the game is already below the
+    // lowest eligible normal window, do nothing: a no-op reorder invalidates
+    // the entire scene on every pointer-motion event during a drag.
+    bool game_is_lower = false;
     struct vela_node *node;
     wl_list_for_each (node, &server->layers.windows->children, link) {
+        if (node == &game->tree->node) {
+            game_is_lower = true;
+            continue;
+        }
         struct vela_owner *owner = node->data;
-        if (!owner || owner->kind != VELA_OWNER_VIEW || node == &game->tree->node) {
+        if (!owner || owner->kind != VELA_OWNER_VIEW) {
             continue;
         }
         struct vela_view *other = (struct vela_view *)owner;
         if (other->mapped && !other->minimized && !other->fullscreen && !vela_view_stays_below(other)
             && vela_view_on_current_workspace(other) && view_overlaps_output(other, output)) {
-            vela_node_place_below(&game->tree->node, node);
+            if (!game_is_lower) {
+                vela_node_place_below(&game->tree->node, node);
+            }
             break;
         }
     }
@@ -96,14 +115,22 @@ void vela_fullscreen_restack(struct vela_server *server)
         return;
     }
     struct vela_output *output;
+    bool layers_changed = false;
     wl_list_for_each (output, &server->outputs, link) {
         struct vela_view *front = NULL;
         struct vela_view *view;
         wl_list_for_each (view, &server->views, link) {
             if (view->mapped && !view->minimized && vela_view_on_current_workspace(view)
+                && view->tree->node.parent != server->layers.windows_out
                 && !vela_view_stays_below(view) && view_overlaps_output(view, output)) {
-                front = view;
-                break;
+                // Security prompts must remain visually accessible even if a
+                // fullscreen app is activated while the prompt is mapped.
+                if (!front || vela_view_is_system_prompt(view)) {
+                    front = view;
+                }
+                if (vela_view_is_system_prompt(view)) {
+                    break;
+                }
             }
         }
 
@@ -119,7 +146,9 @@ void vela_fullscreen_restack(struct vela_server *server)
                 && vela_views_focused(server) == front && vela_view_output(front) == output);
 
         wl_list_for_each (view, &server->views, link) {
-            if (!view->mapped || !view->fullscreen || vela_view_output(view) != output) {
+            if (!view->mapped || !view->fullscreen
+                || view->tree->node.parent == server->layers.windows_out
+                || vela_view_output(view) != output) {
                 continue;
             }
             // Wine's BELOW fullscreen backdrops must never be promoted.
@@ -128,15 +157,19 @@ void vela_fullscreen_restack(struct vela_server *server)
             struct vela_tree *target = foreground ? server->layers.fullscreen : server->layers.windows;
             if (view->tree->node.parent != target) {
                 vela_node_reparent(&view->tree->node, target);
+                layers_changed = true;
             }
             if (vela_view_stays_below(view)) {
                 vela_view_keep_below(view);
             }
         }
 
-        // A dialog of a fullscreen app belongs to its parent's visual layer,
-        // not necessarily the parent's *protocol* fullscreen state.
-        vela_views_sync_transient_layers(server);
+        // Only synchronize all transient parents when a fullscreen view
+        // actually switches scene layer, not on every drag motion.
+        if (layers_changed) {
+            vela_views_sync_transient_layers(server);
+            layers_changed = false;
+        }
         if (front && !front->fullscreen) {
             wl_list_for_each (view, &server->views, link) {
                 if (view->mapped && view->fullscreen && !vela_view_stays_below(view)
@@ -196,6 +229,11 @@ void vela_focus_view(struct vela_server *server, struct vela_view *view)
     }
     server->focused_layer = NULL;
     server->previous_layer = NULL;
+    // The previously focused TOP panel no longer masks the fullscreen game.
+    // The first restack above intentionally still handled modal early returns.
+    if (layer) {
+        vela_fullscreen_restack(server);
+    }
 
     struct wlr_surface *surface = vela_view_surface(view);
     if (server->seat->keyboard_state.focused_surface == surface) {
