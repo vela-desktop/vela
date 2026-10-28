@@ -69,6 +69,35 @@ static int on_signal(sd_event_source *source, const struct signalfd_siginfo *inf
     return sd_event_exit(sd_event_source_get_event(source), 0);
 }
 
+// Retry /dev/rfkill registration after startup errors. While it remains
+// unavailable, periodic refreshes still track platform switch changes.
+static void try_rfkill_watch(struct vela_bt_daemon *d);
+
+static int on_rfkill_retry(sd_event_source *source, uint64_t usec, void *data)
+{
+    struct vela_bt_daemon *d = data;
+    d->rfkill_retry = sd_event_source_disable_unref(d->rfkill_retry);
+    try_rfkill_watch(d);
+    return 0;
+}
+
+static void try_rfkill_watch(struct vela_bt_daemon *d)
+{
+    int r = vela_bt_rfkill_watch(d);
+    vela_bt_platform_refresh(d);
+    if (r >= 0) {
+        return;
+    }
+    vela_bt_log("rfkill watch: %s (retrying)", strerror(-r));
+    if (!d->rfkill_retry) {
+        r = sd_event_add_time_relative(d->event, &d->rfkill_retry, CLOCK_MONOTONIC,
+            5000000ULL, 0, on_rfkill_retry, d);
+        if (r < 0) {
+            vela_bt_log("rfkill retry timer: %s", strerror(-r));
+        }
+    }
+}
+
 int main(void)
 {
     static struct vela_bt_daemon d;
@@ -134,8 +163,7 @@ int main(void)
         vela_bt_log("following BlueZ: %s", strerror(-r));
         return 1;
     }
-    vela_bt_rfkill_watch(&d);
-    vela_bt_platform_refresh(&d);
+    try_rfkill_watch(&d);
     vela_bt_flush(&d);
 
     r = sd_event_loop(d.event);
@@ -146,9 +174,12 @@ int main(void)
     vela_bt_agent_free(&d);
     vela_bt_model_free(&d);
     sd_bus_slot_unref(d.session_call);
+    sd_event_source_disable_unref(d.session_retry);
+    sd_event_source_disable_unref(d.managed_retry);
     free(d.login_session);
     sd_event_source_disable_unref(d.flush);
     sd_event_source_disable_unref(d.rfkill_watch);
+    sd_event_source_disable_unref(d.rfkill_retry);
     sd_bus_flush_close_unref(d.system);
     sd_bus_flush_close_unref(d.session);
     sd_event_unref(d.event);
