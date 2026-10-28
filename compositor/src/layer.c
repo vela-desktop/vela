@@ -91,8 +91,15 @@ static void handle_commit(struct wl_listener *listener, void *data)
         }
     }
     if (stacking_changed && wlr->surface->mapped) {
-        if (layer->server->focused_layer == layer && !vela_layer_surface_wants_keyboard(layer)) {
+        bool can_take_focus = vela_layer_surface_wants_keyboard(layer)
+            && (wlr->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP
+                || wlr->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+        // A mapped layer-shell client may promote/demote itself without an
+        // unmap/map pair. Keep both keyboard focus and visual stacking in sync.
+        if (layer->server->focused_layer == layer && !can_take_focus) {
             vela_focus_refocus(layer->server);
+        } else if (can_take_focus && layer->server->focused_layer != layer) {
+            vela_focus_layer(layer->server, layer);
         }
         vela_fullscreen_restack(layer->server);
     }

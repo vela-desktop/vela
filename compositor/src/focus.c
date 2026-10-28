@@ -125,10 +125,11 @@ void vela_fullscreen_restack(struct vela_server *server)
                 && !vela_view_stays_below(view) && view_overlaps_output(view, output)) {
                 // Security prompts must remain visually accessible even if a
                 // fullscreen app is activated while the prompt is mapped.
-                if (!front || vela_view_is_system_prompt(view)) {
+                bool is_prompt = vela_view_is_system_prompt(view);
+                if (!front || is_prompt) {
                     front = view;
                 }
-                if (vela_view_is_system_prompt(view)) {
+                if (is_prompt) {
                     break;
                 }
             }
