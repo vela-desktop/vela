@@ -19,6 +19,42 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/box.h>
 
+// A completed Super tap is routed to Qt, but Qt may need another event-loop
+// turn to create/commit the Start surface. Expose the passive taskbar in the
+// *current* frame instead of waiting for that map. Cancel the preview when a
+// real shell layer accepts keyboard focus; never keep the game uncovered when
+// the shell is missing or unresponsive.
+static int start_preview_timeout(void *data)
+{
+    struct vela_server *server = data;
+    if (server->start_preview) {
+        server->start_preview = false;
+        vela_fullscreen_restack(server);
+    }
+    return 0;
+}
+
+void vela_fullscreen_preview_start(struct vela_server *server)
+{
+    if (server->locked || server->focused_layer || vela_focus_modal_layer(server)) {
+        return;
+    }
+    struct vela_view *active = vela_views_focused(server);
+    if (!active || !active->fullscreen || active->tree->node.parent != server->layers.fullscreen) {
+        return;
+    }
+    if (!server->start_preview_timer) {
+        server->start_preview_timer = wl_event_loop_add_timer(server->loop, start_preview_timeout, server);
+        if (!server->start_preview_timer) {
+            return;
+        }
+    }
+    server->start_preview = true;
+    vela_fullscreen_restack(server);
+    // Fallback only: a real mapped Start menu takes over before this expires.
+    wl_event_source_timer_update(server->start_preview_timer, 500);
+}
+
 // Fullscreen is a client/geometry state, not a permanent global Z-order.
 // The most recently activated window *intersecting each output* determines
 // whether fullscreen owns that output. A window focused on monitor B must not
@@ -75,10 +111,12 @@ void vela_fullscreen_restack(struct vela_server *server)
         // surfaces. While one is mapped on this output, the passive TOP
         // taskbar should become visible as well.
         struct vela_layer_surface *panel = server->focused_layer;
-        bool shell_above = panel && panel->wlr->surface->mapped
+        bool shell_above = (panel && panel->wlr->surface->mapped
             && vela_layer_surface_output(panel) == output
             && (panel->wlr->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP
-                || panel->wlr->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+                || panel->wlr->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY))
+            || (server->start_preview && front && front->fullscreen
+                && vela_views_focused(server) == front && vela_view_output(front) == output);
 
         wl_list_for_each (view, &server->views, link) {
             if (!view->mapped || !view->fullscreen || vela_view_output(view) != output) {
@@ -124,6 +162,8 @@ void vela_focus_view(struct vela_server *server, struct vela_view *view)
     if (!view || !view->mapped || server->locked || vela_view_stays_below(view)) {
         return;
     }
+    // Any explicit activation cancels the speculative taskbar reveal.
+    server->start_preview = false;
     // A window on another desktop: go to that desktop, like Windows.
     if (!vela_view_on_current_workspace(view)) {
         vela_workspaces_switch(server, view->workspace, false);
@@ -211,6 +251,9 @@ void vela_focus_layer(struct vela_server *server, struct vela_layer_surface *lay
         server->previous_layer = server->focused_layer;
     }
     server->focused_layer = layer;
+    // The real shell surface is now mapped: its normal layer/focus policy
+    // owns the taskbar, with no speculative deadline.
+    server->start_preview = false;
     vela_fullscreen_restack(server);
     vela_input_keyboard_enter(server->input, layer->wlr->surface);
 }
