@@ -12,6 +12,7 @@
 #include "config.h"
 #include "error_screen.h"
 #include "input.h"
+#include "interact.h"
 #include "output.h"
 #include "process.h"
 #include "scene/scene.h"
@@ -207,6 +208,9 @@ static void handle_surface_map(struct wl_listener *listener, void *data)
     if (!server->seat->keyboard_state.focused_surface || (under && under->wlr == surface->wlr->output)) {
         vela_input_keyboard_enter(server->input, surface->wlr->surface);
     }
+    // The pointer might already be stationary over the lock surface. Give
+    // it focus now so a click works even without preceding mouse motion.
+    vela_interact_motion(server, 0);
     vela_scene_changed(server->scene);
 }
 
@@ -216,6 +220,9 @@ static void handle_surface_destroy(struct wl_listener *listener, void *data)
     struct wlr_seat *seat = surface->server->seat;
     if (seat->keyboard_state.focused_surface == surface->wlr->surface) {
         wlr_seat_keyboard_clear_focus(seat);
+    }
+    if (seat->pointer_state.focused_surface == surface->wlr->surface) {
+        wlr_seat_pointer_clear_focus(seat);
     }
     wl_list_remove(&surface->map.link);
     wl_list_remove(&surface->destroy.link);
@@ -265,7 +272,11 @@ static void handle_unlock(struct wl_listener *listener, void *data)
     vela_node_set_enabled(&server->layers.lock->node, false);
     clear_backdrop(lock);
     wlr_seat_keyboard_clear_focus(server->seat);
+    wlr_seat_pointer_clear_focus(server->seat);
     vela_focus_refocus(server);
+    // Re-target the pointer to the restored desktop immediately, without
+    // waiting for a new physical motion event.
+    vela_interact_motion(server, 0);
     vela_scene_changed(server->scene);
     wlr_log(WLR_INFO, "Screen unlocked");
 }
@@ -698,11 +709,18 @@ void vela_lock_engage(struct vela_lock *lock)
     server->cursor_mode = VELA_CURSOR_PASSTHROUGH;
     // No drags, Alt+Tab or panels with the keyboard.
     server->grabbed = NULL;
+    // Do not allow a title-bar drag/implicit grab that began before locking
+    // to resume on unlock or to route motion to a hidden client.
+    server->interaction->pending_title_drag.view = NULL;
+    memset(&server->input->implicit_grab, 0, sizeof(server->input->implicit_grab));
     vela_snap_end_zone(server, false);
     vela_switcher_finish(server, false);
     server->focused_layer = NULL;
     wlr_seat_keyboard_clear_focus(server->seat);
     wlr_seat_pointer_clear_focus(server->seat);
+    // Revoke constraints from the previously focused application as well.
+    // Its pointer lock must not remain active through session locking.
+    vela_input_constrain(server->input, NULL);
     wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, "default");
     vela_lock_update_layout(lock);
     vela_scene_changed(server->scene);
