@@ -42,6 +42,8 @@ static void print_usage(const char *program)
            "  VELA_LOCK          locker to use instead of vela-lock\n"
            "  VELA_POLKIT_AGENT  polkit agent to start instead of vela-polkit-agent, 0: none\n"
            "                     (by default only in a real session; polkit-agent= in vela.conf)\n"
+           "  VELA_BLUETOOTH     Bluetooth daemon to start instead of vela-bluetooth, 0: none\n"
+           "                     (by default only in a real session)\n"
            "  VELA_VULKAN_VALIDATION=1  Vulkan validation layers (for development)\n"
            "  VELA_SKIP_VULKAN_CLEANUP=1  diagnostic: skip explicit Vulkan cleanup on exit\n"
            "  VELA_NATURAL_SCROLL=0  classic touchpad scrolling\n"

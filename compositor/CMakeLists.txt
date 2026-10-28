@@ -70,6 +70,8 @@ endfunction()
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
     ext-background-effect-v1)
 vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-output-preview-v1.xml vela-output-preview-v1)
+vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml
+    ext-image-capture-source-v1)
 
 # Client side, to talk to the host compositor when Vela runs in a window
 # (nested.c).
@@ -142,6 +144,7 @@ add_executable(vela-compositor
     src/a11y.c
     src/error_screen.c
     src/bindings.c
+    src/bluetooth.c
     src/brightness.c
     src/command.c
     src/decoration.c
@@ -181,6 +184,7 @@ add_executable(vela-compositor
     src/render/texture.c
     src/render/vulkan.c
     src/scene/capture.c
+    src/scene/output_capture.c
     src/scene/effects.c
     src/scene/frame.c
     src/scene/ready.c
@@ -200,6 +204,13 @@ target_compile_definitions(vela-compositor PRIVATE WLR_USE_UNSTABLE
 target_compile_options(vela-compositor PRIVATE -Wall -Wextra -Wno-unused-parameter
     -Wno-missing-field-initializers)
 set_target_properties(vela-compositor PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+# logind lock hints are best-effort when libsystemd is available.
+pkg_check_modules(VELA_LOCK_SYSTEMD IMPORTED_TARGET libsystemd)
+if(VELA_LOCK_SYSTEMD_FOUND)
+    target_compile_definitions(vela-compositor PRIVATE VELA_HAVE_SYSTEMD_LOCK_HINT=1)
+    target_link_libraries(vela-compositor PRIVATE PkgConfig::VELA_LOCK_SYSTEMD)
+endif()
+
 target_link_libraries(vela-compositor PRIVATE
     vela-pure
     PkgConfig::WLROOTS

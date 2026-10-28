@@ -13,6 +13,7 @@
 #include "lock.h"
 #include "output.h"
 #include "output_manager.h"
+#include "render/renderer.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "server.h"
@@ -121,11 +122,17 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     struct vela_view *focused = vela_views_focused(server);
     vela_buffer_appendf(json, "{\"locked\":%s,\"workspace\":%d,\"workspaces\":%d,\"focused\":",
         server->locked ? t : f, server->workspaces->current, server->workspaces->count);
+    struct vela_readback_stats readbacks = vela_renderer_readback_stats(server->renderer);
+    // The private state socket exposes retention and terminal counts so GPU
+    // lifecycle tests can prove they cancelled real in-flight work.
     if (focused && focused->ext_handle && focused->ext_handle->identifier) {
         vela_buffer_append_json(json, focused->ext_handle->identifier);
     } else {
         vela_buffer_append(json, "null");
     }
+    vela_buffer_appendf(json, ",\"readback\":{\"pending\":%zu,\"bytes\":%zu,\"completed\":%llu,\"cancelled\":%llu,\"failed\":%llu}",
+        readbacks.pending, readbacks.bytes, (unsigned long long)readbacks.completed,
+        (unsigned long long)readbacks.cancelled, (unsigned long long)readbacks.failed);
     vela_buffer_appendf(json, ",\"held\":%llu,\"outputs\":[", (unsigned long long)server->ready.held_total);
     bool first = true;
     struct vela_output *output;

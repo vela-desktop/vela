@@ -98,6 +98,23 @@ bool vela_renderer_read_timing(struct vela_renderer *renderer, int slot, uint64_
 // The texture is ours and its format has no alpha (an opaque buffer).
 bool vela_texture_is_opaque(struct wlr_texture *texture);
 
+// Deferred SHM capture from buffers produced on this renderer's queue. Sources
+// must be compositor-owned render targets, never directly scanned-out clients.
+// Up to four requests / 128 MiB are retained. NULL means not queued; otherwise
+// done runs once on the Wayland loop after full pixels, or failure. Cancellation
+// releases ownership without calling done. All functions run on that same loop.
+struct vela_readback;
+struct wl_event_loop;
+struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, struct wl_event_loop *loop,
+    struct wlr_buffer *src, struct wlr_buffer *dst, void (*done)(void *, bool), void *data);
+void vela_readback_cancel(struct vela_readback *readback);
+void vela_renderer_cancel_readbacks(struct vela_renderer *renderer);
+struct vela_readback_stats {
+    size_t pending, bytes;
+    uint64_t completed, cancelled, failed;
+};
+struct vela_readback_stats vela_renderer_readback_stats(const struct vela_renderer *renderer);
+
 // ------------------------------------------------------------- drawing --
 
 // Starts drawing on `buffer` (a dmabuf in one of the drawing formats). NULL if

@@ -111,3 +111,6 @@ endif()
 
 # vela-audio: the audio backend of the shell and Settings (docs/audio.md).
 add_subdirectory(audio)
+# vela-bluetooth-client: Bluetooth for the shell and Settings
+# (docs/bluetooth.md §8).
+add_subdirectory(bluetooth)

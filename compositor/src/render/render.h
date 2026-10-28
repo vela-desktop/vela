@@ -225,6 +225,7 @@ struct staging_chunk {
     VkDeviceSize size;
     VkDeviceSize used;
     uint64_t point; // last submission reading it; UINT64_MAX: in use by commands not submitted yet
+    unsigned readers; // pending CPU readbacks: GPU completion alone cannot recycle the slice
     bool readback; // memory the CPU reads quickly (cached), for copies from the GPU
 };
 
@@ -258,6 +259,11 @@ struct vela_renderer {
     int retired_count, retired_capacity;
     struct staging_chunk *staging;
     int staging_count, staging_capacity;
+
+    struct wl_list readbacks; // vela_readback.link, bounded across all capture clients
+    struct wl_event_source *readback_timer;
+    size_t readback_count, readback_bytes;
+    uint64_t readback_completed, readback_cancelled, readback_failed;
 
     // The arrays of a submission, reused (they only grow).
     VkSemaphoreSubmitInfo *wait_infos;

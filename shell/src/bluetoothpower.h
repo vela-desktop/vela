@@ -7,15 +7,19 @@
 //
 // BlueZ doesn't power on an adapter blocked by rfkill: "Powered" stays false
 // and PowerState says "off-blocked". Plasma, for example, sets the block when
-// it turns Bluetooth off. To turn it on, the soft block is removed first by
-// writing to /dev/rfkill (the session user can: systemd's uaccess rule), then
-// BlueZ is asked to power it on; if the unblock hasn't reached BlueZ yet, it's
-// retried a moment later.
+// it turns Bluetooth off. To turn it on, the soft block of the adapter's own
+// rfkill switch is removed first by writing to /dev/rfkill (the session user
+// can: systemd's uaccess rule), then BlueZ is asked to power it on; if the
+// unblock hasn't reached BlueZ yet, it's retried a moment later. Other
+// radios and other adapters keep their state (docs/bluetooth.md §6.3).
 
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusVariant>
+#include <QDir>
+#include <QFile>
+#include <QRegularExpression>
 #include <QString>
 #include <QTimer>
 #include <QVariant>
@@ -28,18 +32,53 @@
 
 namespace vela::bluetooth {
 
-// Removes the soft block from all Bluetooth devices. VELA_RFKILL replaces
-// /dev/rfkill in the tests, which must not unblock the machine's radios.
-inline bool unblock()
+// A number from a sysfs file, or -1.
+inline int sysfsNumber(const QString& path)
 {
-    const QByteArray path = qEnvironmentVariableIsSet("VELA_RFKILL") ? qgetenv("VELA_RFKILL") : QByteArray("/dev/rfkill");
-    const int fd = ::open(path.constData(), O_WRONLY | O_CLOEXEC);
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return -1;
+    }
+    bool ok = false;
+    const int value = file.readAll().trimmed().toInt(&ok);
+    return ok ? value : -1;
+}
+
+// Removes the soft block of the rfkill switch that belongs to `adapter`
+// (BlueZ's /org/bluez/hciN): the kernel puts it under
+// /sys/class/bluetooth/hciN/rfkillM, whose `index` is its number. Nothing
+// is written if it isn't soft-blocked, or if it is hard-blocked (software
+// can't undo that). VELA_RFKILL and VELA_SYSFS replace /dev/rfkill and /sys
+// in the tests, which must not unblock the machine's radios.
+inline bool unblock(const QString& adapter)
+{
+    static const QRegularExpression path(QStringLiteral("^/org/bluez/(hci[0-9]+)$"));
+    const QRegularExpressionMatch match = path.match(adapter);
+    if (!match.hasMatch()) {
+        return false;
+    }
+    const QString name = match.captured(1);
+    const QString sysfs = qEnvironmentVariableIsSet("VELA_SYSFS") ? qEnvironmentVariable("VELA_SYSFS") : QStringLiteral("/sys");
+    const QDir device(sysfs + QStringLiteral("/class/bluetooth/") + name);
+    const QStringList switches = device.entryList({ QStringLiteral("rfkill*") }, QDir::Dirs | QDir::NoDotAndDotDot);
+    if (switches.isEmpty()) {
+        return false;
+    }
+    const QString rfkillSwitch = device.filePath(switches.first());
+    const int index = sysfsNumber(rfkillSwitch + QStringLiteral("/index"));
+    if (index < 0 || sysfsNumber(rfkillSwitch + QStringLiteral("/soft")) != 1
+        || sysfsNumber(rfkillSwitch + QStringLiteral("/hard")) != 0) {
+        return false;
+    }
+    const QByteArray rfkill = qEnvironmentVariableIsSet("VELA_RFKILL") ? qgetenv("VELA_RFKILL") : QByteArray("/dev/rfkill");
+    const int fd = ::open(rfkill.constData(), O_WRONLY | O_CLOEXEC);
     if (fd < 0) {
         return false;
     }
     rfkill_event event {};
-    event.op = RFKILL_OP_CHANGE_ALL;
+    event.idx = __u32(index);
     event.type = RFKILL_TYPE_BLUETOOTH;
+    event.op = RFKILL_OP_CHANGE;
     event.soft = 0;
     const bool ok = ::write(fd, &event, RFKILL_EVENT_SIZE_V1) == RFKILL_EVENT_SIZE_V1;
     ::close(fd);
@@ -59,7 +98,7 @@ inline void setPowered(QObject* context, const QString& adapter, bool on, std::f
         return;
     }
     if (on && attempt == 0) {
-        unblock();
+        unblock(adapter);
     }
     QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.bluez"), adapter,
         QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Set"));

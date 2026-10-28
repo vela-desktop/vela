@@ -1,203 +1,108 @@
-# Non-blocking capture readback: implementation plan
+# Deferred SHM capture readback (#132)
 
-> **Status:** implementation draft, not a shipped fix. This document records the
-> diagnostic handoff from [PR #155](https://github.com/vela-desktop/vela/pull/155).
-> No change to screenshot correctness, protocol readiness, or frame budgets is
-> authorized merely by merging this design. The PR that introduces working code
-> must pass real hardware tests first.
+This change replaces presentation-thread waits and full-frame CPU copies for
+`ext-image-copy-capture-v1` output and window SHM captures. Real AMD and NVIDIA
+GPU suites must validate the exact candidate before it is considered fixed.
 
-## 1. Evidence and measurable problem
+## What the previous PRs established
 
-The NVIDIA RTX 4070 Laptop (proprietary Vulkan driver 615.78.08) misses
-presentation deadlines while taking repeated screenshots during animation.
-An otherwise identical AMD RADV runner passes its 20 GPU tests.
+| PR | Change and outcome |
+| --- | --- |
+| [#111](https://github.com/vela-desktop/vela/pull/111) | Separate cached/coherent readback staging; fixed the original AMD stall. Already in main. NVIDIA still failed with those memory properties. |
+| [#128](https://github.com/vela-desktop/vela/pull/128), [#129](https://github.com/vela-desktop/vela/pull/129) | GPU-suite experiments and salvaged IPC/input fixes. NVIDIA capture failed with 82/41 and 83/41 missed vblanks/captures. No capture fix. |
+| [#130](https://github.com/vela-desktop/vela/pull/130), [#131](https://github.com/vela-desktop/vela/pull/131) | Separate animation sample and desktop selection work; capture remained independent. |
+| [#155](https://github.com/vela-desktop/vela/pull/155) | Opt-in phase profiling and resolution/refresh experiments. GPU wait wall time was about 1.35 ms; staging-to-destination memcpy about 10 ms. Alpha fixup was inactive. Closed without merging its temporary instrumentation. |
+| [#156](https://github.com/vela-desktop/vela/pull/156) | Four CPU copy workers shortened a synchronous stall, but NVIDIA still failed. The workers were removed. This PR now implements deferred completion. |
 
-| NVIDIA workload | Captures | Missed vblanks | Readback p50 | CPU memcpy p50 | Result |
-| --- | ---: | ---: | ---: | ---: | --- |
-| 2560x1440 @ 180 Hz | 40 | 81 | 12.186 ms | 10.694 ms | fail |
-| 1920x1080 @ 180 Hz | 43 | 45 | 8.068 ms | 6.995 ms | fail |
-| 2560x1440 @ 60 Hz | 37 | 0 | 11.931 ms | 10.340 ms | pass |
+The roadmap references in #141 and #146 classify #132 as a beta blocker; they
+introduce no alternative readback implementation.
 
-Source: [NVIDIA A/B run #41](https://github.com/vela-desktop/vela/actions/runs/40586655037)
-on commit `2f2f7df`; [matching AMD run #43](https://github.com/vela-desktop/vela/actions/runs/40586663325)
-passed 20/20. The normal NVIDIA full suite failed only `functional-capture`
-(19/20 passed). These are elapsed CPU times, not Vulkan GPU timestamps.
+## Hardware evidence before this implementation
 
-The 180 Hz frame interval is about 5.56 ms; 60 Hz permits about 16.67 ms.
-Reducing the pixel count helps but does not make a synchronous full-frame
-readback fit into the 180 Hz budget. The staging allocation reports both
-`HOST_CACHED` and `HOST_COHERENT`; a memory-type flag alone has not solved it.
+All timings below are CPU elapsed times, not GPU transfer timestamps.
 
-## 2. Current synchronous boundary
+| Run | Exact source | Observation |
+| --- | --- | --- |
+| [NVIDIA #18](https://github.com/vela-desktop/vela/actions/runs/40209046403) | `cb421563` (#129) | 83 missed vblanks / 41 captures. |
+| [NVIDIA #38](https://github.com/vela-desktop/vela/actions/runs/40490410312) | `59cc2433` (#155) | 84/40; readback wait p50 1.353 ms, combined copy p50 10.476 ms; cached/coherent staging. |
+| [NVIDIA #39](https://github.com/vela-desktop/vela/actions/runs/40563783983) | `d1ada675` (#155) | 86/41; memcpy p50 9.936 ms; alpha fixup off for all 41 captures. |
+| [NVIDIA #41](https://github.com/vela-desktop/vela/actions/runs/40586655037) | `2f2f7df1` (#155) | 1440p180: 81/40; 1080p180: 45/43; 1440p60: 0/37. The unchanged full suite still failed capture. |
+| [AMD #43](https://github.com/vela-desktop/vela/actions/runs/40586663325) | `2f2f7df1` | Full 20/20. |
+| [NVIDIA #44](https://github.com/vela-desktop/vela/actions/runs/40682239824) | `5659ba5b` (CPU workers) | A/B: serial 81/40; four workers 53/43. Strict suite 44/43, 19/20. Rejected as a fix. |
+| [AMD #46](https://github.com/vela-desktop/vela/actions/runs/40682256933) | `5659ba5b` | Full 20/20. |
+| [NVIDIA #45](https://github.com/vela-desktop/vela/actions/runs/40688237404) | `b677c3dd` (serial diagnostic) | Strict suite 80/41, 19/20. Extra probe: first destination copy 5.3–12.0 ms, second mapped copy about 0.85–1.10 ms; RAM copy about 0.91–1.08 ms. |
+| [AMD #47](https://github.com/vela-desktop/vela/actions/runs/40688227684) | `b677c3dd` | Capture passed. Full suite failed the separate brightness burst sequence check (386/3001). |
 
-The current `wlr_texture_impl.read_pixels` implementation in
-`compositor/src/render/texture.c`:
+The last probe does **not** prove permanently slow mapped GPU memory. The
+second copy has different cache warmth and an already-backed destination.
+Destination page faults, zeroing and cache effects remain possible contributors.
+Moving only the GPU wait or only alpha conversion cannot address the measured
+whole synchronous operation.
 
-1. Allocates/reuses a host-visible readback staging slice via
-   `vela_renderer_stage_readback()`.
-2. Records image ownership/layout transitions and `vkCmdCopyImageToBuffer`,
-   including a device-to-host buffer barrier.
-3. Submits the copy and registers dmabuf synchronization where applicable.
-4. **Blocks** on `vela_renderer_wait(renderer, point)`.
-5. **Copies** mapped staging bytes row-by-row to the destination, potentially
-   fixing up alpha, before returning to the caller.
+## Asynchronous boundary and ownership
 
-`compositor/src/scene/capture.c` invokes the wlroots
-`wlr_ext_image_copy_capture_frame_v1_copy_buffer()` path and currently emits
-`ready` only after that call succeeds. Do **not** replace the blocking wait
-with a deferred worker in `read_pixels()` while returning success immediately:
-the caller's destination may be invalidated or recycled and `ready` could
-be signaled before valid pixels exist.
+The audited wlroots 0.20 paths are `types/wlr_ext_image_copy_capture_v1.c`,
+`types/ext_image_capture_source_v1/output.c`, and the source interface. Its
+`copy_buffer` helper and `wlr_texture.read_pixels` contract are synchronous;
+`source.copy_frame`, however, can retain the protocol frame until a later
+`ready` or `failed` event. The frame exposes a destroy signal for cancellation.
 
-Other output capture and wlroots renderer consumers may invoke this synchronous
-texture method too. Enumerate them before choosing where the async boundary
-belongs. The correct fix may require an asynchronous Vela-owned copy/capture
-path, not merely a different Vulkan staging allocator.
+Vela now owns the output-source adapter in `scene/output_capture.c`, derived
+from the MIT-licensed wlroots source with its cursor metadata/lifetime handling
+preserved. Window capture uses the same completion helper in `scene/capture.c`.
+No vtable patching, private wlroots struct casts, or early-success returns are
+used. DMA-BUF destinations retain wlroots' existing GPU-to-GPU path. Legacy
+`wlr-screencopy` and other texture consumers retain synchronous `read_pixels`.
 
-## 3. Desired completion model (pending code review of wlroots call sites)
+For each SHM request:
 
-- Frame production schedules a readback request without waiting for GPU copy
-  completion or performing large CPU copies on the presentation thread.
-- An in-flight request *owns* all resources that outlive the initiating
-  callback: destination buffer lock/reference, staging reservation, imported
-  image/buffer lifetime, relevant timeline point and any synchronization FDs.
-- GPU readiness is detected without busy-polling the Wayland event loop
-  (fence/timeline integration or bounded completion worker). The CPU copy
-  happens away from the critical presentation path where threading rules
-  permit; otherwise split the work at a safe asynchronous protocol boundary.
-- Completion transitions back to the correct Wayland/event-loop context,
-  publishes readiness **only after** the output buffer contains the correct
-  pixels, and releases references and staging reservations in order.
-- Concurrent captures use a bounded in-flight queue/ring. Backpressure never
-  silently overwrites or reuses staging data still referenced by GPU/CPU work.
-  Treat cancellation, resize, output removal, session disconnect, shutdown and
-  device loss as first-class terminal states.
-- Preserve foreign dmabuf ownership transfers, imported/exported sync files,
-  image layout restoration, host visibility/invalidation semantics, modifier
-  handling, row stride and alpha fixup. Verify synchronization rules for both
-  coherent and non-coherent allocations.
-- If a synchronous wlroots API is unavoidable for a subset of callers, keep a
-  correct fallback. Do not silently claim those paths have become asynchronous.
+1. Lock/import the source and lock the destination. Reserve a cached/coherent
+   staging slice; record the same image ownership/layout and host-read barriers.
+2. Submit on the renderer's queue and return from the source callback. These
+   sources are compositor-owned output/window swapchains drawn on that same
+   queue; output sessions disable direct scanout. No external-producer wait or
+   sync-file-export fallback is needed. This API must not receive client buffers.
+3. One renderer-wide timer checks the Vulkan timeline without waiting. After
+   completion it copies at most 512 KiB or about 0.5 ms of rows per 1 ms tick,
+   whichever comes first, serving requests round robin. A single row, page
+   fault or OS scheduling delay can exceed the soft time budget; this is not a
+   hard real-time guarantee. An idle callback would drain the entire queue in
+   one dispatch and is deliberately not used.
+4. Every destination mapping/access stays on the Wayland thread, including
+   wl_shm SIGBUS protection. Stride padding and opaque-alpha conversion are
+   preserved. No worker dereferences a client-owned mapping.
+5. Send `ready` with the captured transform/time only after the final row.
+   Failure, timeout, constraints changes, frame/session/client destruction,
+   output removal and lock release reservations and retained references.
 
-The implementation should expose a single request state machine and a
-well-defined cancellation/retirement contract. Avoid adding an indefinitely
-growing worker pool, unbounded mapped allocations or per-frame timers.
+GPU completion alone cannot recycle staging: CPU readers pin its buffer by
+handle, surviving pool array growth and compaction. Cancellation releases the
+CPU pin; ordinary submission points still protect outstanding GPU work and
+retired imported images. The renderer cancels remaining requests before teardown.
 
-## 4. Implementation checkpoints
+The queue accepts at most four requests and 128 MiB of pixel payload. Pool
+allocation rounding and its existing bounded idle cache are additional. Excess
+requests fail explicitly through the protocol; none report successful dropped
+pixels. A failed timeline query/device loss or five-second timeout fails a
+request rather than keeping its references indefinitely.
 
-### A. Identify the asynchronous seam
+While a frame is pending, repeated output events do not queue duplicate work.
+Output sources conservatively advertise full damage and request the next output
+commit for each capture. This also prevents delayed `ready` from losing changes
+that arrived while wlroots was accumulating damage for the previous capture.
+It does not change scene rendering damage or presentation deadlines.
 
-Map every call that reaches `wlr_texture_impl.read_pixels`, including
-ext-image-copy-capture, screencopy and internal snapshots. Determine where
-buffers can be retained and where a protocol frame can be completed later.
-Document whether upstream wlroots APIs permit deferred completion or require
-a Vela-owned copy path. **This is a gate before changing the renderer.**
+## Validation
 
-### B. Build a minimal vertically integrated path
+`functional-capture` retains its original 2560x1440@180 animation workload,
+minimum capture count and `missed < captures` assertion. Additional GPU cases
+check full pixels, padded rows and opaque alpha across four simultaneous copies,
+repeated capture on one unchanged session, explicit queue-limit failures,
+frame destruction, disconnect, resize, unplug, lock and Vulkan-validated shutdown
+with actual pending work. The private `state.readback` counters establish that
+these tests really interrupted deferred requests and that payload returns to zero.
 
-Implement one capture flow end to end: submit Vulkan copy; track a completion
-point and resources; finish the CPU copy and only then send frame readiness.
-Preserve the existing path for callers not migrated. Establish bounded queue
-capacity and a safe cancellation/drain protocol before adding concurrency.
-
-### C. Extend coverage and observability
-
-Keep diagnostic phases from #155 available to this PR as needed, without
-forcing profiling on every GPU CI run. Track CPU time spent inside the
-presentation callback separately from total capture completion latency.
-Account for dropped/cancelled captures, in-flight count and staging reuse.
-Use the existing strict `functional-capture` oracle: don't weaken or skip it.
-
-### D. Verify both vendors and lifecycle behavior
-
-- NVIDIA 2560x1440@180: `functional-capture` passes with
-  `missed_vblanks < captures`; aim for zero misses without claiming a fixed
-  performance promise beyond the test oracle.
-- AMD RADV: all 20 GPU tests continue to pass, including image sharpness.
-- 2560x1440@60 and 1920x1080@180: no regressions in image contents or
-  performance; compare against #155 A/B measurements.
-- Check pixel equality, stride handling, XRGB-to-ARGB opaque alpha, foreign
-  dmabuf transfer, concurrent screenshots, compositor teardown with pending
-  work, resizing/invalidating source and destination buffers, error/cancel
-  paths and bounded resource retention.
-- Validate release-mode and debug builds; run normal CI and manually dispatch
-  the real hardware NVIDIA/AMD suites. Ordinary host CI passing is not
-  evidence of GPU performance correctness.
-
-## 5. Out of scope for this fix
-
-No refresh-rate caps, longer render-frame deadlines, dropped presentation
-checks, relaxed `functional-capture` assertions, unconditional `vkQueueWaitIdle`,
-backend-specific test skips, or speculative memory-type switches.
-
-## 6. Relationship to PR #155
-
-[PR #155](https://github.com/vela-desktop/vela/pull/155) is a completed
-diagnostic experiment; its branch-scoped A/B workflow and verbose profiling
-are not intended as permanent mainline production behavior. Reuse the
-instrumentation selectively as needed to prove that this fix works. The new
-branch is based on `main` so the implementation does not implicitly inherit
-temporary CI workload or source-level profiler overhead.
-
-## 7. Parallel CPU copy: diagnostic result and rejection (28 October 2026)
-
-The four-thread experiment lowered NVIDIA capture latency but failed the
-unchanged `functional-capture` assertion:
-
-| CPU copy workers | Captures | Missed vblanks | Screenshot p50 |
-| --- | ---: | ---: | ---: |
-| 1 | 40 | 81 | 20.434 ms |
-| 4 | 43 | 53 | 16.340 ms |
-
-The NVIDIA strict suite still failed (44 missed vblanks on 43 captures);
-AMD passed 20/20. Hardware evidence:
-[NVIDIA](https://github.com/vela-desktop/vela/actions/runs/40682239824),
-[AMD](https://github.com/vela-desktop/vela/actions/runs/40682256933).
-
-**Decision: reject and remove the threaded CPU-copy implementation.**
-The Vulkan timeline wait and synchronous wlroots `read_pixels` contract
-remained on the presentation path regardless of worker count. Both
-hardware suites must again run the unchanged serial baseline.
-
-## 8. Next gate: isolate the mapped-memory bottleneck
-
-Before changing the capture architecture, collect on AMD and NVIDIA
-using identical workloads and an explicitly non-gating diagnostic:
-
-- Actual Vulkan readback memory type, properties and heap.
-- Separate CPU time spent waiting for GPU completion and copying from
-  mapped Vulkan staging to the destination SHM.
-- Matched-size host-only RAM copy versus mapped-staging read throughput,
-  with enough repetitions to detect cache and page-fault effects.
-- Correlation between the blocked compositor thread and missed vblanks.
-
-These measurements do not establish physical memory placement merely
-from a `HOST_CACHED` flag. Instrumentation must be opt-in and disabled
-during the unmodified strict 20-case GPU suite. If the mapped memory
-path is slow, investigate a correct transfer mechanism, but do not
-special-case NVIDIA without proof. Independently audit the wlroots
-capture lifecycle for a safe asynchronous completion boundary. No
-new refresh cap or relaxed assertion is acceptable.
-
-## 9. First diagnostic probe: opt-in on both GPU runners
-
-On branch `fix/async-capture-readback`, each manually dispatched hardware
-workflow runs an additional **non-gating** `functional-capture` invocation
-with `VELA_READBACK_DIAG=1` before its normal full 20-test suite.
-It logs the actual staging allocation type and heap, GPU timeline wait wall
-time, serial CPU readback time, and limited exploratory matched-size copies
-from anonymous RAM versus mapped Vulkan staging. The probe uses at most
-twelve capture samples and four extra RAM/staging samples per process.
-These extra copies intentionally perturb diagnostic frame timing.
-
-The ordinary mandatory GPU suite runs with diagnostics disabled and its
-original missed-vblank assertion unchanged. Artifacts contain
-`vela-amd-readback-diag.log` / `vela-nvidia-readback-diag.log`.
-
-**Interpretation limitations:** anonymous RAM and Vulkan staging can differ
-in placement, cache warmth, NUMA affinity, and write-combining behavior.
-Copying warmed staging a second time is not a standalone bandwidth or PCIe
-benchmark. The result is a first isolation step, not evidence of driver fault
-or permission to add vendor-specific workarounds.
-
-No asynchronous protocol completion is implemented by this probe.
+The temporary profiling/probe workflow steps are removed. Both manual workflows
+run the ordinary full strict GPU suite with their original thresholds. Follow
+[the GPU CI policy](ci-quality.md#gpu-ci-policy); a historical pass or a CPU-only
+build does not establish that this implementation fixes NVIDIA performance.

@@ -153,22 +153,6 @@ jobs:
           if (( jobs > 8 )); then jobs=8; fi
           cmake --build "$RUNNER_TEMP/vela-gpu-build" --parallel "$jobs"
 
-      # Non-gating probe; strict GPU suite below uses the original serial code.
-      - name: Capture memory investigation (diagnostic branch only)
-        if: ${{ github.ref == 'refs/heads/fix/async-capture-readback' }}
-        shell: bash
-        env:
-          VELA_READBACK_DIAG: "1"
-        run: |
-          set -uo pipefail
-          log="$RUNNER_TEMP/vela-nvidia-readback-diag.log"
-          if ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" -R '^functional-capture$' -L '^gpu$' --verbose > "$log" 2>&1; then
-            echo "Readback diagnostic: PASS (non-gating)" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Readback diagnostic: FAIL (non-gating; mandatory GPU suite is authoritative)" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          grep 'VELA_READBACK_DIAG' "$log" >> "$GITHUB_STEP_SUMMARY" || true
-
       - name: Real GPU functional and sharpness suites
         shell: bash
         run: |
@@ -236,7 +220,6 @@ jobs:
             ${{ runner.temp }}/vela-nvidia-driver.txt
             ${{ runner.temp }}/vela-nvidia-vulkan.txt
             ${{ runner.temp }}/vela-nvidia-ctest.log
-            ${{ runner.temp }}/vela-nvidia-readback-diag.log
             ${{ runner.temp }}/vela-nvidia-junit.xml
             ${{ runner.temp }}/vela-gpu-build/Testing/Temporary/LastTest.log
 

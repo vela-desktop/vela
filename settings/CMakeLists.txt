@@ -36,8 +36,6 @@ qt_add_executable(vela-settings
     src/main.cpp
     src/about.cpp
     src/about.h
-    src/bluetooth.cpp
-    src/bluetooth.h
     src/datetime.cpp
     src/datetime.h
     src/defaultapps.cpp
@@ -74,6 +72,11 @@ set(SETTINGS_QML_FILES
     qml/Choice.qml
     qml/RadioButton.qml
     qml/LevelBar.qml
+    qml/MoreMenu.qml
+    qml/BluetoothDevice.qml
+    qml/BluetoothQuestion.qml
+    qml/AddDeviceDialog.qml
+    qml/bluetooth.js
     qml/PageHeader.qml
     qml/Page.qml
     qml/pages/HomePage.qml
@@ -134,7 +137,8 @@ target_link_libraries(vela-settings PRIVATE
     vela-controls # Theme, Button, TextBox, Style (common/)
     vela-controlsplugin
     vela-app # the mouse's Back and Forward buttons (common/)
-    vela-audio) # the sound (common/audio, docs/audio.md)
+    vela-audio # the sound (common/audio, docs/audio.md)
+    vela-bluetooth-client) # Bluetooth (common/bluetooth, docs/bluetooth.md)
 
 install(TARGETS vela-settings RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES vela-settings.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
@@ -144,18 +148,23 @@ install(FILES vela-settings.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applica
 # shell/src/language.h). After changing texts:
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
-qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-displays vela-controls
+qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-displays vela-controls vela-bluetooth-client
     TS_FILES i18n/vela-settings_it.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-settings_lupdate
     LRELEASE_TARGET vela-settings_lrelease
     LUPDATE_OPTIONS -source-language en -target-language it -no-obsolete -locations none)
 
-# Settings' own controls (tests/tst_*.qml) under Vela.Controls' Qt Quick Test
-# runner, with animation effects on and off.
-if(VELA_BUILD_TOOLS AND TARGET vela-controls-test)
-    add_test(NAME settings-controls COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-    add_test(NAME settings-controls-no-effects COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+# Settings' own pieces (tests/tst_*.qml) under Qt Quick Test, with a fake
+# Vela.Bluetooth, with animation effects on and off.
+if(VELA_BUILD_TOOLS)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
+    qt_add_executable(vela-settings-test tests/settings_test.cpp)
+    target_compile_definitions(vela-settings-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    target_compile_options(vela-settings-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-settings-test PRIVATE vela-controls vela-controlsplugin Qt6::QuickTest)
+    add_test(NAME settings-controls COMMAND vela-settings-test)
+    add_test(NAME settings-controls-no-effects COMMAND vela-settings-test)
     set_tests_properties(settings-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(settings-controls settings-controls-no-effects PROPERTIES TIMEOUT 60)
 endif()

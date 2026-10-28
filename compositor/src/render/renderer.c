@@ -208,6 +208,7 @@ struct vela_renderer *vela_renderer_create(struct vela_vulkan *vk)
     r->vk = vk;
     wl_list_init(&r->targets);
     wl_list_init(&r->textures);
+    wl_list_init(&r->readbacks);
     for (int i = 0; i < vk->shm_format_count; ++i) {
         wlr_drm_format_set_add(&r->shm_formats, vk->shm_formats[i], DRM_FORMAT_MOD_LINEAR);
     }
@@ -236,6 +237,7 @@ static void destroy_target(struct vela_target *target);
 
 static void destroy(struct vela_renderer *r)
 {
+    vela_renderer_cancel_readbacks(r);
     VkDevice device = r->vk->device;
     if (device) {
         vkDeviceWaitIdle(device);
@@ -639,14 +641,6 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
     if (readback) {
         VkPhysicalDeviceMemoryProperties props;
         vkGetPhysicalDeviceMemoryProperties(r->vk->physical, &props);
-        const char *diag_env = getenv("VELA_READBACK_DIAG");
-        if (diag_env && strcmp(diag_env, "1") == 0) {
-            uint32_t heap = props.memoryTypes[type].heapIndex;
-            wlr_log(WLR_INFO, "VELA_READBACK_DIAG staging type=%u flags=0x%x heap=%u heap_flags=0x%x "
-                "heap_size=%" PRIu64 " allocation_bytes=%" PRIu64,
-                type, props.memoryTypes[type].propertyFlags, heap, props.memoryHeaps[heap].flags,
-                (uint64_t)props.memoryHeaps[heap].size, (uint64_t)requirements.size);
-        }
         if (!(props.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
             wlr_log(WLR_INFO, "Vulkan readback staging: uncached fallback (capture performance may be reduced)");
         }
@@ -675,7 +669,7 @@ static bool stage(struct vela_renderer *r, VkDeviceSize size, bool readback, str
     }
     for (int i = 0; i < r->staging_count && !chosen; ++i) {
         struct staging_chunk *chunk = &r->staging[i];
-        if (chunk->readback == readback && chunk->point != UINT64_MAX && chunk->point <= done && chunk->size >= size) {
+        if (chunk->readback == readback && !chunk->readers && chunk->point != UINT64_MAX && chunk->point <= done && chunk->size >= size) {
             chunk->used = 0;
             chosen = chunk;
         }
@@ -983,7 +977,7 @@ void vela_renderer_collect(struct vela_renderer *r)
     kept = 0;
     for (int i = 0; i < r->staging_count; ++i) {
         struct staging_chunk chunk = r->staging[i];
-        bool unused = chunk.point != UINT64_MAX && chunk.point <= done;
+        bool unused = !chunk.readers && chunk.point != UINT64_MAX && chunk.point <= done;
         if (unused && ++idle[chunk.readback] > IDLE_STAGING_CHUNKS_KEPT) {
             vkDestroyBuffer(device, chunk.buffer, NULL);
             vkFreeMemory(device, chunk.memory, NULL);

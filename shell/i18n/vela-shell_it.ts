@@ -165,10 +165,6 @@
         <translation>Posta elettronica</translation>
     </message>
     <message>
-        <source>Bluetooth</source>
-        <translation>Bluetooth</translation>
-    </message>
-    <message>
         <source>No apps to share with.</source>
         <translation>Nessuna app per condividere.</translation>
     </message>

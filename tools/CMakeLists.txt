@@ -45,6 +45,10 @@ target_compile_options(vela-screen-record PRIVATE -Wall -Wextra -Wno-unused-para
 
 if(VELA_BUILD_TOOLS)
 
+add_executable(vela-capture-probe vela-capture-probe.c)
+target_link_libraries(vela-capture-probe PRIVATE vela-capture)
+target_compile_options(vela-capture-probe PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
 vela_client_protocol(proto-foreign-toplevel ${PROTOCOLS}/wlr-foreign-toplevel-management-unstable-v1.xml
     wlr-foreign-toplevel-management-unstable-v1)
 vela_client_protocol(proto-virtual-pointer ${PROTOCOLS}/wlr-virtual-pointer-unstable-v1.xml

@@ -4,6 +4,7 @@
 #include "server.h"
 
 #include "a11y.h"
+#include "bluetooth.h"
 #include "brightness.h"
 #include "command.h"
 #include "config.h"
@@ -153,6 +154,9 @@ static bool init(struct vela_server *server)
     // SIGTERM, not SIGKILL: the agent unregisters from polkitd before
     // exiting. Exit code 2: another agent already owns this session.
     vela_child_init(&server->polkit_agent, "Polkit agent", SIGTERM, 2);
+    // SIGTERM: the daemon cancels its pairings before exiting. Exit code 2:
+    // another instance already owns org.vela.Bluetooth.
+    vela_child_init(&server->bluetooth, "Bluetooth", SIGTERM, 2);
     vela_snapshots_init(server);
     server->interaction = vela_interaction_create();
     server->switcher = vela_switcher_create();
@@ -408,6 +412,10 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
         vela_shell_start(server, startup_command);
     }
     vela_polkit_agent_start(server);
+    // Initial state first: a restarted compositor must not allow pairing
+    // during the brief interval before the Bluetooth child starts.
+    vela_bluetooth_report_lock(server, server->locked);
+    vela_bluetooth_start(server);
     vela_brightness_start(server);
     return true;
 }
@@ -419,10 +427,12 @@ void vela_server_run(struct vela_server *server)
 
 void vela_server_destroy(struct vela_server *server)
 {
+    vela_bluetooth_finish();
     // We are shutting down: the shell and the agent going away must not be
     // relaunched.
     vela_shell_stop(server);
     vela_child_stop(&server->polkit_agent);
+    vela_child_stop(&server->bluetooth);
     vela_brightness_destroy(server);
     vela_commands_stop(server);
     if (server->session) {

@@ -52,6 +52,7 @@ endif()
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
     add_subdirectory(brightness)
+    add_subdirectory(bluetooth)
     add_subdirectory(session)
 endif()
 option(VELA_BUILD_POLKIT "Build the polkit agent (needs polkit-agent-1; the prompt also needs the shell's Qt)" ON)
@@ -103,6 +104,10 @@ if(VELA_BUILD_TOOLS)
     endif()
     # A private PipeWire and WirePlumber for the audio tests (docs/audio.md).
     add_subdirectory(tests/audio)
+    # A fake BlueZ for vela-bluetooth (docs/bluetooth.md §11).
+    if(TARGET vela-bluetooth-testing AND VELA_BUILD_SHELL)
+        add_subdirectory(tests/bluetooth)
+    endif()
 endif()
 
 # Experimental Ubuntu 26.10 binary package. Opt-in so other distributions and
