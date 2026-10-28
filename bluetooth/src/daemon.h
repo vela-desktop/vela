@@ -142,6 +142,7 @@ struct vela_bt_search {
     bool still_visible; // rule 3
     sd_event_source *visible_check; // 2 s after the last lease ended
     sd_event_source *restart_timer; // waiting to start again (three times a minute)
+    sd_event_source *stop_retry_timer; // retry failed StopDiscovery without losing ownership
     uint64_t restarts[3]; // when BlueZ's discovery was started again
     sd_bus_slot *visible_call; // StopBeingVisible's Set Discoverable
     struct vela_bt_waiters visible_waiters;
@@ -309,6 +310,7 @@ void vela_bt_search_end_all(struct vela_bt_daemon *d, const char *reason);
 void vela_bt_search_update(struct vela_bt_daemon *d);
 // The adapter in use changed: Powered, Discovering, Discoverable.
 void vela_bt_search_adapter_changed(struct vela_bt_daemon *d, bool was_discovering);
+void vela_bt_search_adapter_switching(struct vela_bt_daemon *d);
 // The Search property: "" without leases, "visible" with the filter,
 // "shared" when another client was discovering, "plain" when no lease
 // asked to be discoverable.

@@ -21,6 +21,7 @@
 #define ADAPTER1 "org.bluez.Adapter1"
 #define VISIBLE_CHECK_US (2 * 1000000ULL)
 #define RESTART_WINDOW_US (60 * 1000000ULL)
+#define STOP_RETRY_US (1000000ULL)
 
 static void lease_free(struct vela_bt_lease *lease)
 {
@@ -72,6 +73,26 @@ static bool wanted(struct vela_bt_daemon *d)
 
 static void discovery_lost(struct vela_bt_daemon *d);
 
+static int on_stop_retry(sd_event_source *source, uint64_t usec, void *data)
+{
+    struct vela_bt_daemon *d = data;
+    d->search.stop_retry_timer = sd_event_source_disable_unref(d->search.stop_retry_timer);
+    vela_bt_search_update(d);
+    return 0;
+}
+
+// A failed StopDiscovery does not prove that BlueZ released our session.
+static void retry_stop(struct vela_bt_daemon *d)
+{
+    if (!d->search.stop_retry_timer
+        && sd_event_add_time_relative(d->event, &d->search.stop_retry_timer, CLOCK_MONOTONIC, STOP_RETRY_US, 0,
+               on_stop_retry, d) < 0) {
+        vela_bt_log("discovery retry timer: failed");
+    }
+}
+
+static void stop_running(struct vela_bt_daemon *d);
+
 static int on_stopped(sd_bus_message *reply, void *data, sd_bus_error *error)
 {
     struct vela_bt_daemon *d = data;
@@ -79,13 +100,30 @@ static int on_stopped(sd_bus_message *reply, void *data, sd_bus_error *error)
     s->call = sd_bus_slot_unref(s->call);
     if (sd_bus_message_is_method_error(reply, NULL)) {
         vela_bt_log("StopDiscovery: %s", sd_bus_message_get_error(reply)->message);
+        retry_stop(d);
+        return 0;
     }
     s->running = false;
     s->saw_discovering = false;
     free(s->adapter);
     s->adapter = NULL;
+    s->filtered = false;
     vela_bt_search_update(d);
     return 0;
+}
+
+static void stop_running(struct vela_bt_daemon *d)
+{
+    struct vela_bt_search *s = &d->search;
+    if (s->stop_retry_timer) {
+        return;
+    }
+    int r = vela_bt_call(d, &s->call, s->adapter, ADAPTER1, "StopDiscovery", VELA_BT_STEP_TIMEOUT_US,
+        on_stopped, d, NULL);
+    if (r < 0) {
+        vela_bt_log("StopDiscovery call: %s", strerror(-r));
+        retry_stop(d);
+    }
 }
 
 static int on_started(sd_bus_message *reply, void *data, sd_bus_error *error)
@@ -111,11 +149,23 @@ static int on_filter_set(sd_bus_message *reply, void *data, sd_bus_error *error)
     s->call = sd_bus_slot_unref(s->call);
     if (sd_bus_message_is_method_error(reply, NULL)) {
         vela_bt_log("SetDiscoveryFilter: %s", sd_bus_message_get_error(reply)->message);
-        discovery_lost(d);
+        if (s->running) {
+            // Changing a filter failed; the discovery is still ours.
+            s->filtered = !s->filtered;
+            retry_stop(d);
+        } else {
+            discovery_lost(d);
+        }
         return 0;
     }
     if (s->running) {
         // A filter changed while discovering: BlueZ applies it at once.
+        vela_bt_search_update(d);
+        return 0;
+    }
+    const struct vela_bt_adapter *adapter = vela_bt_adapter_in_use(d);
+    if (!wanted(d) || !adapter || !s->adapter || strcmp(s->adapter, adapter->path) != 0) {
+        // A lease ended, pairing began or adapter changed during the call.
         vela_bt_search_update(d);
         return 0;
     }
@@ -153,6 +203,8 @@ static void discovery_lost(struct vela_bt_daemon *d)
     struct vela_bt_search *s = &d->search;
     s->running = false;
     s->saw_discovering = false;
+    s->filtered = false;
+    s->stop_retry_timer = sd_event_source_disable_unref(s->stop_retry_timer);
     free(s->adapter);
     s->adapter = NULL;
     if (s->count == 0) {
@@ -197,6 +249,15 @@ void vela_bt_search_update(struct vela_bt_daemon *d)
     if (wanted(d)) {
         const struct vela_bt_adapter *adapter = vela_bt_adapter_in_use(d);
         bool filter = any_discoverable(d) && !s->others;
+        if (s->running && s->adapter && strcmp(s->adapter, adapter->path) != 0) {
+            stop_running(d); // finish on the old adapter first
+            return;
+        }
+        if (s->running && s->filtered && !filter) {
+            // BlueZ may retain visibility when merely changing the filter.
+            stop_running(d); // restart without a discoverable filter
+            return;
+        }
         if (!s->running) {
             free(s->adapter);
             s->adapter = strdup(adapter->path);
@@ -206,12 +267,7 @@ void vela_bt_search_update(struct vela_bt_daemon *d)
             r = set_filter(d, true);
         }
     } else if (s->running) {
-        r = vela_bt_call(d, &s->call, s->adapter, ADAPTER1, "StopDiscovery", VELA_BT_STEP_TIMEOUT_US, on_stopped, d, NULL);
-        if (r < 0) {
-            s->running = false;
-            free(s->adapter);
-            s->adapter = NULL;
-        }
+        stop_running(d);
         return;
     }
     if (r < 0) {
@@ -354,7 +410,8 @@ int vela_bt_search_start(struct vela_bt_daemon *d, sd_bus_message *call, bool di
     if (s->count == 0) {
         // Vela's search begins. What the adapter does now is someone
         // else's, unless Vela's last discovery is still stopping.
-        if (!s->running && !s->call) {
+        if ((!s->running && !s->call)
+            || (s->adapter && strcmp(s->adapter, adapter->path) != 0)) {
             s->others = adapter->discovering;
             s->discoverable_before = adapter->discoverable;
         }
@@ -420,10 +477,18 @@ int vela_bt_stop_being_visible(struct vela_bt_daemon *d, sd_bus_message *call, s
 
 // BlueZ ends a client's discovery when it leaves the bus, and Vela's when
 // BlueZ goes: nothing to stop, nothing left to check.
+void vela_bt_search_adapter_switching(struct vela_bt_daemon *d)
+{
+    // This visibility check belongs to the previously selected adapter.
+    d->search.visible_check = sd_event_source_disable_unref(d->search.visible_check);
+    set_still_visible(d, false);
+}
+
 void vela_bt_search_forget(struct vela_bt_daemon *d)
 {
     struct vela_bt_search *s = &d->search;
     s->call = sd_bus_slot_unref(s->call);
+    s->stop_retry_timer = sd_event_source_disable_unref(s->stop_retry_timer);
     s->running = false;
     s->saw_discovering = false;
     free(s->adapter);
@@ -448,5 +513,6 @@ void vela_bt_search_free(struct vela_bt_daemon *d)
     vela_bt_waiters_reply(&s->visible_waiters, &vela_bt_not_running, false);
     sd_event_source_disable_unref(s->visible_check);
     sd_event_source_disable_unref(s->restart_timer);
+    sd_event_source_disable_unref(s->stop_retry_timer);
     free(s->adapter);
 }

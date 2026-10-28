@@ -393,6 +393,7 @@ void vela_bt_choose_adapter(struct vela_bt_daemon *d)
     }
     // Leases end with the adapter they searched on (§6.6).
     vela_bt_search_end_all(d, "adapter-off");
+    vela_bt_search_adapter_switching(d);
     // The old adapter's devices leave the list, the new one's come in.
     for (size_t i = 0; i < d->device_count; ++i) {
         if (vela_bt_device_listed(d, d->devices[i])) {
