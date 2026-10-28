@@ -523,13 +523,18 @@ void vela_readback_cancel(struct vela_readback *readback)
         return;
     }
     struct vela_renderer *renderer = readback->renderer;
+    const size_t count = renderer->readback_count;
+    if (count == 0 || count > VELA_READBACK_MAX_JOBS) {
+        abort(); // the queue must contain this live request
+    }
     size_t index = 0;
-    while (index < renderer->readback_count && renderer->readbacks[index] != readback) ++index;
-    assert(index < renderer->readback_count);
-    for (size_t i = index + 1; i < renderer->readback_count; ++i) {
+    while (index < count && renderer->readbacks[index] != readback) ++index;
+    if (index == count) abort();
+    for (size_t i = index + 1; i < count; ++i) {
         renderer->readbacks[i - 1] = renderer->readbacks[i];
     }
-    renderer->readbacks[--renderer->readback_count] = NULL;
+    renderer->readbacks[count - 1] = NULL;
+    renderer->readback_count = count - 1;
     if (index < renderer->readback_next) --renderer->readback_next;
     if (renderer->readback_next >= renderer->readback_count) renderer->readback_next = 0;
     if (readback->done) ++renderer->readback_cancelled;
