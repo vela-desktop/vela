@@ -348,6 +348,8 @@ static int agent_release(sd_bus_message *call, void *data, sd_bus_error *error)
     vela_bt_log("agent released by BlueZ");
     if (!d->agent_call) {
         d->agent_registered = false;
+        d->agent_default = false;
+        vela_bt_agent_update(d);
     }
     return sd_bus_reply_method_return(call, NULL);
 }
@@ -523,13 +525,41 @@ static const sd_bus_vtable agent_vtable[] = {
 
 // ----------------------------------------------------- registration --
 
+// Do not spin on persistent BlueZ errors. Retry registration and default
+// ownership with bounded exponential backoff, never while in the background.
+static int on_agent_retry(sd_event_source *source, uint64_t usec, void *data)
+{
+    struct vela_bt_daemon *d = data;
+    d->agent_retry = sd_event_source_disable_unref(d->agent_retry);
+    vela_bt_agent_update(d);
+    return 0;
+}
+
+static void retry_agent(struct vela_bt_daemon *d)
+{
+    if (!d->session_active || !d->bluez || d->agent_retry) {
+        return;
+    }
+    uint64_t delay = d->agent_backoff_us ? d->agent_backoff_us : 1000000ULL;
+    d->agent_backoff_us = delay < 15000000ULL ? delay * 2 : 30000000ULL;
+    int r = sd_event_add_time_relative(d->event, &d->agent_retry, CLOCK_MONOTONIC,
+        delay, 0, on_agent_retry, d);
+    if (r < 0) {
+        vela_bt_log("agent retry timer: %s", strerror(-r));
+    }
+}
+
 static int on_default(sd_bus_message *reply, void *data, sd_bus_error *error)
 {
     struct vela_bt_daemon *d = data;
     d->agent_call = sd_bus_slot_unref(d->agent_call);
     if (sd_bus_message_is_method_error(reply, NULL)) {
+        d->agent_default = false;
         vela_bt_log("RequestDefaultAgent: %s", sd_bus_message_get_error(reply)->message);
+        retry_agent(d);
     } else {
+        d->agent_default = true;
+        d->agent_backoff_us = 0;
         vela_bt_log("agent registered, and the default one");
     }
     vela_bt_agent_update(d);
@@ -540,21 +570,15 @@ static int on_registered(sd_bus_message *reply, void *data, sd_bus_error *error)
 {
     struct vela_bt_daemon *d = data;
     d->agent_call = sd_bus_slot_unref(d->agent_call);
-    if (sd_bus_message_is_method_error(reply, "org.bluez.Error.AlreadyExists")) {
-        // Still registered from before.
-    } else if (sd_bus_message_is_method_error(reply, NULL)) {
-        // Tried again when BlueZ comes back, or the session is active again.
+    if (!sd_bus_message_is_method_error(reply, "org.bluez.Error.AlreadyExists")
+        && sd_bus_message_is_method_error(reply, NULL)) {
         vela_bt_log("RegisterAgent: %s", sd_bus_message_get_error(reply)->message);
+        retry_agent(d);
         return 0;
     }
     d->agent_registered = true;
-    // In the background meanwhile: never the default, unregistered at once.
-    if (!d->session_active
-        || vela_bt_call(d, &d->agent_call, "/org/bluez", AGENT_MANAGER, "RequestDefaultAgent",
-               VELA_BT_STEP_TIMEOUT_US, on_default, d, "o", AGENT_PATH)
-            < 0) {
-        vela_bt_agent_update(d);
-    }
+    d->agent_default = false;
+    vela_bt_agent_update(d);
     return 0;
 }
 
@@ -571,25 +595,44 @@ static int on_unregistered(sd_bus_message *reply, void *data, sd_bus_error *erro
 
 void vela_bt_agent_update(struct vela_bt_daemon *d)
 {
+    if (!d->bluez || !d->session_active) {
+        d->agent_retry = sd_event_source_disable_unref(d->agent_retry);
+        d->agent_backoff_us = 0;
+    }
     if (!d->bluez) {
-        // BlueZ forgot it.
         d->agent_call = sd_bus_slot_unref(d->agent_call);
         d->agent_registered = false;
+        d->agent_default = false;
         return;
     }
-    // Its reply looks again.
     if (d->agent_call) {
         return;
     }
-    if (d->session_active && !d->agent_registered) {
-        vela_bt_call(d, &d->agent_call, "/org/bluez", AGENT_MANAGER, "RegisterAgent", VELA_BT_STEP_TIMEOUT_US,
-            on_registered, d, "os", AGENT_PATH, "KeyboardDisplay");
-    } else if (!d->session_active && d->agent_registered) {
-        // The previous default agent, another desktop's, is default again.
-        d->agent_registered = false;
-        vela_bt_log("agent unregistered: the session is in the background");
-        vela_bt_call(d, &d->agent_call, "/org/bluez", AGENT_MANAGER, "UnregisterAgent", VELA_BT_STEP_TIMEOUT_US,
-            on_unregistered, d, "o", AGENT_PATH);
+    if (!d->session_active) {
+        if (d->agent_registered) {
+            d->agent_registered = false;
+            d->agent_default = false;
+            vela_bt_log("agent unregistered: the session is in the background");
+            if (vela_bt_call(d, &d->agent_call, "/org/bluez", AGENT_MANAGER, "UnregisterAgent",
+                    VELA_BT_STEP_TIMEOUT_US, on_unregistered, d, "o", AGENT_PATH) < 0) {
+                vela_bt_log("could not unregister Bluetooth agent");
+            }
+        }
+        return;
+    }
+    if (d->agent_retry) {
+        return;
+    }
+    if (!d->agent_registered) {
+        if (vela_bt_call(d, &d->agent_call, "/org/bluez", AGENT_MANAGER, "RegisterAgent",
+                VELA_BT_STEP_TIMEOUT_US, on_registered, d, "os", AGENT_PATH, "KeyboardDisplay") < 0) {
+            retry_agent(d);
+        }
+    } else if (!d->agent_default) {
+        if (vela_bt_call(d, &d->agent_call, "/org/bluez", AGENT_MANAGER, "RequestDefaultAgent",
+                VELA_BT_STEP_TIMEOUT_US, on_default, d, "o", AGENT_PATH) < 0) {
+            retry_agent(d);
+        }
     }
 }
 
@@ -604,5 +647,6 @@ void vela_bt_agent_free(struct vela_bt_daemon *d)
         free(finish(d, "bluetooth-gone"));
     }
     d->agent_call = sd_bus_slot_unref(d->agent_call);
+    d->agent_retry = sd_event_source_disable_unref(d->agent_retry);
     d->listeners = sd_bus_track_unref(d->listeners);
 }
