@@ -303,6 +303,10 @@ int vela_bt_operation_start(struct vela_bt_daemon *d, sd_bus_message *call, stru
     operation->daemon = d;
     operation->device = device;
     operation->kind = kind;
+    if (kind == VELA_BT_CONNECT || kind == VELA_BT_ADD) {
+        // An explicit new request supersedes the previous cancellation.
+        device->cancelled_connect_until = 0;
+    }
     vela_bt_waiters_add(&operation->waiters, call);
     device->operation = operation;
     device->failure = NULL;
@@ -357,6 +361,9 @@ void vela_bt_operation_cancel(
             vela_bt_call(d, NULL, device->path, DEVICE1, "CancelPairing", VELA_BT_STEP_TIMEOUT_US, NULL, NULL, NULL);
         }
     } else if (operation->step == VELA_BT_STEP_CONNECT) {
+        // BlueZ may still complete Connect after this immediate Disconnect.
+        // Its later Connected=true notification must be undone as well.
+        device->cancelled_connect_until = vela_bt_now() + VELA_BT_STEP_TIMEOUT_US;
         vela_bt_call(d, NULL, device->path, DEVICE1, "Disconnect", VELA_BT_STEP_TIMEOUT_US, NULL, NULL, NULL);
     } else if (operation->step != VELA_BT_STEP_TRUST) {
         return;
@@ -379,6 +386,16 @@ void vela_bt_operations_device_gone(struct vela_bt_daemon *d, struct vela_bt_dev
 
 void vela_bt_operations_device_changed(struct vela_bt_daemon *d, struct vela_bt_device *device)
 {
+    // A cancelled Connect can still finish on the BlueZ side. Compensate
+    // after its late Connected signal; do not disconnect a later user request.
+    if (device->cancelled_connect_until && device->connected) {
+        const bool recent = vela_bt_now() < device->cancelled_connect_until;
+        device->cancelled_connect_until = 0;
+        if (recent) {
+            vela_bt_call(d, NULL, device->path, DEVICE1, "Disconnect",
+                VELA_BT_STEP_TIMEOUT_US, NULL, NULL, NULL);
+        }
+    }
     // Paired: a passkey or PIN shown for typing isn't needed any more.
     struct vela_bt_question *question = vela_bt_question_on(d, device->path);
     if (question && device->paired && (question->kind == VELA_BT_SHOW_PASSKEY || question->kind == VELA_BT_SHOW_PIN)) {
