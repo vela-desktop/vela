@@ -283,10 +283,12 @@ class Session:
 
     # -------------------------------------------------------- windows --
 
-    def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False):
+    def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False,
+                    env=None):
         """Opens a window (vela-pattern, or `command`); returns its identifier.
 
-        decorated: with Vela's title bar (xdg-decoration)."""
+        decorated: with Vela's title bar (xdg-decoration).
+        env: optional environment for protocol-specific clients (e.g. Xwayland DISPLAY)."""
         before = {w["id"] for w in self.state().windows}
         pattern = ([tool("vela-pattern")] + (["--app-id", app_id] if app_id else [])
                    + (["--decorated"] if decorated else []) + [str(width), str(height)])
@@ -294,7 +296,7 @@ class Session:
         # first Wayland surface is mapped, and DEVNULL hides the actual cause.
         client_log_path = os.path.join(self.directory, f"client-{len(self.clients) + 1}.log")
         with open(client_log_path, "w") as client_log:
-            client = subprocess.Popen(command or pattern, env=self.client_env,
+            client = subprocess.Popen(command or pattern, env=self.client_env if env is None else env,
                                       stdout=client_log, stderr=subprocess.STDOUT)
         self.clients.append(client)
 
