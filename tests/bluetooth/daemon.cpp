@@ -494,6 +494,9 @@ private slots:
         QTRY_COMPARE(devices().size(), 3);
         QTRY_VERIFY(property(QStringLiteral("Active")).toBool());
         QTRY_VERIFY(velaIsTheDefaultAgent());
+        // The daemon test acts as the future B4 shell presenter. A normal
+        // Settings client does not opt in, so spontaneous pairing is refused.
+        QCOMPARE(errorOf(call(QStringLiteral("PresentQuestions"))), QString());
     }
 
     void cleanup()
