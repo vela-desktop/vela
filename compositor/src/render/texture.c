@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/util/log.h>
@@ -332,6 +333,50 @@ static bool update_from_buffer(struct wlr_texture *wlr, struct wlr_buffer *buffe
     return ok;
 }
 
+// Opt-in diagnostic only; never run during the mandatory GPU performance gate.
+static uint64_t diag_now_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+// Deliberately perturbs diagnostic captures to compare anonymous RAM and
+// mapped Vulkan staging reads. The normal read_pixels path stays unchanged.
+static void diag_readback_memory(const uint8_t *mapped, size_t bytes)
+{
+    if (bytes == 0 || bytes > 64 * 1024 * 1024) {
+        return;
+    }
+    uint8_t *ram = malloc(bytes), *scratch = malloc(bytes);
+    if (!ram || !scratch) {
+        free(ram);
+        free(scratch);
+        return;
+    }
+    memset(ram, 0x5a, bytes);
+    memset(scratch, 0, bytes);
+    uint64_t first = diag_now_ns();
+    memcpy(scratch, ram, bytes);
+    uint64_t middle = diag_now_ns();
+    unsigned ram_checksum = 0;
+    for (size_t i = 0; i < bytes; i += 4096) {
+        ram_checksum += scratch[i];
+    }
+    uint64_t next = diag_now_ns();
+    memcpy(scratch, mapped, bytes);
+    uint64_t last = diag_now_ns();
+    unsigned mapped_checksum = 0;
+    for (size_t i = 0; i < bytes; i += 4096) {
+        mapped_checksum += scratch[i];
+    }
+    wlr_log(WLR_INFO, "VELA_READBACK_DIAG probe bytes=%zu ram_copy_ms=%.3f mapped_copy_ms=%.3f checksums=%u:%u",
+        bytes, (double)(middle - first) / 1e6, (double)(last - next) / 1e6,
+        ram_checksum, mapped_checksum);
+    free(scratch);
+    free(ram);
+}
+
 // ------------------------------------------------------- pixel readback --
 
 // For captures (screencopy, previews): copies a zone of the texture to the
@@ -445,7 +490,13 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
         ioctl(texture->dmabuf_fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &request);
         close(release_fd);
     }
+    static unsigned diag_samples;
+    const char *diag_env = getenv("VELA_READBACK_DIAG");
+    bool diag = diag_env && strcmp(diag_env, "1") == 0 && diag_samples < 12;
+    unsigned sample = diag ? ++diag_samples : 0;
+    uint64_t wait_start = diag ? diag_now_ns() : 0;
     vela_renderer_wait(renderer, point);
+    uint64_t copy_start = diag ? diag_now_ns() : 0;
 
     uint8_t *dst = wlr_texture_read_pixel_options_get_data(options);
     for (int y = 0; y < box.height; ++y) {
@@ -455,6 +506,16 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
             for (size_t x = 3; x < row_bytes; x += 4) {
                 row[x] = 0xff;
             }
+        }
+    }
+    if (diag) {
+        uint64_t copy_end = diag_now_ns();
+        size_t bytes = row_bytes * (size_t)box.height;
+        wlr_log(WLR_INFO, "VELA_READBACK_DIAG capture sample=%u bytes=%zu wait_ms=%.3f copy_ms=%.3f",
+            sample, bytes, (double)(copy_start - wait_start) / 1e6,
+            (double)(copy_end - copy_start) / 1e6);
+        if (sample <= 4) {
+            diag_readback_memory(staging.data, bytes);
         }
     }
     return true;

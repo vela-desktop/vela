@@ -55,6 +55,10 @@ class Captures(unittest.TestCase):
             if capture_error is not None:
                 raise capture_error
             missed = vela.state().output["missed"] - before
+            if os.environ.get("VELA_READBACK_DIAG") == "1":
+                for line in vela.log_text().splitlines():
+                    if "VELA_READBACK_DIAG" in line:
+                        print(line, flush=True)
             # Uncached readback can be slow, so verify repeated successful
             # captures there without imposing the cached path's rate/latency bound.
             uncached = "Vulkan readback staging: uncached fallback" in vela.log_text()

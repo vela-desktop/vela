@@ -178,3 +178,26 @@ path is slow, investigate a correct transfer mechanism, but do not
 special-case NVIDIA without proof. Independently audit the wlroots
 capture lifecycle for a safe asynchronous completion boundary. No
 new refresh cap or relaxed assertion is acceptable.
+
+## 9. First diagnostic probe: opt-in on both GPU runners
+
+On branch `fix/async-capture-readback`, each manually dispatched hardware
+workflow runs an additional **non-gating** `functional-capture` invocation
+with `VELA_READBACK_DIAG=1` before its normal full 20-test suite.
+It logs the actual staging allocation type and heap, GPU timeline wait wall
+time, serial CPU readback time, and limited exploratory matched-size copies
+from anonymous RAM versus mapped Vulkan staging. The probe uses at most
+twelve capture samples and four extra RAM/staging samples per process.
+These extra copies intentionally perturb diagnostic frame timing.
+
+The ordinary mandatory GPU suite runs with diagnostics disabled and its
+original missed-vblank assertion unchanged. Artifacts contain
+`vela-amd-readback-diag.log` / `vela-nvidia-readback-diag.log`.
+
+**Interpretation limitations:** anonymous RAM and Vulkan staging can differ
+in placement, cache warmth, NUMA affinity, and write-combining behavior.
+Copying warmed staging a second time is not a standalone bandwidth or PCIe
+benchmark. The result is a first isolation step, not evidence of driver fault
+or permission to add vendor-specific workarounds.
+
+No asynchronous protocol completion is implemented by this probe.

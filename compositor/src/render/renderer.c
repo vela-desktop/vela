@@ -639,6 +639,14 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
     if (readback) {
         VkPhysicalDeviceMemoryProperties props;
         vkGetPhysicalDeviceMemoryProperties(r->vk->physical, &props);
+        const char *diag_env = getenv("VELA_READBACK_DIAG");
+        if (diag_env && strcmp(diag_env, "1") == 0) {
+            uint32_t heap = props.memoryTypes[type].heapIndex;
+            wlr_log(WLR_INFO, "VELA_READBACK_DIAG staging type=%u flags=0x%x heap=%u heap_flags=0x%x "
+                "heap_size=%" PRIu64 " allocation_bytes=%" PRIu64,
+                type, props.memoryTypes[type].propertyFlags, heap, props.memoryHeaps[heap].flags,
+                (uint64_t)props.memoryHeaps[heap].size, (uint64_t)requirements.size);
+        }
         if (!(props.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
             wlr_log(WLR_INFO, "Vulkan readback staging: uncached fallback (capture performance may be reduced)");
         }
