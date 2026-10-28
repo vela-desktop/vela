@@ -19,6 +19,8 @@ struct vela_server;
 struct vela_view;
 
 void vela_focus_view(struct vela_server *server, struct vela_view *view);
+// Reconcile each monitor's foreground fullscreen with windows and shell panels.
+void vela_fullscreen_restack(struct vela_server *server);
 // A window that appears or asks to come forward on its own (not by a click):
 // if a system dialog is waiting, it stays below it and doesn't take its
 // keyboard.
