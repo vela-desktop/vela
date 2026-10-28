@@ -90,6 +90,11 @@ public:
     // The default-agent stack, as "owner path": the last is the default.
     QStringList defaults;
     QString bus;
+    int managedErrors = 0;
+    int managedMalformed = 0;
+    int registerErrors = 0;
+    int defaultErrors = 0;
+    bool removeDoesNotExist = false;
 
     QString defaultAgent() const { return defaults.isEmpty() ? QString() : defaults.last(); }
 
@@ -115,6 +120,15 @@ public:
         const QString interface = message.interface();
         const QString member = message.member();
         if (interface == QLatin1String("org.freedesktop.DBus.ObjectManager") && member == QLatin1String("GetManagedObjects")) {
+            calls << QStringLiteral("GetManagedObjects");
+            if (managedErrors-- > 0) {
+                send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("snapshot temporarily failed")));
+                return true;
+            }
+            if (managedMalformed-- > 0) {
+                send(message.createReply(QStringLiteral("not an object tree")));
+                return true;
+            }
             FakeObjects objects;
             for (auto it = adapters.cbegin(); it != adapters.cend(); ++it) {
                 objects[QDBusObjectPath(adapterPath(it.key()))] = adapterInterfaces(it.key());
@@ -134,7 +148,7 @@ public:
         if (interface == QLatin1String("org.bluez.Adapter1") && member == QLatin1String("RemoveDevice")) {
             const QString device = message.arguments().value(0).value<QDBusObjectPath>().path();
             calls << QStringLiteral("RemoveDevice ") + device;
-            if (!devices.contains(device)) {
+            if (!devices.contains(device) || removeDoesNotExist) {
                 send(message.createErrorReply(QStringLiteral("org.bluez.Error.DoesNotExist"), QStringLiteral("Does Not Exist")));
                 return true;
             }
@@ -432,6 +446,10 @@ private:
         const QString member = message.member();
         const QString agent = message.service() + u' ' + message.arguments().value(0).value<QDBusObjectPath>().path();
         if (member == QLatin1String("RegisterAgent")) {
+            if (registerErrors-- > 0) {
+                send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("retry registration")));
+                return true;
+            }
             const QString capability = message.arguments().value(1).toString();
             calls << QStringLiteral("RegisterAgent ") + capability;
             if (agents.contains(agent)) {
@@ -460,6 +478,10 @@ private:
                 message.service(), agent.section(u' ', 1), QStringLiteral("org.bluez.Agent1"), QStringLiteral("Release")));
         } else if (member == QLatin1String("RequestDefaultAgent")) {
             calls << QStringLiteral("RequestDefaultAgent");
+            if (defaultErrors-- > 0) {
+                send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("retry default")));
+                return true;
+            }
             if (!agents.contains(agent)) {
                 send(message.createErrorReply(QStringLiteral("org.bluez.Error.DoesNotExist"), QStringLiteral("Does Not Exist")));
                 return true;
@@ -670,6 +692,8 @@ public:
     static constexpr const char* sessionPath = "/org/freedesktop/login1/session/fake";
     bool active = true;
     bool locked = false;
+    int getAllErrors = 0;
+    int getAllMalformed = 0;
     QString bus;
 
     QDBusConnection connection() const { return QDBusConnection(bus); }
@@ -710,6 +734,15 @@ public:
         const QVariantMap properties { { QStringLiteral("Id"), QStringLiteral("fake") }, { QStringLiteral("Active"), active },
             { QStringLiteral("LockedHint"), locked } };
         if (message.member() == QLatin1String("GetAll")) {
+            if (getAllErrors-- > 0) {
+                connection().send(message.createErrorReply(QStringLiteral("org.freedesktop.DBus.Error.Failed"),
+                    QStringLiteral("temporary failure")));
+                return true;
+            }
+            if (getAllMalformed-- > 0) {
+                connection().send(message.createReply(QStringLiteral("malformed")));
+                return true;
+            }
             connection().send(message.createReply(QVariant::fromValue(properties)));
             return true;
         }
