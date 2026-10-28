@@ -479,6 +479,13 @@ private slots:
             fake->comeBack();
             logind->active = true;
             logind->locked = false;
+            logind->getAllErrors = 0;
+            logind->getAllMalformed = 0;
+            fake->managedErrors = 0;
+            fake->managedMalformed = 0;
+            fake->registerErrors = 0;
+            fake->defaultErrors = 0;
+            fake->removeDoesNotExist = false;
         });
         resetFake();
         for (const QString& dir : { QStringLiteral("class/bluetooth/hci0/rfkill3"), QStringLiteral("class/bluetooth/hci1/rfkill7"),
@@ -577,6 +584,86 @@ private slots:
         fake->run([this] { QVERIFY(fake->comeBack()); });
         QTRY_VERIFY(property(QStringLiteral("Available")).toBool());
         QTRY_COMPARE(devices().size(), 3);
+    }
+
+    void failedBluezSnapshotIsRetried()
+    {
+        fake->run([this] {
+            fake->managedErrors = 1;
+            QVERIFY(fake->leave());
+            QVERIFY(fake->comeBack());
+        });
+        QTRY_COMPARE(devices().size(), 3);
+        QTRY_VERIFY(fakeCalls().count(QStringLiteral("GetManagedObjects")) >= 2);
+    }
+
+    void malformedBluezSnapshotIsRetried()
+    {
+        fake->run([this] {
+            fake->managedMalformed = 1;
+            QVERIFY(fake->leave());
+            QVERIFY(fake->comeBack());
+        });
+        QTRY_COMPARE(devices().size(), 3);
+    }
+
+    void failedAgentRegistrationIsRetried()
+    {
+        fake->run([this] {
+            fake->registerErrors = 1;
+            QVERIFY(fake->leave());
+            QVERIFY(fake->comeBack());
+        });
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+    }
+
+    void failedDefaultAgentRequestIsRetried()
+    {
+        setSession(false, false);
+        QTRY_VERIFY(defaultAgent().isEmpty());
+        fake->run([this] { fake->defaultErrors = 1; });
+        setSession(true, false);
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+    }
+
+    void logindReadFailureKeepsSessionInactiveUntilRecovered()
+    {
+        QCOMPARE(stopDaemon(), 0);
+        fake->run([this] { logind->getAllErrors = 1; });
+        QVERIFY(startDaemon());
+        QTRY_VERIFY(!property(QStringLiteral("Active")).toBool());
+        QTRY_VERIFY(property(QStringLiteral("Active")).toBool());
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+        QCOMPARE(errorOf(call(QStringLiteral("PresentQuestions"))), QString());
+    }
+
+    void invalidLogindReplyKeepsSessionInactiveUntilRecovered()
+    {
+        QCOMPARE(stopDaemon(), 0);
+        fake->run([this] { logind->getAllMalformed = 1; });
+        QVERIFY(startDaemon());
+        QTRY_VERIFY(!property(QStringLiteral("Active")).toBool());
+        QTRY_VERIFY(property(QStringLiteral("Active")).toBool());
+        QCOMPARE(errorOf(call(QStringLiteral("PresentQuestions"))), QString());
+    }
+
+    void unsolicitedRequestsWithoutPresenterAreRejected()
+    {
+        QCOMPARE(stopDaemon(), 0);
+        QVERIFY(startDaemon()); // No PresentQuestions after this restart.
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 123u });
+        QTRY_VERIFY(agentLog().contains(QStringLiteral("RequestConfirmation ") + mouse
+            + QStringLiteral(" -> org.bluez.Error.Rejected")));
+        QVERIFY(openQuestions().isEmpty());
+        QCOMPARE(asked.size(), 0);
+    }
+
+    void alreadyAbsentDeviceCompletesRemovalImmediately()
+    {
+        fake->run([this] { fake->removeDoesNotExist = true; });
+        QCOMPARE(errorOf(start(QStringLiteral("Remove"), { object(headset) })), QString());
+        QTRY_VERIFY(!devices().contains(headset));
     }
 
     void secondInstanceExits()
