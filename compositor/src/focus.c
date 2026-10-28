@@ -6,6 +6,7 @@
 #include "input.h"
 #include "interact.h"
 #include "layer.h"
+#include "output.h"
 #include "scene/scene.h"
 #include "server.h"
 #include "snap.h"
@@ -16,6 +17,74 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/util/box.h>
+
+// Fullscreen is a client/geometry state, not a permanent global Z-order.
+// The most recently activated window *intersecting each output* determines
+// whether fullscreen owns that output. A window focused on monitor B must not
+// unexpectedly expose the taskbar over a game on monitor A.
+static bool view_overlaps_output(struct vela_view *view, struct vela_output *output)
+{
+    struct wlr_box area = vela_output_box(output);
+    struct wlr_box frame = vela_view_frame_box(view);
+    struct wlr_box overlap;
+    return wlr_box_intersection(&overlap, &area, &frame);
+}
+
+void vela_fullscreen_restack(struct vela_server *server)
+{
+    if (server->locked) {
+        return;
+    }
+    struct vela_output *output;
+    wl_list_for_each (output, &server->outputs, link) {
+        struct vela_view *front = NULL;
+        struct vela_view *view;
+        wl_list_for_each (view, &server->views, link) {
+            if (view->mapped && !view->minimized && vela_view_on_current_workspace(view)
+                && !vela_view_stays_below(view) && view_overlaps_output(view, output)) {
+                front = view;
+                break;
+            }
+        }
+
+        // Start, Run, Quick Settings, etc. are TOP keyboard-interactive
+        // surfaces. While one is mapped on this output, the passive TOP
+        // taskbar should become visible as well.
+        struct vela_layer_surface *panel = server->focused_layer;
+        bool shell_above = panel && panel->wlr->surface->mapped
+            && vela_layer_surface_output(panel) == output
+            && (panel->wlr->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP
+                || panel->wlr->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+
+        wl_list_for_each (view, &server->views, link) {
+            if (!view->mapped || !view->fullscreen || vela_view_output(view) != output) {
+                continue;
+            }
+            // Wine's BELOW fullscreen backdrops must never be promoted.
+            bool foreground = !shell_above && !vela_view_stays_below(view)
+                && (front == view || (front && vela_view_is_transient_of(front, view)));
+            struct vela_tree *target = foreground ? server->layers.fullscreen : server->layers.windows;
+            if (view->tree->node.parent != target) {
+                vela_node_reparent(&view->tree->node, target);
+            }
+            if (vela_view_stays_below(view)) {
+                vela_view_keep_below(view);
+            }
+        }
+
+        // A dialog of a fullscreen app belongs to its parent's visual layer,
+        // not necessarily the parent's *protocol* fullscreen state.
+        vela_views_sync_transient_layers(server);
+        if (front && front->tree->node.parent == server->layers.windows) {
+            vela_node_raise_to_top(&front->tree->node);
+            vela_views_raise_transients(front);
+        } else if (front && front->tree->node.parent == server->layers.fullscreen) {
+            vela_node_raise_to_top(&front->tree->node);
+            vela_views_raise_transients(front);
+        }
+    }
+}
 
 void vela_focus_view(struct vela_server *server, struct vela_view *view)
 {
@@ -37,6 +106,7 @@ void vela_focus_view(struct vela_server *server, struct vela_view *view)
     vela_views_raise_transients(view);
     wl_list_remove(&view->link);
     wl_list_insert(&server->views, &view->link);
+    vela_fullscreen_restack(server);
     if (!vela_view_is_system_prompt(view)) {
         struct vela_view *prompt = vela_views_system_prompt(server);
         if (prompt) {
@@ -108,6 +178,7 @@ void vela_focus_layer(struct vela_server *server, struct vela_layer_surface *lay
         server->previous_layer = server->focused_layer;
     }
     server->focused_layer = layer;
+    vela_fullscreen_restack(server);
     vela_input_keyboard_enter(server->input, layer->wlr->surface);
 }
 
@@ -151,6 +222,7 @@ void vela_focus_refocus(struct vela_server *server)
             return;
         }
     }
+    vela_fullscreen_restack(server);
     // No window on this desktop: the keyboard goes to nobody.
     struct vela_view *focused = vela_views_focused(server);
     if (focused) {
@@ -173,6 +245,7 @@ void vela_focus_forget_view(struct vela_server *server, struct vela_view *view, 
     if (was_focused && !server->focused_layer) {
         vela_focus_refocus(server);
     }
+    vela_fullscreen_restack(server);
 }
 
 void vela_focus_layer_unmapped(struct vela_server *server, struct vela_layer_surface *layer)
