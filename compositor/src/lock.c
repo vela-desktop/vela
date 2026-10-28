@@ -17,6 +17,7 @@
 #include "scene/scene.h"
 #include "scene/surface.h"
 #include "server.h"
+#include "bluetooth.h"
 #include "path_security.h"
 #include "util.h"
 #include "view.h"
@@ -255,6 +256,7 @@ static void handle_unlock(struct wl_listener *listener, void *data)
     }
     // Really unlocked: the desktop is back as it was.
     server->locked = false;
+    vela_bluetooth_report_lock(server, false);
     if (server->runtime_dir_fd >= 0
         && !vela_lock_marker_remove_at(server->runtime_dir_fd, server->socket_name)) {
         wlr_log(WLR_ERROR, "Could not remove secure screen-lock marker");
@@ -666,6 +668,7 @@ void vela_lock_engage(struct vela_lock *lock)
         return;
     }
     server->locked = true;
+    vela_bluetooth_report_lock(server, true);
     // Cancel the active DnD grab before hiding the desktop. Ending the
     // matching wlroots grab invokes its cancellation path (not its drop path).
     // The drag may be destroyed by that callback: don't access it afterwards.
