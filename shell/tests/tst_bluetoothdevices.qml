@@ -74,8 +74,9 @@ Item {
 
         function test_names_are_plain_text() {
             Bluetooth.devices = [Bluetooth.device(2, { name: "<b>Phone</b>", paired: true })]
+            tryVerify(() => row("<b>Phone</b>") !== null)
             const label = findChild(row("<b>Phone</b>"), "deviceName")
-            tryVerify(() => label !== null)
+            verify(label !== null)
             compare(label.text, "<b>Phone</b>")
             compare(label.textFormat, Text.PlainText)
         }

@@ -144,6 +144,7 @@ Dialog {
                             width: parent.width - x
                             anchors.verticalCenter: parent.verticalCenter
                             Text {
+                                objectName: "candidateName"
                                 width: parent.width
                                 text: candidate.modelData.name
                                 textFormat: Text.PlainText

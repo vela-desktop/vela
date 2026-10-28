@@ -57,11 +57,10 @@ Item {
         // While one pairs, the others wait (§6.5).
         function test_device_names_are_plain_text() {
             Bluetooth.devices = [Bluetooth.device(1, { name: "<b>Phone</b>", rssi: -50 })]
-            const item = find("device:<b>Phone</b>")
-            tryVerify(() => item !== null)
-            const column = item.contentItem.children.find(c => c.children && c.children.some(x => x.text === "<b>Phone</b>"))
-            verify(column !== undefined)
-            const label = column.children.find(x => x.text === "<b>Phone</b>")
+            tryVerify(() => find("device:<b>Phone</b>") !== null)
+            const label = findChild(find("device:<b>Phone</b>"), "candidateName")
+            verify(label !== null)
+            compare(label.text, "<b>Phone</b>")
             compare(label.textFormat, Text.PlainText)
         }
 
