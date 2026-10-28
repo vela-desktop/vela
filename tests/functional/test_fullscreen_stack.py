@@ -48,6 +48,28 @@ class FullscreenStack(unittest.TestCase):
             vela.wait_for(lambda s: s["focused"] == fullscreen, what="Alt+Tab to game")
             self.assertEqual(vela.pixels().at(x, y), game_pixel)
 
+    def test_background_windows_stay_visible_when_game_loses_foreground(self):
+        with Session(size="1280x720@60") as vela:
+            first = vela.open_window(220, 180, decorated=True)
+            w = vela.state().window(first)
+            vela.input("move", w["x"] + 40, w["y"] + 35,
+                       "keydown", "super", "down", "move", 190, 160,
+                       "sleep", "100", "up", "keyup", "super")
+            vela.wait_still(first)
+            second = vela.open_window(220, 180)
+            first_point = center(vela.state().window(first))
+            second_point = center(vela.state().window(second))
+            self.assertNotEqual(first_point, second_point)
+            fullscreen = game(vela)
+            baseline = vela.pixels()
+            vela.keys("alt+Tab")
+            state = vela.wait_for(lambda s: s["focused"] == second, what="second app focused")
+            self.assertTrue(state.window(fullscreen)["fullscreen"])
+            # A foreground app must not be the only one visible: other
+            # already-open, nonoverlapping windows also sit above the game.
+            self.assertNotEqual(vela.pixels().at(*first_point), baseline.at(*first_point))
+            self.assertNotEqual(vela.pixels().at(*second_point), baseline.at(*second_point))
+
     def test_start_panel_exposes_taskbar_then_returns_to_game(self):
         with Session(size="1280x720@60") as vela:
             taskbar = subprocess.Popen([tool("vela-panel"), "taskbar"], env=vela.client_env)
