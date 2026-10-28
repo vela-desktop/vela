@@ -534,14 +534,26 @@ void vela_view_app_id_changed(struct vela_view *view)
 
 // Keep a transient above its fullscreen ancestor, but do not globally
 // elevate unrelated windows above fullscreen content.
-static bool transient_has_fullscreen_ancestor(struct vela_view *view)
+bool vela_view_is_transient_of(struct vela_view *view, struct vela_view *ancestor)
+{
+    struct vela_view *parent = view_parent(view);
+    for (int depth = 0; parent && depth < 64; ++depth) {
+        if (parent == ancestor) {
+            return true;
+        }
+        parent = view_parent(parent);
+    }
+    return false;
+}
+
+static bool transient_has_visible_fullscreen_ancestor(struct vela_view *view)
 {
     struct vela_view *parent = view_parent(view);
     for (int depth = 0; parent && depth < 64; ++depth) {
         if (!parent->mapped) {
             return false;
         }
-        if (parent->fullscreen) {
+        if (parent->fullscreen && parent->tree->node.parent == view->server->layers.fullscreen) {
             return true;
         }
         parent = view_parent(parent);
@@ -559,14 +571,14 @@ static void update_transient_layer(struct vela_view *view)
     if (!view_parent(view) && view->tree->node.parent != view->server->layers.fullscreen) {
         return;
     }
-    struct vela_tree *target = transient_has_fullscreen_ancestor(view)
+    struct vela_tree *target = transient_has_visible_fullscreen_ancestor(view)
         ? view->server->layers.fullscreen : view->server->layers.windows;
     if (view->tree->node.parent != target) {
         vela_node_reparent(&view->tree->node, target);
     }
 }
 
-static void update_transient_layers(struct vela_server *server)
+void vela_views_sync_transient_layers(struct vela_server *server)
 {
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
@@ -602,7 +614,7 @@ void vela_view_parent_changed(struct vela_view *view)
 {
     update_handle_parent(view);
     // Descendants of this view can also need to leave/enter fullscreen layer.
-    update_transient_layers(view->server);
+    vela_views_sync_transient_layers(view->server);
 }
 
 static void handle_taskbar_activate(struct wl_listener *listener, void *data)
@@ -970,8 +982,9 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         }
         vela_view_refresh_decoration(view); // fullscreen hides the bar
         if (view->mapped) {
-            update_transient_layers(view->server);
+            vela_views_sync_transient_layers(view->server);
             vela_views_raise_transients(view);
+            vela_fullscreen_restack(view->server);
         }
         return;
     }
@@ -992,8 +1005,9 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
     }
     vela_view_refresh_decoration(view);
     if (view->mapped) {
-        update_transient_layers(view->server);
+        vela_views_sync_transient_layers(view->server);
         vela_views_raise_transients(view);
+        vela_fullscreen_restack(view->server);
     }
 }
 
@@ -1209,7 +1223,7 @@ void vela_view_mapped(struct vela_view *view)
     vela_node_set_enabled(&view->tree->node, vela_view_on_current_workspace(view));
     // An already-mapped child may need to rejoin the fullscreen layer when
     // its parent maps again after a temporary unmap.
-    update_transient_layers(server);
+    vela_views_sync_transient_layers(server);
     create_handles(view);
     if (vela_view_stays_below(view)) {
         vela_view_keep_below(view); // no keyboard either: it is a backdrop
@@ -1248,7 +1262,7 @@ void vela_view_unmapped(struct vela_view *view)
     vela_window_capture_destroy(view->capture);
     view->capture = NULL;
     forget(view);
-    update_transient_layers(view->server);
+    vela_views_sync_transient_layers(view->server);
     vela_workspaces_announce(view->server);
 }
 
@@ -1273,7 +1287,7 @@ void vela_view_destroy(struct vela_view *view)
     view->capture = NULL;
     view->mapped = false;
     forget(view);
-    update_transient_layers(view->server);
+    vela_views_sync_transient_layers(view->server);
     struct wl_listener *all[VIEW_LISTENERS];
     listeners(view, all);
     for (int i = 0; i < VIEW_LISTENERS; ++i) {
