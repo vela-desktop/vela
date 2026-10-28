@@ -69,6 +69,7 @@ struct Screen {
     bool configured = false;
     QImage background; // wallpaper already scaled and darkened, for this size
     QImage backgroundBlurred;
+    uint32_t blurredScale120 = 0; // blur radius depends on output scale, not only pixel dimensions
 };
 
 enum class Mode { Clock, Login, Checking };
@@ -155,7 +156,13 @@ void draw(Screen& screen)
 
     if (screen.background.size() != QSize(w, h)) {
         screen.background = wallpaperFor(w, h);
-        screen.backgroundBlurred = vela::lock::blurWallpaper(screen.background);
+        screen.backgroundBlurred = {};
+    }
+    // A scale change can preserve the physical buffer size while changing
+    // logical dimensions. In that case the blur must still be regenerated.
+    if (screen.backgroundBlurred.isNull() || screen.blurredScale120 != screen.scale120) {
+        screen.backgroundBlurred = vela::lock::blurWallpaper(screen.background, screen.scale120);
+        screen.blurredScale120 = screen.scale120;
     }
     {
         QImage image(static_cast<uchar*>(data), w, h, stride, QImage::Format_RGB32);

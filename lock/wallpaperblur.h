@@ -6,6 +6,7 @@
 #include <QImage>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 namespace vela::lock {
@@ -77,13 +78,12 @@ inline QImage boxBlurPass(const QImage& source, int radius, bool horizontal)
 
 } // namespace detail
 
-// Build the password-screen wallpaper ONCE per source/physical output size;
-// draw() retains this result across login keystrokes and authentication states.
-// The previous implementation downsampled five times (1/32 in each dimension)
-// and then enlarged that tiny image. Here we filter at 1/4 resolution with
-// three separable box passes (Gaussian approximation, sigma ~= 26 output px),
-// retaining smooth defocus without the coarse thumbnail/upscaling appearance.
-inline QImage blurWallpaper(const QImage& image)
+// Produce the password-screen wallpaper; draw() caches it by physical size
+// AND output scale across login keystrokes and authentication states.
+// The old implementation rebuilt the image from a 1/32-sized thumbnail.
+// Three pairs of box passes at 1/4 size instead produce sigma ~= 26 *scale*
+// physical pixels, i.e. about 26 logical pixels on every output.
+inline QImage blurWallpaper(const QImage& image, uint32_t scale120 = 120)
 {
     if (image.isNull()) {
         return {};
@@ -99,7 +99,11 @@ inline QImage blurWallpaper(const QImage& image)
     }
     reduced = reduced.convertToFormat(QImage::Format_RGB32);
 
-    constexpr int radius = 6;
+    // Qt/Wayland physical pixels increase with output scale, while the
+    // login UI is specified in logical pixels. Keep the visual defocus
+    // consistent (the integer radius approximates a 26-logical-pixel sigma).
+    // Cap extreme/malformed scales to avoid pathological work and overflow.
+    const int radius = std::clamp(int(std::lround(6.0 * double(scale120) / 120.0)), 1, 64);
     for (int pass = 0; pass < 3; ++pass) {
         reduced = detail::boxBlurPass(reduced, radius, true);
         reduced = detail::boxBlurPass(reduced, radius, false);
