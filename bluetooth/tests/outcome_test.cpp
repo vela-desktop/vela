@@ -58,6 +58,12 @@ TEST(Outcome, ConnectionReasons)
     EXPECT_EQ(code(VELA_BT_STEP_CONNECT, "org.bluez.Error.NotAvailable"), "not-supported");
 }
 
+TEST(Outcome, ConnectionRefusedIsNotNoResponse)
+{
+    EXPECT_STREQ(vela_bt_failure_of(VELA_BT_STEP_CONNECT, "org.bluez.Error.Failed",
+        "br-connection-refused")->code, "failed");
+}
+
 TEST(Outcome, BusErrors)
 {
     EXPECT_EQ(code(VELA_BT_STEP_CONNECT, "org.freedesktop.DBus.Error.ServiceUnknown"), "not-running");
