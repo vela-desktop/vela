@@ -335,13 +335,20 @@ QDBusMessage Bluetooth::method(const QString& name, const QVariantList& argument
 void Bluetooth::call(const QString& name, const QVariantList& arguments, int timeout,
     const std::function<void(const QDBusMessage&)>& done, Refusal refusal)
 {
+    const quint64 generation = m_ownerGeneration;
     auto* watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(method(name, arguments), timeout), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, done, name, refusal] {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, done, name, refusal, generation] {
+        if (generation != m_ownerGeneration) {
+            watcher->deleteLater();
+            return;
+        }
         watcher->deleteLater();
         const QDBusMessage reply = watcher->reply();
         if (reply.type() == QDBusMessage::ErrorMessage && refusal == Refusal::Logged) {
             qWarning("vela-bluetooth: %s: %s: %s", qPrintable(name), qPrintable(reply.errorName()), qPrintable(reply.errorMessage()));
-        } else if (reply.type() == QDBusMessage::ErrorMessage) {
+        } else if (reply.type() == QDBusMessage::ErrorMessage
+            && !(name == QLatin1String("StartSearch")
+                && reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownMethod"))) {
             refused(reply, refusal == Refusal::OnDevice);
         }
         if (done) {
@@ -360,7 +367,7 @@ void Bluetooth::refused(const QDBusMessage& reply, bool onDevice)
 {
     const QString name = reply.errorName();
     if (name == errorPrefix + QLatin1String("Cancelled") || name == errorPrefix + QLatin1String("UnknownQuestion")
-        || name == errorPrefix + QLatin1String("QuestionClosed") ) {
+        || name == errorPrefix + QLatin1String("QuestionClosed")) {
         return;
     }
     if (name == errorPrefix + QLatin1String("Busy")) {
@@ -407,12 +414,17 @@ void Bluetooth::onOwnerChanged(const QString&, const QString& oldOwner, const QS
 
 void Bluetooth::appeared()
 {
+    const quint64 generation = ++m_ownerGeneration;
     m_running = true;
     QDBusMessage getAll = QDBusMessage::createMethodCall(service, objectPath, QStringLiteral("org.freedesktop.DBus.Properties"),
         QStringLiteral("GetAll"));
     getAll << service;
     auto* watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(getAll, callTimeout), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher] {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation] {
+        if (generation != m_ownerGeneration) {
+            watcher->deleteLater();
+            return;
+        }
         watcher->deleteLater();
         const QDBusMessage reply = watcher->reply();
         if (reply.type() == QDBusMessage::ReplyMessage) {
@@ -422,8 +434,8 @@ void Bluetooth::appeared()
     // Reading isn't the user's doing: a refusal goes to the log.
     call(
         QStringLiteral("Devices"), {}, callTimeout,
-        [this](const QDBusMessage& reply) {
-            if (reply.type() == QDBusMessage::ReplyMessage) {
+        [this, generation](const QDBusMessage& reply) {
+            if (generation == m_ownerGeneration && reply.type() == QDBusMessage::ReplyMessage) {
                 m_devices = devicesOf(reply.arguments().value(0));
                 emit changed();
             }
@@ -432,8 +444,8 @@ void Bluetooth::appeared()
     if (m_ui) {
         call(
             QStringLiteral("Questions"), {}, callTimeout,
-            [this](const QDBusMessage& reply) {
-                if (reply.type() != QDBusMessage::ReplyMessage) {
+            [this, generation](const QDBusMessage& reply) {
+                if (generation != m_ownerGeneration || reply.type() != QDBusMessage::ReplyMessage) {
                     return;
                 }
                 const QDBusArgument argument = reply.arguments().value(0).value<QDBusArgument>();
@@ -457,7 +469,9 @@ void Bluetooth::appeared()
 // questions and lease went with it (§7.2).
 void Bluetooth::vanished()
 {
+    ++m_ownerGeneration;
     m_running = false;
+    m_searchStarting = false;
     m_available = false;
     m_platformBlocked = false;
     m_active = true;
