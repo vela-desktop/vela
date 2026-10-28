@@ -340,7 +340,7 @@ if(VELA_BUILD_TOOLS)
     # frame notifications; no private wlroots session state is accessed.
     add_executable(vela-capture-damage-test tests/capture_damage_test.c ${VELA_OWN_PROTOCOL_SOURCES})
     target_include_directories(vela-capture-damage-test PRIVATE src ${VELA_GENERATED_DIR})
-    target_compile_definitions(vela-capture-damage-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_definitions(vela-capture-damage-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
     target_compile_options(vela-capture-damage-test PRIVATE -ffunction-sections -fdata-sections
         -Wall -Wextra -Wno-unused-parameter)
     target_link_options(vela-capture-damage-test PRIVATE -Wl,--gc-sections)
