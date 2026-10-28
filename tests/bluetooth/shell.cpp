@@ -4,7 +4,8 @@
 // The shell's side of Bluetooth (docs/bluetooth.md §9.2, §9.3, §11) against
 // the real vela-bluetooth on a fake BlueZ: the agent's questions the shell
 // draws (bluetoothprompts.h), as the dialog or as a notification with its
-// actions, closed wherever they were answered; and airplane mode
+// actions, closed wherever they were answered; the notification that the PC
+// is still visible after a search (§6.6, rule 3); and airplane mode
 // (SystemStatus) turning Bluetooth off and on. This test is a UI the test
 // build of the daemon trusts, as vela-shell is.
 
@@ -64,6 +65,7 @@ class BluetoothShell : public QObject {
     std::unique_ptr<Bluetooth> bluetooth;
     std::unique_ptr<NotificationServer> notifications;
     std::unique_ptr<BluetoothPrompts> prompts;
+    bool settingsOpen = false;
 
     QDBusConnection bus() const { return QDBusConnection(QStringLiteral("shell")); }
 
@@ -82,7 +84,7 @@ class BluetoothShell : public QObject {
         if (!daemon.waitForStarted()) {
             return false;
         }
-        for (int i = 0; i < 100 && !bus().interface()->isServiceRegistered(service); ++i) {
+        for (int i = 0; i < 500 && !bus().interface()->isServiceRegistered(service); ++i) {
             QTest::qWait(20);
         }
         return bus().interface()->isServiceRegistered(service);
@@ -252,7 +254,8 @@ private slots:
         QVERIFY(startDaemon());
         bluetooth = std::make_unique<Bluetooth>(bus(), true);
         notifications = std::make_unique<NotificationServer>();
-        prompts = std::make_unique<BluetoothPrompts>(bluetooth.get(), notifications.get());
+        settingsOpen = false;
+        prompts = std::make_unique<BluetoothPrompts>(bluetooth.get(), notifications.get(), [this] { return settingsOpen; });
         waitUntilPresenting();
     }
 
@@ -432,6 +435,64 @@ private slots:
         prompts->answer(QStringLiteral("cancel"));
         QTRY_VERIFY(prompts->dialog().isEmpty());
         QVERIFY(!paired(mouse));
+    }
+
+    // Another app keeps the PC visible after Vela's search (Settings', on
+    // its own connection): a notification with "Stop being visible", unless
+    // Settings is open; it goes when the PC stops being visible.
+    void stillVisibleIsANotification()
+    {
+        QDBusConnection other = QDBusConnection::connectToBus(systemAddress, QStringLiteral("other-searcher"));
+        auto discover = [&](bool on) {
+            QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.bluez"), QStringLiteral("/org/bluez/hci0"),
+                QStringLiteral("org.bluez.Adapter1"), on ? QStringLiteral("StartDiscovery") : QStringLiteral("StopDiscovery"));
+            return other.call(call, QDBus::Block, 5000).type() == QDBusMessage::ReplyMessage;
+        };
+        QVERIFY(QDBusConnection::connectToBus(sessionAddress, QStringLiteral("settings")).isConnected());
+        auto settings = std::make_unique<Bluetooth>(QDBusConnection(QStringLiteral("settings")), true);
+        QTRY_COMPARE(settings->devices().size(), 2);
+        // Vela's search begins knowing whether another app discovers: it
+        // must have seen the other app stop before searching again.
+        auto searchAndLeaveVisible = [&] {
+            QTRY_VERIFY(!bluetooth->adapter().value(QStringLiteral("discovering")).toBool());
+            settings->startSearch();
+            QTRY_VERIFY(bluetooth->adapter().value(QStringLiteral("discoverable")).toBool());
+            QVERIFY(discover(true));
+            settings->stopSearch();
+            QTRY_VERIFY_WITH_TIMEOUT(bluetooth->stillVisible(), 4000);
+        };
+
+        // Settings open: its page says it.
+        settingsOpen = true;
+        searchAndLeaveVisible();
+        QTest::qWait(100);
+        QCOMPARE(notifications->count(), 0);
+        settings->stopBeingVisible();
+        QTRY_VERIFY(!bluetooth->stillVisible());
+        QVERIFY(discover(false));
+
+        settingsOpen = false;
+        searchAndLeaveVisible();
+        QTRY_COMPARE(notifications->count(), 1);
+        QCOMPARE(notificationData(NotificationServer::SummaryRole).toString(), QStringLiteral("Your PC is still visible to nearby devices"));
+        QCOMPARE(actionKeys(notificationData(NotificationServer::ActionsRole).toList()), QStringList { QStringLiteral("stop") });
+        notifications->invoke(prompts->visibleNotification(), QStringLiteral("stop"));
+        QTRY_VERIFY(!bluetooth->stillVisible());
+        QTRY_VERIFY(!bluetooth->adapter().value(QStringLiteral("discoverable")).toBool());
+        QVERIFY(discover(false));
+
+        // Not visible anymore by someone else's doing: the notification
+        // goes.
+        searchAndLeaveVisible();
+        QTRY_COMPARE(notifications->count(), 1);
+        QVERIFY(discover(false));
+        QTRY_VERIFY(!bluetooth->stillVisible());
+        QTRY_COMPARE(notifications->count(), 0);
+
+        settings.reset();
+        QDBusConnection::disconnectFromBus(QStringLiteral("settings"));
+        other = QDBusConnection(QString());
+        QDBusConnection::disconnectFromBus(QStringLiteral("other-searcher"));
     }
 
     // Airplane mode turns Bluetooth off at once, and back on; without

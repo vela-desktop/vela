@@ -46,6 +46,8 @@ Page {
         }
     }
 
+    StillVisibleCard {}
+
     Card {
         objectName: "add"
         visible: Bluetooth.available

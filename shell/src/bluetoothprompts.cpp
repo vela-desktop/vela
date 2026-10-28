@@ -22,17 +22,21 @@ QString declineResponse(const QString& kind)
 
 } // namespace
 
-BluetoothPrompts::BluetoothPrompts(vela::bluetooth::Bluetooth* bluetooth, NotificationServer* notifications, QObject* parent)
+BluetoothPrompts::BluetoothPrompts(vela::bluetooth::Bluetooth* bluetooth, NotificationServer* notifications,
+    std::function<bool()> settingsOpen, QObject* parent)
     : QObject(parent)
     , m_bluetooth(bluetooth)
     , m_notifications(notifications)
+    , m_settingsOpen(std::move(settingsOpen))
 {
     connect(m_bluetooth, &vela::bluetooth::Bluetooth::questionChanged, this, &BluetoothPrompts::onQuestion);
     connect(m_bluetooth, &vela::bluetooth::Bluetooth::questionClosed, this, &BluetoothPrompts::onQuestionClosed);
     connect(m_notifications, &NotificationServer::ActionInvoked, this, &BluetoothPrompts::onAction);
     connect(m_notifications, &NotificationServer::NotificationClosed, this, &BluetoothPrompts::onNotificationClosed);
+    connect(m_bluetooth, &vela::bluetooth::Bluetooth::changed, this, &BluetoothPrompts::onStillVisible);
     m_bluetooth->presentQuestions();
     onQuestion();
+    onStillVisible();
 }
 
 QVariantMap BluetoothPrompts::dialog() const
@@ -132,8 +136,37 @@ void BluetoothPrompts::closeNotification()
     }
 }
 
+void BluetoothPrompts::onStillVisible()
+{
+    if (!m_bluetooth->stillVisible()) {
+        m_visibleTold = false;
+        if (m_visibleNotification != 0) {
+            const uint id = std::exchange(m_visibleNotification, 0);
+            m_notifications->CloseNotification(id);
+        }
+        return;
+    }
+    if (m_visibleTold) {
+        return;
+    }
+    m_visibleTold = true;
+    if (m_settingsOpen && m_settingsOpen()) {
+        return; // its Bluetooth page says it
+    }
+    m_visibleNotification = m_notifications->Notify(tr("Bluetooth"), 0, QStringLiteral("preferences-system-bluetooth"),
+        tr("Your PC is still visible to nearby devices"), tr("Another app is searching for devices."),
+        { QStringLiteral("stop"), tr("Stop being visible") }, {}, -1);
+}
+
 void BluetoothPrompts::onAction(uint id, const QString& action)
 {
+    if (id != 0 && id == m_visibleNotification) {
+        m_visibleNotification = 0;
+        if (action == QLatin1String("stop")) {
+            m_bluetooth->stopBeingVisible();
+        }
+        return;
+    }
     if (id == 0 || id != m_notification) {
         return;
     }
@@ -151,6 +184,10 @@ void BluetoothPrompts::onAction(uint id, const QString& action)
 
 void BluetoothPrompts::onNotificationClosed(uint id, uint)
 {
+    if (id != 0 && id == m_visibleNotification) {
+        m_visibleNotification = 0; // dismissed: the PC stays visible
+        return;
+    }
     if (id == 0 || id != m_notification) {
         return;
     }

@@ -24,6 +24,7 @@ add_library(vela-bluetooth-core STATIC
     src/power.c
     src/question.c
     src/rfkill.c
+    src/search.c
     src/service.c
     src/session.c)
 target_include_directories(vela-bluetooth-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)

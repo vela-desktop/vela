@@ -111,7 +111,7 @@ class BluetoothClient : public QObject {
         if (!daemon.waitForStarted()) {
             return false;
         }
-        for (int i = 0; i < 100 && !bus().interface()->isServiceRegistered(service); ++i) {
+        for (int i = 0; i < 500 && !bus().interface()->isServiceRegistered(service); ++i) {
             QTest::qWait(20);
         }
         return bus().interface()->isServiceRegistered(service);
@@ -473,17 +473,88 @@ private slots:
         });
     }
 
-    // Before the daemon serves searches (B5), "Add a device" lists what
-    // BlueZ knows, without a refusal.
-    void searchingWithoutLeases()
+    // A lease while "Add a device" is open: the PC is visible, and ending
+    // it by hand isn't "Search again".
+    void aSearch()
+    {
+        auto bluetooth = client();
+        QSignalSpy search(bluetooth.get(), &Bluetooth::searchChanged);
+        bluetooth->startSearch();
+        QTRY_VERIFY(bluetooth->searching());
+        QVERIFY(!bluetooth->searchEnded());
+        QTRY_VERIFY(bluetooth->adapter().value(QStringLiteral("discoverable")).toBool());
+        QVERIFY(!bluetooth->searchShared());
+        bluetooth->stopSearch();
+        QVERIFY(!bluetooth->searching());
+        QVERIFY(!bluetooth->searchEnded());
+        QTRY_VERIFY(!bluetooth->adapter().value(QStringLiteral("discoverable")).toBool());
+        QVERIFY(bluetooth->error().isEmpty());
+        QVERIFY(search.size() >= 2);
+    }
+
+    // The daemon ends it (the lock): "Search again".
+    void aSearchEndedByTheDaemon()
     {
         auto bluetooth = client();
         bluetooth->startSearch();
-        QTest::qWait(200);
+        QTRY_VERIFY(bluetooth->searching());
+        fake->run([this] { logind->set(true, true); });
+        QTRY_VERIFY(bluetooth->searchEnded());
         QVERIFY(!bluetooth->searching());
+        fake->run([this] { logind->set(true, false); });
+        QTRY_VERIFY(bluetooth->active());
+        bluetooth->startSearch();
+        QTRY_VERIFY(bluetooth->searching());
         QVERIFY(!bluetooth->searchEnded());
-        QVERIFY(bluetooth->error().isEmpty());
         bluetooth->stopSearch();
+    }
+
+    // Stopped before the daemon answered: the lease it then gets is given
+    // back.
+    void aSearchStoppedAtOnce()
+    {
+        auto bluetooth = client();
+        bluetooth->startSearch();
+        bluetooth->stopSearch();
+        QTest::qWait(300);
+        QVERIFY(!bluetooth->searching());
+        QTRY_VERIFY(!bluetooth->adapter().value(QStringLiteral("discovering")).toBool());
+    }
+
+    // Another app searching: no visibility from Vela, and said so; it then
+    // keeps the PC visible after Vela's search, until "Stop being
+    // visible".
+    void anotherAppSearching()
+    {
+        auto bluetooth = client();
+        QDBusConnection other = QDBusConnection::connectToBus(systemAddress, QStringLiteral("other-searcher"));
+        auto discover = [&](bool on) {
+            QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.bluez"), QStringLiteral("/org/bluez/hci0"),
+                QStringLiteral("org.bluez.Adapter1"), on ? QStringLiteral("StartDiscovery") : QStringLiteral("StopDiscovery"));
+            return other.call(call, QDBus::Block, 5000).type() == QDBusMessage::ReplyMessage;
+        };
+        QVERIFY(discover(true));
+        QTRY_VERIFY(bluetooth->adapter().value(QStringLiteral("discovering")).toBool());
+        bluetooth->startSearch();
+        QTRY_VERIFY(bluetooth->searchShared());
+        QVERIFY(!bluetooth->adapter().value(QStringLiteral("discoverable")).toBool());
+        bluetooth->stopSearch();
+        QTRY_VERIFY(!bluetooth->searchShared());
+        QVERIFY(discover(false));
+        QTRY_VERIFY(!bluetooth->adapter().value(QStringLiteral("discovering")).toBool());
+
+        // Vela first, the other app during Vela's search.
+        bluetooth->startSearch();
+        QTRY_VERIFY(bluetooth->adapter().value(QStringLiteral("discoverable")).toBool());
+        QVERIFY(discover(true));
+        bluetooth->stopSearch();
+        QTRY_VERIFY_WITH_TIMEOUT(bluetooth->stillVisible(), 4000);
+        bluetooth->stopBeingVisible();
+        QTRY_VERIFY(!bluetooth->stillVisible());
+        QTRY_VERIFY(!bluetooth->adapter().value(QStringLiteral("discoverable")).toBool());
+        QVERIFY(discover(false));
+        other = QDBusConnection(QString());
+        QDBusConnection::disconnectFromBus(QStringLiteral("other-searcher"));
     }
 };
 

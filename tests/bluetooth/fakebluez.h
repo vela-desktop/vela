@@ -10,8 +10,10 @@
 // Connect and Set Trusted work. Agents are kept as BlueZ keeps them: a
 // default-agent stack, and one open request per agent, a second one
 // refused as busy. Devices can also ask by themselves, through the default
-// agent. It records the calls it gets, every property written, and what
-// each agent answered, so the tests can check what vela-bluetooth did.
+// agent. Discovery is per client, with the Discoverable filter as BlueZ
+// 5.86 applies it (§6.6). It records the calls it gets, every property
+// written, and what each agent answered, so the tests can check what
+// vela-bluetooth did.
 //
 // FakeLogind is the logind session the daemon follows (§6.7), with Active
 // and LockedHint.
@@ -50,6 +52,16 @@ public:
         // How Set Powered goes: done 50 ms later, refused, or accepted and
         // never done.
         enum { Works, Refuses, Never } power = Works;
+        bool discoverable = false;
+        // The clients discovering, by unique name, and each client's
+        // Discoverable filter.
+        QStringList discovering;
+        QMap<QString, bool> filters;
+        // The adapter is visible because of a filter (not a write): it
+        // stops being so with the last discovering client.
+        bool visibleByFilter = false;
+        // StartDiscovery fails, this many times.
+        int startErrors = 0;
     };
 
     struct Device {
@@ -147,6 +159,12 @@ public:
         if (interface == QLatin1String("org.bluez.AgentManager1") && path == QLatin1String("/org/bluez")) {
             return agentManager(message);
         }
+        if (interface == QLatin1String("org.bluez.Adapter1") && adapters.contains(path.section(u'/', 3, 3))
+            && (member == QLatin1String("StartDiscovery") || member == QLatin1String("StopDiscovery")
+                || member == QLatin1String("SetDiscoveryFilter"))) {
+            discovery(message, path.section(u'/', 3, 3));
+            return true;
+        }
         if (interface == QLatin1String("org.bluez.Adapter1") && member == QLatin1String("RemoveDevice")) {
             const QString device = message.arguments().value(0).value<QDBusObjectPath>().path();
             calls << QStringLiteral("RemoveDevice ") + device;
@@ -235,12 +253,52 @@ public:
         cancelRequestOn(path);
     }
 
-    // Outside Vela: a hardware key, another desktop.
+    // Outside Vela: a hardware key, another desktop. Turning off ends
+    // every discovery and the visibility.
     void setPowered(const QString& name, bool on)
     {
-        adapters[name].powered = on;
-        changed(adapterPath(name), QStringLiteral("org.bluez.Adapter1"),
-            { { QStringLiteral("Powered"), on }, { QStringLiteral("PowerState"), on ? QStringLiteral("on") : QStringLiteral("off") } });
+        Adapter& adapter = adapters[name];
+        adapter.powered = on;
+        QVariantMap values { { QStringLiteral("Powered"), on }, { QStringLiteral("PowerState"), on ? QStringLiteral("on") : QStringLiteral("off") } };
+        if (!on) {
+            if (!adapter.discovering.isEmpty()) {
+                adapter.discovering.clear();
+                values[QStringLiteral("Discovering")] = false;
+            }
+            if (adapter.discoverable) {
+                adapter.discoverable = adapter.visibleByFilter = false;
+                values[QStringLiteral("Discoverable")] = false;
+            }
+        }
+        changed(adapterPath(name), QStringLiteral("org.bluez.Adapter1"), values);
+    }
+
+    // BlueZ stops discovering by itself (an adapter reset): every client's
+    // session goes, as does the visibility a filter gave.
+    void stopDiscoveryOutside(const QString& name)
+    {
+        Adapter& adapter = adapters[name];
+        adapter.discovering.clear();
+        QVariantMap values { { QStringLiteral("Discovering"), false } };
+        if (adapter.visibleByFilter) {
+            adapter.discoverable = adapter.visibleByFilter = false;
+            values[QStringLiteral("Discoverable")] = false;
+        }
+        changed(adapterPath(name), QStringLiteral("org.bluez.Adapter1"), values);
+    }
+
+    // Visible by someone else's doing (another desktop's setting).
+    void setDiscoverableOutside(const QString& name, bool on)
+    {
+        adapters[name].discoverable = on;
+        adapters[name].visibleByFilter = false;
+        changed(adapterPath(name), QStringLiteral("org.bluez.Adapter1"), { { QStringLiteral("Discoverable"), on } });
+    }
+
+    // Whether `client` (a unique name) discovers on `name`.
+    bool discovers(const QString& name, const QString& client) const
+    {
+        return adapters.value(name).discovering.contains(client);
     }
 
     void setDevice(const QString& path, const QString& name, const QVariant& value)
@@ -356,7 +414,8 @@ private:
             QVariantMap { { QStringLiteral("Address"), adapter.address }, { QStringLiteral("Alias"), adapter.alias },
                 { QStringLiteral("Name"), adapter.alias }, { QStringLiteral("Powered"), adapter.powered },
                 { QStringLiteral("PowerState"), adapter.powered ? QStringLiteral("on") : QStringLiteral("off") },
-                { QStringLiteral("Discoverable"), false }, { QStringLiteral("Discovering"), false },
+                { QStringLiteral("Discoverable"), adapter.discoverable },
+                { QStringLiteral("Discovering"), !adapter.discovering.isEmpty() },
                 { QStringLiteral("Pairable"), true } } } };
     }
 
@@ -421,6 +480,12 @@ private:
                 return true;
             }
             send(message.createReply());
+            if (name == QLatin1String("Discoverable")) {
+                // A write takes precedence over a filter's visibility.
+                target.discoverable = value.toBool();
+                target.visibleByFilter = false;
+                changed(path, QStringLiteral("org.bluez.Adapter1"), { { name, value } });
+            }
             if (name == QLatin1String("Powered") && target.power == Adapter::Works) {
                 QTimer::singleShot(50, this, [this, adapter, on = value.toBool()] {
                     if (adapters.contains(adapter)) {
@@ -497,6 +562,95 @@ private:
         }
         send(message.createReply());
         return true;
+    }
+
+    // ---------------------------------------------------- discovery --
+
+    // StartDiscovery, StopDiscovery and SetDiscoveryFilter of one client,
+    // as src/adapter.c does them: the Discoverable filter makes the adapter
+    // visible only if it isn't already (set_discovery_discoverable), and
+    // that visibility ends with the last discovering client
+    // (discovery_stop).
+    void discovery(const QDBusMessage& message, const QString& name)
+    {
+        Adapter& adapter = adapters[name];
+        const QString client = message.service();
+        const QString member = message.member();
+        if (member == QLatin1String("SetDiscoveryFilter")) {
+            const QVariantMap filter = qdbus_cast<QVariantMap>(message.arguments().value(0));
+            const bool discoverable = filter.value(QStringLiteral("Discoverable")).toBool();
+            calls << QStringLiteral("SetDiscoveryFilter %1 Discoverable=%2")
+                         .arg(adapterPath(name), discoverable ? QStringLiteral("true") : QStringLiteral("false"));
+            adapter.filters[client] = discoverable;
+            send(message.createReply());
+            if (adapter.discovering.contains(client)) {
+                applyFilter(name, client);
+            }
+            return;
+        }
+        calls << member + u' ' + adapterPath(name);
+        if (member == QLatin1String("StartDiscovery")) {
+            if (!adapter.powered) {
+                send(message.createErrorReply(QStringLiteral("org.bluez.Error.NotReady"), QStringLiteral("Resource Not Ready")));
+                return;
+            }
+            if (adapter.startErrors > 0) {
+                --adapter.startErrors;
+                send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("Failed")));
+                return;
+            }
+            if (adapter.discovering.contains(client)) {
+                send(message.createErrorReply(QStringLiteral("org.bluez.Error.InProgress"), QStringLiteral("Operation already in progress")));
+                return;
+            }
+            const bool first = adapter.discovering.isEmpty();
+            adapter.discovering << client;
+            send(message.createReply());
+            if (first) {
+                changed(adapterPath(name), QStringLiteral("org.bluez.Adapter1"), { { QStringLiteral("Discovering"), true } });
+            }
+            applyFilter(name, client);
+            // BlueZ forgets the session of a client that leaves the bus.
+            auto* watcher = new QDBusServiceWatcher(client, connection(), QDBusServiceWatcher::WatchForUnregistration, this);
+            connect(watcher, &QDBusServiceWatcher::serviceUnregistered, this, [this, watcher, name, client] {
+                watcher->deleteLater();
+                if (adapters.contains(name) && adapters[name].discovering.contains(client)) {
+                    stopClient(name, client);
+                }
+            });
+            return;
+        }
+        if (!adapter.discovering.contains(client)) {
+            send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("No discovery started")));
+            return;
+        }
+        send(message.createReply());
+        stopClient(name, client);
+    }
+
+    void applyFilter(const QString& name, const QString& client)
+    {
+        Adapter& adapter = adapters[name];
+        if (adapter.filters.value(client) && !adapter.discoverable) {
+            adapter.discoverable = adapter.visibleByFilter = true;
+            changed(adapterPath(name), QStringLiteral("org.bluez.Adapter1"), { { QStringLiteral("Discoverable"), true } });
+        }
+    }
+
+    void stopClient(const QString& name, const QString& client)
+    {
+        Adapter& adapter = adapters[name];
+        adapter.discovering.removeAll(client);
+        adapter.filters.remove(client);
+        if (!adapter.discovering.isEmpty()) {
+            return;
+        }
+        QVariantMap values { { QStringLiteral("Discovering"), false } };
+        if (adapter.visibleByFilter) {
+            adapter.discoverable = adapter.visibleByFilter = false;
+            values[QStringLiteral("Discoverable")] = false;
+        }
+        changed(adapterPath(name), QStringLiteral("org.bluez.Adapter1"), values);
     }
 
     // The previous default agent is default again (remove_default_agent).

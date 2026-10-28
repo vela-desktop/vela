@@ -289,8 +289,7 @@ void Bluetooth::startSearch()
     call(QStringLiteral("StartSearch"), { true }, callTimeout, [this](const QDBusMessage& reply) {
         m_searchStarting = false;
         if (reply.type() == QDBusMessage::ErrorMessage) {
-            // A daemon without searches yet shows the devices BlueZ knows.
-            endSearch(reply.errorName() != QLatin1String("org.freedesktop.DBus.Error.UnknownMethod"));
+            endSearch(true);
             return;
         }
         const quint64 lease = reply.arguments().value(0).toULongLong();
@@ -357,9 +356,7 @@ void Bluetooth::call(const QString& name, const QVariantList& arguments, int tim
         const QDBusMessage reply = watcher->reply();
         if (reply.type() == QDBusMessage::ErrorMessage && refusal == Refusal::Logged) {
             qWarning("vela-bluetooth: %s: %s: %s", qPrintable(name), qPrintable(reply.errorName()), qPrintable(reply.errorMessage()));
-        } else if (reply.type() == QDBusMessage::ErrorMessage
-            && !(name == QLatin1String("StartSearch")
-                && reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownMethod"))) {
+        } else if (reply.type() == QDBusMessage::ErrorMessage) {
             refused(reply, refusal == Refusal::OnDevice);
         }
         if (done) {
@@ -394,6 +391,8 @@ void Bluetooth::refused(const QDBusMessage& reply, bool onDevice)
         setError(tr("Bluetooth can't be changed while the screen is locked or another session is in use."));
     } else if (name == errorPrefix + QLatin1String("NotAllowed")) {
         setError(tr("This app isn't allowed to change Bluetooth."));
+    } else if (name == errorPrefix + QLatin1String("UnknownAdapter")) {
+        setError(tr("There's no Bluetooth adapter."));
     } else if (name == errorPrefix + QLatin1String("UnknownDevice")) {
         setError(tr("The device isn't there anymore."));
     } else if (name == errorPrefix + QLatin1String("InvalidValue")) {
@@ -491,6 +490,8 @@ void Bluetooth::vanished()
     m_active = true;
     m_adapter.clear();
     m_adapters.clear();
+    m_search.clear();
+    m_stillVisible = false;
     m_devices.clear();
     m_adding.clear();
     dropQuestion();
@@ -522,6 +523,10 @@ void Bluetooth::setProperties(const QVariantMap& values)
             m_adapters = mapsOf(*it);
         } else if (it.key() == QLatin1String("Adapter")) {
             m_adapter = plain(mapOf(*it));
+        } else if (it.key() == QLatin1String("Search")) {
+            m_search = it->toString();
+        } else if (it.key() == QLatin1String("StillVisible")) {
+            m_stillVisible = it->toBool();
         }
     }
     m_power.reported(available() && m_adapter.value(QStringLiteral("powered")).toBool());

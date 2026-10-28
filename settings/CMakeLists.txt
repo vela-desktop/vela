@@ -75,6 +75,7 @@ set(SETTINGS_QML_FILES
     qml/MoreMenu.qml
     qml/BluetoothDevice.qml
     qml/AddDeviceDialog.qml
+    qml/StillVisibleCard.qml
     qml/PageHeader.qml
     qml/Page.qml
     qml/pages/HomePage.qml

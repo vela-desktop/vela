@@ -59,6 +59,18 @@ static const char *test_path(const char *variable, const char *fallback)
     return fallback;
 }
 
+// A search lease's time limit (§6.6): 3 minutes; the tests' is shorter.
+static uint64_t search_limit_us(void)
+{
+#ifdef VELA_BLUETOOTH_TESTING
+    const char *ms = secure_getenv("VELA_BT_SEARCH_LIMIT_MS");
+    if (ms && *ms) {
+        return strtoull(ms, NULL, 10) * 1000ULL;
+    }
+#endif
+    return 180 * 1000000ULL;
+}
+
 static int on_signal(sd_event_source *source, const struct signalfd_siginfo *info, void *data)
 {
     struct vela_bt_daemon *d = data;
@@ -104,6 +116,7 @@ int main(void)
     d.sysfs = test_path("VELA_SYSFS", "/sys");
     d.rfkill = test_path("VELA_RFKILL", "/dev/rfkill");
     d.ui = ui_executables();
+    d.search.limit_us = search_limit_us();
 
     struct vela_config settings;
     vela_config_read(&settings);
@@ -171,6 +184,7 @@ int main(void)
     sd_bus_flush(d.system);
     sd_bus_flush(d.session);
     vela_bt_clear(&d);
+    vela_bt_search_free(&d);
     vela_bt_agent_free(&d);
     vela_bt_model_free(&d);
     sd_bus_slot_unref(d.session_call);

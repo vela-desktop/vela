@@ -384,7 +384,15 @@ int main(int argc, char* argv[])
     // Bluetooth (docs/bluetooth.md §9.2, §9.3): the shell is Vela's UI, and
     // draws the questions Settings doesn't.
     vela::bluetooth::Bluetooth bluetooth(true);
-    BluetoothPrompts bluetoothPrompts(&bluetooth, &notifications);
+    // Settings says itself that the PC is still visible, while it is open.
+    BluetoothPrompts bluetoothPrompts(&bluetooth, &notifications, [&windows] {
+        for (const ForeignToplevel* window : windows.windows()) {
+            if (window->appId == QLatin1String("vela-settings")) {
+                return true;
+            }
+        }
+        return false;
+    });
     SystemStatus status(&bluetooth);
     Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
     // The sound (docs/audio.md): apps named after their .desktop file.

@@ -11,10 +11,16 @@
 // dialog ("Enter code"), as a click on the notification does. A
 // notification closed without an answer refuses the question. Everything
 // closes when the question does, wherever it was answered.
+//
+// It also says when the PC stays visible after Vela's search because
+// another app is searching (§6.6, rule 3), with "Stop being visible":
+// Settings says it itself while it is open.
 
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
+
+#include <functional>
 
 class NotificationServer;
 
@@ -29,15 +35,19 @@ class BluetoothPrompts : public QObject {
     Q_PROPERTY(QVariantMap dialog READ dialog NOTIFY dialogChanged)
 
 public:
-    BluetoothPrompts(vela::bluetooth::Bluetooth* bluetooth, NotificationServer* notifications, QObject* parent = nullptr);
+    // `settingsOpen`: whether a Settings window is open.
+    BluetoothPrompts(vela::bluetooth::Bluetooth* bluetooth, NotificationServer* notifications,
+        std::function<bool()> settingsOpen = {}, QObject* parent = nullptr);
 
     QVariantMap dialog() const;
     // From the dialog: "accept" with the code typed, if any; "reject" or
     // "cancel" (§7.2).
     Q_INVOKABLE void answer(const QString& response, const QString& value = {});
 
-    // The notification of the open question, 0 if none (the tests').
+    // The notification of the open question, and the "still visible" one;
+    // 0 if none (the tests').
     uint notification() const { return m_notification; }
+    uint visibleNotification() const { return m_visibleNotification; }
 
 signals:
     void dialogChanged();
@@ -47,6 +57,7 @@ private Q_SLOTS:
     void onQuestionClosed(const QString& id, const QString& reason);
     void onAction(uint id, const QString& action);
     void onNotificationClosed(uint id, uint reason);
+    void onStillVisible();
 
 private:
     void notify(const QVariantMap& question);
@@ -60,4 +71,7 @@ private:
     QString m_kind;
     uint m_notification = 0;
     bool m_dialog = false;
+    std::function<bool()> m_settingsOpen;
+    bool m_visibleTold = false; // this time the PC stayed visible: told, or Settings was open
+    uint m_visibleNotification = 0;
 };

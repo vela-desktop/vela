@@ -86,7 +86,7 @@ Dialog {
             visible: !dialog.asking && text !== ""
             width: parent.width
             text: Bluetooth.adapter.discoverable ? qsTr("Discoverable as \"%1\"").arg(Bluetooth.adapter.name)
-                : Bluetooth.searching && Bluetooth.adapter.discovering
+                : Bluetooth.searching && Bluetooth.searchShared
                     ? qsTr("Another app is searching for devices, so this PC isn't made visible. Pairing from this PC still works.")
                     : ""
             color: Theme.textSecondary

@@ -75,6 +75,8 @@ void vela_bt_operation_end(
     device->operation = NULL;
     if (d->pairing == device) {
         d->pairing = NULL;
+        // Searching goes on after the Add (§6.6).
+        vela_bt_search_update(d);
     }
     operation->call = sd_bus_slot_unref(operation->call);
     // A failed Trust stays shown after a successful Add.
@@ -315,6 +317,8 @@ int vela_bt_operation_start(struct vela_bt_daemon *d, sd_bus_message *call, stru
         if (prompts_here) {
             add_prompter(d, operation, call);
         }
+        // Discovery disturbs pairing: it waits for the Add (§6.6).
+        vela_bt_search_update(d);
     }
     struct vela_bt_adapter *adapter = vela_bt_adapter_find(d, device->adapter);
     if ((kind == VELA_BT_ADD || kind == VELA_BT_CONNECT) && (!adapter || !adapter->powered)) {

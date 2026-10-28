@@ -5,8 +5,8 @@
 // the compositor, so it's in the compositor's session, found as the polkit
 // agent finds it; XDG_SESSION_ID if logind can't name it. Vela acts only
 // while that session is active, and the agent is registered only then.
-// While the screen is locked (LockedHint), an Add stops and requests the
-// user did not start are refused.
+// While the screen is locked (LockedHint), an Add stops, search leases end
+// and requests the user did not start are refused.
 //
 // Without a session, or without logind, the daemon acts as if the session
 // were always in front, as Bluetooth did before.
@@ -36,6 +36,7 @@ static void stop(struct vela_bt_daemon *d, const char *reason, const struct vela
     if (d->pairing) {
         vela_bt_operation_cancel(d, d->pairing, failure);
     }
+    vela_bt_search_end_all(d, reason);
 }
 
 static void apply(struct vela_bt_daemon *d, bool active, bool locked)
@@ -53,6 +54,8 @@ static void apply(struct vela_bt_daemon *d, bool active, bool locked)
     } else if (active && locked && !was_locked) {
         stop(d, "locked", &vela_bt_session_locked);
     }
+    // Discovery stops with the session; a new lease starts it again.
+    vela_bt_search_update(d);
     vela_bt_agent_update(d);
     if (vela_bt_active(d) != was_in_front) {
         vela_bt_properties_changed(d);

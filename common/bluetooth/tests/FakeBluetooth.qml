@@ -21,6 +21,8 @@ QtObject {
     property string pairing: ""
     property bool searching: false
     property bool searchEnded: false
+    property bool searchShared: false
+    property bool stillVisible: false
     property string error: ""
     property var calls: []
 
@@ -31,7 +33,8 @@ QtObject {
     function reset() {
         available = true; platformBlocked = false; active = true; powered = true
         adapter = { name: "vela-pc", address: "AA:AA:AA:AA:AA:00", powered: true, discoverable: false, discovering: false }
-        devices = []; question = {}; pairing = ""; searching = false; searchEnded = false; error = ""; calls = []
+        devices = []; question = {}; pairing = ""; searching = false; searchEnded = false
+        searchShared = false; stillVisible = false; error = ""; calls = []
     }
     // A device entry, as the model gives it.
     function device(n, changes) {

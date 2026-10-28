@@ -147,9 +147,17 @@ Item {
             verify(!find("visibility").visible)
             Bluetooth.adapter = Object.assign({}, Bluetooth.adapter, { discoverable: true, discovering: true })
             compare(find("visibility").text, "Discoverable as \"vela-pc\"")
+            // Vela's own search, before BlueZ made the PC visible: nothing
+            // to say yet.
             Bluetooth.searching = true
             Bluetooth.adapter = Object.assign({}, Bluetooth.adapter, { discoverable: false })
+            verify(!find("visibility").visible)
+            // Another app was searching first: the daemon searched without
+            // making the PC visible (rule 1).
+            Bluetooth.searchShared = true
             verify(find("visibility").text.startsWith("Another app is searching for devices"))
+            Bluetooth.searching = false
+            verify(!find("visibility").visible)
         }
 
         function test_a_refusal_is_shown() {

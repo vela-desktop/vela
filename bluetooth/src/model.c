@@ -360,6 +360,7 @@ void vela_bt_remove_adapter(struct vela_bt_daemon *d, struct vela_bt_adapter *ad
 
 void vela_bt_clear(struct vela_bt_daemon *d)
 {
+    vela_bt_search_forget(d);
     vela_bt_question_close(d, NULL, "bluetooth-gone");
     for (size_t i = d->device_count; i-- > 0;) {
         if (d->devices[i]->operation) {
@@ -390,6 +391,8 @@ void vela_bt_choose_adapter(struct vela_bt_daemon *d)
     if (same(path, d->in_use) && (path != NULL) == (d->in_use != NULL)) {
         return;
     }
+    // Leases end with the adapter they searched on (§6.6).
+    vela_bt_search_end_all(d, "adapter-off");
     // The old adapter's devices leave the list, the new one's come in.
     for (size_t i = 0; i < d->device_count; ++i) {
         if (vela_bt_device_listed(d, d->devices[i])) {
@@ -410,13 +413,14 @@ void vela_bt_choose_adapter(struct vela_bt_daemon *d)
 }
 
 // After an adapter's properties changed.
-static void adapter_changed(struct vela_bt_daemon *d, struct vela_bt_adapter *adapter, bool was_powered)
+static void adapter_changed(struct vela_bt_daemon *d, struct vela_bt_adapter *adapter, bool was_powered, bool was_discovering)
 {
     if (was_powered && !adapter->powered) {
         vela_bt_operations_adapter_off(d, adapter->path);
     }
     vela_bt_power_adapter_changed(d);
     if (same(adapter->path, d->in_use)) {
+        vela_bt_search_adapter_changed(d, was_discovering);
         vela_bt_properties_changed(d);
     }
 }
@@ -446,6 +450,7 @@ int vela_bt_read_object(struct vela_bt_daemon *d, const char *path, sd_bus_messa
                 }
             }
             bool was_powered = adapter->powered;
+            bool was_discovering = adapter->discovering;
             if ((r = read_properties(m, read_adapter_property, adapter)) < 0) {
                 return r;
             }
@@ -455,7 +460,7 @@ int vela_bt_read_object(struct vela_bt_daemon *d, const char *path, sd_bus_messa
                 vela_bt_log("adapter %s (%s)", path, adapter->address ? adapter->address : "?");
                 vela_bt_choose_adapter(d);
             }
-            adapter_changed(d, adapter, was_powered);
+            adapter_changed(d, adapter, was_powered, was_discovering);
         } else if (strcmp(interface, DEVICE1) == 0) {
             struct vela_bt_device *device = vela_bt_device_find(d, path);
             if (!device) {
@@ -524,6 +529,7 @@ int vela_bt_read_changes(struct vela_bt_daemon *d, const char *path, sd_bus_mess
         return 0;
     }
     bool was_powered = adapter && adapter->powered;
+    bool was_discovering = adapter && adapter->discovering;
     r = read_properties(m, reader, target);
     if (r < 0) {
         return r;
@@ -550,7 +556,7 @@ int vela_bt_read_changes(struct vela_bt_daemon *d, const char *path, sd_bus_mess
     sd_bus_message_exit_container(m);
     if (reader == read_adapter_property) {
         if (changed) {
-            adapter_changed(d, adapter, was_powered);
+            adapter_changed(d, adapter, was_powered, was_discovering);
         }
     } else if (changed) {
         if (vela_bt_device_listed(d, device)) {
