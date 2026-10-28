@@ -666,6 +666,38 @@ private slots:
         QTRY_VERIFY(!devices().contains(headset));
     }
 
+    void adapterSelectionFailureDoesNotChangeLiveState()
+    {
+        fake->run([this] {
+            fake->addAdapter(hci1, { QStringLiteral("BB:BB:BB:BB:BB:01"), QStringLiteral("dongle") });
+        });
+        QTRY_COMPARE(qdbus_cast<QList<QVariantMap>>(property(QStringLiteral("Adapters"))).size(), 2);
+        const QString path = home.filePath(QStringLiteral("config/vela/vela.conf"));
+        QVERIFY(QDir().mkpath(path)); // rename(temp, directory) must fail.
+        const QString oldAddress = adapterInUse().value(QStringLiteral("address")).toString();
+        QCOMPARE(errorOf(call(QStringLiteral("UseAdapter"), { QStringLiteral("BB:BB:BB:BB:BB:01") })),
+            QStringLiteral("org.vela.Bluetooth.Error.Failed"));
+        QCOMPARE(adapterInUse().value(QStringLiteral("address")).toString(), oldAddress);
+        QVERIFY(QDir().rmdir(path));
+    }
+
+    void offCancelsDeferredPlatformPowerOn()
+    {
+        fake->run([this] { fake->removeAdapter(hci0); });
+        QTRY_VERIFY(!property(QStringLiteral("Available")).toBool());
+        QVERIFY(writeValue(rfkillSwitch(QStringLiteral("class/rfkill/rfkill5")) + QStringLiteral("/soft"), "1"));
+        QCOMPARE(errorOf(start(QStringLiteral("SetPowered"), { true })), QString());
+        QCOMPARE(errorOf(start(QStringLiteral("SetPowered"), { false })), QString());
+        fake->run([this] {
+            FakeBluez::Adapter adapter { QStringLiteral("AA:AA:AA:AA:AA:00"), QStringLiteral("vela-pc") };
+            adapter.powered = false;
+            fake->addAdapter(hci0, adapter);
+        });
+        QTRY_VERIFY(property(QStringLiteral("Available")).toBool());
+        QTest::qWait(200);
+        QVERIFY(!adapterInUse().value(QStringLiteral("powered")).toBool());
+    }
+
     void secondInstanceExits()
     {
         QProcess second;
