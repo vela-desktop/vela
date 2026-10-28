@@ -42,6 +42,9 @@ static struct ext_session_lock_manager_v1* manager;
 static struct screen screens[MAX_OUTPUTS];
 static int screen_count;
 static bool locked, finished;
+static bool log_pointer;
+static struct wl_seat* seat;
+static struct wl_pointer* pointer;
 
 static struct wl_buffer* make_buffer(uint32_t width, uint32_t height, uint32_t color)
 {
@@ -112,6 +115,54 @@ static void lock_finished(void* data, struct ext_session_lock_v1* lock)
 }
 static const struct ext_session_lock_v1_listener lock_listener = { lock_locked, lock_finished };
 
+// Optional input probe for the functional lock-routing test. The test
+// asserts that motion on the invisible resize border of a hidden window
+// reaches the lock surface rather than being intercepted by decoration hit tests.
+static void pointer_enter(void* data, struct wl_pointer* ptr, uint32_t serial,
+    struct wl_surface* surface, wl_fixed_t sx, wl_fixed_t sy)
+{
+    if (log_pointer) {
+        fprintf(stderr, "vela-testlock: pointer-enter %d %d\\n",
+            wl_fixed_to_int(sx), wl_fixed_to_int(sy));
+    }
+}
+static void pointer_leave(void* data, struct wl_pointer* ptr, uint32_t serial, struct wl_surface* surface) { }
+static void pointer_motion(void* data, struct wl_pointer* ptr, uint32_t time,
+    wl_fixed_t sx, wl_fixed_t sy)
+{
+    if (log_pointer) {
+        fprintf(stderr, "vela-testlock: pointer-motion %d %d\\n",
+            wl_fixed_to_int(sx), wl_fixed_to_int(sy));
+    }
+}
+static void pointer_button(void* data, struct wl_pointer* ptr, uint32_t serial,
+    uint32_t time, uint32_t button, uint32_t state) { }
+static void pointer_axis(void* data, struct wl_pointer* ptr, uint32_t time,
+    uint32_t axis, wl_fixed_t value) { }
+static const struct wl_pointer_listener pointer_listener = {
+    .enter = pointer_enter,
+    .leave = pointer_leave,
+    .motion = pointer_motion,
+    .button = pointer_button,
+    .axis = pointer_axis,
+};
+
+static void seat_capabilities(void* data, struct wl_seat* current, uint32_t caps)
+{
+    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
+        pointer = wl_seat_get_pointer(current);
+        wl_pointer_add_listener(pointer, &pointer_listener, NULL);
+    } else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && pointer) {
+        wl_pointer_destroy(pointer);
+        pointer = NULL;
+    }
+}
+static void seat_name(void* data, struct wl_seat* current, const char* name) { }
+static const struct wl_seat_listener seat_listener = {
+    .capabilities = seat_capabilities,
+    .name = seat_name,
+};
+
 static void global(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
     if (!strcmp(interface, wl_compositor_interface.name)) {
@@ -120,6 +171,9 @@ static void global(void* data, struct wl_registry* registry, uint32_t name, cons
         shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     } else if (!strcmp(interface, wl_output_interface.name) && screen_count < MAX_OUTPUTS) {
         screens[screen_count++].output = wl_registry_bind(registry, name, &wl_output_interface, 1);
+    } else if (log_pointer && !strcmp(interface, wl_seat_interface.name) && !seat) {
+        seat = wl_registry_bind(registry, name, &wl_seat_interface, version < 4 ? version : 4);
+        wl_seat_add_listener(seat, &seat_listener, NULL);
     } else if (!strcmp(interface, ext_session_lock_manager_v1_interface.name)) {
         manager = wl_registry_bind(registry, name, &ext_session_lock_manager_v1_interface, 1);
     }
@@ -138,6 +192,7 @@ int main(int argc, char* argv[])
 {
     const int hold = argc > 1 ? atoi(argv[1]) : 1500;
     const bool keep_surfaces = argc > 2 && !strcmp(argv[2], "--keep-surfaces");
+    log_pointer = getenv("VELA_TESTLOCK_LOG_POINTER") && strcmp(getenv("VELA_TESTLOCK_LOG_POINTER"), "0") != 0;
     struct wl_display* display = wl_display_connect(NULL);
     if (!display) {
         fprintf(stderr, "vela-testlock: no Wayland display\n");
