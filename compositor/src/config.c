@@ -6,6 +6,7 @@
 #include "legacy_names.h"
 #include "path_security.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
