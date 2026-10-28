@@ -326,7 +326,7 @@ static struct vela_bt_device *requester(struct vela_bt_daemon *d, sd_bus_message
         // prevents unattended requests while LockedHint is not propagated
         // by the compositor yet (B5).
         why = "no presenter for unsolicited pairing until B4";
-    } else if (d->session_locked && !solicited) {
+    } else if (d->session_locked) {
         // Nobody is there to answer (§6.4).
         why = "the screen is locked";
     } else if (d->question) {
