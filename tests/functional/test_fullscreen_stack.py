@@ -101,6 +101,31 @@ class FullscreenStack(unittest.TestCase):
             self.assertNotEqual(vela.pixels().at(*first_point), baseline.at(*first_point))
             self.assertNotEqual(vela.pixels().at(*second_point), baseline.at(*second_point))
 
+    def test_minimizing_unfocused_fullscreen_promotes_next_game(self):
+        with Session(size="1280x720@60") as vela:
+            vela.command("test-output add 1280x720")
+            state = vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two monitors")
+            secondary = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+            panel(vela, "taskbar", "fullscreen-taskbar")
+            vela.input("move", 20, 20)
+            first = game(vela)
+            second = game(vela)
+            x, y = 24, vela.state().output["h"] - 12
+            immersive = vela.pixels().at(x, y)
+            vela.input("move", secondary["x"] + 200, secondary["y"] + 200)
+            other = vela.open_window(240, 150)
+            vela.wait_for(lambda s: s["focused"] == other, what="secondary app focused")
+            self.assertEqual(vela.pixels().at(x, y), immersive)
+            # The global keyboard focus stays on output 2 while output 1's
+            # frontmost fullscreen view is minimized through the window API.
+            vela.command(f"window {second} minimize")
+            vela.wait_for(lambda s: s.window(second)["minimized"],
+                          what="nonfocused fullscreen minimized")
+            time.sleep(0.4)  # let the minimizing snapshot animation retire
+            self.assertTrue(vela.state().window(first)["fullscreen"])
+            self.assertEqual(vela.state()["focused"], other)
+            self.assertEqual(vela.pixels().at(x, y), immersive)
+
     def test_super_reveals_taskbar_before_start_surface_maps(self):
         # A fake shell deliberately ACKs the toggle but never maps Start:
         # the taskbar must be painted *before* Qt supplies a menu buffer.
@@ -267,6 +292,7 @@ class FullscreenStack(unittest.TestCase):
             vela.command("test-output add 1280x720")
             state = vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two monitors")
             secondary = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+            empty_secondary = vela.pixels(output=1)
             app = vela.open_window(320, 240, decorated=True)
             w = vela.state().window(app)
             src_x, src_y = w["x"] + 50, w["y"] + 40
@@ -287,6 +313,10 @@ class FullscreenStack(unittest.TestCase):
             w = vela.state().window(app)
             sx, sy = center(w)
             local_x, local_y = sx - secondary["x"], sy - secondary["y"]
+            # The already-open app must actually be visible on output 1,
+            # not merely unchanged there while a different output is sampled.
+            self.assertNotEqual(secondary_pixel.at(local_x, local_y),
+                                empty_secondary.at(local_x, local_y))
             self.assertEqual(vela.pixels(output=1).at(local_x, local_y),
                              secondary_pixel.at(local_x, local_y))
             drag = subprocess.Popen([
