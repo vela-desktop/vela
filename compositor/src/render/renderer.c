@@ -740,8 +740,8 @@ static void semaphore_used_until(struct vela_renderer *r, VkSemaphore semaphore,
     r->used_semaphores[r->used_semaphore_count++] = (struct used_semaphore) { point, semaphore, release };
 }
 
-uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
-    int *release_fd)
+static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
+    int *release_fd, uint64_t wait_point)
 {
     struct vela_vulkan *vk = r->vk;
     if (release_fd) {
@@ -763,10 +763,11 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
         .commandBuffer = cmd,
     };
 
+    if (wait_point <= r->completed) wait_point = 0;
     // Kernel fences (sync_files) become semaphores the GPU waits for.
     // Both buffers grow independently; on OOM vela_grow fails fast.
     vela_wait_arrays_reserve(&r->wait_infos, &r->wait_infos_capacity,
-        &r->wait_semaphores, &r->wait_semaphores_capacity, wait_count);
+        &r->wait_semaphores, &r->wait_semaphores_capacity, wait_count + (wait_point > 0));
     uint32_t waits = 0;
     bool inputs_ready = true;
     for (int i = 0; i < wait_count; ++i) {
@@ -806,6 +807,18 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
         ++waits;
     }
 
+    if (wait_point) {
+        // Not a pooled binary semaphore: don't include it in the input-fence
+        // retirement loops. The wait covers every stage, including ownership
+        // and layout transitions for aliased imports of our output buffers.
+        r->wait_infos[waits] = (VkSemaphoreSubmitInfo) {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = r->timeline,
+            .value = wait_point,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+    }
+
     uint64_t point = r->last_point + 1;
     VkSemaphoreSubmitInfo signals[2] = {
         {
@@ -830,7 +843,7 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
 
     const VkSubmitInfo2 submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-        .waitSemaphoreInfoCount = waits,
+        .waitSemaphoreInfoCount = waits + (wait_point > 0),
         .pWaitSemaphoreInfos = r->wait_infos,
         .commandBufferInfoCount = cmd_count,
         .pCommandBufferInfos = cmds,
@@ -892,6 +905,21 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
     if ((release_fd && *release_fd < 0) || vela_env_one("VELA_DEBUG_SYNC")) {
         vela_renderer_wait(r, point);
     }
+    return point;
+}
+
+uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
+    int *release_fd)
+{
+    return submit(r, cmd, wait_fds, wait_count, release_fd, r->readback_point);
+}
+
+uint64_t vela_renderer_submit_readback(struct vela_renderer *r, VkCommandBuffer cmd)
+{
+    // Explicit GPU dependencies in both directions. In particular, a cancelled
+    // source may return to the swapchain before the copy has finished reading it.
+    uint64_t point = submit(r, cmd, NULL, 0, NULL, r->last_point);
+    if (point) r->readback_point = point;
     return point;
 }
 

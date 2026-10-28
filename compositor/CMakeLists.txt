@@ -51,8 +51,8 @@ vela_server_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-
 vela_server_protocol(${PROJECT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml
     wlr-layer-shell-unstable-v1)
 
-# Protocols wlroots doesn't implement: we implement them, so the interface code
-# is needed too.
+# Protocols implemented by Vela need interface code, including the output
+# capture adapter and its referenced foreign-toplevel interface.
 set(VELA_OWN_PROTOCOL_SOURCES)
 function(vela_own_protocol xml name)
     set(header ${VELA_GENERATED_DIR}/${name}-protocol.h)

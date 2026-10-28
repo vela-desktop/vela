@@ -1,14 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Capture correctness during animations, and speed when cached readback is available.
+"""Deferred SHM capture pixels, cancellation and presentation at 180 Hz.
 
-A capture into shared memory is copied by the GPU into a staging buffer, which
-the compositor then reads with the CPU, inside the output's frame. From
-uncached memory, the kind uploads use, reading a 1440p output
-took longer than a frame at 180 Hz: about three missed vblanks per capture,
-for as long as a screen recording or a screen share lasted. Readback staging
-is preferably cached (render/renderer.c); supported GPUs read it in a fraction of a frame."""
+Output and window sources retain buffers until GPU completion and the final
+CPU row copy. The original animation workload must still satisfy the same
+missed-vblank budget, with no skipped or silently dropped captures.
+"""
 
 import os
 import signal
@@ -56,19 +54,22 @@ class Captures(unittest.TestCase):
                 thread.join()
             if capture_error is not None:
                 raise capture_error
-            missed = vela.state().output["missed"] - before
-            if os.environ.get("VELA_READBACK_DIAG") == "1":
-                for line in vela.log_text().splitlines():
-                    if "VELA_READBACK_DIAG" in line:
-                        print(line, flush=True)
+            state = vela.state()
+            missed = state.output["missed"] - before
+            readback = state["readback"]
+            print(f"capture: 2560x1440@180 captures={captures} missed_vblanks={missed} "
+                  f"completed={readback['completed']} cancelled={readback['cancelled']} "
+                  f"failed={readback['failed']} pending={readback['pending']}", flush=True)
+            self.assertEqual(readback["completed"], captures, "every capture must use deferred completion")
+            self.assertEqual(readback["pending"], 0)
+            self.assertEqual(readback["failed"], 0)
+            self.assertEqual(readback["cancelled"], 0)
             # Uncached readback can be slow, so verify repeated successful
             # captures there without imposing the cached path's rate/latency bound.
             uncached = "Vulkan readback staging: uncached fallback" in vela.log_text()
             self.assertGreaterEqual(captures, 3 if uncached else 20, "too few captures to tell")
             if not uncached:
                 self.assertLess(missed, captures, f"{missed} vblanks missed during {captures} captures")
-
-
 
 
 class DeferredCapture(unittest.TestCase):

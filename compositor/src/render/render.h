@@ -248,6 +248,7 @@ struct vela_renderer {
     VkSemaphore timeline;
     uint64_t last_point;
     uint64_t completed;
+    uint64_t readback_point; // later draws must follow submitted readback reads, even after cancellation
 
     VkSemaphore *free_waits;
     int free_wait_count, free_wait_capacity;
@@ -312,6 +313,9 @@ bool vela_renderer_stage_readback(struct vela_renderer *renderer, VkDeviceSize s
 // waited). Returns the timeline point, 0 if the submission failed.
 uint64_t vela_renderer_submit(struct vela_renderer *renderer, VkCommandBuffer cmd, const int *wait_fds,
     int wait_count, int *release_fd);
+// Compositor-owned readback: GPU-wait for earlier draws, then make later
+// submissions GPU-wait for this copy. Queue order alone is not a dependency.
+uint64_t vela_renderer_submit_readback(struct vela_renderer *renderer, VkCommandBuffer cmd);
 void vela_renderer_wait(struct vela_renderer *renderer, uint64_t point);
 // Frees what the GPU has finished using (retired images, semaphores, extra
 // staging blocks).

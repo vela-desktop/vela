@@ -553,8 +553,8 @@ static void finish_readback(struct vela_readback *readback, bool ok)
 
 void vela_renderer_cancel_readbacks(struct vela_renderer *renderer)
 {
-    struct vela_readback *readback, *next;
-    wl_list_for_each_safe (readback, next, &renderer->readbacks, link) {
+    while (!wl_list_empty(&renderer->readbacks)) {
+        struct vela_readback *readback = wl_container_of(renderer->readbacks.next, readback, link);
         finish_readback(readback, false);
     }
 }
@@ -568,6 +568,12 @@ struct vela_readback_stats vela_renderer_readback_stats(const struct vela_render
 static int dispatch_readback(void *data)
 {
     struct vela_renderer *renderer = data;
+    // Arm before invoking terminal callbacks: they may remove this source.
+    // Handling an arm failure here never traverses a just-completed request.
+    if (wl_event_source_timer_update(renderer->readback_timer, 1) < 0) {
+        vela_renderer_cancel_readbacks(renderer);
+        return 0;
+    }
     struct vela_readback *readback = wl_container_of(renderer->readbacks.next, readback, link);
     // Round robin; one bounded slice across all requests per timer tick.
     wl_list_remove(&readback->link);
@@ -602,11 +608,6 @@ static int dispatch_readback(void *data)
         }
         if (!ok || readback->row == readback->dst->height) {
             finish_readback(readback, ok);
-        }
-    }
-    if (renderer->readback_timer) {
-        if (wl_event_source_timer_update(renderer->readback_timer, 1) < 0) {
-            vela_renderer_cancel_readbacks(renderer);
         }
     }
     return 0;
@@ -668,9 +669,10 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     VkCommandBuffer cmd = record_readback(texture, &box, &readback->staging, row_bytes);
     // Contract: src was drawn by THIS renderer (output/cursor/window swapchain),
     // never a directly scanned-out client buffer. Its producer and this copy
-    // execute in order on our single VkQueue. Keeping its texture locked prevents
-    // recycling; no external fence export or CPU fallback wait is necessary.
-    uint64_t point = vela_renderer_submit(renderer, cmd, NULL, 0, NULL);
+    // have explicit GPU timeline dependencies in both directions. Keeping the
+    // texture locked prevents normal reuse; the dependency on this copy also
+    // protects reuse after cancellation. No CPU or external fence wait is used.
+    uint64_t point = vela_renderer_submit_readback(renderer, cmd);
     if (!point) {
         pin_staging(renderer, readback->staging.buffer, false);
         if (!renderer->readback_count) {

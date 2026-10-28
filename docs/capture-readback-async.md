@@ -60,7 +60,10 @@ For each SHM request:
    staging slice; record the same image ownership/layout and host-read barriers.
 2. Submit on the renderer's queue and return from the source callback. These
    sources are compositor-owned output/window swapchains drawn on that same
-   queue; output sessions disable direct scanout. No external-producer wait or
+   queue; output sessions disable direct scanout. A GPU timeline wait explicitly
+   orders the readback after earlier rendering, and later renderer submissions
+   wait for the copy before possibly reusing its source (including cancellation).
+   Queue submission order alone provides no memory dependency. No CPU wait or
    sync-file-export fallback is needed. This API must not receive client buffers.
 3. One renderer-wide timer checks the Vulkan timeline without waiting. After
    completion it copies at most 512 KiB or about 0.5 ms of rows per 1 ms tick,
