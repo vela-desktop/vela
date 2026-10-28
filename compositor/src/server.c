@@ -412,6 +412,9 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
         vela_shell_start(server, startup_command);
     }
     vela_polkit_agent_start(server);
+    // Initial state first: a restarted compositor must not allow pairing
+    // during the brief interval before the Bluetooth child starts.
+    vela_bluetooth_report_lock(server, server->locked);
     vela_bluetooth_start(server);
     vela_brightness_start(server);
     return true;
@@ -424,6 +427,7 @@ void vela_server_run(struct vela_server *server)
 
 void vela_server_destroy(struct vela_server *server)
 {
+    vela_bluetooth_finish();
     // We are shutting down: the shell and the agent going away must not be
     // relaunched.
     vela_shell_stop(server);
