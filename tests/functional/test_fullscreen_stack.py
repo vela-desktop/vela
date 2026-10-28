@@ -108,13 +108,21 @@ class FullscreenStack(unittest.TestCase):
             vela.wait_for(lambda s: s["focused"] == app, what="app focused on secondary")
             self.assertEqual(vela.pixels().at(450, 350), baseline.at(450, 350))
             w = vela.state().window(app)
-            vela.input("move", w["x"] + 70, w["y"] + 50, "keydown", "super", "down",
-                       "move", 450, 350, "sleep", "100", "up", "keyup", "super")
-            state = vela.wait_for(lambda s: s.window(app)["output"] == "HEADLESS-1",
-                                  what="app dragged over fullscreen game")
-            x, y = center(state.window(app))
-            self.assertEqual(state["focused"], app)
-            self.assertTrue(state.window(fullscreen)["fullscreen"])
+            drag = subprocess.Popen([
+                tool("vela-input"), "move", str(w["x"] + 70), str(w["y"] + 50),
+                "keydown", "super", "down", "move", "450", "350",
+                "sleep", "2000", "up", "keyup", "super"
+            ], env=vela.client_env)
+            try:
+                state = vela.wait_for(lambda s: s.window(app)["output"] == "HEADLESS-1",
+                                      what="app dragged over fullscreen game")
+                x, y = center(state.window(app))
+                self.assertIsNone(drag.poll(), "must inspect pixels during the drag, not after dropping")
+                self.assertEqual(state["focused"], app)
+                self.assertTrue(state.window(fullscreen)["fullscreen"])
+                self.assertNotEqual(vela.pixels().at(x, y), baseline.at(x, y))
+            finally:
+                self.assertEqual(drag.wait(timeout=4), 0)
             self.assertNotEqual(vela.pixels().at(x, y), baseline.at(x, y))
             vela.input("move", 10, 10, "down", "up")
             vela.wait_for(lambda s: s["focused"] == fullscreen, what="game refocused")
