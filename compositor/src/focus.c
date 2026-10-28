@@ -31,6 +31,29 @@ static bool view_overlaps_output(struct vela_view *view, struct vela_output *out
     return wlr_box_intersection(&overlap, &area, &frame);
 }
 
+// A normal window taking foreground over a game must expose the other normal
+// windows on that monitor too. Place the background game below the lowest
+// regular window, but above Wine BELOW backdrops. Do not do this when Start
+// alone opens over an otherwise foreground game: it should still be visible
+// behind Start, with only the taskbar additionally exposed.
+static void background_game_below_windows(struct vela_server *server, struct vela_view *game,
+    struct vela_output *output)
+{
+    struct vela_node *node;
+    wl_list_for_each (node, &server->layers.windows->children, link) {
+        struct vela_owner *owner = node->data;
+        if (!owner || owner->kind != VELA_OWNER_VIEW || node == &game->tree->node) {
+            continue;
+        }
+        struct vela_view *other = (struct vela_view *)owner;
+        if (other->mapped && !other->minimized && !other->fullscreen && !vela_view_stays_below(other)
+            && vela_view_on_current_workspace(other) && view_overlaps_output(other, output)) {
+            vela_node_place_below(&game->tree->node, node);
+            break;
+        }
+    }
+}
+
 void vela_fullscreen_restack(struct vela_server *server)
 {
     if (server->locked) {
@@ -76,6 +99,16 @@ void vela_fullscreen_restack(struct vela_server *server)
         // A dialog of a fullscreen app belongs to its parent's visual layer,
         // not necessarily the parent's *protocol* fullscreen state.
         vela_views_sync_transient_layers(server);
+        if (front && !front->fullscreen) {
+            wl_list_for_each (view, &server->views, link) {
+                if (view->mapped && view->fullscreen && !vela_view_stays_below(view)
+                    && view->tree->node.parent == server->layers.windows
+                    && vela_view_output(view) == output
+                    && !vela_view_is_transient_of(front, view)) {
+                    background_game_below_windows(server, view, output);
+                }
+            }
+        }
         if (front && front->tree->node.parent == server->layers.windows) {
             vela_node_raise_to_top(&front->tree->node);
             vela_views_raise_transients(front);
