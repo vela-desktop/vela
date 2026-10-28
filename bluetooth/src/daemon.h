@@ -163,6 +163,7 @@ struct vela_bt_daemon {
     struct vela_bt_question *question;
     uint64_t question_id; // the last one given
     sd_bus_track *listeners; // Vela's UI clients the question signals go to
+    sd_bus_track *presenters; // UIs that explicitly promise to draw unsolicited prompts
 
     // The logind session (§6.7).
     char *login_session; // its object path, while it's known
