@@ -81,6 +81,7 @@ public:
     explicit Bluetooth(bool ui, QObject* parent = nullptr);
     Bluetooth(const QDBusConnection& bus, bool ui, QObject* parent = nullptr);
 
+    bool running() const { return m_running; }
     bool available() const { return m_running && m_available; }
     bool platformBlocked() const { return m_running && !m_available && m_platformBlocked; }
     bool active() const { return m_active; }

@@ -45,6 +45,8 @@ Item {
         }
         function shownActive() {
             tryVerify(() => dialog.visible)
+            // Offscreen fixtures need explicit activation to accept keys.
+            // This does not prove compositor-driven production activation.
             dialog.requestActivate()
             tryVerify(() => dialog.active)
             waitForRendering(dialog.contentItem)
@@ -71,6 +73,13 @@ Item {
             close()
             tryVerify(() => !dialog.visible)
             compare(BluetoothPrompts.answers, [])
+        }
+
+        function test_device_name_with_markup_is_literal() {
+            ask("confirm-passkey", { name: "<b>Phone</b>", passkey: "123456" })
+            shownActive()
+            compare(find("prompt").text, "Does <b>Phone</b> show this code?")
+            compare(find("prompt").textFormat, Text.PlainText)
         }
 
         function test_enter_and_esc() {

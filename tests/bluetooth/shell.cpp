@@ -302,6 +302,25 @@ private slots:
         QTRY_VERIFY(paired(phone));
     }
 
+    // An unsolicited question adopted by Settings must close the shell
+    // notification without rejecting the Settings-owned Add.
+    void settingsAdoptsAnUnsolicitedQuestion()
+    {
+        deviceAsks(phone, QStringLiteral("RequestConfirmation"), { 123456u });
+        QTRY_COMPARE(notifications->count(), 1);
+        QVERIFY(QDBusConnection::connectToBus(sessionAddress, QStringLiteral("settings")).isConnected());
+        auto settings = std::make_unique<Bluetooth>(QDBusConnection(QStringLiteral("settings")), true);
+        QTRY_COMPARE(settings->devices().size(), 2);
+        settings->add(phone);
+        QTRY_COMPARE(settings->question().value(QStringLiteral("drawnBy")).toString(), QStringLiteral("settings"));
+        QTRY_COMPARE(notifications->count(), 0);
+        QVERIFY(prompts->dialog().isEmpty());
+        settings->answer(settings->question().value(QStringLiteral("id")).toString(), QStringLiteral("accept"));
+        QTRY_VERIFY_WITH_TIMEOUT(paired(phone), 10000);
+        settings.reset();
+        QDBusConnection::disconnectFromBus(QStringLiteral("settings"));
+    }
+
     // An Add without a UI of its own (another app's): the dialog at once,
     // no notification; the answer pairs it.
     void anAddWithoutAUiOpensTheDialog()
@@ -377,6 +396,9 @@ private slots:
         searchAndLeaveVisible();
         QTest::qWait(100);
         QCOMPARE(notifications->count(), 0);
+        settingsOpen = false;
+        prompts->settingsWindowsChanged();
+        QTRY_COMPARE(notifications->count(), 1);
         settings->stopBeingVisible();
         QTRY_VERIFY(!bluetooth->stillVisible());
         QVERIFY(discover(false));

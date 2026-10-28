@@ -79,6 +79,7 @@ Flickable {
                     y: (52 - height) / 2
                     width: parent.width - 56
                     Text {
+                        objectName: "deviceName"
                         width: parent.width
                         text: device.modelData.name
                         textFormat: Text.PlainText

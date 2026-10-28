@@ -42,7 +42,8 @@ SystemStatus::SystemStatus(vela::bluetooth::Bluetooth* bluetooth, QObject* paren
 {
     QDBusConnection system = QDBusConnection::systemBus();
     connect(this, &SystemStatus::networkChanged, this, &SystemStatus::airplaneChanged);
-    connect(m_bluetooth, &vela::bluetooth::Bluetooth::changed, this, &SystemStatus::airplaneChanged);
+    connect(m_bluetooth, &vela::bluetooth::Bluetooth::changed, this, &SystemStatus::refreshBluetooth);
+    refreshBluetooth();
 
     // --- Network: NetworkManager.
     system.connect(nm, nmPath, propertiesInterface, QStringLiteral("PropertiesChanged"), this,
@@ -130,10 +131,23 @@ QString SystemStatus::networkIcon() const
 
 // Bluetooth counts when there is an adapter, or a blocked platform switch
 // that turning it on unblocks (docs/bluetooth.md §6.3).
+void SystemStatus::refreshBluetooth()
+{
+    if (m_bluetooth->running()) {
+        m_bluetoothWasPresent = m_bluetooth->available() || m_bluetooth->platformBlocked();
+        m_bluetoothWasPowered = m_bluetooth->powered();
+    }
+    emit airplaneChanged();
+}
+
 bool SystemStatus::airplaneMode() const
 {
-    const bool bluetooth = m_bluetooth->available() || m_bluetooth->platformBlocked();
-    return (!m_wifiAvailable || !wifiEnabled()) && (!bluetooth || !m_bluetooth->powered()) && (m_wifiAvailable || bluetooth);
+    // The daemon can restart without switching BlueZ's radio off. Until the
+    // new owner reports its state, do not mistake unknown for powered-off.
+    const bool bluetooth = m_bluetooth->running()
+        ? (m_bluetooth->available() || m_bluetooth->platformBlocked()) : m_bluetoothWasPresent;
+    const bool powered = m_bluetooth->running() ? m_bluetooth->powered() : m_bluetoothWasPowered;
+    return (!m_wifiAvailable || !wifiEnabled()) && (!bluetooth || !powered) && (m_wifiAvailable || bluetooth);
 }
 
 void SystemStatus::setAirplaneMode(bool on)

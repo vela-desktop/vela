@@ -72,6 +72,14 @@ Item {
             compare(row("Headset").Accessible.description, "Connected · Battery 80%")
         }
 
+        function test_names_are_plain_text() {
+            Bluetooth.devices = [Bluetooth.device(2, { name: "<b>Phone</b>", paired: true })]
+            const label = findChild(row("<b>Phone</b>"), "deviceName")
+            tryVerify(() => label !== null)
+            compare(label.text, "<b>Phone</b>")
+            compare(label.textFormat, Text.PlainText)
+        }
+
         function test_a_click_opens_one() {
             compare(list.finalHeight, 52 * 2 + 2)
             mouseClick(row("Mouse"), 20, 20)

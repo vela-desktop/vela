@@ -720,6 +720,16 @@ private slots:
         QCOMPARE(control(QStringLiteral("remove vela-test-other")), QStringLiteral("ok"));
     }
 
+    void destroyedBluetoothClientClearsBattery()
+    {
+        daemon.setHeadset(QStringLiteral("AA:BB:CC:DD:EE:FF"), 73);
+        QVERIFY(control(QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF")).startsWith(QLatin1String("ok")));
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 73);
+        bluetooth.reset(); // Audio outlives its Bluetooth client.
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), -1);
+        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
+    }
+
     // Without vela-bluetooth's client, no battery.
     void bluetoothBatteryNeedsTheDaemon()
     {

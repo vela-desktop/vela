@@ -88,6 +88,7 @@ private Q_SLOTS:
     void refreshBattery();
     void refreshPowerProfile();
     void onPropertiesChanged(const QString& interface, const QVariantMap& changed, const QStringList& invalidated);
+    void refreshBluetooth();
 
 private:
     bool m_networkConnected = false;
@@ -99,6 +100,8 @@ private:
     Requested m_wifiRequest { [this] { emit networkChanged(); } };
 
     vela::bluetooth::Bluetooth* m_bluetooth;
+    bool m_bluetoothWasPresent = false;
+    bool m_bluetoothWasPowered = false; // last confirmed value while the daemon is absent
 
     bool m_batteryPresent = false;
     int m_batteryPercent = 0;
