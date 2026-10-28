@@ -54,6 +54,31 @@ class Lock(unittest.TestCase):
             image = vela.pixels()
             self.assertEqual(image.at(image.width // 2, image.height // 2), (16, 32, 64))
 
+    def test_hidden_window_resize_border_does_not_steal_lock_pointer(self):
+        """Mouse motion at an invisible desktop resize border must reach the locker.
+
+        Before the fix, resize_border_at() still walks disabled window children,
+        chooses an east/west resize cursor, clears pointer focus and returns.
+        This is why the lock screen can display a resize arrow over empty space.
+        """
+        with Session(lock_hold_ms=8000, env={"VELA_TESTLOCK_LOG_POINTER": "1"}) as vela:
+            window = vela.open_window(400, 300, decorated=True)
+            frame = vela.state().window(window)
+            x = frame["x"] + frame["w"] + 4
+            y = frame["y"] + frame["h"] // 2
+            # Start outside the invisible resize band so that the second
+            # move crosses into it only after the lock surface has mapped.
+            vela.input("move", x + 60, y)
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"], what="locked")
+            vela.wait_for_log("vela-testlock: locked")
+            # Ensure the opaque lock surface has actually committed.
+            vela.wait_for(lambda _: vela.pixels().at(10, 10) == (16, 32, 64),
+                          what="mapped lock surface", read_state=False)
+            vela.input("move", x, y)
+            vela.wait_for_log(f"vela-testlock: pointer-motion {x} {y}", timeout=3)
+            self.assertTrue(vela.state()["locked"], "pointer movement must not unlock")
+
     def test_missing_locker_never_exposes_desktop(self):
         # A failed launcher must hide windows and revoke keyboard focus even
         # when no ext-session-lock client has connected.
