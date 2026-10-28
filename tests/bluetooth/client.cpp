@@ -18,6 +18,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QThread>
 
 #include <memory>
@@ -49,6 +50,33 @@ QVariantMap byName(const QVariantList& devices, const QString& name)
 }
 
 } // namespace
+
+// An old owner deliberately replies to GetAll *after* handing its name to
+// the new daemon. This exercises the client generation guard independently
+// of BlueZ's own restart timing.
+class DelayedBluetoothOwner : public QDBusVirtualObject {
+public:
+    QString bus;
+    bool getAllCalled = false;
+
+    QString introspect(const QString&) const override { return {}; }
+    bool handleMessage(const QDBusMessage& message, const QDBusConnection&) override
+    {
+        if (message.member() == QLatin1String("GetAll")) {
+            getAllCalled = true;
+            message.setDelayedReply(true);
+            QTimer::singleShot(1500, this, [this, message] {
+                const QVariantMap stale { { QStringLiteral("Available"), false },
+                    { QStringLiteral("Active"), false } };
+                QDBusConnection(bus).send(message.createReply(stale));
+            });
+            return true;
+        }
+        QDBusConnection(bus).send(message.createErrorReply(
+            QStringLiteral("org.freedesktop.DBus.Error.UnknownMethod"), QStringLiteral("delayed stub")));
+        return true;
+    }
+};
 
 class BluetoothClient : public QObject {
     Q_OBJECT
@@ -407,6 +435,42 @@ private slots:
         QTRY_VERIFY(bluetooth->available());
         QTRY_COMPARE(bluetooth->devices().size(), 3);
         QVERIFY(bluetooth->powered());
+    }
+
+    void staleGetAllIsIgnoredAfterDaemonReplacement()
+    {
+        stopDaemon();
+        auto* old = new DelayedBluetoothOwner;
+        old->bus = QStringLiteral("stale-bluetooth-owner");
+        old->moveToThread(&fakeThread);
+        bool registered = false;
+        fake->run([&] {
+            auto connection = QDBusConnection::connectToBus(sessionAddress, old->bus);
+            registered = connection.registerService(service)
+                && connection.registerVirtualObject(QStringLiteral("/org/vela/Bluetooth"), old);
+        });
+        QVERIFY(registered);
+        auto bluetooth = std::make_unique<Bluetooth>(bus(), true);
+        bool requested = false;
+        QTRY_VERIFY([&] {
+            fake->run([&] { requested = old->getAllCalled; });
+            return requested;
+        }());
+        fake->run([&] {
+            QDBusConnection(old->bus).unregisterService(service);
+        });
+        QVERIFY(startDaemon());
+        QTRY_VERIFY(bluetooth->available());
+        QTRY_COMPARE(bluetooth->devices().size(), 3);
+        // This is after the previous owner's delayed false-Available reply.
+        QTest::qWait(1800);
+        QVERIFY(bluetooth->available());
+        QCOMPARE(bluetooth->devices().size(), 3);
+        bluetooth.reset();
+        fake->run([&] {
+            QDBusConnection::disconnectFromBus(old->bus);
+            delete old;
+        });
     }
 
     // Before the daemon serves searches (B5), "Add a device" lists what
