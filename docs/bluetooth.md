@@ -5,10 +5,10 @@ settings, and how Vela shares Bluetooth with other desktop sessions. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** design under discussion in PR #146. B0, B1 and B2 are done:
-> the daemon runs with its agent and follows the session, but no client
-> uses it yet. Everything in §3 is in scope for beta 0.1. Stages are listed
-> in §12.
+> **Status:** B0–B3 are implemented in PR #146: the daemon and agent run,
+> and Settings uses the shared client library. Shell, audio, search leases,
+> lock-state propagation, packaging and hardware validation remain B4–B7.
+> Everything in §3 is planned for beta 0.1. See §12.
 
 ## 1. Why from scratch
 
