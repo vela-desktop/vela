@@ -59,37 +59,59 @@ static void apply(struct vela_bt_daemon *d, bool active, bool locked)
     }
 }
 
-// Active and LockedHint from an a{sv} at the message's position.
-static int read_state(struct vela_bt_daemon *d, sd_bus_message *m)
+// Never infer an active session from a partial or malformed GetAll.
+static int read_state(struct vela_bt_daemon *d, sd_bus_message *m, bool complete)
 {
     bool active = d->session_active;
     bool locked = d->session_locked;
+    bool have_active = false;
+    bool have_locked = false;
     int r = sd_bus_message_enter_container(m, 'a', "{sv}");
-    while (r >= 0) {
-        r = sd_bus_message_enter_container(m, 'e', "sv");
-        if (r <= 0) {
-            break;
-        }
+    if (r <= 0) {
+        return r < 0 ? r : -EBADMSG;
+    }
+    while ((r = sd_bus_message_enter_container(m, 'e', "sv")) > 0) {
         const char *name;
-        int value;
-        if ((r = sd_bus_message_read_basic(m, 's', &name)) < 0) {
-            break;
+        if ((r = sd_bus_message_read_basic(m, 's', &name)) <= 0) {
+            return r < 0 ? r : -EBADMSG;
         }
         if (strcmp(name, "Active") != 0 && strcmp(name, "LockedHint") != 0) {
             r = sd_bus_message_skip(m, "v");
-            if (r < 0) {
-                break;
+        } else {
+            int value = 0;
+            r = sd_bus_message_read(m, "v", "b", &value);
+            if (r > 0) {
+                if (strcmp(name, "Active") == 0) {
+                    active = value != 0;
+                    have_active = true;
+                } else {
+                    locked = value != 0;
+                    have_locked = true;
+                }
             }
-        } else if (sd_bus_message_read(m, "v", "b", &value) > 0) {
-            *(strcmp(name, "Active") == 0 ? &active : &locked) = value != 0;
         }
-        r = sd_bus_message_exit_container(m);
+        if (r <= 0) {
+            return r < 0 ? r : -EBADMSG;
+        }
+        if ((r = sd_bus_message_exit_container(m)) < 0) {
+            return r;
+        }
     }
     if (r < 0) {
         return r;
     }
-    sd_bus_message_exit_container(m);
-    apply(d, active, locked);
+    if ((r = sd_bus_message_exit_container(m)) < 0) {
+        return r;
+    }
+    if (complete && (!have_active || !have_locked)) {
+        return -EBADMSG;
+    }
+    if (complete) {
+        d->session_known = true;
+    }
+    if (d->session_known) {
+        apply(d, active, locked);
+    }
     return 0;
 }
 
@@ -98,48 +120,92 @@ static int on_changed(sd_bus_message *m, void *data, sd_bus_error *error)
     struct vela_bt_daemon *d = data;
     const char *interface;
     if (sd_bus_message_read_basic(m, 's', &interface) > 0 && strcmp(interface, SESSION1) == 0) {
-        read_state(d, m);
+        if (read_state(d, m, false) < 0) {
+            vela_bt_log("logind PropertiesChanged: invalid state");
+        }
     }
     return 0;
+}
+
+static void request_session_state(struct vela_bt_daemon *d);
+
+static int on_session_retry(sd_event_source *source, uint64_t usec, void *data)
+{
+    struct vela_bt_daemon *d = data;
+    d->session_retry = sd_event_source_disable_unref(d->session_retry);
+    request_session_state(d);
+    return 0;
+}
+
+static void retry_session(struct vela_bt_daemon *d)
+{
+    if (d->session_retry || !d->login_session) {
+        return;
+    }
+    uint64_t delay = d->session_backoff_us ? d->session_backoff_us : 1000000ULL;
+    d->session_backoff_us = delay < 15000000ULL ? delay * 2 : 30000000ULL;
+    int r = sd_event_add_time_relative(d->event, &d->session_retry, CLOCK_MONOTONIC,
+        delay, 0, on_session_retry, d);
+    if (r < 0) {
+        vela_bt_log("logind retry timer: %s", strerror(-r));
+    }
 }
 
 static int on_properties(sd_bus_message *reply, void *data, sd_bus_error *error)
 {
     struct vela_bt_daemon *d = data;
     d->session_call = sd_bus_slot_unref(d->session_call);
-    if (sd_bus_message_is_method_error(reply, NULL) || read_state(d, reply) < 0) {
-        vela_bt_log("logind session: %s: acting as if it's in front",
+    if (sd_bus_message_is_method_error(reply, NULL) || read_state(d, reply, true) < 0) {
+        vela_bt_log("logind session: %s: keeping session inactive until verified",
             sd_bus_message_is_method_error(reply, NULL) ? sd_bus_message_get_error(reply)->message : "bad reply");
-        apply(d, true, false);
+        d->session_known = false;
+        apply(d, false, true);
+        retry_session(d);
+    } else {
+        d->session_backoff_us = 0;
     }
     return 0;
+}
+
+static void request_session_state(struct vela_bt_daemon *d)
+{
+    if (!d->login_session || d->session_call) {
+        return;
+    }
+    int r = 0;
+    if (!d->session_watching) {
+        r = sd_bus_match_signal_async(d->system, NULL, LOGIN1, d->login_session,
+            "org.freedesktop.DBus.Properties", "PropertiesChanged", on_changed, NULL, d);
+        if (r >= 0) {
+            d->session_watching = true;
+        }
+    }
+    if (r >= 0) {
+        r = sd_bus_call_method_async(d->system, &d->session_call, LOGIN1, d->login_session,
+            "org.freedesktop.DBus.Properties", "GetAll", on_properties, d, "s", SESSION1);
+    }
+    if (r < 0) {
+        vela_bt_log("logind session %s: %s: keeping inactive", d->login_session, strerror(-r));
+        apply(d, false, true);
+        retry_session(d);
+    }
 }
 
 static int on_session(sd_bus_message *reply, void *data, sd_bus_error *error)
 {
     struct vela_bt_daemon *d = data;
     d->session_call = sd_bus_slot_unref(d->session_call);
-    const char *path;
+    const char *path = NULL;
     if (!sd_bus_message_is_method_error(reply, NULL) && sd_bus_message_read(reply, "o", &path) > 0) {
         d->login_session = strdup(path);
     }
     if (!d->login_session) {
-        vela_bt_log("logind session: %s: acting as if it's in front",
-            sd_bus_message_is_method_error(reply, NULL) ? sd_bus_message_get_error(reply)->message : "bad reply");
+        vela_bt_log("no identified logind session: acting as if it's in front");
         apply(d, true, false);
         return 0;
     }
-    // The match goes to the bus before GetAll: no change is missed.
-    int r = sd_bus_match_signal_async(d->system, NULL, LOGIN1, d->login_session, "org.freedesktop.DBus.Properties",
-        "PropertiesChanged", on_changed, NULL, d);
-    if (r >= 0) {
-        r = sd_bus_call_method_async(d->system, &d->session_call, LOGIN1, d->login_session,
-            "org.freedesktop.DBus.Properties", "GetAll", on_properties, d, "s", SESSION1);
-    }
-    if (r < 0) {
-        vela_bt_log("logind session %s: %s: acting as if it's in front", d->login_session, strerror(-r));
-        apply(d, true, false);
-    }
+    // Subscribe before fetching state, so no transitions are lost.
+    request_session_state(d);
     return 0;
 }
 
