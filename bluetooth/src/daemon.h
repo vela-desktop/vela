@@ -129,6 +129,7 @@ struct vela_bt_search {
     size_t count;
     uint64_t last_id;
     uint64_t limit_us; // a lease's time limit: 3 minutes, shorter in the tests
+    uint64_t restart_window_us; // retry window; shorter only in tests
     char *adapter; // where Vela discovers, while it does or is starting or stopping
     bool running; // StartDiscovery succeeded, no StopDiscovery since
     bool filtered; // with the Discoverable filter (rule 1)

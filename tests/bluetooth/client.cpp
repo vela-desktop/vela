@@ -393,12 +393,13 @@ private slots:
         QVERIFY(!bluetooth->searchEnded());
         QTRY_VERIFY(bluetooth->adapter().value(QStringLiteral("discoverable")).toBool());
         QVERIFY(!bluetooth->searchShared());
+        search.clear(); // count the emissions caused by stopSearch itself
         bluetooth->stopSearch();
         QVERIFY(!bluetooth->searching());
         QVERIFY(!bluetooth->searchEnded());
         QTRY_VERIFY(!bluetooth->adapter().value(QStringLiteral("discoverable")).toBool());
         QVERIFY(bluetooth->error().isEmpty());
-        QVERIFY(search.size() >= 2);
+        QVERIFY(search.size() >= 1);
     }
 
     // The daemon ends it (the lock): "Search again".

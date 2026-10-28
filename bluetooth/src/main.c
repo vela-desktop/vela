@@ -71,6 +71,17 @@ static uint64_t search_limit_us(void)
     return 180 * 1000000ULL;
 }
 
+static uint64_t search_restart_window_us(void)
+{
+#ifdef VELA_BLUETOOTH_TESTING
+    const char *ms = secure_getenv("VELA_BT_RESTART_WINDOW_MS");
+    if (ms && *ms) {
+        return strtoull(ms, NULL, 10) * 1000ULL;
+    }
+#endif
+    return 60 * 1000000ULL;
+}
+
 static int on_signal(sd_event_source *source, const struct signalfd_siginfo *info, void *data)
 {
     struct vela_bt_daemon *d = data;
@@ -117,6 +128,7 @@ int main(void)
     d.rfkill = test_path("VELA_RFKILL", "/dev/rfkill");
     d.ui = ui_executables();
     d.search.limit_us = search_limit_us();
+    d.search.restart_window_us = search_restart_window_us();
 
     struct vela_config settings;
     vela_config_read(&settings);

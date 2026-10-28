@@ -69,6 +69,8 @@ public:
         bool visibleByFilter = false;
         // StartDiscovery fails, this many times.
         int startErrors = 0;
+        int stopErrors = 0;
+        int filterDelayMs = 0; // in-flight SetDiscoveryFilter test
     };
 
     struct Device {
@@ -588,10 +590,23 @@ private:
             const bool discoverable = filter.value(QStringLiteral("Discoverable")).toBool();
             calls << QStringLiteral("SetDiscoveryFilter %1 Discoverable=%2")
                          .arg(adapterPath(name), discoverable ? QStringLiteral("true") : QStringLiteral("false"));
-            adapter.filters[client] = discoverable;
-            send(message.createReply());
-            if (adapter.discovering.contains(client)) {
-                applyFilter(name, client);
+            const int delay = adapter.filterDelayMs;
+            auto finish = [this, message, name, client, discoverable] {
+                if (!adapters.contains(name)) {
+                    send(message.createErrorReply(QStringLiteral("org.bluez.Error.DoesNotExist"), QStringLiteral("Adapter gone")));
+                    return;
+                }
+                Adapter& current = adapters[name];
+                current.filters[client] = discoverable;
+                send(message.createReply());
+                if (current.discovering.contains(client)) {
+                    applyFilter(name, client);
+                }
+            };
+            if (delay > 0) {
+                QTimer::singleShot(delay, this, finish);
+            } else {
+                finish();
             }
             return;
         }
@@ -625,6 +640,11 @@ private:
                     stopClient(name, client);
                 }
             });
+            return;
+        }
+        if (adapter.stopErrors > 0) {
+            --adapter.stopErrors;
+            send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("Stop refused")));
             return;
         }
         if (!adapter.discovering.contains(client)) {

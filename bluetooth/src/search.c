@@ -20,7 +20,6 @@
 
 #define ADAPTER1 "org.bluez.Adapter1"
 #define VISIBLE_CHECK_US (2 * 1000000ULL)
-#define RESTART_WINDOW_US (60 * 1000000ULL)
 #define STOP_RETRY_US (1000000ULL)
 
 static void lease_free(struct vela_bt_lease *lease)
@@ -217,7 +216,7 @@ static void discovery_lost(struct vela_bt_daemon *d)
             oldest = i;
         }
     }
-    uint64_t allowed = s->restarts[oldest] ? s->restarts[oldest] + RESTART_WINDOW_US : 0;
+    uint64_t allowed = s->restarts[oldest] ? s->restarts[oldest] + s->restart_window_us : 0;
     if (now < allowed) {
         vela_bt_log("discovery stopped again: waiting %llu s", (unsigned long long)((allowed - now) / 1000000ULL));
         if (!s->restart_timer

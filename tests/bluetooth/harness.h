@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QFile>
 #include <QProcess>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
@@ -75,7 +76,11 @@ protected:
             return QStringLiteral("no fake /dev/rfkill");
         }
 
+        QSignalSpy started(&fakeThread, &QThread::started);
         fakeThread.start();
+        if (started.isEmpty() && !started.wait(5000)) {
+            return QStringLiteral("fake BlueZ thread did not start");
+        }
         fake = new FakeBluez;
         fake->bus = QStringLiteral("fake-bluez");
         fake->moveToThread(&fakeThread);
@@ -97,13 +102,22 @@ protected:
     void tearDown()
     {
         stopDaemon();
-        fake->run([this] {
-            QDBusConnection::disconnectFromBus(fake->bus);
-            QDBusConnection::disconnectFromBus(logind->bus);
-        });
-        QMetaObject::invokeMethod(fake, [this] { delete logind; delete fake; }, Qt::BlockingQueuedConnection);
-        fakeThread.quit();
-        fakeThread.wait();
+        if (fake && logind && fakeThread.isRunning()) {
+            fake->run([this] {
+                QDBusConnection::disconnectFromBus(fake->bus);
+                QDBusConnection::disconnectFromBus(logind->bus);
+            });
+            QMetaObject::invokeMethod(fake, [this] { delete logind; delete fake; }, Qt::BlockingQueuedConnection);
+        } else {
+            delete logind;
+            delete fake;
+        }
+        fake = nullptr;
+        logind = nullptr;
+        if (fakeThread.isRunning()) {
+            fakeThread.quit();
+            fakeThread.wait();
+        }
         QDBusConnection::disconnectFromBus(m_connection);
         for (QProcess* process : { &m_systemBus, &m_sessionBus }) {
             process->kill();
