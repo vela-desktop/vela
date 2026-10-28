@@ -149,6 +149,10 @@ int vela_bt_power_set(struct vela_bt_daemon *d, sd_bus_message *call, bool on, s
         vela_bt_waiters_add(&power->waiters, call);
         return 1;
     }
+    // A newer OFF also cancels a platform-unblock power-on that is still waiting for an adapter.
+    if (!on) {
+        d->power_on_until = 0;
+    }
     // The user changed their mind: the earlier request stops here.
     vela_bt_power_end(d, NULL, true);
 
