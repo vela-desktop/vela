@@ -68,7 +68,7 @@ public:
             QTimer::singleShot(1500, this, [this, message] {
                 const QVariantMap stale { { QStringLiteral("Available"), false },
                     { QStringLiteral("Active"), false } };
-                QDBusConnection(bus).send(message.createReply(stale));
+                QDBusConnection(bus).send(message.createReply(QVariant::fromValue(stale)));
             });
             return true;
         }
