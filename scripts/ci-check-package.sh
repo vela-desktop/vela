@@ -26,14 +26,17 @@ done
 grep -Fq 'Exec=/usr/bin/vela-session' /usr/share/wayland-sessions/vela.desktop \
     || fail "Session entry does not launch /usr/bin/vela-session"
 vela-report --help >/dev/null || fail "The reporting CLI cannot load its Python modules"
-for helper in vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui; do
+for helper in vela-bluetooth vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui; do
     test -x "/usr/lib/vela/$helper" || fail "Missing helper: /usr/lib/vela/$helper"
 done
 # Without sd-bus the helper builds, but can't change a laptop's backlight.
 ldd /usr/lib/vela/vela-brightness | grep -Fq libsystemd.so \
     || fail "vela-brightness was built without sd-bus (libsystemd)"
+# vela-bluetooth is built only with libsystemd (sd-bus, sd-event).
+ldd /usr/lib/vela/vela-bluetooth | grep -Fq libsystemd.so \
+    || fail "vela-bluetooth doesn't link libsystemd"
 for program in vela-compositor vela-shell vela-files vela-settings vela-lock \
-    /usr/lib/vela/vela-brightness /usr/lib/vela/vela-polkit-agent /usr/lib/vela/vela-polkit-prompt \
+    /usr/lib/vela/vela-bluetooth /usr/lib/vela/vela-brightness /usr/lib/vela/vela-polkit-agent /usr/lib/vela/vela-polkit-prompt \
     /usr/lib/vela/vela-report-gui; do
     path=$(command -v "$program")
     if ldd "$path" | grep -q 'not found'; then

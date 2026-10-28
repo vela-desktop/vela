@@ -52,6 +52,7 @@ endif()
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
     add_subdirectory(brightness)
+    add_subdirectory(bluetooth)
     add_subdirectory(session)
 endif()
 option(VELA_BUILD_POLKIT "Build the polkit agent (needs polkit-agent-1; the prompt also needs the shell's Qt)" ON)
@@ -103,6 +104,10 @@ if(VELA_BUILD_TOOLS)
     endif()
     # A private PipeWire and WirePlumber for the audio tests (docs/audio.md).
     add_subdirectory(tests/audio)
+    # A fake BlueZ for vela-bluetooth (docs/bluetooth.md §11).
+    if(TARGET vela-bluetooth-testing AND VELA_BUILD_SHELL)
+        add_subdirectory(tests/bluetooth)
+    endif()
 endif()
 
 # Experimental Ubuntu 26.10 binary package. Opt-in so other distributions and
@@ -137,6 +142,9 @@ if(VELA_PACKAGE_DEB)
     # Vela uses Breeze by default; Qt needs the SVG icon engine to render it.
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
         "git, apt, dpkg, sudo, util-linux, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+    # Bluetooth needs only BlueZ (docs/bluetooth.md §10), as Fedora's
+    # Recommends and Arch's optional dependency.
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "bluez")
     # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
         DESTINATION "${CMAKE_INSTALL_BINDIR}")

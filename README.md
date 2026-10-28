@@ -434,10 +434,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The GPU-dependent functional and sharpness suites use Vela's real Vulkan renderer. They
-are run regularly on the primary development machine — an AMD Radeon RX 9070 XT with
-Mesa/RADV — and currently pass in full. GitHub-hosted CI runs the CPU-only tests and
-skips GPU suites because hosted runners do not expose a usable DRM/Vulkan device.
+The GPU-dependent functional and sharpness suites use Vela's real Vulkan renderer
+on self-hosted hardware; GitHub-hosted CI cannot run them. See the
+[GPU CI policy](docs/ci-quality.md#gpu-ci-policy) for when AMD and NVIDIA
+results are required and how the candidate revision is verified.
 
 For the full workflow, test harness, command socket, debug switches and project layout,
 see the documentation below.
@@ -451,10 +451,12 @@ see the documentation below.
 | **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
 | **[Roadmap](docs/roadmap.md)** | Work in progress, what comes next, what is not planned, and what is done. |
 | **[Contributing](CONTRIBUTING.md)** | Development workflow, PR checklist, testing and DCO. |
+| **[Contributors](CONTRIBUTORS.md)** | Thanks to everyone helping build and improve Vela. |
 | **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
 | **[Polkit agent](docs/polkit-agent.md)** | The User Account Control dialog: agent, dialog, protocol, security notes and tests. |
 | **[Audio](docs/audio.md)** | Design of the shared audio backend on WirePlumber: model, volume rules, levels, microphone in use, tests. |
+| **[Bluetooth](docs/bluetooth.md)** | Design of the `vela-bluetooth` daemon: devices, pairing agent, quick settings, other desktop sessions, tests. |
 | **[Vela Report](docs/reporting.md)** | Guided diagnostic ZIPs, CLI and GUI, collection choices, privacy and validation. |
 | **[Development](docs/development.md)** | Build options, nested/headless workflows, development tools and repository layout. |
 | **[Testing](docs/testing.md)** | Unit, functional and sharpness suites; GPU requirements; local and CI coverage. |

@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# DCO App validates sign-off by the original author; a follow-up signed-off
+# remediation commit can correct legacy contributions without rewriting history.
+allowRemediationCommits:
+  individual: true

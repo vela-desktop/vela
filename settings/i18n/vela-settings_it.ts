@@ -237,6 +237,45 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>AddDeviceDialog</name>
+    <message>
+        <source>Add a device</source>
+        <translation>Aggiungi un dispositivo</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Make sure your device is turned on and discoverable. Select it below to add it.</source>
+        <translation>Assicurati che il dispositivo sia acceso e individuabile. Selezionalo qui sotto per aggiungerlo.</translation>
+    </message>
+    <message>
+        <source>Discoverable as &quot;%1&quot;</source>
+        <translation>Individuabile come &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Another app is searching for devices, so this PC isn&apos;t made visible. Pairing from this PC still works.</source>
+        <translation>Un&apos;altra app sta cercando dispositivi, quindi questo PC non viene reso visibile. L&apos;associazione da questo PC funziona comunque.</translation>
+    </message>
+    <message>
+        <source>Wait for %1 to finish pairing.</source>
+        <translation>Attendi che %1 finisca l&apos;associazione.</translation>
+    </message>
+    <message>
+        <source>Looking for devices...</source>
+        <translation>Ricerca dei dispositivi...</translation>
+    </message>
+    <message>
+        <source>No devices found</source>
+        <translation>Nessun dispositivo trovato</translation>
+    </message>
+    <message>
+        <source>Search again</source>
+        <translation>Cerca di nuovo</translation>
+    </message>
+</context>
+<context>
     <name>AppsPage</name>
     <message>
         <source>Installed apps</source>
@@ -291,46 +330,34 @@ Specifiche sistema
     </message>
 </context>
 <context>
-    <name>Bluetooth</name>
+    <name>BluetoothDevice</name>
     <message>
-        <source>Pairing failed: the device rejected it.</source>
-        <translation>Associazione non riuscita: il dispositivo l&apos;ha rifiutata.</translation>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
     </message>
     <message>
-        <source>The device isn&apos;t responding. Make sure it&apos;s on and nearby.</source>
-        <translation>Il dispositivo non risponde. Controlla che sia acceso e vicino.</translation>
+        <source>Disconnect</source>
+        <translation>Disconnetti</translation>
     </message>
     <message>
-        <source>Bluetooth is turned off.</source>
-        <translation>Il Bluetooth è spento.</translation>
+        <source>Connect</source>
+        <translation>Connetti</translation>
     </message>
     <message>
-        <source>The operation failed.</source>
-        <translation>Operazione non riuscita.</translation>
+        <source>Rename</source>
+        <translation>Rinomina</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Rimuovi</translation>
+    </message>
+    <message>
+        <source>Sound settings</source>
+        <translation>Impostazioni audio</translation>
     </message>
 </context>
 <context>
     <name>BluetoothPage</name>
-    <message>
-        <source>Connecting...</source>
-        <translation>Connessione in corso...</translation>
-    </message>
-    <message>
-        <source>Connected</source>
-        <translation>Connesso</translation>
-    </message>
-    <message>
-        <source>Paired</source>
-        <translation>Associato</translation>
-    </message>
-    <message>
-        <source> · Battery </source>
-        <translation> · Batteria </translation>
-    </message>
-    <message>
-        <source>Bluetooth isn&apos;t available</source>
-        <translation>Bluetooth non disponibile</translation>
-    </message>
     <message>
         <source>There&apos;s no Bluetooth adapter, or the bluetooth service isn&apos;t running.</source>
         <translation>Non c&apos;è un adattatore Bluetooth, o il servizio bluetooth non è attivo.</translation>
@@ -338,10 +365,6 @@ Specifiche sistema
     <message>
         <source>Bluetooth</source>
         <translation>Bluetooth</translation>
-    </message>
-    <message>
-        <source>Discoverable as &quot;</source>
-        <translation>Individuabile come &quot;</translation>
     </message>
     <message>
         <source>Off</source>
@@ -360,20 +383,36 @@ Specifiche sistema
         <translation>Aggiungi dispositivo</translation>
     </message>
     <message>
-        <source>Disconnect</source>
-        <translation>Disconnetti</translation>
-    </message>
-    <message>
-        <source>Connect</source>
-        <translation>Connetti</translation>
-    </message>
-    <message>
         <source>Remove</source>
         <translation>Rimuovi</translation>
     </message>
     <message>
         <source>Related settings</source>
         <translation>Impostazioni correlate</translation>
+    </message>
+    <message>
+        <source>Bluetooth isn&apos;t available on this PC</source>
+        <translation>Il Bluetooth non è disponibile su questo PC</translation>
+    </message>
+    <message>
+        <source>Discoverable as &quot;%1&quot;</source>
+        <translation>Individuabile come &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>Attivato</translation>
+    </message>
+    <message>
+        <source>Advanced</source>
+        <translation>Avanzate</translation>
+    </message>
+    <message>
+        <source>Bluetooth adapter</source>
+        <translation>Adattatore Bluetooth</translation>
+    </message>
+    <message>
+        <source>The one this PC uses</source>
+        <translation>Quello che usa questo PC</translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -404,44 +443,87 @@ Specifiche sistema
         <translation>Rimuovere il dispositivo?</translation>
     </message>
     <message>
-        <source>Yes</source>
-        <translation>Sì</translation>
+        <source>To use %1 again, you&apos;ll need to pair it once more.</source>
+        <translation>Per usare di nuovo %1 dovrai associarlo un&apos;altra volta.</translation>
     </message>
     <message>
-        <source>No</source>
-        <translation>No</translation>
+        <source>Rename this device</source>
+        <translation>Rinomina questo dispositivo</translation>
     </message>
     <message>
-        <source>To use </source>
-        <translation>Per usare di nuovo </translation>
+        <source>Rename</source>
+        <translation>Rinomina</translation>
     </message>
     <message>
-        <source> again, you&apos;ll need to pair it once more.</source>
-        <translation> dovrai associarlo un&apos;altra volta.</translation>
-    </message>
-    <message>
-        <source>Add a device</source>
-        <translation>Aggiungi un dispositivo</translation>
+        <source>Name</source>
+        <translation>Nome</translation>
     </message>
     <message>
         <source>Cancel</source>
         <translation>Annulla</translation>
     </message>
+</context>
+<context>
+    <name>BluetoothQuestion</name>
     <message>
-        <source>Make sure your device is turned on and discoverable. Select it below to connect.</source>
-        <translation>Assicurati che il dispositivo sia acceso e individuabile. Selezionalo qui sotto per connetterlo.</translation>
+        <source>Does %1 show this code?</source>
+        <translation>%1 mostra questo codice?</translation>
     </message>
     <message>
-        <source>Pairing...</source>
-        <translation>Associazione in corso...</translation>
+        <source>%1 wants to pair with this PC.</source>
+        <translation>%1 vuole associarsi a questo PC.</translation>
     </message>
     <message>
-        <source>Looking for devices...</source>
-        <translation>Ricerca dei dispositivi...</translation>
+        <source>Allow %1 to use %2?</source>
+        <translation>Consentire a %1 di usare %2?</translation>
     </message>
     <message>
-        <source>No devices found</source>
-        <translation>Nessun dispositivo trovato</translation>
+        <source>Type the 6-digit code shown on %1.</source>
+        <translation>Digita il codice di 6 cifre mostrato su %1.</translation>
+    </message>
+    <message>
+        <source>Type the PIN for %1.</source>
+        <translation>Digita il PIN di %1.</translation>
+    </message>
+    <message>
+        <source>Type this code on %1, then press Enter on it.</source>
+        <translation>Digita questo codice su %1, poi premi Invio sul dispositivo.</translation>
+    </message>
+    <message>
+        <source>Code %1</source>
+        <translation>Codice %1</translation>
+    </message>
+    <message>
+        <source>%1 of 6 digits typed</source>
+        <translation>%1 cifre su 6 digitate</translation>
+    </message>
+    <message>
+        <source>Code</source>
+        <translation>Codice</translation>
+    </message>
+    <message>
+        <source>PIN</source>
+        <translation>PIN</translation>
+    </message>
+    <message>
+        <source>Time left: %1 s</source>
+        <translation>Tempo rimasto: %1 s</translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation>Consenti</translation>
+    </message>
+    <message>
+        <source>Pair</source>
+        <translation>Associa</translation>
+    </message>
+    <message>
+        <source>Deny</source>
+        <translation>Nega</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
     </message>
 </context>
 <context>
@@ -766,6 +848,45 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>DeviceState</name>
+    <message>
+        <source>Waiting for you...</source>
+        <translation>In attesa di una tua risposta...</translation>
+    </message>
+    <message>
+        <source>Pairing...</source>
+        <translation>Associazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connecting...</source>
+        <translation>Connessione in corso...</translation>
+    </message>
+    <message>
+        <source>Disconnecting...</source>
+        <translation>Disconnessione in corso...</translation>
+    </message>
+    <message>
+        <source>Removing...</source>
+        <translation>Rimozione in corso...</translation>
+    </message>
+    <message>
+        <source>Renaming...</source>
+        <translation>Ridenominazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>Connesso</translation>
+    </message>
+    <message>
+        <source>Paired</source>
+        <translation>Associato</translation>
+    </message>
+    <message>
+        <source>Battery %1%</source>
+        <translation>Batteria %1%</translation>
+    </message>
+</context>
+<context>
     <name>Dialog</name>
     <message>
         <source>OK</source>
@@ -962,10 +1083,6 @@ Specifiche sistema
         <translation>Un gioco a schermo intero va sullo schermo senza essere ridisegnato. Se un gioco mostra schermo nero o immagini corrotte, disattivalo</translation>
     </message>
     <message>
-        <source>direct scanout black screen glitch game full screen flicker</source>
-        <translation>scanout diretto schermo nero glitch gioco schermo intero</translation>
-    </message>
-    <message>
         <source>Related settings</source>
         <translation>Impostazioni correlate</translation>
     </message>
@@ -1068,12 +1185,16 @@ Specifiche sistema
         <translation>Bluetooth</translation>
     </message>
     <message>
-        <source>Discoverable as &quot;</source>
-        <translation>Individuabile come &quot;</translation>
-    </message>
-    <message>
         <source>Off</source>
         <translation>Disattivato</translation>
+    </message>
+    <message>
+        <source>Discoverable as &quot;%1&quot;</source>
+        <translation>Individuabile come &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>Attivato</translation>
     </message>
     <message>
         <source>View all devices</source>
@@ -1635,6 +1756,13 @@ Specifiche sistema
     <message>
         <source>Find a setting</source>
         <translation>Trova un&apos;impostazione</translation>
+    </message>
+</context>
+<context>
+    <name>MoreMenu</name>
+    <message>
+        <source>More options</source>
+        <translation>Altre opzioni</translation>
     </message>
 </context>
 <context>
@@ -2404,6 +2532,21 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>StillVisibleCard</name>
+    <message>
+        <source>Your PC is still visible to nearby devices</source>
+        <translation>Il PC è ancora visibile ai dispositivi vicini</translation>
+    </message>
+    <message>
+        <source>Another app is searching for devices.</source>
+        <translation>Un&apos;altra app sta cercando dispositivi.</translation>
+    </message>
+    <message>
+        <source>Stop being visible</source>
+        <translation>Non essere più visibile</translation>
+    </message>
+</context>
+<context>
     <name>Switch</name>
     <message>
         <source>On</source>
@@ -2702,6 +2845,45 @@ Specifiche sistema
     <message>
         <source>Every app uses the default output and input again</source>
         <translation>Ogni app torna a usare l&apos;output e l&apos;input predefiniti</translation>
+    </message>
+</context>
+<context>
+    <name>vela::bluetooth::Bluetooth</name>
+    <message>
+        <source>Bluetooth is busy. Try again in a moment.</source>
+        <translation>Il Bluetooth è occupato. Riprova tra un momento.</translation>
+    </message>
+    <message>
+        <source>Wait for %1 to finish pairing.</source>
+        <translation>Attendi che %1 finisca l&apos;associazione.</translation>
+    </message>
+    <message>
+        <source>Bluetooth can&apos;t be changed while the screen is locked or another session is in use.</source>
+        <translation>Il Bluetooth non si può modificare mentre lo schermo è bloccato o è in uso un&apos;altra sessione.</translation>
+    </message>
+    <message>
+        <source>This app isn&apos;t allowed to change Bluetooth.</source>
+        <translation>Questa app non può modificare il Bluetooth.</translation>
+    </message>
+    <message>
+        <source>There&apos;s no Bluetooth adapter.</source>
+        <translation>Non c&apos;è nessun adattatore Bluetooth.</translation>
+    </message>
+    <message>
+        <source>The device isn&apos;t there anymore.</source>
+        <translation>Il dispositivo non c&apos;è più.</translation>
+    </message>
+    <message>
+        <source>That code isn&apos;t valid.</source>
+        <translation>Il codice non è valido.</translation>
+    </message>
+    <message>
+        <source>That name can&apos;t be used. Use up to 248 characters, without control characters.</source>
+        <translation>Questo nome non si può usare. Usa al massimo 248 caratteri, senza caratteri di controllo.</translation>
+    </message>
+    <message>
+        <source>Bluetooth isn&apos;t responding.</source>
+        <translation>Il Bluetooth non risponde.</translation>
     </message>
 </context>
 </TS>
