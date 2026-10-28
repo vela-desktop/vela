@@ -29,6 +29,16 @@ Dialog {
         Bluetooth.startSearch()
     }
 
+    // A page replacement destroys the dialog without emitting chosen.
+    // Cancel only the Add belonging to this dialog; a new dialog may own
+    // the shared Bluetooth search by the time this one is destroyed.
+    Component.onDestruction: {
+        if (adding !== "" && Bluetooth.pairing === adding)
+            Bluetooth.cancel(adding)
+        if (visible)
+            Bluetooth.stopSearch()
+    }
+
     onChosen: {
         if (adding !== "" && Bluetooth.pairing === adding)
             Bluetooth.cancel(adding)
