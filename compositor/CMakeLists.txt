@@ -336,6 +336,19 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-readback-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.readback COMMAND vela-readback-test)
 
+    # Real output-source damage/idle policy with GPU work replaced by terminal
+    # frame notifications; no private wlroots session state is accessed.
+    add_executable(vela-capture-damage-test tests/capture_damage_test.c ${VELA_OWN_PROTOCOL_SOURCES})
+    target_include_directories(vela-capture-damage-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-capture-damage-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-capture-damage-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter)
+    target_link_options(vela-capture-damage-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-capture-damage-test PRIVATE PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN PkgConfig::VULKAN m)
+    set_target_properties(vela-capture-damage-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.capture-damage COMMAND vela-capture-damage-test)
+
     # Linux /proc enumeration and SIGTERM/SIGKILL child cleanup, no GPU.
     add_executable(vela-supervisor-children-test
         tests/supervisor_children_test.c src/supervisor_children.c)

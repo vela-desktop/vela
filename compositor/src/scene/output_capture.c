@@ -69,11 +69,25 @@ struct vela_output_capture_source {
 	struct wlr_output *output;
 
 	struct wl_listener output_commit;
+	struct wl_listener client_destroy;
 
 	struct output_cursor_source cursor;
 
 	size_t num_started;
 	bool software_cursors_locked;
+
+	// Do not feed later damage to wlroots while ready() can still clear it.
+	// Several sessions can copy one offered image concurrently. Changes made
+	// during that batch are retained here until every frame has terminated.
+	pixman_region32_t damage;
+	size_t pending;
+	bool frame_requested;
+	bool finishing;
+};
+
+struct output_capture_frame {
+	struct vela_output_capture_source *source;
+	struct wl_listener destroy;
 };
 
 struct vela_output_capture_source_frame_event {
@@ -112,10 +126,23 @@ static void output_source_stop(struct wlr_ext_image_capture_source_v1 *base) {
 static void output_source_request_frame(struct wlr_ext_image_capture_source_v1 *base,
 		bool schedule_frame) {
 	struct vela_output_capture_source *source = wl_container_of(base, source, base);
-	// Always request the next output buffer, including after a deferred ready
-	// cleared wlroots' accumulated damage. Each offered buffer is full damage,
-	// so commits arriving during an in-flight copy cannot lose a later change.
-	wlr_output_update_needs_frame(source->output);
+	if (source->pending > 0) {
+		source->frame_requested = true;
+	} else if (schedule_frame || pixman_region32_not_empty(&source->damage)) {
+		wlr_output_update_needs_frame(source->output);
+	}
+}
+
+static void output_capture_frame_destroy(struct wl_listener *listener, void *data) {
+	struct output_capture_frame *frame = wl_container_of(listener, frame, destroy);
+	struct vela_output_capture_source *source = frame->source;
+	wl_list_remove(&frame->destroy.link);
+	free(frame);
+	assert(source->pending > 0);
+	--source->pending;
+	if (!source->finishing && source->pending == 0 && source->frame_requested) {
+		wlr_output_update_needs_frame(source->output);
+	}
 }
 
 static void output_source_copy_frame(struct wlr_ext_image_capture_source_v1 *base,
@@ -124,6 +151,19 @@ static void output_source_copy_frame(struct wlr_ext_image_capture_source_v1 *bas
 	struct vela_output_capture_source *source = wl_container_of(base, source, base);
 	struct vela_output_capture_source_frame_event *event =
 		wl_container_of(base_event, event, base);
+	if (wl_signal_get(&frame->events.destroy, output_capture_frame_destroy)) {
+		return;
+	}
+	struct output_capture_frame *pending = calloc(1, sizeof(*pending));
+	if (!pending) {
+		wlr_ext_image_copy_capture_frame_v1_fail(frame,
+			EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
+		return;
+	}
+	pending->source = source;
+	pending->destroy.notify = output_capture_frame_destroy;
+	wl_signal_add(&frame->events.destroy, &pending->destroy);
+	++source->pending;
 
 	vela_capture_copy_frame(base, frame, event->buffer, source->server->renderer,
 		source->server->loop, source->output->transform, &event->when);
@@ -158,6 +198,9 @@ static void source_update_buffer_constraints(struct vela_output_capture_source *
 
 	wlr_ext_image_capture_source_v1_set_constraints_from_swapchain(&source->base,
 		output->swapchain, output->renderer);
+	pixman_region32_clear(&source->damage);
+	pixman_region32_union_rect(&source->damage, &source->damage, 0, 0,
+		source->base.width, source->base.height);
 }
 
 static void source_handle_output_commit(struct wl_listener *listener,
@@ -172,20 +215,32 @@ static void source_handle_output_commit(struct wl_listener *listener,
 
 	if (event->state->committed & WLR_OUTPUT_STATE_BUFFER) {
 		struct wlr_buffer *buffer = event->state->buffer;
+		if (event->state->committed & WLR_OUTPUT_STATE_DAMAGE) {
+			pixman_region32_union(&source->damage, &source->damage, &event->state->damage);
+		} else {
+			pixman_region32_union_rect(&source->damage, &source->damage, 0, 0,
+				buffer->width, buffer->height);
+		}
+		if (source->pending > 0) {
+			return;
+		}
 
-		pixman_region32_t full_damage;
-		pixman_region32_init_rect(&full_damage, 0, 0, buffer->width, buffer->height);
+		pixman_region32_t damage;
+		pixman_region32_init(&damage);
+		pixman_region32_copy(&damage, &source->damage);
+		pixman_region32_clear(&source->damage);
+		source->frame_requested = false;
 
 		struct vela_output_capture_source_frame_event frame_event = {
 			.base = {
-				.damage = &full_damage,
+				.damage = &damage,
 			},
 			.buffer = buffer,
 			.when = event->when, // TODO: predict next presentation time instead
 		};
 		wl_signal_emit_mutable(&source->base.events.frame, &frame_event);
 
-		pixman_region32_fini(&full_damage);
+		pixman_region32_fini(&damage);
 	}
 }
 
@@ -195,11 +250,20 @@ static void output_cursor_source_finish(struct output_cursor_source *cursor_sour
 
 static void output_addon_destroy(struct wlr_addon *addon) {
 	struct vela_output_capture_source *source = wl_container_of(addon, source, addon);
+	source->finishing = true;
 	wlr_ext_image_capture_source_v1_finish(&source->base);
+	assert(source->pending == 0);
+	pixman_region32_fini(&source->damage);
 	output_cursor_source_finish(&source->cursor);
 	wl_list_remove(&source->output_commit.link);
+	wl_list_remove(&source->client_destroy.link);
 	wlr_addon_finish(&source->addon);
 	free(source);
+}
+
+static void source_handle_client_destroy(struct wl_listener *listener, void *data) {
+	struct vela_output_capture_source *source = wl_container_of(listener, source, client_destroy);
+	output_addon_destroy(&source->addon);
 }
 
 static const struct wlr_addon_interface output_addon_impl = {
@@ -218,7 +282,9 @@ static void output_manager_handle_create_source(struct wl_client *client,
 	}
 
 	struct vela_output_capture_source *source;
-	struct wlr_addon *addon = wlr_addon_find(&output->addons, NULL, &output_addon_impl);
+	// Share the damage frontier only among this client's sessions. A slow SHM
+	// consumer must not hold back another client's DMA-BUF or initial capture.
+	struct wlr_addon *addon = wlr_addon_find(&output->addons, client, &output_addon_impl);
 	if (addon != NULL) {
 		source = wl_container_of(addon, source, addon);
 	} else {
@@ -229,12 +295,15 @@ static void output_manager_handle_create_source(struct wl_client *client,
 		}
 
 		wlr_ext_image_capture_source_v1_init(&source->base, &output_source_impl);
-		wlr_addon_init(&source->addon, &output->addons, NULL, &output_addon_impl);
+		pixman_region32_init(&source->damage);
+		wlr_addon_init(&source->addon, &output->addons, client, &output_addon_impl);
 		source->output = output;
 		source->server = manager->server;
 
 		source->output_commit.notify = source_handle_output_commit;
 		wl_signal_add(&output->events.commit, &source->output_commit);
+		source->client_destroy.notify = source_handle_client_destroy;
+		wl_client_add_destroy_listener(client, &source->client_destroy);
 
 		source_update_buffer_constraints(source);
 

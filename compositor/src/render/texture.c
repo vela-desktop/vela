@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/timerfd.h>
 #include <unistd.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/util/log.h>
@@ -522,11 +523,12 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
     return true;
 }
 
-// There is one timer and one aggregate copy budget, even with several clients.
-// Timers yield to epoll between slices; re-adding an idle callback would drain
-// all slices in one event-loop dispatch and recreate the original stall.
-#define READBACK_SLICE_BYTES (512u * 1024u)
+// One aggregate CPU time budget across all clients. A one-shot timerfd yields
+// through epoll after each slice, without imposing a 1 ms sleep per 512 KiB.
+// Idle callbacks instead drain in one dispatch and recreate the original stall.
 #define READBACK_SLICE_NS 500000
+#define READBACK_YIELD_NS 50000
+#define READBACK_POLL_NS 200000
 #define READBACK_TIMEOUT_NS (5LL * VELA_NS_PER_SEC)
 
 struct vela_readback {
@@ -561,6 +563,22 @@ static void pin_staging(struct vela_renderer *renderer, VkBuffer buffer, bool pi
     abort(); // a reserved slice must never have been collected
 }
 
+static void remove_readback_timer(struct vela_renderer *renderer)
+{
+    if (renderer->readback_timer) {
+        wl_event_source_remove(renderer->readback_timer);
+        renderer->readback_timer = NULL;
+        close(renderer->readback_fd);
+        renderer->readback_fd = -1;
+    }
+}
+
+static bool arm_readback_timer(struct vela_renderer *renderer, long delay_ns)
+{
+    const struct itimerspec when = { .it_value = { .tv_nsec = delay_ns } };
+    return timerfd_settime(renderer->readback_fd, 0, &when, NULL) == 0;
+}
+
 void vela_readback_cancel(struct vela_readback *readback)
 {
     if (!readback) {
@@ -588,10 +606,7 @@ void vela_readback_cancel(struct vela_readback *readback)
     wlr_texture_destroy(readback->texture);
     wlr_buffer_unlock(readback->dst);
     free(readback);
-    if (!renderer->readback_count && renderer->readback_timer) {
-        wl_event_source_remove(renderer->readback_timer);
-        renderer->readback_timer = NULL;
-    }
+    if (!renderer->readback_count) remove_readback_timer(renderer);
 }
 
 static void finish_readback(struct vela_readback *readback, bool ok)
@@ -619,23 +634,33 @@ struct vela_readback_stats vela_renderer_readback_stats(const struct vela_render
         renderer->readback_rejected };
 }
 
-static int dispatch_readback(void *data)
+static int dispatch_readback(int fd, uint32_t mask, void *data)
 {
     struct vela_renderer *renderer = data;
-    // Arm before invoking terminal callbacks: they may remove this source.
-    // Handling an arm failure here never traverses a just-completed request.
-    if (wl_event_source_timer_update(renderer->readback_timer, 1) < 0) {
+    uint64_t expirations;
+    if (!(mask & WL_EVENT_READABLE) || read(fd, &expirations, sizeof(expirations)) != sizeof(expirations)) {
         vela_renderer_cancel_readbacks(renderer);
         return 0;
     }
-    struct vela_readback *readback = renderer->readbacks[renderer->readback_next];
-    // Round robin; one bounded slice across all requests per timer tick.
-    renderer->readback_next = (renderer->readback_next + 1) % renderer->readback_count;
     uint64_t completed = 0;
     VkResult result = vkGetSemaphoreCounterValue(renderer->vk->device, renderer->timeline, &completed);
-    if (result != VK_SUCCESS || vela_now_ns() - readback->started > READBACK_TIMEOUT_NS) {
-        finish_readback(readback, false);
-    } else if (completed >= readback->point) {
+    if (result != VK_SUCCESS) {
+        vela_renderer_cancel_readbacks(renderer);
+        return 0;
+    }
+    long delay = READBACK_POLL_NS;
+    // Find a GPU-ready job rather than making ready clients wait behind one
+    // still executing. At most one CPU slice is copied in this dispatch.
+    for (size_t i = 0; i < renderer->readback_count; ++i) {
+        struct vela_readback *readback = renderer->readbacks[renderer->readback_next];
+        renderer->readback_next = (renderer->readback_next + 1) % renderer->readback_count;
+        if (vela_now_ns() - readback->started > READBACK_TIMEOUT_NS) {
+            finish_readback(readback, false);
+            break;
+        }
+        if (completed < readback->point) continue;
+        delay = READBACK_YIELD_NS;
+        int64_t start = vela_now_ns();
         void *pixels = NULL;
         uint32_t format = 0;
         size_t stride = 0;
@@ -644,16 +669,12 @@ static int dispatch_readback(void *data)
         if (ok) {
             ok = format == readback->format && stride == readback->stride;
             if (ok) {
-                int64_t start = vela_now_ns();
-                size_t copied = 0;
                 do {
                     copy_row((uint8_t *)pixels + (size_t)readback->row * stride,
                         readback->staging.data + (size_t)readback->row * readback->row_bytes,
                         readback->row_bytes, readback->alpha);
-                    copied += readback->row_bytes;
                     ++readback->row;
-                } while (readback->row < readback->dst->height && copied < READBACK_SLICE_BYTES
-                    && vela_now_ns() - start < READBACK_SLICE_NS);
+                } while (readback->row < readback->dst->height && vela_now_ns() - start < READBACK_SLICE_NS);
             }
             // Every wl_shm access (including SIGBUS protection) stays on this
             // thread. No worker dereferences a Wayland client's mapping.
@@ -662,6 +683,12 @@ static int dispatch_readback(void *data)
         if (!ok || readback->row == readback->dst->height) {
             finish_readback(readback, ok);
         }
+        break;
+    }
+    // Terminal callbacks can remove the timer when the queue becomes empty.
+    // Do not inspect the retired request or arm a removed event source.
+    if (renderer->readback_count && !arm_readback_timer(renderer, delay)) {
+        vela_renderer_cancel_readbacks(renderer);
     }
     return 0;
 }
@@ -708,12 +735,19 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
         return NULL;
     }
     if (!renderer->readback_timer) {
-        renderer->readback_timer = wl_event_loop_add_timer(loop, dispatch_readback, renderer);
+        renderer->readback_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+        if (renderer->readback_fd >= 0) {
+            renderer->readback_timer = wl_event_loop_add_fd(loop, renderer->readback_fd,
+                WL_EVENT_READABLE, dispatch_readback, renderer);
+            if (!renderer->readback_timer) {
+                close(renderer->readback_fd);
+                renderer->readback_fd = -1;
+            }
+        }
     }
     if (!renderer->readback_timer || !vela_renderer_stage_readback(renderer, bytes, &readback->staging)) {
         if (renderer->readback_timer && !renderer->readback_count) {
-            wl_event_source_remove(renderer->readback_timer);
-            renderer->readback_timer = NULL;
+            remove_readback_timer(renderer);
         }
         free(readback);
         wlr_texture_destroy(wlr);
@@ -734,8 +768,7 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     if (!point) {
         pin_staging(renderer, readback->staging.buffer, false);
         if (!renderer->readback_count) {
-            wl_event_source_remove(renderer->readback_timer);
-            renderer->readback_timer = NULL;
+            remove_readback_timer(renderer);
         }
         free(readback);
         wlr_texture_destroy(wlr);
@@ -755,7 +788,7 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     readback->data = data;
     renderer->readbacks[renderer->readback_count++] = readback;
     renderer->readback_bytes += bytes;
-    if (wl_event_source_timer_update(renderer->readback_timer, 1) < 0) {
+    if (!arm_readback_timer(renderer, READBACK_YIELD_NS)) {
         vela_readback_cancel(readback);
         return NULL;
     }

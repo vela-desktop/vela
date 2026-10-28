@@ -37,6 +37,7 @@ static struct ext_output_image_capture_source_manager_v1 *sources;
 static struct ext_image_copy_capture_manager_v1 *manager;
 static bool hold, failed, repeat, overflow;
 static int successes, rejections;
+static int repeat_ready[3], capture_count;
 static void session_done(void *data, struct ext_image_copy_capture_session_v1 *session);
 static int terminal, selected_output;
 static bool benchmark, reuse;
@@ -78,6 +79,7 @@ static void frame_ready(void *data, struct ext_image_copy_capture_frame_v1 *fram
             return;
         }
         latencies[samples++] = (double)(now_ns() - capture->requested) / 1e6;
+        ++capture->rounds;
         ext_image_copy_capture_frame_v1_destroy(capture->frame);
         capture->frame = NULL;
         if (!reuse) {
@@ -115,10 +117,17 @@ static void frame_ready(void *data, struct ext_image_copy_capture_frame_v1 *fram
         }
     }
 checked:
-    if (ok && repeat) ++capture->rounds;
+    if (ok && repeat) {
+        ++capture->rounds;
+        ++repeat_ready[capture->rounds - 1];
+        if (repeat_ready[capture->rounds - 1] == capture_count) {
+            printf("round %d\n", capture->rounds);
+            fflush(stdout);
+        }
+    }
     if (ok && repeat && capture->rounds < 3) {
-        // Keep the same protocol session on an unchanged output. A lost-damage
-        // bug would leave the next capture waiting forever.
+        // Keep the same protocol session. The harness changes the source after
+        // each round; an unchanged source may legitimately wait indefinitely.
         ext_image_copy_capture_frame_v1_destroy(capture->frame);
         wl_buffer_destroy(capture->buffer);
         munmap(capture->pixels, capture->size);
@@ -242,6 +251,7 @@ int main(int argc, char **argv)
     reuse = !strcmp(argv[1], "bench-reuse") || !strcmp(argv[1], "idle");
     int count = atoi(argv[2]);
     if (count < 1 || count > 8) return 2;
+    capture_count = count;
     selected_output = argc > 3 ? atoi(argv[3]) : 0;
     struct wl_display *display = wl_display_connect(NULL);
     if (!display) return 1;
@@ -291,12 +301,14 @@ int main(int argc, char **argv)
         double seconds = (double)(now_ns() - began) / 1e9;
         qsort(latencies, samples, sizeof(latencies[0]), compare_latency);
         printf("{\"mode\":\"%s\",\"clients\":%d,\"frames\":%zu,\"seconds\":%.6f,\"fps\":%.3f,"
-               "\"p50_ms\":%.3f,\"p95_ms\":%.3f,\"p99_ms\":%.3f,\"max_ms\":%.3f}\n",
+               "\"p50_ms\":%.3f,\"p95_ms\":%.3f,\"p99_ms\":%.3f,\"max_ms\":%.3f,\"client_frames\":[",
             argv[1], count, samples, seconds, (double)samples / seconds,
             samples ? latencies[(samples - 1) * 50 / 100] : 0,
             samples ? latencies[(samples - 1) * 95 / 100] : 0,
             samples ? latencies[(samples - 1) * 99 / 100] : 0,
             samples ? latencies[samples - 1] : 0);
+        for (int i = 0; i < count; ++i) printf("%s%d", i ? "," : "", captures[i].rounds);
+        puts("]}");
     }
     for (int i = 0; i < count; ++i) {
         struct capture *capture = &captures[i];

@@ -267,6 +267,7 @@ struct vela_renderer {
     struct vela_readback *readbacks[VELA_READBACK_MAX_JOBS];
     size_t readback_next; // round-robin cursor in the bounded queue
     struct wl_event_source *readback_timer;
+    int readback_fd; // one-shot timerfd: yield through epoll without a millisecond floor
     size_t readback_count, readback_bytes;
     uint64_t readback_completed, readback_cancelled, readback_failed, readback_rejected;
 

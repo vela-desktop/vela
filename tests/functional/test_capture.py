@@ -10,6 +10,7 @@ missed-vblank budget, with no skipped or silently dropped captures.
 
 import os
 import json
+import select
 import signal
 import subprocess
 import threading
@@ -87,7 +88,7 @@ class DeferredCapture(unittest.TestCase):
 
     def pending(self, vela):
         state = vela.wait_for(lambda s: s["readback"]["pending"] > 0,
-                              timeout=5, what="an actual deferred capture")
+                              timeout=5, interval=0.001, what="an actual deferred capture")
         self.assertLessEqual(state["readback"]["pending"], 4)
         self.assertLessEqual(state["readback"]["bytes"], 128 * 1024 * 1024)
         return state["readback"]
@@ -111,9 +112,12 @@ class DeferredCapture(unittest.TestCase):
         with Session(size="1367x769@180") as vela:
             vela.input("move", 0, 0)
             before = self.wallpaper(vela)
-            process = self.probe(vela, "pixels", 4)
-            _, errors = process.communicate(timeout=10)
-            self.assertEqual(process.returncode, 0, errors)
+            # Independent Wayland connections exercise per-client source
+            # lifetime as well as four simultaneous readback jobs.
+            processes = [self.probe(vela, "pixels", 2) for _ in range(2)]
+            for process in processes:
+                _, errors = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, errors)
             self.assertEqual(self.drained(vela)["completed"] - before, 4)
 
     def test_repeated_session_does_not_lose_damage(self):
@@ -121,6 +125,10 @@ class DeferredCapture(unittest.TestCase):
             vela.input("move", 0, 0)
             before = self.wallpaper(vela)
             process = self.probe(vela, "repeat", 4)
+            for round_number in (1, 2):
+                self.assertTrue(select.select([process.stdout], [], [], 5)[0], "capture round timed out")
+                self.assertEqual(process.stdout.readline().strip(), f"round {round_number}")
+                vela.input("move", 8 * round_number, 8 * round_number)
             _, errors = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 0, errors)
             self.assertEqual(self.drained(vela)["completed"] - before, 12)
@@ -151,6 +159,20 @@ class DeferredCapture(unittest.TestCase):
                                    output_frames=after.output["frames"] - before.output["frames"])
                     print("capture-stream: " + json.dumps(metrics, sort_keys=True), flush=True)
                     self.assertGreater(metrics["frames"], 0)
+                    if mode == "idle":
+                        self.assertEqual(metrics["frames"], clients,
+                                         "persistent capture must wait for source damage on an idle desktop")
+                        self.assertLessEqual(metrics["output_frames"], 2)
+                    elif "Vulkan readback staging: uncached fallback" not in vela.log_text():
+                        # Explicit floors beyond the old 512 KiB/ms scheduler's
+                        # theoretical ceiling (~35.7 / ~16.1 frames/s). Buffer
+                        # reuse must sustain a typical 60/30 fps screen stream.
+                        is_4k = size.startswith("3840")
+                        minimum_fps = (30 if is_4k else 60) if mode == "bench-reuse" else (20 if is_4k else 40)
+                        self.assertGreaterEqual(metrics["fps"], minimum_fps)
+                        self.assertGreaterEqual(min(metrics["client_frames"]) / metrics["seconds"],
+                                                0.8 * minimum_fps / clients, "one capture client starved")
+                        self.assertLess(metrics["p95_ms"], 150 if clients > 1 else 100)
                     self.assertEqual(after["readback"]["failed"], before["readback"]["failed"])
                     self.assertEqual(after["readback"]["rejected"], before["readback"]["rejected"])
 
@@ -171,7 +193,7 @@ class DeferredCapture(unittest.TestCase):
 
     def test_client_disconnect_releases_reserved_staging(self):
         with Session(size="3840x2160@180") as vela:
-            process = self.probe(vela, count=2)
+            process = self.probe(vela, count=4)
             before = self.pending(vela)
             process.kill()
             process.communicate(timeout=5)
@@ -182,7 +204,7 @@ class DeferredCapture(unittest.TestCase):
 
     def test_destroy_frame_cancels_before_connection_closes(self):
         with Session(size="3840x2160@180") as vela:
-            process = self.probe(vela)
+            process = self.probe(vela, count=4)
             before = self.pending(vela)
             self.cancel(process)
             after = self.drained(vela)
@@ -191,7 +213,7 @@ class DeferredCapture(unittest.TestCase):
 
     def test_resize_cancels_old_buffer_constraints(self):
         with Session(size="3840x2160@180") as vela:
-            process = self.probe(vela)
+            process = self.probe(vela, count=4)
             before = self.pending(vela)
             vela.randr("--output", "HEADLESS-1", "--mode", "1367x769")
             after = self.drained(vela)
@@ -204,7 +226,7 @@ class DeferredCapture(unittest.TestCase):
         with Session() as vela:
             vela.command("test-output add 3840x2160@180")
             vela.wait_for(lambda s: len(s["outputs"]) == 2, what="capture output")
-            process = self.probe(vela, output=1)
+            process = self.probe(vela, count=4, output=1)
             before = self.pending(vela)
             vela.command("test-output remove HEADLESS-2")
             after = self.drained(vela)
@@ -214,7 +236,7 @@ class DeferredCapture(unittest.TestCase):
 
     def test_lock_rejects_readback_of_previous_desktop(self):
         with Session(size="3840x2160@180", lock_hold_ms=2000) as vela:
-            process = self.probe(vela)
+            process = self.probe(vela, count=4)
             before = self.pending(vela)
             vela.command("lock")
             vela.wait_for(lambda s: s["locked"], what="session lock")
@@ -224,7 +246,7 @@ class DeferredCapture(unittest.TestCase):
 
     def test_shutdown_with_pending_readback(self):
         with Session(size="3840x2160@180", env={"VELA_VULKAN_VALIDATION": "1"}) as vela:
-            process = self.probe(vela)
+            process = self.probe(vela, count=4)
             self.pending(vela)
             os.kill(vela.process.pid, signal.SIGTERM)
             self.assertEqual(vela.process.wait(timeout=15), 0)

@@ -237,7 +237,7 @@ class Session:
     def state(self):
         return State(self.query("state"))
 
-    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True):
+    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05):
         """Waits until condition(state) is true; returns the state."""
         deadline = time.monotonic() + timeout
         last = None
@@ -248,7 +248,7 @@ class Session:
                     return last
             except (KeyError, IndexError, TypeError):
                 pass
-            time.sleep(0.05)
+            time.sleep(interval)
         raise TimeoutError(f"after {timeout} s this still isn't true: {what}\nlast state: {last}\n"
                            f"--- end of the Vela log ---\n{self.log_text()[-2500:]}")
 

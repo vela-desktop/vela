@@ -65,12 +65,13 @@ For each SHM request:
    wait for the copy before possibly reusing its source (including cancellation).
    Queue submission order alone provides no memory dependency. No CPU wait or
    sync-file-export fallback is needed. This API must not receive client buffers.
-3. One renderer-wide timer checks the Vulkan timeline without waiting. After
-   completion it copies at most 512 KiB or about 0.5 ms of rows per 1 ms tick,
-   whichever comes first, serving requests round robin. A single row, page
-   fault or OS scheduling delay can exceed the soft time budget; this is not a
-   hard real-time guarantee. An idle callback would drain the entire queue in
-   one dispatch and is deliberately not used.
+3. One renderer-wide one-shot `timerfd` checks the Vulkan timeline without
+   waiting. After completion it copies about 0.5 ms of rows, serving requests
+   round robin. Each slice returns through `epoll`, then yields for 50 µs;
+   when no job is GPU-ready it polls after 200 µs. A single row, page fault or
+   OS scheduling delay can exceed the soft budget; this is not a hard real-time
+   guarantee. An idle callback would drain the entire queue in one dispatch
+   and is deliberately not used. There is no fixed byte allowance per tick.
 4. Every destination mapping/access stays on the Wayland thread, including
    wl_shm SIGBUS protection. Stride padding and opaque-alpha conversion are
    preserved. No worker dereferences a client-owned mapping.
@@ -93,17 +94,54 @@ pixels. A failed timeline query/device loss or five-second timeout fails a
 request rather than keeping its references indefinitely.
 
 While a frame is pending, repeated output events do not queue duplicate work.
-Output sources conservatively advertise full damage and request the next output
-commit for each capture. This also prevents delayed `ready` from losing changes
-that arrived while wlroots was accumulating damage for the previous capture.
-It does not change scene rendering damage or presentation deadlines.
+The output adapter keeps damage from later commits outside wlroots until every
+frame using the offered image has terminated: wlroots' `ready` clears its
+session damage, so feeding newer damage before that point would lose the final
+change if the desktop then stopped updating. The next source event carries the
+accumulated real damage, including when the newly requested output commit has
+no further scene changes. A subsequent capture on an unchanged session waits
+for source damage, as allowed by the protocol; it does not continuously wake
+presentation or advertise full-screen damage.
+
+Output sources are shared per Wayland client and output, and are destroyed on
+client disconnect or output removal. This confines the damage frontier to that
+client's sessions: a slow SHM capture does not hold back another client's
+DMA-BUF capture. Sessions sharing one source still advance in batches, at the
+pace of their slowest readback. The renderer's queue and CPU budget remain
+global. No wlroots private session fields are accessed or patched.
+
+## Why the first green CI result was insufficient
+
+The first deferred candidate used 512 KiB / 0.5 ms slices with a 1 ms timer.
+The byte allowance alone required at least 28 copy ticks at 1440p and 62 at 4K
+for BGRA8. Multiple sessions shared those ticks. Passing the animation test
+therefore established presentation responsiveness, without establishing
+acceptable sustained capture throughput or latency. Its client also sleeps
+50 ms between screenshots and creates a fresh session each time.
+
+The persistent-stream probe measures request-to-ready p50/p95/p99/max and
+completed frames per second over three seconds without capture-side sleeps or
+PNG encoding. It compares untouched new SHM destinations with buffer reuse at
+1440p and 4K, plus four simultaneous sessions on one connection at 1440p.
+Maximize/restore animations provide the source changes. Rates for four sessions
+are aggregate; per-session frame counts detect starvation. These are measured
+workloads rather than claims of maximum capture rate on all desktop content.
+The idle case settles the window first, then requires one initial capture per
+session and no more than two output frames over three seconds.
+
+For cached staging, new SHM buffers must exceed 40 fps at 1440p / 20 fps at 4K,
+beyond the old byte-paced scheduler's theoretical ceiling. Reused buffers must
+sustain 60 / 30 fps respectively. Request-to-ready p95 must remain below 100 ms
+for one session and 150 ms for four. The original uncached-staging exception is
+preserved; measurements and pixel/lifetime/idle checks still run there.
 
 ## Validation
 
 `functional-capture` retains its original 2560x1440@180 animation workload,
 minimum capture count and `missed < captures` assertion. Additional GPU cases
 check full pixels, padded rows and opaque alpha across four simultaneous copies,
-repeated capture on one unchanged session, explicit queue-limit failures,
+repeated capture on one session with controlled source changes, idle waiting,
+persistent-stream latency and throughput, explicit queue-limit failures,
 frame destruction, disconnect, resize, unplug, lock and Vulkan-validated shutdown
 with actual pending work. The private `state.readback` counters establish that
 these tests really interrupted deferred requests and that payload returns to zero.
@@ -119,6 +157,14 @@ The CPU tests also simulate GPU lag after cancellation, completion and idle-cach
 eviction, proving the allocation limit cannot be bypassed by cancelling frames.
 The pixel fixture waits for the wallpaper's first captured color, rather than
 assuming that a fixed startup delay is sufficient.
+
+The GPU-free `compositor.capture-damage` test exercises the production output
+adapter's emitted regions and output scheduling. Two pending frames finish at
+different times; later damage must survive both terminal notifications and be
+offered even if no further desktop change occurs. Idle requests must not wake
+the output, and teardown must not schedule another frame. GPU lifetime tests
+sample pending work every millisecond and use four concurrent 4K copies so that
+faster completion does not make a 50 ms observation interval miss the operation.
 
 The temporary profiling/probe workflow steps are removed. Both manual workflows
 run the ordinary full strict GPU suite with their original thresholds. Follow
