@@ -132,6 +132,8 @@ struct vela_bt_daemon {
 
     char *bluez; // org.bluez's unique name, NULL while it isn't on the bus
     sd_bus_slot *managed; // GetManagedObjects in flight
+    sd_event_source *managed_retry;
+    uint64_t managed_backoff_us;
     struct vela_bt_adapter **adapters; // by hci number
     size_t adapter_count;
     struct vela_bt_device **devices;
@@ -147,11 +149,15 @@ struct vela_bt_daemon {
 
     bool platform_blocked;
     sd_event_source *rfkill_watch;
+    sd_event_source *rfkill_retry;
     struct vela_bt_power power;
     uint64_t power_on_until; // CLOCK_MONOTONIC µs: power the adapter that appears
 
     // The agent (§6.4) and its question (§7.2).
     bool agent_registered;
+    bool agent_default;
+    sd_event_source *agent_retry;
+    uint64_t agent_backoff_us;
     sd_bus_slot *agent_call; // RegisterAgent, RequestDefaultAgent or UnregisterAgent in flight
     struct vela_bt_question *question;
     uint64_t question_id; // the last one given
@@ -162,6 +168,8 @@ struct vela_bt_daemon {
     bool session_active;
     bool session_locked;
     sd_bus_slot *session_call;
+    sd_event_source *session_retry;
+    uint64_t session_backoff_us;
 };
 
 // model.c: adapters and devices.
