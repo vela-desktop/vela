@@ -91,6 +91,7 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
     QList<QPair<qulonglong, QString>> closed; // QuestionClosed: id, reason
     QList<QPair<qulonglong, QString>> searchesEnded; // SearchEnded: lease, reason
     int searchLimitMs = 0; // a lease's time limit, if the test shortens it
+    int restartWindowMs = 0; // bounded retry-window tests
     bool stoppedBeingVisible = false; // the test pressed "Stop being visible"
     QString daemonName; // its unique name: signals of an earlier daemon don't count
     QString mouse;
@@ -303,6 +304,9 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         environment.insert(QStringLiteral("XDG_SESSION_ID"), QStringLiteral("fake"));
         if (searchLimitMs > 0) {
             environment.insert(QStringLiteral("VELA_BT_SEARCH_LIMIT_MS"), QString::number(searchLimitMs));
+        }
+        if (restartWindowMs > 0) {
+            environment.insert(QStringLiteral("VELA_BT_RESTART_WINDOW_MS"), QString::number(restartWindowMs));
         }
         daemon.setProcessEnvironment(environment);
         daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
@@ -554,6 +558,7 @@ private slots:
             fake->removeDoesNotExist = false;
         });
         searchLimitMs = 0;
+        restartWindowMs = 0;
         stoppedBeingVisible = false;
         resetFake();
         for (const QString& dir : { QStringLiteral("class/bluetooth/hci0/rfkill3"), QStringLiteral("class/bluetooth/hci1/rfkill7"),
@@ -1584,7 +1589,10 @@ private slots:
         QCOMPARE(discovering().size(), 1);
         QCOMPARE(errorOf(call(QStringLiteral("StopSearch"), { lease })), QString());
         QTRY_COMPARE(searchEndReason(lease), QStringLiteral("stopped"));
-        QCOMPARE(discovering().size(), 1);
+        QCOMPARE(property(QStringLiteral("Search")).toString(), QStringLiteral("plain"));
+        QTRY_VERIFY(fakeCalls().contains(QStringLiteral("SetDiscoveryFilter /org/bluez/hci0 Discoverable=false")));
+        QTRY_VERIFY(!discoverable());
+        QTRY_COMPARE(discovering().size(), 1);
         QCOMPARE(errorOf(call(QStringLiteral("StopSearch"), { second })), QString());
         QTRY_COMPARE(searchEndReason(second), QStringLiteral("stopped"));
         QTRY_VERIFY(discovering().isEmpty());
@@ -1725,6 +1733,8 @@ private slots:
         QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
         QTRY_VERIFY(discovering().isEmpty());
         QTRY_VERIFY(fakeCalls().contains(QStringLiteral("Pair ") + mouse));
+        QVERIFY(fakeCalls().indexOf(QStringLiteral("StopDiscovery /org/bluez/hci0"))
+            < fakeCalls().indexOf(QStringLiteral("Pair ") + mouse));
         QCOMPARE(errorOf(call(QStringLiteral("Cancel"), { object(mouse) })), QString());
         QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
         QTRY_COMPARE(discovering().size(), 1);
@@ -1736,6 +1746,9 @@ private slots:
     // minute at most.
     void discoveryStartsAgainThreeTimesAMinute()
     {
+        QCOMPARE(stopDaemon(), 0);
+        restartWindowMs = 3000;
+        QVERIFY(startDaemon());
         const auto starts = [this] { return fakeCalls().count(QStringLiteral("StartDiscovery /org/bluez/hci0")); };
         const qulonglong lease = startSearch(false);
         for (int i = 1; i <= 3; ++i) {
@@ -1747,12 +1760,87 @@ private slots:
         QTRY_COMPARE(discovering().size(), 1);
         QTRY_VERIFY(adapterInUse().value(QStringLiteral("discovering")).toBool());
         fake->run([this] { fake->stopDiscoveryOutside(hci0); });
-        QTest::qWait(1000);
+        QTest::qWait(300);
         QCOMPARE(starts(), 4);
         QVERIFY(discovering().isEmpty());
         QVERIFY(searchEndReason(lease).isEmpty());
+        QTRY_COMPARE_WITH_TIMEOUT(starts(), 5, 5000);
+        QTRY_COMPARE(discovering().size(), 1);
         QCOMPARE(errorOf(call(QStringLiteral("StopSearch"), { lease })), QString());
         QTRY_COMPARE(searchEndReason(lease), QStringLiteral("stopped"));
+    }
+
+    // A refused initial discovery is retried without losing its lease.
+    void failedInitialStartIsRetried()
+    {
+        fake->run([this] { fake->adapters[hci0].startErrors = 1; });
+        const qulonglong lease = startSearch(false);
+        QTRY_VERIFY(fakeCalls().count(QStringLiteral("StartDiscovery /org/bluez/hci0")) >= 2);
+        QTRY_COMPARE(discovering().size(), 1);
+        QCOMPARE(errorOf(call(QStringLiteral("StopSearch"), { lease })), QString());
+    }
+
+    // A failed StopDiscovery must not orphan BlueZ's active session.
+    void failedStopPreservesTheSession()
+    {
+        const qulonglong lease = startSearch(false);
+        QTRY_COMPARE(discovering().size(), 1);
+        fake->run([this] { fake->adapters[hci0].stopErrors = 1; });
+        QCOMPARE(errorOf(call(QStringLiteral("StopSearch"), { lease })), QString());
+        QTRY_VERIFY(fakeCalls().count(QStringLiteral("StopDiscovery /org/bluez/hci0")) >= 2);
+        QTRY_VERIFY(discovering().isEmpty());
+        QCOMPARE(fakeCalls().count(QStringLiteral("StartDiscovery /org/bluez/hci0")), 1);
+    }
+
+    void delayedFilterNeverStartsDiscoveryDuringPairing()
+    {
+        onDevice(mouse, [](FakeBluez::Device& device) { device.pairHangs = true; });
+        fake->run([this] { fake->adapters[hci0].filterDelayMs = 500; });
+        const qulonglong lease = startSearch(true);
+        QTRY_VERIFY(fakeCalls().contains(QStringLiteral("SetDiscoveryFilter /org/bluez/hci0 Discoverable=true")));
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
+        QTRY_VERIFY(fakeCalls().contains(QStringLiteral("Pair ") + mouse));
+        QTest::qWait(700);
+        QCOMPARE(fakeCalls().count(QStringLiteral("StartDiscovery /org/bluez/hci0")), 0);
+        QCOMPARE(errorOf(call(QStringLiteral("Cancel"), { object(mouse) })), QString());
+        QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
+        QTRY_COMPARE(discovering().size(), 1);
+        QCOMPARE(errorOf(call(QStringLiteral("StopSearch"), { lease })), QString());
+    }
+
+    void switchingAdapterInvalidatesTheVisibilityCheck()
+    {
+        const qulonglong lease = startSearch(true);
+        QTRY_VERIFY(discoverable());
+        otherDiscovers(true);
+        QCOMPARE(errorOf(call(QStringLiteral("StopSearch"), { lease })), QString());
+        fake->run([this] {
+            fake->addAdapter(hci1, { QStringLiteral("BB:BB:BB:BB:BB:01"), QStringLiteral("dongle") });
+            fake->setDiscoverableOutside(hci1, true);
+        });
+        QTRY_COMPARE(qdbus_cast<QList<QVariantMap>>(property(QStringLiteral("Adapters"))).size(), 2);
+        QCOMPARE(errorOf(call(QStringLiteral("UseAdapter"), { QStringLiteral("BB:BB:BB:BB:BB:01") })), QString());
+        QTest::qWait(2500);
+        QVERIFY(!property(QStringLiteral("StillVisible")).toBool());
+        otherDiscovers(false);
+    }
+
+    void switchingAdapterStartsNewSearchOnNewAdapter()
+    {
+        const qulonglong oldLease = startSearch(false);
+        QTRY_COMPARE(discovering().size(), 1);
+        fake->run([this] { fake->addAdapter(hci1, { QStringLiteral("BB:BB:BB:BB:BB:01"), QStringLiteral("dongle") }); });
+        QTRY_COMPARE(qdbus_cast<QList<QVariantMap>>(property(QStringLiteral("Adapters"))).size(), 2);
+        QCOMPARE(errorOf(call(QStringLiteral("UseAdapter"), { QStringLiteral("BB:BB:BB:BB:BB:01") })), QString());
+        QTRY_COMPARE(searchEndReason(oldLease), QStringLiteral("adapter-off"));
+        const qulonglong lease = startSearch(false);
+        QTRY_VERIFY([&] {
+            bool searching = false;
+            fake->run([&] { searching = !fake->adapters[hci1].discovering.isEmpty(); });
+            return searching;
+        }());
+        QTRY_VERIFY(discovering().isEmpty());
+        QCOMPARE(errorOf(call(QStringLiteral("StopSearch"), { lease })), QString());
     }
 
     // ------------------------------------------------ who may answer (§7.3) --
