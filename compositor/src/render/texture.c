@@ -553,8 +553,8 @@ static void finish_readback(struct vela_readback *readback, bool ok)
 
 void vela_renderer_cancel_readbacks(struct vela_renderer *renderer)
 {
-    while (!wl_list_empty(&renderer->readbacks)) {
-        struct vela_readback *readback = wl_container_of(renderer->readbacks.next, readback, link);
+    struct vela_readback *readback, *next;
+    wl_list_for_each_safe (readback, next, &renderer->readbacks, link) {
         finish_readback(readback, false);
     }
 }
