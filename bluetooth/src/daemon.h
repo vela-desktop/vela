@@ -90,6 +90,7 @@ struct vela_bt_device {
     bool paired;
     bool trusted;
     bool connected;
+    uint64_t cancelled_connect_until; // disconnect a late Connect success after Cancel
     bool blocked;
     bool has_rssi;
     int16_t rssi;
