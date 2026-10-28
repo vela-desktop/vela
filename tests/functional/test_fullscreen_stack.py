@@ -11,9 +11,17 @@ from harness import Session, tool
 
 
 def game(vela, x11=False):
-    command = ([tool("vela-x11"), "--start-fullscreen", "640", "480"] if x11
-               else [tool("vela-pattern"), "--fullscreen-parent", "640", "480"])
-    identifier = vela.open_window(command=command)
+    if x11:
+        # Xwayland is a separate display: the Wayland-only harness environment
+        # intentionally has no DISPLAY. Reuse the discovery used by test_x11.
+        display = vela.wait_for_log("Xwayland on DISPLAY=",
+                                    lambda line: line.split("DISPLAY=", 1)[1].split()[0])
+        env = dict(vela.client_env, DISPLAY=display)
+        command = [tool("vela-x11"), "--start-fullscreen", "640", "480"]
+    else:
+        env = None
+        command = [tool("vela-pattern"), "--fullscreen-parent", "640", "480"]
+    identifier = vela.open_window(command=command, env=env)
     vela.wait_for(lambda s: s.window(identifier)["fullscreen"] and s["focused"] == identifier,
                   what="fullscreen game focused")
     return identifier
