@@ -29,7 +29,7 @@ depends=(
     'qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'layer-shell-qt'
     'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland'
     'pipewire' 'wireplumber'
-    'systemd-libs' # sd-bus: the laptop backlight through logind (docs/brightness.md §5.3)
+    'systemd-libs' # sd-bus: the laptop backlight through logind (docs/brightness.md §5.3), vela-bluetooth (docs/bluetooth.md)
 )
 makedepends=('git' 'cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols' 'qt6-tools' 'qt6-multimedia')
 optdepends=(
@@ -39,7 +39,7 @@ optdepends=(
     'breeze-icons: Vela icons (breeze and breeze-dark)'
     'plasma-workspace: light or dark colors for KDE apps'
     'networkmanager: network and Wi-Fi (quick settings and Settings)'
-    'bluez: Bluetooth'
+    'bluez: Bluetooth, all it needs (docs/bluetooth.md)'
     'pipewire-pulse: sound for apps that still use PulseAudio'
     'power-profiles-daemon: energy saver'
     'udisks2: unmounted drives in File Explorer'

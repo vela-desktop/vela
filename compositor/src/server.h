@@ -187,6 +187,10 @@ struct vela_server {
     // it returns to when the one above closes.
     struct vela_layer_surface *focused_layer;
     struct vela_layer_surface *previous_layer;
+    // Super tap: show the taskbar before Qt finishes mapping Start. A bounded
+    // timer restores fullscreen if no panel ever arrives.
+    bool start_preview;
+    struct wl_event_source *start_preview_timer;
     struct vela_interaction *interaction; // the pointer on windows (interact.h)
     struct vela_switcher *switcher; // Alt+Tab (switcher.h)
     struct vela_snapping *snapping; // preview, assist, snap layouts (snap.h)

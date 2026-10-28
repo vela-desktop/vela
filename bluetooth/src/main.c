@@ -30,7 +30,7 @@
 static const char *const *ui_executables(void)
 {
 #ifdef VELA_BLUETOOTH_TESTING
-    static const char *const testing[] = { VELA_BT_TEST_UI, VELA_BT_TEST_CLIENT, NULL };
+    static const char *const testing[] = { VELA_BT_TEST_UI, VELA_BT_TEST_CLIENT, VELA_BT_TEST_SHELL, NULL };
     return testing;
 #else
     static const char *const installed[] = { VELA_BT_SHELL, VELA_BT_SETTINGS, NULL };
@@ -57,6 +57,29 @@ static const char *test_path(const char *variable, const char *fallback)
     }
 #endif
     return fallback;
+}
+
+// A search lease's time limit (§6.6): 3 minutes; the tests' is shorter.
+static uint64_t search_limit_us(void)
+{
+#ifdef VELA_BLUETOOTH_TESTING
+    const char *ms = secure_getenv("VELA_BT_SEARCH_LIMIT_MS");
+    if (ms && *ms) {
+        return strtoull(ms, NULL, 10) * 1000ULL;
+    }
+#endif
+    return 180 * 1000000ULL;
+}
+
+static uint64_t search_restart_window_us(void)
+{
+#ifdef VELA_BLUETOOTH_TESTING
+    const char *ms = secure_getenv("VELA_BT_RESTART_WINDOW_MS");
+    if (ms && *ms) {
+        return strtoull(ms, NULL, 10) * 1000ULL;
+    }
+#endif
+    return 60 * 1000000ULL;
 }
 
 static int on_signal(sd_event_source *source, const struct signalfd_siginfo *info, void *data)
@@ -104,6 +127,8 @@ int main(void)
     d.sysfs = test_path("VELA_SYSFS", "/sys");
     d.rfkill = test_path("VELA_RFKILL", "/dev/rfkill");
     d.ui = ui_executables();
+    d.search.limit_us = search_limit_us();
+    d.search.restart_window_us = search_restart_window_us();
 
     struct vela_config settings;
     vela_config_read(&settings);
@@ -171,6 +196,7 @@ int main(void)
     sd_bus_flush(d.system);
     sd_bus_flush(d.session);
     vela_bt_clear(&d);
+    vela_bt_search_free(&d);
     vela_bt_agent_free(&d);
     vela_bt_model_free(&d);
     sd_bus_slot_unref(d.session_call);

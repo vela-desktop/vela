@@ -848,6 +848,45 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>DeviceState</name>
+    <message>
+        <source>Waiting for you...</source>
+        <translation>In attesa di una tua risposta...</translation>
+    </message>
+    <message>
+        <source>Pairing...</source>
+        <translation>Associazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connecting...</source>
+        <translation>Connessione in corso...</translation>
+    </message>
+    <message>
+        <source>Disconnecting...</source>
+        <translation>Disconnessione in corso...</translation>
+    </message>
+    <message>
+        <source>Removing...</source>
+        <translation>Rimozione in corso...</translation>
+    </message>
+    <message>
+        <source>Renaming...</source>
+        <translation>Ridenominazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>Connesso</translation>
+    </message>
+    <message>
+        <source>Paired</source>
+        <translation>Associato</translation>
+    </message>
+    <message>
+        <source>Battery %1%</source>
+        <translation>Batteria %1%</translation>
+    </message>
+</context>
+<context>
     <name>Dialog</name>
     <message>
         <source>OK</source>
@@ -2493,6 +2532,21 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>StillVisibleCard</name>
+    <message>
+        <source>Your PC is still visible to nearby devices</source>
+        <translation>Il PC è ancora visibile ai dispositivi vicini</translation>
+    </message>
+    <message>
+        <source>Another app is searching for devices.</source>
+        <translation>Un&apos;altra app sta cercando dispositivi.</translation>
+    </message>
+    <message>
+        <source>Stop being visible</source>
+        <translation>Non essere più visibile</translation>
+    </message>
+</context>
+<context>
     <name>Switch</name>
     <message>
         <source>On</source>
@@ -2794,45 +2848,6 @@ Specifiche sistema
     </message>
 </context>
 <context>
-    <name>bluetooth</name>
-    <message>
-        <source>Waiting for you...</source>
-        <translation>In attesa di una tua risposta...</translation>
-    </message>
-    <message>
-        <source>Pairing...</source>
-        <translation>Associazione in corso...</translation>
-    </message>
-    <message>
-        <source>Connecting...</source>
-        <translation>Connessione in corso...</translation>
-    </message>
-    <message>
-        <source>Disconnecting...</source>
-        <translation>Disconnessione in corso...</translation>
-    </message>
-    <message>
-        <source>Removing...</source>
-        <translation>Rimozione in corso...</translation>
-    </message>
-    <message>
-        <source>Renaming...</source>
-        <translation>Ridenominazione in corso...</translation>
-    </message>
-    <message>
-        <source>Connected</source>
-        <translation>Connesso</translation>
-    </message>
-    <message>
-        <source>Paired</source>
-        <translation>Associato</translation>
-    </message>
-    <message>
-        <source>Battery %1%</source>
-        <translation>Batteria %1%</translation>
-    </message>
-</context>
-<context>
     <name>vela::bluetooth::Bluetooth</name>
     <message>
         <source>Bluetooth is busy. Try again in a moment.</source>
@@ -2849,6 +2864,10 @@ Specifiche sistema
     <message>
         <source>This app isn&apos;t allowed to change Bluetooth.</source>
         <translation>Questa app non può modificare il Bluetooth.</translation>
+    </message>
+    <message>
+        <source>There&apos;s no Bluetooth adapter.</source>
+        <translation>Non c&apos;è nessun adattatore Bluetooth.</translation>
     </message>
     <message>
         <source>The device isn&apos;t there anymore.</source>

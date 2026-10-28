@@ -112,6 +112,43 @@ struct vela_bt_adapter {
     bool seen;
 };
 
+// A search lease (§6.6): it ends when its owner stops it or leaves, after
+// the time limit, when the screen locks or the session goes to the
+// background, or when the adapter turns off or changes.
+struct vela_bt_lease {
+    struct vela_bt_daemon *daemon;
+    uint64_t id;
+    bool discoverable;
+    sd_bus_track *owner;
+    sd_event_source *timer; // the time limit
+};
+
+// Vela's own BlueZ discovery session, kept while leases are held (§6.6).
+struct vela_bt_search {
+    struct vela_bt_lease **leases;
+    size_t count;
+    uint64_t last_id;
+    uint64_t limit_us; // a lease's time limit: 3 minutes, shorter in the tests
+    uint64_t restart_window_us; // retry window; shorter only in tests
+    char *adapter; // where Vela discovers, while it does or is starting or stopping
+    bool running; // StartDiscovery succeeded, no StopDiscovery since
+    bool filtered; // with the Discoverable filter (rule 1)
+    bool saw_discovering; // BlueZ said Discovering since Vela started
+    sd_bus_slot *call; // SetDiscoveryFilter, StartDiscovery or StopDiscovery in flight
+    // Read when Vela's search begins, unless Vela's own discovery is still
+    // there: another client was discovering (rule 1); the adapter was
+    // discoverable (rule 3).
+    bool others;
+    bool discoverable_before;
+    bool still_visible; // rule 3
+    sd_event_source *visible_check; // 2 s after the last lease ended
+    sd_event_source *restart_timer; // waiting to start again (three times a minute)
+    sd_event_source *stop_retry_timer; // retry failed StopDiscovery without losing ownership
+    uint64_t restarts[3]; // when BlueZ's discovery was started again
+    sd_bus_slot *visible_call; // StopBeingVisible's Set Discoverable
+    struct vela_bt_waiters visible_waiters;
+};
+
 // SetPowered in progress (§6.3).
 struct vela_bt_power {
     bool active;
@@ -153,6 +190,7 @@ struct vela_bt_daemon {
     sd_event_source *rfkill_retry;
     struct vela_bt_power power;
     uint64_t power_on_until; // CLOCK_MONOTONIC µs: power the adapter that appears
+    struct vela_bt_search search;
 
     // The agent (§6.4) and its question (§7.2).
     bool agent_registered;
@@ -259,6 +297,28 @@ void vela_bt_power_adapter_changed(struct vela_bt_daemon *d);
 void vela_bt_power_end(struct vela_bt_daemon *d, const struct vela_bt_failure *failure, bool cancelled);
 void vela_bt_platform_refresh(struct vela_bt_daemon *d);
 int vela_bt_rfkill_watch(struct vela_bt_daemon *d);
+
+// search.c: search leases and visibility (§6.6).
+int vela_bt_search_start(struct vela_bt_daemon *d, sd_bus_message *call, bool discoverable, sd_bus_error *error);
+// Ends the caller's lease `id`; nothing if it has ended already.
+int vela_bt_search_stop(struct vela_bt_daemon *d, sd_bus_message *call, uint64_t id);
+// "Stop being visible" (§6.6, rule 3): Discoverable false on the adapter in use.
+int vela_bt_stop_being_visible(struct vela_bt_daemon *d, sd_bus_message *call, sd_bus_error *error);
+// Ends every lease with `reason` (SearchEnded).
+void vela_bt_search_end_all(struct vela_bt_daemon *d, const char *reason);
+// Starts or stops Vela's discovery as the leases, the session, the adapter
+// and a running Add want it.
+void vela_bt_search_update(struct vela_bt_daemon *d);
+// The adapter in use changed: Powered, Discovering, Discoverable.
+void vela_bt_search_adapter_changed(struct vela_bt_daemon *d, bool was_discovering);
+void vela_bt_search_adapter_switching(struct vela_bt_daemon *d);
+// The Search property: "" without leases, "visible" with the filter,
+// "shared" when another client was discovering, "plain" when no lease
+// asked to be discoverable.
+const char *vela_bt_search_mode(const struct vela_bt_daemon *d);
+// org.bluez left: Vela's discovery went with it.
+void vela_bt_search_forget(struct vela_bt_daemon *d);
+void vela_bt_search_free(struct vela_bt_daemon *d);
 
 // service.c: org.vela.Bluetooth (§7).
 int vela_bt_service_start(struct vela_bt_daemon *d);

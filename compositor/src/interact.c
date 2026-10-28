@@ -154,6 +154,9 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
         // nearest physical pixel (§3.4). With integer logical positions, at
         // 125% the window would advance in jumps of 1 and 2 pixels.
         vela_node_set_position(&grabbed->tree->node, cursor->x - interaction->grab_x, cursor->y - interaction->grab_y);
+        // A focused window crossing onto a fullscreen output must stay visible
+        // without forcing the game out of its protocol fullscreen state.
+        vela_fullscreen_restack(server);
         vela_snap_update_zone(server);
         return;
     }

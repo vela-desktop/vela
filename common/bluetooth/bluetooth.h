@@ -65,6 +65,12 @@ class Bluetooth : public QObject {
     // a new one has to be asked for ("Search again").
     Q_PROPERTY(bool searching READ searching NOTIFY searchChanged)
     Q_PROPERTY(bool searchEnded READ searchEnded NOTIFY searchChanged)
+    // Vela searches without making the PC visible, because another app was
+    // already searching (§6.6, rule 1).
+    Q_PROPERTY(bool searchShared READ searchShared NOTIFY changed)
+    // The PC is still visible after Vela's search, because another app is
+    // searching (§6.6, rule 3): "Stop being visible".
+    Q_PROPERTY(bool stillVisible READ stillVisible NOTIFY changed)
     // The last refusal that isn't a device's own failure, in plain words;
     // empty if none.
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
@@ -75,6 +81,7 @@ public:
     explicit Bluetooth(bool ui, QObject* parent = nullptr);
     Bluetooth(const QDBusConnection& bus, bool ui, QObject* parent = nullptr);
 
+    bool running() const { return m_running; }
     bool available() const { return m_running && m_available; }
     bool platformBlocked() const { return m_running && !m_available && m_platformBlocked; }
     bool active() const { return m_active; }
@@ -88,6 +95,8 @@ public:
     QString pairing() const;
     bool searching() const { return m_lease != 0; }
     bool searchEnded() const { return m_searchEnded; }
+    bool searchShared() const { return m_search == QLatin1String("shared"); }
+    bool stillVisible() const { return m_stillVisible; }
     QString error() const { return m_error; }
 
     Q_INVOKABLE void setPowered(bool on);
@@ -108,6 +117,10 @@ public:
     Q_INVOKABLE void stopSearch();
     // "Your PC is still visible": the user's explicit action (§6.6, rule 3).
     Q_INVOKABLE void stopBeingVisible();
+    // This process draws the questions no Add of a UI is behind (the
+    // shell, §9.3): until one does, the daemon refuses them at once. Asked
+    // again whenever the daemon restarts.
+    void presentQuestions();
     Q_INVOKABLE void clearError();
 
 signals:
@@ -152,6 +165,9 @@ private:
 
     QDBusConnection m_bus;
     bool m_ui;
+    bool m_presenting = false;
+    bool m_wantsPresentation = false; // retain intent even after transient errors
+    int m_presentRetries = 0;
     quint64 m_ownerGeneration = 0; // Ignore replies from a previous daemon owner.
     bool m_running = false;
     bool m_available = false;
@@ -166,6 +182,8 @@ private:
     bool m_searchWanted = false; // startSearch() and no stopSearch() since
     bool m_searchStarting = false; // StartSearch hasn't replied yet
     bool m_searchEnded = false;
+    QString m_search; // the daemon's Search: "", "visible", "shared", "plain"
+    bool m_stillVisible = false;
     QString m_error;
     Requested m_power;
 };

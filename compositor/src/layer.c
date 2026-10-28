@@ -60,6 +60,7 @@ static void handle_unmap(struct wl_listener *listener, void *data)
 {
     struct vela_layer_surface *layer = wl_container_of(listener, layer, unmap);
     vela_focus_layer_unmapped(layer->server, layer);
+    vela_fullscreen_restack(layer->server);
 }
 
 static void handle_commit(struct wl_listener *listener, void *data)
@@ -70,8 +71,9 @@ static void handle_commit(struct wl_listener *listener, void *data)
 
     // The client can change layer (such as from "bottom" to "top"), or ask for
     // the keyboard (and rise above fullscreen).
-    if (wlr->initialized
-        && (committed & (WLR_LAYER_SURFACE_V1_STATE_LAYER | WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY))) {
+    bool stacking_changed = wlr->initialized
+        && (committed & (WLR_LAYER_SURFACE_V1_STATE_LAYER | WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY));
+    if (stacking_changed) {
         layer->layer = wlr->current.layer;
         struct vela_tree *target = layer_tree(layer->server, layer->layer, vela_layer_surface_wants_keyboard(layer));
         if (layer->tree->node.parent != target) {
@@ -87,6 +89,19 @@ static void handle_commit(struct wl_listener *listener, void *data)
         if (output) {
             vela_output_arrange_layers(output);
         }
+    }
+    if (stacking_changed && wlr->surface->mapped) {
+        bool can_take_focus = vela_layer_surface_wants_keyboard(layer)
+            && (wlr->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP
+                || wlr->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+        // A mapped layer-shell client may promote/demote itself without an
+        // unmap/map pair. Keep both keyboard focus and visual stacking in sync.
+        if (layer->server->focused_layer == layer && !can_take_focus) {
+            vela_focus_refocus(layer->server);
+        } else if (can_take_focus && layer->server->focused_layer != layer) {
+            vela_focus_layer(layer->server, layer);
+        }
+        vela_fullscreen_restack(layer->server);
     }
 }
 

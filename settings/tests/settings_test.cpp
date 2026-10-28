@@ -3,21 +3,20 @@
 
 // Settings' own QML pieces under Qt Quick Test (the tst_*.qml files next to
 // this one), as Vela.Controls' runner does, plus a fake Vela.Bluetooth
-// (FakeBluetooth.qml) for the Bluetooth page's pieces. A private vela.conf
-// sets the durations three times Vela's; with VELA_TEST_ANIMATION_EFFECTS=no
-// it turns animation effects off (two ctest entries).
+// (common/bluetooth/tests/FakeBluetooth.qml) for the Bluetooth page's
+// pieces. A private vela.conf sets the durations three times Vela's; with
+// VELA_TEST_ANIMATION_EFFECTS=no it turns animation effects off (two ctest
+// entries).
 
 #include "controls.h"
+#include "quicktest.h"
 
 #include <QAccessible>
-#include <QDir>
-#include <QFile>
 #include <QQmlEngine>
-#include <QTemporaryDir>
 #include <QtQml/qqmlextensionplugin.h>
-#include <QtQuickTest/quicktest.h>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
+Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
 
 class Setup : public QObject {
     Q_OBJECT
@@ -29,34 +28,15 @@ public slots:
         // reader is there.
         QAccessible::setActive(true);
         vela::controls::install(*engine, Appearance::Mode::Apps);
-        qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(QUICK_TEST_SOURCE_DIR "/FakeBluetooth.qml")), "Vela.Bluetooth", 1, 0,
+        qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(FAKE_BLUETOOTH)), "Vela.Bluetooth", 1, 0,
             "Bluetooth");
     }
 };
 
 int main(int argc, char** argv)
 {
-    QTemporaryDir home;
-    qputenv("XDG_CONFIG_HOME", home.filePath(QStringLiteral("config")).toUtf8());
-    qputenv("XDG_CACHE_HOME", home.filePath(QStringLiteral("cache")).toUtf8());
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    // No GPU in CI: Qt Quick's software renderer draws the same items.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND")) {
-        qputenv("QT_QUICK_BACKEND", "software");
-    }
-    QDir().mkpath(home.filePath(QStringLiteral("config/vela")));
-    QFile conf(home.filePath(QStringLiteral("config/vela/vela.conf")));
-    if (!conf.open(QIODevice::WriteOnly)) {
-        return 1;
-    }
-    conf.write("animation-duration=300\n");
-    if (qEnvironmentVariable("VELA_TEST_ANIMATION_EFFECTS") == QLatin1String("no")) {
-        conf.write("animation-effects=no\n");
-    }
-    conf.close();
-
     Setup setup;
-    return quick_test_main_with_setup(argc, argv, "settings", QUICK_TEST_SOURCE_DIR, &setup);
+    return vela::test::quickTestMain(argc, argv, "settings", QUICK_TEST_SOURCE_DIR, &setup);
 }
 
 #include "settings_test.moc"

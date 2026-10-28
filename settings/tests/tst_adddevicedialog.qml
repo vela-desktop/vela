@@ -55,6 +55,15 @@ Item {
         }
 
         // While one pairs, the others wait (§6.5).
+        function test_device_names_are_plain_text() {
+            Bluetooth.devices = [Bluetooth.device(1, { name: "<b>Phone</b>", rssi: -50 })]
+            tryVerify(() => find("device:<b>Phone</b>") !== null)
+            const label = findChild(find("device:<b>Phone</b>"), "candidateName")
+            verify(label !== null)
+            compare(label.text, "<b>Phone</b>")
+            compare(label.textFormat, Text.PlainText)
+        }
+
         function test_the_others_wait() {
             mouseClick(find("device:Mouse"))
             Bluetooth.pairing = mouse().path
@@ -147,9 +156,17 @@ Item {
             verify(!find("visibility").visible)
             Bluetooth.adapter = Object.assign({}, Bluetooth.adapter, { discoverable: true, discovering: true })
             compare(find("visibility").text, "Discoverable as \"vela-pc\"")
+            // Vela's own search, before BlueZ made the PC visible: nothing
+            // to say yet.
             Bluetooth.searching = true
             Bluetooth.adapter = Object.assign({}, Bluetooth.adapter, { discoverable: false })
+            verify(!find("visibility").visible)
+            // Another app was searching first: the daemon searched without
+            // making the PC visible (rule 1).
+            Bluetooth.searchShared = true
             verify(find("visibility").text.startsWith("Another app is searching for devices"))
+            Bluetooth.searching = false
+            verify(!find("visibility").visible)
         }
 
         function test_a_refusal_is_shown() {

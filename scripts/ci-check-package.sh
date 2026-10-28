@@ -32,6 +32,9 @@ done
 # Without sd-bus the helper builds, but can't change a laptop's backlight.
 ldd /usr/lib/vela/vela-brightness | grep -Fq libsystemd.so \
     || fail "vela-brightness was built without sd-bus (libsystemd)"
+# vela-bluetooth is built only with libsystemd (sd-bus, sd-event).
+ldd /usr/lib/vela/vela-bluetooth | grep -Fq libsystemd.so \
+    || fail "vela-bluetooth doesn't link libsystemd"
 for program in vela-compositor vela-shell vela-files vela-settings vela-lock \
     /usr/lib/vela/vela-bluetooth /usr/lib/vela/vela-brightness /usr/lib/vela/vela-polkit-agent /usr/lib/vela/vela-polkit-prompt \
     /usr/lib/vela/vela-report-gui; do

@@ -4,11 +4,11 @@
 import QtQuick
 import Vela.Controls
 
-// A question of the Bluetooth agent drawn inline, in "Add a device"
-// (docs/bluetooth.md §6.4, §9.3): what the device asks, the code in large
-// digits, a field when one is needed, and the answers. Enter gives the first
-// answer; Esc is left to the dialog, which cancels the Add. The time left
-// shows once fewer than 15 seconds remain.
+// A question of the Bluetooth agent (docs/bluetooth.md §6.4, §9.3), inline
+// in Settings' "Add a device" and in the shell's dialog: what the device
+// asks, the code in large digits, a field when one is needed, and the
+// answers. Enter gives the first answer; Esc is left to the dialog around
+// it. The time left shows once fewer than 15 seconds remain.
 FocusScope {
     id: view
     // Vela.Bluetooth's question: {id, kind, name, passkey, entered, pin,
@@ -76,6 +76,7 @@ FocusScope {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: view.name
+                textFormat: Text.PlainText
                 color: Theme.text
                 font.pixelSize: Theme.fontBodyLarge
                 font.weight: Font.DemiBold
@@ -96,6 +97,7 @@ FocusScope {
                 }
                 return ""
             }
+            textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: Theme.fontBody
             wrapMode: Text.Wrap
@@ -104,6 +106,7 @@ FocusScope {
             objectName: "code"
             visible: view.code !== ""
             text: view.code
+            textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: 40
             font.weight: Font.DemiBold

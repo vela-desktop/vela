@@ -62,6 +62,20 @@ static int get_adapter(sd_bus *bus, const char *path, const char *interface, con
     return 0;
 }
 
+static int get_search(sd_bus *bus, const char *path, const char *interface, const char *property,
+    sd_bus_message *reply, void *data, sd_bus_error *error)
+{
+    struct vela_bt_daemon *d = data;
+    return sd_bus_message_append(reply, "s", vela_bt_search_mode(d));
+}
+
+static int get_still_visible(sd_bus *bus, const char *path, const char *interface, const char *property,
+    sd_bus_message *reply, void *data, sd_bus_error *error)
+{
+    struct vela_bt_daemon *d = data;
+    return sd_bus_message_append(reply, "b", (int)d->search.still_visible);
+}
+
 static void append_devices(struct vela_bt_daemon *d, sd_bus_message *m, bool only_changed)
 {
     sd_bus_message_open_container(m, 'a', "{oa{sv}}");
@@ -249,8 +263,38 @@ static int method_cancel(sd_bus_message *call, void *data, sd_bus_error *error)
     return sd_bus_reply_method_return(call, NULL);
 }
 
-// B3 refuses spontaneous requests unless a trusted presenter opts in.
-// The shell will opt in when its question dialog is implemented in B4.
+static int method_start_search(sd_bus_message *call, void *data, sd_bus_error *error)
+{
+    struct vela_bt_daemon *d = data;
+    int discoverable;
+    int r = sd_bus_message_read(call, "b", &discoverable);
+    if (r >= 0) {
+        r = check_acting(d, call, VELA_BT_UNSANDBOXED, error);
+    }
+    return r < 0 ? r : vela_bt_search_start(d, call, discoverable, error);
+}
+
+// Ending a search always works, as Cancel does.
+static int method_stop_search(sd_bus_message *call, void *data, sd_bus_error *error)
+{
+    struct vela_bt_daemon *d = data;
+    uint64_t id;
+    int r = sd_bus_message_read(call, "t", &id);
+    if (r >= 0) {
+        r = vela_bt_check_caller(call, VELA_BT_UNSANDBOXED, d->ui, error);
+    }
+    return r < 0 ? r : vela_bt_search_stop(d, call, id);
+}
+
+static int method_stop_being_visible(sd_bus_message *call, void *data, sd_bus_error *error)
+{
+    struct vela_bt_daemon *d = data;
+    int r = check_acting(d, call, VELA_BT_UNSANDBOXED, error);
+    return r < 0 ? r : vela_bt_stop_being_visible(d, call, error);
+}
+
+// Spontaneous requests are refused unless a trusted presenter opts in: the
+// shell, which draws them (§9.3).
 static int method_present_questions(sd_bus_message *call, void *data, sd_bus_error *error)
 {
     struct vela_bt_daemon *d = data;
@@ -287,6 +331,8 @@ static const sd_bus_vtable vtable[] = {
     SD_BUS_PROPERTY("Active", "b", get_active, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_PROPERTY("Adapters", "aa{sv}", get_adapters, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_PROPERTY("Adapter", "a{sv}", get_adapter, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
+    SD_BUS_PROPERTY("Search", "s", get_search, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
+    SD_BUS_PROPERTY("StillVisible", "b", get_still_visible, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_METHOD("Devices", "", "a{oa{sv}}", method_devices, 0),
     SD_BUS_METHOD("SetPowered", "b", "", method_set_powered, 0),
     SD_BUS_METHOD("UseAdapter", "s", "", method_use_adapter, 0),
@@ -296,11 +342,15 @@ static const sd_bus_vtable vtable[] = {
     SD_BUS_METHOD("Remove", "o", "", method_remove, 0),
     SD_BUS_METHOD("Rename", "os", "", method_rename, 0),
     SD_BUS_METHOD("Cancel", "o", "", method_cancel, 0),
+    SD_BUS_METHOD("StartSearch", "b", "t", method_start_search, 0),
+    SD_BUS_METHOD("StopSearch", "t", "", method_stop_search, 0),
+    SD_BUS_METHOD("StopBeingVisible", "", "", method_stop_being_visible, 0),
     SD_BUS_METHOD("Questions", "", "a(toa{sv})", method_questions, 0),
     SD_BUS_METHOD("PresentQuestions", "", "", method_present_questions, 0),
     SD_BUS_METHOD("Answer", "tss", "", method_answer, 0),
     SD_BUS_SIGNAL("DevicesChanged", "a{oa{sv}}ao", 0),
     SD_BUS_SIGNAL("OperationChanged", "osss", 0),
+    SD_BUS_SIGNAL("SearchEnded", "ts", 0),
     // Sent to each of Vela's UI clients only (§7.3).
     SD_BUS_SIGNAL("Question", "toa{sv}", 0),
     SD_BUS_SIGNAL("QuestionChanged", "ta{sv}", 0),
@@ -342,7 +392,8 @@ void vela_bt_flush(struct vela_bt_daemon *d)
     if (d->properties_changed) {
         d->properties_changed = false;
         sd_bus_emit_properties_changed(
-            d->session, VELA_BT_PATH, INTERFACE, "Available", "PlatformBlocked", "Active", "Adapters", "Adapter", NULL);
+            d->session, VELA_BT_PATH, INTERFACE, "Available", "PlatformBlocked", "Active", "Adapters", "Adapter", "Search",
+            "StillVisible", NULL);
     }
 }
 

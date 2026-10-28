@@ -346,6 +346,9 @@ void vela_workspaces_switch(struct vela_server *server, int index, bool refocus_
     vela_server_schedule_frames(server);
 
     sync_taskbar(server);
+    // The new desktop may expose a different foreground fullscreen even if
+    // this switch deliberately defers keyboard focus.
+    vela_fullscreen_restack(server);
     if (refocus_after) {
         struct vela_view *focused = vela_views_focused(server);
         if (!focused || !vela_view_on_current_workspace(focused)) {
@@ -421,6 +424,7 @@ static void finish_switch(struct vela_server *server)
     vela_node_set_opacity(&layers->windows_out->node, 1.0f);
     vela_node_set_position(&layers->windows->node, 0, 0);
     vela_node_set_opacity(&layers->windows->node, 1.0f);
+    vela_fullscreen_restack(server);
     vela_scene_changed(server->scene);
 }
 
@@ -563,6 +567,7 @@ void vela_workspaces_move_view(struct vela_server *server, struct vela_view *vie
         wl_list_insert(server->views.prev, &view->link);
         vela_focus_refocus(server);
     }
+    vela_fullscreen_restack(server);
     vela_workspaces_announce(server);
 }
 
@@ -575,6 +580,7 @@ void vela_workspaces_set_sticky(struct vela_server *server, struct vela_view *vi
     // Taken off "all desktops", it stays on the current one.
     view->workspace = server->workspaces->current;
     sync_taskbar(server);
+    vela_fullscreen_restack(server);
     vela_workspaces_announce(server);
 }
 

@@ -5,16 +5,14 @@ settings, and how Vela shares Bluetooth with other desktop sessions. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** B0–B3 are implemented in PR #146: the daemon and agent run,
-> and Settings uses the shared client library. Shell, audio, search leases,
-> packaging and hardware validation remain B4–B7; logind lock-state reporting
-> is already included here as a safety prerequisite.
-> Everything in §3 is planned for beta 0.1. See §12.
-> Until B4 supplies the shell's question presenter, unsolicited pairing and
-> service authorization requests are immediately refused unless a trusted UI
-> explicitly calls `PresentQuestions`. Settings does not opt in: only its own
-> Add questions appear there. The compositor already propagates LockedHint;
-> the rest of the B5 work remains separate.
+> **Status:** B0–B3 are implemented (PR #146): the daemon and agent run,
+> and Settings uses the shared client library; logind lock-state reporting
+> is already included as a safety prerequisite. B4 adds the shell (quick
+> settings, the question dialog and notifications) and `vela-audio`'s
+> batteries from the daemon; B5 the search leases and visibility; B6 the
+> docs and packaging; B7 tried it on real devices
+> ([hardware](hardware.md#bluetooth)). Everything in §3 is planned for beta
+> 0.1. See §12.
 
 ## 1. Why from scratch
 
@@ -207,9 +205,9 @@ register such switches.
 
 - Turning on with an adapter: if the adapter's own switch is soft-blocked
   and not hard-blocked, the daemon writes `RFKILL_OP_CHANGE` with that
-  index to `/dev/rfkill`. Then it sets `Powered`. This keeps today's retry
-  while BlueZ notices the unblock (`bluetoothpower.h`). No other switch is
-  touched.
+  index to `/dev/rfkill`. Then it sets `Powered`, retrying while BlueZ
+  notices the unblock, as the shell's own code did before B4. No other
+  switch is touched.
 - Turning on with no adapter at all, while a platform Bluetooth switch is
   soft-blocked: the built-in radio may be gone because of that switch. The
   switch in Settings and quick settings shows Off. Turning it on unblocks
@@ -222,8 +220,7 @@ register such switches.
 
 `VELA_RFKILL` and `VELA_SYSFS` replace `/dev/rfkill` and `/sys` in the tests.
 Only the test build of the daemon (`vela-bluetooth-testing`, never
-installed) reads them; the shell's own unblock (B0) reads them too, until B4
-removes it.
+installed) reads them.
 
 **Without an adapter**, the property `PlatformBlocked` (§7.1) is true while a
 platform switch of type Bluetooth is blocked: the switch shows Off and can
@@ -364,7 +361,18 @@ follow from this:
    - in Settings, while it is open: a line "Your PC is still visible to
      nearby devices, because another app is searching" with "Stop being
      visible";
-   - otherwise, a notification with the same text and action.
+   - otherwise, a notification with the same text and action. The shell
+     decides: it posts it when no Settings window is open at that moment,
+     and closes it once the PC is no longer visible.
+
+   The daemon tells this with the `StillVisible` property (§7.1). It turns
+   false when the adapter stops being discoverable, or when a new lease
+   starts.
+
+**Searching again by itself.** If BlueZ stops discovering while leases are
+held, the daemon starts again at once, up to three times a minute; past
+that it waits until the minute is over. A failed `SetDiscoveryFilter` or
+`StartDiscovery` counts the same.
 
    "Stop being visible" is an explicit user action (§6.7, rule 3). It
    writes `Discoverable` false on the adapter. Vela never does this on its
@@ -396,8 +404,9 @@ properties. The session is found as in [polkit agent](polkit-agent.md)
   for this seat don't fall to another desktop. But search leases end, a
   running Add is cancelled, and unsolicited requests are rejected (§6.4).
   - `LockedHint` is set by the compositor through logind's
-    `Session.SetLockedHint` while the lock screen is up. **Vela doesn't do
-    this today**; it is added in B5.
+    `Session.SetLockedHint` while the lock screen is up, and with the
+    current state when it starts (only in the real session: a nested Vela
+    never reports a lock to the host's session).
 - While inactive, the daemon only keeps its model up to date. Reading
   BlueZ changes nothing for anyone. Methods that would change something
   return `org.vela.Bluetooth.Error.Inactive`; so they do while the screen
@@ -438,10 +447,6 @@ Served at `/org/vela/Bluetooth` on the session bus. Error names are under
 clients ignore keys they don't know. Signatures are final once B1 is
 merged.
 
-B1 and B2 serve everything in §7.1 and §7.2 except the searches
-(`StartSearch`, `StopSearch`, `StopBeingVisible`, `SearchEnded`), which come
-with B5.
-
 ### 7.1 Devices, adapter and searches
 
 ```
@@ -452,6 +457,12 @@ properties
   Adapters        aa{sv}     path, address, name, inUse
   Adapter         a{sv}      the adapter in use (§6.2): path, address, name,
                              powered, powerState, discoverable, discovering
+  Search          s          Vela's search (§6.6): "" without leases, "visible"
+                             with the Discoverable filter, "shared" when another
+                             client was already discovering, "plain" when no
+                             lease asked to be discoverable
+  StillVisible    b          the adapter stayed discoverable after Vela's search
+                             (§6.6, rule 3)
 methods
   Devices() → a{oa{sv}}
   SetPowered(b on)
@@ -469,6 +480,12 @@ signals
   SearchEnded(t lease, s reason)                  stopped, owner-gone, time-limit,
                                                   locked, inactive, adapter-off
 ```
+
+`StartSearch` needs the adapter in use powered (`Failed` otherwise, or
+`UnknownAdapter` without one). `StopSearch` ends only the caller's own
+lease, and does nothing for one that has already ended; like `Cancel`, it
+works while the session isn't in front. `SearchEnded` goes to every
+client: a lease's id says nothing about the devices.
 
 A device's dictionary has `address`, `name`, `icon`, `type` (mouse,
 keyboard, gamepad, tablet, headset, headphones, speaker, phone, computer or
@@ -503,6 +520,7 @@ time, because BlueZ sends no more (§6.5).
 ```
 methods
   Questions() → a(toa{sv})              the open question, if any: id, device, details
+  PresentQuestions()                    the caller draws the unsolicited ones (§9.3)
   Answer(t id, s response, s value)
 signals
   Question(t id, o device, a{sv} details)
@@ -519,6 +537,12 @@ starts, and again when the daemon restarts. From then on, while it stays
 on the bus, it receives `Question`, `QuestionChanged` and
 `QuestionClosed`. `Add(device, promptsHere = true)` does the same for its
 caller.
+
+**Unsolicited questions** (a device asking by itself, §6.4) wait for an
+answer only while a client of Vela's UI has called `PresentQuestions()`
+and stays on the bus: the shell does, when it starts and whenever the
+daemon restarts. Without one, the daemon refuses them at once. Settings
+doesn't: only its own Adds' questions appear there.
 
 **Details:**
 
@@ -586,7 +610,7 @@ to Vela's own UI.
 |---|---|
 | Properties, `Devices` | any process of the same user |
 | `SetPowered`, `UseAdapter`, `StartSearch`, `StopSearch`, `StopBeingVisible`, `Add` with `promptsHere = false`, `Connect`, `Disconnect`, `Remove`, `Rename`, `Cancel` | same user, not sandboxed |
-| `Add` with `promptsHere = true`, `Questions`, `Answer`; receiving `Question`, `QuestionChanged` and `QuestionClosed` | **Vela's UI only**: `vela-shell` and `vela-settings` |
+| `Add` with `promptsHere = true`, `Questions`, `PresentQuestions`, `Answer`; receiving `Question`, `QuestionChanged` and `QuestionClosed` | **Vela's UI only**: `vela-shell` and `vela-settings` |
 
 - **Same user:** the caller's UID, from the bus credentials
   (`sd_bus_query_sender_creds`), equals the daemon's.
@@ -631,18 +655,24 @@ A client library, like `common/audio` for sound:
   process registers with its own instance. It has `available`, `devices`,
   `paired`, `found`, `question` and the actions;
 - the `requested.h` behaviour for switches: shown at once, and returned to
-  BlueZ's state if BlueZ refuses or never does it.
+  BlueZ's state if BlueZ refuses or never does it;
+- the QML module `Vela.Bluetooth.Ui`, what Settings and the shell draw
+  alike: `DeviceState` (a device's state, battery and icon in words) and
+  `BluetoothQuestion` (a question of the agent, §9.3).
 
 A refusal that isn't a device's own failure (`Busy`, `Inactive`, a name
 `Rename` refuses...) is the model's `error`, in plain words. A device's
-failure stays with the device, in its `error` and `message`. Until the
-daemon serves search leases (B5), "Add a device" lists the devices BlueZ
-already knows.
+failure stays with the device, in its `error` and `message`.
+
+The model also has `searching` and `searchEnded` (the client's lease, and
+"Search again" once the daemon ended it), `searchShared` (the daemon's
+`Search` is "shared") and `stillVisible`.
 
 Users: `vela-shell` (quick settings, the question dialog and notifications,
 `SystemStatus` for airplane mode), `vela-settings`, and `vela-audio` for
-headset batteries. If the daemon is missing, the model is empty and
-`available` is false.
+headset batteries, which it matches to PipeWire's devices by address. Each
+process has one client, which `vela-audio` shares. If the daemon is
+missing, the model is empty and `available` is false.
 
 ## 9. UI
 
@@ -677,9 +707,15 @@ for its Bluetooth card.
 ### 9.2 Quick settings
 
 - The Bluetooth tile gets an arrow, as Wi-Fi has. It opens a list of paired
-  devices with their battery level and connect or disconnect, plus "More
+  devices, connected first, with their state and battery level, plus "More
   Bluetooth settings".
+  - A click opens a device, as a Wi-Fi network opens: Connect or
+    Disconnect, or Cancel while it connects.
+  - The page has the switch too, and the refusals that aren't a device's own
+    ("the screen is locked"...).
 - Unpaired devices are not listed there.
+- With a blocked platform switch and no adapter (§6.3), the tile shows Off,
+  without its arrow; turning it on unblocks the switch.
 
 ### 9.3 Questions from the agent
 
@@ -691,14 +727,21 @@ for its Bluetooth card.
     field when one is needed.
   - Enter confirms and Esc cancels. The field has focus.
   - Every element has an accessible name. The code is read digit by digit.
-  - The dialog closes by itself on `QuestionClosed`.
+  - The dialog closes by itself on `QuestionClosed`. Going to another
+    window leaves it open: the device is still waiting.
   - It shows the time left from `expires` once fewer than 15 seconds
     remain.
+  - An answer the daemon refuses (a code out of range...) shows its reason
+    under the question.
 - **`drawnBy` = `shell`, unsolicited** (a phone or headset starting the
   pairing, or a service request): a notification first.
   - It shows the code when there is one.
   - Its actions are "Pair" or "Allow", and "Deny". For a PIN or passkey to
-    type, the action is "Enter code", which opens the dialog.
+    type, the action is "Enter code", which opens the dialog. For a code
+    shown here and typed on the device, the only action is "Cancel".
+  - A click on the notification opens the dialog with the whole question.
+  - It is critical: it stays until answered, and shows during Do not
+    disturb. It is transient: it never waits in the notification center.
   - If the notification closes without an answer, the request is rejected.
 
 ## 10. Removing BlueDevil
@@ -716,8 +759,7 @@ Arch. [installation](installation.md) says it is all Bluetooth needs.
 
 **Fake BlueZ.** This is `tests/bluetooth/fakebluez.h`, grown out of
 `FakeServices` in `shell/tests/requested_switches.cpp`. It runs on a private
-system bus, in its own thread. Discovery sessions and the `Discoverable`
-filter come with B5; the rest of this list is there since B2. It serves:
+system bus, in its own thread. It serves:
 
 - `ObjectManager`, `AgentManager1`, `Adapter1`, `Device1` and `Battery1`;
 - BlueZ's default-agent stack, and one open request per agent, refusing
@@ -772,10 +814,15 @@ fake itself can stay in Qt, because it is test code. Cases:
   - `Questions()` after a client restart;
   - each `QuestionClosed` reason;
 - **search leases:**
-  - each way a lease ends, including the 3-minute limit and the lock;
+  - each way a lease ends, including the 3-minute limit (shortened with
+    `VELA_BT_SEARCH_LIMIT_MS`, read only by the test build) and the lock;
+  - only the owner ending its lease;
   - the filter only when no other client discovers;
   - "still visible" reported when the second fake client keeps the adapter
-    discoverable, and `StopBeingVisible` clearing it;
+    discoverable, and `StopBeingVisible` clearing it; nothing reported when
+    the adapter was visible before;
+  - an Add suspending discovery, which goes on afterwards;
+  - discovery started again three times a minute at most;
 - **other sessions (§6.7):**
   - a second fake agent stands for another desktop;
   - when the session turns inactive, Vela's agent is unregistered and the
@@ -803,14 +850,45 @@ fake itself can stay in Qt, because it is test code. Cases:
 
 - the model against the daemon running on the fake;
 - the daemon missing;
-- the requested switch.
+- the requested switch;
+- a search: started, stopped, stopped before the daemon answered, ended by
+  the daemon ("Search again"), shared with another app, and the PC still
+  visible afterwards.
 
-**QML tests** (Settings' with a fake `Vela.Bluetooth` written in QML):
+**Shell tests** (`bluetooth-shell`, the shell's code against the daemon on
+the fake):
 
-- the Settings page, including "Search again" and "Stop being visible";
-- quick settings' list;
-- the dialog and inline questions for every kind, with Enter, Esc, focus,
-  the time left and accessible names.
+- an unsolicited request as a notification: its words, code and actions,
+  the name escaped in the markup, Pair, Deny, and closing it without an
+  answer;
+- "Enter code" and a click opening the dialog, and the dialog's answers;
+- a question closed elsewhere closing the notification;
+- Do not disturb still showing it;
+- an Add without a UI of its own opening the dialog at once;
+- Settings leaving during its Add, and the dialog taking the question over;
+- presenting again after the daemon restarts;
+- "still visible" as a notification, not while Settings is open, "Stop
+  being visible" from it, and it closing once the PC isn't visible;
+- airplane mode turning Bluetooth off and on.
+
+`vela-audio`'s battery is in `audio-view`, against a fake daemon.
+
+**QML tests** (Settings' and the shell's, with a fake `Vela.Bluetooth`
+written in QML, `common/bluetooth/tests/FakeBluetooth.qml`; the shell's
+runner also fakes `Shell` and `BluetoothPrompts`):
+
+- the Settings page: "Add a device" with "Search again" and what it says
+  about visibility, and the "still visible" line with "Stop being visible";
+- the question (`BluetoothQuestion`, inline in Settings and inside the
+  shell's dialog) for every kind, with Enter, Esc, focus, the time left and
+  accessible names;
+- quick settings' list (`BluetoothDevices`): paired only, state and battery,
+  opening a device, Connect, Disconnect and Cancel, nothing to press while
+  busy or in the background, the height the panel goes to;
+- the shell's dialog window: on the primary screen, Enter, Esc, a typed
+  code, the buttons, the digits typed on a keyboard, a refused answer's
+  reason, staying while another window is active, closing with the
+  question.
 
 **By hand** (recorded in [hardware](hardware.md)), in a Vela session with
 only `bluez`:
@@ -838,10 +916,10 @@ only `bluez`:
 | B1 | `vela-bluetooth`: start by the compositor, model, operations, errors, rfkill (§6.3), the `org.vela.Bluetooth` API settled with its authorization (§7.3); the fake BlueZ and the daemon's tests | done |
 | B2 | The agent (§6.4), concurrency (§6.5), the questions (§7.2), and the session rules (§6.7), with tests | done |
 | B3 | `common/bluetooth`; the Settings page rewritten (§9.1); the old Settings code deleted | done |
-| B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | |
-| B5 | Search leases and visibility (§6.6); extend the lock-state integration already introduced in B3 | |
-| B6 | Docs and packaging: installation, hardware, testing | |
-| B7 | The user tries it on real devices (§11, "by hand") | |
+| B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | done |
+| B5 | Search leases and visibility (§6.6); extend the lock-state integration already introduced in B3 | done |
+| B6 | Docs and packaging: installation, hardware, testing | done |
+| B7 | The user tries it on real devices (§11, "by hand") | done |
 
 ## 13. Open questions and risks
 
