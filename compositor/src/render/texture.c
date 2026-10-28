@@ -6,7 +6,6 @@
 // captures.
 
 #include "render/render.h"
-#include "render/readback_copy.h"
 
 #include <inttypes.h>
 #include <linux/dma-buf.h>
@@ -449,16 +448,15 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
     vela_renderer_wait(renderer, point);
 
     uint8_t *dst = wlr_texture_read_pixel_options_get_data(options);
-    // Experiment only: reduce the HOST_CACHED NVIDIA readback memcpy wall time
-    // without touching Vulkan synchronization or wlroots' synchronous return
-    // contract. Every worker is joined before this call returns.
-    unsigned copy_workers = 1;
-    const char *workers_env = getenv("VELA_READBACK_COPY_THREADS");
-    if (workers_env && workers_env[0] >= '2' && workers_env[0] <= '4' && workers_env[1] == '\0') {
-        copy_workers = (unsigned)(workers_env[0] - '0');
+    for (int y = 0; y < box.height; ++y) {
+        uint8_t *row = dst + (size_t)y * options->stride;
+        memcpy(row, staging.data + (size_t)y * row_bytes, row_bytes);
+        if (force_opaque) {
+            for (size_t x = 3; x < row_bytes; x += 4) {
+                row[x] = 0xff;
+            }
+        }
     }
-    vela_readback_copy(dst, options->stride, staging.data, row_bytes, row_bytes,
-        (size_t)box.height, force_opaque, copy_workers);
     return true;
 }
 

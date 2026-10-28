@@ -138,9 +138,6 @@ jobs:
 
       - name: Real GPU functional and sharpness suites
         shell: bash
-        env:
-          # Validate the experimental CPU copy on both vendors at the same commit.
-          VELA_READBACK_COPY_THREADS: ${{ github.ref == 'refs/heads/fix/async-capture-readback' && '4' || '1' }}
         run: |
           set -euo pipefail
           ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \

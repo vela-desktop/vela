@@ -139,42 +139,42 @@ instrumentation selectively as needed to prove that this fix works. The new
 branch is based on `main` so the implementation does not implicitly inherit
 temporary CI workload or source-level profiler overhead.
 
-## 7. First implementation experiment: bounded parallel CPU copy
+## 7. Parallel CPU copy: diagnostic result and rejection (28 October 2026)
 
-This draft now includes a **strictly opt-in** parallel staging-to-SHM
-copy experiment, intended to answer whether the NVIDIA readback bottleneck
-can be reduced without changing the protocol. It is **not** the async
-completion architecture described above.
+The four-thread experiment lowered NVIDIA capture latency but failed the
+unchanged `functional-capture` assertion:
 
-- `compositor/src/render/readback_copy.c` partitions whole rows between
-  up to four short-lived pthread workers. Each worker only calls CPU
-  `memcpy`/optional alpha fixup on disjoint ranges. The original Vulkan
-  timeline wait still happens before those workers begin.
-- All workers join before `wlr_texture_impl.read_pixels` returns, so wlroots
-  still sees a fully initialized destination buffer. Vulkan, Wayland and
-  buffer ownership are never accessed from the worker threads.
-- `VELA_READBACK_COPY_THREADS=2|3|4` opts in. The default is **1**
-  (serial), and small copies under 1 MiB stay serial. Thread creation
-  failure falls back to copying that partition on the caller thread.
-- `compositor.readback-copy` verifies that single/multithreaded results
-  match for contiguous and padded strides, alpha fixup, tiny inputs, full
-  1440p images and excess worker requests. The existing functional capture
-  assertion is unchanged.
-- The **manual NVIDIA workflow on this branch only** runs A/B
-  `functional-capture` for 1 and 4 workers, preserving the logs and marking
-  the measurements non-gating; the full strict GPU suite then runs with four
-  workers. The **manual AMD workflow on this branch only** runs its strict
-  suite with four workers. Outside the branch, both GPU workflows use the
-  unchanged one-worker behavior.
+| CPU copy workers | Captures | Missed vblanks | Screenshot p50 |
+| --- | ---: | ---: | ---: |
+| 1 | 40 | 81 | 20.434 ms |
+| 4 | 43 | 53 | 16.340 ms |
 
-### Decision gate
+The NVIDIA strict suite still failed (44 missed vblanks on 43 captures);
+AMD passed 20/20. Hardware evidence:
+[NVIDIA](https://github.com/vela-desktop/vela/actions/runs/40682239824),
+[AMD](https://github.com/vela-desktop/vela/actions/runs/40682256933).
 
-If NVIDIA still misses vblanks or AMD regresses, do **not** merge this
-experiment as a performance fix. Retain the measured CPU effects and move
-to a Vela-controlled asynchronous output capture path or upstream-compatible
-changes that can delay `ready` until data is actually valid. The current
-wlroots output capture source owns the synchronous SHM copy; returning early
-from `read_pixels` is not a valid shortcut.
+**Decision: reject and remove the threaded CPU-copy implementation.**
+The Vulkan timeline wait and synchronous wlroots `read_pixels` contract
+remained on the presentation path regardless of worker count. Both
+hardware suites must again run the unchanged serial baseline.
 
-The experiment requires new real-hardware runs; passing ordinary CI proves
-only the build and CPU correctness, not the 180 Hz frame deadline.
+## 8. Next gate: isolate the mapped-memory bottleneck
+
+Before changing the capture architecture, collect on AMD and NVIDIA
+using identical workloads and an explicitly non-gating diagnostic:
+
+- Actual Vulkan readback memory type, properties and heap.
+- Separate CPU time spent waiting for GPU completion and copying from
+  mapped Vulkan staging to the destination SHM.
+- Matched-size host-only RAM copy versus mapped-staging read throughput,
+  with enough repetitions to detect cache and page-fault effects.
+- Correlation between the blocked compositor thread and missed vblanks.
+
+These measurements do not establish physical memory placement merely
+from a `HOST_CACHED` flag. Instrumentation must be opt-in and disabled
+during the unmodified strict 20-case GPU suite. If the mapped memory
+path is slow, investigate a correct transfer mechanism, but do not
+special-case NVIDIA without proof. Independently audit the wlroots
+capture lifecycle for a safe asynchronous completion boundary. No
+new refresh cap or relaxed assertion is acceptable.
