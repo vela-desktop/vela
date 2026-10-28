@@ -10,7 +10,7 @@ follows them.
 > is already included as a safety prerequisite. B4 adds the shell (quick
 > settings, the question dialog and notifications) and `vela-audio`'s
 > batteries from the daemon; B5 the search leases and visibility; B6 the
-> docs and packaging. What remains is B7, trying it on real devices
+> docs and packaging; B7 tried it on real devices
 > ([hardware](hardware.md#bluetooth)). Everything in §3 is planned for beta
 > 0.1. See §12.
 
@@ -919,7 +919,7 @@ only `bluez`:
 | B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | done |
 | B5 | Search leases and visibility (§6.6); extend the lock-state integration already introduced in B3 | done |
 | B6 | Docs and packaging: installation, hardware, testing | done |
-| B7 | The user tries it on real devices (§11, "by hand") | |
+| B7 | The user tries it on real devices (§11, "by hand") | done |
 
 ## 13. Open questions and risks
 
