@@ -53,7 +53,7 @@ static const struct vela_bt_failure *connection_reason(const char *message)
     if (!starts_with(message, "br-connection-") && !starts_with(message, "le-connection-")) {
         return NULL;
     }
-    if (contains(message, "timeout") || contains(message, "by-remote") || contains(message, "refused")) {
+    if (contains(message, "timeout") || contains(message, "by-remote")) {
         return &vela_bt_no_response;
     }
     if (contains(message, "profile-unavailable") || contains(message, "not-supported")) {
