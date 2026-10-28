@@ -16,8 +16,15 @@
 bool vela_bt_sandboxed(const char *proc, pid_t pid)
 {
     char path[PATH_MAX];
-    if (snprintf(path, sizeof(path), "%s/%d/root/.flatpak-info", proc, (int)pid) < (int)sizeof(path)
-        && access(path, F_OK) == 0) {
+    if (snprintf(path, sizeof(path), "%s/%d/root/.flatpak-info", proc, (int)pid) >= (int)sizeof(path)) {
+        return true;
+    }
+    if (access(path, F_OK) == 0) {
+        return true;
+    }
+    // Only absence is evidence of no Flatpak marker. EACCES, ESRCH, etc.
+    // are unknown process identity, never permission to operate Bluetooth.
+    if (errno != ENOENT) {
         return true;
     }
     if (snprintf(path, sizeof(path), "%s/%d/cgroup", proc, (int)pid) >= (int)sizeof(path)) {
@@ -149,9 +156,24 @@ int vela_bt_check_caller(sd_bus_message *call, enum vela_bt_trust trust, const c
             }
         }
     }
-    // Still the same process after the checks.
+    // Still the same process after the checks. On older systemd without
+    // pidfd credentials, also verify that the D-Bus sender still exists and
+    // has the same kernel-reported PID and user, rather than trusting a bare
+    // PID after multiple /proc lookups.
     if (!why && pidfd >= 0 && vela_bt_pidfd_pid("/proc", pidfd) != pid) {
         why = "process gone";
+    } else if (!why && pidfd < 0) {
+        sd_bus_creds *current = NULL;
+        pid_t current_pid = -1;
+        uid_t current_uid = (uid_t)-1;
+        if (sd_bus_query_sender_creds(call, SD_BUS_CREDS_PID | SD_BUS_CREDS_EUID | SD_BUS_CREDS_UID, &current) < 0
+            || sd_bus_creds_get_pid(current, &current_pid) < 0
+            || (sd_bus_creds_get_euid(current, &current_uid) < 0
+                && sd_bus_creds_get_uid(current, &current_uid) < 0)
+            || current_pid != pid || current_uid != geteuid()) {
+            why = "sender changed or disappeared";
+        }
+        sd_bus_creds_unref(current);
     }
     if (pidfd >= 0) {
         close(pidfd);
