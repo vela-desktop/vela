@@ -84,7 +84,8 @@ static void frame_ready(void *data, struct ext_image_copy_capture_frame_v1 *fram
         }
     }
 checked:
-    if (ok && repeat && ++capture->rounds < 3) {
+    if (ok && repeat) ++capture->rounds;
+    if (ok && repeat && capture->rounds < 3) {
         // Keep the same protocol session on an unchanged output. A lost-damage
         // bug would leave the next capture waiting forever.
         ext_image_copy_capture_frame_v1_destroy(capture->frame);

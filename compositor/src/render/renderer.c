@@ -208,7 +208,6 @@ struct vela_renderer *vela_renderer_create(struct vela_vulkan *vk)
     r->vk = vk;
     wl_list_init(&r->targets);
     wl_list_init(&r->textures);
-    wl_list_init(&r->readbacks);
     for (int i = 0; i < vk->shm_format_count; ++i) {
         wlr_drm_format_set_add(&r->shm_formats, vk->shm_formats[i], DRM_FORMAT_MOD_LINEAR);
     }

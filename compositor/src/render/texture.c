@@ -480,14 +480,12 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
 // There is one timer and one aggregate copy budget, even with several clients.
 // Timers yield to epoll between slices; re-adding an idle callback would drain
 // all slices in one event-loop dispatch and recreate the original stall.
-#define READBACK_MAX_JOBS 4
 #define READBACK_MAX_BYTES (128u * 1024u * 1024u)
 #define READBACK_SLICE_BYTES (512u * 1024u)
 #define READBACK_SLICE_NS 500000
 #define READBACK_TIMEOUT_NS (5LL * VELA_NS_PER_SEC)
 
 struct vela_readback {
-    struct wl_list link;
     struct vela_renderer *renderer;
     struct wlr_texture *texture;
     struct wlr_buffer *dst;
@@ -525,16 +523,23 @@ void vela_readback_cancel(struct vela_readback *readback)
         return;
     }
     struct vela_renderer *renderer = readback->renderer;
-    wl_list_remove(&readback->link);
+    size_t index = 0;
+    while (index < renderer->readback_count && renderer->readbacks[index] != readback) ++index;
+    assert(index < renderer->readback_count);
+    for (size_t i = index + 1; i < renderer->readback_count; ++i) {
+        renderer->readbacks[i - 1] = renderer->readbacks[i];
+    }
+    renderer->readbacks[--renderer->readback_count] = NULL;
+    if (index < renderer->readback_next) --renderer->readback_next;
+    if (renderer->readback_next >= renderer->readback_count) renderer->readback_next = 0;
     if (readback->done) ++renderer->readback_cancelled;
-    --renderer->readback_count;
     renderer->readback_bytes -= readback->bytes;
     pin_staging(renderer, readback->staging.buffer, false);
     // GPU lifetime still follows the submission point, even on cancellation.
     wlr_texture_destroy(readback->texture);
     wlr_buffer_unlock(readback->dst);
     free(readback);
-    if (wl_list_empty(&renderer->readbacks) && renderer->readback_timer) {
+    if (!renderer->readback_count && renderer->readback_timer) {
         wl_event_source_remove(renderer->readback_timer);
         renderer->readback_timer = NULL;
     }
@@ -553,9 +558,8 @@ static void finish_readback(struct vela_readback *readback, bool ok)
 
 void vela_renderer_cancel_readbacks(struct vela_renderer *renderer)
 {
-    while (!wl_list_empty(&renderer->readbacks)) {
-        struct vela_readback *readback = wl_container_of(renderer->readbacks.next, readback, link);
-        finish_readback(readback, false);
+    while (renderer->readback_count > 0) {
+        finish_readback(renderer->readbacks[renderer->readback_count - 1], false);
     }
 }
 
@@ -574,10 +578,9 @@ static int dispatch_readback(void *data)
         vela_renderer_cancel_readbacks(renderer);
         return 0;
     }
-    struct vela_readback *readback = wl_container_of(renderer->readbacks.next, readback, link);
+    struct vela_readback *readback = renderer->readbacks[renderer->readback_next];
     // Round robin; one bounded slice across all requests per timer tick.
-    wl_list_remove(&readback->link);
-    wl_list_insert(renderer->readbacks.prev, &readback->link);
+    renderer->readback_next = (renderer->readback_next + 1) % renderer->readback_count;
     uint64_t completed = 0;
     VkResult result = vkGetSemaphoreCounterValue(renderer->vk->device, renderer->timeline, &completed);
     if (result != VK_SUCCESS || vela_now_ns() - readback->started > READBACK_TIMEOUT_NS) {
@@ -617,7 +620,7 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     struct wlr_buffer *src, struct wlr_buffer *dst, void (*done)(void *, bool), void *data)
 {
     if (src->width != dst->width || src->height != dst->height || src->width <= 0 || src->height <= 0
-        || renderer->readback_count >= READBACK_MAX_JOBS) {
+        || renderer->readback_count >= VELA_READBACK_MAX_JOBS) {
         return NULL;
     }
     void *pixels = NULL;
@@ -695,8 +698,7 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     readback->started = vela_now_ns();
     readback->done = done;
     readback->data = data;
-    wl_list_insert(renderer->readbacks.prev, &readback->link);
-    ++renderer->readback_count;
+    renderer->readbacks[renderer->readback_count++] = readback;
     renderer->readback_bytes += bytes;
     if (wl_event_source_timer_update(renderer->readback_timer, 1) < 0) {
         vela_readback_cancel(readback);

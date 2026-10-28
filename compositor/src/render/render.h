@@ -192,6 +192,7 @@ struct vela_staging {
 // -------------------------------------------------------- renderer state --
 
 #define VELA_TIMING_SLOTS 64
+#define VELA_READBACK_MAX_JOBS 4
 
 // A command buffer of the pool: free when it isn't recording and the GPU has
 // finished the submission that contained it (point).
@@ -261,7 +262,8 @@ struct vela_renderer {
     struct staging_chunk *staging;
     int staging_count, staging_capacity;
 
-    struct wl_list readbacks; // vela_readback.link, bounded across all capture clients
+    struct vela_readback *readbacks[VELA_READBACK_MAX_JOBS];
+    size_t readback_next; // round-robin cursor in the bounded queue
     struct wl_event_source *readback_timer;
     size_t readback_count, readback_bytes;
     uint64_t readback_completed, readback_cancelled, readback_failed;
