@@ -126,6 +126,19 @@ void vela_bt_question_resend(struct vela_bt_daemon *d)
     }
 }
 
+int vela_bt_present_questions(struct vela_bt_daemon *d, sd_bus_message *call)
+{
+    if (!d->presenters && sd_bus_track_new(d->session, &d->presenters, NULL, NULL) < 0) {
+        return -ENOMEM;
+    }
+    int r = sd_bus_track_add_sender(d->presenters, call);
+    if (r < 0) {
+        return r;
+    }
+    vela_bt_listen(d, call);
+    return sd_bus_reply_method_return(call, NULL);
+}
+
 void vela_bt_listen(struct vela_bt_daemon *d, sd_bus_message *call)
 {
     if (!d->listeners && sd_bus_track_new(d->session, &d->listeners, NULL, NULL) < 0) {
@@ -320,12 +333,12 @@ static struct vela_bt_device *requester(struct vela_bt_daemon *d, sd_bus_message
         why = "not a device of the adapter in use";
     } else if (!d->session_active) {
         why = "the session is in the background";
-    } else if (!solicited) {
-        // B3 has no shell presenter yet (B4). Refuse instead of leaving
-        // an invisible authorization prompt open for a minute. This also
-        // prevents unattended requests while LockedHint is not propagated
-        // by the compositor yet (B5).
-        why = "no presenter for unsolicited pairing until B4";
+    } else if (!solicited && (!d->presenters || sd_bus_track_count(d->presenters) == 0)) {
+        // B3 has no shell dialog yet. Only a UI that explicitly promises to
+        // draw spontaneous prompts may make them wait for an answer (B4).
+        // No presenter: refuse immediately, including on a locked screen
+        // before the compositor propagates LockedHint (B5).
+        why = "no presenter for unsolicited pairing";
     } else if (d->session_locked) {
         // Nobody is there to answer (§6.4).
         why = "the screen is locked";
@@ -655,4 +668,5 @@ void vela_bt_agent_free(struct vela_bt_daemon *d)
     d->agent_call = sd_bus_slot_unref(d->agent_call);
     d->agent_retry = sd_event_source_disable_unref(d->agent_retry);
     d->listeners = sd_bus_track_unref(d->listeners);
+    d->presenters = sd_bus_track_unref(d->presenters);
 }
