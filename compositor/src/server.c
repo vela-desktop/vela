@@ -427,6 +427,10 @@ void vela_server_run(struct vela_server *server)
 
 void vela_server_destroy(struct vela_server *server)
 {
+    if (server->start_preview_timer) {
+        wl_event_source_remove(server->start_preview_timer);
+        server->start_preview_timer = NULL;
+    }
     vela_bluetooth_finish();
     // We are shutting down: the shell and the agent going away must not be
     // relaunched.

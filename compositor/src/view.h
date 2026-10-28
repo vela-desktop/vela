@@ -247,6 +247,10 @@ bool vela_view_stays_below(const struct vela_view *view);
 void vela_view_keep_below(struct vela_view *view);
 // Keep mapped XDG/XWayland transient descendants above a focused parent.
 void vela_views_raise_transients(struct vela_view *view);
+// Whether a mapped XDG/X11 transient belongs to an ancestor, even across layers.
+bool vela_view_is_transient_of(struct vela_view *view, struct vela_view *ancestor);
+// Reconcile transient scene layers after fullscreen visual stacking changes.
+void vela_views_sync_transient_layers(struct vela_server *server);
 bool vela_view_resizable(const struct vela_view *view); // not if min = max
 pid_t vela_view_pid(const struct vela_view *view); // the process (for "End task")
 // Size of the whole frame (bar included); 0x0: the app chooses.
