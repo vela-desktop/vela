@@ -85,6 +85,7 @@ Dialog {
             objectName: "visibility"
             visible: !dialog.asking && text !== ""
             width: parent.width
+            textFormat: Text.PlainText
             text: Bluetooth.adapter.discoverable ? qsTr("Discoverable as \"%1\"").arg(Bluetooth.adapter.name)
                 : Bluetooth.searching && Bluetooth.searchShared
                     ? qsTr("Another app is searching for devices, so this PC isn't made visible. Pairing from this PC still works.")
@@ -97,6 +98,7 @@ Dialog {
             objectName: "wait"
             visible: !dialog.asking && dialog.pairingDevice !== undefined
             width: parent.width
+            textFormat: Text.PlainText
             text: dialog.pairingDevice ? qsTr("Wait for %1 to finish pairing.").arg(dialog.pairingDevice.name) : ""
             color: Theme.textSecondary
             font.pixelSize: Theme.fontBody
@@ -144,6 +146,7 @@ Dialog {
                             Text {
                                 width: parent.width
                                 text: candidate.modelData.name
+                                textFormat: Text.PlainText
                                 color: Theme.text
                                 font.pixelSize: Theme.fontBody
                                 elide: Text.ElideRight
@@ -152,6 +155,7 @@ Dialog {
                                 width: parent.width
                                 visible: text !== ""
                                 text: DeviceState.state(candidate.modelData)
+                                textFormat: Text.PlainText
                                 color: candidate.modelData.message && !candidate.modelData.operation ? Theme.critical : Theme.textSecondary
                                 font.pixelSize: Theme.fontCaption
                                 wrapMode: Text.Wrap
@@ -181,6 +185,7 @@ Dialog {
             visible: text !== ""
             width: parent.width
             text: Bluetooth.error
+            textFormat: Text.PlainText
             color: Theme.critical
             font.pixelSize: Theme.fontBody
             wrapMode: Text.Wrap

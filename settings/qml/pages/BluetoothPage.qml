@@ -67,6 +67,7 @@ Page {
         visible: text !== "" && !addDialog.visible
         width: parent.width
         text: Bluetooth.error
+        textFormat: Text.PlainText
         color: Theme.critical
         font.pixelSize: Theme.fontBody
         wrapMode: Text.Wrap
@@ -140,6 +141,7 @@ Page {
         Text {
             width: parent.width
             text: removeDialog.device ? qsTr("To use %1 again, you'll need to pair it once more.").arg(removeDialog.device.name) : ""
+            textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: Theme.fontBody
             wrapMode: Text.Wrap
