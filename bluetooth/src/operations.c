@@ -204,7 +204,11 @@ static int on_reply(sd_bus_message *reply, void *data, sd_bus_error *error)
         break;
     }
     case VELA_BT_REMOVE:
-        if (!ok) {
+        if (sd_bus_message_is_method_error(reply, "org.bluez.Error.DoesNotExist")) {
+            // Already removed on BlueZ: there will be no InterfacesRemoved event.
+            // Removing the model entry also completes the pending operation.
+            vela_bt_remove_device(d, device);
+        } else if (!ok) {
             vela_bt_operation_end(d, device, failure, false);
         } else {
             // Done once Device1 disappears (vela_bt_operations_device_gone).
