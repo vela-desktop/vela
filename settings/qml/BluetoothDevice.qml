@@ -40,7 +40,7 @@ Card {
                 const list = []
                 if (card.device.connected)
                     list.push({ text: qsTr("Disconnect"), action: () => Bluetooth.disconnectDevice(card.device.path) })
-                else
+                else if (Bluetooth.powered)
                     list.push({ text: qsTr("Connect"), action: () => Bluetooth.connectDevice(card.device.path) })
                 list.push({ text: qsTr("Rename"), action: () => card.renameAsked() })
                 list.push({ text: qsTr("Remove"), action: () => card.removeAsked() })
