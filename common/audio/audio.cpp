@@ -597,6 +597,13 @@ void Audio::setBluetooth(vela::bluetooth::Bluetooth* bluetooth)
     m_bluetooth = bluetooth;
     if (m_bluetooth) {
         connect(m_bluetooth, &vela::bluetooth::Bluetooth::changed, this, &Audio::readBatteries);
+        connect(m_bluetooth, &QObject::destroyed, this, [this] {
+            m_bluetooth = nullptr;
+            if (!m_batteries.isEmpty()) {
+                m_batteries.clear();
+                update();
+            }
+        });
     }
     readBatteries();
 }

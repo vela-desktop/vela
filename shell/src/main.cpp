@@ -393,6 +393,8 @@ int main(int argc, char* argv[])
         }
         return false;
     });
+    QObject::connect(&windows, &ForeignToplevelManager::windowsChanged,
+        &bluetoothPrompts, &BluetoothPrompts::settingsWindowsChanged);
     SystemStatus status(&bluetooth);
     Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
     // The sound (docs/audio.md): apps named after their .desktop file.

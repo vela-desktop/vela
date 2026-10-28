@@ -76,6 +76,7 @@ FocusScope {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: view.name
+                textFormat: Text.PlainText
                 color: Theme.text
                 font.pixelSize: Theme.fontBodyLarge
                 font.weight: Font.DemiBold
@@ -96,6 +97,7 @@ FocusScope {
                 }
                 return ""
             }
+            textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: Theme.fontBody
             wrapMode: Text.Wrap
@@ -104,6 +106,7 @@ FocusScope {
             objectName: "code"
             visible: view.code !== ""
             text: view.code
+            textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: 40
             font.weight: Font.DemiBold

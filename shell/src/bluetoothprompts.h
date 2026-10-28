@@ -48,6 +48,7 @@ public:
     // 0 if none (the tests').
     uint notification() const { return m_notification; }
     uint visibleNotification() const { return m_visibleNotification; }
+    void settingsWindowsChanged(); // a Settings window opened or closed
 
 signals:
     void dialogChanged();
@@ -69,9 +70,10 @@ private:
     NotificationServer* m_notifications;
     QString m_id; // the question handled here, empty if none
     QString m_kind;
+    bool m_unsolicited = false;
     uint m_notification = 0;
     bool m_dialog = false;
     std::function<bool()> m_settingsOpen;
-    bool m_visibleTold = false; // this time the PC stayed visible: told, or Settings was open
+    bool m_visibleTold = false; // true only once a notification was actually shown
     uint m_visibleNotification = 0;
 };

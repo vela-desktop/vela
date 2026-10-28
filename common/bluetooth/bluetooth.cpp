@@ -9,6 +9,7 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusServiceWatcher>
 #include <QDateTime>
+#include <QTimer>
 
 #include <algorithm>
 #include <ctime>
@@ -324,7 +325,16 @@ void Bluetooth::presentQuestions()
     }
     m_presenting = true;
     if (m_running) {
-        call(QStringLiteral("PresentQuestions"), {}, callTimeout, {}, Refusal::Logged);
+        call(QStringLiteral("PresentQuestions"), {}, callTimeout, [this](const QDBusMessage& reply) {
+            if (reply.type() == QDBusMessage::ErrorMessage) {
+                m_presenting = false;
+                if (++m_presentRetries <= 3) {
+                    QTimer::singleShot(1000, this, [this] { presentQuestions(); });
+                }
+            } else {
+                m_presentRetries = 0;
+            }
+        }, Refusal::Logged);
     }
 }
 
@@ -426,6 +436,7 @@ void Bluetooth::appeared()
 {
     const quint64 generation = ++m_ownerGeneration;
     m_running = true;
+    m_presentRetries = 0;
     QDBusMessage getAll = QDBusMessage::createMethodCall(service, objectPath, QStringLiteral("org.freedesktop.DBus.Properties"),
         QStringLiteral("GetAll"));
     getAll << service;
@@ -452,7 +463,9 @@ void Bluetooth::appeared()
         },
         Refusal::Logged);
     if (m_presenting) {
-        call(QStringLiteral("PresentQuestions"), {}, callTimeout, {}, Refusal::Logged);
+        // The new owner needs to confirm registration independently.
+        m_presenting = false;
+        presentQuestions();
     }
     if (m_ui) {
         call(

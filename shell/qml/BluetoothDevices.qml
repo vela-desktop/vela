@@ -81,6 +81,7 @@ Flickable {
                     Text {
                         width: parent.width
                         text: device.modelData.name
+                        textFormat: Text.PlainText
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
                         elide: Text.ElideRight
@@ -89,6 +90,7 @@ Flickable {
                         objectName: "state"
                         width: parent.width
                         text: DeviceState.description(device.modelData)
+                        textFormat: Text.PlainText
                         color: Theme.textSecondary
                         font.pixelSize: Theme.fontCaption
                         elide: Text.ElideRight

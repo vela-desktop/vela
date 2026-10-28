@@ -98,6 +98,7 @@ Window {
                 width: parent.width - 48
                 visible: Bluetooth.error !== ""
                 text: Bluetooth.error
+                textFormat: Text.PlainText
                 color: Theme.critical
                 font.pixelSize: Theme.fontCaption
                 wrapMode: Text.Wrap

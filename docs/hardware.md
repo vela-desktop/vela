@@ -71,7 +71,8 @@ The automated Bluetooth tests run the real `vela-bluetooth` against a fake BlueZ
 - **Adapters**: unplugging a USB dongle; two adapters at once, and choosing one in Settings › Bluetooth & devices › Advanced.
 - **A laptop with a platform Bluetooth switch** (asus-wmi, hp-wmi...), blocked from Plasma: the switch in Vela shows Off and turning it on brings the radio back.
 - **`systemctl restart bluetooth`** with Settings open: the page empties and comes back by itself.
-- **Searching**: `bluetoothctl scan on` running while "Add a device" is open, then closed: Vela says another app is searching, and "Your PC is still visible" with "Stop being visible" appears only when the PC stays visible.
+- **Searching, other scan first**: start `bluetoothctl scan on`, then open "Add a device". Vela says another app is searching and does not make the PC discoverable. Close both searches.
+- **Searching, Vela first**: open "Add a device" while nothing else scans, then start `bluetoothctl scan on` and close Vela's Add dialog. If BlueZ leaves the PC visible, Vela offers "Stop being visible".
 - **Locking** the screen with "Add a device" open: the search and the pairing stop; after unlocking, "Search again".
 - **Another desktop** (Plasma) on another console at the same time:
   - pairing from Plasma while Vela is in the background works with Plasma's agent;

@@ -165,6 +165,7 @@ private:
     QDBusConnection m_bus;
     bool m_ui;
     bool m_presenting = false;
+    int m_presentRetries = 0;
     quint64 m_ownerGeneration = 0; // Ignore replies from a previous daemon owner.
     bool m_running = false;
     bool m_available = false;

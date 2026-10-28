@@ -51,6 +51,12 @@ void BluetoothPrompts::answer(const QString& response, const QString& value)
     }
 }
 
+void BluetoothPrompts::settingsWindowsChanged()
+{
+    // Settings may have closed after StillVisible became true.
+    onStillVisible();
+}
+
 void BluetoothPrompts::onQuestion()
 {
     const QVariantMap question = m_bluetooth->question();
@@ -61,18 +67,35 @@ void BluetoothPrompts::onQuestion()
     }
     // Settings draws its own Adds' questions.
     if (question.isEmpty() || question.value(QStringLiteral("drawnBy")).toString() != QLatin1String("shell")) {
+        // Settings adopted this same question. Its notification must not
+        // remain actionable: dismissing it would reject Settings' Add.
+        if (id == m_id) {
+            onQuestionClosed(m_id, {});
+        }
         return;
     }
+    const bool unsolicited = question.value(QStringLiteral("unsolicited")).toBool();
     if (id == m_id) {
-        // The digits typed so far on a keyboard (show-passkey).
-        if (m_dialog) {
+        if (m_unsolicited != unsolicited) {
+            // The same question changed owners/presentation after an Add.
+            closeNotification();
+            m_unsolicited = unsolicited;
+            if (unsolicited) {
+                openDialog(false);
+                notify(question);
+            } else {
+                openDialog(true);
+            }
+        } else if (m_dialog) {
+            // Digits typed so far on a keyboard (show-passkey).
             emit dialogChanged();
         }
         return;
     }
     m_id = id;
     m_kind = question.value(QStringLiteral("kind")).toString();
-    if (question.value(QStringLiteral("unsolicited")).toBool()) {
+    m_unsolicited = unsolicited;
+    if (unsolicited) {
         notify(question);
     } else {
         openDialog(true);
@@ -87,6 +110,7 @@ void BluetoothPrompts::onQuestionClosed(const QString& id, const QString&)
     closeNotification();
     m_id.clear();
     m_kind.clear();
+    m_unsolicited = false;
     openDialog(false);
 }
 
@@ -149,10 +173,10 @@ void BluetoothPrompts::onStillVisible()
     if (m_visibleTold) {
         return;
     }
-    m_visibleTold = true;
     if (m_settingsOpen && m_settingsOpen()) {
-        return; // its Bluetooth page says it
+        return; // Settings says it; notify if Settings closes later.
     }
+    m_visibleTold = true;
     m_visibleNotification = m_notifications->Notify(tr("Bluetooth"), 0, QStringLiteral("preferences-system-bluetooth"),
         tr("Your PC is still visible to nearby devices"), tr("Another app is searching for devices."),
         { QStringLiteral("stop"), tr("Stop being visible") }, {}, -1);
