@@ -332,7 +332,7 @@ if(VELA_BUILD_TOOLS)
         -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
     target_link_options(vela-readback-test PRIVATE -Wl,--gc-sections)
     target_link_libraries(vela-readback-test PRIVATE vela-pure PkgConfig::WLROOTS
-        PkgConfig::VULKAN PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM)
+        PkgConfig::VULKAN PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN)
     set_target_properties(vela-readback-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.readback COMMAND vela-readback-test)
 
