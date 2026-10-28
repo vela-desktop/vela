@@ -131,6 +131,25 @@ Ubuntu 26.10 container. **That does not prove a graphical session works.**
 Real GPU/DRM, portal, audio, polkit and display-manager testing is still
 required. Do not install these packages on other Ubuntu releases.
 
+## Bluetooth
+
+Bluetooth needs only **BlueZ**, with its service running. Vela pairs,
+connects and answers devices itself ([Bluetooth](bluetooth.md)): BlueDevil,
+blueman or GNOME's Bluetooth panel are not needed.
+
+| Distribution | BlueZ |
+|---|---|
+| Arch Linux and derivatives | `bluez` is an optional dependency: `sudo pacman -S --needed bluez` |
+| Fedora 44 | `bluez` is a weak dependency, installed unless weak dependencies are disabled |
+| Ubuntu 26.10 | `bluez` is recommended, installed unless recommends are disabled |
+
+Then turn the service on once: `sudo systemctl enable --now bluetooth`.
+
+Vela's daemon, `vela-bluetooth`, starts with the session (in `/usr/lib/vela`
+on Arch, `/usr/libexec/vela` on Fedora and Ubuntu). It shares BlueZ with other desktops on
+the same machine: while you are in another session, that desktop answers
+its devices, and Vela changes nothing.
+
 ## Updating, selecting revisions, and rollback
 
 Repository downloads use public HTTPS and need no GitHub account or SSH keys.

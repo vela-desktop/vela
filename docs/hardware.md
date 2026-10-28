@@ -36,7 +36,7 @@ Different features rely on installed/running system services. On Arch, see optio
 | Feature | Typically needed |
 |---|---|
 | Network / Wi-Fi | NetworkManager |
-| Bluetooth | BlueZ |
+| Bluetooth | BlueZ, with `bluetooth.service` running ([installation](installation.md#bluetooth)) |
 | Audio controls and per-app volumes | PipeWire and WirePlumber (PulseAudio without PipeWire is not supported) |
 | X11 apps and older games | Xwayland |
 | Removable and unmounted storage | UDisks2 |
@@ -61,6 +61,24 @@ The automated audio tests run on a private PipeWire whose devices are null sinks
 - **Sample rate and format** (Sound › Advanced and a device's properties): on a USB DAC, "Automatic" following the music, a fixed device rate, a sample format, and the format shown live while the music changes; an HDMI receiver and a Bluetooth headset with "Automatic".
 - **Restart audio**: sound comes back, and the shell and Settings follow without restarting.
 - **Rename**: a device's new name shows at once in Vela, and in other apps (pavucontrol, a browser's device list) after logging out and in or "Restart audio"; going back to the device's own name the same way.
+
+### Bluetooth
+
+The automated Bluetooth tests run the real `vela-bluetooth` against a fake BlueZ ([Bluetooth](bluetooth.md#11-tests)): no radio, no real device. In a Vela session with only `bluez` installed (no BlueDevil or blueman), these need a real machine:
+
+- **Devices**: an LE mouse; a keyboard (passkey or legacy PIN); a phone (numeric comparison, started from Vela and from the phone); a headset (battery in quick settings and in the sound page, codec and profile in Sound).
+- **Two at once**: a phone asking to pair while a mouse is pairing.
+- **Adapters**: unplugging a USB dongle; two adapters at once, and choosing one in Settings › Bluetooth & devices › Advanced.
+- **A laptop with a platform Bluetooth switch** (asus-wmi, hp-wmi...), blocked from Plasma: the switch in Vela shows Off and turning it on brings the radio back.
+- **`systemctl restart bluetooth`** with Settings open: the page empties and comes back by itself.
+- **Searching**: `bluetoothctl scan on` running while "Add a device" is open, then closed: Vela says another app is searching, and "Your PC is still visible" with "Stop being visible" appears only when the PC stays visible.
+- **Locking** the screen with "Add a device" open: the search and the pairing stop; after unlocking, "Search again".
+- **Another desktop** (Plasma) on another console at the same time:
+  - pairing from Plasma while Vela is in the background works with Plasma's agent;
+  - Plasma's discoverability is not changed by Vela;
+  - switching back to Vela gives Vela the agent again.
+
+`vela-bluetooth` writes what it does (adapters, operations, questions, searches, the session) to the session log, `~/.local/state/vela/vela.log` (the previous session's is `vela.log.old`; [reporting](reporting.md) collects it): `grep vela-bluetooth ~/.local/state/vela/vela.log`. `bluetoothctl show` and `bluetoothctl devices` are the reference for what BlueZ itself says.
 
 ### Brightness
 

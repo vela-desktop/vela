@@ -142,6 +142,9 @@ if(VELA_PACKAGE_DEB)
     # Vela uses Breeze by default; Qt needs the SVG icon engine to render it.
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
         "git, apt, dpkg, sudo, util-linux, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+    # Bluetooth needs only BlueZ (docs/bluetooth.md §10), as Fedora's
+    # Recommends and Arch's optional dependency.
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "bluez")
     # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
         DESTINATION "${CMAKE_INSTALL_BINDIR}")

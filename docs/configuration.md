@@ -33,6 +33,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
+| `bluetooth-adapter` | empty | The address of the Bluetooth adapter to use when there are two or more ([Bluetooth](bluetooth.md#62-the-model)), written by Settings > Bluetooth & devices > Advanced. Empty, or an adapter that isn't there: the first one. |
 | `brightness` | `yes` | Drive the monitors' own brightness ([brightness](brightness.md)) in the real session. `no` starts no `vela-brightness` and shows no brightness slider. |
 | `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. |
 | `keyboard-variant` | empty | Comma-separated XKB variants matching `keyboard-layout`. |
