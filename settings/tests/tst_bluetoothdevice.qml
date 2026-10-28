@@ -124,6 +124,12 @@ Item {
             compare(more.Accessible.name, "More options")
         }
 
+        function test_connect_is_not_offered_while_powered_off() {
+            card.device = Object.assign({}, card.device, { connected: false })
+            Bluetooth.powered = false
+            compare(entries(), ["Rename", "Remove"])
+        }
+
         function test_nothing_while_the_session_is_away() {
             Bluetooth.active = false
             verify(!find("more").enabled)
