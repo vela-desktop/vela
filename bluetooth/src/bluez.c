@@ -47,12 +47,50 @@ static bool from_bluez(struct vela_bt_daemon *d, sd_bus_message *m)
     return d->bluez && sender && strcmp(sender, d->bluez) == 0;
 }
 
+// Bounded exponential backoff, cancelled when the BlueZ owner changes.
+static int on_managed_objects(sd_bus_message *reply, void *data, sd_bus_error *error);
+static void request_snapshot(struct vela_bt_daemon *d);
+
+static int on_snapshot_retry(sd_event_source *source, uint64_t usec, void *data)
+{
+    struct vela_bt_daemon *d = data;
+    d->managed_retry = sd_event_source_disable_unref(d->managed_retry);
+    request_snapshot(d);
+    return 0;
+}
+
+static void retry_snapshot(struct vela_bt_daemon *d)
+{
+    if (!d->bluez || d->managed_retry) {
+        return;
+    }
+    uint64_t delay = d->managed_backoff_us ? d->managed_backoff_us : 1000000ULL;
+    d->managed_backoff_us = delay < 15000000ULL ? delay * 2 : 30000000ULL;
+    int r = sd_event_add_time_relative(d->event, &d->managed_retry, CLOCK_MONOTONIC, delay, 0,
+        on_snapshot_retry, d);
+    if (r < 0) {
+        vela_bt_log("BlueZ snapshot retry timer: %s", strerror(-r));
+    }
+}
+
+static void request_snapshot(struct vela_bt_daemon *d)
+{
+    if (!d->bluez || d->managed) {
+        return;
+    }
+    if (vela_bt_call(d, &d->managed, "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
+            VELA_BT_STEP_TIMEOUT_US, on_managed_objects, d, NULL) < 0) {
+        retry_snapshot(d);
+    }
+}
+
 static int on_managed_objects(sd_bus_message *reply, void *data, sd_bus_error *error)
 {
     struct vela_bt_daemon *d = data;
     d->managed = sd_bus_slot_unref(d->managed);
     if (sd_bus_message_is_method_error(reply, NULL)) {
         vela_bt_log("GetManagedObjects: %s", sd_bus_message_get_error(reply)->message);
+        retry_snapshot(d);
         return 0;
     }
     // Rebuilt: what BlueZ no longer has goes.
@@ -63,7 +101,10 @@ static int on_managed_objects(sd_bus_message *reply, void *data, sd_bus_error *e
         d->devices[i]->seen = false;
     }
     int r = sd_bus_message_enter_container(reply, 'a', "{oa{sa{sv}}}");
-    while (r >= 0) {
+    if (r == 0) {
+        r = -EBADMSG;
+    }
+    while (r > 0) {
         r = sd_bus_message_enter_container(reply, 'e', "oa{sa{sv}}");
         if (r <= 0) {
             break;
@@ -77,9 +118,16 @@ static int on_managed_objects(sd_bus_message *reply, void *data, sd_bus_error *e
             r = sd_bus_message_exit_container(reply);
         }
     }
-    if (r < 0) {
-        vela_bt_log("GetManagedObjects: bad reply: %s", strerror(-r));
+    if (r >= 0) {
+        r = sd_bus_message_exit_container(reply);
     }
+    if (r < 0) {
+        // Do not prune entries based on a partial or malformed snapshot.
+        vela_bt_log("GetManagedObjects: bad reply: %s", strerror(-r));
+        retry_snapshot(d);
+        return 0;
+    }
+    d->managed_backoff_us = 0;
     for (size_t i = d->device_count; i-- > 0;) {
         if (!d->devices[i]->seen) {
             vela_bt_remove_device(d, d->devices[i]);
@@ -105,14 +153,17 @@ static void appeared(struct vela_bt_daemon *d, const char *owner)
     d->bluez = strdup(owner);
     vela_bt_log("BlueZ is on the bus (%s)", owner);
     d->managed = sd_bus_slot_unref(d->managed);
-    vela_bt_call(d, &d->managed, "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
-        VELA_BT_STEP_TIMEOUT_US, on_managed_objects, d, NULL);
+    d->managed_retry = sd_event_source_disable_unref(d->managed_retry);
+    d->managed_backoff_us = 0;
+    request_snapshot(d);
 }
 
 static void vanished(struct vela_bt_daemon *d)
 {
     vela_bt_log("BlueZ left the bus");
     d->managed = sd_bus_slot_unref(d->managed);
+    d->managed_retry = sd_event_source_disable_unref(d->managed_retry);
+    d->managed_backoff_us = 0;
     vela_bt_clear(d);
     free(d->bluez);
     d->bluez = NULL;
