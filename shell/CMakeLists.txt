@@ -222,6 +222,7 @@ if(VELA_BUILD_TOOLS)
     target_compile_definitions(vela-shell-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
         FAKE_BLUETOOTH="${PROJECT_SOURCE_DIR}/common/bluetooth/tests/FakeBluetooth.qml")
     target_compile_options(vela-shell-test PRIVATE -Wall -Wextra)
+    target_include_directories(vela-shell-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
     target_link_libraries(vela-shell-test PRIVATE vela-controls vela-controlsplugin vela-bluetooth-uiplugin Qt6::QuickTest)
     add_test(NAME shell-controls COMMAND vela-shell-test)
     add_test(NAME shell-controls-no-effects COMMAND vela-shell-test)

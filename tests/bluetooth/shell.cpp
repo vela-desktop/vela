@@ -11,7 +11,7 @@
 
 #include "bluetooth/bluetooth.h"
 #include "bluetoothprompts.h"
-#include "fakebluez.h"
+#include "harness.h"
 #include "notifications.h"
 #include "systemstatus.h"
 
@@ -45,18 +45,16 @@ QStringList actionKeys(const QVariantList& actions)
 
 } // namespace
 
-class BluetoothShell : public QObject {
+class BluetoothShell : public QObject, protected BluetoothBench {
     Q_OBJECT
 
-    QProcess systemBus;
-    QProcess sessionBus;
-    QString systemAddress;
-    QString sessionAddress;
-    QThread fakeThread;
-    FakeBluez* fake = nullptr;
-    FakeLogind* logind = nullptr;
-    QTemporaryDir home;
-    QProcess daemon;
+public:
+    BluetoothShell()
+        : BluetoothBench(QStringLiteral("shell"))
+    {
+    }
+
+private:
     QString mouse;
     QString phone;
 
@@ -66,41 +64,6 @@ class BluetoothShell : public QObject {
     std::unique_ptr<NotificationServer> notifications;
     std::unique_ptr<BluetoothPrompts> prompts;
     bool settingsOpen = false;
-
-    QDBusConnection bus() const { return QDBusConnection(QStringLiteral("shell")); }
-
-    bool startDaemon()
-    {
-        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-        environment.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"), systemAddress);
-        environment.insert(QStringLiteral("DBUS_SESSION_BUS_ADDRESS"), sessionAddress);
-        environment.insert(QStringLiteral("VELA_RFKILL"), home.filePath(QStringLiteral("rfkill")));
-        environment.insert(QStringLiteral("VELA_SYSFS"), home.filePath(QStringLiteral("sys")));
-        environment.insert(QStringLiteral("XDG_CONFIG_HOME"), home.filePath(QStringLiteral("config")));
-        environment.insert(QStringLiteral("XDG_SESSION_ID"), QStringLiteral("fake"));
-        daemon.setProcessEnvironment(environment);
-        daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-        daemon.start(QStringLiteral(VELA_BLUETOOTH_DAEMON), {});
-        if (!daemon.waitForStarted()) {
-            return false;
-        }
-        for (int i = 0; i < 500 && !bus().interface()->isServiceRegistered(service); ++i) {
-            QTest::qWait(20);
-        }
-        return bus().interface()->isServiceRegistered(service);
-    }
-
-    void stopDaemon()
-    {
-        if (daemon.state() == QProcess::NotRunning) {
-            return;
-        }
-        daemon.terminate();
-        if (!daemon.waitForFinished(5000)) {
-            daemon.kill();
-            daemon.waitForFinished();
-        }
-    }
 
     // hci0 on, a mouse and a phone nearby.
     void resetFake()
@@ -185,71 +148,18 @@ class BluetoothShell : public QObject {
 private slots:
     void initTestCase()
     {
-        qDBusRegisterMetaType<FakeInterfaces>();
-        qDBusRegisterMetaType<FakeObjects>();
-        for (auto [process, address] : { std::pair { &systemBus, &systemAddress }, std::pair { &sessionBus, &sessionAddress } }) {
-            process->start(QStringLiteral("dbus-daemon"), { QStringLiteral("--session"), QStringLiteral("--nofork"), QStringLiteral("--print-address=1") });
-            QVERIFY2(process->waitForStarted() && process->waitForReadyRead(), "dbus-daemon is needed");
-            *address = QString::fromUtf8(process->readAllStandardOutput().trimmed());
-        }
+        const QString error = setUp();
+        QVERIFY2(error.isEmpty(), qPrintable(error));
         // SystemStatus reads NetworkManager and UPower there: none of them,
         // so no Wi-Fi.
         qputenv("DBUS_SYSTEM_BUS_ADDRESS", systemAddress.toUtf8());
-        QVERIFY(QDBusConnection::connectToBus(sessionAddress, QStringLiteral("shell")).isConnected());
-        const QString rfkillSwitch = home.filePath(QStringLiteral("sys/class/bluetooth/hci0/rfkill3"));
-        QVERIFY(QDir().mkpath(rfkillSwitch));
-        for (const auto& [name, value] : { std::pair { "type", "bluetooth" }, std::pair { "index", "3" }, std::pair { "soft", "0" },
-                 std::pair { "hard", "0" } }) {
-            QFile file(rfkillSwitch + u'/' + QLatin1String(name));
-            QVERIFY(file.open(QIODevice::WriteOnly));
-            file.write(QByteArray(value) + '\n');
-        }
-        QFile rfkill(home.filePath(QStringLiteral("rfkill")));
-        QVERIFY(rfkill.open(QIODevice::WriteOnly));
-        QVERIFY(QDir().mkpath(home.filePath(QStringLiteral("config"))));
-
-        fakeThread.start();
-        fake = new FakeBluez;
-        fake->bus = QStringLiteral("fake-bluez");
-        fake->moveToThread(&fakeThread);
-        logind = new FakeLogind;
-        logind->bus = QStringLiteral("fake-logind");
-        logind->moveToThread(&fakeThread);
-        bool ok = false;
-        fake->run([&] {
-            QDBusConnection bluez = QDBusConnection::connectToBus(systemAddress, fake->bus);
-            ok = bluez.registerService(QStringLiteral("org.bluez"))
-                && bluez.registerVirtualObject(QStringLiteral("/"), fake, QDBusConnection::SubPath);
-            QDBusConnection login1 = QDBusConnection::connectToBus(systemAddress, logind->bus);
-            ok = ok && login1.registerService(QStringLiteral("org.freedesktop.login1"))
-                && login1.registerVirtualObject(QStringLiteral("/org/freedesktop/login1"), logind, QDBusConnection::SubPath);
-        });
-        QVERIFY(ok);
     }
 
-    void cleanupTestCase()
-    {
-        stopDaemon();
-        fake->run([this] {
-            QDBusConnection::disconnectFromBus(fake->bus);
-            QDBusConnection::disconnectFromBus(logind->bus);
-        });
-        QMetaObject::invokeMethod(fake, [this] { delete logind; delete fake; }, Qt::BlockingQueuedConnection);
-        fakeThread.quit();
-        fakeThread.wait();
-        QDBusConnection::disconnectFromBus(QStringLiteral("shell"));
-        for (QProcess* process : { &systemBus, &sessionBus }) {
-            process->kill();
-            process->waitForFinished();
-        }
-    }
+    void cleanupTestCase() { tearDown(); }
 
     void init()
     {
-        fake->run([this] {
-            logind->active = true;
-            logind->locked = false;
-        });
+        sessionInFront();
         resetFake();
         QVERIFY(startDaemon());
         bluetooth = std::make_unique<Bluetooth>(bus(), true);

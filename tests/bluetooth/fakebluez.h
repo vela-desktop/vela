@@ -46,6 +46,13 @@ Q_DECLARE_METATYPE(FakeObjects)
 class FakeBluez : public QDBusVirtualObject {
 public:
     struct Adapter {
+        Adapter() = default;
+        Adapter(const QString& address, const QString& alias)
+            : address(address)
+            , alias(alias)
+        {
+        }
+
         QString address;
         QString alias;
         bool powered = true;
