@@ -591,6 +591,31 @@ VkCommandBuffer vela_renderer_upload_commands(struct vela_renderer *r)
 
 // ------------------------------------------------------------- staging --
 
+static bool make_readback_room(struct vela_renderer *r, VkDeviceSize size)
+{
+    if (size > VELA_READBACK_MAX_BYTES) return false;
+    VkDeviceSize allocated = 0;
+    for (int i = 0; i < r->staging_count; ++i) {
+        if (r->staging[i].readback) allocated += r->staging[i].allocation_size;
+    }
+    const uint64_t done = vela_renderer_completed(r);
+    for (int i = 0; i < r->staging_count && allocated > VELA_READBACK_MAX_BYTES - size;) {
+        struct staging_chunk *chunk = &r->staging[i];
+        // Cancellation can release the CPU pin before the GPU finishes. Its
+        // allocation still counts, and its submission point still protects it.
+        if (chunk->readback && !chunk->readers && chunk->point != UINT64_MAX && chunk->point <= done) {
+            allocated -= chunk->allocation_size;
+            vkDestroyBuffer(r->vk->device, chunk->buffer, NULL);
+            vkFreeMemory(r->vk->device, chunk->memory, NULL);
+            memmove(chunk, chunk + 1, (size_t)(r->staging_count - i - 1) * sizeof(*chunk));
+            --r->staging_count;
+        } else {
+            ++i;
+        }
+    }
+    return allocated <= VELA_READBACK_MAX_BYTES - size;
+}
+
 static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDeviceSize size, bool readback)
 {
     VkDevice device = r->vk->device;
@@ -606,6 +631,12 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
     }
     VkMemoryRequirements requirements;
     vkGetBufferMemoryRequirements(device, chunk.buffer, &requirements);
+    chunk.allocation_size = requirements.size;
+    if (readback && !make_readback_room(r, chunk.allocation_size)) {
+        ++r->readback_rejected;
+        vkDestroyBuffer(device, chunk.buffer, NULL);
+        return NULL;
+    }
     const VkMemoryPropertyFlags host = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     // Reading uncached memory goes at a fraction of the speed: a 1440p
     // capture took longer than a frame at 180 Hz, and the output missed

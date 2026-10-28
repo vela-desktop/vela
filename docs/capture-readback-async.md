@@ -83,8 +83,11 @@ handle, surviving pool array growth and compaction. Cancellation releases the
 CPU pin; ordinary submission points still protect outstanding GPU work and
 retired imported images. The renderer cancels remaining requests before teardown.
 
-The queue accepts at most four requests and 128 MiB of pixel payload. Pool
-allocation rounding and its existing bounded idle cache are additional. Excess
+The queue accepts at most four requests and 128 MiB of pixel payload. The entire
+readback staging pool also has a 128 MiB allocation limit, including Vulkan
+alignment, idle cached chunks and cancelled copies still in flight on the GPU.
+Pressure evicts only idle chunks with no CPU reader and a completed timeline
+point; active readers and cancelled GPU work retain their reservation. Excess
 requests fail explicitly through the protocol; none report successful dropped
 pixels. A failed timeline query/device loss or five-second timeout fails a
 request rather than keeping its references indefinitely.
@@ -112,6 +115,10 @@ unaligned/padded rows and opaque alpha in 8-bit, packed 10-bit and half-float
 pixels without changing RGB. The GPU color oracle uses asymmetric `#123456`
 pixels; queue-overflow checks require four capacity-specific `rejected` events,
 so unrelated allocation or timeout failures cannot stand in for a full queue.
+The CPU tests also simulate GPU lag after cancellation, completion and idle-cache
+eviction, proving the allocation limit cannot be bypassed by cancelling frames.
+The pixel fixture waits for the wallpaper's first captured color, rather than
+assuming that a fixed startup delay is sufficient.
 
 The temporary profiling/probe workflow steps are removed. Both manual workflows
 run the ordinary full strict GPU suite with their original thresholds. Follow

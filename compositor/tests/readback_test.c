@@ -11,6 +11,8 @@ static VkResult bind_result, map_result;
 static bool null_mapping;
 static int maps, destroyed, freed, command_allocations;
 static uint8_t mapping[256];
+static VkDeviceSize buffer_size;
+static uint64_t completed_point;
 
 void _wlr_log(enum wlr_log_importance importance, const char *format, ...) {}
 
@@ -26,13 +28,14 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(VkDevice device, const VkBufferCre
     const VkAllocationCallbacks *allocator, VkBuffer *buffer)
 {
     *buffer = (VkBuffer)(uintptr_t)1;
+    buffer_size = info->size;
     return VK_SUCCESS;
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements(VkDevice device, VkBuffer buffer,
     VkMemoryRequirements *requirements)
 {
-    *requirements = (VkMemoryRequirements) { .size = sizeof(mapping), .alignment = 16, .memoryTypeBits = 1 };
+    *requirements = (VkMemoryRequirements) { .size = buffer_size, .alignment = 16, .memoryTypeBits = 1 };
 }
 
 uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t bits, VkMemoryPropertyFlags flags)
@@ -72,19 +75,18 @@ VKAPI_ATTR VkResult VKAPI_CALL vkMapMemory(VkDevice device, VkDeviceMemory memor
 
 VKAPI_ATTR void VKAPI_CALL vkDestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks *allocator)
 {
-    assert(!freed); // bound buffers must be destroyed before their memory
     ++destroyed;
 }
 
 VKAPI_ATTR void VKAPI_CALL vkFreeMemory(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks *allocator)
 {
-    assert(destroyed == 1);
+    assert(destroyed > freed); // bound buffers must be destroyed before their memory
     ++freed;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkGetSemaphoreCounterValue(VkDevice device, VkSemaphore semaphore, uint64_t *value)
 {
-    *value = 0;
+    *value = completed_point;
     return VK_SUCCESS;
 }
 
@@ -153,10 +155,49 @@ static void packed_pixels(uint32_t source, uint32_t destination, uint32_t expect
     }
 }
 
+static void cancelled_gpu_allocations_still_count(void)
+{
+    struct vela_vulkan vk = { 0 };
+    struct vela_renderer renderer = { .vk = &vk, .staging_count = 5, .staging_capacity = 5 };
+    renderer.staging = calloc(5, sizeof(*renderer.staging));
+    assert(renderer.staging);
+    for (int i = 0; i < 4; ++i) {
+        renderer.staging[i] = (struct staging_chunk) {
+            .buffer = (VkBuffer)(uintptr_t)(100 + i), .data = mapping,
+            .size = VELA_READBACK_MAX_BYTES / 4, .allocation_size = VELA_READBACK_MAX_BYTES / 4,
+            .point = 12, .readback = true,
+        };
+    }
+    renderer.staging[4].allocation_size = VELA_READBACK_MAX_BYTES; // upload memory has a separate pool
+    // No protocol requests or CPU pins remain, but the GPU still owns 128 MiB.
+    completed_point = 11;
+    maps = destroyed = freed = 0;
+    struct vela_staging staging;
+    assert(!vela_renderer_stage_readback(&renderer, 16, &staging));
+    assert(renderer.readback_rejected == 1 && renderer.staging_count == 5);
+    assert(maps == 0 && destroyed == 1 && freed == 0); // only the unbound new buffer
+
+    // Completion makes the same storage reusable without another allocation.
+    completed_point = 12;
+    maps = destroyed = freed = 0;
+    assert(vela_renderer_stage_readback(&renderer, 16, &staging));
+    assert(renderer.staging_count == 5 && maps == 0 && destroyed == 0 && freed == 0);
+    renderer.staging[0].readers = 1;
+    renderer.staging[0].point = 12;
+
+    // Pressure may evict idle chunks, but never storage a CPU copy still uses.
+    assert(!make_readback_room(&renderer, VELA_READBACK_MAX_BYTES));
+    assert(renderer.staging_count == 2 && renderer.staging[0].readers == 1 && !renderer.staging[1].readback);
+    assert(destroyed == 3 && freed == 3);
+    free(renderer.staging);
+    completed_point = 0;
+}
+
 int main(void)
 {
     staging_failures();
     command_allocation_failure();
+    cancelled_gpu_allocations_still_count();
     packed_pixels(DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XBGR8888, DRM_FORMAT_ABGR8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XRGB2101010, DRM_FORMAT_ARGB2101010, 0xc0000000);

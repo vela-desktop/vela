@@ -525,7 +525,6 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
 // There is one timer and one aggregate copy budget, even with several clients.
 // Timers yield to epoll between slices; re-adding an idle callback would drain
 // all slices in one event-loop dispatch and recreate the original stall.
-#define READBACK_MAX_BYTES (128u * 1024u * 1024u)
 #define READBACK_SLICE_BYTES (512u * 1024u)
 #define READBACK_SLICE_NS 500000
 #define READBACK_TIMEOUT_NS (5LL * VELA_NS_PER_SEC)
@@ -689,11 +688,11 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
         return NULL;
     }
     size_t row_bytes = (size_t)src->width * wanted->bytes_per_pixel;
-    if (stride < row_bytes || (size_t)src->height > READBACK_MAX_BYTES / row_bytes) {
+    if (stride < row_bytes || (size_t)src->height > VELA_READBACK_MAX_BYTES / row_bytes) {
         return NULL;
     }
     size_t bytes = row_bytes * (size_t)src->height;
-    if (bytes > READBACK_MAX_BYTES - renderer->readback_bytes) {
+    if (bytes > VELA_READBACK_MAX_BYTES - renderer->readback_bytes) {
         ++renderer->readback_rejected;
         return NULL;
     }

@@ -193,6 +193,7 @@ struct vela_staging {
 
 #define VELA_TIMING_SLOTS 64
 #define VELA_READBACK_MAX_JOBS 4
+#define VELA_READBACK_MAX_BYTES (128u * 1024u * 1024u)
 
 // A command buffer of the pool: free when it isn't recording and the GPU has
 // finished the submission that contained it (point).
@@ -224,6 +225,7 @@ struct staging_chunk {
     VkDeviceMemory memory;
     uint8_t *data;
     VkDeviceSize size;
+    VkDeviceSize allocation_size; // includes Vulkan's alignment requirements
     VkDeviceSize used;
     uint64_t point; // last submission reading it; UINT64_MAX: in use by commands not submitted yet
     unsigned readers; // pending CPU readbacks: GPU completion alone cannot recycle the slice

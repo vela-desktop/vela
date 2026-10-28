@@ -99,29 +99,30 @@ class DeferredCapture(unittest.TestCase):
         _, errors = process.communicate("cancel\n", timeout=5)
         self.assertEqual(process.returncode, 0, errors)
 
+    def wallpaper(self, vela):
+        process = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "123456"], env=vela.client_env)
+        vela.clients.append(process)
+        vela.wait_for(lambda _: vela.pixels().at(100, 100) == (0x12, 0x34, 0x56),
+                      read_state=False, what="the solid wallpaper's first captured frame")
+        return vela.state()["readback"]["completed"]
+
     def test_concurrent_full_pixels_padding_and_opaque_alpha(self):
         with Session(size="1367x769@180") as vela:
             vela.input("move", 0, 0)
-            wallpaper = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "123456"],
-                                         env=vela.client_env)
-            vela.clients.append(wallpaper)
-            time.sleep(0.6)
+            before = self.wallpaper(vela)
             process = self.probe(vela, "pixels", 4)
             _, errors = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 0, errors)
-            self.assertEqual(self.drained(vela)["completed"], 4)
+            self.assertEqual(self.drained(vela)["completed"] - before, 4)
 
     def test_repeated_session_does_not_lose_damage(self):
         with Session(size="1367x769@180") as vela:
             vela.input("move", 0, 0)
-            wallpaper = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "123456"],
-                                         env=vela.client_env)
-            vela.clients.append(wallpaper)
-            time.sleep(0.6)
+            before = self.wallpaper(vela)
             process = self.probe(vela, "repeat", 4)
             _, errors = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 0, errors)
-            self.assertEqual(self.drained(vela)["completed"], 12)
+            self.assertEqual(self.drained(vela)["completed"] - before, 12)
 
     def test_queue_limit_reports_failure_and_recovers(self):
         with Session(size="3840x2160@180") as vela:
