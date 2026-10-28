@@ -9,6 +9,10 @@ follows them.
 > and Settings uses the shared client library. Shell, audio, search leases,
 > lock-state propagation, packaging and hardware validation remain B4–B7.
 > Everything in §3 is planned for beta 0.1. See §12.
+> Until B4 supplies the shell's question presenter, unsolicited pairing and
+> service authorization requests are immediately refused unless a trusted UI
+> explicitly calls `PresentQuestions`. Settings does not opt in: only its own
+> Add questions appear there. B5 will additionally propagate lock state.
 
 ## 1. Why from scratch
 
