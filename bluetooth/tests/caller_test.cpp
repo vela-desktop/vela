@@ -56,6 +56,11 @@ TEST_F(Sandbox, FlatpakAndSnapAreSandboxed)
     EXPECT_FALSE(vela_bt_sandboxed(proc.c_str(), 400));
     // A process that can't be read isn't trusted.
     EXPECT_TRUE(vela_bt_sandboxed(proc.c_str(), 999));
+    // ELOOP is not ENOENT: an unreadable/invalid Flatpak marker is unknown,
+    // not proof that the process is unsandboxed.
+    process(500, "0::/user.slice/session-2.scope\n");
+    fs::create_symlink(".flatpak-info", proc / "500" / "root" / ".flatpak-info");
+    EXPECT_TRUE(vela_bt_sandboxed(proc.c_str(), 500));
 }
 
 TEST(Caller, VelasExecutables)
