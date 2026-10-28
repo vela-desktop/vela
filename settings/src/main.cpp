@@ -13,7 +13,7 @@
 #include "appmodel.h"
 #include "audio.h"
 #include "audioapps.h"
-#include "bluetooth.h"
+#include "bluetooth/bluetooth.h"
 #include "brightness.h"
 #include "controls.h"
 #include "datetime.h"
@@ -164,7 +164,9 @@ int main(int argc, char* argv[])
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
     Network network;
-    Bluetooth bluetooth;
+    // Bluetooth (docs/bluetooth.md §9.1): Settings is Vela's UI, and draws
+    // the questions of its own Adds.
+    vela::bluetooth::Bluetooth bluetooth(true);
     About about;
     DateTime dateTime;
     DefaultApps defaultApps(&apps);
@@ -187,7 +189,7 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("Audio"), &audio);
     qmlRegisterType<vela::audio::LevelMeter>("Vela.Audio", 1, 0, "LevelMeter");
     context->setContextProperty(QStringLiteral("Network"), &network);
-    context->setContextProperty(QStringLiteral("Bluetooth"), &bluetooth);
+    qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
     context->setContextProperty(QStringLiteral("About"), &about);
     context->setContextProperty(QStringLiteral("DateTime"), &dateTime);
     context->setContextProperty(QStringLiteral("DefaultApps"), &defaultApps);

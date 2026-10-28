@@ -260,9 +260,8 @@ if(VELA_BUILD_TOOLS)
     # if the service fails (src/requested.h), against fakes on a private bus.
     qt_add_executable(vela-requested-switches-test
         tests/requested_switches.cpp
-        src/requested.h src/bluetoothpower.h src/systemstatus.cpp src/systemstatus.h
-        ${PROJECT_SOURCE_DIR}/settings/src/bluetooth.cpp ${PROJECT_SOURCE_DIR}/settings/src/bluetooth.h)
-    target_include_directories(vela-requested-switches-test PRIVATE src ${PROJECT_SOURCE_DIR}/settings/src)
+        src/requested.h src/bluetoothpower.h src/systemstatus.cpp src/systemstatus.h)
+    target_include_directories(vela-requested-switches-test PRIVATE src)
     target_compile_options(vela-requested-switches-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-requested-switches-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
     add_test(NAME shell-requested-switches COMMAND vela-requested-switches-test)

@@ -602,7 +602,8 @@ to Vela's own UI.
     (dbus-broker does, and dbus-daemon 1.16 does).
   - A binary replaced by an update shows as "*path* (deleted)", and is
     still accepted: only root installs at that path.
-  - The test build of the daemon has its own list: the test client only.
+  - The test build of the daemon has its own list: the tests' clients
+    only (the daemon's tests and the client library's).
 - **Signals carrying questions are sent to each allowed client only**
   (unicast, with a destination), never broadcast: to the callers of
   `Questions()` and of `Add` with `promptsHere` (§7.2).
@@ -620,10 +621,17 @@ A client library, like `common/audio` for sound:
 
 - a C++ model of adapters and devices, fed by `DevicesChanged`. This is
   the only C++ part: it lives in Qt processes, like `common/audio`;
-- a QML module, `Vela.Bluetooth`, with `available`, `devices`, `paired`,
-  `found`, `question` and the actions;
+- the `Bluetooth` singleton of the QML module `Vela.Bluetooth`, which each
+  process registers with its own instance. It has `available`, `devices`,
+  `paired`, `found`, `question` and the actions;
 - the `requested.h` behaviour for switches: shown at once, and returned to
   BlueZ's state if BlueZ refuses or never does it.
+
+A refusal that isn't a device's own failure (`Busy`, `Inactive`, a name
+`Rename` refuses...) is the model's `error`, in plain words. A device's
+failure stays with the device, in its `error` and `message`. Until the
+daemon serves search leases (B5), "Add a device" lists the devices BlueZ
+already knows.
 
 Users: `vela-shell` (quick settings, the question dialog and notifications,
 `SystemStatus` for airplane mode), `vela-settings`, and `vela-audio` for
@@ -634,8 +642,9 @@ headset batteries. If the daemon is missing, the model is empty and
 
 ### 9.1 Settings
 
-The Bluetooth page is rewritten on `Vela.Bluetooth`. The current
-`settings/src/bluetooth.*` is deleted.
+The Bluetooth page is rewritten on `Vela.Bluetooth`, and the old
+`settings/src/bluetooth.*` is deleted. Settings' home uses the same model
+for its Bluetooth card.
 
 - At the top: the switch. When Bluetooth is not available, the page says
   "Bluetooth isn't available on this PC" instead.
@@ -790,7 +799,7 @@ fake itself can stay in Qt, because it is test code. Cases:
 - the daemon missing;
 - the requested switch.
 
-**QML tests:**
+**QML tests** (Settings' with a fake `Vela.Bluetooth` written in QML):
 
 - the Settings page, including "Search again" and "Stop being visible";
 - quick settings' list;
@@ -822,7 +831,7 @@ only `bluez`:
 | B0 | Remove BlueDevil (§10); the shell's rfkill unblock limited to the adapter's own switch, until B4 replaces it | done |
 | B1 | `vela-bluetooth`: start by the compositor, model, operations, errors, rfkill (§6.3), the `org.vela.Bluetooth` API settled with its authorization (§7.3); the fake BlueZ and the daemon's tests | done |
 | B2 | The agent (§6.4), concurrency (§6.5), the questions (§7.2), and the session rules (§6.7), with tests | done |
-| B3 | `common/bluetooth`; the Settings page rewritten (§9.1); the old Settings code deleted | |
+| B3 | `common/bluetooth`; the Settings page rewritten (§9.1); the old Settings code deleted | done |
 | B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | |
 | B5 | Search leases and visibility (§6.6); the compositor sets `LockedHint` while the lock screen is up | |
 | B6 | Docs and packaging: installation, hardware, testing | |

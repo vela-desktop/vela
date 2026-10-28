@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Switches backed by a service move at once (requested.h): Bluetooth's power
-// in quick settings and Settings' home (SystemStatus) and on Settings'
-// Bluetooth page (Bluetooth), and Wi-Fi. A fake BlueZ and NetworkManager on a
+// in quick settings (SystemStatus), and Wi-Fi. Settings' Bluetooth switch is
+// vela-bluetooth's client, tested in tests/bluetooth. A fake BlueZ and NetworkManager on a
 // private bus answer slowly, announce other changes on the way, refuse, or
 // never do it. The real radios are never touched (VELA_RFKILL, VELA_SYSFS):
 // turning Bluetooth on unblocks only the adapter's own rfkill switch.
 
-#include "bluetooth.h"
 #include "bluetoothpower.h"
 #include "requested.h"
 #include "systemstatus.h"
@@ -427,26 +426,6 @@ private slots:
         status.setWifiEnabled(true);
         QVERIFY(status.wifiEnabled());
         QTRY_VERIFY_WITH_TIMEOUT(!status.wifiEnabled(), 1000);
-    }
-
-    void settingsBluetoothPageShowsAtOnce()
-    {
-        Bluetooth bluetooth;
-        bluetooth.refresh(); // as the page does when it opens
-        QVERIFY(bluetooth.available());
-        QVERIFY(!bluetooth.powered());
-        bluetooth.setPowered(true);
-        QVERIFY(bluetooth.powered());
-        for (int i = 0; i < 10; ++i) {
-            QTest::qWait(50);
-            QVERIFY2(bluetooth.powered(), "the switch went back while BlueZ worked");
-        }
-        QTRY_VERIFY(fake->powered);
-        QVERIFY(bluetooth.powered());
-        fake->answer = Answer::Refuse;
-        bluetooth.setPowered(false);
-        QVERIFY(!bluetooth.powered());
-        QTRY_VERIFY_WITH_TIMEOUT(bluetooth.powered(), 1000);
     }
 };
 
