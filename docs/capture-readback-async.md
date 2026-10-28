@@ -134,6 +134,8 @@ beyond the old byte-paced scheduler's theoretical ceiling. Reused buffers must
 sustain 60 / 30 fps respectively. Request-to-ready p95 must remain below 100 ms
 for one session and 150 ms for four. The original uncached-staging exception is
 preserved; measurements and pixel/lifetime/idle checks still run there.
+The original `missed < captures` presentation budget also applies to these
+sustained streams, so capture throughput alone cannot satisfy the new checks.
 
 ## Validation
 

@@ -173,6 +173,8 @@ class DeferredCapture(unittest.TestCase):
                         self.assertGreaterEqual(min(metrics["client_frames"]) / metrics["seconds"],
                                                 0.8 * minimum_fps / clients, "one capture client starved")
                         self.assertLess(metrics["p95_ms"], 150 if clients > 1 else 100)
+                        self.assertLess(metrics["missed"], metrics["frames"],
+                                        "sustained capture exceeded the presentation budget")
                     self.assertEqual(after["readback"]["failed"], before["readback"]["failed"])
                     self.assertEqual(after["readback"]["rejected"], before["readback"]["rejected"])
 
