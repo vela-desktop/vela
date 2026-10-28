@@ -78,6 +78,70 @@ class FullscreenStack(unittest.TestCase):
             self.assertNotEqual(vela.pixels().at(*first_point), baseline.at(*first_point))
             self.assertNotEqual(vela.pixels().at(*second_point), baseline.at(*second_point))
 
+    def test_super_reveals_taskbar_before_start_surface_maps(self):
+        # A fake shell deliberately ACKs the toggle but never maps Start:
+        # the taskbar must be painted *before* Qt supplies a menu buffer.
+        # If the shell never maps the menu, the game becomes immersive again.
+        with Session(size="1280x720@60") as vela:
+            taskbar = subprocess.Popen([tool("vela-panel"), "taskbar"], env=vela.client_env)
+            vela.clients.append(taskbar)
+            time.sleep(0.4)
+            fullscreen = game(vela)
+            x, y = 24, vela.state().output["h"] - 12
+            immersive = vela.pixels().at(x, y)
+
+            # No reachable shell: do not leave the game exposed.
+            vela.keys("super")
+            self.assertEqual(vela.pixels().at(x, y), immersive)
+
+            shell = vela.fake_shell()
+            vela.keys("super")
+            shell.wait_for("toggle-start")
+            self.assertNotEqual(vela.pixels().at(x, y), immersive)
+            self.assertTrue(vela.state().window(fullscreen)["fullscreen"])
+
+            # A shell failing to map must never strand the taskbar over a game.
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline and vela.pixels().at(x, y) != immersive:
+                time.sleep(0.05)
+            self.assertEqual(vela.pixels().at(x, y), immersive)
+
+            # Super chords (including shortcuts and Super+drag) must NOT flash
+            # the taskbar; only a completed Super tap can request the preview.
+            shell.clear()
+            vela.keys("super+z")
+            self.assertEqual(shell.received("toggle-start"), [])
+            self.assertEqual(vela.pixels().at(x, y), immersive)
+
+    def test_super_preview_survives_until_start_menu_closes(self):
+        with Session(size="1280x720@60") as vela:
+            taskbar = subprocess.Popen([tool("vela-panel"), "taskbar"], env=vela.client_env)
+            vela.clients.append(taskbar)
+            time.sleep(0.4)
+            game(vela)
+            x, y = 24, vela.state().output["h"] - 12
+            immersive = vela.pixels().at(x, y)
+            shell = vela.fake_shell()
+            vela.keys("super")
+            shell.wait_for("toggle-start")
+            self.assertNotEqual(vela.pixels().at(x, y), immersive)
+            menu = subprocess.Popen([tool("vela-panel"), "menu"], env=vela.client_env)
+            vela.clients.append(menu)
+            try:
+                # Longer than the no-shell fallback: a mapped Start panel
+                # takes responsibility for taskbar visibility.
+                time.sleep(0.75)
+                self.assertNotEqual(vela.pixels().at(x, y), immersive)
+            finally:
+                menu.terminate()
+                menu.wait(timeout=3)
+            vela.wait_for(lambda s: s["focused"] is not None,
+                          what="keyboard focus restored to the game")
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline and vela.pixels().at(x, y) != immersive:
+                time.sleep(0.05)
+            self.assertEqual(vela.pixels().at(x, y), immersive)
+
     def test_start_panel_exposes_taskbar_then_returns_to_game(self):
         with Session(size="1280x720@60") as vela:
             taskbar = subprocess.Popen([tool("vela-panel"), "taskbar"], env=vela.client_env)
