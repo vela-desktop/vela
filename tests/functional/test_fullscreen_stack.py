@@ -184,6 +184,7 @@ class FullscreenStack(unittest.TestCase):
             vela.command("test-output add 1280x720")
             state = vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two monitors")
             secondary = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+            panel(vela, "taskbar", "fullscreen-taskbar")
             vela.input("move", 20, 20)
             fullscreen = game(vela)
             primary = vela.pixels()
@@ -192,7 +193,9 @@ class FullscreenStack(unittest.TestCase):
             app = vela.open_window(320, 240)
             state = vela.wait_for(lambda s: s["focused"] == app, what="new app on secondary")
             self.assertEqual(state.window(fullscreen)["output"], "HEADLESS-1")
-            self.assertEqual(vela.pixels().at(450, 350), primary.at(450, 350))
+            # Probe where the taskbar would show through if fullscreen were
+            # incorrectly demoted because the new app started at (0, 0).
+            self.assertEqual(vela.pixels().at(24, 708), primary.at(24, 708))
             x, y = center(state.window(app))
             x -= secondary["x"]
             y -= secondary["y"]
