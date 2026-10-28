@@ -408,6 +408,19 @@ class FakeShell:
             time.sleep(0.05)
         raise TimeoutError(f"the shell never received «{prefix}…{containing}»; it got: {self.received()[-10:]}")
 
+    def barrier(self):
+        """Wait until the socket reader processed every earlier connection.
+
+        Use after an input/compositor checkpoint before asserting that a
+        forbidden shell message was NOT sent; a fixed sleep cannot prove that.
+        """
+        marker = f"__test_barrier__:{time.monotonic_ns()}"
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.connect(self.path)
+            connection.sendall((marker + "\n").encode())
+        self.wait_for(marker)
+        return marker
+
     def clear(self):
         with self.lock:
             self.lines = []

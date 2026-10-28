@@ -42,11 +42,15 @@ class DirectScanout(unittest.TestCase):
             self.open_app(vela)
             game = vela.state()["focused"]
             vela.wait_for(scanning, timeout=8, what="game in direct scanout")
+            background = vela.pixels()
             app = vela.open_window(240, 140)
             state = vela.wait_for(
                 lambda s: s["focused"] == app and not scanning(s),
                 timeout=8, what="normal app composited above fullscreen")
             self.assertTrue(state.window(game)["fullscreen"])
+            w = state.window(app)
+            x, y = int(w["x"] + w["w"] / 2), int(w["y"] + w["h"] / 2)
+            self.assertNotEqual(vela.pixels().at(x, y), background.at(x, y))
             # A visible click on the uncovered game makes it foreground again.
             vela.input("move", 10, 10, "down", "up")
             state = vela.wait_for(

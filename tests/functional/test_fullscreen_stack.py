@@ -31,6 +31,29 @@ def center(window):
     return int(window["x"] + window["w"] / 2), int(window["y"] + window["h"] / 2)
 
 
+def layer_mapped(state, namespace):
+    return any(item["namespace"] == namespace and item["mapped"] for item in state["layers"])
+
+
+def panel(vela, kind, namespace):
+    proc = subprocess.Popen([tool("vela-panel"), kind, "--namespace", namespace], env=vela.client_env)
+    vela.clients.append(proc)
+    vela.wait_for(lambda s: layer_mapped(s, namespace), what=f"{namespace} mapped")
+    return proc
+
+
+def wait_pixel_change(vela, x, y, baseline, timeout=0.45):
+    # Start before waiting for shell IPC: the speculative preview lasts only
+    # 500 ms, which may elapse while FakeShell's reader thread is scheduled.
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        pixel = vela.pixels().at(x, y)
+        if pixel != baseline:
+            return pixel
+        time.sleep(0.01)
+    raise AssertionError("the taskbar was never visible during Start preview")
+
+
 class FullscreenStack(unittest.TestCase):
     def test_new_app_is_visibly_above_fullscreen(self):
         with Session(size="1280x720@60") as vela:
@@ -83,9 +106,7 @@ class FullscreenStack(unittest.TestCase):
         # the taskbar must be painted *before* Qt supplies a menu buffer.
         # If the shell never maps the menu, the game becomes immersive again.
         with Session(size="1280x720@60") as vela:
-            taskbar = subprocess.Popen([tool("vela-panel"), "taskbar"], env=vela.client_env)
-            vela.clients.append(taskbar)
-            time.sleep(0.4)
+            panel(vela, "taskbar", "fullscreen-taskbar")
             fullscreen = game(vela)
             x, y = 24, vela.state().output["h"] - 12
             immersive = vela.pixels().at(x, y)
@@ -96,8 +117,8 @@ class FullscreenStack(unittest.TestCase):
 
             shell = vela.fake_shell()
             vela.keys("super")
+            wait_pixel_change(vela, x, y, immersive)
             shell.wait_for("toggle-start")
-            self.assertNotEqual(vela.pixels().at(x, y), immersive)
             self.assertTrue(vela.state().window(fullscreen)["fullscreen"])
 
             # A shell failing to map must never strand the taskbar over a game.
@@ -110,27 +131,90 @@ class FullscreenStack(unittest.TestCase):
             # the taskbar; only a completed Super tap can request the preview.
             shell.clear()
             vela.keys("super+z")
+            vela.state()  # compositor-side roundtrip before socket-reader barrier
+            shell.barrier()
             self.assertEqual(shell.received("toggle-start"), [])
             self.assertEqual(vela.pixels().at(x, y), immersive)
 
+    def test_two_super_taps_restore_fullscreen_without_waiting_for_timeout(self):
+        with Session(size="1280x720@60") as vela:
+            panel(vela, "taskbar", "fullscreen-taskbar")
+            fullscreen = game(vela)
+            x, y = 24, vela.state().output["h"] - 12
+            immersive = vela.pixels().at(x, y)
+            shell = vela.fake_shell()
+            vela.keys("super")
+            wait_pixel_change(vela, x, y, immersive)
+            vela.keys("super")
+            shell.barrier()
+            self.assertEqual(len(shell.received("toggle-start")), 2)
+            self.assertEqual(vela.pixels().at(x, y), immersive)
+            self.assertTrue(vela.state().window(fullscreen)["fullscreen"])
+
+    def test_clicking_fullscreen_game_after_start_restores_immersive_layer(self):
+        with Session(size="1280x720@60") as vela:
+            panel(vela, "taskbar", "fullscreen-taskbar")
+            fullscreen = game(vela)
+            x, y = 24, vela.state().output["h"] - 12
+            immersive = vela.pixels().at(x, y)
+            menu = panel(vela, "menu", "fullscreen-menu")
+            try:
+                vela.wait_for(lambda s: s["focusedLayer"] == "fullscreen-menu", what="menu focus")
+                self.assertNotEqual(vela.pixels().at(x, y), immersive)
+                vela.input("move", 10, 10, "down", "up")
+                vela.wait_for(lambda s: s["focused"] == fullscreen and s["focusedLayer"] is None,
+                              what="game regains focus after menu")
+                self.assertEqual(vela.pixels().at(x, y), immersive)
+            finally:
+                menu.terminate()
+                menu.wait(timeout=3)
+
+    def test_system_prompt_stays_visible_over_reactivated_fullscreen(self):
+        with Session(size="1280x720@60") as vela:
+            fullscreen = game(vela)
+            prompt = vela.open_window(280, 180, app_id="pinentry")
+            x, y = center(vela.state().window(prompt))
+            baseline = vela.pixels().at(x, y)
+            vela.input("move", 10, 10, "down", "up")
+            vela.wait_for(lambda s: s["focused"] == fullscreen, what="game receives click")
+            self.assertEqual(vela.pixels().at(x, y), baseline)
+
+    def test_new_app_on_secondary_does_not_demote_primary_game(self):
+        with Session(size="1280x720@60") as vela:
+            vela.command("test-output add 1280x720")
+            state = vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two monitors")
+            secondary = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+            vela.input("move", 20, 20)
+            fullscreen = game(vela)
+            primary = vela.pixels()
+            empty = vela.pixels(output=1)
+            vela.input("move", secondary["x"] + 200, secondary["y"] + 200)
+            app = vela.open_window(320, 240)
+            state = vela.wait_for(lambda s: s["focused"] == app, what="new app on secondary")
+            self.assertEqual(state.window(fullscreen)["output"], "HEADLESS-1")
+            self.assertEqual(vela.pixels().at(450, 350), primary.at(450, 350))
+            x, y = center(state.window(app))
+            x -= secondary["x"]
+            y -= secondary["y"]
+            self.assertNotEqual(vela.pixels(output=1).at(x, y), empty.at(x, y))
+
     def test_super_preview_survives_until_start_menu_closes(self):
         with Session(size="1280x720@60") as vela:
-            taskbar = subprocess.Popen([tool("vela-panel"), "taskbar"], env=vela.client_env)
-            vela.clients.append(taskbar)
-            time.sleep(0.4)
+            panel(vela, "taskbar", "fullscreen-taskbar")
             game(vela)
             x, y = 24, vela.state().output["h"] - 12
             immersive = vela.pixels().at(x, y)
             shell = vela.fake_shell()
             vela.keys("super")
+            wait_pixel_change(vela, x, y, immersive)
             shell.wait_for("toggle-start")
-            self.assertNotEqual(vela.pixels().at(x, y), immersive)
-            menu = subprocess.Popen([tool("vela-panel"), "menu"], env=vela.client_env)
-            vela.clients.append(menu)
+            menu = panel(vela, "menu", "fullscreen-menu")
             try:
-                # Longer than the no-shell fallback: a mapped Start panel
-                # takes responsibility for taskbar visibility.
-                time.sleep(0.75)
+                vela.wait_for(lambda s: s["focusedLayer"] == "fullscreen-menu",
+                              what="Start mapped and keyboard-focused")
+                # Verify *after* preview's 500 ms fallback: the mapped menu
+                # must keep the taskbar visible on its own.
+                time.sleep(0.65)
                 self.assertNotEqual(vela.pixels().at(x, y), immersive)
             finally:
                 menu.terminate()
@@ -144,21 +228,16 @@ class FullscreenStack(unittest.TestCase):
 
     def test_start_panel_exposes_taskbar_then_returns_to_game(self):
         with Session(size="1280x720@60") as vela:
-            taskbar = subprocess.Popen([tool("vela-panel"), "taskbar"], env=vela.client_env)
-            vela.clients.append(taskbar)
-            time.sleep(0.4)
+            panel(vela, "taskbar", "fullscreen-taskbar")
             fullscreen = game(vela)
             x, y = 24, vela.state().output["h"] - 12
             immersive = vela.pixels().at(x, y)
             # TOP/ON_DEMAND layer surface models the actual Start menu, whose
             # mapping should also reveal the passive TOP taskbar on this output.
-            menu = subprocess.Popen([tool("vela-panel"), "menu"], env=vela.client_env)
-            vela.clients.append(menu)
+            menu = panel(vela, "menu", "fullscreen-menu")
             try:
-                deadline = time.monotonic() + 5
-                while time.monotonic() < deadline and vela.pixels().at(x, y) == immersive:
-                    self.assertIsNone(menu.poll(), "test menu exited before mapping")
-                    time.sleep(0.08)
+                vela.wait_for(lambda s: s["focusedLayer"] == "fullscreen-menu",
+                              what="Start has the keyboard")
                 self.assertNotEqual(vela.pixels().at(x, y), immersive)
                 self.assertTrue(vela.state().window(fullscreen)["fullscreen"])
             finally:
@@ -197,11 +276,16 @@ class FullscreenStack(unittest.TestCase):
             fullscreen = game(vela)
             self.assertEqual(vela.state().window(fullscreen)["output"], "HEADLESS-1")
             baseline = vela.pixels()
+            secondary_pixel = vela.pixels(output=1)
             w = vela.state().window(app)
             vela.input("move", w["x"] + 70, w["y"] + 80, "down", "up")
             vela.wait_for(lambda s: s["focused"] == app, what="app focused on secondary")
             self.assertEqual(vela.pixels().at(450, 350), baseline.at(450, 350))
             w = vela.state().window(app)
+            sx, sy = center(w)
+            local_x, local_y = sx - secondary["x"], sy - secondary["y"]
+            self.assertEqual(vela.pixels(output=1).at(local_x, local_y),
+                             secondary_pixel.at(local_x, local_y))
             drag = subprocess.Popen([
                 tool("vela-input"), "move", str(w["x"] + 70), str(w["y"] + 50),
                 "keydown", "super", "down", "move", "450", "350",
