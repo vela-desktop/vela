@@ -5,7 +5,6 @@ import QtQuick
 import QtQuick.Templates as T
 import Vela.Audio
 import Vela.Bluetooth
-import Vela.Bluetooth.Ui
 import Vela.Controls
 
 // Quick settings (Win+A, or a click on the taskbar's system icons), like
@@ -96,7 +95,7 @@ Window {
             Network.scan() // cached networks appear immediately, rescan in background
         }
         if (name === "bluetooth") {
-            bluetoothPage.expanded = ""
+            devicesView.expanded = ""
             Bluetooth.clearError()
         }
         panel.forceActiveFocus()
@@ -919,9 +918,9 @@ Window {
                 }
 
                 // -------------------------------------------------- Bluetooth --
-                // The paired devices, connected first, with their battery
-                // (docs/bluetooth.md §9.2); a click opens one, with Connect or
-                // Disconnect. Adding a device is Settings' job.
+                // The paired devices (BluetoothDevices, docs/bluetooth.md
+                // §9.2), the switch and the refusals. Adding a device is
+                // Settings' job.
                 Column {
                     id: bluetoothPage
                     objectName: "bluetoothPage"
@@ -930,12 +929,11 @@ Window {
                     y: 16
                     width: parent.width - 32
                     spacing: 8
-                    property string expanded: "" // the open device's path
                     readonly property bool listed: Bluetooth.powered && Bluetooth.paired.length > 0
                     // Its height once the devices have finished opening or
                     // closing, as the Wi-Fi page's.
                     readonly property real finalHeight: height
-                        + (devicesView.visible ? Math.min(devices.finalHeight, 340) - devicesView.height : 0)
+                        + (devicesView.visible ? devicesView.finalHeight - devicesView.height : 0)
 
                     PageHeader {
                         title: qsTr("Bluetooth")
@@ -956,106 +954,10 @@ Window {
                         font.pixelSize: Theme.fontBody
                         wrapMode: Text.WordWrap
                     }
-                    Flickable {
+                    BluetoothDevices {
                         id: devicesView
                         visible: bluetoothPage.listed
                         width: parent.width
-                        height: Math.min(contentHeight, 340)
-                        contentHeight: devices.height
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-
-                        Column {
-                            id: devices
-                            width: parent.width
-                            spacing: 2
-                            readonly property real finalHeight: {
-                                let h = height
-                                for (let i = 0; i < deviceRows.count; ++i) {
-                                    const item = deviceRows.itemAt(i)
-                                    if (item) {
-                                        h += item.fullHeight - item.height
-                                    }
-                                }
-                                return h
-                            }
-                            Repeater {
-                                id: deviceRows
-                                model: bluetoothPage.listed ? Bluetooth.paired : []
-                                delegate: ListItem {
-                                    id: device
-                                    required property var modelData
-                                    readonly property bool open: bluetoothPage.expanded === modelData.path
-                                    readonly property bool busy: modelData.operation !== ""
-                                    readonly property real fullHeight: open ? 52 + 32 + 12 : 52
-                                    objectName: "device " + modelData.name
-                                    width: devices.width
-                                    height: fullHeight
-                                    highlighted: open
-                                    text: modelData.name
-                                    Accessible.description: DeviceState.description(modelData)
-                                    Behavior on height { enabled: Theme.motion > 0; Eased {} }
-                                    onClicked: bluetoothPage.expanded = open ? "" : modelData.path
-                                    function activate() {
-                                        if (DeviceState.cancellable(modelData)) {
-                                            Bluetooth.cancel(modelData.path)
-                                        } else if (!busy) {
-                                            if (modelData.connected) {
-                                                Bluetooth.disconnectDevice(modelData.path)
-                                            } else {
-                                                Bluetooth.connectDevice(modelData.path)
-                                            }
-                                        }
-                                    }
-
-                                    Icon {
-                                        x: 12
-                                        y: 16
-                                        size: 20
-                                        name: DeviceState.icon(device.modelData)
-                                    }
-                                    Column {
-                                        x: 44
-                                        y: (52 - height) / 2
-                                        width: parent.width - 56
-                                        Text {
-                                            width: parent.width
-                                            text: device.modelData.name
-                                            color: Theme.text
-                                            font.pixelSize: Theme.fontBody
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            text: DeviceState.description(device.modelData)
-                                            color: Theme.textSecondary
-                                            font.pixelSize: Theme.fontCaption
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-                                    // Shown while open, and while it closes; a
-                                    // click there doesn't close it.
-                                    MouseArea {
-                                        y: 52
-                                        width: parent.width
-                                        height: parent.height - 52
-                                        clip: true
-                                        Button {
-                                            objectName: "deviceAction"
-                                            visible: device.open || device.height > 52
-                                            anchors.right: parent.right
-                                            anchors.rightMargin: 12
-                                            width: 120
-                                            accent: !device.modelData.connected && !DeviceState.cancellable(device.modelData)
-                                            usable: Bluetooth.active && (!device.busy || DeviceState.cancellable(device.modelData))
-                                            text: DeviceState.cancellable(device.modelData) ? qsTr("Cancel")
-                                                : device.modelData.connected ? qsTr("Disconnect") : qsTr("Connect")
-                                            onClicked: device.activate()
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                     // A refusal that isn't a device's own (the screen locked,
                     // another session in front...).

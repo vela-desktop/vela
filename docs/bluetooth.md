@@ -841,16 +841,21 @@ the fake):
 
 `vela-audio`'s battery is in `audio-view`, against a fake daemon.
 
-**QML tests** (Settings' with a fake `Vela.Bluetooth` written in QML):
+**QML tests** (Settings' and the shell's, with a fake `Vela.Bluetooth`
+written in QML, `common/bluetooth/tests/FakeBluetooth.qml`; the shell's
+runner also fakes `Shell` and `BluetoothPrompts`):
 
 - the Settings page, including "Search again" and "Stop being visible";
 - the question (`BluetoothQuestion`, inline in Settings and inside the
   shell's dialog) for every kind, with Enter, Esc, focus, the time left and
   accessible names;
-- planned: quick settings' list and the shell's dialog window, which need a
-  runner for the shell's windows. Until then their logic is in the shell
-  tests above, and they were looked at in a headless shell against a fake
-  daemon.
+- quick settings' list (`BluetoothDevices`): paired only, state and battery,
+  opening a device, Connect, Disconnect and Cancel, nothing to press while
+  busy or in the background, the height the panel goes to;
+- the shell's dialog window: on the primary screen, Enter, Esc, a typed
+  code, the buttons, the digits typed on a keyboard, a refused answer's
+  reason, staying while another window is active, closing with the
+  question.
 
 **By hand** (recorded in [hardware](hardware.md)), in a Vela session with
 only `bluez`:

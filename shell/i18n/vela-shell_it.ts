@@ -2,6 +2,21 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="it_IT" sourcelanguage="en">
 <context>
+    <name>BluetoothDevices</name>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation>Disconnetti</translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation>Connetti</translation>
+    </message>
+</context>
+<context>
     <name>BluetoothDialog</name>
     <message>
         <source>Bluetooth</source>
@@ -804,10 +819,6 @@
     <message>
         <source>No paired devices.</source>
         <translation>Nessun dispositivo associato.</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Annulla</translation>
     </message>
     <message>
         <source>More Bluetooth settings</source>

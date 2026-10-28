@@ -4,8 +4,8 @@
 pragma Singleton
 import QtQuick
 
-// Vela.Bluetooth for Settings' QML tests: the tests set what it shows, and
-// it records the calls ("add /org/bluez/hci0/dev_1").
+// Vela.Bluetooth for the QML tests of Settings and the shell: the tests set
+// what it shows, and it records the calls ("add /org/bluez/hci0/dev_1").
 QtObject {
     id: fake
     property bool available: true

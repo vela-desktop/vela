@@ -92,6 +92,7 @@ Window {
             // An answer refused (a code out of range, the screen locked...).
             Text {
                 id: error
+                objectName: "error"
                 x: 24
                 anchors { top: view.bottom; topMargin: 12 }
                 width: parent.width - 48

@@ -159,7 +159,8 @@ qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-disp
 if(VELA_BUILD_TOOLS)
     find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
     qt_add_executable(vela-settings-test tests/settings_test.cpp)
-    target_compile_definitions(vela-settings-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    target_compile_definitions(vela-settings-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        FAKE_BLUETOOTH="${PROJECT_SOURCE_DIR}/common/bluetooth/tests/FakeBluetooth.qml")
     target_compile_options(vela-settings-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-settings-test PRIVATE vela-controls vela-controlsplugin vela-bluetooth-uiplugin Qt6::QuickTest)
     add_test(NAME settings-controls COMMAND vela-settings-test)

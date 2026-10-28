@@ -127,6 +127,7 @@ set(VELA_QML_FILES
     qml/RunDialog.qml
     qml/ConfirmDialog.qml
     qml/BluetoothDialog.qml
+    qml/BluetoothDevices.qml
     qml/SourceChooser.qml
     qml/PropertiesDialog.qml
     qml/CheckBox.qml
@@ -213,14 +214,19 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-mimeapps-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-mimeapps COMMAND vela-mimeapps-test)
 
-    # The shell's own controls (tests/tst_*.qml) under Vela.Controls' Qt Quick
-    # Test runner, with animation effects on and off.
-    if(TARGET vela-controls-test)
-        add_test(NAME shell-controls COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-        add_test(NAME shell-controls-no-effects COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-        set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
-        set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
-    endif()
+    # The shell's own pieces (tests/tst_*.qml) under Qt Quick Test, with fakes
+    # of what its windows find in their context (Vela.Bluetooth, Shell,
+    # BluetoothPrompts), with animation effects on and off.
+    find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
+    qt_add_executable(vela-shell-test tests/shell_test.cpp)
+    target_compile_definitions(vela-shell-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        FAKE_BLUETOOTH="${PROJECT_SOURCE_DIR}/common/bluetooth/tests/FakeBluetooth.qml")
+    target_compile_options(vela-shell-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-shell-test PRIVATE vela-controls vela-controlsplugin vela-bluetooth-uiplugin Qt6::QuickTest)
+    add_test(NAME shell-controls COMMAND vela-shell-test)
+    add_test(NAME shell-controls-no-effects COMMAND vela-shell-test)
+    set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
 
     qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
     target_include_directories(vela-tool-path-test PRIVATE src)
