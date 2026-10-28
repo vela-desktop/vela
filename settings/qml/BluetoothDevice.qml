@@ -3,8 +3,8 @@
 
 import QtQuick
 import Vela.Bluetooth
+import Vela.Bluetooth.Ui
 import Vela.Controls
-import "bluetooth.js" as State
 
 // A paired device (docs/bluetooth.md §9.1): its icon, name, state and
 // battery, Cancel while a step can be stopped, and a menu with Connect or
@@ -21,15 +21,15 @@ Card {
     signal soundAsked()
 
     readonly property bool busy: (device.operation || "") !== ""
-    icon: State.icon(device)
+    icon: DeviceState.icon(device)
     title: device.name || ""
-    description: State.description(device)
+    description: DeviceState.description(device)
 
     trailing: Row {
         spacing: 8
         Button {
             objectName: "cancel"
-            visible: State.cancellable(card.device)
+            visible: DeviceState.cancellable(card.device)
             text: qsTr("Cancel")
             onClicked: Bluetooth.cancel(card.device.path)
         }

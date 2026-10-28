@@ -249,8 +249,8 @@ static int method_cancel(sd_bus_message *call, void *data, sd_bus_error *error)
     return sd_bus_reply_method_return(call, NULL);
 }
 
-// B3 refuses spontaneous requests unless a trusted presenter opts in.
-// The shell will opt in when its question dialog is implemented in B4.
+// Spontaneous requests are refused unless a trusted presenter opts in: the
+// shell, which draws them (§9.3).
 static int method_present_questions(sd_bus_message *call, void *data, sd_bus_error *error)
 {
     struct vela_bt_daemon *d = data;

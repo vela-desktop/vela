@@ -3,13 +3,12 @@
 
 #include "systemstatus.h"
 
-#include "bluetoothpower.h"
+#include "bluetooth/bluetooth.h"
 
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusMessage>
-#include <QDBusMetaType>
 #include <QDBusPendingCallWatcher>
 #include <QDBusReply>
 #include <QDBusVariant>
@@ -37,24 +36,18 @@ void dbusSet(const QDBusConnection& bus, const QString& service, const QString& 
 
 } // namespace
 
-using ManagedObjects = QMap<QDBusObjectPath, QMap<QString, QVariantMap>>;
-Q_DECLARE_METATYPE(ManagedObjects)
-
-SystemStatus::SystemStatus(QObject* parent)
+SystemStatus::SystemStatus(vela::bluetooth::Bluetooth* bluetooth, QObject* parent)
     : QObject(parent)
+    , m_bluetooth(bluetooth)
 {
     QDBusConnection system = QDBusConnection::systemBus();
     connect(this, &SystemStatus::networkChanged, this, &SystemStatus::airplaneChanged);
-    connect(this, &SystemStatus::bluetoothChanged, this, &SystemStatus::airplaneChanged);
+    connect(m_bluetooth, &vela::bluetooth::Bluetooth::changed, this, &SystemStatus::airplaneChanged);
 
     // --- Network: NetworkManager.
     system.connect(nm, nmPath, propertiesInterface, QStringLiteral("PropertiesChanged"), this,
         SLOT(onPropertiesChanged(QString, QVariantMap, QStringList)));
     refreshNetwork();
-
-    // --- Bluetooth: BlueZ's first adapter.
-    qDBusRegisterMetaType<ManagedObjects>();
-    refreshBluetooth();
 
     // --- Battery: UPower's "display" device.
     system.connect(QStringLiteral("org.freedesktop.UPower"), QStringLiteral("/org/freedesktop/UPower/devices/DisplayDevice"),
@@ -133,49 +126,14 @@ QString SystemStatus::networkIcon() const
                                : QStringLiteral("network-wireless-signal-weak");
 }
 
-// -------------------------------------------------------------- Bluetooth --
+// --------------------------------------------------------- airplane mode --
 
-void SystemStatus::refreshBluetooth()
-{
-    QDBusConnection system = QDBusConnection::systemBus();
-    if (m_adapter.isEmpty()) {
-        QDBusInterface manager(QStringLiteral("org.bluez"), QStringLiteral("/"), QStringLiteral("org.freedesktop.DBus.ObjectManager"), system);
-        const QDBusReply<ManagedObjects> objects = manager.call(QStringLiteral("GetManagedObjects"));
-        if (objects.isValid()) {
-            for (auto it = objects.value().cbegin(); it != objects.value().cend(); ++it) {
-                if (it.value().contains(QStringLiteral("org.bluez.Adapter1"))) {
-                    m_adapter = it.key().path();
-                    system.connect(QStringLiteral("org.bluez"), m_adapter, propertiesInterface,
-                        QStringLiteral("PropertiesChanged"), this, SLOT(refreshBluetooth()));
-                    break;
-                }
-            }
-        }
-    }
-    if (!m_adapter.isEmpty()) {
-        m_bluetoothEnabled
-            = dbusGet(system, QStringLiteral("org.bluez"), m_adapter, QStringLiteral("org.bluez.Adapter1"), QStringLiteral("Powered")).toBool();
-        m_bluetoothRequest.reported(m_bluetoothEnabled);
-    }
-    emit bluetoothChanged();
-}
-
-void SystemStatus::setBluetoothEnabled(bool on)
-{
-    if (m_adapter.isEmpty()) {
-        return;
-    }
-    const Requested::Id request = m_bluetoothRequest.ask(on);
-    // Even if blocked by rfkill.
-    vela::bluetooth::setPowered(
-        this, m_adapter, on, [this, request] { return m_bluetoothRequest.pending(request); },
-        [this, request] { m_bluetoothRequest.refused(request); });
-}
-
+// Bluetooth counts when there is an adapter, or a blocked platform switch
+// that turning it on unblocks (docs/bluetooth.md §6.3).
 bool SystemStatus::airplaneMode() const
 {
-    return (!m_wifiAvailable || !wifiEnabled()) && (m_adapter.isEmpty() || !bluetoothEnabled())
-        && (m_wifiAvailable || !m_adapter.isEmpty());
+    const bool bluetooth = m_bluetooth->available() || m_bluetooth->platformBlocked();
+    return (!m_wifiAvailable || !wifiEnabled()) && (!bluetooth || !m_bluetooth->powered()) && (m_wifiAvailable || bluetooth);
 }
 
 void SystemStatus::setAirplaneMode(bool on)
@@ -183,7 +141,9 @@ void SystemStatus::setAirplaneMode(bool on)
     if (m_wifiAvailable) {
         setWifiEnabled(!on);
     }
-    setBluetoothEnabled(!on);
+    if (m_bluetooth->powered() == on) {
+        m_bluetooth->setPowered(!on);
+    }
 }
 
 // ----------------------------------------------------------------- battery --

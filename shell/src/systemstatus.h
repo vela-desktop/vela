@@ -10,13 +10,18 @@
 #include <QString>
 #include <QVariantMap>
 
+namespace vela::bluetooth {
+class Bluetooth;
+}
+
 // System status for the taskbar icons and quick settings (Win+A), like Windows
-// 11: network (NetworkManager), Bluetooth
-// (BlueZ), battery (UPower), power saving profile (power-profiles-daemon).
+// 11: network (NetworkManager), battery (UPower), power saving profile
+// (power-profiles-daemon), and airplane mode over Wi-Fi and Bluetooth.
 // Everything updates itself when it changes; what the system lacks is
-// "unavailable" and the panel doesn't show it. The volume is vela-audio's
-// (common/audio, docs/audio.md), the brightness the compositor's
-// (brightness.h, docs/brightness.md).
+// "unavailable" and the panel doesn't show it. Bluetooth itself is
+// vela-bluetooth's (common/bluetooth, docs/bluetooth.md), the volume
+// vela-audio's (common/audio, docs/audio.md), the brightness the
+// compositor's (brightness.h, docs/brightness.md).
 class SystemStatus : public QObject {
     Q_OBJECT
     // Network
@@ -26,9 +31,6 @@ class SystemStatus : public QObject {
     Q_PROPERTY(int wifiStrength READ wifiStrength NOTIFY networkChanged)
     Q_PROPERTY(bool wifiAvailable READ wifiAvailable NOTIFY networkChanged)
     Q_PROPERTY(bool wifiEnabled READ wifiEnabled NOTIFY networkChanged)
-    // Bluetooth
-    Q_PROPERTY(bool bluetoothAvailable READ bluetoothAvailable NOTIFY bluetoothChanged)
-    Q_PROPERTY(bool bluetoothEnabled READ bluetoothEnabled NOTIFY bluetoothChanged)
     // Battery
     Q_PROPERTY(bool batteryPresent READ batteryPresent NOTIFY batteryChanged)
     Q_PROPERTY(int batteryPercent READ batteryPercent NOTIFY batteryChanged)
@@ -44,7 +46,8 @@ class SystemStatus : public QObject {
     Q_PROPERTY(bool airplane READ airplaneMode NOTIFY airplaneChanged)
 
 public:
-    explicit SystemStatus(QObject* parent = nullptr);
+    // `bluetooth`: the process's client of vela-bluetooth, for airplane mode.
+    explicit SystemStatus(vela::bluetooth::Bluetooth* bluetooth, QObject* parent = nullptr);
     ~SystemStatus() override;
 
     bool networkConnected() const { return m_networkConnected; }
@@ -52,13 +55,9 @@ public:
     QString networkName() const { return m_networkName; }
     int wifiStrength() const { return m_wifiStrength; }
     bool wifiAvailable() const { return m_wifiAvailable; }
-    // What the user asked for until NetworkManager or BlueZ has done it (requested.h).
+    // What the user asked for until NetworkManager has done it (requested.h).
     bool wifiEnabled() const { return m_wifiRequest.value(m_wifiEnabled); }
     Q_INVOKABLE void setWifiEnabled(bool on);
-
-    bool bluetoothAvailable() const { return !m_adapter.isEmpty(); }
-    bool bluetoothEnabled() const { return m_bluetoothRequest.value(m_bluetoothEnabled); }
-    Q_INVOKABLE void setBluetoothEnabled(bool on);
 
     // Airplane mode: no Wi-Fi or Bluetooth.
     Q_INVOKABLE bool airplaneMode() const;
@@ -80,14 +79,12 @@ public:
 
 signals:
     void networkChanged();
-    void bluetoothChanged();
     void batteryChanged();
     void powerProfileChanged();
     void airplaneChanged();
 
 private Q_SLOTS:
     void refreshNetwork();
-    void refreshBluetooth();
     void refreshBattery();
     void refreshPowerProfile();
     void onPropertiesChanged(const QString& interface, const QVariantMap& changed, const QStringList& invalidated);
@@ -101,9 +98,7 @@ private:
     bool m_wifiEnabled = false;
     Requested m_wifiRequest { [this] { emit networkChanged(); } };
 
-    QString m_adapter; // BlueZ adapter path
-    bool m_bluetoothEnabled = false;
-    Requested m_bluetoothRequest { [this] { emit bluetoothChanged(); } };
+    vela::bluetooth::Bluetooth* m_bluetooth;
 
     bool m_batteryPresent = false;
     int m_batteryPercent = 0;

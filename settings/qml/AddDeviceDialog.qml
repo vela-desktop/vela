@@ -3,8 +3,8 @@
 
 import QtQuick
 import Vela.Bluetooth
+import Vela.Bluetooth.Ui
 import Vela.Controls
-import "bluetooth.js" as State
 
 // "Add a device" (docs/bluetooth.md §9.1): a discoverable search while it
 // is open, and the devices found, nearest first. A click starts an Add; while
@@ -134,7 +134,7 @@ Dialog {
                         Icon {
                             x: 4
                             anchors.verticalCenter: parent.verticalCenter
-                            name: State.icon(candidate.modelData)
+                            name: DeviceState.icon(candidate.modelData)
                             size: 24
                         }
                         Column {
@@ -151,7 +151,7 @@ Dialog {
                             Text {
                                 width: parent.width
                                 visible: text !== ""
-                                text: State.state(candidate.modelData)
+                                text: DeviceState.state(candidate.modelData)
                                 color: candidate.modelData.message && !candidate.modelData.operation ? Theme.critical : Theme.textSecondary
                                 font.pixelSize: Theme.fontCaption
                                 wrapMode: Text.Wrap

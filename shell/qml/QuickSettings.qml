@@ -4,13 +4,16 @@
 import QtQuick
 import QtQuick.Templates as T
 import Vela.Audio
+import Vela.Bluetooth
+import Vela.Bluetooth.Ui
 import Vela.Controls
 
 // Quick settings (Win+A, or a click on the taskbar's system icons), like
 // Windows 11: tiles to turn on and off (Wi-Fi, Bluetooth, airplane mode, power
 // saving, night light...), brightness and volume, battery and Settings at the
 // bottom. An acrylic panel at the bottom right. Some tiles have a page of
-// their own: the Wi-Fi arrow lists the networks to choose one, Accessibility
+// their own: the Wi-Fi arrow lists the networks to choose one, the
+// Bluetooth arrow the paired devices to connect or disconnect, Accessibility
 // turns on the magnifier, color filters and sticky keys; the arrow next to
 // the volume opens the sound page (outputs and the mixer, Win+Ctrl+V). The
 // brightness is the display the panel opens on (docs/brightness.md §8); with
@@ -26,8 +29,8 @@ Window {
     height: room + d.roomHeight + 12
     color: "transparent"
 
-    // "" the quick settings; "wifi", "sound", "brightness" and "accessibility"
-    // their pages.
+    // "" the quick settings; "wifi", "bluetooth", "sound", "brightness" and
+    // "accessibility" their pages.
     property string page: ""
 
     // The brightness of the display the panel is on, and of every display
@@ -92,6 +95,10 @@ Window {
             wifiPage.password = ""
             Network.scan() // cached networks appear immediately, rescan in background
         }
+        if (name === "bluetooth") {
+            bluetoothPage.expanded = ""
+            Bluetooth.clearError()
+        }
         panel.forceActiveFocus()
     }
     // At the bottom right, above the taskbar: from panel to output
@@ -153,7 +160,8 @@ Window {
     // configures per change, none per frame, and at rest the window is just
     // the panel and its shadow, so clicks above it reach what is below.
     readonly property real targetHeight: page === "" ? content.height + 24 + footer.height
-        : (page === "wifi" ? wifiPage.finalHeight : page === "sound" ? soundPage.height
+        : (page === "wifi" ? wifiPage.finalHeight : page === "bluetooth" ? bluetoothPage.finalHeight
+           : page === "sound" ? soundPage.height
            : page === "brightness" ? brightnessPage.height : accessPage.height) + 32
     onTargetHeightChanged: d.fit()
 
@@ -650,18 +658,22 @@ Window {
                             onToggled: root.openSettings("network")
                             onContextMenu: root.openSettings("network")
                         }
+                        // vela-bluetooth's (docs/bluetooth.md §9.2). A blocked
+                        // platform switch shows it off: turning it on
+                        // unblocks it.
                         Tile {
-                            visible: Status.bluetoothAvailable
-                            icon: Status.bluetoothEnabled ? "network-bluetooth" : "network-bluetooth-inactive"
+                            objectName: "bluetoothTile"
+                            visible: Bluetooth.available || Bluetooth.platformBlocked
+                            icon: Bluetooth.powered ? "network-bluetooth" : "network-bluetooth-inactive"
                             label: qsTr("Bluetooth")
-                            checked: Status.bluetoothEnabled
-                            split: true
-                            onToggled: Status.setBluetoothEnabled(!Status.bluetoothEnabled)
-                            onDetails: root.openSettings("bluetooth-settings")
+                            checked: Bluetooth.powered
+                            split: Bluetooth.available
+                            onToggled: Bluetooth.setPowered(!Bluetooth.powered)
+                            onDetails: root.showPage("bluetooth")
                             onContextMenu: root.openSettings("bluetooth-settings")
                         }
                         Tile {
-                            visible: Status.wifiAvailable || Status.bluetoothAvailable
+                            visible: Status.wifiAvailable || Bluetooth.available || Bluetooth.platformBlocked
                             icon: "network-flightmode-on"
                             label: qsTr("Airplane mode")
                             checked: Status.airplane
@@ -903,6 +915,163 @@ Window {
                     Link {
                         text: qsTr("More Wi-Fi settings")
                         target: "network"
+                    }
+                }
+
+                // -------------------------------------------------- Bluetooth --
+                // The paired devices, connected first, with their battery
+                // (docs/bluetooth.md §9.2); a click opens one, with Connect or
+                // Disconnect. Adding a device is Settings' job.
+                Column {
+                    id: bluetoothPage
+                    objectName: "bluetoothPage"
+                    visible: root.page === "bluetooth"
+                    x: 16
+                    y: 16
+                    width: parent.width - 32
+                    spacing: 8
+                    property string expanded: "" // the open device's path
+                    readonly property bool listed: Bluetooth.powered && Bluetooth.paired.length > 0
+                    // Its height once the devices have finished opening or
+                    // closing, as the Wi-Fi page's.
+                    readonly property real finalHeight: height
+                        + (devicesView.visible ? Math.min(devices.finalHeight, 340) - devicesView.height : 0)
+
+                    PageHeader {
+                        title: qsTr("Bluetooth")
+                        Switch {
+                            showLabel: false
+                            checked: Bluetooth.powered
+                            Accessible.name: qsTr("Bluetooth")
+                            onToggled: Bluetooth.setPowered(checked)
+                        }
+                    }
+                    Text {
+                        visible: !bluetoothPage.listed
+                        width: parent.width
+                        topPadding: 8
+                        bottomPadding: 8
+                        text: !Bluetooth.powered ? qsTr("Bluetooth is turned off.") : qsTr("No paired devices.")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontBody
+                        wrapMode: Text.WordWrap
+                    }
+                    Flickable {
+                        id: devicesView
+                        visible: bluetoothPage.listed
+                        width: parent.width
+                        height: Math.min(contentHeight, 340)
+                        contentHeight: devices.height
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        Column {
+                            id: devices
+                            width: parent.width
+                            spacing: 2
+                            readonly property real finalHeight: {
+                                let h = height
+                                for (let i = 0; i < deviceRows.count; ++i) {
+                                    const item = deviceRows.itemAt(i)
+                                    if (item) {
+                                        h += item.fullHeight - item.height
+                                    }
+                                }
+                                return h
+                            }
+                            Repeater {
+                                id: deviceRows
+                                model: bluetoothPage.listed ? Bluetooth.paired : []
+                                delegate: ListItem {
+                                    id: device
+                                    required property var modelData
+                                    readonly property bool open: bluetoothPage.expanded === modelData.path
+                                    readonly property bool busy: modelData.operation !== ""
+                                    readonly property real fullHeight: open ? 52 + 32 + 12 : 52
+                                    objectName: "device " + modelData.name
+                                    width: devices.width
+                                    height: fullHeight
+                                    highlighted: open
+                                    text: modelData.name
+                                    Accessible.description: DeviceState.description(modelData)
+                                    Behavior on height { enabled: Theme.motion > 0; Eased {} }
+                                    onClicked: bluetoothPage.expanded = open ? "" : modelData.path
+                                    function activate() {
+                                        if (DeviceState.cancellable(modelData)) {
+                                            Bluetooth.cancel(modelData.path)
+                                        } else if (!busy) {
+                                            if (modelData.connected) {
+                                                Bluetooth.disconnectDevice(modelData.path)
+                                            } else {
+                                                Bluetooth.connectDevice(modelData.path)
+                                            }
+                                        }
+                                    }
+
+                                    Icon {
+                                        x: 12
+                                        y: 16
+                                        size: 20
+                                        name: DeviceState.icon(device.modelData)
+                                    }
+                                    Column {
+                                        x: 44
+                                        y: (52 - height) / 2
+                                        width: parent.width - 56
+                                        Text {
+                                            width: parent.width
+                                            text: device.modelData.name
+                                            color: Theme.text
+                                            font.pixelSize: Theme.fontBody
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: DeviceState.description(device.modelData)
+                                            color: Theme.textSecondary
+                                            font.pixelSize: Theme.fontCaption
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    // Shown while open, and while it closes; a
+                                    // click there doesn't close it.
+                                    MouseArea {
+                                        y: 52
+                                        width: parent.width
+                                        height: parent.height - 52
+                                        clip: true
+                                        Button {
+                                            objectName: "deviceAction"
+                                            visible: device.open || device.height > 52
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 12
+                                            width: 120
+                                            accent: !device.modelData.connected && !DeviceState.cancellable(device.modelData)
+                                            usable: Bluetooth.active && (!device.busy || DeviceState.cancellable(device.modelData))
+                                            text: DeviceState.cancellable(device.modelData) ? qsTr("Cancel")
+                                                : device.modelData.connected ? qsTr("Disconnect") : qsTr("Connect")
+                                            onClicked: device.activate()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // A refusal that isn't a device's own (the screen locked,
+                    // another session in front...).
+                    Text {
+                        objectName: "bluetoothError"
+                        visible: text !== ""
+                        width: parent.width
+                        text: Bluetooth.error
+                        color: Theme.critical
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.WordWrap
+                    }
+                    Item { width: 1; height: 4 }
+                    Link {
+                        text: qsTr("More Bluetooth settings")
+                        target: "bluetooth-settings"
                     }
                 }
 

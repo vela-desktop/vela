@@ -334,10 +334,10 @@ static struct vela_bt_device *requester(struct vela_bt_daemon *d, sd_bus_message
     } else if (!d->session_active) {
         why = "the session is in the background";
     } else if (!solicited && (!d->presenters || sd_bus_track_count(d->presenters) == 0)) {
-        // B3 has no shell dialog yet. Only a UI that explicitly promises to
-        // draw spontaneous prompts may make them wait for an answer (B4).
-        // No presenter: refuse immediately, including on a locked screen
-        // before the compositor propagates LockedHint (B5).
+        // Only a UI that explicitly promises to draw spontaneous prompts
+        // (the shell, §9.3) may make them wait for an answer. No presenter:
+        // refuse immediately, including on a locked screen before the
+        // compositor propagates LockedHint.
         why = "no presenter for unsolicited pairing";
     } else if (d->session_locked) {
         // Nobody is there to answer (§6.4).

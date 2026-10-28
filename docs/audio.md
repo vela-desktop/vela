@@ -41,7 +41,7 @@ code: decisions are made here, and the code follows them.
 | Sample rate | **automatic by default**: the mix follows what plays (44.1 kHz music is not converted), on every device | better than Windows, whose shared mode converts everything to one fixed format. When a device has trouble, the fix is a setting on that device, even at the cost of an audio restart, never lower quality for everyone (§8.1) |
 | "Microphone in use" | **honest**: Settings' own level meter counts too | an indicator that hides someone, even us, can no longer be trusted (§7.2) |
 | Test sound | **synthesized** in code, left channel then right | no sound file to ship, no decoder (§7.3) |
-| Bluetooth battery | **BlueZ over D-Bus**, as today | PipeWire doesn't expose it |
+| Bluetooth battery | **vela-bluetooth** ([Bluetooth](bluetooth.md) §8) | PipeWire doesn't expose it; one Bluetooth client |
 | Ducking | a **long-term goal**, not specified here | §10 |
 
 ## 3. PipeWire and WirePlumber
@@ -130,7 +130,7 @@ server says: optimistic values exist only in the Qt layer (§5.4).
     Route's `available` is `no`). Unplugged endpoints aren't offered, except
     the current default, as today;
   - `isDefault`;
-  - the Bluetooth battery, if any (BlueZ, §2).
+  - the Bluetooth battery, if any (vela-bluetooth, §2).
 - Sink monitors are not inputs: they are not microphones.
 - A **suspended** node may report fewer volumes than it has channels: two,
   until its format is set (seen in A1 on the fixture's 5.1 output). The
@@ -221,7 +221,8 @@ server says: optimistic values exist only in the Qt layer (§5.4).
 - **Volume indicator** (`VolumeOsd.qml`): unchanged, plus the microphone
   variant (no slider). Done in A2.
 - **Quick settings mixer**: outputs, with a Bluetooth headset's battery
-  (read from BlueZ in `Audio`, then followed through `PropertiesChanged`);
+  (from the process's vela-bluetooth client, matched by the headset's
+  address);
   each app's volume, mute, output and now **input** (for apps that record).
   It always follows the system. Done in A2; the level bars in A3 (below).
 - **Wheel on a taskbar button**: one step for that app, as today. No more
@@ -480,7 +481,8 @@ What Vela does:
   - `volumesteps.h`: the grid, moved from the shell.
   - `levelmeter.h`, `levelmeter.cpp`, `testsound.h`, `testsound.cpp`: Vela's
     own streams (§7), on libpipewire.
-  - The Bluetooth battery (BlueZ) is in `Audio` (A2).
+  - The Bluetooth battery is in `Audio` (A2), read from vela-bluetooth since
+    Bluetooth's B4.
   - `config.h`, `config.cpp`: `Config`, Vela's two files, the `settings`
     metadata and the restarts through systemd (§8, A5).
 - `shell/src/audioapps.h`: the resolver both processes pass (§5.2).
@@ -605,8 +607,8 @@ audio or WirePlumber state.
 - **Shell (`audio-keys`, done in A2)**: `SoundKeys` on the library: volume
   keys with their indicator, a step unmuting, the microphone key whose
   indicator waits for the server, the wheel on an app's taskbar button.
-  `audio-view` also covers the Bluetooth battery, against a fake BlueZ on a
-  private bus. The compositor forwarding the microphone key is in the
+  `audio-view` also covers the Bluetooth battery, against a fake
+  vela-bluetooth on a private bus. The compositor forwarding the microphone key is in the
   functional tests.
 - **Interface (functional)**, not written yet: the volume indicator (keys,
   microphone mute key), quick settings mixer (outputs, app

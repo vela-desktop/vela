@@ -5,16 +5,13 @@ settings, and how Vela shares Bluetooth with other desktop sessions. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** B0–B3 are implemented in PR #146: the daemon and agent run,
-> and Settings uses the shared client library. Shell, audio, search leases,
-> packaging and hardware validation remain B4–B7; logind lock-state reporting
-> is already included here as a safety prerequisite.
-> Everything in §3 is planned for beta 0.1. See §12.
-> Until B4 supplies the shell's question presenter, unsolicited pairing and
-> service authorization requests are immediately refused unless a trusted UI
-> explicitly calls `PresentQuestions`. Settings does not opt in: only its own
-> Add questions appear there. The compositor already propagates LockedHint;
-> the rest of the B5 work remains separate.
+> **Status:** B0–B3 are implemented (PR #146): the daemon and agent run,
+> and Settings uses the shared client library; logind lock-state reporting
+> is already included as a safety prerequisite. B4 adds the shell (quick
+> settings, the question dialog and notifications) and `vela-audio`'s
+> batteries from the daemon. Search leases, packaging and hardware
+> validation remain B5–B7. Everything in §3 is planned for beta 0.1. See
+> §12.
 
 ## 1. Why from scratch
 
@@ -207,9 +204,9 @@ register such switches.
 
 - Turning on with an adapter: if the adapter's own switch is soft-blocked
   and not hard-blocked, the daemon writes `RFKILL_OP_CHANGE` with that
-  index to `/dev/rfkill`. Then it sets `Powered`. This keeps today's retry
-  while BlueZ notices the unblock (`bluetoothpower.h`). No other switch is
-  touched.
+  index to `/dev/rfkill`. Then it sets `Powered`, retrying while BlueZ
+  notices the unblock, as the shell's own code did before B4. No other
+  switch is touched.
 - Turning on with no adapter at all, while a platform Bluetooth switch is
   soft-blocked: the built-in radio may be gone because of that switch. The
   switch in Settings and quick settings shows Off. Turning it on unblocks
@@ -222,8 +219,7 @@ register such switches.
 
 `VELA_RFKILL` and `VELA_SYSFS` replace `/dev/rfkill` and `/sys` in the tests.
 Only the test build of the daemon (`vela-bluetooth-testing`, never
-installed) reads them; the shell's own unblock (B0) reads them too, until B4
-removes it.
+installed) reads them.
 
 **Without an adapter**, the property `PlatformBlocked` (§7.1) is true while a
 platform switch of type Bluetooth is blocked: the switch shows Off and can
@@ -503,6 +499,7 @@ time, because BlueZ sends no more (§6.5).
 ```
 methods
   Questions() → a(toa{sv})              the open question, if any: id, device, details
+  PresentQuestions()                    the caller draws the unsolicited ones (§9.3)
   Answer(t id, s response, s value)
 signals
   Question(t id, o device, a{sv} details)
@@ -519,6 +516,12 @@ starts, and again when the daemon restarts. From then on, while it stays
 on the bus, it receives `Question`, `QuestionChanged` and
 `QuestionClosed`. `Add(device, promptsHere = true)` does the same for its
 caller.
+
+**Unsolicited questions** (a device asking by itself, §6.4) wait for an
+answer only while a client of Vela's UI has called `PresentQuestions()`
+and stays on the bus: the shell does, when it starts and whenever the
+daemon restarts. Without one, the daemon refuses them at once. Settings
+doesn't: only its own Adds' questions appear there.
 
 **Details:**
 
@@ -586,7 +589,7 @@ to Vela's own UI.
 |---|---|
 | Properties, `Devices` | any process of the same user |
 | `SetPowered`, `UseAdapter`, `StartSearch`, `StopSearch`, `StopBeingVisible`, `Add` with `promptsHere = false`, `Connect`, `Disconnect`, `Remove`, `Rename`, `Cancel` | same user, not sandboxed |
-| `Add` with `promptsHere = true`, `Questions`, `Answer`; receiving `Question`, `QuestionChanged` and `QuestionClosed` | **Vela's UI only**: `vela-shell` and `vela-settings` |
+| `Add` with `promptsHere = true`, `Questions`, `PresentQuestions`, `Answer`; receiving `Question`, `QuestionChanged` and `QuestionClosed` | **Vela's UI only**: `vela-shell` and `vela-settings` |
 
 - **Same user:** the caller's UID, from the bus credentials
   (`sd_bus_query_sender_creds`), equals the daemon's.
@@ -631,7 +634,10 @@ A client library, like `common/audio` for sound:
   process registers with its own instance. It has `available`, `devices`,
   `paired`, `found`, `question` and the actions;
 - the `requested.h` behaviour for switches: shown at once, and returned to
-  BlueZ's state if BlueZ refuses or never does it.
+  BlueZ's state if BlueZ refuses or never does it;
+- the QML module `Vela.Bluetooth.Ui`, what Settings and the shell draw
+  alike: `DeviceState` (a device's state, battery and icon in words) and
+  `BluetoothQuestion` (a question of the agent, §9.3).
 
 A refusal that isn't a device's own failure (`Busy`, `Inactive`, a name
 `Rename` refuses...) is the model's `error`, in plain words. A device's
@@ -641,8 +647,9 @@ already knows.
 
 Users: `vela-shell` (quick settings, the question dialog and notifications,
 `SystemStatus` for airplane mode), `vela-settings`, and `vela-audio` for
-headset batteries. If the daemon is missing, the model is empty and
-`available` is false.
+headset batteries, which it matches to PipeWire's devices by address. Each
+process has one client, which `vela-audio` shares. If the daemon is
+missing, the model is empty and `available` is false.
 
 ## 9. UI
 
@@ -677,9 +684,15 @@ for its Bluetooth card.
 ### 9.2 Quick settings
 
 - The Bluetooth tile gets an arrow, as Wi-Fi has. It opens a list of paired
-  devices with their battery level and connect or disconnect, plus "More
+  devices, connected first, with their state and battery level, plus "More
   Bluetooth settings".
+  - A click opens a device, as a Wi-Fi network opens: Connect or
+    Disconnect, or Cancel while it connects.
+  - The page has the switch too, and the refusals that aren't a device's own
+    ("the screen is locked"...).
 - Unpaired devices are not listed there.
+- With a blocked platform switch and no adapter (§6.3), the tile shows Off,
+  without its arrow; turning it on unblocks the switch.
 
 ### 9.3 Questions from the agent
 
@@ -691,14 +704,21 @@ for its Bluetooth card.
     field when one is needed.
   - Enter confirms and Esc cancels. The field has focus.
   - Every element has an accessible name. The code is read digit by digit.
-  - The dialog closes by itself on `QuestionClosed`.
+  - The dialog closes by itself on `QuestionClosed`. Going to another
+    window leaves it open: the device is still waiting.
   - It shows the time left from `expires` once fewer than 15 seconds
     remain.
+  - An answer the daemon refuses (a code out of range...) shows its reason
+    under the question.
 - **`drawnBy` = `shell`, unsolicited** (a phone or headset starting the
   pairing, or a service request): a notification first.
   - It shows the code when there is one.
   - Its actions are "Pair" or "Allow", and "Deny". For a PIN or passkey to
-    type, the action is "Enter code", which opens the dialog.
+    type, the action is "Enter code", which opens the dialog. For a code
+    shown here and typed on the device, the only action is "Cancel".
+  - A click on the notification opens the dialog with the whole question.
+  - It is critical: it stays until answered, and shows during Do not
+    disturb. It is transient: it never waits in the notification center.
   - If the notification closes without an answer, the request is rejected.
 
 ## 10. Removing BlueDevil
@@ -805,12 +825,32 @@ fake itself can stay in Qt, because it is test code. Cases:
 - the daemon missing;
 - the requested switch.
 
+**Shell tests** (`bluetooth-shell`, the shell's code against the daemon on
+the fake):
+
+- an unsolicited request as a notification: its words, code and actions,
+  the name escaped in the markup, Pair, Deny, and closing it without an
+  answer;
+- "Enter code" and a click opening the dialog, and the dialog's answers;
+- a question closed elsewhere closing the notification;
+- Do not disturb still showing it;
+- an Add without a UI of its own opening the dialog at once;
+- Settings leaving during its Add, and the dialog taking the question over;
+- presenting again after the daemon restarts;
+- airplane mode turning Bluetooth off and on.
+
+`vela-audio`'s battery is in `audio-view`, against a fake daemon.
+
 **QML tests** (Settings' with a fake `Vela.Bluetooth` written in QML):
 
 - the Settings page, including "Search again" and "Stop being visible";
-- quick settings' list;
-- the dialog and inline questions for every kind, with Enter, Esc, focus,
-  the time left and accessible names.
+- the question (`BluetoothQuestion`, inline in Settings and inside the
+  shell's dialog) for every kind, with Enter, Esc, focus, the time left and
+  accessible names;
+- planned: quick settings' list and the shell's dialog window, which need a
+  runner for the shell's windows. Until then their logic is in the shell
+  tests above, and they were looked at in a headless shell against a fake
+  daemon.
 
 **By hand** (recorded in [hardware](hardware.md)), in a Vela session with
 only `bluez`:
@@ -838,7 +878,7 @@ only `bluez`:
 | B1 | `vela-bluetooth`: start by the compositor, model, operations, errors, rfkill (§6.3), the `org.vela.Bluetooth` API settled with its authorization (§7.3); the fake BlueZ and the daemon's tests | done |
 | B2 | The agent (§6.4), concurrency (§6.5), the questions (§7.2), and the session rules (§6.7), with tests | done |
 | B3 | `common/bluetooth`; the Settings page rewritten (§9.1); the old Settings code deleted | done |
-| B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | |
+| B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | done |
 | B5 | Search leases and visibility (§6.6); extend the lock-state integration already introduced in B3 | |
 | B6 | Docs and packaging: installation, hardware, testing | |
 | B7 | The user tries it on real devices (§11, "by hand") | |

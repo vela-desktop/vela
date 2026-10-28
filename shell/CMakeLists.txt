@@ -43,6 +43,8 @@ qt_add_executable(vela-shell
     src/mediakeys.cpp
     src/mediakeys.h
     src/asyncprocess.h
+    src/bluetoothprompts.cpp
+    src/bluetoothprompts.h
     src/network.cpp
     src/network.h
     src/notifications.cpp
@@ -124,6 +126,7 @@ set(VELA_QML_FILES
     qml/TextMenu.qml
     qml/RunDialog.qml
     qml/ConfirmDialog.qml
+    qml/BluetoothDialog.qml
     qml/SourceChooser.qml
     qml/PropertiesDialog.qml
     qml/CheckBox.qml
@@ -169,7 +172,9 @@ target_link_libraries(vela-shell PRIVATE
     vela-controlsplugin
     vela-capture
     vela-app # the mouse's Back and Forward buttons (common/)
-    vela-audio) # the sound (common/audio, docs/audio.md)
+    vela-audio # the sound (common/audio, docs/audio.md)
+    vela-bluetooth-client # Bluetooth (common/bluetooth, docs/bluetooth.md)
+    vela-bluetooth-uiplugin)
 
 install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -256,14 +261,14 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-service-models COMMAND vela-service-models-test)
     set_tests_properties(shell-service-models PROPERTIES TIMEOUT 90)
 
-    # Switches backed by BlueZ and NetworkManager move at once and come back
-    # if the service fails (src/requested.h), against fakes on a private bus.
+    # Switches backed by NetworkManager move at once and come back if the
+    # service fails (src/requested.h), against a fake on a private bus.
     qt_add_executable(vela-requested-switches-test
         tests/requested_switches.cpp
-        src/requested.h src/bluetoothpower.h src/systemstatus.cpp src/systemstatus.h)
+        src/requested.h src/systemstatus.cpp src/systemstatus.h)
     target_include_directories(vela-requested-switches-test PRIVATE src)
     target_compile_options(vela-requested-switches-test PRIVATE -Wall -Wextra)
-    target_link_libraries(vela-requested-switches-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
+    target_link_libraries(vela-requested-switches-test PRIVATE vela-bluetooth-client Qt6::Core Qt6::DBus Qt6::Test)
     add_test(NAME shell-requested-switches COMMAND vela-requested-switches-test)
     set_tests_properties(shell-requested-switches PROPERTIES TIMEOUT 60)
 
@@ -291,7 +296,7 @@ endif()
 # shell/src/language.h). After changing texts:
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
-qt_add_translations(TARGETS vela-shell SOURCE_TARGETS vela-shell
+qt_add_translations(TARGETS vela-shell SOURCE_TARGETS vela-shell vela-bluetooth-client vela-bluetooth-ui
     TS_FILES i18n/vela-shell_it.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-shell_lupdate

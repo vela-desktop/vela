@@ -11,6 +11,8 @@
 #include "appmodel.h"
 #include "audio.h"
 #include "audioapps.h"
+#include "bluetooth/bluetooth.h"
+#include "bluetoothprompts.h"
 #include "brightness.h"
 #include "clipboard.h"
 #include "config.h"
@@ -63,6 +65,7 @@
 #include <memory>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
+Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
 
 namespace {
 
@@ -187,6 +190,8 @@ const Panel panels[] = {
     // Questions such as "Empty Recycle Bin", and what to share on screen.
     { "ConfirmDialog", "vela-confirm", layerOverlay, centered, 0, keysOnDemand },
     { "SourceChooser", "vela-share", layerOverlay, centered, 0, keysOnDemand },
+    // The Bluetooth agent's questions (docs/bluetooth.md §9.3).
+    { "BluetoothDialog", "vela-bluetooth-question", layerOverlay, centered, 0, keysOnDemand },
     { "PropertiesDialog", "vela-properties", layerTop, centered, 0, keysOnDemand },
     { "QuickSettings", "vela-quick-settings", layerTop, bottomRight, 0, keysOnDemand },
     { "NotificationCenter", "vela-notification-center", layerTop, bottomRight, 0, keysOnDemand },
@@ -376,11 +381,16 @@ int main(int argc, char* argv[])
     // History turned on or off from Settings (vela-shell.conf).
     QObject::connect(&config, &Config::clipboardChanged, &clipboard,
         [&config, &clipboard] { clipboard.setEnabled(config.clipboardHistory()); });
-    SystemStatus status;
+    // Bluetooth (docs/bluetooth.md §9.2, §9.3): the shell is Vela's UI, and
+    // draws the questions Settings doesn't.
+    vela::bluetooth::Bluetooth bluetooth(true);
+    BluetoothPrompts bluetoothPrompts(&bluetooth, &notifications);
+    SystemStatus status(&bluetooth);
     Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
+    audio.setBluetooth(&bluetooth); // headsets' batteries
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);
@@ -441,6 +451,8 @@ int main(int argc, char* argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Clip"), &clipboard);
     engine.rootContext()->setContextProperty(QStringLiteral("Snip"), &snip);
     engine.rootContext()->setContextProperty(QStringLiteral("Status"), &status);
+    qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
+    engine.rootContext()->setContextProperty(QStringLiteral("BluetoothPrompts"), &bluetoothPrompts);
     engine.rootContext()->setContextProperty(QStringLiteral("Brightness"), &brightness);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Sound"), &sound);

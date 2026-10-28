@@ -318,6 +318,17 @@ void Bluetooth::stopBeingVisible()
     call(QStringLiteral("StopBeingVisible"), {}, callTimeout);
 }
 
+void Bluetooth::presentQuestions()
+{
+    if (!m_ui || m_presenting) {
+        return;
+    }
+    m_presenting = true;
+    if (m_running) {
+        call(QStringLiteral("PresentQuestions"), {}, callTimeout, {}, Refusal::Logged);
+    }
+}
+
 void Bluetooth::clearError()
 {
     setError({});
@@ -441,6 +452,9 @@ void Bluetooth::appeared()
             }
         },
         Refusal::Logged);
+    if (m_presenting) {
+        call(QStringLiteral("PresentQuestions"), {}, callTimeout, {}, Refusal::Logged);
+    }
     if (m_ui) {
         call(
             QStringLiteral("Questions"), {}, callTimeout,

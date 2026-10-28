@@ -30,7 +30,7 @@
 static const char *const *ui_executables(void)
 {
 #ifdef VELA_BLUETOOTH_TESTING
-    static const char *const testing[] = { VELA_BT_TEST_UI, VELA_BT_TEST_CLIENT, NULL };
+    static const char *const testing[] = { VELA_BT_TEST_UI, VELA_BT_TEST_CLIENT, VELA_BT_TEST_SHELL, NULL };
     return testing;
 #else
     static const char *const installed[] = { VELA_BT_SHELL, VELA_BT_SETTINGS, NULL };

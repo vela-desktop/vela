@@ -65,7 +65,7 @@ install(TARGETS vela-bluetooth RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 
 if(VELA_BUILD_TOOLS)
     # The daemon the tests run (§11): it trusts the tests' UI clients (the
-    # daemon's tests and the client library's) and takes a fake /dev/rfkill
+    # daemon's tests, the client library's and the shell's) and takes a fake /dev/rfkill
     # and /sys. Never installed.
     add_executable(vela-bluetooth-testing src/main.c)
     target_compile_options(vela-bluetooth-testing PRIVATE -Wall -Wextra -Wno-unused-parameter)
@@ -73,7 +73,8 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-bluetooth-testing PRIVATE vela-bluetooth-core)
     target_compile_definitions(vela-bluetooth-testing PRIVATE VELA_BLUETOOTH_TESTING
         VELA_BT_TEST_UI="${PROJECT_BINARY_DIR}/tests/bluetooth/vela-bluetooth-daemon-test"
-        VELA_BT_TEST_CLIENT="${PROJECT_BINARY_DIR}/tests/bluetooth/vela-bluetooth-client-test")
+        VELA_BT_TEST_CLIENT="${PROJECT_BINARY_DIR}/tests/bluetooth/vela-bluetooth-client-test"
+        VELA_BT_TEST_SHELL="${PROJECT_BINARY_DIR}/tests/bluetooth/vela-bluetooth-shell-test")
 
     # The pure parts: errors, steps, rfkill, callers, names, answers.
     find_package(GTest)

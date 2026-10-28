@@ -848,6 +848,45 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>DeviceState</name>
+    <message>
+        <source>Waiting for you...</source>
+        <translation>In attesa di una tua risposta...</translation>
+    </message>
+    <message>
+        <source>Pairing...</source>
+        <translation>Associazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connecting...</source>
+        <translation>Connessione in corso...</translation>
+    </message>
+    <message>
+        <source>Disconnecting...</source>
+        <translation>Disconnessione in corso...</translation>
+    </message>
+    <message>
+        <source>Removing...</source>
+        <translation>Rimozione in corso...</translation>
+    </message>
+    <message>
+        <source>Renaming...</source>
+        <translation>Ridenominazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>Connesso</translation>
+    </message>
+    <message>
+        <source>Paired</source>
+        <translation>Associato</translation>
+    </message>
+    <message>
+        <source>Battery %1%</source>
+        <translation>Batteria %1%</translation>
+    </message>
+</context>
+<context>
     <name>Dialog</name>
     <message>
         <source>OK</source>
@@ -2791,45 +2830,6 @@ Specifiche sistema
     <message>
         <source>Every app uses the default output and input again</source>
         <translation>Ogni app torna a usare l&apos;output e l&apos;input predefiniti</translation>
-    </message>
-</context>
-<context>
-    <name>bluetooth</name>
-    <message>
-        <source>Waiting for you...</source>
-        <translation>In attesa di una tua risposta...</translation>
-    </message>
-    <message>
-        <source>Pairing...</source>
-        <translation>Associazione in corso...</translation>
-    </message>
-    <message>
-        <source>Connecting...</source>
-        <translation>Connessione in corso...</translation>
-    </message>
-    <message>
-        <source>Disconnecting...</source>
-        <translation>Disconnessione in corso...</translation>
-    </message>
-    <message>
-        <source>Removing...</source>
-        <translation>Rimozione in corso...</translation>
-    </message>
-    <message>
-        <source>Renaming...</source>
-        <translation>Ridenominazione in corso...</translation>
-    </message>
-    <message>
-        <source>Connected</source>
-        <translation>Connesso</translation>
-    </message>
-    <message>
-        <source>Paired</source>
-        <translation>Associato</translation>
-    </message>
-    <message>
-        <source>Battery %1%</source>
-        <translation>Batteria %1%</translation>
     </message>
 </context>
 <context>

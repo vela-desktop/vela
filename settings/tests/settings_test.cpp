@@ -18,6 +18,7 @@
 #include <QtQuickTest/quicktest.h>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
+Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
 
 class Setup : public QObject {
     Q_OBJECT

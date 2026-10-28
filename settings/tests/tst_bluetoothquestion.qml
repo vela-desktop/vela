@@ -3,8 +3,8 @@
 
 import QtQuick
 import QtTest
+import Vela.Bluetooth.Ui
 import Vela.Controls
-import "../qml"
 
 // The agent's questions drawn inline (docs/bluetooth.md §7.2, §9.3): each
 // kind's words, code and answers, Enter, Esc left to the dialog, the

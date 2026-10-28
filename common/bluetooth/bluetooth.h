@@ -108,6 +108,10 @@ public:
     Q_INVOKABLE void stopSearch();
     // "Your PC is still visible": the user's explicit action (§6.6, rule 3).
     Q_INVOKABLE void stopBeingVisible();
+    // This process draws the questions no Add of a UI is behind (the
+    // shell, §9.3): until one does, the daemon refuses them at once. Asked
+    // again whenever the daemon restarts.
+    void presentQuestions();
     Q_INVOKABLE void clearError();
 
 signals:
@@ -152,6 +156,7 @@ private:
 
     QDBusConnection m_bus;
     bool m_ui;
+    bool m_presenting = false;
     quint64 m_ownerGeneration = 0; // Ignore replies from a previous daemon owner.
     bool m_running = false;
     bool m_available = false;
