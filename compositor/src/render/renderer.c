@@ -762,7 +762,8 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
         .commandBuffer = cmd,
     };
 
-    if (wait_point <= r->completed) wait_point = 0;
+    // Keep the device dependency even after a host poll observed completion:
+    // the semaphore wait also supplies visibility for aliased image imports.
     // Kernel fences (sync_files) become semaphores the GPU waits for.
     // Both buffers grow independently; on OOM vela_grow fails fast.
     vela_wait_arrays_reserve(&r->wait_infos, &r->wait_infos_capacity,
