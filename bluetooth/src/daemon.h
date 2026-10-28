@@ -165,6 +165,8 @@ struct vela_bt_daemon {
 
     // The logind session (§6.7).
     char *login_session; // its object path, while it's known
+    bool session_known;
+    bool session_watching;
     bool session_active;
     bool session_locked;
     sd_bus_slot *session_call;
