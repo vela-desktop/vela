@@ -121,11 +121,13 @@ public:
         const QString member = message.member();
         if (interface == QLatin1String("org.freedesktop.DBus.ObjectManager") && member == QLatin1String("GetManagedObjects")) {
             calls << QStringLiteral("GetManagedObjects");
-            if (managedErrors-- > 0) {
+            if (managedErrors > 0) {
+                --managedErrors;
                 send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("snapshot temporarily failed")));
                 return true;
             }
-            if (managedMalformed-- > 0) {
+            if (managedMalformed > 0) {
+                --managedMalformed;
                 send(message.createReply(QStringLiteral("not an object tree")));
                 return true;
             }
@@ -446,7 +448,8 @@ private:
         const QString member = message.member();
         const QString agent = message.service() + u' ' + message.arguments().value(0).value<QDBusObjectPath>().path();
         if (member == QLatin1String("RegisterAgent")) {
-            if (registerErrors-- > 0) {
+            if (registerErrors > 0) {
+                --registerErrors;
                 send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("retry registration")));
                 return true;
             }
@@ -478,7 +481,8 @@ private:
                 message.service(), agent.section(u' ', 1), QStringLiteral("org.bluez.Agent1"), QStringLiteral("Release")));
         } else if (member == QLatin1String("RequestDefaultAgent")) {
             calls << QStringLiteral("RequestDefaultAgent");
-            if (defaultErrors-- > 0) {
+            if (defaultErrors > 0) {
+                --defaultErrors;
                 send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("retry default")));
                 return true;
             }
@@ -734,12 +738,14 @@ public:
         const QVariantMap properties { { QStringLiteral("Id"), QStringLiteral("fake") }, { QStringLiteral("Active"), active },
             { QStringLiteral("LockedHint"), locked } };
         if (message.member() == QLatin1String("GetAll")) {
-            if (getAllErrors-- > 0) {
+            if (getAllErrors > 0) {
+                --getAllErrors;
                 connection().send(message.createErrorReply(QStringLiteral("org.freedesktop.DBus.Error.Failed"),
                     QStringLiteral("temporary failure")));
                 return true;
             }
-            if (getAllMalformed-- > 0) {
+            if (getAllMalformed > 0) {
+                --getAllMalformed;
                 connection().send(message.createReply(QStringLiteral("malformed")));
                 return true;
             }
