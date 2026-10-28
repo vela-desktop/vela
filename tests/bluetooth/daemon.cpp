@@ -768,6 +768,11 @@ private slots:
         QCOMPARE(errorOf(call(QStringLiteral("Cancel"), { object(headset) })), QString());
         QCOMPARE(errorOf(connect), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
         QTRY_COMPARE(fakeCalls().count(QStringLiteral("Disconnect ") + headset), 2);
+        // BlueZ may report Connect success after the cancelled operation ends.
+        // The daemon must compensate, rather than leaving the headset on.
+        QTest::qWait(2200);
+        QTRY_VERIFY(!devices().value(headset).value(QStringLiteral("connected")).toBool());
+        QTRY_VERIFY(fakeCalls().count(QStringLiteral("Disconnect ") + headset) >= 3);
     }
 
     // -------------------------------------------- one Add at a time (§6.5) --
