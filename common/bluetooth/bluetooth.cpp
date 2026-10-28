@@ -360,7 +360,7 @@ void Bluetooth::refused(const QDBusMessage& reply, bool onDevice)
 {
     const QString name = reply.errorName();
     if (name == errorPrefix + QLatin1String("Cancelled") || name == errorPrefix + QLatin1String("UnknownQuestion")
-        || name == errorPrefix + QLatin1String("QuestionClosed") || name == QLatin1String("org.freedesktop.DBus.Error.UnknownMethod")) {
+        || name == errorPrefix + QLatin1String("QuestionClosed") ) {
         return;
     }
     if (name == errorPrefix + QLatin1String("Busy")) {
@@ -470,6 +470,7 @@ void Bluetooth::vanished()
         endSearch(true);
     }
     m_power.reported(false);
+    clearError();
     emit changed();
 }
 
