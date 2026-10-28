@@ -166,6 +166,7 @@ private:
     QDBusConnection m_bus;
     bool m_ui;
     bool m_presenting = false;
+    bool m_wantsPresentation = false; // retain intent even after transient errors
     int m_presentRetries = 0;
     quint64 m_ownerGeneration = 0; // Ignore replies from a previous daemon owner.
     bool m_running = false;

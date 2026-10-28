@@ -320,11 +320,15 @@ void Bluetooth::stopBeingVisible()
 
 void Bluetooth::presentQuestions()
 {
-    if (!m_ui || m_presenting) {
+    if (!m_ui) {
+        return;
+    }
+    m_wantsPresentation = true;
+    if (!m_running || m_presenting) {
         return;
     }
     m_presenting = true;
-    if (m_running) {
+    {
         call(QStringLiteral("PresentQuestions"), {}, callTimeout, [this](const QDBusMessage& reply) {
             if (reply.type() == QDBusMessage::ErrorMessage) {
                 m_presenting = false;
@@ -462,8 +466,9 @@ void Bluetooth::appeared()
             }
         },
         Refusal::Logged);
-    if (m_presenting) {
-        // The new owner needs to confirm registration independently.
+    if (m_wantsPresentation) {
+        // A new owner must accept a fresh registration even if the previous
+        // owner refused the last attempt.
         m_presenting = false;
         presentQuestions();
     }
@@ -497,6 +502,8 @@ void Bluetooth::vanished()
 {
     ++m_ownerGeneration;
     m_running = false;
+    m_presenting = false;
+    m_presentRetries = 0;
     m_searchStarting = false;
     m_available = false;
     m_platformBlocked = false;

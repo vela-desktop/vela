@@ -427,6 +427,19 @@ private slots:
         QDBusConnection::disconnectFromBus(QStringLiteral("other-searcher"));
     }
 
+    void airplaneModeDoesNotAssumeTheRadioIsOffWhenDaemonStops()
+    {
+        SystemStatus status(bluetooth.get());
+        QTRY_VERIFY(bluetooth->powered());
+        QVERIFY(!status.airplaneMode());
+        stopDaemon();
+        QTRY_VERIFY(!bluetooth->available());
+        QVERIFY(!status.airplaneMode()); // BlueZ still has the powered adapter
+        QVERIFY(startDaemon());
+        QTRY_VERIFY(bluetooth->powered());
+        QVERIFY(!status.airplaneMode());
+    }
+
     // Airplane mode turns Bluetooth off at once, and back on; without
     // Wi-Fi, it is Bluetooth alone.
     void airplaneModeTurnsBluetoothOff()
