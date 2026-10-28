@@ -249,6 +249,15 @@ static int method_cancel(sd_bus_message *call, void *data, sd_bus_error *error)
     return sd_bus_reply_method_return(call, NULL);
 }
 
+// B3 refuses spontaneous requests unless a trusted presenter opts in.
+// The shell will opt in when its question dialog is implemented in B4.
+static int method_present_questions(sd_bus_message *call, void *data, sd_bus_error *error)
+{
+    struct vela_bt_daemon *d = data;
+    int r = vela_bt_check_caller(call, VELA_BT_VELA_UI, d->ui, error);
+    return r < 0 ? r : vela_bt_present_questions(d, call);
+}
+
 static int method_questions(sd_bus_message *call, void *data, sd_bus_error *error)
 {
     struct vela_bt_daemon *d = data;
@@ -288,6 +297,7 @@ static const sd_bus_vtable vtable[] = {
     SD_BUS_METHOD("Rename", "os", "", method_rename, 0),
     SD_BUS_METHOD("Cancel", "o", "", method_cancel, 0),
     SD_BUS_METHOD("Questions", "", "a(toa{sv})", method_questions, 0),
+    SD_BUS_METHOD("PresentQuestions", "", "", method_present_questions, 0),
     SD_BUS_METHOD("Answer", "tss", "", method_answer, 0),
     SD_BUS_SIGNAL("DevicesChanged", "a{oa{sv}}ao", 0),
     SD_BUS_SIGNAL("OperationChanged", "osss", 0),
