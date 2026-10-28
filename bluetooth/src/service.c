@@ -155,10 +155,14 @@ static int method_use_adapter(sd_bus_message *call, void *data, sd_bus_error *er
     if (!chosen) {
         return -ENOMEM;
     }
+    // Persist before changing the live selection. A failed save must not
+    // appear successful and silently revert on the next daemon restart.
+    if (!vela_config_write_checked("bluetooth-adapter", address)) {
+        free(chosen);
+        return sd_bus_error_set(error, VELA_BT_ERROR("Failed"), "Could not save the Bluetooth adapter choice.");
+    }
     free(d->chosen);
     d->chosen = chosen;
-    // Remembered by address: a USB dongle that comes back is picked again.
-    vela_config_write("bluetooth-adapter", address);
     vela_bt_choose_adapter(d);
     vela_bt_flush(d);
     return sd_bus_reply_method_return(call, NULL);
