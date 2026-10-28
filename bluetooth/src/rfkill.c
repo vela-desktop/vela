@@ -124,7 +124,7 @@ static bool is_adapter_switch(const char *sysfs, int index)
         if (!entry) {
             break;
         }
-        struct vela_bt_switch adapter;
+        struct vela_bt_switch adapter = { .index = -1 };
         if (entry->d_name[0] != '.' && vela_bt_adapter_switch(sysfs, entry->d_name, &adapter) == 0) {
             found = adapter.index == index;
         }
