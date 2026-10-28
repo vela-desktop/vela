@@ -320,6 +320,12 @@ static struct vela_bt_device *requester(struct vela_bt_daemon *d, sd_bus_message
         why = "not a device of the adapter in use";
     } else if (!d->session_active) {
         why = "the session is in the background";
+    } else if (!solicited) {
+        // B3 has no shell presenter yet (B4). Refuse instead of leaving
+        // an invisible authorization prompt open for a minute. This also
+        // prevents unattended requests while LockedHint is not propagated
+        // by the compositor yet (B5).
+        why = "no presenter for unsolicited pairing until B4";
     } else if (d->session_locked && !solicited) {
         // Nobody is there to answer (§6.4).
         why = "the screen is locked";
