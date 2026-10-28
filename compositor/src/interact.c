@@ -131,6 +131,25 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
     struct wlr_cursor *cursor = server->cursor;
     struct wlr_seat *seat = server->seat;
     struct vela_input *input = server->input;
+
+    // The desktop is still represented in memory while ext-session-lock is
+    // active, but it is not eligible for interaction. In particular,
+    // resize_border_at() walks the windows layer directly, and the disabled
+    // parent layer alone does not hide its children from that lookup. Only
+    // hit-test the visible lock scene while locked; otherwise an invisible
+    // window's resize band steals pointer focus and changes the cursor.
+    if (server->locked) {
+        struct vela_hit hit = vela_scene_at(server->scene, cursor->x, cursor->y);
+        if (hit.surface) {
+            wlr_seat_pointer_notify_enter(seat, hit.surface, hit.sx, hit.sy);
+            wlr_seat_pointer_notify_motion(seat, time_msec, hit.sx, hit.sy);
+        } else {
+            wlr_seat_pointer_clear_focus(seat);
+            wlr_cursor_set_xcursor(cursor, server->cursor_manager, "default");
+        }
+        return;
+    }
+
     vela_input_update_drag_icon(input);
     struct vela_a11y *a11y = server->a11y;
     if (a11y->magnifier || a11y->zoom_animating || a11y->zoom > 1.0) {
