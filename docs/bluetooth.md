@@ -7,12 +7,14 @@ follows them.
 
 > **Status:** B0–B3 are implemented in PR #146: the daemon and agent run,
 > and Settings uses the shared client library. Shell, audio, search leases,
-> lock-state propagation, packaging and hardware validation remain B4–B7.
+> packaging and hardware validation remain B4–B7; logind lock-state reporting
+> is already included here as a safety prerequisite.
 > Everything in §3 is planned for beta 0.1. See §12.
 > Until B4 supplies the shell's question presenter, unsolicited pairing and
 > service authorization requests are immediately refused unless a trusted UI
 > explicitly calls `PresentQuestions`. Settings does not opt in: only its own
-> Add questions appear there. B5 will additionally propagate lock state.
+> Add questions appear there. The compositor already propagates LockedHint;
+> the rest of the B5 work remains separate.
 
 ## 1. Why from scratch
 
@@ -837,7 +839,7 @@ only `bluez`:
 | B2 | The agent (§6.4), concurrency (§6.5), the questions (§7.2), and the session rules (§6.7), with tests | done |
 | B3 | `common/bluetooth`; the Settings page rewritten (§9.1); the old Settings code deleted | done |
 | B4 | The shell: `SystemStatus` on the client library, quick settings' list (§9.2), the question dialog and notifications (§9.3); `vela-audio` batteries from the daemon | |
-| B5 | Search leases and visibility (§6.6); the compositor sets `LockedHint` while the lock screen is up | |
+| B5 | Search leases and visibility (§6.6); extend the lock-state integration already introduced in B3 | |
 | B6 | Docs and packaging: installation, hardware, testing | |
 | B7 | The user tries it on real devices (§11, "by hand") | |
 
