@@ -24,11 +24,12 @@ Button {
         x: button.width - width
         padding: 4
         focus: true
-        onOpened: list.children[0].forceActiveFocus()
+        onOpened: { if (entriesRepeater.count > 0) entriesRepeater.itemAt(0).forceActiveFocus() }
 
         contentItem: Column {
             id: list
             Repeater {
+                id: entriesRepeater
                 model: button.entries
                 delegate: ListItem {
                     id: entry
