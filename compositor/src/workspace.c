@@ -421,6 +421,7 @@ static void finish_switch(struct vela_server *server)
     vela_node_set_opacity(&layers->windows_out->node, 1.0f);
     vela_node_set_position(&layers->windows->node, 0, 0);
     vela_node_set_opacity(&layers->windows->node, 1.0f);
+    vela_fullscreen_restack(server);
     vela_scene_changed(server->scene);
 }
 
