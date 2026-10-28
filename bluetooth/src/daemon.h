@@ -243,6 +243,7 @@ void vela_bt_question_resend(struct vela_bt_daemon *d);
 // `call`'s sender receives the question signals from now on: it's Vela's UI.
 void vela_bt_listen(struct vela_bt_daemon *d, sd_bus_message *call);
 int vela_bt_questions(struct vela_bt_daemon *d, sd_bus_message *call);
+int vela_bt_present_questions(struct vela_bt_daemon *d, sd_bus_message *call);
 int vela_bt_answer(struct vela_bt_daemon *d, sd_bus_message *call, uint64_t id, const char *response,
     const char *value, sd_bus_error *error);
 void vela_bt_agent_free(struct vela_bt_daemon *d);
