@@ -59,11 +59,13 @@ class Captures(unittest.TestCase):
             readback = state["readback"]
             print(f"capture: 2560x1440@180 captures={captures} missed_vblanks={missed} "
                   f"completed={readback['completed']} cancelled={readback['cancelled']} "
-                  f"failed={readback['failed']} pending={readback['pending']}", flush=True)
+                  f"failed={readback['failed']} rejected={readback['rejected']} "
+                  f"pending={readback['pending']}", flush=True)
             self.assertEqual(readback["completed"], captures, "every capture must use deferred completion")
             self.assertEqual(readback["pending"], 0)
             self.assertEqual(readback["failed"], 0)
             self.assertEqual(readback["cancelled"], 0)
+            self.assertEqual(readback["rejected"], 0)
             # Uncached readback can be slow, so verify repeated successful
             # captures there without imposing the cached path's rate/latency bound.
             uncached = "Vulkan readback staging: uncached fallback" in vela.log_text()
@@ -100,7 +102,7 @@ class DeferredCapture(unittest.TestCase):
     def test_concurrent_full_pixels_padding_and_opaque_alpha(self):
         with Session(size="1367x769@180") as vela:
             vela.input("move", 0, 0)
-            wallpaper = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "ff00ff"],
+            wallpaper = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "123456"],
                                          env=vela.client_env)
             vela.clients.append(wallpaper)
             time.sleep(0.6)
@@ -112,7 +114,7 @@ class DeferredCapture(unittest.TestCase):
     def test_repeated_session_does_not_lose_damage(self):
         with Session(size="1367x769@180") as vela:
             vela.input("move", 0, 0)
-            wallpaper = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "ff00ff"],
+            wallpaper = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "123456"],
                                          env=vela.client_env)
             vela.clients.append(wallpaper)
             time.sleep(0.6)
@@ -123,10 +125,17 @@ class DeferredCapture(unittest.TestCase):
 
     def test_queue_limit_reports_failure_and_recovers(self):
         with Session(size="3840x2160@180") as vela:
+            before = vela.state()["readback"]
             process = self.probe(vela, "overflow", 8)
             _, errors = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 0, errors)
-            self.assertEqual(self.drained(vela)["completed"], 4)
+            after = self.drained(vela)
+            self.assertEqual(after["completed"] - before["completed"], 4)
+            # This counter increments only at capacity rejection, so unrelated
+            # allocation, submission or timeout failures cannot satisfy it.
+            self.assertEqual(after["rejected"] - before["rejected"], 4)
+            self.assertEqual(after["failed"], before["failed"])
+            self.assertEqual(after["cancelled"], before["cancelled"])
             vela.screenshot(os.path.join(vela.directory, "after-limit.png"), region=(0, 0, 8, 8))
 
     def test_client_disconnect_releases_reserved_staging(self):

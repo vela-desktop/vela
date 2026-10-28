@@ -344,6 +344,9 @@ static VkCommandBuffer record_readback(struct vela_texture *texture, const struc
     struct vela_renderer *renderer = texture->renderer;
     struct vela_vulkan *vk = renderer->vk;
     VkCommandBuffer cmd = vela_renderer_begin_commands(renderer);
+    if (!cmd) {
+        return VK_NULL_HANDLE;
+    }
     VkImageLayout rest_layout = texture->foreign ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     uint32_t foreign_family = texture->foreign ? VK_QUEUE_FAMILY_FOREIGN_EXT : VK_QUEUE_FAMILY_IGNORED;
     uint32_t own_family = texture->foreign ? vk->queue_family : VK_QUEUE_FAMILY_IGNORED;
@@ -411,20 +414,58 @@ static VkCommandBuffer record_readback(struct vela_texture *texture, const struc
     return cmd;
 }
 
-static bool needs_opaque_alpha(const struct vela_pixel_format *src, const struct vela_pixel_format *dst)
+enum readback_alpha { READBACK_ALPHA_NONE, READBACK_ALPHA_8, READBACK_ALPHA_2, READBACK_ALPHA_HALF };
+
+static enum readback_alpha opaque_alpha_for(const struct vela_pixel_format *src, const struct vela_pixel_format *dst)
 {
-    return dst->alpha && !src->alpha && dst->bytes_per_pixel == 4
-        && (dst->unorm == VK_FORMAT_B8G8R8A8_UNORM || dst->unorm == VK_FORMAT_R8G8B8A8_UNORM);
+    if (src->alpha || !dst->alpha) return READBACK_ALPHA_NONE;
+    switch (dst->unorm) {
+    case VK_FORMAT_B8G8R8A8_UNORM:
+    case VK_FORMAT_R8G8B8A8_UNORM:
+        return READBACK_ALPHA_8;
+    case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+    case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+        return READBACK_ALPHA_2;
+    case VK_FORMAT_R16G16B16A16_SFLOAT:
+        return READBACK_ALPHA_HALF;
+    default:
+        return READBACK_ALPHA_NONE;
+    }
 }
 
-static void copy_row(uint8_t *dst, const uint8_t *src, size_t bytes, bool opaque)
+static void copy_row(uint8_t *dst, const uint8_t *src, size_t bytes, enum readback_alpha alpha)
 {
     memcpy(dst, src, bytes);
-    if (opaque) {
-        for (size_t x = 3; x < bytes; x += 4) {
-            dst[x] = 0xff;
+    if (alpha == READBACK_ALPHA_HALF) {
+        const uint16_t one = 0x3c00; // IEEE 754 binary16 1.0
+        for (size_t x = 6; x < bytes; x += 8) memcpy(dst + x, &one, sizeof(one));
+    } else if (alpha != READBACK_ALPHA_NONE) {
+        const uint32_t mask = alpha == READBACK_ALPHA_8 ? UINT32_C(0xff000000) : UINT32_C(0xc0000000);
+        // Packed 10-bit pixels share the last byte with a color channel.
+        // Use native pixel words and preserve every RGB bit, including on an
+        // unaligned client row.
+        for (size_t x = 0; x < bytes; x += sizeof(mask)) {
+            uint32_t pixel;
+            memcpy(&pixel, dst + x, sizeof(pixel));
+            pixel |= mask;
+            memcpy(dst + x, &pixel, sizeof(pixel));
         }
     }
+}
+
+// Recording failed before submission: release this readback-only chunk's
+// reservation. Other pending CPU readers still prevent reuse of its storage.
+static void discard_readback_staging(struct vela_renderer *renderer, const struct vela_staging *staging)
+{
+    for (int i = 0; i < renderer->staging_count; ++i) {
+        struct staging_chunk *chunk = &renderer->staging[i];
+        if (chunk->buffer == staging->buffer) {
+            assert(chunk->readback && chunk->point == UINT64_MAX);
+            chunk->point = renderer->last_point;
+            return;
+        }
+    }
+    abort();
 }
 
 // wlroots' texture API remains synchronous for legacy screencopy and other
@@ -446,6 +487,10 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
         return false;
     }
     VkCommandBuffer cmd = record_readback(texture, &box, &staging, row_bytes);
+    if (!cmd) {
+        discard_readback_staging(renderer, &staging);
+        return false;
+    }
 
     // A dmabuf: first wait for whoever is writing it; afterwards, whoever
     // wants to write it will wait for our read.
@@ -472,7 +517,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
     uint8_t *dst = wlr_texture_read_pixel_options_get_data(options);
     for (int y = 0; y < box.height; ++y) {
         copy_row(dst + (size_t)y * options->stride, staging.data + (size_t)y * row_bytes,
-            row_bytes, needs_opaque_alpha(texture->format, wanted));
+            row_bytes, opaque_alpha_for(texture->format, wanted));
     }
     return true;
 }
@@ -494,7 +539,7 @@ struct vela_readback {
     size_t row_bytes, bytes, stride;
     uint32_t format;
     int row;
-    bool opaque;
+    enum readback_alpha alpha;
     int64_t started;
     void (*done)(void *data, bool ok);
     void *data;
@@ -571,7 +616,8 @@ void vela_renderer_cancel_readbacks(struct vela_renderer *renderer)
 struct vela_readback_stats vela_renderer_readback_stats(const struct vela_renderer *renderer)
 {
     return (struct vela_readback_stats) { renderer->readback_count, renderer->readback_bytes,
-        renderer->readback_completed, renderer->readback_cancelled, renderer->readback_failed };
+        renderer->readback_completed, renderer->readback_cancelled, renderer->readback_failed,
+        renderer->readback_rejected };
 }
 
 static int dispatch_readback(void *data)
@@ -604,7 +650,7 @@ static int dispatch_readback(void *data)
                 do {
                     copy_row((uint8_t *)pixels + (size_t)readback->row * stride,
                         readback->staging.data + (size_t)readback->row * readback->row_bytes,
-                        readback->row_bytes, readback->opaque);
+                        readback->row_bytes, readback->alpha);
                     copied += readback->row_bytes;
                     ++readback->row;
                 } while (readback->row < readback->dst->height && copied < READBACK_SLICE_BYTES
@@ -624,8 +670,11 @@ static int dispatch_readback(void *data)
 struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, struct wl_event_loop *loop,
     struct wlr_buffer *src, struct wlr_buffer *dst, void (*done)(void *, bool), void *data)
 {
-    if (src->width != dst->width || src->height != dst->height || src->width <= 0 || src->height <= 0
-        || renderer->readback_count >= VELA_READBACK_MAX_JOBS) {
+    if (src->width != dst->width || src->height != dst->height || src->width <= 0 || src->height <= 0) {
+        return NULL;
+    }
+    if (renderer->readback_count >= VELA_READBACK_MAX_JOBS) {
+        ++renderer->readback_rejected;
         return NULL;
     }
     void *pixels = NULL;
@@ -645,6 +694,7 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     }
     size_t bytes = row_bytes * (size_t)src->height;
     if (bytes > READBACK_MAX_BYTES - renderer->readback_bytes) {
+        ++renderer->readback_rejected;
         return NULL;
     }
     struct wlr_texture *wlr = wlr_texture_from_buffer(&renderer->base, src);
@@ -675,12 +725,13 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     pin_staging(renderer, readback->staging.buffer, true);
     const struct wlr_box box = { 0, 0, src->width, src->height };
     VkCommandBuffer cmd = record_readback(texture, &box, &readback->staging, row_bytes);
+    if (!cmd) discard_readback_staging(renderer, &readback->staging);
     // Contract: src was drawn by THIS renderer (output/cursor/window swapchain),
     // never a directly scanned-out client buffer. Its producer and this copy
     // have explicit GPU timeline dependencies in both directions. Keeping the
     // texture locked prevents normal reuse; the dependency on this copy also
     // protects reuse after cancellation. No CPU or external fence wait is used.
-    uint64_t point = vela_renderer_submit_readback(renderer, cmd);
+    uint64_t point = cmd ? vela_renderer_submit_readback(renderer, cmd) : 0;
     if (!point) {
         pin_staging(renderer, readback->staging.buffer, false);
         if (!renderer->readback_count) {
@@ -699,7 +750,7 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     readback->bytes = bytes;
     readback->stride = stride;
     readback->format = format;
-    readback->opaque = needs_opaque_alpha(texture->format, wanted);
+    readback->alpha = opaque_alpha_for(texture->format, wanted);
     readback->started = vela_now_ns();
     readback->done = done;
     readback->data = data;

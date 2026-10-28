@@ -644,9 +644,17 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
             wlr_log(WLR_INFO, "Vulkan readback staging: uncached fallback (capture performance may be reduced)");
         }
     }
-    vkBindBufferMemory(device, chunk.buffer, chunk.memory, 0);
+    if (vkBindBufferMemory(device, chunk.buffer, chunk.memory, 0) != VK_SUCCESS) {
+        vkDestroyBuffer(device, chunk.buffer, NULL);
+        vkFreeMemory(device, chunk.memory, NULL);
+        return NULL;
+    }
     void *mapped = NULL;
-    vkMapMemory(device, chunk.memory, 0, VK_WHOLE_SIZE, 0, &mapped);
+    if (vkMapMemory(device, chunk.memory, 0, VK_WHOLE_SIZE, 0, &mapped) != VK_SUCCESS || !mapped) {
+        vkDestroyBuffer(device, chunk.buffer, NULL);
+        vkFreeMemory(device, chunk.memory, NULL);
+        return NULL;
+    }
     chunk.data = mapped;
     r->staging = vela_grow(r->staging, &r->staging_capacity, r->staging_count + 1, sizeof(*r->staging));
     r->staging[r->staging_count] = chunk;

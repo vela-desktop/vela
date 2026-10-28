@@ -322,6 +322,20 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-wait-arrays-oom-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.wait-arrays-oom COMMAND vela-wait-arrays-oom-test)
 
+    # Production readback helpers: packed alpha, untouched padding and Vulkan
+    # allocation/map failures, with Vulkan entry points stubbed instead of a GPU.
+    add_executable(vela-readback-test tests/readback_test.c src/render/formats.c
+        src/render/wait_arrays.c ${VELA_SHADERS})
+    target_include_directories(vela-readback-test PRIVATE src ${VELA_SHADER_DIR} ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-readback-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-readback-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-readback-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-readback-test PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::VULKAN PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM)
+    set_target_properties(vela-readback-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.readback COMMAND vela-readback-test)
+
     # Linux /proc enumeration and SIGTERM/SIGKILL child cleanup, no GPU.
     add_executable(vela-supervisor-children-test
         tests/supervisor_children_test.c src/supervisor_children.c)

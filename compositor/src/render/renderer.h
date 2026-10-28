@@ -111,7 +111,7 @@ void vela_readback_cancel(struct vela_readback *readback);
 void vela_renderer_cancel_readbacks(struct vela_renderer *renderer);
 struct vela_readback_stats {
     size_t pending, bytes;
-    uint64_t completed, cancelled, failed;
+    uint64_t completed, cancelled, failed, rejected;
 };
 struct vela_readback_stats vela_renderer_readback_stats(const struct vela_renderer *renderer);
 

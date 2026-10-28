@@ -266,7 +266,7 @@ struct vela_renderer {
     size_t readback_next; // round-robin cursor in the bounded queue
     struct wl_event_source *readback_timer;
     size_t readback_count, readback_bytes;
-    uint64_t readback_completed, readback_cancelled, readback_failed;
+    uint64_t readback_completed, readback_cancelled, readback_failed, readback_rejected;
 
     // The arrays of a submission, reused (they only grow).
     VkSemaphoreSubmitInfo *wait_infos;

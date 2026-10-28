@@ -67,8 +67,9 @@ static void frame_ready(void *data, struct ext_image_copy_capture_frame_v1 *fram
                 // The pointer is parked at (0,0); ignore its small footprint.
                 if (x < 64 && y < 64) continue;
                 const uint8_t *p = row + (size_t)x * 4;
-                // Independent source oracle: an opaque magenta wallpaper.
-                if (p[0] != 255 || p[1] != 0 || p[2] != 255 || p[3] != 255) {
+                // Independent source oracle: opaque #123456; a channel swap
+                // must fail even if both screenshots agree with each other.
+                if (p[0] != 0x56 || p[1] != 0x34 || p[2] != 0x12 || p[3] != 0xff) {
                     fprintf(stderr, "pixel %u,%u: %u,%u,%u,%u\n", x, y, p[0], p[1], p[2], p[3]);
                     ok = false;
                     goto checked;

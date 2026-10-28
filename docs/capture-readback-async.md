@@ -105,6 +105,14 @@ frame destruction, disconnect, resize, unplug, lock and Vulkan-validated shutdow
 with actual pending work. The private `state.readback` counters establish that
 these tests really interrupted deferred requests and that payload returns to zero.
 
+CPU-only `compositor.readback` tests use the production helpers with Vulkan
+entry points stubbed to force binding, mapping and command allocation failures.
+They check cleanup before memory release, recycling an unsubmitted reservation,
+unaligned/padded rows and opaque alpha in 8-bit, packed 10-bit and half-float
+pixels without changing RGB. The GPU color oracle uses asymmetric `#123456`
+pixels; queue-overflow checks require four capacity-specific `rejected` events,
+so unrelated allocation or timeout failures cannot stand in for a full queue.
+
 The temporary profiling/probe workflow steps are removed. Both manual workflows
 run the ordinary full strict GPU suite with their original thresholds. Follow
 [the GPU CI policy](ci-quality.md#gpu-ci-policy); a historical pass or a CPU-only
