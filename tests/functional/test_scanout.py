@@ -37,6 +37,23 @@ class DirectScanout(unittest.TestCase):
             self.open_app(vela)
             vela.wait_for(scanning, timeout=8, what="direct scanout")
 
+    def test_foreground_window_interrupts_scanout_without_exiting_fullscreen(self):
+        with Session(size=SIZE, env={"VELA_SCANOUT": "1"}) as vela:
+            self.open_app(vela)
+            game = vela.state()["focused"]
+            vela.wait_for(scanning, timeout=8, what="game in direct scanout")
+            app = vela.open_window(240, 140)
+            state = vela.wait_for(
+                lambda s: s["focused"] == app and not scanning(s),
+                timeout=8, what="normal app composited above fullscreen")
+            self.assertTrue(state.window(game)["fullscreen"])
+            # A visible click on the uncovered game makes it foreground again.
+            vela.input("move", 10, 10, "down", "up")
+            state = vela.wait_for(
+                lambda s: s["focused"] == game and scanning(s),
+                timeout=8, what="direct scanout resumed after reactivating the game")
+            self.assertTrue(state.window(game)["fullscreen"])
+
     def test_no_keeps_compositing(self):
         with Session(size=SIZE, env={"VELA_SCANOUT": "1"}) as vela:
             self.configure(vela, "no")
