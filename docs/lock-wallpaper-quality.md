@@ -36,20 +36,7 @@ Run alongside the usual project CTest suite:
 
 ```sh
 cmake --build build --target vela-lock-blur-tests
-ctest --test-dir build --output-on-failure -R '^lock-wallpaper-blur
-
-## Manual visual validation before merge
-
-- On a real Wayland session: lock, inspect the sharp clock wallpaper, press a key **without entering any password**, compare the deliberately blurred Login wallpaper, type, enter Checking, Escape/idle back to Clock. No sudden blockiness or additional degradation from typing.
-- Compare representative detailed SVG, photography and smooth gradients; inspect transitions, coarse artifacts, bleeding, noise, banding and intentional blur strength.
-- Check single/mixed-scale monitors at 1.0, 1.25, 1.5, 1.75 and 2.0; ensure the blurred cache and wl_shm buffer retain the correct **physical** dimensions with no extra compositor upscaling.
-- Validate 1440p and 4K memory / one-time generation latency and ensure keystroke redraws do not regenerate blur.
-- Verify unlock and PAM behavior unchanged.
-
-## Out of scope
-
-Wallpaper choice consistency with `QSettings`, shared wallpaper loaders, SVG antialiasing on the **clock** page, broader cache invalidation for live wallpaper changes, and compositor buffer-lifetime refactors are independent tasks. These should not block the narrow login-only blur improvement unless hardware testing uncovers a related regression.
-
+ctest --test-dir build --output-on-failure -R '^lock-wallpaper-blur$'
 # Optional one-time blur timing on the current machine (1080p / 1440p / 4K):
 build/lock/vela-lock-blur-tests --benchmark
 ```
