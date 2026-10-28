@@ -9,6 +9,7 @@ missed-vblank budget, with no skipped or silently dropped captures.
 """
 
 import os
+import json
 import signal
 import subprocess
 import threading
@@ -123,6 +124,35 @@ class DeferredCapture(unittest.TestCase):
             _, errors = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 0, errors)
             self.assertEqual(self.drained(vela)["completed"] - before, 12)
+
+    def test_stream_latency_and_idle_metrics(self):
+        # No sleeps between capture requests, no PNG encoding and no fresh
+        # sessions per frame. Compare untouched new SHM pages with buffer reuse.
+        for size, clients in (("2560x1440@180", 1), ("3840x2160@180", 1), ("2560x1440@180", 4)):
+            with self.subTest(size=size, clients=clients), Session(size=size) as vela:
+                window = vela.open_window(400, 300, decorated=True)
+                for mode in ("bench-fresh", "bench-reuse", "idle"):
+                    if mode == "idle":
+                        vela.wait_still(window)
+                    before = vela.state()
+                    process = self.probe(vela, mode, clients)
+                    if mode != "idle":
+                        end = time.monotonic() + 3.2
+                        maximize = True
+                        while time.monotonic() < end:
+                            vela.command(f"window {window} {'maximize' if maximize else 'restore'}")
+                            maximize = not maximize
+                            time.sleep(0.2)
+                    output, errors = process.communicate(timeout=10)
+                    self.assertEqual(process.returncode, 0, errors)
+                    metrics = json.loads(output)
+                    after = vela.state()
+                    metrics.update(size=size, missed=after.output["missed"] - before.output["missed"],
+                                   output_frames=after.output["frames"] - before.output["frames"])
+                    print("capture-stream: " + json.dumps(metrics, sort_keys=True), flush=True)
+                    self.assertGreater(metrics["frames"], 0)
+                    self.assertEqual(after["readback"]["failed"], before["readback"]["failed"])
+                    self.assertEqual(after["readback"]["rejected"], before["readback"]["rejected"])
 
     def test_queue_limit_reports_failure_and_recovers(self):
         with Session(size="3840x2160@180") as vela:

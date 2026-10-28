@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include "ext-image-capture-source-v1-client-protocol.h"
@@ -27,6 +28,7 @@ struct capture {
     size_t size;
     bool terminal;
     int rounds;
+    int64_t requested;
 };
 
 static struct wl_shm *shm;
@@ -37,6 +39,17 @@ static bool hold, failed, repeat, overflow;
 static int successes, rejections;
 static void session_done(void *data, struct ext_image_copy_capture_session_v1 *session);
 static int terminal, selected_output;
+static bool benchmark, reuse;
+static int64_t began, deadline;
+static double latencies[65536];
+static size_t samples;
+
+static int64_t now_ns(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (int64_t)now.tv_sec * 1000000000 + now.tv_nsec;
+}
 
 static void frame_transform(void *data, struct ext_image_copy_capture_frame_v1 *frame, uint32_t transform) {}
 static void frame_damage(void *data, struct ext_image_copy_capture_frame_v1 *frame,
@@ -59,6 +72,23 @@ static void finish(struct capture *capture, bool ok)
 static void frame_ready(void *data, struct ext_image_copy_capture_frame_v1 *frame)
 {
     struct capture *capture = data;
+    if (benchmark) {
+        if (samples == sizeof(latencies) / sizeof(latencies[0])) {
+            finish(capture, false);
+            return;
+        }
+        latencies[samples++] = (double)(now_ns() - capture->requested) / 1e6;
+        ext_image_copy_capture_frame_v1_destroy(capture->frame);
+        capture->frame = NULL;
+        if (!reuse) {
+            wl_buffer_destroy(capture->buffer);
+            munmap(capture->pixels, capture->size);
+            capture->buffer = NULL;
+            capture->pixels = NULL;
+        }
+        if (now_ns() < deadline) session_done(capture, capture->session);
+        return;
+    }
     bool ok = true;
     if (!hold && !overflow) {
         for (uint32_t y = 0; y < capture->height; ++y) {
@@ -128,6 +158,7 @@ static void session_done(void *data, struct ext_image_copy_capture_session_v1 *s
 {
     struct capture *capture = data;
     if (capture->frame || capture->terminal) return;
+    if (capture->buffer) goto attach;
     if (!capture->width || !capture->height || capture->width > (INT32_MAX - 64) / 4) goto error;
     capture->stride = capture->width * 4 + 64;
     if (capture->height > INT32_MAX / capture->stride) goto error;
@@ -146,17 +177,25 @@ static void session_done(void *data, struct ext_image_copy_capture_session_v1 *s
     }
     // Pixel tests exercise row padding and XRGB->ARGB opaque alpha. Hold mode
     // leaves the new destination untouched, matching ordinary screenshots.
-    if (!hold) memset(capture->pixels, 0x5a, capture->size);
+    if (!hold && !benchmark) memset(capture->pixels, 0x5a, capture->size);
     struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, (int32_t)capture->size);
     capture->buffer = wl_shm_pool_create_buffer(pool, 0, (int32_t)capture->width,
         (int32_t)capture->height, (int32_t)capture->stride, WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
+attach:
     capture->frame = ext_image_copy_capture_session_v1_create_frame(session);
     ext_image_copy_capture_frame_v1_add_listener(capture->frame, &frame_listener, capture);
     ext_image_copy_capture_frame_v1_attach_buffer(capture->frame, capture->buffer);
     ext_image_copy_capture_frame_v1_damage_buffer(capture->frame, 0, 0,
         (int32_t)capture->width, (int32_t)capture->height);
+    if (benchmark) {
+        capture->requested = now_ns();
+        if (!began) {
+            began = capture->requested;
+            deadline = began + 3000000000LL;
+        }
+    }
     ext_image_copy_capture_frame_v1_capture(capture->frame);
     return;
 error:
@@ -187,12 +226,20 @@ static void global(void *data, struct wl_registry *registry, uint32_t name, cons
 static void removed(void *data, struct wl_registry *registry, uint32_t name) {}
 static const struct wl_registry_listener registry_listener = { global, removed };
 
+static int compare_latency(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3) return 2;
     hold = !strcmp(argv[1], "hold");
     repeat = !strcmp(argv[1], "repeat");
     overflow = !strcmp(argv[1], "overflow");
+    benchmark = !strcmp(argv[1], "bench-fresh") || !strcmp(argv[1], "bench-reuse") || !strcmp(argv[1], "idle");
+    reuse = !strcmp(argv[1], "bench-reuse") || !strcmp(argv[1], "idle");
     int count = atoi(argv[2]);
     if (count < 1 || count > 8) return 2;
     selected_output = argc > 3 ? atoi(argv[3]) : 0;
@@ -217,15 +264,39 @@ int main(int argc, char **argv)
             { .fd = wl_display_get_fd(display), .events = POLLIN },
             { .fd = hold ? STDIN_FILENO : -1, .events = POLLIN },
         };
-        int n = poll(fds, 2, 5000);
+        int timeout = 5000;
+        if (benchmark && deadline) {
+            int64_t remaining = deadline - now_ns();
+            if (remaining <= 0) {
+                wl_display_cancel_read(display);
+                break;
+            }
+            timeout = (int)((remaining + 999999) / 1000000);
+        }
+        int n = poll(fds, 2, timeout);
         if (n > 0 && (fds[0].revents & POLLIN)) {
             if (wl_display_read_events(display) < 0) return 1;
         } else {
             wl_display_cancel_read(display);
         }
-        if (n <= 0 || (fds[0].revents & (POLLERR | POLLHUP))) return 1;
+        if (n < 0 || (fds[0].revents & (POLLERR | POLLHUP))) return 1;
+        if (n == 0) {
+            if (benchmark && deadline && now_ns() >= deadline) break;
+            return 1;
+        }
         if (fds[1].revents) stop = true;
         if (wl_display_dispatch_pending(display) < 0) return 1;
+    }
+    if (benchmark) {
+        double seconds = (double)(now_ns() - began) / 1e9;
+        qsort(latencies, samples, sizeof(latencies[0]), compare_latency);
+        printf("{\"mode\":\"%s\",\"clients\":%d,\"frames\":%zu,\"seconds\":%.6f,\"fps\":%.3f,"
+               "\"p50_ms\":%.3f,\"p95_ms\":%.3f,\"p99_ms\":%.3f,\"max_ms\":%.3f}\n",
+            argv[1], count, samples, seconds, (double)samples / seconds,
+            samples ? latencies[(samples - 1) * 50 / 100] : 0,
+            samples ? latencies[(samples - 1) * 95 / 100] : 0,
+            samples ? latencies[(samples - 1) * 99 / 100] : 0,
+            samples ? latencies[samples - 1] : 0);
     }
     for (int i = 0; i < count; ++i) {
         struct capture *capture = &captures[i];
