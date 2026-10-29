@@ -120,6 +120,7 @@ static const struct ext_session_lock_v1_listener lock_listener = { lock_locked, 
 // Optional input probe for the functional lock-routing test. The test
 // asserts that motion on the invisible resize border of a hidden window
 // reaches the lock surface rather than being intercepted by decoration hit tests.
+/** Log a pointer entering the locker, when the input probe is enabled. */
 static void pointer_enter(void* data, struct wl_pointer* ptr, uint32_t serial,
     struct wl_surface* surface, wl_fixed_t sx, wl_fixed_t sy)
 {
@@ -129,6 +130,7 @@ static void pointer_enter(void* data, struct wl_pointer* ptr, uint32_t serial,
     }
 }
 static void pointer_leave(void* data, struct wl_pointer* ptr, uint32_t serial, struct wl_surface* surface) { }
+/** Log pointer movement delivered to the locker for functional assertions. */
 static void pointer_motion(void* data, struct wl_pointer* ptr, uint32_t time,
     wl_fixed_t sx, wl_fixed_t sy)
 {
@@ -137,6 +139,7 @@ static void pointer_motion(void* data, struct wl_pointer* ptr, uint32_t time,
             wl_fixed_to_int(sx), wl_fixed_to_int(sy));
     }
 }
+/** Log button presses/releases to test stationary pointer focus. */
 static void pointer_button(void* data, struct wl_pointer* ptr, uint32_t serial,
     uint32_t time, uint32_t button, uint32_t state)
 {
@@ -163,6 +166,7 @@ static void keyboard_keymap(void* data, struct wl_keyboard* kb, uint32_t format,
 static void keyboard_enter(void* data, struct wl_keyboard* kb, uint32_t serial,
     struct wl_surface* surface, struct wl_array* keys) { }
 static void keyboard_leave(void* data, struct wl_keyboard* kb, uint32_t serial, struct wl_surface* surface) { }
+/** Log keyboard events to check that desktop interactions cannot steal them. */
 static void keyboard_key(void* data, struct wl_keyboard* kb, uint32_t serial,
     uint32_t time, uint32_t key, uint32_t state)
 {
@@ -182,6 +186,7 @@ static const struct wl_keyboard_listener keyboard_listener = {
     .repeat_info = keyboard_repeat_info,
 };
 
+/** Attach optional input probes only for capabilities advertised by the seat. */
 static void seat_capabilities(void* data, struct wl_seat* current, uint32_t caps)
 {
     if (log_pointer && (caps & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
@@ -205,6 +210,7 @@ static const struct wl_seat_listener seat_listener = {
     .name = seat_name,
 };
 
+/** Bind the compositor interfaces required by the test locker and probes. */
 static void global(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
     if (!strcmp(interface, wl_compositor_interface.name)) {
@@ -230,6 +236,7 @@ static int64_t now_ms(void)
     return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
 }
 
+/** Run a minimal session-lock client that unlocks after the configured hold. */
 int main(int argc, char* argv[])
 {
     const int hold = argc > 1 ? atoi(argv[1]) : 1500;
