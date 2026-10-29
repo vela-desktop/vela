@@ -209,16 +209,16 @@ static void handle_surface_map(struct wl_listener *listener, void *data)
     if (!server->seat->keyboard_state.focused_surface || (under && under->wlr == surface->wlr->output)) {
         vela_input_keyboard_enter(server->input, surface->wlr->surface);
     }
-    // The pointer might already be stationary over the lock surface. Give
-    // it focus now so a click works even without preceding mouse motion.
-    vela_interact_motion(server, 0);
+    // A stationary pointer must receive focus without an artificial motion.
+    vela_interact_retarget_lock_pointer(server);
     vela_scene_changed(server->scene);
 }
 
 static void handle_surface_destroy(struct wl_listener *listener, void *data)
 {
     struct lock_surface *surface = wl_container_of(listener, surface, destroy);
-    struct wlr_seat *seat = surface->server->seat;
+    struct vela_server *server = surface->server;
+    struct wlr_seat *seat = server->seat;
     if (seat->keyboard_state.focused_surface == surface->wlr->surface) {
         wlr_seat_keyboard_clear_focus(seat);
     }
@@ -230,6 +230,8 @@ static void handle_surface_destroy(struct wl_listener *listener, void *data)
     vela_node_destroy(&surface->surface_node->node);
     vela_node_destroy(&surface->tree->node);
     free(surface);
+    // A different mapped lock surface may now be under the pointer.
+    vela_interact_retarget_lock_pointer(server);
 }
 
 static void handle_new_surface(struct wl_listener *listener, void *data)
@@ -245,6 +247,15 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
     place_surface(surface);
     vela_listen(&wlr->surface->events.map, &surface->map, handle_surface_map);
     vela_listen(&wlr->events.destroy, &surface->destroy, handle_surface_destroy);
+}
+
+// Cursor relocation on output removal can occur after the layout-change
+// listener. Retarget at the end of the dispatch, once wlroots has warped it.
+static void retarget_pointer_after_layout(void *data)
+{
+    struct vela_lock *lock = data;
+    lock->pointer_retarget_idle = NULL;
+    vela_interact_retarget_lock_pointer(lock->server);
 }
 
 static void clear_backdrop(struct vela_lock *lock)
@@ -263,6 +274,10 @@ static void handle_unlock(struct wl_listener *listener, void *data)
         return; // never show desktop after an unsafe lock transition
     }
     // Really unlocked: the desktop is back as it was.
+    if (lock->pointer_retarget_idle) {
+        wl_event_source_remove(lock->pointer_retarget_idle);
+        lock->pointer_retarget_idle = NULL;
+    }
     server->locked = false;
     vela_bluetooth_report_lock(server, false);
     if (server->runtime_dir_fd >= 0
@@ -657,6 +672,9 @@ void vela_lock_destroy(struct vela_lock *lock)
     if (lock->fatal_timer) {
         wl_event_source_remove(lock->fatal_timer);
     }
+    if (lock->pointer_retarget_idle) {
+        wl_event_source_remove(lock->pointer_retarget_idle);
+    }
     free(lock->fatal_waiting);
     clear_backdrop(lock);
     vela_node_destroy(&lock->backdrop_tree->node);
@@ -709,13 +727,10 @@ void vela_lock_engage(struct vela_lock *lock)
         && !vela_lock_marker_create_at(server->runtime_dir_fd, server->socket_name);
     set_desktop_enabled(server, false);
     vela_node_set_enabled(&server->layers.lock->node, true);
-    server->cursor_mode = VELA_CURSOR_PASSTHROUGH;
+    // Drop every pre-lock interaction, including keyboard Move/Size and
+    // suppressed mouse releases, before handing input to the locker.
+    vela_interact_cancel_for_lock(server);
     // No drags, Alt+Tab or panels with the keyboard.
-    server->grabbed = NULL;
-    // Do not allow a title-bar drag/implicit grab that began before locking
-    // to resume on unlock or to route motion to a hidden client.
-    server->interaction->pending_title_drag.view = NULL;
-    memset(&server->input->implicit_grab, 0, sizeof(server->input->implicit_grab));
     vela_snap_end_zone(server, false);
     vela_switcher_finish(server, false);
     server->focused_layer = NULL;
@@ -844,5 +859,10 @@ void vela_lock_update_layout(struct vela_lock *lock)
                 place_surface(surface->data);
             }
         }
+    }
+    // Defer the hit test: a layout-change callback may precede wlroots'
+    // output-removal cursor warp, and a click must work without motion.
+    if (!lock->pointer_retarget_idle) {
+        lock->pointer_retarget_idle = wl_event_loop_add_idle(server->loop, retarget_pointer_after_layout, lock);
     }
 }
