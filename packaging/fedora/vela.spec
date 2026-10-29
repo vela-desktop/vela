@@ -14,9 +14,19 @@
 %{!?vela_short:%global vela_short 0000000}
 %{!?vela_count:%global vela_count 0}
 
+%if "%{?vela_channel}" == "beta"
+Name:           vela
+Version:        %{vela_version}
+Release:        1%{?dist}
+Conflicts:      vela-git
+Obsoletes:      vela-git < 1.0.0
+%else
 Name:           vela-git
 Version:        %{vela_version}
 Release:        1.%{vela_count}.g%{vela_short}%{?dist}
+Provides:       vela
+Conflicts:      vela
+%endif
 Summary:        Modern Wayland desktop environment with its own Vulkan renderer
 License:        GPL-3.0-or-later
 URL:            https://github.com/vela-desktop/vela
@@ -119,6 +129,7 @@ Vulkan renderer, Qt Quick shell, file manager, settings, and lock screen.
 %install
 %cmake_install
 install -Dm755 packaging/vela-update %{buildroot}%{_bindir}/vela-update
+install -Dm755 packaging/vela-update-beta %{buildroot}%{_libexecdir}/vela/vela-update-beta
 install -Dm644 packaging/verify-attestation.py %{buildroot}%{_libexecdir}/vela/verify-attestation.py
 
 %files

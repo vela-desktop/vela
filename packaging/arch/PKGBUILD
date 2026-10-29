@@ -96,6 +96,7 @@ check() {
 package() {
     DESTDIR="$pkgdir" cmake --install build
     install -Dm755 "$_name/packaging/vela-update" "$pkgdir/usr/bin/vela-update"
+    install -Dm755 "$_name/packaging/vela-update-beta" "$pkgdir/usr/lib/vela/vela-update-beta"
     install -Dm644 "$_name/packaging/verify-attestation.py" "$pkgdir/usr/lib/vela/verify-attestation.py"
     install -Dm644 "$_name/packaging/arch/vela-qt-private-rebuild.hook" \
         "$pkgdir/usr/share/libalpm/hooks/vela-qt-private-rebuild.hook"

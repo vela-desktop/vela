@@ -118,11 +118,22 @@ if(VELA_PACKAGE_DEB)
         message(FATAL_ERROR "Vela DEB packaging requires Linux")
     endif()
     set(CPACK_GENERATOR "DEB")
-    set(CPACK_PACKAGE_NAME "vela-git")
+    set(VELA_PACKAGE_CHANNEL "experimental" CACHE STRING "Vela distribution channel (experimental or beta)")
+    if(VELA_PACKAGE_CHANNEL STREQUAL "beta")
+        set(CPACK_PACKAGE_NAME "vela")
+        set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+        set(CPACK_DEBIAN_PACKAGE_CONFLICTS "vela-git")
+        set(CPACK_DEBIAN_PACKAGE_REPLACES "vela-git")
+    elseif(VELA_PACKAGE_CHANNEL STREQUAL "experimental")
+        set(CPACK_PACKAGE_NAME "vela-git")
+        set(CPACK_DEBIAN_PACKAGE_CONFLICTS "vela")
+    else()
+        message(FATAL_ERROR "Unknown VELA_PACKAGE_CHANNEL: ${VELA_PACKAGE_CHANNEL}")
+    endif()
     # Embed the selected revision in Debian Version for reliable updater comparisons.
     # Unstamped local/CI preview builds retain the ordinary project version.
     set(VELA_PACKAGE_COMMIT "" CACHE STRING "Short Git commit for the DEB version")
-    if(NOT VELA_PACKAGE_COMMIT STREQUAL "")
+    if(VELA_PACKAGE_CHANNEL STREQUAL "experimental" AND NOT VELA_PACKAGE_COMMIT STREQUAL "")
         string(LENGTH "${VELA_PACKAGE_COMMIT}" VELA_PACKAGE_COMMIT_LENGTH)
         if(NOT VELA_PACKAGE_COMMIT MATCHES "^[0-9a-f]+$" OR
            VELA_PACKAGE_COMMIT_LENGTH LESS 7 OR VELA_PACKAGE_COMMIT_LENGTH GREATER 40)
@@ -148,6 +159,8 @@ if(VELA_PACKAGE_DEB)
     # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
         DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update-beta"
+        DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
     install(FILES "${PROJECT_SOURCE_DIR}/packaging/verify-attestation.py"
         DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
