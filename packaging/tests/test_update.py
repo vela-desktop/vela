@@ -164,7 +164,7 @@ while True:
     subprocess.run(["git", "-C", "checkout", "checkout", "--quiet", "--detach", fragment], check=True)
     sha = subprocess.check_output(["git", "-C", "checkout", "rev-parse", "HEAD"], text=True).strip()
     record(sha=sha, url=url, pkgbuild=pathlib.Path("PKGBUILD").read_text(),
-           makeflags=os.environ.get("MAKEFLAGS"), args=args)
+           makeflags=os.environ.get("MAKEFLAGS"), argv=args)
     if os.environ.get("TEST_FAIL_BUILD_INSTALL"):
         dest = pathlib.Path(os.environ["PKGDEST"])
         dest.mkdir(parents=True, exist_ok=True)
@@ -445,7 +445,7 @@ class UpdateRevision(UpdateFixture):
         self.assertTrue(any(c["args"] == ["pacman", "-S", "--needed", "--noconfirm", "base-devel"]
                             for c in self.calls("sudo")))
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
-        self.assertIn("--noconfirm", self.calls("makepkg")[0]["args"])
+        self.assertIn("--noconfirm", self.calls("makepkg")[0]["argv"])
 
     def test_verified_download_without_base_devel_never_provisions_build_tools(self):
         """A verified prebuilt package must not install a local build toolchain."""
@@ -463,7 +463,7 @@ class UpdateRevision(UpdateFixture):
         self.run_update("--download")
         self.assertTrue(any(c["args"] == ["pacman", "-S", "--needed", "--noconfirm", "base-devel"]
                             for c in self.calls("sudo")))
-        self.assertIn("--noconfirm", self.calls("makepkg")[0]["args"])
+        self.assertIn("--noconfirm", self.calls("makepkg")[0]["argv"])
 
     def test_present_base_devel_not_reinstalled(self):
         self.run_update("--build")
