@@ -156,7 +156,13 @@ jobs:
       CCACHE_MAXSIZE: 350M
     steps:
       - name: Dependencies
-        run: pacman -Syu --noconfirm --needed $DEPENDENCIES
+        run: |
+          pacman -Syu --noconfirm --needed $DEPENDENCIES
+          # makepkg runs unprivileged without --syncdeps: install only the
+          # additional *runtime* desktop packages needed by the PKGBUILD.
+          pacman -S --noconfirm --needed \
+            konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk \
+            xdg-desktop-portal-wlr xdg-utils
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -374,6 +380,13 @@ jobs:
           # Use normal DNF defaults so recommended desktop/updater tools
           # are exercised along with the mandatory runtime dependencies.
           dnf --refresh install -y "${rpms[0]}"
+          # DNF installs the recommended portal integrations by default;
+          # unlike Arch, Fedora deliberately keeps them optional in the RPM.
+          rpm -q xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr
+          test -f /usr/share/xdg-desktop-portal/vela-portals.conf
+          grep -Fxq 'default=gtk;kde' /usr/share/xdg-desktop-portal/vela-portals.conf
+          grep -Fxq 'org.freedesktop.impl.portal.ScreenCast=wlr' /usr/share/xdg-desktop-portal/vela-portals.conf
+          grep -Fxq 'org.freedesktop.impl.portal.Screenshot=wlr' /usr/share/xdg-desktop-portal/vela-portals.conf
           rpm -V vela-git
           installed_requires=$(rpm -q --requires vela-git)
           for dependency in git util-linux rpm dnf5; do

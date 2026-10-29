@@ -91,7 +91,7 @@ Recommends:     python3
 Recommends:     rpm-build
 Recommends:     dnf5-plugins
 Recommends:     xdg-desktop-portal-wlr
-Recommends:     xdg-desktop-portal-kde
+Recommends:     xdg-desktop-portal-gtk
 Recommends:     breeze-icon-theme
 Recommends:     NetworkManager
 Recommends:     bluez
