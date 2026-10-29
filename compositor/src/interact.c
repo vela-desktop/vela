@@ -127,6 +127,7 @@ static void unhover_decoration(struct vela_interaction *interaction)
 
 // The visible lock scene is the only eligible pointer target during a lock.
 // Focus changes (map/hotplug) need no synthetic motion event.
+/** Focus only a visible lock surface, optionally delivering real mouse motion. */
 static void lock_pointer_focus(struct vela_server *server, uint32_t time_msec, bool notify_motion)
 {
     struct wlr_seat *seat = server->seat;
@@ -143,6 +144,7 @@ static void lock_pointer_focus(struct vela_server *server, uint32_t time_msec, b
     }
 }
 
+/** Recompute lock-surface pointer focus without synthesizing motion. */
 void vela_interact_retarget_lock_pointer(struct vela_server *server)
 {
     if (server->locked) {
@@ -150,6 +152,7 @@ void vela_interact_retarget_lock_pointer(struct vela_server *server)
     }
 }
 
+/** Route real pointer movement to the currently interactive scene. */
 void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
 {
     struct vela_interaction *interaction = server->interaction;
@@ -650,6 +653,7 @@ void vela_interact_cancel_keyboard(struct vela_server *server)
     finish_keyboard(server, false);
 }
 
+/** Cancel every compositor interaction that must not outlive a screen lock. */
 void vela_interact_cancel_for_lock(struct vela_server *server)
 {
     struct vela_interaction *interaction = server->interaction;
