@@ -149,7 +149,7 @@ jobs:
           apt-get install -y --no-install-recommends file dpkg-dev
           apt-get install -y --no-install-recommends ./deb/*.deb
           pkg=vela-git
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then pkg=vela; fi
+          case "$GITHUB_REF" in refs/tags/v0.*) pkg=vela ;; esac
           dpkg-query -W -f='${Status}\n' "$pkg" | grep -Fx 'install ok installed'
           # --no-install-recommends must still pull in both runtime icon packages.
           for dependency in breeze-icon-theme qt6-svg-plugins; do
@@ -194,7 +194,7 @@ jobs:
         run: |
           set -eu
           pkg=vela-git
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then pkg=vela; fi
+          case "$GITHUB_REF" in refs/tags/v0.*) pkg=vela ;; esac
           apt-get remove -y "$pkg"
           test ! -e /usr/bin/vela-compositor
           test ! -e /usr/bin/vela-update
