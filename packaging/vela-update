@@ -18,6 +18,43 @@
 
 set -eu
 
+# Release channels: installed package selects the default. Explicit --channel
+# is used by Settings for transitions; Experimental keeps the original CLI.
+requested_channel=""
+expect_channel=0
+for opt in "$@"; do
+    if [ "$expect_channel" = 1 ]; then
+        requested_channel="$opt"
+        expect_channel=0
+        continue
+    fi
+    case "$opt" in
+      --channel) expect_channel=1 ;;
+      --channel=*) requested_channel="${opt#--channel=}" ;;
+    esac
+done
+[ "$expect_channel" = 0 ] || { echo "vela-update: --channel needs a value" >&2; exit 2; }
+if [ -z "$requested_channel" ]; then
+    if (command -v pacman >/dev/null 2>&1 && pacman -Q vela >/dev/null 2>&1) ||
+       (command -v rpm >/dev/null 2>&1 && rpm -q vela >/dev/null 2>&1) ||
+       (command -v dpkg-query >/dev/null 2>&1 &&
+         dpkg-query -W -f='${Status}' vela 2>/dev/null | grep -qx 'install ok installed'); then
+        requested_channel=beta
+    else
+        requested_channel=experimental
+    fi
+fi
+case "$requested_channel" in
+ beta)
+    for helper in "$(dirname "$0")/vela-update-beta" \
+        /usr/lib/vela/vela-update-beta /usr/libexec/vela/vela-update-beta; do
+        if [ -x "$helper" ]; then exec "$helper" "$@"; fi
+    done
+    echo "vela-update: Beta channel helper is not installed" >&2; exit 1 ;;
+ experimental) ;;
+ *) echo "vela-update: unknown channel: $requested_channel" >&2; exit 2 ;;
+esac
+
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/vela/updates.conf"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/vela-update"
 MIRROR="$CACHE/vela.git"
@@ -34,6 +71,7 @@ Updates Vela to the repository's default branch and installs it (Arch/Fedora/Ubu
   --branch NAME       install the latest commit of this branch, just this time
   --commit SHA        install this exact commit (full or abbreviated SHA),
                       just this time; cannot be combined with --branch
+  --channel NAME      beta (signed tagged packages) or experimental (source)
   --check             only tell whether there is an update and what changed
                       (exits with 0 if there is one, 1 if Vela is up to date)
   --force             rebuild and reinstall even if Vela is up to date
@@ -57,6 +95,8 @@ branch=""
 commit=""
 while [ $# -gt 0 ]; do
     case "$1" in
+    --channel) shift; [ "${1:-}" = experimental ] || { echo "vela-update: invalid channel" >&2; exit 2; } ;;
+    --channel=experimental) ;;
     --check) check=1 ;;
     --force) force=1 ;;
     --build) prefer=build ;;

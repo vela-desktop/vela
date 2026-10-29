@@ -1,0 +1,161 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Vela contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Official Beta channel: select a numbered v0.x.y release, verify its exact
+# tagged commit and signed binary provenance, then install the native package.
+# This deliberately does not fall back to an experimental source build.
+set -eu
+
+REPO=vela-desktop/vela
+BASE=https://github.com/$REPO
+API=https://api.github.com/repos/$REPO/releases
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/vela-update"
+check=0
+json=0
+force=0
+requested_tag=""
+for arg in "$@"; do
+    case "$arg" in
+        --channel=beta|--channel|beta) ;;
+        --check) check=1 ;;
+        --json) json=1 ;;
+        --force) force=1 ;;
+        --tag=v0.*) requested_tag="${arg#--tag=}" ;;
+        *) echo "vela-update: unsupported Beta option: $arg" >&2; exit 2 ;;
+    esac
+done
+if [ "$json" = 1 ] && [ "$check" != 1 ]; then
+    echo "vela-update: --json is only supported with --check" >&2; exit 2
+fi
+if ! command -v python3 >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1 ||
+   ! command -v curl >/dev/null 2>&1 || ! command -v flock >/dev/null 2>&1; then
+    echo "vela-update: Beta updates require Python 3, git, curl and flock" >&2
+    exit 1
+fi
+mkdir -p "$CACHE"
+exec 9>"$CACHE/update.lock"
+if ! flock -n 9; then
+    echo "vela-update: another update is already running" >&2
+    exit 1
+fi
+work=$(mktemp -d "$CACHE/beta.XXXXXXXX")
+trap 'rm -rf -- "$work"' 0
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+# Selecting a release by numeric SemVer tuple, never by API order or timestamp.
+curl -fsSL --retry 2 --connect-timeout 5 --max-time 30 \
+    -H 'Accept: application/vnd.github+json' "$API?per_page=100" > "$work/releases.json"
+tag=$(python3 - "$work/releases.json" "$requested_tag" <<'PY'
+import json, re, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    releases = json.load(f)
+if not isinstance(releases, list):
+    raise SystemExit("vela-update: invalid releases response")
+found = []
+for rel in releases:
+    if not isinstance(rel, dict) or rel.get("draft") or not rel.get("prerelease"):
+        continue
+    tag = rel.get("tag_name", "")
+    if not isinstance(tag, str) or not re.fullmatch(r"v0\.[0-9]+\.[0-9]+", tag):
+        continue
+    if sys.argv[2] and tag != sys.argv[2]:
+        continue
+    found.append((tuple(map(int, tag[1:].split("."))), tag))
+if not found:
+    raise SystemExit("vela-update: no official Beta release found")
+print(max(found)[1])
+PY
+)
+version="${tag#v}"
+# Dereference annotated tags when present. The signed provenance must bind
+# the exact commit currently targeted by this immutable release tag.
+latestFull=$(git ls-remote "$BASE.git" "refs/tags/$tag" "refs/tags/$tag^{}" |
+    awk '/\^\{\}$/ {print $1; found=1; exit} !found {candidate=$1} END {if (!found) print candidate}')
+if ! printf '%s\n' "$latestFull" | grep -Eq '^[0-9a-f]{40}$'; then
+    echo "vela-update: cannot resolve the Beta release tag $tag" >&2
+    exit 1
+fi
+
+if command -v pacman >/dev/null 2>&1; then
+    backend=arch
+    installed=$(pacman -Q vela 2>/dev/null | awk '{print $2}' || true)
+elif [ -r /etc/os-release ] && grep -q '^ID=fedora' /etc/os-release; then
+    backend=fedora
+    installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela 2>/dev/null || true)
+elif command -v dpkg-query >/dev/null 2>&1; then
+    backend=ubuntu
+    installed=$(dpkg-query -W -f='${Status}\t${Version}\n' vela 2>/dev/null |
+        awk -F '\t' '$1 == "install ok installed" {print $2}' || true)
+else
+    echo "vela-update: unsupported Beta distribution" >&2; exit 1
+fi
+current=0
+case "$installed" in "$version"|"$version"-*) current=1 ;; esac
+if [ "$json" = 1 ]; then
+    python3 - "$installed" "$tag" "$latestFull" "$current" <<'PY'
+import json, sys
+print(json.dumps({
+    "schema_version": 1, "channel": "beta",
+    "status": "up-to-date" if sys.argv[4] == "1" else "update-available",
+    "installed_version": sys.argv[1], "version": sys.argv[2][1:],
+    "tag": sys.argv[2], "commit": sys.argv[3],
+    "source": "https://github.com/vela-desktop/vela", "changes": []
+}))
+PY
+    exit 0
+fi
+if [ "$current" = 1 ] && [ "$force" = 0 ]; then
+    echo ":: Vela Beta is up to date ($version)."
+    [ "$check" != 1 ] || exit 1
+    exit 0
+fi
+echo ":: Vela Beta update available: $tag ($latestFull)"
+if [ "$check" = 1 ]; then exit 0; fi
+
+case "$backend" in
+arch) manifest=SHA256SUMS
+      regex="^vela-[0-9][A-Za-z0-9._+-]*-x86_64[.]pkg[.]tar[.]zst$" ;;
+fedora) manifest=SHA256SUMS-fedora
+        regex="^vela-[0-9][A-Za-z0-9._+-]*[.]x86_64[.]rpm$" ;;
+ubuntu) manifest=SHA256SUMS-ubuntu
+        regex="^vela_[0-9][A-Za-z0-9._+~-]*_amd64[.]deb$" ;;
+esac
+release="$BASE/releases/download/$tag"
+curl -fsSL --retry 2 --connect-timeout 5 --max-time 30 \
+    -o "$work/$manifest" "$release/$manifest"
+if [ "$(wc -l < "$work/$manifest")" -ne 1 ]; then
+    echo "vela-update: expected one package checksum in $manifest" >&2; exit 1
+fi
+digest=$(awk 'NR==1 {print $1}' "$work/$manifest")
+package=$(awk 'NR==1 {print $2}' "$work/$manifest")
+if ! printf '%s\n' "$digest" | grep -Eq '^[0-9a-f]{64}$' ||
+   ! printf '%s\n' "$package" | grep -Eq "$regex" ||
+   ! printf '%s\n' "$package" | grep -Fq "$version"; then
+    echo "vela-update: invalid or mismatched Beta package manifest" >&2; exit 1
+fi
+curl -fsSL --retry 2 --connect-timeout 5 --max-time 240 \
+    -o "$work/$package" "$release/$package"
+printf '%s  %s\n' "$digest" "$package" > "$work/SHA256SUMS"
+(cd "$work" && sha256sum -c --status SHA256SUMS)
+if ! command -v cosign >/dev/null 2>&1; then
+    echo "vela-update: cosign is required to install signed Beta packages" >&2
+    exit 1
+fi
+verifier=""
+for candidate in "$(dirname "$0")/verify-attestation.py" \
+    /usr/lib/vela/verify-attestation.py /usr/libexec/vela/verify-attestation.py; do
+    if [ -f "$candidate" ]; then verifier="$candidate"; break; fi
+done
+[ -n "$verifier" ] || { echo "vela-update: missing Sigstore verifier" >&2; exit 1; }
+python3 "$verifier" --repository "$REPO" --commit "$latestFull" \
+    --kind release --release-tag "$tag" "$work/$package"
+echo ":: Verified official Beta package $package"
+case "$backend" in
+arch) sudo pacman -U "$work/$package" ;;
+fedora) sudo dnf install -y "$work/$package" ;;
+ubuntu) sudo apt-get install -y --allow-downgrades "$work/$package" ;;
+esac
+echo ":: Vela Beta $tag installed. Sign out and back in to start the new version."
