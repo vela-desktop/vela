@@ -213,7 +213,7 @@ static void global(void* data, struct wl_registry* registry, uint32_t name, cons
         shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     } else if (!strcmp(interface, wl_output_interface.name) && screen_count < MAX_OUTPUTS) {
         screens[screen_count++].output = wl_registry_bind(registry, name, &wl_output_interface, 1);
-     } else if ((log_pointer || log_keyboard) && !strcmp(interface, wl_seat_interface.name) && !seat) {
+    } else if ((log_pointer || log_keyboard) && !strcmp(interface, wl_seat_interface.name) && !seat) {
         seat = wl_registry_bind(registry, name, &wl_seat_interface, version < 4 ? version : 4);
         wl_seat_add_listener(seat, &seat_listener, NULL);
     } else if (!strcmp(interface, ext_session_lock_manager_v1_interface.name)) {
