@@ -164,7 +164,7 @@ while True:
     subprocess.run(["git", "-C", "checkout", "checkout", "--quiet", "--detach", fragment], check=True)
     sha = subprocess.check_output(["git", "-C", "checkout", "rev-parse", "HEAD"], text=True).strip()
     record(sha=sha, url=url, pkgbuild=pathlib.Path("PKGBUILD").read_text(),
-           makeflags=os.environ.get("MAKEFLAGS"))
+           makeflags=os.environ.get("MAKEFLAGS"), args=args)
     if os.environ.get("TEST_FAIL_BUILD_INSTALL"):
         dest = pathlib.Path(os.environ["PKGDEST"])
         dest.mkdir(parents=True, exist_ok=True)
@@ -439,11 +439,31 @@ class UpdateFixture(unittest.TestCase):
 
 class UpdateRevision(UpdateFixture):
     def test_missing_base_devel_installed_for_local_build(self):
+        """An unattended local build installs base-devel without a prompt."""
         self.env["TEST_BASE_DEVEL"] = "0"
         self.run_update("--build")
-        self.assertTrue(any(c["args"] == ["pacman", "-S", "--needed", "base-devel"]
+        self.assertTrue(any(c["args"] == ["pacman", "-S", "--needed", "--noconfirm", "base-devel"]
                             for c in self.calls("sudo")))
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+        self.assertIn("--noconfirm", self.calls("makepkg")[0]["args"])
+
+    def test_verified_download_without_base_devel_never_provisions_build_tools(self):
+        """A verified prebuilt package must not install a local build toolchain."""
+        self.env.update(TEST_BASE_DEVEL="0", TEST_CI_RUN="123",
+                        TEST_DOWNLOAD_SHA=self.nvidia[:7])
+        self.run_update("--branch", "fix/nvidia", "--download")
+        sudo = self.calls("sudo")
+        self.assertEqual(sudo[0]["args"][:2], ["pacman", "-U"])
+        self.assertFalse(any(c["args"][:3] == ["pacman", "-S", "--needed"] for c in sudo))
+        self.assertEqual(self.calls("makepkg"), [])
+
+    def test_missing_base_devel_noninteractive_build_fallback_after_failed_download(self):
+        """Falling back to local compilation also uses noninteractive pacman."""
+        self.env.update(TEST_BASE_DEVEL="0", TEST_CI_RUN="123", TEST_FAIL_DOWNLOAD="1")
+        self.run_update("--download")
+        self.assertTrue(any(c["args"] == ["pacman", "-S", "--needed", "--noconfirm", "base-devel"]
+                            for c in self.calls("sudo")))
+        self.assertIn("--noconfirm", self.calls("makepkg")[0]["args"])
 
     def test_present_base_devel_not_reinstalled(self):
         self.run_update("--build")

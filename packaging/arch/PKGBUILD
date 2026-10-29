@@ -89,6 +89,7 @@ check() {
     test -x build/compositor/vela-compositor
     test -x build/shell/vela-shell
     bash -n "$_name/packaging/vela-update"
+    sh -n "$_name/packaging/arch/vela-qt-rebuild-notice"
     PYTHONPYCACHEPREFIX="$srcdir/.vela-pycache" python -m py_compile "$_name/packaging/verify-attestation.py"
 }
 
@@ -96,4 +97,8 @@ package() {
     DESTDIR="$pkgdir" cmake --install build
     install -Dm755 "$_name/packaging/vela-update" "$pkgdir/usr/bin/vela-update"
     install -Dm644 "$_name/packaging/verify-attestation.py" "$pkgdir/usr/lib/vela/verify-attestation.py"
+    install -Dm644 "$_name/packaging/arch/vela-qt-private-rebuild.hook" \
+        "$pkgdir/usr/share/libalpm/hooks/vela-qt-private-rebuild.hook"
+    install -Dm755 "$_name/packaging/arch/vela-qt-rebuild-notice" \
+        "$pkgdir/usr/lib/vela/vela-qt-rebuild-notice"
 }

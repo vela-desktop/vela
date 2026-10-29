@@ -16,6 +16,7 @@ for path in \
     /usr/share/applications/vela-report.desktop \
     /usr/lib/vela/report/vela_report/cli.py \
     /usr/share/xdg-desktop-portal/vela-portals.conf \
+    /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
     /usr/lib/systemd/user/vela-session.target \
     /usr/lib/udev/rules.d/70-vela-i2c.rules \
     /usr/lib/modules-load.d/vela-i2c.conf \
@@ -45,7 +46,7 @@ for program in vela-compositor vela-shell vela-files vela-settings vela-lock \
     fi
 done
 # GTK supplies the default generic portals; wlr supplies screen capture.
-for required in konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr; do
+for required in konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr xdg-utils; do
     pacman -Q "$required" >/dev/null || fail "Missing desktop integration: $required"
 done
 for foreign_de in xdg-desktop-portal-kde plasma-workspace gnome-shell; do
@@ -56,11 +57,16 @@ done
 if pacman -Q base-devel >/dev/null 2>&1; then
     fail "base-devel should only be installed when a local build is requested"
 fi
-for executable in git curl sudo flock setsid; do
+test -x /usr/lib/vela/vela-qt-rebuild-notice || fail 'Missing Qt rebuild notification helper'
+grep -Fxq 'Target = qt6-base' /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
+    || fail 'Qt upgrade hook must match qt6-base'
+grep -Fxq 'Exec = /usr/lib/vela/vela-qt-rebuild-notice' /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
+    || fail 'Qt upgrade hook must run the installed notification helper'
+for executable in git curl sudo flock setsid xdg-open xdg-email; do
     command -v "$executable" >/dev/null || fail "Missing vela-update prerequisite: $executable"
 done
-if ! grep -Fxq 'default=gtk' /usr/share/xdg-desktop-portal/vela-portals.conf; then
-    fail "Vela portal preferences must select GTK for generic portals"
+if ! grep -Fxq 'default=gtk;kde' /usr/share/xdg-desktop-portal/vela-portals.conf; then
+    fail "Vela portal preferences must prefer GTK with an optional KDE fallback"
 fi
 for interface in ScreenCast Screenshot; do
     if ! grep -Fxq "org.freedesktop.impl.portal.${interface}=wlr" /usr/share/xdg-desktop-portal/vela-portals.conf; then

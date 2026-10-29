@@ -836,9 +836,15 @@ fi
 # Arch's base-devel is a build-time prerequisite, not a permanent Vela
 # dependency. Install it only when we actually fall back to local compilation.
 # makepkg --syncdeps will install the selected PKGBUILD's other makedepends.
+# An unattended invocation must not block on pacman's confirmation prompt.
 if [ "$backend" = arch ] && ! pacman -Qq base-devel >/dev/null 2>&1; then
     echo ":: Local build requires base-devel; asking pacman to install it."
-    if ! sudo pacman -S --needed base-devel; then
+    if [ -t 0 ]; then
+        sudo pacman -S --needed base-devel || {
+            echo "vela-update: could not install base-devel for local compilation." >&2
+            exit 1
+        }
+    elif ! sudo pacman -S --needed --noconfirm base-devel; then
         echo "vela-update: could not install base-devel for local compilation." >&2
         exit 1
     fi
@@ -856,7 +862,7 @@ if [ "$backend" = arch ]; then
         build_isolated=0
     else
         BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-            setsid --wait makepkg --syncdeps --install --clean --force <&0 9>&- &
+            setsid --wait makepkg --noconfirm --syncdeps --install --clean --force <&0 9>&- &
         build_isolated=1
     fi
 elif [ "$backend" = ubuntu ]; then

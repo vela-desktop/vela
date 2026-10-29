@@ -40,7 +40,7 @@ Different features rely on installed/running system services. On Arch, [vela-git
 | Audio controls and per-app volumes | PipeWire and WirePlumber (PulseAudio without PipeWire is not supported) |
 | X11 apps and older games | Xwayland |
 | Removable and unmounted storage | UDisks2 |
-| Screen sharing / application portals | `xdg-desktop-portal` and `xdg-desktop-portal-wlr` are installed by default on Arch. `xdg-desktop-portal-gtk` provides generic application portals by default, while wlr handles screenshot and screencast |
+| Screen sharing / application portals | Arch installs `xdg-desktop-portal`, `xdg-desktop-portal-gtk` and `xdg-desktop-portal-wlr` by default. GTK serves generic portals, KDE is an optional fallback if already installed, and wlr handles screenshot and screencast |
 | KDE styling and secrets | Appropriate KDE icon/theme/wallet components |
 
 Vela does not install `xdg-desktop-portal-kde` or Plasma Workspace. Konsole and Breeze icons remain default desktop components. BlueZ remains optional for native Vela Bluetooth integration; Bluedevil plus bluez-obex are optional for Bluetooth file sending from Files.
@@ -49,7 +49,7 @@ The Vela compositor and Vulkan renderer are Vela's own; reusing standard Linux s
 
 ## Suggested manual smoke tests
 
-On the affected physical GPU, test login/logout, multiple displays and scaling, Alt+Tab and snapping, locking/unlocking, audio mute and network scanning, screenshots and screen sharing, device hotplug, suspend/resume and recovery from a compositor/shell crash where safe. Record observed pass/fail/untested status per test; do not infer it from a generic CI green check.
+On the affected physical GPU, test login/logout, multiple displays and scaling, Alt+Tab and snapping, locking/unlocking, audio mute and network scanning, screenshots and screen sharing, device hotplug, suspend/resume and recovery from a compositor/shell crash where safe. Record observed pass/fail/untested status per test; do not infer it from a generic CI green check. Specifically verify the file chooser through a sandboxed application, GTK as the selected generic portal, actual screencast and screenshot portal calls through wlr, and an interactive screen-share chooser. When testing the optional KDE fallback, remove GTK only in a disposable test environment and confirm the file chooser still works with KDE installed. After a `qt6-base` upgrade check whether `vela-shell` can launch and rebuild the current revision with `vela-update --force --build` if its Qt private ABI is incompatible.
 
 ### Sound
 
