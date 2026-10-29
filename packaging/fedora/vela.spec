@@ -24,7 +24,6 @@ Obsoletes:      vela-git < 1.0.0
 Name:           vela-git
 Version:        %{vela_version}
 Release:        1.%{vela_count}.g%{vela_short}%{?dist}
-Provides:       vela
 Conflicts:      vela
 %endif
 Summary:        Modern Wayland desktop environment with its own Vulkan renderer
