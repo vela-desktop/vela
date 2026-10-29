@@ -43,8 +43,10 @@ static struct screen screens[MAX_OUTPUTS];
 static int screen_count;
 static bool locked, finished;
 static bool log_pointer;
+static bool log_keyboard;
 static struct wl_seat* seat;
 static struct wl_pointer* pointer;
+static struct wl_keyboard* keyboard;
 
 static struct wl_buffer* make_buffer(uint32_t width, uint32_t height, uint32_t color)
 {
@@ -122,7 +124,7 @@ static void pointer_enter(void* data, struct wl_pointer* ptr, uint32_t serial,
     struct wl_surface* surface, wl_fixed_t sx, wl_fixed_t sy)
 {
     if (log_pointer) {
-        fprintf(stderr, "vela-testlock: pointer-enter %d %d\\n",
+        fprintf(stderr, "vela-testlock: pointer-enter %d %d\n",
             wl_fixed_to_int(sx), wl_fixed_to_int(sy));
     }
 }
@@ -131,12 +133,17 @@ static void pointer_motion(void* data, struct wl_pointer* ptr, uint32_t time,
     wl_fixed_t sx, wl_fixed_t sy)
 {
     if (log_pointer) {
-        fprintf(stderr, "vela-testlock: pointer-motion %d %d\\n",
+        fprintf(stderr, "vela-testlock: pointer-motion %d %d\n",
             wl_fixed_to_int(sx), wl_fixed_to_int(sy));
     }
 }
 static void pointer_button(void* data, struct wl_pointer* ptr, uint32_t serial,
-    uint32_t time, uint32_t button, uint32_t state) { }
+    uint32_t time, uint32_t button, uint32_t state)
+{
+    if (log_pointer) {
+        fprintf(stderr, "vela-testlock: pointer-button %u %u\n", button, state);
+    }
+}
 static void pointer_axis(void* data, struct wl_pointer* ptr, uint32_t time,
     uint32_t axis, wl_fixed_t value) { }
 static const struct wl_pointer_listener pointer_listener = {
@@ -147,14 +154,49 @@ static const struct wl_pointer_listener pointer_listener = {
     .axis = pointer_axis,
 };
 
+// Minimal keyboard probe: check that a pending desktop Move/Size does not
+// consume the locker's keys when locking happens mid-interaction.
+static void keyboard_keymap(void* data, struct wl_keyboard* kb, uint32_t format, int fd, uint32_t size)
+{
+    close(fd);
+}
+static void keyboard_enter(void* data, struct wl_keyboard* kb, uint32_t serial,
+    struct wl_surface* surface, struct wl_array* keys) { }
+static void keyboard_leave(void* data, struct wl_keyboard* kb, uint32_t serial, struct wl_surface* surface) { }
+static void keyboard_key(void* data, struct wl_keyboard* kb, uint32_t serial,
+    uint32_t time, uint32_t key, uint32_t state)
+{
+    if (log_keyboard) {
+        fprintf(stderr, "vela-testlock: keyboard-key %u %u\n", key, state);
+    }
+}
+static void keyboard_modifiers(void* data, struct wl_keyboard* kb, uint32_t serial,
+    uint32_t depressed, uint32_t latched, uint32_t locked_mods, uint32_t group) { }
+static void keyboard_repeat_info(void* data, struct wl_keyboard* kb, int32_t rate, int32_t delay) { }
+static const struct wl_keyboard_listener keyboard_listener = {
+    .keymap = keyboard_keymap,
+    .enter = keyboard_enter,
+    .leave = keyboard_leave,
+    .key = keyboard_key,
+    .modifiers = keyboard_modifiers,
+    .repeat_info = keyboard_repeat_info,
+};
+
 static void seat_capabilities(void* data, struct wl_seat* current, uint32_t caps)
 {
-    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
+    if (log_pointer && (caps & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
         pointer = wl_seat_get_pointer(current);
         wl_pointer_add_listener(pointer, &pointer_listener, NULL);
     } else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && pointer) {
         wl_pointer_destroy(pointer);
         pointer = NULL;
+    }
+    if (log_keyboard && (caps & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard) {
+        keyboard = wl_seat_get_keyboard(current);
+        wl_keyboard_add_listener(keyboard, &keyboard_listener, NULL);
+    } else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && keyboard) {
+        wl_keyboard_destroy(keyboard);
+        keyboard = NULL;
     }
 }
 static void seat_name(void* data, struct wl_seat* current, const char* name) { }
@@ -171,7 +213,7 @@ static void global(void* data, struct wl_registry* registry, uint32_t name, cons
         shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     } else if (!strcmp(interface, wl_output_interface.name) && screen_count < MAX_OUTPUTS) {
         screens[screen_count++].output = wl_registry_bind(registry, name, &wl_output_interface, 1);
-    } else if (log_pointer && !strcmp(interface, wl_seat_interface.name) && !seat) {
+     } else if ((log_pointer || log_keyboard) && !strcmp(interface, wl_seat_interface.name) && !seat) {
         seat = wl_registry_bind(registry, name, &wl_seat_interface, version < 4 ? version : 4);
         wl_seat_add_listener(seat, &seat_listener, NULL);
     } else if (!strcmp(interface, ext_session_lock_manager_v1_interface.name)) {
@@ -193,6 +235,7 @@ int main(int argc, char* argv[])
     const int hold = argc > 1 ? atoi(argv[1]) : 1500;
     const bool keep_surfaces = argc > 2 && !strcmp(argv[2], "--keep-surfaces");
     log_pointer = getenv("VELA_TESTLOCK_LOG_POINTER") && strcmp(getenv("VELA_TESTLOCK_LOG_POINTER"), "0") != 0;
+    log_keyboard = getenv("VELA_TESTLOCK_LOG_KEYBOARD") && strcmp(getenv("VELA_TESTLOCK_LOG_KEYBOARD"), "0") != 0;
     struct wl_display* display = wl_display_connect(NULL);
     if (!display) {
         fprintf(stderr, "vela-testlock: no Wayland display\n");
