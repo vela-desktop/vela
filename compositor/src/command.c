@@ -130,10 +130,10 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     } else {
         vela_buffer_append(json, "null");
     }
-    vela_buffer_appendf(json, ",\"readback\":{\"pending\":%zu,\"bytes\":%zu,\"completed\":%llu,\"cancelled\":%llu,\"failed\":%llu,\"rejected\":%llu}",
+    vela_buffer_appendf(json, ",\"readback\":{\"pending\":%zu,\"bytes\":%zu,\"completed\":%llu,\"cancelled\":%llu,\"failed\":%llu,\"rejected\":%llu,\"submitted\":%llu}",
         readbacks.pending, readbacks.bytes, (unsigned long long)readbacks.completed,
         (unsigned long long)readbacks.cancelled, (unsigned long long)readbacks.failed,
-        (unsigned long long)readbacks.rejected);
+        (unsigned long long)readbacks.rejected, (unsigned long long)readbacks.submitted);
     vela_buffer_appendf(json, ",\"held\":%llu,\"outputs\":[", (unsigned long long)server->ready.held_total);
     bool first = true;
     struct vela_output *output;

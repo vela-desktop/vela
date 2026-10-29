@@ -270,6 +270,7 @@ struct vela_renderer {
     int readback_fd; // one-shot timerfd: yield through epoll without a millisecond floor
     size_t readback_count, readback_bytes;
     uint64_t readback_completed, readback_cancelled, readback_failed, readback_rejected;
+    uint64_t readback_submitted;
 
     // The arrays of a submission, reused (they only grow).
     VkSemaphoreSubmitInfo *wait_infos;

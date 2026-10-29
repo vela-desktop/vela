@@ -534,6 +534,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
 struct vela_readback {
     struct vela_renderer *renderer;
     struct wlr_texture *texture;
+    struct wlr_buffer *src;
     struct wlr_buffer *dst;
     struct vela_staging staging;
     uint64_t point;
@@ -604,6 +605,7 @@ void vela_readback_cancel(struct vela_readback *readback)
     pin_staging(renderer, readback->staging.buffer, false);
     // GPU lifetime still follows the submission point, even on cancellation.
     wlr_texture_destroy(readback->texture);
+    wlr_buffer_unlock(readback->src);
     wlr_buffer_unlock(readback->dst);
     free(readback);
     if (!renderer->readback_count) remove_readback_timer(renderer);
@@ -631,7 +633,17 @@ struct vela_readback_stats vela_renderer_readback_stats(const struct vela_render
 {
     return (struct vela_readback_stats) { renderer->readback_count, renderer->readback_bytes,
         renderer->readback_completed, renderer->readback_cancelled, renderer->readback_failed,
-        renderer->readback_rejected };
+        renderer->readback_rejected, renderer->readback_submitted };
+}
+
+static struct vela_readback *shared_readback(struct vela_renderer *renderer,
+    struct wlr_buffer *src, size_t row_bytes)
+{
+    for (size_t i = 0; i < renderer->readback_count; ++i) {
+        struct vela_readback *readback = renderer->readbacks[i];
+        if (readback->src == src && readback->row_bytes == row_bytes) return readback;
+    }
+    return NULL;
 }
 
 static int dispatch_readback(int fd, uint32_t mask, void *data)
@@ -745,7 +757,13 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
             }
         }
     }
-    if (!renderer->readback_timer || !vela_renderer_stage_readback(renderer, bytes, &readback->staging)) {
+    // These compositor-owned swapchain buffers cannot be redrawn while
+    // locked. Several consumers of the same immutable image can share its
+    // GPU copy, while retaining independent destination/CPU progress and pins.
+    // This is not a cache for externally produced, mutable client buffers.
+    struct vela_readback *shared = shared_readback(renderer, src, row_bytes);
+    if (shared) readback->staging = shared->staging;
+    if (!renderer->readback_timer || (!shared && !vela_renderer_stage_readback(renderer, bytes, &readback->staging))) {
         if (renderer->readback_timer && !renderer->readback_count) {
             remove_readback_timer(renderer);
         }
@@ -756,15 +774,19 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     // Unlike the synchronous pool's GPU reservation, this CPU reservation
     // survives GPU completion, collection, and further renderer submissions.
     pin_staging(renderer, readback->staging.buffer, true);
-    const struct wlr_box box = { 0, 0, src->width, src->height };
-    VkCommandBuffer cmd = record_readback(texture, &box, &readback->staging, row_bytes);
-    if (!cmd) discard_readback_staging(renderer, &readback->staging);
     // Contract: src was drawn by THIS renderer (output/cursor/window swapchain),
     // never a directly scanned-out client buffer. Its producer and this copy
     // have explicit GPU timeline dependencies in both directions. Keeping the
     // texture locked prevents normal reuse; the dependency on this copy also
     // protects reuse after cancellation. No CPU or external fence wait is used.
-    uint64_t point = cmd ? vela_renderer_submit_readback(renderer, cmd) : 0;
+    uint64_t point = shared ? shared->point : 0;
+    if (!shared) {
+        const struct wlr_box box = { 0, 0, src->width, src->height };
+        VkCommandBuffer cmd = record_readback(texture, &box, &readback->staging, row_bytes);
+        if (!cmd) discard_readback_staging(renderer, &readback->staging);
+        point = cmd ? vela_renderer_submit_readback(renderer, cmd) : 0;
+        if (point) ++renderer->readback_submitted;
+    }
     if (!point) {
         pin_staging(renderer, readback->staging.buffer, false);
         if (!renderer->readback_count) {
@@ -776,6 +798,7 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
     }
     readback->renderer = renderer;
     readback->texture = wlr;
+    readback->src = wlr_buffer_lock(src);
     readback->dst = wlr_buffer_lock(dst);
     readback->point = point;
     readback->row_bytes = row_bytes;

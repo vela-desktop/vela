@@ -193,11 +193,40 @@ static void cancelled_gpu_allocations_still_count(void)
     completed_point = 0;
 }
 
+static void shared_staging_retains_other_consumers(void)
+{
+    struct vela_vulkan vk = { 0 };
+    struct vela_renderer renderer = { .vk = &vk, .staging_count = 1, .staging_capacity = 1 };
+    renderer.staging = calloc(1, sizeof(*renderer.staging));
+    assert(renderer.staging);
+    const VkBuffer buffer = (VkBuffer)(uintptr_t)88;
+    renderer.staging[0] = (struct staging_chunk) {
+        .buffer = buffer, .data = mapping, .size = 1024, .allocation_size = 1024,
+        .point = 12, .readback = true,
+    };
+    pin_staging(&renderer, buffer, true);
+    pin_staging(&renderer, buffer, true);
+    completed_point = 12;
+    maps = destroyed = freed = 0;
+    // GPU completion and one consumer's cancellation must not expose the
+    // shared bytes to eviction/reuse while another destination is unfinished.
+    pin_staging(&renderer, buffer, false);
+    assert(!make_readback_room(&renderer, VELA_READBACK_MAX_BYTES));
+    assert(renderer.staging_count == 1 && renderer.staging[0].readers == 1);
+    assert(destroyed == 0 && freed == 0);
+    pin_staging(&renderer, buffer, false);
+    assert(make_readback_room(&renderer, VELA_READBACK_MAX_BYTES));
+    assert(renderer.staging_count == 0 && destroyed == 1 && freed == 1);
+    free(renderer.staging);
+    completed_point = 0;
+}
+
 int main(void)
 {
     staging_failures();
     command_allocation_failure();
     cancelled_gpu_allocations_still_count();
+    shared_staging_retains_other_consumers();
     packed_pixels(DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XBGR8888, DRM_FORMAT_ABGR8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XRGB2101010, DRM_FORMAT_ARGB2101010, 0xc0000000);

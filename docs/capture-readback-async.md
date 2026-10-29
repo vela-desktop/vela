@@ -84,6 +84,14 @@ handle, surviving pool array growth and compaction. Cancellation releases the
 CPU pin; ordinary submission points still protect outstanding GPU work and
 retired imported images. The renderer cancels remaining requests before teardown.
 
+Consumers of the same locked compositor swapchain image share its GPU-to-host
+copy and staging bytes. Each destination retains its own CPU progress, texture
+and source-buffer references, and staging pin. Cancelling one consumer cannot
+release storage still used by another. Sharing ends with the last pending
+consumer: this is not a pointer-keyed cache for mutable client buffers. The
+private `readback.submitted` counter counts actual deferred GPU copies; the
+four-success overflow case requires one GPU copy of the shared source image.
+
 The queue accepts at most four requests and 128 MiB of pixel payload. The entire
 readback staging pool also has a 128 MiB allocation limit, including Vulkan
 alignment, idle cached chunks and cancelled copies still in flight on the GPU.
@@ -136,6 +144,10 @@ for one session and 150 ms for four. The original uncached-staging exception is
 preserved; measurements and pixel/lifetime/idle checks still run there.
 The original `missed < captures` presentation budget also applies to these
 sustained streams, so capture throughput alone cannot satisfy the new checks.
+In addition, no more than 5% of observed presentation slots may be missed
+(`missed / (output_frames + missed)`). This bound is independent of the number
+of capture sessions: four sessions' aggregate rate cannot mask a slower desktop.
+Sharing the GPU copy avoids transferring an identical image once per consumer.
 
 ## Validation
 

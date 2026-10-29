@@ -162,7 +162,8 @@ class DeferredCapture(unittest.TestCase):
                     metrics = json.loads(output)
                     after = vela.state()
                     metrics.update(size=size, missed=after.output["missed"] - before.output["missed"],
-                                   output_frames=after.output["frames"] - before.output["frames"])
+                                   output_frames=after.output["frames"] - before.output["frames"],
+                                   gpu_copies=after["readback"]["submitted"] - before["readback"]["submitted"])
                     print("capture-stream: " + json.dumps(metrics, sort_keys=True), flush=True)
                     self.assertGreater(metrics["frames"], 0)
                     if mode == "idle":
@@ -181,6 +182,9 @@ class DeferredCapture(unittest.TestCase):
                         self.assertLess(metrics["p95_ms"], 150 if clients > 1 else 100)
                         self.assertLess(metrics["missed"], metrics["frames"],
                                         "sustained capture exceeded the presentation budget")
+                        slots = metrics["output_frames"] + metrics["missed"]
+                        self.assertLessEqual(metrics["missed"], 0.05 * slots,
+                                             "capture lost more than 5% of presentation slots")
                     self.assertEqual(after["readback"]["failed"], before["readback"]["failed"])
                     self.assertEqual(after["readback"]["rejected"], before["readback"]["rejected"])
 
@@ -192,6 +196,8 @@ class DeferredCapture(unittest.TestCase):
             self.assertEqual(process.returncode, 0, errors)
             after = self.drained(vela)
             self.assertEqual(after["completed"] - before["completed"], 4)
+            self.assertEqual(after["submitted"] - before["submitted"], 1,
+                             "consumers of the same output image must share its GPU readback")
             # This counter increments only at capacity rejection, so unrelated
             # allocation, submission or timeout failures cannot satisfy it.
             self.assertEqual(after["rejected"] - before["rejected"], 4)
