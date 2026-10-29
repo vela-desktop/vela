@@ -204,7 +204,7 @@ jobs:
             "cd /home/builder/pkgbuild && \
             CCACHE_DIR=$CCACHE_DIR CCACHE_MAXSIZE=$CCACHE_MAXSIZE \
             CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            VELA_GIT_URL=file://$GITHUB_WORKSPACE VELA_RELEASE_VERSION=${GITHUB_REF_NAME#v} MAKEFLAGS=-j$(nproc) \
+            VELA_GIT_URL=file://$GITHUB_WORKSPACE#commit=$GITHUB_SHA VELA_RELEASE_VERSION=${GITHUB_REF_NAME#v} MAKEFLAGS=-j$(nproc) \
             makepkg --noconfirm"
 
 
