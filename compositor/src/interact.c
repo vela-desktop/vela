@@ -125,6 +125,31 @@ static void unhover_decoration(struct vela_interaction *interaction)
     }
 }
 
+// The visible lock scene is the only eligible pointer target during a lock.
+// Focus changes (map/hotplug) need no synthetic motion event.
+static void lock_pointer_focus(struct vela_server *server, uint32_t time_msec, bool notify_motion)
+{
+    struct wlr_seat *seat = server->seat;
+    struct wlr_cursor *cursor = server->cursor;
+    struct vela_hit hit = vela_scene_at(server->scene, cursor->x, cursor->y);
+    if (hit.surface) {
+        wlr_seat_pointer_notify_enter(seat, hit.surface, hit.sx, hit.sy);
+        if (notify_motion) {
+            wlr_seat_pointer_notify_motion(seat, time_msec, hit.sx, hit.sy);
+        }
+    } else {
+        wlr_seat_pointer_clear_focus(seat);
+        wlr_cursor_set_xcursor(cursor, server->cursor_manager, "default");
+    }
+}
+
+void vela_interact_retarget_lock_pointer(struct vela_server *server)
+{
+    if (server->locked) {
+        lock_pointer_focus(server, 0, false);
+    }
+}
+
 void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
 {
     struct vela_interaction *interaction = server->interaction;
@@ -139,14 +164,11 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
     // hit-test the visible lock scene while locked; otherwise an invisible
     // window's resize band steals pointer focus and changes the cursor.
     if (server->locked) {
-        struct vela_hit hit = vela_scene_at(server->scene, cursor->x, cursor->y);
-        if (hit.surface) {
-            wlr_seat_pointer_notify_enter(seat, hit.surface, hit.sx, hit.sy);
-            wlr_seat_pointer_notify_motion(seat, time_msec, hit.sx, hit.sy);
-        } else {
-            wlr_seat_pointer_clear_focus(seat);
-            wlr_cursor_set_xcursor(cursor, server->cursor_manager, "default");
+        struct vela_a11y *a11y = server->a11y;
+        if (a11y->magnifier || a11y->zoom_animating || a11y->zoom > 1.0) {
+            vela_a11y_update_magnifier(a11y);
         }
+        lock_pointer_focus(server, time_msec, true);
         return;
     }
 
@@ -626,6 +648,24 @@ static void finish_keyboard(struct vela_server *server, bool confirm)
 void vela_interact_cancel_keyboard(struct vela_server *server)
 {
     finish_keyboard(server, false);
+}
+
+void vela_interact_cancel_for_lock(struct vela_server *server)
+{
+    struct vela_interaction *interaction = server->interaction;
+    // Move/Size from the keyboard otherwise consumes the locker's keystrokes.
+    // Cancel it as Escape would, restoring the original window geometry.
+    finish_keyboard(server, false);
+    unhover_decoration(interaction);
+    interaction->hovered_decoration = NULL;
+    memset(&interaction->pending_title_drag, 0, sizeof(interaction->pending_title_drag));
+    memset(&interaction->last_title_click, 0, sizeof(interaction->last_title_click));
+    memset(&interaction->last_icon_click, 0, sizeof(interaction->last_icon_click));
+    interaction->modifier_grab = false;
+    server->cursor_mode = VELA_CURSOR_PASSTHROUGH;
+    server->grabbed = NULL;
+    server->input->super_tap = false;
+    memset(&server->input->implicit_grab, 0, sizeof(server->input->implicit_grab));
 }
 
 void vela_interact_forget(struct vela_server *server, struct vela_view *view)
