@@ -23,6 +23,8 @@ def record(**values):
         log.write(json.dumps(dict(tool=name, args=args, **values)) + "\n")
 
 if name == "dpkg-query":
+    if args[-1] == "vela":
+        sys.exit(1)
     if not state_file.exists():
         sys.exit(1)
     state = json.loads(state_file.read_text())
