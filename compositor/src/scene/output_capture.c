@@ -86,8 +86,8 @@ struct vela_output_capture_source {
 };
 
 struct output_capture_frame {
-	struct vela_output_capture_source *source;
 	struct wl_listener destroy;
+	struct vela_output_capture_source *source;
 };
 
 struct vela_output_capture_source_frame_event {
