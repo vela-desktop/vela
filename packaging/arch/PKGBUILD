@@ -28,27 +28,24 @@ depends=(
     'freetype2' 'harfbuzz' 'fontconfig' 'librsvg' 'cairo'
     'qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'layer-shell-qt'
     'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland'
-    # Desktop defaults: keep the wlr screen capture backend; GTK is optional.
-    'konsole' 'breeze-icons' 'xdg-desktop-portal' 'xdg-desktop-portal-wlr' 'xdg-utils'
+    # Desktop defaults: GTK for generic portals and wlr for screen capture.
+    'konsole' 'breeze-icons' 'xdg-desktop-portal' 'xdg-desktop-portal-gtk' 'xdg-desktop-portal-wlr' 'xdg-utils'
     # Runtime requirements of vela-update; build toolchain is installed on demand.
     'git' 'curl' 'sudo' 'util-linux'
     'pipewire' 'wireplumber'
-    'systemd-libs' # sd-bus: the laptop backlight through logind (docs/brightness.md §5.3)
+    'systemd-libs' # sd-bus: laptop backlight (docs/brightness.md §5.3), vela-bluetooth (docs/bluetooth.md)
 )
 makedepends=('cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols>=1.37' 'qt6-tools' 'qt6-multimedia')
 optdepends=(
     'cosign: verify downloaded prebuilt package attestations without gh'
-    'xdg-desktop-portal-gtk: file chooser and other generic application portals'
     'networkmanager: network and Wi-Fi (quick settings and Settings)'
-    'bluez: Bluetooth'
+    'bluez: Bluetooth, all it needs (docs/bluetooth.md)'
     'pipewire-pulse: sound for apps that still use PulseAudio'
     'power-profiles-daemon: energy saver'
     'udisks2: unmounted drives in File Explorer'
     'kimageformats: AVIF, HEIF, JPEG XL and other pictures in File Explorer (thumbnails, quick preview)'
     'qt6-multimedia: videos and sounds in the File Explorer quick preview'
     'kdeconnect: share with your phone'
-    'bluedevil: share via Bluetooth (requires bluez-obex for transfers)'
-    'bluez-obex: OBEX service for Bluetooth file transfers'
     'github-cli: optional authenticated GitHub Actions artifact retrieval'
 )
 provides=('vela')

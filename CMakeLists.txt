@@ -30,7 +30,7 @@ if(VELA_BUILD_TOOLS)
     find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
     add_test(NAME packaging-update COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/packaging/tests -v)
-    set_tests_properties(packaging-update PROPERTIES TIMEOUT 120)
+    set_tests_properties(packaging-update PROPERTIES TIMEOUT 120 LABELS distro-packaging)
     add_test(NAME script-tests COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/scripts/tests -v)
     add_test(NAME documentation COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-docs.py)
@@ -52,6 +52,7 @@ endif()
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
     add_subdirectory(brightness)
+    add_subdirectory(bluetooth)
     add_subdirectory(session)
 endif()
 option(VELA_BUILD_POLKIT "Build the polkit agent (needs polkit-agent-1; the prompt also needs the shell's Qt)" ON)
@@ -103,4 +104,52 @@ if(VELA_BUILD_TOOLS)
     endif()
     # A private PipeWire and WirePlumber for the audio tests (docs/audio.md).
     add_subdirectory(tests/audio)
+    # A fake BlueZ for vela-bluetooth (docs/bluetooth.md §11).
+    if(TARGET vela-bluetooth-testing AND VELA_BUILD_SHELL)
+        add_subdirectory(tests/bluetooth)
+    endif()
+endif()
+
+# Experimental Ubuntu 26.10 binary package. Opt-in so other distributions and
+# local builds do not accidentally produce Debian packages.
+option(VELA_PACKAGE_DEB "Enable experimental Debian package generation" OFF)
+if(VELA_PACKAGE_DEB)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "Vela DEB packaging requires Linux")
+    endif()
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_PACKAGE_NAME "vela-git")
+    # Embed the selected revision in Debian Version for reliable updater comparisons.
+    # Unstamped local/CI preview builds retain the ordinary project version.
+    set(VELA_PACKAGE_COMMIT "" CACHE STRING "Short Git commit for the DEB version")
+    if(NOT VELA_PACKAGE_COMMIT STREQUAL "")
+        string(LENGTH "${VELA_PACKAGE_COMMIT}" VELA_PACKAGE_COMMIT_LENGTH)
+        if(NOT VELA_PACKAGE_COMMIT MATCHES "^[0-9a-f]+$" OR
+           VELA_PACKAGE_COMMIT_LENGTH LESS 7 OR VELA_PACKAGE_COMMIT_LENGTH GREATER 40)
+            message(FATAL_ERROR "VELA_PACKAGE_COMMIT must be a hexadecimal Git commit abbreviation")
+        endif()
+        set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}+git${VELA_PACKAGE_COMMIT}")
+    endif()
+    set(CPACK_PACKAGE_VENDOR "Vela Desktop")
+    set(CPACK_PACKAGE_CONTACT "Vela contributors <dev@velade.org>")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+    set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    # Executables, icon themes and launch scripts require these at runtime
+    # even when not linked as ELF libraries (shlibdeps handles the rest).
+    # Vela uses Breeze by default; Qt needs the SVG icon engine to render it.
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS
+        "git, apt, dpkg, sudo, util-linux, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+    # Bluetooth needs only BlueZ (docs/bluetooth.md §10), as Fedora's
+    # Recommends and Arch's optional dependency.
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "bluez")
+    # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
+    install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    install(FILES "${PROJECT_SOURCE_DIR}/packaging/verify-attestation.py"
+        DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+    include(CPack)
 endif()

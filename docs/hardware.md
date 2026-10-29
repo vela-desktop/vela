@@ -4,10 +4,16 @@ Vela needs a GPU and driver exposing **Vulkan 1.4** with the dmabuf/DRM capabili
 
 ## Evidence, not a compatibility guarantee
 
+Two machines run the GPU-labeled suites (functional, sharpness and
+sharpness-cpu): an **AMD Radeon RX 9070 XT** and an
+**NVIDIA GeForce RTX 4070 Laptop GPU**. See the
+[GPU CI policy](ci-quality.md#gpu-ci-policy) for mandatory coverage,
+candidate revision checks and release rules.
+
 | Environment | What has been established | What remains uncertain |
 |---|---|---|
-| AMD Radeon RX 9070 XT + Mesa/RADV, CachyOS | Primary development machine; the functional and pixel sharpness suites are exercised there | Not representative of every AMD generation or every multi-display setup |
-| NVIDIA proprietary drivers | Vela has driver-specific synchronization handling and receives manual tester reports | Broader DRM, screen-sharing, suspend/resume and GPU fault-path coverage is not established |
+| AMD Radeon RX 9070 XT + Mesa/RADV, CachyOS | Primary development machine and the AMD GPU CI runner: the GPU suites run on it for relevant GPU changes and releases, and it is used daily as a DRM session | Not representative of every AMD generation or every multi-display setup |
+| NVIDIA GeForce RTX 4070 Laptop GPU + proprietary driver, Arch/CachyOS | The NVIDIA GPU CI runner: the same GPU suites for relevant GPU changes and releases; driver-specific synchronization handling; manual tester reports | The runner's suites are headless, so DRM/KMS, screen sharing and suspend/resume rely on manual reports; known failures are tracked as issues (such as [#132](https://github.com/vela-desktop/vela/issues/132)) |
 | Intel + Mesa/ANV | Vulkan support is an intended path | No repeated automated real-hardware matrix is documented |
 | NVK | Listed as an intended Vulkan driver option | Compatibility is not demonstrated by the AMD test runs |
 | VMs and virtio/Venus | Useful experimental debugging environment | Vulkan version, modifiers, dmabuf import and compositor behavior depend on the VM stack |
@@ -30,14 +36,14 @@ Different features rely on installed/running system services. On Arch, [vela-git
 | Feature | Typically needed |
 |---|---|
 | Network / Wi-Fi | NetworkManager |
-| Bluetooth | BlueZ |
+| Bluetooth | BlueZ, with `bluetooth.service` running ([installation](installation.md#bluetooth)) |
 | Audio controls and per-app volumes | PipeWire and WirePlumber (PulseAudio without PipeWire is not supported) |
 | X11 apps and older games | Xwayland |
 | Removable and unmounted storage | UDisks2 |
-| Screen sharing / application portals | `xdg-desktop-portal` and `xdg-desktop-portal-wlr` are installed by default on Arch. `xdg-desktop-portal-gtk` is an optional fallback for generic portals, while wlr handles screenshot and screencast |
+| Screen sharing / application portals | `xdg-desktop-portal` and `xdg-desktop-portal-wlr` are installed by default on Arch. `xdg-desktop-portal-gtk` provides generic application portals by default, while wlr handles screenshot and screencast |
 | KDE styling and secrets | Appropriate KDE icon/theme/wallet components |
 
-Vela does not install `xdg-desktop-portal-kde` or Plasma Workspace. On a minimal installation without `xdg-desktop-portal-gtk`, generic portal dialogs such as file selection are unavailable until GTK is installed. Konsole and Breeze icons remain default desktop components. Bluetooth file sharing through Bluedevil remains optional (with bluez-obex).
+Vela does not install `xdg-desktop-portal-kde` or Plasma Workspace. Konsole and Breeze icons remain default desktop components. BlueZ remains optional for native Vela Bluetooth integration.
 
 The Vela compositor and Vulkan renderer are Vela's own; reusing standard Linux services and selected KDE components does not mean running KDE's compositor or Plasma shell.
 
@@ -57,6 +63,25 @@ The automated audio tests run on a private PipeWire whose devices are null sinks
 - **Sample rate and format** (Sound › Advanced and a device's properties): on a USB DAC, "Automatic" following the music, a fixed device rate, a sample format, and the format shown live while the music changes; an HDMI receiver and a Bluetooth headset with "Automatic".
 - **Restart audio**: sound comes back, and the shell and Settings follow without restarting.
 - **Rename**: a device's new name shows at once in Vela, and in other apps (pavucontrol, a browser's device list) after logging out and in or "Restart audio"; going back to the device's own name the same way.
+
+### Bluetooth
+
+The automated Bluetooth tests run the real `vela-bluetooth` against a fake BlueZ ([Bluetooth](bluetooth.md#11-tests)): no radio, no real device. In a Vela session with only `bluez` installed (no BlueDevil or blueman), these need a real machine:
+
+- **Devices**: an LE mouse; a keyboard (passkey or legacy PIN); a phone (numeric comparison, started from Vela and from the phone); a headset (battery in quick settings and in the sound page, codec and profile in Sound).
+- **Two at once**: a phone asking to pair while a mouse is pairing.
+- **Adapters**: unplugging a USB dongle; two adapters at once, and choosing one in Settings › Bluetooth & devices › Advanced.
+- **A laptop with a platform Bluetooth switch** (asus-wmi, hp-wmi...), blocked from Plasma: the switch in Vela shows Off and turning it on brings the radio back.
+- **`systemctl restart bluetooth`** with Settings open: the page empties and comes back by itself.
+- **Searching, other scan first**: start `bluetoothctl scan on`, then open "Add a device". Vela says another app is searching and does not make the PC discoverable. Close both searches.
+- **Searching, Vela first**: open "Add a device" while nothing else scans, then start `bluetoothctl scan on` and close Vela's Add dialog. If BlueZ leaves the PC visible, Vela offers "Stop being visible".
+- **Locking** the screen with "Add a device" open: the search and the pairing stop; after unlocking, "Search again".
+- **Another desktop** (Plasma) on another console at the same time:
+  - pairing from Plasma while Vela is in the background works with Plasma's agent;
+  - Plasma's discoverability is not changed by Vela;
+  - switching back to Vela gives Vela the agent again.
+
+`vela-bluetooth` writes what it does (adapters, operations, questions, searches, the session) to the session log, `~/.local/state/vela/vela.log` (the previous session's is `vela.log.old`; [reporting](reporting.md) collects it): `grep vela-bluetooth ~/.local/state/vela/vela.log`. `bluetoothctl show` and `bluetoothctl devices` are the reference for what BlueZ itself says.
 
 ### Brightness
 

@@ -26,6 +26,7 @@ add_library(vela-audio STATIC
 set_target_properties(vela-audio PROPERTIES AUTOMOC ON)
 target_include_directories(vela-audio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(vela-audio PRIVATE -Wall -Wextra)
-target_link_libraries(vela-audio PUBLIC Qt6::Core PRIVATE Qt6::DBus PkgConfig::AUDIO_WIREPLUMBER)
+# Headsets' batteries: vela-bluetooth's client (docs/bluetooth.md §8).
+target_link_libraries(vela-audio PUBLIC Qt6::Core PRIVATE Qt6::DBus PkgConfig::AUDIO_WIREPLUMBER vela-bluetooth-client)
 
 # The tests are in tests/audio, next to their fixture.

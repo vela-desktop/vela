@@ -20,6 +20,9 @@ Window {
     color: Theme.desktop // while the image is being prepared
 
     property bool primary: false // set by screenwindows.cpp
+    // Diagnostics only; enabled by VELA_DEBUG_SELECTION in setupWallpaper.
+    // Normal desktop selection geometry is intentionally unchanged.
+    property bool selectionTraceEnabled: false
 
     Image {
         anchors.fill: parent
@@ -458,6 +461,19 @@ Window {
             property point origin
             property bool banding: false
 
+            function traceSelection(phase, mouse) {
+                if (!root.selectionTraceEnabled)
+                    return
+                const point = p => Number(p).toFixed(8)
+                console.info("VELA_SELECTION qml phase=" + phase
+                             + " screen=" + (root.screen ? root.screen.name : "none")
+                             + " mouse=" + point(mouse.x) + "," + point(mouse.y)
+                             + " origin=" + point(origin.x) + "," + point(origin.y)
+                             + " band=" + [band.x, band.y, band.width, band.height].map(point).join(",")
+                             + " window=" + point(root.width) + "x" + point(root.height)
+                             + " screenDpr=" + (root.screen ? point(root.screen.devicePixelRatio) : "none"))
+            }
+
             onPressed: mouse => {
                 icons.forceActiveFocus()
                 icons.renamingPath = ""
@@ -474,6 +490,7 @@ Window {
                 band.y = mouse.y
                 band.width = 0
                 band.height = 0
+                traceSelection("press", mouse)
             }
             onPositionChanged: mouse => {
                 if (!banding) {
@@ -492,8 +509,12 @@ Window {
                     }
                 }
                 icons.selection = s
+                traceSelection("move", mouse)
             }
-            onReleased: banding = false
+            onReleased: mouse => {
+                traceSelection("release", mouse)
+                banding = false
+            }
             onClicked: mouse => {
                 if (mouse.button === Qt.RightButton) {
                     const classic = (mouse.modifiers & Qt.ShiftModifier) || Shell.shiftHeld()

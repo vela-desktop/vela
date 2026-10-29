@@ -191,6 +191,10 @@ struct animation {
     double from_scale_y, to_scale_y; // morph: the height scales on its own
     double from_radius, to_radius; // morph: the corners go to the new frame's
     float from_opacity, to_opacity;
+    // Last presentation fraction applied to the shared scene. Repeated
+    // clamped endpoints on consecutive output ticks cannot change a pixel.
+    double last_sample_x;
+    bool has_sample;
 };
 
 static double lerp(double a, double b, double t)
@@ -334,7 +338,40 @@ bool vela_snapshots_tick(struct vela_server *server, double now_ms, double wall_
 {
     struct animation *a, *next;
     wl_list_for_each_safe (a, next, &server->snapshot_animations, link) {
+        // An already-expired animation must be retired before sampling the
+        // next output's predicted presentation time. Sampling first adds a
+        // redundant terminal (x=1) frame after the wall clock has reached the
+        // end, which can exceed the 180 Hz restore frame budget.
+        if (vela_tween_retired(&a->tween, wall_ms)) {
+            struct vela_view *owner = a->owner;
+            bool restored = a->kind == VELA_SNAPSHOT_RESTORE;
+            if (a->kind == VELA_SNAPSHOT_MORPH) {
+                vela_node_set_opacity(&owner->tree->node, 1.0f);
+            }
+            animation_destroy(a);
+            if (restored && owner) {
+                vela_view_finish_restore(owner);
+            }
+            continue;
+        }
+        // The 75 Hz and 180 Hz outputs have independent presentation
+        // clocks. Their predicted times can straddle the first tick, causing
+        // several consecutive x=0 samples on the faster output; NVIDIA also
+        // predicts beyond x=1 before the wall clock permits retirement.
+        // Those repeats redraw no different animation state and must not
+        // count as extra sampled frames. Still resample on *any* change,
+        // including when a different output's earlier timestamp moves x
+        // backwards, to preserve per-output predicted-presentation accuracy.
+        double fraction = a->tween.start_ms < 0.0 ? 0.0
+            : a->tween.duration_ms > 0.0
+                ? vela_clampd((now_ms - a->tween.start_ms) / a->tween.duration_ms, 0.0, 1.0)
+                : 1.0;
+        if (a->has_sample && (fraction == 0.0 || fraction == 1.0) && fraction == a->last_sample_x) {
+            continue;
+        }
         double p = vela_tween_progress(&a->tween, now_ms);
+        a->last_sample_x = fraction;
+        a->has_sample = true;
         // Opacity runs ahead of motion: what comes in is readable at once,
         // what goes out has vanished before arriving.
         double fade = fmin(1.0, p * 1.4);
@@ -364,18 +401,6 @@ bool vela_snapshots_tick(struct vela_server *server, double now_ms, double wall_
             if (a->snapshot->shape.enabled) {
                 wlr_log(WLR_INFO, "animation: %s #%u radius %.3f", a->tween.name, a->tween.serial, radius);
             }
-        }
-        if (!vela_tween_retired(&a->tween, wall_ms)) {
-            continue;
-        }
-        struct vela_view *owner = a->owner;
-        bool restored = a->kind == VELA_SNAPSHOT_RESTORE;
-        if (a->kind == VELA_SNAPSHOT_MORPH) {
-            vela_node_set_opacity(&owner->tree->node, 1.0f);
-        }
-        animation_destroy(a);
-        if (restored && owner) {
-            vela_view_finish_restore(owner);
         }
     }
     return !wl_list_empty(&server->snapshot_animations);

@@ -102,6 +102,7 @@ if(VELA_BUILD_TOOLS)
     qt_add_executable(vela-controls-test tests/controls_test.cpp)
     target_compile_definitions(vela-controls-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
     target_compile_options(vela-controls-test PRIVATE -Wall -Wextra)
+    target_include_directories(vela-controls-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
     target_link_libraries(vela-controls-test PRIVATE vela-controls vela-controlsplugin Qt6::QuickTest)
     add_test(NAME controls COMMAND vela-controls-test)
     add_test(NAME controls-no-effects COMMAND vela-controls-test)
@@ -111,3 +112,6 @@ endif()
 
 # vela-audio: the audio backend of the shell and Settings (docs/audio.md).
 add_subdirectory(audio)
+# vela-bluetooth-client: Bluetooth for the shell and Settings
+# (docs/bluetooth.md §8).
+add_subdirectory(bluetooth)

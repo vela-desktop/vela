@@ -15,8 +15,9 @@
 // compositor waited for the fence in its frame, it would miss vblanks (Vela's
 // "state" counts them per output).
 //
-// Usage: vela-slowgpu [MS] [--implicit] [--fullscreen]    (150 ms by default)
+// Usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic] (150 ms by default)
 // --fullscreen: on an output of exactly 512x320, a direct scanout candidate.
+// --monolithic: keep the old single long dispatch for comparative testing.
 
 #define _GNU_SOURCE
 #include <errno.h>
@@ -98,11 +99,18 @@ static VkFence fence;
 static VkSemaphore semaphore;
 static PFN_vkGetSemaphoreFdKHR getSemaphoreFd;
 static uint32_t iterations = 1 << 14;
+static uint32_t dispatches = 1; // bound the duration of each compute dispatch
 
 static void die(const char* what)
 {
     fprintf(stderr, "vela-slowgpu: %s\n", what);
     exit(1);
+}
+
+static void progress(const char* step)
+{
+    fprintf(stderr, "vela-slowgpu: %s\n", step);
+    fflush(stderr);
 }
 
 static void check(VkResult result, const char* what)
@@ -278,6 +286,9 @@ static void setupVulkan(void)
     check(vkCreateDevice(physical, &deviceInfo, NULL, &device), "vkCreateDevice");
     vkGetDeviceQueue(device, (uint32_t)chosen, 0, &queue);
     getSemaphoreFd = (PFN_vkGetSemaphoreFdKHR)vkGetDeviceProcAddr(device, "vkGetSemaphoreFdKHR");
+    if (!getSemaphoreFd) {
+        die("VK_KHR_external_semaphore_fd is enabled but vkGetSemaphoreFdKHR is unavailable");
+    }
 
     // The result buffer (64 floats), only so the loop doesn't vanish.
     const VkBufferCreateInfo bufferInfo = {
@@ -414,8 +425,27 @@ static int runJob(int exportFence)
     vkBeginCommandBuffer(commandBuffer, &begin);
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, NULL);
-    vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &iterations);
-    vkCmdDispatch(commandBuffer, 1, 1, 1);
+    // A single 150 ms compute dispatch can starve a separate compositor
+    // graphics queue on drivers without fine-grained preemption. Splitting
+    // the same calibrated work into short dispatches leaves scheduling points
+    // for the compositor without signaling the final acquire fence early.
+    // A barrier orders repeated writes to the result buffer.
+    uint32_t per_dispatch = iterations / dispatches;
+    uint32_t remainder = iterations % dispatches;
+    for (uint32_t i = 0; i < dispatches; ++i) {
+        uint32_t count = per_dispatch + (i < remainder ? 1 : 0);
+        vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(count), &count);
+        vkCmdDispatch(commandBuffer, 1, 1, 1);
+        if (i + 1 < dispatches) {
+            const VkMemoryBarrier barrier = {
+                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+                .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+            };
+            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, NULL, 0, NULL);
+        }
+    }
     vkEndCommandBuffer(commandBuffer);
     const VkSubmitInfo submit = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -454,11 +484,15 @@ static void calibrate(double targetMs)
     }
     for (int round = 0; round < 2; ++round) {
         iterations = (uint32_t)((double)iterations * targetMs / elapsed);
+        // Every dispatched shader must execute at least one iteration.
+        if (iterations < dispatches) {
+            iterations = dispatches;
+        }
         const double start = nowMs();
         runJob(0);
         elapsed = nowMs() - start;
     }
-    printf("GPU job: %u iterations, %.0f ms\n", iterations, elapsed);
+    printf("GPU job: %u iterations over %u dispatches, %.0f ms\n", iterations, dispatches, elapsed);
     fflush(stdout);
 }
 
@@ -466,11 +500,20 @@ static void calibrate(double targetMs)
 
 static void setupBuffers(void)
 {
+    // CPU-painted DMA-BUFs are never Vulkan render targets. Requiring
+    // GBM_BO_USE_RENDERING as well as LINEAR needlessly rejects formats on
+    // drivers that cannot render to linear buffers (notably NVIDIA).
+    const uint32_t usage = GBM_BO_USE_LINEAR;
+    const char* backend = gbm_device_get_backend_name(gbm);
+    fprintf(stderr, "vela-slowgpu: GBM backend=%s, usage=0x%x (LINEAR only)\n",
+            backend ? backend : "unknown", usage);
     for (int i = 0; i < BUFFERS; ++i) {
         struct Buffer* b = &buffers[i];
-        // Linear: the CPU writes the color directly.
-        b->bo = gbm_bo_create(gbm, WIDTH, HEIGHT, GBM_FORMAT_XRGB8888, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING);
+        errno = 0;
+        b->bo = gbm_bo_create(gbm, WIDTH, HEIGHT, GBM_FORMAT_XRGB8888, usage);
         if (!b->bo) {
+            fprintf(stderr, "vela-slowgpu: gbm_bo_create buffer %d failed: %s (errno=%d)\n",
+                    i, strerror(errno), errno);
             die("gbm_bo_create");
         }
         b->fd = gbm_bo_get_fd(b->bo);
@@ -493,8 +536,10 @@ static void fill(struct Buffer* b, uint32_t color)
 {
     uint32_t stride = 0;
     void* mapping = NULL;
+    errno = 0;
     uint32_t* pixels = gbm_bo_map(b->bo, 0, 0, WIDTH, HEIGHT, GBM_BO_TRANSFER_WRITE, &stride, &mapping);
     if (!pixels) {
+        fprintf(stderr, "vela-slowgpu: gbm_bo_map failed: %s (errno=%d)\n", strerror(errno), errno);
         die("gbm_bo_map");
     }
     for (int y = 0; y < HEIGHT; ++y) {
@@ -585,15 +630,18 @@ static struct wp_linux_drm_syncobj_timeline_v1* newTimeline(uint32_t* handle)
 int main(int argc, char* argv[])
 {
     double targetMs = 150.0;
+    int monolithic = 0;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--implicit")) {
             implicitSync = 1;
         } else if (!strcmp(argv[i], "--fullscreen")) {
             wantFullscreen = 1;
+        } else if (!strcmp(argv[i], "--monolithic")) {
+            monolithic = 1;
         } else if (atof(argv[i]) > 0) {
             targetMs = atof(argv[i]);
         } else {
-            fprintf(stderr, "usage: vela-slowgpu [MS] [--implicit] [--fullscreen]\n");
+            fprintf(stderr, "usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic]\n");
             return 2;
         }
     }
@@ -631,9 +679,20 @@ int main(int argc, char* argv[])
         die("gbm_create_device");
     }
 
+    progress("initializing Vulkan");
     setupVulkan();
+    // Leave <= 20 ms jobs as-is (resource and scanout suites); only slow
+    // producer tests need a cooperative schedule. The calibration measures
+    // the actual multi-dispatch workload, including barriers and overhead.
+    if (!monolithic && targetMs > 20.0) {
+        uint32_t wanted = (uint32_t)(targetMs / 3.0 + 0.5);
+        dispatches = wanted > 64 ? 64 : wanted;
+    }
+    progress("calibrating compute workload");
     calibrate(targetMs);
+    progress("allocating linear DMA-BUFs");
     setupBuffers();
+    progress("creating Wayland toplevel");
 
     xdg_wm_base_add_listener(wmBase, &wmBaseListener, NULL);
     surface = wl_compositor_create_surface(compositor);
@@ -654,6 +713,7 @@ int main(int argc, char* argv[])
     wl_surface_commit(surface);
     while (!configured && wl_display_dispatch(display) >= 0) {
     }
+    progress("Wayland toplevel configured; submitting first frame");
 
     while (running) {
         if (frameDue) {

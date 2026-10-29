@@ -3,16 +3,10 @@
 
 #include "audio.h"
 
+#include "bluetooth/bluetooth.h"
 #include "core.h"
 #include "testsound.h"
 #include "volumesteps.h"
-
-#include <QDBusArgument>
-#include <QDBusConnection>
-#include <QDBusMessage>
-#include <QDBusPendingCallWatcher>
-#include <QDBusPendingReply>
-#include <QDBusVariant>
 
 #include <algorithm>
 #include <cmath>
@@ -595,62 +589,41 @@ QString Audio::iconName() const
                            : QStringLiteral("audio-volume-high");
 }
 
-void Audio::watchBattery(const QString& path)
+void Audio::setBluetooth(vela::bluetooth::Bluetooth* bluetooth)
 {
-    if (m_batteryWatched.contains(path)) {
-        return;
+    if (m_bluetooth) {
+        disconnect(m_bluetooth, nullptr, this, nullptr);
     }
-    m_batteryWatched.insert(path);
-    // Each watch has a distinct version. A reconnect must not accept a
-    // reply from a previous incarnation of the same BlueZ path.
-    const quint64 requestVersion = ++m_nextBatteryVersion;
-    m_batteryVersions.insert(path, requestVersion);
-    const QString bluez = QStringLiteral("org.bluez");
-    const QString properties = QStringLiteral("org.freedesktop.DBus.Properties");
-    QDBusConnection bus = QDBusConnection::systemBus();
-    bus.connect(bluez, path, properties, QStringLiteral("PropertiesChanged"), this,
-        SLOT(onBluetoothProperties(QDBusMessage)));
-    QDBusMessage get = QDBusMessage::createMethodCall(bluez, path, properties, QStringLiteral("Get"));
-    get << QStringLiteral("org.bluez.Battery1") << QStringLiteral("Percentage");
-    auto* watcher = new QDBusPendingCallWatcher(bus.asyncCall(get, 1000), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, path, requestVersion] {
-        const QDBusPendingReply<QDBusVariant> reply = *watcher;
-        watcher->deleteLater();
-        // PropertiesChanged may have supplied a newer value while Get was
-        // in flight; a disconnected/reconnected device may also reuse path.
-        if (m_batteryVersions.value(path, 0) != requestVersion) {
-            return;
-        }
-        bool ok = false;
-        const int percent = reply.isError() ? -1 : reply.value().variant().toInt(&ok);
-        if (ok && percent >= 0 && percent <= 100) {
-            m_batteries.insert(path, percent);
-            update();
-        }
-    });
+    m_bluetooth = bluetooth;
+    if (m_bluetooth) {
+        connect(m_bluetooth, &vela::bluetooth::Bluetooth::changed, this, &Audio::readBatteries);
+        connect(m_bluetooth, &QObject::destroyed, this, [this] {
+            m_bluetooth = nullptr;
+            if (!m_batteries.isEmpty()) {
+                m_batteries.clear();
+                update();
+            }
+        });
+    }
+    readBatteries();
 }
 
-void Audio::onBluetoothProperties(const QDBusMessage& message)
+// The daemon's devices change often (a signal strength while searching):
+// the lists are made again only when a battery did.
+void Audio::readBatteries()
 {
-    if (!m_batteryWatched.contains(message.path())) {
-        return;
+    QHash<QString, int> batteries;
+    if (m_bluetooth) {
+        for (const QVariant& device : m_bluetooth->devices()) {
+            const QVariantMap entry = device.toMap();
+            const int battery = entry.value(QStringLiteral("battery")).toInt();
+            if (battery >= 0 && battery <= 100) {
+                batteries.insert(entry.value(QStringLiteral("address")).toString().toUpper(), battery);
+            }
+        }
     }
-    const QList<QVariant> args = message.arguments();
-    if (args.value(0).toString() != QLatin1String("org.bluez.Battery1")) {
-        return;
-    }
-    bool ok = false;
-    const QVariant changed = args.value(1);
-    const QVariantMap properties = changed.canConvert<QDBusArgument>()
-        ? qdbus_cast<QVariantMap>(changed.value<QDBusArgument>())
-        : changed.toMap();
-    if (!properties.contains(QStringLiteral("Percentage"))) {
-        return;
-    }
-    const int percent = properties.value(QStringLiteral("Percentage")).toInt(&ok);
-    if (ok && percent >= 0 && percent <= 100) {
-        m_batteryVersions.insert(message.path(), ++m_nextBatteryVersion);
-        m_batteries.insert(message.path(), percent);
+    if (batteries != m_batteries) {
+        m_batteries = batteries;
         update();
     }
 }
@@ -797,7 +770,6 @@ void Audio::update()
     const QString defaultInput = s.defaultInput;
     QVariantList outputs;
     QVariantList inputs;
-    QSet<QString> activeBatteryPaths;
     double volume = 0.0;
     bool muted = false;
     bool inputMuted = false;
@@ -809,15 +781,11 @@ void Audio::update()
             continue; // like Windows: what isn't plugged in isn't offered
         }
         const QString suffix = kind + u' ' + e.name;
-        // A Bluetooth headset: its BlueZ object, given by PipeWire or made
-        // from its address.
-        QString bluez = e.bluezPath;
-        if (bluez.isEmpty() && !e.bluetoothAddress.isEmpty()) {
-            bluez = QStringLiteral("/org/bluez/hci0/dev_") + QString(e.bluetoothAddress).replace(u':', u'_');
-        }
-        if (!bluez.isEmpty()) {
-            activeBatteryPaths.insert(bluez);
-            watchBattery(bluez);
+        // A Bluetooth headset: its address, given by PipeWire or read from
+        // its BlueZ object's path (.../dev_AA_BB_CC_DD_EE_FF).
+        QString address = e.bluetoothAddress;
+        if (address.isEmpty() && e.bluezPath.contains(QLatin1String("/dev_"))) {
+            address = e.bluezPath.section(QLatin1String("/dev_"), -1).replace(u'_', u':');
         }
         const double v = shown(QStringLiteral("volume ") + suffix, std::min(e.volume(), 1.0)).toDouble();
         const bool m = shown(QStringLiteral("mute ") + suffix, e.muted).toBool();
@@ -862,7 +830,7 @@ void Audio::update()
             { QStringLiteral("isDefault"), isDefault },
             { QStringLiteral("intervals"), VolumeSteps::intervals(e.step) },
             { QStringLiteral("channels"), int(e.positions.isEmpty() ? e.channelVolumes.size() : e.positions.size()) },
-            { QStringLiteral("battery"), bluez.isEmpty() ? -1 : m_batteries.value(bluez, -1) },
+            { QStringLiteral("battery"), address.isEmpty() ? -1 : m_batteries.value(address.toUpper(), -1) },
             { QStringLiteral("mutePending"), pending(QStringLiteral("mute ") + suffix) },
             { QStringLiteral("muteError"), m_errors.contains(QStringLiteral("mute ") + suffix) },
             { QStringLiteral("defaultPending"), pending(QStringLiteral("default ") + kind) },
@@ -890,22 +858,6 @@ void Audio::update()
         } else if (isDefault) {
             inputMuted = m;
         }
-    }
-
-    // A removed Bluetooth device can later reuse the very same D-Bus path.
-    // Disconnect its subscription, forget the old percent, and let the next
-    // appearance request fresh state from BlueZ.
-    const QSet<QString> watchedPaths = m_batteryWatched;
-    for (const QString& path : watchedPaths) {
-        if (activeBatteryPaths.contains(path)) {
-            continue;
-        }
-        QDBusConnection::systemBus().disconnect(QStringLiteral("org.bluez"), path,
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("PropertiesChanged"),
-            this, SLOT(onBluetoothProperties(QDBusMessage)));
-        m_batteryWatched.remove(path);
-        m_batteryVersions.remove(path);
-        m_batteries.remove(path);
     }
 
     QVariantList devices;

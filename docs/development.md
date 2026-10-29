@@ -10,7 +10,7 @@ Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20
 
 ## Distribution dependencies
 
-These packages are for **building Vela from source**, not the runtime requirements of the [user installer](installation.md). Arch `vela-git` deliberately installs Core and Desktop together: Konsole, Breeze icons, `xdg-desktop-portal` and the wlr screen-capture backend are default dependencies. `xdg-desktop-portal-gtk` is an optional fallback for generic portals, while `xdg-desktop-portal-kde` and Plasma Workspace are not required. Optional extras include KDE Connect and Bluedevil/BlueZ OBEX. `vela-update --build` installs `base-devel` through pacman only when a local build is required; makepkg installs the selected PKGBUILD's other build dependencies. `git`, `curl`, `sudo` and `util-linux` are runtime dependencies of the updater. Keep them synchronized with the CI's build dependencies.
+These packages are for **building Vela from source**, not the runtime requirements of the [user installer](installation.md). Arch `vela-git` deliberately installs Core and Desktop together: Konsole, Breeze icons, `xdg-desktop-portal` and the wlr screen-capture backend are default dependencies. `xdg-desktop-portal-gtk` is installed for generic application portals, while `xdg-desktop-portal-kde` and Plasma Workspace are not required. Optional extras include KDE Connect and BlueZ for Bluetooth. `vela-update --build` installs `base-devel` through pacman only when a local build is required; makepkg installs the selected PKGBUILD's other build dependencies. `git`, `curl`, `sudo` and `util-linux` are runtime dependencies of the updater. Keep them synchronized with the CI's build dependencies.
 
 <details>
 <summary><b>Arch / CachyOS / EndeavourOS</b></summary>
@@ -38,6 +38,45 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
     zlib-devel gtest-devel python3 python3-numpy python3-pillow shared-mime-info \
     pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber systemd-devel
 ```
+</details>
+
+<details>
+<summary><b>Ubuntu 26.10 (experimental native DEB updater and CI validation)</b></summary>
+
+Use Ubuntu 26.10 (Stonking Stingray) with the `universe` repository enabled.
+The CI uses the official `ubuntu:26.10` container and compiles the compositor,
+shell, lock screen, Settings, Files, polkit agent, reporter, and development
+tools. It also builds an experimental .deb and checks installation and removal in a
+clean Ubuntu 26.10 container. It does not validate a graphical login session or
+GPU/DRM functionality.
+
+```sh
+sudo apt update
+sudo apt install --no-install-recommends \
+    ca-certificates git build-essential cmake ninja-build pkgconf \
+    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+    libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
+    libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
+    libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev \
+    libpolkit-gobject-1-dev zlib1g-dev libgtest-dev libsystemd-dev \
+    qt6-base-dev qt6-base-private-dev qt6-declarative-dev \
+    qt6-svg-dev qt6-wayland-dev qt6-tools-dev qt6-tools-dev-tools \
+    qt6-l10n-tools liblayershellqtinterface-dev \
+    libpipewire-0.3-dev libwireplumber-0.5-dev \
+    dpkg-dev file python3 python3-numpy python3-pil dbus
+cmake -S . -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DVELA_BUILD_COMPOSITOR=ON -DVELA_BUILD_SHELL=ON \
+    -DVELA_BUILD_POLKIT=ON -DVELA_BUILD_REPORT=ON -DVELA_BUILD_TOOLS=ON
+cmake --build build --parallel 2
+ctest --test-dir build -N -LE 'gpu|distro-packaging'
+ctest --test-dir build --output-on-failure -LE 'gpu|distro-packaging'
+```
+
+Ubuntu 26.10 also has an [experimental DEB updater](installation.md#ubuntu-2610-experimental-native-deb-updater).
+Build success alone does not prove Ubuntu graphical session functionality:
+validate Wayland, portals, audio, polkit and GPU-specific behavior on real hardware.
+
 </details>
 
 <details>
@@ -444,7 +483,10 @@ Run the complete suite with:
 ctest --test-dir build --output-on-failure
 ```
 
-The GPU-dependent functional and sharpness suites are part of CTest as well. They are run regularly on Vela's primary development machine with an AMD Radeon RX 9070 XT and Mesa/RADV, where they currently pass in full. GitHub-hosted CI skips those suites because it does not expose a usable DRM/Vulkan device.
+The GPU-dependent functional and sharpness suites are part of CTest.
+Hosted runners skip them for lack of a usable DRM/Vulkan device; the
+[GPU CI policy](ci-quality.md#gpu-ci-policy) defines required real-hardware
+testing and per-release verification.
 
 See [testing.md](testing.md) for individual suites, GPU requirements and the headless harness.
 

@@ -58,7 +58,8 @@ BuildRequires:  layer-shell-qt-devel
 BuildRequires:  python3
 BuildRequires:  pipewire-devel
 BuildRequires:  wireplumber-devel
-# sd-bus: the laptop backlight through logind (docs/brightness.md §5.3).
+# sd-bus: the laptop backlight through logind (docs/brightness.md §5.3), and
+# vela-bluetooth (docs/bluetooth.md).
 BuildRequires:  systemd-devel
 
 Requires:       wlroots >= 0.20

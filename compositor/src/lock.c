@@ -14,9 +14,11 @@
 #include "input.h"
 #include "output.h"
 #include "process.h"
+#include "render/renderer.h"
 #include "scene/scene.h"
 #include "scene/surface.h"
 #include "server.h"
+#include "bluetooth.h"
 #include "path_security.h"
 #include "util.h"
 #include "view.h"
@@ -33,6 +35,7 @@
 #include <unistd.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -254,6 +257,7 @@ static void handle_unlock(struct wl_listener *listener, void *data)
     }
     // Really unlocked: the desktop is back as it was.
     server->locked = false;
+    vela_bluetooth_report_lock(server, false);
     if (server->runtime_dir_fd >= 0
         && !vela_lock_marker_remove_at(server->runtime_dir_fd, server->socket_name)) {
         wlr_log(WLR_ERROR, "Could not remove secure screen-lock marker");
@@ -665,9 +669,28 @@ void vela_lock_engage(struct vela_lock *lock)
         return;
     }
     server->locked = true;
+    vela_bluetooth_report_lock(server, true);
+    // Cancel the active DnD grab before hiding the desktop. Ending the
+    // matching wlroots grab invokes its cancellation path (not its drop path).
+    // The drag may be destroyed by that callback: don't access it afterwards.
+    if (server->seat->drag) {
+        switch (server->seat->drag->grab_type) {
+        case WLR_DRAG_GRAB_KEYBOARD_POINTER:
+            wlr_seat_pointer_end_grab(server->seat);
+            break;
+        case WLR_DRAG_GRAB_KEYBOARD_TOUCH:
+            wlr_seat_touch_end_grab(server->seat);
+            break;
+        case WLR_DRAG_GRAB_KEYBOARD:
+            wlr_seat_keyboard_end_grab(server->seat);
+            break;
+        }
+    }
     // Invalidate old isolated window sources; output capture still shows the
     // composed lock screen, but window capture could bypass occlusion.
     vela_views_revoke_capture_on_lock(server);
+    // A pre-lock output readback must not deliver desktop pixels after lock.
+    vela_renderer_cancel_readbacks(server->renderer);
     // Before exposing the locked state to the supervisor, persist its marker.
     // If we cannot, a compositor restart might reveal the desktop: end the
     // entire session instead of ever allowing a restart without a marker.

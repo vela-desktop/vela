@@ -187,6 +187,10 @@ struct vela_server {
     // it returns to when the one above closes.
     struct vela_layer_surface *focused_layer;
     struct vela_layer_surface *previous_layer;
+    // Super tap: show the taskbar before Qt finishes mapping Start. A bounded
+    // timer restores fullscreen if no panel ever arrives.
+    bool start_preview;
+    struct wl_event_source *start_preview_timer;
     struct vela_interaction *interaction; // the pointer on windows (interact.h)
     struct vela_switcher *switcher; // Alt+Tab (switcher.h)
     struct vela_snapping *snapping; // preview, assist, snap layouts (snap.h)
@@ -195,6 +199,7 @@ struct vela_server {
     struct vela_ready ready;
     struct vela_child shell; // the launched and supervised shell (shell.h)
     struct vela_child polkit_agent; // the polkit agent (polkit.h)
+    struct vela_child bluetooth; // vela-bluetooth (bluetooth.h)
     struct vela_brightness *brightness; // every output's brightness (brightness.h)
     struct vela_commands *commands; // the command socket (command.h)
     // wlr-output-management (output_manager.h).

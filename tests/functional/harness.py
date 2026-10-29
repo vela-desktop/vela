@@ -12,6 +12,7 @@ ones; the state is read with the "state" request on the command socket
 Python standard library only. Needs a GPU with Vulkan 1.4 (Vela's renderer
 has no software fallback): without one, run.py skips the tests."""
 
+import atexit
 import json
 import os
 import shutil
@@ -23,6 +24,24 @@ import tempfile
 import threading
 import time
 import zlib
+
+# Opt-in only: keep the functional test harness standard-library-only.
+_PROFILE = os.environ.get("VELA_FUNCTIONAL_PROFILE") == "1"
+_METRICS = {}
+
+
+def _profile(metric, duration):
+    if _PROFILE:
+        count, seconds = _METRICS.get(metric, (0, 0.0))
+        _METRICS[metric] = (count + 1, seconds + duration)
+
+
+@atexit.register
+def _print_profile():
+    if _PROFILE:
+        for metric, (count, seconds) in sorted(_METRICS.items()):
+            print(f"test-profile {metric}: {seconds:.3f}s / {count} calls", flush=True)
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUILD = os.environ.get("VELA_BUILD", os.path.join(ROOT, "build"))
@@ -76,11 +95,15 @@ class Session:
 
     def start(self):
         """Start a session and clean up partial startup on failure."""
+        began = time.perf_counter()
         try:
-            self._start()
-        except BaseException:
-            self.stop(keep_log=True)
-            raise
+            try:
+                self._start()
+            except BaseException:
+                self.stop(keep_log=True)
+                raise
+        finally:
+            _profile("session-start", time.perf_counter() - began)
 
     def _start(self):
         self.directory = tempfile.mkdtemp(prefix="vela-functional-")
@@ -214,7 +237,7 @@ class Session:
     def state(self):
         return State(self.query("state"))
 
-    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True):
+    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05):
         """Waits until condition(state) is true; returns the state."""
         deadline = time.monotonic() + timeout
         last = None
@@ -225,7 +248,7 @@ class Session:
                     return last
             except (KeyError, IndexError, TypeError):
                 pass
-            time.sleep(0.05)
+            time.sleep(interval)
         raise TimeoutError(f"after {timeout} s this still isn't true: {what}\nlast state: {last}\n"
                            f"--- end of the Vela log ---\n{self.log_text()[-2500:]}")
 
@@ -240,8 +263,12 @@ class Session:
     # ------------------------------------------------ keyboard and mouse --
 
     def input(self, *actions):
-        subprocess.run([tool("vela-input"), *map(str, actions)], env=self.client_env, check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        began = time.perf_counter()
+        try:
+            subprocess.run([tool("vela-input"), *map(str, actions)], env=self.client_env, check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        finally:
+            _profile("input-gestures", time.perf_counter() - began)
 
     def randr(self, *args):
         """Configures outputs as Settings > Display does (wlr-output-management)."""
@@ -256,18 +283,44 @@ class Session:
 
     # -------------------------------------------------------- windows --
 
-    def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False):
+    def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False,
+                    env=None):
         """Opens a window (vela-pattern, or `command`); returns its identifier.
 
-        decorated: with Vela's title bar (xdg-decoration)."""
+        decorated: with Vela's title bar (xdg-decoration).
+        env: optional environment for protocol-specific clients (e.g. Xwayland DISPLAY)."""
         before = {w["id"] for w in self.state().windows}
         pattern = ([tool("vela-pattern")] + (["--app-id", app_id] if app_id else [])
                    + (["--decorated"] if decorated else []) + [str(width), str(height)])
-        client = subprocess.Popen(command or pattern, env=self.client_env,
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Preserve per-client output: GPU test tools can fail before their
+        # first Wayland surface is mapped, and DEVNULL hides the actual cause.
+        client_log_path = os.path.join(self.directory, f"client-{len(self.clients) + 1}.log")
+        with open(client_log_path, "w") as client_log:
+            client = subprocess.Popen(command or pattern, env=self.client_env if env is None else env,
+                                      stdout=client_log, stderr=subprocess.STDOUT)
         self.clients.append(client)
-        state = self.wait_for(lambda s: {w["id"] for w in s.windows} - before, timeout=timeout,
-                              what="a new window")
+
+        def client_output():
+            with open(client_log_path, errors="replace") as output:
+                return output.read()[-6000:] or "(no client output)"
+
+        def new_window(state):
+            new_ids = {w["id"] for w in state.windows} - before
+            if new_ids:
+                return new_ids
+            status = client.poll()
+            if status is not None:
+                raise AssertionError(
+                    f"client {command or pattern!r} exited with status {status} before mapping a window\n"
+                    f"--- client output ---\n{client_output()}")
+            return False
+
+        try:
+            state = self.wait_for(new_window, timeout=timeout, what="a new window")
+        except TimeoutError as error:
+            raise TimeoutError(
+                f"{error}\nclient {command or pattern!r} (pid={client.pid}, exit={client.poll()})"
+                f"\n--- client output ---\n{client_output()}") from error
         identifier = next(iter({w["id"] for w in state.windows} - before))
         self.wait_still(identifier) # the opening animation is over (it rises a few pixels)
         return identifier
@@ -292,12 +345,16 @@ class Session:
 
     def screenshot(self, path, output=0, region=None, cursor=False):
         """Capture upright output pixels; an optional region is (x, y, width, height)."""
-        env = dict(self.client_env, VELA_SCREEN_DUMP_OUTPUT=str(output),
-                   VELA_SCREEN_DUMP_CURSOR="1" if cursor else "0")
-        args = [tool("vela-screen-dump"), path]
-        if region is not None:
-            args.extend(str(value) for value in region)
-        subprocess.run(args, env=env, check=True)
+        began = time.perf_counter()
+        try:
+            env = dict(self.client_env, VELA_SCREEN_DUMP_OUTPUT=str(output),
+                       VELA_SCREEN_DUMP_CURSOR="1" if cursor else "0")
+            args = [tool("vela-screen-dump"), path]
+            if region is not None:
+                args.extend(str(value) for value in region)
+            subprocess.run(args, env=env, check=True)
+        finally:
+            _profile("screen-dump", time.perf_counter() - began)
 
     def pixels(self, output=0):
         """The chosen output now, as an Image (vela-screen-dump)."""
@@ -351,6 +408,19 @@ class FakeShell:
             time.sleep(0.05)
         raise TimeoutError(f"the shell never received «{prefix}…{containing}»; it got: {self.received()[-10:]}")
 
+    def barrier(self):
+        """Wait until the socket reader processed every earlier connection.
+
+        Use after an input/compositor checkpoint before asserting that a
+        forbidden shell message was NOT sent; a fixed sleep cannot prove that.
+        """
+        marker = f"__test_barrier__:{time.monotonic_ns()}"
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.connect(self.path)
+            connection.sendall((marker + "\n").encode())
+        self.wait_for(marker)
+        return marker
+
     def clear(self):
         with self.lock:
             self.lines = []
@@ -375,6 +445,14 @@ class Image:
 
     @staticmethod
     def read(path):
+        began = time.perf_counter()
+        try:
+            return Image._read_impl(path)
+        finally:
+            _profile("png-decode", time.perf_counter() - began)
+
+    @staticmethod
+    def _read_impl(path):
         with open(path, "rb") as file:
             data = file.read()
         assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"

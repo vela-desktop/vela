@@ -79,6 +79,77 @@ DNF-based installer.
 Once installed, use **`vela-update`** on either distribution to fetch new
 commits and install updates.
 
+## Ubuntu 26.10 (experimental native DEB updater)
+
+Ubuntu **26.10** has an experimental **locally built `.deb` updater**. Enable
+the **universe** repository first. Other Ubuntu releases are not supported.
+Keep a working desktop or TTY available.
+
+Bootstrap from a trusted Vela checkout:
+
+```sh
+sudo apt update
+sudo apt install git ca-certificates sudo
+git clone https://github.com/vela-desktop/vela.git
+sh vela/packaging/vela-update
+```
+
+The updater installs the Ubuntu build dependencies through APT, compiles the
+exact selected Git revision with CMake/CPack, and installs a native DEB.
+The DEB contains `/usr/bin/vela-update` for subsequent updates. Run
+`vela-update --check` to inspect pending changes, `vela-update --force` to
+rebuild and reinstall the default branch, or `vela-update --commit SHA` to
+downgrade. Use `vela-update --force --commit SHA` to reinstall a specific commit.
+Commits older than the revision-stamping support cannot be installed
+through this updater unless they produce a correctly stamped DEB.
+
+**On Ubuntu, automatic download of CI preview binaries is intentionally
+disabled.** Even `vela-update --download` builds locally. Those artifacts
+currently lack the release provenance used by Arch/Fedora; do not
+automatically trust or install them. `--build` explicitly opts into the
+same local build path.
+
+The last three locally built DEBs remain in
+`~/.cache/vela-update/packages/` for manual rollback. Select **one exact**
+cached filename; never install every cached package with a wildcard:
+
+```sh
+sudo apt-get install -y --allow-downgrades --reinstall \
+  "$HOME/.cache/vela-update/packages/vela-git_VERSION_amd64.deb"
+```
+
+Replace `vela-git_VERSION_amd64.deb` with the actual filename. If a
+previous package transaction left dpkg incomplete, first run
+`sudo dpkg --configure -a`, then retry the update.
+
+CI also publishes **unsigned experimental preview packages** for manual
+testing. Its build includes development tools; updater builds omit them.
+See [development.md](development.md#distribution-dependencies) for the
+manual source build and prerequisites. CI checks compilation, DEB metadata,
+installed entry points, dependency resolution, and removal in a fresh
+Ubuntu 26.10 container. **That does not prove a graphical session works.**
+Real GPU/DRM, portal, audio, polkit and display-manager testing is still
+required. Do not install these packages on other Ubuntu releases.
+
+## Bluetooth
+
+Bluetooth needs only **BlueZ**, with its service running. Vela pairs,
+connects and answers devices itself ([Bluetooth](bluetooth.md)): BlueDevil,
+blueman or GNOME's Bluetooth panel are not needed.
+
+| Distribution | BlueZ |
+|---|---|
+| Arch Linux and derivatives | `bluez` is an optional dependency: `sudo pacman -S --needed bluez` |
+| Fedora 44 | `bluez` is a weak dependency, installed unless weak dependencies are disabled |
+| Ubuntu 26.10 | `bluez` is recommended, installed unless recommends are disabled |
+
+Then turn the service on once: `sudo systemctl enable --now bluetooth`.
+
+Vela's daemon, `vela-bluetooth`, starts with the session (in `/usr/lib/vela`
+on Arch, `/usr/libexec/vela` on Fedora and Ubuntu). It shares BlueZ with other desktops on
+the same machine: while you are in another session, that desktop answers
+its devices, and Vela changes nothing.
+
 ## Updating, selecting revisions, and rollback
 
 Repository downloads use public HTTPS and need no GitHub account or SSH keys.

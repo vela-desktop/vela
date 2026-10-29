@@ -37,6 +37,7 @@ env:
     mesa freetype2 harfbuzz fontconfig librsvg cairo zlib pam polkit
     qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt
     hicolor-icon-theme shared-mime-info xorg-xwayland pipewire wireplumber systemd-libs
+    konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr xdg-utils
 
 jobs:
   changes:
@@ -393,11 +394,12 @@ jobs:
           test -f /etc/xdg/xdg-desktop-portal-wlr/Vela
           test -f /usr/lib/udev/rules.d/70-vela-i2c.rules
           test -f /usr/lib/modules-load.d/vela-i2c.conf
-          for helper in vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui vela-session-env; do
+          for helper in vela-bluetooth vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui vela-session-env; do
             test -x "/usr/libexec/vela/$helper"
           done
           # Without sd-bus the helper builds, but can't change a laptop's backlight.
           ldd /usr/libexec/vela/vela-brightness | grep -F libsystemd.so
+          ldd /usr/libexec/vela/vela-bluetooth | grep -F libsystemd.so
           test -f /usr/libexec/vela/report/vela_report/cli.py
           # The archive's source metadata must not inherit CI's parent git state.
           grep -F "\"source_commit\": \"$GITHUB_SHA\"" /usr/bin/vela-report

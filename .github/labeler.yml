@@ -1,0 +1,58 @@
+# A PR may receive more than one area label.
+"area: compositor":
+  - changed-files:
+      - any-glob-to-any-file: 'compositor/**'
+"area: renderer":
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'compositor/src/render/**'
+          - 'compositor/src/scene/**'
+          - 'docs/renderer.md'
+"area: shell":
+  - changed-files:
+      - any-glob-to-any-file: 'shell/**'
+"area: settings":
+  - changed-files:
+      - any-glob-to-any-file: 'settings/**'
+"area: explorer":
+  - changed-files:
+      - any-glob-to-any-file: 'explorer/**'
+"area: capture":
+  - changed-files:
+      - any-glob-to-any-file: 'capture/**'
+"area: session":
+  - changed-files:
+      - any-glob-to-any-file: 'session/**'
+"area: packaging":
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packaging/**'
+"area: ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/dependabot.yml'
+          - '.github/labeler.yml'
+          - '.github/dco.yml'
+          - 'scripts/ci-check-package.sh'
+          - 'scripts/branch-freshness*'
+"area: tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/tests/**'
+          - 'tests/**'
+          - 'scripts/tests/**'
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '**/*.md'
+          - 'README.md'
+          - 'CONTRIBUTING.md'
+          - 'CONTRIBUTORS.md'
+          - 'SECURITY.md'
+"area: localization":
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/i18n/**'
+          - '**/translations/**'

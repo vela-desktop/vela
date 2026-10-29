@@ -192,6 +192,8 @@ struct vela_staging {
 // -------------------------------------------------------- renderer state --
 
 #define VELA_TIMING_SLOTS 64
+#define VELA_READBACK_MAX_JOBS 4
+#define VELA_READBACK_MAX_BYTES (128u * 1024u * 1024u)
 
 // A command buffer of the pool: free when it isn't recording and the GPU has
 // finished the submission that contained it (point).
@@ -223,8 +225,10 @@ struct staging_chunk {
     VkDeviceMemory memory;
     uint8_t *data;
     VkDeviceSize size;
+    VkDeviceSize allocation_size; // includes Vulkan's alignment requirements
     VkDeviceSize used;
     uint64_t point; // last submission reading it; UINT64_MAX: in use by commands not submitted yet
+    unsigned readers; // pending CPU readbacks: GPU completion alone cannot recycle the slice
     bool readback; // memory the CPU reads quickly (cached), for copies from the GPU
 };
 
@@ -247,6 +251,7 @@ struct vela_renderer {
     VkSemaphore timeline;
     uint64_t last_point;
     uint64_t completed;
+    uint64_t readback_point; // later draws must follow submitted readback reads, even after cancellation
 
     VkSemaphore *free_waits;
     int free_wait_count, free_wait_capacity;
@@ -258,6 +263,14 @@ struct vela_renderer {
     int retired_count, retired_capacity;
     struct staging_chunk *staging;
     int staging_count, staging_capacity;
+
+    struct vela_readback *readbacks[VELA_READBACK_MAX_JOBS];
+    size_t readback_next; // round-robin cursor in the bounded queue
+    struct wl_event_source *readback_timer;
+    int readback_fd; // one-shot timerfd: yield through epoll without a millisecond floor
+    size_t readback_count, readback_bytes;
+    uint64_t readback_completed, readback_cancelled, readback_failed, readback_rejected;
+    uint64_t readback_submitted;
 
     // The arrays of a submission, reused (they only grow).
     VkSemaphoreSubmitInfo *wait_infos;
@@ -306,6 +319,9 @@ bool vela_renderer_stage_readback(struct vela_renderer *renderer, VkDeviceSize s
 // waited). Returns the timeline point, 0 if the submission failed.
 uint64_t vela_renderer_submit(struct vela_renderer *renderer, VkCommandBuffer cmd, const int *wait_fds,
     int wait_count, int *release_fd);
+// Compositor-owned readback: GPU-wait for earlier draws, then make later
+// submissions GPU-wait for this copy. Queue order alone is not a dependency.
+uint64_t vela_renderer_submit_readback(struct vela_renderer *renderer, VkCommandBuffer cmd);
 void vela_renderer_wait(struct vela_renderer *renderer, uint64_t point);
 // Frees what the GPU has finished using (retired images, semaphores, extra
 // staging blocks).

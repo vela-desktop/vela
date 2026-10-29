@@ -39,6 +39,7 @@ C.ComboBox {
         leftPadding: 11
         rightPadding: 32
         text: combo.displayText
+        textFormat: Text.PlainText
         color: Theme.text
         font.pixelSize: Theme.fontBody
         verticalAlignment: Text.AlignVCenter
@@ -72,6 +73,7 @@ C.ComboBox {
         contentItem: Text {
             leftPadding: 8
             text: typeof entry.modelData === "object" ? entry.modelData.text : entry.modelData
+            textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: Theme.fontBody
             verticalAlignment: Text.AlignVCenter

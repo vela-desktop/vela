@@ -122,7 +122,8 @@ Nested mode is convenient for exploration, but cannot validate physical DRM,
 direct scanout or every driver-specific path.
 
 For a full session, use the [Arch package](#arch-linux-cachyos-endeavouros),
-the [Fedora RPM](#fedora-44) or [install from source](#other-distributions),
+the [Fedora RPM](#fedora-44), the [Ubuntu DEB](#ubuntu-2610-experimental)
+or [install from source](#other-distributions),
 then select Vela at the login
 screen. If something fails, [report it](#reporting-a-problem) using
 `vela-report`, reviewing any diagnostics before sharing them.
@@ -273,8 +274,8 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
   dims and blurs and one dialog asks: who is asking, for what, and the password. Nothing
   else takes the keyboard until you answer; requests queue up instead of being refused
   ([design](docs/polkit-agent.md)).
-- **Integrates with desktop services**: GTK for generic application portals
-  (when installed), wlr for screen capture, and the KDE wallet (so Chrome,
+- **Integrates with desktop services**: GTK for generic application portals,
+  wlr for screen capture, and the KDE wallet (so Chrome,
   Brave and VS Code keep their logins), color schemes and icon themes.
 
 ## Install
@@ -299,11 +300,24 @@ git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update
 ```
 
+### Ubuntu 26.10 (experimental)
+
+Ubuntu 26.10 with the **universe** repository enabled is supported by an
+experimental native DEB updater. It builds from the selected Git commit
+locally and does **not** automatically install unsigned CI previews.
+
+```sh
+sudo apt update
+sudo apt install git ca-certificates sudo
+git clone https://github.com/vela-desktop/vela.git
+sh vela/packaging/vela-update
+```
+
 ### Other distributions
 
 See [build from source](#build-from-source); there is currently no native package updater for these systems.
 
-`vela-update` installs Vela on first run and handles subsequent updates. It uses Sigstore/Cosign to verify downloaded packages (no GitHub CLI required) and falls back to a local build if verification is unavailable. Fedora 44 users should install Cosign from its official upstream RPM before the first download; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
+`vela-update` installs Vela on first run and handles subsequent updates. On Arch and Fedora it uses Sigstore/Cosign to verify downloaded packages (no GitHub CLI required), falling back to a local build when necessary. On Ubuntu 26.10 it always builds a local DEB. Fedora 44 users should install Cosign from its official upstream RPM before the first download; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
 ## Reporting a problem
 
 Run `vela-report` to create a diagnostic ZIP with a description and the evidence
@@ -422,10 +436,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The GPU-dependent functional and sharpness suites use Vela's real Vulkan renderer. They
-are run regularly on the primary development machine — an AMD Radeon RX 9070 XT with
-Mesa/RADV — and currently pass in full. GitHub-hosted CI runs the CPU-only tests and
-skips GPU suites because hosted runners do not expose a usable DRM/Vulkan device.
+The GPU-dependent functional and sharpness suites use Vela's real Vulkan renderer
+on self-hosted hardware; GitHub-hosted CI cannot run them. See the
+[GPU CI policy](docs/ci-quality.md#gpu-ci-policy) for when AMD and NVIDIA
+results are required and how the candidate revision is verified.
 
 For the full workflow, test harness, command socket, debug switches and project layout,
 see the documentation below.
@@ -439,10 +453,12 @@ see the documentation below.
 | **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
 | **[Roadmap](docs/roadmap.md)** | Work in progress, what comes next, what is not planned, and what is done. |
 | **[Contributing](CONTRIBUTING.md)** | Development workflow, PR checklist, testing and DCO. |
+| **[Contributors](CONTRIBUTORS.md)** | Thanks to everyone helping build and improve Vela. |
 | **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
 | **[Polkit agent](docs/polkit-agent.md)** | The User Account Control dialog: agent, dialog, protocol, security notes and tests. |
 | **[Audio](docs/audio.md)** | Design of the shared audio backend on WirePlumber: model, volume rules, levels, microphone in use, tests. |
+| **[Bluetooth](docs/bluetooth.md)** | Design of the `vela-bluetooth` daemon: devices, pairing agent, quick settings, other desktop sessions, tests. |
 | **[Vela Report](docs/reporting.md)** | Guided diagnostic ZIPs, CLI and GUI, collection choices, privacy and validation. |
 | **[Development](docs/development.md)** | Build options, nested/headless workflows, development tools and repository layout. |
 | **[Testing](docs/testing.md)** | Unit, functional and sharpness suites; GPU requirements; local and CI coverage. |
