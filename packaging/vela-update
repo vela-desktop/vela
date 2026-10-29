@@ -52,9 +52,11 @@ if [ -z "$requested_channel" ]; then
 fi
 case "$requested_channel" in
  beta)
+    # Through sh: in a checkout the helper isn't executable
+    # (sh packaging/vela-update --channel beta).
     for helper in "$(dirname "$0")/vela-update-beta" \
         /usr/lib/vela/vela-update-beta /usr/libexec/vela/vela-update-beta; do
-        if [ -x "$helper" ]; then exec "$helper" "$@"; fi
+        if [ -f "$helper" ]; then exec sh "$helper" "$@"; fi
     done
     echo "vela-update: Beta channel helper is not installed" >&2; exit 1 ;;
  experimental) ;;
