@@ -5,9 +5,9 @@
 """Record repeatable, authentic Vela desktop demos for release trailers.
 
     cmake --build build --target vela-shell vela-screen-record
-    scripts/record-promo.py --list
-    scripts/record-promo.py --out ~/videos/vela-beta
-    scripts/record-promo.py start-menu window-motion --no-reel --out ~/videos/clips
+    python3 scripts/record-promo.py --list
+    python3 scripts/record-promo.py --out ~/videos/vela-beta
+    python3 scripts/record-promo.py start-menu window-motion --no-reel --out ~/videos/clips
 
 Each scene runs the *real* compositor and Qt shell on a private headless
 session, using the same timestamped capture path as record-before-after.py.
