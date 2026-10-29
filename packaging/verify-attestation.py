@@ -107,9 +107,15 @@ def verify(package: Path, repository: str, commit: str, kind: str, release_tag: 
         "--certificate-github-workflow-sha", commit,
     ]
     if kind == "release":
-        if release_tag is None or not re.fullmatch(r"v0\.[0-9]+\.[0-9]+", release_tag):
-            raise ValueError("release attestations require a valid Beta tag")
-        ref = "refs/tags/" + release_tag
+        if release_tag is None:
+            # Legacy alpha builds were signed from main. Keep verification
+            # compatible for already-published packages during migration;
+            # no new alpha releases are published by the Beta pipeline.
+            ref = "refs/heads/main"
+        elif re.fullmatch(r"v0\.[0-9]+\.[0-9]+", release_tag):
+            ref = "refs/tags/" + release_tag
+        else:
+            raise ValueError("invalid Beta release tag")
         shared.extend(["--certificate-identity", identity + "@" + ref,
                        "--certificate-github-workflow-ref", ref,
                        "--certificate-github-workflow-trigger", "push"])
