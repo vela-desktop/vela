@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
+#include <time.h>
 #include <systemd/sd-bus.h>
 #include <systemd/sd-event.h>
 
@@ -44,7 +45,11 @@ struct vela_up_daemon {
     char *error_code; // the last check's failure, or NULL
     char *error_message;
     int64_t error_at;
-    int64_t file_seen_at; // checked_at of the last check.json read
+    // check.json is atomically renamed into place: identify the actual file,
+    // not checked_at (which has only one-second resolution).
+    dev_t file_seen_dev;
+    ino_t file_seen_ino;
+    struct timespec file_seen_mtime;
     struct vela_up_run run; // running now, by anyone
     sd_event_source *run_watch; // its pidfd
     struct vela_up_install install; // the last install's end
