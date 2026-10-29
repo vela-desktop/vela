@@ -110,21 +110,28 @@ static void read_source(struct vela_up_daemon *d)
 void vela_up_state_reload(struct vela_up_daemon *d)
 {
     char *path = path_in(d->state_dir, "check.json");
-    struct vela_up_check check;
-    // Only a new check.json: reloads happen on any file's change, and an
-    // old report must not hide a newer outcome that never reached the
-    // file (our check's "busy", or no report at all).
-    if (path && vela_up_check_read(path, &check) >= 0) {
-        if (check.checked_at != d->file_seen_at) {
-            d->file_seen_at = check.checked_at;
+    // Each check.json is created as a new temporary file and atomically
+    // renamed into place. Track its identity, not checked_at: successive
+    // checks within one second must both be observed. Reloads triggered by
+    // run.json or install.json must not reapply an old check.
+    struct stat observed;
+    if (path && stat(path, &observed) == 0
+        && (observed.st_dev != d->file_seen_dev || observed.st_ino != d->file_seen_ino
+            || observed.st_mtim.tv_sec != d->file_seen_mtime.tv_sec
+            || observed.st_mtim.tv_nsec != d->file_seen_mtime.tv_nsec)) {
+        struct vela_up_check check;
+        if (vela_up_check_read(path, &check) >= 0) {
+            d->file_seen_dev = observed.st_dev;
+            d->file_seen_ino = observed.st_ino;
+            d->file_seen_mtime = observed.st_mtim;
             vela_up_adopt_check(d, &check);
+            vela_up_check_clear(&check);
         }
-        vela_up_check_clear(&check);
     }
     free(path);
 
     path = path_in(d->state_dir, "install.json");
-    struct vela_up_install install;
+    struct vela_up_install install = { 0 };
     if (path && vela_up_install_read(path, &install) >= 0
         && (!d->install.present || install.finished_at >= d->install.finished_at)) {
         vela_up_install_clear(&d->install);
@@ -239,8 +246,14 @@ void vela_up_announced(struct vela_up_daemon *d, const char *commit)
     }
     set_string(&d->announced, commit);
     char *path = path_in(d->state_dir, "announced");
-    char *temp = path_in(d->state_dir, ".announced.new");
-    FILE *f = temp ? fopen(temp, "we") : NULL;
+    // mkstemp creates a unique file with mode 0600 (regardless of umask).
+    // Never open a predictable, potentially pre-existing file for writing.
+    char *temp = path_in(d->state_dir, ".announced.XXXXXX");
+    int fd = temp ? mkstemp(temp) : -1;
+    FILE *f = fd >= 0 ? fdopen(fd, "w") : NULL;
+    if (!f && fd >= 0) {
+        close(fd);
+    }
     if (f) {
         bool written = fprintf(f, "%s\n", commit) > 0;
         written = fclose(f) == 0 && written;
@@ -248,6 +261,8 @@ void vela_up_announced(struct vela_up_daemon *d, const char *commit)
             vela_up_log("can't save the announced update: %s", strerror(errno));
             unlink(temp);
         }
+    } else {
+        vela_up_log("can't save the announced update: %s", strerror(errno));
     }
     free(temp);
     free(path);
