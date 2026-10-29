@@ -205,6 +205,9 @@ installPackage() {
     elif [ "$backend" = ubuntu ]; then
         # apt supports both upgrades and downgrades to an explicit local file.
         sudo apt-get install -y --allow-downgrades --reinstall "$1"
+    elif rpm -q vela >/dev/null 2>&1; then
+        # Switching from the mutually-exclusive Beta RPM to vela-git.
+        sudo dnf install -y --allowerasing "$1"
     elif [ "$force" = 1 ] && [ -n "$installed" ] &&
          [ "${latestFull#"$installed"}" != "$latestFull" ]; then
         # DNF 'install' deliberately skips an already installed identical NEVRA.
