@@ -15,6 +15,7 @@
 #include "interact.h"
 #include "output.h"
 #include "process.h"
+#include "render/renderer.h"
 #include "scene/scene.h"
 #include "scene/surface.h"
 #include "server.h"
@@ -699,6 +700,8 @@ void vela_lock_engage(struct vela_lock *lock)
     // Invalidate old isolated window sources; output capture still shows the
     // composed lock screen, but window capture could bypass occlusion.
     vela_views_revoke_capture_on_lock(server);
+    // A pre-lock output readback must not deliver desktop pixels after lock.
+    vela_renderer_cancel_readbacks(server->renderer);
     // Before exposing the locked state to the supervisor, persist its marker.
     // If we cannot, a compositor restart might reveal the desktop: end the
     // entire session instead of ever allowing a restart without a marker.

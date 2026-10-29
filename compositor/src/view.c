@@ -1554,7 +1554,9 @@ void vela_views_init(struct vela_server *server)
     // the standard ext-* protocols.
     server->ext_toplevels = wlr_ext_foreign_toplevel_list_v1_create(display, 1);
     wlr_ext_image_copy_capture_manager_v1_create(display, 1);
-    wlr_ext_output_image_capture_source_manager_v1_create(display, 1);
+    if (!vela_output_capture_manager_create(server)) {
+        wlr_log(WLR_ERROR, "Cannot create output capture manager");
+    }
     struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 *capture
         = wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(display, 1);
     vela_listen(&capture->events.new_request, &server->new_capture_request, handle_capture_request);
