@@ -46,6 +46,8 @@ optdepends=(
     'kimageformats: AVIF, HEIF, JPEG XL and other pictures in File Explorer (thumbnails, quick preview)'
     'qt6-multimedia: videos and sounds in the File Explorer quick preview'
     'kdeconnect: share with your phone'
+    'bluedevil: send files over Bluetooth from Files (requires bluez-obex)'
+    'bluez-obex: OBEX file transfers (optional Bluedevil backend)'
     'github-cli: optional authenticated GitHub Actions artifact retrieval'
 )
 provides=('vela')

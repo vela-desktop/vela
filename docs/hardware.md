@@ -43,7 +43,7 @@ Different features rely on installed/running system services. On Arch, [vela-git
 | Screen sharing / application portals | `xdg-desktop-portal` and `xdg-desktop-portal-wlr` are installed by default on Arch. `xdg-desktop-portal-gtk` provides generic application portals by default, while wlr handles screenshot and screencast |
 | KDE styling and secrets | Appropriate KDE icon/theme/wallet components |
 
-Vela does not install `xdg-desktop-portal-kde` or Plasma Workspace. Konsole and Breeze icons remain default desktop components. BlueZ remains optional for native Vela Bluetooth integration.
+Vela does not install `xdg-desktop-portal-kde` or Plasma Workspace. Konsole and Breeze icons remain default desktop components. BlueZ remains optional for native Vela Bluetooth integration; Bluedevil plus bluez-obex are optional for Bluetooth file sending from Files.
 
 The Vela compositor and Vulkan renderer are Vela's own; reusing standard Linux services and selected KDE components does not mean running KDE's compositor or Plasma shell.
 
