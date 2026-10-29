@@ -1343,6 +1343,146 @@
       "max_downloads_observed": 0,
       "name": "vela-git-0.1.0.r172.g9c8c818-1-x86_64.pkg.tar.zst",
       "release_tag": "alpha-9c8c8180a8b7c063c158bb928e20f00a4c7f095e"
+    },
+    "685011474": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 3,
+      "name": "vela-git-0.1.0.r173.ga60ee2b-1-x86_64.pkg.tar.zst",
+      "release_tag": "alpha-a60ee2b96502cc8105356ce73922d6b5aa1dc033"
+    },
+    "685011475": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 2,
+      "name": "vela-git-0.1.0-1.173.ga60ee2b.fc44.x86_64.rpm",
+      "release_tag": "alpha-a60ee2b96502cc8105356ce73922d6b5aa1dc033"
+    },
+    "685011476": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 2,
+      "name": "SHA256SUMS-fedora",
+      "release_tag": "alpha-a60ee2b96502cc8105356ce73922d6b5aa1dc033"
+    },
+    "685011482": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 3,
+      "name": "SHA256SUMS",
+      "release_tag": "alpha-a60ee2b96502cc8105356ce73922d6b5aa1dc033"
+    },
+    "686316841": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "SHA256SUMS",
+      "release_tag": "alpha-a8749289256da8dd79bcf77b28b6b438307d5800"
+    },
+    "686316843": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "vela-git-0.1.0-1.174.ga874928.fc44.x86_64.rpm",
+      "release_tag": "alpha-a8749289256da8dd79bcf77b28b6b438307d5800"
+    },
+    "686316844": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "vela-git-0.1.0.r174.ga874928-1-x86_64.pkg.tar.zst",
+      "release_tag": "alpha-a8749289256da8dd79bcf77b28b6b438307d5800"
+    },
+    "686316848": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "SHA256SUMS-fedora",
+      "release_tag": "alpha-a8749289256da8dd79bcf77b28b6b438307d5800"
+    },
+    "686713690": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "vela-git-0.1.0.r175.gad1867d-1-x86_64.pkg.tar.zst",
+      "release_tag": "alpha-ad1867ddaad19eacefd86afb100b5586475a6c0a"
+    },
+    "686713691": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "SHA256SUMS",
+      "release_tag": "alpha-ad1867ddaad19eacefd86afb100b5586475a6c0a"
+    },
+    "686713697": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "SHA256SUMS-fedora",
+      "release_tag": "alpha-ad1867ddaad19eacefd86afb100b5586475a6c0a"
+    },
+    "686713698": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "vela-git-0.1.0-1.175.gad1867d.fc44.x86_64.rpm",
+      "release_tag": "alpha-ad1867ddaad19eacefd86afb100b5586475a6c0a"
+    },
+    "686776968": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "SHA256SUMS-fedora",
+      "release_tag": "alpha-612beb4df2eea81d7e2c268aa6ddc6c3016aa728"
+    },
+    "686776969": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "SHA256SUMS",
+      "release_tag": "alpha-612beb4df2eea81d7e2c268aa6ddc6c3016aa728"
+    },
+    "686776971": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "vela-git-0.1.0.r176.g612beb4-1-x86_64.pkg.tar.zst",
+      "release_tag": "alpha-612beb4df2eea81d7e2c268aa6ddc6c3016aa728"
+    },
+    "686776974": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 1,
+      "name": "vela-git-0.1.0-1.176.g612beb4.fc44.x86_64.rpm",
+      "release_tag": "alpha-612beb4df2eea81d7e2c268aa6ddc6c3016aa728"
+    },
+    "688036019": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 0,
+      "name": "vela-git-0.1.0.r177.g9acfcb3-1-x86_64.pkg.tar.zst",
+      "release_tag": "alpha-9acfcb38d76bef3e4bd8aa9ea01bf1dfc512688e"
+    },
+    "688036022": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 0,
+      "name": "SHA256SUMS-fedora",
+      "release_tag": "alpha-9acfcb38d76bef3e4bd8aa9ea01bf1dfc512688e"
+    },
+    "688036023": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 0,
+      "name": "vela-git-0.1.0-1.177.g9acfcb3.fc44.x86_64.rpm",
+      "release_tag": "alpha-9acfcb38d76bef3e4bd8aa9ea01bf1dfc512688e"
+    },
+    "688036026": {
+      "first_seen_at": "2026-10-29T09:57:24+00:00",
+      "last_seen_at": "2026-10-29T09:57:24+00:00",
+      "max_downloads_observed": 0,
+      "name": "SHA256SUMS",
+      "release_tag": "alpha-9acfcb38d76bef3e4bd8aa9ea01bf1dfc512688e"
     }
   },
   "schema_version": 1

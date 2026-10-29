@@ -1,0 +1,110 @@
+{
+  "collected_at": "2026-10-29T09:57:24+00:00",
+  "coverage": "top_10_only",
+  "popular_paths": [
+    {
+      "count": 446,
+      "path": "/vela-desktop/vela/pulls",
+      "title": "/pulls",
+      "uniques": 7
+    },
+    {
+      "count": 367,
+      "path": "/vela-desktop/vela",
+      "title": "Overview",
+      "uniques": 185
+    },
+    {
+      "count": 69,
+      "path": "/vela-desktop/vela/actions",
+      "title": "/actions",
+      "uniques": 1
+    },
+    {
+      "count": 54,
+      "path": "/vela-desktop/vela/issues",
+      "title": "/issues",
+      "uniques": 12
+    },
+    {
+      "count": 41,
+      "path": "/vela-desktop/vela/actions/workflows/gpu-amd.yml",
+      "title": "/actions/workflows/gpu-amd.yml",
+      "uniques": 1
+    },
+    {
+      "count": 33,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 12
+    },
+    {
+      "count": 33,
+      "path": "/vela-desktop/vela/actions/workflows/gpu-nvidia.yml",
+      "title": "/actions/workflows/gpu-nvidia.yml",
+      "uniques": 2
+    },
+    {
+      "count": 27,
+      "path": "/vela-desktop/vela/forks",
+      "title": "/forks",
+      "uniques": 2
+    },
+    {
+      "count": 26,
+      "path": "/vela-desktop/vela/pull/40",
+      "title": "/pull/40",
+      "uniques": 2
+    },
+    {
+      "count": 19,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
+      "title": "/blob/main/docs/screenshots/start.webp",
+      "uniques": 19
+    }
+  ],
+  "referrers": [
+    {
+      "count": 56,
+      "referrer": "reddit.com",
+      "uniques": 47
+    },
+    {
+      "count": 43,
+      "referrer": "velade.org",
+      "uniques": 38
+    },
+    {
+      "count": 41,
+      "referrer": "github.com",
+      "uniques": 13
+    },
+    {
+      "count": 35,
+      "referrer": "com.reddit.frontpage",
+      "uniques": 32
+    },
+    {
+      "count": 2,
+      "referrer": "DuckDuckGo",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "Bing",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "Google",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "forum.endeavouros.com",
+      "uniques": 1
+    }
+  ],
+  "schema_version": 1,
+  "window": "rolling_14_days"
+}
