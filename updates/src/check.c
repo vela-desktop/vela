@@ -258,6 +258,7 @@ static void network_update(struct vela_up_daemon *d, sd_bus_message *m)
 {
     // a{sv}: Metered (NMMetered: 1 yes, 3 guess-yes) and Connectivity
     // (NMConnectivityState: 4 full; 0 unknown, when checking is off).
+    // Unknown is not evidence of full connectivity; fail closed here.
     if (sd_bus_message_enter_container(m, 'a', "{sv}") < 0) {
         return;
     }
@@ -270,7 +271,7 @@ static void network_update(struct vela_up_daemon *d, sd_bus_message *m)
         if (strcmp(name, "Metered") == 0 && sd_bus_message_read(m, "v", "u", &value) >= 0) {
             d->metered = value == 1 || value == 3;
         } else if (strcmp(name, "Connectivity") == 0 && sd_bus_message_read(m, "v", "u", &value) >= 0) {
-            d->connected = value == 0 || value == 4;
+            d->connected = value == 4;
         } else {
             sd_bus_message_skip(m, "v");
         }
