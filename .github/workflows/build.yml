@@ -19,6 +19,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ['v0.*']
   pull_request:
   workflow_dispatch:
 
@@ -185,6 +186,13 @@ jobs:
           mkdir -p "$CCACHE_DIR"
           chown -R builder:builder "$CCACHE_DIR"
           cp -r packaging/arch /home/builder/pkgbuild
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            sed -n 's/^[[:space:]]*VERSION[[:space:]]*\([0-9.]*\).*/\1/p' CMakeLists.txt | grep -Fx "$version" || {
+              echo "::error::Release tag and project version differ"; exit 1;
+            }
+            cp packaging/arch/PKGBUILD.beta /home/builder/pkgbuild/PKGBUILD
+          fi
           chown -R builder /home/builder/pkgbuild
           git config --system --add safe.directory '*'
           # No -debug package: it doubles the time and weighs ten times as
@@ -196,7 +204,7 @@ jobs:
             "cd /home/builder/pkgbuild && \
             CCACHE_DIR=$CCACHE_DIR CCACHE_MAXSIZE=$CCACHE_MAXSIZE \
             CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            VELA_GIT_URL=file://$GITHUB_WORKSPACE MAKEFLAGS=-j$(nproc) \
+            VELA_GIT_URL=file://$GITHUB_WORKSPACE VELA_RELEASE_VERSION=${GITHUB_REF_NAME#v} MAKEFLAGS=-j$(nproc) \
             makepkg --noconfirm"
 
 
@@ -212,10 +220,13 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          packages=(/home/builder/pkgbuild/vela-git-*.pkg.tar.zst)
+          packages=(/home/builder/pkgbuild/vela-*.pkg.tar.zst)
           test "${#packages[@]}" -eq 1
-          short_sha="${GITHUB_SHA:0:7}"
-          [[ "${packages[0]}" == *".g${short_sha}-"* ]]
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            [[ "${packages[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
+          else
+            [[ "${packages[0]}" == *".g${GITHUB_SHA:0:7}-"* ]]
+          fi
 
       # Signed SLSA provenance for the *actual* package bytes produced by
       # this workflow. A public Sigstore attestation is bound to the artifact
@@ -225,12 +236,12 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: /home/builder/pkgbuild/vela-git-*.pkg.tar.zst
+          subject-path: /home/builder/pkgbuild/vela-*.pkg.tar.zst
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vela-git
-          path: /home/builder/pkgbuild/vela-git-[0-9]*.pkg.tar.zst
+          path: /home/builder/pkgbuild/vela-[0-9]*.pkg.tar.zst
           if-no-files-found: error
           retention-days: 14
 
@@ -255,9 +266,13 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          packages=(dist/vela-git-*.pkg.tar.zst)
+          packages=(dist/vela-*.pkg.tar.zst)
           test "${#packages[@]}" -eq 1
-          [[ "${packages[0]}" == *".g${GITHUB_SHA:0:7}-"* ]]
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            [[ "${packages[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
+          else
+            [[ "${packages[0]}" == *".g${GITHUB_SHA:0:7}-"* ]]
+          fi
           pacman -U --noconfirm --needed "${packages[0]}"
           bash scripts/ci-check-package.sh
 
@@ -322,7 +337,10 @@ jobs:
           set -euo pipefail
           # Exercise the actual spec with DNF5, not just an updater stub.
           dnf builddep -y --define "vela_version $VELA_RPM_VERSION" rpmbuild/SPECS/vela.spec
+          channel=experimental
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then channel=beta; fi
           rpmbuild -bb rpmbuild/SPECS/vela.spec \
+            --define "vela_channel $channel" \
             --define "_topdir $GITHUB_WORKSPACE/rpmbuild" \
             --define "vela_version $VELA_RPM_VERSION" \
             --define "vela_commit $GITHUB_SHA" \
@@ -330,9 +348,13 @@ jobs:
             --define "vela_count $(git rev-list --count HEAD)" \
             --define "vela_ccache 1"
           shopt -s nullglob
-          rpm_files=(rpmbuild/RPMS/x86_64/vela-git-[0-9]*.x86_64.rpm)
+          rpm_files=(rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm)
           test "${#rpm_files[@]}" -eq 1
-          [[ "${rpm_files[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            [[ "${rpm_files[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
+          else
+            [[ "${rpm_files[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
+          fi
       - name: Fedora RPM ccache statistics
         if: always()
         run: ccache --show-stats || true
@@ -340,11 +362,11 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: rpmbuild/RPMS/x86_64/vela-git-[0-9]*.x86_64.rpm
+          subject-path: rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vela-fedora-rpm
-          path: rpmbuild/RPMS/x86_64/vela-git-[0-9]*.x86_64.rpm
+          path: rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm
           if-no-files-found: error
           retention-days: 14
 
@@ -366,9 +388,13 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          rpms=(dist/vela-git-[0-9]*.x86_64.rpm)
+          rpms=(dist/vela-[0-9]*.x86_64.rpm)
           test "${#rpms[@]}" -eq 1
-          [[ "${rpms[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            [[ "${rpms[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
+          else
+            [[ "${rpms[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
+          fi
           # Exercise the full local Git -> builddep -> rpmbuild -> DNF updater path
           # against a tiny fixture before installing the actual Vela RPM.
           dnf install -y git rpm-build dnf5-plugins
@@ -387,8 +413,10 @@ jobs:
           grep -Fxq 'default=gtk;kde' /usr/share/xdg-desktop-portal/vela-portals.conf
           grep -Fxq 'org.freedesktop.impl.portal.ScreenCast=wlr' /usr/share/xdg-desktop-portal/vela-portals.conf
           grep -Fxq 'org.freedesktop.impl.portal.Screenshot=wlr' /usr/share/xdg-desktop-portal/vela-portals.conf
-          rpm -V vela-git
-          installed_requires=$(rpm -q --requires vela-git)
+          package_name=vela-git
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then package_name=vela; fi
+          rpm -V "$package_name"
+          installed_requires=$(rpm -q --requires "$package_name")
           for dependency in git util-linux rpm dnf5; do
             grep -Fx "$dependency" <<< "$installed_requires"
           done
@@ -397,7 +425,9 @@ jobs:
           done
           # Validate local RPM install/upgrade/downgrade/reinstall with real DNF5.
           dnf install -y rpm-build
-          bash packaging/fedora/tests/ci-dnf-transactions.sh
+          if [[ "$GITHUB_REF" != refs/tags/v0.* ]]; then
+            bash packaging/fedora/tests/ci-dnf-transactions.sh
+          fi
           for name in vela-compositor vela-session vela-shell vela-settings vela-files vela-lock vela-update vela-report; do
             command -v "$name"
           done
@@ -425,10 +455,10 @@ jobs:
           test -f /usr/libexec/vela/verify-attestation.py
           sh -n /usr/bin/vela-update
 
-  # Public per-commit alpha packages, available anonymously and retained
-  # for the last five successful versions (older releases and tags are pruned).
-  publish-alpha:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  # Only version tags publish official Beta binaries. Ordinary pushes to
+  # main keep ephemeral Experimental build artifacts without GitHub Releases.
+  publish-beta:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v0.')
     needs: [package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke]
     runs-on: ubuntu-latest
     permissions:
@@ -446,60 +476,32 @@ jobs:
         with:
           name: vela-fedora-rpm
           path: dist
-      - name: Publish alpha package for this commit
+      - name: Publish signed Beta release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          [[ "$GITHUB_REF_NAME" =~ ^v0\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Only numbered v0.x.y Beta tags can publish"; exit 1;
+          }
           cd dist
           shopt -s nullglob
-          packages=(vela-git-*.pkg.tar.zst)
-          fedora_packages=(vela-git-[0-9]*.x86_64.rpm)
+          packages=(vela-[0-9]*.pkg.tar.zst)
+          fedora_packages=(vela-[0-9]*.x86_64.rpm)
           test "${#packages[@]}" -eq 1
           test "${#fedora_packages[@]}" -eq 1
-          # Fail closed: release only the same bytes signed by the official
-          # build.yml workflow for this exact main commit.
-          gh attestation verify "${packages[0]}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
-            --source-digest "$GITHUB_SHA" \
-            --source-ref refs/heads/main \
-            --deny-self-hosted-runners
-          gh attestation verify "${fedora_packages[0]}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
-            --source-digest "$GITHUB_SHA" \
-            --source-ref refs/heads/main \
-            --deny-self-hosted-runners
+          for p in "${packages[0]}" "${fedora_packages[0]}"; do
+            gh attestation verify "$p" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
+              --source-digest "$GITHUB_SHA" \
+              --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
           sha256sum "${packages[0]}" > SHA256SUMS
           sha256sum "${fedora_packages[0]}" > SHA256SUMS-fedora
-          tag="alpha-${GITHUB_SHA}"
-          if ! gh release create "$tag" "${packages[0]}" SHA256SUMS "${fedora_packages[0]}" SHA256SUMS-fedora \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "Vela alpha ${GITHUB_SHA:0:12}" \
-            --notes "Automated Arch Linux and Fedora 44 alpha packages for commit ${GITHUB_SHA}. Experimental software; not a stable release."; then
-            # A workflow rerun may race with or follow a successful publish.
-            # Accept an existing release only if both expected assets are present
-            # and its checksum manifest matches this exact built package.
-            echo ":: Checking whether the exact alpha package was already published"
-            gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
-              --json isPrerelease --jq '.isPrerelease' | grep -qx true
-            gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
-              --json assets --jq '.assets[].name' | grep -Fxq "${packages[0]}"
-            gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
-              --json assets --jq '.assets[].name' | grep -Fxq "${fedora_packages[0]}"
-            mkdir -p previous
-            gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
-              --pattern 'SHA256SUMS*' --dir previous
-            cmp SHA256SUMS previous/SHA256SUMS
-            cmp SHA256SUMS-fedora previous/SHA256SUMS-fedora
-            echo ":: Existing release matches this build; continuing"
-          fi
-      - name: Retain latest five Vela alpha releases
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: sh scripts/prune-alpha-releases.sh
+          gh release create "$GITHUB_REF_NAME" "${packages[0]}" SHA256SUMS \
+            "${fedora_packages[0]}" SHA256SUMS-fedora \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+            --title "Vela ${GITHUB_REF_NAME#v} Beta" --generate-notes
