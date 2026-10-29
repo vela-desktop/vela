@@ -1,12 +1,15 @@
 # Installing and updating Vela
 
-Vela is experimental alpha software. Keep a working desktop or TTY available, and review the [hardware coverage](hardware.md) before using a full session.
+Vela is experimental software. The `vela` package is the numbered Beta
+channel; `vela-git` tracks Experimental development. Keep a working desktop or TTY available, and review the [hardware coverage](hardware.md) before using a full session.
 
 Vela requires a Vulkan 1.4 GPU and a working PipeWire/WirePlumber audio stack. The commands below install native development snapshots, not stable distribution releases.
 
 ## Arch Linux, CachyOS, EndeavourOS
 
-Vela installs as a native `vela-git` package. Install `git`, `curl`, `base-devel` and `cosign` (for signed prebuilt packages; GitHub CLI is not required):
+For Experimental, Vela installs as a native `vela-git` package. To install
+numbered Beta instead, run `sh vela/packaging/vela-update --channel beta`
+after cloning the checkout and installing Cosign. Install `git`, `curl`, `base-devel` and `cosign` (for signed prebuilt packages; GitHub CLI is not required):
 
 ```sh
 sudo pacman -S --needed git curl base-devel cosign
@@ -21,7 +24,8 @@ public, commit-matched alpha package built on `main` (no GitHub login required)
 and verifies its SHA-256 checksum **and signed build provenance** before installing with pacman. If there is no
 matching public package, it can use a temporary CI artifact through an
 authenticated [GitHub CLI](https://cli.github.com/) or build the native package
-locally. The public alpha packages are published only after successful `main` builds;
+locally. Historical public alpha packages were published after successful `main` builds;
+new commits only produce temporary CI artifacts;
 experimental branches normally build locally unless you have access to a matching
 CI artifact.
 
@@ -29,7 +33,9 @@ Once installed, use **`vela-update`** to fetch new commits and install updates.
 
 ## Fedora 44
 
-Fedora 44 x86_64 has a native `vela-git` RPM. RPMs are not yet supported on
+Fedora 44 x86_64 has an Experimental `vela-git` RPM and a numbered Beta
+`vela` RPM. For Beta, run `sh vela/packaging/vela-update --channel beta`
+after installing Cosign as described below. RPMs are not yet supported on
 other Fedora releases or other DNF-based distributions. The same updater installs it
 and handles subsequent updates through DNF. To get started:
 

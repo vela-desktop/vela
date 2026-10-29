@@ -4,8 +4,10 @@
 # Run only after installing vela-git in a fresh Arch container.
 set -euo pipefail
 fail() { printf '::error::%s\n' "$*" >&2; exit 1; }
-pacman -Q vela-git
-pacman -Qk vela-git
+package="${VELA_PACKAGE_NAME:-vela-git}"
+case "$package" in vela|vela-git) ;; *) echo "Invalid package identity" >&2; exit 1 ;; esac
+pacman -Q "$package"
+pacman -Qk "$package"
 pacman -Q xorg-xwayland >/dev/null || fail "Missing Xwayland package"
 test -x /usr/bin/Xwayland || fail "Missing Xwayland binary"
 for program in vela-compositor vela-shell vela-files vela-settings vela-lock vela-session vela-update vela-report; do

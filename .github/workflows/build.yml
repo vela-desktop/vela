@@ -274,7 +274,9 @@ jobs:
             [[ "${packages[0]}" == *".g${GITHUB_SHA:0:7}-"* ]]
           fi
           pacman -U --noconfirm --needed "${packages[0]}"
-          bash scripts/ci-check-package.sh
+          package=vela-git
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then package=vela; fi
+          VELA_PACKAGE_NAME="$package" bash scripts/ci-check-package.sh
 
   # Fedora CTest suite is a reusable workflow: its result gates releases.
   fedora-tests:
@@ -348,11 +350,14 @@ jobs:
             --define "vela_count $(git rev-list --count HEAD)" \
             --define "vela_ccache 1"
           shopt -s nullglob
-          rpm_files=(rpmbuild/RPMS/x86_64/vela-*.x86_64.rpm)
-          test "${#rpm_files[@]}" -eq 1
+          # Select the main package only; RPM also builds debuginfo/debugsource.
           if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            rpm_files=(rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm)
+            test "${#rpm_files[@]}" -eq 1
             [[ "${rpm_files[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
           else
+            rpm_files=(rpmbuild/RPMS/x86_64/vela-git-[0-9]*.x86_64.rpm)
+            test "${#rpm_files[@]}" -eq 1
             [[ "${rpm_files[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
           fi
       - name: Fedora RPM ccache statistics
@@ -362,11 +367,15 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: rpmbuild/RPMS/x86_64/vela-*.x86_64.rpm
+          subject-path: |
+            rpmbuild/RPMS/x86_64/vela-git-[0-9]*.x86_64.rpm
+            rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vela-fedora-rpm
-          path: rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm
+          path: |
+            rpmbuild/RPMS/x86_64/vela-git-[0-9]*.x86_64.rpm
+            rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm
           if-no-files-found: error
           retention-days: 14
 

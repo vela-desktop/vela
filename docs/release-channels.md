@@ -6,7 +6,7 @@ system or packages unrelated to Vela.
 | Channel | Native package | Target | Binaries |
 | --- | --- | --- | --- |
 | Beta | `vela` | Latest numbered `v0.x.y` release | Signed official release assets |
-| Experimental | `vela-git` | Development `main` or an explicitly selected commit | Build locally |
+| Experimental | `vela-git` | Development `main` or an explicitly selected commit | Build locally; historical signed `alpha-<sha>` packages or eligible temporary CI artifacts may still be used |
 
 There are no release candidates. The `0.x.y` series is Beta; `1.0.0` is
 the future stable milestone, not part of this initial change.
@@ -35,9 +35,16 @@ create a new patch release to correct a bad Beta.
 
 ## Updater behavior
 
+Install **Cosign** before installing Beta: it verifies GitHub-hosted Sigstore
+attestations for the exact package, release tag and commit. Arch Beta packages
+declare Cosign as a runtime dependency; on Fedora and Ubuntu, install a trusted
+Cosign executable separately before starting the updater. `curl`, Git and
+Python 3 are also required and are native package dependencies.
+
 Use `vela-update --channel beta --check --json` for versioned machine-readable
 Beta status and `vela-update --channel beta` to install the signed native
-package. Use `vela-update --channel experimental` to build an exact development
+package. A newer installed Beta is never silently downgraded: explicitly select
+an older release with `--tag=v0.x.y` when a downgrade is intended. Use `vela-update --channel experimental` to build an exact development
 revision locally. The installed package determines the default channel; an
 explicit `--channel` chooses a transition.
 
@@ -63,7 +70,7 @@ implementations of the same page.
 
 ## Rollout validation
 
-Before merging, test channel replacements on actual clean Arch, Fedora and
-Ubuntu images (including downgrades from development snapshots), signature
-failures, interrupted installations and missing releases. Complete a rehearsal
+Before merging, test channel replacements on actual clean Arch, Fedora 44 and
+Ubuntu 26.10 images (including downgrades from development snapshots), signature failures, interrupted installations and missing releases. Verify
+that a release workflow rerun only accepts unchanged published assets. Complete a rehearsal
 with a versioned test tag before cutting the first user-facing Beta.

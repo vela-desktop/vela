@@ -49,8 +49,33 @@ trap 'exit 143' TERM
 trap 'exit 129' HUP
 
 # Selecting a release by numeric SemVer tuple, never by API order or timestamp.
-curl -fsSL --retry 2 --connect-timeout 5 --max-time 30 \
-    -H 'Accept: application/vnd.github+json' "$API?per_page=100" > "$work/releases.json"
+# GitHub lists at most 100 releases per page. Inspect every page rather than
+# silently selecting an older release when the repository has many releases.
+printf '[]\n' > "$work/releases.json"
+page=1
+while :; do
+    curl -fsSL --retry 2 --connect-timeout 5 --max-time 30 \
+        -H 'Accept: application/vnd.github+json' \
+        "$API?per_page=100&page=$page" > "$work/page.json"
+    count=$(python3 - "$work/releases.json" "$work/page.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    previous = json.load(f)
+with open(sys.argv[2], encoding="utf-8") as f:
+    page = json.load(f)
+if not isinstance(previous, list) or not isinstance(page, list) or len(page) > 100:
+    raise SystemExit("vela-update: invalid releases response")
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(previous + page, f)
+print(len(page))
+PY
+    )
+    [ "$count" -eq 100 ] || break
+    page=$((page + 1))
+    if [ "$page" -gt 100 ]; then
+        echo "vela-update: release discovery exceeded supported pages" >&2; exit 1
+    fi
+done
 tag=$(python3 - "$work/releases.json" "$requested_tag" <<'PY'
 import json, re, sys
 with open(sys.argv[1], encoding="utf-8") as f:
@@ -82,27 +107,62 @@ if ! printf '%s\n' "$latestFull" | grep -Eq '^[0-9a-f]{40}$'; then
     exit 1
 fi
 
-if command -v pacman >/dev/null 2>&1; then
-    backend=arch
-    installed=$(pacman -Q vela 2>/dev/null | awk '{print $2}' || true)
-elif [ -r /etc/os-release ] && grep -q '^ID=fedora' /etc/os-release; then
-    backend=fedora
-    installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela 2>/dev/null || true)
-elif command -v dpkg-query >/dev/null 2>&1; then
-    backend=ubuntu
-    installed=$(dpkg-query -W -f='${Status}\t${Version}\n' vela 2>/dev/null |
-        awk -F '\t' '$1 == "install ok installed" {print $2}' || true)
+# A tool's presence is not evidence of the running distribution. Never
+# install an Arch artifact on a Debian or Fedora system with pacman in PATH.
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
 else
-    echo "vela-update: unsupported Beta distribution" >&2; exit 1
+    ID=""
 fi
+case "${ID:-}" in
+    arch|cachyos|endeavouros)
+        backend=arch
+        command -v pacman >/dev/null 2>&1 || {
+            echo "vela-update: pacman is required on Arch" >&2; exit 1;
+        }
+        installed=$(pacman -Q vela 2>/dev/null | awk '{print $2}' || true) ;;
+    fedora)
+        backend=fedora
+        if [ "${VERSION_ID:-}" != 44 ] ||
+           ! command -v rpm >/dev/null 2>&1 ||
+           ! command -v dnf >/dev/null 2>&1; then
+            echo "vela-update: Fedora Beta supports Fedora 44 with rpm and dnf only" >&2; exit 1
+        fi
+        installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela 2>/dev/null || true) ;;
+    ubuntu)
+        backend=ubuntu
+        if [ "${VERSION_ID:-}" != 26.10 ] ||
+           ! command -v dpkg-query >/dev/null 2>&1 ||
+           ! command -v apt-get >/dev/null 2>&1; then
+            echo "vela-update: Ubuntu Beta supports Ubuntu 26.10 with dpkg and apt only" >&2; exit 1
+        fi
+        installed=$(dpkg-query -W -f='${Status}\t${Version}\n' vela 2>/dev/null |
+            awk -F '\t' '$1 == "install ok installed" {print $2}' || true) ;;
+    *)
+        echo "vela-update: unsupported Beta distribution: ${ID:-unknown}" >&2; exit 1 ;;
+esac
+comparison=$(python3 - "$installed" "$version" <<'PY'
+import re, sys
+match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:$|[-+])", sys.argv[1])
+if not match:
+    print("unknown")
+else:
+    current = tuple(map(int, match.groups()))
+    target = tuple(map(int, sys.argv[2].split(".")))
+    print("same" if current == target else "newer" if current > target else "older")
+PY
+)
 current=0
-case "$installed" in "$version"|"$version"-*) current=1 ;; esac
+[ "$comparison" != same ] || current=1
+status=update-available
+[ "$comparison" != newer ] || status=downgrade-available
+[ "$comparison" != same ] || status=up-to-date
 if [ "$json" = 1 ]; then
-    python3 - "$installed" "$tag" "$latestFull" "$current" <<'PY'
+    python3 - "$installed" "$tag" "$latestFull" "$status" <<'PY'
 import json, sys
 print(json.dumps({
     "schema_version": 1, "channel": "beta",
-    "status": "up-to-date" if sys.argv[4] == "1" else "update-available",
+    "status": sys.argv[4],
     "installed_version": sys.argv[1], "version": sys.argv[2][1:],
     "tag": sys.argv[2], "commit": sys.argv[3],
     "source": "https://github.com/vela-desktop/vela", "changes": []
@@ -110,13 +170,23 @@ print(json.dumps({
 PY
     exit 0
 fi
+if [ "$status" = downgrade-available ] && [ -z "$requested_tag" ]; then
+    echo "vela-update: installed Beta is newer than the latest published release; refusing implicit downgrade" >&2
+    [ "$check" != 1 ] || exit 1
+    exit 1
+fi
 if [ "$current" = 1 ] && [ "$force" = 0 ]; then
     echo ":: Vela Beta is up to date ($version)."
     [ "$check" != 1 ] || exit 1
     exit 0
 fi
-echo ":: Vela Beta update available: $tag ($latestFull)"
+echo ":: Vela Beta ${status}: $tag ($latestFull)"
 if [ "$check" = 1 ]; then exit 0; fi
+# Installation requires signed provenance. Fail before transferring the binary.
+if ! command -v cosign >/dev/null 2>&1; then
+    echo "vela-update: cosign is required to install signed Beta packages" >&2
+    exit 1
+fi
 
 escaped_version=$(printf '%s' "$version" | sed 's/[.]/\\./g')
 case "$backend" in
@@ -143,10 +213,6 @@ curl -fsSL --retry 2 --connect-timeout 5 --max-time 240 \
     -o "$work/$package" "$release/$package"
 printf '%s  %s\n' "$digest" "$package" > "$work/SHA256SUMS"
 (cd "$work" && sha256sum -c --status SHA256SUMS)
-if ! command -v cosign >/dev/null 2>&1; then
-    echo "vela-update: cosign is required to install signed Beta packages" >&2
-    exit 1
-fi
 verifier=""
 for candidate in "$(dirname "$0")/verify-attestation.py" \
     /usr/lib/vela/verify-attestation.py /usr/libexec/vela/verify-attestation.py; do
