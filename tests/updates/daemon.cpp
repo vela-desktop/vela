@@ -25,6 +25,7 @@
 #include <QTest>
 
 #include <csignal>
+#include <sys/stat.h>
 
 namespace {
 
@@ -309,6 +310,31 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("update-available"));
     }
 
+    void observesExternalChecksWithinOneSecond()
+    {
+        const qint64 second = QDateTime::currentSecsSinceEpoch() - 1000;
+        nextCheck({ { "checked_at", second } });
+        QVERIFY(startDaemon());
+        QCOMPARE(call(QStringLiteral("Check")).type(), QDBusMessage::ReplyMessage);
+        QTRY_COMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("up-to-date"));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+
+        // A CLI check in another process atomically replaces check.json,
+        // but checked_at is exactly the same second as the previous check.
+        nextCheck({ { "checked_at", second }, { "status", "update-available" }, { "commit", commitB } });
+        QProcess external;
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(QStringLiteral("FAKE"), m_home.filePath(QStringLiteral("fake")));
+        environment.insert(QStringLiteral("XDG_STATE_HOME"), m_home.filePath(QStringLiteral("state")));
+        external.setProcessEnvironment(environment);
+        external.start(fake(QStringLiteral("vela-update")), { QStringLiteral("--check") });
+        QVERIFY(external.waitForStarted());
+        QVERIFY(external.waitForFinished(5000));
+        QCOMPARE(external.exitCode(), 0);
+        QTRY_COMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("update-available"));
+        QCOMPARE(property(QStringLiteral("Commit")).toString(), commitB);
+    }
+
     void oneCheckAtATime()
     {
         nextCheck({});
@@ -450,6 +476,11 @@ private Q_SLOTS:
         QTRY_COMPARE(property(QStringLiteral("Announce")).toString(), commitB);
         QCOMPARE(call(QStringLiteral("Announced"), { commitB }).type(), QDBusMessage::ReplyMessage);
         QTRY_COMPARE(property(QStringLiteral("Announce")).toString(), QString());
+        // A notification marker is private even with a permissive umask.
+        struct stat marker {};
+        const QByteArray markerPath = QFile::encodeName(state(QStringLiteral("announced")));
+        QVERIFY(::stat(markerPath.constData(), &marker) == 0);
+        QCOMPARE(marker.st_mode & 0777, mode_t(0600));
         // Across sessions too.
         stopDaemon();
         QVERIFY(startDaemon());
@@ -495,6 +526,20 @@ private Q_SLOTS:
             { QStringLiteral("VELA_UPDATE_INTERVAL_MS"), QStringLiteral("200") } }));
         QTest::qWait(700);
         QCOMPARE(calls(), QStringList {});
+    }
+
+    void automaticChecksRequireFullConnectivity()
+    {
+        nextCheck({});
+        m_network.set(2, 0); // unknown, even if the network may actually work
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_FIRST_CHECK_MS"), QStringLiteral("200") } }));
+        QTest::qWait(700);
+        QCOMPARE(calls(), QStringList {});
+        m_network.set(2, 3); // limited / captive portal
+        QTest::qWait(400);
+        QCOMPARE(calls(), QStringList {});
+        m_network.set(2, 4); // full
+        QTRY_COMPARE(calls(), (QStringList { QStringLiteral("--check --json") }));
     }
 
     void networkErrorsAreRetried()
