@@ -47,9 +47,9 @@ class FedoraUpdates(FedoraFixture):
             line.split(":", 1)[1].strip()
             for line in spec.splitlines() if line.startswith("Recommends:")
         }
-        for name in ("git", "util-linux", "rpm", "dnf5"):
+        for name in ("git", "curl", "util-linux", "rpm", "dnf5"):
             self.assertIn(name, required)
-        for name in ("curl", "rpm-build", "dnf5-plugins"):
+        for name in ("rpm-build", "dnf5-plugins"):
             self.assertIn(name, recommended)
 
     def test_multiple_runs_select_the_fedora_artifact(self):

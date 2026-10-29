@@ -178,6 +178,12 @@ while True:
         dest.mkdir(parents=True, exist_ok=True)
         (dest / ("vela-git-0.1.0.r1.g" + sha[:7] + "-1-x86_64.pkg.tar.zst")).touch()
         sys.exit(1)
+    if "--install" not in args:
+        # Channel transitions build without installing, then let the updater
+        # use a single pacman conflict-replacement transaction.
+        dest = pathlib.Path(os.environ["PKGDEST"])
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / ("vela-git-0.1.0.r1.g" + sha[:7] + "-1-x86_64.pkg.tar.zst")).touch()
 elif name == "cosign":
     record()
     if args[:1] != ["verify-blob-attestation"]:
@@ -389,27 +395,6 @@ class UpdateFixture(unittest.TestCase):
 
 
 
-    def test_explicit_arch_beta_to_experimental_is_single_transaction(self):
-        if not self.os_release.read_text().startswith("ID=arch"):
-            self.skipTest("Arch-only native package transition")
-        self.env["TEST_BETA_INSTALLED"] = "1"
-        self.env["TEST_INSTALLED"] = ""
-        self.run_update("--channel", "experimental", "--build")
-        install_calls = [call for call in self.calls("sudo")
-                         if call["args"][:1] == ["pacman"]]
-        self.assertEqual(len(install_calls), 1)
-        self.assertEqual(install_calls[0]["args"][:4],
-                         ["pacman", "--noconfirm", "--ask=4", "-U"])
-
-    def test_installed_beta_defaults_to_beta_helper(self):
-        self.env["TEST_BETA_INSTALLED"] = "1"
-        result = self.run_update("--check", source=False)
-        self.assertIn("beta-dispatched", result.stdout)
-        self.assertEqual(self.calls("makepkg"), [])
-        self.os_release.write_text("ID=fedora\nVERSION_ID=44\n")
-        result = self.run_update("--check", source=False)
-        self.assertIn("beta-dispatched", result.stdout)
-
     def git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.source), *args],
                                        env=self.env, text=True, timeout=10).strip()
@@ -473,6 +458,28 @@ class UpdateFixture(unittest.TestCase):
 
 
 class UpdateRevision(UpdateFixture):
+    def test_explicit_arch_beta_to_experimental_is_single_transaction(self):
+        if not self.os_release.read_text().startswith("ID=arch"):
+            self.skipTest("Arch-only native package transition")
+        self.env["TEST_BETA_INSTALLED"] = "1"
+        self.env["TEST_INSTALLED"] = ""
+        self.run_update("--channel", "experimental", "--build")
+        install_calls = [call for call in self.calls("sudo")
+                         if call["args"][:1] == ["pacman"]]
+        self.assertEqual(len(install_calls), 1)
+        self.assertEqual(install_calls[0]["args"][:4],
+                         ["pacman", "--noconfirm", "--ask=4", "-U"])
+
+    def test_installed_beta_defaults_to_beta_helper(self):
+        self.env["TEST_BETA_INSTALLED"] = "1"
+        result = self.run_update("--check", source=False)
+        self.assertIn("beta-dispatched", result.stdout)
+        self.assertEqual(self.calls("makepkg"), [])
+        self.os_release.write_text("ID=fedora\nVERSION_ID=44\n")
+        result = self.run_update("--check", source=False)
+        self.assertIn("beta-dispatched", result.stdout)
+
+
     def test_missing_base_devel_installed_for_local_build(self):
         """An unattended local build installs base-devel without a prompt."""
         self.env["TEST_BASE_DEVEL"] = "0"

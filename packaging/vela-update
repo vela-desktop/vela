@@ -826,6 +826,16 @@ if [ "$backend" = arch ]; then
     git -C "$MIRROR" update-ref refs/vela-update/selected "$latestFull"
     export VELA_GIT_URL="file://$MIRROR#commit=$latestFull"
     if [ -n "$jobs" ]; then export MAKEFLAGS="-j$jobs"; fi
+    # A channel switch must not use makepkg --install: pacman's default
+    # noninteractive conflict answer is NO. Build first, then replace both
+    # package identities atomically with installPackage (which uses --ask=4).
+    arch_channel_switch=0
+    if pacman -Q vela >/dev/null 2>&1; then
+        arch_channel_switch=1
+        set -- --syncdeps --clean --force
+    else
+        set -- --syncdeps --install --clean --force
+    fi
 elif [ "$backend" = ubuntu ]; then
     if ! sudo apt-get update || ! sudo apt-get install -y --no-install-recommends \
         ca-certificates git build-essential cmake ninja-build pkgconf \
@@ -907,11 +917,11 @@ fi
 if [ "$backend" = arch ]; then
     if [ -t 0 ]; then
         BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-            makepkg --syncdeps --install --clean --force <&0 9>&- &
+            makepkg "$@" <&0 9>&- &
         build_isolated=0
     else
         BUILDDIR="$WORK" PKGDEST="$PACKAGES" SRCDEST="$CACHE/sources" \
-            setsid --wait makepkg --noconfirm --syncdeps --install --clean --force <&0 9>&- &
+            setsid --wait makepkg --noconfirm "$@" <&0 9>&- &
         build_isolated=1
     fi
 elif [ "$backend" = ubuntu ]; then
@@ -939,6 +949,16 @@ fi
 makepkg_pid=$!
 if wait "$makepkg_pid"; then build_ok=1; else build_ok=0; fi
 makepkg_pid=""
+if [ "$backend" = arch ] && [ "$build_ok" = 1 ] &&
+   [ "${arch_channel_switch:-0}" = 1 ]; then
+    built=$(ls -t "$PACKAGES"/vela-git-*."g$latest"-*.pkg.tar.* 2>/dev/null | head -n 1)
+    if [ -z "$built" ]; then
+        echo "vela-update: makepkg produced no package for the channel switch" >&2
+        build_ok=0
+    elif ! installPackage "$built"; then
+        build_ok=0
+    fi
+fi
 if [ "$backend" = ubuntu ] && [ "$build_ok" = 1 ]; then
     built=$(find "$WORK/packages" -maxdepth 1 -name 'vela-git_*.deb' -type f -print -quit)
     if [ -z "$built" ] || [ "$(dpkg-deb -f "$built" Package 2>/dev/null)" != vela-git ]; then

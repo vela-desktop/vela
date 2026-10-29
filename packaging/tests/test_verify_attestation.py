@@ -83,6 +83,18 @@ class VerificationTests(unittest.TestCase):
                          "refs/tags/v0.1.0")
         self.assertEqual(args[args.index("--certificate-github-workflow-sha") + 1], self.commit)
 
+    def test_beta_ubuntu_release_uses_called_workflow_identity(self):
+        deb = self.package.with_name("vela_0.1.0_amd64.deb")
+        deb.write_bytes(self.package.read_bytes())
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run") as run:
+            verification.verify(deb, "vela-desktop/vela", self.commit,
+                                "release", "v0.1.0")
+        args = run.call_args.args[0]
+        self.assertIn("https://github.com/vela-desktop/vela/.github/workflows/ubuntu.yml@refs/tags/v0.1.0", args)
+        self.assertEqual(args[args.index("--certificate-github-workflow-ref") + 1],
+                         "refs/tags/v0.1.0")
+
     def test_invalid_beta_release_tag_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid Beta release tag"):
             verification.verify(self.package, "vela-desktop/vela",

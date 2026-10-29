@@ -279,6 +279,42 @@ jobs:
           package=vela-git
           if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then package=vela; fi
           VELA_PACKAGE_NAME="$package" bash scripts/ci-check-package.sh
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            # Exercise both directions of the actual pacman conflict transaction
+            # with a disposable minimal vela-git fixture, then restore the
+            # exact Beta binary being tested (never remove first).
+            pacman -S --noconfirm --needed base-devel
+            useradd -m vela-tester
+            work=$(mktemp -d)
+            chmod 755 "$work"
+            chown vela-tester:vela-tester "$work"
+            cat > "$work/PKGBUILD" <<'PKGBUILD'
+          pkgname=vela-git
+          pkgver=0.0.1
+          pkgrel=1
+          pkgdesc="Temporary channel replacement fixture"
+          arch=('any')
+          license=('GPL-3.0-or-later')
+          provides=('vela')
+          conflicts=('vela')
+          package() {
+            install -Dm644 /dev/null "$pkgdir/usr/share/vela-channel-smoke/marker"
+          }
+          PKGBUILD
+            chown vela-tester:vela-tester "$work/PKGBUILD"
+            su -s /bin/bash vela-tester -c "cd '$work' && makepkg --noconfirm"
+            pacman --noconfirm --ask=4 -U "$work/vela-git-0.0.1-1-any.pkg.tar.zst"
+            pacman -Q vela-git
+            if pacman -Q vela >/dev/null 2>&1; then
+              echo "::error::Beta still installed after replacement"; exit 1
+            fi
+            pacman --noconfirm --ask=4 -U "${packages[0]}"
+            pacman -Q vela
+            if pacman -Q vela-git >/dev/null 2>&1; then
+              echo "::error::Experimental still installed after replacement"; exit 1
+            fi
+            rm -rf -- "$work"
+          fi
 
   # Fedora CTest suite is a reusable workflow: its result gates releases.
   fedora-tests:
@@ -432,6 +468,8 @@ jobs:
           package_name=vela-git
           if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then package_name=vela; fi
           rpm -V "$package_name"
+          if [[ "$package_name" == vela ]]; then other_package=vela-git; else other_package=vela; fi
+          rpm -q --conflicts "$package_name" | grep -Fx "$other_package"
           installed_requires=$(rpm -q --requires "$package_name")
           for dependency in git util-linux rpm dnf5; do
             grep -Fx "$dependency" <<< "$installed_requires"
@@ -479,6 +517,7 @@ jobs:
       contents: read
       id-token: write
       attestations: write
+      artifact-metadata: write
 
   # Only version tags publish official Beta binaries. Ordinary pushes to
   # main keep ephemeral Experimental build artifacts without GitHub Releases.

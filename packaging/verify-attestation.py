@@ -88,6 +88,7 @@ def validate_signed_provenance(bundle: dict, digest: str) -> None:
 
 
 def verify(package: Path, repository: str, commit: str, kind: str, release_tag: str | None = None) -> None:
+    """Verify a package against GitHub-hosted Sigstore provenance and source identity."""
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("invalid GitHub repository")
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
@@ -148,6 +149,7 @@ def verify(package: Path, repository: str, commit: str, kind: str, release_tag: 
 
 
 def main() -> int:
+    """Validate CLI parameters and fail closed when any attestation check fails."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--commit", required=True)

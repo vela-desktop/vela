@@ -17,6 +17,7 @@ jobs:
       contents: read
       id-token: write
       attestations: write
+      artifact-metadata: write
     runs-on: ubuntu-latest
     container:
       image: ubuntu:26.10
@@ -106,6 +107,16 @@ jobs:
               *) echo "Unexpected experimental DEB version: $deb_version" >&2; exit 1 ;;
             esac
           fi
+          # Both channels must replace each other without leaving file conflicts.
+          other=vela
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then other=vela-git; fi
+          for field in Conflicts Replaces; do
+            dpkg-deb -f build-ubuntu/packages/*.deb "$field" |
+              tr ',' '\n' | grep -Eq "^[[:space:]]*${other}([[:space:]]|$)" || {
+                echo "Missing DEB $field metadata for $other" >&2
+                exit 1
+              }
+          done
           dpkg-deb --contents build-ubuntu/packages/*.deb > /tmp/vela-deb-files.txt
           cat /tmp/vela-deb-files.txt
           grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
@@ -199,3 +210,34 @@ jobs:
           test ! -e /usr/bin/vela-compositor
           test ! -e /usr/bin/vela-update
           test ! -e /usr/share/wayland-sessions/vela.desktop
+      - name: Exercise native APT channel replacements
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eu
+          work=$(mktemp -d)
+          for package in vela-channel-ci-git vela-channel-ci; do
+            if [ "$package" = vela-channel-ci ]; then
+              other=vela-channel-ci-git
+            else
+              other=vela-channel-ci
+            fi
+            mkdir -p "$work/$package/DEBIAN" "$work/$package/usr/share/vela-channel-ci"
+            printf 'Package: %s\nVersion: 0.1.0\nArchitecture: all\nMaintainer: Vela CI <ci@example.invalid>\nDescription: Disposable packaging migration fixture\nConflicts: %s\nReplaces: %s\n' \
+              "$package" "$other" "$other" > "$work/$package/DEBIAN/control"
+            printf '%s\n' "$package" > "$work/$package/usr/share/vela-channel-ci/marker"
+            dpkg-deb --build "$work/$package" "$work/$package.deb"
+          done
+          apt-get install -y "$work/vela-channel-ci-git.deb"
+          apt-get install -y --allow-downgrades "$work/vela-channel-ci.deb"
+          dpkg-query -W -f='${Status}' vela-channel-ci | grep -Fx 'install ok installed'
+          if dpkg-query -W -f='${Status}' vela-channel-ci-git 2>/dev/null | grep -Fx 'install ok installed'; then
+            echo "Old experimental fixture survived Beta replacement" >&2; exit 1
+          fi
+          apt-get install -y --allow-downgrades --reinstall "$work/vela-channel-ci-git.deb"
+          dpkg-query -W -f='${Status}' vela-channel-ci-git | grep -Fx 'install ok installed'
+          if dpkg-query -W -f='${Status}' vela-channel-ci 2>/dev/null | grep -Fx 'install ok installed'; then
+            echo "Old Beta fixture survived Experimental replacement" >&2; exit 1
+          fi
+          apt-get purge -y vela-channel-ci-git
+          rm -rf -- "$work"
