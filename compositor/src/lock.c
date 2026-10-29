@@ -200,6 +200,7 @@ static void place_surface(struct lock_surface *surface)
     }
 }
 
+/** Focus a newly mapped locker surface even for a stationary pointer. */
 static void handle_surface_map(struct wl_listener *listener, void *data)
 {
     struct lock_surface *surface = wl_container_of(listener, surface, map);
@@ -214,6 +215,7 @@ static void handle_surface_map(struct wl_listener *listener, void *data)
     vela_scene_changed(server->scene);
 }
 
+/** Drop focus from a removed lock surface before destroying its scene nodes. */
 static void handle_surface_destroy(struct wl_listener *listener, void *data)
 {
     struct lock_surface *surface = wl_container_of(listener, surface, destroy);
@@ -251,6 +253,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
 
 // Cursor relocation on output removal can occur after the layout-change
 // listener. Retarget at the end of the dispatch, once wlroots has warped it.
+/** Recheck pointer focus after all output-layout listeners have run. */
 static void retarget_pointer_after_layout(void *data)
 {
     struct vela_lock *lock = data;
@@ -266,6 +269,7 @@ static void clear_backdrop(struct vela_lock *lock)
     lock->backdrop_count = 0;
 }
 
+/** Restore desktop input only after the lock client explicitly unlocks. */
 static void handle_unlock(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, unlock);
@@ -654,6 +658,7 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     return lock;
 }
 
+/** Release the lock manager and any deferred pointer retarget callback. */
 void vela_lock_destroy(struct vela_lock *lock)
 {
     lock_stop_launcher(lock);
@@ -830,6 +835,7 @@ void vela_lock_output_rendered(struct vela_lock *lock, struct vela_output *outpu
     }
 }
 
+/** Rebuild lock backdrops and recheck pointer focus after output changes. */
 void vela_lock_update_layout(struct vela_lock *lock)
 {
     struct vela_server *server = lock->server;
