@@ -206,8 +206,10 @@ Exit code 2: another instance owns the name.
 The daemon runs `vela-update --check --json` and reads stdout (at most 1
 MiB). Outcomes are taken in the order they come, from that output or from
 a new `check.json` (a check run by hand); `check.json` is taken again only
-when it changes, so an old report never hides an outcome that never
-reached the file (`busy`, or no report at all). A failed check keeps the
+when its atomic replacement changes the file identity (device, inode and
+nanosecond modification time). `checked_at` is only a user-facing timestamp:
+two checks may finish in the same second. An old report must not hide an
+outcome that never reached the file (`busy`, or no report at all). A failed check keeps the
 last completed one shown, with the failure beside it. A check never
 starts while another check or an install runs, from anyone. A check
 taking more than 15 minutes is stopped (SIGTERM, then SIGKILL).
@@ -219,8 +221,8 @@ Automatic checks:
 - then every 24 hours;
 - skipped while NetworkManager says the connection is metered (`Metered`
   is yes or guess-yes) or not fully connected (`Connectivity` below
-  full); retried as soon as that changes. Without NetworkManager, always
-  allowed.
+  full, including the unknown state `0`); retried as soon as that changes.
+  Without NetworkManager, always allowed.
 - after a `network` or `rate-limited` error, retried after 1, 2, 4... hours,
   at most 24.
 
@@ -356,7 +358,8 @@ Notifications only, as the client library tells them:
   that records its command; a fake NetworkManager. Check, busy, timeout,
   install start and the terminal not starting, a run started by hand, a
   killed run, automatic checks with short timers, metered connections,
-  `Announce` once per version, the caller check.
+  `Announce` once per version (with private marker permissions), successive
+  reports in the same second, full-connectivity gating, the caller check.
 - **Client and page** (QML tests): every state of the top card, the
   channel confirmation, the advanced options, no daemon.
 - **Shell**: the notifications, once per version.
