@@ -254,6 +254,45 @@ caffeine status
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
 
+### Release promo recordings
+
+`scripts/record-promo.py` extends the before/after capture system to record
+**one Vela build** for authentic release-trailer footage. The original
+`record-before-after.py` CLI and journal output remain unchanged; both use
+`scripts/recording_core.py` for the isolated Vela session, frame timing and
+lossless intermediate capture.
+
+```sh
+cmake --build build --target vela-shell vela-screen-record
+scripts/record-promo.py --list
+scripts/record-promo.py --out ~/videos/vela-beta
+scripts/record-promo.py start-menu window-motion task-view --out ~/videos/vela-beta-short
+```
+
+The default selection records the desktop, Start menu, Quick Settings, window
+maximize/restore, Task View and Settings. Each scene is a fresh headless
+1920×1080@60 session with the real compositor and Qt shell. It produces
+`SCENE.mp4`, `SCENE.webm`, `SCENE.png` and `SCENE-manifest.json`; two or
+more scenes also produce a simple hard-cut `vela-promo.mp4`. Use `--no-reel`
+for individual clips, `--build PATH` for a particular build and `--keep`
+only when raw frame data is needed for debugging (it is very large). Existing
+outputs are protected by default; `--force` explicitly permits replacement.
+
+The capture contains no cursor, narration, music or artificial UI. Add titles,
+sound and transitions in a separate editorial pass; these scripts guarantee
+reproducible **source footage**, not a complete edited marketing film. The
+private D-Bus and PipeWire deliberately disconnect the host's Bluetooth/network
+services, so those Quick Settings tiles may appear unavailable. The synthetic
+Settings user is `Alex`; scenes must not open private files or host data.
+Record a real GPU run and review every clip before publication. A supplied build
+is **not** verified to match the source tree's current commit.
+
+Run the offline recorder regression tests with:
+
+```sh
+python -m unittest discover -s scripts/tests -p 'test_record*.py'
+```
+
 ### Before/after videos
 
 `scripts/record-before-after.py` records the same scene on two builds and puts
