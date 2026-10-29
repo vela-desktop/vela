@@ -174,6 +174,7 @@ add_executable(vela-compositor
     src/supervisor_children.c
     src/switcher.c
     src/text.c
+    src/updates.c
     src/view.c
     src/workspace.c
     src/xwayland.c

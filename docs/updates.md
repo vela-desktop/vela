@@ -6,8 +6,8 @@ background check and the notification. It is the 0.1 release blocker in the
 [release-channels.md](release-channels.md). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** U0 (this design) and U1 (`vela-update`'s report) are done.
-> See §11.
+> **Status:** U0 (this design), U1 (`vela-update`'s report) and U2 (the
+> daemon) are done. See §11.
 
 ## 1. What there is today
 
@@ -203,9 +203,13 @@ Exit code 2: another instance owns the name.
 
 ### 6.2 Checking
 
-The daemon runs `vela-update --check --json`, reads stdout (at most 1
-MiB), and then trusts `check.json`, which the script wrote anyway. A check
-never starts while another check or an install runs, from anyone. A check
+The daemon runs `vela-update --check --json` and reads stdout (at most 1
+MiB). Outcomes are taken in the order they come, from that output or from
+a new `check.json` (a check run by hand); `check.json` is taken again only
+when it changes, so an old report never hides an outcome that never
+reached the file (`busy`, or no report at all). A failed check keeps the
+last completed one shown, with the failure beside it. A check never
+starts while another check or an install runs, from anyone. A check
 taking more than 15 minutes is stopped (SIGTERM, then SIGKILL).
 
 Automatic checks:
@@ -219,6 +223,11 @@ Automatic checks:
   allowed.
 - after a `network` or `rate-limited` error, retried after 1, 2, 4... hours,
   at most 24.
+
+After the daemon's own check, the next one is timed on the monotonic
+clock; only the first after the start uses the dates in the reports, and
+a date in the future waits one interval at most. A wrong clock never
+makes checks run back to back.
 
 ### 6.3 Installing
 
@@ -241,10 +250,11 @@ once as `InvalidArgs`.
 
 ### 6.4 Announcing
 
-`Announce` is the version to tell the user about: set when a check finds a
-new version that is not the one in `announced`, cleared once announced.
-The shell notifies and calls `Announced(version)`; opening the Updates page
-also counts. A version is announced once, also across sessions.
+`Announce` is the commit of the update to tell the user about: set when a
+check finds an update whose commit is not the one in `announced`, cleared
+once announced. The shell notifies and calls `Announced(commit)`; opening
+the Updates page also counts. An update is announced once, also across
+sessions.
 
 After a successful install, `NeedsRelogin` becomes true and the shell
 notifies once: "Sign out to finish updating".
@@ -279,7 +289,7 @@ bus. Properties change with `PropertiesChanged`.
 | `Check()` | starts a check; `Busy` if one or an install is running |
 | `Install(a{sv} options)` | §6.3; `Busy`, `InvalidArgs`, `NoTerminal` |
 | `SetAutoCheck(b)` | writes `vela.conf` |
-| `Announced(s version)` | §6.4 |
+| `Announced(s commit)` | §6.4 |
 
 Errors are `org.vela.Updates.Error.*`: `NotAllowed`, `Busy`, `InvalidArgs`,
 `NoTerminal`, `Failed`.
@@ -359,7 +369,7 @@ Notifications only, as the client library tells them:
 |---|---|---|
 | U0 | this design | done |
 | U1 | `vela-update`: schema 2, exit codes, state files, error codes, `vela-update-state` | done |
-| U2 | `vela-update-daemon` and `org.vela.Updates`; the caller check shared with `vela-bluetooth` | |
+| U2 | `vela-update-daemon` and `org.vela.Updates`; the caller check shared with `vela-bluetooth` | done |
 | U3 | `common/updates`, the Qt client | |
 | U4 | the Settings page | |
 | U5 | the shell's notifications | |

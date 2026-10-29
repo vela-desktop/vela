@@ -27,7 +27,7 @@ protected:
 
     void SetUp() override
     {
-        std::string pattern = ::testing::TempDir() + "vela-bluetooth-proc-XXXXXX";
+        std::string pattern = ::testing::TempDir() + "vela-caller-proc-XXXXXX";
         ASSERT_NE(mkdtemp(pattern.data()), nullptr);
         proc = pattern;
         process(100, "0::/user.slice/user-1000.slice/session-2.scope\n");
@@ -50,31 +50,31 @@ protected:
 
 TEST_F(Sandbox, FlatpakAndSnapAreSandboxed)
 {
-    EXPECT_FALSE(vela_bt_sandboxed(proc.c_str(), 100));
-    EXPECT_TRUE(vela_bt_sandboxed(proc.c_str(), 200));
-    EXPECT_TRUE(vela_bt_sandboxed(proc.c_str(), 300));
-    EXPECT_FALSE(vela_bt_sandboxed(proc.c_str(), 400));
+    EXPECT_FALSE(vela_caller_sandboxed(proc.c_str(), 100));
+    EXPECT_TRUE(vela_caller_sandboxed(proc.c_str(), 200));
+    EXPECT_TRUE(vela_caller_sandboxed(proc.c_str(), 300));
+    EXPECT_FALSE(vela_caller_sandboxed(proc.c_str(), 400));
     // A process that can't be read isn't trusted.
-    EXPECT_TRUE(vela_bt_sandboxed(proc.c_str(), 999));
+    EXPECT_TRUE(vela_caller_sandboxed(proc.c_str(), 999));
     // ELOOP is not ENOENT: an unreadable/invalid Flatpak marker is unknown,
     // not proof that the process is unsandboxed.
     process(500, "0::/user.slice/session-2.scope\n");
     fs::create_symlink(".flatpak-info", proc / "500" / "root" / ".flatpak-info");
-    EXPECT_TRUE(vela_bt_sandboxed(proc.c_str(), 500));
+    EXPECT_TRUE(vela_caller_sandboxed(proc.c_str(), 500));
 }
 
 TEST(Caller, VelasExecutables)
 {
     const char* const allowed[] = { "/usr/bin/vela-shell", "/usr/bin/vela-settings", nullptr };
-    EXPECT_TRUE(vela_bt_exe_allowed("/usr/bin/vela-shell", allowed));
-    EXPECT_TRUE(vela_bt_exe_allowed("/usr/bin/vela-settings", allowed));
+    EXPECT_TRUE(vela_caller_exe_allowed("/usr/bin/vela-shell", allowed));
+    EXPECT_TRUE(vela_caller_exe_allowed("/usr/bin/vela-settings", allowed));
     // Replaced by an update while it runs.
-    EXPECT_TRUE(vela_bt_exe_allowed("/usr/bin/vela-shell (deleted)", allowed));
-    EXPECT_FALSE(vela_bt_exe_allowed("/usr/bin/vela-shell2", allowed));
-    EXPECT_FALSE(vela_bt_exe_allowed("/usr/bin/vela-shel", allowed));
-    EXPECT_FALSE(vela_bt_exe_allowed("/home/user/vela-shell", allowed));
-    EXPECT_FALSE(vela_bt_exe_allowed("/usr/bin/python3", allowed));
-    EXPECT_FALSE(vela_bt_exe_allowed("/usr/bin/vela-shell", nullptr));
+    EXPECT_TRUE(vela_caller_exe_allowed("/usr/bin/vela-shell (deleted)", allowed));
+    EXPECT_FALSE(vela_caller_exe_allowed("/usr/bin/vela-shell2", allowed));
+    EXPECT_FALSE(vela_caller_exe_allowed("/usr/bin/vela-shel", allowed));
+    EXPECT_FALSE(vela_caller_exe_allowed("/home/user/vela-shell", allowed));
+    EXPECT_FALSE(vela_caller_exe_allowed("/usr/bin/python3", allowed));
+    EXPECT_FALSE(vela_caller_exe_allowed("/usr/bin/vela-shell", nullptr));
 }
 
 TEST(Caller, PidfdNamesItsProcess)
@@ -83,7 +83,7 @@ TEST(Caller, PidfdNamesItsProcess)
     if (pidfd < 0) {
         GTEST_SKIP() << "no pidfd_open";
     }
-    EXPECT_EQ(vela_bt_pidfd_pid("/proc", pidfd), getpid());
+    EXPECT_EQ(vela_caller_pidfd_pid("/proc", pidfd), getpid());
     close(pidfd);
-    EXPECT_EQ(vela_bt_pidfd_pid("/proc", pidfd), -1);
+    EXPECT_EQ(vela_caller_pidfd_pid("/proc", pidfd), -1);
 }
