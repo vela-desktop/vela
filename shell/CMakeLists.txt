@@ -22,6 +22,7 @@ qt_add_executable(vela-shell
     src/clipboard.h
     src/snip.cpp
     src/snip.h
+    src/snipextras.h
     src/soundkeys.cpp
     src/soundkeys.h
     src/config.cpp
@@ -143,6 +144,8 @@ set(VELA_QML_FILES
     qml/FileDialogs.qml
     qml/ClipboardPanel.qml
     qml/SnipOverlay.qml
+    qml/SnipCountdown.qml
+    qml/SnipRecordBar.qml
     qml/ShadowRoom.qml)
 
 # The files are in qml/ for tidiness, but in the module they must be at the
@@ -178,6 +181,7 @@ target_link_libraries(vela-shell PRIVATE
     vela-bluetooth-uiplugin)
 
 install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS ../scripts/vela-ocr DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # The tests (ctest): the Exec key of .desktop files, default apps, the
 # volume's steps and the animation effects switch Style reads.
@@ -252,6 +256,12 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-snipcrop-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-snipcrop-test PRIVATE Qt6::Gui Qt6::Test)
     add_test(NAME shell-snipcrop COMMAND vela-snipcrop-test)
+
+    qt_add_executable(vela-snipextras-test tests/snipextras.cpp src/snipextras.h)
+    target_include_directories(vela-snipextras-test PRIVATE src)
+    target_compile_options(vela-snipextras-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-snipextras-test PRIVATE Qt6::Gui Qt6::Test)
+    add_test(NAME shell-snipextras COMMAND vela-snipextras-test)
 
     qt_add_executable(vela-volumesteps-test tests/volumesteps.cpp ${PROJECT_SOURCE_DIR}/common/audio/volumesteps.h)
     target_include_directories(vela-volumesteps-test PRIVATE ${PROJECT_SOURCE_DIR}/common/audio)

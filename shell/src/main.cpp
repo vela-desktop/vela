@@ -443,6 +443,7 @@ int main(int argc, char* argv[])
     Snip snip(&engine, &capture, &clipboard, &notifications);
     engine.addImageProvider(QStringLiteral("snip"), new SnipImageProvider(&snip));
     QObject::connect(&shell, &ShellController::snipRequested, &snip, &Snip::start);
+    QObject::connect(&shell, &ShellController::snipTextRequested, &snip, &Snip::startText);
     engine.rootContext()->setContextProperty(QStringLiteral("Apps"), &apps);
     engine.rootContext()->setContextProperty(QStringLiteral("Shell"), &shell);
     engine.rootContext()->setContextProperty(QStringLiteral("Config"), &config);

@@ -317,6 +317,8 @@ void ShellController::handleCommand(const QByteArray& command)
         emit clipboardRequested();
     } else if (command == "snip") {
         emit snipRequested();
+    } else if (command == "snip-text") {
+        emit snipTextRequested();
     } else if (command == "clipboard-clear") {
         emit clipboardClearRequested();
     } else if (parts.first() == "volume" && parts.size() == 2) {

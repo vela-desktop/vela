@@ -141,6 +141,7 @@ signals:
     void accessibilityReceived(const QByteArray& json); // from the compositor
     void clipboardRequested(); // Win+V
     void snipRequested(); // Win+Shift+S, Print
+    void snipTextRequested(); // Win+Shift+T
     void clipboardClearRequested(); // from Settings
     // The keyboard's volume keys: "up", "down", "mute", "mic-mute".
     void volumeKeyPressed(const QString& key);

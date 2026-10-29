@@ -45,6 +45,8 @@ optdepends=(
     'udisks2: unmounted drives in File Explorer'
     'kimageformats: AVIF, HEIF, JPEG XL and other pictures in File Explorer (thumbnails, quick preview)'
     'qt6-multimedia: videos and sounds in the File Explorer quick preview'
+    'wf-recorder: screen recording in the snipping tool'
+    'tesseract: text from a snip (Snipping Tool, Text)'
     'xdg-utils: share by email, default apps'
     'kdeconnect: share with your phone'
     'konsole: the terminal (Super+Enter)'

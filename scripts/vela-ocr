@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Text recognition for the Snipping Tool's Text mode.
+
+  vela-ocr IMAGE     prints the text of the image
+  vela-ocr --serve   reads image paths from stdin; for each, one JSON line:
+                     {"words": [{"t": text, "x": x, "y": y, "w": w, "h": h, "l": line}]}
+
+RapidOCR (PP-OCRv5, Latin) if a Python has it (VELA_OCR_PYTHON or
+~/.local/share/vela/ocr), else tesseract (tur+eng if installed)."""
+import json
+import os
+import subprocess
+import sys
+
+HOME_PYTHON = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "vela/ocr/bin/python")
+
+
+def rapidocr_words():
+    """A function path -> words, or None when RapidOCR isn't here."""
+    real_stdout, sys.stdout = sys.stdout, sys.stderr  # its log lines stay off our output
+    try:
+        import logging
+        from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
+        logging.disable(logging.CRITICAL)
+        engine = RapidOCR(params={"Rec.lang_type": LangRec.LATIN, "Rec.ocr_version": OCRVersion.PPOCRV5,
+                                  "Rec.model_type": ModelType.MOBILE})
+    except Exception:
+        return None
+    finally:
+        sys.stdout = real_stdout
+
+    def run(path):
+        import cv2
+        import numpy as np
+        result = engine(path)
+        gray = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        words = []
+        for line, (poly, text, score) in enumerate(zip(result.boxes if result.boxes is not None else (), result.txts or (), result.scores or ())):
+            tokens = text.split()
+            if not tokens or score < 0.5:
+                continue
+            x0, y0 = int(max(min(p[0] for p in poly), 0)), int(max(min(p[1] for p in poly), 0))
+            x1, y1 = int(max(p[0] for p in poly)) + 1, int(max(p[1] for p in poly)) + 1
+            crop = gray[y0:y1, x0:x1]
+            if crop.size == 0:
+                continue
+            # Ink: what differs from the background (its most common value).
+            background = np.bincount(crop.ravel()).argmax()
+            diff = np.abs(crop.astype(np.int16) - int(background))
+            ink = diff > max(24, 0.25 * int(diff.max()))
+            columns = np.flatnonzero(ink.any(axis=0))
+            if columns.size == 0:
+                continue
+            # Runs of ink columns; a gap of about a third of the text's height is a space.
+            rows = np.flatnonzero(ink.any(axis=1))
+            gap = max(3, int(0.3 * (rows[-1] - rows[0] + 1)))
+            breaks = np.flatnonzero(np.diff(columns) > 1)
+            starts = [columns[0]] + [columns[i + 1] for i in breaks]
+            ends = [columns[i] for i in breaks] + [columns[-1]]
+            # Merge the closest segments until there are as many as words.
+            while len(starts) > len(tokens):
+                gaps = [starts[i + 1] - ends[i] for i in range(len(starts) - 1)]
+                i = gaps.index(min(gaps))
+                ends[i] = ends[i + 1]
+                del starts[i + 1], ends[i + 1]
+            if len(starts) < len(tokens):
+                # Fewer runs than words: split by letters, over the ink.
+                total = sum(len(t) for t in tokens)
+                span = columns[-1] - columns[0] + 1
+                pos, starts, ends = columns[0], [], []
+                for t in tokens:
+                    width = span * len(t) / total
+                    starts.append(int(pos))
+                    ends.append(int(pos + width))
+                    pos += width
+            for token, a, b in zip(tokens, starts, ends):
+                part = ink[:, a:b + 1]
+                r = np.flatnonzero(part.any(axis=1))
+                if r.size == 0:
+                    continue
+                words.append({"t": token, "x": x0 + int(a) - 1, "y": y0 + int(r[0]) - 1, "w": int(b - a) + 3,
+                              "h": int(r[-1] - r[0]) + 3, "l": line})
+        return words
+    return run
+
+
+def tesseract_words():
+    def run(path):
+        langs = subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True).stdout.split()
+        args = ["tesseract", path, "-", "tsv"]
+        wanted = "+".join(l for l in ("tur", "eng") if l in langs)
+        if wanted:
+            args[3:3] = ["-l", wanted]
+        out = subprocess.run(args, capture_output=True, text=True)
+        words, lines = [], {}
+        for row in out.stdout.splitlines()[1:]:
+            c = row.split("\t")
+            if len(c) < 12 or c[0] != "5" or not c[11].strip():
+                continue
+            line = lines.setdefault(tuple(c[2:5]), len(lines))
+            words.append({"t": c[11], "x": int(c[6]), "y": int(c[7]), "w": int(c[8]), "h": int(c[9]), "l": line})
+        return words
+    return run
+
+
+def engine():
+    # RapidOCR may live in another Python; run there instead.
+    if "VELA_OCR_REEXEC" not in os.environ:
+        for py in (os.environ.get("VELA_OCR_PYTHON"), HOME_PYTHON):
+            if py and os.access(py, os.X_OK) and os.path.dirname(os.path.dirname(py)) != sys.prefix:
+                os.environ["VELA_OCR_REEXEC"] = "1"
+                os.execv(py, [py] + sys.argv)
+    run = rapidocr_words()
+    if run is None:
+        import shutil
+        if not shutil.which("tesseract"):
+            sys.exit(127)
+        run = tesseract_words()
+    return run
+
+
+def main():
+    if len(sys.argv) == 2 and sys.argv[1] != "--serve":
+        words = engine()(sys.argv[1])
+        for line in sorted({w["l"] for w in words}):
+            print(" ".join(w["t"] for w in words if w["l"] == line))
+        return
+    run = engine()
+    for path in sys.stdin:
+        try:
+            reply = {"words": run(path.strip())}
+        except Exception as error:
+            reply = {"error": str(error)}
+        print(json.dumps(reply), flush=True)
+
+
+main()

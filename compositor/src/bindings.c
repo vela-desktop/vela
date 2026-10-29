@@ -166,9 +166,12 @@ bool vela_bindings_handle(struct vela_server *server, uint32_t modifiers, uint32
     }
     // Win+V: clipboard history; Win+Ctrl+V: the sound outputs and the volume
     // mixer, in quick settings; Win+Shift+S and Print: the Snipping Tool
-    // (drawn by the shell).
+    // (drawn by the shell); Win+Shift+T: the same, in Text mode.
     if (super && xkb_keysym_to_lower(sym) == XKB_KEY_v) {
         return shell(server, ctrl ? "sound-output" : "clipboard");
+    }
+    if (super && shift && xkb_keysym_to_lower(sym) == XKB_KEY_t) {
+        return shell(server, "snip-text");
     }
     if ((super && shift && xkb_keysym_to_lower(sym) == XKB_KEY_s) || sym == XKB_KEY_Print) {
         return shell(server, "snip");

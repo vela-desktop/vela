@@ -34,10 +34,13 @@ Those nested alternatives are active only in nested mode; in a normal Vela sessi
 | Clipboard history | <kbd>Super</kbd>+<kbd>V</kbd> | — |
 | Sound output and volume mixer | <kbd>Super</kbd>+<kbd>Ctrl</kbd>+<kbd>V</kbd> | — |
 | Snipping tool | <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> or <kbd>PrtSc</kbd> | <kbd>PrtSc</kbd> |
+| Snipping tool, Text mode (copy the words in an area) | <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> | — |
 | Run | <kbd>Super</kbd>+<kbd>R</kbd> | <kbd>Alt</kbd>+<kbd>R</kbd> |
 | Power-user menu | <kbd>Super</kbd>+<kbd>X</kbd> | <kbd>Alt</kbd>+<kbd>X</kbd> |
 | Terminal | <kbd>Super</kbd>+<kbd>Enter</kbd> | <kbd>Alt</kbd>+<kbd>Enter</kbd> |
 | Lock | <kbd>Super</kbd>+<kbd>L</kbd> | <kbd>Alt</kbd>+<kbd>L</kbd> |
+
+In the snipping tool's bar, **Text** picks words out of the area (`vela-ocr`, which needs `tesseract`) and copies the ones you select, **Delay** cycles none, 3, 5 and 10 seconds (a countdown shows after you choose the area, then a fresh photo is cut), and **Color picker** copies the clicked pixel as `#RRGGBB`. **Record** records an area (drag) or the whole output (click) with `wf-recorder` (an optional package) to `~/Videos/Screen Recordings`, with Delay honored; the same shortcut (or the bar's Stop) ends the recording.
 
 ## Files
 

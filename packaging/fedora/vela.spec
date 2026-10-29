@@ -96,6 +96,8 @@ Recommends:     breeze-icon-theme
 Recommends:     NetworkManager
 Recommends:     bluez
 Recommends:     udisks2
+Recommends:     wf-recorder
+Recommends:     tesseract
 Recommends:     kf6-kimageformats
 Recommends:     qt6-qtmultimedia
 Recommends:     power-profiles-daemon
