@@ -37,7 +37,6 @@ env:
     mesa freetype2 harfbuzz fontconfig librsvg cairo zlib pam polkit
     qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt
     hicolor-icon-theme shared-mime-info xorg-xwayland pipewire wireplumber systemd-libs
-    konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr xdg-utils
 
 jobs:
   changes:
@@ -157,7 +156,13 @@ jobs:
       CCACHE_MAXSIZE: 350M
     steps:
       - name: Dependencies
-        run: pacman -Syu --noconfirm --needed $DEPENDENCIES
+        run: |
+          pacman -Syu --noconfirm --needed $DEPENDENCIES
+          # makepkg runs unprivileged without --syncdeps: install only the
+          # additional *runtime* desktop packages needed by the PKGBUILD.
+          pacman -S --noconfirm --needed \
+            konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk \
+            xdg-desktop-portal-wlr xdg-utils
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
