@@ -101,9 +101,12 @@ class DeferredCapture(unittest.TestCase):
         _, errors = process.communicate("cancel\n", timeout=5)
         self.assertEqual(process.returncode, 0, errors)
 
-    def wallpaper(self, vela):
+    def add_wallpaper(self, vela):
         process = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "123456"], env=vela.client_env)
         vela.clients.append(process)
+
+    def wallpaper(self, vela):
+        self.add_wallpaper(vela)
         vela.wait_for(lambda _: vela.pixels().at(100, 100) == (0x12, 0x34, 0x56),
                       read_state=False, what="the solid wallpaper's first captured frame")
         return vela.state()["readback"]["completed"]
@@ -128,7 +131,10 @@ class DeferredCapture(unittest.TestCase):
             for round_number in (1, 2):
                 self.assertTrue(select.select([process.stdout], [], [], 5)[0], "capture round timed out")
                 self.assertEqual(process.stdout.readline().strip(), f"round {round_number}")
-                vela.input("move", 8 * round_number, 8 * round_number)
+                # Headless hardware-cursor motion is outside the captured
+                # output image. Commit another real wallpaper buffer instead;
+                # the opaque color oracle remains valid throughout the update.
+                self.add_wallpaper(vela)
             _, errors = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 0, errors)
             self.assertEqual(self.drained(vela)["completed"] - before, 12)
