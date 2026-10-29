@@ -81,12 +81,17 @@ def record(**extra):
     with open(os.environ["TEST_CALLS"], "a") as log:
         log.write(json.dumps(dict(tool=name, args=args, **extra)) + "\n")
 if name == "pacman":
+    # A vela-git installation is not an installed 'vela' Beta package.
+    if args == ["-Q", "vela"]:
+        sys.exit(1)
     if args == ["-Qq", "base-devel"]:
         sys.exit(0 if os.environ.get("TEST_BASE_DEVEL", "1") == "1" else 1)
     if not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
 elif name == "rpm":
+    if args == ["-q", "vela"]:
+        sys.exit(1)
     if args[:2] == ["--eval", "%{?fedora}"]:
         print(os.environ.get("TEST_FEDORA_RELEASE", "44"))
         sys.exit(0)
