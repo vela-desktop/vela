@@ -6,7 +6,8 @@ background check and the notification. It is the 0.1 release blocker in the
 [release-channels.md](release-channels.md). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** U0 (this design). See §11.
+> **Status:** U0 (this design) and U1 (`vela-update`'s report) are done.
+> See §11.
 
 ## 1. What there is today
 
@@ -32,6 +33,10 @@ Problems this design fixes:
    exists. The roadmap requires a notification.
 4. An update started from the command line is invisible to the desktop, and
    the desktop cannot tell how an update it started ended.
+5. On Arch, `pacman -Q vela` also answers for `vela-git`, which provides
+   `vela`: an Experimental installation was taken for Beta, and
+   `vela-update` without `--channel` went to the Beta channel. Packages are
+   now matched by their own name.
 
 ## 2. Goals
 
@@ -353,7 +358,7 @@ Notifications only, as the client library tells them:
 | Stage | Content | State |
 |---|---|---|
 | U0 | this design | done |
-| U1 | `vela-update`: schema 2, exit codes, state files, error codes, `vela-update-state` | |
+| U1 | `vela-update`: schema 2, exit codes, state files, error codes, `vela-update-state` | done |
 | U2 | `vela-update-daemon` and `org.vela.Updates`; the caller check shared with `vela-bluetooth` | |
 | U3 | `common/updates`, the Qt client | |
 | U4 | the Settings page | |

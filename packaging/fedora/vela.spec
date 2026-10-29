@@ -130,6 +130,7 @@ Vulkan renderer, Qt Quick shell, file manager, settings, and lock screen.
 install -Dm755 packaging/vela-update %{buildroot}%{_bindir}/vela-update
 install -Dm755 packaging/vela-update-beta %{buildroot}%{_libexecdir}/vela/vela-update-beta
 install -Dm644 packaging/verify-attestation.py %{buildroot}%{_libexecdir}/vela/verify-attestation.py
+install -Dm755 packaging/vela-update-state %{buildroot}%{_libexecdir}/vela/vela-update-state
 
 %files
 %license LICENSE

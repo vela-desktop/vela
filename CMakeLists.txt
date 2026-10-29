@@ -164,6 +164,8 @@ if(VELA_PACKAGE_DEB)
         DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
     install(FILES "${PROJECT_SOURCE_DIR}/packaging/verify-attestation.py"
         DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
+    install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update-state"
+        DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
     include(CPack)
 endif()

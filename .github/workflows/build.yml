@@ -82,7 +82,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate standalone Sigstore verifier syntax
-        run: python3 -m py_compile packaging/verify-attestation.py
+        run: python3 -m py_compile packaging/verify-attestation.py packaging/vela-update-state
       - name: Updater and package source contracts (no network or credentials)
         run: python3 -m unittest discover -s packaging/tests -v
       - name: Reporter evidence contracts (no GPU or running session)
@@ -507,6 +507,7 @@ jobs:
             fi
           done
           test -f /usr/libexec/vela/verify-attestation.py
+          test -x /usr/libexec/vela/vela-update-state
           sh -n /usr/bin/vela-update
 
   # The exact Ubuntu Beta DEB must pass its clean-install smoke test.
