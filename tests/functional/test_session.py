@@ -79,6 +79,57 @@ class Lock(unittest.TestCase):
             vela.wait_for_log(f"vela-testlock: pointer-motion {x} {y}", timeout=3)
             self.assertTrue(vela.state()["locked"], "pointer movement must not unlock")
 
+
+    def test_stationary_pointer_click_reaches_new_lock_surface(self):
+        """Pointer focus is assigned when the lock surface maps, without motion."""
+        with Session(lock_hold_ms=6000, env={"VELA_TESTLOCK_LOG_POINTER": "1"}) as vela:
+            vela.input("move", 350, 260)
+            vela.command("lock")
+            vela.wait_for_log("vela-testlock: locked")
+            vela.wait_for(lambda _: vela.pixels().at(10, 10) == (16, 32, 64),
+                          what="mapped lock surface", read_state=False)
+            # Do not move the mouse after locking: a missing map-time retarget
+            # cannot be hidden by the normal pointer-motion event path.
+            vela.input("click")
+            vela.wait_for_log("vela-testlock: pointer-button 272 1", timeout=3)
+            vela.wait_for_log("vela-testlock: pointer-button 272 0", timeout=3)
+            self.assertTrue(vela.state()["locked"])
+
+    def test_keyboard_move_size_is_cancelled_before_lock(self):
+        """Keyboard Move/Size must not steal the locker's password keystrokes."""
+        for mode in ("move", "resize"):
+            with self.subTest(mode=mode):
+                with Session(lock_hold_ms=6000, env={"VELA_TESTLOCK_LOG_KEYBOARD": "1"}) as vela:
+                    window = vela.open_window(400, 300, decorated=True)
+                    vela.wait_for(lambda s: s["focused"] == window)
+                    original = vela.state().window(window)
+                    vela.command(f"window active {mode}")
+                    vela.command("lock")
+                    vela.wait_for_log("vela-testlock: locked")
+                    vela.input("key", "Right")
+                    # Linux input-event-codes: KEY_RIGHT = 106.
+                    vela.wait_for_log("vela-testlock: keyboard-key 106 1", timeout=3)
+                    self.assertTrue(vela.state()["locked"])
+                    frame = vela.state().window(window)
+                    self.assertEqual((frame["x"], frame["y"]), (original["x"], original["y"]))
+
+    def test_lock_pointer_retargets_after_output_layout_change(self):
+        """A cursor relocated to a surviving output must be able to click without moving."""
+        with Session(lock_hold_ms=8000, env={"VELA_TESTLOCK_LOG_POINTER": "1"}) as vela:
+            vela.command("test-output add 640x480")
+            vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two headless outputs")
+            vela.randr("--output", "HEADLESS-2", "--pos", "1920,0")
+            vela.input("move", 2000, 100)
+            vela.command("lock")
+            vela.wait_for_log("vela-testlock: locked")
+            vela.randr("--output", "HEADLESS-2", "--off")
+            vela.wait_for(lambda s: any(o["name"] == "HEADLESS-2" and not o["enabled"]
+                                        for o in s["outputs"]), what="second output disabled")
+            # A fresh click, not a motion event, must reach the remaining locker.
+            vela.input("click")
+            vela.wait_for_log("vela-testlock: pointer-button 272 1", timeout=3)
+            self.assertTrue(vela.state()["locked"])
+
     def test_missing_locker_never_exposes_desktop(self):
         # A failed launcher must hide windows and revoke keyboard focus even
         # when no ext-session-lock client has connected.
