@@ -99,7 +99,8 @@ def verify(package: Path, repository: str, commit: str, kind: str, release_tag: 
     with package.open("rb") as binary:
         for chunk in iter(lambda: binary.read(1024 * 1024), b""):
             h.update(chunk)
-    identity = f"https://github.com/{repository}/.github/workflows/build.yml"
+    workflow = "ubuntu.yml" if package.name.endswith(".deb") else "build.yml"
+    identity = f"https://github.com/{repository}/.github/workflows/{workflow}"
     shared = [
         "--certificate-oidc-issuer", ISSUER,
         "--certificate-github-workflow-repository", repository,

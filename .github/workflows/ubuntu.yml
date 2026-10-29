@@ -1,6 +1,7 @@
 name: Ubuntu 26.10 build
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [main]
@@ -12,6 +13,10 @@ permissions:
 jobs:
   ubuntu-build:
     name: Compile and test (Ubuntu 26.10)
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     runs-on: ubuntu-latest
     container:
       image: ubuntu:26.10
@@ -46,7 +51,10 @@ jobs:
           persist-credentials: false
       - name: Configure all desktop components
         run: |
+          channel=experimental
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then channel=beta; fi
           cmake -S . -B build-ubuntu -G Ninja \
+            -DVELA_PACKAGE_CHANNEL="$channel" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DVELA_BUILD_COMPOSITOR=ON \
             -DVELA_BUILD_SHELL=ON \
@@ -72,7 +80,7 @@ jobs:
             exit 1
           fi
           ctest --test-dir build-ubuntu --output-on-failure -LE 'gpu|distro-packaging'
-      - name: Build experimental DEB
+      - name: Build channel-specific DEB
         run: |
           set -euo pipefail
           cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
@@ -89,10 +97,15 @@ jobs:
           done
           # Verify the commit stamp without hard-coding the next project version.
           deb_version=$(dpkg-deb -f build-ubuntu/packages/*.deb Version)
-          case "$deb_version" in
-            *"+git${GITHUB_SHA:0:7}") ;;
-            *) echo "Unexpected Ubuntu DEB version: $deb_version" >&2; exit 1 ;;
-          esac
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            test "$deb_version" = "${GITHUB_REF_NAME#v}"
+            test "$(dpkg-deb -f build-ubuntu/packages/*.deb Package)" = vela
+          else
+            case "$deb_version" in
+              *"+git${GITHUB_SHA:0:7}") ;;
+              *) echo "Unexpected experimental DEB version: $deb_version" >&2; exit 1 ;;
+            esac
+          fi
           dpkg-deb --contents build-ubuntu/packages/*.deb > /tmp/vela-deb-files.txt
           cat /tmp/vela-deb-files.txt
           grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
@@ -104,6 +117,11 @@ jobs:
             echo "Missing DEB recommendation: bluez" >&2
             exit 1
           }
+      - name: Attest official Ubuntu Beta DEB provenance
+        if: startsWith(github.ref, 'refs/tags/v0.')
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: build-ubuntu/packages/*.deb
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vela-ubuntu-26.10-deb
@@ -130,7 +148,9 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends file dpkg-dev
           apt-get install -y --no-install-recommends ./deb/*.deb
-          dpkg-query -W -f='${Status}\n' vela-git | grep -Fx 'install ok installed'
+          pkg=vela-git
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then pkg=vela; fi
+          dpkg-query -W -f='${Status}\n' "$pkg" | grep -Fx 'install ok installed'
           # --no-install-recommends must still pull in both runtime icon packages.
           for dependency in breeze-icon-theme qt6-svg-plugins; do
             dpkg-query -W -f='${Status}\n' "$dependency" | grep -Fx 'install ok installed'
@@ -153,7 +173,7 @@ jobs:
             *) command -v "$session_bin" >/dev/null ;;
           esac
           # Inspect all installed ELF objects for unresolved DT_NEEDED dependencies.
-          dpkg-query -L vela-git | while IFS= read -r path; do
+          dpkg-query -L "$pkg" | while IFS= read -r path; do
             if [ -f "$path" ] && file -b "$path" | grep -q '^ELF '; then
               if ldd "$path" 2>&1 | grep -q 'not found'; then
                 echo "Missing ELF dependency: $path" >&2
@@ -173,7 +193,9 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           set -eu
-          apt-get remove -y vela-git
+          pkg=vela-git
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then pkg=vela; fi
+          apt-get remove -y "$pkg"
           test ! -e /usr/bin/vela-compositor
           test ! -e /usr/bin/vela-update
           test ! -e /usr/share/wayland-sessions/vela.desktop

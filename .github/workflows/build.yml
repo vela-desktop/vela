@@ -455,11 +455,20 @@ jobs:
           test -f /usr/libexec/vela/verify-attestation.py
           sh -n /usr/bin/vela-update
 
+  # The exact Ubuntu Beta DEB must pass its clean-install smoke test.
+  ubuntu-beta:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v0.')
+    uses: ./.github/workflows/ubuntu.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
   # Only version tags publish official Beta binaries. Ordinary pushes to
   # main keep ephemeral Experimental build artifacts without GitHub Releases.
   publish-beta:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v0.')
-    needs: [package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke]
+    needs: [package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke, ubuntu-beta]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -476,6 +485,10 @@ jobs:
         with:
           name: vela-fedora-rpm
           path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: vela-ubuntu-26.10-deb
+          path: dist
       - name: Publish signed Beta release
         shell: bash
         env:
@@ -489,8 +502,10 @@ jobs:
           shopt -s nullglob
           packages=(vela-[0-9]*.pkg.tar.zst)
           fedora_packages=(vela-[0-9]*.x86_64.rpm)
+          ubuntu_packages=(vela_[0-9]*_amd64.deb)
           test "${#packages[@]}" -eq 1
           test "${#fedora_packages[@]}" -eq 1
+          test "${#ubuntu_packages[@]}" -eq 1
           for p in "${packages[0]}" "${fedora_packages[0]}"; do
             gh attestation verify "$p" \
               --repo "$GITHUB_REPOSITORY" \
@@ -499,9 +514,17 @@ jobs:
               --source-ref "$GITHUB_REF" \
               --deny-self-hosted-runners
           done
+          gh attestation verify "${ubuntu_packages[0]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ubuntu.yml" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref "$GITHUB_REF" \
+            --deny-self-hosted-runners
+          sha256sum "${ubuntu_packages[0]}" > SHA256SUMS-ubuntu
           sha256sum "${packages[0]}" > SHA256SUMS
           sha256sum "${fedora_packages[0]}" > SHA256SUMS-fedora
           gh release create "$GITHUB_REF_NAME" "${packages[0]}" SHA256SUMS \
             "${fedora_packages[0]}" SHA256SUMS-fedora \
+            "${ubuntu_packages[0]}" SHA256SUMS-ubuntu \
             --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
             --title "Vela ${GITHUB_REF_NAME#v} Beta" --generate-notes
