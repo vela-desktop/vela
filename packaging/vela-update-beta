@@ -18,6 +18,9 @@ requested_tag=""
 for arg in "$@"; do
     case "$arg" in
         --channel=beta|--channel|beta) ;;
+        --help|-h)
+            echo "Usage: vela-update --channel beta [--check [--json]] [--force] [--tag=v0.x.y]"
+            exit 0 ;;
         --check) check=1 ;;
         --json) json=1 ;;
         --force) force=1 ;;
@@ -115,13 +118,14 @@ fi
 echo ":: Vela Beta update available: $tag ($latestFull)"
 if [ "$check" = 1 ]; then exit 0; fi
 
+escaped_version=$(printf '%s' "$version" | sed 's/[.]/\\./g')
 case "$backend" in
 arch) manifest=SHA256SUMS
-      regex="^vela-[0-9][A-Za-z0-9._+-]*-x86_64[.]pkg[.]tar[.]zst$" ;;
+      regex="^vela-$escaped_version-[0-9]+-x86_64[.]pkg[.]tar[.]zst$" ;;
 fedora) manifest=SHA256SUMS-fedora
-        regex="^vela-[0-9][A-Za-z0-9._+-]*[.]x86_64[.]rpm$" ;;
+        regex="^vela-$escaped_version-[0-9]+([.]fc[0-9]+)?[.]x86_64[.]rpm$" ;;
 ubuntu) manifest=SHA256SUMS-ubuntu
-        regex="^vela_[0-9][A-Za-z0-9._+~-]*_amd64[.]deb$" ;;
+        regex="^vela_$escaped_version"_"amd64[.]deb$" ;;
 esac
 release="$BASE/releases/download/$tag"
 curl -fsSL --retry 2 --connect-timeout 5 --max-time 30 \
@@ -132,8 +136,7 @@ fi
 digest=$(awk 'NR==1 {print $1}' "$work/$manifest")
 package=$(awk 'NR==1 {print $2}' "$work/$manifest")
 if ! printf '%s\n' "$digest" | grep -Eq '^[0-9a-f]{64}$' ||
-   ! printf '%s\n' "$package" | grep -Eq "$regex" ||
-   ! printf '%s\n' "$package" | grep -Fq "$version"; then
+   ! printf '%s\n' "$package" | grep -Eq "$regex"; then
     echo "vela-update: invalid or mismatched Beta package manifest" >&2; exit 1
 fi
 curl -fsSL --retry 2 --connect-timeout 5 --max-time 240 \
