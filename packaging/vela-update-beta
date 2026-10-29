@@ -223,7 +223,15 @@ python3 "$verifier" --repository "$REPO" --commit "$latestFull" \
     --kind release --release-tag "$tag" "$work/$package"
 echo ":: Verified official Beta package $package"
 case "$backend" in
-arch) sudo pacman -U "$work/$package" ;;
+arch)
+    if pacman -Q vela-git >/dev/null 2>&1; then
+        # In the explicit channel transition, accept only pacman's conflict
+        # removal prompt within the SAME installation transaction. Plain
+        # --noconfirm answers no to the vela-git / vela conflict.
+        sudo pacman --noconfirm --ask=4 -U "$work/$package"
+    else
+        sudo pacman -U "$work/$package"
+    fi ;;
 fedora) sudo dnf install -y --allowerasing "$work/$package" ;;
 ubuntu) sudo apt-get install -y --allow-downgrades "$work/$package" ;;
 esac

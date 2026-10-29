@@ -46,6 +46,8 @@ elif name == "git":
     else:
         sys.exit(2)
 elif name == "pacman":
+    if args == ["-Q", "vela-git"]:
+        sys.exit(0 if os.environ.get("TEST_EXP_INSTALLED") else 1)
     if args[:2] != ["-Q", "vela"] or not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
     print("vela " + os.environ["TEST_INSTALLED"])
@@ -197,6 +199,16 @@ class BetaUpdateTests(unittest.TestCase):
         verified = json.loads(self.verified.read_text())
         self.assertEqual(verified[verified.index("--release-tag") + 1], "v0.1.11")
         self.assertEqual(verified[verified.index("--commit") + 1], COMMIT)
+
+
+    def test_arch_experimental_to_beta_replaces_in_one_transaction(self):
+        self.env["TEST_EXP_INSTALLED"] = "1"
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        result = self.run_update("--channel", "beta")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(self.calls.read_text())
+        self.assertEqual(args[:4], ["pacman", "--noconfirm", "--ask=4", "-U"])
+        self.assertTrue(self.verified.exists())
 
     def test_fedora_uses_dnf_even_if_pacman_exists(self):
         self.configure_os("fedora", "44")

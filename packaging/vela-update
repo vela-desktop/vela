@@ -201,7 +201,13 @@ packageVersion() {
 }
 installPackage() {
     if [ "$backend" = arch ]; then
-        sudo pacman -U "$1"
+        if pacman -Q vela >/dev/null 2>&1; then
+            # Replace the Beta package in one transaction rather than
+            # uninstalling Vela before the new package is ready.
+            sudo pacman --noconfirm --ask=4 -U "$1"
+        else
+            sudo pacman -U "$1"
+        fi
     elif [ "$backend" = ubuntu ]; then
         # apt supports both upgrades and downgrades to an explicit local file.
         sudo apt-get install -y --allow-downgrades --reinstall "$1"

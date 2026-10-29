@@ -388,6 +388,19 @@ class UpdateFixture(unittest.TestCase):
                         TEST_CI_RUN="", TEST_DOWNLOAD_SHA="", TEST_FAIL_DOWNLOAD="")
 
 
+
+    def test_explicit_arch_beta_to_experimental_is_single_transaction(self):
+        if not self.os_release.read_text().startswith("ID=arch"):
+            self.skipTest("Arch-only native package transition")
+        self.env["TEST_BETA_INSTALLED"] = "1"
+        self.env["TEST_INSTALLED"] = ""
+        self.run_update("--channel", "experimental", "--build")
+        install_calls = [call for call in self.calls("sudo")
+                         if call["args"][:1] == ["pacman"]]
+        self.assertEqual(len(install_calls), 1)
+        self.assertEqual(install_calls[0]["args"][:4],
+                         ["pacman", "--noconfirm", "--ask=4", "-U"])
+
     def test_installed_beta_defaults_to_beta_helper(self):
         self.env["TEST_BETA_INSTALLED"] = "1"
         result = self.run_update("--check", source=False)
