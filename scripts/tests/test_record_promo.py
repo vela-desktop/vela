@@ -4,9 +4,11 @@ from pathlib import Path
 import tempfile
 import types
 import unittest
+import sys
 from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "record-promo.py"
+sys.path.insert(0, str(SCRIPT.parent))  # import the sibling recording_core.py
 spec = importlib.util.spec_from_file_location("vela_record_promo", SCRIPT)
 assert spec and spec.loader
 promo = importlib.util.module_from_spec(spec)
