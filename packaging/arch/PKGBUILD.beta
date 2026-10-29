@@ -40,7 +40,7 @@ depends=(
 )
 makedepends=('cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols>=1.37' 'qt6-tools' 'qt6-multimedia')
 optdepends=(
-     'networkmanager: network and Wi-Fi (quick settings and Settings)'
+    'networkmanager: network and Wi-Fi (quick settings and Settings)'
     'bluez: Bluetooth, all it needs (docs/bluetooth.md)'
     'pipewire-pulse: sound for apps that still use PulseAudio'
     'power-profiles-daemon: energy saver'
@@ -50,7 +50,7 @@ optdepends=(
     'kdeconnect: share with your phone'
     'bluedevil: send files over Bluetooth from Files (requires bluez-obex)'
     'bluez-obex: OBEX file transfers (optional Bluedevil backend)'
- )
+)
 conflicts=('vela-git')
 backup=('etc/pam.d/vela-lock' 'etc/xdg/xdg-desktop-portal-wlr/Vela')
 source=("$_name::git+${VELA_GIT_URL:-https://github.com/vela-desktop/vela.git#tag=v${pkgver}}")

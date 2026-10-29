@@ -6,7 +6,7 @@ system or packages unrelated to Vela.
 | Channel | Native package | Target | Binaries |
 | --- | --- | --- | --- |
 | Beta | `vela` | Latest numbered `v0.x.y` release | Signed official release assets |
-| Experimental | `vela-git` | Development `main` or an explicitly selected commit | Build locally; historical signed `alpha-<sha>` packages or eligible temporary CI artifacts may still be used |
+| Experimental | `vela-git` | Development `main` or a selected commit | Source build, or existing signed legacy alpha / CI artifacts |
 
 There are no release candidates. The `0.x.y` series is Beta; `1.0.0` is
 the future stable milestone, not part of this initial change.
@@ -44,8 +44,10 @@ Python 3 are also required and are native package dependencies.
 Use `vela-update --channel beta --check --json` for versioned machine-readable
 Beta status and `vela-update --channel beta` to install the signed native
 package. A newer installed Beta is never silently downgraded: explicitly select
-an older release with `--tag=v0.x.y` when a downgrade is intended. Use `vela-update --channel experimental` to build an exact development
-revision locally. The installed package determines the default channel; an
+an older release with `--tag=v0.x.y` when a downgrade is intended.
+Use `vela-update --channel experimental` for an exact development
+revision. On Arch and Fedora, signed legacy alpha packages may still be
+reused when available; otherwise Vela builds locally. The installed package determines the default channel; an
 explicit `--channel` chooses a transition.
 
 Cross-channel transitions replace the native package rather than installing

@@ -83,6 +83,9 @@ def record(**extra):
 if name == "pacman":
     # A vela-git installation is not an installed 'vela' Beta package.
     if args == ["-Q", "vela"]:
+        if os.environ.get("TEST_BETA_INSTALLED") == "1":
+            print("vela 0.1.0-1")
+            sys.exit(0)
         sys.exit(1)
     if args == ["-Qq", "base-devel"]:
         sys.exit(0 if os.environ.get("TEST_BASE_DEVEL", "1") == "1" else 1)
@@ -91,7 +94,7 @@ if name == "pacman":
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
 elif name == "rpm":
     if args == ["-q", "vela"]:
-        sys.exit(1)
+        sys.exit(0 if os.environ.get("TEST_BETA_INSTALLED") == "1" else 1)
     if args[:2] == ["--eval", "%{?fedora}"]:
         print(os.environ.get("TEST_FEDORA_RELEASE", "44"))
         sys.exit(0)
@@ -332,6 +335,10 @@ class UpdateFixture(unittest.TestCase):
         # explicit bootstrap test below runs the updater from a Git checkout.
         self.update_script = bin_dir / "vela-update-under-test"
         shutil.copyfile(UPDATER, self.update_script)
+        # The installed Beta helper must be selected before Experimental parsing.
+        helper = bin_dir / "vela-update-beta"
+        helper.write_text('#!/bin/sh\necho beta-dispatched\n')
+        helper.chmod(0o755)
         # Use a disposable fixture identity, never a production override of
         # /etc/os-release. This also lets Arch tests run on Ubuntu CI hosts.
         self.os_release = self.directory / "os-release"
@@ -379,6 +386,16 @@ class UpdateFixture(unittest.TestCase):
         self.git("checkout", "--quiet", "main")
         self.env.update(TEST_INSTALLED=self.base[:7],
                         TEST_CI_RUN="", TEST_DOWNLOAD_SHA="", TEST_FAIL_DOWNLOAD="")
+
+
+    def test_installed_beta_defaults_to_beta_helper(self):
+        self.env["TEST_BETA_INSTALLED"] = "1"
+        result = self.run_update("--check", source=False)
+        self.assertIn("beta-dispatched", result.stdout)
+        self.assertEqual(self.calls("makepkg"), [])
+        self.os_release.write_text("ID=fedora\nVERSION_ID=44\n")
+        result = self.run_update("--check", source=False)
+        self.assertIn("beta-dispatched", result.stdout)
 
     def git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.source), *args],

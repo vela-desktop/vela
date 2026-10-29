@@ -270,6 +270,8 @@ jobs:
           test "${#packages[@]}" -eq 1
           if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
             [[ "${packages[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
+            # A clean container needs all required Beta updater dependencies.
+            pacman -S --noconfirm --needed cosign
           else
             [[ "${packages[0]}" == *".g${GITHUB_SHA:0:7}-"* ]]
           fi
@@ -331,6 +333,11 @@ jobs:
           cp packaging/fedora/vela.spec rpmbuild/SPECS/vela.spec
           version=$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\([0-9][0-9.]*\).*/\1/p' CMakeLists.txt | head -n 1)
           [[ "$version" =~ ^[0-9]+(\.[0-9]+)+$ ]] || { echo "::error::Invalid project VERSION: $version"; exit 1; }
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            test "$version" = "${GITHUB_REF_NAME#v}" || {
+              echo "::error::RPM source version differs from release tag"; exit 1;
+            }
+          fi
           echo "VELA_RPM_VERSION=$version" >> "$GITHUB_ENV"
           git archive --format=tar.gz --prefix="vela-$version/" HEAD > "rpmbuild/SOURCES/vela-$version.tar.gz"
       - name: Build RPM
@@ -532,8 +539,26 @@ jobs:
           sha256sum "${ubuntu_packages[0]}" > SHA256SUMS-ubuntu
           sha256sum "${packages[0]}" > SHA256SUMS
           sha256sum "${fedora_packages[0]}" > SHA256SUMS-fedora
-          gh release create "$GITHUB_REF_NAME" "${packages[0]}" SHA256SUMS \
-            "${fedora_packages[0]}" SHA256SUMS-fedora \
-            "${ubuntu_packages[0]}" SHA256SUMS-ubuntu \
-            --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
-            --title "Vela ${GITHUB_REF_NAME#v} Beta" --generate-notes
+          # Reruns must never overwrite already-published release bytes.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --json isPrerelease --jq '.isPrerelease' | grep -Fxq true
+            for asset in "${packages[0]}" "${fedora_packages[0]}" "${ubuntu_packages[0]}" \
+                         SHA256SUMS SHA256SUMS-fedora SHA256SUMS-ubuntu; do
+              gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+                --json assets --jq '.assets[].name' | grep -Fxq "$asset"
+            done
+            mkdir -p previous
+            gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --pattern 'SHA256SUMS*' --dir previous
+            for manifest in SHA256SUMS SHA256SUMS-fedora SHA256SUMS-ubuntu; do
+              cmp "$manifest" "previous/$manifest"
+            done
+            echo ":: Existing release matches verified packages; keeping it unchanged"
+          else
+            gh release create "$GITHUB_REF_NAME" "${packages[0]}" SHA256SUMS \
+              "${fedora_packages[0]}" SHA256SUMS-fedora \
+              "${ubuntu_packages[0]}" SHA256SUMS-ubuntu \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+              --title "Vela ${GITHUB_REF_NAME#v} Beta" --generate-notes
+          fi
