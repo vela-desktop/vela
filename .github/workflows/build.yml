@@ -87,6 +87,8 @@ jobs:
         run: python3 -m unittest discover -s packaging/tests -v
       - name: Reporter evidence contracts (no GPU or running session)
         run: PYTHONPATH=report python3 -m unittest discover -s report/tests -v
+      - name: Recording timeline and promo contracts (no GPU needed)
+        run: python3 -m unittest discover -s scripts/tests -p 'test_record*.py' -v
       - name: Package script syntax
         run: |
           sh -n packaging/vela-update packaging/vela-update-beta
