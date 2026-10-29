@@ -122,9 +122,8 @@ class Lock(unittest.TestCase):
             vela.input("move", 2000, 100)
             vela.command("lock")
             vela.wait_for_log("vela-testlock: locked")
-            vela.randr("--output", "HEADLESS-2", "--off")
-            vela.wait_for(lambda s: any(o["name"] == "HEADLESS-2" and not o["enabled"]
-                                        for o in s["outputs"]), what="second output disabled")
+            vela.command("test-output remove HEADLESS-2")
+            vela.wait_for(lambda s: len(s["outputs"]) == 1, what="second output removed")
             # A fresh click, not a motion event, must reach the remaining locker.
             vela.input("click")
             vela.wait_for_log("vela-testlock: pointer-button 272 1", timeout=3)
