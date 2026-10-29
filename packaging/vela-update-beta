@@ -158,7 +158,7 @@ python3 "$verifier" --repository "$REPO" --commit "$latestFull" \
 echo ":: Verified official Beta package $package"
 case "$backend" in
 arch) sudo pacman -U "$work/$package" ;;
-fedora) sudo dnf install -y "$work/$package" ;;
+fedora) sudo dnf install -y --allowerasing "$work/$package" ;;
 ubuntu) sudo apt-get install -y --allow-downgrades "$work/$package" ;;
 esac
 echo ":: Vela Beta $tag installed. Sign out and back in to start the new version."
