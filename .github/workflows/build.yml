@@ -89,9 +89,9 @@ jobs:
         run: PYTHONPATH=report python3 -m unittest discover -s report/tests -v
       - name: Package script syntax
         run: |
-          sh -n packaging/vela-update
+          sh -n packaging/vela-update packaging/vela-update-beta
           sh -n session/vela-session.in scripts/test-sharpness.sh
-          bash -n packaging/arch/PKGBUILD
+          bash -n packaging/arch/PKGBUILD packaging/arch/PKGBUILD.beta
 
   # Pin the official Arch x86_64 container manifest. All these jobs run
   # pacman -Syu, but cannot silently change their base image identity.
@@ -139,7 +139,7 @@ jobs:
 
       - name: Scripts
         run: |
-          for script in packaging/vela-update session/vela-session-env scripts/*.sh; do
+          for script in packaging/vela-update packaging/vela-update-beta session/vela-session-env scripts/*.sh; do
             sh -n "$script"
           done
 
