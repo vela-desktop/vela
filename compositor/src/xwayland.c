@@ -306,6 +306,7 @@ struct unmanaged {
 };
 
 static struct vela_view *view_create(struct vela_server *server, struct wlr_xwayland_surface *x11);
+static double x11_client_scale(const struct vela_server *server);
 static void handle_associate(struct wl_listener *listener, void *data);
 static void handle_map(struct wl_listener *listener, void *data);
 
@@ -330,7 +331,8 @@ static void unmanaged_restack(struct unmanaged *menu)
 static void handle_unmanaged_map(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, map);
-    vela_node_set_position(&menu->tree->node, menu->x11->x, menu->x11->y);
+    const double scale = x11_client_scale(menu->server);
+    vela_node_set_position(&menu->tree->node, menu->x11->x / scale, menu->x11->y / scale);
     unmanaged_restack(menu);
     vela_node_set_enabled(&menu->tree->node, true);
     // BELOW backdrops must not steal keyboard focus from the game.
@@ -374,6 +376,7 @@ static void handle_unmanaged_associate(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, associate);
     menu->surface_node = vela_surface_node_create(menu->tree, menu->x11->surface);
+    menu->surface_node->scale = 1.0 / x11_client_scale(menu->server);
     vela_listen(&menu->x11->surface->events.map, &menu->map, handle_unmanaged_map);
     vela_listen(&menu->x11->surface->events.unmap, &menu->unmap, handle_unmanaged_unmap);
     map_if_drawn(menu->x11->surface);
@@ -469,6 +472,16 @@ static struct unmanaged *unmanaged_create(struct vela_server *server, struct wlr
     return menu;
 }
 
+// With the experimental per-client xdg-output adapter, XWayland speaks
+// globally scaled X11 coordinates while Vela's scene remains in Wayland
+// logical coordinates. Both sides must use the SAME global factor. This
+// never changes native Wayland clients or the physical monitor mode.
+static double x11_client_scale(const struct vela_server *server)
+{
+    return server->x11_xdg_output && server->xwayland_apps_scale > 0.0
+        ? server->xwayland_apps_scale : 1.0;
+}
+
 // ----------------------------------------------------------- X11 windows --
 
 void vela_view_sync_x11(struct vela_view *view)
@@ -478,10 +491,12 @@ void vela_view_sync_x11(struct vela_view *view)
         return;
     }
     const struct wlr_box wanted = {
-        .x = (int)lround(view->tree->node.x),
-        .y = (int)lround(view->tree->node.y),
-        .width = view->x11_width > 0 ? view->x11_width : x11->width,
-        .height = view->x11_height > 0 ? view->x11_height : x11->height,
+        .x = (int)lround(view->tree->node.x * x11_client_scale(view->server)),
+        .y = (int)lround(view->tree->node.y * x11_client_scale(view->server)),
+        .width = view->x11_width > 0
+            ? (int)lround(view->x11_width * x11_client_scale(view->server)) : x11->width,
+        .height = view->x11_height > 0
+            ? (int)lround(view->x11_height * x11_client_scale(view->server)) : x11->height,
     };
     const struct wlr_box *sent = &view->x11_sent;
     if (wanted.width <= 0 || wanted.height <= 0
@@ -545,6 +560,7 @@ static void handle_associate(struct wl_listener *listener, void *data)
     struct vela_view *view = wl_container_of(listener, view, associate);
     struct wlr_surface *surface = view->x11->surface;
     view->surface_node = vela_surface_node_create(view->tree, surface);
+    view->surface_node->scale = 1.0 / x11_client_scale(view->server);
     vela_listen(&surface->events.map, &view->map, handle_map);
     vela_listen(&surface->events.unmap, &view->unmap, handle_unmap);
     vela_listen(&surface->events.commit, &view->commit, handle_commit);
@@ -579,7 +595,10 @@ static void handle_request_configure(struct wl_listener *listener, void *data)
     if (!view->mapped) {
         // Before appearing the app chooses where and how large (remembered:
         // it's its "normal" size).
-        view->x11_initial = (struct wlr_box) { event->x, event->y, event->width, event->height };
+        double scale = x11_client_scale(view->server);
+        view->x11_initial = (struct wlr_box) {
+            (int)lround(event->x / scale), (int)lround(event->y / scale),
+            (int)lround(event->width / scale), (int)lround(event->height / scale) };
         wlr_xwayland_surface_configure(view->x11, event->x, event->y, event->width, event->height);
         return;
     }
@@ -590,10 +609,13 @@ static void handle_request_configure(struct wl_listener *listener, void *data)
         // origin of another enabled output. Size-only requests (typical
         // resolution changes) must NEVER move the window across monitors.
         if (view->fullscreen && (event->mask & (XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y))) {
-            struct vela_output *target = vela_output_at(view->server, event->x + 1, event->y + 1);
+            double scale = x11_client_scale(view->server);
+            struct vela_output *target = vela_output_at(
+                view->server, event->x / scale + 1, event->y / scale + 1);
             if (target && target != vela_view_output(view)) {
                 const struct wlr_box box = vela_output_box(target);
-                if (abs(event->x - box.x) <= 1 && abs(event->y - box.y) <= 1) {
+                if (fabs(event->x / scale - box.x) <= 1 &&
+                    fabs(event->y / scale - box.y) <= 1) {
                     vela_view_fullscreen_output(view, target);
                 }
             }
@@ -607,7 +629,12 @@ static void handle_request_configure(struct wl_listener *listener, void *data)
     // it wants to go to: Steam, for example, goes back to the position and
     // size it remembers, even when they no longer fit.
     int bar = vela_view_title_bar_height(view);
-    struct wlr_box frame = { event->x, event->y - bar, event->width, event->height + bar };
+    double scale = x11_client_scale(view->server);
+    struct wlr_box frame = {
+        (int)lround(event->x / scale),
+        (int)lround(event->y / scale) - bar,
+        (int)lround(event->width / scale),
+        (int)lround(event->height / scale) + bar };
     struct vela_output *output
         = vela_output_at(view->server, frame.x + frame.width / 2.0, frame.y + frame.height / 2.0);
     if (!output) {
