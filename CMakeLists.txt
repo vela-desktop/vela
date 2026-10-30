@@ -160,7 +160,7 @@ if(VELA_PACKAGE_DEB)
     # even when not linked as ELF libraries (shlibdeps handles the rest).
     # Vela uses Breeze by default; Qt needs the SVG icon engine to render it.
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "git, curl, apt, dpkg, sudo, util-linux, x11-xserver-utils, xwayland-satellite (>= 0.7), xdg-terminal-exec, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+        "git, curl, apt, dpkg, sudo, util-linux, x11-xserver-utils, xdg-terminal-exec, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
     # Bluetooth needs only BlueZ (docs/bluetooth.md §10), as Fedora's
     # Recommends and Arch's optional dependency. Settings > Updates runs
     # vela-update in a terminal (docs/updates.md §6.3): xdg-terminal-exec
