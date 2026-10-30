@@ -95,6 +95,15 @@ class Outputs(unittest.TestCase):
         self.assertEqual((state.window(game)["x"], state.window(game)["y"],
                           state.window(game)["w"], state.window(game)["h"]),
                          (second["x"], second["y"], second["w"], second["h"]))
+        # The user can always move a fullscreen game manually if its X11
+        # bridge does not propagate a new requested output.
+        self.vela.command("window active output HEADLESS-1")
+        primary = next(o for o in state["outputs"] if o["name"] == "HEADLESS-1")
+        self.vela.wait_for(
+            lambda s: s.window(game)["output"] == "HEADLESS-1"
+                      and s.window(game)["fullscreen"]
+                      and s.window(game)["w"] == primary["w"],
+            what="fullscreen monitor moved by explicit command")
 
     def test_hotplug_with_its_own_scale(self):
         state = self.add_second()
