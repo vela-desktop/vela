@@ -17,7 +17,7 @@ from pathlib import Path
 import time
 import unittest
 
-from harness import Session
+from harness import Session, tool
 
 
 class NativeXwaylandSession(unittest.TestCase):
@@ -41,6 +41,42 @@ class NativeXwaylandSession(unittest.TestCase):
             self.vela.stop()
         if hasattr(self, "tmp"):
             self.tmp.cleanup()
+
+    def test_ewmh_maximize_bridge(self):
+        # Satellite main currently handles _NET_WM_STATE_FULLSCREEN but not
+        # the paired MAXIMIZED_HORZ/MAXIMIZED_VERT request used by Steam CSD.
+        # Keep the reproduction in-tree, but do not fail all GPU tests until
+        # upstream Satellite adds support (issues #269 and #460). Set this
+        # opt-in on a patched Satellite build to verify the eventual fix.
+        if os.environ.get("VELA_ASSERT_SATELLITE_MAXIMIZE") != "1":
+            self.skipTest("Blocked upstream: Satellite does not forward EWMH maximize (#269)")
+        if not os.path.exists(tool("vela-x11")):
+            self.skipTest("vela-x11 test client requires XCB build dependency")
+        display = self.vela.wait_for_log(
+            "Native-resolution X11 Satellite listening on DISPLAY=",
+            lambda line: line.split("DISPLAY=")[1].split()[0],
+        )
+        env = dict(self.vela.client_env, DISPLAY=display)
+        xid_path = Path(self.tmp.name) / "xid"
+        before = {w["id"] for w in self.vela.state().windows}
+        self.vela.clients.append(subprocess.Popen(
+            [tool("vela-x11"), "--id-file", str(xid_path), "640", "480"], env=env))
+        self.vela.wait_for(
+            lambda state: bool({w["id"] for w in state.windows} - before),
+            timeout=15, what="Satellite toplevel mapped")
+        window = next(iter({w["id"] for w in self.vela.state().windows} - before))
+        self.vela.wait_still(window)
+        deadline = time.monotonic() + 8
+        while not xid_path.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertTrue(xid_path.exists(), "native X11 client did not publish its XID")
+        subprocess.run(
+            [tool("vela-x11"), "--state", xid_path.read_text().strip(), "maximize", "on"],
+            env=env, check=True, timeout=8,
+        )
+        self.vela.wait_for(
+            lambda state: state.window(window)["maximized"],
+            timeout=8, what="paired EWMH maximize delivered through Satellite to XDG")
 
     def test_satellite_xrandr_reports_native_mode(self):
         display = self.vela.wait_for_log(
