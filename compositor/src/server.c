@@ -33,6 +33,7 @@
 #include "util.h"
 #include "view.h"
 #include "workspace.h"
+#include "x11_coordinates.h"
 #include "x11_satellite.h"
 
 #include <errno.h>
@@ -110,11 +111,40 @@ static void handle_new_output(struct wl_listener *listener, void *data)
     vela_output_create(server, data);
 }
 
+// KWin's "applications scale themselves" uses ONE maximum output scale.
+// Don't apply this until per-client xdg-output AND surface input transforms
+// exist. Advertising scaled X11 modes alone breaks Steam's hit testing.
+static void update_xwayland_scale_candidate(struct vela_server *server)
+{
+    double scale = 1.0;
+    struct vela_output *output;
+    wl_list_for_each (output, &server->outputs, link) {
+        if (!output->wlr->enabled ||
+            !wlr_output_layout_get(server->output_layout, output->wlr)) {
+            continue;
+        }
+        double current = output->wlr->scale;
+        double candidate = vela_x11_global_scale(
+            VELA_X11_APPLY_SCALING_THEMSELVES, &current, 1);
+        if (candidate > scale) {
+            scale = candidate;
+        }
+    }
+    if (server->xwayland_apps_scale == scale) {
+        return;
+    }
+    server->xwayland_apps_scale = scale;
+    if (getenv("VELA_XWAYLAND_SCALE_TRACE")) {
+        wlr_log(WLR_INFO, "Xwayland candidate application scale %.3f (not applied)", scale);
+    }
+}
+
 // Every change (output plugged, moved, new mode) is reported to configuration
 // programs.
 static void handle_layout_change(struct wl_listener *listener, void *data)
 {
     struct vela_server *server = wl_container_of(listener, server, layout_change);
+    update_xwayland_scale_candidate(server);
     vela_output_manager_update(server);
     vela_lock_update_layout(server->lock);
     vela_views_check_outputs_later(server);
@@ -291,6 +321,7 @@ static bool init(struct vela_server *server)
     server->scene->tearing_control = wlr_tearing_control_manager_v1_create(display, 1);
     server->a11y = vela_a11y_create(server);
     vela_output_load_settings(server);
+    update_xwayland_scale_candidate(server);
     vela_a11y_load(server->a11y);
     server->workspaces = vela_workspaces_create(server); // virtual desktops (workspace.c)
     if (vela_env_one("VELA_DEBUG_ANIMATION")) {
