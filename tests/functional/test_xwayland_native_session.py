@@ -140,3 +140,89 @@ class NativeXwaylandSession(unittest.TestCase):
         self.assertRegex(output, r"(?m)^\s+2560x1440\s")
         # The logical size must not be advertised as the active physical mode.
         self.assertNotRegex(output, r"(?m)^\S+ connected 2048x1152")
+
+
+class NativeXwaylandMixedScaleInput(unittest.TestCase):
+    """Guard the 125%/100% cross-output X11 pointer coordinate conversion."""
+
+    def setUp(self):
+        # Kept opt-in until the Satellite viewport/input-region patches have
+        # been reviewed and a patched backend is available on GPU runners.
+        if os.environ.get("VELA_ASSERT_SATELLITE_MIXED_INPUT") != "1":
+            self.skipTest("Satellite mixed-scale input-region fix not yet integrated (upstream #452)")
+        if not shutil.which("xwayland-satellite") or not os.path.exists(tool("vela-x11")):
+            self.skipTest("Satellite and vela-x11 must both be available")
+        self.tmp = tempfile.TemporaryDirectory(prefix="vela-x11-input-")
+        self.vela = Session(scale="HEADLESS-1=1.25,HEADLESS-2=1",
+                            size="2560x1440@60",
+                            env={"VELA_XWAYLAND_BACKEND": "native"})
+        self.vela.start()
+        self.vela.command("test-output add 1920x1080")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 2,
+                           what="mixed-scale output layout")
+        self.vela.randr("--output", "HEADLESS-2", "--scale", "1",
+                        "--pos", "2048,0")
+        self.vela.wait_for(
+            lambda s: any(o["name"] == "HEADLESS-2" and o["scale"] == 1
+                          for o in s["outputs"]),
+            what="second 100% output configured")
+
+    def tearDown(self):
+        if hasattr(self, "vela"):
+            self.vela.stop()
+        if hasattr(self, "tmp"):
+            self.tmp.cleanup()
+
+    def test_pointer_delta_matches_output_scale_after_move(self):
+        display = self.vela.wait_for_log(
+            "Native-resolution X11 Satellite listening on DISPLAY=",
+            lambda line: line.split("DISPLAY=")[1].split()[0],
+        )
+        env = dict(self.vela.client_env, DISPLAY=display)
+        xid_file = Path(self.tmp.name) / "pointer-window"
+        before = {w["id"] for w in self.vela.state().windows}
+        self.vela.clients.append(subprocess.Popen(
+            [tool("vela-x11"), "--id-file", str(xid_file), "640", "480"],
+            env=env))
+        self.vela.wait_for(
+            lambda s: bool({w["id"] for w in s.windows} - before),
+            what="native X11 input probe mapped")
+        window = next(iter({w["id"] for w in self.vela.state().windows} - before))
+        self.vela.wait_still(window)
+        deadline = time.monotonic() + 8
+        while not xid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertTrue(xid_file.exists())
+        xid = xid_file.read_text().strip()
+
+        def pointer_x(x, y):
+            self.vela.input("move", x, y, "sleep", "100")
+            result = subprocess.run([tool("vela-x11"), "--pointer", xid],
+                                    env=env, capture_output=True,
+                                    text=True, check=True, timeout=5)
+            rel_x, _rel_y, same_screen = map(int, result.stdout.split())
+            self.assertEqual(same_screen, 1)
+            return rel_x
+
+        def assert_scaled_delta(scale):
+            w = self.vela.state().window(window)
+            x, y = w["x"] + w["w"] // 2, w["y"] + w["h"] // 2
+            left, right = pointer_x(x - 32, y), pointer_x(x + 32, y)
+            self.assertAlmostEqual(right - left, 64 * scale, delta=3)
+
+        assert_scaled_delta(1.25)
+        w = self.vela.state().window(window)
+        secondary = next(o for o in self.vela.state()["outputs"]
+                         if o["name"] == "HEADLESS-2")
+        grab_x, grab_y = w["x"] + 40, w["y"] + 45
+        tx, ty = secondary["x"] + 200, secondary["y"] + 180
+        self.vela.input("move", grab_x, grab_y,
+                        "keydown", "super", "down", "sleep", "50",
+                        "move", (grab_x + tx) // 2, (grab_y + ty) // 2,
+                        "sleep", "50", "move", tx, ty, "sleep", "100",
+                        "up", "keyup", "super")
+        self.vela.wait_for(
+            lambda s: s.window(window)["output"] == "HEADLESS-2",
+            what="X11 pointer probe moved to 100% output")
+        self.vela.wait_still(window)
+        assert_scaled_delta(1.0)
