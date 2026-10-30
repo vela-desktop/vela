@@ -543,6 +543,20 @@ bool vela_vulkan_device_lost(const struct vela_vulkan *vk)
     return vk && vk->loss.lost;
 }
 
+bool vela_vulkan_terminal_failure(const struct vela_vulkan *vk)
+{
+    return vk && vela_vulkan_unusable(vk);
+}
+
+void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation)
+{
+    if (vela_vulkan_unusable(vk)) return;
+    vk->terminal_error = true;
+    wlr_log(WLR_ERROR, "Vulkan: unrecoverable render/synchronization failure at %s; ending compositor",
+        operation);
+    if (vk->loss_display) wl_display_terminate(vk->loss_display);
+}
+
 bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *operation)
 {
     _Static_assert(VK_ERROR_DEVICE_LOST == VELA_VK_DEVICE_LOST_RESULT,
@@ -555,7 +569,7 @@ bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *ope
         && result != VK_INCOMPLETE && !vk->loss.lost) {
         wlr_log(WLR_ERROR, "Vulkan: %s failed (VkResult=%d)", operation, (int)result);
     }
-    return result == VK_SUCCESS && !vk->loss.lost;
+    return result == VK_SUCCESS && !vela_vulkan_unusable(vk);
 }
 
 void vela_vulkan_destroy(struct vela_vulkan *vk)
