@@ -27,6 +27,7 @@
 #include <wlr/util/log.h>
 #if WLR_HAS_XWAYLAND
 #include <wlr/xwayland.h>
+#include <wlr/xwayland/server.h> // the actual Wayland client is owned by this server
 #endif
 
 #include "xdg-output-unstable-v1-protocol.h"
