@@ -190,6 +190,7 @@ static bool upload(struct vela_texture *texture, const uint8_t *data, size_t str
     struct vela_renderer *renderer = texture->renderer;
     uint32_t bpp = texture->format->bytes_per_pixel;
     VkCommandBuffer cmd = vela_renderer_upload_commands(renderer);
+    if (!cmd) return false;
 
     image_barrier(cmd, texture->image,
         texture->uploaded ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
@@ -224,6 +225,7 @@ static bool upload(struct vela_texture *texture, const uint8_t *data, size_t str
         vkCmdCopyBufferToImage(cmd, staging.buffer, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
     }
 
+    if (vela_vulkan_unusable(renderer->vk)) return false;
     image_barrier(cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
@@ -479,7 +481,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
 {
     struct vela_texture *texture = (struct vela_texture *)wlr;
     struct vela_renderer *renderer = texture->renderer;
-    if (!renderer || renderer->vk->loss.lost) return false;
+    if (!renderer || vela_vulkan_unusable(renderer->vk)) return false;
     const struct vela_pixel_format *wanted = vela_pixel_format_from_drm(options->format);
     if (!wanted || wanted->unorm != texture->format->unorm) {
         return false;
