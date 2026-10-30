@@ -164,7 +164,12 @@ static void keyboard_keymap(void* data, struct wl_keyboard* kb, uint32_t format,
     close(fd);
 }
 static void keyboard_enter(void* data, struct wl_keyboard* kb, uint32_t serial,
-    struct wl_surface* surface, struct wl_array* keys) { }
+    struct wl_surface* surface, struct wl_array* keys)
+{
+    if (log_keyboard) {
+        fprintf(stderr, "vela-testlock: keyboard-enter\n");
+    }
+}
 static void keyboard_leave(void* data, struct wl_keyboard* kb, uint32_t serial, struct wl_surface* surface) { }
 /** Log keyboard events to check that desktop interactions cannot steal them. */
 static void keyboard_key(void* data, struct wl_keyboard* kb, uint32_t serial,
