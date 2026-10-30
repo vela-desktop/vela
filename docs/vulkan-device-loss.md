@@ -29,16 +29,19 @@ The renderer checks Vulkan results for queue submission, command buffer
 allocation/reset/begin/end, timeline wait/query, semaphore creation/import/
 export, DMA-BUF image import and staging allocation/bind/map. A failure while
 ending a command buffer frees command-slot reservations and unsubmitted staging
-claims, allowing a future frame to retry if the device is still healthy.
+claims, then takes the fatal-restart path: already recorded SHM uploads must
+not be silently marked as rendered.
 
 A device loss discovered while lazily creating a drawing or blur pipeline stops
 command recording immediately; commands are **not submitted**. Staging uploads
 must not record commands into a null command buffer.
 
 For a healthy shutdown, wait for the device and discard pending command
-recordings before freeing resources. For device loss or a fatal render/sync
-error, do not wait on the device or recycle GPU resources using stale timeline
-values. Vulkan destruction/freeing and process exit are still possible.
+recordings before freeing resources. For device loss, do not wait on the device
+or recycle GPU resources using stale timeline values; spec-allowed Vulkan
+destroy/free calls are used. For other terminal errors GPU completion may be
+unknown while work is still in flight: skip manual Vulkan cleanup and let the
+exiting process release resources instead.
 Capture never copies unready pixels; asynchronous readbacks fail.
 
 A failed kernel sync-file import may fall back to a CPU GPU-timeline wait.
