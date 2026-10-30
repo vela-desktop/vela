@@ -68,6 +68,10 @@ private:
 
     void setPrimaryDpi(int dpi)
     {
+        // The compat backend already scales X11 buffers with the compositor;
+        // publishing the physical DPI there would double-scale older apps.
+        if (qEnvironmentVariable("VELA_X11_NATIVE_BACKEND") != QStringLiteral("1"))
+            return;
         if (QStandardPaths::findExecutable(QStringLiteral("xrdb")).isEmpty())
             return;
         // xrdb -merge preserves all other resource keys and works with Steam's
