@@ -48,6 +48,7 @@ struct vela_vulkan {
     VkDevice device;
     VkQueue queue;
     struct vela_device_loss_policy loss;
+    bool terminal_error; // unrecoverable sync/render failure other than device loss
     struct wl_display *loss_display;
     uint32_t queue_family;
     char name[256];
@@ -79,6 +80,11 @@ struct vela_vulkan {
     VkDebugUtilsMessengerEXT messenger;
     VkPhysicalDeviceDrmPropertiesEXT drm;
 };
+
+static inline bool vela_vulkan_unusable(const struct vela_vulkan *vk)
+{
+    return vk->loss.lost || vk->terminal_error;
+}
 
 uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t type_bits, VkMemoryPropertyFlags flags);
 // A dmabuf of that format and modifier can be imported for that use.
