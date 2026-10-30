@@ -17,6 +17,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -101,17 +102,34 @@ class Desktop:
                 "DBUS_SESSION_BUS_ADDRESS": address,
                 "DBUS_SYSTEM_BUS_ADDRESS": address}
 
+    @staticmethod
+    def isolated_environment(address, scene, home, runtime):
+        """Override inherited user locations, even if a scene defines them."""
+        return {**Desktop.bus_environment(address, scene),
+                "HOME": str(home), "USER": "alex", "LOGNAME": "alex",
+                "XDG_RUNTIME_DIR": str(runtime),
+                "XDG_STATE_HOME": str(home / ".local" / "state")}
+
     def __enter__(self):
         harness.BUILD = str(self.build_dir) # tool() and Session read it
         self.vela = None
-        self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
-                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        self.bus = None
+        self._private = tempfile.TemporaryDirectory(prefix="vela-record-")
+        private = Path(self._private.name)
+        self.private_home = private / "home"
+        self.private_runtime = private / "runtime"
+        self.private_home.mkdir(mode=0o700)
+        self.private_runtime.mkdir(mode=0o700)
         try:
+            self.bus = subprocess.Popen(
+                ["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
             address = self.bus.stdout.readline().strip()
             if not address:
                 raise RuntimeError("the private D-Bus session didn't start")
             self.vela = harness.Session(size=self.scene.size, scale=self.scene.scale,
-                                        env=self.bus_environment(address, self.scene))
+                                        env=self.isolated_environment(address, self.scene,
+                                                                      self.private_home, self.private_runtime))
             self.vela.start()
             os.makedirs(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela"), exist_ok=True)
             # An empty desktop, not the user's icons.
@@ -137,16 +155,21 @@ class Desktop:
 
     def __exit__(self, kind, value, traceback):
         try:
-            if self.vela:
-                self.vela.stop(keep_log=kind is not None)
-        finally:
-            self.bus.terminate()
             try:
-                self.bus.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self.bus.kill()
-                self.bus.wait()
-            self.bus.stdout.close()
+                if self.vela:
+                    self.vela.stop(keep_log=kind is not None)
+            finally:
+                if self.bus is not None:
+                    self.bus.terminate()
+                    try:
+                        self.bus.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        self.bus.kill()
+                        self.bus.wait()
+                    if self.bus.stdout:
+                        self.bus.stdout.close()
+        finally:
+            self._private.cleanup()
         return False
 
     @staticmethod
@@ -191,7 +214,7 @@ class Desktop:
         command = [str(program), *args]
         if user:
             passwd = Path(self.vela.directory) / "passwd"
-            passwd.write_text(f"{user.lower()}:x:{os.getuid()}:{os.getgid()}:{user}:{Path.home()}:/bin/sh\n")
+            passwd.write_text(f"{user.lower()}:x:{os.getuid()}:{os.getgid()}:{user}:{self.private_home}:/bin/sh\n")
             command = ["unshare", "--user", "--map-root-user", "--mount", "sh", "-c",
                        'mount --bind "$0" /etc/passwd && uid=$1 gid=$2 && shift 2 && '
                        'exec unshare --user --map-user="$uid" --map-group="$gid" -- "$@"',
@@ -247,7 +270,7 @@ class Take:
         return self.at(self.start - lead + tick / FPS * speed for tick in range(round(duration * FPS)))
 
 
-def record(desktop, scene, directory):
+def record(desktop, scene, directory, *, align=True):
     """Runs a scene with the correctly identified output; always reap the recorder."""
     area, context = scene.prepare(desktop)
     vela = desktop.vela
@@ -278,7 +301,8 @@ def record(desktop, scene, directory):
         if recorder.wait(timeout=30) != 0:
             raise RuntimeError("vela-screen-record failed")
         take = Take(directory, start, end, presented)
-        take.align()
+        if align:
+            take.align()  # Before/after needs a shared visual change; promo keeps the opening.
         # Record only display metadata, never the user or their real devices.
         take.output_info = {key: selected[key] for key in ("name", "w", "h", "refresh")
                             if key in selected}
