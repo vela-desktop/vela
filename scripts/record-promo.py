@@ -265,7 +265,7 @@ def main(argv=None):
         parser.error("build vela-settings for window-motion, task-view and settings scenes")
     if not capture.harness.gpu_available():
         parser.error("no GPU (/dev/dri/renderD*): Vela requires a Vulkan 1.4 GPU")
-    for program in ("ffmpeg", "dbus-daemon", "pipewire", "wireplumber", "pw-cat", "unshare"):
+    for program in ("ffmpeg", "dbus-daemon", "pipewire", "wireplumber", "pw-cat", "pw-dump", "unshare"):
         if not shutil.which(program):
             parser.error(f"required program not found: {program}")
 

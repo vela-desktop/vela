@@ -10,6 +10,7 @@ from vela-screen-record, not wall-clock samples from a screen-recorder GUI.
 """
 
 import bisect
+import json
 import mmap
 import os
 from pathlib import Path
@@ -196,13 +197,39 @@ class Desktop:
             if time.monotonic() > deadline:
                 raise RuntimeError("the private PipeWire didn't start")
             time.sleep(0.05)
-        self.vela.clients.append(subprocess.Popen(["wireplumber"], env=env, stdout=self.vela.log, stderr=self.vela.log))
+        wireplumber = subprocess.Popen(["wireplumber"], env=env, stdout=self.vela.log, stderr=self.vela.log)
+        self.vela.clients.append(wireplumber)
         with open("/dev/zero", "rb") as silence: # an app in the volume mixer
-            self.vela.clients.append(subprocess.Popen(
+            music = subprocess.Popen(
                 ["pw-cat", "--playback", "--raw", "--format", "s16", "--rate", "48000", "--channels", "2",
                  "--properties", '{ application.name = "Music" }', "-"],
-                env=env, stdin=silence, stdout=self.vela.log, stderr=self.vela.log))
-        return runtime
+                env=env, stdin=silence, stdout=self.vela.log, stderr=self.vela.log)
+            self.vela.clients.append(music)
+        # The socket is not enough: the shell must find the outputs and the app.
+        deadline = time.monotonic() + 10
+        while True:
+            for process, what in ((wireplumber, "WirePlumber"), (music, "the Music stream (pw-cat)")):
+                if process.poll() is not None:
+                    raise RuntimeError(f"{what} exited on the private PipeWire")
+            dump = subprocess.run(["pw-dump"], env=env, capture_output=True, text=True, timeout=5)
+            if dump.returncode == 0 and self.audio_ready(json.loads(dump.stdout or "[]")):
+                return runtime
+            if time.monotonic() > deadline:
+                raise RuntimeError("the private PipeWire has no default output or no Music stream")
+            time.sleep(0.1)
+
+    @staticmethod
+    def audio_ready(dump):
+        """In pw-dump's objects: the made-up outputs, WirePlumber's choice of
+        default, and the Music app playing."""
+        nodes = [(o.get("info") or {}).get("props") or {} for o in dump if o.get("type") == "PipeWire:Interface:Node"]
+        defaults = {entry.get("key") for o in dump if o.get("type") == "PipeWire:Interface:Metadata"
+                    and (o.get("props") or {}).get("metadata.name") == "default"
+                    for entry in o.get("metadata") or ()}
+        return ({"speakers", "headphones"} <= {props.get("node.name") for props in nodes}
+                and "default.audio.sink" in defaults
+                and any(props.get("application.name") == "Music" and props.get("media.class") == "Stream/Output/Audio"
+                        for props in nodes))
 
     def open_app(self, path, *args, user=None):
         """One of Vela's Qt apps, if built; returns its window. user: the name

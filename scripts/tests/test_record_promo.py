@@ -95,6 +95,20 @@ class PromoTests(unittest.TestCase):
         self.assertEqual(env["DBUS_SYSTEM_BUS_ADDRESS"], address)
         self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], address)
 
+    def test_audio_waits_for_outputs_default_and_music(self):
+        def node(**props):
+            return {"type": "PipeWire:Interface:Node", "info": {"props": props}}
+        outputs = [node(**{"node.name": "speakers"}), node(**{"node.name": "headphones"})]
+        default = {"type": "PipeWire:Interface:Metadata", "props": {"metadata.name": "default"},
+                   "metadata": [{"subject": 0, "key": "default.audio.sink", "value": {"name": "speakers"}}]}
+        music = node(**{"application.name": "Music", "media.class": "Stream/Output/Audio"})
+        ready = promo.Desktop.audio_ready
+        self.assertTrue(ready([*outputs, default, music]))
+        self.assertFalse(ready([*outputs, music]))
+        self.assertFalse(ready([outputs[0], default, music]))
+        self.assertFalse(ready([*outputs, default]))
+        self.assertFalse(ready([{"type": "PipeWire:Interface:Core", "info": None}]))
+
     def test_output_planted_as_symlink_after_checks_is_replaced(self):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "out"

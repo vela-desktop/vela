@@ -352,7 +352,8 @@ def main():
         parser.error(f"unknown scene: {', '.join(unknown)}" if unknown else "--before is required")
     if not harness.gpu_available():
         sys.exit("No GPU (/dev/dri/renderD*): Vela's renderer needs one.")
-    for program in ("ffmpeg", "dbus-daemon", "cmake", "ninja", "pipewire", "wireplumber", "pw-cat", "unshare"):
+    for program in ("ffmpeg", "dbus-daemon", "cmake", "ninja", "pipewire", "wireplumber", "pw-cat", "pw-dump",
+                    "unshare"):
         if not shutil.which(program):
             sys.exit(f"{program} is missing.")
     if not RECORDER.exists():
