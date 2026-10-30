@@ -139,6 +139,24 @@ class PromoTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "user and mount namespaces.*uid_map"):
                 promo.capture.check_user_namespaces()
 
+    def test_start_lists_only_made_up_and_vela_apps(self):
+        with tempfile.TemporaryDirectory() as folder:
+            applications = promo.Desktop.demo_applications(Path(folder) / "applications")
+            names = sorted(path.name for path in applications.iterdir())
+            entries = [path.read_text() for path in applications.iterdir()]
+        self.assertEqual(names, sorted([f"{app}.desktop" for app, _, _ in promo.capture.DEMO_APPS] +
+                                       ["vela-files.desktop", "vela-settings.desktop"]))
+        self.assertTrue(all("Type=Application" in entry for entry in entries))
+
+    def test_demo_user_sees_its_passwd_and_apps(self):
+        command = promo.capture.as_user(Path("/private/passwd"), Path("/private/applications"), ["vela-shell"])
+        script = command[command.index("-c") + 1]
+        self.assertIn('mount --bind "$0" /etc/passwd', script)
+        self.assertIn('mount --bind "$1" /usr/share/applications', script)
+        self.assertEqual(command[command.index("-c") + 2:command.index("-c") + 4],
+                         ["/private/passwd", "/private/applications"])
+        self.assertEqual(command[-1], "vela-shell")
+
     def test_output_planted_as_symlink_after_checks_is_replaced(self):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "out"

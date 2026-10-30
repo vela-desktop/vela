@@ -267,11 +267,10 @@ def main(argv=None):
     for program in ("ffmpeg", "dbus-daemon", "pipewire", "wireplumber", "pw-cat", "pw-dump", "unshare"):
         if not shutil.which(program):
             parser.error(f"required program not found: {program}")
-    if with_settings:
-        try:
-            capture.check_user_namespaces()
-        except RuntimeError as error:
-            parser.error(str(error))
+    try:
+        capture.check_user_namespaces()
+    except RuntimeError as error:
+        parser.error(str(error))
 
     output.mkdir(parents=True, exist_ok=True)
     # Everything is written here first, private and unpredictable, then

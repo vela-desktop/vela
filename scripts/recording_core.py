@@ -83,6 +83,22 @@ WIREPLUMBER_NO_HARDWARE = """wireplumber.profiles = {
   }
 }
 """
+# Start lists these instead of the apps installed here: made-up, without
+# brands and the same on every PC, under ids Vela pins by default (so the
+# taskbar and Start's pinned apps aren't empty); and Vela's apps for people.
+DEMO_APPS = (("firefox", "Web Browser", "internet-web-browser"),
+             ("org.kde.konsole", "Terminal", "utilities-terminal"),
+             ("org.kde.kate", "Text Editor", "accessories-text-editor"),
+             ("org.kde.okular", "Document Viewer", "x-office-document"),
+             ("org.kde.gwenview", "Image Viewer", "image-x-generic"),
+             ("org.kde.kcalc", "Calculator", "accessories-calculator"),
+             ("org.kde.plasma-systemmonitor", "System Monitor", "utilities-system-monitor"),
+             ("demo-mail", "Mail", "internet-mail"),
+             ("demo-calendar", "Calendar", "x-office-calendar"),
+             ("demo-music", "Music", "audio-x-generic"),
+             ("demo-videos", "Videos", "video-x-generic"),
+             ("demo-archives", "Archive Manager", "utilities-file-archiver"))
+VELA_APPS = ("explorer/vela-files.desktop", "settings/vela-settings.desktop")
 
 
 class Desktop:
@@ -155,10 +171,14 @@ class Desktop:
             with open(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "user-dirs.dirs"), "w") as file:
                 file.write(f'XDG_DESKTOP_DIR="{desktop}"\n')
             pipewire = self.start_pipewire()
+            # Only /usr/share, where as_user() puts the demo apps: no Flatpak
+            # or /usr/local entries of this PC.
             self.qt_env = dict(self.vela.client_env, QT_QPA_PLATFORM="wayland", QT_WAYLAND_RECONNECT="0",
                                QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
-                               PIPEWIRE_RUNTIME_DIR=pipewire)
-            shell = subprocess.Popen([str(self.build_dir / "shell" / "vela-shell")],
+                               PIPEWIRE_RUNTIME_DIR=pipewire, XDG_DATA_DIRS="/usr/share")
+            self.applications = self.demo_applications(Path(self.vela.directory) / "applications")
+            # Start shows the account's name and the apps: the demo user's.
+            shell = subprocess.Popen(self.as_user("Alex", [str(self.build_dir / "shell" / "vela-shell")]),
                                      env=dict(self.qt_env, QT_WAYLAND_SHELL_INTEGRATION="layer-shell"),
                                      stdout=self.vela.log, stderr=self.vela.log)
             self.vela.clients.append(shell)
@@ -247,6 +267,24 @@ class Desktop:
                 and any(props.get("application.name") == "Music" and props.get("media.class") == "Stream/Output/Audio"
                         for props in nodes))
 
+    @staticmethod
+    def demo_applications(directory):
+        """Writes DEMO_APPS and Vela's apps to directory, and returns it."""
+        directory.mkdir()
+        for app, name, icon in DEMO_APPS:
+            (directory / f"{app}.desktop").write_text(
+                f"[Desktop Entry]\nType=Application\nName={name}\nIcon={icon}\nExec=true\n")
+        for source in VELA_APPS:
+            shutil.copyfile(ROOT / source, directory / Path(source).name)
+        return directory
+
+    def as_user(self, user, command):
+        """command as a made-up user (Settings and Start show the name, the
+        GECOS field), with the demo apps."""
+        passwd = Path(self.vela.directory) / "passwd"
+        passwd.write_text(f"{user.lower()}:x:{os.getuid()}:{os.getgid()}:{user}:{self.private_home}:/bin/sh\n")
+        return as_user(passwd, self.applications, command)
+
     def open_app(self, path, *args, user=None):
         """One of Vela's Qt apps, if built; returns its window. user: the name
         it sees in /etc/passwd (Settings shows it)."""
@@ -255,9 +293,7 @@ class Desktop:
             return None
         command = [str(program), *args]
         if user:
-            passwd = Path(self.vela.directory) / "passwd"
-            passwd.write_text(f"{user.lower()}:x:{os.getuid()}:{os.getgid()}:{user}:{self.private_home}:/bin/sh\n")
-            command = as_user(passwd, command)
+            command = self.as_user(user, command)
         before = {w["id"] for w in self.vela.state().windows}
         self.vela.clients.append(subprocess.Popen(command, env=self.qt_env,
                                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
@@ -266,28 +302,29 @@ class Desktop:
         return next(iter({w["id"] for w in state.windows} - before))
 
 
-def as_user(passwd, command):
-    """command, seeing passwd as /etc/passwd, through two user namespaces:
-    the outer one may mount, the inner one is us again."""
+def as_user(passwd, applications, command):
+    """command, seeing passwd as /etc/passwd and applications as
+    /usr/share/applications, through two user namespaces: the outer one may
+    mount, the inner one is us again."""
     return ["unshare", "--user", "--map-root-user", "--mount", "sh", "-c",
-            'mount --bind "$0" /etc/passwd && uid=$1 gid=$2 && shift 2 && '
-            'exec unshare --user --map-user="$uid" --map-group="$gid" -- "$@"',
-            str(passwd), str(os.getuid()), str(os.getgid()), *command]
+            'mount --bind "$0" /etc/passwd && mount --bind "$1" /usr/share/applications && '
+            'uid=$2 gid=$3 && shift 3 && exec unshare --user --map-user="$uid" --map-group="$gid" -- "$@"',
+            str(passwd), str(applications), str(os.getuid()), str(os.getgid()), *command]
 
 
 def check_user_namespaces():
-    """Scenes with Settings open it through as_user(): say now, and why, if
+    """The shell and Settings run through as_user(): say now, and why, if
     this system won't, rather than time out on a window that never opens."""
     with tempfile.TemporaryDirectory(prefix="vela-userns-") as folder:
         passwd = Path(folder) / "passwd"
         passwd.write_text(f"alex:x:{os.getuid()}:{os.getgid()}:Alex:{folder}:/bin/sh\n")
         try:
-            probe = subprocess.run(as_user(passwd, ["true"]), stdout=subprocess.DEVNULL,
+            probe = subprocess.run(as_user(passwd, folder, ["true"]), stdout=subprocess.DEVNULL,
                                    stderr=subprocess.PIPE, text=True, timeout=10)
         except subprocess.TimeoutExpired:
             raise RuntimeError("the user namespace probe (unshare --user --mount) timed out") from None
     if probe.returncode != 0:
-        raise RuntimeError("unprivileged user and mount namespaces are unavailable, and Settings scenes need "
+        raise RuntimeError("unprivileged user and mount namespaces are unavailable, and the recordings need "
                            f"them (unshare --user --mount): {probe.stderr.strip() or f'exit {probe.returncode}'}")
 
 

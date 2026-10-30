@@ -288,9 +288,11 @@ private D-Bus and PipeWire deliberately disconnect the host's Bluetooth/network
 services, so those Quick Settings tiles may appear unavailable. The compositor
 and Qt clients also receive a temporary private HOME, XDG runtime and state
 directory, and so does the private `dbus-daemon`, which hands its environment
-to any service it activates; Settings sees the synthetic user `Alex`, through
-unprivileged user and mount namespaces that are probed before any scene with
-Settings starts. A scene starts only once WirePlumber has chosen a default
+to any service it activates. The shell and Settings see the synthetic user
+`Alex` and, in Start, a fixed set of made-up apps without brands (plus File
+Explorer and Settings) instead of the apps installed on the host, through
+unprivileged user and mount namespaces that are probed before recording. A
+scene starts only once WirePlumber has chosen a default
 output among the made-up devices and the made-up `Music` app is playing
 silence (seen with `pw-dump`). This is **not** a full network or filesystem
 sandbox: scenes must still avoid private files, host data
@@ -334,12 +336,13 @@ about frame pacing (`maximize`) also give a strip of consecutive refreshes,
 before above and after below (`maximize-frames.png`), and say how many repeat
 the previous image. It needs
 a GPU, `dbus-daemon`, `ffmpeg`, PipeWire (with `pw-cat` and `pw-dump`) with
-WirePlumber and unprivileged user namespaces, which it checks before building. Both the session and system D-Bus addresses point to the
+WirePlumber and unprivileged user namespaces, which it checks before building.
+Both the session and system D-Bus addresses point to the
 take's private bus; NetworkManager, BlueZ and other host services are not
 available to the shell, so real network names and device identities cannot
 appear in Quick Settings (those devices will show as unavailable). The text
-is in English, sound devices are made up on a private PipeWire, and Settings
-sees a user named Alex.
+is in English, sound devices are made up on a private PipeWire, and the shell
+and Settings see a user named Alex and made-up apps.
 
 For each take it prints the frames captured and the frames presented. Frames
 where only the pointer moved are presented but not captured, since captures
