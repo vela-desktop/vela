@@ -5,8 +5,10 @@
 supervisor restarting the compositor after a crash (locked too)."""
 
 import os
+import select
 import signal
 import socket
+import subprocess
 import struct
 import tempfile
 import time
@@ -99,19 +101,39 @@ class Lock(unittest.TestCase):
         """Keyboard Move/Size must not steal the locker's password keystrokes."""
         for mode in ("move", "resize"):
             with self.subTest(mode=mode):
-                with Session(lock_hold_ms=6000, env={"VELA_TESTLOCK_LOG_KEYBOARD": "1"}) as vela:
+                with Session(lock_hold_ms=10000, env={"VELA_TESTLOCK_LOG_KEYBOARD": "1"}) as vela:
                     window = vela.open_window(400, 300, decorated=True)
                     vela.wait_for(lambda s: s["focused"] == window)
                     original = vela.state().window(window)
                     vela.command(f"window active {mode}")
-                    vela.command("lock")
-                    vela.wait_for_log("vela-testlock: locked")
-                    vela.input("key", "Right")
-                    # Linux input-event-codes: KEY_RIGHT = 106.
-                    vela.wait_for_log("vela-testlock: keyboard-key 106 1", timeout=3)
-                    self.assertTrue(vela.state()["locked"])
-                    frame = vela.state().window(window)
-                    self.assertEqual((frame["x"], frame["y"]), (original["x"], original["y"]))
+                    # The headless backend has no physical keyboard. vela-input
+                    # normally disconnects after each gesture, so the seat has
+                    # no keyboard when the locker maps. Keep one virtual device
+                    # connected throughout the lock, as a real keyboard would.
+                    # The checkpoint roundtrip proves that it was registered.
+                    keyboard = subprocess.Popen(
+                        [tool("vela-input"), "checkpoint"], env=vela.client_env,
+                        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE, text=True)
+                    try:
+                        ready, _, _ = select.select([keyboard.stdout], [], [], 5)
+                        self.assertTrue(ready, "virtual keyboard did not register")
+                        self.assertEqual(keyboard.stdout.readline().strip(), "READY")
+                        vela.command("lock")
+                        vela.wait_for_log("vela-testlock: locked")
+                        # Check actual wl_keyboard focus before delivering a key.
+                        vela.wait_for_log("vela-testlock: keyboard-enter", timeout=5)
+                        vela.input("key", "Right")
+                        # Linux input-event-codes: KEY_RIGHT = 106.
+                        vela.wait_for_log("vela-testlock: keyboard-key 106 1", timeout=3)
+                        self.assertTrue(vela.state()["locked"])
+                        frame = vela.state().window(window)
+                        self.assertEqual(tuple(frame[k] for k in ("x", "y", "w", "h")),
+                                         tuple(original[k] for k in ("x", "y", "w", "h")))
+                    finally:
+                        if keyboard.poll() is None:
+                            keyboard.terminate()
+                        keyboard.communicate(timeout=5)
 
     def test_lock_pointer_retargets_after_output_layout_change(self):
         """A cursor relocated to a surviving output must be able to click without moving."""

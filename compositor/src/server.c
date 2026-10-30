@@ -183,14 +183,17 @@ static bool init(struct vela_server *server)
     // Vela's renderer (docs/renderer.md): Vulkan 1.4 only, on the device of
     // the GPU driving the outputs. Without it Vela doesn't start and the log
     // says why.
-    server->vulkan = vela_vulkan_create(wlr_backend_get_drm_fd(server->backend));
+    server->vulkan = vela_vulkan_create(wlr_backend_get_drm_fd(server->backend), &server->init_device_lost);
     if (server->vulkan) {
+        vela_vulkan_set_display(server->vulkan, display);
         server->renderer = vela_renderer_create(server->vulkan);
     }
     if (!server->renderer) {
         wlr_log(WLR_ERROR, "Vela needs a GPU with Vulkan 1.4 and dmabuf support: can't draw");
-        server->unsupported_gpu = true;
-        vela_error_screen_no_vulkan(wlr_backend_get_drm_fd(server->backend));
+        server->unsupported_gpu = !server->init_device_lost && !vela_vulkan_device_lost(server->vulkan);
+        if (server->unsupported_gpu) {
+            vela_error_screen_no_vulkan(wlr_backend_get_drm_fd(server->backend));
+        }
         return false;
     }
     server->wlr_renderer = vela_renderer_wlr(server->renderer);
@@ -303,15 +306,17 @@ static bool init(struct vela_server *server)
     return true;
 }
 
-struct vela_server *vela_server_create(bool *unsupported_gpu)
+struct vela_server *vela_server_create(bool *unsupported_gpu, bool *device_lost)
 {
     if (unsupported_gpu) *unsupported_gpu = false;
+    if (device_lost) *device_lost = false;
     struct vela_server *server = calloc(1, sizeof(*server));
     server->runtime_dir_fd = -1;
     if (!init(server)) {
         // What was already created is left to the process, which is about to
         // end.
         if (unsupported_gpu) *unsupported_gpu = server->unsupported_gpu;
+        if (device_lost) *device_lost = server->init_device_lost || vela_vulkan_device_lost(server->vulkan);
         free(server);
         return NULL;
     }
@@ -358,6 +363,9 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
         wlr_log(WLR_ERROR, "Can't create the Wayland socket");
         return false;
     }
+    // This is only set after the inherited socket has actually been accepted.
+    // On a direct launch there is no supervisor to run the final stop hook.
+    server->supervised = supervised;
     snprintf(server->socket_name, sizeof(server->socket_name), "%s", socket);
 
     if (!wlr_backend_start(server->backend)) {
@@ -444,7 +452,12 @@ void vela_server_destroy(struct vela_server *server)
     vela_child_stop(&server->updates);
     vela_brightness_destroy(server);
     vela_commands_stop(server);
-    if (server->session) {
+    // In supervised sessions, device loss is a restart rather than logout:
+    // leave the systemd target/environment active until the supervisor ends
+    // the session. Direct launches have no supervisor, so they must stop it
+    // even on a terminal renderer failure.
+    if (vela_session_should_stop(server->session != NULL, server->supervised,
+            vela_vulkan_terminal_failure(server->vulkan))) {
         vela_session_run_hook("stop");
     }
     vela_xwayland_finish(server); // X11 windows before the Wayland clients
@@ -503,7 +516,13 @@ void vela_server_destroy(struct vela_server *server)
     // Keep an emergency hardware-specific opt-out while the driver matrix is
     // validated: no GPU resources are freed manually when that flag is set,
     // and the kernel reclaims them on process exit (the previous behavior).
-    if (!vela_env_one("VELA_SKIP_VULKAN_CLEANUP")) {
+    // A non-device-loss terminal failure may leave queued work executing.
+    // Vulkan object destruction would require proof of GPU completion; let
+    // process exit reclaim those resources rather than risking use-after-free.
+    // Device-loss destruction is handled separately by the renderer.
+    bool uncertain_gpu_work = vela_vulkan_terminal_failure(server->vulkan)
+        && !vela_vulkan_device_lost(server->vulkan);
+    if (!vela_env_one("VELA_SKIP_VULKAN_CLEANUP") && !uncertain_gpu_work) {
         wlr_log(WLR_INFO, "Shutdown: releasing Vulkan renderer, allocator and device");
         // The renderer notifies its users (wlr_compositor) before teardown.
         wlr_renderer_destroy(server->wlr_renderer);
@@ -512,7 +531,7 @@ void vela_server_destroy(struct vela_server *server)
         vela_vulkan_destroy(server->vulkan); // last: everything else uses its device
         wlr_log(WLR_INFO, "Shutdown: Vulkan resource cleanup complete");
     } else {
-        wlr_log(WLR_INFO, "WARNING: Shutdown: skipping Vulkan resource cleanup (diagnostic override)");
+        wlr_log(WLR_INFO, "WARNING: Shutdown: skipping Vulkan resource cleanup (diagnostic override or unknown GPU completion)");
     }
     wl_display_destroy(server->display);
     if (server->runtime_dir_fd >= 0) {

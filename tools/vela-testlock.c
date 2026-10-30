@@ -164,7 +164,12 @@ static void keyboard_keymap(void* data, struct wl_keyboard* kb, uint32_t format,
     close(fd);
 }
 static void keyboard_enter(void* data, struct wl_keyboard* kb, uint32_t serial,
-    struct wl_surface* surface, struct wl_array* keys) { }
+    struct wl_surface* surface, struct wl_array* keys)
+{
+    if (log_keyboard) {
+        fprintf(stderr, "vela-testlock: keyboard-enter\n");
+    }
+}
 static void keyboard_leave(void* data, struct wl_keyboard* kb, uint32_t serial, struct wl_surface* surface) { }
 /** Log keyboard events to check that desktop interactions cannot steal them. */
 static void keyboard_key(void* data, struct wl_keyboard* kb, uint32_t serial,
@@ -254,6 +259,16 @@ int main(int argc, char* argv[])
     if (!compositor || !shm || !manager) {
         fprintf(stderr, "vela-testlock: ext-session-lock-v1 is missing\n");
         return 1;
+    }
+    if (log_keyboard) {
+        // The first registry roundtrip need not deliver wl_seat.capabilities:
+        // the seat itself was just bound in a registry callback. Complete its
+        // negotiation before mapping a lock surface, or wl_keyboard.enter can
+        // be sent before the test client has created its keyboard resource.
+        if (wl_display_roundtrip(display) < 0 || !keyboard) {
+            fprintf(stderr, "vela-testlock: keyboard probe needs an active seat keyboard\n");
+            return 1;
+        }
     }
 
     struct ext_session_lock_v1* lock = ext_session_lock_manager_v1_lock(manager);

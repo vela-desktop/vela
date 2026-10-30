@@ -242,6 +242,26 @@ install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # sharpness geometry, color, sun, settings. They need GoogleTest (the gtest
 # package) and the test tools enabled.
 if(VELA_BUILD_TOOLS)
+    add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
+    target_include_directories(vela-device-loss-policy-test PRIVATE src)
+    set_target_properties(vela-device-loss-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    target_compile_options(vela-device-loss-policy-test PRIVATE -Wall -Wextra -Werror)
+    add_test(NAME compositor.device-loss-policy COMMAND vela-device-loss-policy-test)
+
+    # Run the production vkCreateDevice/vela_vulkan_create error path against
+    # deterministic entry-point stubs, without opening a GPU or Wayland session.
+    add_executable(vela-vulkan-device-init-test tests/vulkan_device_init_test.c src/render/formats.c)
+    target_include_directories(vela-vulkan-device-init-test PRIVATE src)
+    target_compile_definitions(vela-vulkan-device-init-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-vulkan-device-init-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-vulkan-device-init-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-vulkan-device-init-test PRIVATE vela-pure PkgConfig::VULKAN
+        PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM)
+    set_target_properties(vela-vulkan-device-init-test PROPERTIES C_STANDARD 17
+        C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.vulkan-device-init COMMAND vela-vulkan-device-init-test)
+
     # GPU-free policy test: verifies that the cursor-specific flags cannot
     # leak into ordinary output/capture allocations.
     add_executable(vela-cursor-policy-test tests/cursor_policy_test.c)
@@ -328,7 +348,7 @@ if(VELA_BUILD_TOOLS)
     add_executable(vela-readback-test tests/readback_test.c src/render/formats.c
         src/render/wait_arrays.c ${VELA_SHADERS})
     target_include_directories(vela-readback-test PRIVATE src ${VELA_SHADER_DIR} ${VELA_GENERATED_DIR})
-    target_compile_definitions(vela-readback-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_definitions(vela-readback-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
     target_compile_options(vela-readback-test PRIVATE -ffunction-sections -fdata-sections
         -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
     target_link_options(vela-readback-test PRIVATE -Wl,--gc-sections)
