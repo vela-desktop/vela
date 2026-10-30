@@ -584,6 +584,20 @@ static void handle_request_configure(struct wl_listener *listener, void *data)
         return;
     }
     if (view->maximized || view->fullscreen || !vela_snap_is_none(view->snap)) {
+        // A fullscreen X11 game may explicitly relocate to another RandR
+        // monitor by configuring its top-left. Preserve fullscreen, but
+        // migrate only when the request changes X/Y and points to the exact
+        // origin of another enabled output. Size-only requests (typical
+        // resolution changes) must NEVER move the window across monitors.
+        if (view->fullscreen && (event->mask & (XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y))) {
+            struct vela_output *target = vela_output_at(view->server, event->x + 1, event->y + 1);
+            if (target && target != vela_view_output(view)) {
+                const struct wlr_box box = vela_output_box(target);
+                if (abs(event->x - box.x) <= 1 && abs(event->y - box.y) <= 1) {
+                    vela_view_fullscreen_output(view, target);
+                }
+            }
+        }
         view->x11_sent = (struct wlr_box) { 0 }; // we decide: our geometry is repeated
         vela_view_sync_x11(view);
         return;
