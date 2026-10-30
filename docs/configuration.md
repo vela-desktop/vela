@@ -73,16 +73,19 @@ The Settings app is the preferred way to edit these values because it applies va
 
 ## XWayland primary output and native-resolution games
 
-**Native physical-resolution XWayland is enabled by default.** Vela launches
-Xwayland Satellite >= 0.7 for the whole graphical session. The Arch, Fedora
+**Native physical-resolution XWayland is experimental.** Vela can launch
+Xwayland Satellite >= 0.7 for the whole graphical session, but the default
+remains integrated wlroots XWayland while mixed-monitor input regions and
+X11 minimize/maximize bridging remain broken in upstream Satellite. The Arch, Fedora
 and experimental Debian packages declare Satellite as a runtime dependency.
 It runs on Vela's Wayland server and inherits compositor-created X11 listening
-sockets. Steam and Proton use the session's `DISPLAY`; **leave each game's
-Steam launch options empty**.
+sockets when selected with `xwayland-backend=native` in
+`~/.config/vela/vela.conf` and a session restart. Steam and Proton then use
+the session's `DISPLAY`; **leave each game's Steam launch options empty**.
 
 Satellite reports native physical modes, even with fractional Wayland scaling.
 For example a 2560×1440 monitor at 125% must offer 2560×1440 in XRandR,
-not merely the 2048×1152 logical mode. After installing the PR, **restart
+not merely the 2048×1152 logical mode. After installing the PR, **enable `xwayland-backend=native`, restart
 the whole Vela session and restart Steam**. In a terminal started inside the
 new session, check:
 
@@ -123,9 +126,10 @@ xwayland-backend=compat
 ```
 
 and restart Vela. This restores the integrated wlroots XWayland backend and
-its legacy logical-resolution scaling. `xwayland-backend=native` is the
-default; for one-off diagnostic sessions, `VELA_XWAYLAND_BACKEND=compat`
-overrides the config without editing it. If Satellite cannot start, Vela
+its legacy logical-resolution scaling. `xwayland-backend=compat` is the default; for one-off diagnostic sessions,
+`VELA_XWAYLAND_BACKEND=native` overrides the config without editing it.
+Native mode is currently **not recommended for everyday use** on mixed-scale
+outputs pending Satellite PRs #452 and #546. If Satellite cannot start, Vela
 falls back to compatibility mode and logs the failure.
 
 A Satellite-bridged X11 window appears to Vela as a Wayland XDG window.
