@@ -381,11 +381,14 @@ int main(int argc, char** argv)
     int arg = 1;
     const char* appId = "vela.pattern";
     int decorated = 0;
+    int fixedSize = 0;
     for (; arg < argc && !strncmp(argv[arg], "--", 2); ++arg) {
         if (!strcmp(argv[arg], "--scale1")) {
             legacy = 1;
         } else if (!strcmp(argv[arg], "--decorated")) {
             decorated = 1;
+        } else if (!strcmp(argv[arg], "--fixed-size")) {
+            fixedSize = 1;
         } else if (!strcmp(argv[arg], "--popup") && arg + 1 < argc
             && sscanf(argv[arg + 1], "%d,%d", &popupX, &popupY) == 2) {
             popupWanted = 1;
@@ -443,6 +446,10 @@ int main(int argc, char** argv)
     xdg_toplevel_add_listener(toplevel, &toplevelListener, NULL);
     xdg_toplevel_set_title(toplevel, "vela-pattern");
     xdg_toplevel_set_app_id(toplevel, appId);
+    if (fixedSize) {
+        xdg_toplevel_set_min_size(toplevel, logicalWidth, logicalHeight);
+        xdg_toplevel_set_max_size(toplevel, logicalWidth, logicalHeight);
+    }
     if (fullscreenParent) {
         if (fullscreenOutputIndex >= hostOutputCount) {
             fprintf(stderr, "vela-pattern: requested fullscreen output unavailable\\n");
