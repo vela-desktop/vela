@@ -43,9 +43,9 @@ struct wl_display;
 // ------------------------------------------------------------- device --
 
 // backend_drm_fd: the backend's DRM device (-1 if it has none, such as
-// headless): the matching GPU is chosen. NULL if Vulkan 1.4 or the required
-// extensions are missing; the reason is already in the log.
-struct vela_vulkan *vela_vulkan_create(int backend_drm_fd);
+// headless): the matching GPU is chosen. NULL on failure; device_lost reports
+// VK_ERROR_DEVICE_LOST even when the context was already destroyed.
+struct vela_vulkan *vela_vulkan_create(int backend_drm_fd, bool *device_lost);
 void vela_vulkan_destroy(struct vela_vulkan *vk);
 void vela_vulkan_set_display(struct vela_vulkan *vk, struct wl_display *display);
 bool vela_vulkan_device_lost(const struct vela_vulkan *vk);
