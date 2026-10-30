@@ -303,15 +303,17 @@ static bool init(struct vela_server *server)
     return true;
 }
 
-struct vela_server *vela_server_create(bool *unsupported_gpu)
+struct vela_server *vela_server_create(bool *unsupported_gpu, bool *device_lost)
 {
     if (unsupported_gpu) *unsupported_gpu = false;
+    if (device_lost) *device_lost = false;
     struct vela_server *server = calloc(1, sizeof(*server));
     server->runtime_dir_fd = -1;
     if (!init(server)) {
         // What was already created is left to the process, which is about to
         // end.
         if (unsupported_gpu) *unsupported_gpu = server->unsupported_gpu;
+        if (device_lost) *device_lost = vela_vulkan_device_lost(server->vulkan);
         free(server);
         return NULL;
     }
@@ -446,7 +448,7 @@ void vela_server_destroy(struct vela_server *server)
     // graphical session target and imported environment alive so the new
     // compositor can reconnect to the existing user session. The supervisor
     // runs the stop hook only if it really ends the entire session.
-    if (server->session && !vela_vulkan_device_lost(server->vulkan)) {
+    if (server->session && !vela_vulkan_terminal_failure(server->vulkan)) {
         vela_session_run_hook("stop");
     }
     vela_xwayland_finish(server); // X11 windows before the Wayland clients
