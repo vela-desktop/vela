@@ -917,6 +917,8 @@ void vela_view_set_maximized(struct vela_view *view, bool on, bool animate)
     // Respect the client's min=max size hints rather than special-casing games.
     if (on && !vela_view_resizable(view)) {
         if (view->xdg) {
+            // When VELA_XDG_TRACE=1 a preceding XDG_STATE line includes
+            // these size hints and identifies why a maximize was rejected.
             wlr_xdg_surface_schedule_configure(view->xdg->base);
         }
         return;
@@ -1424,9 +1426,35 @@ static void handle_request_resize(struct wl_listener *listener, void *data)
     vela_interact_begin(view->server, view, VELA_CURSOR_RESIZE, event->edges, false);
 }
 
+// Opt-in trace for protocol boundary diagnostics. In Satellite mode X11
+// maximization/fullscreen must first be translated into these XDG requests.
+// If an X11 button changes state but nothing is logged, the bridge dropped it.
+static bool trace_xdg_window_state(void)
+{
+    const char *value = getenv("VELA_XDG_TRACE");
+    return value && strcmp(value, "1") == 0;
+}
+
+static void log_xdg_state_request(struct vela_view *view, const char *request)
+{
+    if (!trace_xdg_window_state()) {
+        return;
+    }
+    const struct wlr_xdg_toplevel_state *state = &view->xdg->current;
+    wlr_log(WLR_INFO,
+        "XDG_STATE request=%s app=%s title=%s initialized=%d mapped=%d "
+        "want_fullscreen=%d want_maximized=%d current_fullscreen=%d current_maximized=%d "
+        "min=%dx%d max=%dx%d resizable=%d",
+        request, vela_view_app_id(view), vela_view_title(view), view->xdg->base->initialized,
+        view->mapped, view->xdg->requested.fullscreen, view->xdg->requested.maximized,
+        view->fullscreen, view->maximized, state->min_width, state->min_height,
+        state->max_width, state->max_height, vela_view_resizable(view));
+}
+
 static void handle_request_maximize(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, request_maximize);
+    log_xdg_state_request(view, "maximize");
     if (view->xdg->base->initialized) {
         vela_view_set_maximized(view, view->xdg->requested.maximized, true);
     }
@@ -1435,6 +1463,7 @@ static void handle_request_maximize(struct wl_listener *listener, void *data)
 static void handle_request_fullscreen(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, request_fullscreen);
+    log_xdg_state_request(view, "fullscreen");
     if (view->xdg->base->initialized) {
         const bool on = view->xdg->requested.fullscreen;
         struct vela_output *requested = NULL;
