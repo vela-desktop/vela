@@ -99,13 +99,17 @@ class Lock(unittest.TestCase):
         """Keyboard Move/Size must not steal the locker's password keystrokes."""
         for mode in ("move", "resize"):
             with self.subTest(mode=mode):
-                with Session(lock_hold_ms=6000, env={"VELA_TESTLOCK_LOG_KEYBOARD": "1"}) as vela:
+                with Session(lock_hold_ms=10000, env={"VELA_TESTLOCK_LOG_KEYBOARD": "1"}) as vela:
                     window = vela.open_window(400, 300, decorated=True)
                     vela.wait_for(lambda s: s["focused"] == window)
                     original = vela.state().window(window)
                     vela.command(f"window active {mode}")
                     vela.command("lock")
                     vela.wait_for_log("vela-testlock: locked")
+                    # The lock event can precede wl_keyboard.enter. Wait for the
+                    # locker to own keyboard focus before injecting the key;
+                    # otherwise the test races with the lock surface mapping.
+                    vela.wait_for_log("vela-testlock: keyboard-enter", timeout=5)
                     vela.input("key", "Right")
                     # Linux input-event-codes: KEY_RIGHT = 106.
                     vela.wait_for_log("vela-testlock: keyboard-key 106 1", timeout=3)
