@@ -13,8 +13,8 @@ static int maps, destroyed, freed, command_allocations;
 static uint8_t mapping[256];
 static VkDeviceSize buffer_size;
 static uint64_t completed_point;
-static int counter_polls, end_calls, submit_calls, wait_calls;
-static VkResult submit_result, wait_result;
+static int counter_polls, end_calls, submit_calls, wait_calls, semaphore_creates;
+static VkResult submit_result, wait_result, end_result, semaphore_result;
 
 void _wlr_log(enum wlr_log_importance importance, const char *format, ...) {}
 
@@ -23,7 +23,12 @@ void _wlr_log(enum wlr_log_importance importance, const char *format, ...) {}
 bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *operation)
 {
     vela_device_loss_mark(&vk->loss, (int32_t)result, operation);
-    return result == VK_SUCCESS && !vk->loss.lost;
+    return result == VK_SUCCESS && !vela_vulkan_unusable(vk);
+}
+
+void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation)
+{
+    vk->terminal_error = true;
 }
 
 // Sanitizer global metadata can retain renderer vtables. These unrelated
@@ -106,7 +111,15 @@ VKAPI_ATTR VkResult VKAPI_CALL vkGetSemaphoreCounterValue(VkDevice device, VkSem
 VKAPI_ATTR VkResult VKAPI_CALL vkEndCommandBuffer(VkCommandBuffer cmd)
 {
     ++end_calls;
-    return VK_SUCCESS;
+    return end_result;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateSemaphore(VkDevice device, const VkSemaphoreCreateInfo *info,
+    const VkAllocationCallbacks *allocator, VkSemaphore *semaphore)
+{
+    ++semaphore_creates;
+    *semaphore = semaphore_result == VK_SUCCESS ? (VkSemaphore)(uintptr_t)42 : VK_NULL_HANDLE;
+    return semaphore_result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit2(VkQueue queue, uint32_t count,
@@ -165,13 +178,47 @@ static void device_loss_stops_reuse(void)
     assert(vk.loss.lost);
     assert(strcmp(vk.loss.first_operation, "vkBindBufferMemory(staging)") == 0);
     assert(destroyed == 1 && freed == 1);
+    // The first staging request legitimately polls *before* vkBindBufferMemory
+    // reports loss; only new polling after the loss must be forbidden.
+    const int polls_before_loss = counter_polls;
     assert(!vela_renderer_stage_readback(&renderer, sizeof(mapping), &staging));
     assert(!vela_renderer_begin_commands(&renderer));
     assert(!vela_renderer_wait(&renderer, 3));
     assert(vela_renderer_completed(&renderer) == 0);
     vela_renderer_collect(&renderer);
-    assert(counter_polls == 0 && command_allocations == 0 && maps == 0);
+    assert(counter_polls == polls_before_loss && command_allocations == 0 && maps == 0);
     bind_result = VK_SUCCESS;
+}
+
+static void map_loss_stops_new_allocations(void)
+{
+    struct vela_vulkan vk = { 0 };
+    struct vela_renderer renderer = { .vk = &vk };
+    struct vela_staging staging;
+    bind_result = VK_SUCCESS;
+    map_result = VK_ERROR_DEVICE_LOST;
+    maps = destroyed = freed = 0;
+    assert(!vela_renderer_stage_readback(&renderer, sizeof(mapping), &staging));
+    assert(vk.loss.lost);
+    assert(strcmp(vk.loss.first_operation, "vkMapMemory(staging)") == 0);
+    assert(maps == 1 && destroyed == 1 && freed == 1);
+    assert(!vela_renderer_stage_readback(&renderer, sizeof(mapping), &staging));
+    assert(maps == 1);
+    map_result = VK_SUCCESS;
+}
+
+static void semaphore_creation_loss(void)
+{
+    struct vela_vulkan vk = { 0 };
+    struct vela_renderer renderer = { .vk = &vk };
+    semaphore_creates = 0;
+    semaphore_result = VK_ERROR_DEVICE_LOST;
+    assert(!take_semaphore(&renderer, false));
+    assert(vk.loss.lost);
+    assert(strcmp(vk.loss.first_operation, "vkCreateSemaphore(sync)") == 0);
+    assert(!take_semaphore(&renderer, false));
+    assert(semaphore_creates == 1);
+    semaphore_result = VK_SUCCESS;
 }
 
 static void submission_loss_stops_new_gpu_work(void)
@@ -186,6 +233,39 @@ static void submission_loss_stops_new_gpu_work(void)
     assert(renderer.last_point == 0 && end_calls == 1 && submit_calls == 1);
     assert(!vela_renderer_submit(&renderer, (VkCommandBuffer)(uintptr_t)1, NULL, 0, NULL));
     assert(end_calls == 1 && submit_calls == 1); // no new Vulkan work
+}
+
+static void failed_end_releases_command_reservations(void)
+{
+    struct vela_vulkan vk = { 0 };
+    const VkCommandBuffer draw = (VkCommandBuffer)(uintptr_t)1;
+    const VkCommandBuffer upload = (VkCommandBuffer)(uintptr_t)2;
+    struct command_slot slots[2] = { { .cmd = draw, .busy = true }, { .cmd = upload, .busy = true } };
+    struct staging_chunk chunk = { .point = UINT64_MAX };
+    struct vela_renderer renderer = { .vk = &vk, .commands = slots, .command_count = 2,
+        .upload = upload, .staging = &chunk, .staging_count = 1, .last_point = 7 };
+    end_result = VK_ERROR_OUT_OF_HOST_MEMORY;
+    end_calls = submit_calls = 0;
+    assert(!vela_renderer_submit(&renderer, draw, NULL, 0, NULL));
+    assert(!vk.loss.lost && !vk.terminal_error && renderer.upload == VK_NULL_HANDLE);
+    assert(!slots[0].busy && !slots[1].busy);
+    assert(slots[0].point == 0 && slots[1].point == 0 && chunk.point == 7);
+    assert(end_calls == 1 && submit_calls == 0);
+    end_result = VK_SUCCESS;
+}
+
+static void timeline_wait_nonterminal_error_is_fatal(void)
+{
+    struct vela_vulkan vk = { 0 };
+    struct vela_renderer renderer = { .vk = &vk, .timeline = (VkSemaphore)(uintptr_t)1 };
+    wait_calls = counter_polls = 0;
+    wait_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    assert(!vela_renderer_wait(&renderer, 5));
+    assert(!vk.loss.lost && vk.terminal_error && wait_calls == 1);
+    assert(!vela_renderer_wait(&renderer, 5));
+    assert(vela_renderer_completed(&renderer) == 0);
+    assert(wait_calls == 1 && counter_polls == 0);
+    wait_result = VK_SUCCESS;
 }
 
 static void timeline_wait_loss_stops_polling(void)
@@ -309,6 +389,10 @@ int main(void)
 {
     staging_failures();
     device_loss_stops_reuse();
+    map_loss_stops_new_allocations();
+    semaphore_creation_loss();
+    failed_end_releases_command_reservations();
+    timeline_wait_nonterminal_error_is_fatal();
     submission_loss_stops_new_gpu_work();
     timeline_wait_loss_stops_polling();
     command_allocation_failure();
