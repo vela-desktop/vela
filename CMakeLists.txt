@@ -167,6 +167,9 @@ if(VELA_PACKAGE_DEB)
     # (Depends) picks any one installed, Konsole by default.
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "bluez, konsole | x-terminal-emulator")
     # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
+    # A separate Satellite backend for opt-in native-resolution X11 games.
+    install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-xwayland-native"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}")
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
         DESTINATION "${CMAKE_INSTALL_BINDIR}")
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update-beta"
