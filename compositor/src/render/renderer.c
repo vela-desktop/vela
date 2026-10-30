@@ -1024,7 +1024,15 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
     // submission, so whoever reads our buffers surely finds them finished.
     // Without sync_files the CPU waits anyway.
     if ((release_fd && *release_fd < 0) || vela_env_one("VELA_DEBUG_SYNC")) {
-        if (!vela_renderer_wait(r, point)) return 0;
+        if (!vela_renderer_wait(r, point)) {
+            // A debug-sync wait can fail after successfully exporting a fence.
+            // A zero return means callers cannot take ownership of that FD.
+            if (release_fd && *release_fd >= 0) {
+                close(*release_fd);
+                *release_fd = -1;
+            }
+            return 0;
+        }
     }
     return vela_vulkan_unusable(vk) ? 0 : point;
 }
