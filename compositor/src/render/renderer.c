@@ -188,7 +188,7 @@ static bool init(struct vela_renderer *r)
         if (!vela_vulkan_result(vk, vkCreateQueryPool(vk->device, &query_info, NULL, &r->query_pool),
                 "vkCreateQueryPool")) {
             r->query_pool = VK_NULL_HANDLE;
-            if (vk->loss.lost) return false;
+            if (vela_vulkan_unusable(vk)) return false;
         }
     }
 
@@ -248,7 +248,7 @@ static void destroy(struct vela_renderer *r)
     // Device loss makes timeline progress unknowable. Destroy/free calls remain
     // legal, but vkDeviceWaitIdle, command pool reset and retirement are unsafe.
     bool gpu_idle = false;
-    if (device && !r->vk->loss.lost) {
+    if (device && !vela_vulkan_unusable(r->vk)) {
         gpu_idle = vela_vulkan_result(r->vk, vkDeviceWaitIdle(device), "vkDeviceWaitIdle(shutdown)");
         if (gpu_idle && r->pool) {
             // Discard recorded, unsubmitted SHM uploads before freeing images.
@@ -271,7 +271,7 @@ static void destroy(struct vela_renderer *r)
     wl_list_for_each_safe (texture, texture_tmp, &r->textures, link) {
         vela_texture_release(texture);
     }
-    if (gpu_idle && !r->vk->loss.lost) vela_renderer_collect(r);
+    if (gpu_idle && !vela_vulkan_unusable(r->vk)) vela_renderer_collect(r);
 
     // Shutdown is different from ordinary retirement: there will be no
     // further submissions to advance the timeline. In particular, an
@@ -352,7 +352,7 @@ static void destroy(struct vela_renderer *r)
 
 uint64_t vela_renderer_signal_sync_point(struct vela_renderer *r, int sync_file)
 {
-    if (!r->sync_timeline || r->vk->loss.lost) {
+    if (!r->sync_timeline || vela_vulkan_unusable(r->vk)) {
         return 0;
     }
     uint64_t point = ++r->sync_point;
@@ -362,7 +362,10 @@ uint64_t vela_renderer_signal_sync_point(struct vela_renderer *r, int sync_file)
         // Better an early release than an app blocked forever: the CPU waits
         // for the GPU and the point signals at once.
         if (!vela_renderer_wait(r, r->last_point)) return 0;
-        wlr_drm_syncobj_timeline_signal(r->sync_timeline, point);
+        if (!wlr_drm_syncobj_timeline_signal(r->sync_timeline, point)) {
+            vela_vulkan_abort(r->vk, "syncobj timeline signal");
+            return 0;
+        }
     }
     return point;
 }
@@ -375,7 +378,7 @@ int vela_renderer_timing_slot(struct vela_renderer *r)
         return -1;
     }
     uint64_t done = vela_renderer_completed(r);
-    if (r->vk->loss.lost) return -1;
+    if (vela_vulkan_unusable(r->vk)) return -1;
     for (int i = 0; i < VELA_TIMING_SLOTS; ++i) {
         int slot = (r->next_timing + i) % VELA_TIMING_SLOTS;
         if (r->timing[slot] <= done) {
@@ -441,8 +444,8 @@ static int64_t gpu_to_monotonic(struct vela_renderer *r, uint64_t ticks)
 bool vela_renderer_read_timing(struct vela_renderer *r, int slot, uint64_t point, struct vela_gpu_timing *out)
 {
     // The slot may already have been reused by a later drawing.
-    if (r->vk->loss.lost || slot < 0 || point == 0 || r->timing[slot] != point
-        || point > vela_renderer_completed(r) || r->vk->loss.lost) {
+    if (vela_vulkan_unusable(r->vk) || slot < 0 || point == 0 || r->timing[slot] != point
+        || point > vela_renderer_completed(r) || vela_vulkan_unusable(r->vk)) {
         return false;
     }
     uint64_t ticks[2] = { 0 };
@@ -454,9 +457,9 @@ bool vela_renderer_read_timing(struct vela_renderer *r, int slot, uint64_t point
     uint64_t mask = r->vk->timestamp_mask;
     if (r->vk->get_calibrated_timestamps) {
         out->start_ns = gpu_to_monotonic(r, ticks[0] & mask);
-        if (r->vk->loss.lost) return false;
+        if (vela_vulkan_unusable(r->vk)) return false;
         out->end_ns = gpu_to_monotonic(r, ticks[1] & mask);
-        if (r->vk->loss.lost) return false;
+        if (vela_vulkan_unusable(r->vk)) return false;
         out->absolute = true;
     } else {
         out->start_ns = 0;
@@ -491,7 +494,7 @@ static const struct wlr_addon_interface target_addon_impl = {
 
 struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buffer *buffer)
 {
-    if (r->vk->loss.lost) return NULL;
+    if (vela_vulkan_unusable(r->vk)) return NULL;
     struct wlr_addon *addon = wlr_addon_find(&buffer->addons, r, &target_addon_impl);
     if (addon) {
         struct vela_target *target = wl_container_of(addon, target, addon);
@@ -557,16 +560,16 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
 // the BO. This runs the same import path used by the first Vulkan render pass.
 bool vela_renderer_validate_target(struct vela_renderer *renderer, struct wlr_buffer *buffer)
 {
-    return renderer && !renderer->vk->loss.lost && buffer && vela_renderer_target(renderer, buffer) != NULL;
+    return renderer && !renderevela_vulkan_unusable(r->vk) && buffer && vela_renderer_target(renderer, buffer) != NULL;
 }
 
 // ----------------------------------------------------- command buffers --
 
 VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *r)
 {
-    if (r->vk->loss.lost) return VK_NULL_HANDLE;
+    if (vela_vulkan_unusable(r->vk)) return VK_NULL_HANDLE;
     uint64_t done = vela_renderer_completed(r);
-    if (r->vk->loss.lost) return VK_NULL_HANDLE;
+    if (vela_vulkan_unusable(r->vk)) return VK_NULL_HANDLE;
     struct command_slot *slot = NULL;
     for (int i = 0; i < r->command_count && !slot; ++i) {
         if (!r->commands[i].busy && r->commands[i].point <= done) {
@@ -610,7 +613,7 @@ VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *r)
 
 VkCommandBuffer vela_renderer_upload_commands(struct vela_renderer *r)
 {
-    if (r->vk->loss.lost) return VK_NULL_HANDLE;
+    if (vela_vulkan_unusable(r->vk)) return VK_NULL_HANDLE;
     if (!r->upload) {
         r->upload = vela_renderer_begin_commands(r);
     }
@@ -627,7 +630,7 @@ static bool make_readback_room(struct vela_renderer *r, VkDeviceSize size)
         if (r->staging[i].readback) allocated += r->staging[i].allocation_size;
     }
     const uint64_t done = vela_renderer_completed(r);
-    if (r->vk->loss.lost) return false;
+    if (vela_vulkan_unusable(r->vk)) return false;
     for (int i = 0; i < r->staging_count && allocated > VELA_READBACK_MAX_BYTES - size;) {
         struct staging_chunk *chunk = &r->staging[i];
         // Cancellation can release the CPU pin before the GPU finishes. Its
@@ -647,7 +650,7 @@ static bool make_readback_room(struct vela_renderer *r, VkDeviceSize size)
 
 static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDeviceSize size, bool readback)
 {
-    if (r->vk->loss.lost) return NULL;
+    if (vela_vulkan_unusable(r->vk)) return NULL;
     VkDevice device = r->vk->device;
     struct staging_chunk chunk = { .size = size, .readback = readback };
     const VkBufferCreateInfo buffer_info = {
@@ -684,7 +687,7 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
     bool allocated = type != UINT32_MAX
         && vela_vulkan_result(r->vk, vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory),
             "vkAllocateMemory(staging cached)");
-    if (!allocated && !r->vk->loss.lost) {
+    if (!allocated && !vela_vulkan_unusable(r->vk)) {
         // A compatible cached type can still fail to allocate (e.g. heap
         // pressure). Try a different host-visible type before giving up.
         uint32_t fallback_bits = requirements.memoryTypeBits;
@@ -731,10 +734,10 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
 
 static bool stage(struct vela_renderer *r, VkDeviceSize size, bool readback, struct vela_staging *out)
 {
-    if (r->vk->loss.lost) return false;
+    if (vela_vulkan_unusable(r->vk)) return false;
     size = (size + 15) & ~(VkDeviceSize)15;
     uint64_t done = vela_renderer_completed(r);
-    if (r->vk->loss.lost) return false;
+    if (vela_vulkan_unusable(r->vk)) return false;
     struct staging_chunk *chosen = NULL;
     // First the block we are already filling, then one the GPU has finished
     // reading, otherwise a new one.
@@ -779,7 +782,7 @@ bool vela_renderer_stage_readback(struct vela_renderer *r, VkDeviceSize size, st
 
 static VkSemaphore take_semaphore(struct vela_renderer *r, bool release)
 {
-    if (r->vk->loss.lost) return VK_NULL_HANDLE;
+    if (vela_vulkan_unusable(r->vk)) return VK_NULL_HANDLE;
     if (release && r->free_release_count > 0) {
         return r->free_releases[--r->free_release_count];
     }
@@ -819,13 +822,31 @@ static void semaphore_used_until(struct vela_renderer *r, VkSemaphore semaphore,
     r->used_semaphores[r->used_semaphore_count++] = (struct used_semaphore) { point, semaphore, release };
 }
 
+// A command that never reached the queue must not hold a slot or staging
+// reservation indefinitely. It is safe to reset/reuse it on a later frame.
+static void abandon_unsubmitted(struct vela_renderer *r, VkCommandBuffer cmd)
+{
+    VkCommandBuffer upload = r->upload;
+    r->upload = VK_NULL_HANDLE;
+    for (int i = 0; i < r->command_count; ++i) {
+        if (r->commands[i].cmd == cmd || r->commands[i].cmd == upload) {
+            r->commands[i].busy = false;
+            r->commands[i].point = 0;
+        }
+    }
+    for (int i = 0; i < r->staging_count; ++i) {
+        if (r->staging[i].point == UINT64_MAX) r->staging[i].point = r->last_point;
+    }
+}
+
 static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
     int *release_fd, uint64_t wait_point)
 {
     struct vela_vulkan *vk = r->vk;
     if (release_fd) *release_fd = -1;
-    if (vk->loss.lost || !vela_vulkan_result(vk, vkEndCommandBuffer(cmd), "vkEndCommandBuffer")) {
+    if (vela_vulkan_unusable(vk) || !vela_vulkan_result(vk, vkEndCommandBuffer(cmd), "vkEndCommandBuffer")) {
         for (int i = 0; i < wait_count; ++i) if (wait_fds[i] >= 0) close(wait_fds[i]);
+        abandon_unsubmitted(r, cmd);
         return 0;
     }
 
@@ -834,6 +855,7 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
     if (r->upload) {
         if (!vela_vulkan_result(vk, vkEndCommandBuffer(r->upload), "vkEndCommandBuffer(upload)")) {
             for (int i = 0; i < wait_count; ++i) if (wait_fds[i] >= 0) close(wait_fds[i]);
+            abandon_unsubmitted(r, cmd);
             return 0;
         }
         cmds[cmd_count++] = (VkCommandBufferSubmitInfo) {
@@ -856,7 +878,7 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
     bool inputs_ready = true;
     for (int i = 0; i < wait_count; ++i) {
         int fd = wait_fds[i];
-        if (vk->loss.lost) { if (fd >= 0) close(fd); inputs_ready = false; continue; }
+        if (vela_vulkan_unusable(vk)) { if (fd >= 0) close(fd); inputs_ready = false; continue; }
         // Most app commits have already been held until ready by scene/ready.
         // Avoid importing a completed fence into the driver for every draw.
         if (vela_sync_ready(fd)) {
@@ -879,7 +901,7 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
             ? vk->import_semaphore_fd(vk->device, &import_info) : VK_ERROR_OUT_OF_HOST_MEMORY;
         if (!semaphore || !vela_vulkan_result(vk, imported, "vkImportSemaphoreFdKHR")) {
             // Never wait on a producer fence when Vulkan has already failed.
-            if (vk->loss.lost) { close(fd); inputs_ready = false; }
+            if (vela_vulkan_unusable(vk)) { close(fd); inputs_ready = false; }
             else inputs_ready = vela_sync_wait_close(fd) && inputs_ready;
             if (semaphore) {
                 give_back_semaphore(r, semaphore, false);
@@ -938,7 +960,7 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
         .signalSemaphoreInfoCount = signal_count,
         .pSignalSemaphoreInfos = signals,
     };
-    VkResult submitted = inputs_ready && !vk->loss.lost
+    VkResult submitted = inputs_ready && !vela_vulkan_unusable(vk)
         ? vkQueueSubmit2(vk->queue, 1, &submit_info, VK_NULL_HANDLE) : VK_ERROR_INITIALIZATION_FAILED;
     bool ok = inputs_ready && vela_vulkan_result(vk, submitted, "vkQueueSubmit2");
 
@@ -994,9 +1016,9 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
     // submission, so whoever reads our buffers surely finds them finished.
     // Without sync_files the CPU waits anyway.
     if ((release_fd && *release_fd < 0) || vela_env_one("VELA_DEBUG_SYNC")) {
-        vela_renderer_wait(r, point);
+        if (!vela_renderer_wait(r, point)) return 0;
     }
-    return vk->loss.lost ? 0 : point;
+    return vela_vulkan_unusable(vk) ? 0 : point;
 }
 
 uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
@@ -1016,7 +1038,7 @@ uint64_t vela_renderer_submit_readback(struct vela_renderer *r, VkCommandBuffer 
 
 uint64_t vela_renderer_completed(struct vela_renderer *r)
 {
-    if (r->vk->loss.lost) return r->completed;
+    if (vela_vulkan_unusable(r->vk)) return r->completed;
     uint64_t value = 0;
     if (vela_vulkan_result(r->vk, vkGetSemaphoreCounterValue(r->vk->device, r->timeline, &value),
             "vkGetSemaphoreCounterValue")) {
@@ -1027,7 +1049,7 @@ uint64_t vela_renderer_completed(struct vela_renderer *r)
 
 bool vela_renderer_wait(struct vela_renderer *r, uint64_t point)
 {
-    if (r->vk->loss.lost) return false;
+    if (vela_vulkan_unusable(r->vk)) return false;
     if (point == 0 || point <= r->completed) return true;
     const VkSemaphoreWaitInfo info = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
@@ -1036,8 +1058,15 @@ bool vela_renderer_wait(struct vela_renderer *r, uint64_t point)
         .pValues = &point,
     };
     if (!vela_vulkan_result(r->vk, vkWaitSemaphores(r->vk->device, &info, UINT64_MAX),
-            "vkWaitSemaphores")) return false;
-    return vela_renderer_completed(r) >= point && !r->vk->loss.lost;
+            "vkWaitSemaphores")) {
+        if (!r->vk->loss.lost) vela_vulkan_abort(r->vk, "vkWaitSemaphores");
+        return false;
+    }
+    bool completed = vela_renderer_completed(r) >= point && !vela_vulkan_unusable(r->vk);
+    if (!completed && !vela_vulkan_unusable(r->vk)) {
+        vela_vulkan_abort(r->vk, "vkGetSemaphoreCounterValue(after wait)");
+    }
+    return completed;
 }
 
 void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageView view, VkDeviceMemory memory)
@@ -1045,7 +1074,7 @@ void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageV
     // Uploads recorded but not yet submitted count too: they will end up in
     // the next submission.
     uint64_t point = r->upload ? r->last_point + 1 : r->last_point;
-    if (!r->vk->loss.lost && point <= vela_renderer_completed(r) && !r->vk->loss.lost) {
+    if (!vela_vulkan_unusable(r->vk) && point <= vela_renderer_completed(r) && !vela_vulkan_unusable(r->vk)) {
         VkDevice device = r->vk->device;
         if (view) {
             vkDestroyImageView(device, view, NULL);
@@ -1062,10 +1091,10 @@ void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageV
 
 void vela_renderer_collect(struct vela_renderer *r)
 {
-    if (r->vk->loss.lost) return;
+    if (vela_vulkan_unusable(r->vk)) return;
     VkDevice device = r->vk->device;
     uint64_t done = vela_renderer_completed(r);
-    if (r->vk->loss.lost) return;
+    if (vela_vulkan_unusable(r->vk)) return;
 
     int kept = 0;
     for (int i = 0; i < r->used_semaphore_count; ++i) {
@@ -1115,7 +1144,7 @@ void vela_renderer_collect(struct vela_renderer *r)
 
 VkPipeline vela_renderer_pipeline(struct vela_renderer *r, VkFormat target, enum vela_pipeline_kind kind, bool blend)
 {
-    if (r->vk->loss.lost) return VK_NULL_HANDLE;
+    if (vela_vulkan_unusable(r->vk)) return VK_NULL_HANDLE;
     for (int i = 0; i < r->pipeline_count; ++i) {
         const struct pipeline_entry *entry = &r->pipelines[i];
         if (entry->format == target && entry->kind == kind && entry->blend == blend) {
@@ -1223,7 +1252,7 @@ VkPipeline vela_renderer_pipeline(struct vela_renderer *r, VkFormat target, enum
 
 bool vela_renderer_prepare_blur(struct vela_renderer *r, uint32_t width, uint32_t height)
 {
-    if (r->vk->loss.lost) return false;
+    if (vela_vulkan_unusable(r->vk)) return false;
     VkDevice device = r->vk->device;
     for (int level = 0; level < VELA_BLUR_LEVELS; ++level) {
         uint32_t need_width = (width + (2u << level) - 1) >> (level + 1);
@@ -1241,7 +1270,7 @@ bool vela_renderer_prepare_blur(struct vela_renderer *r, uint32_t width, uint32_
         if (current->image) {
             vela_renderer_retire_image(r, current->image, current->view, current->memory);
             memset(current, 0, sizeof(*current));
-            if (r->vk->loss.lost) return false;
+            if (vela_vulkan_unusable(r->vk)) return false;
         }
         const VkImageCreateInfo image_info = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
