@@ -14,6 +14,7 @@
 #include "audio.h"
 #include "audioapps.h"
 #include "bluetooth/bluetooth.h"
+#include "updates/updates.h"
 #include "brightness.h"
 #include "controls.h"
 #include "datetime.h"
@@ -138,7 +139,7 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription(QStringLiteral("Vela Settings"));
     parser.addHelpOption();
     const QCommandLineOption pageOption(QStringLiteral("page"),
-        QStringLiteral("The page to open: system, display, sound, notifications, power, about, bluetooth, "
+        QStringLiteral("The page to open: system, display, sound, notifications, power, about, updates, bluetooth, "
                        "volume-mixer, network, personalization, background, colors, taskbar, apps, installed-apps, "
                        "default-apps, time-language, datetime, keyboard, night-light, accessibility."),
         QStringLiteral("name"));
@@ -168,6 +169,8 @@ int main(int argc, char* argv[])
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
     audio.setBluetooth(&bluetooth); // headsets' batteries
+    // Updates (docs/updates.md §9.1).
+    vela::updates::Updates updates;
     Network network;
     About about;
     DateTime dateTime;
@@ -192,6 +195,7 @@ int main(int argc, char* argv[])
     qmlRegisterType<vela::audio::LevelMeter>("Vela.Audio", 1, 0, "LevelMeter");
     context->setContextProperty(QStringLiteral("Network"), &network);
     qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
+    qmlRegisterSingletonInstance("Vela.Updates", 1, 0, "Updates", &updates);
     context->setContextProperty(QStringLiteral("About"), &about);
     context->setContextProperty(QStringLiteral("DateTime"), &dateTime);
     context->setContextProperty(QStringLiteral("DefaultApps"), &defaultApps);

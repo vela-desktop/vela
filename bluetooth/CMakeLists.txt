@@ -16,7 +16,6 @@ endif()
 add_library(vela-bluetooth-core STATIC
     src/agent.c
     src/bluez.c
-    src/caller.c
     src/describe.c
     src/model.c
     src/operations.c
@@ -32,22 +31,8 @@ target_compile_definitions(vela-bluetooth-core PUBLIC _GNU_SOURCE)
 target_compile_options(vela-bluetooth-core PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-bluetooth-core PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 # vela.conf (the adapter the user chose) is read and written as the
-# compositor does.
-target_link_libraries(vela-bluetooth-core PUBLIC vela-pure PkgConfig::BLUETOOTH_SYSTEMD)
-# The caller's pidfd from the bus (systemd 256 and later): a PID could be
-# reused while it's checked (§7.3).
-include(CheckCSourceCompiles)
-set(CMAKE_REQUIRED_INCLUDES ${BLUETOOTH_SYSTEMD_INCLUDE_DIRS})
-set(CMAKE_REQUIRED_LIBRARIES ${BLUETOOTH_SYSTEMD_LINK_LIBRARIES})
-check_c_source_compiles("
-#include <systemd/sd-bus.h>
-int main(void) { int fd; return sd_bus_creds_get_pidfd_dup(0, &fd) + (int)SD_BUS_CREDS_PIDFD; }"
-    VELA_HAVE_PIDFD_CREDS)
-unset(CMAKE_REQUIRED_INCLUDES)
-unset(CMAKE_REQUIRED_LIBRARIES)
-if(VELA_HAVE_PIDFD_CREDS)
-    target_compile_definitions(vela-bluetooth-core PRIVATE VELA_HAVE_PIDFD_CREDS)
-endif()
+# compositor does. Who may call (§7.3): common/caller.
+target_link_libraries(vela-bluetooth-core PUBLIC vela-pure vela-caller PkgConfig::BLUETOOTH_SYSTEMD)
 
 # Vela's UI (§7.3): where vela-shell and vela-settings are installed, and
 # where they are built, trusted only by a daemon run from its build
@@ -77,11 +62,11 @@ if(VELA_BUILD_TOOLS)
         VELA_BT_TEST_CLIENT="${PROJECT_BINARY_DIR}/tests/bluetooth/vela-bluetooth-client-test"
         VELA_BT_TEST_SHELL="${PROJECT_BINARY_DIR}/tests/bluetooth/vela-bluetooth-shell-test")
 
-    # The pure parts: errors, steps, rfkill, callers, names, answers.
+    # The pure parts: errors, steps, rfkill, names, answers (callers:
+    # common/caller).
     find_package(GTest)
     if(GTest_FOUND)
         add_executable(vela-bluetooth-tests
-            tests/caller_test.cpp
             tests/describe_test.cpp
             tests/outcome_test.cpp
             tests/question_test.cpp

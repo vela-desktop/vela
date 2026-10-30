@@ -174,6 +174,7 @@ add_executable(vela-compositor
     src/supervisor_children.c
     src/switcher.c
     src/text.c
+    src/updates.c
     src/view.c
     src/workspace.c
     src/xwayland.c
@@ -377,6 +378,16 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-supervisor-children-test PRIVATE -Wall -Wextra -Werror)
     set_target_properties(vela-supervisor-children-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.supervisor-children COMMAND vela-supervisor-children-test)
+
+    # Which vela-update-daemon the compositor starts, if any.
+    add_executable(vela-updates-start-test tests/updates_start_test.c src/updates.c)
+    target_include_directories(vela-updates-start-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-updates-start-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
+    target_compile_options(vela-updates-start-test PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(vela-updates-start-test PRIVATE PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER
+        PkgConfig::PIXMAN)
+    set_target_properties(vela-updates-start-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.updates-start COMMAND vela-updates-start-test)
 
     find_package(GTest)
     if(GTest_FOUND)

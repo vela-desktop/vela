@@ -92,7 +92,7 @@ static void append_devices(struct vela_bt_daemon *d, sd_bus_message *m, bool onl
 }
 
 // The caller passes `trust` (§7.3), and the session is in front.
-static int check_acting(struct vela_bt_daemon *d, sd_bus_message *call, enum vela_bt_trust trust, sd_bus_error *error)
+static int check_acting(struct vela_bt_daemon *d, sd_bus_message *call, enum vela_caller_trust trust, sd_bus_error *error)
 {
     int r = vela_bt_check_caller(call, trust, d->ui, error);
     if (r >= 0 && !vela_bt_active(d)) {
@@ -183,7 +183,7 @@ static int method_use_adapter(sd_bus_message *call, void *data, sd_bus_error *er
 }
 
 static int start_operation(sd_bus_message *call, struct vela_bt_daemon *d, enum vela_bt_kind kind,
-    enum vela_bt_trust trust, const char *path, const char *name, sd_bus_error *error)
+    enum vela_caller_trust trust, const char *path, const char *name, sd_bus_error *error)
 {
     int r = check_acting(d, call, trust, error);
     if (r < 0) {

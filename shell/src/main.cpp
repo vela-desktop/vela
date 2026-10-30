@@ -13,6 +13,8 @@
 #include "audioapps.h"
 #include "bluetooth/bluetooth.h"
 #include "bluetoothprompts.h"
+#include "updatenotices.h"
+#include "updates/updates.h"
 #include "brightness.h"
 #include "clipboard.h"
 #include "config.h"
@@ -395,6 +397,11 @@ int main(int argc, char* argv[])
     });
     QObject::connect(&windows, &ForeignToplevelManager::windowsChanged,
         &bluetoothPrompts, &BluetoothPrompts::settingsWindowsChanged);
+    // Updates (docs/updates.md §9.2): a new one, and "Sign out to finish".
+    vela::updates::Updates updates;
+    UpdateNotices updateNotices(
+        &updates, &notifications, [&system] { system.trigger(QStringLiteral("updates-settings")); },
+        [&shell] { shell.logout(); });
     SystemStatus status(&bluetooth);
     Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
     // The sound (docs/audio.md): apps named after their .desktop file.
