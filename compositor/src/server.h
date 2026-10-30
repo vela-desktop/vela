@@ -213,7 +213,7 @@ struct vela_server {
 
 // Creates the display, backend, renderer and protocols. NULL if something
 // essential is missing (the reason is already in the log).
-struct vela_server *vela_server_create(bool *unsupported_gpu);
+struct vela_server *vela_server_create(bool *unsupported_gpu, bool *device_lost);
 
 // Opens the Wayland socket, starts the backend and launches `startup_command`
 // (the shell, relaunched when it fails; NULL or empty: nothing).
