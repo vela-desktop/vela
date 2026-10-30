@@ -247,6 +247,20 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-device-loss-policy-test PRIVATE -Wall -Wextra -Werror)
     add_test(NAME compositor.device-loss-policy COMMAND vela-device-loss-policy-test)
 
+    # Run the production vkCreateDevice/vela_vulkan_create error path against
+    # deterministic entry-point stubs, without opening a GPU or Wayland session.
+    add_executable(vela-vulkan-device-init-test tests/vulkan_device_init_test.c)
+    target_include_directories(vela-vulkan-device-init-test PRIVATE src)
+    target_compile_definitions(vela-vulkan-device-init-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-vulkan-device-init-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-vulkan-device-init-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-vulkan-device-init-test PRIVATE vela-pure PkgConfig::VULKAN
+        PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM)
+    set_target_properties(vela-vulkan-device-init-test PROPERTIES C_STANDARD 17
+        C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.vulkan-device-init COMMAND vela-vulkan-device-init-test)
+
     # GPU-free policy test: verifies that the cursor-specific flags cannot
     # leak into ordinary output/capture allocations.
     add_executable(vela-cursor-policy-test tests/cursor_policy_test.c)
