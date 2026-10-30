@@ -116,6 +116,47 @@ class X11(unittest.TestCase):
         self.assertEqual((state.window(view_id)["x"], state.window(view_id)["y"]), (0, 1080))
         self.assertEqual(self.x11_geometry(xid), (0, 1080, 1920, 1080))
 
+    def test_fullscreen_game_moves_to_requested_xrandr_output(self):
+        # A fullscreen Wine/X11 game explicitly moves its X11 window to
+        # another display's origin. Size-only changes must leave it where
+        # Vela placed it. Keep output scales different to cover logical modes.
+        self.vela.command("test-output add 2560x1440")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="second game output")
+        self.vela.randr("--output", "HEADLESS-2", "--pos", "1920,0", "--scale", "1.25")
+        state = self.vela.wait_for(
+            lambda s: any(o["name"] == "HEADLESS-2" and o["scale"] == 1.25
+                          and o["x"] == 1920 for o in s["outputs"]),
+            what="secondary fractional output")
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        first = next(o for o in state["outputs"] if o["name"] == "HEADLESS-1")
+        path = os.path.join(self.vela.directory, "fullscreen-move-xid")
+        game = self.open_x11("--id-file", path, "--start-fullscreen", 300, 200)
+        with open(path, encoding="ascii") as f:
+            xid = f.read().strip()
+        state = self.vela.wait_for(lambda s: s.window(game)["fullscreen"], what="game fullscreen")
+        self.assertEqual(state.window(game)["output"], "HEADLESS-1")
+
+        # A new game resolution should not move a window to an output at 0,0.
+        self.x11_control("--resize", xid, second["w"], second["h"])
+        self.assertEqual(self.vela.state().window(game)["output"], "HEADLESS-1")
+
+        self.x11_control("--move", xid, second["x"], second["y"])
+        state = self.vela.wait_for(
+            lambda s: s.window(game)["output"] == "HEADLESS-2"
+                      and s.window(game)["fullscreen"]
+                      and (s.window(game)["x"], s.window(game)["y"],
+                           s.window(game)["w"], s.window(game)["h"])
+                      == (second["x"], second["y"], second["w"], second["h"]),
+            what="fullscreen game migrated to fractional output")
+        self.assert_x11_geometry_matches(game, xid)
+        self.x11_control("--move", xid, first["x"], first["y"])
+        self.vela.wait_for(
+            lambda s: s.window(game)["output"] == "HEADLESS-1"
+                      and s.window(game)["fullscreen"]
+                      and s.window(game)["w"] == first["w"],
+            what="game fullscreen back on first output")
+        self.assert_x11_geometry_matches(game, xid)
+
     def test_wine_popup_to_decorated_restores_fullscreen(self):
         # Wine can toggle a Windows fullscreen popup into a normal decorated
         # window without sending an EWMH fullscreen request or X11 resize.
