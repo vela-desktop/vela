@@ -163,7 +163,7 @@ jobs:
           # additional *runtime* desktop packages needed by the PKGBUILD.
           pacman -S --noconfirm --needed \
             konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk \
-            xdg-desktop-portal-wlr xdg-utils
+            xdg-desktop-portal-wlr xdg-utils xdg-terminal-exec
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
