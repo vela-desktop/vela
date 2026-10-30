@@ -3,6 +3,53 @@
 Status: **design + pure coordinate mapping prototype only** (PR #164, issue #163).
 Do not advertise the native in-process renderer as implemented or enable it by default.
 
+## Candidate shortcut: native modes for fullscreen with upstream Xwayland 26.1
+
+**Evaluate this before replacing Vela's XWM coordinate architecture.**
+Xwayland 26.1 RC3 (26.0.99.903, October 2026) includes updated rootless
+RandR emulation which prefers physical native display modes even if the
+compositor scales the output. This may remove the 2048x1152 cap in a
+2560x1440/125% fullscreen game without moving Steam to a different
+X11 server. Arch stable xorg-xwayland is still 24.1.14 as of October 2026,
+so Vela does not get the improvement automatically.
+
+The user's proposed hybrid scaling policy is desirable:
+- Windowed/normal X11 windows follow the existing compatibility scaling
+  (Steam currently works correctly there).
+- Fullscreen X11 games can select physical modes, rendering 2560x1440
+  pixels for 2048x1152 Wayland logical fullscreen units.
+- Once windowed, their geometry/input must again match the logical scene.
+- It is **not** correct to write output.scale=1 when a window becomes
+  fullscreen, nor to toggle the X11 server's global scale dynamically:
+  other X11 clients share that server and fullscreen games typically
+  enumerate supported modes *before* entering fullscreen.
+
+First test the upstream implementation in the integrated wlroots XWM using
+an independently installed Xwayland 26.1 RC binary. wlroots can use a
+specific Xwayland executable through `WLR_XWAYLAND=/absolute/path/Xwayland`,
+set **before launching Vela**. This is a testing mechanism, not a normal
+release dependency or Steam launch option.
+
+Acceptance:
+1. In `xwayland-backend=compat`, record the exact `DISPLAY`,
+   `Xwayland -version`, and `xrandr --query`; native 2560x1440 must be
+   *enumerable* on DP-3 while its logical output remains 2048x1152.
+2. EU5 (no Steam flags) lists and can select 2560x1440. The game actually
+   submits a 2560x1440 buffer and occupies the DP-3 physical area 1:1.
+3. Steam remains correctly sized/sharp; its maximize/minimize buttons
+   work and pointer hover aligns on both 125% and 100% monitors.
+4. EU5 transitions fullscreen/windowed/fullscreen without misplacing or
+   cropping its buffer; primary RandR stays DP-3.
+5. Run the mixed-scale pointer and native-mode GPU tests, then inspect
+   hotplug/rotation and NVIDIA behavior.
+
+If physical modes are merely advertised but fullscreen cannot render
+at native resolution with correct input, implement a *fullscreen-surface
+viewport/scene transform* first, preserving the normal windowed XWM.
+Only if that fails should Vela pursue the larger independent physical
+X11 output coordinate-space project specified below. Do not claim the
+new release itself fixes the bug until the hardware test succeeds.
+
 ## Why an extra X11 bridge is insufficient
 
 Vela's built-in wlroots XWM knows how to process and reconcile X11
