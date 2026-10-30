@@ -12,6 +12,8 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+from pathlib import Path
 import time
 import unittest
 
@@ -24,13 +26,21 @@ class NativeXwaylandSession(unittest.TestCase):
             self.skipTest("xwayland-satellite (>= 0.7) not available")
         if not shutil.which("xrandr"):
             self.skipTest("xrandr not available")
-        self.vela = Session(scale=1.25, size="2560x1440@60",
-                            env={"VELA_XWAYLAND_BACKEND": "native"})
+        self.tmp = tempfile.TemporaryDirectory(prefix="vela-native-display-")
+        self.display_file = Path(self.tmp.name) / "session-display"
+        self.vela = Session(
+            scale=1.25, size="2560x1440@60",
+            env={"VELA_XWAYLAND_BACKEND": "native",
+                 "VELA_NATIVE_TEST_DISPLAY_FILE": str(self.display_file)},
+            startup='printf %s "$DISPLAY" > "$VELA_NATIVE_TEST_DISPLAY_FILE"',
+        )
         self.vela.start()
 
     def tearDown(self):
         if hasattr(self, "vela"):
             self.vela.stop()
+        if hasattr(self, "tmp"):
+            self.tmp.cleanup()
 
     def test_satellite_xrandr_reports_native_mode(self):
         display = self.vela.wait_for_log(
@@ -38,6 +48,13 @@ class NativeXwaylandSession(unittest.TestCase):
             lambda line: line.split("DISPLAY=")[1].split()[0],
         )
         self.assertRegex(display, r"^:\d+$")
+        # This verifies the display apps inherit from Vela, not an explicitly
+        # overridden per-game DISPLAY.
+        deadline = time.monotonic() + 8
+        while not self.display_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertTrue(self.display_file.exists(), "session startup did not run")
+        self.assertEqual(self.display_file.read_text(), display)
         env = dict(self.vela.client_env, DISPLAY=display)
         deadline = time.monotonic() + 15
         output = ""
