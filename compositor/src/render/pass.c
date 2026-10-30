@@ -429,11 +429,16 @@ static void barrier(VkCommandBuffer cmd, VkImage image, VkImageLayout from, VkIm
 
 // One blur pass: from `source` (zone `src` in a texture of src_width x
 // src_height) to level `level`, used for used_width x used_height.
-static void blur_step(struct vela_pass *pass, VkCommandBuffer cmd, enum vela_pipeline_kind kind, VkImageView source,
+static bool blur_step(struct vela_pass *pass, VkCommandBuffer cmd, enum vela_pipeline_kind kind, VkImageView source,
     const struct wlr_box *src, uint32_t src_width, uint32_t src_height, int level, uint32_t used_width,
     uint32_t used_height, float strength)
 {
     struct vela_renderer *renderer = pass->renderer;
+    VkPipeline pipeline = vela_renderer_pipeline(renderer, VELA_BLUR_FORMAT, kind, false);
+    if (!pipeline) {
+        if (!vela_vulkan_unusable(renderer->vk)) vela_vulkan_abort(renderer->vk, "blur pipeline creation");
+        return false;
+    }
     const struct vela_blur_image *dst = &renderer->blur[level];
     VkPipelineLayout layout = renderer->layout;
     barrier(cmd, dst->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, DRAW_STAGES,
@@ -457,8 +462,7 @@ static void blur_step(struct vela_pass *pass, VkCommandBuffer cmd, enum vela_pip
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     const VkRect2D scissor = { { 0, 0 }, { used_width, used_height } };
     vkCmdSetScissor(cmd, 0, 1, &scissor);
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        vela_renderer_pipeline(renderer, VELA_BLUR_FORMAT, kind, false));
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     const VkDescriptorImageInfo image = {
         .sampler = renderer->linear,
         .imageView = source,
@@ -495,9 +499,10 @@ static void blur_step(struct vela_pass *pass, VkCommandBuffer cmd, enum vela_pip
     barrier(cmd, dst->image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+    return true;
 }
 
-static void run_blur(struct vela_pass *pass, VkCommandBuffer cmd, const struct blur_op *op)
+static bool run_blur(struct vela_pass *pass, VkCommandBuffer cmd, const struct blur_op *op)
 {
     struct vela_target *target = pass->target;
     // The output drawn so far becomes readable.
@@ -516,20 +521,20 @@ static void run_blur(struct vela_pass *pass, VkCommandBuffer cmd, const struct b
         used_height[level] = used_height[level] ? used_height[level] : 1;
     }
     // Down: from the output to level 0, then each level from the previous one.
-    blur_step(pass, cmd, VELA_PIPELINE_BLUR_DOWN, target->view, &op->source, target->width, target->height, 0,
-        used_width[0], used_height[0], op->strength);
+    if (!blur_step(pass, cmd, VELA_PIPELINE_BLUR_DOWN, target->view, &op->source,
+            target->width, target->height, 0, used_width[0], used_height[0], op->strength)) return false;
     for (int level = 1; level < VELA_BLUR_LEVELS; ++level) {
         const struct vela_blur_image *from = &pass->renderer->blur[level - 1];
         const struct wlr_box zone = { 0, 0, (int)used_width[level - 1], (int)used_height[level - 1] };
-        blur_step(pass, cmd, VELA_PIPELINE_BLUR_DOWN, from->view, &zone, from->width, from->height, level,
-            used_width[level], used_height[level], op->strength);
+        if (!blur_step(pass, cmd, VELA_PIPELINE_BLUR_DOWN, from->view, &zone, from->width,
+                from->height, level, used_width[level], used_height[level], op->strength)) return false;
     }
     // Up: back to level 0.
     for (int level = VELA_BLUR_LEVELS - 2; level >= 0; --level) {
         const struct vela_blur_image *from = &pass->renderer->blur[level + 1];
         const struct wlr_box zone = { 0, 0, (int)used_width[level + 1], (int)used_height[level + 1] };
-        blur_step(pass, cmd, VELA_PIPELINE_BLUR_UP, from->view, &zone, from->width, from->height, level,
-            used_width[level], used_height[level], op->strength);
+        if (!blur_step(pass, cmd, VELA_PIPELINE_BLUR_UP, from->view, &zone, from->width,
+                from->height, level, used_width[level], used_height[level], op->strength)) return false;
     }
 
     // Back to drawing on the output.
@@ -537,6 +542,7 @@ static void run_blur(struct vela_pass *pass, VkCommandBuffer cmd, const struct b
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
         VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+    return true;
 }
 
 // ----------------------------------------------------------- submission --
@@ -595,7 +601,7 @@ static VkImageMemoryBarrier2 ownership(VkImage image, uint32_t queue_family, boo
 }
 
 // The drawing's commands, from the first barrier to the last.
-static void record(struct vela_pass *pass, VkCommandBuffer cmd, struct vela_texture **foreign, int foreign_count)
+static bool record(struct vela_pass *pass, VkCommandBuffer cmd, struct vela_texture **foreign, int foreign_count)
 {
     struct vela_renderer *renderer = pass->renderer;
     struct vela_target *target = pass->target;
@@ -649,7 +655,7 @@ static void record(struct vela_pass *pass, VkCommandBuffer cmd, struct vela_text
         const struct draw *draw = &pass->draws[i];
         // A blur: what is behind is read before its pieces.
         if (draw->blur_op >= 0 && draw->blur_op != blur_done) {
-            run_blur(pass, cmd, &pass->blur_ops[draw->blur_op]);
+            if (!run_blur(pass, cmd, &pass->blur_ops[draw->blur_op])) return false;
             blur_done = draw->blur_op;
             vkCmdBeginRendering(cmd, &rendering);
             vkCmdSetViewport(cmd, 0, 1, &viewport);
@@ -657,6 +663,7 @@ static void record(struct vela_pass *pass, VkCommandBuffer cmd, struct vela_text
         }
         VkPipeline pipeline = vela_renderer_pipeline(renderer, target->format, draw->kind, draw->blend);
         if (!pipeline) {
+            if (vela_vulkan_unusable(renderer->vk)) return false;
             continue;
         }
         if (pipeline != bound) {
@@ -714,6 +721,7 @@ static void record(struct vela_pass *pass, VkCommandBuffer cmd, struct vela_text
     vkCmdPipelineBarrier2(cmd, &release_dependency);
     free(acquire);
     free(release);
+    return true;
 }
 
 // A dmabuf's implicit fence (sync_file), to add to the waits.
@@ -734,8 +742,8 @@ static bool import_fence(int dmabuf_fd, uint32_t flags, int sync_file)
 bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
 {
     struct vela_renderer *renderer = pass->renderer;
-    if (renderer->vk->loss.lost) {
-        if (pass->signal_timeline) {
+    if (vela_vulkan_unusable(renderer->vk)) {
+        if (pass->signal_timeline && !vela_vulkan_unusable(renderer->vk)) {
             wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point);
         }
         pass_free(pass);
@@ -760,7 +768,16 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
     int foreign_count = 0;
     struct vela_texture **foreign = foreign_textures(pass, &foreign_count);
     vela_renderer_write_timestamp(renderer, cmd, pass->timing_slot, false);
-    record(pass, cmd, foreign, foreign_count);
+    if (!record(pass, cmd, foreign, foreign_count)) {
+        // The command buffer was never submitted: release its reservations
+        // without making another Vulkan call on a failed device.
+        if (!vela_vulkan_unusable(renderer->vk)) vela_vulkan_abort(renderer->vk, "record render pass");
+        vela_renderer_submit(renderer, cmd, NULL, 0, NULL);
+        vela_renderer_timing_submitted(renderer, pass->timing_slot, 0);
+        free(foreign);
+        pass_free(pass);
+        return false;
+    }
     vela_renderer_write_timestamp(renderer, cmd, pass->timing_slot, true);
 
     // The waits: one per explicit sync point, one for the target and one per
@@ -794,13 +811,14 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
     free(waits);
     vela_renderer_timing_submitted(renderer, pass->timing_slot, point);
     if (point == 0) {
-        if (pass->signal_timeline) {
+        if (pass->signal_timeline && !vela_vulkan_unusable(renderer->vk)) {
             wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point);
         }
         free(foreign);
         pass_free(pass);
         return false;
     }
+    bool sync_ok = true;
     if (release_fd >= 0) {
         bool ok = import_fence(target->dmabuf_fd, DMA_BUF_SYNC_WRITE, release_fd);
         for (int i = 0; i < foreign_count; ++i) {
@@ -808,28 +826,34 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
                 ok = import_fence(foreign[i]->dmabuf_fd, DMA_BUF_SYNC_READ, release_fd) && ok;
             }
         }
-        if (!ok) {
-            vela_renderer_wait(renderer, point); // the kernel didn't take the fence
+        if (!ok && !vela_renderer_wait(renderer, point)) {
+            sync_ok = false; // do not announce release before GPU completion
         }
     }
     free(foreign);
     // End of work on the syncobj timelines too: ours (release of app buffers)
     // and the one wlroots asked for. release_fd -1: the CPU has already
     // waited, the points signal at once.
-    uint64_t sync_point = vela_renderer_signal_sync_point(renderer, release_fd);
-    if (pass->signal_timeline) {
+    uint64_t sync_point = sync_ok && !vela_vulkan_unusable(renderer->vk)
+        ? vela_renderer_signal_sync_point(renderer, release_fd) : 0;
+    if (sync_ok && !vela_vulkan_unusable(renderer->vk) && pass->signal_timeline) {
         bool signalled = release_fd >= 0
             ? wlr_drm_syncobj_timeline_import_sync_file(pass->signal_timeline, pass->signal_point, release_fd)
             : wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point);
         if (!signalled) {
-            vela_renderer_wait(renderer, point);
-            wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point);
+            if (!vela_renderer_wait(renderer, point)
+                || !wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point)) {
+                if (!vela_vulkan_unusable(renderer->vk)) {
+                    vela_vulkan_abort(renderer->vk, "render pass explicit-sync release");
+                }
+                sync_ok = false;
+            }
         }
     }
     if (release_fd >= 0) {
         close(release_fd);
     }
-    if (renderer->vk->loss.lost) {
+    if (!sync_ok || vela_vulkan_unusable(renderer->vk)) {
         pass_free(pass);
         return false;
     }
