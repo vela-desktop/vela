@@ -560,7 +560,7 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
 // the BO. This runs the same import path used by the first Vulkan render pass.
 bool vela_renderer_validate_target(struct vela_renderer *renderer, struct wlr_buffer *buffer)
 {
-    return renderer && !renderevela_vulkan_unusable(r->vk) && buffer && vela_renderer_target(renderer, buffer) != NULL;
+    return renderer && !vela_vulkan_unusable(renderer->vk) && buffer && vela_renderer_target(renderer, buffer) != NULL;
 }
 
 // ----------------------------------------------------- command buffers --
