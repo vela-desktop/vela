@@ -40,6 +40,7 @@ struct vela_decoration_state {
     const char *app_id;
     bool active;
     bool maximized;
+    bool can_maximize; // false for fixed-size toplevels (including X11 size hints)
     bool fullscreen; // fullscreen hides the bar
 };
 
