@@ -86,4 +86,34 @@ if [ -n "$primary" ]; then
         || echo "vela-xwayland-native: XRandR output '$primary' unavailable" >&2
 fi
 
+
+# Diagnostic mode shows the modes from *this* Satellite X server, rather than
+# from Vela's regular XWayland instance that launched Steam itself.
+if [ "${VELA_XWAYLAND_NATIVE_DEBUG:-0}" = 1 ]; then
+    echo "vela-xwayland-native: Satellite DISPLAY=$DISPLAY, primary=${primary:-auto}" >&2
+    xrandr --query >&2 || :
+    xrandr --listmonitors >&2 || :
+fi
+
+# Optional fail-closed guard: games should never silently continue using
+# logical modes when native-resolution X11 was explicitly requested.
+# Example: VELA_XWAYLAND_NATIVE_EXPECT=2560x1440 vela-xwayland-native %command%
+if [ -n "${VELA_XWAYLAND_NATIVE_EXPECT:-}" ]; then
+    case "$VELA_XWAYLAND_NATIVE_EXPECT" in
+        *[!0-9x]*|*x*X*|x*|*x) echo "vela-xwayland-native: invalid native mode" >&2; exit 2 ;;
+    esac
+    native_modes=$(xrandr --query) || exit 1
+    if ! printf '%s\n' "$native_modes" | awk -v output="$primary" -v mode="$VELA_XWAYLAND_NATIVE_EXPECT" '
+        /^[^[:space:]]/ {
+            inside = (output == "" || ($1 == output && $2 == "connected"))
+        }
+        inside && $1 == mode { found = 1 }
+        END { exit found ? 0 : 1 }
+    '; then
+        echo "vela-xwayland-native: Satellite does not advertise $VELA_XWAYLAND_NATIVE_EXPECT on ${primary:-any output}" >&2
+        printf '%s\n' "$native_modes" >&2
+        exit 1
+    fi
+fi
+
 "$@"
