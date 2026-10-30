@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/device_loss_policy.h"
+#undef NDEBUG
 #include <assert.h>
 #include <string.h>
 int main(void)
