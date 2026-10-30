@@ -59,16 +59,17 @@ package manager.
 
 The Beta updater deliberately **fails closed** if a release manifest is
 missing, corrupt or lacks signed provenance. It never silently compiles a
-source snapshot as an alternative to a missing official Beta binary. Release
-check JSON is schema-versioned; future Settings UI changes should consume
-the structured output instead of scraping human-readable log lines.
+source snapshot as an alternative to a missing official Beta binary. The
+check JSON is schema-versioned (schema 2, both channels); the desktop reads
+it and the state files `vela-update` writes, never its log lines.
 
 ## Settings integration
 
-[PR #133](https://github.com/vela-desktop/vela/pull/133) owns the Updates
-page and should add a Beta/Experimental selector on top of the CLI contract
-in this PR. Keep UI/controller changes there to avoid two concurrent
-implementations of the same page.
+Settings > System > Updates ([Updates](updates.md)) shows both channels
+through `vela-update-daemon`, which runs the checks and starts `vela-update`
+in a terminal. Its channel selector asks before a transition: what the other
+channel is, that the package is replaced, that the version may go back, and
+that the update runs in a terminal.
 
 ## Rollout validation
 

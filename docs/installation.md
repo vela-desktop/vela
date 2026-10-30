@@ -156,6 +156,20 @@ on Arch, `/usr/libexec/vela` on Fedora and Ubuntu). It shares BlueZ with other d
 the same machine: while you are in another session, that desktop answers
 its devices, and Vela changes nothing.
 
+## Updating from the desktop
+
+**Settings > System > Updates** shows whether an update is available, what's
+new (Beta's release notes, or Experimental's commits) and the update channel.
+Vela checks by itself once a day, never on a metered connection, and sends a
+notification when there is something new; turn this off on the same page.
+
+**Install now** runs `vela-update` in a terminal, where the package manager
+asks for your password and the build stays readable; updates started by hand
+in a terminal show on the page too. `xdg-terminal-exec` (a dependency of the
+package) opens your default terminal, or Konsole without one. After an update,
+sign out and in again to use the new version: the page and a notification say
+so. The design is in [Updates](updates.md).
+
 ## Updating, selecting revisions, and rollback
 
 Repository downloads use public HTTPS and need no GitHub account or SSH keys.

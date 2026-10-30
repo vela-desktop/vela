@@ -24,7 +24,8 @@ translations, and the **Updates page exception** below.
 **Required for the 0.1 release:**
 
 - **Updates page:** complete
-  [#133](https://github.com/vela-desktop/vela/pull/133) so Settings can
+  [#161](https://github.com/vela-desktop/vela/pull/161) (which supersedes
+  [#133](https://github.com/vela-desktop/vela/pull/133)) so Settings can
   inspect the installed and available revision, check for updates, display
   changes/errors and launch the updater, and so Vela checks for updates
   in the background and sends a notification when one is available.
@@ -114,7 +115,7 @@ native on-screen keyboard, including their Wayland input foundations.
   blindly merging every draft.
 - Finish or explicitly supersede the related touch/keyboard design PRs
   once their accepted design is integrated into the implementation.
-  The Updates page #133 must already be finished for 0.1 and is not
+  The Updates page #161 must already be finished for 0.1 and is not
   part of this deferred-feature list.
 
 **Validation:** physical touchscreen, pressure-sensitive pen and
@@ -210,7 +211,7 @@ own design, cost/maintenance analysis and definition of done.
 
 | Work | Design | Pull request | Status | Release target |
 |---|---|---|---|---|
-| **Settings Updates page**: installed/latest revision, check, changes, update launch and update notifications | proposed in the PR | [#133](https://github.com/vela-desktop/vela/pull/133) | draft; **0.1 release blocker** | 0.1 |
+| **Settings Updates page**: installed/latest revision, check, changes, update launch and update notifications | [Updates](updates.md) | [#161](https://github.com/vela-desktop/vela/pull/161) (supersedes #133) | implemented; real updates on real systems pending; **0.1 release blocker** | 0.1 |
 | **Release engineering**: versioned beta pipeline, gates, provenance, artifacts and release notes | separate infrastructure design pending | — | release infrastructure, **not a desktop feature** | 0.1 |
 | **Native Bluetooth pairing and device lifecycle** | [#146](https://github.com/vela-desktop/vela/pull/146) | #146 (design) | draft design; implementation and real pairing validation required; **0.1 release requirement** | 0.1 |
 | **Vela Lock wallpaper sharpness and scaling** | [#149](https://github.com/vela-desktop/vela/pull/149) | #149 (design) | draft design; implementation and physical-pixel validation required; **0.1 release requirement** | 0.1 |

@@ -32,8 +32,9 @@ depends=(
     'konsole' 'breeze-icons' 'xdg-desktop-portal' 'xdg-desktop-portal-gtk' 'xdg-desktop-portal-wlr' 'xdg-utils'
     # Runtime requirements of vela-update; build toolchain is installed on demand.
     'git' 'curl' 'sudo' 'util-linux'
+    'xdg-terminal-exec' # Settings > Updates runs vela-update in the user's terminal (docs/updates.md §6.3)
     'pipewire' 'wireplumber'
-    'systemd-libs' # sd-bus: laptop backlight (docs/brightness.md §5.3), vela-bluetooth (docs/bluetooth.md)
+    'systemd-libs' # sd-bus: laptop backlight (docs/brightness.md §5.3), vela-bluetooth (docs/bluetooth.md), vela-update-daemon (docs/updates.md)
 )
 makedepends=('cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols>=1.37' 'qt6-tools' 'qt6-multimedia')
 optdepends=(

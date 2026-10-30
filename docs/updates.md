@@ -7,8 +7,9 @@ background check and the notification. It is the 0.1 release blocker in the
 code: decisions are made here, and the code follows them.
 
 > **Status:** U0 (this design), U1 (`vela-update`'s report), U2 (the
-> daemon), U3 (the Qt client), U4 (the Settings page) and U5 (the shell's
-> notifications) are done. See §11.
+> daemon), U3 (the Qt client), U4 (the Settings page), U5 (the shell's
+> notifications) and U6 (packaging and docs) are done; U7, real updates on
+> real systems, remains. See §11.
 
 ## 1. What there is today
 
@@ -408,7 +409,7 @@ Experimental's version carries its commit, here and on the page
 | U3 | `common/updates`, the Qt client | done |
 | U4 | the Settings page | done |
 | U5 | the shell's notifications | done |
-| U6 | packaging (`xdg-terminal-exec`, libexec files), docs, roadmap, release-channels | |
+| U6 | packaging (`xdg-terminal-exec`, libexec files), docs, roadmap, release-channels | done |
 | U7 | real updates on real systems | |
 
 ## 12. Open questions and risks
