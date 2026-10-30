@@ -22,7 +22,8 @@ def fake_ffmpeg(command, check):
 
 class PromoTests(unittest.TestCase):
     def test_scenes_are_unique_and_use_full_output(self):
-        self.assertEqual(len(promo.SCENES), len(set(promo.SCENES)))
+        self.assertEqual(list(promo.SCENES), ["desktop", "start-menu", "quick-settings",
+                                              "window-motion", "task-view", "settings"])
         for scene in promo.SCENES.values():
             self.assertEqual(scene.size, "1920x1080@60")
             self.assertEqual(scene.scale, 1.0)
