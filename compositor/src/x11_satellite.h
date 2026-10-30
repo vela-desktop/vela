@@ -3,6 +3,8 @@
 #ifndef VELA_X11_SATELLITE_H
 #define VELA_X11_SATELLITE_H
 
+#include <stdbool.h>
+
 struct vela_server;
 
 // Start an optional native-resolution, session-wide X11 backend.
