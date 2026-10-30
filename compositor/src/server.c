@@ -180,14 +180,14 @@ static bool init(struct vela_server *server)
     // Vela's renderer (docs/renderer.md): Vulkan 1.4 only, on the device of
     // the GPU driving the outputs. Without it Vela doesn't start and the log
     // says why.
-    server->vulkan = vela_vulkan_create(wlr_backend_get_drm_fd(server->backend));
+    server->vulkan = vela_vulkan_create(wlr_backend_get_drm_fd(server->backend), &server->init_device_lost);
     if (server->vulkan) {
         vela_vulkan_set_display(server->vulkan, display);
         server->renderer = vela_renderer_create(server->vulkan);
     }
     if (!server->renderer) {
         wlr_log(WLR_ERROR, "Vela needs a GPU with Vulkan 1.4 and dmabuf support: can't draw");
-        server->unsupported_gpu = !vela_vulkan_device_lost(server->vulkan);
+        server->unsupported_gpu = !server->init_device_lost && !vela_vulkan_device_lost(server->vulkan);
         if (server->unsupported_gpu) {
             vela_error_screen_no_vulkan(wlr_backend_get_drm_fd(server->backend));
         }
@@ -313,7 +313,7 @@ struct vela_server *vela_server_create(bool *unsupported_gpu, bool *device_lost)
         // What was already created is left to the process, which is about to
         // end.
         if (unsupported_gpu) *unsupported_gpu = server->unsupported_gpu;
-        if (device_lost) *device_lost = vela_vulkan_device_lost(server->vulkan);
+        if (device_lost) *device_lost = server->init_device_lost || vela_vulkan_device_lost(server->vulkan);
         free(server);
         return NULL;
     }
@@ -360,6 +360,9 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
         wlr_log(WLR_ERROR, "Can't create the Wayland socket");
         return false;
     }
+    // This is only set after the inherited socket has actually been accepted.
+    // On a direct launch there is no supervisor to run the final stop hook.
+    server->supervised = supervised;
     snprintf(server->socket_name, sizeof(server->socket_name), "%s", socket);
 
     if (!wlr_backend_start(server->backend)) {
@@ -448,7 +451,8 @@ void vela_server_destroy(struct vela_server *server)
     // graphical session target and imported environment alive so the new
     // compositor can reconnect to the existing user session. The supervisor
     // runs the stop hook only if it really ends the entire session.
-    if (server->session && !vela_vulkan_terminal_failure(server->vulkan)) {
+    if (server->session
+        && (!server->supervised || !vela_vulkan_terminal_failure(server->vulkan))) {
         vela_session_run_hook("stop");
     }
     vela_xwayland_finish(server); // X11 windows before the Wayland clients
