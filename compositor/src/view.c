@@ -71,7 +71,12 @@ struct wlr_box vela_view_geometry(const struct vela_view *view)
     }
 #if WLR_HAS_XWAYLAND
     // X11: no shadow margins; Vela's bar, if any, sits on top.
-    return (struct wlr_box) { 0, -bar, view->x11->width, view->x11->height + bar };
+    // The integrated experimental XWayland protocol adapter presents X11
+    // at a single global client scale, while the Vela scene stays logical.
+    double x11_scale = view->server->x11_xdg_output && view->server->xwayland_apps_scale > 0.0
+        ? view->server->xwayland_apps_scale : 1.0;
+    return (struct wlr_box) { 0, -bar, (int)lround(view->x11->width / x11_scale),
+        (int)lround(view->x11->height / x11_scale) + bar };
 #else
     return (struct wlr_box) { 0 };
 #endif
