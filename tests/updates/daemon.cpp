@@ -409,7 +409,8 @@ private Q_SLOTS:
                                           QStringLiteral("--branch"), QStringLiteral("fix/nvidia") }));
 
         QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("installing"));
-        QCOMPARE(property(QStringLiteral("Phase")).toString(), QStringLiteral("building"));
+        // begin reports "resolving"; "building" follows a moment later.
+        QTRY_COMPARE(property(QStringLiteral("Phase")).toString(), QStringLiteral("building"));
         QVERIFY(write(fake(QStringLiteral("install-result")), "failed"));
         QVERIFY(write(fake(QStringLiteral("install-release")), ""));
         QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
@@ -557,12 +558,15 @@ private Q_SLOTS:
 
     void signOutAfterTheCompositorIsReplaced()
     {
-        // The "compositor": a copy of sleep whose file an update replaces.
+        // The "compositor": a copy of sh, waiting on its stdin, whose file
+        // an update replaces. Not sleep: multicall coreutils (uutils on
+        // Ubuntu) pick the tool from argv[0] and a renamed copy just exits.
         const QString copy = m_home.filePath(QStringLiteral("vela-compositor"));
-        QVERIFY(QFile::copy(QStringLiteral("/usr/bin/sleep"), copy));
+        QVERIFY(QFile::copy(QStringLiteral("/bin/sh"), copy));
         QProcess compositor;
-        compositor.start(copy, { QStringLiteral("60") });
+        compositor.start(copy, { QStringLiteral("-c"), QStringLiteral("read line") });
         QVERIFY(compositor.waitForStarted());
+        QVERIFY(!compositor.waitForFinished(100));
         nextCheck({});
         QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_SESSION_PID"), QString::number(compositor.processId()) } }));
         QCOMPARE(property(QStringLiteral("NeedsRelogin")).toBool(), false);
