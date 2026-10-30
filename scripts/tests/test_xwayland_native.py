@@ -52,7 +52,7 @@ class NativeX11Launcher(unittest.TestCase):
                                     text=True, capture_output=True, timeout=20)
             self.assertEqual(result.returncode, 0, result.stderr)
             display = (root / "display").read_text().strip()
-            self.assertRegex(display, r"^:\\d+$")
+            self.assertRegex(display, r"^:\d+$")
             self.assertEqual((root / "arg").read_text().strip(), "two words")
             self.assertIn("--output DP-3 --primary", log.read_text())
             self.assertFalse(list(runtime.glob("vela-native-x11-*.lock")))
