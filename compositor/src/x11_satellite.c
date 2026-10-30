@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Satellite is Vela's default X11 backend (xwayland-backend=native).
+// Satellite is integrated as an experimental X11 backend (xwayland-backend=native).
 // Unlike per-game DISPLAY wrappers, all processes launched in this Vela session
 // inherit this DISPLAY, including Steam and games. Built-in XWayland remains
 // available as a compatibility fallback.
@@ -72,7 +72,7 @@ bool vela_x11_satellite_start(struct vela_server *server)
     // CI, debugging and recovery without editing the user's config file.
     const char *backend = getenv("VELA_XWAYLAND_BACKEND");
     if (!backend || !*backend) {
-        backend = vela_config_get(&config, "xwayland-backend", "native");
+        backend = vela_config_get(&config, "xwayland-backend", "compat");
     }
     bool native = strcmp(backend, "compat") != 0;
     vela_config_finish(&config);
