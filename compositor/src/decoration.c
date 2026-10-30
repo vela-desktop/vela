@@ -102,6 +102,7 @@ struct vela_decoration {
     uint32_t text_color; // the title's and the glyphs'
     bool active;
     bool maximized;
+    bool can_maximize;
     bool drawn;
     enum vela_decoration_part hover;
 };
@@ -352,6 +353,8 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
     bool reactivated = first || active != decoration->active;
     bool relooked = first || decoration->look_version != server->look_version;
     bool remaximized = first || maximized != decoration->maximized;
+    bool can_maximize = state->can_maximize;
+    bool resize_capability_changed = first || can_maximize != decoration->can_maximize;
     bool new_app = !same_text(state->app_id, decoration->app_id);
     bool new_title = !same_text(state->title, decoration->title_text);
     const struct palette *colors = palette(server);
@@ -404,10 +407,13 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
 
     // The button glyphs in the text's color; Close's white one, shown as much
     // as its red is, only from the scale and the state.
-    bool glyphs = recolored || rescaled || remaximized;
+    bool glyphs = recolored || rescaled || remaximized || resize_capability_changed;
     if (glyphs) {
         for (int i = 0; i < 3; ++i) {
-            struct vela_image pixels = draw_glyph(button_parts[i], maximized, scale, text_color);
+            // Keep the button visible but visually disabled on fixed-size windows.
+            uint32_t color = (i == 1 && !can_maximize)
+                ? (text_color & 0x00ffffffu) | ((text_color >> 1) & 0x7f000000u) : text_color;
+            struct vela_image pixels = draw_glyph(button_parts[i], maximized, scale, color);
             set_image(decoration, &decoration->glyphs[i], &pixels, 0, 0, GLYPH_SIZE, GLYPH_SIZE);
         }
     }
@@ -429,6 +435,7 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
     decoration->text_color = text_color;
     decoration->active = active;
     decoration->maximized = maximized;
+    decoration->can_maximize = can_maximize;
     if (new_title) {
         free(decoration->title_text);
         decoration->title_text = strdup(state->title);
@@ -497,7 +504,7 @@ enum vela_decoration_part vela_decoration_part_at(const struct vela_decoration *
         return VELA_DECORATION_CLOSE;
     }
     if (x >= width - 2 * BUTTON_WIDTH) {
-        return VELA_DECORATION_MAXIMIZE;
+        return decoration->can_maximize ? VELA_DECORATION_MAXIMIZE : VELA_DECORATION_NONE;
     }
     if (x >= width - 3 * BUTTON_WIDTH) {
         return VELA_DECORATION_MINIMIZE;
