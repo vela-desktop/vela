@@ -169,6 +169,10 @@ struct vela_server {
     struct wl_listener new_capture_request;
     struct wl_listener new_decoration;
     struct wl_listener request_activation;
+    // KWin-style single X11 server scale candidate. This tracks the largest
+    // enabled Wayland output scale, but is NOT applied to XWayland until the
+    // per-client xdg-output + wl_surface/input transforms are complete.
+    double xwayland_apps_scale;
     struct wlr_xwayland *xwayland; // NULL without Xwayland
     struct wl_listener xwayland_ready;
     struct wl_listener xwayland_new_surface;
