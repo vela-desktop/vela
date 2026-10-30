@@ -191,6 +191,7 @@ class PromoTests(unittest.TestCase):
             with (mock.patch.object(promo.capture.harness, "gpu_available", return_value=True),
                   mock.patch.object(promo.Path, "is_file", return_value=True),
                   mock.patch.object(promo.shutil, "which", return_value="/usr/bin/true"),
+                  mock.patch.object(promo.capture, "check_user_namespaces"),
                   mock.patch.object(promo, "record_scenes", side_effect=RuntimeError("no GPU after all"))):
                 with self.assertRaisesRegex(RuntimeError, "no GPU"):
                     promo.main(["desktop", "--out", str(output)])
