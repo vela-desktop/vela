@@ -103,7 +103,11 @@ int main(int argc, char *argv[])
     wlr_log_init(debug && *debug ? WLR_DEBUG : WLR_INFO, NULL);
 
     bool unsupported_gpu = false;
-    struct vela_server *server = vela_server_create(&unsupported_gpu);
+    bool init_device_lost = false;
+    struct vela_server *server = vela_server_create(&unsupported_gpu, &init_device_lost);
+    if (init_device_lost) {
+        return VELA_EXIT_DEVICE_LOST;
+    }
     if (unsupported_gpu) {
         return VELA_EXIT_UNSUPPORTED_GPU;
     }
@@ -112,6 +116,7 @@ int main(int argc, char *argv[])
     }
     vela_server_run(server);
     bool device_lost = vela_vulkan_device_lost(server->vulkan);
+    bool terminal_error = vela_vulkan_terminal_failure(server->vulkan);
     vela_server_destroy(server);
-    return device_lost ? VELA_EXIT_DEVICE_LOST : 0;
+    return device_lost ? VELA_EXIT_DEVICE_LOST : (terminal_error ? 1 : 0);
 }
