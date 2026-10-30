@@ -78,6 +78,40 @@ class NativeXwaylandSession(unittest.TestCase):
             lambda state: state.window(window)["maximized"],
             timeout=8, what="paired EWMH maximize delivered through Satellite to XDG")
 
+    def test_icccm_minimize_bridge(self):
+        # Steam's minimize button can use XIconifyWindow: ICCCM
+        # WM_CHANGE_STATE/IconicState. The host compositor receives XDG
+        # minimize requests, not raw X11 messages; Satellite must bridge them.
+        if os.environ.get("VELA_ASSERT_SATELLITE_MINIMIZE") != "1":
+            self.skipTest("Blocked upstream: Satellite lacks ICCCM WM_CHANGE_STATE forwarding")
+        if not os.path.exists(tool("vela-x11")):
+            self.skipTest("vela-x11 test client requires XCB build dependency")
+        display = self.vela.wait_for_log(
+            "Native-resolution X11 Satellite listening on DISPLAY=",
+            lambda line: line.split("DISPLAY=")[1].split()[0],
+        )
+        env = dict(self.vela.client_env, DISPLAY=display)
+        xid_path = Path(self.tmp.name) / "minimize-xid"
+        before = {w["id"] for w in self.vela.state().windows}
+        self.vela.clients.append(subprocess.Popen(
+            [tool("vela-x11"), "--id-file", str(xid_path), "640", "480"], env=env))
+        self.vela.wait_for(
+            lambda state: bool({w["id"] for w in state.windows} - before),
+            timeout=15, what="minimize target mapped via Satellite")
+        window = next(iter({w["id"] for w in self.vela.state().windows} - before))
+        self.vela.wait_still(window)
+        deadline = time.monotonic() + 8
+        while not xid_path.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertTrue(xid_path.exists())
+        subprocess.run(
+            [tool("vela-x11"), "--iconify", xid_path.read_text().strip()],
+            env=env, check=True, timeout=8,
+        )
+        self.vela.wait_for(
+            lambda state: state.window(window)["minimized"],
+            timeout=8, what="ICCCM IconicState delivered through Satellite to XDG")
+
     def test_satellite_xrandr_reports_native_mode(self):
         display = self.vela.wait_for_log(
             "Native-resolution X11 Satellite listening on DISPLAY=",
