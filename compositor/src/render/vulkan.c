@@ -349,7 +349,7 @@ static bool create_device(struct vela_vulkan *vk)
     } else if (!may_raise) {
         wlr_log(WLR_INFO, "%s: normal-priority GPU queue (high priority needs CAP_SYS_NICE)", vk->name);
     }
-    if (result != VK_SUCCESS) {
+    if (!vela_vulkan_result(vk, result, "vkCreateDevice")) {
         vk->device = VK_NULL_HANDLE;
         wlr_log(WLR_ERROR, "%s: can't create the Vulkan device", vk->name);
         return false;
@@ -515,12 +515,16 @@ static void query_formats(struct vela_vulkan *vk)
     }
 }
 
-struct vela_vulkan *vela_vulkan_create(int backend_drm_fd)
+struct vela_vulkan *vela_vulkan_create(int backend_drm_fd, bool *device_lost)
 {
+    if (device_lost) *device_lost = false;
     struct vela_vulkan *vk = calloc(1, sizeof(*vk));
     vk->render_fd = -1;
     if (!create_instance(vk) || !pick_physical_device(vk, backend_drm_fd) || !create_device(vk)
         || !open_render_node(vk)) {
+        // The Vulkan context is destroyed before returning NULL; preserve the
+        // reason so the caller does not mistake device loss for missing features.
+        if (device_lost) *device_lost = vk->loss.lost;
         vela_vulkan_destroy(vk);
         return NULL;
     }
