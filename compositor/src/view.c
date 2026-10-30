@@ -416,6 +416,7 @@ static struct vela_decoration_state decoration_state(struct vela_view *view)
         .app_id = vela_view_app_id(view),
         .active = view->activated,
         .maximized = view->maximized,
+        .can_maximize = vela_view_resizable(view),
         .fullscreen = view->fullscreen,
     };
 }
@@ -910,6 +911,14 @@ void vela_view_morph(struct vela_view *view, struct wlr_box to, bool corners)
 void vela_view_set_maximized(struct vela_view *view, bool on, bool animate)
 {
     if (!vela_view_configurable(view)) {
+        return;
+    }
+    // A fixed-size XDG/X11 window must not be stretched to the output's size.
+    // Respect the client's min=max size hints rather than special-casing games.
+    if (on && !vela_view_resizable(view)) {
+        if (view->xdg) {
+            wlr_xdg_surface_schedule_configure(view->xdg->base);
+        }
         return;
     }
     if (on == view->maximized || view->fullscreen) {
