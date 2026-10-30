@@ -263,7 +263,7 @@ caffeine status
 lossless intermediate capture.
 
 ```sh
-cmake --build build --target vela-compositor vela-shell vela-screen-record vela-settings
+cmake --build build --target vela-compositor vela-shell vela-screen-record vela-input vela-settings
 python3 scripts/record-promo.py --list
 python3 scripts/record-promo.py --out ~/videos/vela-beta
 python3 scripts/record-promo.py start-menu window-motion task-view --out ~/videos/vela-beta-short
