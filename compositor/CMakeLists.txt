@@ -333,7 +333,7 @@ if(VELA_BUILD_TOOLS)
     add_executable(vela-readback-test tests/readback_test.c src/render/formats.c
         src/render/wait_arrays.c ${VELA_SHADERS})
     target_include_directories(vela-readback-test PRIVATE src ${VELA_SHADER_DIR} ${VELA_GENERATED_DIR})
-    target_compile_definitions(vela-readback-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_definitions(vela-readback-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
     target_compile_options(vela-readback-test PRIVATE -ffunction-sections -fdata-sections
         -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
     target_link_options(vela-readback-test PRIVATE -Wl,--gc-sections)
