@@ -178,6 +178,7 @@ add_executable(vela-compositor
     src/view.c
     src/workspace.c
     src/xwayland.c
+    src/x11_satellite.c
     src/render/allocator.c
     src/render/formats.c
     src/render/pass.c
