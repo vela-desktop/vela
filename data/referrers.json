@@ -1,21 +1,21 @@
 {
-  "collected_at": "2026-10-29T09:57:24+00:00",
+  "collected_at": "2026-10-30T09:59:44+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 56,
+      "count": 61,
       "referrer": "reddit.com",
-      "uniques": 47
+      "uniques": 51
     },
     {
-      "count": 43,
-      "referrer": "velade.org",
-      "uniques": 38
-    },
-    {
-      "count": 41,
+      "count": 46,
       "referrer": "github.com",
-      "uniques": 13
+      "uniques": 17
+    },
+    {
+      "count": 40,
+      "referrer": "velade.org",
+      "uniques": 36
     },
     {
       "count": 35,
