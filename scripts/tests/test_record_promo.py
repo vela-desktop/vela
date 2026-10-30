@@ -49,7 +49,18 @@ class PromoTests(unittest.TestCase):
             with mock.patch.object(promo.subprocess, "run") as run:
                 promo.assemble_reel([output / "desktop.mp4", output / "start-menu.mp4"], output)
                 self.assertTrue(run.called)
-                self.assertFalse((output / ".promo-concat.txt").exists())
+                self.assertFalse(list(output.glob(".vela-promo-*.ffconcat")))
+
+    def test_existing_playlist_symlink_is_not_touched(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            victim = output / "important.txt"
+            victim.write_text("private data")
+            (output / ".promo-concat.txt").symlink_to(victim)
+            with mock.patch.object(promo.subprocess, "run"):
+                promo.assemble_reel([output / "desktop.mp4"], output)
+            self.assertEqual(victim.read_text(), "private data")
+            self.assertFalse(list(output.glob(".vela-promo-*.ffconcat")))
 
     def test_does_not_overwrite_previous_take_by_default(self):
         with tempfile.TemporaryDirectory() as folder:
