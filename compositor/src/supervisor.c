@@ -373,6 +373,8 @@ int vela_supervise(int argc, char **argv)
         }
         if (WIFSIGNALED(status)) {
             say("the compositor crashed (%s)", strsignal(WTERMSIG(status)));
+        } else if (WIFEXITED(status) && WEXITSTATUS(status) == VELA_EXIT_DEVICE_LOST) {
+            say("GPU device lost: attempting bounded compositor restart");
         } else {
             say("the compositor exited with an error (code %d)", WEXITSTATUS(status));
         }

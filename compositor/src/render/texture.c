@@ -103,7 +103,8 @@ static bool create_view(struct vela_texture *texture)
         .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
     };
     VkDevice device = texture->renderer->vk->device;
-    return vkCreateImageView(device, &info, NULL, &texture->view) == VK_SUCCESS;
+    return vela_vulkan_result(texture->renderer->vk,
+        vkCreateImageView(device, &info, NULL, &texture->view), "vkCreateImageView(texture)");
 }
 
 static struct vela_texture *new_texture(struct vela_renderer *renderer, const struct vela_pixel_format *format,
@@ -189,6 +190,7 @@ static bool upload(struct vela_texture *texture, const uint8_t *data, size_t str
     struct vela_renderer *renderer = texture->renderer;
     uint32_t bpp = texture->format->bytes_per_pixel;
     VkCommandBuffer cmd = vela_renderer_upload_commands(renderer);
+    if (!cmd) return false;
 
     image_barrier(cmd, texture->image,
         texture->uploaded ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
@@ -223,6 +225,7 @@ static bool upload(struct vela_texture *texture, const uint8_t *data, size_t str
         vkCmdCopyBufferToImage(cmd, staging.buffer, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
     }
 
+    if (vela_vulkan_unusable(renderer->vk)) return false;
     image_barrier(cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
@@ -271,7 +274,8 @@ static struct wlr_texture *upload_buffer(struct vela_renderer *renderer, struct 
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
-    bool ok = vkCreateImage(vk->device, &image_info, NULL, &texture->image) == VK_SUCCESS;
+    bool ok = vela_vulkan_result(vk,
+        vkCreateImage(vk->device, &image_info, NULL, &texture->image), "vkCreateImage(texture)");
     if (ok) {
         VkMemoryRequirements requirements;
         vkGetImageMemoryRequirements(vk->device, texture->image, &requirements);
@@ -282,8 +286,10 @@ static struct wlr_texture *upload_buffer(struct vela_renderer *renderer, struct 
             = vela_vulkan_memory_type(vk, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
         };
         ok = alloc_info.memoryTypeIndex != UINT32_MAX
-            && vkAllocateMemory(vk->device, &alloc_info, NULL, &texture->memory) == VK_SUCCESS
-            && vkBindImageMemory(vk->device, texture->image, texture->memory, 0) == VK_SUCCESS && create_view(texture);
+            && vela_vulkan_result(vk, vkAllocateMemory(vk->device, &alloc_info, NULL, &texture->memory),
+                "vkAllocateMemory(texture)")
+            && vela_vulkan_result(vk, vkBindImageMemory(vk->device, texture->image, texture->memory, 0),
+                "vkBindImageMemory(texture)") && create_view(texture);
     }
     if (ok) {
         const pixman_box32_t whole = { 0, 0, buffer->width, buffer->height };
@@ -475,6 +481,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
 {
     struct vela_texture *texture = (struct vela_texture *)wlr;
     struct vela_renderer *renderer = texture->renderer;
+    if (!renderer || vela_vulkan_unusable(renderer->vk)) return false;
     const struct vela_pixel_format *wanted = vela_pixel_format_from_drm(options->format);
     if (!wanted || wanted->unorm != texture->format->unorm) {
         return false;
@@ -513,7 +520,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
         ioctl(texture->dmabuf_fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &request);
         close(release_fd);
     }
-    vela_renderer_wait(renderer, point);
+    if (!vela_renderer_wait(renderer, point)) return false;
 
     uint8_t *dst = wlr_texture_read_pixel_options_get_data(options);
     for (int y = 0; y < box.height; ++y) {
@@ -655,8 +662,9 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
         return 0;
     }
     uint64_t completed = 0;
-    VkResult result = vkGetSemaphoreCounterValue(renderer->vk->device, renderer->timeline, &completed);
-    if (result != VK_SUCCESS) {
+    if (vela_vulkan_unusable(renderer->vk) || !vela_vulkan_result(renderer->vk,
+            vkGetSemaphoreCounterValue(renderer->vk->device, renderer->timeline, &completed),
+            "vkGetSemaphoreCounterValue(readback)")) {
         vela_renderer_cancel_readbacks(renderer);
         return 0;
     }
@@ -708,6 +716,7 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
 struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, struct wl_event_loop *loop,
     struct wlr_buffer *src, struct wlr_buffer *dst, void (*done)(void *, bool), void *data)
 {
+    if (vela_vulkan_unusable(renderer->vk)) return NULL;
     if (src->width != dst->width || src->height != dst->height || src->width <= 0 || src->height <= 0) {
         return NULL;
     }
@@ -832,6 +841,7 @@ static const struct wlr_texture_impl texture_impl = {
 
 struct wlr_texture *vela_texture_create(struct vela_renderer *renderer, struct wlr_buffer *buffer)
 {
+    if (vela_vulkan_unusable(renderer->vk)) return NULL;
     struct wlr_dmabuf_attributes dmabuf;
     if (wlr_buffer_get_dmabuf(buffer, &dmabuf)) {
         return import_dmabuf(renderer, buffer, &dmabuf);
