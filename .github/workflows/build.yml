@@ -37,7 +37,7 @@ env:
     wayland wayland-protocols wlroots0.20 libxkbcommon pixman libinput libdrm
     mesa freetype2 harfbuzz fontconfig librsvg cairo zlib pam polkit
     qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt
-    hicolor-icon-theme shared-mime-info xorg-xwayland xorg-xrandr xorg-xrdb xwayland-satellite pipewire wireplumber systemd-libs
+    hicolor-icon-theme shared-mime-info xorg-xwayland xorg-xrandr xwayland-satellite pipewire wireplumber systemd-libs
 
 jobs:
   changes:
