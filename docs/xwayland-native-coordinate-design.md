@@ -1,6 +1,6 @@
 # KWin-style XWayland scaling for Vela
 
-Status: **WIP: shared mathematical model + CTest, not yet wired to runtime.**
+Status: **WIP: CTest + live output-scale candidate, but not yet applied to XWayland surfaces.**
 Tracking: PR #164, issue #163.
 
 ## Decision: follow KWin, not Satellite
@@ -56,6 +56,12 @@ is only 1.0. The **same multiplier** for all monitor origins and extents
 keeps X11 coordinates contiguous and pointer hit testing consistent.
 This is intentionally **not** the earlier independently scaled per-output
 layout, which would introduce discontinuities at screen boundaries.
+
+The compositor also updates `server->xwayland_apps_scale` on output
+layout changes from the maximum enabled output scale. This is a
+**diagnostic candidate only** (trace with `VELA_XWAYLAND_SCALE_TRACE=1`);
+it is not passed to XWayland until the protocol and surface transforms
+are complete.
 
 The production-independent model is in
 `compositor/src/x11_coordinates.{h,c}`, covered by
