@@ -655,7 +655,11 @@ static bool record(struct vela_pass *pass, VkCommandBuffer cmd, struct vela_text
         const struct draw *draw = &pass->draws[i];
         // A blur: what is behind is read before its pieces.
         if (draw->blur_op >= 0 && draw->blur_op != blur_done) {
-            if (!run_blur(pass, cmd, &pass->blur_ops[draw->blur_op])) return false;
+            if (!run_blur(pass, cmd, &pass->blur_ops[draw->blur_op])) {
+                free(acquire);
+                free(release);
+                return false;
+            }
             blur_done = draw->blur_op;
             vkCmdBeginRendering(cmd, &rendering);
             vkCmdSetViewport(cmd, 0, 1, &viewport);
@@ -663,7 +667,11 @@ static bool record(struct vela_pass *pass, VkCommandBuffer cmd, struct vela_text
         }
         VkPipeline pipeline = vela_renderer_pipeline(renderer, target->format, draw->kind, draw->blend);
         if (!pipeline) {
-            if (vela_vulkan_unusable(renderer->vk)) return false;
+            if (vela_vulkan_unusable(renderer->vk)) {
+                free(acquire);
+                free(release);
+                return false;
+            }
             continue;
         }
         if (pipeline != bound) {
@@ -742,22 +750,17 @@ static bool import_fence(int dmabuf_fd, uint32_t flags, int sync_file)
 bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
 {
     struct vela_renderer *renderer = pass->renderer;
+    if (result) *result = (struct vela_pass_result) { 0, -1, 0 };
     if (vela_vulkan_unusable(renderer->vk)) {
-        if (pass->signal_timeline && !vela_vulkan_unusable(renderer->vk)) {
-            wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point);
-        }
         pass_free(pass);
         return false;
     }
     struct vela_target *target = pass->target;
-    if (result) {
-        *result = (struct vela_pass_result) { 0, -1, 0 };
-    }
     vela_renderer_collect(renderer);
 
     VkCommandBuffer cmd = vela_renderer_begin_commands(renderer);
     if (!cmd) {
-        if (pass->signal_timeline) {
+        if (pass->signal_timeline && !vela_vulkan_unusable(renderer->vk)) {
             // Whoever waits for this point must not stay blocked.
             wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point);
         }
