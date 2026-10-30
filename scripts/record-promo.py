@@ -22,7 +22,6 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 
@@ -235,7 +234,7 @@ def main(argv=None):
     if args.list:
         for scene in SCENES.values():
             print(f"{scene.name:16} {scene.about}")
-        return 0
+        return
 
     names = args.scenes or list(SCENES)
     unknown = [name for name in names if name not in SCENES]
@@ -282,7 +281,6 @@ def main(argv=None):
         record_scenes(names, build, output, staging, args)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-    return 0
 
 
 def record_scenes(names, build, output, staging, args):
@@ -325,4 +323,4 @@ def record_scenes(names, build, output, staging, args):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()  # Errors exit through argparse or an exception.
