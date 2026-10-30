@@ -248,7 +248,6 @@ protected:
     // After each case: lets any held fake go, and stops the daemon.
     void release()
     {
-        QFile(m_home.filePath(QStringLiteral("state/vela-update"))).setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
         QFile::remove(fake(QStringLiteral("check-hold")));
         write(fake(QStringLiteral("install-release")), "");
         stopDaemon();

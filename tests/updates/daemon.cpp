@@ -407,10 +407,12 @@ private Q_SLOTS:
         call(QStringLiteral("Check"));
         QTRY_COMPARE(property(QStringLiteral("Announce")).toString(), commitB);
         QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
-        QVERIFY(QFile(state(QString())).setPermissions(QFile::ReadOwner | QFile::ExeOwner));
+        // In the way even for root, as CI runs.
+        QVERIFY(QDir().mkpath(state(QStringLiteral("announced"))));
         QCOMPARE(call(QStringLiteral("Announced"), { commitB }).type(), QDBusMessage::ReplyMessage);
         QTRY_COMPARE(property(QStringLiteral("Announce")).toString(), QString());
-        QVERIFY(!QFile::exists(state(QStringLiteral("announced"))));
+        QVERIFY(QFileInfo(state(QStringLiteral("announced"))).isDir());
+        QCOMPARE(QDir(state(QString())).entryList({ QStringLiteral(".announced.*") }, QDir::Files | QDir::Hidden), QStringList {});
         // The same again changes nothing; an empty one is no commit.
         QCOMPARE(call(QStringLiteral("Announced"), { commitB }).type(), QDBusMessage::ReplyMessage);
         QCOMPARE(call(QStringLiteral("Announced"), { QString() }).type(), QDBusMessage::ReplyMessage);
