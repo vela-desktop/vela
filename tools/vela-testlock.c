@@ -260,6 +260,16 @@ int main(int argc, char* argv[])
         fprintf(stderr, "vela-testlock: ext-session-lock-v1 is missing\n");
         return 1;
     }
+    if (log_keyboard) {
+        // The first registry roundtrip need not deliver wl_seat.capabilities:
+        // the seat itself was just bound in a registry callback. Complete its
+        // negotiation before mapping a lock surface, or wl_keyboard.enter can
+        // be sent before the test client has created its keyboard resource.
+        if (wl_display_roundtrip(display) < 0 || !keyboard) {
+            fprintf(stderr, "vela-testlock: keyboard probe needs an active seat keyboard\n");
+            return 1;
+        }
+    }
 
     struct ext_session_lock_v1* lock = ext_session_lock_manager_v1_lock(manager);
     ext_session_lock_v1_add_listener(lock, &lock_listener, NULL);
