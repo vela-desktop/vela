@@ -444,10 +444,11 @@ static int64_t gpu_to_monotonic(struct vela_renderer *r, uint64_t ticks)
 bool vela_renderer_read_timing(struct vela_renderer *r, int slot, uint64_t point, struct vela_gpu_timing *out)
 {
     // The slot may already have been reused by a later drawing.
-    if (vela_vulkan_unusable(r->vk) || slot < 0 || point == 0 || r->timing[slot] != point
-        || point > vela_renderer_completed(r) || vela_vulkan_unusable(r->vk)) {
-        return false;
-    }
+    if (vela_vulkan_unusable(r->vk)) return false;
+    if (slot < 0 || point == 0 || r->timing[slot] != point
+        || point > vela_renderer_completed(r)) return false;
+    // Polling the completed point can discover device loss. Re-check after it.
+    if (vela_vulkan_unusable(r->vk)) return false;
     uint64_t ticks[2] = { 0 };
     if (!vela_vulkan_result(r->vk, vkGetQueryPoolResults(r->vk->device, r->query_pool,
             (uint32_t)(slot * 2), 2, sizeof(ticks), ticks, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT),
@@ -1090,7 +1091,13 @@ void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageV
     // Uploads recorded but not yet submitted count too: they will end up in
     // the next submission.
     uint64_t point = r->upload ? r->last_point + 1 : r->last_point;
-    if (!vela_vulkan_unusable(r->vk) && point <= vela_renderer_completed(r) && !vela_vulkan_unusable(r->vk)) {
+    bool can_destroy_now = false;
+    if (!vela_vulkan_unusable(r->vk)) {
+        can_destroy_now = point <= vela_renderer_completed(r);
+        // A failed Vulkan counter query can make the device unusable.
+        if (vela_vulkan_unusable(r->vk)) can_destroy_now = false;
+    }
+    if (can_destroy_now) {
         VkDevice device = r->vk->device;
         if (view) {
             vkDestroyImageView(device, view, NULL);
