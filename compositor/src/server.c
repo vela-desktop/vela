@@ -451,8 +451,8 @@ void vela_server_destroy(struct vela_server *server)
     // leave the systemd target/environment active until the supervisor ends
     // the session. Direct launches have no supervisor, so they must stop it
     // even on a terminal renderer failure.
-    if (server->session
-        && (!server->supervised || !vela_vulkan_terminal_failure(server->vulkan))) {
+    if (vela_session_should_stop(server->session != NULL, server->supervised,
+            vela_vulkan_terminal_failure(server->vulkan))) {
         vela_session_run_hook("stop");
     }
     vela_xwayland_finish(server); // X11 windows before the Wayland clients
