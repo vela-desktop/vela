@@ -112,6 +112,8 @@ struct vela_server {
     int vrr_mode;
     bool nested; // inside another session (Wayland or X11 window)
     bool unsupported_gpu; // renderer initialization failed; supervisor must not retry
+    bool init_device_lost; // Vulkan context could not be created after a device loss
+    bool supervised; // socket was handed over by supervisor; it owns the final stop hook
     char socket_name[64]; // our WAYLAND_DISPLAY
     // Exact XDG_RUNTIME_DIR inode inherited from the supervisor; -1 when
     // running nested/headless without supervision.
