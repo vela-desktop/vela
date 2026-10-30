@@ -1,6 +1,6 @@
 # Vulkan result handling and device-lost policy — design draft
 
-> **Status:** proposal only; no compositor implementation in this PR. Target beta 0.1 stabilization for controlled failure, not transparent in-session GPU recovery.
+> **Status:** implementation and hardware validation in progress. A sticky device-lost state and supervised exit are wired; final validation is still pending.
 
 ## Problem confirmed in current code
 
@@ -26,3 +26,9 @@
 ## Open design questions
 
 How should the compositor communicate its terminal GPU fault to the supervisor? Which teardown calls must be suppressed after loss? Should controlled stop preserve lock/secure-session invariants when restarting? These require review before implementation.
+
+## Implementation progress (30 October 2026)
+
+Implemented in #147: central VkResult classifier and first-error logging; sticky device-lost state; termination of the compositor's Wayland event loop with exit code 79; existing supervisor's three-failures-per-minute restart policy, respecting the secure lock marker; no new command recording, GPU submission, timeline wait/query or GPU-resource recycling once lost. Healthy shutdown still waits and resets as before; device-loss teardown skips these operations. Asynchronous readbacks fail rather than copy incomplete pixels. Staging map/bind and import, semaphore, command-buffer, submission and readback return paths are checked. CPU-only policy and staging-bind fault tests exercise the state and gating.
+
+Still required before declaring this beta blocker solved: a targeted queue-submit/wait fault-injection harness, reviewing remaining Vulkan result-returning paths, full AMD and NVIDIA GPU suites at the exact merge candidate, and a supervised locked-session smoke test. Never manufacture a real GPU reset on the daily-use workstation; hardware-reset tests require a disposable environment and explicitly controlled conditions.

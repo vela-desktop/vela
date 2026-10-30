@@ -421,7 +421,9 @@ static int64_t gpu_to_monotonic(struct vela_renderer *r, uint64_t ticks)
         };
         uint64_t values[2] = { 0 };
         uint64_t deviation = 0;
-        if (vk->get_calibrated_timestamps(vk->device, 2, infos, values, &deviation) == VK_SUCCESS) {
+        if (vela_vulkan_result(vk,
+                vk->get_calibrated_timestamps(vk->device, 2, infos, values, &deviation),
+                "vkGetCalibratedTimestampsKHR")) {
             r->calibration_ticks = values[0] & mask;
             r->calibration_ns = (int64_t)values[1];
             r->calibrated_at = now;
@@ -452,7 +454,9 @@ bool vela_renderer_read_timing(struct vela_renderer *r, int slot, uint64_t point
     uint64_t mask = r->vk->timestamp_mask;
     if (r->vk->get_calibrated_timestamps) {
         out->start_ns = gpu_to_monotonic(r, ticks[0] & mask);
+        if (r->vk->loss.lost) return false;
         out->end_ns = gpu_to_monotonic(r, ticks[1] & mask);
+        if (r->vk->loss.lost) return false;
         out->absolute = true;
     } else {
         out->start_ns = 0;
@@ -606,6 +610,7 @@ VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *r)
 
 VkCommandBuffer vela_renderer_upload_commands(struct vela_renderer *r)
 {
+    if (r->vk->loss.lost) return VK_NULL_HANDLE;
     if (!r->upload) {
         r->upload = vela_renderer_begin_commands(r);
     }
@@ -774,6 +779,7 @@ bool vela_renderer_stage_readback(struct vela_renderer *r, VkDeviceSize size, st
 
 static VkSemaphore take_semaphore(struct vela_renderer *r, bool release)
 {
+    if (r->vk->loss.lost) return VK_NULL_HANDLE;
     if (release && r->free_release_count > 0) {
         return r->free_releases[--r->free_release_count];
     }

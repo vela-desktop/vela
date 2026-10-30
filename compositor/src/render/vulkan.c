@@ -551,7 +551,8 @@ bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *ope
         wlr_log(WLR_ERROR, "Vulkan: GPU DEVICE LOST at %s (VkResult=%d); ending compositor",
             operation, (int)result);
         if (vk->loss_display) wl_display_terminate(vk->loss_display);
-    } else if (result != VK_SUCCESS && !vk->loss.lost) {
+    } else if (result != VK_SUCCESS && result != VK_NOT_READY && result != VK_TIMEOUT
+        && result != VK_INCOMPLETE && !vk->loss.lost) {
         wlr_log(WLR_ERROR, "Vulkan: %s failed (VkResult=%d)", operation, (int)result);
     }
     return result == VK_SUCCESS && !vk->loss.lost;
@@ -730,6 +731,7 @@ bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_a
 
 VkShaderModule vela_vulkan_shader(struct vela_vulkan *vk, const uint32_t *code, size_t bytes)
 {
+    if (vk->loss.lost) return VK_NULL_HANDLE;
     const VkShaderModuleCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = bytes,
