@@ -73,91 +73,55 @@ The Settings app is the preferred way to edit these values because it applies va
 
 ## XWayland primary output and native-resolution games
 
-To use native physical monitor modes for **all Steam/Proton games without any
-Steam launch options**, install `xwayland-satellite` and set in
+**Native physical-resolution XWayland is enabled by default.** Vela launches
+Xwayland Satellite >= 0.7 for the whole graphical session. The Arch, Fedora
+and experimental Debian packages declare Satellite as a runtime dependency.
+It runs on Vela's Wayland server and inherits compositor-created X11 listening
+sockets. Steam and Proton use the session's `DISPLAY`; **leave each game's
+Steam launch options empty**.
+
+Satellite reports native physical modes, even with fractional Wayland scaling.
+For example a 2560×1440 monitor at 125% must offer 2560×1440 in XRandR,
+not merely the 2048×1152 logical mode. After installing the PR, **restart
+the whole Vela session and restart Steam**. In a terminal started inside the
+new session, check:
+
+```sh
+echo "$DISPLAY"
+xrandr --listmonitors
+xrandr --query
+```
+
+If the native mode is missing, check Vela's compositor log for
+`Native-resolution X11 Satellite listening on DISPLAY=...` and compare
+that DISPLAY to the terminal's. A mode seen from a separate Satellite
+launcher is not proof Steam is using the native backend. The dedicated
+headless regression test `functional-xwayland-native-session` checks
+2560×1440 at scale 1.25 when Satellite and xrandr are available.
+
+The monitor selected in Vela Settings (`display/primaryOutput`) is also
+synchronized to the RandR primary display, including on hotplug. No manual
+`xrandr --primary` is required in the normal session.
+
+To recover from a Satellite compatibility problem, set in
 `~/.config/vela/vela.conf`:
 
 ```ini
-xwayland-backend=native
+xwayland-backend=compat
 ```
 
-**Restart the Vela session**, then start Steam normally; the compositor
-starts a supervised Xwayland Satellite with a prebound X11 socket and exports
-its `DISPLAY` to the shell and applications. All X11 applications in the
-session share the same server and its XRandR primary monitor.
+and restart Vela. This restores the integrated wlroots XWayland backend and
+its legacy logical-resolution scaling. `xwayland-backend=native` is the
+default; for one-off diagnostic sessions, `VELA_XWAYLAND_BACKEND=compat`
+overrides the config without editing it. If Satellite cannot start, Vela
+falls back to compatibility mode and logs the failure.
 
-The default `xwayland-backend=compat` keeps wlroots' integrated XWayland,
-including Vela's custom X11/window-management handling. If Satellite has not
-been installed or its listening socket cannot be reserved, Vela falls back to
-this compatibility backend and logs why. Note that this session-wide native
-path goes through Satellite's XDG window management and may behave differently
-from the integrated backend (in particular for unusual Win32 windows).
-
-
-The main monitor selected in Vela Settings is also synchronized to the XRandR
-primary output for X11/Wine/Proton clients. The shell re-applies it on startup,
-preference changes, and monitor hotplug. This requires `xrandr` (Arch:
-`xorg-xrandr`). It does not affect the Wayland-native monitor layout.
-
-Fractional scaling is separate. At 125% scaling, Vela's built-in XWayland
-currently exposes logical size 2048×1152 for a physical 2560×1440 output.
-For opt-in physical-resolution enumeration, install **xwayland-satellite >=
-0.6** and launch the game through:
-
-```sh
-vela-xwayland-native GAME [ARG ...]
-```
-
-For a Steam game, add the launch option:
-
-```text
-vela-xwayland-native %command%
-```
-
-To verify the actual modes exposed by the separate Satellite X server,
-**do not** run plain `xrandr` in the normal shell (that queries Vela's
-integrated XWayland). Run:
-
-```sh
-vela-xwayland-native xrandr --query
-```
-
-For a 2560×1440 output at 125% scale, the Satellite query must contain
-**2560x1440**, not just 2048x1152. To debug a Steam launch without silently
-starting in logical resolution:
-
-```text
-VELA_XWAYLAND_NATIVE_DEBUG=1 VELA_XWAYLAND_NATIVE_EXPECT=2560x1440 vela-xwayland-native %command%
-```
-
-If the mode is missing, the helper prints the actual RandR output list and
-exits instead of launching the game. First confirm Satellite >= 0.6 is really
-installed and bound to Vela's Wayland socket.
-
-For fullscreen Windows games, Vela now honors explicit X11 configure requests
-that target another monitor's top-left, and native XDG clients requesting
-`xdg_toplevel.set_fullscreen(output)`, including X11 bridged through Satellite.
-A window can also be moved to a particular enabled output without altering the
-global primary display. For example, through Vela's command socket:
-
-```sh
-printf 'window active output HDMI-A-1\\n' |
-    socat - UNIX-CONNECT:"$XDG_RUNTIME_DIR/vela-$WAYLAND_DISPLAY.sock"
-```
-
-This move is intentionally limited to fullscreen windows. The X11 fallback
-does not reinterpret size-only configure requests as monitor changes.
-
-The helper reserves a separate X11 display, starts Satellite, forwards the
-Vela-configured primary monitor to its RandR server and runs the requested
-application. It shuts down its Satellite instance after the app exits, leaving
-the rest of the session on built-in XWayland. You may override the output
-explicitly with `VELA_X11_PRIMARY=DP-3`.
-
-Satellite uses the host's `wp_viewporter` support, already exposed by Vela.
-It can have different window-management behavior from built-in XWayland, and
-legacy X11 applications may show smaller UI text. This is **not** the same
-as native zero-scaling inside Vela's integrated XWayland.
+A Satellite-bridged X11 window appears to Vela as a Wayland XDG window.
+Unlike integrated XWayland, some client-side Wine window-management policies
+are therefore handled by Satellite. This PR does **not** yet establish that
+EU5's windowed framebuffer, monitor ordering and maximization are all correct
+on the reported mixed-scale hardware; do not mark those tests passed until
+verified.
 
 ## Display configuration
 
