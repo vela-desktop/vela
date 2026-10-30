@@ -318,6 +318,14 @@ void vela_window_action(struct vela_server *server, struct vela_view *view, cons
     } else if (strcmp(action, "activate-group") == 0) {
         // The snap group from the taskbar: all its windows to the front.
         vela_snap_activate_group(server, view);
+    } else if (starts_with(action, "output ")) {
+        // A user-invoked escape hatch for fullscreen games whose X11/Wine
+        // monitor-selection path does not emit a recognized move request.
+        // No global primary-monitor or resolution change is necessary.
+        struct vela_output *output = vela_output_named(server, action + 7);
+        if (view->fullscreen && output) {
+            vela_view_fullscreen_output(view, output);
+        }
     } else if (starts_with(action, "move-to ")) {
         vela_workspaces_move_view(server, view, atoi(action + 8));
     } else if (strcmp(action, "move-to-new") == 0) {
