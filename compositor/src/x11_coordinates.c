@@ -4,35 +4,58 @@
 
 #include <math.h>
 
-bool vela_x11_space_valid(struct vela_x11_space space)
+bool vela_x11_scale_valid(double scale)
 {
-    return isfinite(space.logical_x) && isfinite(space.logical_y)
-        && isfinite(space.x11_x) && isfinite(space.x11_y)
-        && isfinite(space.scale) && space.scale > 0.0;
+    return isfinite(scale) && scale > 0;
 }
 
-struct vela_x11_point vela_x11_to_wayland(struct vela_x11_space space, struct vela_x11_point physical)
+double vela_x11_global_scale(enum vela_x11_scaling_policy policy,
+    const double *output_scales, size_t output_count)
+{
+    if (policy == VELA_X11_SCALED_BY_SYSTEM) {
+        return 1.0;
+    }
+    double max_scale = 1.0;
+    if (!output_scales) {
+        return max_scale;
+    }
+    for (size_t i = 0; i < output_count; ++i) {
+        if (vela_x11_scale_valid(output_scales[i])
+            && output_scales[i] > max_scale) {
+            max_scale = output_scales[i];
+        }
+    }
+    return max_scale;
+}
+
+struct vela_x11_point vela_wayland_to_x11(double global_scale, struct vela_x11_point logical)
 {
     return (struct vela_x11_point) {
-        space.logical_x + (physical.x - space.x11_x) / space.scale,
-        space.logical_y + (physical.y - space.x11_y) / space.scale,
+        logical.x * global_scale,
+        logical.y * global_scale,
     };
 }
 
-struct vela_x11_point vela_wayland_to_x11(struct vela_x11_space space, struct vela_x11_point logical)
+struct vela_x11_point vela_x11_to_wayland(double global_scale, struct vela_x11_point x11)
 {
     return (struct vela_x11_point) {
-        space.x11_x + (logical.x - space.logical_x) * space.scale,
-        space.x11_y + (logical.y - space.logical_y) * space.scale,
+        x11.x / global_scale,
+        x11.y / global_scale,
     };
 }
 
-struct vela_x11_point vela_x11_extent_to_wayland(struct vela_x11_space space, struct vela_x11_point extent)
+struct vela_x11_rect vela_wayland_rect_to_x11(double scale, struct vela_x11_rect logical)
 {
-    return (struct vela_x11_point) { extent.x / space.scale, extent.y / space.scale };
+    return (struct vela_x11_rect) {
+        logical.x * scale, logical.y * scale,
+        logical.width * scale, logical.height * scale,
+    };
 }
 
-struct vela_x11_point vela_wayland_extent_to_x11(struct vela_x11_space space, struct vela_x11_point extent)
+struct vela_x11_rect vela_x11_rect_to_wayland(double scale, struct vela_x11_rect x11)
 {
-    return (struct vela_x11_point) { extent.x * space.scale, extent.y * space.scale };
+    return (struct vela_x11_rect) {
+        x11.x / scale, x11.y / scale,
+        x11.width / scale, x11.height / scale,
+    };
 }
