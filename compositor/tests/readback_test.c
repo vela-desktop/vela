@@ -13,15 +13,24 @@ static int maps, destroyed, freed, command_allocations;
 static uint8_t mapping[256];
 static VkDeviceSize buffer_size;
 static uint64_t completed_point;
+static int counter_polls;
 
 void _wlr_log(enum wlr_log_importance importance, const char *format, ...) {}
+
+// Production VkResult policy uses a Wayland display; the unit fixture needs
+// only the same first-loss state transition, not a server/event loop.
+bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *operation)
+{
+    vela_device_loss_mark(&vk->loss, (int32_t)result, operation);
+    return result == VK_SUCCESS && !vk->loss.lost;
+}
 
 // Sanitizer global metadata can retain renderer vtables. These unrelated
 // entry points must never be reached by this device-free test.
 struct vela_pass *vela_renderer_begin_pass(struct vela_renderer *renderer, struct wlr_buffer *buffer) { abort(); }
 struct wlr_render_pass *vela_pass_wlr(struct vela_pass *pass) { abort(); }
 void vela_pass_signal_on_done(struct vela_pass *pass, struct wlr_drm_syncobj_timeline *timeline, uint64_t point) { abort(); }
-bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
+bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
     VkFormat format, VkImageUsageFlags usage, VkImage *image, VkDeviceMemory *memory) { abort(); }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(VkDevice device, const VkBufferCreateInfo *info,
@@ -86,6 +95,7 @@ VKAPI_ATTR void VKAPI_CALL vkFreeMemory(VkDevice device, VkDeviceMemory memory, 
 
 VKAPI_ATTR VkResult VKAPI_CALL vkGetSemaphoreCounterValue(VkDevice device, VkSemaphore semaphore, uint64_t *value)
 {
+    ++counter_polls;
     *value = completed_point;
     return VK_SUCCESS;
 }
@@ -117,6 +127,28 @@ static void staging_failures(void)
         }
     }
     free(renderer.staging);
+}
+
+static void device_loss_stops_reuse(void)
+{
+    struct vela_vulkan vk = { 0 };
+    struct vela_renderer renderer = { .vk = &vk, .last_point = 3 };
+    struct vela_staging staging;
+    maps = destroyed = freed = command_allocations = counter_polls = 0;
+    bind_result = VK_ERROR_DEVICE_LOST;
+    map_result = VK_SUCCESS;
+    null_mapping = false;
+    assert(!vela_renderer_stage_readback(&renderer, sizeof(mapping), &staging));
+    assert(vk.loss.lost);
+    assert(strcmp(vk.loss.first_operation, "vkBindBufferMemory(staging)") == 0);
+    assert(destroyed == 1 && freed == 1);
+    assert(!vela_renderer_stage_readback(&renderer, sizeof(mapping), &staging));
+    assert(!vela_renderer_begin_commands(&renderer));
+    assert(!vela_renderer_wait(&renderer, 3));
+    assert(vela_renderer_completed(&renderer) == 0);
+    vela_renderer_collect(&renderer);
+    assert(counter_polls == 0 && command_allocations == 0 && maps == 0);
+    bind_result = VK_SUCCESS;
 }
 
 static void command_allocation_failure(void)
@@ -224,6 +256,7 @@ static void shared_staging_retains_other_consumers(void)
 int main(void)
 {
     staging_failures();
+    device_loss_stops_reuse();
     command_allocation_failure();
     cancelled_gpu_allocations_still_count();
     shared_staging_retains_other_consumers();
