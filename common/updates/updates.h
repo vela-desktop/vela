@@ -65,6 +65,8 @@ class Updates : public QObject {
     Q_PROPERTY(QString installResult READ installResult NOTIFY changed)
     // Its failure, as checkError.
     Q_PROPERTY(QVariantMap installError READ installError NOTIFY changed)
+    // When it ended; invalid if never.
+    Q_PROPERTY(QDateTime installFinished READ installFinished NOTIFY changed)
     // An update replaced the running compositor: "Sign out to finish".
     Q_PROPERTY(bool needsRelogin READ needsRelogin NOTIFY changed)
     // Automatic checks, or what was asked for them.
@@ -99,6 +101,7 @@ public:
     QVariantMap checkError() const { return failure(m_checkError, m_checkMessage); }
     QString installResult() const { return m_installResult; }
     QVariantMap installError() const { return failure(m_installError, m_installMessage); }
+    QDateTime installFinished() const;
     bool needsRelogin() const { return m_needsRelogin; }
     bool autoCheck() const { return m_autoCheckAsked.value(m_autoCheck); }
     QString announce() const { return m_announce; }
@@ -160,6 +163,7 @@ private:
     QString m_installResult;
     QString m_installError;
     QString m_installMessage;
+    qint64 m_installFinished = 0;
     bool m_needsRelogin = false;
     bool m_autoCheck = true;
     QString m_announce;

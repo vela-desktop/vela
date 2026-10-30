@@ -84,6 +84,11 @@ QDateTime Updates::lastCheck() const
     return m_lastCheck > 0 ? QDateTime::fromSecsSinceEpoch(m_lastCheck) : QDateTime();
 }
 
+QDateTime Updates::installFinished() const
+{
+    return m_installFinished > 0 ? QDateTime::fromSecsSinceEpoch(m_installFinished) : QDateTime();
+}
+
 QString Updates::reason(const QString& code) const
 {
     if (code == QLatin1String("busy")) {
@@ -306,6 +311,7 @@ void Updates::forget()
     m_installResult.clear();
     m_installError.clear();
     m_installMessage.clear();
+    m_installFinished = 0;
     m_needsRelogin = false;
     m_autoCheck = true;
     m_announce.clear();
@@ -346,6 +352,8 @@ void Updates::setProperties(const QVariantMap& values)
             m_notes = pairsOf(*it, QStringLiteral("version"), QStringLiteral("text"));
         } else if (it.key() == QLatin1String("LastCheck")) {
             m_lastCheck = it->toLongLong();
+        } else if (it.key() == QLatin1String("InstallFinished")) {
+            m_installFinished = it->toLongLong();
         } else if (it.key() == QLatin1String("Error")) {
             std::tie(m_checkError, m_checkMessage) = pairOf(*it);
         } else if (it.key() == QLatin1String("InstallError")) {

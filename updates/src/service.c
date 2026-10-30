@@ -105,6 +105,9 @@ static int get_number(sd_bus *bus, const char *path, const char *interface, cons
     if (strcmp(property, "ChangesTotal") == 0) {
         return sd_bus_message_append(reply, "u", d->check.valid ? d->check.changes_total : 0);
     }
+    if (strcmp(property, "InstallFinished") == 0) {
+        return sd_bus_message_append(reply, "x", d->install.present ? d->install.finished_at : (int64_t)0);
+    }
     return sd_bus_message_append(reply, "x", d->check.valid ? d->check.checked_at : (int64_t)0);
 }
 
@@ -232,6 +235,7 @@ static const sd_bus_vtable vtable[] = {
     SD_BUS_PROPERTY("Error", "(ss)", get_error, 0, CHANGES),
     SD_BUS_PROPERTY("InstallResult", "s", get_string, 0, CHANGES),
     SD_BUS_PROPERTY("InstallError", "(ss)", get_error, 0, CHANGES),
+    SD_BUS_PROPERTY("InstallFinished", "x", get_number, 0, CHANGES),
     SD_BUS_PROPERTY("NeedsRelogin", "b", get_flag, 0, CHANGES),
     SD_BUS_PROPERTY("AutoCheck", "b", get_flag, 0, CHANGES),
     SD_BUS_PROPERTY("Announce", "s", get_string, 0, CHANGES),

@@ -132,8 +132,21 @@ void vela_up_state_reload(struct vela_up_daemon *d)
 
     path = path_in(d->state_dir, "install.json");
     struct vela_up_install install = { 0 };
+    bool changed = path && stat(path, &observed) == 0
+        && (observed.st_dev != d->install_seen_dev || observed.st_ino != d->install_seen_ino
+            || observed.st_mtim.tv_sec != d->install_seen_mtime.tv_sec
+            || observed.st_mtim.tv_nsec != d->install_seen_mtime.tv_nsec);
     if (path && vela_up_install_read(path, &install) >= 0
         && (!d->install.present || install.finished_at >= d->install.finished_at)) {
+        if (changed) {
+            d->install_seen_dev = observed.st_dev;
+            d->install_seen_ino = observed.st_ino;
+            d->install_seen_mtime = observed.st_mtim;
+            // A new report while we run: an install just ended.
+            if (d->loaded && strcmp(install.result, "success") == 0) {
+                d->recheck = true;
+            }
+        }
         vela_up_install_clear(&d->install);
         d->install = install;
     } else if (install.present) {
@@ -177,6 +190,11 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     }
     read_source(d);
     vela_up_relogin_refresh(d);
+    d->loaded = true;
+    // install.json comes before run.json goes: wait for the run's end.
+    if (d->recheck && !d->run.present && vela_up_check_start(d) >= 0) {
+        d->recheck = false;
+    }
     vela_up_changed(d);
 }
 

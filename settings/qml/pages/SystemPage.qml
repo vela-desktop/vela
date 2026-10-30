@@ -37,6 +37,12 @@ Page {
             onClicked: root.navigate("clipboard")
         }
         LinkCard {
+            icon: "system-software-update"
+            title: qsTr("Updates")
+            description: qsTr("Check for updates, what's new, update channel")
+            onClicked: root.navigate("updates")
+        }
+        LinkCard {
             icon: "help-about"
             title: qsTr("About")
             description: qsTr("Device specifications, rename your PC, operating system specifications")

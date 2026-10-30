@@ -7,7 +7,7 @@ background check and the notification. It is the 0.1 release blocker in the
 code: decisions are made here, and the code follows them.
 
 > **Status:** U0 (this design), U1 (`vela-update`'s report), U2 (the
-> daemon) and U3 (the Qt client) are done. See §11.
+> daemon), U3 (the Qt client) and U4 (the Settings page) are done. See §11.
 
 ## 1. What there is today
 
@@ -244,6 +244,12 @@ it reports that the terminal did not start the update (`terminal`), and
 the page shows it. From then on, an update started here and one started by
 hand look the same.
 
+After a successful install the last check describes the update just
+installed: the daemon checks again once the run has ended, so the page
+does not offer it a second time. A new `install.json` is told apart by
+its file identity, like `check.json`: two installs can end in the same
+second. Not after a failure.
+
 Options (all optional): `channel` (`beta`, `experimental`: a transition
 when it differs from the installed package), `branch`, `commit`, `source`
 (Experimental only), `tag` (Beta only, to go back to an older release).
@@ -282,6 +288,7 @@ bus. Properties change with `PropertiesChanged`.
 | `Error` | (ss) | the last check's code and message, or empty |
 | `InstallResult` | s | the last install's `result`, or empty |
 | `InstallError` | (ss) | |
+| `InstallFinished` | x | Unix time of the last install's end, 0 if none |
 | `NeedsRelogin` | b | |
 | `AutoCheck` | b | |
 | `Announce` | s | §6.4 |
@@ -331,7 +338,9 @@ Top card, after Windows Update:
 - the button: "Check for updates", or "Install now" (accent) when there is
   an update; disabled while busy;
 - "Sign out to finish updating" when `NeedsRelogin`;
-- the last install's failure, if it was the last thing that happened.
+- the last check's failure, below the last completed check;
+- the last install's failure, if it was the last thing that happened: no
+  check ended after it (`InstallFinished`, `LastCheck`).
 
 "What's new": Beta's release texts, or Experimental's commits (the first
 10, then "and N more").
@@ -347,6 +356,9 @@ Options:
 - **Advanced** (Experimental only, collapsed): source (repository or
   folder), branch or commit, "Install this revision".
 - The installed version and channel.
+
+Settings > System links to it, and the search finds it. Opening the page
+counts as being told about the update (§6.4).
 
 ### 9.2 Shell
 
@@ -385,7 +397,7 @@ Notifications only, as the client library tells them:
 | U1 | `vela-update`: schema 2, exit codes, state files, error codes, `vela-update-state` | done |
 | U2 | `vela-update-daemon` and `org.vela.Updates`; the caller check shared with `vela-bluetooth` | done |
 | U3 | `common/updates`, the Qt client | done |
-| U4 | the Settings page | |
+| U4 | the Settings page | done |
 | U5 | the shell's notifications | |
 | U6 | packaging (`xdg-terminal-exec`, libexec files), docs, roadmap, release-channels | |
 | U7 | real updates on real systems | |

@@ -85,6 +85,7 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
         QCOMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("unknown"));
         QCOMPARE(property(QStringLiteral("LastCheck")).toLongLong(), 0);
+        QCOMPARE(property(QStringLiteral("InstallFinished")).toLongLong(), 0);
         QCOMPARE(property(QStringLiteral("AutoCheck")).toBool(), true);
         QCOMPARE(property(QStringLiteral("NeedsRelogin")).toBool(), false);
         QCOMPARE(property(QStringLiteral("Source")).toString(), QStringLiteral("https://github.com/vela-desktop/vela.git"));
@@ -220,6 +221,39 @@ private Q_SLOTS:
         QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
         QCOMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("failed"));
         QCOMPARE(property(QStringLiteral("InstallError")).toStringList().value(0), QStringLiteral("failed"));
+        QVERIFY(property(QStringLiteral("InstallFinished")).toLongLong() >= QDateTime::currentSecsSinceEpoch() - 60);
+    }
+
+    // The last check described the update just installed: checked again
+    // once the run is gone; not after a failure.
+    void successfulInstallChecksAgain()
+    {
+        QVERIFY(write(fake(QStringLiteral("terminal-runs")), ""));
+        nextCheck({ { "status", "update-available" }, { "commit", commitB } });
+        QVERIFY(startDaemon());
+        call(QStringLiteral("Check"));
+        QTRY_COMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("update-available"));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+
+        QVERIFY(write(fake(QStringLiteral("install-result")), "failed"));
+        QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).type(), QDBusMessage::ReplyMessage);
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("installing"));
+        QVERIFY(write(fake(QStringLiteral("install-release")), ""));
+        QTRY_COMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("failed"));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        QTest::qWait(300);
+        QCOMPARE(calls().filter(QStringLiteral("--check")).size(), 1);
+
+        QFile::remove(fake(QStringLiteral("install-release")));
+        QVERIFY(write(fake(QStringLiteral("install-result")), "success"));
+        nextCheck({});
+        QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).type(), QDBusMessage::ReplyMessage);
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("installing"));
+        QVERIFY(write(fake(QStringLiteral("install-release")), ""));
+        QTRY_COMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("success"));
+        QTRY_COMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("up-to-date"));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        QCOMPARE(calls().filter(QStringLiteral("--check")).size(), 2);
     }
 
     void terminalThatNeverStarts()

@@ -200,6 +200,7 @@ private Q_SLOTS:
         QCOMPARE(updates->installResult(), QStringLiteral("failed"));
         QCOMPARE(updates->installError().value(QStringLiteral("code")).toString(), QStringLiteral("failed"));
         QCOMPARE(updates->installError().value(QStringLiteral("reason")).toString(), updates->reason(QStringLiteral("failed")));
+        QVERIFY(updates->installFinished() > QDateTime::currentDateTime().addSecs(-60));
     }
 
     void terminalThatNeverStarts()

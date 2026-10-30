@@ -1382,6 +1382,10 @@ Specifiche sistema
         <translation>Informazioni</translation>
     </message>
     <message>
+        <source>Updates</source>
+        <translation>Aggiornamenti</translation>
+    </message>
+    <message>
         <source>Bluetooth &amp; devices</source>
         <translation>Bluetooth e dispositivi</translation>
     </message>
@@ -1568,6 +1572,26 @@ Specifiche sistema
     <message>
         <source>device name hostname</source>
         <translation>nome dispositivo hostname</translation>
+    </message>
+    <message>
+        <source>update upgrade new version install check release channel beta experimental</source>
+        <translation>aggiornamento aggiornare aggiorna nuova versione installa controlla release canale beta sperimentale update</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>Controlla aggiornamenti</translation>
+    </message>
+    <message>
+        <source>update check new version</source>
+        <translation>aggiornamento controlla verifica nuova versione update</translation>
+    </message>
+    <message>
+        <source>Update channel</source>
+        <translation>Canale di aggiornamento</translation>
+    </message>
+    <message>
+        <source>beta experimental channel branch commit development</source>
+        <translation>beta sperimentale canale branch commit sviluppo</translation>
     </message>
     <message>
         <source>Bluetooth</source>
@@ -2611,6 +2635,14 @@ Specifiche sistema
         <translation>Cronologia degli Appunti (Win+V), cancella</translation>
     </message>
     <message>
+        <source>Updates</source>
+        <translation>Aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Check for updates, what&apos;s new, update channel</source>
+        <translation>Controlla aggiornamenti, novità, canale di aggiornamento</translation>
+    </message>
+    <message>
         <source>About</source>
         <translation>Informazioni</translation>
     </message>
@@ -2785,6 +2817,216 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>UpdateOptions</name>
+    <message>
+        <source>Beta</source>
+        <translation>Beta</translation>
+    </message>
+    <message>
+        <source>Experimental</source>
+        <translation>Sperimentale</translation>
+    </message>
+    <message>
+        <source>More options</source>
+        <translation>Altre opzioni</translation>
+    </message>
+    <message>
+        <source>Check for updates automatically</source>
+        <translation>Controlla automaticamente gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Not on metered connections</source>
+        <translation>Non sulle connessioni a consumo</translation>
+    </message>
+    <message>
+        <source>Update channel</source>
+        <translation>Canale di aggiornamento</translation>
+    </message>
+    <message>
+        <source>Tested, signed releases</source>
+        <translation>Versioni testate e firmate</translation>
+    </message>
+    <message>
+        <source>The latest development version, as it&apos;s made</source>
+        <translation>L&apos;ultima versione di sviluppo, man mano che cambia</translation>
+    </message>
+    <message>
+        <source>Advanced options</source>
+        <translation>Opzioni avanzate</translation>
+    </message>
+    <message>
+        <source>Install from another repository, branch or commit</source>
+        <translation>Installa da un altro repository, branch o commit</translation>
+    </message>
+    <message>
+        <source>Source: a repository URL or a folder</source>
+        <translation>Origine: l&apos;URL di un repository o una cartella</translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation>Origine</translation>
+    </message>
+    <message>
+        <source>Branch or commit</source>
+        <translation>Branch o commit</translation>
+    </message>
+    <message>
+        <source>The default branch</source>
+        <translation>Il branch predefinito</translation>
+    </message>
+    <message>
+        <source>Install this revision</source>
+        <translation>Installa questa revisione</translation>
+    </message>
+    <message>
+        <source>Installed version</source>
+        <translation>Versione installata</translation>
+    </message>
+    <message>
+        <source>%1, %2 channel</source>
+        <translation>%1, canale %2</translation>
+    </message>
+    <message>
+        <source>Not installed from a package</source>
+        <translation>Non installato da un pacchetto</translation>
+    </message>
+    <message>
+        <source>Switch to Beta?</source>
+        <translation>Passare al canale Beta?</translation>
+    </message>
+    <message>
+        <source>Switch to Experimental?</source>
+        <translation>Passare al canale Sperimentale?</translation>
+    </message>
+    <message>
+        <source>Switch</source>
+        <translation>Cambia</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Beta installs tested, signed releases. The vela-git package is replaced by vela, and Vela may go back to an older version than the one you have.</source>
+        <translation>Beta installa versioni testate e firmate. Il pacchetto vela-git viene sostituito da vela, e Vela potrebbe tornare a una versione più vecchia di quella che hai.</translation>
+    </message>
+    <message>
+        <source>Experimental installs the latest development version, downloaded or built on this PC. It changes often and may be less stable. The vela package is replaced by vela-git.</source>
+        <translation>Sperimentale installa l&apos;ultima versione di sviluppo, scaricata o compilata su questo PC. Cambia spesso e può essere meno stabile. Il pacchetto vela viene sostituito da vela-git.</translation>
+    </message>
+    <message>
+        <source>The update runs in a terminal, where your password is asked for.</source>
+        <translation>L&apos;aggiornamento si svolge in un terminale, dove ti viene chiesta la password.</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateStatusCard</name>
+    <message>
+        <source>getting ready</source>
+        <translation>preparazione</translation>
+    </message>
+    <message>
+        <source>downloading</source>
+        <translation>download</translation>
+    </message>
+    <message>
+        <source>verifying</source>
+        <translation>verifica</translation>
+    </message>
+    <message>
+        <source>building</source>
+        <translation>compilazione</translation>
+    </message>
+    <message>
+        <source>installing</source>
+        <translation>installazione</translation>
+    </message>
+    <message>
+        <source>Last checked: today, %1</source>
+        <translation>Ultimo controllo: oggi, %1</translation>
+    </message>
+    <message>
+        <source>Last checked: yesterday, %1</source>
+        <translation>Ultimo controllo: ieri, %1</translation>
+    </message>
+    <message>
+        <source>Last checked: %1, %2</source>
+        <translation>Ultimo controllo: %1, %2</translation>
+    </message>
+    <message>
+        <source>The update service isn&apos;t running</source>
+        <translation>Il servizio di aggiornamento non è attivo</translation>
+    </message>
+    <message>
+        <source>Checking for updates...</source>
+        <translation>Controllo degli aggiornamenti in corso...</translation>
+    </message>
+    <message>
+        <source>Opening the terminal...</source>
+        <translation>Apertura del terminale...</translation>
+    </message>
+    <message>
+        <source>Updating in the terminal: %1</source>
+        <translation>Aggiornamento nel terminale: %1</translation>
+    </message>
+    <message>
+        <source>Updating in the terminal</source>
+        <translation>Aggiornamento nel terminale</translation>
+    </message>
+    <message>
+        <source>Vela %1 is available</source>
+        <translation>È disponibile Vela %1</translation>
+    </message>
+    <message>
+        <source>You&apos;re up to date</source>
+        <translation>Vela è aggiornato</translation>
+    </message>
+    <message>
+        <source>You have a newer version than the latest release</source>
+        <translation>Hai una versione più recente dell&apos;ultima release</translation>
+    </message>
+    <message>
+        <source>Development build: not installed from a package</source>
+        <translation>Build di sviluppo: non installata da un pacchetto</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t check for updates</source>
+        <translation>Impossibile controllare gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Updates haven&apos;t been checked yet</source>
+        <translation>Gli aggiornamenti non sono ancora stati controllati</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t check for updates or install them until it starts again.</source>
+        <translation>Vela non può controllare né installare aggiornamenti finché il servizio non riparte.</translation>
+    </message>
+    <message>
+        <source>Follow the update in the terminal window. Your password is asked for there.</source>
+        <translation>Segui l&apos;aggiornamento nella finestra del terminale: la password ti viene chiesta lì.</translation>
+    </message>
+    <message>
+        <source>Install now</source>
+        <translation>Installa ora</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>Controlla aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Sign out to finish updating. Until then, the version you signed in with keeps running.</source>
+        <translation>Esci per completare l&apos;aggiornamento. Fino ad allora resta in uso la versione con cui hai effettuato l&apos;accesso.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t check for updates: %1</source>
+        <translation>Impossibile controllare gli aggiornamenti: %1</translation>
+    </message>
+    <message>
+        <source>The last update didn&apos;t finish: %1</source>
+        <translation>L&apos;ultimo aggiornamento non è stato completato: %1</translation>
+    </message>
+</context>
+<context>
     <name>VolumeMixerPage</name>
     <message>
         <source>Default</source>
@@ -2848,6 +3090,24 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>WhatsNew</name>
+    <message>
+        <source>What&apos;s new</source>
+        <translation>Novità</translation>
+    </message>
+    <message>
+        <source>Vela %1</source>
+        <translation>Vela %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>and %n more</source>
+        <translation>
+            <numerusform>e un altro</numerusform>
+            <numerusform>e altri %n</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>vela::bluetooth::Bluetooth</name>
     <message>
         <source>Bluetooth is busy. Try again in a moment.</source>
@@ -2884,6 +3144,89 @@ Specifiche sistema
     <message>
         <source>Bluetooth isn&apos;t responding.</source>
         <translation>Il Bluetooth non risponde.</translation>
+    </message>
+</context>
+<context>
+    <name>vela::updates::Updates</name>
+    <message>
+        <source>Another update is already running.</source>
+        <translation>È già in corso un altro aggiornamento.</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t update itself on this system.</source>
+        <translation>Vela non può aggiornarsi su questo sistema.</translation>
+    </message>
+    <message>
+        <source>A program needed to update Vela isn&apos;t installed.</source>
+        <translation>Manca un programma necessario per aggiornare Vela.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t connect. Check your internet connection.</source>
+        <translation>Impossibile connettersi. Controlla la connessione a Internet.</translation>
+    </message>
+    <message>
+        <source>GitHub is limiting requests. Try again later.</source>
+        <translation>GitHub sta limitando le richieste. Riprova più tardi.</translation>
+    </message>
+    <message>
+        <source>No Beta release has been published yet.</source>
+        <translation>Non è ancora stata pubblicata nessuna versione Beta.</translation>
+    </message>
+    <message>
+        <source>The update wasn&apos;t found.</source>
+        <translation>Aggiornamento non trovato.</translation>
+    </message>
+    <message>
+        <source>The installed version is newer than the update.</source>
+        <translation>La versione installata è più recente dell&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>The update couldn&apos;t be verified, so it wasn&apos;t installed.</source>
+        <translation>Non è stato possibile verificare l&apos;aggiornamento, quindi non è stato installato.</translation>
+    </message>
+    <message>
+        <source>Building the update failed.</source>
+        <translation>La compilazione dell&apos;aggiornamento non è riuscita.</translation>
+    </message>
+    <message>
+        <source>The package manager didn&apos;t install the update.</source>
+        <translation>Il gestore dei pacchetti non ha installato l&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>The update was interrupted.</source>
+        <translation>L&apos;aggiornamento è stato interrotto.</translation>
+    </message>
+    <message>
+        <source>The terminal didn&apos;t start the update.</source>
+        <translation>Il terminale non ha avviato l&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>Something went wrong.</source>
+        <translation>Qualcosa è andato storto.</translation>
+    </message>
+    <message>
+        <source>An update or a check is already running.</source>
+        <translation>È già in corso un aggiornamento o un controllo.</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t update to that: %1</source>
+        <translation>Vela non può aggiornarsi a questa revisione: %1</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t open a terminal to run the update.</source>
+        <translation>Impossibile aprire un terminale per l&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>This app isn&apos;t allowed to update Vela.</source>
+        <translation>Questa app non è autorizzata ad aggiornare Vela.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t start vela-update.</source>
+        <translation>Impossibile avviare vela-update.</translation>
+    </message>
+    <message>
+        <source>The update service isn&apos;t responding.</source>
+        <translation>Il servizio di aggiornamento non risponde.</translation>
     </message>
 </context>
 </TS>
