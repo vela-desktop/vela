@@ -249,7 +249,7 @@ if(VELA_BUILD_TOOLS)
 
     # Run the production vkCreateDevice/vela_vulkan_create error path against
     # deterministic entry-point stubs, without opening a GPU or Wayland session.
-    add_executable(vela-vulkan-device-init-test tests/vulkan_device_init_test.c)
+    add_executable(vela-vulkan-device-init-test tests/vulkan_device_init_test.c src/render/formats.c)
     target_include_directories(vela-vulkan-device-init-test PRIVATE src)
     target_compile_definitions(vela-vulkan-device-init-test PRIVATE WLR_USE_UNSTABLE)
     target_compile_options(vela-vulkan-device-init-test PRIVATE -ffunction-sections -fdata-sections
