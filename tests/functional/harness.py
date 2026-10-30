@@ -257,7 +257,7 @@ class Session:
 
     def fake_shell(self):
         """From here on Vela's messages to the shell reach a FakeShell."""
-        self.shell = FakeShell(self.display)
+        self.shell = FakeShell(self.display, self.env.get("XDG_RUNTIME_DIR"))
         return self.shell
 
     # ------------------------------------------------ keyboard and mouse --
@@ -367,8 +367,9 @@ class FakeShell:
     """The fake Qt shell: listens on its socket and collects the lines
     Vela sends it ("toggle-start", "accessibility {...}", ...)."""
 
-    def __init__(self, display):
-        runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+    def __init__(self, display, runtime=None):
+        # The session's runtime directory, where Vela looks for the shell.
+        runtime = runtime or os.environ.get("XDG_RUNTIME_DIR", "/tmp")
         self.path = os.path.join(runtime, f"vela-shell-{display}.sock")
         if os.path.exists(self.path):
             os.unlink(self.path)
