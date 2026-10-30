@@ -76,6 +76,7 @@ void vela_child_init(struct vela_child *child, const char *name, int death_signa
     child->pid = -1;
     child->pidfd = -1;
     child->keep_fd = -1;
+    child->keep_fd2 = -1;
 }
 
 static void stop_watching(struct vela_child *child)
@@ -150,6 +151,9 @@ bool vela_child_start(struct vela_child *child, struct wl_event_loop *loop, cons
         prctl(PR_SET_PDEATHSIG, child->death_signal);
         if (child->keep_fd >= 0) {
             fcntl(child->keep_fd, F_SETFD, 0);
+        }
+        if (child->keep_fd2 >= 0) {
+            fcntl(child->keep_fd2, F_SETFD, 0);
         }
         vela_exec_shell(command);
     }
