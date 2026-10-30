@@ -41,6 +41,7 @@ struct vela_child {
     int death_signal; // sent to the child when the compositor dies
     int final_exit_code; // besides 0, an exit that means "don't relaunch me" (-1: none)
     int keep_fd; // an fd the child keeps across exec (-1: none)
+    int keep_fd2; // second inherited fd for X11 socket activation (-1: none)
     void (*exited)(struct vela_child *child, int status);
     struct wl_event_loop *loop;
     char *command; // NULL: none
