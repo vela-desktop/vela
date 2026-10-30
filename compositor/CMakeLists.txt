@@ -241,6 +241,12 @@ install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # sharpness geometry, color, sun, settings. They need GoogleTest (the gtest
 # package) and the test tools enabled.
 if(VELA_BUILD_TOOLS)
+    add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
+    target_include_directories(vela-device-loss-policy-test PRIVATE src)
+    set_target_properties(vela-device-loss-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    target_compile_options(vela-device-loss-policy-test PRIVATE -Wall -Wextra -Werror)
+    add_test(NAME compositor.device-loss-policy COMMAND vela-device-loss-policy-test)
+
     # GPU-free policy test: verifies that the cursor-specific flags cannot
     # leak into ordinary output/capture allocations.
     add_executable(vela-cursor-policy-test tests/cursor_policy_test.c)
