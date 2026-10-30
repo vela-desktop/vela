@@ -327,10 +327,18 @@ def lossless(take, frames, path):
     encoder = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                                 "-f", "rawvideo", "-pix_fmt", take.format, "-s", f"{take.width}x{take.height}",
                                 "-r", str(FPS), "-i", "-", "-c:v", "ffv1", str(path)], stdin=subprocess.PIPE)
-    for frame in frames:
-        encoder.stdin.write(frame)
-    encoder.stdin.close()
-    if encoder.wait() != 0:
-        raise RuntimeError("ffmpeg failed")
+    try:
+        for frame in frames:
+            encoder.stdin.write(frame)
+        encoder.stdin.close()
+        if encoder.wait() != 0:
+            raise RuntimeError("ffmpeg failed")
+    except BaseException:
+        if encoder.poll() is None:
+            encoder.kill()
+        encoder.wait()
+        if not encoder.stdin.closed:
+            encoder.stdin.close()
+        raise
 
 
