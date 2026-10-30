@@ -458,10 +458,11 @@ char **vela_up_terminal(const char *path, const char *vela_terminal)
         }
     }
     // No terminal needs more; a longer VELA_TERMINAL is a mistake.
-    if (words > 64) {
+    enum { MAX_WORDS = 64 };
+    if (words > MAX_WORDS) {
         return NULL;
     }
-    char **argv = calloc(words + 2, sizeof(*argv));
+    char **argv = calloc(MAX_WORDS + 2, sizeof(*argv));
     if (!argv) {
         return NULL;
     }

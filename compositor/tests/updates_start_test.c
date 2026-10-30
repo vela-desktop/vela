@@ -46,8 +46,8 @@ int main(void)
     // Nested or headless: none, unless asked for.
     unsetenv("VELA_UPDATE_DAEMON");
     start(&server, NULL);
-    setenv("VELA_UPDATE_DAEMON", "/tmp/daemon --verbose", 1);
-    start(&server, "/tmp/daemon --verbose");
+    setenv("VELA_UPDATE_DAEMON", "/opt/vela/daemon --verbose", 1);
+    start(&server, "/opt/vela/daemon --verbose");
 
     // The real session: the installed one, if there is one.
     server.session = (struct wlr_session *)&server;
