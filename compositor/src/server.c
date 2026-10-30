@@ -442,7 +442,11 @@ void vela_server_destroy(struct vela_server *server)
     vela_child_stop(&server->bluetooth);
     vela_brightness_destroy(server);
     vela_commands_stop(server);
-    if (server->session) {
+    // Device loss is a compositor restart, not a logout. Keep the systemd
+    // graphical session target and imported environment alive so the new
+    // compositor can reconnect to the existing user session. The supervisor
+    // runs the stop hook only if it really ends the entire session.
+    if (server->session && !vela_vulkan_device_lost(server->vulkan)) {
         vela_session_run_hook("stop");
     }
     vela_xwayland_finish(server); // X11 windows before the Wayland clients
