@@ -13,8 +13,9 @@ static int maps, destroyed, freed, command_allocations;
 static uint8_t mapping[256];
 static VkDeviceSize buffer_size;
 static uint64_t completed_point;
-static int counter_polls, end_calls, submit_calls, wait_calls, semaphore_creates;
-static VkResult submit_result, wait_result, end_result, semaphore_result;
+static int counter_polls, end_calls, submit_calls, wait_calls, semaphore_creates, pipeline_creates;
+static int imported_fds, exported_fds, semaphore_destroys;
+static VkResult submit_result, wait_result, end_result, semaphore_result, counter_result, pipeline_result;
 
 void _wlr_log(enum wlr_log_importance importance, const char *format, ...) {}
 
@@ -103,7 +104,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkGetSemaphoreCounterValue(VkDevice device, VkSem
 {
     ++counter_polls;
     *value = completed_point;
-    return VK_SUCCESS;
+    return counter_result;
 }
 
 // Queue/timeline faults are injected at Vulkan entry points, not by faking
@@ -120,6 +121,34 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateSemaphore(VkDevice device, const VkSemaph
     ++semaphore_creates;
     *semaphore = semaphore_result == VK_SUCCESS ? (VkSemaphore)(uintptr_t)42 : VK_NULL_HANDLE;
     return semaphore_result;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroySemaphore(VkDevice device, VkSemaphore semaphore,
+    const VkAllocationCallbacks *allocator)
+{
+    ++semaphore_destroys;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateGraphicsPipelines(VkDevice device, VkPipelineCache cache,
+    uint32_t count, const VkGraphicsPipelineCreateInfo *infos, const VkAllocationCallbacks *allocator,
+    VkPipeline *pipelines)
+{
+    ++pipeline_creates;
+    *pipelines = VK_NULL_HANDLE;
+    return pipeline_result;
+}
+
+static VkResult VKAPI_PTR fault_import_fd(VkDevice device, const VkImportSemaphoreFdInfoKHR *info)
+{
+    ++imported_fds;
+    return VK_ERROR_DEVICE_LOST;
+}
+
+static VkResult VKAPI_PTR fault_export_fd(VkDevice device, const VkSemaphoreGetFdInfoKHR *info, int *fd)
+{
+    ++exported_fds;
+    *fd = -1;
+    return VK_ERROR_DEVICE_LOST;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit2(VkQueue queue, uint32_t count,
@@ -247,11 +276,67 @@ static void failed_end_releases_command_reservations(void)
     end_result = VK_ERROR_OUT_OF_HOST_MEMORY;
     end_calls = submit_calls = 0;
     assert(!vela_renderer_submit(&renderer, draw, NULL, 0, NULL));
-    assert(!vk.loss.lost && !vk.terminal_error && renderer.upload == VK_NULL_HANDLE);
+    assert(!vk.loss.lost && vk.terminal_error && renderer.upload == VK_NULL_HANDLE);
     assert(!slots[0].busy && !slots[1].busy);
     assert(slots[0].point == 0 && slots[1].point == 0 && chunk.point == 7);
     assert(end_calls == 1 && submit_calls == 0);
     end_result = VK_SUCCESS;
+}
+
+static void pipeline_loss_blocks_new_pipeline_work(void)
+{
+    struct vela_vulkan vk = { 0 };
+    struct vela_renderer renderer = { .vk = &vk };
+    pipeline_creates = 0;
+    pipeline_result = VK_ERROR_DEVICE_LOST;
+    assert(!vela_renderer_pipeline(&renderer, VK_FORMAT_R8G8B8A8_UNORM, VELA_PIPELINE_RECT, false));
+    assert(vk.loss.lost && pipeline_creates == 1);
+    assert(!vela_renderer_pipeline(&renderer, VK_FORMAT_R8G8B8A8_UNORM, VELA_PIPELINE_RECT, false));
+    assert(pipeline_creates == 1);
+    pipeline_result = VK_SUCCESS;
+}
+
+static void semaphore_fd_export_loss(void)
+{
+    struct vela_vulkan vk = { .sync_file = true, .get_semaphore_fd = fault_export_fd };
+    struct vela_renderer renderer = { .vk = &vk, .timeline = (VkSemaphore)(uintptr_t)1 };
+    exported_fds = submit_calls = end_calls = 0;
+    semaphore_result = submit_result = end_result = VK_SUCCESS;
+    int fd = -1;
+    assert(!vela_renderer_submit(&renderer, (VkCommandBuffer)(uintptr_t)1, NULL, 0, &fd));
+    assert(vk.loss.lost && fd == -1 && exported_fds == 1 && submit_calls == 1);
+    assert(strcmp(vk.loss.first_operation, "vkGetSemaphoreFdKHR") == 0);
+    free(renderer.used_semaphores);
+}
+
+static void semaphore_fd_import_loss(void)
+{
+    struct vela_vulkan vk = { .sync_file = true, .import_semaphore_fd = fault_import_fd };
+    struct vela_renderer renderer = { .vk = &vk, .timeline = (VkSemaphore)(uintptr_t)1 };
+    int fds[2];
+    assert(pipe(fds) == 0);
+    imported_fds = submit_calls = end_calls = semaphore_destroys = 0;
+    semaphore_result = submit_result = end_result = VK_SUCCESS;
+    assert(!vela_renderer_submit(&renderer, (VkCommandBuffer)(uintptr_t)1, fds, 1, NULL));
+    close(fds[1]);
+    assert(vk.loss.lost && imported_fds == 1 && submit_calls == 0 && semaphore_destroys == 1);
+    assert(strcmp(vk.loss.first_operation, "vkImportSemaphoreFdKHR") == 0);
+    free(renderer.wait_infos);
+    free(renderer.wait_semaphores);
+}
+
+static void counter_query_loss_stops_polling(void)
+{
+    struct vela_vulkan vk = { 0 };
+    struct vela_renderer renderer = { .vk = &vk };
+    counter_polls = 0;
+    counter_result = VK_ERROR_DEVICE_LOST;
+    assert(vela_renderer_completed(&renderer) == 0);
+    assert(vk.loss.lost && counter_polls == 1);
+    assert(strcmp(vk.loss.first_operation, "vkGetSemaphoreCounterValue") == 0);
+    assert(vela_renderer_completed(&renderer) == 0);
+    assert(counter_polls == 1);
+    counter_result = VK_SUCCESS;
 }
 
 static void timeline_wait_nonterminal_error_is_fatal(void)
@@ -392,6 +477,10 @@ int main(void)
     map_loss_stops_new_allocations();
     semaphore_creation_loss();
     failed_end_releases_command_reservations();
+    pipeline_loss_blocks_new_pipeline_work();
+    semaphore_fd_export_loss();
+    semaphore_fd_import_loss();
+    counter_query_loss_stops_polling();
     timeline_wait_nonterminal_error_is_fatal();
     submission_loss_stops_new_gpu_work();
     timeline_wait_loss_stops_polling();
