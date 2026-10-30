@@ -128,7 +128,8 @@ class Lock(unittest.TestCase):
                         vela.wait_for_log("vela-testlock: keyboard-key 106 1", timeout=3)
                         self.assertTrue(vela.state()["locked"])
                         frame = vela.state().window(window)
-                        self.assertEqual((frame["x"], frame["y"]), (original["x"], original["y"]))
+                        self.assertEqual(tuple(frame[k] for k in ("x", "y", "w", "h")),
+                                         tuple(original[k] for k in ("x", "y", "w", "h")))
                     finally:
                         if keyboard.poll() is None:
                             keyboard.terminate()
