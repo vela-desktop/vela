@@ -847,6 +847,7 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
     if (vela_vulkan_unusable(vk) || !vela_vulkan_result(vk, vkEndCommandBuffer(cmd), "vkEndCommandBuffer")) {
         for (int i = 0; i < wait_count; ++i) if (wait_fds[i] >= 0) close(wait_fds[i]);
         abandon_unsubmitted(r, cmd);
+        if (!vela_vulkan_unusable(vk)) vela_vulkan_abort(vk, "vkEndCommandBuffer");
         return 0;
     }
 
@@ -856,6 +857,7 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
         if (!vela_vulkan_result(vk, vkEndCommandBuffer(r->upload), "vkEndCommandBuffer(upload)")) {
             for (int i = 0; i < wait_count; ++i) if (wait_fds[i] >= 0) close(wait_fds[i]);
             abandon_unsubmitted(r, cmd);
+            if (!vela_vulkan_unusable(vk)) vela_vulkan_abort(vk, "vkEndCommandBuffer(upload)");
             return 0;
         }
         cmds[cmd_count++] = (VkCommandBufferSubmitInfo) {
@@ -976,6 +978,9 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
 
     if (!ok) {
         wlr_log(WLR_ERROR, "Renderer: GPU submission failed");
+        // Recorded SHM texture uploads cannot safely be replayed after this
+        // error; restart rather than presenting their uncommitted contents.
+        if (!vela_vulkan_unusable(vk)) vela_vulkan_abort(vk, "vkQueueSubmit2");
         // Semaphores in an uncertain state: better throw them away.
         for (uint32_t i = 0; i < waits; ++i) {
             vkDestroySemaphore(vk->device, r->wait_semaphores[i], NULL);
