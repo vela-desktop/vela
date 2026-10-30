@@ -73,6 +73,27 @@ The Settings app is the preferred way to edit these values because it applies va
 
 ## XWayland primary output and native-resolution games
 
+To use native physical monitor modes for **all Steam/Proton games without any
+Steam launch options**, install `xwayland-satellite` and set in
+`~/.config/vela/vela.conf`:
+
+```ini
+xwayland-backend=native
+```
+
+**Restart the Vela session**, then start Steam normally; the compositor
+starts a supervised Xwayland Satellite with a prebound X11 socket and exports
+its `DISPLAY` to the shell and applications. All X11 applications in the
+session share the same server and its XRandR primary monitor.
+
+The default `xwayland-backend=compat` keeps wlroots' integrated XWayland,
+including Vela's custom X11/window-management handling. If Satellite has not
+been installed or its listening socket cannot be reserved, Vela falls back to
+this compatibility backend and logs why. Note that this session-wide native
+path goes through Satellite's XDG window management and may behave differently
+from the integrated backend (in particular for unusual Win32 windows).
+
+
 The main monitor selected in Vela Settings is also synchronized to the XRandR
 primary output for X11/Wine/Proton clients. The shell re-applies it on startup,
 preference changes, and monitor hotplug. This requires `xrandr` (Arch:
