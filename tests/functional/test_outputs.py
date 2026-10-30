@@ -79,6 +79,23 @@ class Outputs(unittest.TestCase):
         self.assertEqual((dialog["x"], dialog["y"], dialog["w"], dialog["h"]),
                          (second["x"], second["y"], second["w"], second["h"]))
 
+    def test_xdg_fullscreen_uses_explicit_target_output(self):
+        # A separate XWayland bridge such as Satellite represents its game
+        # as an XDG toplevel requesting a particular wl_output. The cursor
+        # may be on another screen and must not override that choice.
+        state = self.add_second()
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        self.vela.input("move", 100, 100)  # primary output, not requested target
+        game = self.vela.open_window(command=[tool("vela-pattern"),
+                                              "--fullscreen-output", "1", "400", "300"])
+        state = self.vela.wait_for(
+            lambda s: s.window(game)["fullscreen"]
+                      and s.window(game)["output"] == "HEADLESS-2",
+            what="explicit XDG fullscreen output used instead of cursor output")
+        self.assertEqual((state.window(game)["x"], state.window(game)["y"],
+                          state.window(game)["w"], state.window(game)["h"]),
+                         (second["x"], second["y"], second["w"], second["h"]))
+
     def test_hotplug_with_its_own_scale(self):
         state = self.add_second()
         scales = {output["name"]: output["scale"] for output in state["outputs"]}
