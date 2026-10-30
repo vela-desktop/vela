@@ -1,6 +1,9 @@
 # KWin-style XWayland scaling for Vela
 
-Status: **WIP: CTest + live output-scale candidate, but not yet applied to XWayland surfaces.**
+Status: **WIP: a developer-only XWayland-specific xdg-output manager,
+matching scene surface, damage and pointer scaling, and in-process XWM
+geometry translation are implemented. Hardware verification is still
+required; the stable compatibility backend is unchanged.**
 Tracking: PR #164, issue #163.
 
 ## Decision: follow KWin, not Satellite
@@ -69,6 +72,41 @@ The production-independent model is in
 `compositor.x11-coordinates`). Both `scaled by system` (factor 1)
 and `applications scale themselves` (factor 1.25) are tested with
 realistic placement and roundtrip geometry.
+
+## Implemented experimental runtime path
+
+Vela now has a separate `x11_xdg_output.c` protocol manager whose global is
+visible **only** to wlroots' integrated XWayland `wl_client`. The normal
+`wlr_xdg_output_manager_v1` remains visible to all other clients.
+The protocol adapter advertises the global virtual X11 position and size
+at the maximum enabled output scale, and updates bound resources on output
+layout changes. It is explicitly gated behind:
+
+```sh
+VELA_XWAYLAND_XDG_OUTPUT_EXPERIMENT=1
+```
+
+The Vela scene's `vela_surface_node.scale` defaults to 1.0 for every
+Wayland surface. In the experiment, managed and unmanaged X11 surfaces
+render at `1/xwayland_apps_scale` while their input hit-test coordinates
+are multiplied by that same factor. Damage/opaque region geometry is
+derived from the original client coordinates. The integrated XWM converts
+configure requests, full-screen output positions and restored window
+rectangles consistently between X11 and Wayland.
+
+The experiment is **NOT enabled in Vela Settings** and must not be
+mistaken for the existing `xwayland-backend=native` (Satellite). Enable
+it only in headless development sessions and opt in to the strict
+`tests/functional/test_xwayland_kwin.py` regression by setting
+`VELA_ASSERT_KWIN_XWAYLAND=1` in the test runner's environment.
+
+This implementation still needs build validation and multi-monitor GPU
+verification of RandR modes, the fractionally-scaled scene, cursor hit
+testing, Wine fullscreen, popup/subsurface positions, hotplug of already
+mapped X11 surfaces and output rotation. There is **no claim that it
+already fixes EU5**. Known remaining work is to update existing windows
+when the global maximum scale changes and to validate the X11 root's
+logical mode reconciliation with the new protocol.
 
 ## Planned Vela design
 
