@@ -906,7 +906,10 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
             if (vela_vulkan_unusable(vk)) { close(fd); inputs_ready = false; }
             else inputs_ready = vela_sync_wait_close(fd) && inputs_ready;
             if (semaphore) {
-                give_back_semaphore(r, semaphore, false);
+                // A semaphore involved in device loss must never re-enter a
+                // reuse pool. Destruction is legal after VK_ERROR_DEVICE_LOST.
+                if (vela_vulkan_unusable(vk)) vkDestroySemaphore(vk->device, semaphore, NULL);
+                else give_back_semaphore(r, semaphore, false);
             }
             continue;
         }
