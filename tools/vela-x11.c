@@ -7,7 +7,7 @@
 // Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--backdrop-id-file PATH]
 //                 [--wine-style HEX] [--wine-backdrop] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
-//        vela-x11 --state XID below|skip-taskbar on|off
+//        vela-x11 --state XID below|skip-taskbar|maximize on|off
 //        vela-x11 --override-redirect XID on|off
 //        vela-x11 --set-wine-style XID HEX
 //        vela-x11 --delete-wine-style XID
@@ -242,14 +242,15 @@ int main(int argc, char** argv)
             const char* requested = setState ? argv[3] : "fullscreen";
             const char* desired = setState ? argv[4] : argv[3];
             if ((strcmp(requested, "fullscreen") && strcmp(requested, "below")
-                    && strcmp(requested, "skip-taskbar"))
+                    && strcmp(requested, "skip-taskbar") && strcmp(requested, "maximize"))
                 || (strcmp(desired, "on") && strcmp(desired, "off"))) {
-                fprintf(stderr, "vela-x11: invalid state (expected fullscreen, below or skip-taskbar; on/off)\n");
+                fprintf(stderr, "vela-x11: invalid state (expected fullscreen, maximize, below or skip-taskbar; on/off)\n");
                 xcb_disconnect(connection);
                 return 2;
             }
             const char* name = !strcmp(requested, "below") ? "_NET_WM_STATE_BELOW"
                 : !strcmp(requested, "skip-taskbar") ? "_NET_WM_STATE_SKIP_TASKBAR"
+                : !strcmp(requested, "maximize") ? "_NET_WM_STATE_MAXIMIZED_HORZ"
                 : "_NET_WM_STATE_FULLSCREEN";
             xcb_client_message_event_t event = { 0 };
             event.response_type = XCB_CLIENT_MESSAGE;
@@ -258,6 +259,10 @@ int main(int argc, char** argv)
             event.format = 32;
             event.data.data32[0] = !strcmp(desired, "on") ? 1 : 0;
             event.data.data32[1] = atom(connection, name);
+            // ICCCM/EWMH maximize request toggles both axes atomically.
+            if (!strcmp(requested, "maximize")) {
+                event.data.data32[2] = atom(connection, "_NET_WM_STATE_MAXIMIZED_VERT");
+            }
             event.data.data32[3] = 1; // application source
             cookie = xcb_send_event_checked(connection, 0, screen->root,
                 XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
