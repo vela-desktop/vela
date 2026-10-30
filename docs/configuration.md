@@ -123,6 +123,34 @@ EU5's windowed framebuffer, monitor ordering and maximization are all correct
 on the reported mixed-scale hardware; do not mark those tests passed until
 verified.
 
+### Diagnosing X11/Proton window states
+
+In the Satellite backend, X11 windows become ordinary XDG toplevels. **Vela
+cannot receive a fullscreen or maximize request that Satellite never sends.**
+For debugging, start the compositor with `VELA_XDG_TRACE=1`; Vela then logs
+`XDG_STATE request=...` including app ID, title, requested fullscreen/maximize
+states, committed XDG size constraints and the compositor's current state.
+
+- Steam's CSD maximize click with **no** `XDG_STATE request=maximize` is a
+  Satellite EWMH forwarding problem (upstream
+  [#269](https://github.com/Supreeeme/xwayland-satellite/issues/269)).
+  Satellite currently handles only the EWMH fullscreen atom, not the pair
+  `_NET_WM_STATE_MAXIMIZED_VERT/HORZ`.
+- Europa Universalis V switching to Fullscreen with **no**
+  `XDG_STATE request=fullscreen` points to Satellite/Wine state
+  synchronization (upstream
+  [#165](https://github.com/Supreeeme/xwayland-satellite/issues/165)).
+  The old wlroots XWM has additional `_WINE_HWND_STYLE` reconciliation
+  that does not apply to Satellite's XDG windows.
+- A visible `request=maximize` rejected with equal nonzero min/max size
+  constraints is a Vela size-hint decision; inspect the logged hint values
+  instead of disabling constraints for every Steam or Wine window.
+
+The native session functional test includes a Steam-like EWMH maximize
+reproducer. It is kept opt-in via `VELA_ASSERT_SATELLITE_MAXIMIZE=1` until
+upstream Satellite forwards those requests; enabling it on an unpatched
+version is expected to fail.
+
 ## Display configuration
 
 Persistent display layout is stored separately in:
