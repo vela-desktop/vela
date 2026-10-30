@@ -218,6 +218,7 @@ struct visit {
     double lx, ly;
     float opacity;
     struct clip clip;
+    double surface_scale; // client physical pixels -> Vela logical units
 };
 
 // Sharpness (§3.3, §3.4): an image drawn at the output's scale (a buffer as
@@ -245,10 +246,10 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
     if (!texture) {
         return; // no buffer: nothing to show
     }
-    double lx = v->lx + sx;
-    double ly = v->ly + sy;
-    double width = surface->current.width;
-    double height = surface->current.height;
+    double lx = v->lx + sx * v->surface_scale;
+    double ly = v->ly + sy * v->surface_scale;
+    double width = surface->current.width * v->surface_scale;
+    double height = surface->current.height * v->surface_scale;
     struct wlr_fbox src;
     wlr_surface_get_buffer_source_box(surface, &src);
     enum wl_output_transform transform = wlr_output_transform_invert(surface->current.transform);
@@ -269,8 +270,13 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
     e->linear = !is_one_to_one(&e->src, &box, e->transform);
     e->origin_x = (lx - p->origin_x) * p->scale;
     e->origin_y = (ly - p->origin_y) * p->scale;
-    e->scale_x = width > 0 ? box.width / width : p->scale;
-    e->scale_y = height > 0 ? box.height / height : p->scale;
+    // Input/opaque/damage regions are in the original client surface
+    // coordinates. The destination has already been scaled to scene units.
+    // Derive the conversion from the ORIGINAL buffer logical dimensions.
+    e->scale_x = surface->current.width > 0
+        ? box.width / surface->current.width : p->scale * v->surface_scale;
+    e->scale_y = surface->current.height > 0
+        ? box.height / surface->current.height : p->scale * v->surface_scale;
     apply_clip(e, &v->clip);
     const pixman_region32_t *blur = vela_blur_region(surface);
     if (blur) {
@@ -335,7 +341,9 @@ static void visit(struct vela_scene *scene, struct vela_node *node, double lx, d
         if (!root->mapped) {
             break;
         }
-        struct visit context = { scene, p, out, lx, ly, opacity, clip };
+        struct vela_surface_node *surface_node = (struct vela_surface_node *)node;
+        double scale = surface_node->scale > 0.0 ? surface_node->scale : 1.0;
+        struct visit context = { scene, p, out, lx, ly, opacity, clip, scale };
         vela_for_each_surface(root, add_surface, &context);
         break;
     }
