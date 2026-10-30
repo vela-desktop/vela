@@ -178,19 +178,19 @@ real monitors):
 
 ### 3.9 X11 apps
 
-By default, X11 applications (XWayland) render at 1× logical scale and Vela
-upsamples them to match the chosen monitor scale. This keeps legacy UI sizes
-usable, but at 125% a physical 2560×1440 monitor can be exposed to X11 as
-2048×1152. That prevents games from selecting their native physical mode.
+The default X11 backend is **Xwayland Satellite >= 0.7**, launched by Vela
+as part of the graphical session using inherited X11 listen sockets. Satellite
+maps physical-resolution X11 buffers into the logical coordinate space of
+native Wayland windows using `wp_viewporter`: a 2560×1440 display at 125%
+should report 2560×1440 to XRandR, **not** 2048×1152. This is a session-wide
+choice: Steam/Proton need no game-specific launch flags.
 
-For applications that need native game resolutions, Vela offers an opt-in
-`vela-xwayland-native` launcher, which starts a separate XWayland server
-through xwayland-satellite >= 0.6. Satellite reports physical monitor modes and
-uses wp_viewporter to map the result onto Wayland logical space. This leaves
-the compositor's global display scale and Vela's built-in XWayland behavior
-unchanged. Non-toolkit X11 applications may show small text; see
-`docs/configuration.md`. The deeper compositor-native XWayland scaling
-implementation is tracked in #163.
+Vela also retains its in-process wlroots XWayland backend for compatibility.
+Set `xwayland-backend=compat` in `~/.config/vela/vela.conf` and restart
+the session to use it. Its legacy composited scaling exposes logical modes and
+can blur legacy X11 clients. If Satellite cannot launch, Vela logs a warning
+and attempts this fallback; do not treat the fallback as native-resolution
+support. See `docs/configuration.md` and issue #163.
 
 ### 3.10 How we prove it
 
