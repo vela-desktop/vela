@@ -104,12 +104,25 @@ class Desktop:
                 "DBUS_SYSTEM_BUS_ADDRESS": address}
 
     @staticmethod
-    def isolated_environment(address, scene, home, runtime):
-        """Override inherited user locations, even if a scene defines them."""
-        return {**Desktop.bus_environment(address, scene),
-                "HOME": str(home), "USER": "alex", "LOGNAME": "alex",
+    def private_user(home, runtime):
+        """The demo user's identity and locations, never the real ones."""
+        return {"HOME": str(home), "USER": "alex", "LOGNAME": "alex",
                 "XDG_RUNTIME_DIR": str(runtime),
                 "XDG_STATE_HOME": str(home / ".local" / "state")}
+
+    @staticmethod
+    def isolated_environment(address, scene, home, runtime):
+        """Override inherited user locations, even if a scene defines them."""
+        return {**Desktop.bus_environment(address, scene), **Desktop.private_user(home, runtime)}
+
+    @staticmethod
+    def daemon_environment(address, home, runtime):
+        """The private bus daemon passes its environment on to the services
+        it activates: they must not see the real home or the host's buses."""
+        return {**{key: value for key, value in os.environ.items()
+                   if not key.startswith("DBUS_") and key not in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME")},
+                **Desktop.private_user(home, runtime),
+                "DBUS_SESSION_BUS_ADDRESS": address, "DBUS_SYSTEM_BUS_ADDRESS": address}
 
     def __enter__(self):
         harness.BUILD = str(self.build_dir) # tool() and Session read it
@@ -122,8 +135,11 @@ class Desktop:
         self.private_home.mkdir(mode=0o700)
         self.private_runtime.mkdir(mode=0o700)
         try:
+            # Its address is known beforehand, so that its own environment can name it.
+            listen = f"unix:path={self.private_runtime / 'bus'}"
             self.bus = subprocess.Popen(
-                ["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
+                ["dbus-daemon", "--session", "--nofork", "--nopidfile", f"--address={listen}", "--print-address=1"],
+                env=self.daemon_environment(listen, self.private_home, self.private_runtime),
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
             address = self.bus.stdout.readline().strip()
             if not address:

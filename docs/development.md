@@ -287,11 +287,12 @@ reproducible **source footage**, not a complete edited marketing film. The
 private D-Bus and PipeWire deliberately disconnect the host's Bluetooth/network
 services, so those Quick Settings tiles may appear unavailable. The compositor
 and Qt clients also receive a temporary private HOME, XDG runtime and state
-directory; Settings sees the synthetic user `Alex`, through unprivileged user
-and mount namespaces that are probed before any scene with Settings starts. A
-scene starts only once WirePlumber has chosen a default output among the
-made-up devices and the made-up `Music` app is playing silence (seen with
-`pw-dump`). This is **not** a full network or filesystem
+directory, and so does the private `dbus-daemon`, which hands its environment
+to any service it activates; Settings sees the synthetic user `Alex`, through
+unprivileged user and mount namespaces that are probed before any scene with
+Settings starts. A scene starts only once WirePlumber has chosen a default
+output among the made-up devices and the made-up `Music` app is playing
+silence (seen with `pw-dump`). This is **not** a full network or filesystem
 sandbox: scenes must still avoid private files, host data
 and network access. In particular, do not record an unscripted Settings page
 that may display real device information. Window Motion and Task View require

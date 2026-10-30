@@ -95,6 +95,29 @@ class PromoTests(unittest.TestCase):
         self.assertEqual(env["DBUS_SYSTEM_BUS_ADDRESS"], address)
         self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], address)
 
+    def test_bus_daemon_runs_in_the_private_environment(self):
+        bus = mock.Mock()
+        bus.stdout.readline.return_value = ""  # stop right after the daemon starts
+        host = {"HOME": "/home/real-user", "XDG_RUNTIME_DIR": "/run/user/1000",
+                "XDG_DATA_HOME": "/home/real-user/.local/share",
+                "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+                "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/run/dbus/system_bus_socket"}
+        desktop = promo.Desktop(Path("/nonexistent-build"), promo.StartMenu())
+        with (mock.patch.dict(promo.capture.os.environ, host),
+              mock.patch.object(promo.capture.subprocess, "Popen", return_value=bus) as popen):
+            with self.assertRaisesRegex(RuntimeError, "D-Bus"):
+                desktop.__enter__()
+        command, env = popen.call_args.args[0], popen.call_args.kwargs["env"]
+        private = desktop.private_runtime.parent
+        address = f"unix:path={private / 'runtime' / 'bus'}"
+        self.assertIn(f"--address={address}", command)
+        self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], address)
+        self.assertEqual(env["DBUS_SYSTEM_BUS_ADDRESS"], address)
+        self.assertEqual(env["HOME"], str(private / "home"))
+        self.assertEqual(env["XDG_RUNTIME_DIR"], str(private / "runtime"))
+        self.assertNotIn("XDG_DATA_HOME", env)
+        self.assertFalse(private.exists())
+
     def test_audio_waits_for_outputs_default_and_music(self):
         def node(**props):
             return {"type": "PipeWire:Interface:Node", "info": {"props": props}}
