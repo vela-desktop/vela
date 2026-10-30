@@ -177,10 +177,13 @@ def assemble_reel(clips, output):
     if any(clip.parent.resolve() != output.resolve() or clip.stem not in SCENES or
            clip.suffix != ".mp4" for clip in clips):
         raise ValueError("reel inputs must be generated MP4 clips for known scenes in the output directory")
-    concat = output / ".promo-concat.txt"
+    # Create the playlist exclusively: never overwrite a predictable name or symlink.
+    with tempfile.NamedTemporaryFile("w", dir=output, prefix=".vela-promo-",
+                                     suffix=".ffconcat", delete=False) as playlist:
+        concat = Path(playlist.name)
+        playlist.write("ffconcat version 1.0\n" +
+                       "".join(f"file '{clip.name}'\n" for clip in clips))
     try:
-        concat.write_text("ffconcat version 1.0\n" +
-                          "".join(f"file '{clip.name}'\n" for clip in clips))
         subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                         "-safe", "1", "-f", "concat", "-i", str(concat),
                         "-an", "-c:v", "libx264", "-crf", "18", "-preset", "slow",
