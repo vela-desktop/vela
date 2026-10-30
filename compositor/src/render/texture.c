@@ -662,7 +662,7 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
         return 0;
     }
     uint64_t completed = 0;
-    if (renderer->vk->loss.lost || !vela_vulkan_result(renderer->vk,
+    if (vela_vulkan_unusable(renderer->vk) || !vela_vulkan_result(renderer->vk,
             vkGetSemaphoreCounterValue(renderer->vk->device, renderer->timeline, &completed),
             "vkGetSemaphoreCounterValue(readback)")) {
         vela_renderer_cancel_readbacks(renderer);
@@ -716,7 +716,7 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
 struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, struct wl_event_loop *loop,
     struct wlr_buffer *src, struct wlr_buffer *dst, void (*done)(void *, bool), void *data)
 {
-    if (renderer->vk->loss.lost) return NULL;
+    if (vela_vulkan_unusable(renderer->vk)) return NULL;
     if (src->width != dst->width || src->height != dst->height || src->width <= 0 || src->height <= 0) {
         return NULL;
     }
@@ -841,7 +841,7 @@ static const struct wlr_texture_impl texture_impl = {
 
 struct wlr_texture *vela_texture_create(struct vela_renderer *renderer, struct wlr_buffer *buffer)
 {
-    if (renderer->vk->loss.lost) return NULL;
+    if (vela_vulkan_unusable(renderer->vk)) return NULL;
     struct wlr_dmabuf_attributes dmabuf;
     if (wlr_buffer_get_dmabuf(buffer, &dmabuf)) {
         return import_dmabuf(renderer, buffer, &dmabuf);
