@@ -1456,6 +1456,37 @@
     </message>
 </context>
 <context>
+    <name>UpdateNotices</name>
+    <message>
+        <source>Updates</source>
+        <translation>Aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Vela %1 is available</source>
+        <translation>È disponibile Vela %1</translation>
+    </message>
+    <message>
+        <source>Open Updates to see what&apos;s new and install it.</source>
+        <translation>Apri Aggiornamenti per vedere le novità e installarlo.</translation>
+    </message>
+    <message>
+        <source>Open Updates</source>
+        <translation>Apri Aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Sign out to finish updating</source>
+        <translation>Esci per completare l&apos;aggiornamento</translation>
+    </message>
+    <message>
+        <source>Vela was updated. Sign out and sign in again to use the new version.</source>
+        <translation>Vela è stato aggiornato. Esci e accedi di nuovo per usare la nuova versione.</translation>
+    </message>
+    <message>
+        <source>Sign out</source>
+        <translation>Esci</translation>
+    </message>
+</context>
+<context>
     <name>VolumeOsd</name>
     <message>
         <source>Microphone off</source>

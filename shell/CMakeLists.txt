@@ -45,6 +45,8 @@ qt_add_executable(vela-shell
     src/asyncprocess.h
     src/bluetoothprompts.cpp
     src/bluetoothprompts.h
+    src/updatenotices.cpp
+    src/updatenotices.h
     src/network.cpp
     src/network.h
     src/notifications.cpp
@@ -175,7 +177,8 @@ target_link_libraries(vela-shell PRIVATE
     vela-app # the mouse's Back and Forward buttons (common/)
     vela-audio # the sound (common/audio, docs/audio.md)
     vela-bluetooth-client # Bluetooth (common/bluetooth, docs/bluetooth.md)
-    vela-bluetooth-uiplugin)
+    vela-bluetooth-uiplugin
+    vela-updates-client) # update notifications (common/updates, docs/updates.md)
 
 install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 

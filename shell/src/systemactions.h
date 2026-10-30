@@ -33,7 +33,7 @@ public:
     // Names: installed-apps, mobility, power, events, system, devices,
     // network, disks, computer, terminal, terminal-admin, task-manager,
     // settings, files, datetime, display, notification-settings,
-    // taskbar-settings, personalize.
+    // taskbar-settings, personalize, updates-settings.
     Q_INVOKABLE bool available(const QString& name) const;
     Q_INVOKABLE bool trigger(const QString& name) const;
     // A laptop (a battery that isn't a mouse's or the like).

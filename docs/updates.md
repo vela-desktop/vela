@@ -7,7 +7,8 @@ background check and the notification. It is the 0.1 release blocker in the
 code: decisions are made here, and the code follows them.
 
 > **Status:** U0 (this design), U1 (`vela-update`'s report), U2 (the
-> daemon), U3 (the Qt client) and U4 (the Settings page) are done. See §11.
+> daemon), U3 (the Qt client), U4 (the Settings page) and U5 (the shell's
+> notifications) are done. See §11.
 
 ## 1. What there is today
 
@@ -365,8 +366,14 @@ counts as being told about the update (§6.4).
 Notifications only, as the client library tells them:
 
 - "Vela 0.1.11 is available": "Open Updates to see what's new and install
-  it." Clicking opens `vela-settings --page updates`.
-- "Sign out to finish updating", with a "Sign out" action.
+  it." Clicking it, or "Open Updates", opens `vela-settings --page updates`.
+  The shell calls `Announced` as soon as it notifies; a newer update
+  replaces the older one's notification.
+- "Sign out to finish updating", with a "Sign out" action, once per
+  session; it stays until dismissed.
+
+Experimental's version carries its commit, here and on the page
+("0.1.1 (1a2b3c4)"): many commits share one version.
 
 ## 10. Tests
 
@@ -385,7 +392,9 @@ Notifications only, as the client library tells them:
   the switch shown at once, refusals, the daemon leaving and coming back.
 - **Page** (QML tests): every state of the top card, the channel
   confirmation, the advanced options, no daemon.
-- **Shell**: the notifications, once per version.
+- **Shell** (`tests/updates`, the shell's `UpdateNotices` on the daemon):
+  the notifications, once per version and across sessions, a newer one
+  again, none when up to date, "Sign out" once.
 - **By hand**: a real Beta and a real Experimental update on Arch, Fedora
   44 and Ubuntu 26.10; closing the terminal halfway; signing out after.
 
@@ -398,7 +407,7 @@ Notifications only, as the client library tells them:
 | U2 | `vela-update-daemon` and `org.vela.Updates`; the caller check shared with `vela-bluetooth` | done |
 | U3 | `common/updates`, the Qt client | done |
 | U4 | the Settings page | done |
-| U5 | the shell's notifications | |
+| U5 | the shell's notifications | done |
 | U6 | packaging (`xdg-terminal-exec`, libexec files), docs, roadmap, release-channels | |
 | U7 | real updates on real systems | |
 

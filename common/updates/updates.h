@@ -47,6 +47,9 @@ class Updates : public QObject {
     Q_PROPERTY(QString version READ version NOTIFY changed)
     Q_PROPERTY(QString tag READ tag NOTIFY changed)
     Q_PROPERTY(QString commit READ commit NOTIFY changed)
+    // The version as the user reads it: Experimental's has the commit too,
+    // since many commits share one version ("0.1.1 (1a2b3c4)").
+    Q_PROPERTY(QString versionText READ versionText NOTIFY changed)
     // Experimental's commits, newest first: [{commit, summary}]; at most
     // 100 of changesTotal.
     Q_PROPERTY(QVariantList changes READ changes NOTIFY changed)
@@ -93,6 +96,7 @@ public:
     QString version() const { return m_version; }
     QString tag() const { return m_tag; }
     QString commit() const { return m_commit; }
+    QString versionText() const;
     QVariantList changes() const { return m_changes; }
     int changesTotal() const { return m_changesTotal; }
     QVariantList notes() const { return m_notes; }

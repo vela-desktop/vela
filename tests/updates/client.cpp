@@ -87,6 +87,7 @@ private Q_SLOTS:
         QCOMPARE(updates->installedVersion(), QStringLiteral("0.1.0.r1.gaaaaaaa-1"));
         QCOMPARE(updates->version(), QStringLiteral("0.1.1"));
         QCOMPARE(updates->commit(), commitB);
+        QCOMPARE(updates->versionText(), QStringLiteral("0.1.1 (bbbbbbb)"));
         QCOMPARE(updates->changesTotal(), 140);
         QCOMPARE(updates->changes().size(), 2);
         const QVariantMap first = updates->changes().value(0).toMap();
@@ -110,6 +111,7 @@ private Q_SLOTS:
         updates->check();
         QTRY_COMPARE(updates->status(), QStringLiteral("update-available"));
         QCOMPARE(updates->tag(), QStringLiteral("v0.1.11"));
+        QCOMPARE(updates->versionText(), QStringLiteral("0.1.11"));
         QCOMPARE(updates->notes(),
             (QVariantList { QVariantMap { { QStringLiteral("version"), QStringLiteral("0.1.11") }, { QStringLiteral("text"), QStringLiteral("Faster") } },
                 QVariantMap { { QStringLiteral("version"), QStringLiteral("0.1.10") }, { QStringLiteral("text"), QStringLiteral("Fixes") } } }));

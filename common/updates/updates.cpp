@@ -79,6 +79,14 @@ Updates::Updates(const QDBusConnection& bus, QObject* parent)
     }
 }
 
+QString Updates::versionText() const
+{
+    if (m_channel == QLatin1String("experimental") && !m_commit.isEmpty()) {
+        return QStringLiteral("%1 (%2)").arg(m_version, m_commit.left(7));
+    }
+    return m_version;
+}
+
 QDateTime Updates::lastCheck() const
 {
     return m_lastCheck > 0 ? QDateTime::fromSecsSinceEpoch(m_lastCheck) : QDateTime();

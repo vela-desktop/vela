@@ -26,9 +26,6 @@ Card {
     readonly property bool showRelogin: Updates.available && Updates.needsRelogin
     readonly property bool showCheckFailure: Updates.available && checked && checkFailed && !Updates.busy
     readonly property bool showInstallFailure: Updates.available && installFailed && !Updates.busy
-    // Experimental's updates have the same version for many commits.
-    readonly property string versionText: Updates.channel === "experimental" && Updates.commit !== ""
-        ? Updates.version + " (" + Updates.commit.slice(0, 7) + ")" : Updates.version
 
     function phaseText(phase) {
         switch (phase) {
@@ -65,7 +62,7 @@ Card {
         : Updates.activity === "starting" ? qsTr("Opening the terminal...")
         : Updates.activity === "installing" ? (phaseText(Updates.phase) !== ""
             ? qsTr("Updating in the terminal: %1").arg(phaseText(Updates.phase)) : qsTr("Updating in the terminal"))
-        : hasUpdate ? qsTr("Vela %1 is available").arg(versionText)
+        : hasUpdate ? qsTr("Vela %1 is available").arg(Updates.versionText)
         : Updates.status === "up-to-date" ? qsTr("You're up to date")
         : Updates.status === "downgrade-available" ? qsTr("You have a newer version than the latest release")
         : Updates.status === "not-installed" ? qsTr("Development build: not installed from a package")

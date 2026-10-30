@@ -19,6 +19,8 @@ QtObject {
     property string version: "0.1.0"
     property string tag: ""
     property string commit: ""
+    readonly property string versionText: channel === "experimental" && commit !== ""
+        ? version + " (" + commit.slice(0, 7) + ")" : version
     property var changes: []
     property int changesTotal: 0
     property var notes: []
