@@ -27,7 +27,7 @@ depends=(
     'wlroots0.20' 'wayland' 'libxkbcommon' 'pixman' 'libinput' 'libdrm' 'mesa' 'vulkan-icd-loader'
     'freetype2' 'harfbuzz' 'fontconfig' 'librsvg' 'cairo'
     'qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'layer-shell-qt'
-    'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland' 'xorg-xrandr' 'xorg-xrdb' 'xwayland-satellite>=0.7'
+    'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland' 'xorg-xrandr' 'xwayland-satellite>=0.7'
     # Desktop defaults: GTK for generic portals and wlr for screen capture.
     'konsole' 'breeze-icons' 'xdg-desktop-portal' 'xdg-desktop-portal-gtk' 'xdg-desktop-portal-wlr' 'xdg-utils'
     # Runtime requirements of vela-update; build toolchain is installed on demand.
