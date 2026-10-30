@@ -4,6 +4,8 @@
 // Exercise the production private helpers with deterministic Vulkan failures,
 // without a Vulkan device. Unrelated renderer sections are discarded at link.
 #undef NDEBUG
+#include <errno.h>
+#include <fcntl.h>
 #include "../src/render/renderer.c"
 #include "../src/render/texture.c"
 
