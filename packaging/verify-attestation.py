@@ -133,8 +133,11 @@ def verify(package: Path, repository: str, commit: str, kind: str, release_tag: 
                 else:
                     evidence = json.loads(curl(candidate))
                 bundle.write_text(json.dumps(evidence), encoding="utf-8")
+                # The build's SLSA provenance: cosign 3 checks the predicate
+                # type, and its default ("custom") matches no attestation.
                 command = ["cosign", "verify-blob-attestation",
-                           "--bundle", str(bundle), *shared, str(package)]
+                           "--bundle", str(bundle), "--type", "slsaprovenance1",
+                           *shared, str(package)]
                 subprocess.run(command, check=True, stdout=subprocess.DEVNULL,
                                stderr=subprocess.PIPE, timeout=90)
                 validate_signed_provenance(evidence, h.hexdigest())
