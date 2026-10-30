@@ -19,6 +19,10 @@ endif()
 
 include(GNUInstallDirs)
 
+# Native-resolution X11 launcher is available to all package formats and local installs.
+install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-xwayland-native"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}")
+
 option(VELA_BUILD_CAPTURE_TOOLS "Build the lightweight screen-dump CLI separately from the GPU test tools" OFF)
 option(VELA_BUILD_GPU_TEST_TOOLS "Build GPU-intensive test clients (only relevant when VELA_BUILD_TOOLS=ON)" ON)
 
@@ -160,16 +164,13 @@ if(VELA_PACKAGE_DEB)
     # even when not linked as ELF libraries (shlibdeps handles the rest).
     # Vela uses Breeze by default; Qt needs the SVG icon engine to render it.
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "git, curl, apt, dpkg, sudo, util-linux, xdg-terminal-exec, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+        "git, curl, apt, dpkg, sudo, util-linux, x11-xserver-utils, xdg-terminal-exec, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
     # Bluetooth needs only BlueZ (docs/bluetooth.md §10), as Fedora's
     # Recommends and Arch's optional dependency. Settings > Updates runs
     # vela-update in a terminal (docs/updates.md §6.3): xdg-terminal-exec
     # (Depends) picks any one installed, Konsole by default.
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "bluez, konsole | x-terminal-emulator")
     # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
-    # A separate Satellite backend for opt-in native-resolution X11 games.
-    install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-xwayland-native"
-        DESTINATION "${CMAKE_INSTALL_BINDIR}")
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
         DESTINATION "${CMAKE_INSTALL_BINDIR}")
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update-beta"
