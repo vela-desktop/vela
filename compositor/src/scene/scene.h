@@ -89,6 +89,10 @@ struct vela_tree {
 struct vela_surface_node {
     struct vela_node node;
     struct wlr_surface *surface;
+    // One X11 buffer/surface coordinate maps to scale logical scene units.
+    // Default 1 for every native Wayland surface. The experimental
+    // KWin-style XWayland protocol adapter uses 1/global_x11_scale.
+    double scale;
 };
 
 // A solid rectangle (premultiplied sRGB color, as in wlroots).
