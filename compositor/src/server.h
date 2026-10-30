@@ -200,6 +200,10 @@ struct vela_server {
     // App commits held until their GPU has finished (§7.3).
     struct vela_ready ready;
     struct vela_child shell; // the launched and supervised shell (shell.h)
+    struct vela_child satellite; // optional X11-native Xwayland Satellite (x11_satellite.c)
+    int satellite_listen_fd;
+    int satellite_display;
+    char satellite_socket_path[108];
     struct vela_child polkit_agent; // the polkit agent (polkit.h)
     struct vela_child bluetooth; // vela-bluetooth (bluetooth.h)
     struct vela_child updates; // vela-update-daemon (updates.h)
