@@ -178,16 +178,18 @@ real monitors):
 
 ### 3.9 X11 apps
 
-The default X11 backend is **Xwayland Satellite >= 0.7**, launched by Vela
-as part of the graphical session using inherited X11 listen sockets. Satellite
+Vela integrates **Xwayland Satellite >= 0.7** as an experimental native-
+resolution X11 backend, launched as part of the graphical session using
+inherited X11 listen sockets. Satellite
 maps physical-resolution X11 buffers into the logical coordinate space of
 native Wayland windows using `wp_viewporter`: a 2560×1440 display at 125%
 should report 2560×1440 to XRandR, **not** 2048×1152. This is a session-wide
 choice: Steam/Proton need no game-specific launch flags.
 
-Vela also retains its in-process wlroots XWayland backend for compatibility.
-Set `xwayland-backend=compat` in `~/.config/vela/vela.conf` and restart
-the session to use it. Its legacy composited scaling exposes logical modes and
+The in-process wlroots XWayland backend remains the **default** while
+mixed-scale input, fullscreen and EWMH window controls are not working in
+current Satellite releases. Set `xwayland-backend=native` in
+`~/.config/vela/vela.conf` and restart the session to test Satellite. Its legacy composited scaling exposes logical modes and
 can blur legacy X11 clients. If Satellite cannot launch, Vela logs a warning
 and attempts this fallback; do not treat the fallback as native-resolution
 support. See `docs/configuration.md` and issue #163.
