@@ -125,6 +125,7 @@ add_library(vela-pure STATIC
     src/diagnostics.c
     src/frame_clock.c
     src/geometry.c
+    src/x11_coordinates.c
     src/legacy_names.c
     src/motion.c
     src/output_config.c
@@ -243,6 +244,16 @@ install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # sharpness geometry, color, sun, settings. They need GoogleTest (the gtest
 # package) and the test tools enabled.
 if(VELA_BUILD_TOOLS)
+    # Independent mixed-DPI X11<->Wayland coordinate model.
+    # This is the first stage of native in-process XWayland; no production
+    # geometry is switched until output enumeration and input are wired together.
+    add_executable(vela-x11-coordinates-test tests/x11_coordinates_test.c)
+    target_link_libraries(vela-x11-coordinates-test PRIVATE vela-pure)
+    target_compile_options(vela-x11-coordinates-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-x11-coordinates-test PROPERTIES C_STANDARD 17
+        C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.x11-coordinates COMMAND vela-x11-coordinates-test)
+
     add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
     target_include_directories(vela-device-loss-policy-test PRIVATE src)
     set_target_properties(vela-device-loss-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
