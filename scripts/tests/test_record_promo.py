@@ -15,6 +15,11 @@ promo = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(promo)
 
 
+def fake_ffmpeg(command, check):
+    """Writes the output file, the last argument, as FFmpeg would."""
+    Path(command[-1]).write_bytes(b"video")
+
+
 class PromoTests(unittest.TestCase):
     def test_scenes_are_unique_and_use_full_output(self):
         self.assertEqual(len(promo.SCENES), len(set(promo.SCENES)))
@@ -46,10 +51,13 @@ class PromoTests(unittest.TestCase):
     def test_reel_inputs_are_allowlisted_scene_names(self):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder)
-            with mock.patch.object(promo.subprocess, "run") as run:
-                promo.assemble_reel([output / "desktop.mp4", output / "start-menu.mp4"], output)
+            staging = output / ".staging"
+            staging.mkdir()
+            with mock.patch.object(promo.subprocess, "run", side_effect=fake_ffmpeg) as run:
+                promo.assemble_reel([output / "desktop.mp4", output / "start-menu.mp4"], output, staging)
                 self.assertTrue(run.called)
                 self.assertFalse(list(output.glob(".vela-promo-*.ffconcat")))
+            self.assertEqual((output / "vela-promo.mp4").read_bytes(), b"video")
 
     def test_existing_playlist_symlink_is_not_touched(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -57,8 +65,12 @@ class PromoTests(unittest.TestCase):
             victim = output / "important.txt"
             victim.write_text("private data")
             (output / ".promo-concat.txt").symlink_to(victim)
-            with mock.patch.object(promo.subprocess, "run"):
-                promo.assemble_reel([output / "desktop.mp4"], output)
+            (output / "vela-promo.mp4").symlink_to(victim)
+            staging = output / ".staging"
+            staging.mkdir()
+            with mock.patch.object(promo.subprocess, "run", side_effect=fake_ffmpeg):
+                promo.assemble_reel([output / "desktop.mp4"], output, staging)
+            self.assertFalse((output / "vela-promo.mp4").is_symlink())
             self.assertEqual(victim.read_text(), "private data")
             self.assertFalse(list(output.glob(".vela-promo-*.ffconcat")))
 
@@ -82,6 +94,45 @@ class PromoTests(unittest.TestCase):
         env = promo.Desktop.bus_environment(address, scene)
         self.assertEqual(env["DBUS_SYSTEM_BUS_ADDRESS"], address)
         self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], address)
+
+    def test_output_planted_as_symlink_after_checks_is_replaced(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "out"
+            output.mkdir()
+            staging = output / ".staging"
+            staging.mkdir()
+            victim = Path(folder) / "important.txt"
+            victim.write_text("do not overwrite")
+            take = types.SimpleNamespace(width=1920, height=1080, times=[1.0], presented=1,
+                                         format="bgr0", output_info={})
+
+            def export(scene, take, where, scratch):
+                for suffix in (".mp4", ".webm", ".png"):
+                    (where / f"{scene.name}{suffix}").write_bytes(b"video")
+                    # Planted between the preflight and the install.
+                    (output / f"{scene.name}{suffix}").symlink_to(victim)
+                (output / f"{scene.name}-manifest.json").symlink_to(victim)
+                return where / f"{scene.name}.mp4"
+
+            args = types.SimpleNamespace(keep=False, no_reel=True)
+            with (mock.patch.object(promo, "Desktop"), mock.patch.object(promo, "record", return_value=take),
+                  mock.patch.object(promo, "export_clip", side_effect=export)):
+                promo.record_scenes(["desktop"], Path("/build"), output, staging, args)
+            self.assertEqual(victim.read_text(), "do not overwrite")
+            for suffix in (".mp4", ".webm", ".png", "-manifest.json"):
+                self.assertFalse((output / f"desktop{suffix}").is_symlink())
+            self.assertIn('"scene": "desktop"', (output / "desktop-manifest.json").read_text())
+
+    def test_staging_is_removed_when_a_scene_fails(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            with (mock.patch.object(promo.capture.harness, "gpu_available", return_value=True),
+                  mock.patch.object(promo.Path, "is_file", return_value=True),
+                  mock.patch.object(promo.shutil, "which", return_value="/usr/bin/true"),
+                  mock.patch.object(promo, "record_scenes", side_effect=RuntimeError("no GPU after all"))):
+                with self.assertRaisesRegex(RuntimeError, "no GPU"):
+                    promo.main(["desktop", "--out", str(output)])
+            self.assertEqual(list(output.iterdir()), [])
 
 
     def test_promo_capture_preserves_action_start(self):
@@ -148,7 +199,7 @@ class PromoTests(unittest.TestCase):
             output = Path(folder)
             with mock.patch.object(promo.subprocess, "run") as run:
                 with self.assertRaisesRegex(ValueError, "known scenes"):
-                    promo.assemble_reel([output.parent / "elsewhere.mp4"], output)
+                    promo.assemble_reel([output.parent / "elsewhere.mp4"], output, output)
             run.assert_not_called()
 
     def test_symlink_is_never_followed_even_with_force(self):

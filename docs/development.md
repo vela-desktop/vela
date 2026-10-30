@@ -277,6 +277,9 @@ more scenes also produce a simple hard-cut `vela-promo.mp4`. Use `--no-reel`
 for individual clips, `--build PATH` for a particular build and `--keep`
 only when raw frame data is needed for debugging (it is very large). Existing
 outputs are protected by default; `--force` explicitly permits replacement.
+Every output is first written to a private staging directory inside the output
+directory and then renamed into place, so a symlink planted at an output path
+during the recording is replaced, never followed.
 
 The capture contains no cursor, narration, music or artificial UI. Add titles,
 sound and transitions in a separate editorial pass; these scripts guarantee

@@ -18,6 +18,7 @@ vela-promo.mp4. No soundtrack, fake UI, or synthetic frame interpolation.
 
 import argparse
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -170,7 +171,7 @@ def export_clip(scene, take, output, scratch):
     return mp4
 
 
-def assemble_reel(clips, output):
+def assemble_reel(clips, output, staging):
     """Concatenate equal-resolution, constant-rate clips; no re-timing of a scene."""
     # Scenes use the same 1920x1080@60 output and encoder settings. Each input
     # is an internal, allowlisted scene name; avoid path interpolation from users.
@@ -188,9 +189,21 @@ def assemble_reel(clips, output):
                         "-safe", "1", "-f", "concat", "-i", str(concat),
                         "-an", "-c:v", "libx264", "-crf", "18", "-preset", "slow",
                         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-                        str(output / "vela-promo.mp4")], check=True)
+                        str(staging / "vela-promo.mp4")], check=True)
+        install(staging / "vela-promo.mp4", output)
     finally:
         concat.unlink(missing_ok=True)
+
+
+def install(path, output):
+    """Move a finished output from the staging directory into place. A rename
+    replaces whatever is at the destination, even a symlink planted after the
+    checks, and never follows it."""
+    target = output / path.name
+    if path.is_dir() and target.is_dir() and not target.is_symlink():
+        shutil.rmtree(target)  # --force: a previous take; rename only replaces an empty directory
+    os.replace(path, target)
+    return target
 
 
 def output_paths(output, names, make_reel, keep):
@@ -257,6 +270,17 @@ def main(argv=None):
             parser.error(f"required program not found: {program}")
 
     output.mkdir(parents=True, exist_ok=True)
+    # Everything is written here first, private and unpredictable, then
+    # renamed into place: no write follows a path someone else can plant.
+    staging = Path(tempfile.mkdtemp(dir=output, prefix=".vela-promo-staging-"))
+    try:
+        record_scenes(names, build, output, staging, args)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return 0
+
+
+def record_scenes(names, build, output, staging, args):
     clips = []
     for name in names:
         scene = SCENES[name]
@@ -269,7 +293,7 @@ def main(argv=None):
                 take = record(desktop, scene, take_dir, align=False)
             if take.width != 1920 or take.height != 1080:
                 raise RuntimeError(f"{name}: expected 1920x1080 capture, got {take.width}x{take.height}")
-            clips.append(export_clip(scene, take, output, scratch))
+            mp4 = export_clip(scene, take, staging, scratch)
             manifest = {
                 "scene": name,
                 "size": scene.size,
@@ -283,14 +307,16 @@ def main(argv=None):
                 "source": "user-supplied build directory (commit not independently verified)",
                 "cursor": "not included in ext-image-copy-capture",
             }
-            (output / f"{name}-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+            (staging / f"{name}-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
             if args.keep:
-                shutil.copytree(take_dir, output / f"{name}-take", dirs_exist_ok=args.force)
+                shutil.copytree(take_dir, staging / f"{name}-take")
+            for suffix in (".webm", ".png", "-manifest.json", *(("-take",) if args.keep else ())):
+                install(staging / f"{name}{suffix}", output)
+            clips.append(install(mp4, output))
         print(f"{name}: MP4, WebM, PNG poster, and manifest in {output}", flush=True)
     if not args.no_reel and len(clips) > 1:
-        assemble_reel(clips, output)
+        assemble_reel(clips, output, staging)
         print(f"Reel: {output / 'vela-promo.mp4'}", flush=True)
-    return 0
 
 
 if __name__ == "__main__":
