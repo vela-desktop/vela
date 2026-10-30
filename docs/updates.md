@@ -388,14 +388,23 @@ Experimental's version carries its commit, here and on the page
   killed run, automatic checks with short timers, metered connections,
   `Announce` once per version (with private marker permissions), successive
   reports in the same second, full-connectivity gating, the caller check.
+  Also what goes wrong around it: a check that ignores SIGTERM, output too
+  big to be a report, no `vela-update`, no terminal, a second daemon, a
+  state directory it can't use, a marker it can't save, NetworkManager
+  leaving and coming back or not there at all, no system bus, and the
+  source in `updates.conf`.
 - **Client** (`tests/updates`, on the daemon and the same fakes): the
   properties as QML reads them, failures and their reasons, an install,
-  the switch shown at once, refusals, the daemon leaving and coming back.
+  the switch shown at once, refusals (the ones only a sandboxed app or a
+  broken daemon gets, from a fake daemon), the daemon leaving and coming
+  back, the session bus by default.
 - **Page** (QML tests): every state of the top card, the channel
   confirmation, the advanced options, no daemon.
 - **Shell** (`tests/updates`, the shell's `UpdateNotices` on the daemon):
   the notifications, once per version and across sessions, a newer one
-  again, none when up to date, "Sign out" once.
+  again, none when up to date, "Sign out" once, closed or clicked elsewhere.
+- **Compositor** (`compositor/tests/updates_start_test.c`): which daemon
+  it starts, if any.
 - **By hand**: a real Beta and a real Experimental update on Arch, Fedora
   44 and Ubuntu 26.10; closing the terminal halfway; signing out after.
 

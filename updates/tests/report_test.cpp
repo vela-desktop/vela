@@ -132,6 +132,24 @@ TEST(Check, RefusesOtherSchemasAndGarbage)
     EXPECT_LT(vela_up_check_read("/nonexistent/check.json", &check), 0);
 }
 
+TEST(Check, OddNumbersAndTypes)
+{
+    vela_up_check check;
+    // Wrong types are "" or 0; a negative or huge total is no total.
+    ASSERT_EQ(vela_up_check_parse(R"({"schema_version": 2, "status": 7, "commit": null,
+        "changes_total": -3, "checked_at": "today", "error": "network", "changes": {"a": 1}})", &check), 0);
+    EXPECT_STREQ(check.status, "");
+    EXPECT_STREQ(check.commit, "");
+    EXPECT_EQ(check.changes_total, 0u);
+    EXPECT_EQ(check.checked_at, 0);
+    EXPECT_STREQ(check.error_code, "");
+    EXPECT_EQ(check.change_count, 0u);
+    vela_up_check_clear(&check);
+    ASSERT_EQ(vela_up_check_parse(R"({"schema_version": 2, "changes_total": 4294967296})", &check), 0);
+    EXPECT_EQ(check.changes_total, 0u);
+    vela_up_check_clear(&check);
+}
+
 TEST_F(Files, RunAndInstall)
 {
     vela_up_run run;
@@ -152,7 +170,21 @@ TEST_F(Files, RunAndInstall)
     EXPECT_FALSE(vela_up_run_alive(proc().c_str(), &run));
     run.pid = 4243;
     EXPECT_FALSE(vela_up_run_alive(proc().c_str(), &run));
+    // A run that couldn't read its start time is trusted by PID alone.
+    run.pid = 4242;
+    run.start_time = 0;
+    EXPECT_TRUE(vela_up_run_alive(proc().c_str(), &run));
+    run.present = false;
+    EXPECT_FALSE(vela_up_run_alive(proc().c_str(), &run));
     vela_up_run_clear(&run);
+
+    // No PID, no run; another schema, nothing.
+    ASSERT_EQ(vela_up_run_read(write("idle.json", R"({"schema_version": 2, "action": "check", "pid": -1})").c_str(), &run),
+        0);
+    EXPECT_FALSE(run.present);
+    vela_up_run_clear(&run);
+    EXPECT_LT(vela_up_run_read(write("v1.json", R"({"schema_version": 1, "pid": 4242})").c_str(), &run), 0);
+    EXPECT_LT(vela_up_run_read((root / "missing.json").c_str(), &run), 0);
 
     vela_up_install install;
     ASSERT_EQ(vela_up_install_read(write("install.json", R"({"schema_version": 2, "channel": "experimental",
@@ -173,6 +205,12 @@ TEST_F(Files, StartTimeSurvivesOddNames)
     process(10, "a) b (c", 1, 123456, "/usr/bin/x");
     EXPECT_EQ(vela_up_start_time(proc().c_str(), 10), 123456u);
     EXPECT_EQ(vela_up_start_time(proc().c_str(), 11), 0u);
+    EXPECT_EQ(vela_up_start_time(proc().c_str(), 0), 0u);
+    // Not a stat line.
+    write("proc/12/stat", "12 vela\n");
+    EXPECT_EQ(vela_up_start_time(proc().c_str(), 12), 0u);
+    // A /proc path too long for PATH_MAX.
+    EXPECT_EQ(vela_up_start_time(std::string(5000, 'x').c_str(), 10), 0u);
 }
 
 TEST(Options, LikeVelaUpdate)
@@ -188,6 +226,8 @@ TEST(Options, LikeVelaUpdate)
     EXPECT_NE(vela_up_options_invalid(&branch, "beta"), nullptr);
     vela_up_options tag { "experimental", nullptr, nullptr, nullptr, "v0.1.2" };
     EXPECT_NE(vela_up_options_invalid(&tag, nullptr), nullptr);
+    vela_up_options commit { nullptr, nullptr, "ABCDEF0123", "/home/me/vela", nullptr };
+    EXPECT_EQ(vela_up_options_invalid(&commit, "experimental"), nullptr);
 
     const std::vector<vela_up_options> invalid = {
         { "stable", nullptr, nullptr, nullptr, nullptr },
@@ -196,6 +236,16 @@ TEST(Options, LikeVelaUpdate)
         { nullptr, "a..b", nullptr, nullptr, nullptr },
         { nullptr, "a b", nullptr, nullptr, nullptr },
         { nullptr, "x.lock", nullptr, nullptr, nullptr },
+        { nullptr, "a@{1}", nullptr, nullptr, nullptr },
+        { nullptr, "a//b", nullptr, nullptr, nullptr },
+        { nullptr, "a/", nullptr, nullptr, nullptr },
+        { nullptr, "a.", nullptr, nullptr, nullptr },
+        { nullptr, "/a", nullptr, nullptr, nullptr },
+        { nullptr, ".a", nullptr, nullptr, nullptr },
+        { nullptr, "a~1", nullptr, nullptr, nullptr },
+        { nullptr, "@", nullptr, nullptr, nullptr },
+        { nullptr, "a\x7f", nullptr, nullptr, nullptr },
+        { nullptr, nullptr, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nullptr, nullptr },
         { nullptr, nullptr, "abc", nullptr, nullptr },
         { nullptr, nullptr, "xyz1234", nullptr, nullptr },
         { nullptr, nullptr, nullptr, "--upload-pack=x", nullptr },
@@ -203,6 +253,8 @@ TEST(Options, LikeVelaUpdate)
         { "beta", nullptr, nullptr, nullptr, "v1.0.0" },
         { "beta", nullptr, nullptr, nullptr, "v0.1" },
         { "beta", nullptr, nullptr, nullptr, "v0.1.2-rc1" },
+        { "beta", nullptr, nullptr, nullptr, "v0..2" },
+        { "beta", nullptr, nullptr, nullptr, "v0.1." },
     };
     for (const vela_up_options& options : invalid) {
         EXPECT_NE(vela_up_options_invalid(&options, nullptr), nullptr)
@@ -272,6 +324,15 @@ TEST_F(Files, Terminal)
     EXPECT_EQ(argv[1], nullptr);
     vela_up_strv_free(argv);
 
+    // A full path, as it is; no command at all, Konsole.
+    argv = vela_up_terminal("", (root / "bin2/kitty").c_str());
+    ASSERT_NE(argv, nullptr);
+    EXPECT_EQ(std::string(argv[0]), (root / "bin2/kitty").string());
+    vela_up_strv_free(argv);
+    EXPECT_EQ(vela_up_terminal("", (root / "bin2/missing").c_str()), nullptr);
+    EXPECT_EQ(vela_up_terminal((root / "bin1").c_str(), "   "), nullptr);
+    EXPECT_EQ(vela_up_terminal(nullptr, ""), nullptr);
+
     // Nothing installed.
     EXPECT_EQ(vela_up_terminal((root / "empty").c_str(), "foot"), nullptr);
 }
@@ -296,4 +357,10 @@ TEST_F(Files, SessionCompositorAndReplacedExecutable)
     process(400, "bash", 1, 5, "/usr/bin/bash");
     EXPECT_EQ(vela_up_session_process(proc().c_str(), 400), 0);
     EXPECT_FALSE(vela_up_exe_replaced(proc().c_str(), 0));
+
+    // Gone halfway up, or without an executable to read.
+    write("proc/500/stat", "500 (vela-update-dae) S 600 0\n");
+    EXPECT_EQ(vela_up_session_process(proc().c_str(), 500), 0);
+    EXPECT_FALSE(vela_up_exe_replaced(proc().c_str(), 500));
+    EXPECT_EQ(vela_up_session_process(std::string(5000, 'x').c_str(), 300), 0);
 }

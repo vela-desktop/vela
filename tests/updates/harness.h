@@ -32,6 +32,7 @@ inline const QString service = QStringLiteral("org.vela.Updates");
 inline const QString objectPath = QStringLiteral("/org/vela/Updates");
 inline const QString commitA = QString(40, u'a');
 inline const QString commitB = QString(40, u'b');
+inline const QString networkManager = QStringLiteral("org.freedesktop.NetworkManager");
 
 // NetworkManager's two properties the daemon reads (§6.2).
 class FakeNetworkManager : public QObject {
@@ -67,6 +68,7 @@ inline const char fakeUpdate[] = R"SH(#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE/calls"
 case " $* " in
 *" --check "*)
+    if [ -f "$FAKE/check-stubborn" ]; then trap '' TERM; fi
     while [ -f "$FAKE/check-hold" ]; do sleep 0.02; done
     if [ -f "$FAKE/check-output" ]; then
         cat "$FAKE/check-output"
@@ -148,7 +150,8 @@ protected:
         return QString::fromUtf8(read(fake("calls"))).split(u'\n', Qt::SkipEmptyParts);
     }
 
-    bool startDaemon(const QMap<QString, QString>& extra = {})
+    // The daemon's environment: the private buses, the home and the fakes.
+    QProcessEnvironment daemonEnvironment(const QMap<QString, QString>& extra) const
     {
         QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
         environment.insert(QStringLiteral("DBUS_SESSION_BUS_ADDRESS"), m_sessionAddress);
@@ -165,7 +168,12 @@ protected:
         for (auto it = extra.begin(); it != extra.end(); ++it) {
             environment.insert(it.key(), it.value());
         }
-        m_daemon.setProcessEnvironment(environment);
+        return environment;
+    }
+
+    bool startDaemon(const QMap<QString, QString>& extra = {})
+    {
+        m_daemon.setProcessEnvironment(daemonEnvironment(extra));
         m_daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
         m_daemon.start(QStringLiteral(VELA_UPDATE_DAEMON), {});
         if (!m_daemon.waitForStarted()) {
@@ -215,7 +223,7 @@ protected:
             return QStringLiteral("no session bus connection");
         }
         QDBusConnection system = QDBusConnection::connectToBus(m_systemAddress, QStringLiteral("fake-nm"));
-        if (!system.registerService(QStringLiteral("org.freedesktop.NetworkManager"))
+        if (!system.registerService(networkManager)
             || !system.registerObject(QStringLiteral("/org/freedesktop/NetworkManager"), &m_network,
                 QDBusConnection::ExportAllProperties)) {
             return QStringLiteral("can't register the fake NetworkManager");
@@ -233,12 +241,14 @@ protected:
         for (const char* name : { "vela-update", "terminal-program" }) {
             QFile(fake(QLatin1String(name))).setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
         }
+        QDBusConnection(QStringLiteral("fake-nm")).registerService(networkManager);
         m_network.set(2, 4);
     }
 
     // After each case: lets any held fake go, and stops the daemon.
     void release()
     {
+        QFile(m_home.filePath(QStringLiteral("state/vela-update"))).setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
         QFile::remove(fake(QStringLiteral("check-hold")));
         write(fake(QStringLiteral("install-release")), "");
         stopDaemon();

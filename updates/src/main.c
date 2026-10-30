@@ -101,6 +101,7 @@ int main(void)
         .interval_us = milliseconds("VELA_UPDATE_INTERVAL_MS", 24 * 3600 * 1000000ULL),
         .retry_us = milliseconds("VELA_UPDATE_RETRY_MS", 3600 * 1000000ULL),
         .check_timeout_us = milliseconds("VELA_UPDATE_CHECK_TIMEOUT_MS", 15 * 60 * 1000000ULL),
+        .kill_us = milliseconds("VELA_UPDATE_KILL_MS", 10 * 1000000ULL),
         .start_timeout_us = milliseconds("VELA_UPDATE_START_TIMEOUT_MS", 60 * 1000000ULL),
     };
     d.started_us = boottime_us();

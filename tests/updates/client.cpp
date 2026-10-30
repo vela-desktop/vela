@@ -10,11 +10,28 @@
 #include "harness.h"
 #include "updates/updates.h"
 
+#include <QDBusVirtualObject>
 #include <QSignalSpy>
 
 #include <memory>
 
 using vela::updates::Updates;
+
+// A daemon that refuses every call with the error a case chooses.
+class RefusingDaemon : public QDBusVirtualObject {
+public:
+    QString errorName;
+
+    QString introspect(const QString&) const override { return {}; }
+
+    bool handleMessage(const QDBusMessage& message, const QDBusConnection& connection) override
+    {
+        if (message.interface() != service) {
+            return false;
+        }
+        return connection.send(message.createErrorReply(errorName, QStringLiteral("refused")));
+    }
+};
 
 class UpdatesClient : public QObject, protected UpdatesBench {
     Q_OBJECT
@@ -45,6 +62,79 @@ private Q_SLOTS:
     void cleanup() { release(); }
     void cleanupTestCase() { tearDown(); }
 
+    // Every failure has its own words; "not-found" depends on the channel.
+    void reasons()
+    {
+        Updates updates(bus());
+        const QStringList codes { QStringLiteral("busy"), QStringLiteral("unsupported"), QStringLiteral("missing-tool"),
+            QStringLiteral("network"), QStringLiteral("rate-limited"), QStringLiteral("not-found"),
+            QStringLiteral("downgrade-refused"), QStringLiteral("verification-failed"), QStringLiteral("build-failed"),
+            QStringLiteral("install-failed"), QStringLiteral("cancelled"), QStringLiteral("terminal"),
+            QStringLiteral("failed") };
+        QSet<QString> texts;
+        for (const QString& code : codes) {
+            texts.insert(updates.reason(code));
+        }
+        QCOMPARE(texts.size(), codes.size());
+        QCOMPARE(updates.reason(QStringLiteral("something-new")), updates.reason(QStringLiteral("failed")));
+        QVERIFY(!updates.reason(QStringLiteral("not-found")).contains(QStringLiteral("Beta")));
+    }
+
+    // Refusals the real daemon gives only to a sandboxed app, or when it's
+    // broken: each in plain words; the switch goes back.
+    void refusedByTheDaemon()
+    {
+        QDBusConnection daemon = QDBusConnection::connectToBus(m_sessionAddress, QStringLiteral("refusing"));
+        RefusingDaemon refusing;
+        QVERIFY(daemon.registerVirtualObject(objectPath, &refusing));
+        QVERIFY(daemon.registerService(service));
+        Updates updates(bus());
+        QTRY_VERIFY(updates.available());
+
+        const QList<std::pair<QString, QString>> refusals {
+            { QStringLiteral("NotAllowed"), QStringLiteral("allowed") },
+            { QStringLiteral("Failed"), QStringLiteral("vela-update") },
+            { QStringLiteral("NoTerminal"), QStringLiteral("terminal") },
+        };
+        QStringList seen;
+        for (const auto& [name, words] : refusals) {
+            refusing.errorName = QStringLiteral("org.vela.Updates.Error.") + name;
+            updates.check();
+            QTRY_VERIFY(!updates.error().isEmpty());
+            QVERIFY2(updates.error().contains(words), qPrintable(updates.error()));
+            seen << updates.error();
+        }
+        refusing.errorName = QStringLiteral("org.freedesktop.DBus.Error.NoReply");
+        updates.check();
+        QTRY_VERIFY(!updates.error().isEmpty() && !seen.contains(updates.error()));
+
+        refusing.errorName = QStringLiteral("org.vela.Updates.Error.NotAllowed");
+        updates.setAutoCheck(false);
+        QVERIFY(!updates.autoCheck());
+        QTRY_VERIFY(updates.autoCheck());
+
+        // Announced isn't the user's action: no error shown.
+        updates.clearError();
+        updates.announced(commitB);
+        QTest::qWait(200);
+        QVERIFY(updates.error().isEmpty());
+
+        daemon.unregisterService(service);
+        daemon.unregisterObject(objectPath);
+        QDBusConnection::disconnectFromBus(QStringLiteral("refusing"));
+        QTRY_VERIFY(!updates.available());
+    }
+
+    // On the session bus, as QML makes it.
+    void sessionBusByDefault()
+    {
+        QVERIFY(startDaemon());
+        qputenv("DBUS_SESSION_BUS_ADDRESS", m_sessionAddress.toUtf8());
+        Updates updates;
+        QTRY_VERIFY(updates.available());
+        QTRY_COMPARE(updates.source(), QStringLiteral("https://github.com/vela-desktop/vela.git"));
+    }
+
     // Without the daemon: as before any check, and nothing to ask.
     void daemonMissing()
     {
@@ -57,6 +147,8 @@ private Q_SLOTS:
         QVERIFY(!updates.lastCheck().isValid());
         QVERIFY(updates.checkError().isEmpty());
         updates.check();
+        updates.install({ { QStringLiteral("channel"), QStringLiteral("beta") } });
+        updates.announced(commitB);
         updates.setAutoCheck(false);
         QVERIFY(updates.autoCheck());
         QVERIFY(updates.error().isEmpty());

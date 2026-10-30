@@ -26,6 +26,7 @@ struct vela_up_timing {
     uint64_t interval_us; // between automatic checks
     uint64_t retry_us; // first retry after a network error, doubling
     uint64_t check_timeout_us; // a check that takes longer is stopped
+    uint64_t kill_us; // a stopped check that's still there is killed
     uint64_t start_timeout_us; // the terminal has this long to start the update
 };
 

@@ -194,6 +194,51 @@ private Q_SLOTS:
         compositor.waitForFinished();
     }
 
+    // Closed without a click; clicked elsewhere than "Sign out"; another
+    // app's notifications.
+    void closedOrClickedElsewhere()
+    {
+        const QString copy = m_home.filePath(QStringLiteral("vela-compositor"));
+        QVERIFY(QFile::copy(QStringLiteral("/bin/sh"), copy));
+        QProcess compositor;
+        compositor.start(copy, { QStringLiteral("-c"), QStringLiteral("read line") });
+        QVERIFY(compositor.waitForStarted());
+        nextCheck({ { "status", "update-available" }, { "commit", commitB } });
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_SESSION_PID"), QString::number(compositor.processId()) } }));
+        startShell();
+        QVERIFY(QFile::remove(copy));
+        updates->check();
+        QTRY_COMPARE(notifications->count(), 2);
+        QVERIFY(notices->updateNotification() != 0);
+        QVERIFY(notices->reloginNotification() != 0);
+
+        const uint other = notifications->Notify(QStringLiteral("app"), 0, QString(), QStringLiteral("Hi"), QString(),
+            { QStringLiteral("default"), QString() }, {}, -1);
+        notifications->invoke(other, QStringLiteral("default"));
+        emit notifications->ActionInvoked(0, QStringLiteral("default"));
+        QCOMPARE(opened, 0);
+        QCOMPARE(signedOut, 0);
+
+        // The click opens Updates, where "Sign out" is too.
+        notifications->invoke(notices->reloginNotification(), QStringLiteral("default"));
+        QCOMPARE(opened, 1);
+        QCOMPARE(signedOut, 0);
+        QCOMPARE(notices->reloginNotification(), 0u);
+        notifications->dismiss(notices->updateNotification());
+        QCOMPARE(notices->updateNotification(), 0u);
+        QCOMPARE(notifications->count(), 0);
+
+        // The next session tells it again; closed, it's gone.
+        stopShell();
+        startShell();
+        QTRY_COMPARE(notifications->count(), 1);
+        notifications->dismiss(notices->reloginNotification());
+        QCOMPARE(notices->reloginNotification(), 0u);
+        QCOMPARE(signedOut, 0);
+        compositor.kill();
+        compositor.waitForFinished();
+    }
+
     void daemonMissing()
     {
         startShell(false);

@@ -68,6 +68,23 @@ private:
         return bus().call(message, QDBus::Block, 5000);
     }
 
+    // Another daemon, run to its end: its exit code, or -1.
+    int runDaemon(const QMap<QString, QString>& extra = {})
+    {
+        QProcess other;
+        other.setProcessEnvironment(daemonEnvironment(extra));
+        other.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+        other.start(QStringLiteral(VELA_UPDATE_DAEMON), {});
+        if (!other.waitForFinished(5000)) {
+            other.kill();
+            other.waitForFinished();
+            return -1;
+        }
+        return other.exitStatus() == QProcess::NormalExit ? other.exitCode() : -1;
+    }
+
+    static QDBusConnection networkManagerBus() { return QDBusConnection(QStringLiteral("fake-nm")); }
+
 private Q_SLOTS:
     void initTestCase()
     {
@@ -195,6 +212,54 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("Error")).toStringList().value(0), QStringLiteral("failed"));
     }
 
+    // A check that ignores SIGTERM is killed.
+    void stubbornCheckIsKilled()
+    {
+        nextCheck({});
+        QVERIFY(write(fake(QStringLiteral("check-hold")), ""));
+        QVERIFY(write(fake(QStringLiteral("check-stubborn")), ""));
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_CHECK_TIMEOUT_MS"), QStringLiteral("200") },
+            { QStringLiteral("VELA_UPDATE_KILL_MS"), QStringLiteral("200") } }));
+        call(QStringLiteral("Check"));
+        QTest::qWait(300);
+        QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("checking"));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        QCOMPARE(property(QStringLiteral("Error")).toStringList().value(0), QStringLiteral("failed"));
+    }
+
+    // Megabytes on stdout aren't a report.
+    void oversizedOutputIsNoReport()
+    {
+        QVERIFY(write(fake(QStringLiteral("check-output")), QByteArray(1100 * 1024, 'x')));
+        QVERIFY(startDaemon());
+        call(QStringLiteral("Check"));
+        QTRY_COMPARE(property(QStringLiteral("Error")).toStringList().value(0), QStringLiteral("failed"));
+        QCOMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("unknown"));
+    }
+
+    void withoutVelaUpdate()
+    {
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_COMMAND"), fake(QStringLiteral("missing")) } }));
+        QCOMPARE(call(QStringLiteral("Check")).errorName(), QStringLiteral("org.vela.Updates.Error.Failed"));
+        QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+    }
+
+    // None in PATH, or one that can't be run.
+    void withoutTerminal()
+    {
+        QDir().mkpath(fake(QStringLiteral("empty")));
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_TERMINAL"), QString() },
+            { QStringLiteral("PATH"), fake(QStringLiteral("empty")) }, { QStringLiteral("VELA_TERMINAL"), QString() } }));
+        QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).errorName(),
+            QStringLiteral("org.vela.Updates.Error.NoTerminal"));
+        QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        stopDaemon();
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_TERMINAL"), fake(QStringLiteral("missing")) } }));
+        QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).errorName(),
+            QStringLiteral("org.vela.Updates.Error.NoTerminal"));
+        QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+    }
+
     void installRunsInTheTerminal()
     {
         QVERIFY(write(fake(QStringLiteral("terminal-runs")), ""));
@@ -307,6 +372,51 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("cancelled"));
     }
 
+    void oneDaemonPerSession()
+    {
+        QVERIFY(startDaemon());
+        QCOMPARE(runDaemon(), 2);
+        QCOMPARE(m_daemon.state(), QProcess::Running);
+    }
+
+    // Where it can't keep its state, it doesn't start.
+    void stateDirectoryUnusable()
+    {
+        QVERIFY(write(m_home.filePath(QStringLiteral("state")), "a file"));
+        QCOMPARE(runDaemon(), 1);
+        QVERIFY(!bus().interface()->isServiceRegistered(service));
+    }
+
+    // The source in updates.conf, or the default.
+    void sourceFromUpdatesConf()
+    {
+        QVERIFY(write(m_home.filePath(QStringLiteral("config/vela/updates.conf")), "branch=main\nsource=/home/me/vela\n"));
+        QVERIFY(startDaemon());
+        QCOMPARE(property(QStringLiteral("Source")).toString(), QStringLiteral("/home/me/vela"));
+        stopDaemon();
+        QVERIFY(write(m_home.filePath(QStringLiteral("config/vela/updates.conf")), "source=\n"));
+        QVERIFY(startDaemon());
+        QCOMPARE(property(QStringLiteral("Source")).toString(), QStringLiteral("https://github.com/vela-desktop/vela.git"));
+    }
+
+    // A marker that can't be saved: announced for this session only.
+    void announcedWithoutItsMarker()
+    {
+        nextCheck({ { "status", "update-available" }, { "commit", commitB } });
+        QVERIFY(startDaemon());
+        call(QStringLiteral("Check"));
+        QTRY_COMPARE(property(QStringLiteral("Announce")).toString(), commitB);
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        QVERIFY(QFile(state(QString())).setPermissions(QFile::ReadOwner | QFile::ExeOwner));
+        QCOMPARE(call(QStringLiteral("Announced"), { commitB }).type(), QDBusMessage::ReplyMessage);
+        QTRY_COMPARE(property(QStringLiteral("Announce")).toString(), QString());
+        QVERIFY(!QFile::exists(state(QStringLiteral("announced"))));
+        // The same again changes nothing; an empty one is no commit.
+        QCOMPARE(call(QStringLiteral("Announced"), { commitB }).type(), QDBusMessage::ReplyMessage);
+        QCOMPARE(call(QStringLiteral("Announced"), { QString() }).type(), QDBusMessage::ReplyMessage);
+        QCOMPARE(property(QStringLiteral("Announce")).toString(), QString());
+    }
+
     void announcedOncePerUpdate()
     {
         nextCheck({ { "status", "update-available" }, { "commit", commitB } });
@@ -379,6 +489,44 @@ private Q_SLOTS:
         QCOMPARE(calls(), QStringList {});
         m_network.set(2, 4); // full
         QTRY_COMPARE(calls(), (QStringList { QStringLiteral("--check --json") }));
+    }
+
+    // NetworkManager leaving while a check waits for it: nothing says the
+    // connection is metered anymore. Coming back, it's read again.
+    void networkManagerLeavesAndComesBack()
+    {
+        nextCheck({});
+        m_network.set(1, 4); // metered
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_FIRST_CHECK_MS"), QStringLiteral("200") },
+            { QStringLiteral("VELA_UPDATE_INTERVAL_MS"), QStringLiteral("1000") } }));
+        QTest::qWait(700);
+        QCOMPARE(calls(), QStringList {});
+        QVERIFY(networkManagerBus().unregisterService(networkManager));
+        QTRY_COMPARE(calls(), QStringList { QStringLiteral("--check --json") });
+
+        // Back, still metered: the next automatic check waits for it again.
+        QVERIFY(networkManagerBus().registerService(networkManager));
+        QTest::qWait(1500);
+        QCOMPARE(calls().size(), 1);
+        m_network.set(2, 4);
+        QTRY_COMPARE(calls().size(), 2);
+    }
+
+    // No NetworkManager at all, or no system bus: every connection may be
+    // used.
+    void withoutNetworkManager()
+    {
+        nextCheck({});
+        QVERIFY(networkManagerBus().unregisterService(networkManager));
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_FIRST_CHECK_MS"), QStringLiteral("200") } }));
+        QTRY_COMPARE(calls(), QStringList { QStringLiteral("--check --json") });
+        stopDaemon();
+        // Not due again after that check otherwise.
+        QFile::remove(state(QStringLiteral("check.json")));
+        QFile::remove(fake(QStringLiteral("calls")));
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_FIRST_CHECK_MS"), QStringLiteral("200") },
+            { QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"), QStringLiteral("unix:path=") + fake(QStringLiteral("no-bus")) } }));
+        QTRY_COMPARE(calls(), QStringList { QStringLiteral("--check --json") });
     }
 
     void networkErrorsAreRetried()
