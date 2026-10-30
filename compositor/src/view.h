@@ -261,6 +261,9 @@ void vela_view_close(struct vela_view *view);
 // X11: apps must know where the window is on screen (to place their own
 // menus). Called on every frame.
 void vela_view_sync_x11(struct vela_view *view);
+// Move a mapped fullscreen view to an enabled output without exiting fullscreen.
+// Used for explicit XDG fullscreen-output requests and X11 monitor switches.
+void vela_view_fullscreen_output(struct vela_view *view, struct vela_output *output);
 
 // ------------------------------------------------------- outputs and scene --
 
