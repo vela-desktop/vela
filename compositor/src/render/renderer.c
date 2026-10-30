@@ -91,7 +91,8 @@ static bool create_samplers_and_layout(struct vela_renderer *r)
             .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             .maxLod = 0.25f,
         };
-        if (vkCreateSampler(device, &info, NULL, linear ? &r->linear : &r->nearest) != VK_SUCCESS) {
+        if (!vela_vulkan_result(r->vk, vkCreateSampler(device, &info, NULL, linear ? &r->linear : &r->nearest),
+                "vkCreateSampler")) {
             return false;
         }
     }
@@ -119,7 +120,8 @@ static bool create_samplers_and_layout(struct vela_renderer *r)
         .bindingCount = 2,
         .pBindings = bindings,
     };
-    if (vkCreateDescriptorSetLayout(device, &set_info, NULL, &r->set_layout) != VK_SUCCESS) {
+    if (!vela_vulkan_result(r->vk, vkCreateDescriptorSetLayout(device, &set_info, NULL, &r->set_layout),
+            "vkCreateDescriptorSetLayout")) {
         return false;
     }
     const VkPushConstantRange push = {
@@ -134,7 +136,8 @@ static bool create_samplers_and_layout(struct vela_renderer *r)
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push,
     };
-    return vkCreatePipelineLayout(device, &layout_info, NULL, &r->layout) == VK_SUCCESS;
+    return vela_vulkan_result(r->vk, vkCreatePipelineLayout(device, &layout_info, NULL, &r->layout),
+        "vkCreatePipelineLayout");
 }
 
 static bool init(struct vela_renderer *r)
@@ -145,7 +148,8 @@ static bool init(struct vela_renderer *r)
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
         .queueFamilyIndex = vk->queue_family,
     };
-    if (vkCreateCommandPool(vk->device, &pool_info, NULL, &r->pool) != VK_SUCCESS) {
+    if (!vela_vulkan_result(vk, vkCreateCommandPool(vk->device, &pool_info, NULL, &r->pool),
+            "vkCreateCommandPool")) {
         return false;
     }
     const VkSemaphoreTypeCreateInfo timeline_type = {
@@ -156,7 +160,8 @@ static bool init(struct vela_renderer *r)
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         .pNext = &timeline_type,
     };
-    if (vkCreateSemaphore(vk->device, &timeline_info, NULL, &r->timeline) != VK_SUCCESS) {
+    if (!vela_vulkan_result(vk, vkCreateSemaphore(vk->device, &timeline_info, NULL, &r->timeline),
+            "vkCreateSemaphore(timeline)")) {
         return false;
     }
 
@@ -180,8 +185,10 @@ static bool init(struct vela_renderer *r)
             .queryType = VK_QUERY_TYPE_TIMESTAMP,
             .queryCount = VELA_TIMING_SLOTS * 2,
         };
-        if (vkCreateQueryPool(vk->device, &query_info, NULL, &r->query_pool) != VK_SUCCESS) {
+        if (!vela_vulkan_result(vk, vkCreateQueryPool(vk->device, &query_info, NULL, &r->query_pool),
+                "vkCreateQueryPool")) {
             r->query_pool = VK_NULL_HANDLE;
+            if (vk->loss.lost) return false;
         }
     }
 
@@ -615,6 +622,7 @@ static bool make_readback_room(struct vela_renderer *r, VkDeviceSize size)
         if (r->staging[i].readback) allocated += r->staging[i].allocation_size;
     }
     const uint64_t done = vela_renderer_completed(r);
+    if (r->vk->loss.lost) return false;
     for (int i = 0; i < r->staging_count && allocated > VELA_READBACK_MAX_BYTES - size;) {
         struct staging_chunk *chunk = &r->staging[i];
         // Cancellation can release the CPU pin before the GPU finishes. Its
@@ -634,6 +642,7 @@ static bool make_readback_room(struct vela_renderer *r, VkDeviceSize size)
 
 static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDeviceSize size, bool readback)
 {
+    if (r->vk->loss.lost) return NULL;
     VkDevice device = r->vk->device;
     struct staging_chunk chunk = { .size = size, .readback = readback };
     const VkBufferCreateInfo buffer_info = {
@@ -642,7 +651,8 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
         .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
-    if (vkCreateBuffer(device, &buffer_info, NULL, &chunk.buffer) != VK_SUCCESS) {
+    if (!vela_vulkan_result(r->vk, vkCreateBuffer(device, &buffer_info, NULL, &chunk.buffer),
+            "vkCreateBuffer(staging)")) {
         return NULL;
     }
     VkMemoryRequirements requirements;
@@ -666,8 +676,10 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
         .allocationSize = requirements.size,
         .memoryTypeIndex = type,
     };
-    bool allocated = type != UINT32_MAX && vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory) == VK_SUCCESS;
-    if (!allocated) {
+    bool allocated = type != UINT32_MAX
+        && vela_vulkan_result(r->vk, vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory),
+            "vkAllocateMemory(staging cached)");
+    if (!allocated && !r->vk->loss.lost) {
         // A compatible cached type can still fail to allocate (e.g. heap
         // pressure). Try a different host-visible type before giving up.
         uint32_t fallback_bits = requirements.memoryTypeBits;
@@ -677,7 +689,8 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
         type = vela_vulkan_memory_type(r->vk, fallback_bits, host);
         if (type != UINT32_MAX) {
             alloc_info.memoryTypeIndex = type;
-            allocated = vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory) == VK_SUCCESS;
+            allocated = vela_vulkan_result(r->vk, vkAllocateMemory(device, &alloc_info, NULL, &chunk.memory),
+                "vkAllocateMemory(staging fallback)");
         }
     }
     if (!allocated) {
@@ -691,13 +704,16 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
             wlr_log(WLR_INFO, "Vulkan readback staging: uncached fallback (capture performance may be reduced)");
         }
     }
-    if (vkBindBufferMemory(device, chunk.buffer, chunk.memory, 0) != VK_SUCCESS) {
+    if (!vela_vulkan_result(r->vk, vkBindBufferMemory(device, chunk.buffer, chunk.memory, 0),
+            "vkBindBufferMemory(staging)")) {
         vkDestroyBuffer(device, chunk.buffer, NULL);
         vkFreeMemory(device, chunk.memory, NULL);
         return NULL;
     }
     void *mapped = NULL;
-    if (vkMapMemory(device, chunk.memory, 0, VK_WHOLE_SIZE, 0, &mapped) != VK_SUCCESS || !mapped) {
+    if (!vela_vulkan_result(r->vk,
+            vkMapMemory(device, chunk.memory, 0, VK_WHOLE_SIZE, 0, &mapped),
+            "vkMapMemory(staging)") || !mapped) {
         vkDestroyBuffer(device, chunk.buffer, NULL);
         vkFreeMemory(device, chunk.memory, NULL);
         return NULL;

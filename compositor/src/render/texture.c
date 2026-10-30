@@ -103,7 +103,8 @@ static bool create_view(struct vela_texture *texture)
         .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
     };
     VkDevice device = texture->renderer->vk->device;
-    return vkCreateImageView(device, &info, NULL, &texture->view) == VK_SUCCESS;
+    return vela_vulkan_result(texture->renderer->vk,
+        vkCreateImageView(device, &info, NULL, &texture->view), "vkCreateImageView(texture)");
 }
 
 static struct vela_texture *new_texture(struct vela_renderer *renderer, const struct vela_pixel_format *format,
@@ -271,7 +272,8 @@ static struct wlr_texture *upload_buffer(struct vela_renderer *renderer, struct 
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
-    bool ok = vkCreateImage(vk->device, &image_info, NULL, &texture->image) == VK_SUCCESS;
+    bool ok = vela_vulkan_result(vk,
+        vkCreateImage(vk->device, &image_info, NULL, &texture->image), "vkCreateImage(texture)");
     if (ok) {
         VkMemoryRequirements requirements;
         vkGetImageMemoryRequirements(vk->device, texture->image, &requirements);
@@ -282,8 +284,10 @@ static struct wlr_texture *upload_buffer(struct vela_renderer *renderer, struct 
             = vela_vulkan_memory_type(vk, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
         };
         ok = alloc_info.memoryTypeIndex != UINT32_MAX
-            && vkAllocateMemory(vk->device, &alloc_info, NULL, &texture->memory) == VK_SUCCESS
-            && vkBindImageMemory(vk->device, texture->image, texture->memory, 0) == VK_SUCCESS && create_view(texture);
+            && vela_vulkan_result(vk, vkAllocateMemory(vk->device, &alloc_info, NULL, &texture->memory),
+                "vkAllocateMemory(texture)")
+            && vela_vulkan_result(vk, vkBindImageMemory(vk->device, texture->image, texture->memory, 0),
+                "vkBindImageMemory(texture)") && create_view(texture);
     }
     if (ok) {
         const pixman_box32_t whole = { 0, 0, buffer->width, buffer->height };
