@@ -49,6 +49,8 @@ struct vela_vulkan *vela_vulkan_create(int backend_drm_fd);
 void vela_vulkan_destroy(struct vela_vulkan *vk);
 void vela_vulkan_set_display(struct vela_vulkan *vk, struct wl_display *display);
 bool vela_vulkan_device_lost(const struct vela_vulkan *vk);
+bool vela_vulkan_terminal_failure(const struct vela_vulkan *vk);
+void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation);
 // The render node of the same GPU, opened by the device: the allocator and the
 // syncobj timelines need it.
 int vela_vulkan_render_fd(const struct vela_vulkan *vk);
