@@ -56,6 +56,14 @@ class NativeX11Launcher(unittest.TestCase):
             self.assertEqual((root / "arg").read_text().strip(), "two words")
             self.assertIn("--output DP-3 --primary", log.read_text())
             self.assertFalse(list(runtime.glob("vela-native-x11-*.lock")))
+            # A launcher must report missing native modes instead of silently
+            # starting a game at the compositor-logical resolution.
+            env["VELA_XWAYLAND_NATIVE_EXPECT"] = "2560x1440"
+            result = subprocess.run(["/bin/sh", str(SCRIPT), "target", "two words"], env=env,
+                                    text=True, capture_output=True, timeout=20)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("does not advertise 2560x1440", result.stderr)
+            self.assertFalse(list(runtime.glob("vela-native-x11-*.lock")))
 
 
 if __name__ == "__main__":
