@@ -16,6 +16,7 @@
 //        vela-x11 --move XID X Y (request a fullscreen monitor change)
 //        vela-x11 --resize XID WIDTH HEIGHT (no position request)
 //        vela-x11 --root-size (current X11 root width height)
+//        vela-x11 --pointer XID (X11 pointer position relative to a window)
 //        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
 //
 // Opens an orange window with class "vela.x11" and title "vela-x11", which
@@ -124,7 +125,8 @@ int main(int argc, char** argv)
         || (argc == 5 && (!strcmp(argv[1], "--state") || !strcmp(argv[1], "--move")
             || !strcmp(argv[1], "--resize")))
         || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
-            || !strcmp(argv[1], "--geometry") || !strcmp(argv[1], "--iconify")))
+            || !strcmp(argv[1], "--geometry") || !strcmp(argv[1], "--iconify")
+            || !strcmp(argv[1], "--pointer")))
         || (argc == 2 && !strcmp(argv[1], "--root-size"));
     int arg = 1;
     if (!control) {
@@ -183,6 +185,21 @@ int main(int argc, char** argv)
             return 0;
         }
         xcb_window_t target = (xcb_window_t)strtoul(argv[2], NULL, 0);
+        if (!strcmp(argv[1], "--pointer")) {
+            // X11 client-visible pointer coordinates, for testing the
+            // Wayland logical -> XWayland physical coordinate transform.
+            xcb_query_pointer_reply_t* reply = xcb_query_pointer_reply(
+                connection, xcb_query_pointer(connection, target), NULL);
+            if (!reply) {
+                fprintf(stderr, "vela-x11: X11 pointer query failed\n");
+                xcb_disconnect(connection);
+                return 1;
+            }
+            printf("%d %d %d\n", reply->win_x, reply->win_y, reply->same_screen);
+            free(reply);
+            xcb_disconnect(connection);
+            return 0;
+        }
         if (!strcmp(argv[1], "--iconify")) {
             // ICCCM: XIconifyWindow asks the window manager to change a
             // managed window to IconicState using a WM_CHANGE_STATE message.
