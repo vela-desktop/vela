@@ -90,6 +90,7 @@ Requires:       pam
 Requires:       polkit
 Requires:       python3
 Requires:       xorg-x11-server-Xwayland
+Requires:       xrandr
 Requires:       pipewire
 Requires:       wireplumber
 Requires:       hicolor-icon-theme
@@ -100,6 +101,7 @@ Requires:       hicolor-icon-theme
 # Cosign is an optional verification prerequisite; Fedora 44 does not ship it
 # in the default repositories, so document the upstream RPM installation.
 # No GitHub CLI is required by vela-update for public alpha releases.
+Suggests:       xwayland-satellite
 Recommends:     rpm-build
 Recommends:     dnf5-plugins
 Recommends:     xdg-desktop-portal-wlr
