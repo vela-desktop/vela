@@ -4,7 +4,7 @@
 # vela-update-daemon on private buses, with a fake vela-update, terminal
 # and NetworkManager (docs/updates.md §10).
 find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Test)
-qt_add_executable(vela-update-daemon-test daemon.cpp)
+qt_add_executable(vela-update-daemon-test daemon.cpp harness.h)
 set_target_properties(vela-update-daemon-test PROPERTIES AUTOMOC ON)
 target_compile_options(vela-update-daemon-test PRIVATE -Wall -Wextra)
 target_compile_definitions(vela-update-daemon-test PRIVATE
@@ -14,3 +14,15 @@ target_link_libraries(vela-update-daemon-test PRIVATE Qt6::DBus Qt6::Test)
 add_dependencies(vela-update-daemon-test vela-update-daemon-testing)
 add_test(NAME updates-daemon COMMAND vela-update-daemon-test)
 set_tests_properties(updates-daemon PROPERTIES TIMEOUT 180)
+
+# vela-updates-client (common/updates) against the same daemon and fakes.
+qt_add_executable(vela-updates-client-test client.cpp harness.h)
+set_target_properties(vela-updates-client-test PROPERTIES AUTOMOC ON)
+target_compile_options(vela-updates-client-test PRIVATE -Wall -Wextra)
+target_compile_definitions(vela-updates-client-test PRIVATE
+    VELA_UPDATE_DAEMON="$<TARGET_FILE:vela-update-daemon-testing>"
+    VELA_UPDATE_STATE="${PROJECT_SOURCE_DIR}/packaging/vela-update-state")
+target_link_libraries(vela-updates-client-test PRIVATE vela-updates-client Qt6::DBus Qt6::Test)
+add_dependencies(vela-updates-client-test vela-update-daemon-testing)
+add_test(NAME updates-client COMMAND vela-updates-client-test)
+set_tests_properties(updates-client PROPERTIES TIMEOUT 120)

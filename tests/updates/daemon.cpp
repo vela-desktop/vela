@@ -7,138 +7,25 @@
 // and "sign out to finish". vela-update is a fake that writes its state
 // files with the real vela-update-state.
 
-#include <QJsonArray>
+#include "harness.h"
+
 #include <QDBusArgument>
-#include <QDBusConnection>
-#include <QDBusConnectionInterface>
-#include <QDBusMessage>
-#include <QDBusMetaType>
 #include <QDBusReply>
 #include <QDBusVariant>
-#include <QDateTime>
-#include <QDir>
-#include <QFile>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QProcess>
-#include <QTemporaryDir>
-#include <QTest>
 
 #include <csignal>
 #include <sys/stat.h>
 
-namespace {
-
-const QString service = QStringLiteral("org.vela.Updates");
-const QString objectPath = QStringLiteral("/org/vela/Updates");
-const QString commitA = QString(40, u'a');
-const QString commitB = QString(40, u'b');
-
-// NetworkManager's two properties the daemon reads (§6.2).
-class FakeNetworkManager : public QObject {
+class UpdatesDaemon : public QObject, protected UpdatesBench {
     Q_OBJECT
-    Q_CLASSINFO("D-Bus Interface", "org.freedesktop.NetworkManager")
-    Q_PROPERTY(uint Metered READ metered)
-    Q_PROPERTY(uint Connectivity READ connectivity)
 
 public:
-    uint metered() const { return m_metered; }
-    uint connectivity() const { return m_connectivity; }
-
-    void set(uint metered, uint connectivity)
+    UpdatesDaemon()
+        : UpdatesBench(QStringLiteral("test"))
     {
-        m_metered = metered;
-        m_connectivity = connectivity;
-        QDBusMessage changed = QDBusMessage::createSignal(QStringLiteral("/org/freedesktop/NetworkManager"),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("PropertiesChanged"));
-        changed << QStringLiteral("org.freedesktop.NetworkManager")
-                << QVariantMap { { QStringLiteral("Metered"), metered }, { QStringLiteral("Connectivity"), connectivity } }
-                << QStringList {};
-        QDBusConnection(QStringLiteral("fake-nm")).send(changed);
     }
 
 private:
-    uint m_metered = 2; // no
-    uint m_connectivity = 4; // full
-};
-
-const char fakeUpdate[] = R"SH(#!/bin/sh
-# The tests' vela-update: --check prints and records what check-output
-# says; an install reports through the real vela-update-state.
-printf '%s\n' "$*" >> "$FAKE/calls"
-case " $* " in
-*" --check "*)
-    while [ -f "$FAKE/check-hold" ]; do sleep 0.02; done
-    if [ -f "$FAKE/check-output" ]; then
-        cat "$FAKE/check-output"
-        mkdir -p "$XDG_STATE_HOME/vela-update"
-        cp "$FAKE/check-output" "$XDG_STATE_HOME/vela-update/.check.new"
-        mv "$XDG_STATE_HOME/vela-update/.check.new" "$XDG_STATE_HOME/vela-update/check.json"
-    fi
-    exit "$(cat "$FAKE/check-exit" 2>/dev/null || echo 0)" ;;
-esac
-python3 -I "$STATE_HELPER" begin --pid $$ --action install --channel experimental
-python3 -I "$STATE_HELPER" phase --pid $$ building
-while [ ! -f "$FAKE/install-release" ]; do sleep 0.02; done
-python3 -I "$STATE_HELPER" end --pid $$ --action install --channel experimental \
-    --result "$(cat "$FAKE/install-result" 2>/dev/null || echo success)" --installed-version 0.1.1
-)SH";
-
-// A terminal that, like Konsole handing off to a running instance,
-// returns at once; it runs the command only when terminal-runs exists.
-const char fakeTerminal[] = R"SH(#!/bin/sh
-printf '%s\n' "$@" > "$FAKE/terminal"
-if [ -f "$FAKE/terminal-runs" ]; then
-    "$@" < /dev/null > /dev/null 2>&1 &
-fi
-)SH";
-
-} // namespace
-
-class UpdatesDaemon : public QObject {
-    Q_OBJECT
-
-    QProcess m_sessionBus;
-    QProcess m_systemBus;
-    QString m_sessionAddress;
-    QString m_systemAddress;
-    QTemporaryDir m_home;
-    QProcess m_daemon;
-    FakeNetworkManager m_network;
-    int m_checks = 0; // checked_at grows with each check output
-
-    QDBusConnection bus() const { return QDBusConnection(QStringLiteral("test")); }
-    QString fake(const QString& name) const { return m_home.filePath(QStringLiteral("fake/") + name); }
-    QString state(const QString& name) const { return m_home.filePath(QStringLiteral("state/vela-update/") + name); }
-
-    static bool write(const QString& path, const QByteArray& content)
-    {
-        QDir().mkpath(QFileInfo(path).absolutePath());
-        QFile file(path);
-        return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(content) == content.size();
-    }
-
-    static QByteArray read(const QString& path)
-    {
-        QFile file(path);
-        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
-    }
-
-    // What the next check prints: schema 2 with `fields` over a default.
-    void nextCheck(const QJsonObject& fields, int exitCode = 0)
-    {
-        QJsonObject check { { "schema_version", 2 }, { "channel", "experimental" }, { "status", "up-to-date" },
-            { "installed_package", "vela-git" }, { "installed_version", "0.1.0.r1.gaaaaaaa-1" },
-            { "version", "0.1.0" }, { "tag", "" }, { "commit", commitA }, { "source", "/src" },
-            { "changes", QJsonArray {} }, { "changes_total", 0 }, { "notes", QJsonArray {} },
-            { "checked_at", QDateTime::currentSecsSinceEpoch() - 1000 + ++m_checks }, { "error", QJsonValue::Null } };
-        for (auto it = fields.begin(); it != fields.end(); ++it) {
-            check.insert(it.key(), it.value());
-        }
-        QVERIFY(write(fake("check-output"), QJsonDocument(check).toJson(QJsonDocument::Compact) + '\n'));
-        QVERIFY(write(fake("check-exit"), QByteArray::number(exitCode)));
-    }
-
     QVariant property(const QString& name)
     {
         QDBusMessage get = QDBusMessage::createMethodCall(service, objectPath,
@@ -181,99 +68,16 @@ class UpdatesDaemon : public QObject {
         return bus().call(message, QDBus::Block, 5000);
     }
 
-    QStringList calls() const
-    {
-        return QString::fromUtf8(read(fake("calls"))).split(u'\n', Qt::SkipEmptyParts);
-    }
-
-    bool startDaemon(const QMap<QString, QString>& extra = {})
-    {
-        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-        environment.insert(QStringLiteral("DBUS_SESSION_BUS_ADDRESS"), m_sessionAddress);
-        environment.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"), m_systemAddress);
-        environment.insert(QStringLiteral("HOME"), m_home.path());
-        environment.insert(QStringLiteral("XDG_STATE_HOME"), m_home.filePath(QStringLiteral("state")));
-        environment.insert(QStringLiteral("XDG_CONFIG_HOME"), m_home.filePath(QStringLiteral("config")));
-        environment.insert(QStringLiteral("FAKE"), m_home.filePath(QStringLiteral("fake")));
-        environment.insert(QStringLiteral("STATE_HELPER"), QStringLiteral(VELA_UPDATE_STATE));
-        environment.insert(QStringLiteral("VELA_UPDATE_COMMAND"), fake(QStringLiteral("vela-update")));
-        environment.insert(QStringLiteral("VELA_UPDATE_TERMINAL"), fake(QStringLiteral("terminal-program")));
-        // No automatic check unless a case asks for one.
-        environment.insert(QStringLiteral("VELA_UPDATE_FIRST_CHECK_MS"), QStringLiteral("3600000"));
-        for (auto it = extra.begin(); it != extra.end(); ++it) {
-            environment.insert(it.key(), it.value());
-        }
-        m_daemon.setProcessEnvironment(environment);
-        m_daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-        m_daemon.start(QStringLiteral(VELA_UPDATE_DAEMON), {});
-        if (!m_daemon.waitForStarted()) {
-            return false;
-        }
-        for (int i = 0; i < 500 && !bus().interface()->isServiceRegistered(service); ++i) {
-            QTest::qWait(20);
-        }
-        return bus().interface()->isServiceRegistered(service);
-    }
-
-    void stopDaemon()
-    {
-        if (m_daemon.state() == QProcess::NotRunning) {
-            return;
-        }
-        m_daemon.terminate();
-        if (!m_daemon.waitForFinished(5000)) {
-            m_daemon.kill();
-            m_daemon.waitForFinished();
-        }
-    }
-
 private Q_SLOTS:
     void initTestCase()
     {
-        qDBusRegisterMetaType<QVariantMap>();
-        for (auto [process, address] : { std::pair { &m_systemBus, &m_systemAddress }, std::pair { &m_sessionBus, &m_sessionAddress } }) {
-            process->start(QStringLiteral("dbus-daemon"), { QStringLiteral("--session"), QStringLiteral("--nofork"), QStringLiteral("--print-address=1") });
-            if (!process->waitForStarted() || !process->waitForReadyRead()) {
-                QSKIP("dbus-daemon is needed");
-            }
-            *address = QString::fromUtf8(process->readAllStandardOutput().trimmed());
-        }
-        QVERIFY(QDBusConnection::connectToBus(m_sessionAddress, QStringLiteral("test")).isConnected());
-        QDBusConnection system = QDBusConnection::connectToBus(m_systemAddress, QStringLiteral("fake-nm"));
-        QVERIFY(system.registerService(QStringLiteral("org.freedesktop.NetworkManager")));
-        QVERIFY(system.registerObject(QStringLiteral("/org/freedesktop/NetworkManager"), &m_network,
-            QDBusConnection::ExportAllProperties));
+        const QString error = setUp();
+        QVERIFY2(error.isEmpty(), qPrintable(error));
     }
 
-    void init()
-    {
-        QDir(m_home.path()).removeRecursively();
-        QDir().mkpath(m_home.filePath(QStringLiteral("config")));
-        QVERIFY(write(fake(QStringLiteral("vela-update")), fakeUpdate));
-        QVERIFY(write(fake(QStringLiteral("terminal-program")), fakeTerminal));
-        for (const char* name : { "vela-update", "terminal-program" }) {
-            QFile(fake(QLatin1String(name))).setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
-        }
-        m_network.set(2, 4);
-    }
-
-    void cleanup()
-    {
-        // Lets any held fake go.
-        QFile::remove(fake(QStringLiteral("check-hold")));
-        write(fake(QStringLiteral("install-release")), "");
-        stopDaemon();
-    }
-
-    void cleanupTestCase()
-    {
-        QDBusConnection::disconnectFromBus(QStringLiteral("test"));
-        QDBusConnection::disconnectFromBus(QStringLiteral("fake-nm"));
-        for (QProcess* process : { &m_systemBus, &m_sessionBus }) {
-            process->kill();
-            process->waitForFinished();
-        }
-    }
+    void init() { reset(); }
+    void cleanup() { release(); }
+    void cleanupTestCase() { tearDown(); }
 
     void startsEmpty()
     {

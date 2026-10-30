@@ -6,8 +6,8 @@ background check and the notification. It is the 0.1 release blocker in the
 [release-channels.md](release-channels.md). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** U0 (this design), U1 (`vela-update`'s report) and U2 (the
-> daemon) are done. See §11.
+> **Status:** U0 (this design), U1 (`vela-update`'s report), U2 (the
+> daemon) and U3 (the Qt client) are done. See §11.
 
 ## 1. What there is today
 
@@ -309,6 +309,14 @@ moved to a small shared library.
 the shell, like `vela-bluetooth-client`. Without the daemon `available` is
 false and the page says the update service is not running.
 
+It gives the daemon's properties as QML reads them: `changes` and `notes`
+as lists of objects, `lastCheck` as a date, `checkError` and
+`installError` as `{code, message, reason}` with the code in plain words.
+The automatic checks switch shows what the user asked for at once, until
+the daemon reports it. Refusals of `Check`, `Install` and `SetAutoCheck`
+are in `error`, in plain words; those of `Announced`, which the user did
+not ask for, only in the log.
+
 ## 9. UI
 
 ### 9.1 Settings > System > Updates
@@ -360,8 +368,11 @@ Notifications only, as the client library tells them:
   killed run, automatic checks with short timers, metered connections,
   `Announce` once per version (with private marker permissions), successive
   reports in the same second, full-connectivity gating, the caller check.
-- **Client and page** (QML tests): every state of the top card, the
-  channel confirmation, the advanced options, no daemon.
+- **Client** (`tests/updates`, on the daemon and the same fakes): the
+  properties as QML reads them, failures and their reasons, an install,
+  the switch shown at once, refusals, the daemon leaving and coming back.
+- **Page** (QML tests): every state of the top card, the channel
+  confirmation, the advanced options, no daemon.
 - **Shell**: the notifications, once per version.
 - **By hand**: a real Beta and a real Experimental update on Arch, Fedora
   44 and Ubuntu 26.10; closing the terminal halfway; signing out after.
@@ -373,7 +384,7 @@ Notifications only, as the client library tells them:
 | U0 | this design | done |
 | U1 | `vela-update`: schema 2, exit codes, state files, error codes, `vela-update-state` | done |
 | U2 | `vela-update-daemon` and `org.vela.Updates`; the caller check shared with `vela-bluetooth` | done |
-| U3 | `common/updates`, the Qt client | |
+| U3 | `common/updates`, the Qt client | done |
 | U4 | the Settings page | |
 | U5 | the shell's notifications | |
 | U6 | packaging (`xdg-terminal-exec`, libexec files), docs, roadmap, release-channels | |
