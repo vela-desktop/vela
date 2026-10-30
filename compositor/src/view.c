@@ -285,6 +285,17 @@ static struct vela_output *initial_output(struct vela_view *view)
 {
     struct vela_view *parent = mapped_xdg_parent(view);
     if (!parent) {
+        // xdg_toplevel.set_fullscreen(output) is an explicit output request.
+        // Satellite uses xdg-shell for X11 applications running on its server.
+        if (view->xdg && view->xdg->requested.fullscreen
+            && view->xdg->requested.fullscreen_output) {
+            struct wlr_output *wanted = view->xdg->requested.fullscreen_output;
+            struct vela_output *target = vela_output_named(view->server, wanted->name);
+            if (target && target->wlr == wanted && wanted->enabled
+                && wlr_output_layout_get(view->server->output_layout, wanted)) {
+                return target;
+            }
+        }
         return vela_output_under_cursor(view->server);
     }
     // Layout changes defer window rescue to an idle callback. A transient
@@ -1013,6 +1024,30 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
     }
 }
 
+// A fullscreen application can explicitly ask to move to another monitor.
+// Don't toggle its fullscreen state: XDG clients (including Satellite) and
+// Wine can send monitor-selection requests while already fullscreen.
+void vela_view_fullscreen_output(struct vela_view *view, struct vela_output *output)
+{
+    if (!view || !view->mapped || !view->fullscreen || !output || !output->wlr->enabled
+        || !wlr_output_layout_get(view->server->output_layout, output->wlr)
+        || vela_view_output(view) == output) {
+        return;
+    }
+    vela_view_finish_open_animation(view);
+    const struct vela_placement place = vela_output_place(output, vela_output_full_area(output));
+    const struct wlr_box geometry = vela_view_geometry(view);
+    // Position first, because XWayland sends a ConfigureWindow synchronously
+    // from vela_view_configure_size(). The X11 position must match our scene.
+    vela_node_set_position(&view->tree->node, place.x - geometry.x, place.y - geometry.y);
+    vela_view_configure_size(view, place.width, place.height);
+    // Send an updated X11 configure even if the target has the same size.
+    vela_view_sync_x11(view);
+    vela_views_sync_transient_layers(view->server);
+    vela_views_raise_transients(view);
+    vela_fullscreen_restack(view->server);
+}
+
 // ------------------------------------------------------------ minimize --
 
 void vela_view_finish_restore(struct vela_view *view)
@@ -1392,7 +1427,20 @@ static void handle_request_fullscreen(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, request_fullscreen);
     if (view->xdg->base->initialized) {
-        vela_view_set_fullscreen(view, view->xdg->requested.fullscreen);
+        const bool on = view->xdg->requested.fullscreen;
+        struct vela_output *requested = NULL;
+        if (on && view->xdg->requested.fullscreen_output) {
+            struct wlr_output *wlr = view->xdg->requested.fullscreen_output;
+            requested = vela_output_named(view->server, wlr->name);
+            if (!requested || requested->wlr != wlr || !wlr->enabled
+                || !wlr_output_layout_get(view->server->output_layout, wlr)) {
+                requested = NULL; // disconnected output: fall back normally
+            }
+        }
+        vela_view_set_fullscreen(view, on);
+        if (on && requested) {
+            vela_view_fullscreen_output(view, requested);
+        }
     }
 }
 
