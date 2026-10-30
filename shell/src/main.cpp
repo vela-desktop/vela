@@ -18,6 +18,7 @@
 #include "brightness.h"
 #include "clipboard.h"
 #include "config.h"
+#include "x11primary.h"
 #include "controls.h"
 #include "desktopmodel.h"
 #include "fileactions.h"
@@ -321,6 +322,11 @@ int main(int argc, char* argv[])
     QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
 
     Config config;
+    // Sync the shell's primary-screen preference with XWayland's RandR primary.
+    X11PrimarySync x11Primary(&app);
+    x11Primary.setPreferred(config.primaryOutput());
+    QObject::connect(&config, &Config::primaryOutputChanged, &x11Primary,
+        [&x11Primary, &config] { x11Primary.setPreferred(config.primaryOutput()); });
 
     AppModel apps;
     appModel = &apps;
