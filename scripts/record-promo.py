@@ -242,10 +242,11 @@ def main(argv=None):
     build = args.build.resolve()
     capture.RECORDER = build / "tools" / "vela-screen-record"
     required = [build / "compositor" / "vela-compositor",
-                build / "shell" / "vela-shell", capture.RECORDER]
+                build / "shell" / "vela-shell", capture.RECORDER,
+                build / "tools" / "vela-input"]
     if any(not path.is_file() for path in required):
         parser.error("build the compositor, shell and recorder first: "
-                     "cmake --build build --target vela-compositor vela-shell vela-screen-record")
+                     "cmake --build build --target vela-compositor vela-shell vela-screen-record vela-input")
     if set(names) & {"window-motion", "task-view", "settings"} and not (
             build / "settings" / "vela-settings").is_file():
         parser.error("build vela-settings for window-motion, task-view and settings scenes")
