@@ -19,10 +19,6 @@ endif()
 
 include(GNUInstallDirs)
 
-# Native-resolution X11 launcher is available to all package formats and local installs.
-install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-xwayland-native"
-    DESTINATION "${CMAKE_INSTALL_BINDIR}")
-
 option(VELA_BUILD_CAPTURE_TOOLS "Build the lightweight screen-dump CLI separately from the GPU test tools" OFF)
 option(VELA_BUILD_GPU_TEST_TOOLS "Build GPU-intensive test clients (only relevant when VELA_BUILD_TOOLS=ON)" ON)
 
