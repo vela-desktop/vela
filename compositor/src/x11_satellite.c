@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// The Satellite X11 backend is opt-in in vela.conf (xwayland-backend=native).
+// Satellite is Vela's default X11 backend (xwayland-backend=native).
 // Unlike per-game DISPLAY wrappers, all processes launched in this Vela session
 // inherit this DISPLAY, including Steam and games. Built-in XWayland remains
 // available as a compatibility fallback.
@@ -68,7 +68,13 @@ bool vela_x11_satellite_start(struct vela_server *server)
 {
     struct vela_config config;
     vela_config_read(&config);
-    bool native = strcmp(vela_config_get(&config, "xwayland-backend", "compat"), "native") == 0;
+    // Native-resolution X11 is the Vela default. Allow a session override for
+    // CI, debugging and recovery without editing the user's config file.
+    const char *backend = getenv("VELA_XWAYLAND_BACKEND");
+    if (!backend || !*backend) {
+        backend = vela_config_get(&config, "xwayland-backend", "native");
+    }
+    bool native = strcmp(backend, "compat") != 0;
     vela_config_finish(&config);
     if (!native) {
         return false;
