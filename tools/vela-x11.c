@@ -7,6 +7,7 @@
 // Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--backdrop-id-file PATH]
 //                 [--wine-style HEX] [--wine-backdrop] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
+//        vela-x11 --iconify XID (ICCCM WM_CHANGE_STATE IconicState)
 //        vela-x11 --state XID below|skip-taskbar|maximize on|off
 //        vela-x11 --override-redirect XID on|off
 //        vela-x11 --set-wine-style XID HEX
@@ -123,7 +124,7 @@ int main(int argc, char** argv)
         || (argc == 5 && (!strcmp(argv[1], "--state") || !strcmp(argv[1], "--move")
             || !strcmp(argv[1], "--resize")))
         || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
-            || !strcmp(argv[1], "--geometry")))
+            || !strcmp(argv[1], "--geometry") || !strcmp(argv[1], "--iconify")))
         || (argc == 2 && !strcmp(argv[1], "--root-size"));
     int arg = 1;
     if (!control) {
@@ -182,6 +183,30 @@ int main(int argc, char** argv)
             return 0;
         }
         xcb_window_t target = (xcb_window_t)strtoul(argv[2], NULL, 0);
+        if (!strcmp(argv[1], "--iconify")) {
+            // ICCCM: XIconifyWindow asks the window manager to change a
+            // managed window to IconicState using a WM_CHANGE_STATE message.
+            // A bridge like Satellite must forward this as XDG minimize.
+            xcb_client_message_event_t event = { 0 };
+            event.response_type = XCB_CLIENT_MESSAGE;
+            event.window = target;
+            event.type = atom(connection, "WM_CHANGE_STATE");
+            event.format = 32;
+            event.data.data32[0] = 3; // ICCCM IconicState
+            xcb_void_cookie_t cookie = xcb_send_event_checked(connection, 0, screen->root,
+                XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
+                (const char*)&event);
+            xcb_generic_error_t* error = xcb_request_check(connection, cookie);
+            if (error) {
+                fprintf(stderr, "vela-x11: WM_CHANGE_STATE failed (X11 error %u)\n", error->error_code);
+                free(error);
+                xcb_disconnect(connection);
+                return 1;
+            }
+            xcb_flush(connection);
+            xcb_disconnect(connection);
+            return 0;
+        }
         if (!strcmp(argv[1], "--geometry")) {
             xcb_get_geometry_reply_t* geometry =
                 xcb_get_geometry_reply(connection, xcb_get_geometry(connection, target), NULL);
