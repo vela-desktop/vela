@@ -1,163 +1,133 @@
-# In-process native XWayland design
+# KWin-style XWayland scaling for Vela
 
-Status: **design + pure coordinate mapping prototype only** (PR #164, issue #163).
-Do not advertise the native in-process renderer as implemented or enable it by default.
+Status: **WIP: shared mathematical model + CTest, not yet wired to runtime.**
+Tracking: PR #164, issue #163.
 
-## Candidate shortcut: native modes for fullscreen with upstream Xwayland 26.1
+## Decision: follow KWin, not Satellite
 
-**Evaluate this before replacing Vela's XWM coordinate architecture.**
-Xwayland 26.1 RC3 (26.0.99.903, October 2026) includes updated rootless
-RandR emulation which prefers physical native display modes even if the
-compositor scales the output. This may remove the 2048x1152 cap in a
-2560x1440/125% fullscreen game without moving Steam to a different
-X11 server. Arch stable xorg-xwayland is still 24.1.14 as of October 2026,
-so Vela does not get the improvement automatically.
+Retain Vela's in-process wlroots X11 window manager. It already implements
+the EWMH fullscreen/maximize/minimize, popup and Wine style transitions that
+worked correctly in Steam/EU5 with `xwayland-backend=compat`. Satellite is
+retained only for experimental comparison; it must not become the release
+default or mandatory runtime dependency.
 
-The user's proposed hybrid scaling policy is desirable:
-- Windowed/normal X11 windows follow the existing compatibility scaling
-  (Steam currently works correctly there).
-- Fullscreen X11 games can select physical modes, rendering 2560x1440
-  pixels for 2048x1152 Wayland logical fullscreen units.
-- Once windowed, their geometry/input must again match the logical scene.
-- It is **not** correct to write output.scale=1 when a window becomes
-  fullscreen, nor to toggle the X11 server's global scale dynamically:
-  other X11 clients share that server and fullscreen games typically
-  enumerate supported modes *before* entering fullscreen.
+Plasma/KWin's real implementation (checked against KDE/kwin main):
 
-First test the upstream implementation in the integrated wlroots XWM using
-an independently installed Xwayland 26.1 RC binary. wlroots can use a
-specific Xwayland executable through `WLR_XWAYLAND=/absolute/path/Xwayland`,
-set **before launching Vela**. This is a testing mechanism, not a normal
-release dependency or Steam launch option.
+1. `Workspace::updateXwaylandScale` chooses a **single XWayland scale**:
+   the **maximum enabled output scale** when legacy X11 applications manage
+   their own scaling, or **1** when the system scales them.
+2. `WaylandServer::createXWaylandConnection` gives the XWayland
+   **Wayland client connection** a per-client `scaleOverride` rather than
+   changing the global output scale of the compositor.
+3. `XdgOutputV1Interface::sendLogicalPosition/Size` multiplies the
+   `xdg-output` logical geometry **for that client** by the override.
+4. `SurfaceInterface` accounts for the server scale when calculating
+   logical surface size, input/opaque regions, damage and local input
+   coordinates. **Buffer pixel sizes do not change.**
+5. KWin's X11 window-management geometry uses centralized
+   `Xcb::toXNative/fromXNative` conversions.
 
-Acceptance:
-1. In `xwayland-backend=compat`, record the exact `DISPLAY`,
-   `Xwayland -version`, and `xrandr --query`; native 2560x1440 must be
-   *enumerable* on DP-3 while its logical output remains 2048x1152.
-2. EU5 (no Steam flags) lists and can select 2560x1440. The game actually
-   submits a 2560x1440 buffer and occupies the DP-3 physical area 1:1.
-3. Steam remains correctly sized/sharp; its maximize/minimize buttons
-   work and pointer hover aligns on both 125% and 100% monitors.
-4. EU5 transitions fullscreen/windowed/fullscreen without misplacing or
-   cropping its buffer; primary RandR stays DP-3.
-5. Run the mixed-scale pointer and native-mode GPU tests, then inspect
-   hotplug/rotation and NVIDIA behavior.
+Relevant upstream sources:
+- https://github.com/KDE/kwin/blob/master/src/workspace.cpp
+- https://github.com/KDE/kwin/blob/master/src/wayland_server.cpp
+- https://github.com/KDE/kwin/blob/master/src/wayland/xdgoutput_v1.cpp
+- https://github.com/KDE/kwin/blob/master/src/wayland/surface.cpp
+- https://github.com/KDE/kwin/blob/master/src/utils/xcbutils.cpp
 
-If physical modes are merely advertised but fullscreen cannot render
-at native resolution with correct input, implement a *fullscreen-surface
-viewport/scene transform* first, preserving the normal windowed XWM.
-Only if that fails should Vela pursue the larger independent physical
-X11 output coordinate-space project specified below. Do not claim the
-new release itself fixes the bug until the hardware test succeeds.
+**Key difference:** wlroots 0.20 does *not* expose KWin's
+`ClientConnection::setScaleOverride`. Simply changing
+`wlr_output_state_set_scale` affects **all** Wayland clients and is
+incorrect. A Vela-owned per-Xwayland Wayland protocol adapter, or an
+appropriate wlroots/XWayland change, is required. Do not pretend the
+mathematical model alone enables native resolution.
 
-## Why an extra X11 bridge is insufficient
+## Exact KWin-style mixed-monitor coordinates
 
-Vela's built-in wlroots XWM knows how to process and reconcile X11
-maximize/minimize, Wine style transitions, fullscreen requests, unmanaged
-menus and XRandR output selection. When using Xwayland Satellite, these X11
-windows reach Vela as **XDG toplevels** instead: the X11->XDG translation is
-controlled by Satellite, which has known mixed-DPI viewport/input-region
-misalignment and window-control gaps (upstream PRs #452 and #546).
+The X11 scale is **global**. With HDMI-A-1 1920×1080@100% *above* DP-3
+2560×1440@125%:
 
-KWin's *Apply scaling themselves* and Hyprland's *force_zero_scaling*
-show an alternative: keep an in-process XWM, separate the X11 pixel
-coordinate system from Wayland's logical output layout, and compose X11
-buffers at the correct physical resolution. X11 still has a **global** DPI;
-this cannot ensure legacy apps such as Steam automatically re-layout their
-own UI from 125% to 100% when dragged between monitors. The compositor must
-nevertheless preserve exact pointer, window and buffer geometry.
+| Output | Physical mode | Wayland logical rectangle | X11 rectangle at 1.25 global scale |
+|---|---|---|---|
+| HDMI-A-1 (100%) | 1920×1080 | (0,0) 1920×1080 | (0,0) **2400×1350** |
+| DP-3 (125%) | 2560×1440 | (0,1080) 2048×1152 | (0,1350) **2560×1440** |
 
-## Contract
+The HDMI virtual X11 surface is *supersampled* because its physical scale
+is only 1.0. The **same multiplier** for all monitor origins and extents
+keeps X11 coordinates contiguous and pointer hit testing consistent.
+This is intentionally **not** the earlier independently scaled per-output
+layout, which would introduce discontinuities at screen boundaries.
 
-No game-specific environment variables or Steam launch options. The same
-session DISPLAY must expose the **physical** RandR output modes while
-Wayland-native applications continue using their own output scales.
-Vela retains authority over X11 window management (maximize, minimize,
-fullscreen, Wine properties, popups, Alt+Tab, focus, constraints, drag/drop).
+The production-independent model is in
+`compositor/src/x11_coordinates.{h,c}`, covered by
+`compositor/tests/x11_coordinates_test.c` (CTest:
+`compositor.x11-coordinates`). Both `scaled by system` (factor 1)
+and `applications scale themselves` (factor 1.25) are tested with
+realistic placement and roundtrip geometry.
 
-Example from a real mixed-scale layout (HDMI above DP):
+## Planned Vela design
 
-| Output | Physical | Wayland scale | Wayland logical region | X11 pixel region (proposed) |
-|---|---|---|---|---|
-| HDMI-A-1 | 1920×1080 | 1 | (0,0) – (1920,1080) | (0,0) – (1920,1080) |
-| DP-3 | 2560×1440 | 1.25 | (0,1080) – (2048,2232) | (0,1080) – (2560,2520) |
+The user-facing choice, once it actually works, will match Plasma:
+- **Scaled by system**: keep existing `compat` behavior, Steam window
+  management and native Wayland scaling unaffected. Games currently see
+  logical modes (EU5 2048×1152).
+- **Applications scale themselves**: preserve the same integrated XWM but
+  present a separate enlarged `xdg-output` coordinate space and adjust
+  X11 surfaces/viewport, input/opaque regions, damage, popups, and EWMH
+  geometry as KWin does. DP-3's X11 framebuffer can reach 2560×1440.
+  This is a global X11 server choice, **not a per-game/fullscreen switch**.
+- The configuration must *not* be exposed as functional until all
+  paths are wired. A separate backend selection `xwayland-backend=native`
+  currently refers to Satellite, NOT this in-process mode.
 
-The X11 output positions are **independent** of Wayland logical positions.
-For each output, store a pair of origins and one scale, then map:
+Implementation stages, in dependency order:
+1. **Wayland-client override:** identify the XWayland Wayland client
+   created by wlroots and implement `xdg-output` logical position/size
+   override **only for that client**. Avoid breaking existing
+   `wlr_xdg_output_manager_v1` clients and avoid global output scaling.
+   Inspect supported upstream wlroots 0.20 APIs and negotiate what can be
+   implemented without a fork.
+2. **Surface override:** apply an XWayland-specific server scale to
+   committed surface size, buffer mapping and scene dimensions, including
+   the effective hit-test/input region and surface-local pointer coords.
+   This is crucial for Steam on the 100% secondary; don't fix only visuals.
+3. **In-process XWM geometry:** map `wlr_xwayland_surface_configure`,
+   fullscreen/windowed state, minimize/maximize, popup/override-redirect,
+   grabs and input to/from global physical X11 geometry. Preserve
+   existing Wine style workarounds.
+4. **Output/modes:** check RandR reports and fullscreen mode selection on
+   the actual Xwayland binary, with and without new Xwayland 26.1 emulation.
+   The server must enumerate the physical/native mode *before* a game
+   enters fullscreen.
+5. **User-facing setting and rollout:** wire the tested two-mode option
+   to Vela Settings and config, with safe fallback and session restart
+   semantics. No Steam per-game flags, no global `Xft.dpi` override,
+   no `wlr_output.scale=1` hacks.
 
-```text
-x11.x = output.x11_origin.x + (wayland.x - output.logical_origin.x) * scale
-x11.y = output.x11_origin.y + (wayland.y - output.logical_origin.y) * scale
+## Known limitation shared with KWin
 
-wayland.x = output.logical_origin.x + (x11.x - output.x11_origin.x) / scale
-wayland.y = output.logical_origin.y + (x11.y - output.x11_origin.y) / scale
-```
+There is only one DPI for a traditional X11 session. KWin uses a single
+maximum output scale; older X11 apps that do not implement DPI self-scaling
+(sometimes Steam) can appear too small or blurry on one of the monitors.
+Even Plasma does **not** automatically guarantee separately correct 125% and
+100% UI sizes for an arbitrary legacy client on both outputs. A future
+hybrid *per application* policy would require multiple XWayland instances or
+a more sophisticated isolation strategy; the Plasma-like choice is a global
+tradeoff.
 
-The pure conversion is now in `compositor/src/x11_coordinates.{c,h}`, with
-CTest coverage in `compositor/tests/x11_coordinates_test.c`. Callers
-**must select the monitor in the input coordinate space first**; the simple
-math module intentionally does not decide which monitor owns a point.
-Do not round until an actual X11 integer configure or physical pixel
-boundary must be emitted. Use consistent rounding and test boundary pixels.
+## Must-pass regression suite before enabling
 
-## Implementation stages (all required before enabling native)
+- Native Wayland apps retain 125%/100% without geometry changes.
+- Steam CSD maximize/minimize works and the pointer hits the exact element
+  painted when moving between both displays.
+- EU5 enumerates native 2560×1440 on DP-3 and displays true fullscreen
+  with no title bar, correct input and no cropping at physical resolution.
+- Switching EU5 fullscreen → windowed → fullscreen works repeatedly.
+- Vela shell preference DP-3 matches XRandR primary even after hotplug.
+- Input, popup, resize and pointer-lock remain correct on both displays
+  and at fractional scales 1.25/1.5.
+- AMD and NVIDIA GPU CI, negative layout origins, rotation, and hotplug
+  tests pass. Never conflate X11 logical buffer resolution with the
+  *physical* XRandR output mode.
 
-1. **Output and RandR adapter.** Compute independent X11 pixel rectangles
-   from enabled physical output modes, rotation and adjacency; handle negative
-   origins, partial overlap, disconnected monitors and layout reflow.
-   Investigate the embedded XWayland server's output enumeration and wlroots
-   integration; changing `wlr_output.scale` globally, falsifying mode
-   tables without changing the render/input path, or merely assigning
-   `Xft.dpi` does **not** satisfy this stage. Upstream XWayland/wlroots
-   changes or a per-client protocol adapter may be required.
-2. **XWM configure and window geometry.** In `xwayland.c`, convert
-   `wlr_xwayland_surface_configure`, initial X11 geometry, fullscreen
-   origin, configure requests, windowed restore rectangles and window
-   constraints. Keep `view.c` and `output.c` in Wayland logical units
-   for scene placement; size X11 content buffers in X11 physical pixels.
-   Preserve the existing Wine style transition and real EWMH
-   maximize/minimize handling in Vela's XWM.
-3. **Input and menus.** Translate X11 pointer motion, button hit-testing,
-   cursor warping, constraints, grabs, DND and X11 override-redirect popup
-   positions at output changes. Surface local X11 coordinates and Wayland
-   logical coordinates must map to the same visual element after crossing
-   DP-3 -> HDMI-A-1. Don't patch one app's mouse event offsets.
-4. **Scene, damage and fractional rounding.** Ensure the actual X11
-   pixel buffer is sampled without accidental upscaling. Preserve texture
-   sharpness, damage and capture regions, popup input regions and exact
-   fullscreen coverage after scale changes.
-5. **Session DPI policy.** A single legacy X11 server has global XSETTINGS
-   / Xresources; select an explicit policy, but do **not** force a primary
-   `Xft.dpi` override over a conflicting backend global scale. Apps that
-   do not re-layout their UI when moved between differently scaled outputs
-   cannot be promised native per-output UI sizing from a global X11 DPI.
-   Per-application isolated XWayland instances or native Wayland apps are
-   possible later, but not a prerequisite for correct physical game modes.
-
-## Acceptance gate: no exceptions
-
-- [ ] XRandR exposes DP-3 **2560×1440** and HDMI-A-1 **1920×1080**, correctly
-      identifies DP-3 as primary without manual intervention.
-- [ ] EU5 at fullscreen is a real compositor fullscreen window on DP-3,
-      including initial launch, repeated transitions to windowed and back,
-      and changes of selected game monitor.
-- [ ] Steam's own maximize and minimize buttons function, independently of
-      Super+Up / Super+Down; manual resize and size hints remain correct.
-- [ ] At 125%, X11 pointer coordinates and displayed content match exactly;
-      at 100% on the second monitor the **same** holds after moving a window.
-- [ ] Steam at both displays has no blur induced by mismatched buffers or
-      accidental double scaling (its UI DPI choice is tested separately).
-- [ ] Hotplug, negative positions, rotations, fractional 1.25/1.5, X11
-      menu popups, fullscreen overlays, clipboard/DND, Steam overlay and
-      native Wayland apps pass functional GPU CI on AMD and NVIDIA.
-- [ ] No per-game Steam launch flags or game-specific name matching.
-
-## Rollout
-
-The pure model can land independently. Keep the existing integrated
-`xwayland-backend=compat` runtime while the new physical-output XWM path is
-built. Keep Satellite available only as an experimental comparison, not
-the mandatory solution for a working beta. Enable a native in-process
-backend only **after** the complete behavior passes GPU CI and hardware
-verification. PR #164 must stay draft while the remaining requirements
-are incomplete.
+**No release claim** until these tests pass on both headless CI and
+physical hardware. PR #164 stays draft in the meantime.
