@@ -27,7 +27,7 @@ void vela_window_menu_show(struct vela_server *server, struct vela_view *view, d
 // An action from the window menu, Task View, snap layouts or the taskbar:
 // restore, move, resize, minimize, maximize, close, activate, snap-left,
 // snap-right, "snap x0 y0 x1 y1 [quiet [window]]", activate-group, "move-to
-// N", move-to-new, sticky, unsticky, app-sticky, app-unsticky.
+// N", move-to-new, "output NAME" (fullscreen games), sticky, unsticky, app-sticky, app-unsticky.
 void vela_window_action(struct vela_server *server, struct vela_view *view, const char *action);
 
 #endif
