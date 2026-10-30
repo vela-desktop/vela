@@ -71,73 +71,42 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
 
-## XWayland primary output and native-resolution games
+## XWayland primary output and scaling
 
-**Native physical-resolution XWayland is experimental.** Vela can launch
-Xwayland Satellite >= 0.7 for the whole graphical session, but the default
-remains integrated wlroots XWayland while mixed-monitor input regions and
-X11 minimize/maximize bridging remain broken in upstream Satellite. The Arch, Fedora
-and experimental Debian packages declare Satellite as a runtime dependency.
-It runs on Vela's Wayland server and inherits compositor-created X11 listening
-sockets when selected with `xwayland-backend=native` in
-`~/.config/vela/vela.conf` and a session restart. Steam and Proton then use
-the session's `DISPLAY`; **leave each game's Steam launch options empty**.
+The integrated wlroots XWayland backend (`xwayland-backend=compat`) is
+currently the **default**. It preserves working Steam maximize/minimize,
+hover coordinates and Wine fullscreen handling on mixed-DPI screens.
+Vela Settings' `display/primaryOutput` preference is synchronized with
+X11 RandR primary on session startup and display hotplug.
 
-Satellite reports native physical modes, even with fractional Wayland scaling.
-For example a 2560×1440 monitor at 125% must offer 2560×1440 in XRandR,
-not merely the 2048×1152 logical mode. After installing the PR, **enable `xwayland-backend=native`, restart
-the whole Vela session and restart Steam**. In a terminal started inside the
-new session, check:
+**Plasma-style X11 scaling is under development**, not a released option.
+The planned selection is:
+- **Scaled by system**: legacy X11 windows use the current logical mode and
+  compositor upscaling (EU5 may see 2048×1152 on a 2560×1440@125% monitor).
+- **Apply scaling themselves**: keep the same integrated X11 window manager
+  but give its **Wayland connection** a global per-client scale override,
+  calculated from the **maximum enabled output scale**, as KWin does.
+  All X11 coordinates, output geometry and surface/input regions must be
+  converted coherently. Unlike a per-game launcher, it applies to the whole
+  X11 server.
 
-```sh
-echo "$DISPLAY"
-xrandr --listmonitors
-xrandr --query
-```
+The work-in-progress KWin-style mathematical model is in
+`compositor/src/x11_coordinates.{h,c}` with CPU CTest coverage. It is
+**not yet connected** to the Wayland protocol/surface pipeline and does not
+make the native resolution available today. See
+`docs/xwayland-native-coordinate-design.md`. Do not add a configuration
+setting or release note implying it is already implemented.
 
-If the native mode is missing, check Vela's compositor log for
-`Native-resolution X11 Satellite listening on DISPLAY=...` and compare
-that DISPLAY to the terminal's. A mode seen from a separate Satellite
-launcher is not proof Steam is using the native backend. The dedicated
-headless regression test `functional-xwayland-native-session` checks
-2560×1440 at scale 1.25 when Satellite and xrandr are available.
+For comparison or diagnostics only, `xwayland-backend=native` currently
+starts **Xwayland Satellite >= 0.7** as a separate session X11 bridge.
+It is experimental, **optional** (not a required Vela package dependency)
+and has known mixed-DPI input-region and X11 window-state regressions.
+It should not be used as a workaround for games in the beta release.
+This setting is **not** the Plasma-style integrated mode.
 
-The monitor selected in Vela Settings (`display/primaryOutput`) is also
-synchronized to the RandR primary display, including on hotplug. No manual
-`xrandr --primary` is required in the normal session.
-
-**Mixed-DPI limitation:** Satellite uses a global DPI policy for X11
-applications and separate physical RandR modes for games. Using the 100%
-secondary monitor and 125% primary together may leave Steam at 100% even
-though EU5 can render at native 2560×1440. An attempt to force primary
-monitor Xft.dpi globally caused blur and cursor/input mismatches, so Vela
-does **not** override Xresources, XSETTINGS, GDK_SCALE or the Wayland
-output scale. Fixes must preserve consistent input-region coordinates,
-window geometry and sharp rendering on both monitors. Upstream Satellite
-PRs #452 (mixed-DPI input regions), #523 (DPI stability), #546 (window
-controls) are relevant but not merged into the required distro package.
-Do not mark Steam's mixed-scaling or its titlebar buttons as fixed yet.
-
-To recover from a Satellite compatibility problem, set in
-`~/.config/vela/vela.conf`:
-
-```ini
-xwayland-backend=compat
-```
-
-and restart Vela. This restores the integrated wlroots XWayland backend and
-its legacy logical-resolution scaling. `xwayland-backend=compat` is the default; for one-off diagnostic sessions,
-`VELA_XWAYLAND_BACKEND=native` overrides the config without editing it.
-Native mode is currently **not recommended for everyday use** on mixed-scale
-outputs pending Satellite PRs #452 and #546. If Satellite cannot start, Vela
-falls back to compatibility mode and logs the failure.
-
-A Satellite-bridged X11 window appears to Vela as a Wayland XDG window.
-Unlike integrated XWayland, some client-side Wine window-management policies
-are therefore handled by Satellite. This PR does **not** yet establish that
-EU5's windowed framebuffer, monitor ordering and maximization are all correct
-on the reported mixed-scale hardware; do not mark those tests passed until
-verified.
+No Steam launch flags are required in the default backend or when testing
+a future integrated scaling policy. Never force `wlr_output.scale=1` or
+`Xft.dpi` for the whole session to fake native game resolution.
 
 ### Diagnosing X11/Proton window states
 
