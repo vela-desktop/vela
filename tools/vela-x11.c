@@ -12,6 +12,8 @@
 //        vela-x11 --set-wine-style XID HEX
 //        vela-x11 --delete-wine-style XID
 //        vela-x11 --geometry XID (root-relative X11 x y width height)
+//        vela-x11 --move XID X Y (request a fullscreen monitor change)
+//        vela-x11 --resize XID WIDTH HEIGHT (no position request)
 //        vela-x11 --root-size (current X11 root width height)
 //        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
 //
@@ -118,7 +120,8 @@ int main(int argc, char** argv)
     int control = (argc == 4
         && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
             || !strcmp(argv[1], "--override-redirect")))
-        || (argc == 5 && !strcmp(argv[1], "--state"))
+        || (argc == 5 && (!strcmp(argv[1], "--state") || !strcmp(argv[1], "--move")
+            || !strcmp(argv[1], "--resize")))
         || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
             || !strcmp(argv[1], "--geometry")))
         || (argc == 2 && !strcmp(argv[1], "--root-size"));
@@ -195,6 +198,24 @@ int main(int argc, char** argv)
                 (unsigned)geometry->width, (unsigned)geometry->height);
             free(geometry);
             free(location);
+            xcb_disconnect(connection);
+            return 0;
+        }
+        if (!strcmp(argv[1], "--move") || !strcmp(argv[1], "--resize")) {
+            int first = atoi(argv[3]);
+            int second = atoi(argv[4]);
+            uint32_t values[2] = { (uint32_t)first, (uint32_t)second };
+            const uint16_t mask = !strcmp(argv[1], "--move")
+                ? XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
+                : XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+            xcb_void_cookie_t request = xcb_configure_window_checked(connection, target, mask, values);
+            xcb_generic_error_t* error = xcb_request_check(connection, request);
+            if (error) {
+                fprintf(stderr, "vela-x11: configure request failed (X11 error %d)\\n", error->error_code);
+                free(error);
+                xcb_disconnect(connection);
+                return 1;
+            }
             xcb_disconnect(connection);
             return 0;
         }
