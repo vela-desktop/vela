@@ -200,6 +200,7 @@ struct vela_server {
     struct vela_child shell; // the launched and supervised shell (shell.h)
     struct vela_child polkit_agent; // the polkit agent (polkit.h)
     struct vela_child bluetooth; // vela-bluetooth (bluetooth.h)
+    struct vela_child updates; // vela-update-daemon (updates.h)
     struct vela_brightness *brightness; // every output's brightness (brightness.h)
     struct vela_commands *commands; // the command socket (command.h)
     // wlr-output-management (output_manager.h).

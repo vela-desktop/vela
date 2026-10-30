@@ -4,7 +4,8 @@
 // Settings' own QML pieces under Qt Quick Test (the tst_*.qml files next to
 // this one), as Vela.Controls' runner does, plus a fake Vela.Bluetooth
 // (common/bluetooth/tests/FakeBluetooth.qml) for the Bluetooth page's
-// pieces. A private vela.conf sets the durations three times Vela's; with
+// pieces and a fake Vela.Updates (common/updates/tests/FakeUpdates.qml) for
+// the Updates page's. A private vela.conf sets the durations three times Vela's; with
 // VELA_TEST_ANIMATION_EFFECTS=no it turns animation effects off (two ctest
 // entries).
 
@@ -30,6 +31,7 @@ public slots:
         vela::controls::install(*engine, Appearance::Mode::Apps);
         qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(FAKE_BLUETOOTH)), "Vela.Bluetooth", 1, 0,
             "Bluetooth");
+        qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(FAKE_UPDATES)), "Vela.Updates", 1, 0, "Updates");
     }
 };
 

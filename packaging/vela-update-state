@@ -1,0 +1,241 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""What vela-update reports (docs/updates.md §5): its --check --json object
+and the state files the desktop follows, written the same way by both
+channels' scripts.
+
+  vela-update-state begin --pid PID --action check|install --channel C
+  vela-update-state phase --pid PID NAME
+  vela-update-state check [--no-record] [fields]   (prints the JSON on stdout)
+  vela-update-state end --pid PID --action A --result R [fields]
+
+Every file is replaced with a rename, never written in place. Only the run
+that wrote run.json (same PID) changes or removes it.
+"""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import time
+
+SCHEMA = 2
+STATUSES = ("up-to-date", "update-available", "downgrade-available", "not-installed", "error")
+PHASES = ("resolving", "downloading", "verifying", "building", "installing")
+RESULTS = ("success", "failed", "cancelled")
+CODES = ("busy", "unsupported", "missing-tool", "network", "rate-limited", "not-found",
+         "downgrade-refused", "verification-failed", "build-failed", "install-failed",
+         "cancelled", "failed")
+MAX_CHANGES = 100
+MAX_NOTES = 20
+MAX_NOTE_BYTES = 64 * 1024
+
+
+def state_dir():
+    base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local/state")
+    return Path(base) / "vela-update"
+
+
+def write(name, payload):
+    directory = state_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    fd, temp = tempfile.mkstemp(prefix="." + name + ".", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+            f.write("\n")
+        os.replace(temp, directory / name)
+    except BaseException:
+        os.unlink(temp)
+        raise
+
+
+def read(name):
+    try:
+        with open(state_dir() / name, encoding="utf-8") as f:
+            payload = json.load(f)
+        return payload if isinstance(payload, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def start_time(pid):
+    """The process's start time in clock ticks (/proc/PID/stat, field 22):
+    with the PID, it tells this run from a later process with the same
+    PID."""
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as f:
+            stat = f.read()
+        # The name, field 2, is in parentheses and may contain anything.
+        return int(stat[stat.rindex(")") + 2:].split()[19])
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+def ours(pid):
+    run = read("run.json")
+    return run is not None and run.get("pid") == pid
+
+
+def error_object(code, message):
+    if not code:
+        return None
+    return {"code": code if code in CODES else "failed", "message": message or ""}
+
+
+def read_changes(path):
+    changes = []
+    total = 0
+    if not path:
+        return changes, total
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            commit, _, summary = line.rstrip("\n").partition("\t")
+            if not commit:
+                continue
+            total += 1
+            if len(changes) < MAX_CHANGES:
+                changes.append({"commit": commit, "summary": summary})
+    return changes, total
+
+
+def read_notes(path):
+    if not path:
+        return []
+    with open(path, encoding="utf-8") as f:
+        notes = json.load(f)
+    if not isinstance(notes, list):
+        raise SystemExit("vela-update-state: notes must be a list")
+    result = []
+    for note in notes[:MAX_NOTES]:
+        if not isinstance(note, dict):
+            continue
+        text = str(note.get("text") or "")
+        encoded = text.encode("utf-8")
+        if len(encoded) > MAX_NOTE_BYTES:
+            text = encoded[:MAX_NOTE_BYTES].decode("utf-8", errors="ignore")
+        result.append({"version": str(note.get("version") or ""), "text": text})
+    return result
+
+
+def command_begin(args):
+    write("run.json", {
+        "schema_version": SCHEMA,
+        "action": args.action,
+        "channel": args.channel,
+        "phase": "resolving" if args.action == "install" else "",
+        "pid": args.pid,
+        "start_time": start_time(args.pid),
+        "started_at": int(time.time()),
+    })
+
+
+def command_phase(args):
+    run = read("run.json")
+    if run is None or run.get("pid") != args.pid:
+        return
+    run["phase"] = args.name
+    write("run.json", run)
+
+
+def command_check(args):
+    changes, total = read_changes(args.changes)
+    error = error_object(args.error_code, args.error_message)
+    status = "error" if error else args.status
+    if status not in STATUSES:
+        raise SystemExit("vela-update-state: unknown status: " + str(status))
+    payload = {
+        "schema_version": SCHEMA,
+        "channel": args.channel,
+        "status": status,
+        "installed_package": args.installed_package,
+        "installed_version": args.installed_version,
+        "version": args.version,
+        "tag": args.tag,
+        "commit": args.commit,
+        "source": args.source,
+        "changes": changes,
+        "changes_total": total,
+        "notes": read_notes(args.notes),
+        "checked_at": int(time.time()),
+        "error": error,
+    }
+    # A run that couldn't take the lock (busy) leaves the files to the one
+    # that holds it.
+    if args.record:
+        write("check.json", payload)
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def command_end(args):
+    if args.action == "install":
+        result = args.result
+        payload = {
+            "schema_version": SCHEMA,
+            "channel": args.channel,
+            "result": result,
+            "error": error_object(args.error_code or ("failed" if result == "failed" else
+                                                      "cancelled" if result == "cancelled" else ""),
+                                  args.error_message),
+            "installed_version": args.installed_version,
+            "finished_at": int(time.time()),
+        }
+        write("install.json", payload)
+    if ours(args.pid):
+        try:
+            os.unlink(state_dir() / "run.json")
+        except FileNotFoundError:
+            pass
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="vela-update-state")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    begin = sub.add_parser("begin")
+    begin.add_argument("--pid", type=int, required=True)
+    begin.add_argument("--action", choices=("check", "install"), required=True)
+    begin.add_argument("--channel", choices=("beta", "experimental"), required=True)
+    begin.set_defaults(run=command_begin)
+
+    phase = sub.add_parser("phase")
+    phase.add_argument("--pid", type=int, required=True)
+    phase.add_argument("name", choices=PHASES)
+    phase.set_defaults(run=command_phase)
+
+    check = sub.add_parser("check")
+    check.add_argument("--no-record", dest="record", action="store_false")
+    check.add_argument("--channel", choices=("beta", "experimental"), required=True)
+    check.add_argument("--status", default="error")
+    check.add_argument("--installed-package", default="")
+    check.add_argument("--installed-version", default="")
+    check.add_argument("--version", default="")
+    check.add_argument("--tag", default="")
+    check.add_argument("--commit", default="")
+    check.add_argument("--source", default="")
+    check.add_argument("--changes", help="a file of 'commit<TAB>summary' lines, newest first")
+    check.add_argument("--notes", help="a JSON file: [{version, text}], newest first")
+    check.add_argument("--error-code", default="")
+    check.add_argument("--error-message", default="")
+    check.set_defaults(run=command_check)
+
+    end = sub.add_parser("end")
+    end.add_argument("--pid", type=int, required=True)
+    end.add_argument("--action", choices=("check", "install"), required=True)
+    end.add_argument("--channel", choices=("beta", "experimental"), required=True)
+    end.add_argument("--result", choices=RESULTS, required=True)
+    end.add_argument("--error-code", default="")
+    end.add_argument("--error-message", default="")
+    end.add_argument("--installed-version", default="")
+    end.set_defaults(run=command_end)
+
+    args = parser.parse_args()
+    args.run(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

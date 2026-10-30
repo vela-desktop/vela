@@ -157,6 +157,7 @@ QString SystemActions::command(const QString& name) const
         { QStringLiteral("sound-settings"), QStringLiteral("sound") },
         { QStringLiteral("volume-mixer"), QStringLiteral("volume-mixer") },
         { QStringLiteral("bluetooth-settings"), QStringLiteral("bluetooth") },
+        { QStringLiteral("updates-settings"), QStringLiteral("updates") },
         { QStringLiteral("night-light-settings"), QStringLiteral("night-light") },
         { QStringLiteral("accessibility-settings"), QStringLiteral("accessibility") },
         { QStringLiteral("colors-settings"), QStringLiteral("colors") },

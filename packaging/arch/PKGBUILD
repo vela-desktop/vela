@@ -32,8 +32,9 @@ depends=(
     'konsole' 'breeze-icons' 'xdg-desktop-portal' 'xdg-desktop-portal-gtk' 'xdg-desktop-portal-wlr' 'xdg-utils'
     # Runtime requirements of vela-update; build toolchain is installed on demand.
     'git' 'curl' 'sudo' 'util-linux'
+    'xdg-terminal-exec' # Settings > Updates runs vela-update in the user's terminal (docs/updates.md §6.3)
     'pipewire' 'wireplumber'
-    'systemd-libs' # sd-bus: laptop backlight (docs/brightness.md §5.3), vela-bluetooth (docs/bluetooth.md)
+    'systemd-libs' # sd-bus: laptop backlight (docs/brightness.md §5.3), vela-bluetooth (docs/bluetooth.md), vela-update-daemon (docs/updates.md)
 )
 makedepends=('cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols>=1.37' 'qt6-tools' 'qt6-multimedia')
 optdepends=(
@@ -91,6 +92,7 @@ check() {
     bash -n "$_name/packaging/vela-update"
     sh -n "$_name/packaging/arch/vela-qt-rebuild-notice"
     PYTHONPYCACHEPREFIX="$srcdir/.vela-pycache" python -m py_compile "$_name/packaging/verify-attestation.py"
+    PYTHONPYCACHEPREFIX="$srcdir/.vela-pycache" python -m py_compile "$_name/packaging/vela-update-state"
 }
 
 package() {
@@ -98,6 +100,7 @@ package() {
     install -Dm755 "$_name/packaging/vela-update" "$pkgdir/usr/bin/vela-update"
     install -Dm755 "$_name/packaging/vela-update-beta" "$pkgdir/usr/lib/vela/vela-update-beta"
     install -Dm644 "$_name/packaging/verify-attestation.py" "$pkgdir/usr/lib/vela/verify-attestation.py"
+    install -Dm755 "$_name/packaging/vela-update-state" "$pkgdir/usr/lib/vela/vela-update-state"
     install -Dm644 "$_name/packaging/arch/vela-qt-private-rebuild.hook" \
         "$pkgdir/usr/share/libalpm/hooks/vela-qt-private-rebuild.hook"
     install -Dm755 "$_name/packaging/arch/vela-qt-rebuild-notice" \

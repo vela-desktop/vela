@@ -3,8 +3,6 @@
 
 #include "caller.h"
 
-#include "log.h"
-
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -13,7 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 
-bool vela_bt_sandboxed(const char *proc, pid_t pid)
+bool vela_caller_sandboxed(const char *proc, pid_t pid)
 {
     char path[PATH_MAX];
     if (snprintf(path, sizeof(path), "%s/%d/root/.flatpak-info", proc, (int)pid) >= (int)sizeof(path)) {
@@ -47,7 +45,7 @@ bool vela_bt_sandboxed(const char *proc, pid_t pid)
     return snap;
 }
 
-bool vela_bt_exe_allowed(const char *exe, const char *const *allowed)
+bool vela_caller_exe_allowed(const char *exe, const char *const *allowed)
 {
     static const char deleted[] = " (deleted)";
     size_t length = strlen(exe);
@@ -62,7 +60,7 @@ bool vela_bt_exe_allowed(const char *exe, const char *const *allowed)
     return false;
 }
 
-pid_t vela_bt_pidfd_pid(const char *proc, int pidfd)
+pid_t vela_caller_pidfd_pid(const char *proc, int pidfd)
 {
     char path[PATH_MAX];
     if (snprintf(path, sizeof(path), "%s/self/fdinfo/%d", proc, pidfd) >= (int)sizeof(path)) {
@@ -85,7 +83,7 @@ pid_t vela_bt_pidfd_pid(const char *proc, int pidfd)
     return pid;
 }
 
-static int refuse(sd_bus_message *call, const char *why, pid_t pid, sd_bus_error *error)
+static int refuse(sd_bus_message *call, const char *why, pid_t pid, const char *error_name, sd_bus_error *error)
 {
     char exe[PATH_MAX] = "?";
     char path[64];
@@ -94,13 +92,14 @@ static int refuse(sd_bus_message *call, const char *why, pid_t pid, sd_bus_error
         ssize_t length = readlink(path, exe, sizeof(exe) - 1);
         exe[length > 0 ? length : 0] = '\0';
     }
-    vela_bt_log("refused %s from %s (%s, pid %d): %s", sd_bus_message_get_member(call),
-        sd_bus_message_get_sender(call) ? sd_bus_message_get_sender(call) : "?", exe[0] ? exe : "?", (int)pid, why);
-    return sd_bus_error_set(error, "org.vela.Bluetooth.Error.NotAllowed", "Not allowed for this app.");
+    fprintf(stderr, "%s: refused %s from %s (%s, pid %d): %s\n", program_invocation_short_name,
+        sd_bus_message_get_member(call), sd_bus_message_get_sender(call) ? sd_bus_message_get_sender(call) : "?",
+        exe[0] ? exe : "?", (int)pid, why);
+    return sd_bus_error_set(error, error_name, "Not allowed for this app.");
 }
 
-int vela_bt_check_caller(sd_bus_message *call, enum vela_bt_trust trust, const char *const *allowed,
-    sd_bus_error *error)
+int vela_caller_check(sd_bus_message *call, enum vela_caller_trust trust, const char *const *allowed,
+    const char *error_name, sd_bus_error *error)
 {
     uint64_t mask = SD_BUS_CREDS_UID | SD_BUS_CREDS_EUID | SD_BUS_CREDS_PID;
 #ifdef VELA_HAVE_PIDFD_CREDS
@@ -108,18 +107,18 @@ int vela_bt_check_caller(sd_bus_message *call, enum vela_bt_trust trust, const c
 #endif
     sd_bus_creds *creds = NULL;
     if (sd_bus_query_sender_creds(call, mask, &creds) < 0) {
-        return refuse(call, "no credentials", -1, error);
+        return refuse(call, "no credentials", -1, error_name, error);
     }
     uid_t uid;
     if (sd_bus_creds_get_euid(creds, &uid) < 0 && sd_bus_creds_get_uid(creds, &uid) < 0) {
         sd_bus_creds_unref(creds);
-        return refuse(call, "no user", -1, error);
+        return refuse(call, "no user", -1, error_name, error);
     }
     if (uid != geteuid()) {
         sd_bus_creds_unref(creds);
-        return refuse(call, "another user", -1, error);
+        return refuse(call, "another user", -1, error_name, error);
     }
-    if (trust == VELA_BT_SAME_USER) {
+    if (trust == VELA_CALLER_SAME_USER) {
         sd_bus_creds_unref(creds);
         return 0;
     }
@@ -130,7 +129,7 @@ int vela_bt_check_caller(sd_bus_message *call, enum vela_bt_trust trust, const c
     int pidfd = -1;
 #ifdef VELA_HAVE_PIDFD_CREDS
     if (sd_bus_creds_get_pidfd_dup(creds, &pidfd) >= 0) {
-        pid = vela_bt_pidfd_pid("/proc", pidfd);
+        pid = vela_caller_pidfd_pid("/proc", pidfd);
     }
 #endif
     if (pidfd < 0 && sd_bus_creds_get_pid(creds, &pid) < 0) {
@@ -140,9 +139,9 @@ int vela_bt_check_caller(sd_bus_message *call, enum vela_bt_trust trust, const c
     const char *why = NULL;
     if (pid <= 0) {
         why = "no process";
-    } else if (vela_bt_sandboxed("/proc", pid)) {
+    } else if (vela_caller_sandboxed("/proc", pid)) {
         why = "sandboxed";
-    } else if (trust == VELA_BT_VELA_UI) {
+    } else if (trust == VELA_CALLER_VELA_UI) {
         char path[64];
         char exe[PATH_MAX];
         snprintf(path, sizeof(path), "/proc/%d/exe", (int)pid);
@@ -151,7 +150,7 @@ int vela_bt_check_caller(sd_bus_message *call, enum vela_bt_trust trust, const c
             why = "no executable";
         } else {
             exe[length] = '\0';
-            if (!vela_bt_exe_allowed(exe, allowed)) {
+            if (!vela_caller_exe_allowed(exe, allowed)) {
                 why = "not Vela's UI";
             }
         }
@@ -160,7 +159,7 @@ int vela_bt_check_caller(sd_bus_message *call, enum vela_bt_trust trust, const c
     // pidfd credentials, also verify that the D-Bus sender still exists and
     // has the same kernel-reported PID and user, rather than trusting a bare
     // PID after multiple /proc lookups.
-    if (!why && pidfd >= 0 && vela_bt_pidfd_pid("/proc", pidfd) != pid) {
+    if (!why && pidfd >= 0 && vela_caller_pidfd_pid("/proc", pidfd) != pid) {
         why = "process gone";
     } else if (!why && pidfd < 0) {
         sd_bus_creds *current = NULL;
@@ -178,5 +177,5 @@ int vela_bt_check_caller(sd_bus_message *call, enum vela_bt_trust trust, const c
     if (pidfd >= 0) {
         close(pidfd);
     }
-    return why ? refuse(call, why, pid, error) : 0;
+    return why ? refuse(call, why, pid, error_name, error) : 0;
 }

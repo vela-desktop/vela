@@ -21,36 +21,57 @@ name = pathlib.Path(sys.argv[0]).name
 args = sys.argv[1:]
 if name == "curl":
     url = args[-1]
+    output = pathlib.Path(args[args.index("-o") + 1])
+    def respond(data):
+        output.write_bytes(data)
+        if "-w" in args:
+            print("200", end="")
+    def refuse(code):
+        # curl -f: exit 22 on an HTTP error, -w still prints the code.
+        if "-w" in args:
+            print(code, end="")
+        sys.exit(22)
     if "/releases?per_page=100&page=" in url:
+        if os.environ.get("TEST_API_STATUS"):
+            refuse(os.environ["TEST_API_STATUS"])
         releases = json.loads(os.environ["TEST_RELEASE_LIST"])
         page = int(url.rsplit("page=", 1)[1])
-        print(json.dumps(releases[(page - 1) * 100:page * 100]))
+        respond(json.dumps(releases[(page - 1) * 100:page * 100]).encode())
     elif os.environ.get("TEST_SIGNED_MANIFEST") != "1":
-        sys.exit(22)
+        refuse("404")
     else:
         payload = b"verified-beta-test-payload"
         pkg = os.environ["TEST_PACKAGE"]
         digest = hashlib.sha256(payload).hexdigest()
         if os.environ.get("TEST_BAD_DIGEST"):
             digest = "0" * 64
-        output = pathlib.Path(args[args.index("-o") + 1])
         if url.endswith("/" + os.environ["TEST_MANIFEST"]):
-            output.write_text(digest + "  " + pkg + "\n")
+            respond((digest + "  " + pkg + "\n").encode())
         elif url.endswith("/" + pkg):
-            output.write_bytes(payload + (b"bad" if os.environ.get("TEST_CORRUPT") else b""))
+            respond(payload + (b"bad" if os.environ.get("TEST_CORRUPT") else b""))
         else:
-            sys.exit(22)
+            refuse("404")
 elif name == "git":
     if args[0] == "ls-remote":
         print(os.environ["TEST_COMMIT"] + "\trefs/tags/" + args[-2].split("/")[-1])
     else:
         sys.exit(2)
 elif name == "pacman":
+    experimental = "vela-git 0.1.0.r1.gabcdef0-1"
     if args == ["-Q", "vela-git"]:
-        sys.exit(0 if os.environ.get("TEST_EXP_INSTALLED") else 1)
-    if args[:2] != ["-Q", "vela"] or not os.environ.get("TEST_INSTALLED"):
+        if not os.environ.get("TEST_EXP_INSTALLED"):
+            sys.exit(1)
+        print(experimental)
+        sys.exit(0)
+    if args[:2] != ["-Q", "vela"]:
         sys.exit(1)
-    print("vela " + os.environ["TEST_INSTALLED"])
+    if os.environ.get("TEST_INSTALLED"):
+        print("vela " + os.environ["TEST_INSTALLED"])
+    elif os.environ.get("TEST_EXP_INSTALLED"):
+        # Like pacman: vela-git provides vela, so -Q vela answers with it.
+        print(experimental)
+    else:
+        sys.exit(1)
 elif name == "rpm":
     if args[-1] != "vela" or not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
@@ -59,7 +80,9 @@ elif name == "dpkg-query":
     if args[-1] != "vela" or not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
     print("install ok installed\t" + os.environ["TEST_INSTALLED"])
-elif name in ("flock", "dnf", "apt-get", "cosign"):
+elif name == "flock":
+    sys.exit(1 if os.environ.get("TEST_BUSY") else 0)
+elif name in ("dnf", "apt-get", "cosign"):
     sys.exit(0)
 elif name == "sudo":
     with open(os.environ["TEST_UNEXPECTED_SUDO"], "w") as f:
@@ -98,6 +121,8 @@ class BetaUpdateTests(unittest.TestCase):
                             'pathlib.Path(os.environ["TEST_VERIFIED"]).write_text(json.dumps(sys.argv[1:]))\n'
                             'sys.exit(1 if os.environ.get("TEST_REJECT_ATTEST") else 0)\n')
         verifier.chmod(0o755)
+        shutil.copyfile(ROOT / "packaging/vela-update-state", scripts / "vela-update-state")
+        self.state = self.root / ".local/state/vela-update"
         self.calls = self.root / "sudo-called"
         releases = [
             {"tag_name": "v0.1.9", "prerelease": True, "draft": False},
@@ -127,12 +152,15 @@ class BetaUpdateTests(unittest.TestCase):
         result = self.run_update("--channel", "beta", "--check", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
-        self.assertEqual(payload["status"], "update-available")
         self.assertEqual(payload["channel"], "beta")
         self.assertEqual(payload["version"], "0.1.11")
         self.assertEqual(payload["tag"], "v0.1.11")
         self.assertEqual(payload["commit"], COMMIT)
-        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["status"], "not-installed")  # nothing installed
+        self.assertEqual(payload["installed_package"], "")
+        self.assertEqual(payload["changes"], [])
+        self.assertIsNone(payload["error"])
         self.assertFalse(self.calls.exists())
 
     def test_same_installed_release_is_up_to_date(self):
@@ -277,6 +305,100 @@ class BetaUpdateTests(unittest.TestCase):
         self.env["TEST_FAIL_INSTALL"] = "1"
         self.assertNotEqual(self.run_update().returncode, 0)
         self.assertTrue(self.calls.exists())
+
+    # Schema 2 and the state files (docs/updates.md §5).
+
+    def read_state(self, name):
+        return json.loads((self.state / name).read_text())
+
+    def test_check_reports_installed_package_and_release_notes(self):
+        self.env["TEST_INSTALLED"] = "0.1.9-1"
+        releases = json.loads(self.env["TEST_RELEASE_LIST"])
+        for release in releases:
+            release["body"] = "Notes of " + release["tag_name"]
+        releases.append({"tag_name": "v0.1.10", "prerelease": True, "draft": False, "body": "Ten"})
+        self.env["TEST_RELEASE_LIST"] = json.dumps(releases)
+        result = self.run_update("--check", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "update-available")
+        self.assertEqual(payload["installed_package"], "vela")
+        self.assertEqual(payload["installed_version"], "0.1.9-1")
+        # Every release newer than the installed one, newest first; never a
+        # draft, a stable 1.0 or a release candidate.
+        self.assertEqual(payload["notes"], [{"version": "0.1.11", "text": "Notes of v0.1.11"},
+                                            {"version": "0.1.10", "text": "Ten"}])
+        self.assertEqual(self.read_state("check.json"), payload)
+        self.assertFalse((self.state / "run.json").exists())
+
+    def test_vela_git_providing_vela_is_not_taken_for_beta(self):
+        self.env["TEST_EXP_INSTALLED"] = "1"
+        result = self.run_update("--check", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "update-available")
+        self.assertEqual(payload["installed_package"], "vela-git")
+        self.assertEqual(payload["installed_version"], "0.1.0.r1.gabcdef0-1")
+        self.assertEqual([n["version"] for n in payload["notes"]], ["0.1.11"])
+
+    def test_failed_check_is_json_with_a_code_and_exit_1(self):
+        for status, code in (("403", "rate-limited"), ("429", "rate-limited"), ("500", "network")):
+            with self.subTest(status=status):
+                self.env["TEST_API_STATUS"] = status
+                result = self.run_update("--check", "--json")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                payload = json.loads(result.stdout)
+                self.assertEqual(payload["status"], "error")
+                self.assertEqual(payload["error"]["code"], code)
+                self.assertEqual(self.read_state("check.json")["error"]["code"], code)
+        self.env.pop("TEST_API_STATUS")
+        self.env["TEST_RELEASE_LIST"] = "[]"
+        payload = json.loads(self.run_update("--check", "--json").stdout)
+        self.assertEqual(payload["error"]["code"], "not-found")
+
+    def test_busy_check_reports_without_touching_the_state(self):
+        self.run_update("--check", "--json")
+        before = (self.state / "check.json").read_text()
+        self.env["TEST_BUSY"] = "1"
+        result = self.run_update("--check", "--json")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["error"]["code"], "busy")
+        self.assertEqual((self.state / "check.json").read_text(), before)
+
+    def test_human_check_writes_check_json_too(self):
+        self.env["TEST_INSTALLED"] = "0.1.11-1"
+        self.assertEqual(self.run_update("--check").returncode, 1)
+        self.assertEqual(self.read_state("check.json")["status"], "up-to-date")
+
+    def test_install_records_its_result(self):
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        self.env["TEST_INSTALLED"] = "0.1.9-1"
+        self.assertEqual(self.run_update().returncode, 0)
+        install = self.read_state("install.json")
+        self.assertEqual(install["result"], "success")
+        self.assertEqual(install["channel"], "beta")
+        self.assertIsNone(install["error"])
+        self.assertFalse((self.state / "run.json").exists())
+
+    def test_failed_installs_record_why(self):
+        cases = (({"TEST_REJECT_ATTEST": "1"}, "verification-failed"),
+                 ({"TEST_CORRUPT": "1"}, "verification-failed"),
+                 ({"TEST_FAIL_INSTALL": "1"}, "install-failed"),
+                 ({"TEST_SIGNED_MANIFEST": "0"}, "not-found"))
+        for extra, code in cases:
+            with self.subTest(code=code, extra=extra):
+                env = dict(self.env)
+                self.env.update({"TEST_SIGNED_MANIFEST": "1", **extra})
+                self.assertEqual(self.run_update().returncode, 1)
+                install = self.read_state("install.json")
+                self.assertEqual(install["result"], "failed")
+                self.assertEqual(install["error"]["code"], code)
+                self.env = env
+
+    def test_refused_downgrade_has_its_code(self):
+        self.env["TEST_INSTALLED"] = "0.2.0-1"
+        self.assertEqual(self.run_update().returncode, 1)
+        self.assertEqual(self.read_state("install.json")["error"]["code"], "downgrade-refused")
 
 
 if __name__ == "__main__":

@@ -82,7 +82,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate standalone Sigstore verifier syntax
-        run: python3 -m py_compile packaging/verify-attestation.py
+        run: python3 -m py_compile packaging/verify-attestation.py packaging/vela-update-state
       - name: Updater and package source contracts (no network or credentials)
         run: python3 -m unittest discover -s packaging/tests -v
       - name: Reporter evidence contracts (no GPU or running session)
@@ -165,7 +165,7 @@ jobs:
           # additional *runtime* desktop packages needed by the PKGBUILD.
           pacman -S --noconfirm --needed \
             konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk \
-            xdg-desktop-portal-wlr xdg-utils
+            xdg-desktop-portal-wlr xdg-utils xdg-terminal-exec
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -492,12 +492,15 @@ jobs:
           test -f /etc/xdg/xdg-desktop-portal-wlr/Vela
           test -f /usr/lib/udev/rules.d/70-vela-i2c.rules
           test -f /usr/lib/modules-load.d/vela-i2c.conf
-          for helper in vela-bluetooth vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui vela-session-env; do
+          for helper in vela-bluetooth vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui vela-session-env vela-update-daemon; do
             test -x "/usr/libexec/vela/$helper"
           done
           # Without sd-bus the helper builds, but can't change a laptop's backlight.
           ldd /usr/libexec/vela/vela-brightness | grep -F libsystemd.so
           ldd /usr/libexec/vela/vela-bluetooth | grep -F libsystemd.so
+          ldd /usr/libexec/vela/vela-update-daemon | grep -F libsystemd.so
+          # The terminal Settings > Updates runs vela-update in.
+          command -v xdg-terminal-exec
           test -f /usr/libexec/vela/report/vela_report/cli.py
           # The archive's source metadata must not inherit CI's parent git state.
           grep -F "\"source_commit\": \"$GITHUB_SHA\"" /usr/bin/vela-report
@@ -509,6 +512,7 @@ jobs:
             fi
           done
           test -f /usr/libexec/vela/verify-attestation.py
+          test -x /usr/libexec/vela/vela-update-state
           sh -n /usr/bin/vela-update
 
   # The exact Ubuntu Beta DEB must pass its clean-install smoke test.

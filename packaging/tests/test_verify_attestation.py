@@ -79,6 +79,7 @@ class VerificationTests(unittest.TestCase):
                                 self.commit, "release", "v0.1.0")
         args = run.call_args.args[0]
         self.assertIn("https://github.com/vela-desktop/vela/.github/workflows/build.yml@refs/tags/v0.1.0", args)
+        self.assertEqual(args[args.index("--type") + 1], "slsaprovenance1")
         self.assertEqual(args[args.index("--certificate-github-workflow-ref") + 1],
                          "refs/tags/v0.1.0")
         self.assertEqual(args[args.index("--certificate-github-workflow-sha") + 1], self.commit)
