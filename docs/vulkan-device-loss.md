@@ -16,12 +16,15 @@
 - Both terminal states terminate the Wayland event loop and prevent additional
   GPU work, pool reuse, timeline polling and blocking waits.
 - `VELA_EXIT_DEVICE_LOST = 79` is reserved for true device loss, including
-  failure during renderer initialization. Other terminal failures exit with
+  a `VK_ERROR_DEVICE_LOST` from `vkCreateDevice`, whose status survives the
+  destruction of a partially initialized Vulkan context. Other terminal failures exit with
   code 1. The existing supervisor uses its bounded crash budget (three failures
   within one minute); a clean logout still exits with 0.
-- After terminal failure, skip the compositor's systemd `stop` hook: the
-  supervisor keeps the session and Wayland socket across a restart and invokes
-  the stop hook if it finally ends the session.
+- In supervised sessions, terminal failures skip the compositor's systemd
+  `stop` hook: the supervisor keeps the session and Wayland socket across a
+  restart and invokes the stop hook if it finally ends the session. **Direct
+  launches** have no supervisor, so their compositor always runs the stop hook
+  when a real session was established.
 
 ## Resource and synchronization ownership
 
@@ -48,6 +51,10 @@ A failed kernel sync-file import may fall back to a CPU GPU-timeline wait.
 When that wait fails, do not claim that the buffer has been released. Trigger
 the terminal-error restart path instead. When a synchronization point can be
 safely completed by waiting, signal it only **after** successful completion.
+If a debug-sync CPU wait fails after exporting a sync-file descriptor, close
+that descriptor and clear the caller's output (a failed submission transfers
+no FD ownership). Failed semaphore imports after device loss destroy rather
+than recycle the partially used semaphore.
 
 ## Testing and merge gates
 
@@ -56,8 +63,9 @@ safely completed by waiting, signal it only **after** successful completion.
 - Production-entry-point fault injection: staging bind/map, semaphore
   creation, queue submission, timeline wait, non-device-loss wait error and
   failed command-buffer end. Assert no GPU work after a terminal state.
-- Add tests for further Vulkan import/export and lazy pipeline failures where
-  practical, using the GPU-free production harness.
+- Production-entry-point tests additionally cover Vulkan semaphore FD
+  import/export, lazy pipeline creation and closure of an exported sync-file
+  descriptor when a CPU wait fails in debug-sync mode.
 - Hosted Build, Ubuntu 26.10, Fedora, sanitizer, coverage and static-analysis
   checks must pass on the candidate head; investigate SonarQube reliability
   findings rather than treating the aggregate rating as sufficient.
