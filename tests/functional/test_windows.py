@@ -130,6 +130,20 @@ class Windows(unittest.TestCase):
         self.assertEqual((after["x"], after["y"], after["w"], after["h"]),
                          (before["x"], before["y"], before["w"], before["h"]))
 
+    def test_fixed_size_window_rejects_maximize(self):
+        # A XDG app (or Satellite-bridged X11 app) with min=max must not be
+        # resized by the maximize button or the Super+Up shortcut.
+        window = self.vela.open_window(500, 350,
+            command=[tool("vela-pattern"), "--decorated", "--fixed-size", "500", "350"])
+        before = self.vela.wait_for(lambda s: s["focused"] == window,
+                                    what="fixed-size window focused").window(window)
+        self.vela.keys("super+Up")
+        self.vela.wait_still(window)
+        after = self.vela.state().window(window)
+        self.assertFalse(after["maximized"])
+        self.assertEqual((after["x"], after["y"], after["w"], after["h"]),
+                         (before["x"], before["y"], before["w"], before["h"]))
+
     def test_minimize_and_alt_tab_restores(self):
         first = self.vela.open_window()
         second = self.vela.open_window()
