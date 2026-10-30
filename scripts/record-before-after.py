@@ -64,7 +64,8 @@ TILE_W, TILE_H, TILE_GAP_X, TILE_GAP_Y, PANEL_PADDING = 104, 82, 8, 4, 16
 
 # The capture engine is shared with record-promo.py.
 sys.path.insert(0, str(ROOT / "scripts"))
-from recording_core import Scene, Desktop, Take, record, lossless, has_drawtext  # noqa: E402
+from recording_core import (Scene, Desktop, Take, record, lossless, has_drawtext,  # noqa: E402
+                            check_user_namespaces)
 
 class Maximize(Scene):
     name = "maximize"
@@ -356,6 +357,10 @@ def main():
                     "unshare"):
         if not shutil.which(program):
             sys.exit(f"{program} is missing.")
+    try:
+        check_user_namespaces()
+    except RuntimeError as error:
+        sys.exit(f"{error}.")
     if not RECORDER.exists():
         sys.exit(f"{RECORDER} is missing: cmake --build build --target vela-screen-record")
     labels = has_drawtext()

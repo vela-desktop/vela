@@ -109,6 +109,12 @@ class PromoTests(unittest.TestCase):
         self.assertFalse(ready([*outputs, default]))
         self.assertFalse(ready([{"type": "PipeWire:Interface:Core", "info": None}]))
 
+    def test_settings_scenes_need_user_namespaces(self):
+        refused = types.SimpleNamespace(returncode=1, stderr="unshare: write failed /proc/self/uid_map")
+        with mock.patch.object(promo.capture.subprocess, "run", return_value=refused):
+            with self.assertRaisesRegex(RuntimeError, "user and mount namespaces.*uid_map"):
+                promo.capture.check_user_namespaces()
+
     def test_output_planted_as_symlink_after_checks_is_replaced(self):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "out"

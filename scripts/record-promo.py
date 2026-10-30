@@ -260,14 +260,19 @@ def main(argv=None):
     if any(not path.is_file() for path in required):
         parser.error("build the compositor, shell and recorder first: "
                      "cmake --build build --target vela-compositor vela-shell vela-screen-record vela-input")
-    if set(names) & {"window-motion", "task-view", "settings"} and not (
-            build / "settings" / "vela-settings").is_file():
+    with_settings = set(names) & {"window-motion", "task-view", "settings"}
+    if with_settings and not (build / "settings" / "vela-settings").is_file():
         parser.error("build vela-settings for window-motion, task-view and settings scenes")
     if not capture.harness.gpu_available():
         parser.error("no GPU (/dev/dri/renderD*): Vela requires a Vulkan 1.4 GPU")
     for program in ("ffmpeg", "dbus-daemon", "pipewire", "wireplumber", "pw-cat", "pw-dump", "unshare"):
         if not shutil.which(program):
             parser.error(f"required program not found: {program}")
+    if with_settings:
+        try:
+            capture.check_user_namespaces()
+        except RuntimeError as error:
+            parser.error(str(error))
 
     output.mkdir(parents=True, exist_ok=True)
     # Everything is written here first, private and unpredictable, then
