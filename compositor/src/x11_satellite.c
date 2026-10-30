@@ -41,8 +41,8 @@ static bool in_path(const char *name)
             end = path + strlen(path);
         }
         char candidate[512];
-        int n = snprintf(candidate, sizeof(candidate), "%.*s/%s",
-            (int)(end - path), path == end ? "." : path, name);
+        int n = path == end ? snprintf(candidate, sizeof(candidate), "./%s", name)
+            : snprintf(candidate, sizeof(candidate), "%.*s/%s", (int)(end - path), path, name);
         if (n > 0 && (size_t)n < sizeof(candidate) && access(candidate, X_OK) == 0) {
             return true;
         }
@@ -117,6 +117,7 @@ bool vela_x11_satellite_start(struct vela_server *server)
         // The existing child supervisor restarts Satellite after a failure,
         // reusing the same socket FDs so DISPLAY never changes underneath apps.
         server->satellite.keep_fd = abstract_fd;
+        server->satellite.keep_fd2 = file_fd;
         server->satellite_listen_fd = file_fd;
         if (!vela_child_start(&server->satellite, server->loop, command)) {
             close(file_fd);
@@ -124,10 +125,9 @@ bool vela_x11_satellite_start(struct vela_server *server)
             unlink(path);
             server->satellite_listen_fd = -1;
             server->satellite.keep_fd = -1;
+            server->satellite.keep_fd2 = -1;
             return false;
         }
-        // process.c preserves only keep_fd across exec; clear FD_CLOEXEC on
-        // the second fd as well before the child is launched (see below).
         server->satellite_display = number;
         snprintf(server->satellite_socket_path, sizeof(server->satellite_socket_path), "%s", path);
         wlr_log(WLR_INFO, "Native-resolution X11 Satellite listening on DISPLAY=:%d", number);
@@ -150,6 +150,7 @@ void vela_x11_satellite_stop(struct vela_server *server)
     if (server->satellite_listen_fd >= 0) {
         close(server->satellite_listen_fd);
         server->satellite_listen_fd = -1;
+        server->satellite.keep_fd2 = -1;
     }
     if (server->satellite_socket_path[0]) {
         unlink(server->satellite_socket_path);
