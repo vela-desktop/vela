@@ -70,6 +70,9 @@ endfunction()
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
     ext-background-effect-v1)
 vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-output-preview-v1.xml vela-output-preview-v1)
+# KWin-style per-XWayland-client xdg-output geometry (developer-only).
+vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/xdg-output-unstable-v1.xml
+    xdg-output-unstable-v1)
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml
     ext-image-capture-source-v1)
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml
@@ -180,6 +183,7 @@ add_executable(vela-compositor
     src/workspace.c
     src/xwayland.c
     src/x11_satellite.c
+    src/x11_xdg_output.c
     src/render/allocator.c
     src/render/formats.c
     src/render/pass.c
