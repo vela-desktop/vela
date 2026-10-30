@@ -48,6 +48,8 @@
 static struct wl_compositor* compositor;
 static struct wl_shm* shm;
 static struct xdg_wm_base* wmBase;
+static struct wl_output* hostOutputs[16];
+static int hostOutputCount;
 static struct wp_viewporter* viewporter;
 static struct wp_fractional_scale_manager_v1* fractionalManager;
 static struct zxdg_decoration_manager_v1* decorationManager;
@@ -88,6 +90,7 @@ static int transientDelayMs = -1;
 static int transientMaximized;
 static int transientSiblings;
 static int fullscreenParent;
+static int fullscreenOutputIndex = -1;
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
@@ -95,6 +98,10 @@ static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, co
         compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
     } else if (!strcmp(interface, zxdg_decoration_manager_v1_interface.name)) {
         decorationManager = wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1);
+    } else if (!strcmp(interface, wl_output_interface.name)) {
+        if (hostOutputCount < 16) {
+            hostOutputs[hostOutputCount++] = wl_registry_bind(registry, name, &wl_output_interface, 1);
+        }
     } else if (!strcmp(interface, wl_shm_interface.name)) {
         shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     } else if (!strcmp(interface, xdg_wm_base_interface.name)) {
@@ -393,6 +400,13 @@ int main(int argc, char** argv)
             transientMaximized = 1;
         } else if (!strcmp(argv[arg], "--transient-siblings")) {
             transientSiblings = 1;
+        } else if (!strcmp(argv[arg], "--fullscreen-output") && arg + 1 < argc) {
+            fullscreenParent = 1;
+            fullscreenOutputIndex = atoi(argv[++arg]);
+            if (fullscreenOutputIndex < 0 || fullscreenOutputIndex >= 16) {
+                fprintf(stderr, "vela-pattern: fullscreen output index must be 0..15\\n");
+                return 1;
+            }
         } else if (!strcmp(argv[arg], "--fullscreen-parent")) {
             fullscreenParent = 1;
         } else if (!strcmp(argv[arg], "--app-id") && arg + 1 < argc) {
@@ -430,7 +444,12 @@ int main(int argc, char** argv)
     xdg_toplevel_set_title(toplevel, "vela-pattern");
     xdg_toplevel_set_app_id(toplevel, appId);
     if (fullscreenParent) {
-        xdg_toplevel_set_fullscreen(toplevel, NULL);
+        if (fullscreenOutputIndex >= hostOutputCount) {
+            fprintf(stderr, "vela-pattern: requested fullscreen output unavailable\\n");
+            return 1;
+        }
+        xdg_toplevel_set_fullscreen(toplevel,
+            fullscreenOutputIndex >= 0 ? hostOutputs[fullscreenOutputIndex] : NULL);
     }
     if (decorated) {
         if (!decorationManager) {
