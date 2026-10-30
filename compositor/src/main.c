@@ -4,6 +4,7 @@
 #include "server.h"
 #include "error_screen.h"
 #include "supervisor.h"
+#include "render/renderer.h"
 
 #include <getopt.h>
 #include <signal.h>
