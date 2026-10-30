@@ -33,6 +33,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
+| `bluetooth-adapter` | empty | The address of the Bluetooth adapter to use when there are two or more ([Bluetooth](bluetooth.md#62-the-model)), written by Settings > Bluetooth & devices > Advanced. Empty, or an adapter that isn't there: the first one. |
 | `brightness` | `yes` | Drive the monitors' own brightness ([brightness](brightness.md)) in the real session. `no` starts no `vela-brightness` and shows no brightness slider. |
 | `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. |
 | `keyboard-variant` | empty | Comma-separated XKB variants matching `keyboard-layout`. |
@@ -162,6 +163,8 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_LOCK` | Use another locker instead of `vela-lock`, for example `swaylock`. |
 | `VELA_POLKIT_AGENT` | Start this polkit agent instead of `vela-polkit-agent`; `0` starts none. Without it, Vela's agent starts only in a real (DRM) session, never nested or headless. |
 | `VELA_POLKIT_PROMPT` | For `vela-polkit-agent`: the dialog to run instead of `vela-polkit-prompt`. |
+| `VELA_BLUETOOTH` | Start this Bluetooth daemon instead of `vela-bluetooth` ([Bluetooth](bluetooth.md#61-start-and-lifetime)); `0` starts none. Without it, the daemon starts only in a real (DRM) session, never nested or headless. |
+| `VELA_RFKILL`, `VELA_SYSFS` | For tests: a fake `/dev/rfkill` and `/sys` for turning Bluetooth on. The shell reads `VELA_RFKILL` and `VELA_SYSFS`; of the daemons, only the test build `vela-bluetooth-testing` does, never the installed one. |
 | `VELA_BRIGHTNESS` | Start this helper instead of `vela-brightness` for each output (it gets `ddc <connector>` and the socket in `VELA_BRIGHTNESS_FD`); `0` starts none. Without it, helpers start only in a real (DRM) session. Either way, only DRM outputs get one. |
 | `VELA_BRIGHTNESS_FAKE` | A file of fake monitors ([brightness](brightness.md#12-tests)) for `vela-brightness`: helpers then start in any session and for every output, headless included, and never touch the hardware. For tests: only builds with `VELA_BUILD_TOOLS=ON` read it; the packages' `vela-brightness` ignores it. |
 | `VELA_BRIGHTNESS_SYSFS` | With `VELA_BRIGHTNESS_FAKE` only: a fake sysfs tree where the compositor looks for backlights and `vela-brightness` reads and writes them, straight into its files (never through logind). For tests, in builds with `VELA_BUILD_TOOLS=ON` only, like `VELA_BRIGHTNESS_FAKE`. |

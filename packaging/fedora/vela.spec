@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Fedora 44 x86_64 alpha package. Build exactly the selected Git commit:
+# Fedora 44 x86_64 Beta or Experimental package. Build exactly the selected Git commit:
 #   git archive --format=tar.gz --prefix=vela-0.1.0/ HEAD > SOURCES/vela-0.1.0.tar.gz
 #   rpmbuild -bb packaging/fedora/vela.spec --define "_topdir <rpmbuild-dir>" \
 #     --define "vela_version <CMake project version>" \
@@ -14,9 +14,18 @@
 %{!?vela_short:%global vela_short 0000000}
 %{!?vela_count:%global vela_count 0}
 
+%if "%{?vela_channel}" == "beta"
+Name:           vela
+Version:        %{vela_version}
+Release:        1%{?dist}
+Conflicts:      vela-git
+Obsoletes:      vela-git < 1.0.0
+%else
 Name:           vela-git
 Version:        %{vela_version}
 Release:        1.%{vela_count}.g%{vela_short}%{?dist}
+Conflicts:      vela
+%endif
 Summary:        Modern Wayland desktop environment with its own Vulkan renderer
 License:        GPL-3.0-or-later
 URL:            https://github.com/vela-desktop/vela
@@ -58,12 +67,14 @@ BuildRequires:  layer-shell-qt-devel
 BuildRequires:  python3
 BuildRequires:  pipewire-devel
 BuildRequires:  wireplumber-devel
-# sd-bus: the laptop backlight through logind (docs/brightness.md §5.3).
+# sd-bus: the laptop backlight through logind (docs/brightness.md §5.3), and
+# vela-bluetooth (docs/bluetooth.md).
 BuildRequires:  systemd-devel
 
 Requires:       wlroots >= 0.20
 # Tools required by the installed vela-update command even without a build.
 Requires:       git
+Requires:       curl
 Requires:       util-linux
 Requires:       rpm
 Requires:       dnf5
@@ -82,15 +93,14 @@ Requires:       hicolor-icon-theme
 
 # Public, attested binary downloads (curl + cosign) and local RPM build fallback.
 # Keep the build toolchain optional for systems using prebuilt releases.
-Recommends:     curl
-Recommends:     python3
+# curl and python3 are hard requirements of the Beta updater.
 # Cosign is an optional verification prerequisite; Fedora 44 does not ship it
 # in the default repositories, so document the upstream RPM installation.
 # No GitHub CLI is required by vela-update for public alpha releases.
 Recommends:     rpm-build
 Recommends:     dnf5-plugins
 Recommends:     xdg-desktop-portal-wlr
-Recommends:     xdg-desktop-portal-kde
+Recommends:     xdg-desktop-portal-gtk
 Recommends:     breeze-icon-theme
 Recommends:     NetworkManager
 Recommends:     bluez
@@ -118,6 +128,7 @@ Vulkan renderer, Qt Quick shell, file manager, settings, and lock screen.
 %install
 %cmake_install
 install -Dm755 packaging/vela-update %{buildroot}%{_bindir}/vela-update
+install -Dm755 packaging/vela-update-beta %{buildroot}%{_libexecdir}/vela/vela-update-beta
 install -Dm644 packaging/verify-attestation.py %{buildroot}%{_libexecdir}/vela/verify-attestation.py
 
 %files

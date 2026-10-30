@@ -316,14 +316,8 @@ Window {
                     text: qsTr("Email")
                     onClicked: { FileActions.sendByEmail(root.paths); root.close() }
                 }
-                Choice {
-                    visible: FileActions.canBluetooth() && Status.bluetoothAvailable
-                    icon.name: "preferences-system-bluetooth"
-                    text: qsTr("Bluetooth")
-                    onClicked: { FileActions.sendByBluetooth(root.paths); root.close() }
-                }
                 Note {
-                    visible: !FileActions.canEmail() && !(FileActions.canBluetooth() && Status.bluetoothAvailable)
+                    visible: !FileActions.canEmail()
                     text: qsTr("No apps to share with.")
                 }
             }

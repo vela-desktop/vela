@@ -20,33 +20,35 @@
 #include <wayland-server-core.h>
 #include <wlr/util/log.h>
 
-void vela_shell_send(struct vela_server *server, const char *line)
+bool vela_shell_send(struct vela_server *server, const char *line)
 {
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
     if (!runtime_dir || !server->socket_name[0]) {
-        return;
+        return false;
     }
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     if (!vela_format(address.sun_path, sizeof(address.sun_path), "%s/vela-shell-%s.sock", runtime_dir,
             server->socket_name)) {
-        return;
+        return false;
     }
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if (fd < 0) {
-        return;
+        return false;
     }
+    bool sent = false;
     if (connect(fd, (struct sockaddr *)&address, sizeof(address)) == 0) {
         // Line and newline in a single send: the shell reads by lines.
         size_t length = strlen(line);
         char *message = malloc(length + 1);
         memcpy(message, line, length);
         message[length] = '\n';
-        send(fd, message, length + 1, MSG_NOSIGNAL);
+        sent = send(fd, message, length + 1, MSG_NOSIGNAL) == (ssize_t)(length + 1);
         free(message);
     } else {
         wlr_log(WLR_DEBUG, "Shell not reachable on %s", address.sun_path);
     }
     close(fd);
+    return sent;
 }
 
 // -------------------------------------------------------------- supervision --

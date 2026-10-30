@@ -534,14 +534,26 @@ void vela_view_app_id_changed(struct vela_view *view)
 
 // Keep a transient above its fullscreen ancestor, but do not globally
 // elevate unrelated windows above fullscreen content.
-static bool transient_has_fullscreen_ancestor(struct vela_view *view)
+bool vela_view_is_transient_of(struct vela_view *view, struct vela_view *ancestor)
+{
+    struct vela_view *parent = view_parent(view);
+    for (int depth = 0; parent && depth < 64; ++depth) {
+        if (parent == ancestor) {
+            return true;
+        }
+        parent = view_parent(parent);
+    }
+    return false;
+}
+
+static bool transient_has_visible_fullscreen_ancestor(struct vela_view *view)
 {
     struct vela_view *parent = view_parent(view);
     for (int depth = 0; parent && depth < 64; ++depth) {
         if (!parent->mapped) {
             return false;
         }
-        if (parent->fullscreen) {
+        if (parent->fullscreen && parent->tree->node.parent == view->server->layers.fullscreen) {
             return true;
         }
         parent = view_parent(parent);
@@ -551,7 +563,9 @@ static bool transient_has_fullscreen_ancestor(struct vela_view *view)
 
 static void update_transient_layer(struct vela_view *view)
 {
-    if (!view->mapped || view->fullscreen) {
+    // Outgoing views are owned by the workspace slide until finish_switch.
+    if (!view->mapped || view->fullscreen
+        || view->tree->node.parent == view->server->layers.windows_out) {
         return;
     }
     // A formerly fullscreen child must return to the normal window layer
@@ -559,14 +573,14 @@ static void update_transient_layer(struct vela_view *view)
     if (!view_parent(view) && view->tree->node.parent != view->server->layers.fullscreen) {
         return;
     }
-    struct vela_tree *target = transient_has_fullscreen_ancestor(view)
+    struct vela_tree *target = transient_has_visible_fullscreen_ancestor(view)
         ? view->server->layers.fullscreen : view->server->layers.windows;
     if (view->tree->node.parent != target) {
         vela_node_reparent(&view->tree->node, target);
     }
 }
 
-static void update_transient_layers(struct vela_server *server)
+void vela_views_sync_transient_layers(struct vela_server *server)
 {
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
@@ -602,7 +616,7 @@ void vela_view_parent_changed(struct vela_view *view)
 {
     update_handle_parent(view);
     // Descendants of this view can also need to leave/enter fullscreen layer.
-    update_transient_layers(view->server);
+    vela_views_sync_transient_layers(view->server);
 }
 
 static void handle_taskbar_activate(struct wl_listener *listener, void *data)
@@ -970,8 +984,9 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
         }
         vela_view_refresh_decoration(view); // fullscreen hides the bar
         if (view->mapped) {
-            update_transient_layers(view->server);
+            vela_views_sync_transient_layers(view->server);
             vela_views_raise_transients(view);
+            vela_fullscreen_restack(view->server);
         }
         return;
     }
@@ -992,8 +1007,9 @@ void vela_view_set_fullscreen(struct vela_view *view, bool on)
     }
     vela_view_refresh_decoration(view);
     if (view->mapped) {
-        update_transient_layers(view->server);
+        vela_views_sync_transient_layers(view->server);
         vela_views_raise_transients(view);
+        vela_fullscreen_restack(view->server);
     }
 }
 
@@ -1043,6 +1059,9 @@ void vela_view_set_minimized(struct vela_view *view, bool on)
         vela_view_set_activated(view, false);
         vela_focus_refocus(server);
     }
+    // A minimized, nonfocused fullscreen view may have been visually above
+    // the next fullscreen view. Promote the next eligible view immediately.
+    vela_fullscreen_restack(server);
 }
 
 // Brings it to `output` at (x, y) (put back inside the usable area, maximized,
@@ -1197,6 +1216,9 @@ void vela_view_mapped(struct vela_view *view)
         view->target_x = area.x + (area.width - frame.width) / 2 - geometry.x;
         view->target_y = area.y + (area.height - frame.height) / 2 - geometry.y;
     }
+    // Focus/restack must test the real output, not the default (0, 0)
+    // position before the opening animation starts.
+    vela_node_set_position(&view->tree->node, view->target_x, view->target_y);
     wl_list_insert(&server->views, &view->link);
     vela_workspaces_view_mapped(server, view);
     struct vela_view *parent = view_parent(view);
@@ -1209,7 +1231,7 @@ void vela_view_mapped(struct vela_view *view)
     vela_node_set_enabled(&view->tree->node, vela_view_on_current_workspace(view));
     // An already-mapped child may need to rejoin the fullscreen layer when
     // its parent maps again after a temporary unmap.
-    update_transient_layers(server);
+    vela_views_sync_transient_layers(server);
     create_handles(view);
     if (vela_view_stays_below(view)) {
         vela_view_keep_below(view); // no keyboard either: it is a backdrop
@@ -1248,7 +1270,7 @@ void vela_view_unmapped(struct vela_view *view)
     vela_window_capture_destroy(view->capture);
     view->capture = NULL;
     forget(view);
-    update_transient_layers(view->server);
+    vela_views_sync_transient_layers(view->server);
     vela_workspaces_announce(view->server);
 }
 
@@ -1273,7 +1295,7 @@ void vela_view_destroy(struct vela_view *view)
     view->capture = NULL;
     view->mapped = false;
     forget(view);
-    update_transient_layers(view->server);
+    vela_views_sync_transient_layers(view->server);
     struct wl_listener *all[VIEW_LISTENERS];
     listeners(view, all);
     for (int i = 0; i < VIEW_LISTENERS; ++i) {
@@ -1532,7 +1554,9 @@ void vela_views_init(struct vela_server *server)
     // the standard ext-* protocols.
     server->ext_toplevels = wlr_ext_foreign_toplevel_list_v1_create(display, 1);
     wlr_ext_image_copy_capture_manager_v1_create(display, 1);
-    wlr_ext_output_image_capture_source_manager_v1_create(display, 1);
+    if (!vela_output_capture_manager_create(server)) {
+        wlr_log(WLR_ERROR, "Cannot create output capture manager");
+    }
     struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 *capture
         = wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(display, 1);
     vela_listen(&capture->events.new_request, &server->new_capture_request, handle_capture_request);
@@ -1581,7 +1605,7 @@ bool vela_views_fullscreen_on(struct vela_server *server, struct vela_output *ou
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
         if (view->mapped && view->fullscreen && !view->minimized && vela_view_on_current_workspace(view)
-            && vela_view_output(view) == output) {
+            && view->tree->node.parent == server->layers.fullscreen && vela_view_output(view) == output) {
             return true;
         }
     }
@@ -1675,6 +1699,9 @@ void vela_views_check_outputs(struct vela_server *server)
     free(server->seen_outputs);
     server->seen_outputs = now;
     server->seen_output_count = n;
+    // Hotplug rescue may have moved a fullscreen view into another monitor's
+    // foreground without altering its Wayland fullscreen protocol state.
+    vela_fullscreen_restack(server);
 }
 
 static void handle_output_check(void *data)

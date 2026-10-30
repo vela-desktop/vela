@@ -51,8 +51,8 @@ vela_server_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-
 vela_server_protocol(${PROJECT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml
     wlr-layer-shell-unstable-v1)
 
-# Protocols wlroots doesn't implement: we implement them, so the interface code
-# is needed too.
+# Protocols implemented by Vela need interface code, including the output
+# capture adapter and its referenced foreign-toplevel interface.
 set(VELA_OWN_PROTOCOL_SOURCES)
 function(vela_own_protocol xml name)
     set(header ${VELA_GENERATED_DIR}/${name}-protocol.h)
@@ -70,6 +70,10 @@ endfunction()
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
     ext-background-effect-v1)
 vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-output-preview-v1.xml vela-output-preview-v1)
+vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml
+    ext-image-capture-source-v1)
+vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml
+    ext-foreign-toplevel-list-v1)
 
 # Client side, to talk to the host compositor when Vela runs in a window
 # (nested.c).
@@ -142,6 +146,7 @@ add_executable(vela-compositor
     src/a11y.c
     src/error_screen.c
     src/bindings.c
+    src/bluetooth.c
     src/brightness.c
     src/command.c
     src/decoration.c
@@ -181,6 +186,7 @@ add_executable(vela-compositor
     src/render/texture.c
     src/render/vulkan.c
     src/scene/capture.c
+    src/scene/output_capture.c
     src/scene/effects.c
     src/scene/frame.c
     src/scene/ready.c
@@ -200,6 +206,13 @@ target_compile_definitions(vela-compositor PRIVATE WLR_USE_UNSTABLE
 target_compile_options(vela-compositor PRIVATE -Wall -Wextra -Wno-unused-parameter
     -Wno-missing-field-initializers)
 set_target_properties(vela-compositor PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+# logind lock hints are best-effort when libsystemd is available.
+pkg_check_modules(VELA_LOCK_SYSTEMD IMPORTED_TARGET libsystemd)
+if(VELA_LOCK_SYSTEMD_FOUND)
+    target_compile_definitions(vela-compositor PRIVATE VELA_HAVE_SYSTEMD_LOCK_HINT=1)
+    target_link_libraries(vela-compositor PRIVATE PkgConfig::VELA_LOCK_SYSTEMD)
+endif()
+
 target_link_libraries(vela-compositor PRIVATE
     vela-pure
     PkgConfig::WLROOTS
@@ -308,6 +321,33 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-wait-arrays-oom-test PRIVATE vela-pure PkgConfig::VULKAN)
     set_target_properties(vela-wait-arrays-oom-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.wait-arrays-oom COMMAND vela-wait-arrays-oom-test)
+
+    # Production readback helpers: packed alpha, untouched padding and Vulkan
+    # allocation/map failures, with Vulkan entry points stubbed instead of a GPU.
+    add_executable(vela-readback-test tests/readback_test.c src/render/formats.c
+        src/render/wait_arrays.c ${VELA_SHADERS})
+    target_include_directories(vela-readback-test PRIVATE src ${VELA_SHADER_DIR} ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-readback-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-readback-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-readback-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-readback-test PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::VULKAN PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN)
+    set_target_properties(vela-readback-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.readback COMMAND vela-readback-test)
+
+    # Real output-source damage/idle policy with GPU work replaced by terminal
+    # frame notifications; no private wlroots session state is accessed.
+    add_executable(vela-capture-damage-test tests/capture_damage_test.c ${VELA_OWN_PROTOCOL_SOURCES})
+    target_include_directories(vela-capture-damage-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-capture-damage-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
+    target_compile_options(vela-capture-damage-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter)
+    target_link_options(vela-capture-damage-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-capture-damage-test PRIVATE PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN PkgConfig::VULKAN m)
+    set_target_properties(vela-capture-damage-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.capture-damage COMMAND vela-capture-damage-test)
 
     # Linux /proc enumeration and SIGTERM/SIGKILL child cleanup, no GPU.
     add_executable(vela-supervisor-children-test

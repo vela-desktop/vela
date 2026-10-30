@@ -64,6 +64,43 @@ check fails if the requested layer is missing. These are GPU-backed **headless**
 tests: passing them does not certify direct KMS, real display power cycling or
 Intel ANV. See [the physical hardware matrix](hardware.md#gpu-resource-cleanup-and-driver-regression-checks).
 
+## GPU CI policy
+
+This is the **normative source** for when self-hosted GPU CI must run.
+Other documents link here instead of restating the requirements.
+
+- **Required before merging GPU-affecting changes:** obtain successful full
+  GPU-labeled CTest suites from **both** manually dispatched workflows, AMD
+  and NVIDIA, on the **exact candidate commit SHA**. This covers compositor,
+  renderer, Vulkan/DRM, synchronization, and GPU-dependent tests, including
+  changes that could alter GPU behavior indirectly. Do not treat a passing
+  run on an older commit or a merely similarly named branch as evidence.
+- **Exempt from GPU dispatch:** documentation-only, translation-only, and
+  other changes confirmed to have no GPU impact. Ordinary hosted CI still
+  applies. An ambiguous change is treated as GPU-affecting until reviewed.
+- **Required before every release:** both GPU suites must pass on the
+  exact release candidate revision, even if its last changes were only
+  documentation or packaging. Known reproducible failures are release
+  blockers until fixed, explicitly retested and reclassified.
+- **Pass means:** the workflows actually build the selected revision on
+  the expected hardware, run the full `gpu`-labeled CTest suite, and reject
+  missing, failed or skipped test cases. `vulkaninfo` by itself is not
+  a pass; a headless GPU pass does not certify physical DRM/KMS, VT
+  switching, screen sharing, or suspend/resume.
+- **Runner safety:** only manually dispatch trusted, reviewed code to
+  personal self-hosted machines; use unprivileged runner accounts with no
+  personal credentials, privileged sudo, or writable secrets.
+
+The two runners are AMD Radeon RX 9070 XT (Mesa/RADV, CachyOS) and NVIDIA
+GeForce RTX 4070 Laptop GPU (proprietary driver, Arch/CachyOS).
+
+**Enforcement today:** this is a maintainer/release policy, **not yet an
+automatic GitHub branch-protection gate**. Both workflows currently use
+`workflow_dispatch` only. A future automated PR status check could
+validate completed run conclusions, their exact commit SHAs, coverage and
+exemptions, and report a required pass/fail result. Do not label the current
+manual policy as an automatically enforced merge requirement.
+
 ## Manual real-GPU CI (self-hosted AMD)
 
 [GPU CI - AMD (manual)](../.github/workflows/gpu-amd.yml) is **only**
@@ -123,6 +160,19 @@ branch. As with AMD, do not dispatch unreviewed pull request code to a
 persistent personal machine: the build and tests execute locally. Use
 a restricted unprivileged runner account without personal credentials,
 and keep the laptop awake during a run.
+
+## First-party CPU/GPU code coverage
+
+The [coverage guide](code-quality-integrations.md#codecov-first-party-cc-coverage-cpu-and-optional-gpus)
+describes GCC line coverage filtered to production C/C++ sources and
+subsystem summaries. The existing GPU test workflows have an optional
+**Collect coverage** dispatch input (off by default). When enabled, their
+instrumented builds collect real AMD/NVIDIA execution hits only if the
+full GPU suite passes with no skips. The report is transferred as a GitHub
+artifact to a separate GitHub-hosted Codecov uploader, never uploaded
+with extra privileges from a self-hosted runner. Install `gcovr` and GCC
+on the runners before opting in; ordinary manual GPU tests are unchanged.
+Codecov GPU flags are tied to the sampled commit SHA and not carried forward.
 
 ## Prerequisites
 

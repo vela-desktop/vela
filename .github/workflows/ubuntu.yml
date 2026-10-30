@@ -1,6 +1,7 @@
 name: Ubuntu 26.10 build
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [main]
@@ -12,6 +13,11 @@ permissions:
 jobs:
   ubuntu-build:
     name: Compile and test (Ubuntu 26.10)
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     runs-on: ubuntu-latest
     container:
       image: ubuntu:26.10
@@ -46,7 +52,10 @@ jobs:
           persist-credentials: false
       - name: Configure all desktop components
         run: |
+          channel=experimental
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then channel=beta; fi
           cmake -S . -B build-ubuntu -G Ninja \
+            -DVELA_PACKAGE_CHANNEL="$channel" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DVELA_BUILD_COMPOSITOR=ON \
             -DVELA_BUILD_SHELL=ON \
@@ -72,7 +81,7 @@ jobs:
             exit 1
           fi
           ctest --test-dir build-ubuntu --output-on-failure -LE 'gpu|distro-packaging'
-      - name: Build experimental DEB
+      - name: Build channel-specific DEB
         run: |
           set -euo pipefail
           cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
@@ -89,15 +98,41 @@ jobs:
           done
           # Verify the commit stamp without hard-coding the next project version.
           deb_version=$(dpkg-deb -f build-ubuntu/packages/*.deb Version)
-          case "$deb_version" in
-            *"+git${GITHUB_SHA:0:7}") ;;
-            *) echo "Unexpected Ubuntu DEB version: $deb_version" >&2; exit 1 ;;
-          esac
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            test "$deb_version" = "${GITHUB_REF_NAME#v}"
+            test "$(dpkg-deb -f build-ubuntu/packages/*.deb Package)" = vela
+          else
+            case "$deb_version" in
+              *"+git${GITHUB_SHA:0:7}") ;;
+              *) echo "Unexpected experimental DEB version: $deb_version" >&2; exit 1 ;;
+            esac
+          fi
+          # Both channels must replace each other without leaving file conflicts.
+          other=vela
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then other=vela-git; fi
+          for field in Conflicts Replaces; do
+            dpkg-deb -f build-ubuntu/packages/*.deb "$field" |
+              tr ',' '\n' | grep -Eq "^[[:space:]]*${other}([[:space:]]|$)" || {
+                echo "Missing DEB $field metadata for $other" >&2
+                exit 1
+              }
+          done
           dpkg-deb --contents build-ubuntu/packages/*.deb > /tmp/vela-deb-files.txt
           cat /tmp/vela-deb-files.txt
           grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
           grep -q '/usr/bin/vela-update$' /tmp/vela-deb-files.txt
           grep -q '/usr/share/wayland-sessions/vela.desktop$' /tmp/vela-deb-files.txt
+          grep -q '/usr/libexec/vela/vela-bluetooth$' /tmp/vela-deb-files.txt
+          # Bluetooth needs only BlueZ, recommended (docs/bluetooth.md §10).
+          dpkg-deb -f build-ubuntu/packages/*.deb Recommends | tr ',' '\n' | grep -Eq '^[[:space:]]*bluez([[:space:]]|$)' || {
+            echo "Missing DEB recommendation: bluez" >&2
+            exit 1
+          }
+      - name: Attest official Ubuntu Beta DEB provenance
+        if: startsWith(github.ref, 'refs/tags/v0.')
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: build-ubuntu/packages/*.deb
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vela-ubuntu-26.10-deb
@@ -124,7 +159,9 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends file dpkg-dev
           apt-get install -y --no-install-recommends ./deb/*.deb
-          dpkg-query -W -f='${Status}\n' vela-git | grep -Fx 'install ok installed'
+          pkg=vela-git
+          case "$GITHUB_REF" in refs/tags/v0.*) pkg=vela ;; esac
+          dpkg-query -W -f='${Status}\n' "$pkg" | grep -Fx 'install ok installed'
           # --no-install-recommends must still pull in both runtime icon packages.
           for dependency in breeze-icon-theme qt6-svg-plugins; do
             dpkg-query -W -f='${Status}\n' "$dependency" | grep -Fx 'install ok installed'
@@ -134,6 +171,8 @@ jobs:
           test -x /usr/bin/vela-compositor
           test -x /usr/bin/vela-session
           test -x /usr/bin/vela-update
+          test -x /usr/libexec/vela/vela-bluetooth
+          ldd /usr/libexec/vela/vela-bluetooth | grep -F libsystemd.so
           /usr/bin/vela-update --help >/dev/null
           test -f /usr/share/wayland-sessions/vela.desktop
           # Ensure session entry references an executable available in the clean image.
@@ -145,7 +184,7 @@ jobs:
             *) command -v "$session_bin" >/dev/null ;;
           esac
           # Inspect all installed ELF objects for unresolved DT_NEEDED dependencies.
-          dpkg-query -L vela-git | while IFS= read -r path; do
+          dpkg-query -L "$pkg" | while IFS= read -r path; do
             if [ -f "$path" ] && file -b "$path" | grep -q '^ELF '; then
               if ldd "$path" 2>&1 | grep -q 'not found'; then
                 echo "Missing ELF dependency: $path" >&2
@@ -165,7 +204,40 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           set -eu
-          apt-get remove -y vela-git
+          pkg=vela-git
+          case "$GITHUB_REF" in refs/tags/v0.*) pkg=vela ;; esac
+          apt-get remove -y "$pkg"
           test ! -e /usr/bin/vela-compositor
           test ! -e /usr/bin/vela-update
           test ! -e /usr/share/wayland-sessions/vela.desktop
+      - name: Exercise native APT channel replacements
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eu
+          work=$(mktemp -d)
+          for package in vela-channel-ci-git vela-channel-ci; do
+            if [ "$package" = vela-channel-ci ]; then
+              other=vela-channel-ci-git
+            else
+              other=vela-channel-ci
+            fi
+            mkdir -p "$work/$package/DEBIAN" "$work/$package/usr/share/vela-channel-ci"
+            printf 'Package: %s\nVersion: 0.1.0\nArchitecture: all\nMaintainer: Vela CI <ci@example.invalid>\nDescription: Disposable packaging migration fixture\nConflicts: %s\nReplaces: %s\n' \
+              "$package" "$other" "$other" > "$work/$package/DEBIAN/control"
+            printf '%s\n' "$package" > "$work/$package/usr/share/vela-channel-ci/marker"
+            dpkg-deb --build "$work/$package" "$work/$package.deb"
+          done
+          apt-get install -y "$work/vela-channel-ci-git.deb"
+          apt-get install -y --allow-downgrades "$work/vela-channel-ci.deb"
+          dpkg-query -W -f='${Status}' vela-channel-ci | grep -Fx 'install ok installed'
+          if dpkg-query -W -f='${Status}' vela-channel-ci-git 2>/dev/null | grep -Fx 'install ok installed'; then
+            echo "Old experimental fixture survived Beta replacement" >&2; exit 1
+          fi
+          apt-get install -y --allow-downgrades --reinstall "$work/vela-channel-ci-git.deb"
+          dpkg-query -W -f='${Status}' vela-channel-ci-git | grep -Fx 'install ok installed'
+          if dpkg-query -W -f='${Status}' vela-channel-ci 2>/dev/null | grep -Fx 'install ok installed'; then
+            echo "Old Beta fixture survived Experimental replacement" >&2; exit 1
+          fi
+          apt-get purge -y vela-channel-ci-git
+          rm -rf -- "$work"

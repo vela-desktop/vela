@@ -62,6 +62,7 @@ struct vela_lock {
     struct vela_lock_retry retry; // registration timeout and bounded retry/cooldown
     bool fatal_exit_pending; // cannot safely continue this session
     struct wl_event_source *fatal_timer;
+    struct wl_event_source *pointer_retarget_idle; // after output-layout cursor warps
     struct vela_output **fatal_waiting;
     int fatal_waiting_count;
     int fatal_waiting_capacity;

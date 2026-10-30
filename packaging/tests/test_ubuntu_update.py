@@ -23,6 +23,14 @@ def record(**values):
         log.write(json.dumps(dict(tool=name, args=args, **values)) + "\n")
 
 if name == "dpkg-query":
+    if args[-1] == "vela":
+        if os.environ.get("TEST_BETA_INSTALLED") == "1":
+            if any('Status' in arg and 'Version' not in arg for arg in args):
+                print("install ok installed")
+            else:
+                print("install ok installed\t0.1.0")
+            sys.exit(0)
+        sys.exit(1)
     if not state_file.exists():
         sys.exit(1)
     state = json.loads(state_file.read_text())
@@ -102,6 +110,13 @@ class UbuntuFixture(UpdateFixture):
 
 
 class UbuntuUpdates(UbuntuFixture):
+
+    def test_installed_beta_defaults_to_beta_helper_on_ubuntu(self):
+        self.env["TEST_BETA_INSTALLED"] = "1"
+        result = self.run_update("--check", source=False)
+        self.assertIn("beta-dispatched", result.stdout)
+        self.assertEqual(self.calls("cmake"), [])
+
     def test_bootstrap_builds_selected_commit_and_installs_local_deb(self):
         self.run_update("--build", "--jobs", "1")
         configure = [c for c in self.calls("cmake")

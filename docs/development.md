@@ -10,7 +10,7 @@ Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20
 
 ## Distribution dependencies
 
-These packages are for **building Vela from source**, not the much smaller requirements of the [user installer](installation.md). Keep them synchronized with the CI's build dependencies.
+These packages are for **building Vela from source**, not the runtime requirements of the [user installer](installation.md). Arch `vela-git` deliberately installs Core and Desktop together: Konsole, Breeze icons, `xdg-desktop-portal` and the wlr screen-capture backend are default dependencies. `xdg-desktop-portal-gtk` is installed for generic application portals, while `xdg-desktop-portal-kde` and Plasma Workspace are not required; an already installed KDE portal remains an optional fallback if GTK is missing. Optional extras include KDE Connect, BlueZ for native Bluetooth management, and Bluedevil plus BlueZ OBEX for file sending from Files. `vela-update --build` installs `base-devel` through pacman only when a local build is required; makepkg installs the selected PKGBUILD's other build dependencies. `git`, `curl`, `sudo` and `util-linux` are runtime dependencies of the updater. On unattended local builds pacman and makepkg use `--noconfirm` (sudo must already allow authentication without interaction); an installed pacman hook warns after `qt6-base` upgrades because `vela-shell` links `Qt6::GuiPrivate`, and `vela-update --force --build` rebuilds the current revision when Qt's private ABI changes. Keep them synchronized with the CI's build dependencies.
 
 <details>
 <summary><b>Arch / CachyOS / EndeavourOS</b></summary>
@@ -483,7 +483,10 @@ Run the complete suite with:
 ctest --test-dir build --output-on-failure
 ```
 
-The GPU-dependent functional and sharpness suites are part of CTest as well. They are run regularly on Vela's primary development machine with an AMD Radeon RX 9070 XT and Mesa/RADV, where they currently pass in full. GitHub-hosted CI skips those suites because it does not expose a usable DRM/Vulkan device.
+The GPU-dependent functional and sharpness suites are part of CTest.
+Hosted runners skip them for lack of a usable DRM/Vulkan device; the
+[GPU CI policy](ci-quality.md#gpu-ci-policy) defines required real-hardware
+testing and per-release verification.
 
 See [testing.md](testing.md) for individual suites, GPU requirements and the headless harness.
 

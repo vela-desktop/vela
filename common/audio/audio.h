@@ -16,6 +16,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
+#include <QPointer>
 #include <QSet>
 #include <QTimer>
 #include <QVariant>
@@ -23,7 +24,9 @@
 
 #include <functional>
 
-class QDBusMessage;
+namespace vela::bluetooth {
+class Bluetooth;
+}
 
 namespace vela::audio {
 
@@ -45,7 +48,7 @@ class Audio : public QObject {
     //   channels, battery, mutePending, muteError, defaultPending,
     //   defaultError, device, stereo, balance, canFormat, rate, format, bits,
     //   rates, formats, fixedRate, fixedFormat, converted}]; battery: a
-    //   Bluetooth headset's charge (BlueZ), -1 if it doesn't say; device:
+    //   Bluetooth headset's charge (vela-bluetooth), -1 if it doesn't say; device:
     //   its device's name, empty for virtual ones; stereo: it has a left and
     //   a right side, and balance (-1 left, 0 even, 1 right) means
     //   something.
@@ -113,6 +116,9 @@ public:
     // How an app's raw ids become a name and an icon (the shell's AppModel,
     // Settings' own index). Without one: the stream's own name and icon.
     void setAppResolver(AppResolver resolver);
+    // Bluetooth headsets' batteries come from the process's client of
+    // vela-bluetooth (docs/bluetooth.md §8); without one, none is shown.
+    void setBluetooth(vela::bluetooth::Bluetooth* bluetooth);
     Core* core() const { return m_core; }
     Config* config() const { return m_config; }
     // The shell's, once per session: "Automatic" when nobody configured the
@@ -193,10 +199,6 @@ signals:
     void restartPendingChanged();
     void restartErrorChanged();
 
-private Q_SLOTS:
-    // BlueZ's PropertiesChanged on a headset: its battery.
-    void onBluetoothProperties(const QDBusMessage& message);
-
 private:
     // An action waiting for the server. Optimistic ones are shown at once
     // and dropped when confirmed or after 500 ms (a profile: 3 s); the
@@ -231,8 +233,8 @@ private:
     void loadNames();
     QString nameOf(const Endpoint& e) const;
     void writeRule(const QString& key, const DeviceRule& rule, const QVariant& shown);
-    // A Bluetooth output's battery: read once, then followed.
-    void watchBattery(const QString& path);
+    // vela-bluetooth's devices changed: the batteries, if they did.
+    void readBatteries();
 
     Core* m_core;
     Config* m_config;
@@ -243,10 +245,8 @@ private:
     QHash<QString, double> m_writes; // volumes and balances waiting for the next loop turn
     QTimer m_flush;
     QTimer m_expiry;
-    QHash<QString, int> m_batteries; // BlueZ device path -> percent
-    QSet<QString> m_batteryWatched;
-    QHash<QString, quint64> m_batteryVersions; // guards late BlueZ replies
-    quint64 m_nextBatteryVersion = 0;
+    QPointer<vela::bluetooth::Bluetooth> m_bluetooth;
+    QHash<QString, int> m_batteries; // Bluetooth address -> percent, of those that report it
 
     QVariantList m_outputs;
     QVariantList m_inputs;

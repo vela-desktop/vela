@@ -236,6 +236,7 @@ static void destroy_target(struct vela_target *target);
 
 static void destroy(struct vela_renderer *r)
 {
+    vela_renderer_cancel_readbacks(r);
     VkDevice device = r->vk->device;
     if (device) {
         vkDeviceWaitIdle(device);
@@ -590,6 +591,31 @@ VkCommandBuffer vela_renderer_upload_commands(struct vela_renderer *r)
 
 // ------------------------------------------------------------- staging --
 
+static bool make_readback_room(struct vela_renderer *r, VkDeviceSize size)
+{
+    if (size > VELA_READBACK_MAX_BYTES) return false;
+    VkDeviceSize allocated = 0;
+    for (int i = 0; i < r->staging_count; ++i) {
+        if (r->staging[i].readback) allocated += r->staging[i].allocation_size;
+    }
+    const uint64_t done = vela_renderer_completed(r);
+    for (int i = 0; i < r->staging_count && allocated > VELA_READBACK_MAX_BYTES - size;) {
+        struct staging_chunk *chunk = &r->staging[i];
+        // Cancellation can release the CPU pin before the GPU finishes. Its
+        // allocation still counts, and its submission point still protects it.
+        if (chunk->readback && !chunk->readers && chunk->point != UINT64_MAX && chunk->point <= done) {
+            allocated -= chunk->allocation_size;
+            vkDestroyBuffer(r->vk->device, chunk->buffer, NULL);
+            vkFreeMemory(r->vk->device, chunk->memory, NULL);
+            memmove(chunk, chunk + 1, (size_t)(r->staging_count - i - 1) * sizeof(*chunk));
+            --r->staging_count;
+        } else {
+            ++i;
+        }
+    }
+    return allocated <= VELA_READBACK_MAX_BYTES - size;
+}
+
 static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDeviceSize size, bool readback)
 {
     VkDevice device = r->vk->device;
@@ -605,6 +631,12 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
     }
     VkMemoryRequirements requirements;
     vkGetBufferMemoryRequirements(device, chunk.buffer, &requirements);
+    chunk.allocation_size = requirements.size;
+    if (readback && !make_readback_room(r, chunk.allocation_size)) {
+        ++r->readback_rejected;
+        vkDestroyBuffer(device, chunk.buffer, NULL);
+        return NULL;
+    }
     const VkMemoryPropertyFlags host = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     // Reading uncached memory goes at a fraction of the speed: a 1440p
     // capture took longer than a frame at 180 Hz, and the output missed
@@ -643,9 +675,17 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
             wlr_log(WLR_INFO, "Vulkan readback staging: uncached fallback (capture performance may be reduced)");
         }
     }
-    vkBindBufferMemory(device, chunk.buffer, chunk.memory, 0);
+    if (vkBindBufferMemory(device, chunk.buffer, chunk.memory, 0) != VK_SUCCESS) {
+        vkDestroyBuffer(device, chunk.buffer, NULL);
+        vkFreeMemory(device, chunk.memory, NULL);
+        return NULL;
+    }
     void *mapped = NULL;
-    vkMapMemory(device, chunk.memory, 0, VK_WHOLE_SIZE, 0, &mapped);
+    if (vkMapMemory(device, chunk.memory, 0, VK_WHOLE_SIZE, 0, &mapped) != VK_SUCCESS || !mapped) {
+        vkDestroyBuffer(device, chunk.buffer, NULL);
+        vkFreeMemory(device, chunk.memory, NULL);
+        return NULL;
+    }
     chunk.data = mapped;
     r->staging = vela_grow(r->staging, &r->staging_capacity, r->staging_count + 1, sizeof(*r->staging));
     r->staging[r->staging_count] = chunk;
@@ -667,7 +707,7 @@ static bool stage(struct vela_renderer *r, VkDeviceSize size, bool readback, str
     }
     for (int i = 0; i < r->staging_count && !chosen; ++i) {
         struct staging_chunk *chunk = &r->staging[i];
-        if (chunk->readback == readback && chunk->point != UINT64_MAX && chunk->point <= done && chunk->size >= size) {
+        if (chunk->readback == readback && !chunk->readers && chunk->point != UINT64_MAX && chunk->point <= done && chunk->size >= size) {
             chunk->used = 0;
             chosen = chunk;
         }
@@ -738,8 +778,8 @@ static void semaphore_used_until(struct vela_renderer *r, VkSemaphore semaphore,
     r->used_semaphores[r->used_semaphore_count++] = (struct used_semaphore) { point, semaphore, release };
 }
 
-uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
-    int *release_fd)
+static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
+    int *release_fd, uint64_t wait_point)
 {
     struct vela_vulkan *vk = r->vk;
     if (release_fd) {
@@ -761,10 +801,12 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
         .commandBuffer = cmd,
     };
 
+    // Keep the device dependency even after a host poll observed completion:
+    // the semaphore wait also supplies visibility for aliased image imports.
     // Kernel fences (sync_files) become semaphores the GPU waits for.
     // Both buffers grow independently; on OOM vela_grow fails fast.
     vela_wait_arrays_reserve(&r->wait_infos, &r->wait_infos_capacity,
-        &r->wait_semaphores, &r->wait_semaphores_capacity, wait_count);
+        &r->wait_semaphores, &r->wait_semaphores_capacity, wait_count + (wait_point > 0));
     uint32_t waits = 0;
     bool inputs_ready = true;
     for (int i = 0; i < wait_count; ++i) {
@@ -804,6 +846,18 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
         ++waits;
     }
 
+    if (wait_point) {
+        // Not a pooled binary semaphore: don't include it in the input-fence
+        // retirement loops. The wait covers every stage, including ownership
+        // and layout transitions for aliased imports of our output buffers.
+        r->wait_infos[waits] = (VkSemaphoreSubmitInfo) {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = r->timeline,
+            .value = wait_point,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+    }
+
     uint64_t point = r->last_point + 1;
     VkSemaphoreSubmitInfo signals[2] = {
         {
@@ -828,7 +882,7 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
 
     const VkSubmitInfo2 submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-        .waitSemaphoreInfoCount = waits,
+        .waitSemaphoreInfoCount = waits + (wait_point > 0),
         .pWaitSemaphoreInfos = r->wait_infos,
         .commandBufferInfoCount = cmd_count,
         .pCommandBufferInfos = cmds,
@@ -890,6 +944,21 @@ uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, cons
     if ((release_fd && *release_fd < 0) || vela_env_one("VELA_DEBUG_SYNC")) {
         vela_renderer_wait(r, point);
     }
+    return point;
+}
+
+uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
+    int *release_fd)
+{
+    return submit(r, cmd, wait_fds, wait_count, release_fd, r->readback_point);
+}
+
+uint64_t vela_renderer_submit_readback(struct vela_renderer *r, VkCommandBuffer cmd)
+{
+    // Explicit GPU dependencies in both directions. In particular, a cancelled
+    // source may return to the swapchain before the copy has finished reading it.
+    uint64_t point = submit(r, cmd, NULL, 0, NULL, r->last_point);
+    if (point) r->readback_point = point;
     return point;
 }
 
@@ -975,7 +1044,7 @@ void vela_renderer_collect(struct vela_renderer *r)
     kept = 0;
     for (int i = 0; i < r->staging_count; ++i) {
         struct staging_chunk chunk = r->staging[i];
-        bool unused = chunk.point != UINT64_MAX && chunk.point <= done;
+        bool unused = !chunk.readers && chunk.point != UINT64_MAX && chunk.point <= done;
         if (unused && ++idle[chunk.readback] > IDLE_STAGING_CHUNKS_KEPT) {
             vkDestroyBuffer(device, chunk.buffer, NULL);
             vkFreeMemory(device, chunk.memory, NULL);

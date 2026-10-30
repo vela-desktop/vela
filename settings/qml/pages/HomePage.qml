@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import Vela.Bluetooth
 import Vela.Controls
 
 // The Windows 11 Home: the device at the top, then the most used cards.
@@ -79,14 +80,18 @@ Page {
 
     CardGroup {
         title: qsTr("Bluetooth devices")
-        visible: Status.bluetoothAvailable
+        visible: Bluetooth.available || Bluetooth.platformBlocked
         Card {
             icon: "preferences-system-bluetooth"
             title: qsTr("Bluetooth")
-            description: Status.bluetoothEnabled ? qsTr("Discoverable as \"") + About.hostname + "\"" : qsTr("Off")
+            // BlueZ's own Discoverable (docs/bluetooth.md §6.6, rule 2).
+            description: !Bluetooth.powered ? qsTr("Off")
+                : Bluetooth.adapter.discoverable ? qsTr("Discoverable as \"%1\"").arg(Bluetooth.adapter.name)
+                : qsTr("On")
             trailing: Switch {
-                checked: Status.bluetoothEnabled
-                onToggled: Status.setBluetoothEnabled(checked)
+                checked: Bluetooth.powered
+                usable: Bluetooth.active
+                onToggled: Bluetooth.setPowered(checked)
             }
         }
         LinkCard {

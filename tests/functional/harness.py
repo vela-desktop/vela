@@ -237,7 +237,7 @@ class Session:
     def state(self):
         return State(self.query("state"))
 
-    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True):
+    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05):
         """Waits until condition(state) is true; returns the state."""
         deadline = time.monotonic() + timeout
         last = None
@@ -248,7 +248,7 @@ class Session:
                     return last
             except (KeyError, IndexError, TypeError):
                 pass
-            time.sleep(0.05)
+            time.sleep(interval)
         raise TimeoutError(f"after {timeout} s this still isn't true: {what}\nlast state: {last}\n"
                            f"--- end of the Vela log ---\n{self.log_text()[-2500:]}")
 
@@ -283,10 +283,12 @@ class Session:
 
     # -------------------------------------------------------- windows --
 
-    def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False):
+    def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False,
+                    env=None):
         """Opens a window (vela-pattern, or `command`); returns its identifier.
 
-        decorated: with Vela's title bar (xdg-decoration)."""
+        decorated: with Vela's title bar (xdg-decoration).
+        env: optional environment for protocol-specific clients (e.g. Xwayland DISPLAY)."""
         before = {w["id"] for w in self.state().windows}
         pattern = ([tool("vela-pattern")] + (["--app-id", app_id] if app_id else [])
                    + (["--decorated"] if decorated else []) + [str(width), str(height)])
@@ -294,7 +296,7 @@ class Session:
         # first Wayland surface is mapped, and DEVNULL hides the actual cause.
         client_log_path = os.path.join(self.directory, f"client-{len(self.clients) + 1}.log")
         with open(client_log_path, "w") as client_log:
-            client = subprocess.Popen(command or pattern, env=self.client_env,
+            client = subprocess.Popen(command or pattern, env=self.client_env if env is None else env,
                                       stdout=client_log, stderr=subprocess.STDOUT)
         self.clients.append(client)
 
@@ -405,6 +407,19 @@ class FakeShell:
                 return lines[-1]
             time.sleep(0.05)
         raise TimeoutError(f"the shell never received «{prefix}…{containing}»; it got: {self.received()[-10:]}")
+
+    def barrier(self):
+        """Wait until the socket reader processed every earlier connection.
+
+        Use after an input/compositor checkpoint before asserting that a
+        forbidden shell message was NOT sent; a fixed sleep cannot prove that.
+        """
+        marker = f"__test_barrier__:{time.monotonic_ns()}"
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.connect(self.path)
+            connection.sendall((marker + "\n").encode())
+        self.wait_for(marker)
+        return marker
 
     def clear(self):
         with self.lock:

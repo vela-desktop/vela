@@ -2,64 +2,72 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import Vela.Bluetooth
 import Vela.Controls
 
-// Bluetooth & devices: the switch, "Add device" and the paired devices, like
-// Windows 11.
+// Bluetooth & devices (docs/bluetooth.md §9.1), on vela-bluetooth: the
+// switch, "Add a device", the paired devices (connected first) with their
+// menu, and the adapter when there are two or more.
 Page {
     id: page
-    Component.onCompleted: Bluetooth.refresh()
-    Component.onDestruction: Bluetooth.stopDiscovery()
 
-    function deviceIcon(icon) {
-        // BlueZ icons (audio-headset, input-mouse...) are already theme names.
-        return icon !== "" ? icon : "preferences-system-bluetooth"
-    }
-    function status(d) {
-        if (d.busy) return qsTr("Connecting...")
-        let s = d.connected ? qsTr("Connected") : qsTr("Paired")
-        if (d.battery >= 0) s += qsTr(" · Battery ") + d.battery + "%"
-        return s
+    // A headset's sound card (vela-audio), by its address: WirePlumber
+    // names it bluez_card.<address>.
+    function soundCard(device) {
+        const address = (device.address || "").replace(/:/g, "_")
+        const card = Audio.devices.find(d => d.bluetooth && address !== "" && d.name.indexOf(address) >= 0)
+        return card !== undefined ? card.name : ""
     }
 
     Card {
-        visible: !Bluetooth.available
+        objectName: "unavailable"
+        visible: !Bluetooth.available && !Bluetooth.platformBlocked
         icon: "preferences-system-bluetooth-inactive"
-        title: qsTr("Bluetooth isn't available")
+        title: qsTr("Bluetooth isn't available on this PC")
         description: qsTr("There's no Bluetooth adapter, or the bluetooth service isn't running.")
     }
 
     Card {
-        visible: Bluetooth.available
+        objectName: "power"
+        visible: Bluetooth.available || Bluetooth.platformBlocked
         icon: Bluetooth.powered ? "preferences-system-bluetooth" : "preferences-system-bluetooth-inactive"
         title: qsTr("Bluetooth")
-        description: Bluetooth.powered ? qsTr("Discoverable as \"") + Bluetooth.adapterName + "\"" : qsTr("Off")
+        // BlueZ's own Discoverable (§6.6, rule 2).
+        description: !Bluetooth.powered ? qsTr("Off")
+            : Bluetooth.adapter.discoverable ? qsTr("Discoverable as \"%1\"").arg(Bluetooth.adapter.name)
+            : qsTr("On")
         minimumHeight: 80
         trailing: Switch {
+            objectName: "switch"
             checked: Bluetooth.powered
-            onToggled: Bluetooth.powered = checked
+            usable: Bluetooth.active
+            Accessible.name: qsTr("Bluetooth")
+            onToggled: Bluetooth.setPowered(checked)
         }
     }
 
+    StillVisibleCard {}
+
     Card {
+        objectName: "add"
         visible: Bluetooth.available
         icon: "list-add"
         title: qsTr("Devices")
         description: qsTr("Mouse, keyboard, pen, audio, displays and docks, other devices")
         trailing: Button {
+            objectName: "addButton"
             text: qsTr("Add device")
-            usable: Bluetooth.powered
-            onClicked: {
-                addDialog.open()
-                Bluetooth.startDiscovery()
-            }
+            usable: Bluetooth.powered && Bluetooth.active
+            onClicked: addDialog.start()
         }
     }
 
     Text {
-        visible: Bluetooth.error !== ""
+        objectName: "error"
+        visible: text !== "" && !addDialog.visible
         width: parent.width
         text: Bluetooth.error
+        textFormat: Text.PlainText
         color: Theme.critical
         font.pixelSize: Theme.fontBody
         wrapMode: Text.Wrap
@@ -68,29 +76,33 @@ Page {
     }
 
     Repeater {
-        model: Bluetooth.paired
-        delegate: Card {
-            id: deviceCard
+        model: Bluetooth.available ? Bluetooth.paired : []
+        delegate: BluetoothDevice {
             required property var modelData
-            icon: page.deviceIcon(modelData.icon)
-            title: modelData.name
-            description: page.status(modelData)
-            trailing: Row {
-                spacing: 8
-                Button {
-                    text: deviceCard.modelData.connected ? qsTr("Disconnect") : qsTr("Connect")
-                    usable: !deviceCard.modelData.busy && Bluetooth.powered
-                    onClicked: deviceCard.modelData.connected ? Bluetooth.disconnectDevice(deviceCard.modelData.path)
-                                                              : Bluetooth.connectDevice(deviceCard.modelData.path)
-                }
-                Button {
-                    subtle: true
-                    text: qsTr("Remove")
-                    onClicked: {
-                        removeDialog.device = deviceCard.modelData
-                        removeDialog.open()
-                    }
-                }
+            device: modelData
+            hasSound: page.soundCard(modelData) !== ""
+            onRenameAsked: renameDialog.start(modelData)
+            onRemoveAsked: {
+                removeDialog.device = modelData
+                removeDialog.open()
+            }
+            onSoundAsked: root.showSoundDevice("", "", page.soundCard(modelData))
+        }
+    }
+
+    CardGroup {
+        objectName: "advanced"
+        title: qsTr("Advanced")
+        visible: Bluetooth.adapters.length >= 2
+        Card {
+            icon: "preferences-system-bluetooth"
+            title: qsTr("Bluetooth adapter")
+            description: qsTr("The one this PC uses")
+            trailing: Choice {
+                model: Bluetooth.adapters.map(a => ({ text: a.name !== "" ? a.name + " (" + a.address + ")" : a.address }))
+                currentIndex: Bluetooth.adapters.findIndex(a => a.inUse)
+                usable: Bluetooth.active
+                onChosen: index => Bluetooth.useAdapter(Bluetooth.adapters[index].address)
             }
         }
     }
@@ -120,105 +132,52 @@ Page {
 
     Dialog {
         id: removeDialog
+        objectName: "removeDialog"
         parent: root.contentItem
         property var device: null
         title: qsTr("Remove this device?")
-        buttons: [{ text: qsTr("Yes"), accent: true, value: "yes" }, { text: qsTr("No"), value: "cancel" }]
-        onChosen: value => { if (value === "yes") Bluetooth.removeDevice(device.path) }
+        buttons: [{ text: qsTr("Remove"), accent: true, value: "remove" }, { text: qsTr("Cancel"), value: "cancel" }]
+        onChosen: value => { if (value === "remove") Bluetooth.removeDevice(device.path) }
         Text {
             width: parent.width
-            text: removeDialog.device ? qsTr("To use ") + removeDialog.device.name + qsTr(" again, you'll need to pair it once more.") : ""
+            text: removeDialog.device ? qsTr("To use %1 again, you'll need to pair it once more.").arg(removeDialog.device.name) : ""
+            textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: Theme.fontBody
             wrapMode: Text.Wrap
         }
     }
 
-    // "Add a device": the search, and a click to pair.
     Dialog {
-        id: addDialog
+        id: renameDialog
+        objectName: "renameDialog"
         parent: root.contentItem
-        title: qsTr("Add a device")
-        buttons: [{ text: qsTr("Cancel"), value: "cancel" }]
-        dialogWidth: 520
-        onChosen: Bluetooth.stopDiscovery()
-        Column {
+        property var device: null
+        title: qsTr("Rename this device")
+        buttons: [{ text: qsTr("Rename"), accent: true, value: "rename", enabled: nameField.text.trim() !== "" },
+                  { text: qsTr("Cancel"), value: "cancel" }]
+        function start(d) {
+            device = d
+            nameField.text = d.name
+            open()
+            nameField.selectAll()
+            nameField.forceActiveFocus()
+        }
+        onChosen: value => { if (value === "rename") Bluetooth.rename(device.path, nameField.text.trim()) }
+        TextBox {
+            id: nameField
+            objectName: "nameField"
             width: parent.width
-            spacing: 8
-            Text {
-                width: parent.width
-                text: qsTr("Make sure your device is turned on and discoverable. Select it below to connect.")
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontBody
-                wrapMode: Text.Wrap
-            }
-            Item {
-                width: parent.width
-                height: Math.min(320, Math.max(found.contentHeight, 80))
-                ListView {
-                    id: found
-                    anchors.fill: parent
-                    clip: true
-                    spacing: 2
-                    model: Bluetooth.found
-                    boundsBehavior: Flickable.StopAtBounds
-                    delegate: Fill {
-                        id: candidate
-                        required property var modelData
-                        width: found.width
-                        height: 56
-                        radius: Theme.radius
-                        color: candidateMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
-                        Icon {
-                            x: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: page.deviceIcon(candidate.modelData.icon)
-                            size: 24
-                        }
-                        Column {
-                            x: 52
-                            anchors.verticalCenter: parent.verticalCenter
-                            Text {
-                                text: candidate.modelData.name
-                                color: Theme.text
-                                font.pixelSize: Theme.fontBody
-                            }
-                            Text {
-                                visible: candidate.modelData.busy
-                                text: qsTr("Pairing...")
-                                color: Theme.textSecondary
-                                font.pixelSize: Theme.fontCaption
-                            }
-                        }
-                        MouseArea {
-                            id: candidateMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            enabled: !candidate.modelData.busy
-                            onClicked: Bluetooth.pairAndConnect(candidate.modelData.path)
-                        }
-                    }
-                }
-                Text {
-                    visible: found.count === 0
-                    anchors.centerIn: parent
-                    text: Bluetooth.discovering ? qsTr("Looking for devices...") : qsTr("No devices found")
-                    color: Theme.textSecondary
-                    font.pixelSize: Theme.fontBody
-                }
-            }
+            maximumLength: 248
+            Accessible.name: qsTr("Name")
+            Keys.onReturnPressed: renameDialog.accept()
+            Keys.onEnterPressed: renameDialog.accept()
         }
     }
-    // Paired: the device moves from "found" to paired and the dialog closes.
-    Connections {
-        target: Bluetooth
-        property int pairedCount: Bluetooth.paired.length
-        function onChanged() {
-            if (addDialog.visible && !addDialog.closing && Bluetooth.paired.length > pairedCount) {
-                addDialog.close()
-                Bluetooth.stopDiscovery()
-            }
-            pairedCount = Bluetooth.paired.length
-        }
+
+    AddDeviceDialog {
+        id: addDialog
+        objectName: "addDialog"
+        parent: root.contentItem
     }
 }

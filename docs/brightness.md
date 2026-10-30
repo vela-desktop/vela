@@ -53,7 +53,7 @@ and the code follows them.
 ## 3. Measurements
 
 Taken on 2026-10-13 on the main development machine (RX 9070 XT, amdgpu,
-[testing](testing.md#primary-development-hardware)), both monitors at
+[testing](testing.md#gpu-ci-hardware)), both monitors at
 0–100, every test ending with both back at 100.
 
 | | LG FULL HD (HDMI-A-1) | Mi Monitor (DP-3) |

@@ -39,11 +39,6 @@ bool FileActions::canEmail() const
     return has("xdg-email");
 }
 
-bool FileActions::canBluetooth() const
-{
-    return has("bluedevil-sendfile");
-}
-
 void FileActions::findDevices()
 {
     if (!canKdeConnect() || m_searching) {
@@ -84,15 +79,6 @@ void FileActions::sendByEmail(const QStringList& paths)
         arguments << QStringLiteral("--attach") << path;
     }
     QProcess::startDetached(QStringLiteral("xdg-email"), arguments);
-}
-
-void FileActions::sendByBluetooth(const QStringList& paths)
-{
-    QStringList arguments;
-    for (const QString& path : paths) {
-        arguments << QStringLiteral("-f") << path;
-    }
-    QProcess::startDetached(QStringLiteral("bluedevil-sendfile"), arguments);
 }
 
 QString FileActions::typeName(const QString& path) const

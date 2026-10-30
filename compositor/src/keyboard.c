@@ -342,7 +342,12 @@ static void handle_key(struct wl_listener *listener, void *data)
         }
         if (is_super(syms[i]) && input->super_tap) {
             input->super_tap = false;
-            vela_shell_send(server, "toggle-start");
+            // The shell may need a full Qt/Wayland map round-trip. Show the
+            // taskbar in the current compositor tick after a successful send,
+            // without altering the game's fullscreen protocol state.
+            if (vela_shell_send(server, "toggle-start")) {
+                vela_fullscreen_preview_start(server);
+            }
         }
         // Alt released during Alt+Tab: switch to the chosen window.
         if (is_alt(syms[i]) && vela_switcher_active(server)) {

@@ -7,6 +7,11 @@ name: GPU CI - NVIDIA (manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      collect_coverage:
+        description: Collect instrumented GCC coverage from the GPU test suite
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -120,10 +125,21 @@ jobs:
 
       - name: Configure Vela with GPU tests
         shell: bash
+        env:
+          COLLECT_COVERAGE: ${{ inputs.collect_coverage }}
         run: |
           set -euo pipefail
+          extra_flags=(-DCMAKE_BUILD_TYPE=RelWithDebInfo)
+          if [[ "$COLLECT_COVERAGE" == "true" ]]; then
+            for tool in gcc g++ gcov gcovr; do
+              command -v "$tool" >/dev/null || { echo "::error::Install $tool on the GPU runner for coverage mode"; exit 1; }
+            done
+            extra_flags=(-DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+              -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage
+              -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage)
+          fi
           cmake -S . -B "$RUNNER_TEMP/vela-gpu-build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            "${extra_flags[@]}" \
             -DVELA_BUILD_COMPOSITOR=ON \
             -DVELA_BUILD_SHELL=ON \
             -DVELA_BUILD_TOOLS=ON \
@@ -175,6 +191,24 @@ jobs:
           print(f"All {len(cases)} GPU CTest entries were executed (none skipped).")
           PY
 
+      # Generate the report only after all mandatory GPU tests have executed
+      # without skips; untrusted pull request code is never auto-dispatched.
+      - name: Generate instrumented GPU coverage
+        if: inputs.collect_coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/coverage-report.sh "$RUNNER_TEMP/vela-gpu-build" "$RUNNER_TEMP/vela-nvidia-coverage"
+          cat "$RUNNER_TEMP/vela-nvidia-coverage/coverage-summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve GPU coverage
+        if: inputs.collect_coverage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vela-nvidia-coverage
+          path: ${{ runner.temp }}/vela-nvidia-coverage/
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload Vulkan and CTest diagnostics
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -188,3 +222,30 @@ jobs:
             ${{ runner.temp }}/vela-nvidia-ctest.log
             ${{ runner.temp }}/vela-nvidia-junit.xml
             ${{ runner.temp }}/vela-gpu-build/Testing/Temporary/LastTest.log
+
+  publish-nvidia-coverage:
+    name: Codecov NVIDIA upload (GitHub hosted)
+    needs: [gpu-nvidia]
+    if: inputs.collect_coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: vela-nvidia-coverage
+          path: gpu-coverage
+      - name: Ensure Cobertura report is present
+        run: test -s gpu-coverage/coverage.xml
+      - name: Upload to Codecov for the exact tested SHA
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ./gpu-coverage/coverage.xml
+          flags: gpu-nvidia
+          use_oidc: true
+          disable_search: true
+          fail_ci_if_error: false

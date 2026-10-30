@@ -299,7 +299,13 @@ class ShellColors(unittest.TestCase):
                 going, back = fills(mark).values()
                 self.assertTrue(0.05 < going[-1] < 0.95, going)
                 self.assertAlmostEqual(back[0], going[-1], places=3)
-                self.assertTrue(all(b < a for a, b in zip(back, back[1:])), back)
+                # As for rising, test movement up to the first target sample.
+                # Rounded logs and predicted frames can repeat the endpoint
+                # before wall-clock retirement; the fade must stay there.
+                falling = back[:back.index(0.0) + 1]
+                self.assertTrue(all(b < a for a, b in zip(falling, falling[1:])), back)
+                self.assertTrue(all(v == 0.0 for v in back[len(falling):]), back)
+                self.assertLessEqual(len(falling) - 1, 120 * hz / 1000 + 1, back)
 
 
 FILL = re.compile(r"animation: close-hover #(\d+) fill ([\d.]+)")

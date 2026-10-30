@@ -39,6 +39,16 @@ target_include_directories(vela-lock PRIVATE ${LOCK_GENERATED_DIR} ${PROJECT_SOU
 target_compile_options(vela-lock PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
 target_link_libraries(vela-lock PRIVATE Qt6::Gui Qt6::Svg PkgConfig::LOCK_DEPS ${PAM_LIBRARY} vela-app)
 
+# Fast, display-independent pixel tests for the actual login blur implementation.
+# These run in regular non-GPU CTest jobs and do not require a Wayland session.
+if(VELA_BUILD_TOOLS)
+    add_executable(vela-lock-blur-tests tests/test_wallpaper_blur.cpp)
+    target_link_libraries(vela-lock-blur-tests PRIVATE Qt6::Gui)
+    target_compile_options(vela-lock-blur-tests PRIVATE -Wall -Wextra)
+    add_test(NAME lock-wallpaper-blur COMMAND vela-lock-blur-tests)
+    set_tests_properties(lock-wallpaper-blur PROPERTIES TIMEOUT 30 LABELS unit)
+endif()
+
 install(TARGETS vela-lock RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # The PAM service: the same check as a console login.
 install(FILES vela-lock.pam DESTINATION /etc/pam.d RENAME vela-lock)

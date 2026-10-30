@@ -125,12 +125,56 @@ static void unhover_decoration(struct vela_interaction *interaction)
     }
 }
 
+// The visible lock scene is the only eligible pointer target during a lock.
+// Focus changes (map/hotplug) need no synthetic motion event.
+/** Focus only a visible lock surface, optionally delivering real mouse motion. */
+static void lock_pointer_focus(struct vela_server *server, uint32_t time_msec, bool notify_motion)
+{
+    struct wlr_seat *seat = server->seat;
+    struct wlr_cursor *cursor = server->cursor;
+    struct vela_hit hit = vela_scene_at(server->scene, cursor->x, cursor->y);
+    if (hit.surface) {
+        wlr_seat_pointer_notify_enter(seat, hit.surface, hit.sx, hit.sy);
+        if (notify_motion) {
+            wlr_seat_pointer_notify_motion(seat, time_msec, hit.sx, hit.sy);
+        }
+    } else {
+        wlr_seat_pointer_clear_focus(seat);
+        wlr_cursor_set_xcursor(cursor, server->cursor_manager, "default");
+    }
+}
+
+/** Recompute lock-surface pointer focus without synthesizing motion. */
+void vela_interact_retarget_lock_pointer(struct vela_server *server)
+{
+    if (server->locked) {
+        lock_pointer_focus(server, 0, false);
+    }
+}
+
+/** Route real pointer movement to the currently interactive scene. */
 void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
 {
     struct vela_interaction *interaction = server->interaction;
     struct wlr_cursor *cursor = server->cursor;
     struct wlr_seat *seat = server->seat;
     struct vela_input *input = server->input;
+
+    // The desktop is still represented in memory while ext-session-lock is
+    // active, but it is not eligible for interaction. In particular,
+    // resize_border_at() walks the windows layer directly, and the disabled
+    // parent layer alone does not hide its children from that lookup. Only
+    // hit-test the visible lock scene while locked; otherwise an invisible
+    // window's resize band steals pointer focus and changes the cursor.
+    if (server->locked) {
+        struct vela_a11y *a11y = server->a11y;
+        if (a11y->magnifier || a11y->zoom_animating || a11y->zoom > 1.0) {
+            vela_a11y_update_magnifier(a11y);
+        }
+        lock_pointer_focus(server, time_msec, true);
+        return;
+    }
+
     vela_input_update_drag_icon(input);
     struct vela_a11y *a11y = server->a11y;
     if (a11y->magnifier || a11y->zoom_animating || a11y->zoom > 1.0) {
@@ -154,6 +198,9 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
         // nearest physical pixel (§3.4). With integer logical positions, at
         // 125% the window would advance in jumps of 1 and 2 pixels.
         vela_node_set_position(&grabbed->tree->node, cursor->x - interaction->grab_x, cursor->y - interaction->grab_y);
+        // A focused window crossing onto a fullscreen output must stay visible
+        // without forcing the game out of its protocol fullscreen state.
+        vela_fullscreen_restack(server);
         vela_snap_update_zone(server);
         return;
     }
@@ -604,6 +651,25 @@ static void finish_keyboard(struct vela_server *server, bool confirm)
 void vela_interact_cancel_keyboard(struct vela_server *server)
 {
     finish_keyboard(server, false);
+}
+
+/** Cancel every compositor interaction that must not outlive a screen lock. */
+void vela_interact_cancel_for_lock(struct vela_server *server)
+{
+    struct vela_interaction *interaction = server->interaction;
+    // Move/Size from the keyboard otherwise consumes the locker's keystrokes.
+    // Cancel it as Escape would, restoring the original window geometry.
+    finish_keyboard(server, false);
+    unhover_decoration(interaction);
+    interaction->hovered_decoration = NULL;
+    memset(&interaction->pending_title_drag, 0, sizeof(interaction->pending_title_drag));
+    memset(&interaction->last_title_click, 0, sizeof(interaction->last_title_click));
+    memset(&interaction->last_icon_click, 0, sizeof(interaction->last_icon_click));
+    interaction->modifier_grab = false;
+    server->cursor_mode = VELA_CURSOR_PASSTHROUGH;
+    server->grabbed = NULL;
+    server->input->super_tap = false;
+    memset(&server->input->implicit_grab, 0, sizeof(server->input->implicit_grab));
 }
 
 void vela_interact_forget(struct vela_server *server, struct vela_view *view)

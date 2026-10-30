@@ -13,7 +13,7 @@
 #include "appmodel.h"
 #include "audio.h"
 #include "audioapps.h"
-#include "bluetooth.h"
+#include "bluetooth/bluetooth.h"
 #include "brightness.h"
 #include "controls.h"
 #include "datetime.h"
@@ -42,6 +42,7 @@
 #include <QtQml/QQmlExtensionPlugin>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
+Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
 
 namespace {
 
@@ -160,16 +161,19 @@ int main(int argc, char* argv[])
     SystemActions system;
     Preferences preferences;
     Displays displays;
+    // Bluetooth (docs/bluetooth.md §9.1): Settings is Vela's UI, and draws
+    // the questions of its own Adds.
+    vela::bluetooth::Bluetooth bluetooth(true);
     // The sound (docs/audio.md): the same library as the shell's.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
+    audio.setBluetooth(&bluetooth); // headsets' batteries
     Network network;
-    Bluetooth bluetooth;
     About about;
     DateTime dateTime;
     DefaultApps defaultApps(&apps);
     KeyboardLayouts layouts;
-    SystemStatus status;
+    SystemStatus status(&bluetooth);
     Brightness brightness;
 
     QQmlApplicationEngine engine;
@@ -187,7 +191,7 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("Audio"), &audio);
     qmlRegisterType<vela::audio::LevelMeter>("Vela.Audio", 1, 0, "LevelMeter");
     context->setContextProperty(QStringLiteral("Network"), &network);
-    context->setContextProperty(QStringLiteral("Bluetooth"), &bluetooth);
+    qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
     context->setContextProperty(QStringLiteral("About"), &about);
     context->setContextProperty(QStringLiteral("DateTime"), &dateTime);
     context->setContextProperty(QStringLiteral("DefaultApps"), &defaultApps);
