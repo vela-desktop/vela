@@ -103,34 +103,17 @@ The monitor selected in Vela Settings (`display/primaryOutput`) is also
 synchronized to the RandR primary display, including on hotplug. No manual
 `xrandr --primary` is required in the normal session.
 
-**Steam UI DPI on mixed-scale monitors:** Satellite itself chooses the
-**smallest output scale** for global XSETTINGS/Xresources. Thus a primary
-DP-3 at 125% plus a secondary HDMI-A-1 at 100% can give Steam a 100%-sized
-interface, despite the correct physical game resolution. In Satellite
-native mode Vela now uses `xrdb -merge` to publish the **preferred primary
-monitor's DPI** through X11 `RESOURCE_MANAGER` (`Xft.dpi: 120` at 125%,
-`96` at 100%), including after scaling or primary-output changes.
-Applications like Steam that consult Xft DPI may use this hint to render
-sharp, physically-sized UI, while games still discover 2560×1440 physical
-pixels. `xorg-xrdb` / `xrdb` is a runtime dependency.
-
-This is a global X11 DPI hint, not per-window scaling. Applications that
-use Satellite's global XSETTINGS rather than `Xft.dpi` may still choose
-100% on a mixed-scale session. Do not alter `wlr_output.scale` or
-apply `GDK_SCALE` globally to Steam/Proton to conceal the difference.
-The compatibility backend intentionally leaves this DPI override disabled
-because its X11 windows already receive compositor upscaling. Verify from
-a terminal in the **new Vela session**:
-
-```sh
-xrdb -query | grep -i '^Xft.dpi:'
-```
-
-Expected output for DP-3 125%: `Xft.dpi: 120`. Restart Steam after the
-value is published. Steam also has its own **Settings → Interface →
-Scale text and icons to match monitor settings** preference; if it
-ignores a correct `Xft.dpi`, investigate Steam's version-specific DPI
-detection before implementing an app-specific workaround.
+**Mixed-DPI limitation:** Satellite uses a global DPI policy for X11
+applications and separate physical RandR modes for games. Using the 100%
+secondary monitor and 125% primary together may leave Steam at 100% even
+though EU5 can render at native 2560×1440. An attempt to force primary
+monitor Xft.dpi globally caused blur and cursor/input mismatches, so Vela
+does **not** override Xresources, XSETTINGS, GDK_SCALE or the Wayland
+output scale. Fixes must preserve consistent input-region coordinates,
+window geometry and sharp rendering on both monitors. Upstream Satellite
+PRs #452 (mixed-DPI input regions), #523 (DPI stability), #546 (window
+controls) are relevant but not merged into the required distro package.
+Do not mark Steam's mixed-scaling or its titlebar buttons as fixed yet.
 
 To recover from a Satellite compatibility problem, set in
 `~/.config/vela/vela.conf`:
