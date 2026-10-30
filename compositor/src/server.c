@@ -447,10 +447,10 @@ void vela_server_destroy(struct vela_server *server)
     vela_child_stop(&server->bluetooth);
     vela_brightness_destroy(server);
     vela_commands_stop(server);
-    // Device loss is a compositor restart, not a logout. Keep the systemd
-    // graphical session target and imported environment alive so the new
-    // compositor can reconnect to the existing user session. The supervisor
-    // runs the stop hook only if it really ends the entire session.
+    // In supervised sessions, device loss is a restart rather than logout:
+    // leave the systemd target/environment active until the supervisor ends
+    // the session. Direct launches have no supervisor, so they must stop it
+    // even on a terminal renderer failure.
     if (server->session
         && (!server->supervised || !vela_vulkan_terminal_failure(server->vulkan))) {
         vela_session_run_hook("stop");
