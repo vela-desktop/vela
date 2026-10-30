@@ -328,7 +328,7 @@ uint64_t vela_renderer_submit(struct vela_renderer *renderer, VkCommandBuffer cm
 // Compositor-owned readback: GPU-wait for earlier draws, then make later
 // submissions GPU-wait for this copy. Queue order alone is not a dependency.
 uint64_t vela_renderer_submit_readback(struct vela_renderer *renderer, VkCommandBuffer cmd);
-void vela_renderer_wait(struct vela_renderer *renderer, uint64_t point);
+bool vela_renderer_wait(struct vela_renderer *renderer, uint64_t point);
 // Frees what the GPU has finished using (retired images, semaphores, extra
 // staging blocks).
 void vela_renderer_collect(struct vela_renderer *renderer);

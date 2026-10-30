@@ -475,6 +475,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
 {
     struct vela_texture *texture = (struct vela_texture *)wlr;
     struct vela_renderer *renderer = texture->renderer;
+    if (!renderer || renderer->vk->loss.lost) return false;
     const struct vela_pixel_format *wanted = vela_pixel_format_from_drm(options->format);
     if (!wanted || wanted->unorm != texture->format->unorm) {
         return false;
@@ -513,7 +514,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
         ioctl(texture->dmabuf_fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &request);
         close(release_fd);
     }
-    vela_renderer_wait(renderer, point);
+    if (!vela_renderer_wait(renderer, point)) return false;
 
     uint8_t *dst = wlr_texture_read_pixel_options_get_data(options);
     for (int y = 0; y < box.height; ++y) {
@@ -655,8 +656,9 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
         return 0;
     }
     uint64_t completed = 0;
-    VkResult result = vkGetSemaphoreCounterValue(renderer->vk->device, renderer->timeline, &completed);
-    if (result != VK_SUCCESS) {
+    if (renderer->vk->loss.lost || !vela_vulkan_result(renderer->vk,
+            vkGetSemaphoreCounterValue(renderer->vk->device, renderer->timeline, &completed),
+            "vkGetSemaphoreCounterValue(readback)")) {
         vela_renderer_cancel_readbacks(renderer);
         return 0;
     }
@@ -708,6 +710,7 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
 struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, struct wl_event_loop *loop,
     struct wlr_buffer *src, struct wlr_buffer *dst, void (*done)(void *, bool), void *data)
 {
+    if (renderer->vk->loss.lost) return NULL;
     if (src->width != dst->width || src->height != dst->height || src->width <= 0 || src->height <= 0) {
         return NULL;
     }
@@ -832,6 +835,7 @@ static const struct wlr_texture_impl texture_impl = {
 
 struct wlr_texture *vela_texture_create(struct vela_renderer *renderer, struct wlr_buffer *buffer)
 {
+    if (renderer->vk->loss.lost) return NULL;
     struct wlr_dmabuf_attributes dmabuf;
     if (wlr_buffer_get_dmabuf(buffer, &dmabuf)) {
         return import_dmabuf(renderer, buffer, &dmabuf);

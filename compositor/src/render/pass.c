@@ -734,6 +734,13 @@ static bool import_fence(int dmabuf_fd, uint32_t flags, int sync_file)
 bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
 {
     struct vela_renderer *renderer = pass->renderer;
+    if (renderer->vk->loss.lost) {
+        if (pass->signal_timeline) {
+            wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point);
+        }
+        pass_free(pass);
+        return false;
+    }
     struct vela_target *target = pass->target;
     if (result) {
         *result = (struct vela_pass_result) { 0, -1, 0 };
@@ -821,6 +828,10 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
     }
     if (release_fd >= 0) {
         close(release_fd);
+    }
+    if (renderer->vk->loss.lost) {
+        pass_free(pass);
+        return false;
     }
     target->initialized = true;
     if (result) {

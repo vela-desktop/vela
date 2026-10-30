@@ -238,17 +238,19 @@ static void destroy(struct vela_renderer *r)
 {
     vela_renderer_cancel_readbacks(r);
     VkDevice device = r->vk->device;
-    if (device) {
-        vkDeviceWaitIdle(device);
-        // Waiting for the GPU does not submit pending SHM uploads. Discard
-        // every recorded command before their referenced images are freed.
-        // The renderer is closing, so none of these commands may run again.
-        if (r->pool) {
-            vkResetCommandPool(device, r->pool, 0);
-            r->upload = VK_NULL_HANDLE;
+    // Device loss makes timeline progress unknowable. Destroy/free calls remain
+    // legal, but vkDeviceWaitIdle, command pool reset and retirement are unsafe.
+    bool gpu_idle = false;
+    if (device && !r->vk->loss.lost) {
+        gpu_idle = vela_vulkan_result(r->vk, vkDeviceWaitIdle(device), "vkDeviceWaitIdle(shutdown)");
+        if (gpu_idle && r->pool) {
+            // Discard recorded, unsubmitted SHM uploads before freeing images.
+            gpu_idle = vela_vulkan_result(r->vk,
+                vkResetCommandPool(device, r->pool, 0), "vkResetCommandPool(shutdown)");
+            if (gpu_idle) r->upload = VK_NULL_HANDLE;
         }
     }
-    vela_renderer_collect(r);
+    if (gpu_idle) vela_renderer_collect(r);
 
     // Detach any lingering targets before releasing renderer resources.
     // The backend outputs and their buffer listeners are already destroyed.
@@ -262,7 +264,7 @@ static void destroy(struct vela_renderer *r)
     wl_list_for_each_safe (texture, texture_tmp, &r->textures, link) {
         vela_texture_release(texture);
     }
-    vela_renderer_collect(r);
+    if (gpu_idle && !r->vk->loss.lost) vela_renderer_collect(r);
 
     // Shutdown is different from ordinary retirement: there will be no
     // further submissions to advance the timeline. In particular, an
@@ -343,7 +345,7 @@ static void destroy(struct vela_renderer *r)
 
 uint64_t vela_renderer_signal_sync_point(struct vela_renderer *r, int sync_file)
 {
-    if (!r->sync_timeline) {
+    if (!r->sync_timeline || r->vk->loss.lost) {
         return 0;
     }
     uint64_t point = ++r->sync_point;
@@ -366,6 +368,7 @@ int vela_renderer_timing_slot(struct vela_renderer *r)
         return -1;
     }
     uint64_t done = vela_renderer_completed(r);
+    if (r->vk->loss.lost) return -1;
     for (int i = 0; i < VELA_TIMING_SLOTS; ++i) {
         int slot = (r->next_timing + i) % VELA_TIMING_SLOTS;
         if (r->timing[slot] <= done) {
@@ -429,13 +432,14 @@ static int64_t gpu_to_monotonic(struct vela_renderer *r, uint64_t ticks)
 bool vela_renderer_read_timing(struct vela_renderer *r, int slot, uint64_t point, struct vela_gpu_timing *out)
 {
     // The slot may already have been reused by a later drawing.
-    if (slot < 0 || point == 0 || r->timing[slot] != point || point > vela_renderer_completed(r)) {
+    if (r->vk->loss.lost || slot < 0 || point == 0 || r->timing[slot] != point
+        || point > vela_renderer_completed(r) || r->vk->loss.lost) {
         return false;
     }
     uint64_t ticks[2] = { 0 };
-    if (vkGetQueryPoolResults(r->vk->device, r->query_pool, (uint32_t)(slot * 2), 2, sizeof(ticks), ticks,
-            sizeof(uint64_t), VK_QUERY_RESULT_64_BIT)
-        != VK_SUCCESS) {
+    if (!vela_vulkan_result(r->vk, vkGetQueryPoolResults(r->vk->device, r->query_pool,
+            (uint32_t)(slot * 2), 2, sizeof(ticks), ticks, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT),
+            "vkGetQueryPoolResults")) {
         return false;
     }
     uint64_t mask = r->vk->timestamp_mask;
@@ -476,6 +480,7 @@ static const struct wlr_addon_interface target_addon_impl = {
 
 struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buffer *buffer)
 {
+    if (r->vk->loss.lost) return NULL;
     struct wlr_addon *addon = wlr_addon_find(&buffer->addons, r, &target_addon_impl);
     if (addon) {
         struct vela_target *target = wl_container_of(addon, target, addon);
@@ -525,7 +530,7 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
     };
     VkResult view_result = vkCreateImageView(r->vk->device, &view_info, NULL, &target->view);
     if (view_result != VK_SUCCESS) {
-        wlr_log(WLR_ERROR, "Renderer: vkCreateImageView for target failed: VkResult=%d", (int)view_result);
+        vela_vulkan_result(r->vk, view_result, "vkCreateImageView(target)");
         vkDestroyImage(r->vk->device, target->image, NULL);
         vkFreeMemory(r->vk->device, target->memory, NULL);
         free(target);
@@ -541,14 +546,16 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
 // the BO. This runs the same import path used by the first Vulkan render pass.
 bool vela_renderer_validate_target(struct vela_renderer *renderer, struct wlr_buffer *buffer)
 {
-    return renderer && buffer && vela_renderer_target(renderer, buffer) != NULL;
+    return renderer && !renderer->vk->loss.lost && buffer && vela_renderer_target(renderer, buffer) != NULL;
 }
 
 // ----------------------------------------------------- command buffers --
 
 VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *r)
 {
+    if (r->vk->loss.lost) return VK_NULL_HANDLE;
     uint64_t done = vela_renderer_completed(r);
+    if (r->vk->loss.lost) return VK_NULL_HANDLE;
     struct command_slot *slot = NULL;
     for (int i = 0; i < r->command_count && !slot; ++i) {
         if (!r->commands[i].busy && r->commands[i].point <= done) {
@@ -563,7 +570,8 @@ VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *r)
             .commandBufferCount = 1,
         };
         VkCommandBuffer cmd = VK_NULL_HANDLE;
-        if (vkAllocateCommandBuffers(r->vk->device, &info, &cmd) != VK_SUCCESS) {
+        if (!vela_vulkan_result(r->vk, vkAllocateCommandBuffers(r->vk->device, &info, &cmd),
+                "vkAllocateCommandBuffers")) {
             return VK_NULL_HANDLE;
         }
         r->commands = vela_grow(r->commands, &r->command_capacity, r->command_count + 1, sizeof(*r->commands));
@@ -572,12 +580,20 @@ VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *r)
     }
     slot->busy = true;
     slot->point = 0;
-    vkResetCommandBuffer(slot->cmd, 0);
+    if (!vela_vulkan_result(r->vk, vkResetCommandBuffer(slot->cmd, 0),
+            "vkResetCommandBuffer")) {
+        slot->busy = false;
+        return VK_NULL_HANDLE;
+    }
     const VkCommandBufferBeginInfo begin = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
-    vkBeginCommandBuffer(slot->cmd, &begin);
+    if (!vela_vulkan_result(r->vk, vkBeginCommandBuffer(slot->cmd, &begin),
+            "vkBeginCommandBuffer")) {
+        slot->busy = false;
+        return VK_NULL_HANDLE;
+    }
     return slot->cmd;
 }
 
@@ -694,8 +710,10 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
 
 static bool stage(struct vela_renderer *r, VkDeviceSize size, bool readback, struct vela_staging *out)
 {
+    if (r->vk->loss.lost) return false;
     size = (size + 15) & ~(VkDeviceSize)15;
     uint64_t done = vela_renderer_completed(r);
+    if (r->vk->loss.lost) return false;
     struct staging_chunk *chosen = NULL;
     // First the block we are already filling, then one the GPU has finished
     // reading, otherwise a new one.
@@ -755,7 +773,8 @@ static VkSemaphore take_semaphore(struct vela_renderer *r, bool release)
         .pNext = release ? &export_info : NULL,
     };
     VkSemaphore semaphore = VK_NULL_HANDLE;
-    vkCreateSemaphore(r->vk->device, &info, NULL, &semaphore);
+    if (!vela_vulkan_result(r->vk, vkCreateSemaphore(r->vk->device, &info, NULL, &semaphore),
+            "vkCreateSemaphore(sync)")) return VK_NULL_HANDLE;
     return semaphore;
 }
 
@@ -782,15 +801,19 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
     int *release_fd, uint64_t wait_point)
 {
     struct vela_vulkan *vk = r->vk;
-    if (release_fd) {
-        *release_fd = -1;
+    if (release_fd) *release_fd = -1;
+    if (vk->loss.lost || !vela_vulkan_result(vk, vkEndCommandBuffer(cmd), "vkEndCommandBuffer")) {
+        for (int i = 0; i < wait_count; ++i) if (wait_fds[i] >= 0) close(wait_fds[i]);
+        return 0;
     }
-    vkEndCommandBuffer(cmd);
 
     VkCommandBufferSubmitInfo cmds[2];
     uint32_t cmd_count = 0;
     if (r->upload) {
-        vkEndCommandBuffer(r->upload);
+        if (!vela_vulkan_result(vk, vkEndCommandBuffer(r->upload), "vkEndCommandBuffer(upload)")) {
+            for (int i = 0; i < wait_count; ++i) if (wait_fds[i] >= 0) close(wait_fds[i]);
+            return 0;
+        }
         cmds[cmd_count++] = (VkCommandBufferSubmitInfo) {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
             .commandBuffer = r->upload,
@@ -811,6 +834,7 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
     bool inputs_ready = true;
     for (int i = 0; i < wait_count; ++i) {
         int fd = wait_fds[i];
+        if (vk->loss.lost) { if (fd >= 0) close(fd); inputs_ready = false; continue; }
         // Most app commits have already been held until ready by scene/ready.
         // Avoid importing a completed fence into the driver for every draw.
         if (vela_sync_ready(fd)) {
@@ -829,9 +853,12 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
             .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
             .fd = fd,
         };
-        if (!semaphore || vk->import_semaphore_fd(vk->device, &import_info) != VK_SUCCESS) {
-            // Fallback: the CPU waits.
-            inputs_ready = vela_sync_wait_close(fd) && inputs_ready;
+        VkResult imported = semaphore
+            ? vk->import_semaphore_fd(vk->device, &import_info) : VK_ERROR_OUT_OF_HOST_MEMORY;
+        if (!semaphore || !vela_vulkan_result(vk, imported, "vkImportSemaphoreFdKHR")) {
+            // Never wait on a producer fence when Vulkan has already failed.
+            if (vk->loss.lost) { close(fd); inputs_ready = false; }
+            else inputs_ready = vela_sync_wait_close(fd) && inputs_ready;
             if (semaphore) {
                 give_back_semaphore(r, semaphore, false);
             }
@@ -889,7 +916,9 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
         .signalSemaphoreInfoCount = signal_count,
         .pSignalSemaphoreInfos = signals,
     };
-    bool ok = inputs_ready && vkQueueSubmit2(vk->queue, 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS;
+    VkResult submitted = inputs_ready && !vk->loss.lost
+        ? vkQueueSubmit2(vk->queue, 1, &submit_info, VK_NULL_HANDLE) : VK_ERROR_INITIALIZATION_FAILED;
+    bool ok = inputs_ready && vela_vulkan_result(vk, submitted, "vkQueueSubmit2");
 
     // Command buffers become available again once the GPU has executed them.
     VkCommandBuffer upload = r->upload;
@@ -933,7 +962,8 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
             .semaphore = release,
             .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
         };
-        if (vk->get_semaphore_fd(vk->device, &get_info, release_fd) != VK_SUCCESS) {
+        if (!vela_vulkan_result(vk, vk->get_semaphore_fd(vk->device, &get_info, release_fd),
+                "vkGetSemaphoreFdKHR")) {
             *release_fd = -1;
         }
         semaphore_used_until(r, release, true, point);
@@ -944,7 +974,7 @@ static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *
     if ((release_fd && *release_fd < 0) || vela_env_one("VELA_DEBUG_SYNC")) {
         vela_renderer_wait(r, point);
     }
-    return point;
+    return vk->loss.lost ? 0 : point;
 }
 
 uint64_t vela_renderer_submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
@@ -964,26 +994,28 @@ uint64_t vela_renderer_submit_readback(struct vela_renderer *r, VkCommandBuffer 
 
 uint64_t vela_renderer_completed(struct vela_renderer *r)
 {
+    if (r->vk->loss.lost) return r->completed;
     uint64_t value = 0;
-    if (vkGetSemaphoreCounterValue(r->vk->device, r->timeline, &value) == VK_SUCCESS) {
+    if (vela_vulkan_result(r->vk, vkGetSemaphoreCounterValue(r->vk->device, r->timeline, &value),
+            "vkGetSemaphoreCounterValue")) {
         r->completed = value;
     }
     return r->completed;
 }
 
-void vela_renderer_wait(struct vela_renderer *r, uint64_t point)
+bool vela_renderer_wait(struct vela_renderer *r, uint64_t point)
 {
-    if (point == 0 || point <= r->completed) {
-        return;
-    }
+    if (r->vk->loss.lost || point == 0) return false;
+    if (point <= r->completed) return true;
     const VkSemaphoreWaitInfo info = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
         .semaphoreCount = 1,
         .pSemaphores = &r->timeline,
         .pValues = &point,
     };
-    vkWaitSemaphores(r->vk->device, &info, UINT64_MAX);
-    vela_renderer_completed(r);
+    if (!vela_vulkan_result(r->vk, vkWaitSemaphores(r->vk->device, &info, UINT64_MAX),
+            "vkWaitSemaphores")) return false;
+    return vela_renderer_completed(r) >= point && !r->vk->loss.lost;
 }
 
 void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageView view, VkDeviceMemory memory)
@@ -991,7 +1023,7 @@ void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageV
     // Uploads recorded but not yet submitted count too: they will end up in
     // the next submission.
     uint64_t point = r->upload ? r->last_point + 1 : r->last_point;
-    if (point <= vela_renderer_completed(r)) {
+    if (!r->vk->loss.lost && point <= vela_renderer_completed(r) && !r->vk->loss.lost) {
         VkDevice device = r->vk->device;
         if (view) {
             vkDestroyImageView(device, view, NULL);
@@ -1008,8 +1040,10 @@ void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageV
 
 void vela_renderer_collect(struct vela_renderer *r)
 {
+    if (r->vk->loss.lost) return;
     VkDevice device = r->vk->device;
     uint64_t done = vela_renderer_completed(r);
+    if (r->vk->loss.lost) return;
 
     int kept = 0;
     for (int i = 0; i < r->used_semaphore_count; ++i) {
@@ -1059,6 +1093,7 @@ void vela_renderer_collect(struct vela_renderer *r)
 
 VkPipeline vela_renderer_pipeline(struct vela_renderer *r, VkFormat target, enum vela_pipeline_kind kind, bool blend)
 {
+    if (r->vk->loss.lost) return VK_NULL_HANDLE;
     for (int i = 0; i < r->pipeline_count; ++i) {
         const struct pipeline_entry *entry = &r->pipelines[i];
         if (entry->format == target && entry->kind == kind && entry->blend == blend) {
@@ -1151,7 +1186,9 @@ VkPipeline vela_renderer_pipeline(struct vela_renderer *r, VkFormat target, enum
         .layout = r->layout,
     };
     VkPipeline pipeline = VK_NULL_HANDLE;
-    if (vkCreateGraphicsPipelines(r->vk->device, VK_NULL_HANDLE, 1, &info, NULL, &pipeline) != VK_SUCCESS) {
+    if (!vela_vulkan_result(r->vk,
+            vkCreateGraphicsPipelines(r->vk->device, VK_NULL_HANDLE, 1, &info, NULL, &pipeline),
+            "vkCreateGraphicsPipelines")) {
         wlr_log(WLR_ERROR, "Renderer: can't create a pipeline");
         return VK_NULL_HANDLE;
     }
@@ -1164,6 +1201,7 @@ VkPipeline vela_renderer_pipeline(struct vela_renderer *r, VkFormat target, enum
 
 bool vela_renderer_prepare_blur(struct vela_renderer *r, uint32_t width, uint32_t height)
 {
+    if (r->vk->loss.lost) return false;
     VkDevice device = r->vk->device;
     for (int level = 0; level < VELA_BLUR_LEVELS; ++level) {
         uint32_t need_width = (width + (2u << level) - 1) >> (level + 1);
