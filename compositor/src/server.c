@@ -34,6 +34,7 @@
 #include "view.h"
 #include "workspace.h"
 #include "x11_coordinates.h"
+#include "x11_xdg_output.h"
 #include "x11_satellite.h"
 
 #include <errno.h>
@@ -272,7 +273,7 @@ static bool init(struct vela_server *server)
     wlr_presentation_create(display, server->backend, 2);
 
     server->output_layout = wlr_output_layout_create(display);
-    wlr_xdg_output_manager_v1_create(display, server->output_layout);
+    server->xdg_output_manager = wlr_xdg_output_manager_v1_create(display, server->output_layout);
     vela_output_manager_init(server);
     vela_listen(&server->output_layout->events.change, &server->layout_change, handle_layout_change);
 
@@ -316,6 +317,7 @@ static bool init(struct vela_server *server)
         return false;
     }
     vela_xwayland_init(server); // X11 apps (xwayland.c)
+    server->x11_xdg_output = vela_x11_xdg_output_create(server);
     server->lock = vela_lock_create(server); // lock and inactivity (lock.c)
     // Accessibility and screen color (a11y.c); VRR and tearing.
     server->scene->tearing_control = wlr_tearing_control_manager_v1_create(display, 1);
@@ -508,6 +510,8 @@ void vela_server_destroy(struct vela_server *server)
     // Closing the clients destroys windows and shell surfaces, which remove
     // themselves from our lists.
     wl_display_destroy_clients(server->display);
+    vela_x11_xdg_output_destroy(server->x11_xdg_output);
+    server->x11_xdg_output = NULL;
 
     // wlroots checks that no listener stays attached to the objects it
     // destroys: all the global ones are detached first.
