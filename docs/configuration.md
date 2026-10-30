@@ -93,6 +93,40 @@ For a Steam game, add the launch option:
 vela-xwayland-native %command%
 ```
 
+To verify the actual modes exposed by the separate Satellite X server,
+**do not** run plain `xrandr` in the normal shell (that queries Vela's
+integrated XWayland). Run:
+
+```sh
+vela-xwayland-native xrandr --query
+```
+
+For a 2560×1440 output at 125% scale, the Satellite query must contain
+**2560x1440**, not just 2048x1152. To debug a Steam launch without silently
+starting in logical resolution:
+
+```text
+VELA_XWAYLAND_NATIVE_DEBUG=1 VELA_XWAYLAND_NATIVE_EXPECT=2560x1440 vela-xwayland-native %command%
+```
+
+If the mode is missing, the helper prints the actual RandR output list and
+exits instead of launching the game. First confirm Satellite >= 0.6 is really
+installed and bound to Vela's Wayland socket.
+
+For fullscreen Windows games, Vela now honors explicit X11 configure requests
+that target another monitor's top-left, and native XDG clients requesting
+`xdg_toplevel.set_fullscreen(output)`, including X11 bridged through Satellite.
+A window can also be moved to a particular enabled output without altering the
+global primary display. For example, through Vela's command socket:
+
+```sh
+printf 'window active output HDMI-A-1\\n' |
+    socat - UNIX-CONNECT:"$XDG_RUNTIME_DIR/vela-$WAYLAND_DISPLAY.sock"
+```
+
+This move is intentionally limited to fullscreen windows. The X11 fallback
+does not reinterpret size-only configure requests as monitor changes.
+
 The helper reserves a separate X11 display, starts Satellite, forwards the
 Vela-configured primary monitor to its RandR server and runs the requested
 application. It shuts down its Satellite instance after the app exits, leaving
