@@ -33,6 +33,7 @@
 #include "util.h"
 #include "view.h"
 #include "workspace.h"
+#include "x11_satellite.h"
 
 #include <errno.h>
 #include <fcntl.h>
