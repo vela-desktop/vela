@@ -263,7 +263,7 @@ caffeine status
 lossless intermediate capture.
 
 ```sh
-cmake --build build --target vela-shell vela-screen-record
+cmake --build build --target vela-compositor vela-shell vela-screen-record vela-settings
 python3 scripts/record-promo.py --list
 python3 scripts/record-promo.py --out ~/videos/vela-beta
 python3 scripts/record-promo.py start-menu window-motion task-view --out ~/videos/vela-beta-short
@@ -282,10 +282,17 @@ The capture contains no cursor, narration, music or artificial UI. Add titles,
 sound and transitions in a separate editorial pass; these scripts guarantee
 reproducible **source footage**, not a complete edited marketing film. The
 private D-Bus and PipeWire deliberately disconnect the host's Bluetooth/network
-services, so those Quick Settings tiles may appear unavailable. The synthetic
-Settings user is `Alex`; scenes must not open private files or host data.
-Record a real GPU run and review every clip before publication. A supplied build
-is **not** verified to match the source tree's current commit.
+services, so those Quick Settings tiles may appear unavailable. The compositor
+and Qt clients also receive a temporary private HOME, XDG runtime and state
+directory; Settings sees the synthetic user `Alex`. This is **not** a full
+network or filesystem sandbox: scenes must still avoid private files, host data
+and network access. In particular, do not record an unscripted Settings page
+that may display real device information. Window Motion and Task View require
+the built `vela-settings` app instead of substituting a test window.
+Record a real GPU run and review every clip before publication. The raw
+recording rate at 1080p60 is about 500 MB/s, so ensure ample temporary disk
+space. A supplied build is **not** verified to match the source tree's current
+commit.
 
 Run the offline recorder regression tests with:
 
