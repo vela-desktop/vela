@@ -507,7 +507,13 @@ void vela_server_destroy(struct vela_server *server)
     // Keep an emergency hardware-specific opt-out while the driver matrix is
     // validated: no GPU resources are freed manually when that flag is set,
     // and the kernel reclaims them on process exit (the previous behavior).
-    if (!vela_env_one("VELA_SKIP_VULKAN_CLEANUP")) {
+    // A non-device-loss terminal failure may leave queued work executing.
+    // Vulkan object destruction would require proof of GPU completion; let
+    // process exit reclaim those resources rather than risking use-after-free.
+    // Device-loss destruction is handled separately by the renderer.
+    bool uncertain_gpu_work = vela_vulkan_terminal_failure(server->vulkan)
+        && !vela_vulkan_device_lost(server->vulkan);
+    if (!vela_env_one("VELA_SKIP_VULKAN_CLEANUP") && !uncertain_gpu_work) {
         wlr_log(WLR_INFO, "Shutdown: releasing Vulkan renderer, allocator and device");
         // The renderer notifies its users (wlr_compositor) before teardown.
         wlr_renderer_destroy(server->wlr_renderer);
@@ -516,7 +522,7 @@ void vela_server_destroy(struct vela_server *server)
         vela_vulkan_destroy(server->vulkan); // last: everything else uses its device
         wlr_log(WLR_INFO, "Shutdown: Vulkan resource cleanup complete");
     } else {
-        wlr_log(WLR_INFO, "WARNING: Shutdown: skipping Vulkan resource cleanup (diagnostic override)");
+        wlr_log(WLR_INFO, "WARNING: Shutdown: skipping Vulkan cleanup (diagnostic override or unknown GPU completion)");
     }
     wl_display_destroy(server->display);
     if (server->runtime_dir_fd >= 0) {
