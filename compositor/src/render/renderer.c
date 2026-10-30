@@ -361,7 +361,7 @@ uint64_t vela_renderer_signal_sync_point(struct vela_renderer *r, int sync_file)
     if (!ok) {
         // Better an early release than an app blocked forever: the CPU waits
         // for the GPU and the point signals at once.
-        vela_renderer_wait(r, r->last_point);
+        if (!vela_renderer_wait(r, r->last_point)) return 0;
         wlr_drm_syncobj_timeline_signal(r->sync_timeline, point);
     }
     return point;
@@ -1027,8 +1027,8 @@ uint64_t vela_renderer_completed(struct vela_renderer *r)
 
 bool vela_renderer_wait(struct vela_renderer *r, uint64_t point)
 {
-    if (r->vk->loss.lost || point == 0) return false;
-    if (point <= r->completed) return true;
+    if (r->vk->loss.lost) return false;
+    if (point == 0 || point <= r->completed) return true;
     const VkSemaphoreWaitInfo info = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
         .semaphoreCount = 1,
@@ -1241,6 +1241,7 @@ bool vela_renderer_prepare_blur(struct vela_renderer *r, uint32_t width, uint32_
         if (current->image) {
             vela_renderer_retire_image(r, current->image, current->view, current->memory);
             memset(current, 0, sizeof(*current));
+            if (r->vk->loss.lost) return false;
         }
         const VkImageCreateInfo image_info = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -1256,7 +1257,8 @@ bool vela_renderer_prepare_blur(struct vela_renderer *r, uint32_t width, uint32_
             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         };
         struct vela_blur_image image = { .width = alloc_width, .height = alloc_height };
-        bool ok = vkCreateImage(device, &image_info, NULL, &image.image) == VK_SUCCESS;
+        bool ok = vela_vulkan_result(r->vk,
+            vkCreateImage(device, &image_info, NULL, &image.image), "vkCreateImage(blur)");
         if (ok) {
             VkMemoryRequirements requirements;
             vkGetImageMemoryRequirements(device, image.image, &requirements);
@@ -1267,8 +1269,10 @@ bool vela_renderer_prepare_blur(struct vela_renderer *r, uint32_t width, uint32_
                 = vela_vulkan_memory_type(r->vk, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
             };
             ok = alloc_info.memoryTypeIndex != UINT32_MAX
-                && vkAllocateMemory(device, &alloc_info, NULL, &image.memory) == VK_SUCCESS
-                && vkBindImageMemory(device, image.image, image.memory, 0) == VK_SUCCESS;
+                && vela_vulkan_result(r->vk, vkAllocateMemory(device, &alloc_info, NULL, &image.memory),
+                    "vkAllocateMemory(blur)")
+                && vela_vulkan_result(r->vk, vkBindImageMemory(device, image.image, image.memory, 0),
+                    "vkBindImageMemory(blur)");
         }
         if (ok) {
             const VkImageViewCreateInfo view_info = {
@@ -1278,10 +1282,11 @@ bool vela_renderer_prepare_blur(struct vela_renderer *r, uint32_t width, uint32_
                 .format = VELA_BLUR_FORMAT,
                 .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
             };
-            ok = vkCreateImageView(device, &view_info, NULL, &image.view) == VK_SUCCESS;
+            ok = vela_vulkan_result(r->vk, vkCreateImageView(device, &view_info, NULL, &image.view),
+                "vkCreateImageView(blur)");
         }
         if (!ok) {
-            wlr_log(WLR_ERROR, "Renderer: no memory for the blur (%ux%u)", alloc_width, alloc_height);
+            wlr_log(WLR_ERROR, "Renderer: blur image unavailable (%ux%u)", alloc_width, alloc_height);
             destroy_blur_image(device, &image);
             return false;
         }
