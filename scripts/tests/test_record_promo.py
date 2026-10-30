@@ -107,6 +107,19 @@ class PromoTests(unittest.TestCase):
         self.assertIs(result, take)
         take.align.assert_not_called()
 
+    def test_lossless_encoder_is_reaped_after_pipe_failure(self):
+        encoder = mock.Mock()
+        encoder.stdin.write.side_effect = BrokenPipeError("encoder quit")
+        encoder.stdin.closed = False
+        encoder.poll.return_value = None
+        take = types.SimpleNamespace(width=1, height=1, format="bgr0")
+        with mock.patch.object(promo.capture.subprocess, "Popen", return_value=encoder):
+            with self.assertRaises(BrokenPipeError):
+                promo.capture.lossless(take, [b"abcd"], Path("/tmp/ignored.mkv"))
+        encoder.kill.assert_called_once()
+        encoder.wait.assert_called_once()
+        encoder.stdin.close.assert_called_once()
+
     def test_isolated_environment_overrides_host_paths_and_identifiers(self):
         scene = types.SimpleNamespace(env={"HOME": "/home/real-user",
                                            "XDG_RUNTIME_DIR": "/run/user/1000",
