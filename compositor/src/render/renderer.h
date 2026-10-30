@@ -38,6 +38,7 @@ struct wlr_buffer;
 struct wlr_drm_format_set;
 struct wlr_drm_syncobj_timeline;
 struct wlr_texture;
+struct wl_display;
 
 // ------------------------------------------------------------- device --
 
@@ -46,6 +47,8 @@ struct wlr_texture;
 // extensions are missing; the reason is already in the log.
 struct vela_vulkan *vela_vulkan_create(int backend_drm_fd);
 void vela_vulkan_destroy(struct vela_vulkan *vk);
+void vela_vulkan_set_display(struct vela_vulkan *vk, struct wl_display *display);
+bool vela_vulkan_device_lost(const struct vela_vulkan *vk);
 // The render node of the same GPU, opened by the device: the allocator and the
 // syncobj timelines need it.
 int vela_vulkan_render_fd(const struct vela_vulkan *vk);

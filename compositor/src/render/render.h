@@ -9,6 +9,7 @@
 // render/renderer.h.
 
 #include "render/renderer.h"
+#include "render/device_loss_policy.h"
 
 #include <vulkan/vulkan.h>
 #include <wayland-server-core.h>
@@ -46,6 +47,8 @@ struct vela_vulkan {
     VkPhysicalDevice physical;
     VkDevice device;
     VkQueue queue;
+    struct vela_device_loss_policy loss;
+    struct wl_display *loss_display;
     uint32_t queue_family;
     char name[256];
 
@@ -82,11 +85,14 @@ uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t type_bit
 bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
     VkImageUsageFlags usage);
 // A dmabuf as a VkImage, without copies (all planes in the same dmabuf).
-bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
+bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
     VkFormat format, VkImageUsageFlags usage, VkImage *image, VkDeviceMemory *memory);
-VkShaderModule vela_vulkan_shader(const struct vela_vulkan *vk, const uint32_t *code, size_t bytes);
+VkShaderModule vela_vulkan_shader(struct vela_vulkan *vk, const uint32_t *code, size_t bytes);
 
 // --------------------------------------------------------------- drawing --
+// Classify Vulkan errors centrally and stop the Wayland loop on first GPU loss.
+bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *operation);
+
 
 // The constants of every draw (see shaders/push.glsl): 160 bytes, below the
 // 256 Vulkan 1.4 guarantees.

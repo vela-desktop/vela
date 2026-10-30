@@ -182,12 +182,15 @@ static bool init(struct vela_server *server)
     // says why.
     server->vulkan = vela_vulkan_create(wlr_backend_get_drm_fd(server->backend));
     if (server->vulkan) {
+        vela_vulkan_set_display(server->vulkan, display);
         server->renderer = vela_renderer_create(server->vulkan);
     }
     if (!server->renderer) {
         wlr_log(WLR_ERROR, "Vela needs a GPU with Vulkan 1.4 and dmabuf support: can't draw");
-        server->unsupported_gpu = true;
-        vela_error_screen_no_vulkan(wlr_backend_get_drm_fd(server->backend));
+        server->unsupported_gpu = !vela_vulkan_device_lost(server->vulkan);
+        if (server->unsupported_gpu) {
+            vela_error_screen_no_vulkan(wlr_backend_get_drm_fd(server->backend));
+        }
         return false;
     }
     server->wlr_renderer = vela_renderer_wlr(server->renderer);

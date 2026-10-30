@@ -110,6 +110,7 @@ int main(int argc, char *argv[])
         return 1;
     }
     vela_server_run(server);
+    bool device_lost = vela_vulkan_device_lost(server->vulkan);
     vela_server_destroy(server);
-    return 0;
+    return device_lost ? VELA_EXIT_DEVICE_LOST : 0;
 }

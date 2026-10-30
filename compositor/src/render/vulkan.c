@@ -533,6 +533,30 @@ struct vela_vulkan *vela_vulkan_create(int backend_drm_fd)
     return vk;
 }
 
+void vela_vulkan_set_display(struct vela_vulkan *vk, struct wl_display *display)
+{
+    vk->loss_display = display;
+}
+
+bool vela_vulkan_device_lost(const struct vela_vulkan *vk)
+{
+    return vk && vk->loss.lost;
+}
+
+bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *operation)
+{
+    _Static_assert(VK_ERROR_DEVICE_LOST == VELA_VK_DEVICE_LOST_RESULT,
+        "unexpected Vulkan device-loss code");
+    if (vela_device_loss_mark(&vk->loss, (int32_t)result, operation)) {
+        wlr_log(WLR_ERROR, "Vulkan: GPU DEVICE LOST at %s (VkResult=%d); ending compositor",
+            operation, (int)result);
+        if (vk->loss_display) wl_display_terminate(vk->loss_display);
+    } else if (result != VK_SUCCESS && !vk->loss.lost) {
+        wlr_log(WLR_ERROR, "Vulkan: %s failed (VkResult=%d)", operation, (int)result);
+    }
+    return result == VK_SUCCESS && !vk->loss.lost;
+}
+
 void vela_vulkan_destroy(struct vela_vulkan *vk)
 {
     if (!vk) {
@@ -574,7 +598,7 @@ uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t type_bit
     return UINT32_MAX;
 }
 
-bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
+bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
     VkFormat format, VkImageUsageFlags usage, VkImage *image, VkDeviceMemory *memory)
 {
     *image = VK_NULL_HANDLE;
@@ -633,7 +657,7 @@ bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dm
     };
     VkResult image_result = vkCreateImage(vk->device, &image_info, NULL, image);
     if (image_result != VK_SUCCESS) {
-        wlr_log(WLR_ERROR, "DMABUF import: vkCreateImage failed: VkResult=%d", (int)image_result);
+        vela_vulkan_result(vk, image_result, "vkCreateImage(dmabuf)");
         *image = VK_NULL_HANDLE;
         return false;
     }
@@ -644,7 +668,7 @@ bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dm
     VkResult fd_result = vk->get_memory_fd_properties(
         vk->device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, dmabuf->fd[0], &fd_props);
     if (fd_result != VK_SUCCESS) {
-        wlr_log(WLR_ERROR, "DMABUF import: vkGetMemoryFdPropertiesKHR failed: VkResult=%d", (int)fd_result);
+        vela_vulkan_result(vk, fd_result, "vkGetMemoryFdPropertiesKHR");
         vkDestroyImage(vk->device, *image, NULL);
         *image = VK_NULL_HANDLE;
         return false;
@@ -684,7 +708,7 @@ bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dm
     };
     VkResult allocate_result = vkAllocateMemory(vk->device, &alloc_info, NULL, memory);
     if (allocate_result != VK_SUCCESS) {
-        wlr_log(WLR_ERROR, "DMABUF import: vkAllocateMemory failed: VkResult=%d", (int)allocate_result);
+        vela_vulkan_result(vk, allocate_result, "vkAllocateMemory(dmabuf)");
         // Vulkan consumes the duplicated FD only if the import succeeds.
         close(fd);
         vkDestroyImage(vk->device, *image, NULL);
@@ -694,7 +718,7 @@ bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dm
     }
     VkResult bind_result = vkBindImageMemory(vk->device, *image, *memory, 0);
     if (bind_result != VK_SUCCESS) {
-        wlr_log(WLR_ERROR, "DMABUF import: vkBindImageMemory failed: VkResult=%d", (int)bind_result);
+        vela_vulkan_result(vk, bind_result, "vkBindImageMemory(dmabuf)");
         vkDestroyImage(vk->device, *image, NULL);
         vkFreeMemory(vk->device, *memory, NULL);
         *image = VK_NULL_HANDLE;
@@ -704,7 +728,7 @@ bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dm
     return true;
 }
 
-VkShaderModule vela_vulkan_shader(const struct vela_vulkan *vk, const uint32_t *code, size_t bytes)
+VkShaderModule vela_vulkan_shader(struct vela_vulkan *vk, const uint32_t *code, size_t bytes)
 {
     const VkShaderModuleCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -712,6 +736,6 @@ VkShaderModule vela_vulkan_shader(const struct vela_vulkan *vk, const uint32_t *
         .pCode = code,
     };
     VkShaderModule module = VK_NULL_HANDLE;
-    vkCreateShaderModule(vk->device, &info, NULL, &module);
+    vela_vulkan_result(vk, vkCreateShaderModule(vk->device, &info, NULL, &module), "vkCreateShaderModule");
     return module;
 }
