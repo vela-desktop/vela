@@ -457,6 +457,10 @@ char **vela_up_terminal(const char *path, const char *vela_terminal)
             c += strcspn(c, " ");
         }
     }
+    // No terminal needs more; a longer VELA_TERMINAL is a mistake.
+    if (words > 64) {
+        return NULL;
+    }
     char **argv = calloc(words + 2, sizeof(*argv));
     if (!argv) {
         return NULL;
@@ -496,7 +500,7 @@ static bool executable(const char *proc, pid_t pid, char *exe, size_t size, bool
         return false;
     }
     ssize_t length = readlink(path, exe, size - 1);
-    if (length <= 0) {
+    if (length <= 0 || (size_t)length >= size) {
         return false;
     }
     exe[length] = '\0';

@@ -253,6 +253,17 @@ TEST_F(Files, Terminal)
     EXPECT_EQ(argv[3], nullptr);
     vela_up_strv_free(argv);
 
+    // At most 64 words.
+    std::string words = "kitty";
+    for (int i = 1; i < 64; ++i) {
+        words += " -1";
+    }
+    argv = vela_up_terminal(path.c_str(), words.c_str());
+    ASSERT_NE(argv, nullptr);
+    EXPECT_STREQ(argv[64], "-e");
+    vela_up_strv_free(argv);
+    EXPECT_EQ(vela_up_terminal(path.c_str(), (words + " -1").c_str()), nullptr);
+
     // xdg-terminal-exec wins, and takes the command as it is.
     program("bin2", "xdg-terminal-exec");
     argv = vela_up_terminal(path.c_str(), "kitty");

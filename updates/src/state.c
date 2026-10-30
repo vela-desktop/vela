@@ -92,7 +92,10 @@ static void read_source(struct vela_up_daemon *d)
     char line[4200];
     while (f && fgets(line, sizeof(line), f)) {
         if (strncmp(line, "source=", 7) == 0) {
-            line[strcspn(line, "\n")] = '\0';
+            char *newline = strchr(line, '\n');
+            if (newline) {
+                *newline = '\0';
+            }
             source = strdup(line + 7);
             break;
         }
@@ -247,7 +250,10 @@ int vela_up_state_start(struct vela_up_daemon *d)
     free(path);
     char line[128];
     if (f && fgets(line, sizeof(line), f)) {
-        line[strcspn(line, "\n")] = '\0';
+        char *newline = strchr(line, '\n');
+        if (newline) {
+            *newline = '\0';
+        }
         set_string(&d->announced, line);
     }
     if (f) {
