@@ -152,6 +152,8 @@ static bool init(struct vela_server *server)
     wl_list_init(&server->new_output.link);
     wl_list_init(&server->layout_change.link);
     vela_child_init(&server->shell, "Shell", SIGKILL, -1);
+    vela_child_init(&server->satellite, "Xwayland Satellite", SIGTERM, -1);
+    server->satellite_listen_fd = -1;
     // SIGTERM, not SIGKILL: the agent unregisters from polkitd before
     // exiting. Exit code 2: another agent already owns this session.
     vela_child_init(&server->polkit_agent, "Polkit agent", SIGTERM, 2);
@@ -379,17 +381,25 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     if (server->session) {
         vela_session_set_environment();
     }
-    // X11 apps launched from here go to our Xwayland, not to the one of the
-    // host session (KDE) we may have started from.
-#if WLR_HAS_XWAYLAND
-    if (server->xwayland) {
-        setenv("DISPLAY", server->xwayland->display_name, 1);
+    // Session-wide X11 backend. Satellite is opt-in for native physical mode
+    // enumeration; the integrated wlroots XWayland remains the fallback.
+    // The sockets are bound before the shell starts, so Steam needs no
+    // per-game environment variables or custom launch options.
+    if (vela_x11_satellite_start(server)) {
+        char display[16];
+        snprintf(display, sizeof(display), ":%d", server->satellite_display);
+        setenv("DISPLAY", display, 1);
     } else {
-        unsetenv("DISPLAY");
-    }
+#if WLR_HAS_XWAYLAND
+        if (server->xwayland) {
+            setenv("DISPLAY", server->xwayland->display_name, 1);
+        } else {
+            unsetenv("DISPLAY");
+        }
 #else
-    unsetenv("DISPLAY");
+        unsetenv("DISPLAY");
 #endif
+    }
     // Qt apps reconnect to the new compositor if this one crashes: only when
     // the supervisor restarts it on the same socket. Without one (nested,
     // headless) it does harm: when Vela closes, Qt apps try to reconnect and
@@ -447,6 +457,7 @@ void vela_server_destroy(struct vela_server *server)
     // We are shutting down: the shell and the agent going away must not be
     // relaunched.
     vela_shell_stop(server);
+    vela_x11_satellite_stop(server);
     vela_child_stop(&server->polkit_agent);
     vela_child_stop(&server->bluetooth);
     vela_child_stop(&server->updates);
