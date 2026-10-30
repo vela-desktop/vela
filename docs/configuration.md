@@ -71,6 +71,39 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
 
+## XWayland primary output and native-resolution games
+
+The main monitor selected in Vela Settings is also synchronized to the XRandR
+primary output for X11/Wine/Proton clients. The shell re-applies it on startup,
+preference changes, and monitor hotplug. This requires `xrandr` (Arch:
+`xorg-xrandr`). It does not affect the Wayland-native monitor layout.
+
+Fractional scaling is separate. At 125% scaling, Vela's built-in XWayland
+currently exposes logical size 2048×1152 for a physical 2560×1440 output.
+For opt-in physical-resolution enumeration, install **xwayland-satellite >=
+0.6** and launch the game through:
+
+```sh
+vela-xwayland-native GAME [ARG ...]
+```
+
+For a Steam game, add the launch option:
+
+```text
+vela-xwayland-native %command%
+```
+
+The helper reserves a separate X11 display, starts Satellite, forwards the
+Vela-configured primary monitor to its RandR server and runs the requested
+application. It shuts down its Satellite instance after the app exits, leaving
+the rest of the session on built-in XWayland. You may override the output
+explicitly with `VELA_X11_PRIMARY=DP-3`.
+
+Satellite uses the host's `wp_viewporter` support, already exposed by Vela.
+It can have different window-management behavior from built-in XWayland, and
+legacy X11 applications may show smaller UI text. This is **not** the same
+as native zero-scaling inside Vela's integrated XWayland.
+
 ## Display configuration
 
 Persistent display layout is stored separately in:
