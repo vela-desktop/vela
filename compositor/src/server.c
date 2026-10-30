@@ -390,7 +390,9 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
         char display[16];
         snprintf(display, sizeof(display), ":%d", server->satellite_display);
         setenv("DISPLAY", display, 1);
+        setenv("VELA_X11_NATIVE_BACKEND", "1", 1);
     } else {
+        unsetenv("VELA_X11_NATIVE_BACKEND");
 #if WLR_HAS_XWAYLAND
         if (server->xwayland) {
             setenv("DISPLAY", server->xwayland->display_name, 1);
