@@ -47,6 +47,8 @@ struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_xdg_shell;
 struct wlr_xwayland;
+struct wlr_xdg_output_manager_v1;
+struct vela_x11_xdg_output;
 struct wlr_backend;
 struct wlr_cursor;
 struct wlr_output_layout;
@@ -105,6 +107,8 @@ struct vela_server {
     struct wlr_allocator *allocator;
     struct wlr_allocator *cursor_allocator; // optional dedicated DRM cursor BOs
     struct wlr_output_layout *output_layout;
+    struct wlr_xdg_output_manager_v1 *xdg_output_manager;
+    struct vela_x11_xdg_output *x11_xdg_output;
     struct vela_scene *scene;
     struct wl_list outputs; // vela_output.link
     // Variable refresh rate (VRR): 0 never, 1 with a fullscreen app (games), 2
