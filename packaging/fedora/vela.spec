@@ -91,6 +91,7 @@ Requires:       polkit
 Requires:       python3
 Requires:       xorg-x11-server-Xwayland
 Requires:       xrandr
+Requires:       xrdb
 Requires:       xwayland-satellite >= 0.7
 Requires:       pipewire
 Requires:       wireplumber
