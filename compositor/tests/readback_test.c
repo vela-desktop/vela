@@ -14,7 +14,7 @@ static uint8_t mapping[256];
 static VkDeviceSize buffer_size;
 static uint64_t completed_point;
 static int counter_polls, end_calls, submit_calls, wait_calls, semaphore_creates, pipeline_creates;
-static int imported_fds, exported_fds, semaphore_destroys;
+static int imported_fds, exported_fds, semaphore_destroys, last_exported_fd = -1;
 static VkResult submit_result, wait_result, end_result, semaphore_result, counter_result, pipeline_result;
 
 void _wlr_log(enum wlr_log_importance importance, const char *format, ...) {}
@@ -136,6 +136,18 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateGraphicsPipelines(VkDevice device, VkPipe
     ++pipeline_creates;
     *pipelines = VK_NULL_HANDLE;
     return pipeline_result;
+}
+
+// Return a real descriptor, so a failure after export can be checked for leaks.
+static VkResult VKAPI_PTR valid_export_fd(VkDevice device, const VkSemaphoreGetFdInfoKHR *info, int *fd)
+{
+    int ends[2];
+    assert(pipe(ends) == 0);
+    close(ends[1]);
+    *fd = ends[0];
+    last_exported_fd = *fd;
+    ++exported_fds;
+    return VK_SUCCESS;
 }
 
 static VkResult VKAPI_PTR fault_import_fd(VkDevice device, const VkImportSemaphoreFdInfoKHR *info)
@@ -309,6 +321,29 @@ static void semaphore_fd_export_loss(void)
     free(renderer.used_semaphores);
 }
 
+static void debug_sync_failed_wait_closes_exported_fd(void)
+{
+    struct vela_vulkan vk = { .sync_file = true, .get_semaphore_fd = valid_export_fd };
+    struct vela_renderer renderer = { .vk = &vk, .timeline = (VkSemaphore)(uintptr_t)1 };
+    assert(setenv("VELA_DEBUG_SYNC", "1", 1) == 0);
+    exported_fds = submit_calls = wait_calls = 0;
+    last_exported_fd = -1;
+    completed_point = 0;
+    counter_result = semaphore_result = submit_result = end_result = VK_SUCCESS;
+    wait_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+    int release_fd = -1;
+    assert(!vela_renderer_submit(&renderer, (VkCommandBuffer)(uintptr_t)1, NULL, 0, &release_fd));
+    assert(!vk.loss.lost && vk.terminal_error);
+    assert(exported_fds == 1 && submit_calls == 1 && wait_calls == 1);
+    assert(last_exported_fd >= 0 && release_fd == -1);
+    errno = 0;
+    assert(fcntl(last_exported_fd, F_GETFD) == -1 && errno == EBADF);
+    assert(unsetenv("VELA_DEBUG_SYNC") == 0);
+    wait_result = VK_SUCCESS;
+    free(renderer.used_semaphores);
+}
+
 static void semaphore_fd_import_loss(void)
 {
     struct vela_vulkan vk = { .sync_file = true, .import_semaphore_fd = fault_import_fd };
@@ -319,10 +354,14 @@ static void semaphore_fd_import_loss(void)
     semaphore_result = submit_result = end_result = VK_SUCCESS;
     assert(!vela_renderer_submit(&renderer, (VkCommandBuffer)(uintptr_t)1, fds, 1, NULL));
     close(fds[1]);
+    // A semaphore from a failed import must be destroyed, never pooled: the
+    // previous CodeRabbit review described the pre-fix pool behavior.
     assert(vk.loss.lost && imported_fds == 1 && submit_calls == 0 && semaphore_destroys == 1);
+    assert(renderer.free_wait_count == 0);
     assert(strcmp(vk.loss.first_operation, "vkImportSemaphoreFdKHR") == 0);
     free(renderer.wait_infos);
     free(renderer.wait_semaphores);
+    free(renderer.free_waits);
 }
 
 static void counter_query_loss_stops_polling(void)
@@ -479,6 +518,7 @@ int main(void)
     failed_end_releases_command_reservations();
     pipeline_loss_blocks_new_pipeline_work();
     semaphore_fd_export_loss();
+    debug_sync_failed_wait_closes_exported_fd();
     semaphore_fd_import_loss();
     counter_query_loss_stops_polling();
     timeline_wait_nonterminal_error_is_fatal();
