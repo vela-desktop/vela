@@ -177,7 +177,10 @@ static int method_install(sd_bus_message *call, void *data, sd_bus_error *error)
             return r;
         }
     }
-    if (r < 0 || (r = sd_bus_message_exit_container(call)) < 0) {
+    if (r < 0) {
+        return r;
+    }
+    if ((r = sd_bus_message_exit_container(call)) < 0) {
         return r;
     }
     r = vela_up_install_start(d, &options, error);

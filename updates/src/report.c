@@ -499,16 +499,17 @@ static bool executable(const char *proc, pid_t pid, char *exe, size_t size, bool
     if (snprintf(path, sizeof(path), "%s/%d/exe", proc, (int)pid) >= (int)sizeof(path)) {
         return false;
     }
-    ssize_t length = readlink(path, exe, size - 1);
-    if (length <= 0 || (size_t)length >= size) {
+    // Zeroed first, readlink leaves the terminator in place.
+    memset(exe, 0, size);
+    if (readlink(path, exe, size - 1) <= 0) {
         return false;
     }
-    exe[length] = '\0';
     static const char suffix[] = " (deleted)";
-    size_t n = (size_t)length;
-    *deleted = n > strlen(suffix) && strcmp(exe + n - strlen(suffix), suffix) == 0;
+    size_t n = strlen(exe);
+    char *tail = n > strlen(suffix) ? exe + n - strlen(suffix) : NULL;
+    *deleted = tail && strcmp(tail, suffix) == 0;
     if (*deleted) {
-        exe[n - strlen(suffix)] = '\0';
+        *tail = '\0';
     }
     return true;
 }
