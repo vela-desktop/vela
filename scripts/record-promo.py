@@ -43,6 +43,7 @@ class DesktopOverview(Scene):
 
 class StartMenu(Scene):
     name = "start-menu"
+    poster = 0.85  # Show the open panel, not the desktop before the animation.
     about = "Start menu entering and leaving the desktop"
     namespace = "vela-start-menu"
 
@@ -61,6 +62,7 @@ class StartMenu(Scene):
 
 class QuickSettings(Scene):
     name = "quick-settings"
+    poster = 0.85
     about = "Quick Settings panel, shown at full desktop resolution"
     namespace = "vela-quick-settings"
 
@@ -79,12 +81,14 @@ class QuickSettings(Scene):
 
 class WindowMotion(Scene):
     name = "window-motion"
+    poster = 0.25
     about = "Real window maximize and restore animations"
 
     def prepare(self, desktop):
         vela = desktop.vela
-        window = (desktop.open_app("settings/vela-settings", "--page", "personalization", user="Alex")
-                  or vela.open_window(860, 580, decorated=True))
+        window = desktop.open_app("settings/vela-settings", "--page", "personalization", user="Alex")
+        if window is None:
+            raise RuntimeError("build vela-settings: promo footage must show real Vela windows")
         vela.wait_still(window)
         if vela.state().window(window)["maximized"]:
             vela.command(f"window {window} restore")
@@ -103,13 +107,15 @@ class WindowMotion(Scene):
 
 class TaskView(Scene):
     name = "task-view"
+    poster = 0.85
     about = "Task View with real live window previews"
     namespace = "vela-task-view"
 
     def prepare(self, desktop):
         vela = desktop.vela
-        window = (desktop.open_app("settings/vela-settings", "--page", "personalization", user="Alex")
-                  or vela.open_window(860, 580, decorated=True))
+        window = desktop.open_app("settings/vela-settings", "--page", "personalization", user="Alex")
+        if window is None:
+            raise RuntimeError("build vela-settings: Task View needs a real app preview")
         vela.wait_still(window)
         return None, window
 
@@ -168,12 +174,15 @@ def assemble_reel(clips, output):
     """Concatenate equal-resolution, constant-rate clips; no re-timing of a scene."""
     # Scenes use the same 1920x1080@60 output and encoder settings. Each input
     # is an internal, allowlisted scene name; avoid path interpolation from users.
+    if any(clip.parent.resolve() != output.resolve() or clip.stem not in SCENES or
+           clip.suffix != ".mp4" for clip in clips):
+        raise ValueError("reel inputs must be generated MP4 clips for known scenes in the output directory")
     concat = output / ".promo-concat.txt"
     try:
         concat.write_text("ffconcat version 1.0\n" +
                           "".join(f"file '{clip.name}'\n" for clip in clips))
         subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                        "-safe", "0", "-f", "concat", "-i", str(concat),
+                        "-safe", "1", "-f", "concat", "-i", str(concat),
                         "-an", "-c:v", "libx264", "-crf", "18", "-preset", "slow",
                         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
                         str(output / "vela-promo.mp4")], check=True)
@@ -219,15 +228,24 @@ def main(argv=None):
     if len(names) != len(set(names)):
         parser.error("scene names must be unique")
     output = args.out.resolve()
-    collisions = [str(path) for path in output_paths(output, names, not args.no_reel, args.keep)
-                  if path.exists()]
+    planned = output_paths(output, names, not args.no_reel, args.keep)
+    symlinks = [str(path) for path in planned if path.is_symlink()]
+    if symlinks:
+        parser.error("refusing symlink output paths: " + ", ".join(symlinks))
+    collisions = [str(path) for path in planned if path.exists()]
     if collisions and not args.force:
         parser.error("refusing to overwrite existing output; use --force: " + ", ".join(collisions))
 
     build = args.build.resolve()
     capture.RECORDER = build / "tools" / "vela-screen-record"
-    if not (build / "shell" / "vela-shell").is_file() or not capture.RECORDER.is_file():
-        parser.error("build the shell and recorder first: cmake --build build --target vela-shell vela-screen-record")
+    required = [build / "compositor" / "vela-compositor",
+                build / "shell" / "vela-shell", capture.RECORDER]
+    if any(not path.is_file() for path in required):
+        parser.error("build the compositor, shell and recorder first: "
+                     "cmake --build build --target vela-compositor vela-shell vela-screen-record")
+    if set(names) & {"window-motion", "task-view", "settings"} and not (
+            build / "settings" / "vela-settings").is_file():
+        parser.error("build vela-settings for window-motion, task-view and settings scenes")
     if not capture.harness.gpu_available():
         parser.error("no GPU (/dev/dri/renderD*): Vela requires a Vulkan 1.4 GPU")
     for program in ("ffmpeg", "dbus-daemon", "pipewire", "wireplumber", "pw-cat", "unshare"):
@@ -244,7 +262,7 @@ def main(argv=None):
             take_dir.mkdir()
             print(f"{name}: recording a Vela headless session", flush=True)
             with Desktop(build, scene) as desktop:
-                take = record(desktop, scene, take_dir)
+                take = record(desktop, scene, take_dir, align=False)
             if take.width != 1920 or take.height != 1080:
                 raise RuntimeError(f"{name}: expected 1920x1080 capture, got {take.width}x{take.height}")
             clips.append(export_clip(scene, take, output, scratch))
