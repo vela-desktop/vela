@@ -103,6 +103,35 @@ The monitor selected in Vela Settings (`display/primaryOutput`) is also
 synchronized to the RandR primary display, including on hotplug. No manual
 `xrandr --primary` is required in the normal session.
 
+**Steam UI DPI on mixed-scale monitors:** Satellite itself chooses the
+**smallest output scale** for global XSETTINGS/Xresources. Thus a primary
+DP-3 at 125% plus a secondary HDMI-A-1 at 100% can give Steam a 100%-sized
+interface, despite the correct physical game resolution. In Satellite
+native mode Vela now uses `xrdb -merge` to publish the **preferred primary
+monitor's DPI** through X11 `RESOURCE_MANAGER` (`Xft.dpi: 120` at 125%,
+`96` at 100%), including after scaling or primary-output changes.
+Applications like Steam that consult Xft DPI may use this hint to render
+sharp, physically-sized UI, while games still discover 2560×1440 physical
+pixels. `xorg-xrdb` / `xrdb` is a runtime dependency.
+
+This is a global X11 DPI hint, not per-window scaling. Applications that
+use Satellite's global XSETTINGS rather than `Xft.dpi` may still choose
+100% on a mixed-scale session. Do not alter `wlr_output.scale` or
+apply `GDK_SCALE` globally to Steam/Proton to conceal the difference.
+The compatibility backend intentionally leaves this DPI override disabled
+because its X11 windows already receive compositor upscaling. Verify from
+a terminal in the **new Vela session**:
+
+```sh
+xrdb -query | grep -i '^Xft.dpi:'
+```
+
+Expected output for DP-3 125%: `Xft.dpi: 120`. Restart Steam after the
+value is published. Steam also has its own **Settings → Interface →
+Scale text and icons to match monitor settings** preference; if it
+ignores a correct `Xft.dpi`, investigate Steam's version-specific DPI
+detection before implementing an app-specific workaround.
+
 To recover from a Satellite compatibility problem, set in
 `~/.config/vela/vela.conf`:
 
@@ -136,6 +165,10 @@ states, committed XDG size constraints and the compositor's current state.
   [#269](https://github.com/Supreeeme/xwayland-satellite/issues/269)).
   Satellite currently handles only the EWMH fullscreen atom, not the pair
   `_NET_WM_STATE_MAXIMIZED_VERT/HORZ`.
+- Steam's **minimize** button can send ICCCM `WM_CHANGE_STATE` with
+  `IconicState` (the `XIconifyWindow` path). Satellite currently lacks
+  this bridge as well, though Vela's Super+Down minimization works.
+  The native test client can reproduce it via `vela-x11 --iconify XID`.
 - Europa Universalis V switching to Fullscreen with **no**
   `XDG_STATE request=fullscreen` points to Satellite/Wine state
   synchronization (upstream
@@ -148,8 +181,9 @@ states, committed XDG size constraints and the compositor's current state.
 
 The native session functional test includes a Steam-like EWMH maximize
 reproducer. It is kept opt-in via `VELA_ASSERT_SATELLITE_MAXIMIZE=1` until
-upstream Satellite forwards those requests; enabling it on an unpatched
-version is expected to fail.
+upstream Satellite forwards those requests. The similarly upstream-blocked
+ICCCM minimize test is opt-in via `VELA_ASSERT_SATELLITE_MINIMIZE=1`.
+Enabling either on unpatched Satellite is expected to fail.
 
 ## Display configuration
 
