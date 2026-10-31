@@ -13,6 +13,7 @@
 #include "x11_xdg_output.h"
 
 #include "server.h"
+#include "scene/scene.h"
 #include "x11_coordinates.h"
 
 #include <math.h>
