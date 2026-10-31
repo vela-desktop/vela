@@ -36,7 +36,10 @@ the standard RelWithDebInfo GPU suites run unchanged by default. Their
 `collect_coverage` workflow-dispatch input (default **false**) selects a
 fresh GCC Debug `--coverage` build instead and runs the same functional,
 sharpness and sharpness-cpu GPU suites on the actual hardware. Coverage
-is collected only after the existing no-skips/no-missing-tests check succeeds.
+is collected only after the existing no-skips/no-missing-tests check succeeds,
+and only for a full run (no **tests** or **test_filter**). The instrumented
+build exports `VELA_GPU_COVERAGE=1`: tests skip their throughput floors there,
+which would measure gcov rather than Vela.
 
 **Runner prerequisites:** install GCC/G++, `gcov` and `gcovr` on the AMD and
 NVIDIA host systems in addition to their existing build/test dependencies.

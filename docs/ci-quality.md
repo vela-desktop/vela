@@ -111,7 +111,9 @@ not supply this label). Register it under Settings → Actions → Runners.
 
 The CachyOS/Arch runner must have the normal
 [build dependencies](development.md#distribution-dependencies), plus
-`vulkan-tools`, `vulkan-radeon`, `vulkan-validation-layers`, `python-numpy` and `python-pillow`.
+`vulkan-tools`, `vulkan-radeon`, `vulkan-validation-layers`, `python-numpy`, `python-pillow`,
+`python-dbus` and the X11 tools of the native-resolution tests (`xorg-xwayland`,
+`xorg-xrandr`, `xorg-xrdb`, `xorg-xprop`).
 It must be able to access an AMD DRM render node and the RADV Vulkan 1.4
 driver. Install dependencies **on the host**, not inside the workflow;
 the workflow deliberately runs without `sudo` or host package upgrades.
@@ -140,8 +142,9 @@ The runner group must allow the public Vela repository to use it.
 The Arch/CachyOS runner needs the
 [normal build dependencies](development.md#distribution-dependencies),
 `vulkan-tools`, `vulkan-validation-layers`, the proprietary NVIDIA Vulkan
-driver (including `nvidia-utils` and `nvidia-smi`), `python-numpy` and
-`python-pillow`.
+driver (including `nvidia-utils` and `nvidia-smi`), `python-numpy`,
+`python-pillow` and the same X11 tools (`xorg-xwayland`, `xorg-xrandr`,
+`xorg-xrdb`, `xorg-xprop`). Both workflows check these before building.
 Check with `nvidia-smi` and `vulkaninfo --summary` before dispatching;
 the NVIDIA driver and Vulkan device must support Vulkan 1.4 or newer.
 The workflow looks up the NVIDIA ICD manifest, restricts Vulkan device
@@ -160,6 +163,24 @@ branch. As with AMD, do not dispatch unreviewed pull request code to a
 persistent personal machine: the build and tests execute locally. Use
 a restricted unprivileged runner account without personal credentials,
 and keep the laptop awake during a run.
+
+### Running only some tests
+
+The whole GPU suite takes about 17 minutes on the NVIDIA laptop; checking
+one failure again doesn't need it. Both workflows take two optional inputs:
+
+- **tests**: a CTest regex, such as `functional-shell` or
+  `functional-(capture|x11-native)`.
+- **test_filter**: with **tests**, only the Python test methods whose
+  names contain this, like `unittest -k` (`snipping`). Locally:
+  `VELA_TEST_FILTER=snipping ctest --test-dir build -R functional-shell`.
+
+A partial run still fails on skipped tests or on a filter that selects
+nothing (locally only with `VELA_GPU_CI_STRICT=1`, as in the workflows),
+and on a **test_filter** whose **tests** pick no `functional-*` entry, but
+doesn't require the full set of suites. With
+**Collect coverage** it builds and tests instrumented, as for a coverage
+failure, without generating or publishing a (partial) report.
 
 ## First-party CPU/GPU code coverage
 

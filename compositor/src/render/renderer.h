@@ -106,8 +106,10 @@ bool vela_texture_is_opaque(struct wlr_texture *texture);
 // Deferred SHM capture from buffers produced on this renderer's queue. Sources
 // must be compositor-owned render targets, never directly scanned-out clients.
 // Up to four requests / 128 MiB are retained. NULL means not queued; otherwise
-// done runs once on the Wayland loop after full pixels, or failure. Cancellation
-// releases ownership without calling done. All functions run on that same loop.
+// done runs once on the Wayland loop after full pixels, or failure.
+// vela_readback_cancel releases ownership without calling done;
+// vela_renderer_cancel_readbacks (lock, teardown) calls each done with false.
+// All functions run on that same loop.
 struct vela_readback;
 struct wl_event_loop;
 struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, struct wl_event_loop *loop,

@@ -16,6 +16,14 @@ on:
         description: Record and verify isolated promo scenes at 100% and 125% scaling
         type: boolean
         default: false
+      tests:
+        description: Only the CTest entries matching this regex (e.g. functional-shell); empty runs all
+        type: string
+        default: ''
+      test_filter:
+        description: With tests, only the Python test methods whose names contain this (like unittest -k)
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -166,18 +174,31 @@ jobs:
 
       - name: Real GPU functional and sharpness suites
         shell: bash
+        env:
+          TESTS: ${{ inputs.tests }}
+          VELA_TEST_FILTER: ${{ inputs.test_filter }}
         run: |
           set -euo pipefail
+          if [[ -n "$VELA_TEST_FILTER" && -z "$TESTS" ]]; then
+            echo '::error::test_filter needs tests too, to pick the suite it filters'
+            exit 1
+          fi
+          only=()
+          if [[ -n "$TESTS" ]]; then only=(-R "$TESTS"); fi
           ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \
-            -L '^gpu$' --output-on-failure \
+            -L '^gpu$' "${only[@]}" --output-on-failure \
             --output-junit "$RUNNER_TEMP/vela-nvidia-junit.xml" \
             | tee "$RUNNER_TEMP/vela-nvidia-ctest.log"
 
       - name: Reject skipped or missing GPU tests
         shell: bash
+        env:
+          PARTIAL: ${{ inputs.tests != '' || inputs.test_filter != '' }}
+          TEST_FILTER: ${{ inputs.test_filter }}
         run: |
           set -euo pipefail
           python3 - "$RUNNER_TEMP/vela-nvidia-junit.xml" <<'PY'
+          import os
           import sys
           import xml.etree.ElementTree as ET
 
@@ -193,7 +214,13 @@ jobs:
                      if name not in names]
           if not any(name.startswith("functional-") for name in names):
               missing.append("functional-*")
-          if missing:
+          # test_filter applies only to functional-* entries: on sharpness
+          # alone it would be ignored, and the run would pass without it.
+          if os.environ["TEST_FILTER"] and not any(name.startswith("functional-") for name in names):
+              print("::error::test_filter selected no functional test: tests must pick a functional-* entry")
+              sys.exit(1)
+          # A partial run, asked for by name, needs only what it selected.
+          if missing and os.environ["PARTIAL"] != "true":
               print("::error::Required GPU suites missing: " + ", ".join(missing))
               sys.exit(1)
           if skipped:
@@ -225,7 +252,7 @@ jobs:
           done
 
       - name: Generate instrumented GPU coverage
-        if: inputs.collect_coverage
+        if: inputs.collect_coverage && inputs.tests == '' && inputs.test_filter == ''
         shell: bash
         run: |
           set -euo pipefail
@@ -233,7 +260,7 @@ jobs:
           cat "$RUNNER_TEMP/vela-nvidia-coverage/coverage-summary.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve GPU coverage
-        if: inputs.collect_coverage
+        if: inputs.collect_coverage && inputs.tests == '' && inputs.test_filter == ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vela-nvidia-coverage
@@ -257,7 +284,7 @@ jobs:
   publish-nvidia-coverage:
     name: Codecov NVIDIA upload (GitHub hosted)
     needs: [gpu-nvidia]
-    if: inputs.collect_coverage
+    if: inputs.collect_coverage && inputs.tests == '' && inputs.test_filter == ''
     runs-on: ubuntu-latest
     permissions:
       contents: read

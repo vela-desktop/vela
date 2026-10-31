@@ -15,6 +15,7 @@ has no software fallback): without one, run.py skips the tests."""
 import atexit
 import json
 import os
+import re
 import shutil
 import struct
 import signal
@@ -27,6 +28,7 @@ import zlib
 
 # Opt-in only: keep the functional test harness standard-library-only.
 _PROFILE = os.environ.get("VELA_FUNCTIONAL_PROFILE") == "1"
+_WAYLAND_TRACE = re.compile(r"\[\d{2}:\d{2}:\d{2}\.\d{6}\] ")
 _METRICS = {}
 
 
@@ -249,8 +251,13 @@ class Session:
             except (KeyError, IndexError, TypeError):
                 pass
             time.sleep(interval)
+        # Leave out WAYLAND_DEBUG's protocol trace: it buries Vela's own lines.
+        # Errors come first, wherever they are: the tail can be all animation.
+        lines = [line for line in self.log_text().splitlines(keepends=True) if not _WAYLAND_TRACE.match(line)]
+        errors = "".join(line for line in lines if "[ERROR]" in line)
         raise TimeoutError(f"after {timeout} s this still isn't true: {what}\nlast state: {last}\n"
-                           f"--- end of the Vela log ---\n{self.log_text()[-2500:]}")
+                           f"--- Vela's errors ---\n{errors[-2500:]}"
+                           f"--- end of the Vela log ---\n{''.join(lines)[-2500:]}")
 
     def config_path(self, name="vela.conf"):
         return os.path.join(self.env["XDG_CONFIG_HOME"], "vela", name)
