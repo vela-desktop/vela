@@ -9,8 +9,10 @@
 // drop-downs) go where the app says, above everything, in a layer of their
 // own.
 //
-// X11 apps don't know fractional scaling: they draw at 1× and the compositor
-// magnifies them with the quality filter (docs/renderer.md §3.9).
+// The X11 root is in pixels of the outputs (x11_root.h, docs/renderer.md
+// §3.9): a game finds the native resolution and is drawn 1:1, and X11 apps
+// scale themselves with Xft.dpi. Each window is in pixels of the output it is
+// on: 1/scale logical units each (its density).
 
 #include "view.h"
 
@@ -21,12 +23,15 @@
 #include "listen.h"
 #include "output.h"
 #include "scene/scene.h"
+#include "scene/surface.h"
 #include "server.h"
 #include "snap.h"
 #include "switcher.h"
 #include "workspace.h"
+#include "x11_root.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wlr/config.h>
@@ -35,6 +40,7 @@
 #if WLR_HAS_XWAYLAND
 
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/xcursor.h>
@@ -210,6 +216,53 @@ static bool poll_initial_state(struct vela_view *view, xcb_connection_t *connect
     return false;
 }
 
+static void publish_dpi(struct vela_server *server);
+
+// The root's resources changed (xrdb): read them, without waiting.
+static void request_resources(struct vela_server *server)
+{
+    xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(server->xwayland);
+    if (!server->xwayland_property_timer || !connection || xcb_connection_has_error(connection)) {
+        return;
+    }
+    if (server->xwayland_resources_pending) {
+        xcb_discard_reply(connection, server->xwayland_resources_cookie);
+    }
+    xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
+    // Up to 256 KiB, in 32-bit units: more than any resource database.
+    xcb_get_property_cookie_t cookie = xcb_get_property(connection, 0, screen->root, XCB_ATOM_RESOURCE_MANAGER,
+        XCB_ATOM_STRING, 0, 65536);
+    server->xwayland_resources_cookie = cookie.sequence;
+    server->xwayland_resources_pending = true;
+    xcb_flush(connection);
+    wl_event_source_timer_update(server->xwayland_property_timer, 1);
+}
+
+// Returns whether it is still waiting. Whoever replaced the resources without
+// Xft.dpi gets ours back; one they set themselves stays.
+static bool poll_resources(struct vela_server *server, xcb_connection_t *connection)
+{
+    xcb_get_property_reply_t *reply = NULL;
+    xcb_generic_error_t *error = NULL;
+    if (!xcb_poll_for_reply(connection, server->xwayland_resources_cookie, (void **)&reply, &error)) {
+        return true;
+    }
+    server->xwayland_resources_pending = false;
+    // What doesn't fit in one read is left alone: appending again would not
+    // be seen either.
+    bool set = !error && reply && reply->format == 8
+        && (reply->bytes_after > 0
+            || vela_x11_resources_set_dpi(xcb_get_property_value(reply),
+                (size_t)xcb_get_property_value_length(reply)));
+    if (!error && !set) {
+        server->xwayland_dpi = 0;
+        publish_dpi(server);
+    }
+    free(reply);
+    free(error);
+    return false;
+}
+
 static int poll_property_replies(void *data)
 {
     struct vela_server *server = data;
@@ -219,6 +272,10 @@ static int poll_property_replies(void *data)
     }
     bool waiting = false;
     bool polled = false;
+    if (server->xwayland_resources_pending) {
+        waiting |= poll_resources(server, connection);
+        polled = true;
+    }
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
         if (view->x11 && view->x11_initial_state_pending) {
@@ -268,11 +325,15 @@ static int poll_property_replies(void *data)
 static bool handle_x11_event(struct wlr_xwayland *xwayland, xcb_generic_event_t *event)
 {
     struct vela_server *server = xwayland->data;
-    if ((event->response_type & 0x7f) != XCB_PROPERTY_NOTIFY || !server->xwayland_wine_style_atom) {
+    if ((event->response_type & 0x7f) != XCB_PROPERTY_NOTIFY) {
         return false;
     }
     const xcb_property_notify_event_t *property = (const xcb_property_notify_event_t *)event;
-    if (property->atom != server->xwayland_wine_style_atom) {
+    if (property->atom == XCB_ATOM_RESOURCE_MANAGER) {
+        request_resources(server);
+        return false;
+    }
+    if (!server->xwayland_wine_style_atom || property->atom != server->xwayland_wine_style_atom) {
         return false;
     }
     struct vela_view *view;
@@ -283,6 +344,71 @@ static bool handle_x11_event(struct wlr_xwayland *xwayland, xcb_generic_event_t 
         }
     }
     return false;
+}
+
+// ------------------------------------------------------ root coordinates --
+
+// From the layout to the root and back, through the output `o` (NULL: no root
+// yet, the two coincide).
+static void to_root(const struct vela_x11_output *o, double lx, double ly, double *x, double *y)
+{
+    if (o) {
+        vela_x11_from_logical(o, lx, ly, x, y);
+    } else {
+        *x = lx;
+        *y = ly;
+    }
+}
+
+static void from_root(const struct vela_x11_output *o, double x, double y, double *lx, double *ly)
+{
+    if (o) {
+        vela_x11_to_logical(o, x, y, lx, ly);
+    } else {
+        *lx = x;
+        *ly = y;
+    }
+}
+
+static double density_of(const struct vela_x11_output *o)
+{
+    return o ? o->scale : 1.0;
+}
+
+// The output in the root that holds a logical point, or else the nearest one.
+static const struct vela_x11_output *root_output_at(struct vela_server *server, double lx, double ly)
+{
+    double x = lx;
+    double y = ly;
+    wlr_output_layout_closest_point(server->output_layout, NULL, lx, ly, &x, &y);
+    struct vela_output *output = vela_output_at(server, x, y);
+    return output ? vela_x11_root_output(server->x11_root, output->wlr) : NULL;
+}
+
+static double view_density(const struct vela_view *view)
+{
+    return view->x11_density > 0.0 ? view->x11_density : 1.0;
+}
+
+// The window passes onto an output with another scale: it keeps its logical
+// size, so it gets as many pixels as it takes there.
+static void set_view_density(struct vela_view *view, double density)
+{
+    if (view->x11_width <= 0.0 && view->x11->width > 0) {
+        view->x11_width = view->x11->width / view_density(view);
+        view->x11_height = view->x11->height / view_density(view);
+    }
+    view->x11_density = density;
+    if (view->x11->surface) {
+        vela_surface_set_density(view->x11->surface, density);
+    }
+}
+
+// The output a window is on, from the center of its frame.
+static const struct vela_x11_output *view_root_output(struct vela_view *view)
+{
+    struct wlr_box frame = vela_view_frame_box(view);
+    return root_output_at(view->server, frame.x + frame.width / 2.0, frame.y + frame.height / 2.0);
 }
 
 // -------------------------------------------- menus, tooltips, drop-downs --
@@ -327,10 +453,26 @@ static void unmanaged_restack(struct unmanaged *menu)
     }
 }
 
+// Where the app puts it, on the output holding its center; in pixels of that
+// output.
+static void unmanaged_place(struct unmanaged *menu)
+{
+    struct wlr_xwayland_surface *x11 = menu->x11;
+    const struct vela_x11_output *o
+        = vela_x11_root_output_at(menu->server->x11_root, x11->x + x11->width / 2.0, x11->y + x11->height / 2.0);
+    double lx = 0.0;
+    double ly = 0.0;
+    from_root(o, x11->x, x11->y, &lx, &ly);
+    vela_node_set_position(&menu->tree->node, lx, ly);
+    if (x11->surface) {
+        vela_surface_set_density(x11->surface, density_of(o));
+    }
+}
+
 static void handle_unmanaged_map(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, map);
-    vela_node_set_position(&menu->tree->node, menu->x11->x, menu->x11->y);
+    unmanaged_place(menu);
     unmanaged_restack(menu);
     vela_node_set_enabled(&menu->tree->node, true);
     // BELOW backdrops must not steal keyboard focus from the game.
@@ -374,6 +516,7 @@ static void handle_unmanaged_associate(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, associate);
     menu->surface_node = vela_surface_node_create(menu->tree, menu->x11->surface);
+    unmanaged_place(menu);
     vela_listen(&menu->x11->surface->events.map, &menu->map, handle_unmanaged_map);
     vela_listen(&menu->x11->surface->events.unmap, &menu->unmap, handle_unmanaged_unmap);
     map_if_drawn(menu->x11->surface);
@@ -393,7 +536,7 @@ static void handle_unmanaged_dissociate(struct wl_listener *listener, void *data
 static void handle_unmanaged_set_geometry(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, set_geometry);
-    vela_node_set_position(&menu->tree->node, menu->x11->x, menu->x11->y);
+    unmanaged_place(menu);
 }
 
 static void handle_unmanaged_request_configure(struct wl_listener *listener, void *data)
@@ -477,11 +620,19 @@ void vela_view_sync_x11(struct vela_view *view)
     if (!x11 || !x11->surface) {
         return;
     }
+    const struct vela_x11_output *o = view_root_output(view);
+    if (density_of(o) != view_density(view)) {
+        set_view_density(view, density_of(o));
+    }
+    double d = view_density(view);
+    double x = 0.0;
+    double y = 0.0;
+    to_root(o, view->tree->node.x, view->tree->node.y, &x, &y);
     const struct wlr_box wanted = {
-        .x = (int)lround(view->tree->node.x),
-        .y = (int)lround(view->tree->node.y),
-        .width = view->x11_width > 0 ? view->x11_width : x11->width,
-        .height = view->x11_height > 0 ? view->x11_height : x11->height,
+        .x = (int)lround(x),
+        .y = (int)lround(y),
+        .width = view->x11_width > 0.0 ? (int)lround(view->x11_width * d) : x11->width,
+        .height = view->x11_height > 0.0 ? (int)lround(view->x11_height * d) : x11->height,
     };
     const struct wlr_box *sent = &view->x11_sent;
     if (wanted.width <= 0 || wanted.height <= 0
@@ -511,6 +662,15 @@ static void handle_map(struct wl_listener *listener, void *data)
         }
         wake_window_manager(view->server);
     }
+    // It opens on the output under the cursor (vela_view_mapped), in its
+    // pixels.
+    struct vela_output *output = vela_output_under_cursor(view->server);
+    const struct vela_x11_output *o = output ? vela_x11_root_output(view->server->x11_root, output->wlr) : NULL;
+    view->x11_density = density_of(o);
+    // The size it asked for before appearing is in those pixels, wherever
+    // the window goes later.
+    view->x11_initial_density = view->x11_density;
+    vela_surface_set_density(view->x11->surface, view->x11_density);
     // Establish the baseline even when Wine set the style before mapping:
     // only later transitions may affect fullscreen policy.
     request_wine_style(view);
@@ -545,6 +705,7 @@ static void handle_associate(struct wl_listener *listener, void *data)
     struct vela_view *view = wl_container_of(listener, view, associate);
     struct wlr_surface *surface = view->x11->surface;
     view->surface_node = vela_surface_node_create(view->tree, surface);
+    vela_surface_set_density(surface, view_density(view));
     vela_listen(&surface->events.map, &view->map, handle_map);
     vela_listen(&surface->events.unmap, &view->unmap, handle_unmap);
     vela_listen(&surface->events.commit, &view->commit, handle_commit);
@@ -591,20 +752,41 @@ static void handle_request_configure(struct wl_listener *listener, void *data)
     // A free window: the app can move and resize itself (games changing
     // resolution, dialogs centering themselves), but stays inside the output
     // it wants to go to: Steam, for example, goes back to the position and
-    // size it remembers, even when they no longer fit.
+    // size it remembers, even when they no longer fit. The request is in
+    // pixels of the output holding its center.
+    const struct vela_x11_output *o = vela_x11_root_output_at(view->server->x11_root,
+        event->x + event->width / 2.0, event->y + event->height / 2.0);
+    double d = density_of(o);
+    double lx = 0.0;
+    double ly = 0.0;
+    from_root(o, event->x, event->y, &lx, &ly);
+    double width = event->width / d;
+    double height = event->height / d;
     int bar = vela_view_title_bar_height(view);
-    struct wlr_box frame = { event->x, event->y - bar, event->width, event->height + bar };
+    struct wlr_box frame
+        = { (int)lround(lx), (int)lround(ly) - bar, (int)lround(width), (int)lround(height) + bar };
     struct vela_output *output
         = vela_output_at(view->server, frame.x + frame.width / 2.0, frame.y + frame.height / 2.0);
     if (!output) {
         output = vela_view_output(view);
     }
-    if (output) {
-        frame = vela_output_fit(output, frame);
+    struct wlr_box fitted = output ? vela_output_fit(output, frame) : frame;
+    // Where and how large it asked, exactly, unless it didn't fit.
+    if (fitted.x != frame.x || fitted.y != frame.y) {
+        lx = fitted.x;
+        ly = fitted.y + bar;
     }
-    vela_node_set_position(&view->tree->node, frame.x, frame.y + bar);
-    view->x11_width = frame.width;
-    view->x11_height = frame.height - bar;
+    if (fitted.width != frame.width || fitted.height != frame.height) {
+        width = fitted.width;
+        height = fitted.height - bar;
+    }
+    vela_node_set_position(&view->tree->node, lx, ly);
+    view->x11_width = width;
+    view->x11_height = height;
+    if (d != view_density(view)) {
+        view->x11_density = d;
+        vela_surface_set_density(view->x11->surface, d);
+    }
     vela_view_sync_x11(view);
 }
 
@@ -730,6 +912,7 @@ static struct vela_view *view_create(struct vela_server *server, struct wlr_xway
     struct vela_view *view = calloc(1, sizeof(*view));
     vela_view_init(view, server);
     view->x11 = x11;
+    view->x11_density = 1.0;
     x11->data = view; // to get back to the parent window
     vela_listen(&x11->events.associate, &view->associate, handle_associate);
     vela_listen(&x11->events.dissociate, &view->dissociate, handle_dissociate);
@@ -774,6 +957,30 @@ static void wake_window_manager(struct vela_server *server)
     xcb_flush(connection);
 }
 
+// X11 apps scale themselves (§3.9): Xft.dpi in the root's resources, read
+// when they start. Appended, not replaced: what xrdb added stays, and the
+// last value wins. Written at the window manager's start, before Xwayland
+// accepts the other clients, when the largest scale changes and when someone
+// replaces the resources without Xft.dpi (request_resources).
+static void publish_dpi(struct vela_server *server)
+{
+    xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(server->xwayland);
+    int dpi = vela_x11_root_dpi(server->x11_root);
+    if (!connection || xcb_connection_has_error(connection) || dpi == server->xwayland_dpi) {
+        return;
+    }
+    char line[32];
+    // Starting a line of its own even if the last one has no newline: empty
+    // lines are ignored.
+    int length = snprintf(line, sizeof(line), "\nXft.dpi:\t%d\n", dpi);
+    xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
+    xcb_change_property(connection, XCB_PROP_MODE_APPEND, screen->root, XCB_ATOM_RESOURCE_MANAGER, XCB_ATOM_STRING,
+        8, (uint32_t)length, line);
+    xcb_flush(connection);
+    server->xwayland_dpi = dpi;
+    wlr_log(WLR_INFO, "Xwayland: Xft.dpi %d", dpi);
+}
+
 // Xwayland has given an X window its Wayland surface: the pairing message
 // on the X side must not be left in the queue.
 static void handle_shell_surface(struct wl_listener *listener, void *data)
@@ -785,6 +992,10 @@ static void handle_shell_surface(struct wl_listener *listener, void *data)
 static void handle_ready(struct wl_listener *listener, void *data)
 {
     struct vela_server *server = wl_container_of(listener, server, xwayland_ready);
+    // A new X server (the first, or one restarted): empty resources.
+    server->xwayland_dpi = 0;
+    server->xwayland_resources_pending = false;
+    publish_dpi(server);
     wlr_xwayland_set_seat(server->xwayland, server->seat);
     // The cursor for X11 windows until the app picks one.
     if (wlr_xcursor_manager_load(server->cursor_manager, 1.0f)) {
@@ -845,6 +1056,11 @@ void vela_xwayland_init(struct vela_server *server)
         wlr_log(WLR_ERROR, "Xwayland not available: X11-only apps won't start");
         return;
     }
+    // The outputs in pixels, for Xwayland alone.
+    server->x11_root = vela_x11_root_create(server);
+    if (!server->x11_root) {
+        wlr_log(WLR_ERROR, "Xwayland: no xdg-output of its own, X11 apps get logical sizes");
+    }
     // Observe Wine's _WINE_HWND_STYLE notifications while forwarding every
     // event to wlroots for normal XWM management.
     server->xwayland->data = server;
@@ -874,6 +1090,8 @@ void vela_xwayland_finish(struct vela_server *server)
         wlr_xwayland_destroy(server->xwayland);
         server->xwayland = NULL;
     }
+    vela_x11_root_destroy(server->x11_root);
+    server->x11_root = NULL;
 }
 
 void vela_xwayland_sync(struct vela_server *server)
@@ -881,6 +1099,7 @@ void vela_xwayland_sync(struct vela_server *server)
     if (!server->xwayland) {
         return;
     }
+    publish_dpi(server);
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
         if (view->x11) {
