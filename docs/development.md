@@ -272,6 +272,8 @@ python3 scripts/record-promo.py --resume --out ~/videos/vela-beta
 
 The `beta-trailer` profile records Desktop, Start search, Snap Assist, Task
 View, Vela Files, virtual desktop switching, Quick Settings and Colors.
+An additional `alt-tab` scene records the actual app switcher, and
+`window-motion` includes maximize, restore and minimize animations.
 `ui-overview` and `window-management` provide focused selections, or pass
 scene names explicitly. `window-motion` and `settings` remain available.
 Scenes are isolated from one another and run on a headless Vela output. By
