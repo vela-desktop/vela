@@ -35,6 +35,20 @@ int main(void)
     const double malformed[] = {NAN, -1.0, INFINITY, 1.5};
     near(vela_x11_global_scale(VELA_X11_APPLY_SCALING_THEMSELVES, malformed, 4), 1.5);
 
+    // X11 buffer 2560x1440 can be exposed by wlroots as a wl_surface
+    // 2560x1440 (buffer scale 1) OR 1280x720 (buffer scale 2).
+    // Both MUST cover the same 2048x1152 Wayland logical desktop.
+    near(vela_x11_surface_scene_scale(1.25, 2560, 1440, 2560, 1440), 0.8);
+    near(vela_x11_surface_scene_scale(1.25, 2560, 1440, 1280, 720), 1.6);
+    near(vela_x11_surface_scene_scale(1.25, 2560, 1440, 0, 0), 0.8);
+    near(vela_x11_surface_scene_scale(1.0, 1920, 1080, 1920, 1080), 1.0);
+    // Odd sizes can round differently on the two axes.
+    near(vela_x11_surface_scene_scale(1.25, 2560, 1440, 1280, 720)
+        * 1280, 2048);
+    const double mismatched = vela_x11_surface_scene_scale(
+        1.25, 2560, 1440, 1280, 900);
+    near(mismatched, 0.8); // stale resize must not stretch anisotropically
+
     // Physical DP-3 2560x1440@125%, logical (0,1080)-(2048,2232).
     // HDMI-A-1 above it: 1920x1080@100%, logical (0,0)-(1920,1080).
     // KWin uses a SINGLE global scale 1.25: on HDMI X11 uses an
