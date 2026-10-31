@@ -132,7 +132,8 @@ add_library(vela-pure STATIC
     src/path_security.c
     src/sun.c
     src/sync.c
-    src/util.c)
+    src/util.c
+    src/x11_space.c)
 target_include_directories(vela-pure PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(vela-pure PUBLIC _GNU_SOURCE)
 target_compile_options(vela-pure PRIVATE -Wall -Wextra -Wno-unused-parameter)
@@ -404,7 +405,8 @@ if(VELA_BUILD_TOOLS)
             tests/path_security_test.cpp
             tests/diagnostics_test.cpp
             tests/sync_test.cpp
-            tests/buffer_test.cpp)
+            tests/buffer_test.cpp
+            tests/x11_space_test.cpp)
         target_compile_options(vela-compositor-tests PRIVATE -Wall -Wextra)
         target_link_libraries(vela-compositor-tests PRIVATE vela-pure GTest::gtest_main)
         include(GoogleTest)
