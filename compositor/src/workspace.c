@@ -96,7 +96,7 @@ static void save(const struct vela_workspaces *ws)
         || !vela_format(temporary, sizeof(temporary), "%s.XXXXXX", path)) {
         return;
     }
-    mkdir(directory, 0755);
+    mkdir(directory, 0700);
     int fd = mkstemp(temporary); // unique, exclusively created with mode 0600
     if (fd < 0) {
         return;
