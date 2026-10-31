@@ -289,11 +289,22 @@ PROFILES = {
 }
 
 
+def motion_repeats(indices, fps):
+    """When the clip shows a frame again between two new ones: a hitch.
+    Content with its own pace (typing) makes some too."""
+    return [round(tick / fps, 3) for tick in range(2, len(indices) - 1)
+            if indices[tick] == indices[tick - 1] != indices[tick - 2]
+            and indices[tick + 1] != indices[tick]]
+
+
 def export_clip(scene, take, output, scratch, fps=FPS):
     """Write one scene from true presentation timestamps, not sampled screenshots."""
     duration = max((scene.lead + take.end - take.start + scene.tail) / scene.speed, 1 / fps)
+    refresh = float(scene.size.rpartition("@")[2] or FPS)
+    ticks = take.ticks(duration, scene.speed, scene.lead, fps=fps, period=1 / refresh)
+    take.repeated_frames = motion_repeats([take.index(t) for t in ticks], fps)
     mezzanine = scratch / "clip.mkv"
-    lossless(take, take.frames(duration, scene.speed, scene.lead, fps=fps), mezzanine, fps=fps)
+    lossless(take, take.at(ticks), mezzanine, fps=fps)
     vf = "pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p"
     input_args = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(mezzanine),
                   "-vf", vf, "-an"]
@@ -616,6 +627,8 @@ def record_scenes(names, build, output, staging, args, *, config=None, completed
                 "timeline": getattr(take, "timeline", []),
                 "frames_captured": len(take.times),
                 "frames_presented": take.presented,
+                "frames_missed": getattr(take, "missed", 0),
+                "repeated_frames": getattr(take, "repeated_frames", []),
                 "pixel_format": take.format,
                 "output": take.output_info,
                 "recording": "real Vela headless compositor and Qt shell",

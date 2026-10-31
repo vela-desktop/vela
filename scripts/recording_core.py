@@ -87,7 +87,10 @@ class PointerController:
             raise ValueError("pointer coordinates and duration must be finite and non-negative")
         start_x, start_y = self.position
         end_x, end_y = round(x), round(y)
-        count = max(1, min(90, round(duration * FPS)))
+        # Twice a frame, as a real mouse sends more often than the screen
+        # refreshes: at the refresh rate, a move a little late leaves a
+        # frame without one, and the cursor halts for it.
+        count = max(1, min(180, round(duration * FPS * 2)))
         tick = time.monotonic()
         for i in range(1, count + 1):
             progress = i / count
@@ -489,19 +492,41 @@ class Take:
                     self.start = self.times[index]
                     return
 
+    def index(self, moment):
+        """The frame on screen at this moment: the last one presented by
+        then (the first one, before it)."""
+        return max(0, bisect.bisect_right(self.times, moment) - 1)
+
     def at(self, moments):
-        """The frame on screen at each of these moments: the last one
-        presented by then (the first one, before it)."""
+        """The frame on screen at each of these moments."""
         with open(self.directory / "frames.raw", "rb") as file, \
                 mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
             for t in moments:
-                index = max(0, bisect.bisect_right(self.times, t) - 1)
+                index = self.index(t)
                 yield data[index * self.frame_size:(index + 1) * self.frame_size]
 
-    def frames(self, duration, speed, lead=LEAD, fps=FPS):
-        """The frame on screen at each tick of a FPS video, from lead before
-        the start, slowed by speed, for duration seconds of video."""
-        return self.at(self.start - lead + tick / fps * speed for tick in range(round(duration * fps)))
+    def vblank_phase(self, period):
+        """Where the presentations fall within the refresh period: their
+        circular mean, so that a frame a little late and one a little early
+        don't average to the middle."""
+        angles = [2 * math.pi * (t % period) / period for t in self.times]
+        mean = math.atan2(sum(map(math.sin, angles)), sum(map(math.cos, angles)))
+        return mean / (2 * math.pi) % 1 * period
+
+    def ticks(self, duration, speed, lead=LEAD, fps=FPS, period=None):
+        """The moments of each tick of a FPS video, from lead before the
+        start, slowed by speed, for duration seconds of video. With period
+        (the output's refresh), the ticks fall halfway between vblanks: on a
+        vblank, a frame presented a millisecond late would show one tick
+        late and repeat, as a stutter the screen never had."""
+        first = self.start - lead
+        if period and self.times:
+            first += period / 2 - (first - self.vblank_phase(period)) % period
+        return [first + tick / fps * speed for tick in range(round(duration * fps))]
+
+    def frames(self, duration, speed, lead=LEAD, fps=FPS, period=None):
+        """The frame on screen at each tick (ticks())."""
+        return self.at(self.ticks(duration, speed, lead, fps, period))
 
 
 def record(desktop, scene, directory, *, align=True, cursor=False, one_keyboard=False):
@@ -553,6 +578,9 @@ def _record(desktop, scene, directory, align, cursor, send):
             raise RuntimeError("vela-screen-record failed")
         take = Take(directory, start, end, presented)
         take.timeline = list(scene._events)
+        # Vblanks the compositor itself presented late: a stutter on screen,
+        # not one of the export.
+        take.missed = after.get("missed", 0) - before.get("missed", 0)
         if align:
             take.align()  # Before/after needs a shared visual change; promo keeps the opening.
         # Record only display metadata, never the user or their real devices.

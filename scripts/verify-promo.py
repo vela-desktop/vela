@@ -70,6 +70,10 @@ def inspect_clip(name, output):
 
     if manifest.get("frames_captured", 0) <= 0 or manifest.get("frames_presented", 0) <= 0:
         raise ValueError(f"{name}: no captured/presented compositor frames")
+    missed = manifest.get("frames_missed")
+    repeated = manifest.get("repeated_frames")
+    if not isinstance(missed, int) or missed < 0 or not isinstance(repeated, list):
+        raise ValueError(f"{name}: frame timing missing from the manifest")
     events = manifest.get("timeline")
     if not isinstance(events, list) or not events:
         raise ValueError(f"{name}: action timeline missing")
@@ -101,7 +105,8 @@ def inspect_clip(name, output):
     if consecutive_black_samples(sampled, 64 * 36):
         raise ValueError(f"{name}: consecutive black frames in rendered video")
     return {"scene": name, "duration": manifest["duration"],
-            "captured": manifest["frames_captured"], "presented": manifest["frames_presented"]}
+            "captured": manifest["frames_captured"], "presented": manifest["frames_presented"],
+            "missed": missed, "repeated": repeated}
 
 
 def main(argv=None):
@@ -114,6 +119,14 @@ def main(argv=None):
             parser.error(f"invalid scene name: {name}")
         report = inspect_clip(name, args.out)
         print(f"{name}: verified, {report['captured']} captured / {report['presented']} presented frames")
+        # For the reviewer, not a failure: the first frame after a still
+        # moment can be late once, and typing shows a frame twice at its own
+        # pace. Many of either, though, is a stutter worth looking at.
+        if report["missed"]:
+            print(f"  {name}: the compositor presented {report['missed']} vblank(s) late")
+        if report["repeated"]:
+            print(f"  {name}: a frame shown twice mid-motion at "
+                  + ", ".join(f"{t:.3f}" for t in report["repeated"]) + " s")
 
 
 if __name__ == "__main__":

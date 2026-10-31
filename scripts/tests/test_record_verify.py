@@ -40,6 +40,7 @@ class VerifyPromoTests(unittest.TestCase):
             manifest = {"scene": name, "capture_config": {"resolution": "640x480", "fps": 60,
                                                            "speed": 1.0},
                         "duration": 1.0, "frames_captured": 40, "frames_presented": 60,
+                        "frames_missed": 0, "repeated_frames": [0.5],
                         "timeline": [{"at": 0.2, "ready_at": 0.25}],
                         "artifacts": artifacts}
             (output / f"{name}-manifest.json").write_text(json.dumps(manifest))
@@ -53,7 +54,15 @@ class VerifyPromoTests(unittest.TestCase):
                 return types.SimpleNamespace(stdout=bytes([128]) * 64 * 36 * 4)
 
             with mock.patch.object(verify.subprocess, "run", side_effect=fake_run):
-                self.assertEqual(verify.inspect_clip(name, output)["scene"], name)
+                report = verify.inspect_clip(name, output)
+                self.assertEqual((report["missed"], report["repeated"]), (0, [0.5]))
+                # Reported, so they must be there.
+                del manifest["frames_missed"]
+                (output / f"{name}-manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, "timing missing"):
+                    verify.inspect_clip(name, output)
+                manifest["frames_missed"] = 0
+                (output / f"{name}-manifest.json").write_text(json.dumps(manifest))
                 (output / f"{name}.mp4").write_bytes(b"tampered")
                 with self.assertRaisesRegex(ValueError, "corrupt"):
                     verify.inspect_clip(name, output)

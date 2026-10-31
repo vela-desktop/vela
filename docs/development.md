@@ -308,7 +308,12 @@ The promo recorder enables the **real compositor-rendered cursor** by default
 with `VELA_SCREEN_RECORD_CURSOR=1`; disable it with `--no-cursor`.
 The before/after comparison recorder remains cursor-free to keep its
 frame-alignment comparisons unchanged. The capture path uses true presentation
-timestamps rather than generated in-between frames.
+timestamps rather than generated in-between frames. Promo clips sample them
+halfway between the output's vblanks: sampled on the vblanks, a frame
+presented a millisecond late would show one tick late and repeat, a stutter
+the screen never had. Manifests record the vblanks the compositor presented
+late during the capture (`frames_missed`) and the moments a frame is shown
+twice between two new ones (`repeated_frames`).
 
 The shell, private D-Bus daemon, Settings and Files run under a synthetic
 demo identity (`Alex`), private HOME/XDG paths and private PipeWire sinks and
@@ -336,7 +341,10 @@ placement, cursor composition and fractional scale. Both manual GPU workflows
 have an opt-in `record_promo_smoke` input: it records Desktop, Start and Snap
 Assist at 1280×720 with scales 1.0 and 1.25, then runs
 `scripts/verify-promo.py` to check checksums, frames, dimensions, encoded
-frame rate, action checkpoints and consecutive nearly-black frames. The smoke
+frame rate, action checkpoints and consecutive nearly-black frames, and
+reports late vblanks and frames shown twice mid-motion for the reviewer (the
+first frame after a still moment can be late once, and typing repeats frames
+at its own pace, so neither fails the check). The smoke
 test requires `ffprobe` and `ffmpeg` on the runner. It is not run for normal
 pushes, and does not replace a human review of the release footage.
 

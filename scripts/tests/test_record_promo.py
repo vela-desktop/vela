@@ -41,8 +41,9 @@ class PromoTests(unittest.TestCase):
     def test_scene_capture_produces_both_encodings_and_poster(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)
-            take = types.SimpleNamespace(start=1.0, end=2.0,
-                                         frames=mock.Mock(return_value=iter([b"abcd"])))
+            take = types.SimpleNamespace(start=1.0, end=2.0, index=lambda t: 0,
+                                         ticks=mock.Mock(return_value=[1.0]),
+                                         at=mock.Mock(return_value=iter([b"abcd"])))
             with (mock.patch.object(promo, "lossless") as lossless,
                   mock.patch.object(promo.subprocess, "run") as run):
                 mp4 = promo.export_clip(promo.StartMenu(), take, path, path, fps=30)
@@ -54,7 +55,9 @@ class PromoTests(unittest.TestCase):
             self.assertIn("libvpx-vp9", run.call_args_list[1].args[0])
             self.assertIn("start-menu.png", str(run.call_args_list[2]))
             self.assertEqual(lossless.call_args.kwargs["fps"], 30)
-            self.assertEqual(take.frames.call_args.kwargs["fps"], 30)
+            self.assertEqual(take.ticks.call_args.kwargs["fps"], 30)
+            # The start menu's 1920x1080@60 output: ticks between its vblanks.
+            self.assertAlmostEqual(take.ticks.call_args.kwargs["period"], 1 / 60)
 
     def test_reel_inputs_are_allowlisted_scene_names(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -424,6 +427,27 @@ class PromoTests(unittest.TestCase):
             pointer.move(float("nan"), 30)
         with self.assertRaises(ValueError):
             pointer.move(1, 1, duration=-1)
+
+    def test_ticks_fall_between_vblanks_despite_jitter(self):
+        with tempfile.TemporaryDirectory() as folder:
+            # Presented on each 60 Hz vblank, alternately 1 ms late and early;
+            # the scene starts exactly on a vblank.
+            times = [10 + k / 60 + (0.001 if k % 2 else -0.001) for k in range(120)]
+            Path(folder, "frames.txt").write_text("4 4 bgr0 " + " ".join(map(str, times)))
+            take = promo.capture.Take(Path(folder), start=10.5, end=11.5, presented=120)
+            ticks = take.ticks(1.0, 1.0, lead=0, fps=60, period=1 / 60)
+            indices = [take.index(t) for t in ticks]
+            # One new frame each tick: nothing shown twice, nothing skipped.
+            self.assertEqual(indices, list(range(indices[0], indices[0] + 60)))
+            self.assertEqual(promo.motion_repeats(indices, 60), [])
+            # On the vblanks themselves, the late frames show a tick late.
+            unlocked = [take.index(t) for t in take.ticks(1.0, 1.0, lead=0, fps=60)]
+            self.assertNotEqual(promo.motion_repeats(unlocked, 60), [])
+
+    def test_motion_repeats_finds_a_frame_shown_twice_mid_motion(self):
+        # Still at the start and end (idle), one frame twice in the middle.
+        indices = [0, 0, 0, 1, 2, 3, 3, 4, 5, 5, 5]
+        self.assertEqual(promo.motion_repeats(indices, 60), [round(6 / 60, 3)])
 
     def test_profile_flags_do_not_require_a_gpu(self):
         with mock.patch.object(promo.capture.harness, "gpu_available",
