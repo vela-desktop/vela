@@ -31,7 +31,13 @@ class X11Native(unittest.TestCase):
     def setUp(self):
         if not os.path.exists(tool("vela-x11")):
             self.skipTest("vela-x11 not built (needs xcb)")
-        self.vela = Session(scale=1.25, size="2560x1440@60")
+        env = {"VELA_DEBUG_SCANOUT": "1"}
+        if self._testMethodName == "test_fullscreen_game_is_drawn_one_to_one":
+            # Where glamor has no implicit sync (NVIDIA), Xwayland attaches
+            # explicit sync timelines, and the headless output can't scan
+            # those out (frame.c). Without the protocol it waits for the GPU.
+            env["WLR_RENDER_NO_EXPLICIT_SYNC"] = "1"
+        self.vela = Session(scale=1.25, size="2560x1440@60", env=env)
         self.vela.start()
         if "Xwayland not available" in self.vela.log_text():
             self.vela.stop()
