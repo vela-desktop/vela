@@ -101,6 +101,15 @@ if(VELA_BUILD_TOOLS)
                 LABELS gpu
                 RUN_SERIAL TRUE)
             set_property(TEST ${VELA_FUNCTIONAL_TESTS} APPEND PROPERTY LABELS functional)
+            # These test experimental XWayland modes which are deliberately
+            # not the default. Do not fail ordinary GPU CI because an optional
+            # Satellite binary / developer-only KWin scaling flag is absent.
+            # Run them explicitly on hardware with the GPU workflow input.
+            foreach(optional_name IN ITEMS xwayland-kwin xwayland-native-session)
+                if(TEST functional-${optional_name})
+                    set_property(TEST functional-${optional_name} PROPERTY LABELS "x11-experimental")
+                endif()
+            endforeach()
             set_property(TEST sharpness-cpu APPEND PROPERTY ENVIRONMENT "VELA_SYNC_FILE=0")
         endif()
     endif()
