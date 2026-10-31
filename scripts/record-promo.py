@@ -104,7 +104,11 @@ class WindowMotion(Scene):
         self.step(desktop, "restore window", command=f"window {window} restore",
                   ready=lambda s: not s.window(window)["maximized"])
         vela.wait_still(window)
-        self.pause(0.9)
+        self.pause(0.6)
+        self.step(desktop, "minimize window", command=f"window {window} minimize",
+                  ready=lambda s: s.window(window)["minimized"], hold=0.7)
+        self.step(desktop, "restore minimized window", command=f"window {window} restore",
+                  ready=lambda s: not s.window(window)["minimized"], hold=0.8)
 
 
 class TaskView(Scene):
@@ -161,8 +165,13 @@ class Files(Scene):
 
     def act(self, desktop, window):
         self.step(desktop, "maximize Vela Files", command=f"window {window} maximize",
-                  ready=lambda s: s.window(window)["maximized"], hold=1.5)
+                  ready=lambda s: s.window(window)["maximized"], hold=0.8)
         desktop.vela.wait_still(window)
+        self.step(desktop, "browse demo Pictures",
+                  input_actions=("key", "ctrl+l", "type", str(desktop.demo_folder / "Pictures"),
+                                 "key", "Return"), hold=1.3)
+        self.step(desktop, "navigate back",
+                  input_actions=("key", "alt+Left"), hold=1.0)
 
 
 class SnapAssist(Scene):
@@ -194,6 +203,29 @@ class SnapAssist(Scene):
                   input_actions=("move", int(output["w"] * .75), int(output["h"] * .5),
                                  "sleep", 150, "click", "left"),
                   ready=lambda s: s.window(files)["snap"] == [6, 0, 12, 12], hold=1.3)
+
+
+class AltTab(Scene):
+    name = "alt-tab"
+    about = "Show the real application switcher with Settings and Files previews"
+    poster = 0.6
+
+    def prepare(self, desktop):
+        settings = desktop.open_app("settings/vela-settings", "--page", "personalization", user="Alex")
+        if settings is None:
+            raise RuntimeError("build vela-settings for Alt+Tab")
+        files = desktop.open_app("explorer/vela-files", str(desktop.demo_folder), user="Alex")
+        if files is None:
+            raise RuntimeError("build vela-files for Alt+Tab")
+        desktop.vela.wait_still(files)
+        return None, (settings, files)
+
+    def act(self, desktop, _):
+        # One continuous virtual-keyboard lifetime preserves held Alt while
+        # the compositor shows its live switcher. It is filmed before release.
+        self.step(desktop, "switch applications with Alt+Tab",
+                  input_actions=("keydown", "alt", "key", "Tab", "sleep", "1100", "keyup", "alt"),
+                  hold=0.9)
 
 
 class VirtualDesktops(Scene):
@@ -235,14 +267,14 @@ class Colors(Scene):
 
 SCENES = {scene.name: scene for scene in (
     DesktopOverview(), StartMenu(), QuickSettings(), WindowMotion(), TaskView(), Settings(),
-    Files(), SnapAssist(), VirtualDesktops(), Colors()
+    Files(), SnapAssist(), AltTab(), VirtualDesktops(), Colors()
 )}
 
 PROFILES = {
     "beta-trailer": ("desktop", "start-menu", "snap-assist", "task-view", "files",
                      "virtual-desktops", "quick-settings", "colors"),
     "ui-overview": ("desktop", "start-menu", "quick-settings", "settings", "colors", "files"),
-    "window-management": ("window-motion", "snap-assist", "task-view", "virtual-desktops"),
+    "window-management": ("window-motion", "snap-assist", "alt-tab", "task-view", "virtual-desktops"),
 }
 
 
@@ -424,9 +456,9 @@ def main(argv=None):
                 "shell": build / "shell" / "vela-shell",
                 "recorder": capture.RECORDER,
                 "input": build / "tools" / "vela-input"}
-    if set(names) & {"window-motion", "task-view", "settings", "snap-assist", "virtual-desktops", "colors"}:
+    if set(names) & {"window-motion", "task-view", "settings", "snap-assist", "alt-tab", "virtual-desktops", "colors"}:
         binaries["settings"] = build / "settings" / "vela-settings"
-    if set(names) & {"files", "task-view", "snap-assist"}:
+    if set(names) & {"files", "task-view", "snap-assist", "alt-tab"}:
         binaries["files"] = build / "explorer" / "vela-files"
     missing = [name for name, path in binaries.items() if not path.is_file()]
     if missing:
