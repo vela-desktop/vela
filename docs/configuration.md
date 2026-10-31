@@ -90,10 +90,11 @@ The planned selection is:
   converted coherently. Unlike a per-game launcher, it applies to the whole
   X11 server.
 
-The work-in-progress KWin-style mathematical model is in
-`compositor/src/x11_coordinates.{h,c}` with CPU CTest coverage. It is
-**not yet connected** to the Wayland protocol/surface pipeline and does not
-make the native resolution available today. See
+The developer-only, headless/nested KWin-style experiment includes the
+`compositor/src/x11_coordinates.{h,c}` model, a per-XWayland-client
+`xdg-output` adapter, and scene/input transforms. It is **not enabled in real
+sessions**, has not passed GPU/mixed-DPI acceptance, and must not be described
+as a supported native-resolution mode. See
 `docs/xwayland-native-coordinate-design.md`. Do not add a configuration
 setting or release note implying it is already implemented.
 
