@@ -212,6 +212,8 @@ struct vela_server {
     int satellite_listen_fd;
     int satellite_display;
     char satellite_socket_path[108];
+    char satellite_auth_path[128]; // private Xauthority file for Satellite
+    char *satellite_previous_xauthority; // restore inherited environment on shutdown
     struct vela_child polkit_agent; // the polkit agent (polkit.h)
     struct vela_child bluetooth; // vela-bluetooth (bluetooth.h)
     struct vela_child updates; // vela-update-daemon (updates.h)
