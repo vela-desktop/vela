@@ -560,10 +560,6 @@ def main(argv=None):
             completed = {name for name in names if completed_scene(name, output, config, args.keep)}
         except ValueError as error:
             parser.error(str(error))
-        reel = output / "vela-promo.mp4"
-        # The reel is regenerated only if new clips are recorded, or it is missing.
-        if reel.exists() and not args.no_reel and len(names) > 1 and not completed == set(names):
-            pass  # --resume explicitly authorizes replacing this generated reel.
     for name in names:
         scene = SCENES[name]
         scene.size = f"{width}x{height}@60"
