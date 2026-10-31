@@ -103,7 +103,10 @@ starts **Xwayland Satellite >= 0.7** as a separate session X11 bridge.
 It is experimental, **optional** (not a required Vela package dependency)
 and has known mixed-DPI input-region and X11 window-state regressions.
 It should not be used as a workaround for games in the beta release.
-This setting is **not** the Plasma-style integrated mode.
+This setting is **not** the Plasma-style integrated mode. Vela generates a
+private Xauthority cookie for Satellite; only applications inheriting that
+session's `DISPLAY` and `XAUTHORITY` should connect. Invalid backend names
+fall back to `compat`.
 
 No Steam launch flags are required in the default backend or when testing
 a future integrated scaling policy. Never force `wlr_output.scale=1` or
