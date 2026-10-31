@@ -19,6 +19,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <wayland-server-core.h>
 #include <wlr/config.h>
 #include <wlr/types/wlr_output.h>
@@ -201,7 +202,8 @@ struct vela_x11_xdg_output *vela_x11_xdg_output_create(struct vela_server *serve
 {
     // This is deliberately a developer-only experiment: xdg-output
     // geometry alone is insufficient for native-resolution X11.
-    if (!getenv("VELA_XWAYLAND_XDG_OUTPUT_EXPERIMENT") ||
+    const char *experiment = getenv("VELA_XWAYLAND_XDG_OUTPUT_EXPERIMENT");
+    if (!experiment || strcmp(experiment, "1") != 0 ||
         !server->xdg_output_manager) {
         return NULL;
     }
@@ -221,7 +223,7 @@ struct vela_x11_xdg_output *vela_x11_xdg_output_create(struct vela_server *serve
     wl_signal_add(&server->output_layout->events.change, &manager->layout_change);
     wl_display_set_global_filter(server->display, filter_global, manager);
     wlr_log(WLR_INFO, "Experimental KWin-style per-XWayland-client xdg-output adapter enabled; "
-        "surface and input transformations are NOT complete");
+        "buffer scaling, hotplug and input still require GPU validation");
     return manager;
 }
 
