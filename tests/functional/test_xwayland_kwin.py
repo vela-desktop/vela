@@ -93,3 +93,52 @@ class KwinStyleX11(unittest.TestCase):
         self.vela.keys("super+Down")
         self.vela.wait_for(lambda s: not s.window(window)["maximized"],
                            what="X11 window restored through integrated XWM")
+
+
+    def test_fullscreen_repaints_native_bottom_right_after_state_changes(self):
+        """Regression: 125% X11 frame must cover right/bottom physical pixels.
+
+        A double-applied 1.25x output/surface scale used to render only the
+        upper-left portion while stale scanout/damage left the rest behind.
+        Check native physical framebuffer corners, not just X11 mode listing.
+        """
+        xid_path = os.path.join(self.vela.directory, "fullscreen-coverage-xid")
+        before = {w["id"] for w in self.vela.state().windows}
+        self.vela.clients.append(subprocess.Popen(
+            [tool("vela-x11"), "--id-file", xid_path, "--start-fullscreen",
+             "640", "480"], env=self.env))
+        state = self.vela.wait_for(
+            lambda st: bool({w["id"] for w in st.windows} - before),
+            timeout=15, what="X11 fullscreen test surface")
+        window = next(iter({w["id"] for w in state.windows} - before))
+        self.vela.wait_for(lambda st: st.window(window)["fullscreen"],
+                           what="X11 true fullscreen state")
+        deadline = time.monotonic() + 8
+        while not os.path.exists(xid_path) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(os.path.exists(xid_path))
+        with open(xid_path, encoding="ascii") as f:
+            xid = f.read().strip()
+
+        expected = (255, 128, 0)
+        def check_fullscreen_coverage():
+            self.vela.wait_still(window)
+            image = self.vela.pixels(output=0)
+            self.assertEqual((image.width, image.height), (2560, 1440))
+            # Compare both corners so a framebuffer clipped at 2048x1152
+            # cannot pass only by painting the upper-left of the monitor.
+            self.assertEqual(image.at(140, 140), expected,
+                             "fullscreen window not painted near the origin")
+            self.assertEqual(image.at(2510, 1390), expected,
+                             "bottom-right 25% missing / XWayland double scaling")
+
+        check_fullscreen_coverage()
+        subprocess.run([tool("vela-x11"), "--fullscreen", xid, "off"],
+                       env=self.env, check=True)
+        self.vela.wait_for(lambda st: not st.window(window)["fullscreen"],
+                           what="X11 returned to windowed state")
+        subprocess.run([tool("vela-x11"), "--fullscreen", xid, "on"],
+                       env=self.env, check=True)
+        self.vela.wait_for(lambda st: st.window(window)["fullscreen"],
+                           what="X11 fullscreen restored")
+        check_fullscreen_coverage()
