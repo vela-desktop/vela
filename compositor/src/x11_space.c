@@ -5,6 +5,7 @@
 
 #include <float.h>
 #include <math.h>
+#include <string.h>
 
 // A product that is an integer up to floating point error stays that integer.
 #define EPSILON 1e-6
@@ -85,4 +86,32 @@ int vela_x11_dpi(const struct vela_x11_output *outputs, size_t count)
         most = outputs[i].scale > most ? outputs[i].scale : most;
     }
     return (int)lround(96.0 * most);
+}
+
+// One resource per line: "Xft.dpi:" with spaces or tabs allowed around the
+// name, as Xlib and the toolkits read it.
+bool vela_x11_resources_set_dpi(const char *resources, size_t length)
+{
+    static const char name[] = "Xft.dpi";
+    size_t i = 0;
+    while (i < length) {
+        while (i < length && (resources[i] == ' ' || resources[i] == '\t')) {
+            ++i;
+        }
+        bool named = length - i >= sizeof(name) - 1 && memcmp(resources + i, name, sizeof(name) - 1) == 0;
+        if (named) {
+            i += sizeof(name) - 1;
+            while (i < length && (resources[i] == ' ' || resources[i] == '\t')) {
+                ++i;
+            }
+            if (i < length && resources[i] == ':') {
+                return true;
+            }
+        }
+        while (i < length && resources[i] != '\n') {
+            ++i;
+        }
+        ++i; // past the newline
+    }
+    return false;
 }

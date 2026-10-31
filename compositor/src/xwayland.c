@@ -40,6 +40,7 @@
 #if WLR_HAS_XWAYLAND
 
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/xcursor.h>
@@ -215,6 +216,53 @@ static bool poll_initial_state(struct vela_view *view, xcb_connection_t *connect
     return false;
 }
 
+static void publish_dpi(struct vela_server *server);
+
+// The root's resources changed (xrdb): read them, without waiting.
+static void request_resources(struct vela_server *server)
+{
+    xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(server->xwayland);
+    if (!server->xwayland_property_timer || !connection || xcb_connection_has_error(connection)) {
+        return;
+    }
+    if (server->xwayland_resources_pending) {
+        xcb_discard_reply(connection, server->xwayland_resources_cookie);
+    }
+    xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
+    // Up to 256 KiB, in 32-bit units: more than any resource database.
+    xcb_get_property_cookie_t cookie = xcb_get_property(connection, 0, screen->root, XCB_ATOM_RESOURCE_MANAGER,
+        XCB_ATOM_STRING, 0, 65536);
+    server->xwayland_resources_cookie = cookie.sequence;
+    server->xwayland_resources_pending = true;
+    xcb_flush(connection);
+    wl_event_source_timer_update(server->xwayland_property_timer, 1);
+}
+
+// Returns whether it is still waiting. Whoever replaced the resources without
+// Xft.dpi gets ours back; one they set themselves stays.
+static bool poll_resources(struct vela_server *server, xcb_connection_t *connection)
+{
+    xcb_get_property_reply_t *reply = NULL;
+    xcb_generic_error_t *error = NULL;
+    if (!xcb_poll_for_reply(connection, server->xwayland_resources_cookie, (void **)&reply, &error)) {
+        return true;
+    }
+    server->xwayland_resources_pending = false;
+    // What doesn't fit in one read is left alone: appending again would not
+    // be seen either.
+    bool set = !error && reply && reply->format == 8
+        && (reply->bytes_after > 0
+            || vela_x11_resources_set_dpi(xcb_get_property_value(reply),
+                (size_t)xcb_get_property_value_length(reply)));
+    if (!error && !set) {
+        server->xwayland_dpi = 0;
+        publish_dpi(server);
+    }
+    free(reply);
+    free(error);
+    return false;
+}
+
 static int poll_property_replies(void *data)
 {
     struct vela_server *server = data;
@@ -224,6 +272,10 @@ static int poll_property_replies(void *data)
     }
     bool waiting = false;
     bool polled = false;
+    if (server->xwayland_resources_pending) {
+        waiting |= poll_resources(server, connection);
+        polled = true;
+    }
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
         if (view->x11 && view->x11_initial_state_pending) {
@@ -273,11 +325,15 @@ static int poll_property_replies(void *data)
 static bool handle_x11_event(struct wlr_xwayland *xwayland, xcb_generic_event_t *event)
 {
     struct vela_server *server = xwayland->data;
-    if ((event->response_type & 0x7f) != XCB_PROPERTY_NOTIFY || !server->xwayland_wine_style_atom) {
+    if ((event->response_type & 0x7f) != XCB_PROPERTY_NOTIFY) {
         return false;
     }
     const xcb_property_notify_event_t *property = (const xcb_property_notify_event_t *)event;
-    if (property->atom != server->xwayland_wine_style_atom) {
+    if (property->atom == XCB_ATOM_RESOURCE_MANAGER) {
+        request_resources(server);
+        return false;
+    }
+    if (!server->xwayland_wine_style_atom || property->atom != server->xwayland_wine_style_atom) {
         return false;
     }
     struct vela_view *view;
@@ -319,14 +375,13 @@ static double density_of(const struct vela_x11_output *o)
     return o ? o->scale : 1.0;
 }
 
-// The output in the root that holds a logical point, or else the one under the
-// cursor.
+// The output in the root that holds a logical point, or else the nearest one.
 static const struct vela_x11_output *root_output_at(struct vela_server *server, double lx, double ly)
 {
-    struct vela_output *output = vela_output_at(server, lx, ly);
-    if (!output) {
-        output = vela_output_under_cursor(server);
-    }
+    double x = lx;
+    double y = ly;
+    wlr_output_layout_closest_point(server->output_layout, NULL, lx, ly, &x, &y);
+    struct vela_output *output = vela_output_at(server, x, y);
     return output ? vela_x11_root_output(server->x11_root, output->wlr) : NULL;
 }
 
@@ -612,6 +667,9 @@ static void handle_map(struct wl_listener *listener, void *data)
     struct vela_output *output = vela_output_under_cursor(view->server);
     const struct vela_x11_output *o = output ? vela_x11_root_output(view->server->x11_root, output->wlr) : NULL;
     view->x11_density = density_of(o);
+    // The size it asked for before appearing is in those pixels, wherever
+    // the window goes later.
+    view->x11_initial_density = view->x11_density;
     vela_surface_set_density(view->x11->surface, view->x11_density);
     // Establish the baseline even when Wine set the style before mapping:
     // only later transitions may affect fullscreen policy.
@@ -902,7 +960,8 @@ static void wake_window_manager(struct vela_server *server)
 // X11 apps scale themselves (§3.9): Xft.dpi in the root's resources, read
 // when they start. Appended, not replaced: what xrdb added stays, and the
 // last value wins. Written at the window manager's start, before Xwayland
-// accepts the other clients, and again when the largest scale changes.
+// accepts the other clients, when the largest scale changes and when someone
+// replaces the resources without Xft.dpi (request_resources).
 static void publish_dpi(struct vela_server *server)
 {
     xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(server->xwayland);
@@ -911,7 +970,9 @@ static void publish_dpi(struct vela_server *server)
         return;
     }
     char line[32];
-    int length = snprintf(line, sizeof(line), "Xft.dpi:\t%d\n", dpi);
+    // Starting a line of its own even if the last one has no newline: empty
+    // lines are ignored.
+    int length = snprintf(line, sizeof(line), "\nXft.dpi:\t%d\n", dpi);
     xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
     xcb_change_property(connection, XCB_PROP_MODE_APPEND, screen->root, XCB_ATOM_RESOURCE_MANAGER, XCB_ATOM_STRING,
         8, (uint32_t)length, line);
@@ -933,6 +994,7 @@ static void handle_ready(struct wl_listener *listener, void *data)
     struct vela_server *server = wl_container_of(listener, server, xwayland_ready);
     // A new X server (the first, or one restarted): empty resources.
     server->xwayland_dpi = 0;
+    server->xwayland_resources_pending = false;
     publish_dpi(server);
     wlr_xwayland_set_seat(server->xwayland, server->seat);
     // The cursor for X11 windows until the app picks one.

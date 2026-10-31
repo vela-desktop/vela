@@ -203,9 +203,11 @@ scaling themselves".
   motion all apply. Sizes Vela chooses (maximized, snapped, fullscreen) are
   logical and become pixels; a window moved onto an output with another scale
   keeps its logical size and gets as many pixels as it takes there.
-- **Xft.dpi** = 96 × the largest scale, appended to the root's resources
-  (`RESOURCE_MANAGER`) when the window manager starts, before Xwayland accepts
-  other clients, and when that scale changes. Toolkits (Qt, GTK, Xft) scale by
+- **Xft.dpi** = 96 × the largest scale, appended on a line of its own to the
+  root's resources (`RESOURCE_MANAGER`) when the window manager starts, before
+  Xwayland accepts other clients, and when that scale changes. A client that
+  replaces the resources without Xft.dpi (xrdb -load) gets it back; one the
+  user sets stays. Toolkits (Qt, GTK, Xft) scale by
   it; an app that ignores it looks smaller at scales above 100%. With mixed
   scales one value can't be right everywhere: on outputs with a smaller scale
   X11 apps look larger.

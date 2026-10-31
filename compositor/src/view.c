@@ -364,8 +364,8 @@ struct wlr_box vela_view_restore_box(struct vela_view *view)
     // geometry as the "initial" X11 size. Restoring that would recreate the
     // same oversized window instead of making a usable normal window.
     struct wlr_box full = vela_output_box(output);
-    // X11 sizes are in pixels of the output.
-    double density = view->x11 && view->x11_density > 0.0 ? view->x11_density : 1.0;
+    // X11 sizes are in pixels of the output the window opened on.
+    double density = view->x11 && view->x11_initial_density > 0.0 ? view->x11_initial_density : 1.0;
     int initial_width = (int)lround(view->x11_initial.width / density);
     int initial_height = (int)lround(view->x11_initial.height / density);
     bool initial_fullscreen = view->x11 && initial_width >= full.width && initial_height >= full.height;

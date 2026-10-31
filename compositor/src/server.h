@@ -184,6 +184,9 @@ struct vela_server {
     // The outputs as Xwayland sees them, in pixels (x11_root.h).
     struct vela_x11_root *x11_root;
     int xwayland_dpi; // the Xft.dpi published (xwayland.c), 0: none yet
+    // Reading the root's RESOURCE_MANAGER after a change (xwayland.c).
+    unsigned int xwayland_resources_cookie;
+    bool xwayland_resources_pending;
     struct wlr_xdg_output_manager_v1 *xdg_outputs;
     struct wl_event_source *output_check;
     struct vela_seen_output *seen_outputs;

@@ -117,6 +117,7 @@ struct vela_view {
     double x11_height;
     struct wlr_box x11_sent;
     struct wlr_box x11_initial;
+    double x11_initial_density; // that of the output it opened on, for x11_initial
     // X11 pixels per logical unit: the scale of its output, where the root
     // is in pixels (x11_root.h, docs/renderer.md §3.9).
     double x11_density;

@@ -10,6 +10,7 @@
 // output, 1/scale logical units. Pure functions, tested in
 // compositor/tests/x11_space_test.cpp.
 
+#include <stdbool.h>
 #include <stddef.h>
 
 struct vela_x11_output {
@@ -39,5 +40,9 @@ void vela_x11_to_logical(const struct vela_x11_output *output, double x, double 
 
 // Xft.dpi for X11 apps, which then scale themselves: 96 at the largest scale.
 int vela_x11_dpi(const struct vela_x11_output *outputs, size_t count);
+
+// Whether X resources (the root's RESOURCE_MANAGER, `length` bytes, not
+// terminated) set Xft.dpi.
+bool vela_x11_resources_set_dpi(const char *resources, size_t length);
 
 #endif
