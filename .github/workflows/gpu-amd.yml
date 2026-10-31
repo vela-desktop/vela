@@ -160,7 +160,10 @@ jobs:
         run: |
           set -euo pipefail
           ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \
-            -R '^functional-xwayland-kwin
+            -R functional-xwayland-kwin --output-on-failure
+
+      - name: Reject skipped or missing GPU tests
+        shell: bash
         run: |
           set -euo pipefail
           python3 - "$RUNNER_TEMP/vela-amd-junit.xml" <<'PY'
