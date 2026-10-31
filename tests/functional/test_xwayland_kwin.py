@@ -106,13 +106,34 @@ class KwinStyleX11(unittest.TestCase):
         window = next(iter({w["id"] for w in self.vela.state().windows} - before))
         self.vela.wait_still(window)
         self.assertAlmostEqual(self.vela.state().window(window)["w"], 400, delta=2)
+        deadline = time.monotonic() + 8
+        while not os.path.exists(xid_path) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(os.path.exists(xid_path))
+        with open(xid_path, encoding="ascii") as f:
+            xid = f.read().strip()
 
+        def assert_x11_width(expected):
+            last = None
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                geometry = subprocess.check_output(
+                    [tool("vela-x11"), "--geometry", xid], env=self.env, text=True)
+                last = int(geometry.split()[2])
+                if abs(last - expected) <= 1:
+                    return
+                time.sleep(0.1)
+            self.assertAlmostEqual(last, expected, delta=1,
+                                   msg="XWM did not reconfigure mapped X11 pixel width")
+
+        assert_x11_width(500)
         self.vela.randr("--output", "HEADLESS-1", "--scale", "1")
         self.vela.wait_for(lambda s: all(o["scale"] == 1 for o in s["outputs"]),
                            what="global scale reduced to 100%")
         self.vela.wait_for(lambda s: abs(s.window(window)["w"] - 400) <= 2,
                            what="mapped X11 window retained its logical width")
         self.vela.wait_still(window)
+        assert_x11_width(400)
         self.assertIn("Xwayland candidate application scale 1.000", self.vela.log_text())
 
         self.vela.randr("--output", "HEADLESS-1", "--scale", "1.25")
@@ -120,6 +141,7 @@ class KwinStyleX11(unittest.TestCase):
                            what="primary returned to fractional scaling")
         self.vela.wait_for(lambda s: abs(s.window(window)["w"] - 400) <= 2,
                            what="mapped X11 window survived reverse rescale")
+        assert_x11_width(500)
         # Destroy a wl_output while the X11 xdg-output resource is alive.
         # A subsequent layout change must not dereference its old wl_resource.
         self.vela.command("test-output remove HEADLESS-2")
