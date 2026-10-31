@@ -82,6 +82,36 @@ class Damage(unittest.TestCase):
     def test_partial_redraw_equals_full_redraw_at_125(self):
         self.check(1.25)
 
+    def test_native_wayland_damage_with_mixed_125_and_100_outputs(self):
+        """The compositor, wallpaper and Wayland apps share one damage path.
+
+        Compare incremental repaint against whole-frame repaint with a real
+        125%/100% output layout. XWayland is deliberately not involved.
+        """
+        captures = []
+        for full in ("0", "1"):
+            with Session(scale="HEADLESS-1=1.25,HEADLESS-2=1",
+                         env={"VELA_DEBUG_DAMAGE": full, "VELA_XWAYLAND_BACKEND": "compat"}) as vela:
+                vela.command("test-output add 1920x1080")
+                vela.wait_for(lambda state: len(state["outputs"]) == 2,
+                              what="mixed Wayland output connected")
+                vela.randr("--output", "HEADLESS-2", "--scale", "1",
+                           "--pos", "1536,0")
+                vela.wait_for(
+                    lambda state: any(o["name"] == "HEADLESS-2" and o["scale"] == 1
+                                      and o["x"] == 1536 for o in state["outputs"]),
+                    what="100 percent secondary right of 125 percent primary")
+                shell(vela)
+                primary = drag_over_the_taskbar(vela)
+                secondary = vela.pixels(output=1)
+                captures.append((primary, secondary))
+        for output in range(2):
+            partial, full = captures[0][output], captures[1][output]
+            self.assertEqual((partial.width, partial.height), (full.width, full.height))
+            different = sum(a != b for a, b in zip(partial.rows, full.rows))
+            self.assertEqual(different, 0,
+                             f"{different} native Wayland rows differ on output {output}")
+
 
 if __name__ == "__main__":
     unittest.main()
