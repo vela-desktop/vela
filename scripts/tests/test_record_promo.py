@@ -24,9 +24,9 @@ class PromoTests(unittest.TestCase):
     def test_scenes_are_unique_and_use_full_output(self):
         self.assertEqual(list(promo.SCENES), ["desktop", "start-menu", "quick-settings",
                                               "window-motion", "task-view", "settings",
-                                              "files", "snap-assist", "virtual-desktops", "colors"])
+                                              "files", "snap-assist", "alt-tab", "virtual-desktops", "colors"])
         self.assertEqual(promo.PROFILES["window-management"],
-                         ("window-motion", "snap-assist", "task-view", "virtual-desktops"))
+                         ("window-motion", "snap-assist", "alt-tab", "task-view", "virtual-desktops"))
         for profile in promo.PROFILES.values():
             self.assertTrue(all(name in promo.SCENES for name in profile))
         for scene in promo.SCENES.values():
