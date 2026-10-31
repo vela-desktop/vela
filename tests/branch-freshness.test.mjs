@@ -17,7 +17,7 @@ async function simulate(mode) {
   const base = 'b'.repeat(40), merge = 'm'.repeat(40), merge2 = 'z'.repeat(40);
   const prs = [{
     number: 143, state: 'open', base: { ref: 'main' }, head: { sha: head },
-    mergeable: mode === 'conflict' ? false :
+    mergeable: ['conflict', 'unchanged-conflict', 'stale-to-conflict'].includes(mode) ? false :
       ['unavailable', 'stale-unavailable', 'unknown-recovered',
         'unknown-conflict', 'unknown-head-moved'].includes(mode) ? null : true,
     merge_commit_sha: merge
@@ -29,6 +29,19 @@ async function simulate(mode) {
     });
   }
   if (mode === 'missing-head') prs[0].head = undefined;
+  // What earlier runs left on each commit, newest first. By default HEAD
+  // carries the success of the previous run, which this run must invalidate.
+  const prior = new Map([[head, [{ state: 'success', description: 'Branch includes current main' }]]]);
+  const staleVerdict = { state: 'failure', description: 'Update branch: main changed relevant files' };
+  const conflictVerdict = { state: 'failure', description: 'Merge conflict with main; resolve conflicts' };
+  if (['unchanged-stale', 'stale-to-success', 'stale-to-conflict', 'limit-stale'].includes(mode)) prior.set(head, [staleVerdict]);
+  if (['unchanged-conflict', 'limit-conflict-api-error'].includes(mode)) prior.set(head, [conflictVerdict]);
+  if (mode === 'leftover-pending') prior.set(head, [{ state: 'pending', description: 'Evaluating current base' }]);
+  if (mode === 'no-prior') prior.delete(head);
+  if (mode === 'unchanged-merge') prior.set(merge, [{ state: 'success', description: 'Branch includes current main' }]);
+  if (mode === 'other-contexts') {
+    prior.set(head, [{ state: 'success', description: 'Quality gate', context: 'sonar' }, staleVerdict]);
+  }
   let branchReads = 0;
   const prReads = new Map();
 
@@ -64,18 +77,31 @@ async function simulate(mode) {
             'n'.repeat(40) : base } } };
         },
         compareCommits: async ({ base: comparisonHead }) => {
-          if (mode === 'api-error' ||
+          if (['api-error', 'limit-conflict-api-error', 'leftover-pending'].includes(mode) ||
               (mode === 'multi-api-error' && comparisonHead === head)) {
             throw new Error('Injected compare error');
           }
-          const behind = ['stale', 'stale-unavailable', 'stale-merge', 'docs-only'].includes(mode);
+          const behind = ['stale', 'stale-unavailable', 'stale-merge', 'docs-only',
+            'unchanged-stale', 'limit-stale', 'other-contexts'].includes(mode);
           return { data: {
             ahead_by: behind ? 1 : 0,
             files: mode === 'docs-only' ? [{ filename: 'docs/overview.md' }] :
               behind ? [{ filename: 'src/main.cpp' }] : []
           } };
         },
+        listCommitStatusesForRef: async ({ ref }) => {
+          if (mode === 'status-read-fails' && ref === head) throw new Error('Injected status read error');
+          const published = statuses.filter(status => status.sha === ref).reverse();
+          const earlier = (prior.get(ref) || []).map(status =>
+            ({ context: 'branch-freshness/relevant-base', ...status }));
+          return { data: [...published, ...earlier] };
+        },
         createCommitStatus: async status => {
+          if (mode.startsWith('limit-') && status.sha === head) {
+            const error = new Error('This SHA and context has reached the maximum number of statuses.');
+            error.status = 422;
+            throw error;
+          }
           if ((mode === 'status-pending-fails' ||
                mode === 'status-pending-and-error-fail') && status.state === 'pending') {
             throw new Error('Injected pending publication error');
@@ -154,7 +180,22 @@ const scenarios = [
   ['status-head-final-and-error-fail', ['head:pending', 'merge:error'], true],
   ['missing-head', [], true],
   ['multi-api-error',
-    ['head:pending', 'head:error', 'head2:pending', 'head2:success', 'merge2:success']]
+    ['head:pending', 'head:error', 'head2:success', 'merge2:success']],
+  // Only changes are published: GitHub caps statuses per commit and context.
+  // The synthetic merge is a new commit for each base, so it gets its verdict.
+  ['unchanged-stale', ['merge:failure']],
+  ['unchanged-conflict', []],
+  ['other-contexts', ['merge:failure']],
+  ['unchanged-merge', ['head:pending', 'head:success']],
+  ['stale-to-success', ['head:success', 'merge:success']],
+  ['stale-to-conflict', ['head:failure']],
+  ['no-prior', ['head:success', 'merge:success']],
+  ['leftover-pending', ['head:error']],
+  ['status-read-fails', ['head:error']],
+  // A commit at the cap that already fails keeps blocking the merge.
+  ['limit-stale', ['merge:failure']],
+  ['limit-conflict-api-error', []],
+  ['limit-success', [], true]
 ];
 
 for (const [mode, expectedEvents, shouldFail = false] of scenarios) {
@@ -170,6 +211,13 @@ for (const [mode, expectedEvents, shouldFail = false] of scenarios) {
     if (mode === 'multi-api-error') {
       assert.ok(statuses.some(status => status.sha === 'j'.repeat(40) &&
         status.state === 'success'), 'a failed PR does not prevent checking the next one');
+    }
+    if (mode === 'stale-to-conflict') {
+      assert.match(statuses[0].description, /Merge conflict/, 'a new reason replaces the old one');
+    }
+    if (mode === 'stale') {
+      assert.ok(statuses.every(status => !/[0-9]/.test(status.description)),
+        'a stale verdict stays the same while main moves on');
     }
     if (['merge-422', 'merge-500', 'api-error', 'base-moved',
       'head-moved', 'status-pending-fails', 'status-merge-publish-fails'].includes(mode)) {
