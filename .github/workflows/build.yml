@@ -310,11 +310,13 @@ jobs:
             su -s /bin/bash vela-tester -c "cd '$work' && makepkg --noconfirm"
             pacman --noconfirm --ask=4 -U "$work/vela-git-0.0.1-1-any.pkg.tar.zst"
             pacman -Q vela-git
-            if pacman -Q vela >/dev/null 2>&1; then
+            # pacman -Q also answers for a provider, and vela-git provides
+            # vela: -Qq prints the installed package's own name.
+            if pacman -Qq vela 2>/dev/null | grep -Fxq vela; then
               echo "::error::Beta still installed after replacement"; exit 1
             fi
             pacman --noconfirm --ask=4 -U "${packages[0]}"
-            pacman -Q vela
+            pacman -Qq vela | grep -Fxq vela
             if pacman -Q vela-git >/dev/null 2>&1; then
               echo "::error::Experimental still installed after replacement"; exit 1
             fi
