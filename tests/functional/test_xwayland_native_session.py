@@ -28,11 +28,14 @@ class NativeXwaylandSession(unittest.TestCase):
             self.skipTest("xrandr not available")
         self.tmp = tempfile.TemporaryDirectory(prefix="vela-native-display-")
         self.display_file = Path(self.tmp.name) / "session-display"
+        self.auth_file = Path(self.tmp.name) / "session-auth"
         self.vela = Session(
             scale=1.25, size="2560x1440@60",
             env={"VELA_XWAYLAND_BACKEND": "native",
-                 "VELA_NATIVE_TEST_DISPLAY_FILE": str(self.display_file)},
-            startup='printf %s "$DISPLAY" > "$VELA_NATIVE_TEST_DISPLAY_FILE"',
+                 "VELA_NATIVE_TEST_DISPLAY_FILE": str(self.display_file),
+                 "VELA_NATIVE_TEST_AUTH_FILE": str(self.auth_file)},
+            startup=('printf %s "$DISPLAY" > "$VELA_NATIVE_TEST_DISPLAY_FILE"; '
+                     'printf %s "$XAUTHORITY" > "$VELA_NATIVE_TEST_AUTH_FILE"'),
         )
         self.vela.start()
 
@@ -111,6 +114,29 @@ class NativeXwaylandSession(unittest.TestCase):
         self.vela.wait_for(
             lambda state: state.window(window)["minimized"],
             timeout=8, what="ICCCM IconicState delivered through Satellite to XDG")
+
+    def test_satellite_x11_requires_private_xauthority(self):
+        """Reject connections via the abstract X11 socket without the cookie."""
+        display = self.vela.wait_for_log(
+            "Native-resolution X11 Satellite listening on DISPLAY=",
+            lambda line: line.split("DISPLAY=")[1].split()[0],
+        )
+        deadline = time.monotonic() + 8
+        while not self.auth_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertTrue(self.auth_file.exists(), "session startup missed XAUTHORITY")
+        auth_path = Path(self.auth_file.read_text())
+        self.assertTrue(auth_path.is_file(), "Satellite authorization file missing")
+        self.assertEqual(auth_path.stat().st_mode & 0o777, 0o600)
+        self.assertGreaterEqual(auth_path.stat().st_size, 32)
+        self.assertIn(b"MIT-MAGIC-COOKIE-1", auth_path.read_bytes())
+
+        env = dict(self.vela.client_env, DISPLAY=display)
+        env["XAUTHORITY"] = str(Path(self.tmp.name) / "invalid-auth")
+        denied = subprocess.run(["xrandr", "--query"], env=env, capture_output=True,
+                                text=True, timeout=8)
+        self.assertNotEqual(denied.returncode, 0,
+                            "Satellite accepted an X11 client without a valid cookie")
 
     def test_satellite_xrandr_reports_native_mode(self):
         display = self.vela.wait_for_log(
