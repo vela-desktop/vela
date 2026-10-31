@@ -53,7 +53,11 @@ def main():
         env["VELA_TEST_PYTHON"] = sys.executable
         return subprocess.run(["sh", "scripts/test-sharpness.sh"], cwd=ROOT, env=env).returncode
     modules = [argument for argument in sys.argv[1:] if not argument.startswith("-")]
-    loader = unittest.defaultTestLoader
+    loader = unittest.TestLoader()
+    # VELA_TEST_FILTER=snipping: only the methods with that in their names,
+    # as unittest's -k (the GPU workflows' test_filter).
+    if pattern := os.environ.get("VELA_TEST_FILTER"):
+        loader.testNamePatterns = [pattern if "*" in pattern else f"*{pattern}*"]
     if modules:
         suite = loader.loadTestsFromNames(modules)
     else:

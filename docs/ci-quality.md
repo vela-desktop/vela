@@ -161,6 +161,22 @@ persistent personal machine: the build and tests execute locally. Use
 a restricted unprivileged runner account without personal credentials,
 and keep the laptop awake during a run.
 
+### Running only some tests
+
+The whole GPU suite takes about 17 minutes on the NVIDIA laptop; checking
+one failure again doesn't need it. Both workflows take two optional inputs:
+
+- **tests**: a CTest regex, such as `functional-shell` or
+  `functional-(capture|x11-native)`.
+- **test_filter**: with **tests**, only the Python test methods whose
+  names contain this, like `unittest -k` (`snipping`). Locally:
+  `VELA_TEST_FILTER=snipping ctest --test-dir build -R functional-shell`.
+
+A partial run still fails on skipped tests or on a filter that selects
+nothing, but doesn't require the full set of suites. With
+**Collect coverage** it builds and tests instrumented, as for a coverage
+failure, without generating or publishing a (partial) report.
+
 ## First-party CPU/GPU code coverage
 
 The [coverage guide](code-quality-integrations.md#codecov-first-party-cc-coverage-cpu-and-optional-gpus)
