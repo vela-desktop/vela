@@ -51,8 +51,10 @@ jobs:
               owner, repo, state: 'open', base: 'main', per_page: 100
             });
             let errors = 0;
+            let unreportedErrors = 0;
             for (const candidate of prs) {
-              let headSha;
+              // The list response can still identify HEAD if a later PR read fails.
+              let headSha = candidate.head?.sha;
               let mergeSha;
               try {
                 const { data: first } = await github.rest.pulls.get({
@@ -111,25 +113,49 @@ jobs:
                 // a merge queue in repository protection to close that race.
                 // Compare HEAD independently; a synthetic merge may be missing or stale.
                 // Never report success on a merge commit without verifying its parents.
-                if (latestPr.mergeable === false) {
+                // A null mergeability result means GitHub is still computing it.
+                // Retry one read without sleeping; do not declare conflict-free success
+                // until GitHub has actually evaluated mergeability.
+                let currentPr = latestPr;
+                if (currentPr.mergeable == null) {
+                  const { data: refreshedPr } = await github.rest.pulls.get({
+                    owner, repo, pull_number: candidate.number
+                  });
+                  if (refreshedPr.head.sha !== headSha ||
+                      refreshedPr.state !== 'open' || refreshedPr.base.ref !== 'main') {
+                    throw new Error('Pull request changed during mergeability refresh');
+                  }
+                  currentPr = refreshedPr;
+                }
+                if (currentPr.mergeable === false) {
                   state = 'failure';
                   description = 'Merge conflict with main; resolve conflicts';
                   core.warning('PR #' + candidate.number + ': merge conflict; GitHub blocks merge');
+                } else if (currentPr.mergeable !== true) {
+                  state = 'error';
+                  description = 'Mergeability not yet known; retry check';
+                  core.warning('PR #' + candidate.number + ': mergeability still unknown');
                 }
-                if (latestPr.mergeable === true && latestPr.merge_commit_sha) {
+                if (currentPr.mergeable === true && currentPr.merge_commit_sha) {
                   try {
                     const { data: merge } = await github.rest.git.getCommit({
-                      owner, repo, commit_sha: latestPr.merge_commit_sha
+                      owner, repo, commit_sha: currentPr.merge_commit_sha
                     });
                     if (merge.parents?.length === 2 &&
                         merge.parents[0].sha === baseSha &&
                         merge.parents[1].sha === headSha) {
-                      mergeSha = latestPr.merge_commit_sha;
+                      mergeSha = currentPr.merge_commit_sha;
                     } else {
                       core.info('PR #' + candidate.number + ': synthetic merge has stale parents; checking HEAD only');
                     }
                   } catch (error) {
-                    if (error.status !== 404 && error.status !== 422) throw error;
+                    // 404 means the optional synthetic commit is missing.
+                    // Other errors (including 422) are not proof of absence.
+                    if (error.status !== 404) {
+                      // This SHA is for error reporting only, never a success verdict.
+                      mergeSha = currentPr.merge_commit_sha;
+                      throw error;
+                    }
                     core.info('PR #' + candidate.number + ': synthetic merge unavailable; checking HEAD only');
                   }
                 }
@@ -139,14 +165,25 @@ jobs:
               } catch (error) {
                 errors++;
                 core.warning('PR #' + candidate.number + ': ' + error.message);
-                // Fail closed and terminate any pending HEAD status on API errors.
-                for (const sha of [headSha, mergeSha].filter(Boolean)) {
+                // Fail closed per PR. A workflow success is only safe if the
+                // affected HEAD (and any known merge) received an error status.
+                const failedStatuses = [];
+                for (const sha of [...new Set([headSha, mergeSha].filter(Boolean))]) {
                   try {
                     await publish(sha, 'error', 'Freshness check failed; retry');
                   } catch (statusError) {
-                    core.error('PR #' + candidate.number + ': ' + statusError.message);
+                    failedStatuses.push(sha);
+                    core.error('PR #' + candidate.number + ': cannot publish error on ' +
+                      sha + ': ' + statusError.message);
                   }
+                }
+                if (!headSha || failedStatuses.length) {
+                  unreportedErrors++;
+                  core.error('PR #' + candidate.number +
+                    ': fail-closed status could not be recorded');
                 }
               }
             }
-            if (errors) core.warning(errors + ' PR freshness check(s) could not complete; affected HEAD statuses are error');
+            if (errors) core.warning(errors + ' PR freshness evaluation(s) failed');
+            if (unreportedErrors) core.setFailed(unreportedErrors +
+              ' PR(s) could not receive fail-closed error statuses');
