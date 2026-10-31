@@ -52,6 +52,35 @@ class Scene:
     strip = None # (seconds after the start, refreshes): a strip of that many
     env = {} # more for the compositor
 
+    def pause(self, seconds):
+        """Editorial hold; the CLI may scale it without changing state waits."""
+        time.sleep(seconds * getattr(self, "hold_scale", 1.0))
+
+    def step(self, desktop, label, *, input_actions=None, command=None, ready=None,
+             timeout=8, hold=0):
+        """Perform a genuine Vela action; checkpoint its observable result.
+
+        State predicates are synchronization barriers, not animation timers.
+        The manifest records both action and readiness times relative to the
+        beginning of the scene, so a future editor can use real event markers.
+        """
+        if (input_actions is None) == (command is None):
+            raise ValueError("specify exactly one of input_actions or command")
+        began = time.clock_gettime(time.CLOCK_MONOTONIC)
+        if input_actions is not None:
+            desktop.vela.input(*input_actions)
+        else:
+            desktop.vela.command(command)
+        if ready is not None:
+            desktop.vela.wait_for(ready, timeout=timeout, what=label)
+        ready_at = time.clock_gettime(time.CLOCK_MONOTONIC)
+        if hasattr(self, "_record_start"):
+            self._events.append({"name": label,
+                                 "at": round(began - self._record_start, 3),
+                                 "ready_at": round(ready_at - self._record_start, 3)})
+        if hold:
+            self.pause(hold)
+
     def prepare(self, desktop):
         raise NotImplementedError
 
@@ -150,6 +179,7 @@ class Desktop:
         self.private_runtime = private / "runtime"
         self.private_home.mkdir(mode=0o700)
         self.private_runtime.mkdir(mode=0o700)
+        self.demo_folder = self.prepare_demo_files(self.private_home)
         try:
             # Its address is known beforehand, so that its own environment can name it.
             listen = f"unix:path={self.private_runtime / 'bus'}"
@@ -268,6 +298,26 @@ class Desktop:
                         for props in nodes))
 
     @staticmethod
+    def prepare_demo_files(home):
+        """Small, deterministic public fixtures, never the host's documents."""
+        folder = home / "Desktop" / "Vela Demo"
+        folder.mkdir(parents=True)
+        (folder / "Release Notes.txt").write_text(
+            "Vela Desktop 0.1 Beta\\nModern. Fluid. Sharp.\\n"
+            "Explore the desktop, windows, and file manager.\\n")
+        (folder / "Roadmap.md").write_text(
+            "# Roadmap\\n\\n- Desktop experience\\n- Input and touch\\n- More polish\\n")
+        pictures = folder / "Pictures"
+        pictures.mkdir()
+        (pictures / "Welcome.svg").write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" '
+            'viewBox="0 0 640 360"><rect width="640" height="360" fill="#17344b"/>'
+            '<circle cx="320" cy="180" r="95" fill="#58b5d2"/>'
+            '<path d="M210 225L320 90l110 135" fill="none" stroke="#fff" '
+            'stroke-width="13" stroke-linecap="round"/></svg>\\n')
+        return folder
+
+    @staticmethod
     def demo_applications(directory):
         """Writes DEMO_APPS and Vela's apps to directory, and returns it."""
         directory.mkdir()
@@ -295,8 +345,9 @@ class Desktop:
         if user:
             command = self.as_user(user, command)
         before = {w["id"] for w in self.vela.state().windows}
+        # App failures belong in the private session log, not /dev/null.
         self.vela.clients.append(subprocess.Popen(command, env=self.qt_env,
-                                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+                                                  stdout=self.vela.log, stderr=self.vela.log))
         state = self.vela.wait_for(lambda s: {w["id"] for w in s.windows} - before, timeout=15,
                                    what=f"{program.name}'s window")
         return next(iter({w["id"] for w in state.windows} - before))
@@ -365,13 +416,13 @@ class Take:
                 index = max(0, bisect.bisect_right(self.times, t) - 1)
                 yield data[index * self.frame_size:(index + 1) * self.frame_size]
 
-    def frames(self, duration, speed, lead=LEAD):
+    def frames(self, duration, speed, lead=LEAD, fps=FPS):
         """The frame on screen at each tick of a FPS video, from lead before
         the start, slowed by speed, for duration seconds of video."""
-        return self.at(self.start - lead + tick / FPS * speed for tick in range(round(duration * FPS)))
+        return self.at(self.start - lead + tick / fps * speed for tick in range(round(duration * fps)))
 
 
-def record(desktop, scene, directory, *, align=True):
+def record(desktop, scene, directory, *, align=True, cursor=False):
     """Runs a scene with the correctly identified output; always reap the recorder."""
     area, context = scene.prepare(desktop)
     vela = desktop.vela
@@ -380,7 +431,8 @@ def record(desktop, scene, directory, *, align=True):
     if not name:
         raise RuntimeError("the selected output has no stable wl_output name")
     env = dict(vela.client_env, VELA_SCREEN_RECORD_OUTPUT=name,
-               VELA_SCREEN_RECORD_DOWNSCALE=str(scene.downscale))
+               VELA_SCREEN_RECORD_DOWNSCALE=str(scene.downscale),
+               VELA_SCREEN_RECORD_CURSOR="1" if cursor else "0")
     recorder = subprocess.Popen([str(RECORDER), str(directory), *map(str, area or ())], env=env,
                                 stdout=subprocess.PIPE, text=True)
     try:
@@ -394,6 +446,8 @@ def record(desktop, scene, directory, *, align=True):
         frames_before = vela.state().output["frames"]
         time.sleep(max(scene.lead, 0.3))
         start = time.clock_gettime(time.CLOCK_MONOTONIC)
+        scene._record_start = start
+        scene._events = []
         scene.act(desktop, context)
         end = time.clock_gettime(time.CLOCK_MONOTONIC)
         time.sleep(scene.tail)
@@ -402,6 +456,7 @@ def record(desktop, scene, directory, *, align=True):
         if recorder.wait(timeout=30) != 0:
             raise RuntimeError("vela-screen-record failed")
         take = Take(directory, start, end, presented)
+        take.timeline = list(scene._events)
         if align:
             take.align()  # Before/after needs a shared visual change; promo keeps the opening.
         # Record only display metadata, never the user or their real devices.
@@ -423,11 +478,11 @@ def has_drawtext():
     return any(line.split()[1:2] == ["drawtext"] for line in filters.splitlines())
 
 
-def lossless(take, frames, path):
+def lossless(take, frames, path, fps=FPS):
     """These frames of the take as a constant-rate video (FFV1)."""
     encoder = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                                 "-f", "rawvideo", "-pix_fmt", take.format, "-s", f"{take.width}x{take.height}",
-                                "-r", str(FPS), "-i", "-", "-c:v", "ffv1", str(path)], stdin=subprocess.PIPE)
+                                "-r", str(fps), "-i", "-", "-c:v", "ffv1", str(path)], stdin=subprocess.PIPE)
     try:
         for frame in frames:
             encoder.stdin.write(frame)
