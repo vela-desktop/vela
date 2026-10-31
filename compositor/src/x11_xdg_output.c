@@ -46,8 +46,10 @@ struct x11_output_resource {
     struct wl_list link;
     struct vela_x11_xdg_output *manager;
     struct wl_resource *resource;
-    struct wl_resource *wl_output_resource; // NULL as soon as the wl_output resource dies
+    struct wl_resource *wl_output_resource; // NULL as soon as the client releases wl_output
+    struct wlr_output *output; // NULL after hardware unplug, even if resource persists
     struct wl_listener wl_output_destroy;
+    struct wl_listener output_destroy;
 };
 
 static bool is_xwayland_client(const struct vela_server *server, const struct wl_client *client)
@@ -78,8 +80,8 @@ static bool filter_global(const struct wl_client *client,
 
 static void send_geometry(struct x11_output_resource *output)
 {
-    struct wlr_output *wlr = wlr_output_from_resource(output->wl_output_resource);
-    if (!wlr || !wlr->enabled) {
+    struct wlr_output *wlr = output->output;
+    if (!wlr || !output->wl_output_resource || !wlr->enabled) {
         return;
     }
 
@@ -114,11 +116,21 @@ static void wl_output_destroyed(struct wl_listener *listener, void *data)
     wl_list_init(&output->wl_output_destroy.link);
 }
 
+static void wlr_output_destroyed(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct x11_output_resource *output = wl_container_of(listener, output, output_destroy);
+    output->output = NULL;
+    wl_list_remove(&output->output_destroy.link);
+    wl_list_init(&output->output_destroy.link);
+}
+
 static void output_resource_destroy(struct wl_resource *resource)
 {
     struct x11_output_resource *output = wl_resource_get_user_data(resource);
     if (!output) return;
     wl_list_remove(&output->wl_output_destroy.link);
+    wl_list_remove(&output->output_destroy.link);
     wl_list_remove(&output->link);
     free(output);
 }
@@ -161,6 +173,9 @@ static void get_xdg_output(struct wl_client *client, struct wl_resource *manager
     }
     output->manager = manager;
     output->wl_output_resource = wl_output_resource;
+    output->output = wlr;
+    output->output_destroy.notify = wlr_output_destroyed;
+    wl_signal_add(&wlr->events.destroy, &output->output_destroy);
     output->wl_output_destroy.notify = wl_output_destroyed;
     wl_resource_add_destroy_listener(wl_output_resource, &output->wl_output_destroy);
     if (wl_resource_get_version(output->resource) >= 2) {
