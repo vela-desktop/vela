@@ -95,6 +95,32 @@ class KwinStyleX11(unittest.TestCase):
                            what="X11 window restored through integrated XWM")
 
 
+    def test_mapped_x11_window_reconfigures_on_global_scale_change(self):
+        """Preserve logical geometry when XWayland's global scale changes."""
+        xid_path = os.path.join(self.vela.directory, "hotplug-xid")
+        before = {w["id"] for w in self.vela.state().windows}
+        self.vela.clients.append(subprocess.Popen(
+            [tool("vela-x11"), "--id-file", xid_path, "500", "300"], env=self.env))
+        self.vela.wait_for(lambda s: bool({w["id"] for w in s.windows} - before),
+                           what="mapped X11 before global rescale")
+        window = next(iter({w["id"] for w in self.vela.state().windows} - before))
+        self.vela.wait_still(window)
+        self.assertAlmostEqual(self.vela.state().window(window)["w"], 400, delta=2)
+
+        self.vela.randr("--output", "HEADLESS-1", "--scale", "1")
+        self.vela.wait_for(lambda s: all(o["scale"] == 1 for o in s["outputs"]),
+                           what="global scale reduced to 100%")
+        self.vela.wait_for(lambda s: abs(s.window(window)["w"] - 400) <= 2,
+                           what="mapped X11 window retained its logical width")
+        self.vela.wait_still(window)
+        self.assertIn("Xwayland candidate application scale 1.000", self.vela.log_text())
+
+        self.vela.randr("--output", "HEADLESS-1", "--scale", "1.25")
+        self.vela.wait_for(lambda s: s.output["scale"] == 1.25,
+                           what="primary returned to fractional scaling")
+        self.vela.wait_for(lambda s: abs(s.window(window)["w"] - 400) <= 2,
+                           what="mapped X11 window survived reverse rescale")
+
     def test_fullscreen_repaints_native_bottom_right_after_state_changes(self):
         """Regression: 125% X11 frame must cover right/bottom physical pixels.
 
