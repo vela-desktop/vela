@@ -223,7 +223,9 @@ class PromoTests(unittest.TestCase):
         import io
         recorder = mock.Mock()
         recorder.stdout = io.StringIO("ready\\n")
-        recorder.poll.return_value = 0
+        # Running until it's waited for, then exited: a late reader thread
+        # must not look like a recorder that died at startup.
+        recorder.poll.side_effect = lambda: 0 if recorder.wait.called else None
         recorder.wait.return_value = 0
         vela = mock.Mock()
         vela.state.return_value = types.SimpleNamespace(output={"name": "HEADLESS-1", "frames": 10})
