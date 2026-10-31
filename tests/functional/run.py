@@ -13,6 +13,7 @@ Needs a GPU with Vulkan 1.4: the renderer has no software fallback. Without
 one (such as on CI servers) it exits with 77, which ctest counts as a
 skipped test, not a failed one."""
 
+import fnmatch
 import os
 import subprocess
 import sys
@@ -38,6 +39,14 @@ def unittest_result_exit_code(result, strict=False):
     return 0 if result.wasSuccessful() else 1
 
 
+def _cases(suite):
+    for test in suite:
+        if isinstance(test, unittest.TestSuite):
+            yield from _cases(test)
+        else:
+            yield test
+
+
 def main():
     if not gpu_available():
         print("No GPU (/dev/dri/renderD*): functional tests skipped.")
@@ -53,16 +62,18 @@ def main():
         env["VELA_TEST_PYTHON"] = sys.executable
         return subprocess.run(["sh", "scripts/test-sharpness.sh"], cwd=ROOT, env=env).returncode
     modules = [argument for argument in sys.argv[1:] if not argument.startswith("-")]
-    loader = unittest.TestLoader()
-    # VELA_TEST_FILTER=snipping: only the methods with that in their names,
-    # as unittest's -k (the GPU workflows' test_filter).
-    if pattern := os.environ.get("VELA_TEST_FILTER"):
-        loader.testNamePatterns = [pattern if "*" in pattern else f"*{pattern}*"]
+    loader = unittest.defaultTestLoader
     if modules:
         suite = loader.loadTestsFromNames(modules)
     else:
         suite = loader.loadTestsFromNames(sorted(name[:-3] for name in os.listdir(HERE)
                                                  if name.startswith("test_") and name.endswith(".py")))
+    # VELA_TEST_FILTER=snipping: only the tests with that in their ids, as
+    # unittest's -k (the GPU workflows' test_filter), methods named on the
+    # command line included.
+    if pattern := os.environ.get("VELA_TEST_FILTER"):
+        pattern = pattern if "*" in pattern else f"*{pattern}*"
+        suite = unittest.TestSuite(test for test in _cases(suite) if fnmatch.fnmatchcase(test.id(), pattern))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return unittest_result_exit_code(result, strict=os.environ.get("VELA_GPU_CI_STRICT") == "1")
 

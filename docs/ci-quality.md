@@ -176,7 +176,9 @@ one failure again doesn't need it. Both workflows take two optional inputs:
   `VELA_TEST_FILTER=snipping ctest --test-dir build -R functional-shell`.
 
 A partial run still fails on skipped tests or on a filter that selects
-nothing, but doesn't require the full set of suites. With
+nothing (locally only with `VELA_GPU_CI_STRICT=1`, as in the workflows),
+and on a **test_filter** whose **tests** pick no `functional-*` entry, but
+doesn't require the full set of suites. With
 **Collect coverage** it builds and tests instrumented, as for a coverage
 failure, without generating or publishing a (partial) report.
 

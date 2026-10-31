@@ -194,6 +194,7 @@ jobs:
         shell: bash
         env:
           PARTIAL: ${{ inputs.tests != '' || inputs.test_filter != '' }}
+          TEST_FILTER: ${{ inputs.test_filter }}
         run: |
           set -euo pipefail
           python3 - "$RUNNER_TEMP/vela-nvidia-junit.xml" <<'PY'
@@ -213,6 +214,11 @@ jobs:
                      if name not in names]
           if not any(name.startswith("functional-") for name in names):
               missing.append("functional-*")
+          # test_filter applies only to functional-* entries: on sharpness
+          # alone it would be ignored, and the run would pass without it.
+          if os.environ["TEST_FILTER"] and not any(name.startswith("functional-") for name in names):
+              print("::error::test_filter selected no functional test: tests must pick a functional-* entry")
+              sys.exit(1)
           # A partial run, asked for by name, needs only what it selected.
           if missing and os.environ["PARTIAL"] != "true":
               print("::error::Required GPU suites missing: " + ", ".join(missing))
