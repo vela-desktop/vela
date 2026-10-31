@@ -9,6 +9,7 @@ chosen as Settings > Display does (wlr-output-management)."""
 import os
 import signal
 import subprocess
+import time
 import unittest
 
 from harness import BUILD, Session, tool
@@ -104,6 +105,48 @@ class Outputs(unittest.TestCase):
                       and s.window(game)["fullscreen"]
                       and s.window(game)["w"] == primary["w"],
             what="fullscreen monitor moved by explicit command")
+
+    def test_fractional_multimonitor_fullscreen_corners_repaint(self):
+        """Output corner pixels repaint correctly through 125%/100% transitions."""
+        self.vela.randr("--output", "HEADLESS-1", "--scale", "1.25")
+        self.vela.wait_for(lambda st: st.output["scale"] == 1.25,
+                           what="primary at 125 percent")
+        self.add_second()
+        self.vela.randr("--output", "HEADLESS-2", "--scale", "1",
+                        "--pos", "1536,0")
+        self.vela.wait_for(lambda st: any(
+            o["name"] == "HEADLESS-2" and o["scale"] == 1
+            for o in st["outputs"]), what="secondary at 100 percent")
+        window = self.vela.open_window(command=[
+            tool("vela-pattern"), "--fullscreen-output", "0", "400", "300"])
+        self.vela.wait_for(lambda st: st.window(window)["fullscreen"]
+                           and st.window(window)["output"] == "HEADLESS-1",
+                           what="fullscreen on primary")
+
+        def corner(output):
+            width, height = 1920, 1080
+            x, y = width - 41, height - 51
+            expected = (x & 255, y & 255, ((x >> 8) & 15) << 4 | ((y >> 8) & 15))
+            actual = None
+            for _ in range(12):
+                img = self.vela.pixels(output)
+                self.assertEqual((img.width, img.height), (width, height))
+                actual = img.at(x, y)
+                if actual == expected:
+                    return
+                time.sleep(0.15)
+            self.assertEqual(actual, expected,
+                             "bottom-right physical pixels not refreshed")
+
+        corner(0)
+        self.vela.command("window active output HEADLESS-2")
+        self.vela.wait_for(lambda st: st.window(window)["output"] == "HEADLESS-2",
+                           what="fullscreen moved to secondary")
+        corner(1)
+        self.vela.command("window active output HEADLESS-1")
+        self.vela.wait_for(lambda st: st.window(window)["output"] == "HEADLESS-1",
+                           what="fullscreen restored to primary")
+        corner(0)
 
     def test_hotplug_with_its_own_scale(self):
         state = self.add_second()
