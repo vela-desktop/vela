@@ -137,7 +137,7 @@ jobs:
           ccache --show-stats
 
       - name: Tests
-        run: ctest --test-dir build --output-on-failure -E '^packaging-update$'
+        run: ctest --test-dir build --output-on-failure --parallel 2 -E '^packaging-update$'
 
       - name: Scripts
         run: |
@@ -145,8 +145,10 @@ jobs:
             sh -n "$script"
           done
 
+  # Package compilation is independent of the normal Arch test build. Both
+  # remain required for Beta publication, but can run concurrently on PRs.
   package:
-    needs: [packaging-tests, build]
+    needs: packaging-tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -529,7 +531,7 @@ jobs:
   # main keep ephemeral Experimental build artifacts without GitHub Releases.
   publish-beta:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v0.')
-    needs: [package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke, ubuntu-beta]
+    needs: [build, package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke, ubuntu-beta]
     runs-on: ubuntu-latest
     permissions:
       contents: write

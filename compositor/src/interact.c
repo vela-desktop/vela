@@ -11,6 +11,7 @@
 #include "layer.h"
 #include "lock.h"
 #include "scene/scene.h"
+#include "scene/surface.h"
 #include "server.h"
 #include "snap.h"
 #include "util.h"
@@ -234,8 +235,9 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
     // the window).
     if (input->implicit_grab.surface && !seat->drag) {
         if (seat->pointer_state.button_count > 0 && seat->pointer_state.focused_surface == input->implicit_grab.surface) {
-            wlr_seat_pointer_notify_motion(seat, time_msec, cursor->x - input->implicit_grab.origin_x,
-                cursor->y - input->implicit_grab.origin_y);
+            double density = vela_surface_density(input->implicit_grab.surface);
+            wlr_seat_pointer_notify_motion(seat, time_msec, (cursor->x - input->implicit_grab.origin_x) * density,
+                (cursor->y - input->implicit_grab.origin_y) * density);
             return;
         }
         memset(&input->implicit_grab, 0, sizeof(input->implicit_grab));
@@ -414,8 +416,9 @@ void vela_interact_button(struct vela_server *server, struct wlr_pointer_button_
         // vela_input.implicit_grab).
         if (pressed && seat->pointer_state.button_count == 0 && seat->pointer_state.focused_surface && !seat->drag) {
             input->implicit_grab.surface = seat->pointer_state.focused_surface;
-            input->implicit_grab.origin_x = cursor->x - seat->pointer_state.sx;
-            input->implicit_grab.origin_y = cursor->y - seat->pointer_state.sy;
+            double density = vela_surface_density(input->implicit_grab.surface);
+            input->implicit_grab.origin_x = cursor->x - seat->pointer_state.sx / density;
+            input->implicit_grab.origin_y = cursor->y - seat->pointer_state.sy / density;
         }
         wlr_seat_pointer_notify_button(seat, event->time_msec, event->button, event->state);
     }

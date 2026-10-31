@@ -70,8 +70,11 @@ struct wlr_box vela_view_geometry(const struct vela_view *view)
         return (struct wlr_box) { g.x, g.y - bar, g.width, g.height + bar };
     }
 #if WLR_HAS_XWAYLAND
-    // X11: no shadow margins; Vela's bar, if any, sits on top.
-    return (struct wlr_box) { 0, -bar, view->x11->width, view->x11->height + bar };
+    // X11: no shadow margins; Vela's bar, if any, sits on top. The window is
+    // in pixels of its output.
+    double density = view->x11_density > 0.0 ? view->x11_density : 1.0;
+    return (struct wlr_box) { 0, -bar, (int)lround(view->x11->width / density),
+        (int)lround(view->x11->height / density) + bar };
 #else
     return (struct wlr_box) { 0 };
 #endif
@@ -361,12 +364,14 @@ struct wlr_box vela_view_restore_box(struct vela_view *view)
     // geometry as the "initial" X11 size. Restoring that would recreate the
     // same oversized window instead of making a usable normal window.
     struct wlr_box full = vela_output_box(output);
-    bool initial_fullscreen = view->x11 && view->x11_initial.width >= full.width
-        && view->x11_initial.height >= full.height;
-    if (view->x11 && !initial_fullscreen && view->x11_initial.width > 0
-        && view->x11_initial.height > 0) {
-        frame.width = view->x11_initial.width;
-        frame.height = view->x11_initial.height + (view->decoration ? VELA_DECORATION_HEIGHT : 0);
+    // X11 sizes are in pixels of the output the window opened on.
+    double density = view->x11 && view->x11_initial_density > 0.0 ? view->x11_initial_density : 1.0;
+    int initial_width = (int)lround(view->x11_initial.width / density);
+    int initial_height = (int)lround(view->x11_initial.height / density);
+    bool initial_fullscreen = view->x11 && initial_width >= full.width && initial_height >= full.height;
+    if (view->x11 && !initial_fullscreen && initial_width > 0 && initial_height > 0) {
+        frame.width = initial_width;
+        frame.height = initial_height + (view->decoration ? VELA_DECORATION_HEIGHT : 0);
     }
     frame = vela_output_fit(output, frame);
     frame.x = area.x + (area.width - frame.width) / 2;

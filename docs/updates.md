@@ -215,7 +215,12 @@ two checks may finish in the same second. An old report must not hide an
 outcome that never reached the file (`busy`, or no report at all). A failed check keeps the
 last completed one shown, with the failure beside it. A check never
 starts while another check or an install runs, from anyone. A check
-taking more than 15 minutes is stopped (SIGTERM, then SIGKILL).
+taking more than 15 minutes is stopped (SIGTERM, then SIGKILL) together
+with everything it started: the check runs in a process group of its own,
+and a child holding its output (a stalled `git fetch`) would otherwise keep
+it going. `vela-update` also makes Git give up on a transfer slower than
+1 KB/s for a minute (`GIT_HTTP_LOW_SPEED_LIMIT` and `GIT_HTTP_LOW_SPEED_TIME`,
+when not already set), which ends as a `network` error.
 
 Automatic checks:
 
@@ -389,7 +394,8 @@ Experimental's version carries its commit, here and on the page
   killed run, automatic checks with short timers, metered connections,
   `Announce` once per version (with private marker permissions), successive
   reports in the same second, full-connectivity gating, the caller check.
-  Also what goes wrong around it: a check that ignores SIGTERM, output too
+  Also what goes wrong around it: a check that ignores SIGTERM, a check
+  whose child ignores SIGTERM and keeps its output, output too
   big to be a report, no `vela-update`, no terminal, a second daemon, a
   state directory it can't use, a marker it can't save, NetworkManager
   leaving and coming back or not there at all, no system bus, and the

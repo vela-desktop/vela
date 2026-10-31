@@ -227,6 +227,21 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("Error")).toStringList().value(0), QStringLiteral("failed"));
     }
 
+    // A child of the check that ignores SIGTERM and keeps stdout open (a
+    // stalled git fetch) is killed with it: the check ends, the daemon is
+    // idle again.
+    void checkChildrenAreKilled()
+    {
+        nextCheck({});
+        QVERIFY(write(fake(QStringLiteral("check-hold")), ""));
+        QVERIFY(write(fake(QStringLiteral("check-orphan")), ""));
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_CHECK_TIMEOUT_MS"), QStringLiteral("200") },
+            { QStringLiteral("VELA_UPDATE_KILL_MS"), QStringLiteral("200") } }));
+        call(QStringLiteral("Check"));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        QCOMPARE(property(QStringLiteral("Error")).toStringList().value(0), QStringLiteral("failed"));
+    }
+
     // Megabytes on stdout aren't a report.
     void oversizedOutputIsNoReport()
     {

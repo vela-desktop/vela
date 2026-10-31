@@ -69,6 +69,10 @@ printf '%s\n' "$*" >> "$FAKE/calls"
 case " $* " in
 *" --check "*)
     if [ -f "$FAKE/check-stubborn" ]; then trap '' TERM; fi
+    # Like a stalled git fetch: a child that ignores TERM and holds stdout.
+    if [ -f "$FAKE/check-orphan" ]; then
+        (trap '' TERM; while :; do sleep 0.02; done) &
+    fi
     while [ -f "$FAKE/check-hold" ]; do sleep 0.02; done
     if [ -f "$FAKE/check-output" ]; then
         cat "$FAKE/check-output"

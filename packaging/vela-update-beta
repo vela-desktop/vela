@@ -7,10 +7,20 @@
 # This deliberately does not fall back to an experimental source build.
 set -eu
 
+# A stalled transfer fails as a network error instead of hanging (see
+# vela-update). The caller's values win.
+GIT_HTTP_LOW_SPEED_LIMIT="${GIT_HTTP_LOW_SPEED_LIMIT:-1000}"
+GIT_HTTP_LOW_SPEED_TIME="${GIT_HTTP_LOW_SPEED_TIME:-60}"
+export GIT_HTTP_LOW_SPEED_LIMIT GIT_HTTP_LOW_SPEED_TIME
+
 REPO=vela-desktop/vela
 BASE=https://github.com/$REPO
 API=https://api.github.com/repos/$REPO/releases
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/vela-update"
+# Verified packages stay here for rollback, as Experimental's do (its own
+# vela-git files share the folder; the globs below never match them).
+PACKAGES="$CACHE/packages"
+KEEP=3
 check=0
 json=0
 force=0
@@ -362,11 +372,31 @@ for candidate in "$(dirname "$0")/verify-attestation.py" \
     if [ -f "$candidate" ]; then verifier="$candidate"; break; fi
 done
 [ -n "$verifier" ] || fail missing-tool "missing Sigstore verifier"
-if ! python3 "$verifier" --repository "$REPO" --commit "$latestFull" \
+if ! python3 -I "$verifier" --repository "$REPO" --commit "$latestFull" \
     --kind release --release-tag "$tag" "$work/$package"; then
     fail verification-failed "the package's signed provenance was rejected"
 fi
 echo ":: Verified official Beta package $package"
+# Only a verified package is kept: for rollback, and to retry an install
+# that failed without downloading it again.
+mkdir -p "$PACKAGES"
+mv -f -- "$work/$package" "$PACKAGES/$package"
+cached="$PACKAGES/$package"
+prune() {
+    case "$backend" in
+    arch) pattern='vela-[0-9]*.pkg.tar.zst' ;;
+    fedora) pattern='vela-[0-9]*.x86_64.rpm' ;;
+    ubuntu) pattern='vela_[0-9]*_amd64.deb' ;;
+    esac
+    # shellcheck disable=SC2086 # the pattern is a glob
+    ls -t "$PACKAGES"/$pattern 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+        rm -f -- "$old"
+    done
+}
+install_failed() {
+    echo "   To install it: $1 $cached" >&2
+    fail install-failed "$2"
+}
 phase installing
 case "$backend" in
 arch)
@@ -374,13 +404,15 @@ arch)
         # In the explicit channel transition, accept only pacman's conflict
         # removal prompt within the SAME installation transaction. Plain
         # --noconfirm answers no to the vela-git / vela conflict.
-        sudo pacman --noconfirm --ask=4 -U "$work/$package" ||
-            fail install-failed "pacman did not install the package"
+        sudo pacman --noconfirm --ask=4 -U "$cached" ||
+            install_failed "sudo pacman -U" "pacman did not install the package"
     else
-        sudo pacman -U "$work/$package" || fail install-failed "pacman did not install the package"
+        sudo pacman -U "$cached" || install_failed "sudo pacman -U" "pacman did not install the package"
     fi ;;
-fedora) sudo dnf install -y --allowerasing "$work/$package" || fail install-failed "dnf did not install the package" ;;
-ubuntu) sudo apt-get install -y --allow-downgrades "$work/$package" ||
-        fail install-failed "apt did not install the package" ;;
+fedora) sudo dnf install -y --allowerasing "$cached" ||
+        install_failed "sudo dnf install --allowerasing" "dnf did not install the package" ;;
+ubuntu) sudo apt-get install -y --allow-downgrades "$cached" ||
+        install_failed "sudo apt-get install --allow-downgrades" "apt did not install the package" ;;
 esac
+prune
 echo ":: Vela Beta $tag installed. Sign out and back in to start the new version."

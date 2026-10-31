@@ -115,12 +115,22 @@ static int on_check_exit(sd_event_source *source, const siginfo_t *info, void *d
     return 0;
 }
 
+// The check's whole process group: vela-update and what it started (git,
+// curl, gh). A shell runs its TERM trap only once the command it waits for
+// returns, and every child shares the stdout pipe: signalling the shell
+// alone left a stalled git holding that pipe, and the check never ended.
+static void signal_check(struct vela_up_daemon *d, int sig)
+{
+    // vela_up_spawn made the check its group's leader, so its PID names the
+    // group, and stays reserved while any member lives.
+    if (d->check_pid > 0) {
+        kill(-d->check_pid, sig);
+    }
+}
+
 static int on_check_kill(sd_event_source *source, uint64_t usec, void *data)
 {
-    struct vela_up_daemon *d = data;
-    if (d->check_pid > 0) {
-        kill(d->check_pid, SIGKILL);
-    }
+    signal_check(data, SIGKILL);
     return 0;
 }
 
@@ -129,7 +139,7 @@ static int on_check_timeout(sd_event_source *source, uint64_t usec, void *data)
     struct vela_up_daemon *d = data;
     vela_up_log("vela-update --check is taking too long: stopping it");
     if (d->check_pid > 0) {
-        kill(d->check_pid, SIGTERM);
+        signal_check(d, SIGTERM);
         sd_event_add_time_relative(d->event, &d->check_kill, CLOCK_MONOTONIC, d->timing.kill_us, 0, on_check_kill, d);
     }
     return 0;
@@ -142,7 +152,7 @@ int vela_up_check_start(struct vela_up_daemon *d)
     }
     char *argv[] = { (char *)d->command, "--check", "--json", NULL };
     int out = -1;
-    pid_t pid = vela_up_spawn(argv, &out, false);
+    pid_t pid = vela_up_spawn(argv, &out, VELA_UP_SPAWN_GROUP);
     if (pid < 0) {
         vela_up_log("can't start %s: %s", d->command, strerror((int)-pid));
         return (int)pid;
@@ -161,7 +171,7 @@ int vela_up_check_start(struct vela_up_daemon *d)
     }
     if (r < 0) {
         vela_up_log("following the check: %s", strerror(-r));
-        kill(pid, SIGKILL);
+        kill(-pid, SIGKILL);
         waitpid(pid, NULL, 0);
         close_output(d);
         d->check_pid = 0;
@@ -360,9 +370,7 @@ int vela_up_network_start(struct vela_up_daemon *d)
 
 void vela_up_check_free(struct vela_up_daemon *d)
 {
-    if (d->check_pid > 0) {
-        kill(d->check_pid, SIGTERM);
-    }
+    signal_check(d, SIGTERM);
     close_output(d);
     free(d->check_buffer);
     d->check_child = sd_event_source_disable_unref(d->check_child);

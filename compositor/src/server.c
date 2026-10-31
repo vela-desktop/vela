@@ -239,7 +239,7 @@ static bool init(struct vela_server *server)
     wlr_presentation_create(display, server->backend, 2);
 
     server->output_layout = wlr_output_layout_create(display);
-    wlr_xdg_output_manager_v1_create(display, server->output_layout);
+    server->xdg_outputs = wlr_xdg_output_manager_v1_create(display, server->output_layout);
     vela_output_manager_init(server);
     vela_listen(&server->output_layout->events.change, &server->layout_change, handle_layout_change);
 

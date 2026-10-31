@@ -5,6 +5,7 @@
 
 #include "motion.h"
 #include "scene/scene.h"
+#include "scene/surface.h"
 #include "server.h"
 #include "util.h"
 #include "view.h"
@@ -45,6 +46,7 @@ static void add_piece(struct vela_snapshot *snapshot, struct vela_node *node, do
 struct surface_copy {
     struct vela_snapshot *snapshot;
     double lx, ly; // where the node is, minus the frame's center
+    double density; // surface coordinates per logical unit (scene/surface.h)
 };
 
 static void add_surface_copy(struct wlr_surface *surface, int sx, int sy, void *data)
@@ -58,11 +60,12 @@ static void add_surface_copy(struct wlr_surface *surface, int sx, int sy, void *
     }
     struct wlr_fbox src = { 0 };
     wlr_surface_get_buffer_source_box(surface, &src);
-    double width = surface->current.width;
-    double height = surface->current.height;
+    double width = surface->current.width / context->density;
+    double height = surface->current.height / context->density;
     struct vela_buffer_node *copy = vela_buffer_node_create(context->snapshot->tree, &buffer->base, buffer->texture,
         &src, wlr_output_transform_invert(surface->current.transform), width, height);
-    add_piece(context->snapshot, &copy->node, context->lx + sx, context->ly + sy, width, height);
+    add_piece(context->snapshot, &copy->node, context->lx + sx / context->density,
+        context->ly + sy / context->density, width, height);
     ++context->snapshot->surfaces;
 }
 
@@ -108,8 +111,9 @@ static void collect(struct vela_snapshot *snapshot, struct vela_node *node, doub
         return;
     }
     case VELA_NODE_SURFACE: {
-        struct surface_copy context = { snapshot, lx - cx, ly - cy };
-        vela_for_each_surface(((struct vela_surface_node *)node)->surface, add_surface_copy, &context);
+        struct wlr_surface *root = ((struct vela_surface_node *)node)->surface;
+        struct surface_copy context = { snapshot, lx - cx, ly - cy, vela_surface_density(root) };
+        vela_for_each_surface(root, add_surface_copy, &context);
         return;
     }
     }

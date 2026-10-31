@@ -21,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ubuntu:26.10
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-ubuntu
+      CCACHE_MAXSIZE: 750M
     defaults:
       run:
         shell: bash
@@ -32,7 +35,7 @@ jobs:
           set -euo pipefail
           apt-get update
           apt-get install -y --no-install-recommends \
-            ca-certificates git build-essential cmake ninja-build pkgconf \
+            ca-certificates git build-essential cmake ninja-build ccache pkgconf \
             libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
             libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
             libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
@@ -50,6 +53,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Restore Ubuntu compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache-ubuntu
+          key: ccache-ubuntu2610-relwithdebinfo-v1-${{ github.sha }}
+          restore-keys: |
+            ccache-ubuntu2610-relwithdebinfo-v1-
       - name: Configure all desktop components
         run: |
           channel=experimental
@@ -57,6 +67,8 @@ jobs:
           cmake -S . -B build-ubuntu -G Ninja \
             -DVELA_PACKAGE_CHANNEL="$channel" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DVELA_BUILD_COMPOSITOR=ON \
             -DVELA_BUILD_SHELL=ON \
             -DVELA_BUILD_POLKIT=ON \
@@ -67,7 +79,12 @@ jobs:
             -DVELA_PACKAGE_DEB=ON \
             -DVELA_PACKAGE_COMMIT="${GITHUB_SHA:0:7}"
       - name: Build
-        run: cmake --build build-ubuntu --parallel 2
+        run: |
+          ccache --zero-stats
+          cmake --build build-ubuntu --parallel 2
+      - name: Ubuntu compiler cache statistics
+        if: always()
+        run: ccache --show-stats || true
       - name: Non-GPU CTest suite
         run: |
           set -euo pipefail
@@ -80,7 +97,7 @@ jobs:
             echo "Expected at least 200 non-GPU tests; discovered ${count:-none}" >&2
             exit 1
           fi
-          ctest --test-dir build-ubuntu --output-on-failure -LE 'gpu|distro-packaging'
+          ctest --test-dir build-ubuntu --output-on-failure --parallel 2 -LE 'gpu|distro-packaging'
       - name: Build channel-specific DEB
         run: |
           set -euo pipefail
