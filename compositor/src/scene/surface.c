@@ -130,8 +130,7 @@ static void refresh(struct vela_surface_state *state)
     // by the global X11 factor. Do not ALSO suggest fractional/ceil(1.25)=2
     // buffer scaling to XWayland: that can leave the right/bottom of the
     // screen unpainted and mismatch mouse hit testing.
-    const char *experiment = getenv("VELA_XWAYLAND_XDG_OUTPUT_EXPERIMENT");
-    if (experiment && strcmp(experiment, "1") == 0) {
+    if (state->scene->x11_scale_override) {
         struct wlr_surface *root = wlr_surface_get_root_surface(surface);
         if (root && wlr_xwayland_surface_try_from_wlr_surface(root)) {
             scale = 1.0;
