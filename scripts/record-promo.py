@@ -72,16 +72,15 @@ class QuickSettings(Scene):
         return None, None
 
     def act(self, desktop, _):
-        vela = desktop.vela
-        self.step(desktop, "open Quick Settings", input_actions=("key", "super+a"),
-                  ready=lambda s: Desktop.layer(s, self.namespace), hold=1.5)
-        # The existing before/after scene verifies this is Vela's real
-        # keyboard shortcut to the sound controls, on private PipeWire.
-        self.step(desktop, "show sound controls", input_actions=("key", "super+ctrl+v"), hold=1.2)
-        self.step(desktop, "return to Quick Settings", input_actions=("key", "Escape"),
-                  ready=lambda s: Desktop.layer(s, self.namespace), hold=0.5)
-        self.step(desktop, "close Quick Settings", input_actions=("key", "Escape"),
-                  ready=lambda s: not Desktop.layer(s, self.namespace), hold=0.6)
+        # Keep one virtual keyboard alive across the whole sequence. A new
+        # vela-input instance can steal focus from an open Quick Settings page.
+        # Use the same sound shortcut exercised by the before/after recorder.
+        self.step(desktop, "Quick Settings and sound controls",
+                  input_actions=("key", "super+a", "sleep", "1000",
+                                 "key", "super+ctrl+v", "sleep", "1200",
+                                 "key", "Escape", "sleep", "600",
+                                 "key", "Escape", "sleep", "500"),
+                  ready=lambda s: not Desktop.layer(s, self.namespace), hold=0.5)
 
 
 class WindowMotion(Scene):
