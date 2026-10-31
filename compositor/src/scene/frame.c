@@ -507,6 +507,11 @@ static bool same_look(const struct vela_element *a, const struct vela_element *b
 {
     bool same_texture = a->surface ? true : a->texture == b->texture;
     return a->surface == b->surface && same_texture && same_box(&a->box, &b->box) && same_fbox(&a->src, &b->src)
+        // The box can stay unchanged while XWayland changes buffer scale or
+        // a window crosses a fractional-scale output. The buffer sampling
+        // and source-region transforms must still trigger a repaint.
+        && a->origin_x == b->origin_x && a->origin_y == b->origin_y
+        && a->scale_x == b->scale_x && a->scale_y == b->scale_y
         && a->transform == b->transform && a->opacity == b->opacity && a->linear == b->linear
         && same_color(&a->color, &b->color) && same_box(&a->shape_rect, &b->shape_rect)
         && a->shape_radius == b->shape_radius && same_box(&a->shadow_window, &b->shadow_window)
@@ -1466,6 +1471,14 @@ static const struct vela_element *scanout_candidate(struct vela_output_frame *fr
 {
     // VELA_SCANOUT=0: always composite (diagnostics, comparisons).
     if (vela_env_off("VELA_SCANOUT")) {
+        return NULL;
+    }
+    // The experimental per-XWayland-output virtual geometry path has not
+    // yet passed DRM direct-scanout/GPU coverage tests. Composite the whole
+    // scene in this mode to avoid flipping between a physical X11 buffer and
+    // a differently transformed Wayland framebuffer during refresh.
+    if (vela_env_one("VELA_XWAYLAND_XDG_OUTPUT_EXPERIMENT")) {
+        note_scanout_reason(frame, "experimental XWayland scale requires compositing");
         return NULL;
     }
     if (!frame->scene->allow_scanout) {
