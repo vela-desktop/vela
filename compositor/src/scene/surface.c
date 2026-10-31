@@ -13,6 +13,11 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/config.h>
+#if WLR_HAS_XWAYLAND
+#include <wlr/xwayland.h>
+#endif
+#include <string.h>
 
 static const struct wlr_addon_interface state_addon;
 
@@ -120,6 +125,19 @@ static void refresh(struct vela_surface_state *state)
     }
     // The scale of the output showing the largest part (§3.6).
     double scale = primary->scale;
+#if WLR_HAS_XWAYLAND
+    // KWin-style experimental X11 virtual output geometry is already scaled
+    // by the global X11 factor. Do not ALSO suggest fractional/ceil(1.25)=2
+    // buffer scaling to XWayland: that can leave the right/bottom of the
+    // screen unpainted and mismatch mouse hit testing.
+    const char *experiment = getenv("VELA_XWAYLAND_XDG_OUTPUT_EXPERIMENT");
+    if (experiment && strcmp(experiment, "1") == 0) {
+        struct wlr_surface *root = wlr_surface_get_root_surface(surface);
+        if (root && wlr_xwayland_surface_try_from_wlr_surface(root)) {
+            scale = 1.0;
+        }
+    }
+#endif
     wlr_fractional_scale_v1_notify_scale(surface, scale);
     wlr_surface_set_preferred_buffer_scale(surface, (int32_t)ceil(scale));
 }
