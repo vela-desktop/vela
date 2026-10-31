@@ -62,7 +62,7 @@ Summary:        Disposable Vela release-channel transaction fixture
 License:        MIT
 BuildArch:      noarch
 Conflicts:      $other
-$(if [ "$pkg" = vela-channel-ci ]; then echo "Obsoletes:      $other < 1.0.0"; fi)
+$(if [[ "$pkg" == vela-channel-ci ]]; then echo "Obsoletes:      $other < 1.0.0"; fi)
 
 %description
 Disposable migration fixture, never shipped.

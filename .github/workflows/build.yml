@@ -165,9 +165,10 @@ jobs:
           pacman -Syu --noconfirm --needed $DEPENDENCIES
           # makepkg runs unprivileged without --syncdeps: install only the
           # additional *runtime* desktop packages needed by the PKGBUILD.
+          # cosign is a hard dependency of PKGBUILD.beta (tag builds only).
           pacman -S --noconfirm --needed \
             konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk \
-            xdg-desktop-portal-wlr xdg-utils xdg-terminal-exec
+            xdg-desktop-portal-wlr xdg-utils xdg-terminal-exec cosign
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -309,11 +310,13 @@ jobs:
             su -s /bin/bash vela-tester -c "cd '$work' && makepkg --noconfirm"
             pacman --noconfirm --ask=4 -U "$work/vela-git-0.0.1-1-any.pkg.tar.zst"
             pacman -Q vela-git
-            if pacman -Q vela >/dev/null 2>&1; then
+            # pacman -Q also answers for a provider, and vela-git provides
+            # vela: -Qq prints the installed package's own name.
+            if pacman -Qq vela 2>/dev/null | grep -Fxq vela; then
               echo "::error::Beta still installed after replacement"; exit 1
             fi
             pacman --noconfirm --ask=4 -U "${packages[0]}"
-            pacman -Q vela
+            pacman -Qq vela | grep -Fxq vela
             if pacman -Q vela-git >/dev/null 2>&1; then
               echo "::error::Experimental still installed after replacement"; exit 1
             fi

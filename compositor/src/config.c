@@ -226,7 +226,7 @@ bool vela_config_write_checked(const char *key, const char *value)
     if (!vela_config_path(NULL, dir, sizeof(dir)) || !vela_config_path("vela.conf", path, sizeof(path))) {
         return false;
     }
-    if (mkdir(dir, 0755) < 0 && errno != EEXIST) {
+    if (mkdir(dir, 0700) < 0 && errno != EEXIST) {
         return false;
     }
 
