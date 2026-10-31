@@ -912,16 +912,39 @@ void vela_output_frame_surface_committed(struct vela_output_frame *frame, struct
     }
 #endif
     if (pixman_region32_not_empty(&region)) {
-        bool exact = e->scale_x == floor(e->scale_x) && e->scale_y == floor(e->scale_y)
-            && e->origin_x == floor(e->origin_x) && e->origin_y == floor(e->origin_y);
-        wlr_region_scale_xy(&region, &region, (float)e->scale_x, (float)e->scale_y);
-        pixman_region32_translate(&region, (int)floor(e->origin_x), (int)floor(e->origin_y));
-        if (!exact) {
-            wlr_region_expand(&region, &region, 1); // the filter touches the neighbors too
+        // Use the exact same surface-local -> output-pixel mapping as the
+        // renderer, opaque regions and blur. Scaling the region first and
+        // translating by floor(origin) separately loses the fractional part
+        // of the surface origin (e.g. at 125%) and may under-damage pixels.
+        // The helper rounds each transformed edge OUTWARDS and clamps it to
+        // the displayed element, including for large client damage regions.
+        pixman_region32_t pixels;
+        pixman_region32_init(&pixels);
+        surface_region_to_pixels(e, &region, true, &pixels);
+        if (e->linear) {
+            // Catmull-Rom can sample two source texels beyond the client
+            // damage; bilinear needs less. Convert that footprint to output
+            // pixels instead of assuming a constant 1-2 px margin at 125%
+            // and other non-integer magnifications.
+            const bool swapped = e->transform & WL_OUTPUT_TRANSFORM_90;
+            double src_width = swapped ? e->src.height : e->src.width;
+            double src_height = swapped ? e->src.width : e->src.height;
+            double pixels_per_texel = src_width > 0.0 && src_height > 0.0
+                ? fmax((double)e->box.width / src_width, (double)e->box.height / src_height)
+                : 1.0;
+            double reach = ceil(2.0 * pixels_per_texel) + 1.0;
+            if (!isfinite(reach) || reach > 128.0) {
+                // Pathological zoom: avoid overflow and simply redraw the
+                // affected element rather than under-damaging its filter.
+                union_box(&pixels, &e->box);
+            } else {
+                wlr_region_expand(&pixels, &pixels, (int)fmax(2.0, reach));
+            }
+            pixman_region32_intersect_rect(&pixels, &pixels, e->box.x, e->box.y,
+                (unsigned)e->box.width, (unsigned)e->box.height);
         }
-        pixman_region32_intersect_rect(&region, &region, e->box.x, e->box.y, (unsigned)e->box.width,
-            (unsigned)e->box.height);
-        pixman_region32_union(&frame->scene_damage, &frame->scene_damage, &region);
+        pixman_region32_union(&frame->scene_damage, &frame->scene_damage, &pixels);
+        pixman_region32_fini(&pixels);
     }
     pixman_region32_fini(&region);
     // Even without damage: the app waits for its frame callback.
