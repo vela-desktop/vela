@@ -40,8 +40,8 @@ class DesktopOverview(Scene):
 
     def act(self, desktop, _):
         output = desktop.vela.state().output
-        self.step(desktop, "show desktop", input_actions=("move", int(output["w"] * .52),
-                  int(output["h"] * .60)), hold=1.6)
+        self.move_pointer(desktop, int(output["w"] * .52), int(output["h"] * .60), duration=0.75)
+        self.step(desktop, "show desktop", input_actions=("sleep", "100"), hold=1.2)
 
 
 class StartMenu(Scene):
@@ -75,6 +75,11 @@ class QuickSettings(Scene):
         vela = desktop.vela
         self.step(desktop, "open Quick Settings", input_actions=("key", "super+a"),
                   ready=lambda s: Desktop.layer(s, self.namespace), hold=1.5)
+        # The existing before/after scene verifies this is Vela's real
+        # keyboard shortcut to the sound controls, on private PipeWire.
+        self.step(desktop, "show sound controls", input_actions=("key", "super+ctrl+v"), hold=1.2)
+        self.step(desktop, "return to Quick Settings", input_actions=("key", "Escape"),
+                  ready=lambda s: Desktop.layer(s, self.namespace), hold=0.5)
         self.step(desktop, "close Quick Settings", input_actions=("key", "Escape"),
                   ready=lambda s: not Desktop.layer(s, self.namespace), hold=0.6)
 
@@ -148,7 +153,9 @@ class Settings(Scene):
         return None, window
 
     def act(self, desktop, _):
-        self.step(desktop, "show Settings", input_actions=("move", 1100, 680), hold=2.1)
+        output = desktop.vela.state().output
+        self.move_pointer(desktop, int(output["w"] * 0.62), int(output["h"] * 0.58), duration=0.6)
+        self.step(desktop, "show Settings", input_actions=("sleep", "100"), hold=1.5)
 
 
 class Files(Scene):
@@ -199,9 +206,10 @@ class SnapAssist(Scene):
                               what="Snap Assist offers remaining windows")
         output = desktop.vela.state().output
         # With one remaining app, its card is centered in the free right half.
+        self.move_pointer(desktop, int(output["w"] * .75), int(output["h"] * .5), duration=0.55)
+        self.pause(0.15)  # let the real selection hover become visible
         self.step(desktop, "choose Vela Files in Snap Assist",
-                  input_actions=("move", int(output["w"] * .75), int(output["h"] * .5),
-                                 "sleep", 150, "click", "left"),
+                  input_actions=("click", "left"),
                   ready=lambda s: s.window(files)["snap"] == [6, 0, 12, 12], hold=1.3)
 
 
@@ -262,7 +270,9 @@ class Colors(Scene):
         return None, window
 
     def act(self, desktop, _):
-        self.step(desktop, "show color settings", input_actions=("move", 1120, 650), hold=2.0)
+        output = desktop.vela.state().output
+        self.move_pointer(desktop, int(output["w"] * 0.58), int(output["h"] * 0.58), duration=0.6)
+        self.step(desktop, "show color settings", input_actions=("sleep", "100"), hold=1.5)
 
 
 SCENES = {scene.name: scene for scene in (
