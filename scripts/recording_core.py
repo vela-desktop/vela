@@ -12,6 +12,7 @@ from vela-screen-record, not wall-clock samples from a screen-recorder GUI.
 import bisect
 import json
 import mmap
+import math
 import os
 from pathlib import Path
 import shutil
@@ -32,6 +33,35 @@ LEAD = 0.3
 TAIL = 0.4
 
 # ------------------------------------------------------------------ scenes --
+
+class PointerController:
+    """Move the real input pointer along a smooth, bounded trajectory.
+
+    This sends regular Vela input events, never paints a fake cursor into the
+    video. Frame timestamps still come from the compositor's presentation.
+    """
+
+    def __init__(self, input_action, position=(2, 2)):
+        self.input_action = input_action
+        self.position = position
+
+    def move(self, x, y, duration=0.4):
+        if not all(math.isfinite(float(value)) for value in (x, y, duration)) or duration < 0:
+            raise ValueError("pointer coordinates and duration must be finite and non-negative")
+        start_x, start_y = self.position
+        end_x, end_y = round(x), round(y)
+        count = max(1, min(90, round(duration * FPS)))
+        tick = time.monotonic()
+        for i in range(1, count + 1):
+            progress = i / count
+            eased = progress * progress * (3 - 2 * progress)
+            self.input_action("move", round(start_x + (end_x - start_x) * eased),
+                              round(start_y + (end_y - start_y) * eased))
+            # Schedule against the starting time to avoid accumulating drift.
+            if i < count:
+                time.sleep(max(0.0, tick + i * duration / count - time.monotonic()))
+        self.position = (end_x, end_y)
+
 
 class Scene:
     """A scene: the output, how to show it, and what happens. prepare()
@@ -80,6 +110,14 @@ class Scene:
                                  "ready_at": round(ready_at - self._record_start, 3)})
         if hold:
             self.pause(hold)
+
+    def move_pointer(self, desktop, x, y, duration=0.4):
+        """Move the compositor-drawn cursor before a scripted click."""
+        controller = getattr(self, "_pointer_controller", None)
+        if controller is None:
+            controller = PointerController(desktop.vela.input)
+            self._pointer_controller = controller
+        controller.move(x, y, duration)
 
     def prepare(self, desktop):
         raise NotImplementedError
@@ -448,6 +486,7 @@ def record(desktop, scene, directory, *, align=True, cursor=False):
         start = time.clock_gettime(time.CLOCK_MONOTONIC)
         scene._record_start = start
         scene._events = []
+        scene._pointer_controller = PointerController(vela.input, position=(2, 2))
         scene.act(desktop, context)
         end = time.clock_gettime(time.CLOCK_MONOTONIC)
         time.sleep(scene.tail)
