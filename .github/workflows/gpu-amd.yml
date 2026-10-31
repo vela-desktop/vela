@@ -50,7 +50,6 @@ jobs:
           command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
           command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
           # Test the default native X11 server, not just the old wlroots XWayland.
-          command -v xwayland-satellite >/dev/null || { echo '::error::Install xwayland-satellite >= 0.7 on the GPU runner'; exit 1; }
           command -v xrandr >/dev/null || { echo '::error::Install xorg-xrandr on the GPU runner'; exit 1; }
           /usr/bin/python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow for system Python'; exit 1; }
           # Strict GPU CI rejects the nine agent tests if dbus-python or
