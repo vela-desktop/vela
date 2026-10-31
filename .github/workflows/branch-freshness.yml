@@ -39,11 +39,25 @@ jobs:
             const isIgnorable = path =>
               /^(README|CONTRIBUTING|SECURITY)\.md$/.test(path) ||
               path.startsWith('docs/');
-            const publish = (sha, state, description) =>
-              github.rest.repos.createCommitStatus({
-                owner, repo, sha, state, context: statusContext,
-                description: description.slice(0, 140), target_url: targetUrl
+            // GitHub keeps at most 1000 statuses per commit and context, and
+            // every run visits every open PR: publish only what changes the
+            // latest status, or a PR left alone stops accepting statuses.
+            const latestStatus = async sha => {
+              const { data } = await github.rest.repos.listCommitStatusesForRef({
+                owner, repo, ref: sha, per_page: 100
               });
+              return data.find(status => status.context === statusContext);
+            };
+            const publish = async (sha, state, description, latest) => {
+              description = description.slice(0, 140);
+              if (latest?.state === state && latest?.description === description) return latest;
+              await github.rest.repos.createCommitStatus({
+                owner, repo, sha, state, context: statusContext,
+                description, target_url: targetUrl
+              });
+              return { state, description };
+            };
+            const blocks = status => status?.state === 'failure' || status?.state === 'error';
             
             // Every run scans all PRs: GitHub may replace a pending push run
             // with a PR run when both share this concurrency group.
@@ -56,6 +70,8 @@ jobs:
               // The list response can still identify HEAD if a later PR read fails.
               let headSha = candidate.head?.sha;
               let mergeSha;
+              let headStatus;
+              let mergeStatus;
               try {
                 const { data: first } = await github.rest.pulls.get({
                   owner, repo, pull_number: candidate.number
@@ -65,7 +81,10 @@ jobs:
             
                 // Invalidate any previous HEAD success before evaluating the new base.
                 // Always replace this pending state with a terminal status below.
-                await publish(headSha, 'pending', 'Evaluating current base');
+                headStatus = await latestStatus(headSha);
+                if (headStatus?.state === 'success') {
+                  headStatus = await publish(headSha, 'pending', 'Evaluating current base', headStatus);
+                }
             
                 const { data: main } = await github.rest.repos.getBranch({
                   owner, repo, branch: 'main'
@@ -93,7 +112,9 @@ jobs:
                     state = 'success';
                     description = 'Only documentation changed on main';
                   } else {
-                    description = 'Update branch: ' + relevant.length + ' relevant file(s) changed';
+                    // No count here: it changes with every push to main.
+                    description = 'Update branch: main changed relevant files';
+                    core.info('PR #' + candidate.number + ': ' + relevant.length + ' relevant file(s) changed');
                   }
                 }
             
@@ -163,16 +184,22 @@ jobs:
                     core.info('PR #' + candidate.number + ': synthetic merge unavailable; checking HEAD only');
                   }
                 }
-                await publish(headSha, state, description);
-                if (mergeSha) await publish(mergeSha, state, description);
+                headStatus = await publish(headSha, state, description, headStatus);
+                if (mergeSha) {
+                  mergeStatus = await latestStatus(mergeSha);
+                  mergeStatus = await publish(mergeSha, state, description, mergeStatus);
+                }
                 core.info('PR #' + candidate.number + ': ' + state + ': ' + description);
               } catch (error) {
                 errors++;
                 core.warning('PR #' + candidate.number + ': ' + error.message);
                 // Fail closed per PR. A workflow success is only safe if the
-                // affected HEAD (and any known merge) received an error status.
+                // affected HEAD (and any known merge) received an error status,
+                // or already carries a failure or error from an earlier verdict.
                 const failedStatuses = [];
+                const known = new Map([[headSha, headStatus], [mergeSha, mergeStatus]]);
                 for (const sha of [...new Set([headSha, mergeSha].filter(Boolean))]) {
+                  if (blocks(known.get(sha))) continue;
                   try {
                     await publish(sha, 'error', 'Freshness check failed; retry');
                   } catch (statusError) {
