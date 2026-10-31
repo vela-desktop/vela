@@ -19,6 +19,10 @@ import unittest
 
 from harness import Session, tool
 
+# GPU CI's coverage mode: an unoptimized build with gcov counters measures
+# the instrumentation, not the capture path, so throughput floors don't apply.
+INSTRUMENTED = os.environ.get("VELA_GPU_COVERAGE") == "1"
+
 
 class Captures(unittest.TestCase):
     def test_captures_during_animations(self):
@@ -170,7 +174,7 @@ class DeferredCapture(unittest.TestCase):
                         self.assertEqual(metrics["frames"], clients,
                                          "persistent capture must wait for source damage on an idle desktop")
                         self.assertLessEqual(metrics["output_frames"], 2)
-                    elif "Vulkan readback staging: uncached fallback" not in vela.log_text():
+                    elif not INSTRUMENTED and "Vulkan readback staging: uncached fallback" not in vela.log_text():
                         # Explicit floors beyond the old 512 KiB/ms scheduler's
                         # theoretical ceiling (~35.7 / ~16.1 frames/s). Buffer
                         # reuse must sustain a typical 60/30 fps screen stream.

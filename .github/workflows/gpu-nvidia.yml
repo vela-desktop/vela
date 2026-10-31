@@ -47,6 +47,11 @@ jobs:
           command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
           command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
           python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow'; exit 1; }
+          # Strict GPU CI rejects the X11 native-resolution tests if these are
+          # missing (Arch: xorg-xwayland, xorg-xrandr, xorg-xrdb, xorg-xprop).
+          for tool in Xwayland xrandr xrdb xprop; do
+            command -v "$tool" >/dev/null || { echo "::error::Install $tool on the NVIDIA runner"; exit 1; }
+          done
 
           command -v nvidia-smi >/dev/null || { echo '::error::nvidia-smi unavailable: check the NVIDIA driver'; exit 1; }
 
@@ -138,6 +143,8 @@ jobs:
             for tool in gcc g++ gcov gcovr; do
               command -v "$tool" >/dev/null || { echo "::error::Install $tool on the GPU runner for coverage mode"; exit 1; }
             done
+            # Tests skip their throughput floors in an instrumented build.
+            echo "VELA_GPU_COVERAGE=1" >> "$GITHUB_ENV"
             extra_flags=(-DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
               -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage
               -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage)
