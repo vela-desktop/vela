@@ -179,8 +179,8 @@ class Desktop:
         self.private_runtime = private / "runtime"
         self.private_home.mkdir(mode=0o700)
         self.private_runtime.mkdir(mode=0o700)
-        self.demo_folder = self.prepare_demo_files(self.private_home)
         try:
+            self.demo_folder = self.prepare_demo_files(self.private_home)
             # Its address is known beforehand, so that its own environment can name it.
             listen = f"unix:path={self.private_runtime / 'bus'}"
             self.bus = subprocess.Popen(
