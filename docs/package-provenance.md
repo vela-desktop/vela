@@ -1,6 +1,12 @@
 # Vela Arch and Fedora package provenance and release policy
 
-Vela publishes experimental per-commit packages for Arch and Fedora 44.
+Vela published experimental per-commit packages for Arch and Fedora 44 as
+`alpha-<full-SHA>` releases. Pushes to `main` no longer create them (see
+[release channels](release-channels.md)): this page describes those historical
+releases and the attested workflow artifacts that replaced them, which
+`vela-update` retrieves with an authenticated GitHub CLI. Official signed
+packages are now the Beta channel's `v0.x.y` releases.
+
 Arch assets use `SHA256SUMS`, Fedora RPMs use `SHA256SUMS-fedora`, with one
 checksum entry in each. A matching filename and manifest downloaded together
 are **not** proof of origin:
