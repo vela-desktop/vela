@@ -6,10 +6,9 @@
 // global visible to every ordinary Wayland client. The replacement global is
 // visible ONLY to the specific wl_client running integrated XWayland.
 //
-// IMPORTANT: this is an experimental protocol-only stage. The corresponding
-// wl_surface size, damage, input and XWM geometry transformations are not
-// implemented yet. Do not activate it by default: changing just the output
-// geometry would recreate the Steam input mismatch.
+// IMPORTANT: the associated wl_surface, damage, input and XWM transforms are
+// experimental and must be validated with real client buffers and GPU output.
+// Never expose this adapter in a real session before hardware acceptance.
 #include "x11_xdg_output.h"
 
 #include "server.h"
@@ -233,7 +232,7 @@ struct vela_x11_xdg_output *vela_x11_xdg_output_create(struct vela_server *serve
     // geometry alone is insufficient for native-resolution X11.
     const char *experiment = getenv("VELA_XWAYLAND_XDG_OUTPUT_EXPERIMENT");
     if (!experiment || strcmp(experiment, "1") != 0 ||
-        !server->xdg_output_manager) {
+        !server->xdg_output_manager || !server->xwayland) {
         return NULL;
     }
     // Never activate an unverified output/buffer coordinate override in
