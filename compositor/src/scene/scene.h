@@ -145,6 +145,9 @@ struct vela_scene {
     bool allow_tearing;
     // vela.conf "direct-scanout=no": always composite (VELA_SCANOUT=0 wins).
     bool allow_scanout;
+    // True only when the experimental per-client XWayland adapter was actually installed.
+    // Never infer activation from an environment variable in the render/input pipeline.
+    bool x11_scale_override;
 
     struct wl_listener new_surface;
 };
