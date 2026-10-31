@@ -299,7 +299,7 @@ def export_clip(scene, take, output, scratch, fps=FPS):
     return mp4
 
 
-def assemble_reel(clips, output, staging):
+def assemble_reel(clips, output, staging, config=None):
     """Concatenate equal-resolution, constant-rate clips; no re-timing of a scene."""
     # Scenes use the same 1920x1080@60 output and encoder settings. Each input
     # is an internal, allowlisted scene name; avoid path interpolation from users.
@@ -318,7 +318,12 @@ def assemble_reel(clips, output, staging):
                         "-an", "-c:v", "libx264", "-crf", "18", "-preset", "slow",
                         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
                         str(staging / "vela-promo.mp4")], check=True)
+        signature = reel_signature(clips, config)
+        (staging / "vela-promo-manifest.json").write_text(
+            json.dumps({"signature": signature, "reel": artifact_digest(staging / "vela-promo.mp4")},
+                       indent=2) + "\n")
         install(staging / "vela-promo.mp4", output)
+        install(staging / "vela-promo-manifest.json", output)
     finally:
         concat.unlink(missing_ok=True)
 
@@ -332,6 +337,51 @@ def install(path, output):
         shutil.rmtree(target)  # --force: a previous take; rename only replaces an empty directory
     os.replace(path, target)
     return target
+
+
+def artifact_digest(path):
+    """Stable digest for a completed output (not just existence or file size)."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return {"sha256": digest.hexdigest(), "size": path.stat().st_size}
+
+
+def capture_artifacts(name, output, keep):
+    """Hash the finished exports and, if kept, each raw capture file."""
+    paths = [output / f"{name}{suffix}" for suffix in (".mp4", ".webm", ".png")]
+    if keep:
+        paths.extend(path for path in sorted((output / f"{name}-take").rglob("*")) if path.is_file())
+    return {str(path.relative_to(output)): artifact_digest(path) for path in paths}
+
+
+def recipe_fingerprint():
+    """Invalidate reused footage when the actual scene/recording code changes."""
+    return build_fingerprint({
+        "record-promo.py": Path(__file__).resolve(),
+        "recording_core.py": Path(capture.__file__).resolve(),
+    })
+
+
+def reel_signature(clips, config):
+    """Both scene ORDER and exact MP4 bytes define a reel."""
+    return {"scenes": [clip.stem for clip in clips],
+            "capture_config": config,
+            "clips": {clip.name: artifact_digest(clip) for clip in clips}}
+
+
+def reel_matches(clips, output, config):
+    reel = output / "vela-promo.mp4"
+    manifest = output / "vela-promo-manifest.json"
+    if not reel.is_file() or not manifest.is_file() or reel.is_symlink() or manifest.is_symlink():
+        return False
+    try:
+        previous = json.loads(manifest.read_text())
+        return (previous.get("signature") == reel_signature(clips, config)
+                and previous.get("reel") == artifact_digest(reel))
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def build_fingerprint(binaries):
@@ -356,7 +406,8 @@ def capture_config(args, fingerprint):
             "speed": getattr(args, "speed", 1.0),
             "hold_scale": getattr(args, "hold_scale", 1.0),
             "cursor": getattr(args, "cursor", False),
-            "build_fingerprint": fingerprint}
+            "build_fingerprint": fingerprint,
+            "recipe_fingerprint": recipe_fingerprint()}
 
 
 def completed_scene(name, output, config, keep):
@@ -372,7 +423,21 @@ def completed_scene(name, output, config, keep):
     except (OSError, ValueError) as error:
         raise ValueError(f"{name}: invalid manifest; cannot resume") from error
     if manifest.get("capture_config") != config or manifest.get("scene") != name:
-        raise ValueError(f"{name}: capture settings or binary fingerprint changed; cannot resume")
+        raise ValueError(f"{name}: capture settings or recording fingerprint changed; cannot resume")
+    artifacts = manifest.get("artifacts")
+    required = {f"{name}{suffix}" for suffix in (".mp4", ".webm", ".png")}
+    if keep:
+        required.update({f"{name}-take/frames.raw", f"{name}-take/frames.txt"})
+    if not isinstance(artifacts, dict) or not required.issubset(artifacts):
+        raise ValueError(f"{name}: manifest lacks complete output checksums; use --force to re-record")
+    for relative, expected in artifacts.items():
+        if not isinstance(relative, str) or not isinstance(expected, dict):
+            raise ValueError(f"{name}: invalid output digest; use --force")
+        path = output / relative
+        if (Path(relative).is_absolute() or ".." in Path(relative).parts
+                or not path.is_file() or path.is_symlink()
+                or artifact_digest(path) != expected):
+            raise ValueError(f"{name}: output integrity check failed for {relative}; use --force")
     return True
 
 
@@ -384,7 +449,7 @@ def output_paths(output, names, make_reel, keep):
         if keep:
             paths.append(output / f"{name}-take")
     if make_reel and len(names) > 1:
-        paths.append(output / "vela-promo.mp4")
+        paths.extend((output / "vela-promo.mp4", output / "vela-promo-manifest.json"))
     return paths
 
 
@@ -484,6 +549,11 @@ def main(argv=None):
         scene.speed = args.speed
         scene.hold_scale = args.hold_scale
 
+    if (args.resume and not args.no_reel and len(names) > 1
+            and completed == set(names)
+            and not reel_matches([output / f"{name}.mp4" for name in names], output, config)
+            and not shutil.which("ffmpeg")):
+        parser.error("ffmpeg is required to regenerate the requested reel")
     if not completed == set(names):
         if not capture.harness.gpu_available():
             parser.error("no GPU (/dev/dri/renderD*): Vela requires a Vulkan 1.4 GPU")
@@ -541,9 +611,10 @@ def record_scenes(names, build, output, staging, args, *, config=None, completed
                 "source": "binary SHA-256 fingerprint (source commit not independently verified)",
                 "cursor": "compositor cursor" if getattr(args, "cursor", False) else "off",
             }
-            (staging / f"{name}-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
             if args.keep:
                 shutil.copytree(take_dir, staging / f"{name}-take")
+            manifest["artifacts"] = capture_artifacts(name, staging, args.keep)
+            (staging / f"{name}-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
             # Commit the manifest last: an interrupted output set cannot pass --resume.
             for suffix in (".webm", ".png", ".mp4", *(("-take",) if args.keep else ()),
                            "-manifest.json"):
@@ -551,8 +622,8 @@ def record_scenes(names, build, output, staging, args, *, config=None, completed
             clips.append(output / f"{name}.mp4")
         print(f"{name}: MP4, WebM, PNG poster, and manifest in {output}", flush=True)
     if not args.no_reel and len(clips) > 1 and (
-            len(completed) != len(names) or not (output / "vela-promo.mp4").exists()):
-        assemble_reel(clips, output, staging)
+            len(completed) != len(names) or not reel_matches(clips, output, config)):
+        assemble_reel(clips, output, staging, config)
         print(f"Reel: {output / 'vela-promo.mp4'}", flush=True)
 
 
