@@ -151,7 +151,7 @@ const scenarios = [
     ['head:pending', 'head:success', 'head:error', 'merge:error']],
   ['status-merge-and-error-fail',
     ['head:pending', 'head:success', 'head:error'], true],
-  ['status-head-final-and-error-fail', ['head:pending'], true],
+  ['status-head-final-and-error-fail', ['head:pending', 'merge:error'], true],
   ['missing-head', [], true],
   ['multi-api-error',
     ['head:pending', 'head:error', 'head2:pending', 'head2:success', 'merge2:success']]
