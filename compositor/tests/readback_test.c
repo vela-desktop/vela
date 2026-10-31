@@ -6,6 +6,7 @@
 #undef NDEBUG
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include "../src/render/renderer.c"
 #include "../src/render/texture.c"
 
@@ -511,6 +512,54 @@ static void shared_staging_retains_other_consumers(void)
     completed_point = 0;
 }
 
+static int readbacks_done;
+
+static void count_done(void *data, bool ok)
+{
+    ++readbacks_done;
+}
+
+// Two outputs captured at once: the second request re-arms the timer after
+// epoll reported it expired, so its read finds no expirations. That is a
+// pending dispatch, not a timer failure that drops every queued capture.
+static void rearmed_timer_keeps_queued_readbacks(void)
+{
+    struct vela_vulkan vk = { 0 };
+    struct vela_renderer renderer = { .vk = &vk, .staging_count = 1, .staging_capacity = 1 };
+    renderer.staging = calloc(1, sizeof(*renderer.staging));
+    assert(renderer.staging);
+    const VkBuffer buffer = (VkBuffer)(uintptr_t)77;
+    renderer.staging[0] = (struct staging_chunk) {
+        .buffer = buffer, .data = mapping, .size = 1024, .allocation_size = 1024, .readback = true,
+    };
+    struct vela_readback *readback = calloc(1, sizeof(*readback));
+    assert(readback);
+    *readback = (struct vela_readback) {
+        .renderer = &renderer, .staging = { .buffer = buffer }, .point = 5,
+        .started = vela_now_ns(), .done = count_done,
+    };
+    pin_staging(&renderer, buffer, true);
+    renderer.readbacks[renderer.readback_count++] = readback;
+    renderer.readback_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+    assert(renderer.readback_fd >= 0);
+    assert(arm_readback_timer(&renderer, READBACK_YIELD_NS));
+    struct pollfd expired = { .fd = renderer.readback_fd, .events = POLLIN };
+    assert(poll(&expired, 1, 1000) == 1);
+    assert(arm_readback_timer(&renderer, READBACK_YIELD_NS)); // the other output's request
+
+    readbacks_done = 0;
+    dispatch_readback(renderer.readback_fd, WL_EVENT_READABLE, &renderer);
+    assert(readbacks_done == 0 && renderer.readback_failed == 0 && renderer.readback_count == 1);
+    struct itimerspec armed;
+    assert(timerfd_gettime(renderer.readback_fd, &armed) == 0);
+    assert(armed.it_value.tv_sec || armed.it_value.tv_nsec || poll(&expired, 1, 0) == 1);
+
+    vela_readback_cancel(readback);
+    assert(renderer.readback_count == 0 && renderer.staging[0].readers == 0);
+    close(renderer.readback_fd);
+    free(renderer.staging);
+}
+
 int main(void)
 {
     staging_failures();
@@ -529,6 +578,7 @@ int main(void)
     command_allocation_failure();
     cancelled_gpu_allocations_still_count();
     shared_staging_retains_other_consumers();
+    rearmed_timer_keeps_queued_readbacks();
     packed_pixels(DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XBGR8888, DRM_FORMAT_ABGR8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XRGB2101010, DRM_FORMAT_ARGB2101010, 0xc0000000);

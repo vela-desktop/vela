@@ -10,6 +10,7 @@
 #include "util.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <linux/dma-buf.h>
 #include <stdlib.h>
@@ -671,6 +672,13 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
     struct vela_renderer *renderer = data;
     uint64_t expirations;
     if (!(mask & WL_EVENT_READABLE) || read(fd, &expirations, sizeof(expirations)) != sizeof(expirations)) {
+        // A new request in the same epoll batch (two outputs captured at
+        // once) re-armed the timer after epoll saw it expire: timerfd_settime
+        // resets the count and the read finds nothing. The new expiry
+        // dispatches again; failing here dropped every queued capture.
+        if ((mask & WL_EVENT_READABLE) && (errno == EAGAIN || errno == EINTR)) {
+            return 0;
+        }
         fail_readbacks(renderer, WLR_ERROR, "timer error");
         return 0;
     }
