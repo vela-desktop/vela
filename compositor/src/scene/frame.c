@@ -1449,9 +1449,14 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
         }
     }
     if (!ok) {
-        // The frame didn't reach the output: its damage must be redrawn.
+        // Rotation has already marked the acquired swapchain buffer as
+        // updated. If rendering or presentation failed, the buffer-age
+        // history is optimistic: that buffer can still lack all of the
+        // accumulated *buffer* damage, not just this frame's changes.
+        // Re-damage the complete region requested by rotate_buffer(), so a
+        // subsequent acquisition cannot reuse stale pixels.
         frame->delivered = previous_delivery;
-        wlr_damage_ring_add(&frame->ring, &frame_damage);
+        wlr_damage_ring_add(&frame->ring, &buffer_damage);
     }
     if (color_commit_failed) {
         // Also needed when the buffer-only retry succeeded: that success
