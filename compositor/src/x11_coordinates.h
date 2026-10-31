@@ -33,7 +33,7 @@ bool vela_x11_scale_valid(double scale);
 // surface units into Vela scene units. X11 window sizes are X11 pixels;
 // the committed Wayland surface may be smaller after wl_buffer scaling.
 // A consistent width/height ratio is required to avoid resizing a surface
-// against stale X11 configure dimensions.
+// against stale X11 configure dimensions; NAN means keep the previous transform.
 double vela_x11_surface_scene_scale(double global_scale,
     int x11_width, int x11_height, int surface_width, int surface_height);
 
