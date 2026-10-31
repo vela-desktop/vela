@@ -5,6 +5,7 @@
 """Guard CI's distro-specific ownership of the updater contract suite."""
 
 from pathlib import Path
+import shlex
 import unittest
 
 
@@ -20,10 +21,20 @@ class CIUpdaterTestOwnership(unittest.TestCase):
         self.assertIn("  pull_request:", build)
         self.assertIn("  push:", build)
         self.assertIn("python3 -m unittest discover -s packaging/tests -v", build)
-        self.assertIn(
-            "ctest --test-dir build --output-on-failure -E '^packaging-update$'",
-            build,
-        )
+        # Check the CTest arguments, not their literal formatting/order:
+        # CI may add parallelism or other flags without rerunning updater tests.
+        ctest_runs = [
+            shlex.split(line.strip().removeprefix("run:").strip())
+            for line in build.splitlines()
+            if line.strip().startswith("run: ctest ")
+        ]
+        self.assertEqual(len(ctest_runs), 1)
+        ctest_args = ctest_runs[0]
+        self.assertEqual(ctest_args[:3], ["ctest", "--test-dir", "build"])
+        self.assertIn("--output-on-failure", ctest_args)
+        self.assertIn("-E", ctest_args)
+        self.assertGreater(len(ctest_args), ctest_args.index("-E") + 1)
+        self.assertEqual(ctest_args[ctest_args.index("-E") + 1], "^packaging-update$")
 
         # Fedora cannot re-run Arch-oriented updater mocks just because the
         # event changes from pull_request to push/dispatch.
