@@ -452,7 +452,8 @@ int main(int argc, char** argv)
             char* words[256];
             int count = 0;
             int fits = 1;
-            for (char* word = strtok(line, "\t"); word; word = strtok(NULL, "\t")) {
+            char* rest = NULL;
+            for (char* word = strtok_r(line, "\t", &rest); word; word = strtok_r(NULL, "\t", &rest)) {
                 if (count == 256) {
                     fprintf(stderr, "vela-input: more than 256 words on one line\n");
                     fits = 0;

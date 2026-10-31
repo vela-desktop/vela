@@ -518,6 +518,9 @@ def main(argv=None):
         parser.error(f"unknown scene(s): {', '.join(unknown)}")
     if len(names) != len(set(names)):
         parser.error("scene names must be unique")
+    # Output paths are built from the names: take them from SCENES itself,
+    # not from the command line.
+    names = [next(known for known in SCENES if known == name) for name in names]
     if args.resume and args.force:
         parser.error("--resume and --force cannot be combined")
     match = re.fullmatch(r"(\d+)x(\d+)", args.resolution)
