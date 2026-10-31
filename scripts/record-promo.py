@@ -309,11 +309,11 @@ def build_fingerprint(binaries):
     """
     result = hashlib.sha256()
     for name, path in sorted(binaries.items()):
-        result.update(name.encode() + b"\\0")
+        result.update(name.encode() + b"\0")
         with path.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 result.update(chunk)
-        result.update(b"\\0")
+        result.update(b"\0")
     return result.hexdigest()
 
 
@@ -357,7 +357,7 @@ def output_paths(output, names, make_reel, keep):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\\n\\n")[0],
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scenes", nargs="*", help="explicit scene names override --profile")
     parser.add_argument("--list", action="store_true", help="show available scenes")
@@ -401,7 +401,7 @@ def main(argv=None):
         parser.error("scene names must be unique")
     if args.resume and args.force:
         parser.error("--resume and --force cannot be combined")
-    match = re.fullmatch(r"(\\d+)x(\\d+)", args.resolution)
+    match = re.fullmatch(r"(\d+)x(\d+)", args.resolution)
     if not match:
         parser.error("--resolution must be WIDTHxHEIGHT")
     width, height = map(int, match.groups())
@@ -509,7 +509,7 @@ def record_scenes(names, build, output, staging, args, *, config=None, completed
                 "source": "binary SHA-256 fingerprint (source commit not independently verified)",
                 "cursor": "compositor cursor" if getattr(args, "cursor", False) else "off",
             }
-            (staging / f"{name}-manifest.json").write_text(json.dumps(manifest, indent=2) + "\\n")
+            (staging / f"{name}-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
             if args.keep:
                 shutil.copytree(take_dir, staging / f"{name}-take")
             # Commit the manifest last: an interrupted output set cannot pass --resume.
