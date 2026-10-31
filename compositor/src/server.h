@@ -177,6 +177,7 @@ struct vela_server {
     // enabled Wayland output scale, but is NOT applied to XWayland until the
     // per-client xdg-output + wl_surface/input transforms are complete.
     double xwayland_apps_scale;
+    struct wl_list x11_unmanaged; // unmanaged X11 surfaces, including Wine backdrops
     struct wlr_xwayland *xwayland; // NULL without Xwayland
     struct wl_listener xwayland_ready;
     struct wl_listener xwayland_new_surface;
