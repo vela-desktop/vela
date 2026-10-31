@@ -294,5 +294,6 @@ void vela_view_parent_changed(struct vela_view *view);
 void vela_xwayland_init(struct vela_server *server);
 void vela_xwayland_finish(struct vela_server *server);
 void vela_xwayland_sync(struct vela_server *server); // on every frame: X11 apps know where they are
+void vela_xwayland_rescale(struct vela_server *server, double previous_scale); // experimental output scale change
 
 #endif
