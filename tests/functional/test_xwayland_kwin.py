@@ -142,3 +142,18 @@ class KwinStyleX11(unittest.TestCase):
         self.vela.wait_for(lambda st: st.window(window)["fullscreen"],
                            what="X11 fullscreen restored")
         check_fullscreen_coverage()
+        # The second monitor is 1920x1080@100% but XWayland's
+        # single global 1.25 factor places it at x=2560 with a
+        # 2400x1350 virtual rectangle. It must still paint its
+        # *physical* bottom-right 1920x1080 pixels, with no stale strip.
+        subprocess.run([tool("vela-x11"), "--move", xid, "2560", "0"],
+                       env=self.env, check=True)
+        self.vela.wait_for(
+            lambda st: st.window(window)["output"] == "HEADLESS-2"
+                       and st.window(window)["fullscreen"],
+            what="fullscreen X11 window moved to second 100% output")
+        self.vela.wait_still(window)
+        image = self.vela.pixels(output=1)
+        self.assertEqual((image.width, image.height), (1920, 1080))
+        self.assertEqual(image.at(1870, 1040), expected,
+                         "secondary 100% output bottom-right was not repainted")
