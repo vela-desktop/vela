@@ -55,7 +55,7 @@ static bool in_path(const char *name)
 }
 
 // Xauthority wire format: big-endian 16-bit length-prefixed fields.
- // FamilyWild (65535) authenticates both UNIX and Linux abstract connections.
+// FamilyWild (65535) authenticates both UNIX and Linux abstract connections.
 static bool auth_write_all(int fd, const void *buffer, size_t size)
 {
     const unsigned char *bytes = buffer;
@@ -165,7 +165,7 @@ bool vela_x11_satellite_start(struct vela_server *server)
 {
     struct vela_config config;
     vela_config_read(&config);
-    // Native-resolution X11 is the Vela default. Allow a session override for
+    // The built-in compatibility backend is the Vela default. Allow a session override for
     // CI, debugging and recovery without editing the user's config file.
     const char *backend = getenv("VELA_XWAYLAND_BACKEND");
     if (!backend || !*backend) {
