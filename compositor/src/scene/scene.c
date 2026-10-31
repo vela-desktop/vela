@@ -344,7 +344,9 @@ static bool hit_node(struct vela_node *node, double lx, double ly, struct vela_h
     case VELA_NODE_SURFACE: {
         struct wlr_surface *surface = ((struct vela_surface_node *)node)->surface;
         if (surface->mapped) {
-            struct wlr_surface *sub = wlr_surface_surface_at(surface, nx, ny, &hit->sx, &hit->sy);
+            double density = vela_surface_density(surface);
+            struct wlr_surface *sub
+                = wlr_surface_surface_at(surface, nx * density, ny * density, &hit->sx, &hit->sy);
             if (sub) {
                 hit->surface = sub;
                 found = true;
