@@ -111,12 +111,15 @@ struct vela_view {
     double target_x;
     double target_y;
 
-    // X11: size asked of the app (0: its own), last geometry sent and the one
-    // the app asked for before appearing.
-    int x11_width;
-    int x11_height;
+    // X11: logical size asked of the app (0: its own), last geometry sent and
+    // the one the app asked for before appearing (these two in root pixels).
+    double x11_width;
+    double x11_height;
     struct wlr_box x11_sent;
     struct wlr_box x11_initial;
+    // X11 pixels per logical unit: the scale of its output, where the root
+    // is in pixels (x11_root.h, docs/renderer.md §3.9).
+    double x11_density;
     // Wine's private X11 style reports window mode changes that some games
     // do not mirror to _NET_WM_STATE_FULLSCREEN (e.g. fullscreen popup -> captioned).
     uint32_t x11_wine_style;

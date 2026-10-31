@@ -41,10 +41,12 @@ struct vela_tree;
 struct vela_view;
 struct vela_vulkan;
 struct vela_workspaces;
+struct vela_x11_root;
 struct wlr_allocator;
 struct wlr_compositor;
 struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_foreign_toplevel_manager_v1;
+struct wlr_xdg_output_manager_v1;
 struct wlr_xdg_shell;
 struct wlr_xwayland;
 struct wlr_backend;
@@ -179,6 +181,10 @@ struct vela_server {
     // the state an app sets before mapping (xwayland.c)
     uint32_t xwayland_state_atoms[4];
     struct wl_event_source *xwayland_property_timer; // non-blocking property reply polling
+    // The outputs as Xwayland sees them, in pixels (x11_root.h).
+    struct vela_x11_root *x11_root;
+    int xwayland_dpi; // the Xft.dpi published (xwayland.c), 0: none yet
+    struct wlr_xdg_output_manager_v1 *xdg_outputs;
     struct wl_event_source *output_check;
     struct vela_seen_output *seen_outputs;
     int seen_output_count;

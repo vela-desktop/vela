@@ -74,6 +74,9 @@ vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-capture-source/ext-
     ext-image-capture-source-v1)
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml
     ext-foreign-toplevel-list-v1)
+# Xwayland's own xdg-output: the outputs in pixels (x11_root.c).
+vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/xdg-output-unstable-v1.xml
+    xdg-output-unstable-v1)
 
 # Client side, to talk to the host compositor when Vela runs in a window
 # (nested.c).
@@ -178,6 +181,7 @@ add_executable(vela-compositor
     src/updates.c
     src/view.c
     src/workspace.c
+    src/x11_root.c
     src/xwayland.c
     src/render/allocator.c
     src/render/formats.c
