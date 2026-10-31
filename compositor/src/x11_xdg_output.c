@@ -131,8 +131,11 @@ static void get_xdg_output(struct wl_client *client, struct wl_resource *manager
     struct vela_x11_xdg_output *manager = wl_resource_get_user_data(manager_resource);
     struct wlr_output *wlr = wlr_output_from_resource(wl_output_resource);
     if (!wlr) {
-        wl_resource_post_error(manager_resource, ZXDG_OUTPUT_MANAGER_V1_ERROR_INVALID_OUTPUT,
-            "The wl_output no longer exists");
+        // zxdg_output_manager_v1 has no protocol error enum for a stale
+        // wl_output. This is an internal compositor/client lifetime error,
+        // not an invented xdg-output protocol error code.
+        wl_client_post_implementation_error(client,
+            "xdg-output requested for an invalid or destroyed wl_output");
         return;
     }
 
