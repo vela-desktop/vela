@@ -45,7 +45,8 @@ struct x11_output_resource {
     struct wl_list link;
     struct vela_x11_xdg_output *manager;
     struct wl_resource *resource;
-    struct wl_resource *wl_output_resource; // can become inert after unplug
+    struct wl_resource *wl_output_resource; // NULL as soon as the wl_output resource dies
+    struct wl_listener wl_output_destroy;
 };
 
 static bool is_xwayland_client(const struct vela_server *server, const struct wl_client *client)
@@ -98,20 +99,25 @@ static void send_geometry(struct x11_output_resource *output)
         (int32_t)lround(x11.x), (int32_t)lround(x11.y));
     zxdg_output_v1_send_logical_size(output->resource,
         (int32_t)lround(x11.width), (int32_t)lround(x11.height));
-    if (wl_resource_get_version(output->resource) >= 2) {
-        zxdg_output_v1_send_name(output->resource, wlr->name ? wlr->name : "");
-        zxdg_output_v1_send_description(output->resource,
-            wlr->description ? wlr->description : "");
-    }
     // We advertise protocol v2: xdg-output.done is valid and we don't need
     // the v3+ wl_output.done synchronization owned by wlroots.
     zxdg_output_v1_send_done(output->resource);
+}
+
+static void wl_output_destroyed(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct x11_output_resource *output = wl_container_of(listener, output, wl_output_destroy);
+    output->wl_output_resource = NULL;
+    wl_list_remove(&output->wl_output_destroy.link);
+    wl_list_init(&output->wl_output_destroy.link);
 }
 
 static void output_resource_destroy(struct wl_resource *resource)
 {
     struct x11_output_resource *output = wl_resource_get_user_data(resource);
     if (!output) return;
+    wl_list_remove(&output->wl_output_destroy.link);
     wl_list_remove(&output->link);
     free(output);
 }
@@ -154,6 +160,13 @@ static void get_xdg_output(struct wl_client *client, struct wl_resource *manager
     }
     output->manager = manager;
     output->wl_output_resource = wl_output_resource;
+    output->wl_output_destroy.notify = wl_output_destroyed;
+    wl_resource_add_destroy_listener(wl_output_resource, &output->wl_output_destroy);
+    if (wl_resource_get_version(output->resource) >= 2) {
+        zxdg_output_v1_send_name(output->resource, wlr->name ? wlr->name : "");
+        zxdg_output_v1_send_description(output->resource,
+            wlr->description ? wlr->description : "");
+    }
     wl_resource_set_implementation(output->resource, &output_impl,
         output, output_resource_destroy);
     wl_list_insert(&manager->resources, &output->link);
@@ -232,6 +245,7 @@ struct vela_x11_xdg_output *vela_x11_xdg_output_create(struct vela_server *serve
     manager->layout_change.notify = layout_changed;
     wl_signal_add(&server->output_layout->events.change, &manager->layout_change);
     wl_display_set_global_filter(server->display, filter_global, manager);
+    server->scene->x11_scale_override = true;
     wlr_log(WLR_INFO, "Experimental KWin-style per-XWayland-client xdg-output adapter enabled; "
         "buffer scaling, hotplug and input still require GPU validation");
     return manager;
@@ -243,6 +257,7 @@ void vela_x11_xdg_output_destroy(struct vela_x11_xdg_output *manager)
 
     // Call after wl_display_destroy_clients(): resource destruction callbacks
     // must run while the manager is still alive.
+    manager->server->scene->x11_scale_override = false;
     wl_display_set_global_filter(manager->server->display, NULL, NULL);
     wl_list_remove(&manager->layout_change.link);
     wl_global_destroy(manager->global);
