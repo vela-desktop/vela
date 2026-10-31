@@ -17,6 +17,8 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/random.h>
+#include <sys/wait.h>
 #include <stddef.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -51,6 +53,100 @@ static bool in_path(const char *name)
     return false;
 }
 
+// Xauthority wire format: big-endian 16-bit length-prefixed fields.
+ // FamilyWild (65535) authenticates both UNIX and Linux abstract connections.
+static bool auth_write_all(int fd, const void *buffer, size_t size)
+{
+    const unsigned char *bytes = buffer;
+    while (size) {
+        ssize_t n = write(fd, bytes, size);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return false;
+        bytes += n;
+        size -= (size_t)n;
+    }
+    return true;
+}
+
+static bool auth_field(int fd, const void *value, size_t size)
+{
+    if (size > UINT16_MAX) return false;
+    const unsigned char length[] = { (unsigned char)(size >> 8), (unsigned char)size };
+    return auth_write_all(fd, length, sizeof(length))
+        && (!size || auth_write_all(fd, value, size));
+}
+
+static bool create_xauthority(char *path, size_t capacity, int display)
+{
+    static const char name[] = "MIT-MAGIC-COOKIE-1";
+    unsigned char cookie[16];
+    size_t filled = 0;
+    while (filled < sizeof(cookie)) {
+        ssize_t n = getrandom(cookie + filled, sizeof(cookie) - filled, 0);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return false;
+        filled += (size_t)n;
+    }
+
+    char template[] = "/tmp/vela-x11-auth-XXXXXX";
+    int fd = mkstemp(template); // mode 0600; never follow symlinks
+    if (fd < 0) return false;
+    char number[16];
+    snprintf(number, sizeof(number), "%d", display);
+    const unsigned char family_wild[] = { 0xff, 0xff };
+    bool ok = auth_write_all(fd, family_wild, sizeof(family_wild))
+        && auth_field(fd, NULL, 0) // address: any transport
+        && auth_field(fd, number, strlen(number))
+        && auth_field(fd, name, sizeof(name) - 1)
+        && auth_field(fd, cookie, sizeof(cookie));
+    if (close(fd) < 0) ok = false;
+    if (!ok || strlen(template) >= capacity) {
+        unlink(template);
+        return false;
+    }
+    strcpy(path, template);
+    return true;
+}
+
+static void restore_xauthority(struct vela_server *server)
+{
+    if (server->satellite_auth_path[0]) {
+        unlink(server->satellite_auth_path);
+        server->satellite_auth_path[0] = 0;
+    }
+    if (server->satellite_previous_xauthority) {
+        setenv("XAUTHORITY", server->satellite_previous_xauthority, 1);
+        free(server->satellite_previous_xauthority);
+        server->satellite_previous_xauthority = NULL;
+    } else {
+        unsetenv("XAUTHORITY");
+    }
+}
+
+// A binary found in PATH is not necessarily compatible with -listenfd.
+static bool satellite_supports_listenfd(void)
+{
+    pid_t pid = fork();
+    if (pid < 0) return false;
+    if (pid == 0) {
+        int null_fd = open("/dev/null", O_WRONLY);
+        if (null_fd >= 0) {
+            dup2(null_fd, STDOUT_FILENO);
+            dup2(null_fd, STDERR_FILENO);
+            close(null_fd);
+        }
+        execlp("xwayland-satellite", "xwayland-satellite", ":0",
+            "--test-listenfd-support", (char *)NULL);
+        _exit(127);
+    }
+    int status = 0;
+    pid_t result;
+    do {
+        result = waitpid(pid, &status, 0);
+    } while (result < 0 && errno == EINTR);
+    return result == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
 static int bind_socket(struct sockaddr_un *address, socklen_t length)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -74,13 +170,20 @@ bool vela_x11_satellite_start(struct vela_server *server)
     if (!backend || !*backend) {
         backend = vela_config_get(&config, "xwayland-backend", "compat");
     }
-    bool native = strcmp(backend, "compat") != 0;
-    vela_config_finish(&config);
-    if (!native) {
-        return false;
+    bool native = strcmp(backend, "native") == 0;
+    bool valid = native || strcmp(backend, "compat") == 0;
+    if (!valid) {
+        wlr_log(WLR_ERROR, "Unknown xwayland-backend '%s'; using compat", backend);
     }
+    vela_config_finish(&config);
+    if (!native) return false;
     if (!in_path("xwayland-satellite")) {
         wlr_log(WLR_ERROR, "Native XWayland requested but xwayland-satellite is not installed; using built-in XWayland");
+        return false;
+    }
+
+    if (!satellite_supports_listenfd()) {
+        wlr_log(WLR_ERROR, "xwayland-satellite does not support -listenfd; using built-in XWayland");
         return false;
     }
 
@@ -117,9 +220,37 @@ bool vela_x11_satellite_start(struct vela_server *server)
             continue;
         }
 
-        char command[256];
-        snprintf(command, sizeof(command), "exec xwayland-satellite :%d -listenfd %d -listenfd %d",
-            number, abstract_fd, file_fd);
+        // Keep the filesystem socket private and require the same random cookie
+        // even for abstract UNIX socket clients (which cannot use filesystem ACLs).
+        if (chmod(path, 0600) < 0
+            || !create_xauthority(server->satellite_auth_path,
+                sizeof(server->satellite_auth_path), number)) {
+            wlr_log(WLR_ERROR, "Unable to secure Satellite X11 socket/authentication");
+            close(file_fd);
+            close(abstract_fd);
+            unlink(path);
+            return false;
+        }
+        const char *old_auth = getenv("XAUTHORITY");
+        server->satellite_previous_xauthority = old_auth ? strdup(old_auth) : NULL;
+        if ((old_auth && !server->satellite_previous_xauthority)
+            || setenv("XAUTHORITY", server->satellite_auth_path, 1) != 0) {
+            // setenv failed (or old value could not be preserved).
+            if (!server->satellite_previous_xauthority) {
+                unlink(server->satellite_auth_path);
+                server->satellite_auth_path[0] = 0;
+            } else {
+                restore_xauthority(server);
+            }
+            close(file_fd);
+            close(abstract_fd);
+            unlink(path);
+            return false;
+        }
+        char command[320];
+        snprintf(command, sizeof(command),
+            "exec xwayland-satellite :%d -auth %s -listenfd %d -listenfd %d",
+            number, server->satellite_auth_path, abstract_fd, file_fd);
         // The existing child supervisor restarts Satellite after a failure,
         // reusing the same socket FDs so DISPLAY never changes underneath apps.
         server->satellite.keep_fd = abstract_fd;
@@ -132,6 +263,7 @@ bool vela_x11_satellite_start(struct vela_server *server)
             server->satellite_listen_fd = -1;
             server->satellite.keep_fd = -1;
             server->satellite.keep_fd2 = -1;
+            restore_xauthority(server);
             return false;
         }
         server->satellite_display = number;
@@ -162,4 +294,5 @@ void vela_x11_satellite_stop(struct vela_server *server)
         unlink(server->satellite_socket_path);
         server->satellite_socket_path[0] = 0;
     }
+    if (server->satellite_auth_path[0]) restore_xauthority(server);
 }
