@@ -23,7 +23,12 @@ def fake_ffmpeg(command, check):
 class PromoTests(unittest.TestCase):
     def test_scenes_are_unique_and_use_full_output(self):
         self.assertEqual(list(promo.SCENES), ["desktop", "start-menu", "quick-settings",
-                                              "window-motion", "task-view", "settings"])
+                                              "window-motion", "task-view", "settings",
+                                              "files", "snap-assist", "virtual-desktops", "colors"])
+        self.assertEqual(promo.PROFILES["window-management"],
+                         ("window-motion", "snap-assist", "task-view", "virtual-desktops"))
+        for profile in promo.PROFILES.values():
+            self.assertTrue(all(name in promo.SCENES for name in profile))
         for scene in promo.SCENES.values():
             self.assertEqual(scene.size, "1920x1080@60")
             self.assertEqual(scene.scale, 1.0)
@@ -40,7 +45,7 @@ class PromoTests(unittest.TestCase):
                                          frames=mock.Mock(return_value=iter([b"abcd"])))
             with (mock.patch.object(promo, "lossless") as lossless,
                   mock.patch.object(promo.subprocess, "run") as run):
-                mp4 = promo.export_clip(promo.StartMenu(), take, path, path)
+                mp4 = promo.export_clip(promo.StartMenu(), take, path, path, fps=30)
             self.assertEqual(mp4, path / "start-menu.mp4")
             self.assertEqual(lossless.call_count, 1)
             self.assertEqual(run.call_count, 3)
@@ -48,6 +53,8 @@ class PromoTests(unittest.TestCase):
             self.assertIn("libx264", run.call_args_list[0].args[0])
             self.assertIn("libvpx-vp9", run.call_args_list[1].args[0])
             self.assertIn("start-menu.png", str(run.call_args_list[2]))
+            self.assertEqual(lossless.call_args.kwargs["fps"], 30)
+            self.assertEqual(take.frames.call_args.kwargs["fps"], 30)
 
     def test_reel_inputs_are_allowlisted_scene_names(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -168,7 +175,7 @@ class PromoTests(unittest.TestCase):
             take = types.SimpleNamespace(width=1920, height=1080, times=[1.0], presented=1,
                                          format="bgr0", output_info={})
 
-            def export(scene, take, where, scratch):
+            def export(scene, take, where, scratch, fps=60):
                 for suffix in (".mp4", ".webm", ".png"):
                     (where / f"{scene.name}{suffix}").write_bytes(b"video")
                     # Planted between the preflight and the install.
@@ -191,6 +198,7 @@ class PromoTests(unittest.TestCase):
             with (mock.patch.object(promo.capture.harness, "gpu_available", return_value=True),
                   mock.patch.object(promo.Path, "is_file", return_value=True),
                   mock.patch.object(promo.shutil, "which", return_value="/usr/bin/true"),
+                  mock.patch.object(promo, "build_fingerprint", return_value="mock-build"),
                   mock.patch.object(promo.capture, "check_user_namespaces"),
                   mock.patch.object(promo, "record_scenes", side_effect=RuntimeError("no GPU after all"))):
                 with self.assertRaisesRegex(RuntimeError, "no GPU"):
@@ -213,13 +221,15 @@ class PromoTests(unittest.TestCase):
         scene.tail = 0
         take = mock.Mock()
         with (tempfile.TemporaryDirectory() as folder,
-              mock.patch.object(promo.capture.subprocess, "Popen", return_value=recorder),
+              mock.patch.object(promo.capture.subprocess, "Popen", return_value=recorder) as popen,
               mock.patch.object(promo.capture, "Take", return_value=take),
               mock.patch.object(promo.capture.time, "sleep")):
             result = promo.capture.record(types.SimpleNamespace(vela=vela), scene, Path(folder),
                                           align=False)
         self.assertIs(result, take)
         take.align.assert_not_called()
+        self.assertEqual(popen.call_args.kwargs["env"]["VELA_SCREEN_RECORD_CURSOR"], "0")
+        self.assertEqual(take.timeline, [])
 
     def test_lossless_encoder_is_reaped_after_pipe_failure(self):
         encoder = mock.Mock()
@@ -275,6 +285,64 @@ class PromoTests(unittest.TestCase):
                 promo.main(["desktop", "--out", str(output), "--force"])
             self.assertEqual(raised.exception.code, 2)
             self.assertEqual(victim.read_text(), "do not overwrite")
+
+
+    def test_scene_checkpoint_records_real_action_and_observed_state(self):
+        scene = promo.StartMenu()
+        scene._record_start = 10.0
+        scene._events = []
+        desktop = mock.Mock()
+        with mock.patch.object(promo.capture.time, "clock_gettime", side_effect=[10.2, 10.4]):
+            scene.step(desktop, "open Start", input_actions=("key", "super"),
+                       ready=lambda state: bool(state), hold=0)
+        desktop.vela.input.assert_called_once_with("key", "super")
+        desktop.vela.wait_for.assert_called_once()
+        self.assertEqual(scene._events, [{"name": "open Start", "at": 0.2, "ready_at": 0.4}])
+        with self.assertRaises(ValueError):
+            scene.step(desktop, "invalid", command="x", input_actions=("key", "super"))
+
+    def test_fingerprint_changes_when_the_recorder_changes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            one = Path(folder) / "one"
+            two = Path(folder) / "two"
+            one.write_bytes(b"compositor")
+            two.write_bytes(b"recorder")
+            original = promo.build_fingerprint({"a": one, "b": two})
+            self.assertEqual(original, promo.build_fingerprint({"b": two, "a": one}))
+            two.write_bytes(b"new recorder")
+            self.assertNotEqual(original, promo.build_fingerprint({"a": one, "b": two}))
+
+    def test_resume_requires_matching_manifest_and_complete_outputs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            config = {"cursor": True, "build_fingerprint": "aabb"}
+            self.assertFalse(promo.completed_scene("desktop", output, config, False))
+            for path in promo.output_paths(output, ["desktop"], False, False):
+                path.write_bytes(b"clip")
+            (output / "desktop-manifest.json").write_text(
+                promo.json.dumps({"scene": "desktop", "capture_config": config}))
+            self.assertTrue(promo.completed_scene("desktop", output, config, False))
+            with self.assertRaisesRegex(ValueError, "settings or binary fingerprint changed"):
+                promo.completed_scene("desktop", output, {**config, "cursor": False}, False)
+            (output / "desktop.png").unlink()
+            with self.assertRaisesRegex(ValueError, "partial outputs"):
+                promo.completed_scene("desktop", output, config, False)
+
+    def test_demo_folder_is_private_and_reproducible(self):
+        with tempfile.TemporaryDirectory() as folder:
+            demo = promo.Desktop.prepare_demo_files(Path(folder))
+            self.assertEqual(sorted(p.name for p in demo.iterdir()),
+                             ["Pictures", "Release Notes.txt", "Roadmap.md"])
+            self.assertIn("Vela Desktop", (demo / "Release Notes.txt").read_text())
+            self.assertTrue((demo / "Pictures" / "Welcome.svg").exists())
+
+    def test_profile_flags_do_not_require_a_gpu(self):
+        with mock.patch.object(promo.capture.harness, "gpu_available",
+                               side_effect=AssertionError("GPU should not be touched")):
+            promo.main(["--list-profiles"])
+        for args in (["--fps", "17"], ["--resolution", "bad"], ["--scale", "0"]):
+            with self.subTest(args=args), self.assertRaises(SystemExit):
+                promo.main(["desktop", *args])
 
 
 if __name__ == "__main__":
