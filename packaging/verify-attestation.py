@@ -23,7 +23,8 @@ ISSUER = "https://token.actions.githubusercontent.com"
 
 
 def curl(url: str) -> bytes:
-    """Fetch attestation data without following redirects outside allowed hosts."""
+    """Fetch attestation data. Redirects are never followed (no -L), so only
+    the hosts bundle_candidates allows are ever contacted."""
     return subprocess.check_output(
         ["curl", "-fsS", "--retry", "1", "--connect-timeout", "5",
          "--max-time", "30", url], stderr=subprocess.PIPE

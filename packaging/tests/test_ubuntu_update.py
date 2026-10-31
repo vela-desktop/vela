@@ -31,6 +31,14 @@ if name == "dpkg-query":
                 print("install ok installed\t0.1.0")
             sys.exit(0)
         sys.exit(1)
+    packages = [arg for arg in args if not arg.startswith("-")]
+    if len(packages) > 1:
+        # The build dependency check: all installed, or none known.
+        if not os.environ.get("TEST_BUILD_DEPS_INSTALLED"):
+            sys.exit(1)
+        for package in packages:
+            print(package + "\tinstall ok installed")
+        sys.exit(0)
     if not state_file.exists():
         sys.exit(1)
     state = json.loads(state_file.read_text())
@@ -223,3 +231,45 @@ class UbuntuUpdates(UbuntuFixture):
         self.run_update("--build", status=1)
         self.assertEqual(self.calls("cmake"), [])
         self.assertEqual(self.package_install_calls(), [])
+
+
+class UbuntuBuildDependencies(UbuntuFixture):
+    def apt_calls(self):
+        return [c["args"] for c in self.calls("sudo") if c["args"][:1] == ["apt-get"]
+                and "--reinstall" not in c["args"]]
+
+    def test_installed_build_dependencies_skip_apt(self):
+        self.env["TEST_BUILD_DEPS_INSTALLED"] = "1"
+        self.run_update("--build")
+        self.assertEqual(self.apt_calls(), [])
+        self.assertEqual(len(self.package_install_calls()), 1)
+
+    def test_missing_build_dependencies_are_installed(self):
+        self.run_update("--build")
+        calls = self.apt_calls()
+        self.assertEqual(calls[0], ["apt-get", "update"])
+        self.assertIn("libwlroots-0.20-dev", calls[1])
+
+    def test_selected_revision_lists_its_own_dependencies(self):
+        listing = self.source / "packaging/ubuntu/build-depends"
+        listing.parent.mkdir(parents=True)
+        listing.write_text("# comment\ncmake ninja-build  # inline\nlibexample-dev\n")
+        self.commit("new build dependency")
+        self.run_update("--build")
+        install = self.apt_calls()[1]
+        self.assertEqual(install[install.index("--no-install-recommends") + 1:],
+                         ["cmake", "ninja-build", "libexample-dev"])
+
+    def test_invalid_dependency_name_never_reaches_apt(self):
+        listing = self.source / "packaging/ubuntu/build-depends"
+        listing.parent.mkdir(parents=True)
+        listing.write_text("cmake\n-oAPT::Get::Something=1\n")
+        self.commit("bad dependency list")
+        result = self.run_update("--build", status=1)
+        self.assertIn("invalid Ubuntu build dependency name", result.stderr)
+        self.assertEqual(self.apt_calls(), [])
+        self.assertEqual(self.calls("cmake"), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

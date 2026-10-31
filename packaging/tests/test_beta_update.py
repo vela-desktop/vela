@@ -300,6 +300,42 @@ class BetaUpdateTests(unittest.TestCase):
         self.assertTrue(self.verified.exists())
         self.assertFalse(self.calls.exists())
 
+    def test_verified_package_is_kept_for_rollback(self):
+        packages = self.root / "cache/vela-update/packages"
+        packages.mkdir(parents=True)
+        for index, name in enumerate(("vela-0.1.5-1-x86_64.pkg.tar.zst",
+                                      "vela-0.1.6-1-x86_64.pkg.tar.zst",
+                                      "vela-0.1.7-1-x86_64.pkg.tar.zst",
+                                      "vela-git-0.1.0.r1.gabcdef0-1-x86_64.pkg.tar.zst")):
+            (packages / name).touch()
+            os.utime(packages / name, (1000 + index, 1000 + index))
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        installed = json.loads(self.calls.read_text())[-1]
+        self.assertEqual(Path(installed), packages / "vela-0.1.11-1-x86_64.pkg.tar.zst")
+        # Three Beta packages, newest first; Experimental's are not Beta's.
+        self.assertEqual(sorted(path.name for path in packages.iterdir()),
+                         ["vela-0.1.11-1-x86_64.pkg.tar.zst",
+                          "vela-0.1.6-1-x86_64.pkg.tar.zst",
+                          "vela-0.1.7-1-x86_64.pkg.tar.zst",
+                          "vela-git-0.1.0.r1.gabcdef0-1-x86_64.pkg.tar.zst"])
+
+    def test_failed_install_keeps_verified_package_to_retry(self):
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        self.env["TEST_FAIL_INSTALL"] = "1"
+        result = self.run_update()
+        self.assertNotEqual(result.returncode, 0)
+        cached = self.root / "cache/vela-update/packages/vela-0.1.11-1-x86_64.pkg.tar.zst"
+        self.assertTrue(cached.is_file())
+        self.assertIn("To install it: sudo pacman -U " + str(cached), result.stderr)
+
+    def test_unverified_package_is_never_kept(self):
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        self.env["TEST_REJECT_ATTEST"] = "1"
+        self.assertNotEqual(self.run_update().returncode, 0)
+        self.assertFalse((self.root / "cache/vela-update/packages").exists())
+
     def test_package_manager_failure_is_not_reported_as_success(self):
         self.env["TEST_SIGNED_MANIFEST"] = "1"
         self.env["TEST_FAIL_INSTALL"] = "1"

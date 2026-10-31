@@ -116,7 +116,9 @@ automatically trust or install them. `--build` explicitly opts into the
 same local build path.
 
 The last three locally built DEBs remain in
-`~/.cache/vela-update/packages/` for manual rollback. Select **one exact**
+`~/.cache/vela-update/packages/` for manual rollback. Build dependencies come
+from the selected revision's `packaging/ubuntu/build-depends`, and `apt-get`
+runs only when one of them is missing. Select **one exact**
 cached filename; never install every cached package with a wildcard:
 
 ```sh
@@ -179,7 +181,7 @@ HTTPS automatically. `--source` can still select a local Git copy.
 ```sh
 vela-update                 # update if something new is available
 vela-update --check         # only check, and list the changes
-vela-update --download      # download a matching public package, or build if unavailable
+vela-update --download      # download a verified CI package if available, or build
 vela-update --build         # always build locally
 vela-update --jobs 2        # fewer parallel compile jobs
 vela-update --branch YOUR_TEST_BRANCH --download  # replace with an existing branch
@@ -202,14 +204,17 @@ after 14 days. PR builds also smoke-test both packages, but their artifacts are
 not attested, and `vela-update` does not accept them as trusted downloads.
 The GitHub CLI is only needed for optional private workflow-artifact retrieval;
 Sigstore/Cosign performs all package verification.
-Public `main` packages are also published as per-commit GitHub prereleases
-(tagged `alpha-<full-commit-sha>`) and can be downloaded without a GitHub account.
-Only the **five most recently published Vela alpha releases** are kept; older
-ones and their tags are removed automatically. For an older commit, `vela-update`
-falls back to an available workflow artifact or a local build.
+Pushes to `main` no longer publish per-commit `alpha-<full-commit-sha>`
+prereleases (see [release channels](release-channels.md)). `vela-update` still
+uses one when it exists for the selected commit, for the historical ones not yet
+retired; for every newer commit, Experimental downloads need the GitHub CLI and
+an unexpired workflow artifact, and otherwise `vela-update` builds locally.
+Signed packages that need no GitHub account are the Beta channel's.
 The tester needs a version of `vela-update` that already supports these options.
 
-The last three packages stay in `~/.cache/vela-update/packages/` for rollback.
+The last three packages of each channel stay in `~/.cache/vela-update/packages/`
+for rollback (`vela-git` for Experimental, `vela` for Beta; on Arch, with their
+signatures and `-debug` packages when makepkg builds them).
 Restore a known-good Arch package with `sudo pacman -U /path/to/vela-git-*.pkg.tar.zst`,
 or on Fedora with `sudo dnf install /path/to/vela-git-*.x86_64.rpm`
 (select **one exact file**, never install every cached package at once).

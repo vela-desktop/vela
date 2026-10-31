@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Ubuntu 26.10 packages needed to build and package Vela, one per line.
+# vela-update installs the list of the revision it builds; the Ubuntu
+# workflow installs the same list (packaging/tests/test_ci_workflows.py).
+ca-certificates
+git
+build-essential
+cmake
+ninja-build
+pkgconf
+libwlroots-0.20-dev
+libwayland-dev
+wayland-protocols
+libxkbcommon-dev
+libpixman-1-dev
+libinput-dev
+libgbm-dev
+libdrm-dev
+libvulkan-dev
+glslc
+libfreetype-dev
+libharfbuzz-dev
+libfontconfig-dev
+libcairo2-dev
+librsvg2-dev
+libpam0g-dev
+libpolkit-agent-1-dev
+libpolkit-gobject-1-dev
+zlib1g-dev
+libgtest-dev
+libsystemd-dev
+qt6-base-dev
+qt6-base-private-dev
+qt6-declarative-dev
+qt6-svg-dev
+qt6-wayland-dev
+qt6-tools-dev
+qt6-tools-dev-tools
+qt6-l10n-tools
+liblayershellqtinterface-dev
+libpipewire-0.3-dev
+libwireplumber-0.5-dev
+dpkg-dev
+file
+python3
+python3-numpy
+python3-pil
+dbus
