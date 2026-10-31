@@ -7,7 +7,9 @@ targets for **0.3–0.6 are estimates** that can change after design, testing,
 and feedback. Implementation work can start before its target release
 without merging into `main`.
 
-Vela **0.1 is the first beta**. "Done" means
+Vela **0.1 is the first beta**, released as
+[`v0.1.0`](https://github.com/vela-desktop/vela/releases/tag/v0.1.0) on
+31 October 2026. "Done" means
 implemented and tested, not validated on every GPU and driver: see
 [hardware coverage](hardware.md) for current limits. Larger changes get
 their own design documents; the roadmap records intent rather than replacing
@@ -62,18 +64,17 @@ the only feature exception.
   the output's pixels, with direct scanout
   ([#167](https://github.com/vela-desktop/vela/pull/167)).
 
-**Before tagging `v0.1.0`:**
+**Release of `v0.1.0` (31 October 2026):**
 
-- **GPU and session verification:** follow the
-  [GPU CI policy](ci-quality.md#gpu-ci-policy), including full AMD and
-  NVIDIA suites on the exact release commit, plus physical-session smoke
-  tests.
+- **GPU and session verification:** full AMD and NVIDIA suites on the
+  exact release commit, as the [GPU CI policy](ci-quality.md#gpu-ci-policy)
+  requires, plus physical-session smoke tests.
 - **Updates in a real session:** a real terminal and "Sign out to finish"
-  ([updates §11](updates.md#11-stages)); Beta updates are checked again once
-  `v0.1.0` exists.
-- **Release rehearsal:** a versioned test tag through the whole release
-  workflow, as [release channels](release-channels.md#rollout-validation)
-  require.
+  ([updates §11](updates.md#11-stages)); the Beta check finds `v0.1.0`.
+- **Release rehearsal:** the whole tag pipeline on a public fork first, as
+  [release channels](release-channels.md#rollout-validation) require. It
+  found two release-only pipeline bugs, fixed before the real tag
+  ([#177](https://github.com/vela-desktop/vela/pull/177)).
 
 **Feature-freeze rule:** no new user-facing features are added to 0.1. Core
 Wayland `text-input-v3`/`input-method-v2` and on-screen keyboard work target
@@ -213,7 +214,6 @@ own design, cost/maintenance analysis and definition of done.
 
 | Work | Design | Pull request | Status | Release target |
 |---|---|---|---|---|
-| **Release of `v0.1.0`**: GPU suites on the release commit, a real-session Updates check, a rehearsal with a test tag | [Release channels](release-channels.md) | [#160](https://github.com/vela-desktop/vela/pull/160) (pipeline, merged) | pipeline merged; verification and the tag pending | 0.1 |
 | **Host OOM allocation contract** | in the PR | [#148](https://github.com/vela-desktop/vela/pull/148) | draft; release classification after review | to be decided |
 | **Text input and input methods**: `text-input-v3`, `input-method-v2`, IME integration | reconcile with OSK design | — | not implemented | 0.2 |
 | **Touch, pressure-sensitive pen and tablet mode**: full agreed #94 stages T0–T5, P1–P2 and M1 | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design under discussion; implementation pending | 0.2 |

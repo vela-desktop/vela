@@ -14,15 +14,26 @@ the future stable milestone.
 ## Maintainer release process
 
 1. Prepare the exact release commit, update `project(VERSION ...)` in
-   `CMakeLists.txt`, and complete reviews and required test suites.
-2. Create a protected Git tag `v0.x.y` pointing to that commit.
-3. GitHub Actions builds Arch/CachyOS, Fedora 44 and Ubuntu 26.10 packages
+   `CMakeLists.txt`, and complete reviews and required test suites,
+   including both GPU suites on that commit.
+2. Rehearse on a public fork: push the same signed tag there and let the
+   whole pipeline publish a release in the fork (see
+   [Rollout validation](#rollout-validation)). `v0.*` tags in this
+   repository can be neither moved nor deleted, so a tag whose pipeline
+   fails burns that version number.
+3. Create a signed, protected Git tag `v0.x.y` pointing to that commit.
+4. GitHub Actions builds Arch/CachyOS, Fedora 44 and Ubuntu 26.10 packages
    for the **tagged** commit, verifies package installs and their runtime
    requirements, then publishes an official GitHub prerelease.
-4. The published release includes the package files and one SHA-256 manifest
+5. The published release includes the package files and one SHA-256 manifest
    per distribution. Each binary must be accompanied by GitHub-hosted
    cryptographic provenance that binds the build to the tag and commit.
-5. If a build, smoke test or verification fails, there is no new Beta release.
+6. If a build, smoke test or verification fails, there is no new Beta release.
+7. Replace the generated notes with hand-written ones
+   (`gh release edit v0.x.y --notes-file …`); editing the text leaves the
+   assets untouched. Settings shows them as plain text
+   ([Updates](updates.md)), so they must read well without Markdown
+   rendering: full URLs rather than links, no tables.
 
 Pushes to `main` build and test Experimental in CI but do not create
 GitHub Releases. Temporary CI artifacts are **not** a public update channel.
@@ -72,7 +83,24 @@ that the update runs in a terminal.
 
 ## Rollout validation
 
-Before the first Beta, test channel replacements on actual clean Arch, Fedora 44 and
-Ubuntu 26.10 images (including downgrades from development snapshots), signature failures, interrupted installations and missing releases. Verify
-that a release workflow rerun only accepts unchanged published assets. Complete a rehearsal
-with a versioned test tag before cutting the first user-facing Beta.
+Before every Beta, run the tag pipeline on a public fork of the repository
+with the exact release commit. In the fork, the workflow runs from the
+tagged commit, so its `main` does not need to be updated; delete the
+fork's previous release before tagging again, because `publish-beta`
+refuses to replace published bytes. Then check:
+
+- a rerun of `publish-beta` keeps the published assets unchanged;
+- each package matches its manifest and its attestation names the fork,
+  the tag, the commit and the expected workflow;
+- in clean Arch, Fedora 44 and Ubuntu 26.10 containers, the installed
+  `vela-update-beta` with `REPO` pointed at the fork finds the release,
+  replaces `vela-git` unattended, then reports `up-to-date`; the verifier
+  rejects the wrong repository, the wrong commit and tampered bytes; and
+  the way back to Experimental works.
+
+For `v0.1.0` (31 October 2026) the rehearsal found two pipeline bugs that
+only tag builds reach (`cosign` missing from the Arch package job, and the
+channel-replacement smoke test mistaking `vela-git` for `vela` through
+`provides`), fixed in [#177](https://github.com/vela-desktop/vela/pull/177)
+before the real tag. Interrupted installations and missing releases were
+covered by the Updates container tests ([Updates §11](updates.md#11-stages)).
