@@ -207,6 +207,16 @@ struct vela_x11_xdg_output *vela_x11_xdg_output_create(struct vela_server *serve
         !server->xdg_output_manager) {
         return NULL;
     }
+    // Never activate an unverified output/buffer coordinate override in
+    // the user's real desktop session. The experiment may be exercised in
+    // isolated headless/nested sessions (including GPU CI); those cannot
+    // corrupt the main session's physical outputs or leave a persistent
+    // bottom/right dirty rectangle after a direct-scanout transition.
+    if (server->session) {
+        wlr_log(WLR_ERROR, "Refusing unsafe XWayland scale experiment in a real session; "
+            "run it in a nested/headless GPU test session instead");
+        return NULL;
+    }
 
     struct vela_x11_xdg_output *manager = calloc(1, sizeof(*manager));
     if (!manager) return NULL;
