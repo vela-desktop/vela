@@ -271,7 +271,7 @@ python3 scripts/record-promo.py --resume --out ~/videos/vela-beta
 python3 scripts/verify-promo.py --out ~/videos/vela-beta desktop start-menu snap-assist
 ```
 
-The `beta-trailer` profile records Desktop, Start search, Snap Assist, Task
+The `beta-trailer` profile records Desktop, Start search and real Files launch, Snap Assist, Task
 View, Vela Files, virtual desktop switching, Quick Settings (including the
 private PipeWire sound page) and Colors. The promo cursor is animated through
 real compositor input events with smooth, time-bounded trajectories, rather
