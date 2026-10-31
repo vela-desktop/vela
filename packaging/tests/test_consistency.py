@@ -63,6 +63,10 @@ class UbuntuBuildDepends(unittest.TestCase):
                             workflow, re.S)
         self.assertIsNotNone(command, "ubuntu.yml's dependency install step")
         installed = command.group(1).replace("\\", " ").split()
+        # ccache only speeds up CI rebuilds; a local build doesn't need it.
+        ci_only = {"ccache"}
+        self.assertTrue(ci_only <= set(installed), "CI-only tool no longer installed")
+        installed = [name for name in installed if name not in ci_only]
         self.assertEqual(sorted(installed), sorted(listed))
 
 

@@ -3,7 +3,8 @@
 #
 # Ubuntu 26.10 packages needed to build and package Vela, one per line.
 # vela-update installs the list of the revision it builds; the Ubuntu
-# workflow installs the same list (packaging/tests/test_ci_workflows.py).
+# workflow installs the same list plus CI-only tools
+# (packaging/tests/test_consistency.py).
 ca-certificates
 git
 build-essential
