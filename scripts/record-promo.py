@@ -37,8 +37,9 @@ class DesktopOverview(Scene):
         return None, None
 
     def act(self, desktop, _):
-        # Pointer motion is deliberately not in ext-image-copy-capture output.
-        desktop.vela.input("move", 980, 640, "sleep", "1600")
+        output = desktop.vela.state().output
+        self.step(desktop, "show desktop", input_actions=("move", int(output["w"] * .52),
+                  int(output["h"] * .60)), hold=1.6)
 
 
 class StartMenu(Scene):
@@ -52,12 +53,11 @@ class StartMenu(Scene):
 
     def act(self, desktop, _):
         vela = desktop.vela
-        vela.input("move", 1020, 650, "key", "super")
-        vela.wait_for(lambda s: Desktop.layer(s, self.namespace), what="Start opening")
-        time.sleep(1.3)
-        vela.input("key", "Escape")
-        vela.wait_for(lambda s: not Desktop.layer(s, self.namespace), what="Start closing")
-        time.sleep(0.7)
+        self.step(desktop, "open Start", input_actions=("key", "super"),
+                  ready=lambda s: Desktop.layer(s, self.namespace), hold=1.0)
+        self.step(desktop, "search Files", input_actions=("type", "Files"), hold=1.0)
+        self.step(desktop, "close Start", input_actions=("key", "Escape"),
+                  ready=lambda s: not Desktop.layer(s, self.namespace), hold=0.5)
 
 
 class QuickSettings(Scene):
@@ -71,12 +71,10 @@ class QuickSettings(Scene):
 
     def act(self, desktop, _):
         vela = desktop.vela
-        vela.input("move", 980, 640, "key", "super+a")
-        vela.wait_for(lambda s: Desktop.layer(s, self.namespace), what="Quick Settings opening")
-        time.sleep(1.5)
-        vela.input("key", "Escape")
-        vela.wait_for(lambda s: not Desktop.layer(s, self.namespace), what="Quick Settings closing")
-        time.sleep(0.6)
+        self.step(desktop, "open Quick Settings", input_actions=("key", "super+a"),
+                  ready=lambda s: Desktop.layer(s, self.namespace), hold=1.5)
+        self.step(desktop, "close Quick Settings", input_actions=("key", "Escape"),
+                  ready=lambda s: not Desktop.layer(s, self.namespace), hold=0.6)
 
 
 class WindowMotion(Scene):
@@ -97,12 +95,14 @@ class WindowMotion(Scene):
 
     def act(self, desktop, window):
         vela = desktop.vela
-        vela.command(f"window {window} maximize")
+        self.step(desktop, "maximize window", command=f"window {window} maximize",
+                  ready=lambda s: s.window(window)["maximized"])
         vela.wait_still(window)
-        time.sleep(0.9)
-        vela.command(f"window {window} restore")
+        self.pause(0.9)
+        self.step(desktop, "restore window", command=f"window {window} restore",
+                  ready=lambda s: not s.window(window)["maximized"])
         vela.wait_still(window)
-        time.sleep(0.9)
+        self.pause(0.9)
 
 
 class TaskView(Scene):
@@ -117,16 +117,17 @@ class TaskView(Scene):
         if window is None:
             raise RuntimeError("build vela-settings: Task View needs a real app preview")
         vela.wait_still(window)
-        return None, window
+        files = desktop.open_app("explorer/vela-files", str(desktop.demo_folder), user="Alex")
+        if files is None:
+            raise RuntimeError("build vela-files: Task View needs two authentic app previews")
+        vela.wait_still(files)
+        return None, (window, files)
 
     def act(self, desktop, _):
-        vela = desktop.vela
-        vela.input("move", 980, 630, "key", "super+Tab")
-        vela.wait_for(lambda s: Desktop.layer(s, self.namespace), what="Task View opening")
-        time.sleep(1.6)
-        vela.input("key", "Escape")
-        vela.wait_for(lambda s: not Desktop.layer(s, self.namespace), what="Task View closing")
-        time.sleep(0.6)
+        self.step(desktop, "open Task View", input_actions=("key", "super+Tab"),
+                  ready=lambda s: Desktop.layer(s, self.namespace), hold=1.6)
+        self.step(desktop, "close Task View", input_actions=("key", "Escape"),
+                  ready=lambda s: not Desktop.layer(s, self.namespace), hold=0.6)
 
 
 class Settings(Scene):
@@ -141,12 +142,106 @@ class Settings(Scene):
         return None, window
 
     def act(self, desktop, _):
-        desktop.vela.input("move", 1350, 680, "sleep", "2100")
+        self.step(desktop, "show Settings", input_actions=("move", 1100, 680), hold=2.1)
+
+
+class Files(Scene):
+    name = "files"
+    about = "Vela Files browsing a synthetic, isolated demo directory"
+    poster = 0.7
+
+    def prepare(self, desktop):
+        window = desktop.open_app("explorer/vela-files", str(desktop.demo_folder), user="Alex")
+        if window is None:
+            raise RuntimeError("build vela-files for the Files promo scene")
+        desktop.vela.wait_still(window)
+        return None, window
+
+    def act(self, desktop, window):
+        self.step(desktop, "maximize Vela Files", command=f"window {window} maximize",
+                  ready=lambda s: s.window(window)["maximized"], hold=1.5)
+        desktop.vela.wait_still(window)
+
+
+class SnapAssist(Scene):
+    name = "snap-assist"
+    about = "Snap real Settings and Files windows into two side-by-side zones"
+    poster = 1.1
+    namespace = "vela-snap-assist"
+
+    def prepare(self, desktop):
+        settings = desktop.open_app("settings/vela-settings", "--page", "personalization", user="Alex")
+        if settings is None:
+            raise RuntimeError("build vela-settings for the Snap Assist scene")
+        files = desktop.open_app("explorer/vela-files", str(desktop.demo_folder), user="Alex")
+        if files is None:
+            raise RuntimeError("build vela-files for the Snap Assist scene")
+        desktop.vela.wait_still(settings)
+        desktop.vela.wait_still(files)
+        return None, (settings, files)
+
+    def act(self, desktop, windows):
+        settings, files = windows
+        self.step(desktop, "snap Settings to left", command=f"window {settings} snap 0 0 6 12",
+                  ready=lambda s: s.window(settings)["snap"] == [0, 0, 6, 12], hold=0.7)
+        desktop.vela.wait_for(lambda s: Desktop.layer(s, self.namespace),
+                              what="Snap Assist offers remaining windows")
+        output = desktop.vela.state().output
+        # With one remaining app, its card is centered in the free right half.
+        self.step(desktop, "choose Vela Files in Snap Assist",
+                  input_actions=("move", int(output["w"] * .75), int(output["h"] * .5),
+                                 "sleep", 150, "click", "left"),
+                  ready=lambda s: s.window(files)["snap"] == [6, 0, 12, 12], hold=1.3)
+
+
+class VirtualDesktops(Scene):
+    name = "virtual-desktops"
+    about = "Switch between two real Vela virtual desktops"
+    poster = 0.8
+
+    def prepare(self, desktop):
+        window = desktop.open_app("settings/vela-settings", "--page", "personalization", user="Alex")
+        if window is None:
+            raise RuntimeError("build vela-settings for virtual desktops")
+        desktop.vela.wait_still(window)
+        desktop.vela.command("workspace new")
+        desktop.vela.wait_for(lambda s: s["workspaces"] >= 2, what="second workspace")
+        return None, window
+
+    def act(self, desktop, _):
+        self.step(desktop, "switch to second desktop", command="workspace switch 1",
+                  ready=lambda s: s["workspace"] == 1, hold=1.1)
+        self.step(desktop, "return to first desktop", command="workspace switch 0",
+                  ready=lambda s: s["workspace"] == 0, hold=1.1)
+
+
+class Colors(Scene):
+    name = "colors"
+    about = "Vela Settings: real light/dark mode and accent controls"
+    poster = 0.7
+
+    def prepare(self, desktop):
+        window = desktop.open_app("settings/vela-settings", "--page", "colors", user="Alex")
+        if window is None:
+            raise RuntimeError("build vela-settings for colors")
+        desktop.vela.wait_still(window)
+        return None, window
+
+    def act(self, desktop, _):
+        self.step(desktop, "show color settings", input_actions=("move", 1120, 650), hold=2.0)
 
 
 SCENES = {scene.name: scene for scene in (
-    DesktopOverview(), StartMenu(), QuickSettings(), WindowMotion(), TaskView(), Settings()
+    DesktopOverview(), StartMenu(), QuickSettings(), WindowMotion(), TaskView(), Settings(),
+    Files(), SnapAssist(), VirtualDesktops(), Colors()
 )}
+
+PROFILES = {
+    "beta-trailer": ("desktop", "start-menu", "snap-assist", "task-view", "files",
+                     "virtual-desktops", "quick-settings", "colors"),
+    "ui-overview": ("desktop", "start-menu", "quick-settings", "settings", "colors", "files"),
+    "window-management": ("window-motion", "snap-assist", "task-view", "virtual-desktops"),
+}
 
 
 def export_clip(scene, take, output, scratch):
