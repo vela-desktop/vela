@@ -54,6 +54,11 @@ jobs:
           # dbus-daemon is missing. Fail before the expensive GPU test run.
           /usr/bin/python3 -c 'import dbus' || { echo '::error::System Python D-Bus bindings missing; install python-dbus on the AMD runner'; exit 1; }
           command -v dbus-daemon >/dev/null || { echo '::error::D-Bus daemon missing on the AMD runner; install dbus'; exit 1; }
+          # Strict GPU CI rejects the X11 native-resolution tests if these are
+          # missing (Arch: xorg-xwayland, xorg-xrandr, xorg-xrdb, xorg-xprop).
+          for tool in Xwayland xrandr xrdb xprop; do
+            command -v "$tool" >/dev/null || { echo "::error::Install $tool on the AMD runner"; exit 1; }
+          done
           echo "GPU CTest interpreter: /usr/bin/python3 ($(/usr/bin/python3 --version))"
 
           # Arch/CachyOS use radeon_icd.json; some distros use an x86_64 suffix.

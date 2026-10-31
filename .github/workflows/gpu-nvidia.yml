@@ -47,6 +47,11 @@ jobs:
           command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
           command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
           python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow'; exit 1; }
+          # Strict GPU CI rejects the X11 native-resolution tests if these are
+          # missing (Arch: xorg-xwayland, xorg-xrandr, xorg-xrdb, xorg-xprop).
+          for tool in Xwayland xrandr xrdb xprop; do
+            command -v "$tool" >/dev/null || { echo "::error::Install $tool on the NVIDIA runner"; exit 1; }
+          done
 
           command -v nvidia-smi >/dev/null || { echo '::error::nvidia-smi unavailable: check the NVIDIA driver'; exit 1; }
 
