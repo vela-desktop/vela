@@ -534,7 +534,7 @@ def main(argv=None):
                 "input": build / "tools" / "vela-input"}
     if set(names) & {"window-motion", "task-view", "settings", "snap-assist", "alt-tab", "virtual-desktops", "colors"}:
         binaries["settings"] = build / "settings" / "vela-settings"
-    if set(names) & {"files", "task-view", "snap-assist", "alt-tab"}:
+    if set(names) & {"files", "task-view", "snap-assist", "alt-tab", "start-menu"}:
         binaries["files"] = build / "explorer" / "vela-files"
     missing = [name for name, path in binaries.items() if not path.is_file()]
     if missing:
