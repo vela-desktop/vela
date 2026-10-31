@@ -97,7 +97,7 @@ int vela_up_install_start(struct vela_up_daemon *d, const struct vela_up_options
         argv[n++] = update[i];
     }
     argv[n] = NULL;
-    pid_t pid = vela_up_spawn((char *const *)argv, NULL, true);
+    pid_t pid = vela_up_spawn((char *const *)argv, NULL, VELA_UP_SPAWN_DETACH);
     free(argv);
     vela_up_strv_free(terminal);
     if (pid < 0) {

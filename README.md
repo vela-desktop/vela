@@ -317,7 +317,7 @@ sh vela/packaging/vela-update
 
 See [build from source](#build-from-source); there is currently no native package updater for these systems.
 
-`vela-update` installs Vela on first run and handles subsequent updates. On Arch and Fedora it uses Sigstore/Cosign to verify downloaded packages (no GitHub CLI required), falling back to a local build when necessary. On Ubuntu 26.10 it always builds a local DEB. Fedora 44 users should install Cosign from its official upstream RPM before the first download; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
+`vela-update` installs Vela on first run and handles subsequent updates. The Experimental channel builds each `main` commit locally with the distribution's native tools; on Arch and Fedora it can instead download a CI package for that exact commit through an authenticated GitHub CLI, verified with Sigstore/Cosign. The Beta channel installs signed `v0.x.y` release packages, verified with Sigstore/Cosign and no GitHub CLI. On Ubuntu 26.10 Experimental always builds a local DEB. Fedora 44 users should install Cosign from its official upstream RPM before the first download; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
 ## Reporting a problem
 
 Run `vela-report` to create a diagnostic ZIP with a description and the evidence

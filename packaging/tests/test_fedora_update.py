@@ -155,6 +155,7 @@ class FedoraUpdates(FedoraFixture):
 
     def test_reject_dnf_based_fedora_derivative(self):
         # DNF/RPM and a Fedora macro are not enough to allow the RPM backend.
+        self.skip_if_host_pacman()
         self.os_release.write_text("ID=nobara\nID_LIKE=fedora\n")
         self.env["TEST_FEDORA_RELEASE"] = "44"
         result = self.run_update("--check", status=1)
