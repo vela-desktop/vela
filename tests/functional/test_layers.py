@@ -7,6 +7,7 @@ the wallpaper, the taskbar reserving its space and blurring what's behind it
 only where something changed must be identical to one redrawn in full
 (VELA_DEBUG_DAMAGE=1)."""
 
+import signal
 import subprocess
 import time
 import unittest
@@ -111,6 +112,39 @@ class Damage(unittest.TestCase):
             different = sum(a != b for a, b in zip(partial.rows, full.rows))
             self.assertEqual(different, 0,
                              f"{different} native Wayland rows differ on output {output}")
+
+
+    def test_fractional_incremental_pixels_match_ring_reset_in_same_session(self):
+        """A SIGUSR1 ring reset must not change the pixels of a static scene.
+
+        Unlike two separate sessions, this compares exactly the same client
+        buffers before and after a forced complete redraw on mixed-DPI outputs.
+        """
+        with Session(scale="HEADLESS-1=1.25,HEADLESS-2=1") as vela:
+            vela.command("test-output add 1920x1080")
+            vela.wait_for(lambda st: len(st["outputs"]) == 2,
+                          what="second output connected")
+            vela.randr("--output", "HEADLESS-2", "--pos", "1536,0", "--scale", "1")
+            vela.wait_for(lambda st: any(o["name"] == "HEADLESS-2" and o["scale"] == 1
+                                         for o in st["outputs"]), what="mixed-DPI layout")
+            shell(vela)
+            drag_over_the_taskbar(vela)
+            # Give animations and asynchronous Wayland frame commits time to
+            # settle, then ensure a manual full redraw is pixel-identical.
+            time.sleep(0.3)
+            before = [vela.pixels(output=i) for i in range(2)]
+            frames = {o["name"]: o["frames"] for o in vela.state()["outputs"]}
+            vela.process.send_signal(signal.SIGUSR1)
+            vela.wait_for(lambda st: all(o["frames"] > frames[o["name"]]
+                                        for o in st["outputs"]),
+                          what="both buffers repainted after SIGUSR1")
+            after = [vela.pixels(output=i) for i in range(2)]
+            for i in range(2):
+                self.assertEqual((before[i].width, before[i].height),
+                                 (after[i].width, after[i].height))
+                different = sum(a != b for a, b in zip(before[i].rows, after[i].rows))
+                self.assertEqual(different, 0,
+                                 f"output {i}: {different} stale rows before ring reset")
 
 
 if __name__ == "__main__":
