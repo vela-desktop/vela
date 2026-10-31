@@ -54,12 +54,14 @@ class StartMenu(Scene):
         return None, None
 
     def act(self, desktop, _):
-        vela = desktop.vela
+        before = {window["id"] for window in desktop.vela.state().windows}
         self.step(desktop, "open Start", input_actions=("key", "super"),
                   ready=lambda s: Desktop.layer(s, self.namespace), hold=1.0)
         self.step(desktop, "search Files", input_actions=("type", "Files"), hold=1.0)
-        self.step(desktop, "close Start", input_actions=("key", "Escape"),
-                  ready=lambda s: not Desktop.layer(s, self.namespace), hold=0.5)
+        self.step(desktop, "launch Vela Files from Start", input_actions=("key", "Return"),
+                  ready=lambda s: (not Desktop.layer(s, self.namespace)
+                                   and any(window["id"] not in before for window in s.windows)),
+                  timeout=15, hold=1.2)
 
 
 class QuickSettings(Scene):
