@@ -165,9 +165,10 @@ jobs:
           pacman -Syu --noconfirm --needed $DEPENDENCIES
           # makepkg runs unprivileged without --syncdeps: install only the
           # additional *runtime* desktop packages needed by the PKGBUILD.
+          # cosign is a hard dependency of PKGBUILD.beta (tag builds only).
           pacman -S --noconfirm --needed \
             konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk \
-            xdg-desktop-portal-wlr xdg-utils xdg-terminal-exec
+            xdg-desktop-portal-wlr xdg-utils xdg-terminal-exec cosign
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
