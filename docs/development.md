@@ -219,7 +219,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 
 | Tool | Purpose |
 |---|---|
-| `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`. |
+| `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`; `vela-input -` reads tab-separated action lines from stdin on one virtual keyboard. |
 | `vela-windows` | Inspect windows and compositor-visible state. |
 | `vela-screen-dump` | Capture an output or region to PNG. |
 | `vela-screen-record` | Record an output or region frame by frame, each with its presentation time, until SIGINT (`frames.raw` and `frames.txt` in a directory; `VELA_SCREEN_RECORD_DOWNSCALE=2` for full outputs at high refresh rates). |
@@ -254,6 +254,106 @@ caffeine status
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
 
+### Release promo recordings
+
+`scripts/record-promo.py` produces authentic release footage from a **single
+built Vela** with the real Vulkan compositor, Qt shell and Vela applications.
+It shares `scripts/recording_core.py` with the unchanged before/after CLI.
+
+```sh
+cmake --build build --target vela-compositor vela-shell vela-screen-record vela-input vela-settings vela-files
+python3 scripts/record-promo.py --list
+python3 scripts/record-promo.py --list-profiles
+python3 scripts/record-promo.py --profile beta-trailer --out ~/videos/vela-beta
+python3 scripts/record-promo.py --profile window-management --no-reel --out ~/videos/windows
+python3 scripts/record-promo.py files snap-assist --resolution 2560x1440 --fps 30 --out ~/videos/highres
+python3 scripts/record-promo.py --resume --out ~/videos/vela-beta
+python3 scripts/verify-promo.py --out ~/videos/vela-beta desktop start-menu snap-assist
+```
+
+The `beta-trailer` profile records Desktop, Start search and real Files launch, Snap Assist, Task
+View, Vela Files, virtual desktop switching, Quick Settings (including the
+private PipeWire sound page) and Colors. The promo cursor is animated through
+real compositor input events with smooth, time-bounded trajectories, rather
+than drawn or interpolated into the final video. All of a scene's input goes
+through one `vela-input -` session: a new virtual keyboard per action brings
+its keymap to the seat, and Start or Snap Assist lose the keyboard and close.
+An additional `alt-tab` scene records the actual app switcher, and
+`window-motion` includes maximize, restore and minimize animations.
+`ui-overview` and `window-management` provide focused selections, or pass
+scene names explicitly. `window-motion` and `settings` remain available.
+Scenes are isolated from one another and run on a headless Vela output. By
+default the output is 1920×1080@60, exported at 60 fps. Optional
+`--resolution WIDTHxHEIGHT`, `--scale FLOAT` and `--fps 30|60` configure
+the capture; `--speed` sets playback speed and `--hold-scale` sets how
+long scripted editorial holds last. State predicates and action checkpoints
+are separate from these holds.
+
+Each scene produces an MP4, WebM, PNG poster and JSON manifest. Manifests
+include capture settings, SHA-256 fingerprints of the **executed binary
+files** and of the recording scripts (neither asserts a verified source Git
+commit), SHA-256 and sizes of each export, actual presentation/frame counts,
+and a timeline of actions and ready-state checkpoints. A hard-cut
+`vela-promo.mp4` and its separate `vela-promo-manifest.json` are assembled
+when multiple scenes are selected. The reel manifest binds the exact ordered
+scene names and MP4 hashes: `--resume` rebuilds a missing, corrupted or stale
+reel even when every single-scene output can be reused. Use `--no-reel` to
+keep only separate clips. `--resume` reuses complete, hash-verified scene
+sets only when the binaries, recording recipe and capture settings match.
+Editing either recording script invalidates the previous takes by design.
+Incomplete/legacy output sets or different settings require a clean
+destination or explicit `--force` without `--resume`.
+
+The promo recorder enables the **real compositor-rendered cursor** by default
+with `VELA_SCREEN_RECORD_CURSOR=1`; disable it with `--no-cursor`.
+The before/after comparison recorder remains cursor-free to keep its
+frame-alignment comparisons unchanged. The capture path uses true presentation
+timestamps rather than generated in-between frames. Promo clips sample them
+halfway between the output's vblanks: sampled on the vblanks, a frame
+presented a millisecond late would show one tick late and repeat, a stutter
+the screen never had. Manifests record the vblanks the compositor presented
+late during the capture (`frames_missed`) and the moments a frame is shown
+twice between two new ones (`repeated_frames`).
+
+The shell, private D-Bus daemon, Settings and Files run under a synthetic
+demo identity (`Alex`), private HOME/XDG paths and private PipeWire sinks and
+Music stream. Start sees fixed made-up applications, while Vela Files opens a
+temporary public demo directory with synthetic documents and SVG artwork.
+The private D-Bus and PipeWire intentionally cannot use the host's
+Bluetooth/network/audio devices, so those Quick Settings tiles may show
+unavailable services. These measures **do not provide a complete network or
+filesystem sandbox**. Review footage for privacy and framing before
+publication. Device/configuration details on arbitrary Settings pages may
+still be sensitive. User and mount namespaces are probed before capture.
+
+`--keep` retains the very large raw source captures. Every export is written
+inside a private staging directory and installed by rename, never by writing
+through a destination symlink; `--force` replaces previous exports. Note
+that individual exports are installed sequentially, not as a single atomic
+transaction. A missing manifest after interruption is therefore considered
+incomplete and not eligible for `--resume`.
+
+This remains a footage recorder, not a video editor: voiceover, soundtrack,
+titles and transitions are separate. Expect about 500 MB/s of temporary raw
+frames at 1080p60, significantly more at higher resolutions. Validate all
+new scenes on real AMD/NVIDIA GPU hardware, especially Snap Assist pointer
+placement, cursor composition and fractional scale. Both manual GPU workflows
+have an opt-in `record_promo_smoke` input: it records Desktop, Start and Snap
+Assist at 1280×720 with scales 1.0 and 1.25, then runs
+`scripts/verify-promo.py` to check checksums, frames, dimensions, encoded
+frame rate, action checkpoints and consecutive nearly-black frames, and
+reports late vblanks and frames shown twice mid-motion for the reviewer (the
+first frame after a still moment can be late once, and typing repeats frames
+at its own pace, so neither fails the check). The smoke
+test requires `ffprobe` and `ffmpeg` on the runner. It is not run for normal
+pushes, and does not replace a human review of the release footage.
+
+Run the offline recorder regression tests with:
+
+```sh
+python3 -m unittest discover -s scripts/tests -p 'test_record*.py' -v
+```
+
 ### Before/after videos
 
 `scripts/record-before-after.py` records the same scene on two builds and puts
@@ -279,13 +379,14 @@ hardly showed (see D3 in [visual-coherence.md](visual-coherence.md)). Scenes
 about frame pacing (`maximize`) also give a strip of consecutive refreshes,
 before above and after below (`maximize-frames.png`), and say how many repeat
 the previous image. It needs
-a GPU, `dbus-daemon`, `ffmpeg`, PipeWire with WirePlumber and unprivileged
-user namespaces. Both the session and system D-Bus addresses point to the
+a GPU, `dbus-daemon`, `ffmpeg`, PipeWire (with `pw-cat` and `pw-dump`) with
+WirePlumber and unprivileged user namespaces, which it checks before building.
+Both the session and system D-Bus addresses point to the
 take's private bus; NetworkManager, BlueZ and other host services are not
 available to the shell, so real network names and device identities cannot
 appear in Quick Settings (those devices will show as unavailable). The text
-is in English, sound devices are made up on a private PipeWire, and Settings
-sees a user named Alex.
+is in English, sound devices are made up on a private PipeWire, and the shell
+and Settings see a user named Alex and made-up apps.
 
 For each take it prints the frames captured and the frames presented. Frames
 where only the pointer moved are presented but not captured, since captures

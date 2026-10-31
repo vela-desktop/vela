@@ -142,7 +142,7 @@ class Session:
         if expected_vendor := os.environ.get("VELA_GPU_EXPECT_VENDOR"):
             nodes = verify_renderer_vendor(self.log_text(), expected_vendor)
             print(f"Vela renderer PCI {expected_vendor} confirmed: {', '.join(nodes)}", flush=True)
-        runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+        runtime = self.env.get("XDG_RUNTIME_DIR", "/tmp")
         self.socket_path = os.path.join(runtime, f"vela-{self.display}.sock")
         self.wait_for(lambda _: os.path.exists(self.socket_path), what="the command socket", read_state=False)
         self.client_env = dict(env, WAYLAND_DISPLAY=self.display)
@@ -257,7 +257,7 @@ class Session:
 
     def fake_shell(self):
         """From here on Vela's messages to the shell reach a FakeShell."""
-        self.shell = FakeShell(self.display)
+        self.shell = FakeShell(self.display, self.env.get("XDG_RUNTIME_DIR"))
         return self.shell
 
     # ------------------------------------------------ keyboard and mouse --
@@ -367,8 +367,9 @@ class FakeShell:
     """The fake Qt shell: listens on its socket and collects the lines
     Vela sends it ("toggle-start", "accessibility {...}", ...)."""
 
-    def __init__(self, display):
-        runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+    def __init__(self, display, runtime=None):
+        # The session's runtime directory, where Vela looks for the shell.
+        runtime = runtime or os.environ.get("XDG_RUNTIME_DIR", "/tmp")
         self.path = os.path.join(runtime, f"vela-shell-{display}.sock")
         if os.path.exists(self.path):
             os.unlink(self.path)

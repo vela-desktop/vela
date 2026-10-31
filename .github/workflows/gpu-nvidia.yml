@@ -12,6 +12,10 @@ on:
         description: Collect instrumented GCC coverage from the GPU test suite
         type: boolean
         default: false
+      record_promo_smoke:
+        description: Record and verify isolated promo scenes at 100% and 125% scaling
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -193,6 +197,26 @@ jobs:
 
       # Generate the report only after all mandatory GPU tests have executed
       # without skips; untrusted pull request code is never auto-dispatched.
+      # Explicitly opt in to video encoding: raw frames can use substantial disk.
+      - name: Smoke test real promo capture (100% and 125% scaling)
+        if: inputs.record_promo_smoke
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          for required in ffmpeg ffprobe dbus-daemon pipewire wireplumber pw-cat pw-dump unshare; do
+            command -v "$required" >/dev/null || { echo "::error::Missing promo dependency: $required"; exit 1; }
+          done
+          for scale in 1.0 1.25; do
+            out="$RUNNER_TEMP/vela-promo-smoke-$scale"
+            /usr/bin/python3 scripts/record-promo.py desktop start-menu snap-assist \
+              --build "$RUNNER_TEMP/vela-gpu-build" \
+              --out "$out" --resolution 1280x720 --scale "$scale" --fps 30 --no-reel
+            /usr/bin/python3 scripts/verify-promo.py --out "$out" desktop start-menu snap-assist
+            # Do not retain massive frames or footage on a self-hosted runner.
+            rm -rf -- "$out"
+          done
+
       - name: Generate instrumented GPU coverage
         if: inputs.collect_coverage
         shell: bash
