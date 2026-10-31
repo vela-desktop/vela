@@ -120,6 +120,14 @@ class KwinStyleX11(unittest.TestCase):
                            what="primary returned to fractional scaling")
         self.vela.wait_for(lambda s: abs(s.window(window)["w"] - 400) <= 2,
                            what="mapped X11 window survived reverse rescale")
+        # Destroy a wl_output while the X11 xdg-output resource is alive.
+        # A subsequent layout change must not dereference its old wl_resource.
+        self.vela.command("test-output remove HEADLESS-2")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 1,
+                           what="secondary output unplugged with live X11 client")
+        self.vela.randr("--output", "HEADLESS-1", "--scale", "1")
+        self.vela.wait_for(lambda s: s.output["scale"] == 1,
+                           what="layout update after output resource destruction")
 
     def test_fullscreen_repaints_native_bottom_right_after_state_changes(self):
         """Regression: 125% X11 frame must cover right/bottom physical pixels.
