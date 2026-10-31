@@ -1,7 +1,7 @@
 # Vulkan device-loss and fatal-render policy — beta 0.1
 
-> **Status (30 October 2026):** implemented on PR #147; hosted CI and real
-> supervised locked-session / AMD / NVIDIA hardware validation remain merge gates.
+> **Status:** merged in PR #147 (30 October 2026). Real GPU resets are not
+> tested on the daily-use machine (see below).
 
 ## Failure classification
 

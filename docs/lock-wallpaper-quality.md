@@ -1,6 +1,6 @@
 # Vela Lock: password-screen wallpaper blur quality
 
-> **Status (28 October 2026): implementation included in PR #149; automated and on-device verification required before merging.**
+> **Status:** merged in PR #149 (28 October 2026).
 >
 > **Corrected observation:** the wallpaper appears sharp on the clock screen. The low-detail / overly enlarged appearance is confined to the **password-entry screen**, starting immediately on the transition to Login, not after typing characters.
 

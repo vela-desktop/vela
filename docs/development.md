@@ -41,7 +41,7 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
 </details>
 
 <details>
-<summary><b>Ubuntu 26.10 (experimental native DEB updater and CI validation)</b></summary>
+<summary><b>Ubuntu 26.10 (native DEB updater and CI validation)</b></summary>
 
 Use Ubuntu 26.10 (Stonking Stingray) with the `universe` repository enabled.
 The CI uses the official `ubuntu:26.10` container and compiles the compositor,
@@ -73,7 +73,7 @@ ctest --test-dir build -N -LE 'gpu|distro-packaging'
 ctest --test-dir build --output-on-failure -LE 'gpu|distro-packaging'
 ```
 
-Ubuntu 26.10 also has an [experimental DEB updater](installation.md#ubuntu-2610-experimental-native-deb-updater).
+Ubuntu 26.10 also has a [native DEB updater](installation.md#ubuntu-2610).
 Build success alone does not prove Ubuntu graphical session functionality:
 validate Wayland, portals, audio, polkit and GPU-specific behavior on real hardware.
 

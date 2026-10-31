@@ -1,6 +1,6 @@
 # Contributing to Vela
 
-Vela is an alpha Linux desktop environment with a C17 Wayland compositor, Vulkan renderer and Qt 6 user interface. Bug reports, reproducible tests, documentation fixes and code contributions are welcome.
+Vela is a beta Linux desktop environment with a C17 Wayland compositor, Vulkan renderer and Qt 6 user interface. Bug reports, reproducible tests, documentation fixes and code contributions are welcome.
 
 ## Before writing code
 
