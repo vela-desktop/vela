@@ -251,8 +251,10 @@ class Desktop:
                                                      os.environ.get("PATH", ""))))
             self.applications = self.demo_applications(Path(self.vela.directory) / "applications")
             # Start shows the account's name and the apps: the demo user's.
+            # No QT_WAYLAND_SHELL_INTEGRATION, as in a real session: the
+            # apps Start launches would inherit it and map as layers.
             shell = subprocess.Popen(self.as_user("Alex", [str(self.build_dir / "shell" / "vela-shell")]),
-                                     env=dict(self.qt_env, QT_WAYLAND_SHELL_INTEGRATION="layer-shell"),
+                                     env=self.qt_env,
                                      stdout=self.vela.log, stderr=self.vela.log)
             self.vela.clients.append(shell)
             self.vela.wait_for(lambda s: self.layer(s, "vela-taskbar") and self.layer(s, "vela-wallpaper"),
