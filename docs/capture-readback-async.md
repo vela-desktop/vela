@@ -12,7 +12,7 @@ GPU suites must validate the exact candidate before it is considered fixed.
 | [#128](https://github.com/vela-desktop/vela/pull/128), [#129](https://github.com/vela-desktop/vela/pull/129) | GPU-suite experiments and salvaged IPC/input fixes. NVIDIA capture failed with 82/41 and 83/41 missed vblanks/captures. No capture fix. |
 | [#130](https://github.com/vela-desktop/vela/pull/130), [#131](https://github.com/vela-desktop/vela/pull/131) | Separate animation sample and desktop selection work; capture remained independent. |
 | [#155](https://github.com/vela-desktop/vela/pull/155) | Opt-in phase profiling and resolution/refresh experiments. GPU wait wall time was about 1.35 ms; staging-to-destination memcpy about 10 ms. Alpha fixup was inactive. Closed without merging its temporary instrumentation. |
-| [#156](https://github.com/vela-desktop/vela/pull/156) | Four CPU copy workers shortened a synchronous stall, but NVIDIA still failed. The workers were removed. This PR now implements deferred completion. |
+| [#156](https://github.com/vela-desktop/vela/pull/156) | Four CPU copy workers shortened a synchronous stall, but NVIDIA still failed. The workers were removed; the PR was merged with deferred completion instead. |
 
 The roadmap references in #141 and #146 classify #132 as a beta blocker; they
 introduce no alternative readback implementation.

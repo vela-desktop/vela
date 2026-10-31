@@ -6,10 +6,10 @@ system or packages unrelated to Vela.
 | Channel | Native package | Target | Binaries |
 | --- | --- | --- | --- |
 | Beta | `vela` | Latest numbered `v0.x.y` release | Signed official release assets |
-| Experimental | `vela-git` | Development `main` or a selected commit | Source build, or existing signed legacy alpha / CI artifacts |
+| Experimental | `vela-git` | Development `main` or a selected commit | Source build, or a signed CI artifact (Arch, Fedora) |
 
 There are no release candidates. The `0.x.y` series is Beta; `1.0.0` is
-the future stable milestone, not part of this initial change.
+the future stable milestone.
 
 ## Maintainer release process
 
@@ -24,10 +24,9 @@ the future stable milestone, not part of this initial change.
    cryptographic provenance that binds the build to the tag and commit.
 5. If a build, smoke test or verification fails, there is no new Beta release.
 
-Pushes to `main` continue to build/test Experimental in CI but no longer
-create public per-commit GitHub Releases. Temporary CI artifacts are **not**
-a public update channel. Historical `alpha-<sha>` releases must be retired
-separately after active installs have migrated.
+Pushes to `main` build and test Experimental in CI but do not create
+GitHub Releases. Temporary CI artifacts are **not** a public update channel.
+The historical per-commit `alpha-<sha>` releases have been retired.
 
 A Beta tag must match the project version exactly and follow the
 `v0.<minor>.<patch>` format. Do not retag an already published version:
@@ -46,8 +45,8 @@ Beta status and `vela-update --channel beta` to install the signed native
 package. A newer installed Beta is never silently downgraded: explicitly select
 an older release with `--tag=v0.x.y` when a downgrade is intended.
 Use `vela-update --channel experimental` for an exact development
-revision. On Arch and Fedora, signed legacy alpha packages may still be
-reused when available; otherwise Vela builds locally. The installed package determines the default channel; an
+revision. On Arch and Fedora, a signed CI artifact for that commit can be
+used through an authenticated GitHub CLI; otherwise Vela builds locally. The installed package determines the default channel; an
 explicit `--channel` chooses a transition.
 
 Cross-channel transitions replace the native package rather than installing
@@ -73,7 +72,7 @@ that the update runs in a terminal.
 
 ## Rollout validation
 
-Before merging, test channel replacements on actual clean Arch, Fedora 44 and
+Before the first Beta, test channel replacements on actual clean Arch, Fedora 44 and
 Ubuntu 26.10 images (including downgrades from development snapshots), signature failures, interrupted installations and missing releases. Verify
 that a release workflow rerun only accepts unchanged published assets. Complete a rehearsal
 with a versioned test tag before cutting the first user-facing Beta.
