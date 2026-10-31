@@ -243,7 +243,12 @@ class Desktop:
             # or /usr/local entries of this PC.
             self.qt_env = dict(self.vela.client_env, QT_QPA_PLATFORM="wayland", QT_WAYLAND_RECONNECT="0",
                                QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
-                               PIPEWIRE_RUNTIME_DIR=pipewire, XDG_DATA_DIRS="/usr/share")
+                               PIPEWIRE_RUNTIME_DIR=pipewire, XDG_DATA_DIRS="/usr/share",
+                               # Start launches demo Vela apps by .desktop Exec name;
+                               # run the local build, not an installed host copy.
+                               PATH=os.pathsep.join((str(self.build_dir / "explorer"),
+                                                     str(self.build_dir / "settings"),
+                                                     os.environ.get("PATH", ""))))
             self.applications = self.demo_applications(Path(self.vela.directory) / "applications")
             # Start shows the account's name and the apps: the demo user's.
             shell = subprocess.Popen(self.as_user("Alex", [str(self.build_dir / "shell" / "vela-shell")]),
