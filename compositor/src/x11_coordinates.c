@@ -47,7 +47,7 @@ double vela_x11_surface_scene_scale(double global_scale,
     const double y_ratio = (double)x11_height / surface_height;
     if (!isfinite(x_ratio) || !isfinite(y_ratio) ||
         fabs(x_ratio - y_ratio) > 0.02 * fmax(x_ratio, y_ratio)) {
-        return fallback; // async configure: don't guess anisotropic scaling
+        return NAN; // async configure: hold the last valid scene transform
     }
     return (x_ratio + y_ratio) * 0.5 / global_scale;
 }
