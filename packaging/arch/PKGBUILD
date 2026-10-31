@@ -38,7 +38,8 @@ depends=(
 )
 makedepends=('cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols>=1.37' 'qt6-tools' 'qt6-multimedia')
 optdepends=(
-    'xwayland-satellite: experimental external native-resolution X11 backend (not required for Plasma-style implementation)'\n    'cosign: verify downloaded prebuilt package attestations without gh'
+    'xwayland-satellite: experimental external native-resolution X11 backend (not required for Plasma-style implementation)'
+    'cosign: verify downloaded prebuilt package attestations without gh'
     'networkmanager: network and Wi-Fi (quick settings and Settings)'
     'bluez: Bluetooth, all it needs (docs/bluetooth.md)'
     'pipewire-pulse: sound for apps that still use PulseAudio'
