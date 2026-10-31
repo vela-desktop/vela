@@ -111,7 +111,9 @@ not supply this label). Register it under Settings → Actions → Runners.
 
 The CachyOS/Arch runner must have the normal
 [build dependencies](development.md#distribution-dependencies), plus
-`vulkan-tools`, `vulkan-radeon`, `vulkan-validation-layers`, `python-numpy` and `python-pillow`.
+`vulkan-tools`, `vulkan-radeon`, `vulkan-validation-layers`, `python-numpy`, `python-pillow`,
+`python-dbus` and the X11 tools of the native-resolution tests (`xorg-xwayland`,
+`xorg-xrandr`, `xorg-xrdb`, `xorg-xprop`).
 It must be able to access an AMD DRM render node and the RADV Vulkan 1.4
 driver. Install dependencies **on the host**, not inside the workflow;
 the workflow deliberately runs without `sudo` or host package upgrades.
@@ -140,8 +142,9 @@ The runner group must allow the public Vela repository to use it.
 The Arch/CachyOS runner needs the
 [normal build dependencies](development.md#distribution-dependencies),
 `vulkan-tools`, `vulkan-validation-layers`, the proprietary NVIDIA Vulkan
-driver (including `nvidia-utils` and `nvidia-smi`), `python-numpy` and
-`python-pillow`.
+driver (including `nvidia-utils` and `nvidia-smi`), `python-numpy`,
+`python-pillow` and the same X11 tools (`xorg-xwayland`, `xorg-xrandr`,
+`xorg-xrdb`, `xorg-xprop`). Both workflows check these before building.
 Check with `nvidia-smi` and `vulkaninfo --summary` before dispatching;
 the NVIDIA driver and Vulkan device must support Vulkan 1.4 or newer.
 The workflow looks up the NVIDIA ICD manifest, restricts Vulkan device
