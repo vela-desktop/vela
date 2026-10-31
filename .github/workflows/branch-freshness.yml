@@ -132,8 +132,12 @@ jobs:
                   description = 'Merge conflict with main; resolve conflicts';
                   core.warning('PR #' + candidate.number + ': merge conflict; GitHub blocks merge');
                 } else if (currentPr.mergeable !== true) {
-                  state = 'error';
-                  description = 'Mergeability not yet known; retry check';
+                  // A known stale branch must remain failed; only an otherwise
+                  // successful freshness verdict needs to wait for mergeability.
+                  if (state === 'success') {
+                    state = 'error';
+                    description = 'Mergeability not yet known; retry check';
+                  }
                   core.warning('PR #' + candidate.number + ': mergeability still unknown');
                 }
                 if (currentPr.mergeable === true && currentPr.merge_commit_sha) {
