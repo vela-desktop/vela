@@ -47,7 +47,10 @@ int main(void)
         * 1280, 2048);
     const double mismatched = vela_x11_surface_scene_scale(
         1.25, 2560, 1440, 1280, 900);
-    near(mismatched, 0.8); // stale resize must not stretch anisotropically
+    if (!isnan(mismatched)) {
+        fprintf(stderr, "stale anisotropic configure must preserve prior scene transform\\n");
+        return EXIT_FAILURE;
+    }
 
     // Physical DP-3 2560x1440@125%, logical (0,1080)-(2048,2232).
     // HDMI-A-1 above it: 1920x1080@100%, logical (0,0)-(1920,1080).
