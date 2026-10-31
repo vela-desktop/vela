@@ -18,6 +18,7 @@
 #include "focus.h"
 #include "bindings.h"
 #include "input.h"
+#include "x11_coordinates.h"
 #include "listen.h"
 #include "output.h"
 #include "scene/scene.h"
@@ -298,6 +299,7 @@ struct unmanaged {
     struct wl_listener dissociate;
     struct wl_listener map;
     struct wl_listener unmap;
+    struct wl_listener commit;
     struct wl_listener set_geometry;
     struct wl_listener request_configure;
     struct wl_listener set_override_redirect;
@@ -309,6 +311,32 @@ static struct vela_view *view_create(struct vela_server *server, struct wlr_xway
 static double x11_client_scale(const struct vela_server *server);
 static void handle_associate(struct wl_listener *listener, void *data);
 static void handle_map(struct wl_listener *listener, void *data);
+
+// XWayland may submit buffers with wl_surface.buffer_scale=1, 2, ... even
+// though its X11 pixmap has the same native pixel dimensions. Derive the
+// scene-to-client conversion from the *actual* committed surface dimensions,
+// never assume 1/global_scale or the bottom/right part can be clipped.
+// Keep every native Wayland surface at the default 1.0 scale.
+static void sync_x11_surface_scale(struct vela_server *server,
+    struct wlr_xwayland_surface *x11, struct vela_surface_node *node)
+{
+    if (!node || !x11 || !x11->surface) return;
+    const double global_scale = x11_client_scale(server);
+    double scale = vela_x11_surface_scene_scale(global_scale,
+        x11->width, x11->height,
+        x11->surface->current.width, x11->surface->current.height);
+    if (!isfinite(scale) || scale <= 0) return;
+    if (fabs(node->scale - scale) < 0.00001) return;
+    node->scale = scale;
+    if (getenv("VELA_XWAYLAND_SCALE_TRACE")) {
+        wlr_log(WLR_INFO, "Xwayland native scene scale: X11=%dx%d wl_surface=%dx%d "
+            "global=%.3f scene=%.4f", x11->width, x11->height,
+            x11->surface->current.width, x11->surface->current.height,
+            global_scale, scale);
+    }
+    vela_scene_changed(server->scene);
+}
+
 
 // A BELOW backdrop must render behind fullscreen windows even when Wine
 // changes it to override-redirect while mapped. Ordinary menus stay on top.
@@ -331,6 +359,7 @@ static void unmanaged_restack(struct unmanaged *menu)
 static void handle_unmanaged_map(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, map);
+    sync_x11_surface_scale(menu->server, menu->x11, menu->surface_node);
     const double scale = x11_client_scale(menu->server);
     vela_node_set_position(&menu->tree->node, menu->x11->x / scale, menu->x11->y / scale);
     unmanaged_restack(menu);
@@ -349,6 +378,13 @@ static void handle_unmanaged_request_below(struct wl_listener *listener, void *d
         && menu->server->seat->keyboard_state.focused_surface == menu->x11->surface) {
         vela_focus_refocus(menu->server);
     }
+}
+
+static void handle_unmanaged_commit(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct unmanaged *menu = wl_container_of(listener, menu, commit);
+    sync_x11_surface_scale(menu->server, menu->x11, menu->surface_node);
 }
 
 static void handle_unmanaged_unmap(struct wl_listener *listener, void *data)
@@ -376,7 +412,8 @@ static void handle_unmanaged_associate(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, associate);
     menu->surface_node = vela_surface_node_create(menu->tree, menu->x11->surface);
-    menu->surface_node->scale = 1.0 / x11_client_scale(menu->server);
+    sync_x11_surface_scale(menu->server, menu->x11, menu->surface_node);
+    vela_listen(&menu->x11->surface->events.commit, &menu->commit, handle_unmanaged_commit);
     vela_listen(&menu->x11->surface->events.map, &menu->map, handle_unmanaged_map);
     vela_listen(&menu->x11->surface->events.unmap, &menu->unmap, handle_unmanaged_unmap);
     map_if_drawn(menu->x11->surface);
@@ -387,6 +424,7 @@ static void handle_unmanaged_dissociate(struct wl_listener *listener, void *data
     struct unmanaged *menu = wl_container_of(listener, menu, dissociate);
     vela_unlisten(&menu->map);
     vela_unlisten(&menu->unmap);
+    vela_unlisten(&menu->commit);
     if (menu->surface_node) {
         vela_node_destroy(&menu->surface_node->node);
         menu->surface_node = NULL;
@@ -396,7 +434,8 @@ static void handle_unmanaged_dissociate(struct wl_listener *listener, void *data
 static void handle_unmanaged_set_geometry(struct wl_listener *listener, void *data)
 {
     struct unmanaged *menu = wl_container_of(listener, menu, set_geometry);
-    vela_node_set_position(&menu->tree->node, menu->x11->x, menu->x11->y);
+    const double scale = x11_client_scale(menu->server);
+    vela_node_set_position(&menu->tree->node, menu->x11->x / scale, menu->x11->y / scale);
 }
 
 static void handle_unmanaged_request_configure(struct wl_listener *listener, void *data)
@@ -413,6 +452,7 @@ static void handle_unmanaged_destroy(struct wl_listener *listener, void *data)
     vela_unlisten(&menu->dissociate);
     vela_unlisten(&menu->map);
     vela_unlisten(&menu->unmap);
+    vela_unlisten(&menu->commit);
     vela_unlisten(&menu->set_geometry);
     vela_unlisten(&menu->request_configure);
     vela_unlisten(&menu->set_override_redirect);
@@ -518,6 +558,7 @@ static void handle_map_request(struct wl_listener *listener, void *data)
 static void handle_map(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, map);
+    sync_x11_surface_scale(view->server, view->x11, view->surface_node);
     xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(view->server->xwayland);
     if (view->x11_initial_state_pending && connection) {
         if (poll_initial_state(view, connection)) {
@@ -550,6 +591,7 @@ static void handle_unmap(struct wl_listener *listener, void *data)
 static void handle_commit(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, commit);
+    sync_x11_surface_scale(view->server, view->x11, view->surface_node);
     vela_view_committed(view);
 }
 
@@ -560,7 +602,7 @@ static void handle_associate(struct wl_listener *listener, void *data)
     struct vela_view *view = wl_container_of(listener, view, associate);
     struct wlr_surface *surface = view->x11->surface;
     view->surface_node = vela_surface_node_create(view->tree, surface);
-    view->surface_node->scale = 1.0 / x11_client_scale(view->server);
+    sync_x11_surface_scale(view->server, view->x11, view->surface_node);
     vela_listen(&surface->events.map, &view->map, handle_map);
     vela_listen(&surface->events.unmap, &view->unmap, handle_unmap);
     vela_listen(&surface->events.commit, &view->commit, handle_commit);
