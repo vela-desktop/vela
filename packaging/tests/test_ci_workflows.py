@@ -30,7 +30,10 @@ class CIUpdaterTestOwnership(unittest.TestCase):
         ]
         self.assertEqual(len(ctest_runs), 1)
         ctest_args = ctest_runs[0]
-        self.assertEqual(ctest_args[:3], ["ctest", "--test-dir", "build"])
+        self.assertEqual(ctest_args[0], "ctest")
+        self.assertIn("--test-dir", ctest_args)
+        self.assertGreater(len(ctest_args), ctest_args.index("--test-dir") + 1)
+        self.assertEqual(ctest_args[ctest_args.index("--test-dir") + 1], "build")
         self.assertIn("--output-on-failure", ctest_args)
         self.assertIn("-E", ctest_args)
         self.assertGreater(len(ctest_args), ctest_args.index("-E") + 1)
