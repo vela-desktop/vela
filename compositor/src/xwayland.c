@@ -321,6 +321,18 @@ static void sync_x11_surface_scale(struct vela_server *server,
     struct wlr_xwayland_surface *x11, struct vela_surface_node *node)
 {
     if (!node || !x11 || !x11->surface) return;
+    // In ordinary wlroots compatibility mode we must use exactly the
+    // previous 1:1 Wayland surface-to-scene mapping. The adaptive X11
+    // pixel/buffer ratio applies ONLY to the opt-in KWin-scale experiment.
+    // Steam and Wine already work in compat mode, regardless of whether
+    // XWayland internally commits buffers at scale 1, 2 or via viewports.
+    if (!server->x11_xdg_output) {
+        if (node->scale != 1.0) {
+            node->scale = 1.0;
+            vela_scene_changed(server->scene);
+        }
+        return;
+    }
     const double global_scale = x11_client_scale(server);
     double scale = vela_x11_surface_scene_scale(global_scale,
         x11->width, x11->height,
