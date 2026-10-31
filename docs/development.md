@@ -256,58 +256,75 @@ caffeine status
 
 ### Release promo recordings
 
-`scripts/record-promo.py` extends the before/after capture system to record
-**one Vela build** for authentic release-trailer footage. The original
-`record-before-after.py` CLI and journal output remain unchanged; both use
-`scripts/recording_core.py` for the isolated Vela session, frame timing and
-lossless intermediate capture.
+`scripts/record-promo.py` produces authentic release footage from a **single
+built Vela** with the real Vulkan compositor, Qt shell and Vela applications.
+It shares `scripts/recording_core.py` with the unchanged before/after CLI.
 
 ```sh
-cmake --build build --target vela-compositor vela-shell vela-screen-record vela-input vela-settings
+cmake --build build --target vela-compositor vela-shell vela-screen-record vela-input vela-settings vela-files
 python3 scripts/record-promo.py --list
-python3 scripts/record-promo.py --out ~/videos/vela-beta
-python3 scripts/record-promo.py start-menu window-motion task-view --out ~/videos/vela-beta-short
+python3 scripts/record-promo.py --list-profiles
+python3 scripts/record-promo.py --profile beta-trailer --out ~/videos/vela-beta
+python3 scripts/record-promo.py --profile window-management --no-reel --out ~/videos/windows
+python3 scripts/record-promo.py files snap-assist --resolution 2560x1440 --fps 30 --out ~/videos/highres
+python3 scripts/record-promo.py --resume --out ~/videos/vela-beta
 ```
 
-The default selection records the desktop, Start menu, Quick Settings, window
-maximize/restore, Task View and Settings. Each scene is a fresh headless
-1920×1080@60 session with the real compositor and Qt shell. It produces
-`SCENE.mp4`, `SCENE.webm`, `SCENE.png` and `SCENE-manifest.json`; two or
-more scenes also produce a simple hard-cut `vela-promo.mp4`. Use `--no-reel`
-for individual clips, `--build PATH` for a particular build and `--keep`
-only when raw frame data is needed for debugging (it is very large). Existing
-outputs are protected by default; `--force` explicitly permits replacement.
-Every output is first written to a private staging directory inside the output
-directory and then renamed into place, so a symlink planted at an output path
-during the recording is replaced, never followed.
+The `beta-trailer` profile records Desktop, Start search, Snap Assist, Task
+View, Vela Files, virtual desktop switching, Quick Settings and Colors.
+`ui-overview` and `window-management` provide focused selections, or pass
+scene names explicitly. `window-motion` and `settings` remain available.
+Scenes are isolated from one another and run on a headless Vela output. By
+default the output is 1920×1080@60, exported at 60 fps. Optional
+`--resolution WIDTHxHEIGHT`, `--scale FLOAT` and `--fps 30|60` configure
+the capture; `--speed` sets playback speed and `--hold-scale` sets how
+long scripted editorial holds last. State predicates and action checkpoints
+are separate from these holds.
 
-The capture contains no cursor, narration, music or artificial UI. Add titles,
-sound and transitions in a separate editorial pass; these scripts guarantee
-reproducible **source footage**, not a complete edited marketing film. The
-private D-Bus and PipeWire deliberately disconnect the host's Bluetooth/network
-services, so those Quick Settings tiles may appear unavailable. The compositor
-and Qt clients also receive a temporary private HOME, XDG runtime and state
-directory, and so does the private `dbus-daemon`, which hands its environment
-to any service it activates. The shell and Settings see the synthetic user
-`Alex` and, in Start, a fixed set of made-up apps without brands (plus File
-Explorer and Settings) instead of the apps installed on the host, through
-unprivileged user and mount namespaces that are probed before recording. A
-scene starts only once WirePlumber has chosen a default
-output among the made-up devices and the made-up `Music` app is playing
-silence (seen with `pw-dump`). This is **not** a full network or filesystem
-sandbox: scenes must still avoid private files, host data
-and network access. In particular, do not record an unscripted Settings page
-that may display real device information. Window Motion and Task View require
-the built `vela-settings` app instead of substituting a test window.
-Record a real GPU run and review every clip before publication. The raw
-recording rate at 1080p60 is about 500 MB/s, so ensure ample temporary disk
-space. A supplied build is **not** verified to match the source tree's current
-commit.
+Each scene produces an MP4, WebM, PNG poster and JSON manifest. Manifests
+include capture settings, a SHA-256 fingerprint of the **executed binary
+files** (not an asserted source Git commit), actual presentation/frame counts,
+and a timeline of actions and ready-state checkpoints. A hard-cut
+`vela-promo.mp4` is assembled when multiple scenes are selected; use
+`--no-reel` to keep only separate clips. `--resume` reuses only complete
+scene sets with a matching binary fingerprint and capture settings. Incomplete
+outputs or different settings require a clean destination or explicit
+`--force` without `--resume`.
+
+The promo recorder enables the **real compositor-rendered cursor** by default
+with `VELA_SCREEN_RECORD_CURSOR=1`; disable it with `--no-cursor`.
+The before/after comparison recorder remains cursor-free to keep its
+frame-alignment comparisons unchanged. The capture path uses true presentation
+timestamps rather than generated in-between frames.
+
+The shell, private D-Bus daemon, Settings and Files run under a synthetic
+demo identity (`Alex`), private HOME/XDG paths and private PipeWire sinks and
+Music stream. Start sees fixed made-up applications, while Vela Files opens a
+temporary public demo directory with synthetic documents and SVG artwork.
+The private D-Bus and PipeWire intentionally cannot use the host's
+Bluetooth/network/audio devices, so those Quick Settings tiles may show
+unavailable services. These measures **do not provide a complete network or
+filesystem sandbox**. Review footage for privacy and framing before
+publication. Device/configuration details on arbitrary Settings pages may
+still be sensitive. User and mount namespaces are probed before capture.
+
+`--keep` retains the very large raw source captures. Every export is written
+inside a private staging directory and installed by rename, never by writing
+through a destination symlink; `--force` replaces previous exports. Note
+that individual exports are installed sequentially, not as a single atomic
+transaction. A missing manifest after interruption is therefore considered
+incomplete and not eligible for `--resume`.
+
+This remains a footage recorder, not a video editor: voiceover, soundtrack,
+titles and transitions are separate. Expect about 500 MB/s of temporary raw
+frames at 1080p60, significantly more at higher resolutions. Validate all
+new scenes on real AMD/NVIDIA GPU hardware, especially Snap Assist pointer
+placement, cursor composition and fractional scale.
 
 Run the offline recorder regression tests with:
 
 ```sh
-python -m unittest discover -s scripts/tests -p 'test_record*.py'
+python3 -m unittest discover -s scripts/tests -p 'test_record*.py' -v
 ```
 
 ### Before/after videos
