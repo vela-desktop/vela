@@ -11,7 +11,7 @@
 
 extern char **environ;
 
-pid_t vela_up_spawn(char *const *argv, int *out, bool detach)
+pid_t vela_up_spawn(char *const *argv, int *out, enum vela_up_spawn_mode mode)
 {
     int pipe_fds[2] = { -1, -1 };
     if (out && pipe2(pipe_fds, O_CLOEXEC) < 0) {
@@ -35,8 +35,13 @@ pid_t vela_up_spawn(char *const *argv, int *out, bool detach)
     posix_spawnattr_setsigmask(&attributes, &none);
     posix_spawnattr_setsigdefault(&attributes, &defaults);
     short flags = POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF;
-    if (detach) {
+    if (mode == VELA_UP_SPAWN_DETACH) {
         flags |= POSIX_SPAWN_SETSID;
+    } else {
+        // A process group of its own, led by the child: one kill(-pid)
+        // reaches everything it started, which inherited its stdout.
+        posix_spawnattr_setpgroup(&attributes, 0);
+        flags |= POSIX_SPAWN_SETPGROUP;
     }
     posix_spawnattr_setflags(&attributes, flags);
     pid_t pid;
