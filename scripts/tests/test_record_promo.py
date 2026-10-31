@@ -173,7 +173,7 @@ class PromoTests(unittest.TestCase):
             victim = Path(folder) / "important.txt"
             victim.write_text("do not overwrite")
             take = types.SimpleNamespace(width=1920, height=1080, times=[1.0], presented=1,
-                                         format="bgr0", output_info={})
+                                         start=0.0, end=1.0, format="bgr0", output_info={})
 
             def export(scene, take, where, scratch, fps=60):
                 for suffix in (".mp4", ".webm", ".png"):
