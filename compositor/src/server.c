@@ -134,7 +134,13 @@ static void update_xwayland_scale_candidate(struct vela_server *server)
     if (server->xwayland_apps_scale == scale) {
         return;
     }
+    double previous = server->xwayland_apps_scale;
     server->xwayland_apps_scale = scale;
+    // No impact on the stable compatibility backend. The adapter is the
+    // authoritative state, never the mere presence of an environment flag.
+    if (server->x11_xdg_output) {
+        vela_xwayland_rescale(server, previous);
+    }
     if (getenv("VELA_XWAYLAND_SCALE_TRACE")) {
         wlr_log(WLR_INFO, "Xwayland candidate application scale %.3f (not applied)", scale);
     }
