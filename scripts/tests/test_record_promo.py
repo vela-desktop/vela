@@ -371,6 +371,33 @@ class PromoTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "integrity"):
                 promo.completed_scene("desktop", output, config, True)
 
+    def test_resume_reassembles_when_scene_order_changes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            staging = output / ".staging"
+            staging.mkdir()
+            clips = [output / "desktop.mp4", output / "start-menu.mp4"]
+            for clip in clips:
+                clip.write_bytes(clip.name.encode())
+            config = {"build_fingerprint": "same"}
+            with mock.patch.object(promo.subprocess, "run", side_effect=fake_ffmpeg):
+                promo.assemble_reel(clips, output, staging, config)
+            self.assertTrue(promo.reel_matches(clips, output, config))
+            args = types.SimpleNamespace(no_reel=False, keep=False)
+            with mock.patch.object(promo, "Desktop", side_effect=AssertionError("must not record")):
+                with mock.patch.object(promo, "assemble_reel") as assemble:
+                    promo.record_scenes(["start-menu", "desktop"], Path("/build"), output,
+                                        staging, args, config=config,
+                                        completed={"desktop", "start-menu"})
+                    assemble.assert_called_once()
+                    self.assertEqual([p.stem for p in assemble.call_args.args[0]],
+                                     ["start-menu", "desktop"])
+                with mock.patch.object(promo, "assemble_reel") as assemble:
+                    promo.record_scenes(["desktop", "start-menu"], Path("/build"), output,
+                                        staging, args, config=config,
+                                        completed={"desktop", "start-menu"})
+                    assemble.assert_not_called()
+
     def test_recipe_fingerprint_includes_both_scripts(self):
         with tempfile.TemporaryDirectory() as folder:
             first, second = Path(folder) / "promo.py", Path(folder) / "core.py"
