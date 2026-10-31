@@ -23,8 +23,10 @@ jobs:
     # Match the normal Arch build ABI and its pinned container.
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-coverage
+      CCACHE_MAXSIZE: 750M
       DEPENDENCIES: >-
-        base-devel git cmake shaderc vulkan-headers vulkan-icd-loader gtest python
+        base-devel git cmake ccache shaderc vulkan-headers vulkan-icd-loader gtest python
         wayland wayland-protocols wlroots0.20 libxkbcommon pixman libinput libdrm
         mesa freetype2 harfbuzz fontconfig librsvg cairo zlib pam polkit
         qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt
@@ -38,10 +40,20 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Restore coverage compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache-coverage
+          key: ccache-arch-coverage-debug-v1-${{ github.sha }}
+          restore-keys: |
+            ccache-arch-coverage-debug-v1-
+
       - name: Configure instrumented build
         run: >-
           cmake -S . -B build-coverage
           -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_C_FLAGS=--coverage
           -DCMAKE_CXX_FLAGS=--coverage
           -DCMAKE_EXE_LINKER_FLAGS=--coverage
@@ -50,10 +62,15 @@ jobs:
 
       - name: Build and run CPU tests
         run: |
+          ccache --zero-stats
           cmake --build build-coverage --parallel 2
           # GPU-specific functional/sharpness cases skip or cannot run on hosted runners.
           # The same packaging-updater exception is used by build.yml.
-          ctest --test-dir build-coverage --output-on-failure -E '^packaging-update$'
+          ctest --test-dir build-coverage --output-on-failure --parallel 2 -E '^packaging-update$'
+
+      - name: Coverage compiler cache statistics
+        if: always()
+        run: ccache --show-stats || true
 
       - name: Generate first-party coverage and subsystem summary
         shell: bash
