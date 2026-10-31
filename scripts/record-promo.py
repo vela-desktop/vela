@@ -17,8 +17,10 @@ vela-promo.mp4. No soundtrack, fake UI, or synthetic frame interpolation.
 """
 
 import argparse
+import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -244,11 +246,11 @@ PROFILES = {
 }
 
 
-def export_clip(scene, take, output, scratch):
+def export_clip(scene, take, output, scratch, fps=FPS):
     """Write one scene from true presentation timestamps, not sampled screenshots."""
-    duration = max((scene.lead + take.end - take.start + scene.tail) / scene.speed, 1 / FPS)
+    duration = max((scene.lead + take.end - take.start + scene.tail) / scene.speed, 1 / fps)
     mezzanine = scratch / "clip.mkv"
-    lossless(take, take.frames(duration, scene.speed, scene.lead), mezzanine)
+    lossless(take, take.frames(duration, scene.speed, scene.lead, fps=fps), mezzanine, fps=fps)
     vf = "pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p"
     input_args = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(mezzanine),
                   "-vf", vf, "-an"]
@@ -258,7 +260,7 @@ def export_clip(scene, take, output, scratch):
                     "-movflags", "+faststart", str(mp4)], check=True)
     subprocess.run([*input_args, "-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-row-mt", "1",
                     str(webm)], check=True)
-    poster_at = max(0, min((scene.lead + scene.poster) / scene.speed, duration - 1 / FPS))
+    poster_at = max(0, min((scene.lead + scene.poster) / scene.speed, duration - 1 / fps))
     subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                     "-ss", f"{poster_at:.3f}", "-i", str(mp4), "-frames:v", "1",
                     str(output / f"{scene.name}.png")], check=True)
@@ -300,6 +302,48 @@ def install(path, output):
     return target
 
 
+def build_fingerprint(binaries):
+    """SHA-256 of the executables that actually produced the demo.
+
+    The source commit is not proof of which compiled binaries were executed.
+    """
+    result = hashlib.sha256()
+    for name, path in sorted(binaries.items()):
+        result.update(name.encode() + b"\\0")
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                result.update(chunk)
+        result.update(b"\\0")
+    return result.hexdigest()
+
+
+def capture_config(args, fingerprint):
+    return {"resolution": getattr(args, "resolution", "1920x1080"),
+            "scale": getattr(args, "scale", 1.0),
+            "fps": getattr(args, "fps", FPS),
+            "speed": getattr(args, "speed", 1.0),
+            "hold_scale": getattr(args, "hold_scale", 1.0),
+            "cursor": getattr(args, "cursor", False),
+            "build_fingerprint": fingerprint}
+
+
+def completed_scene(name, output, config, keep):
+    """A resumable scene needs *all* files and matching capture settings."""
+    paths = output_paths(output, [name], False, keep)
+    present = [path.exists() for path in paths]
+    if not any(present):
+        return False
+    if not all(present):
+        raise ValueError(f"{name}: partial outputs from an interrupted run; use a clean directory or --force")
+    try:
+        manifest = json.loads((output / f"{name}-manifest.json").read_text())
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{name}: invalid manifest; cannot resume") from error
+    if manifest.get("capture_config") != config or manifest.get("scene") != name:
+        raise ValueError(f"{name}: capture settings or binary fingerprint changed; cannot resume")
+    return True
+
+
 def output_paths(output, names, make_reel, keep):
     paths = []
     for name in names:
@@ -313,10 +357,23 @@ def output_paths(output, names, make_reel, keep):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
+    parser = argparse.ArgumentParser(description=__doc__.split("\\n\\n")[0],
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("scenes", nargs="*", help="scene names (default: all)")
+    parser.add_argument("scenes", nargs="*", help="explicit scene names override --profile")
     parser.add_argument("--list", action="store_true", help="show available scenes")
+    parser.add_argument("--list-profiles", action="store_true", help="show curated recording profiles")
+    parser.add_argument("--profile", choices=tuple(PROFILES), default="beta-trailer",
+                        help="curated scenes (default: beta-trailer)")
+    parser.add_argument("--resolution", default="1920x1080", metavar="WIDTHxHEIGHT",
+                        help="physical recording dimensions (default: 1920x1080)")
+    parser.add_argument("--scale", type=float, default=1.0, help="headless compositor scale")
+    parser.add_argument("--fps", type=int, choices=(30, 60), default=60,
+                        help="encoded FPS (capture runs at 60 Hz; default: 60)")
+    parser.add_argument("--speed", type=float, default=1.0, help="playback speed multiplier")
+    parser.add_argument("--hold-scale", type=float, default=1.0,
+                        help="multiplier for editorial scene pauses")
+    parser.add_argument("--cursor", action=argparse.BooleanOptionalAction, default=True,
+                        help="capture the real compositor cursor (default: on)")
     parser.add_argument("--out", type=Path, default=Path.cwd() / "promo",
                         help="output directory (default: ./promo)")
     parser.add_argument("--build", type=Path, default=Path(__file__).resolve().parents[1] / "build",
@@ -324,62 +381,104 @@ def main(argv=None):
     parser.add_argument("--no-reel", action="store_true", help="skip combined vela-promo.mp4")
     parser.add_argument("--keep", action="store_true", help="retain very large raw frame captures")
     parser.add_argument("--force", action="store_true", help="overwrite existing output files")
+    parser.add_argument("--resume", action="store_true",
+                        help="reuse complete scenes with matching binary fingerprint and settings")
     args = parser.parse_args(argv)
 
     if args.list:
         for scene in SCENES.values():
-            print(f"{scene.name:16} {scene.about}")
+            print(f"{scene.name:18} {scene.about}")
         return
-
-    names = args.scenes or list(SCENES)
+    if args.list_profiles:
+        for name, scenes in PROFILES.items():
+            print(f"{name}: {', '.join(scenes)}")
+        return
+    names = args.scenes or list(PROFILES[args.profile])
     unknown = [name for name in names if name not in SCENES]
     if unknown:
         parser.error(f"unknown scene(s): {', '.join(unknown)}")
     if len(names) != len(set(names)):
         parser.error("scene names must be unique")
+    if args.resume and args.force:
+        parser.error("--resume and --force cannot be combined")
+    match = re.fullmatch(r"(\\d+)x(\\d+)", args.resolution)
+    if not match:
+        parser.error("--resolution must be WIDTHxHEIGHT")
+    width, height = map(int, match.groups())
+    if not (640 <= width <= 4096 and 480 <= height <= 2160 and width % 2 == 0 and height % 2 == 0):
+        parser.error("resolution must be even dimensions between 640x480 and 4096x2160")
+    if not (0.5 <= args.scale <= 3.0 and 0.25 <= args.speed <= 4.0 and 0.25 <= args.hold_scale <= 4.0):
+        parser.error("scale must be 0.5–3, speed and hold-scale must be 0.25–4")
     output = args.out.resolve()
     planned = output_paths(output, names, not args.no_reel, args.keep)
     symlinks = [str(path) for path in planned if path.is_symlink()]
     if symlinks:
         parser.error("refusing symlink output paths: " + ", ".join(symlinks))
     collisions = [str(path) for path in planned if path.exists()]
-    if collisions and not args.force:
+    if collisions and not (args.force or args.resume):
         parser.error("refusing to overwrite existing output; use --force: " + ", ".join(collisions))
 
     build = args.build.resolve()
     capture.RECORDER = build / "tools" / "vela-screen-record"
-    required = [build / "compositor" / "vela-compositor",
-                build / "shell" / "vela-shell", capture.RECORDER,
-                build / "tools" / "vela-input"]
-    if any(not path.is_file() for path in required):
-        parser.error("build the compositor, shell and recorder first: "
-                     "cmake --build build --target vela-compositor vela-shell vela-screen-record vela-input")
-    with_settings = set(names) & {"window-motion", "task-view", "settings"}
-    if with_settings and not (build / "settings" / "vela-settings").is_file():
-        parser.error("build vela-settings for window-motion, task-view and settings scenes")
-    if not capture.harness.gpu_available():
-        parser.error("no GPU (/dev/dri/renderD*): Vela requires a Vulkan 1.4 GPU")
-    for program in ("ffmpeg", "dbus-daemon", "pipewire", "wireplumber", "pw-cat", "pw-dump", "unshare"):
-        if not shutil.which(program):
-            parser.error(f"required program not found: {program}")
-    try:
-        capture.check_user_namespaces()
-    except RuntimeError as error:
-        parser.error(str(error))
+    binaries = {"compositor": build / "compositor" / "vela-compositor",
+                "shell": build / "shell" / "vela-shell",
+                "recorder": capture.RECORDER,
+                "input": build / "tools" / "vela-input"}
+    if set(names) & {"window-motion", "task-view", "settings", "snap-assist", "virtual-desktops", "colors"}:
+        binaries["settings"] = build / "settings" / "vela-settings"
+    if set(names) & {"files", "task-view", "snap-assist"}:
+        binaries["files"] = build / "explorer" / "vela-files"
+    missing = [name for name, path in binaries.items() if not path.is_file()]
+    if missing:
+        parser.error("missing build target(s): " + ", ".join(missing) +
+                     "; cmake --build build --target vela-compositor vela-shell "
+                     "vela-screen-record vela-input vela-settings vela-files")
+    fingerprint = build_fingerprint(binaries)
+    config = capture_config(args, fingerprint)
+    completed = set()
+    if args.resume:
+        try:
+            completed = {name for name in names if completed_scene(name, output, config, args.keep)}
+        except ValueError as error:
+            parser.error(str(error))
+        reel = output / "vela-promo.mp4"
+        # The reel is regenerated only if new clips are recorded, or it is missing.
+        if reel.exists() and not args.no_reel and len(names) > 1 and not completed == set(names):
+            pass  # --resume explicitly authorizes replacing this generated reel.
+    for name in names:
+        scene = SCENES[name]
+        scene.size = f"{width}x{height}@60"
+        scene.scale = args.scale
+        scene.speed = args.speed
+        scene.hold_scale = args.hold_scale
+
+    if not completed == set(names):
+        if not capture.harness.gpu_available():
+            parser.error("no GPU (/dev/dri/renderD*): Vela requires a Vulkan 1.4 GPU")
+        for program in ("ffmpeg", "dbus-daemon", "pipewire", "wireplumber", "pw-cat", "pw-dump", "unshare"):
+            if not shutil.which(program):
+                parser.error(f"required program not found: {program}")
+        try:
+            capture.check_user_namespaces()
+        except RuntimeError as error:
+            parser.error(str(error))
 
     output.mkdir(parents=True, exist_ok=True)
-    # Everything is written here first, private and unpredictable, then
-    # renamed into place: no write follows a path someone else can plant.
     staging = Path(tempfile.mkdtemp(dir=output, prefix=".vela-promo-staging-"))
     try:
-        record_scenes(names, build, output, staging, args)
+        record_scenes(names, build, output, staging, args, config=config, completed=completed)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def record_scenes(names, build, output, staging, args):
+def record_scenes(names, build, output, staging, args, *, config=None, completed=()):
     clips = []
+    config = config or capture_config(args, "unverified")
     for name in names:
+        if name in completed:
+            clips.append(output / f"{name}.mp4")
+            print(f"{name}: reused matching complete recording", flush=True)
+            continue
         scene = SCENES[name]
         with tempfile.TemporaryDirectory(prefix=f"vela-promo-{name}-") as temporary:
             scratch = Path(temporary)
@@ -387,31 +486,40 @@ def record_scenes(names, build, output, staging, args):
             take_dir.mkdir()
             print(f"{name}: recording a Vela headless session", flush=True)
             with Desktop(build, scene) as desktop:
-                take = record(desktop, scene, take_dir, align=False)
-            if take.width != 1920 or take.height != 1080:
-                raise RuntimeError(f"{name}: expected 1920x1080 capture, got {take.width}x{take.height}")
-            mp4 = export_clip(scene, take, staging, scratch)
+                take = record(desktop, scene, take_dir, align=False,
+                              cursor=getattr(args, "cursor", False))
+            resolution = getattr(args, "resolution", "1920x1080")
+            width, height = map(int, resolution.split("x"))
+            if (take.width, take.height) != (width, height):
+                raise RuntimeError(f"{name}: expected {resolution} capture, got {take.width}x{take.height}")
+            mp4 = export_clip(scene, take, staging, scratch, fps=getattr(args, "fps", FPS))
             manifest = {
                 "scene": name,
+                "capture_config": config,
                 "size": scene.size,
                 "scale": scene.scale,
                 "speed": scene.speed,
+                "duration": round((take.end - take.start) / scene.speed, 3),
+                "timeline": getattr(take, "timeline", []),
                 "frames_captured": len(take.times),
                 "frames_presented": take.presented,
                 "pixel_format": take.format,
                 "output": take.output_info,
                 "recording": "real Vela headless compositor and Qt shell",
-                "source": "user-supplied build directory (commit not independently verified)",
-                "cursor": "not included in ext-image-copy-capture",
+                "source": "binary SHA-256 fingerprint (source commit not independently verified)",
+                "cursor": "compositor cursor" if getattr(args, "cursor", False) else "off",
             }
-            (staging / f"{name}-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+            (staging / f"{name}-manifest.json").write_text(json.dumps(manifest, indent=2) + "\\n")
             if args.keep:
                 shutil.copytree(take_dir, staging / f"{name}-take")
-            for suffix in (".webm", ".png", "-manifest.json", *(("-take",) if args.keep else ())):
+            # Commit the manifest last: an interrupted output set cannot pass --resume.
+            for suffix in (".webm", ".png", ".mp4", *(("-take",) if args.keep else ()),
+                           "-manifest.json"):
                 install(staging / f"{name}{suffix}", output)
-            clips.append(install(mp4, output))
+            clips.append(output / f"{name}.mp4")
         print(f"{name}: MP4, WebM, PNG poster, and manifest in {output}", flush=True)
-    if not args.no_reel and len(clips) > 1:
+    if not args.no_reel and len(clips) > 1 and (
+            len(completed) != len(names) or not (output / "vela-promo.mp4").exists()):
         assemble_reel(clips, output, staging)
         print(f"Reel: {output / 'vela-promo.mp4'}", flush=True)
 
