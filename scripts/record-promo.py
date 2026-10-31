@@ -600,7 +600,7 @@ def record_scenes(names, build, output, staging, args, *, config=None, completed
             print(f"{name}: recording a Vela headless session", flush=True)
             with Desktop(build, scene) as desktop:
                 take = record(desktop, scene, take_dir, align=False,
-                              cursor=getattr(args, "cursor", False))
+                              cursor=getattr(args, "cursor", False), one_keyboard=True)
             resolution = getattr(args, "resolution", "1920x1080")
             width, height = map(int, resolution.split("x"))
             if (take.width, take.height) != (width, height):

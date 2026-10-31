@@ -219,7 +219,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 
 | Tool | Purpose |
 |---|---|
-| `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`. |
+| `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`; `vela-input -` reads tab-separated action lines from stdin on one virtual keyboard. |
 | `vela-windows` | Inspect windows and compositor-visible state. |
 | `vela-screen-dump` | Capture an output or region to PNG. |
 | `vela-screen-record` | Record an output or region frame by frame, each with its presentation time, until SIGINT (`frames.raw` and `frames.txt` in a directory; `VELA_SCREEN_RECORD_DOWNSCALE=2` for full outputs at high refresh rates). |
@@ -275,7 +275,9 @@ The `beta-trailer` profile records Desktop, Start search and real Files launch, 
 View, Vela Files, virtual desktop switching, Quick Settings (including the
 private PipeWire sound page) and Colors. The promo cursor is animated through
 real compositor input events with smooth, time-bounded trajectories, rather
-than drawn or interpolated into the final video.
+than drawn or interpolated into the final video. All of a scene's input goes
+through one `vela-input -` session: a new virtual keyboard per action brings
+its keymap to the seat, and Start or Snap Assist lose the keyboard and close.
 An additional `alt-tab` scene records the actual app switcher, and
 `window-motion` includes maximize, restore and minimize animations.
 `ui-overview` and `window-management` provide focused selections, or pass

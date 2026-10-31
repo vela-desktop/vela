@@ -34,6 +34,43 @@ TAIL = 0.4
 
 # ------------------------------------------------------------------ scenes --
 
+class InputSession:
+    """One vela-input, and so one virtual keyboard, for a whole scene. A new
+    vela-input per action brings its keymap to the seat each time: the
+    focused panel (Start, Snap Assist) loses the keyboard and closes."""
+
+    def __init__(self, vela):
+        self.process = subprocess.Popen([harness.tool("vela-input"), "-"], env=vela.client_env,
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+
+    def __call__(self, *actions):
+        line = "\t".join(map(str, actions))
+        if "\n" in line:
+            raise ValueError("input actions cannot contain newlines")
+        try:
+            self.process.stdin.write(line + "\n")
+            self.process.stdin.flush()
+        except BrokenPipeError:
+            pass  # reported below, with the exit status
+        answer = self.process.stdout.readline().strip()
+        if answer != "OK":
+            raise RuntimeError(f"vela-input refused {actions!r} ({answer or 'exited'}); "
+                               "rebuild vela-input, which reads actions from stdin with '-'")
+
+    def close(self):
+        if self.process.stdin and not self.process.stdin.closed:
+            try:
+                self.process.stdin.close()
+            except BrokenPipeError:
+                pass
+        try:
+            self.process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait()
+        self.process.stdout.close()
+
+
 class PointerController:
     """Move the real input pointer along a smooth, bounded trajectory.
 
@@ -98,7 +135,7 @@ class Scene:
             raise ValueError("specify exactly one of input_actions or command")
         began = time.clock_gettime(time.CLOCK_MONOTONIC)
         if input_actions is not None:
-            desktop.vela.input(*input_actions)
+            getattr(self, "_input", desktop.vela.input)(*input_actions)
         else:
             desktop.vela.command(command)
         if ready is not None:
@@ -115,7 +152,7 @@ class Scene:
         """Move the compositor-drawn cursor before a scripted click."""
         controller = getattr(self, "_pointer_controller", None)
         if controller is None:
-            controller = PointerController(desktop.vela.input)
+            controller = PointerController(getattr(self, "_input", desktop.vela.input))
             self._pointer_controller = controller
         controller.move(x, y, duration)
 
@@ -467,8 +504,20 @@ class Take:
         return self.at(self.start - lead + tick / fps * speed for tick in range(round(duration * fps)))
 
 
-def record(desktop, scene, directory, *, align=True, cursor=False):
-    """Runs a scene with the correctly identified output; always reap the recorder."""
+def record(desktop, scene, directory, *, align=True, cursor=False, one_keyboard=False):
+    """Runs a scene with the correctly identified output; always reap the recorder.
+    one_keyboard: all of the scene's input through one InputSession."""
+    vela = desktop.vela
+    session = InputSession(vela) if one_keyboard else None
+    try:
+        return _record(desktop, scene, directory, align, cursor, session or vela.input)
+    finally:
+        if session:
+            session.close()
+
+
+def _record(desktop, scene, directory, align, cursor, send):
+    scene._input = send
     area, context = scene.prepare(desktop)
     vela = desktop.vela
     selected = vela.state().output
@@ -487,17 +536,18 @@ def record(desktop, scene, directory, *, align=True, cursor=False):
         while not started.wait(0.1):
             if recorder.poll() is not None or time.monotonic() > deadline:
                 raise RuntimeError("vela-screen-record didn't start recording")
-            vela.input("move", 2, 2 + int(time.monotonic() * 10) % 2)
-        frames_before = vela.state().output["frames"]
+            send("move", 2, 2 + int(time.monotonic() * 10) % 2)
+        before = vela.state().output
         time.sleep(max(scene.lead, 0.3))
         start = time.clock_gettime(time.CLOCK_MONOTONIC)
         scene._record_start = start
         scene._events = []
-        scene._pointer_controller = PointerController(vela.input, position=(2, 2))
+        scene._pointer_controller = PointerController(send, position=(2, 2))
         scene.act(desktop, context)
         end = time.clock_gettime(time.CLOCK_MONOTONIC)
         time.sleep(scene.tail)
-        presented = vela.state().output["frames"] - frames_before
+        after = vela.state().output
+        presented = after["frames"] - before["frames"]
         recorder.send_signal(signal.SIGINT)
         if recorder.wait(timeout=30) != 0:
             raise RuntimeError("vela-screen-record failed")

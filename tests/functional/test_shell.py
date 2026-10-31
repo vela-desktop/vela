@@ -675,6 +675,36 @@ class QtShell(RealShell):
         self.check_desktop()
         self.assertFalse(self.mapped(self.vela.state(), "vela-start-menu"))
 
+    def test_one_input_session_keeps_the_menu_open_between_lines(self):
+        """vela-input - (scripts/recording_core.py's InputSession): one
+        keyboard answers OK or ERROR per line and leaves the menu open. A
+        new vela-input per action closes Start in the recorder's isolated
+        session, though not in this one."""
+        session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+
+        def send(*actions):
+            session.stdin.write("\t".join(actions) + "\n")
+            session.stdin.flush()
+            return session.stdout.readline().strip()
+
+        try:
+            self.assertEqual(send("key", "super"), "OK")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-start-menu"), what="Start open")
+            time.sleep(0.5)
+            self.assertEqual(send("type", "Files"), "OK")
+            self.assertEqual(send("nonsense"), "ERROR")
+            time.sleep(0.5)
+            self.assertTrue(self.mapped(self.vela.state(), "vela-start-menu"),
+                            "a later line of the same session closed Start")
+            self.assertEqual(send("key", "Escape"), "OK")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        finally:
+            session.stdin.close()
+            status = session.wait(timeout=5)
+            session.stdout.close()
+        self.assertEqual(status, 1, "a refused line must fail the session")
+
     def test_reopening_during_close_animation_keeps_the_menu_open(self):
         self.vela.input("key", "super", "sleep", "450", "key", "super", "sleep", "40",
                         "key", "super", "sleep", "600")
