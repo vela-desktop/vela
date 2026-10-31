@@ -1477,7 +1477,7 @@ static const struct vela_element *scanout_candidate(struct vela_output_frame *fr
     // yet passed DRM direct-scanout/GPU coverage tests. Composite the whole
     // scene in this mode to avoid flipping between a physical X11 buffer and
     // a differently transformed Wayland framebuffer during refresh.
-    if (vela_env_one("VELA_XWAYLAND_XDG_OUTPUT_EXPERIMENT")) {
+    if (frame->scene->x11_scale_override) {
         note_scanout_reason(frame, "experimental XWayland scale requires compositing");
         return NULL;
     }
