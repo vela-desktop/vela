@@ -268,10 +268,14 @@ python3 scripts/record-promo.py --profile beta-trailer --out ~/videos/vela-beta
 python3 scripts/record-promo.py --profile window-management --no-reel --out ~/videos/windows
 python3 scripts/record-promo.py files snap-assist --resolution 2560x1440 --fps 30 --out ~/videos/highres
 python3 scripts/record-promo.py --resume --out ~/videos/vela-beta
+python3 scripts/verify-promo.py --out ~/videos/vela-beta desktop start-menu snap-assist
 ```
 
 The `beta-trailer` profile records Desktop, Start search, Snap Assist, Task
-View, Vela Files, virtual desktop switching, Quick Settings and Colors.
+View, Vela Files, virtual desktop switching, Quick Settings (including the
+private PipeWire sound page) and Colors. The promo cursor is animated through
+real compositor input events with smooth, time-bounded trajectories, rather
+than drawn or interpolated into the final video.
 An additional `alt-tab` scene records the actual app switcher, and
 `window-motion` includes maximize, restore and minimize animations.
 `ui-overview` and `window-management` provide focused selections, or pass
@@ -284,14 +288,19 @@ long scripted editorial holds last. State predicates and action checkpoints
 are separate from these holds.
 
 Each scene produces an MP4, WebM, PNG poster and JSON manifest. Manifests
-include capture settings, a SHA-256 fingerprint of the **executed binary
-files** (not an asserted source Git commit), actual presentation/frame counts,
+include capture settings, SHA-256 fingerprints of the **executed binary
+files** and of the recording scripts (neither asserts a verified source Git
+commit), SHA-256 and sizes of each export, actual presentation/frame counts,
 and a timeline of actions and ready-state checkpoints. A hard-cut
-`vela-promo.mp4` is assembled when multiple scenes are selected; use
-`--no-reel` to keep only separate clips. `--resume` reuses only complete
-scene sets with a matching binary fingerprint and capture settings. Incomplete
-outputs or different settings require a clean destination or explicit
-`--force` without `--resume`.
+`vela-promo.mp4` and its separate `vela-promo-manifest.json` are assembled
+when multiple scenes are selected. The reel manifest binds the exact ordered
+scene names and MP4 hashes: `--resume` rebuilds a missing, corrupted or stale
+reel even when every single-scene output can be reused. Use `--no-reel` to
+keep only separate clips. `--resume` reuses complete, hash-verified scene
+sets only when the binaries, recording recipe and capture settings match.
+Editing either recording script invalidates the previous takes by design.
+Incomplete/legacy output sets or different settings require a clean
+destination or explicit `--force` without `--resume`.
 
 The promo recorder enables the **real compositor-rendered cursor** by default
 with `VELA_SCREEN_RECORD_CURSOR=1`; disable it with `--no-cursor`.
@@ -321,7 +330,13 @@ This remains a footage recorder, not a video editor: voiceover, soundtrack,
 titles and transitions are separate. Expect about 500 MB/s of temporary raw
 frames at 1080p60, significantly more at higher resolutions. Validate all
 new scenes on real AMD/NVIDIA GPU hardware, especially Snap Assist pointer
-placement, cursor composition and fractional scale.
+placement, cursor composition and fractional scale. Both manual GPU workflows
+have an opt-in `record_promo_smoke` input: it records Desktop, Start and Snap
+Assist at 1280×720 with scales 1.0 and 1.25, then runs
+`scripts/verify-promo.py` to check checksums, frames, dimensions, encoded
+frame rate, action checkpoints and consecutive nearly-black frames. The smoke
+test requires `ffprobe` and `ffmpeg` on the runner. It is not run for normal
+pushes, and does not replace a human review of the release footage.
 
 Run the offline recorder regression tests with:
 
