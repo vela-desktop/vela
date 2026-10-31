@@ -899,16 +899,24 @@ void vela_output_frame_surface_committed(struct vela_output_frame *frame, struct
     }
 #endif
     if (pixman_region32_not_empty(&region)) {
-        bool exact = e->scale_x == floor(e->scale_x) && e->scale_y == floor(e->scale_y)
-            && e->origin_x == floor(e->origin_x) && e->origin_y == floor(e->origin_y);
-        wlr_region_scale_xy(&region, &region, (float)e->scale_x, (float)e->scale_y);
-        pixman_region32_translate(&region, (int)floor(e->origin_x), (int)floor(e->origin_y));
-        if (!exact) {
-            wlr_region_expand(&region, &region, 1); // the filter touches the neighbors too
+        // Use the exact same surface-local -> output-pixel mapping as the
+        // renderer, opaque regions and blur. Scaling the region first and
+        // translating by floor(origin) separately loses the fractional part
+        // of the surface origin (e.g. at 125%) and may under-damage pixels.
+        // The helper rounds each transformed edge OUTWARDS and clamps it to
+        // the displayed element, including for large client damage regions.
+        pixman_region32_t pixels;
+        pixman_region32_init(&pixels);
+        surface_region_to_pixels(e, &region, true, &pixels);
+        if (e->linear) {
+            // Bilinear samples neighbours; Catmull-Rom reaches two source
+            // texels. Conservatively redraw nearby destination pixels too.
+            wlr_region_expand(&pixels, &pixels, 2);
+            pixman_region32_intersect_rect(&pixels, &pixels, e->box.x, e->box.y,
+                (unsigned)e->box.width, (unsigned)e->box.height);
         }
-        pixman_region32_intersect_rect(&region, &region, e->box.x, e->box.y, (unsigned)e->box.width,
-            (unsigned)e->box.height);
-        pixman_region32_union(&frame->scene_damage, &frame->scene_damage, &region);
+        pixman_region32_union(&frame->scene_damage, &frame->scene_damage, &pixels);
+        pixman_region32_fini(&pixels);
     }
     pixman_region32_fini(&region);
     // Even without damage: the app waits for its frame callback.
