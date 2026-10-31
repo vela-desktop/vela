@@ -120,6 +120,8 @@ jobs:
             for tool in gcc g++ gcov gcovr; do
               command -v "$tool" >/dev/null || { echo "::error::Install $tool on the GPU runner for coverage mode"; exit 1; }
             done
+            # Tests skip their throughput floors in an instrumented build.
+            echo "VELA_GPU_COVERAGE=1" >> "$GITHUB_ENV"
             extra_flags=(-DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
               -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage
               -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage)
