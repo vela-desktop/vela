@@ -291,6 +291,7 @@ static bool handle_x11_event(struct wlr_xwayland *xwayland, xcb_generic_event_t 
 // An X11 menu, tooltip or drop-down: no window manager, the app chooses the
 // position (in global coordinates).
 struct unmanaged {
+    struct wl_list link; // server->x11_unmanaged
     struct vela_server *server;
     struct wlr_xwayland_surface *x11;
     struct vela_tree *tree;
@@ -470,6 +471,7 @@ static void handle_unmanaged_destroy(struct wl_listener *listener, void *data)
     vela_unlisten(&menu->set_override_redirect);
     vela_unlisten(&menu->request_below);
     vela_unlisten(&menu->destroy);
+    wl_list_remove(&menu->link);
     if (menu->surface_node) {
         vela_node_destroy(&menu->surface_node->node);
     }
@@ -509,6 +511,7 @@ static struct unmanaged *unmanaged_create(struct vela_server *server, struct wlr
     struct unmanaged *menu = calloc(1, sizeof(*menu));
     menu->server = server;
     menu->x11 = x11;
+    wl_list_insert(&server->x11_unmanaged, &menu->link);
     menu->tree = vela_tree_create(server->layers.x11_popups);
     vela_node_set_enabled(&menu->tree->node, false);
     wl_list_init(&menu->map.link);
@@ -931,6 +934,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
 
 void vela_xwayland_init(struct vela_server *server)
 {
+    wl_list_init(&server->x11_unmanaged);
     wl_list_init(&server->xwayland_ready.link);
     wl_list_init(&server->xwayland_new_surface.link);
     wl_list_init(&server->xwayland_shell_surface.link);
@@ -971,6 +975,47 @@ void vela_xwayland_finish(struct vela_server *server)
     }
 }
 
+// Keep mapped X11 windows at the same Wayland logical positions when the
+// per-client X11 coordinate scale changes. XWayland geometry is reconfigured
+// before its next buffer commit; surfaces retain their previous valid scene
+// transform when the intermediate configure/buffer dimensions disagree.
+void vela_xwayland_rescale(struct vela_server *server, double previous_scale)
+{
+    if (!server->x11_xdg_output || !server->xwayland) return;
+    double new_scale = x11_client_scale(server);
+    if (!(previous_scale > 0.0) || new_scale == previous_scale) return;
+
+    struct vela_view *view;
+    wl_list_for_each (view, &server->views, link) {
+        if (!view->x11 || !view->mapped) continue;
+        // An application-sized X11 window had no explicit logical target.
+        // Preserve the current *logical* dimensions during this transition.
+        if (view->x11_width <= 0) {
+            view->x11_width = (int)lround(view->x11->width / previous_scale);
+        }
+        if (view->x11_height <= 0) {
+            view->x11_height = (int)lround(view->x11->height / previous_scale);
+        }
+        view->x11_sent = (struct wlr_box) { 0 };
+        vela_view_sync_x11(view);
+        sync_x11_surface_scale(server, view->x11, view->surface_node);
+    }
+
+    struct unmanaged *menu;
+    wl_list_for_each (menu, &server->x11_unmanaged, link) {
+        if (!menu->x11 || !menu->x11->surface) continue;
+        int x = (int)lround(menu->tree->node.x * new_scale);
+        int y = (int)lround(menu->tree->node.y * new_scale);
+        int width = (int)lround(menu->x11->width * new_scale / previous_scale);
+        int height = (int)lround(menu->x11->height * new_scale / previous_scale);
+        if (width > 0 && height > 0) {
+            wlr_xwayland_surface_configure(menu->x11, x, y, width, height);
+        }
+        sync_x11_surface_scale(server, menu->x11, menu->surface_node);
+    }
+    vela_scene_changed(server->scene);
+}
+
 void vela_xwayland_sync(struct vela_server *server)
 {
     if (!server->xwayland) {
@@ -1000,6 +1045,12 @@ void vela_xwayland_finish(struct vela_server *server)
 
 void vela_xwayland_sync(struct vela_server *server)
 {
+}
+
+void vela_xwayland_rescale(struct vela_server *server, double previous_scale)
+{
+    (void)server;
+    (void)previous_scale;
 }
 
 #endif
