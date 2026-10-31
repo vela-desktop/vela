@@ -69,7 +69,7 @@ QString kindOf(Direction direction)
 bool same(const QVariant& a, const QVariant& b)
 {
     if (a.typeId() == QMetaType::Double || b.typeId() == QMetaType::Double) {
-        return a.isValid() && b.isValid() && std::abs(a.toDouble() - b.toDouble()) < 0.006;
+        return a.isValid() && b.isValid() && std::abs(a.toDouble() - b.toDouble()) < VolumeSteps::readbackTolerance;
     }
     return a == b;
 }
