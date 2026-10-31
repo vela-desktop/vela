@@ -909,9 +909,24 @@ void vela_output_frame_surface_committed(struct vela_output_frame *frame, struct
         pixman_region32_init(&pixels);
         surface_region_to_pixels(e, &region, true, &pixels);
         if (e->linear) {
-            // Bilinear samples neighbours; Catmull-Rom reaches two source
-            // texels. Conservatively redraw nearby destination pixels too.
-            wlr_region_expand(&pixels, &pixels, 2);
+            // Catmull-Rom can sample two source texels beyond the client
+            // damage; bilinear needs less. Convert that footprint to output
+            // pixels instead of assuming a constant 1-2 px margin at 125%
+            // and other non-integer magnifications.
+            const bool swapped = e->transform & WL_OUTPUT_TRANSFORM_90;
+            double src_width = swapped ? e->src.height : e->src.width;
+            double src_height = swapped ? e->src.width : e->src.height;
+            double pixels_per_texel = src_width > 0.0 && src_height > 0.0
+                ? fmax((double)e->box.width / src_width, (double)e->box.height / src_height)
+                : 1.0;
+            double reach = ceil(2.0 * pixels_per_texel) + 1.0;
+            if (!isfinite(reach) || reach > 128.0) {
+                // Pathological zoom: avoid overflow and simply redraw the
+                // affected element rather than under-damaging its filter.
+                union_box(&pixels, &e->box);
+            } else {
+                wlr_region_expand(&pixels, &pixels, (int)fmax(2.0, reach));
+            }
             pixman_region32_intersect_rect(&pixels, &pixels, e->box.x, e->box.y,
                 (unsigned)e->box.width, (unsigned)e->box.height);
         }
