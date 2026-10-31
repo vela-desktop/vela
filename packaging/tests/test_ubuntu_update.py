@@ -221,6 +221,7 @@ class UbuntuUpdates(UbuntuFixture):
         self.assertEqual(self.calls("sudo"), [])
 
     def test_rejects_other_debian_derivatives(self):
+        self.skip_if_host_pacman()
         self.os_release.write_text('ID=debian\nID_LIKE=ubuntu\nVERSION_ID="26.10"\n')
         result = self.run_update("--check", status=1)
         self.assertIn("unsupported distribution", result.stderr)

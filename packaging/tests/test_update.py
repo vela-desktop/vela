@@ -451,6 +451,12 @@ class UpdateFixture(unittest.TestCase):
         return [call for call in self.calls("sudo")
                 if call["args"][:1] == ["pacman"] and "-U" in call["args"] and not call["built"]]
 
+    def skip_if_host_pacman(self):
+        # With the stub removed, an Arch host's own pacman still selects the
+        # Arch backend for an unknown distribution, as it should there.
+        if shutil.which("pacman", path=self.env["PATH"]):
+            self.skipTest("this host's pacman selects the Arch backend")
+
     def calls(self, tool):
         if not self.calls_file.exists():
             return []
