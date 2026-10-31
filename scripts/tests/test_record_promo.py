@@ -61,11 +61,20 @@ class PromoTests(unittest.TestCase):
             output = Path(folder)
             staging = output / ".staging"
             staging.mkdir()
+            clips = [output / "desktop.mp4", output / "start-menu.mp4"]
+            for index, clip in enumerate(clips):
+                clip.write_bytes(f"scene-{index}".encode())
+            config = {"build_fingerprint": "test"}
             with mock.patch.object(promo.subprocess, "run", side_effect=fake_ffmpeg) as run:
-                promo.assemble_reel([output / "desktop.mp4", output / "start-menu.mp4"], output, staging)
+                promo.assemble_reel(clips, output, staging, config=config)
                 self.assertTrue(run.called)
                 self.assertFalse(list(output.glob(".vela-promo-*.ffconcat")))
             self.assertEqual((output / "vela-promo.mp4").read_bytes(), b"video")
+            self.assertTrue(promo.reel_matches(clips, output, config))
+            self.assertFalse(promo.reel_matches(list(reversed(clips)), output, config))
+            self.assertFalse(promo.reel_matches(clips, output, {"build_fingerprint": "changed"}))
+            (output / "desktop.mp4").write_bytes(b"changed")
+            self.assertFalse(promo.reel_matches(clips, output, config))
 
     def test_existing_playlist_symlink_is_not_touched(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -76,6 +85,7 @@ class PromoTests(unittest.TestCase):
             (output / "vela-promo.mp4").symlink_to(victim)
             staging = output / ".staging"
             staging.mkdir()
+            (output / "desktop.mp4").write_bytes(b"scene")
             with mock.patch.object(promo.subprocess, "run", side_effect=fake_ffmpeg):
                 promo.assemble_reel([output / "desktop.mp4"], output, staging)
             self.assertFalse((output / "vela-promo.mp4").is_symlink())
@@ -319,11 +329,18 @@ class PromoTests(unittest.TestCase):
             self.assertFalse(promo.completed_scene("desktop", output, config, False))
             for path in promo.output_paths(output, ["desktop"], False, False):
                 path.write_bytes(b"clip")
-            (output / "desktop-manifest.json").write_text(
-                promo.json.dumps({"scene": "desktop", "capture_config": config}))
+            manifest = {"scene": "desktop", "capture_config": config}
+            (output / "desktop-manifest.json").write_text(promo.json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "lacks complete output checksums"):
+                promo.completed_scene("desktop", output, config, False)
+            manifest["artifacts"] = promo.capture_artifacts("desktop", output, False)
+            (output / "desktop-manifest.json").write_text(promo.json.dumps(manifest))
             self.assertTrue(promo.completed_scene("desktop", output, config, False))
-            with self.assertRaisesRegex(ValueError, "settings or binary fingerprint changed"):
+            with self.assertRaisesRegex(ValueError, "recording fingerprint changed"):
                 promo.completed_scene("desktop", output, {**config, "cursor": False}, False)
+            (output / "desktop.mp4").write_bytes(b"tampered")
+            with self.assertRaisesRegex(ValueError, "output integrity check failed"):
+                promo.completed_scene("desktop", output, config, False)
             (output / "desktop.png").unlink()
             with self.assertRaisesRegex(ValueError, "partial outputs"):
                 promo.completed_scene("desktop", output, config, False)
@@ -335,6 +352,51 @@ class PromoTests(unittest.TestCase):
                              ["Pictures", "Release Notes.txt", "Roadmap.md"])
             self.assertIn("Vela Desktop", (demo / "Release Notes.txt").read_text())
             self.assertTrue((demo / "Pictures" / "Welcome.svg").exists())
+
+    def test_resume_manifest_validates_kept_raw_capture(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            for suffix in (".mp4", ".webm", ".png"):
+                (output / f"desktop{suffix}").write_bytes(b"export")
+            take = output / "desktop-take"
+            take.mkdir()
+            (take / "frames.raw").write_bytes(b"frames")
+            (take / "frames.txt").write_bytes(b"timestamps")
+            config = {"fingerprint": "test"}
+            manifest = {"scene": "desktop", "capture_config": config,
+                        "artifacts": promo.capture_artifacts("desktop", output, True)}
+            (output / "desktop-manifest.json").write_text(promo.json.dumps(manifest))
+            self.assertTrue(promo.completed_scene("desktop", output, config, True))
+            (take / "frames.txt").write_bytes(b"tampered")
+            with self.assertRaisesRegex(ValueError, "integrity"):
+                promo.completed_scene("desktop", output, config, True)
+
+    def test_recipe_fingerprint_includes_both_scripts(self):
+        with tempfile.TemporaryDirectory() as folder:
+            first, second = Path(folder) / "promo.py", Path(folder) / "core.py"
+            first.write_text("v1")
+            second.write_text("v1")
+            with (mock.patch.object(promo, "__file__", str(first)),
+                  mock.patch.object(promo.capture, "__file__", str(second))):
+                previous = promo.recipe_fingerprint()
+                first.write_text("v2")
+                self.assertNotEqual(previous, promo.recipe_fingerprint())
+
+    def test_smooth_pointer_uses_real_input_and_finishes_at_target(self):
+        send = mock.Mock()
+        pointer = promo.capture.PointerController(send, position=(2, 2))
+        with mock.patch.object(promo.capture.time, "sleep"):
+            pointer.move(100, 50, duration=0.15)
+        positions = [call.args[1:] for call in send.call_args_list]
+        self.assertGreater(len(positions), 2)
+        self.assertEqual(positions[-1], (100, 50))
+        self.assertTrue(all(left[0] <= right[0] and left[1] <= right[1]
+                            for left, right in zip(positions, positions[1:])))
+        self.assertEqual(pointer.position, (100, 50))
+        with self.assertRaises(ValueError):
+            pointer.move(float("nan"), 30)
+        with self.assertRaises(ValueError):
+            pointer.move(1, 1, duration=-1)
 
     def test_profile_flags_do_not_require_a_gpu(self):
         with mock.patch.object(promo.capture.harness, "gpu_available",
