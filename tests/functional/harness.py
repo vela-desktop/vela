@@ -252,10 +252,12 @@ class Session:
                 pass
             time.sleep(interval)
         # Leave out WAYLAND_DEBUG's protocol trace: it buries Vela's own lines.
-        log = "".join(line for line in self.log_text().splitlines(keepends=True)
-                      if not _WAYLAND_TRACE.match(line))
+        # Errors come first, wherever they are: the tail can be all animation.
+        lines = [line for line in self.log_text().splitlines(keepends=True) if not _WAYLAND_TRACE.match(line)]
+        errors = "".join(line for line in lines if "[ERROR]" in line)
         raise TimeoutError(f"after {timeout} s this still isn't true: {what}\nlast state: {last}\n"
-                           f"--- end of the Vela log ---\n{log[-2500:]}")
+                           f"--- Vela's errors ---\n{errors[-2500:]}"
+                           f"--- end of the Vela log ---\n{''.join(lines)[-2500:]}")
 
     def config_path(self, name="vela.conf"):
         return os.path.join(self.env["XDG_CONFIG_HOME"], "vela", name)
