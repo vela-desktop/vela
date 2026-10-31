@@ -303,10 +303,10 @@ class Desktop:
         folder = home / "Desktop" / "Vela Demo"
         folder.mkdir(parents=True)
         (folder / "Release Notes.txt").write_text(
-            "Vela Desktop 0.1 Beta\\nModern. Fluid. Sharp.\\n"
-            "Explore the desktop, windows, and file manager.\\n")
+            "Vela Desktop 0.1 Beta\nModern. Fluid. Sharp.\n"
+            "Explore the desktop, windows, and file manager.\n")
         (folder / "Roadmap.md").write_text(
-            "# Roadmap\\n\\n- Desktop experience\\n- Input and touch\\n- More polish\\n")
+            "# Roadmap\n\n- Desktop experience\n- Input and touch\n- More polish\n")
         pictures = folder / "Pictures"
         pictures.mkdir()
         (pictures / "Welcome.svg").write_text(
@@ -314,7 +314,7 @@ class Desktop:
             'viewBox="0 0 640 360"><rect width="640" height="360" fill="#17344b"/>'
             '<circle cx="320" cy="180" r="95" fill="#58b5d2"/>'
             '<path d="M210 225L320 90l110 135" fill="none" stroke="#fff" '
-            'stroke-width="13" stroke-linecap="round"/></svg>\\n')
+            'stroke-width="13" stroke-linecap="round"/></svg>\n')
         return folder
 
     @staticmethod
