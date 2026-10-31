@@ -618,22 +618,35 @@ void vela_readback_cancel(struct vela_readback *readback)
     if (!renderer->readback_count) remove_readback_timer(renderer);
 }
 
-static void finish_readback(struct vela_readback *readback, bool ok)
+// failure: NULL when the pixels are in place, otherwise why they aren't
+// (in the log: a capture that fails says nothing else to its client).
+static void finish_readback(struct vela_readback *readback, enum wlr_log_importance level, const char *failure)
 {
     void (*done)(void *, bool) = readback->done;
     void *data = readback->data;
-    if (ok) ++readback->renderer->readback_completed;
-    else ++readback->renderer->readback_failed;
+    const bool ok = !failure;
+    if (ok) {
+        ++readback->renderer->readback_completed;
+    } else {
+        ++readback->renderer->readback_failed;
+        wlr_log(level, "Readback %dx%d failed after %.1f ms (row %d): %s", readback->dst->width,
+            readback->dst->height, (double)(vela_now_ns() - readback->started) / 1e6, readback->row, failure);
+    }
     readback->done = NULL;
     vela_readback_cancel(readback);
     done(data, ok);
 }
 
-void vela_renderer_cancel_readbacks(struct vela_renderer *renderer)
+static void fail_readbacks(struct vela_renderer *renderer, enum wlr_log_importance level, const char *failure)
 {
     while (renderer->readback_count > 0) {
-        finish_readback(renderer->readbacks[renderer->readback_count - 1], false);
+        finish_readback(renderer->readbacks[renderer->readback_count - 1], level, failure);
     }
+}
+
+void vela_renderer_cancel_readbacks(struct vela_renderer *renderer)
+{
+    fail_readbacks(renderer, WLR_INFO, "cancelled (screen locked or renderer destroyed)");
 }
 
 struct vela_readback_stats vela_renderer_readback_stats(const struct vela_renderer *renderer)
@@ -658,14 +671,14 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
     struct vela_renderer *renderer = data;
     uint64_t expirations;
     if (!(mask & WL_EVENT_READABLE) || read(fd, &expirations, sizeof(expirations)) != sizeof(expirations)) {
-        vela_renderer_cancel_readbacks(renderer);
+        fail_readbacks(renderer, WLR_ERROR, "timer error");
         return 0;
     }
     uint64_t completed = 0;
     if (vela_vulkan_unusable(renderer->vk) || !vela_vulkan_result(renderer->vk,
             vkGetSemaphoreCounterValue(renderer->vk->device, renderer->timeline, &completed),
             "vkGetSemaphoreCounterValue(readback)")) {
-        vela_renderer_cancel_readbacks(renderer);
+        fail_readbacks(renderer, WLR_ERROR, "GPU timeline unavailable");
         return 0;
     }
     long delay = READBACK_POLL_NS;
@@ -675,7 +688,8 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
         struct vela_readback *readback = renderer->readbacks[renderer->readback_next];
         renderer->readback_next = (renderer->readback_next + 1) % renderer->readback_count;
         if (vela_now_ns() - readback->started > READBACK_TIMEOUT_NS) {
-            finish_readback(readback, false);
+            finish_readback(readback, WLR_ERROR,
+                completed < readback->point ? "GPU copy timed out" : "CPU copy timed out");
             break;
         }
         if (completed < readback->point) continue;
@@ -684,11 +698,14 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
         void *pixels = NULL;
         uint32_t format = 0;
         size_t stride = 0;
-        bool ok = wlr_buffer_begin_data_ptr_access(readback->dst, WLR_BUFFER_DATA_PTR_ACCESS_WRITE,
-            &pixels, &format, &stride);
-        if (ok) {
-            ok = format == readback->format && stride == readback->stride;
-            if (ok) {
+        const char *failure = NULL;
+        if (!wlr_buffer_begin_data_ptr_access(readback->dst, WLR_BUFFER_DATA_PTR_ACCESS_WRITE,
+                &pixels, &format, &stride)) {
+            failure = "destination buffer not accessible";
+        } else {
+            if (format != readback->format || stride != readback->stride) {
+                failure = "destination format or stride changed";
+            } else {
                 do {
                     copy_row((uint8_t *)pixels + (size_t)readback->row * stride,
                         readback->staging.data + (size_t)readback->row * readback->row_bytes,
@@ -700,15 +717,15 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
             // thread. No worker dereferences a Wayland client's mapping.
             wlr_buffer_end_data_ptr_access(readback->dst);
         }
-        if (!ok || readback->row == readback->dst->height) {
-            finish_readback(readback, ok);
+        if (failure || readback->row == readback->dst->height) {
+            finish_readback(readback, WLR_ERROR, failure);
         }
         break;
     }
     // Terminal callbacks can remove the timer when the queue becomes empty.
     // Do not inspect the retired request or arm a removed event source.
     if (renderer->readback_count && !arm_readback_timer(renderer, delay)) {
-        vela_renderer_cancel_readbacks(renderer);
+        fail_readbacks(renderer, WLR_ERROR, "timer error");
     }
     return 0;
 }
