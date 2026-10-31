@@ -9,7 +9,7 @@ case "$package" in vela|vela-git) ;; *) echo "Invalid package identity" >&2; exi
 pacman -Q "$package"
 pacman -Qk "$package"
 pacman -Q xorg-xwayland >/dev/null || fail "Missing Xwayland package"
-test -x /usr/bin/Xwayland || fail "Missing Xwayland binary"
+[[ -x /usr/bin/Xwayland ]] || fail "Missing Xwayland binary"
 for program in vela-compositor vela-shell vela-files vela-settings vela-lock vela-session vela-update vela-report; do
     command -v "$program" >/dev/null || fail "Missing executable: $program"
 done
@@ -66,7 +66,7 @@ done
 if pacman -Q base-devel >/dev/null 2>&1; then
     fail "base-devel should only be installed when a local build is requested"
 fi
-test -x /usr/lib/vela/vela-qt-rebuild-notice || fail 'Missing Qt rebuild notification helper'
+[[ -x /usr/lib/vela/vela-qt-rebuild-notice ]] || fail 'Missing Qt rebuild notification helper'
 grep -Fxq 'Target = qt6-base' /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
     || fail 'Qt upgrade hook must match qt6-base'
 grep -Fxq 'Exec = /usr/lib/vela/vela-qt-rebuild-notice' /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
