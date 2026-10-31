@@ -384,6 +384,26 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-supervisor-children-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.supervisor-children COMMAND vela-supervisor-children-test)
 
+    # Xwayland's own xdg-output: the global filter, the outputs in pixels and
+    # their updates, with headless wlroots outputs and two clients, no GPU.
+    set(xdg_output_client ${VELA_GENERATED_DIR}/xdg-output-unstable-v1-client-protocol.h)
+    add_custom_command(
+        OUTPUT ${xdg_output_client}
+        COMMAND ${WAYLAND_SCANNER} client-header
+            ${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/xdg-output-unstable-v1.xml ${xdg_output_client}
+        DEPENDS ${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/xdg-output-unstable-v1.xml
+        COMMENT "Generating xdg-output-unstable-v1-client-protocol.h")
+    add_executable(vela-x11-root-test tests/x11_root_test.c src/x11_root.c ${VELA_OWN_PROTOCOL_SOURCES}
+        ${VELA_PROTOCOL_HEADERS} ${xdg_output_client})
+    target_include_directories(vela-x11-root-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-x11-root-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
+    target_compile_options(vela-x11-root-test PRIVATE -Wall -Wextra -Wno-unused-parameter
+        -Wno-missing-field-initializers)
+    target_link_libraries(vela-x11-root-test PRIVATE vela-pure PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER
+        PkgConfig::WAYLAND_CLIENT PkgConfig::PIXMAN)
+    set_target_properties(vela-x11-root-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.x11-root COMMAND vela-x11-root-test)
+
     # Which vela-update-daemon the compositor starts, if any.
     add_executable(vela-updates-start-test tests/updates_start_test.c src/updates.c)
     target_include_directories(vela-updates-start-test PRIVATE src ${VELA_GENERATED_DIR})

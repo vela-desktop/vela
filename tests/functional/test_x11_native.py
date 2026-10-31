@@ -10,6 +10,7 @@ pixels that only a 1:1 copy leaves intact."""
 
 import os
 import re
+import shutil
 import subprocess
 import time
 import unittest
@@ -90,16 +91,22 @@ class X11Native(unittest.TestCase):
         self.vela.wait_for(lambda s: len(lines()) >= count, read_state=False, what=f"{count} X11 clicks")
         return tuple(map(int, lines()[count - 1].split()))
 
-    def needs_xrandr(self):
-        try:
-            subprocess.run(["xrandr", "--version"], capture_output=True, check=True)
-        except (OSError, subprocess.CalledProcessError):
-            self.skipTest("xrandr not installed")
+    def needs(self, *programs):
+        missing = [p for p in programs if not shutil.which(p)]
+        if missing:
+            self.skipTest(f"{', '.join(missing)} not installed")
+
+    def resources(self):
+        """The root's resources, one per line."""
+        return subprocess.check_output(["xrdb", "-query"], env=self.env, text=True).splitlines()
+
+    def wait_resources(self, condition, what):
+        self.vela.wait_for(lambda s: condition(self.resources()), timeout=3, read_state=False, what=what)
 
     # ------------------------------------------------------------ tests --
 
     def test_randr_offers_the_native_resolution(self):
-        self.needs_xrandr()
+        self.needs("xrandr", "xrdb")
         self.open_x11(300, 200)
         outputs = self.randr_outputs()
         self.assertEqual(list(outputs), ["HEADLESS-1"])
@@ -107,8 +114,24 @@ class X11Native(unittest.TestCase):
         self.assertEqual((x, y, width, height), (0, 0, 2560, 1440))
         self.assertEqual(modes[0], "2560x1440")
         self.assertEqual(self.x11("--root-size").split(), ["2560", "1440"])
-        resources = subprocess.check_output(["xrdb", "-query"], env=self.env, text=True)
-        self.assertIn("Xft.dpi:\t120", resources)
+        self.assertIn("Xft.dpi:\t120", self.resources())
+
+    def test_replaced_resources_get_xft_dpi_back(self):
+        self.needs("xrdb", "xprop")
+        self.open_x11(300, 200)
+        # Replaced by a client, the last line without its newline: Xft.dpi
+        # comes back on a line of its own.
+        subprocess.run(["xprop", "-root", "-f", "RESOURCE_MANAGER", "8s", "-set", "RESOURCE_MANAGER",
+                        "Vela.test:\tyes"], env=self.env, check=True)
+        self.wait_resources(lambda r: "Vela.test:\tyes" in r and "Xft.dpi:\t120" in r, "Xft.dpi back")
+        # One the user chose stays.
+        subprocess.run(["xrdb", "-load"], input="Xft.dpi: 144\n", env=self.env, text=True, check=True)
+        self.wait_resources(lambda r: "Xft.dpi:\t144" in r, "the user's Xft.dpi")
+        time.sleep(0.3)
+        self.assertNotIn("Xft.dpi:\t120", self.resources())
+        # Removed altogether: ours again.
+        subprocess.run(["xprop", "-root", "-remove", "RESOURCE_MANAGER"], env=self.env, check=True)
+        self.wait_resources(lambda r: "Xft.dpi:\t120" in r, "Xft.dpi after removal")
 
     def test_fullscreen_game_is_drawn_one_to_one(self):
         view, xid, _ = self.open_x11("--checker", "--start-fullscreen", 640, 480)
@@ -171,14 +194,14 @@ class X11Native(unittest.TestCase):
 
     def test_each_output_in_its_own_pixels(self):
         # The user's desk: 1080p at 100% above 1440p at 125%.
-        self.needs_xrandr()
+        self.needs("xrandr")
         self.vela.command("test-output add 1920x1080")
         self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="second output")
         self.vela.randr("--output", "HEADLESS-2", "--pos", "0,-1080", "--scale", "1")
         self.vela.wait_for(lambda s: any(o["name"] == "HEADLESS-1" and o["y"] == 1080 for o in s["outputs"]),
                            what="the layout")
         self.vela.input("move", 1000, 1600) # opens on the 125% output
-        view, xid, _ = self.open_x11(400, 300)
+        view, xid, clicks = self.open_x11(400, 300)
         outputs = self.randr_outputs()
         self.assertEqual(outputs["HEADLESS-1"][:4], (0, 1350, 2560, 1440))
         self.assertEqual(outputs["HEADLESS-1"][4][0], "2560x1440")
@@ -192,6 +215,9 @@ class X11Native(unittest.TestCase):
         w = state.window(view)
         self.assertEqual((w["w"], w["h"]), (320, 240 + BAR))
         self.wait_geometry(xid, (w["x"], w["y"] + BAR, 320, 240))
+        # The pointer follows: one pixel per unit here.
+        self.vela.input("move", w["x"] + 100, w["y"] + BAR + 50, "sleep", "100", "click")
+        self.assertEqual(self.clicks(clicks, 1)[:2], (100, 50))
         self.x11("--fullscreen", xid, "on")
         self.vela.wait_for(lambda s: s.window(view)["fullscreen"], what="fullscreen at 100%")
         self.wait_geometry(xid, (0, 0, 1920, 1080))
@@ -204,9 +230,30 @@ class X11Native(unittest.TestCase):
         w = state.window(view)
         x, y = round(w["x"] * 1.25), 1350 + round((w["y"] + BAR - 1080) * 1.25)
         self.wait_geometry(xid, (x, y, 400, 300))
+        self.vela.input("move", w["x"] + 100, w["y"] + BAR + 50, "sleep", "100", "click")
+        self.assertEqual(self.clicks(clicks, 3), (125, 62, x + 125, y + 62))
         self.x11("--fullscreen", xid, "on")
         self.vela.wait_for(lambda s: s.window(view)["fullscreen"], what="fullscreen at 125%")
         self.wait_geometry(xid, (0, 1350, 2560, 1440))
+
+    def test_initial_size_restores_in_the_pixels_it_was_asked_in(self):
+        # A game opening fullscreen on the 100% output, rescued onto the
+        # 125% one when that is unplugged: back to a window, it gets the
+        # logical size its 640x480 pixels had where it opened.
+        self.vela.command("test-output add 1920x1080")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="second output")
+        self.vela.randr("--output", "HEADLESS-2", "--pos", "2048,0", "--scale", "1")
+        self.vela.input("move", 2500, 500)
+        view, xid, _ = self.open_x11("--ask-size", "--start-fullscreen", 640, 480)
+        state = self.vela.wait_for(lambda s: s.window(view)["fullscreen"], what="fullscreen")
+        self.assertEqual(state.window(view)["output"], "HEADLESS-2")
+        self.vela.command("test-output remove HEADLESS-2")
+        self.vela.wait_for(lambda s: s.window(view)["output"] == "HEADLESS-1", what="rescued at 125%")
+        self.x11("--fullscreen", xid, "off")
+        state = self.vela.wait_for(lambda s: not s.window(view)["fullscreen"], what="windowed")
+        w = state.window(view)
+        self.assertEqual(w["w"], 640)
+        self.wait_geometry(xid, (round(w["x"] * 1.25), round((w["y"] + BAR) * 1.25), 800, 600))
 
     def drag(self, view, dy):
         """Moves the window by dy with Super+drag."""
@@ -214,6 +261,7 @@ class X11Native(unittest.TestCase):
         x, y = w["x"] + 50, w["y"] + 50
         self.vela.input("move", x, y, "keydown", "super", "down", "sleep", "50", "move", x, y + dy // 2,
                         "sleep", "50", "move", x, y + dy, "sleep", "100", "up", "keyup", "super")
+
 
 if __name__ == "__main__":
     unittest.main()

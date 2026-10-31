@@ -10,6 +10,7 @@ extern "C" {
 
 #include <gtest/gtest.h>
 
+#include <string>
 #include <vector>
 
 namespace {
@@ -117,4 +118,43 @@ TEST(X11Space, DpiFollowsTheLargestScale)
     o.push_back(output(0, 1080, 3840, 2160, 1.75));
     EXPECT_EQ(vela_x11_dpi(o.data(), o.size()), 168);
     EXPECT_EQ(vela_x11_dpi(nullptr, 0), 96);
+}
+
+// A logical size rounded down leaves a little more than scale pixels per
+// unit: placed by that density, the next output still doesn't overlap.
+TEST(X11Space, RoundedLogicalSizeStillLeavesNoOverlap)
+{
+    vela_x11_output narrow = output(0, 0, 2561, 1441, 1.5); // 1707x961 units
+    narrow.width = 1707;
+    narrow.height = 960;
+    std::vector<vela_x11_output> o { narrow, output(1707, 0, 1920, 1080, 1.0), output(0, 960, 1920, 1080, 1.0) };
+    vela_x11_place(o.data(), o.size());
+    EXPECT_FALSE(overlap(o[0], o[1]));
+    EXPECT_FALSE(overlap(o[0], o[2]));
+    EXPECT_GE(o[2].root_y, 1441);
+}
+
+TEST(X11Space, ScaleZeroCountsAsOne)
+{
+    std::vector<vela_x11_output> o { output(0, 0, 1920, 1080, 1.0), output(1920, 0, 1920, 1080, 1.0) };
+    o[0].scale = 0.0;
+    vela_x11_place(o.data(), o.size());
+    EXPECT_EQ(o[1].root_x, 1920);
+    vela_x11_place(nullptr, 0); // nothing to place
+}
+
+TEST(X11Space, ResourcesSetDpi)
+{
+    auto set = [](const std::string& resources) {
+        return vela_x11_resources_set_dpi(resources.data(), resources.size());
+    };
+    EXPECT_TRUE(set("Xft.dpi:\t120\n"));
+    EXPECT_TRUE(set("Xcursor.size:\t24\nXft.dpi:\t144")); // last line without newline
+    EXPECT_TRUE(set("Foo: 1\n  Xft.dpi  :96\n"));
+    EXPECT_FALSE(set(""));
+    EXPECT_FALSE(set("Xcursor.size:\t24\n"));
+    EXPECT_FALSE(set("Foo: Xft.dpi:\t120\n")); // a value, not the name
+    EXPECT_FALSE(set("Xft.dpiScale:\t2\n"));
+    EXPECT_FALSE(set("Xft.dpi")); // no colon
+    EXPECT_FALSE(set("Vela.test:\tyesXft.dpi:\t120")); // joined to another line
 }

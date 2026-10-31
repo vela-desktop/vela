@@ -6,7 +6,7 @@
 //
 // Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--backdrop-id-file PATH]
 //                 [--wine-style HEX] [--wine-backdrop] [--checker]
-//                 [--clicks PATH] [WIDTH HEIGHT]
+//                 [--clicks PATH] [--ask-size] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
 //        vela-x11 --state XID below|skip-taskbar on|off
 //        vela-x11 --override-redirect XID on|off
@@ -27,7 +27,8 @@
 // --checker draws a black and white checkerboard of single pixels instead of
 // orange (sharpness: drawn 1:1, it reaches the screen unchanged). --clicks
 // writes a line "X Y ROOT_X ROOT_Y" to PATH for every button press and
-// release: where in the window and in the root the pointer was.
+// release: where in the window and in the root the pointer was. --ask-size
+// asks the window manager for the size before mapping, as Wine does.
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -144,6 +145,7 @@ int main(int argc, char** argv)
     int startFullscreen = 0;
     int wineBackdrop = 0;
     int checker = 0;
+    int askSize = 0;
     const char* clicksFile = NULL;
     int control = (argc == 4
         && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
@@ -167,6 +169,11 @@ int main(int argc, char** argv)
             }
             if (!strcmp(argv[arg], "--checker")) {
                 checker = 1;
+                ++arg;
+                continue;
+            }
+            if (!strcmp(argv[arg], "--ask-size")) {
+                askSize = 1;
                 ++arg;
                 continue;
             }
@@ -328,6 +335,11 @@ int main(int argc, char** argv)
         clicks = fd >= 0 ? fdopen(fd, "w") : NULL;
         if (!clicks) {
             perror("vela-x11: create clicks file");
+            if (fd >= 0) {
+                // Only the file made here: O_EXCL never opens another.
+                close(fd);
+                unlink(clicksFile);
+            }
             xcb_disconnect(connection);
             return 1;
         }
@@ -350,6 +362,10 @@ int main(int argc, char** argv)
     xcb_atom_t protocols = atom(connection, "WM_PROTOCOLS");
     xcb_atom_t deleteWindow = atom(connection, "WM_DELETE_WINDOW");
     xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, protocols, XCB_ATOM_ATOM, 32, 1, &deleteWindow);
+    if (askSize) {
+        const uint32_t size[] = { (uint32_t)width, (uint32_t)height };
+        xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, size);
+    }
     xcb_map_window(connection, window);
     if (menu) {
         xcb_map_window(connection, create(connection, screen, menuX, menuY, 120, 80, 0x00c000, 1));
