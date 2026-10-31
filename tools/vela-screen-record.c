@@ -18,6 +18,7 @@
 // SIGTERM. VELA_SCREEN_RECORD_OUTPUT selects an output;
 // VELA_SCREEN_RECORD_DOWNSCALE=N averages blocks of N×N pixels (a quarter of
 // the data with 2, for full outputs at high refresh rates).
+// VELA_SCREEN_RECORD_CURSOR=1 includes the compositor-rendered cursor.
 //
 // Unlike vela-screen-dump it keeps one ext-image-copy-capture session for the
 // whole recording, with two buffers: the compositor fills one while the other
@@ -605,7 +606,12 @@ int main(int argc, char** argv)
 
     struct ext_image_capture_source_v1* source =
         ext_output_image_capture_source_manager_v1_create_source(sources, output);
-    session = ext_image_copy_capture_manager_v1_create_session(manager, source, 0);
+    // Promo footage can include the authentic compositor cursor. Comparisons
+    // keep their original cursor-free output unless explicitly opted in.
+    const char* cursor = getenv("VELA_SCREEN_RECORD_CURSOR");
+    uint32_t options = cursor && !strcmp(cursor, "1")
+        ? EXT_IMAGE_COPY_CAPTURE_MANAGER_V1_OPTIONS_PAINT_CURSORS : 0;
+    session = ext_image_copy_capture_manager_v1_create_session(manager, source, options);
     ext_image_copy_capture_session_v1_add_listener(session, &sessionListener, NULL);
 
     // Keep termination signals pending between stopping checks. ppoll()
