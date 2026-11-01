@@ -60,6 +60,25 @@ Item {
             compare(card.description, "")
         }
 
+        function test_next_automatic_check() {
+            const next = find("nextCheck")
+            verify(next.visible)
+            verify(next.text.startsWith("Next automatic check: "))
+            Updates.nextCheck = new Date(NaN)
+            verify(!next.visible)
+            Updates.waitingForNetwork = true
+            verify(next.visible)
+            compare(next.text, "Next check: waiting for a fully connected, unmetered network")
+            Updates.autoCheck = false
+            verify(!next.visible)
+            Updates.autoCheck = true
+            Updates.waitingForNetwork = false
+            Updates.nextCheck = new Date(Date.now() + 3600000)
+            verify(next.visible)
+            Updates.activity = "checking"
+            verify(!next.visible)
+        }
+
         function test_update_available_installs() {
             Updates.status = "update-available"
             Updates.version = "0.1.1"
