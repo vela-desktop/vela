@@ -171,11 +171,12 @@ server says: optimistic values exist only in the Qt layer (§5.4).
 - **Grid:** `volumesteps.h` stays as it is: 2 points, or the device's own
   positions when farther apart. The step comes from the model, so the
   blocking read in `deviceIntervals()` goes away.
-  - A value within 5% of a position counts as on it. A sound card's
-    hardware mixer moves in dB steps, and PipeWire reports the step it
-    used: on a FiiO K11 (1 dB steps), 96% comes back as 96.0007%, and a
-    tighter rule stepped down from there to 96% again, so the knob stopped
-    after one or two steps (found in A6 on real hardware).
+  - Readback within 0.6 percentage points of a grid position counts as on
+    that position (the same tolerance as the optimistic-write confirmation).
+    A sound card's hardware mixer may report e.g. 59.6% for a requested 60%,
+    or 96.0007% for 96% on a FiiO K11 in 1 dB steps. The next knob/wheel
+    event must move to 62% / 98%, not request 60% / 96% again. Values farther
+    off-grid still move to the next grid position in the chosen direction.
 - **Maximum 100%.** Vela never writes more than 1.0. A value above 100% set
   by another program is shown as 100% (slider at the end) and left alone;
   the first step down lands back on the grid.
