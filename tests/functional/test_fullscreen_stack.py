@@ -79,6 +79,34 @@ class FullscreenStack(unittest.TestCase):
             vela.wait_for(lambda s: s["focused"] == fullscreen, what="Alt+Tab to game")
             self.assertEqual(vela.pixels().at(x, y), game_pixel)
 
+    def test_covered_window_border_does_not_resize_under_game(self):
+        # The game sits in the fullscreen layer, above the windows layer that
+        # resize_border_at() walks: a window under it must not answer for its
+        # invisible border, neither the arrows nor a drag taking focus.
+        for x11 in (False, True):
+            with self.subTest(x11=x11), Session(size="1280x720@60") as vela:
+                window = vela.open_window(300, 200, decorated=True)
+                before = vela.state().window(window)
+                fullscreen = game(vela, x11=x11)
+                grab_x, grab_y = before["x"] + before["w"] + 4, before["y"] + before["h"] // 2
+
+                def drag():
+                    vela.input("move", grab_x, grab_y, "sleep", "50", "down", "sleep", "50",
+                               "move", grab_x + 50, grab_y, "sleep", "50", "move", grab_x + 100, grab_y,
+                               "sleep", "100", "up")
+
+                drag()
+                time.sleep(0.2)
+                state = vela.state()
+                self.assertEqual(state.window(window)["w"], before["w"])
+                self.assertEqual(state["focused"], fullscreen)
+                self.assertTrue(state.window(fullscreen)["fullscreen"])
+                # In front of the game again, the window has its border back.
+                vela.keys("alt+Tab")
+                vela.wait_for(lambda s: s["focused"] == window, what="Alt+Tab to the window")
+                drag()
+                vela.wait_for(lambda s: s.window(window)["w"] == before["w"] + 100, what="100 wider")
+
     def test_background_windows_stay_visible_when_game_loses_foreground(self):
         with Session(size="1280x720@60") as vela:
             first = vela.open_window(220, 180, decorated=True)

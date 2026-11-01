@@ -68,23 +68,12 @@ static const char *resize_cursor(uint32_t edges)
     return left ? "w-resize" : "e-resize";
 }
 
-// The invisible borders to resize windows with Vela's bar, like Windows 11:
-// the window and the edges (WLR_EDGE_*) under the point, or NULL.
-static struct vela_view *resize_border_at(struct vela_server *server, double lx, double ly, uint32_t *edges)
+// The windows of `tree` from the topmost: true at the first one covering the
+// point or with its border there (*found: that window, NULL if it covers it).
+static bool border_in(struct vela_tree *tree, double lx, double ly, struct vela_view **found, uint32_t *edges)
 {
-    *edges = 0;
-    // Above the windows (taskbar, menus, panels): no borders.
-    struct vela_hit hit = vela_scene_at(server->scene, lx, ly);
-    struct vela_owner *owner = hit.owner;
-    if (owner && owner->kind == VELA_OWNER_LAYER) {
-        uint32_t layer = ((struct vela_layer_surface *)owner)->layer;
-        if (layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP || layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
-            return NULL;
-        }
-    }
-    // From the topmost window: the first covering the point wins.
     struct vela_node *child;
-    wl_list_for_each_reverse (child, &server->layers.windows->children, link) {
+    wl_list_for_each_reverse (child, &tree->children, link) {
         struct vela_view *view = view_of(child->data);
         if (!view || !child->enabled || !view->mapped || view->minimized) {
             continue;
@@ -93,7 +82,8 @@ static struct vela_view *resize_border_at(struct vela_server *server, double lx,
         bool resizable = view->decoration && !view->maximized && !view->fullscreen && vela_view_resizable(view);
         bool inside = lx >= f.x && lx < f.x + f.width && ly >= f.y && ly < f.y + f.height;
         if (inside && !(resizable && ly < f.y + BORDER_INNER)) {
-            return NULL; // the window covers the point
+            *found = NULL; // the window covers the point
+            return true;
         }
         if (!resizable || lx < f.x - BORDER_BAND || lx >= f.x + f.width + BORDER_BAND || ly < f.y - BORDER_BAND
             || ly >= f.y + f.height + BORDER_BAND) {
@@ -113,7 +103,33 @@ static struct vela_view *resize_border_at(struct vela_server *server, double lx,
         }
         *edges = (top ? WLR_EDGE_TOP : 0) | (bottom ? WLR_EDGE_BOTTOM : 0) | (left ? WLR_EDGE_LEFT : 0)
             | (right ? WLR_EDGE_RIGHT : 0);
-        return *edges ? view : NULL;
+        *found = *edges ? view : NULL;
+        return true;
+    }
+    return false;
+}
+
+// The invisible borders to resize windows with Vela's bar, like Windows 11:
+// the window and the edges (WLR_EDGE_*) under the point, or NULL.
+static struct vela_view *resize_border_at(struct vela_server *server, double lx, double ly, uint32_t *edges)
+{
+    *edges = 0;
+    // Above the windows (taskbar, menus, panels): no borders.
+    struct vela_hit hit = vela_scene_at(server->scene, lx, ly);
+    struct vela_owner *owner = hit.owner;
+    if (owner && owner->kind == VELA_OWNER_LAYER) {
+        uint32_t layer = ((struct vela_layer_surface *)owner)->layer;
+        if (layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP || layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
+            return NULL;
+        }
+    }
+    // From the topmost window: the first covering the point wins. A game in
+    // front has its own layer, above the windows: the borders of the ones
+    // it covers are not there.
+    struct vela_view *view = NULL;
+    if (border_in(server->layers.fullscreen, lx, ly, &view, edges)
+        || border_in(server->layers.windows, lx, ly, &view, edges)) {
+        return view;
     }
     return NULL;
 }
