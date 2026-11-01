@@ -51,7 +51,11 @@ inline double step(double volume, int direction, int deviceIntervals)
     const int n = grid(deviceIntervals);
     const double position = std::clamp(volume, 0.0, 1.0) * n;
     const double nearest = std::round(position);
-    const double aligned = std::abs(position - nearest) < readbackTolerance * n ? nearest : position;
+    // A device with more positions than the grid sets the one nearest to
+    // what was asked: up to half of its own step away (60% on 64 intervals
+    // reads back as 59.375%).
+    const double deviceError = deviceIntervals > n ? 0.5 * n / deviceIntervals : 0.0;
+    const double aligned = std::abs(position - nearest) < readbackTolerance * n + deviceError ? nearest : position;
     const double next = direction > 0 ? std::floor(aligned) + 1 : std::ceil(aligned) - 1;
     return std::clamp(next, 0.0, double(n)) / n;
 }
