@@ -74,6 +74,10 @@ class Updates : public QObject {
     Q_PROPERTY(bool needsRelogin READ needsRelogin NOTIFY changed)
     // Automatic checks, or what was asked for them.
     Q_PROPERTY(bool autoCheck READ autoCheck NOTIFY changed)
+    // Configured cadence in hours and the daemon's next scheduled deadline.
+    Q_PROPERTY(uint checkInterval READ checkInterval NOTIFY changed)
+    Q_PROPERTY(QDateTime nextCheck READ nextCheck NOTIFY changed)
+    Q_PROPERTY(bool waitingForNetwork READ waitingForNetwork NOTIFY changed)
     // The commit of an update to tell the user about, once (§6.4); empty
     // when there's none.
     Q_PROPERTY(QString announce READ announce NOTIFY changed)
@@ -108,6 +112,9 @@ public:
     QDateTime installFinished() const;
     bool needsRelogin() const { return m_needsRelogin; }
     bool autoCheck() const { return m_autoCheckAsked.value(m_autoCheck); }
+    uint checkInterval() const { return m_checkIntervalAsked.value(m_checkInterval); }
+    QDateTime nextCheck() const;
+    bool waitingForNetwork() const { return m_waitingForNetwork; }
     QString announce() const { return m_announce; }
     QString error() const { return m_error; }
 
@@ -119,6 +126,7 @@ public:
     // commit, source, tag; all optional, empty ones left out.
     Q_INVOKABLE void install(const QVariantMap& options = {});
     Q_INVOKABLE void setAutoCheck(bool on);
+    Q_INVOKABLE void setCheckInterval(uint hours);
     // The update `commit` was told to the user (§6.4).
     Q_INVOKABLE void announced(const QString& commit);
     Q_INVOKABLE void clearError();
@@ -170,9 +178,13 @@ private:
     qint64 m_installFinished = 0;
     bool m_needsRelogin = false;
     bool m_autoCheck = true;
+    uint m_checkInterval = 24;
+    qint64 m_nextCheck = 0;
+    bool m_waitingForNetwork = false;
     QString m_announce;
     QString m_error;
     Requested m_autoCheckAsked;
+    Requested m_checkIntervalAsked;
 };
 
 } // namespace vela::updates
