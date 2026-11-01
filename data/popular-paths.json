@@ -1,15 +1,15 @@
 {
-  "collected_at": "2026-10-31T09:38:01+00:00",
+  "collected_at": "2026-11-01T10:27:19+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 397,
+      "count": 387,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 203
+      "uniques": 186
     },
     {
-      "count": 369,
+      "count": 277,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
       "uniques": 6
@@ -28,38 +28,38 @@
     },
     {
       "count": 34,
-      "path": "/vela-desktop/vela/issues",
-      "title": "/issues",
-      "uniques": 11
-    },
-    {
-      "count": 34,
       "path": "/vela-desktop/vela/actions/workflows/gpu-nvidia.yml",
       "title": "/actions/workflows/gpu-nvidia.yml",
       "uniques": 2
     },
     {
-      "count": 33,
+      "count": 29,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 12
+      "uniques": 9
     },
     {
-      "count": 24,
-      "path": "/vela-desktop/vela/forks",
-      "title": "/forks",
-      "uniques": 2
+      "count": 26,
+      "path": "/vela-desktop/vela/issues",
+      "title": "/issues",
+      "uniques": 9
     },
     {
       "count": 21,
-      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
-      "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 20
+      "path": "/vela-desktop/vela/forks",
+      "title": "/forks",
+      "uniques": 3
     },
     {
-      "count": 15,
-      "path": "/vela-desktop/vela/pull/45",
-      "title": "/pull/45",
+      "count": 20,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
+      "title": "/blob/main/docs/screenshots/start.webp",
+      "uniques": 19
+    },
+    {
+      "count": 14,
+      "path": "/vela-desktop/vela/pull/141",
+      "title": "/pull/141",
       "uniques": 1
     }
   ],
