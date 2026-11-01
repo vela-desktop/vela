@@ -136,6 +136,12 @@ static struct vela_view *resize_border_at(struct vela_server *server, double lx,
     return view;
 }
 
+static void set_cursor(struct vela_server *server, const char *name)
+{
+    server->interaction->cursor = name;
+    wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, name);
+}
+
 static void unhover_decoration(struct vela_interaction *interaction)
 {
     struct vela_view *hovered = interaction->hovered_decoration;
@@ -153,13 +159,14 @@ static void lock_pointer_focus(struct vela_server *server, uint32_t time_msec, b
     struct wlr_cursor *cursor = server->cursor;
     struct vela_hit hit = vela_scene_at(server->scene, cursor->x, cursor->y);
     if (hit.surface) {
+        server->interaction->cursor = NULL;
         wlr_seat_pointer_notify_enter(seat, hit.surface, hit.sx, hit.sy);
         if (notify_motion) {
             wlr_seat_pointer_notify_motion(seat, time_msec, hit.sx, hit.sy);
         }
     } else {
         wlr_seat_pointer_clear_focus(seat);
-        wlr_cursor_set_xcursor(cursor, server->cursor_manager, "default");
+        set_cursor(server, "default");
     }
 }
 
@@ -269,7 +276,7 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
             interaction->hovered_decoration = NULL;
             wlr_seat_pointer_clear_focus(seat);
             vela_input_constrain(input, NULL);
-            wlr_cursor_set_xcursor(cursor, server->cursor_manager, resize_cursor(edges));
+            set_cursor(server, resize_cursor(edges));
             return;
         }
     }
@@ -292,14 +299,59 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
         vela_snap_hover_maximize(server, NULL);
     }
     if (!hit.surface) {
-        wlr_cursor_set_xcursor(cursor, server->cursor_manager, "default");
+        set_cursor(server, "default");
         wlr_seat_pointer_clear_focus(seat);
         vela_input_constrain(input, NULL);
         return;
     }
+    interaction->cursor = NULL;
+    interaction->pointer_sx = hit.sx;
+    interaction->pointer_sy = hit.sy;
     wlr_seat_pointer_notify_enter(seat, hit.surface, hit.sx, hit.sy);
     wlr_seat_pointer_notify_motion(seat, time_msec, hit.sx, hit.sy);
     vela_input_constrain(input, hit.surface);
+}
+
+void vela_interact_rebase(struct vela_server *server)
+{
+    struct vela_interaction *interaction = server->interaction;
+    struct wlr_cursor *cursor = server->cursor;
+    struct wlr_seat *seat = server->seat;
+    // Only a pointer at rest: a press, a drag or a Move/Size keeps what it
+    // started on, and the lock screen retargets its own (lock.c).
+    if (server->locked || server->cursor_mode != VELA_CURSOR_PASSTHROUGH || interaction->keyboard.view
+        || seat->pointer_state.button_count > 0 || seat->drag || wlr_seat_pointer_has_grab(seat)
+        || server->input->implicit_grab.surface) {
+        return;
+    }
+    // What vela_interact_motion() would choose here, without telling the apps
+    // a motion that didn't happen when nothing changed.
+    uint32_t edges = 0;
+    const char *wanted = NULL;
+    struct wlr_surface *surface = NULL;
+    bool moved = false;
+    struct vela_view *decorated = NULL;
+    if (resize_border_at(server, cursor->x, cursor->y, &edges)) {
+        wanted = resize_cursor(edges);
+    } else {
+        struct vela_hit hit = vela_scene_at(server->scene, cursor->x, cursor->y);
+        surface = hit.surface;
+        // The same window, moved under the pointer: the app must know where
+        // in it the pointer is now (X11 apps place their clicks with it).
+        moved = surface && (hit.sx != interaction->pointer_sx || hit.sy != interaction->pointer_sy);
+        if (!surface) {
+            wanted = "default";
+            decorated = view_of(hit.owner);
+            if (decorated && !decorated->decoration) {
+                decorated = NULL;
+            }
+        }
+    }
+    if (wanted != interaction->cursor || surface != seat->pointer_state.focused_surface || moved
+        || decorated != interaction->hovered_decoration) {
+        vela_interact_motion(server, (uint32_t)(vela_now_ns() / 1000000));
+        wlr_seat_pointer_notify_frame(seat); // as after a real motion
+    }
 }
 
 static void decoration_press(struct vela_server *server, struct vela_view *view, uint32_t time_msec)
@@ -578,7 +630,7 @@ void vela_interact_begin_keyboard(struct vela_server *server, struct vela_view *
         wlr_cursor_warp(cursor, NULL, frame.x + frame.width / 2.0, frame.y + frame.height / 2.0);
     }
     wlr_seat_pointer_clear_focus(server->seat);
-    wlr_cursor_set_xcursor(cursor, server->cursor_manager, mode == VELA_CURSOR_MOVE ? "move" : "all-scroll");
+    set_cursor(server, mode == VELA_CURSOR_MOVE ? "move" : "all-scroll");
 }
 
 static void keyboard_key(struct vela_server *server, xkb_keysym_t sym, uint32_t modifiers)
@@ -665,7 +717,7 @@ static void finish_keyboard(struct vela_server *server, bool confirm)
     memset(&interaction->keyboard, 0, sizeof(interaction->keyboard));
     server->cursor_mode = VELA_CURSOR_PASSTHROUGH;
     server->grabbed = NULL;
-    wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, "default");
+    set_cursor(server, "default");
     vela_interact_motion(server, 0);
 }
 

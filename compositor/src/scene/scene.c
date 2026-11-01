@@ -342,9 +342,21 @@ struct vela_scene *vela_scene_create(void)
 
 void vela_scene_destroy(struct vela_scene *scene)
 {
+    if (scene->rearranged_idle) {
+        wl_event_source_remove(scene->rearranged_idle);
+    }
     wl_list_remove(&scene->new_surface.link);
     vela_node_destroy(&scene->root->node);
     free(scene);
+}
+
+static void rearranged(void *data)
+{
+    struct vela_scene *scene = data;
+    scene->rearranged_idle = NULL;
+    if (scene->rearranged) {
+        scene->rearranged(scene->rearranged_data);
+    }
 }
 
 void vela_scene_changed(struct vela_scene *scene)
@@ -352,6 +364,9 @@ void vela_scene_changed(struct vela_scene *scene)
     struct vela_output_frame *frame;
     wl_list_for_each (frame, &scene->frames, link) {
         vela_output_schedule_frame(frame->owner);
+    }
+    if (scene->rearranged && !scene->rearranged_idle && scene->event_loop) {
+        scene->rearranged_idle = wl_event_loop_add_idle(scene->event_loop, rearranged, scene);
     }
 }
 

@@ -119,6 +119,12 @@ struct vela_scene {
     struct wlr_linux_dmabuf_v1 *linux_dmabuf;
     // For the explicit sync release points.
     struct wl_event_loop *event_loop;
+    // Called once the dispatch in progress is over, after a change: what is
+    // under the cursor may be something else (a window opened, closed, went
+    // fullscreen, a menu appeared). Once for all the changes of a dispatch.
+    void (*rearranged)(void *data);
+    void *rearranged_data;
+    struct wl_event_source *rearranged_idle;
     // The acrylic tint of blurs (premultiplied sRGB): Windows 11's dark theme
     // one, or the light one when the shell is light.
     struct wlr_render_color acrylic_tint;
