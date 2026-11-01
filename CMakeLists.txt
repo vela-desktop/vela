@@ -156,6 +156,10 @@ if(VELA_PACKAGE_DEB)
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    # Stripped, as makepkg and rpmbuild do: with debug info the 0.1.0 DEB was
+    # 78 MiB. Build IDs stay, so a backtrace can still be matched to the binary.
+    set(CPACK_STRIP_FILES ON)
+    set(CPACK_DEBIAN_COMPRESSION_TYPE "xz")
     # Executables, icon themes and launch scripts require these at runtime
     # even when not linked as ELF libraries (shlibdeps handles the rest).
     # Vela uses Breeze by default; Qt needs the SVG icon engine to render it.
