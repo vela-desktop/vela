@@ -92,7 +92,9 @@ python3 -I "$STATE_HELPER" end --pid $$ --action install --channel experimental 
 // A terminal that, like Konsole handing off to a running instance,
 // returns at once; it runs the command only when terminal-runs exists.
 inline const char fakeTerminal[] = R"SH(#!/bin/sh
-printf '%s\n' "$@" > "$FAKE/terminal"
+# Whole or not at all: the tests wait for the file, then read it.
+printf '%s\n' "$@" > "$FAKE/terminal.new"
+mv "$FAKE/terminal.new" "$FAKE/terminal"
 if [ -f "$FAKE/terminal-runs" ]; then
     "$@" < /dev/null > /dev/null 2>&1 &
 fi
