@@ -9,8 +9,8 @@ code: decisions are made here, and the code follows them.
 > **Status:** U0 (this design), U1 (`vela-update`'s report), U2 (the
 > daemon), U3 (the Qt client), U4 (the Settings page), U5 (the shell's
 > notifications) and U6 (packaging and docs) are done; U7, real updates on
-> real systems, is done in containers and remains in a real session. See
-> §11.
+> real systems, is done in containers, in a real session and against the
+> `v0.1.0` Beta release. See §11.
 
 ## 1. What there is today
 
@@ -426,7 +426,7 @@ Experimental's version carries its commit, here and on the page
 | U4 | the Settings page | done |
 | U5 | the shell's notifications | done |
 | U6 | packaging (`xdg-terminal-exec`, libexec files), docs, roadmap, release-channels | done |
-| U7 | real updates on real systems | containers done; a real session remains |
+| U7 | real updates on real systems | done |
 
 U7 in containers (Arch, Fedora 44, Ubuntu 26.10, 30 October 2026): the
 alpha of `6661621` installed with its own `vela-update`; that
@@ -436,15 +436,18 @@ without a window, checking again after it, and an install whose terminal
 is closed halfway (SIGHUP while building) ending `cancelled` with the
 package unchanged and no `run.json` left; Beta's check ending
 `not-found`. All passed. It found that cosign 3 verified none of the
-signed packages (fixed: `--type slsaprovenance1`). Still to do by hand,
-in a Vela session: a real terminal, "Sign out to finish", and Beta once
-`v0.1.0` exists.
+signed packages (fixed: `--type slsaprovenance1`). By hand, in a Vela
+session: a real terminal and "Sign out to finish", both fine.
+
+Beta (31 October 2026): in the same three containers, the installed
+`vela-update-beta` pointed at the release rehearsal's fork found `v0.1.0`,
+verified and installed it over `vela-git` without a terminal, then
+reported `up-to-date`; the verifier refused the wrong repository, the
+wrong commit and tampered bytes. Against the real release, the Beta check
+finds `v0.1.0` and its notes.
 
 ## 12. Open questions and risks
 
-- **The Beta channel has no release yet.** Until `v0.1.0` exists the
-  Beta check ends with `not-found`; the page says that no Beta release
-  is published yet.
 - **Fedora without cosign builds locally**, and `vela-update` asks for
   `rpm-build` and `dnf5-plugins` first (`missing-tool`), where Arch
   installs `base-devel` itself.

@@ -105,12 +105,12 @@ Ubuntu **26.10** has a Beta `vela` DEB and an Experimental, **locally built**
 releases are not supported, and Ubuntu support is newer and less tested than
 Arch and Fedora. Keep a working desktop or TTY available.
 
-For Beta, install a trusted Cosign executable first, then bootstrap from a
-trusted Vela checkout:
+For Beta, install Cosign first (Ubuntu 26.10 has it in universe), then
+bootstrap from a trusted Vela checkout:
 
 ```sh
 sudo apt update
-sudo apt install git ca-certificates sudo
+sudo apt install git ca-certificates sudo cosign
 git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update --channel beta
 ```
