@@ -296,7 +296,7 @@ bus. Properties change with `PropertiesChanged`.
 | `Source` | s | Experimental's source (`updates.conf`), or the default |
 | `LastCheck` | x | Unix time, 0 if never |
 | `CheckInterval` | u | Configured interval in hours (`6`, `12`, `24`, `48`, `168`) |
-| `NextCheck` | x | Unix time of the daemon\'s scheduled next automatic check, or 0 when none |
+| `NextCheck` | x | Unix time of the daemon's scheduled next automatic check, or 0 when none |
 | `WaitingForNetwork` | b | An automatic check is due but blocked by network policy |
 | `Error` | (ss) | the last check's code and message, or empty |
 | `InstallResult` | s | the last install's `result`, or empty |
