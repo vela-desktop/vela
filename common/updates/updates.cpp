@@ -68,6 +68,7 @@ Updates::Updates(const QDBusConnection& bus, QObject* parent)
     : QObject(parent)
     , m_bus(bus)
     , m_autoCheckAsked([this] { emit changed(); })
+    , m_checkIntervalAsked([this] { emit changed(); })
 {
     forget();
     auto* watcher = new QDBusServiceWatcher(service, m_bus, QDBusServiceWatcher::WatchForOwnerChange, this);
@@ -90,6 +91,11 @@ QString Updates::versionText() const
 QDateTime Updates::lastCheck() const
 {
     return m_lastCheck > 0 ? QDateTime::fromSecsSinceEpoch(m_lastCheck) : QDateTime();
+}
+
+QDateTime Updates::nextCheck() const
+{
+    return m_nextCheck > 0 ? QDateTime::fromSecsSinceEpoch(m_nextCheck) : QDateTime();
 }
 
 QDateTime Updates::installFinished() const
@@ -178,6 +184,20 @@ void Updates::setAutoCheck(bool on)
     call(QStringLiteral("SetAutoCheck"), { on }, true, [this, id](const QDBusMessage& reply) {
         if (reply.type() == QDBusMessage::ErrorMessage) {
             m_autoCheckAsked.refused(id);
+        }
+    });
+}
+
+void Updates::setCheckInterval(uint hours)
+{
+    if (!available()) {
+        return;
+    }
+    clearError();
+    const Requested::Id id = m_checkIntervalAsked.ask(hours);
+    call(QStringLiteral("SetCheckInterval"), { hours }, true, [this, id](const QDBusMessage& reply) {
+        if (reply.type() == QDBusMessage::ErrorMessage) {
+            m_checkIntervalAsked.refused(id);
         }
     });
 }
@@ -322,8 +342,12 @@ void Updates::forget()
     m_installFinished = 0;
     m_needsRelogin = false;
     m_autoCheck = true;
+    m_checkInterval = 24;
+    m_nextCheck = 0;
+    m_waitingForNetwork = false;
     m_announce.clear();
     m_autoCheckAsked.reported(m_autoCheck);
+    m_checkIntervalAsked.reported(m_checkInterval);
 }
 
 void Updates::onPropertiesChanged(const QString& interface, const QVariantMap& changed, const QStringList&)
@@ -360,6 +384,10 @@ void Updates::setProperties(const QVariantMap& values)
             m_notes = pairsOf(*it, QStringLiteral("version"), QStringLiteral("text"));
         } else if (it.key() == QLatin1String("LastCheck")) {
             m_lastCheck = it->toLongLong();
+        } else if (it.key() == QLatin1String("NextCheck")) {
+            m_nextCheck = it->toLongLong();
+        } else if (it.key() == QLatin1String("CheckInterval")) {
+            m_checkInterval = it->toUInt();
         } else if (it.key() == QLatin1String("InstallFinished")) {
             m_installFinished = it->toLongLong();
         } else if (it.key() == QLatin1String("Error")) {
@@ -370,9 +398,12 @@ void Updates::setProperties(const QVariantMap& values)
             m_needsRelogin = it->toBool();
         } else if (it.key() == QLatin1String("AutoCheck")) {
             m_autoCheck = it->toBool();
+        } else if (it.key() == QLatin1String("WaitingForNetwork")) {
+            m_waitingForNetwork = it->toBool();
         }
     }
     m_autoCheckAsked.reported(m_autoCheck);
+    m_checkIntervalAsked.reported(m_checkInterval);
     emit changed();
 }
 
