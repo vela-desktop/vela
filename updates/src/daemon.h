@@ -86,6 +86,8 @@ struct vela_up_daemon {
     uint64_t started_us; // CLOCK_BOOTTIME when the daemon started
     uint64_t attempt_us; // CLOCK_BOOTTIME of our last check, 0 if none yet
     bool auto_check;
+    uint32_t check_interval_hours; // configurable cadence (default 24)
+    int64_t next_check_at; // Unix seconds of scheduled check, or 0
     unsigned failures; // network errors in a row
     sd_event_source *auto_timer;
     bool waiting_for_network; // due, but the connection is metered or down
@@ -125,6 +127,8 @@ void vela_up_state_free(struct vela_up_daemon *d);
 int vela_up_check_start(struct vela_up_daemon *d);
 void vela_up_schedule(struct vela_up_daemon *d);
 void vela_up_set_auto_check(struct vela_up_daemon *d, bool on);
+bool vela_up_valid_check_interval(uint32_t hours);
+int vela_up_set_check_interval(struct vela_up_daemon *d, uint32_t hours);
 int vela_up_network_start(struct vela_up_daemon *d);
 void vela_up_check_free(struct vela_up_daemon *d);
 
