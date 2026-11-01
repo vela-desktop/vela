@@ -178,9 +178,11 @@ server says: optimistic values exist only in the Qt layer (§5.4).
     event must move to 62% / 98%, not request 60% / 96% again. A device with
     more positions than the grid, but not many more, sets the one nearest to
     the request, up to half of its own step away (60% on 64 intervals reads
-    back as 59.375%): that half step is added to the tolerance. Values
+    back as 59.375%): the tolerance is then that half step, exactly half
+    included, when it is larger. Not the sum of the two: a position the
+    device can hold that no request reads back as stays off the grid. Values
     farther off-grid still move to the next grid position in the chosen
-    direction.
+    direction (51% on 100 intervals: 52% up, 50% down).
 - **Maximum 100%.** Vela never writes more than 1.0. A value above 100% set
   by another program is shown as 100% (slider at the end) and left alone;
   the first step down lands back on the grid.

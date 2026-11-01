@@ -114,6 +114,12 @@ private slots:
                     qPrintable(QStringLiteral("%1 intervals, down to notch %2: %3").arg(device).arg(notch).arg(volume)));
             }
         }
+        // A position no request reads back as is off the grid: set by
+        // another program, its first step lands on the next grid position.
+        QCOMPARE(percent(VolumeSteps::step(0.51, 1, 100)), 52);
+        QCOMPARE(percent(VolumeSteps::step(0.51, -1, 100)), 50);
+        QCOMPARE(percent(VolumeSteps::step(25.0 / 64, 1, 64)), 40);
+        QCOMPARE(percent(VolumeSteps::step(25.0 / 64, -1, 64)), 38);
     }
 
     void fewPositionsOneAtATime()
