@@ -68,7 +68,6 @@ Updates::Updates(const QDBusConnection& bus, QObject* parent)
     : QObject(parent)
     , m_bus(bus)
     , m_autoCheckAsked([this] { emit changed(); })
-    , m_checkIntervalAsked([this] { emit changed(); })
 {
     forget();
     auto* watcher = new QDBusServiceWatcher(service, m_bus, QDBusServiceWatcher::WatchForOwnerChange, this);
@@ -194,12 +193,7 @@ void Updates::setCheckInterval(uint hours)
         return;
     }
     clearError();
-    const Requested::Id id = m_checkIntervalAsked.ask(hours);
-    call(QStringLiteral("SetCheckInterval"), { hours }, true, [this, id](const QDBusMessage& reply) {
-        if (reply.type() == QDBusMessage::ErrorMessage) {
-            m_checkIntervalAsked.refused(id);
-        }
-    });
+    call(QStringLiteral("SetCheckInterval"), { hours }, true);
 }
 
 void Updates::announced(const QString& commit)
@@ -347,7 +341,6 @@ void Updates::forget()
     m_waitingForNetwork = false;
     m_announce.clear();
     m_autoCheckAsked.reported(m_autoCheck);
-    m_checkIntervalAsked.reported(m_checkInterval);
 }
 
 void Updates::onPropertiesChanged(const QString& interface, const QVariantMap& changed, const QStringList&)
@@ -403,7 +396,6 @@ void Updates::setProperties(const QVariantMap& values)
         }
     }
     m_autoCheckAsked.reported(m_autoCheck);
-    m_checkIntervalAsked.reported(m_checkInterval);
     emit changed();
 }
 
