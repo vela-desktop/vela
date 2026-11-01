@@ -18,7 +18,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
     tags: ['v0.*']
   pull_request:
   workflow_dispatch:

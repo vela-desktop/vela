@@ -43,6 +43,34 @@ A Beta tag must match the project version exactly and follow the
 `v0.<minor>.<patch>` format. Do not retag an already published version:
 create a new patch release to correct a bad Beta.
 
+## Release branches
+
+`main` is the next minor version in development (the project version on
+`main` is that version, e.g. `0.2.0`), and Experimental follows it. Each
+published minor version has a maintenance branch, `release/0.<minor>`,
+created from its `v0.<minor>.0` tag, which receives fixes only. Both are
+protected the same way: changes go through pull requests and the same
+required checks, and CI runs on pushes to either.
+
+- **Fixes go to `main` first,** then to the release branch: label the
+  pull request `backport-0.<minor>` and, once it is merged, open a pull
+  request against `release/0.<minor>` with `git cherry-pick -x <commit>`,
+  which records the original commit. A fix that only applies to the
+  release branch, because `main` has changed that code, goes straight to
+  it.
+- **A patch release** (`v0.<minor>.<patch>`) is tagged on the release
+  branch, after a pull request there sets `project(VERSION ...)` to that
+  version. The rehearsal and the GPU suites run on that commit.
+- **A minor release** (`v0.<minor>.0`) is tagged on `main`; its
+  `release/0.<minor>` branch is then created from the tag, and `main`
+  moves to the next minor version. The fallback version in
+  `packaging/arch/PKGBUILD.beta`, used by manual builds, stays on the
+  latest published tag.
+
+There is one Beta channel, and the updater offers the highest published
+`v0.x.y`: once `v0.<minor+1>.0` is out, Beta users move to it, so the
+previous release branch only matters until then.
+
 ## Updater behavior
 
 Install **Cosign** before installing Beta: it verifies GitHub-hosted Sigstore
