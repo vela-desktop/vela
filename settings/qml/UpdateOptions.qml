@@ -19,6 +19,7 @@ CardGroup {
     readonly property string channel: Updates.channel !== "" ? Updates.channel
         : Updates.installedPackage === "vela" ? "beta" : "experimental"
     readonly property int channelIndex: channel === "beta" ? 0 : 1
+    readonly property var checkIntervals: [6, 12, 24, 48, 168]
 
     function channelName(name) {
         return name === "beta" ? qsTr("Beta") : qsTr("Experimental")
@@ -56,6 +57,21 @@ CardGroup {
             checked: Updates.autoCheck
             Accessible.name: qsTr("Check for updates automatically")
             onToggled: Updates.setAutoCheck(checked)
+        }
+    }
+
+    Card {
+        icon: "appointment-new"
+        title: qsTr("Automatic check frequency")
+        description: qsTr("How often Vela checks for updates")
+        trailing: Choice {
+            objectName: "checkInterval"
+            model: [qsTr("Every 6 hours"), qsTr("Every 12 hours"), qsTr("Every 24 hours"),
+                    qsTr("Every 48 hours"), qsTr("Every 7 days")]
+            currentIndex: options.checkIntervals.indexOf(Updates.checkInterval)
+            usable: !Updates.busy
+            Accessible.name: qsTr("Automatic check frequency")
+            onChosen: index => Updates.setCheckInterval(options.checkIntervals[index])
         }
     }
 
