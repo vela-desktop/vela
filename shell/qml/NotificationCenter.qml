@@ -186,8 +186,11 @@ Window {
                             id: itemMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: {
-                                if (item.hasDefaultAction) {
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: mouse => {
+                                if (mouse.button === Qt.RightButton) {
+                                    Notifications.dismissFromHistory(item.notificationId)
+                                } else if (item.hasDefaultAction) {
                                     Notifications.invokeFromHistory(item.notificationId, "default")
                                     root.close()
                                 }
