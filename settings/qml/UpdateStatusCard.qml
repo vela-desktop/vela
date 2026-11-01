@@ -26,6 +26,10 @@ Card {
     readonly property bool showRelogin: Updates.available && Updates.needsRelogin
     readonly property bool showCheckFailure: Updates.available && checked && checkFailed && !Updates.busy
     readonly property bool showInstallFailure: Updates.available && installFailed && !Updates.busy
+    readonly property bool showNextCheck: Updates.available && Updates.autoCheck && !Updates.busy
+        && !isNaN(Updates.nextCheck.getTime())
+    readonly property bool showNetworkWait: Updates.available && Updates.autoCheck && !Updates.busy
+        && Updates.waitingForNetwork
 
     function phaseText(phase) {
         switch (phase) {
@@ -87,9 +91,23 @@ Card {
 
     contentItem: Column {
         width: parent.width
-        visible: card.showRelogin || card.showCheckFailure || card.showInstallFailure || Updates.error !== ""
+        visible: card.showRelogin || card.showCheckFailure || card.showInstallFailure
+            || card.showNextCheck || card.showNetworkWait || Updates.error !== ""
         spacing: 8
 
+        Text {
+            objectName: "nextCheck"
+            visible: card.showNextCheck || card.showNetworkWait
+            width: parent.width
+            text: card.showNetworkWait
+                ? qsTr("Next check: waiting for a fully connected, unmetered network")
+                : card.showNextCheck ? qsTr("Next automatic check: %1").arg(
+                    Updates.nextCheck.toLocaleString(Qt.locale(), Locale.ShortFormat)) : ""
+            textFormat: Text.PlainText
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
+            wrapMode: Text.Wrap
+        }
         Text {
             objectName: "relogin"
             visible: card.showRelogin
