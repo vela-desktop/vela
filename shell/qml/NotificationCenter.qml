@@ -182,6 +182,12 @@ Window {
                         color: itemHover.hovered ? Theme.subtleHover : Theme.control
 
                         HoverHandler { id: itemHover }
+                        // Passive right-click handling works across child
+                        // controls without changing their left-button actions.
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: Notifications.dismissFromHistory(item.notificationId)
+                        }
                         MouseArea {
                             id: itemMouse
                             anchors.fill: parent

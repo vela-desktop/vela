@@ -167,6 +167,116 @@ class QtShell(RealShell):
         return last
 
 
+    def test_right_click_dismisses_the_hovered_notification(self):
+        """Right-click closes only the hovered toast without invoking its default action."""
+        if not shutil.which("gdbus"):
+            self.skipTest("gdbus required for desktop notification")
+
+        # Monitor the freedesktop protocol so an accidental default-action
+        # invocation can't pass merely because it also closes the popup.
+        signal_log = os.path.join(self.vela.directory, "notification-signals.log")
+        with open(signal_log, "w+") as log:
+            monitor = subprocess.Popen([
+                "gdbus", "monitor", "--session", "--dest", "org.freedesktop.Notifications",
+                "--object-path", "/org/freedesktop/Notifications",
+            ], env=self.vela.client_env, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                time.sleep(0.3) # let the monitor subscribe before sending
+                for summary in ("First toast", "Second toast"):
+                    subprocess.run([
+                        "gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
+                        "--object-path", "/org/freedesktop/Notifications",
+                        "--method", "org.freedesktop.Notifications.Notify",
+                        "Vela functional test", "0", "", summary,
+                        "A right-click should dismiss this notification",
+                        "['default', 'Open']", "{}", "120000",
+                    ], env=self.vela.client_env, check=True, capture_output=True, text=True, timeout=8)
+
+                state = self.vela.wait_for(
+                    lambda s: (p := self.layer(s, "vela-notifications")) and p["h"] > 160,
+                    timeout=8, what="two notification popups")
+                popup = self.layer(state, "vela-notifications")
+                initial_height = popup["h"]
+                x, y = popup["x"] + 75, popup["y"] + 55
+                time.sleep(0.3) # the toast's entrance animation has finished
+
+                self.vela.input("move", x, y, "sleep", 100, "click", "right")
+                remaining_state = self.vela.wait_for(
+                    lambda s: (p := self.layer(s, "vela-notifications"))
+                    and p["h"] < initial_height - 20,
+                    timeout=8, what="only the hovered toast dismissed")
+
+                # The layer is bottom-anchored. After removing the first (top)
+                # toast it shrinks and its origin moves down, so the old
+                # absolute click coordinates are no longer inside the tile.
+                remaining = self.layer(remaining_state, "vela-notifications")
+                self.vela.input("move", remaining["x"] + 75, remaining["y"] + 55,
+                                "sleep", 100, "click", "right")
+                self.vela.wait_for(
+                    lambda s: not self.mapped(s, "vela-notifications"),
+                    timeout=8, what="remaining toast dismissed")
+                self.check_desktop()
+            finally:
+                if monitor.poll() is None:
+                    monitor.terminate()
+                try:
+                    monitor.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    monitor.kill()
+                    monitor.wait(timeout=3)
+
+            log.seek(0)
+            signals = log.read()
+        self.assertGreaterEqual(signals.count("NotificationClosed"), 2, signals)
+        self.assertNotIn("ActionInvoked", signals)
+
+    def test_left_click_notifications_preserve_default_action_semantics(self):
+        """Left-click invokes an explicit default action, otherwise only dismisses."""
+        if not shutil.which("gdbus"):
+            self.skipTest("gdbus required for desktop notification")
+
+        signal_log = os.path.join(self.vela.directory, "notification-left-click-signals.log")
+        with open(signal_log, "w+") as log:
+            monitor = subprocess.Popen([
+                "gdbus", "monitor", "--session", "--dest", "org.freedesktop.Notifications",
+                "--object-path", "/org/freedesktop/Notifications",
+            ], env=self.vela.client_env, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                time.sleep(0.3)
+                for summary, actions in (("Actionable toast", "['default', 'Open']"),
+                                         ("Plain toast", "[]")):
+                    subprocess.run([
+                        "gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
+                        "--object-path", "/org/freedesktop/Notifications",
+                        "--method", "org.freedesktop.Notifications.Notify",
+                        "Vela functional test", "0", "", summary,
+                        "Clicking must preserve the original behavior",
+                        actions, "{}", "120000",
+                    ], env=self.vela.client_env, check=True, capture_output=True, text=True, timeout=8)
+                    state = self.vela.wait_for(
+                        lambda s: self.layer(s, "vela-notifications"),
+                        timeout=8, what=f"{summary} appeared")
+                    popup = self.layer(state, "vela-notifications")
+                    self.vela.input("move", popup["x"] + 75, popup["y"] + 55,
+                                    "sleep", 150, "click", "left")
+                    self.vela.wait_for(
+                        lambda s: not self.mapped(s, "vela-notifications"),
+                        timeout=8, what=f"{summary} closed")
+                self.check_desktop()
+            finally:
+                if monitor.poll() is None:
+                    monitor.terminate()
+                try:
+                    monitor.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    monitor.kill()
+                    monitor.wait(timeout=3)
+
+            log.seek(0)
+            signals = log.read()
+        self.assertEqual(signals.count("ActionInvoked"), 1, signals)
+        self.assertEqual(signals.count("NotificationClosed"), 2, signals)
+
     def test_selected_primary_controls_run_dialog_and_notification_remap(self):
         """The real Qt layers follow the selected output across off/on."""
         if not shutil.which("gdbus"):
