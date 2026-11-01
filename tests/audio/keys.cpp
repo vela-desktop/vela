@@ -88,6 +88,23 @@ private slots:
         QCOMPARE(osd.size(), 5);
     }
 
+    void roundedHardwareReadbackDoesNotBlockVolumeKeys()
+    {
+        const QString sinkId = QString::number(audio->core()->snapshot().endpoint(speakers)->id);
+        // Simulate a device reporting slightly less than the requested 60%.
+        // The shell's volume keys and knob must advance on the *next* press.
+        run(QStringLiteral("wpctl"), { QStringLiteral("set-volume"), sinkId, QStringLiteral("0.596") });
+        QTRY_VERIFY(std::abs(audio->volume() - 0.596) < 0.001);
+        keys->press(QStringLiteral("up"));
+        QTRY_VERIFY(near(serverVolume(speakers), 0.62));
+
+        // The reverse mismatch used to repeat 60% on a DOWN press.
+        run(QStringLiteral("wpctl"), { QStringLiteral("set-volume"), sinkId, QStringLiteral("0.604") });
+        QTRY_VERIFY(std::abs(audio->volume() - 0.604) < 0.001);
+        keys->press(QStringLiteral("down"));
+        QTRY_VERIFY(near(serverVolume(speakers), 0.58));
+    }
+
     void microphoneKeyWaitsForTheServer()
     {
         QSignalSpy osd(keys.get(), &SoundKeys::osdRequested);

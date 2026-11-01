@@ -36,11 +36,12 @@ inline int grid(int deviceIntervals)
     return std::min(deviceIntervals, evenGrid);
 }
 
-// How far from a position a volume still counts as on it. A sound card's
-// hardware mixer moves in dB steps and PipeWire reports the step it used:
-// 96 comes back as 96.0007, which must still step down to 94, not to 96
-// again. Floating point leaves less: 0.58 * 50 = 28.999...
-inline constexpr double onPosition = 0.05;
+// The same absolute tolerance used to confirm an asynchronous volume write.
+// PipeWire's hardware readback may not be the requested grid value (e.g. a
+// requested 60% can come back as 59.6%). Treat it as that grid position so
+// the next notch *advances*, instead of requesting 60% forever. Use a volume
+// tolerance rather than a fraction of a step: devices have different grids.
+inline constexpr double readbackTolerance = 0.006;
 
 // The next position up (direction > 0) or down from `volume`. Off the grid
 // (another program set an odd number) the first step lands on it: 33 -> 34
@@ -49,7 +50,9 @@ inline double step(double volume, int direction, int deviceIntervals)
 {
     const int n = grid(deviceIntervals);
     const double position = std::clamp(volume, 0.0, 1.0) * n;
-    const double next = direction > 0 ? std::floor(position + onPosition) + 1 : std::ceil(position - onPosition) - 1;
+    const double nearest = std::round(position);
+    const double aligned = std::abs(position - nearest) < readbackTolerance * n ? nearest : position;
+    const double next = direction > 0 ? std::floor(aligned) + 1 : std::ceil(aligned) - 1;
     return std::clamp(next, 0.0, double(n)) / n;
 }
 
