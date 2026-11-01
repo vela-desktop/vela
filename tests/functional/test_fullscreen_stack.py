@@ -81,8 +81,9 @@ class FullscreenStack(unittest.TestCase):
 
     def test_covered_window_border_does_not_resize_under_game(self):
         # The game sits in the fullscreen layer, above the windows layer that
-        # resize_border_at() walks: a window under it must not answer for its
-        # invisible border, neither the arrows nor a drag taking focus.
+        # resize_border_at() walked: a drag on the invisible border of a window
+        # under it must neither resize that window nor focus it. The arrows on
+        # hover come from the same function; the state doesn't show the cursor.
         for x11 in (False, True):
             with self.subTest(x11=x11), Session(size="1280x720@60") as vela:
                 window = vela.open_window(300, 200, decorated=True)
