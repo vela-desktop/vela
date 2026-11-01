@@ -72,10 +72,18 @@ Window {
                     id: toastMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    // Click: opens the app (the "default" action), otherwise
-                    // closes.
-                    onClicked: toast.hasDefaultAction ? Notifications.invoke(toast.notificationId, "default")
-                                                      : Notifications.dismiss(toast.notificationId)
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    // Right-click dismisses only this toast, even when it has a
+                    // default action. Left-click keeps the existing behavior.
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton) {
+                            Notifications.dismiss(toast.notificationId)
+                        } else if (toast.hasDefaultAction) {
+                            Notifications.invoke(toast.notificationId, "default")
+                        } else {
+                            Notifications.dismiss(toast.notificationId)
+                        }
+                    }
                 }
 
                 Column {
