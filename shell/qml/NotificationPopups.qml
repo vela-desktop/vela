@@ -68,22 +68,22 @@ Window {
                     Eased { target: toast; property: "opacity"; to: 1 }
                 }
 
+                // A passive right-button handler on the entire tile also works
+                // over nested action buttons and links, without stealing their
+                // existing left clicks or hover handling.
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: Notifications.dismiss(toast.notificationId)
+                }
+
                 MouseArea {
                     id: toastMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    // Right-click dismisses only this toast, even when it has a
-                    // default action. Left-click keeps the existing behavior.
-                    onClicked: mouse => {
-                        if (mouse.button === Qt.RightButton) {
-                            Notifications.dismiss(toast.notificationId)
-                        } else if (toast.hasDefaultAction) {
-                            Notifications.invoke(toast.notificationId, "default")
-                        } else {
-                            Notifications.dismiss(toast.notificationId)
-                        }
-                    }
+                    // Left click: invoke the app's default action, if any;
+                    // otherwise dismiss as before.
+                    onClicked: toast.hasDefaultAction ? Notifications.invoke(toast.notificationId, "default")
+                                                      : Notifications.dismiss(toast.notificationId)
                 }
 
                 Column {
