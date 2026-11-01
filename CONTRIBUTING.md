@@ -1,11 +1,12 @@
 # Contributing to Vela
 
-Vela is an alpha Linux desktop environment with a C17 Wayland compositor, Vulkan renderer and Qt 6 user interface. Bug reports, reproducible tests, documentation fixes and code contributions are welcome.
+Vela is a beta Linux desktop environment with a C17 Wayland compositor, Vulkan renderer and Qt 6 user interface. Bug reports, reproducible tests, documentation fixes and code contributions are welcome.
 
 ## Before writing code
 
 - Search existing issues and pull requests. For large changes, discuss the intended behavior and architecture in an issue first.
 - Keep pull requests focused. Prefer fixing a regression to adding unrelated features in the same change.
+- Open pull requests against `main`, fixes included: maintainers port fixes to the current `release/0.x` branch. Only a fix for code that `main` has since changed targets `release/0.x` directly ([release branches](docs/release-channels.md#release-branches)).
 - Describe how the change affects AMD/RADV, NVIDIA, Intel, headless and nested sessions when relevant. A CPU-only CI pass does **not** prove a GPU/driver-specific fix.
 - Use English for code, new comments, commit messages and UI text. Some existing comments are in Italian; translations to English are welcome. Follow the surrounding style.
 

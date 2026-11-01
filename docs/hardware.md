@@ -1,4 +1,4 @@
-# Hardware coverage and alpha limitations
+# Hardware coverage and known limitations
 
 Vela needs a GPU and driver exposing **Vulkan 1.4** with the dmabuf/DRM capabilities described in [renderer.md](renderer.md#71-minimum-requirement). A successful build does not guarantee that a particular GPU, driver, compositor nesting setup or display configuration works.
 
@@ -23,7 +23,7 @@ These are **coverage descriptions**, not a ranking of hardware or a statement th
 
 ## Before trying Vela
 
-- Retain a working desktop session or TTY as a fallback. Vela is alpha software.
+- Retain a working desktop session or TTY as a fallback. Vela is beta software.
 - Confirm Vulkan 1.4, a usable render node and compatible drivers.
 - Prefer [running nested](../README.md#try-it-without-logging-out) before using Vela as your login session. Nested mode does not prove physical DRM/scanout works.
 - For reporting, note distro, kernel, GPU, Vulkan driver, GPU driver version, display mode/refresh/scale, nested or DRM session and the Vela commit.

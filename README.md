@@ -13,7 +13,7 @@ it does not. Every animation is tied to your monitor's real frames, and fraction
 is designed around physical pixels rather than treated as an afterthought.
 
 [![Build](https://github.com/vela-desktop/vela/actions/workflows/build.yml/badge.svg)](https://github.com/vela-desktop/vela/actions/workflows/build.yml)
-![Status](https://img.shields.io/badge/status-alpha-orange)
+[![Release](https://img.shields.io/github/v/release/vela-desktop/vela?include_prereleases&label=release&color=yellow)](https://github.com/vela-desktop/vela/releases)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 ![wlroots](https://img.shields.io/badge/wlroots-0.20-4b8bbe)
 ![Vulkan](https://img.shields.io/badge/Vulkan-1.4-ac162c)
@@ -111,8 +111,8 @@ responsive without heavyweight runtimes for simple desktop UI. The compositor id
 
 ## Try Vela
 
-> **Alpha software:** Vela is usable as a Wayland session but is not a stable
-> release or a replacement for keeping a working desktop/TTY available.
+> **Beta software:** Vela is usable every day as a Wayland session, but it is
+> not a stable release: keep a working desktop or TTY available.
 > Hardware-dependent paths need verification on your GPU and driver. Read the
 > [hardware coverage and known limitations](docs/hardware.md) before installing.
 
@@ -121,11 +121,9 @@ For a low-risk first look, [build from source](#build-from-source) and
 Nested mode is convenient for exploration, but cannot validate physical DRM,
 direct scanout or every driver-specific path.
 
-For a full session, use the [Arch package](#arch-linux-cachyos-endeavouros),
-the [Fedora RPM](#fedora-44), the [Ubuntu DEB](#ubuntu-2610-experimental)
-or [install from source](#other-distributions),
-then select Vela at the login
-screen. If something fails, [report it](#reporting-a-problem) using
+For a full session, [install the Beta](#install) on Arch, Fedora 44 or
+Ubuntu 26.10, or [build from source](#other-distributions), then select Vela
+at the login screen. If something fails, [report it](#reporting-a-problem) using
 `vela-report`, reviewing any diagnostics before sharing them.
 
 ### What Vela owns and what it reuses
@@ -170,12 +168,13 @@ input → state → predicted frame → render as late as possible → presentat
 The whole design is written down in [docs/renderer.md](docs/renderer.md).
 
 > [!NOTE]
-> **Vela is alpha software.** You can already pick it at the login screen and use it
-> every day: compositor, shell, file manager, settings, lock screen. The complete GPU-
-> dependent functional and sharpness suites are run on the primary development machine
-> and currently pass; GitHub-hosted CI skips them because it has no usable DRM/Vulkan
-> device. Some hardware-specific paths still rely on manual verification. The interface
-> speaks **English and Italian** (Settings → Time & language), switched live.
+> **Vela is beta software.** You can pick it at the login screen and use it every
+> day: compositor, shell, file manager, settings, lock screen. The GPU-dependent
+> functional and sharpness suites run on self-hosted AMD and NVIDIA runners
+> (RX 9070 XT and RTX 4070 Laptop) for GPU-affecting changes and for every release;
+> GitHub-hosted CI cannot run them. Physical DRM, suspend and multi-monitor paths
+> still rely on manual verification. The interface speaks **English and Italian**
+> (Settings → Time & language), switched live.
 
 ## Features
 
@@ -236,9 +235,14 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
   "Keep these settings?" with compositor-owned revert on timeout or a Settings crash.
   Native Wayland configuration requires no external display utility. Also **Night light**, variable refresh
   rate and tearing.
-- **Sound, Notifications, Power, Clipboard**, Bluetooth and devices, **mouse and
-  touchpad** (tap to click, scroll direction, three- and four-finger gestures), and
-  Network.
+- **Sound, Notifications, Power, Clipboard**, **mouse and touchpad** (tap to click,
+  scroll direction, three- and four-finger gestures), and Network.
+- **Bluetooth**: Vela's own `vela-bluetooth` daemon pairs, connects and forgets
+  devices, and answers pairing questions (PIN, passkey, confirmation) from the shell,
+  even after Settings is closed ([design](docs/bluetooth.md)).
+- **Updates**: the installed and newest version, what's new, the Beta or Experimental
+  channel, and an update that runs in a terminal. Vela checks in the background and
+  sends a notification when an update is available ([design](docs/updates.md)).
 - **Personalization**: wallpaper, colors, taskbar. **Apps**: installed and default apps.
   **Time and language**: date and time, keyboard layouts.
 - **Accessibility**: magnifier, color filters, sticky keys.
@@ -254,7 +258,9 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
   direct scanout. It can follow sunset and sunrise, computed offline from your time zone.
 - Picks the **highest refresh rate** at native resolution, even when the monitor
   advertises 60 Hz as "preferred".
-- **Xwayland** on demand for Steam, games and older apps.
+- **Xwayland** on demand for Steam, games and older apps. X11 apps run 1:1 in the
+  monitor's pixels, so a fullscreen game gets the native resolution even at 125%, stays
+  sharp and can use direct scanout; `Xft.dpi` follows the scale.
 
 ### Accessibility and input
 - Magnifier (Super+Plus), grayscale and color-blindness filters (Super+Ctrl+C), and sticky
@@ -270,6 +276,9 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
 - If the shell crashes, the compositor restarts it, and your windows stay open.
 - A **secure lock screen** (`ext-session-lock-v1`): if the locker dies, the screen stays
   black and locked, and the locker is restarted.
+- **GPU resets are handled.** If the Vulkan device is lost, the compositor stops
+  touching the GPU and exits cleanly, so the supervisor can start a new one
+  ([policy](docs/vulkan-device-loss.md)).
 - **User Account Control.** When an app needs administrator rights, the whole desktop
   dims and blurs and one dialog asks: who is asking, for what, and the password. Nothing
   else takes the keyboard until you answer; requests queue up instead of being refused
@@ -282,42 +291,58 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
 
 Vela needs a GPU with **Vulkan 1.4**: AMD or Intel with Mesa ≥ 25.0, or NVIDIA with the proprietary driver ≥ 570 or NVK. Sound needs **PipeWire and WirePlumber**. Once installed, choose **Vela** from the login screen.
 
+`vela-update` installs Vela on first run and keeps it updated afterwards, also from
+Settings → System → Updates. It offers two [channels](docs/release-channels.md):
+
+| Channel | Package | What you get |
+|---|---|---|
+| **Beta** (recommended) | `vela` | Numbered [releases](https://github.com/vela-desktop/vela/releases), prebuilt and signed, verified with Sigstore/Cosign before installing |
+| Experimental | `vela-git` | The latest `main` commit, or one you choose, built locally (on Arch and Fedora, the signed CI package for that exact commit through an authenticated GitHub CLI, when one exists) |
+
+The Beta needs **Cosign** to verify each package; it never falls back to an
+unverified binary. Without `--channel beta` the updater installs Experimental.
+
 ### Arch Linux, CachyOS, EndeavourOS
 
 ```sh
 sudo pacman -S --needed git curl base-devel cosign
 git clone https://github.com/vela-desktop/vela.git
-sh vela/packaging/vela-update
+sh vela/packaging/vela-update --channel beta
 ```
 
 ### Fedora 44
 
-Only Fedora 44 x86_64 is currently supported by the native RPM updater; other Fedora versions and immutable variants are not supported by this installer.
+Only Fedora 44 x86_64 is supported; other Fedora versions and immutable variants are
+not. Fedora does not ship Cosign: install the official upstream RPM first, as the
+[installation guide](docs/installation.md#fedora-44) shows.
 
 ```sh
 sudo dnf install git curl rpm-build dnf5-plugins
 git clone https://github.com/vela-desktop/vela.git
-sh vela/packaging/vela-update
+sh vela/packaging/vela-update --channel beta
 ```
 
-### Ubuntu 26.10 (experimental)
+### Ubuntu 26.10
 
-Ubuntu 26.10 with the **universe** repository enabled is supported by an
-experimental native DEB updater. It builds from the selected Git commit
-locally and does **not** automatically install unsigned CI previews.
+Ubuntu 26.10 with the **universe** repository enabled, which also provides Cosign.
+Ubuntu support is newer and less tested than Arch and Fedora; on Ubuntu the
+Experimental channel always builds a local DEB.
 
 ```sh
 sudo apt update
-sudo apt install git ca-certificates sudo
+sudo apt install git ca-certificates sudo cosign
 git clone https://github.com/vela-desktop/vela.git
-sh vela/packaging/vela-update
+sh vela/packaging/vela-update --channel beta
 ```
 
 ### Other distributions
 
 See [build from source](#build-from-source); there is currently no native package updater for these systems.
 
-`vela-update` installs Vela on first run and handles subsequent updates. The Experimental channel builds each `main` commit locally with the distribution's native tools; on Arch and Fedora it can instead download a CI package for that exact commit through an authenticated GitHub CLI, verified with Sigstore/Cosign. The Beta channel installs signed `v0.x.y` release packages, verified with Sigstore/Cosign and no GitHub CLI. On Ubuntu 26.10 Experimental always builds a local DEB. Fedora 44 users should install Cosign from its official upstream RPM before the first download; see the [installation and update guide](docs/installation.md) for update options, test branches, rollback and troubleshooting.
+Run `sh vela/packaging/vela-update` without `--channel beta` to follow Experimental
+instead. The [installation and update guide](docs/installation.md) covers update
+options, test branches, rollback and troubleshooting.
+
 ## Reporting a problem
 
 Run `vela-report` to create a diagnostic ZIP with a description and the evidence
@@ -449,12 +474,14 @@ see the documentation below.
 | Document | Contents |
 |---|---|
 | **[Install and update](docs/installation.md)** | Installation, verified updates, test branches and rollback. |
-| **[Alpha hardware coverage](docs/hardware.md)** | Driver validation scope, optional services and manual smoke tests. |
+| **[Release channels](docs/release-channels.md)** | Beta and Experimental, how a Beta is released, and how the updater moves between them. |
+| **[Updates](docs/updates.md)** | The Updates page, `vela-update-daemon`, background checks and notifications. |
+| **[Hardware coverage](docs/hardware.md)** | Driver validation scope, optional services and manual smoke tests. |
 | **[Performance methodology](docs/performance.md)** | Measurements, precise metric definitions, reproduction and limitations. |
 | **[Roadmap](docs/roadmap.md)** | Work in progress, what comes next, what is not planned, and what is done. |
 | **[Contributing](CONTRIBUTING.md)** | Development workflow, PR checklist, testing and DCO. |
 | **[Contributors](CONTRIBUTORS.md)** | Thanks to everyone helping build and improve Vela. |
-| **[Security](SECURITY.md)** | Private vulnerability reporting and alpha support policy. |
+| **[Security](SECURITY.md)** | Private vulnerability reporting and support policy. |
 | **[Renderer](docs/renderer.md)** | Scene graph, Vulkan renderer, scaling, damage, frame scheduling and direct scanout. |
 | **[Polkit agent](docs/polkit-agent.md)** | The User Account Control dialog: agent, dialog, protocol, security notes and tests. |
 | **[Audio](docs/audio.md)** | Design of the shared audio backend on WirePlumber: model, volume rules, levels, microphone in use, tests. |
@@ -469,8 +496,7 @@ see the documentation below.
 
 Vela is a young project and moves fast. Issues and ideas are welcome.
 See the [contribution guide](CONTRIBUTING.md) and [security policy](SECURITY.md). Before larger
-changes, open an issue to talk about it. Use English for code, new comments, commit messages and interface text.
-Some older comments are in Italian; contributions translating them are welcome.
+changes, open an issue to talk about it. Use English for code, comments, commit messages and interface text.
 Please sign off your commits (`git commit -s`, the
 [Developer Certificate of Origin](https://developercertificate.org/)): contributions
 are accepted under the project's license, GPL-3.0-or-later.

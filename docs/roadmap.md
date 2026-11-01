@@ -7,7 +7,9 @@ targets for **0.3–0.6 are estimates** that can change after design, testing,
 and feedback. Implementation work can start before its target release
 without merging into `main`.
 
-Vela is **alpha**, and its first beta, 0.1, is being prepared. "Done" means
+Vela **0.1 is the first beta**, released as
+[`v0.1.0`](https://github.com/vela-desktop/vela/releases/tag/v0.1.0) on
+31 October 2026. "Done" means
 implemented and tested, not validated on every GPU and driver: see
 [hardware coverage](hardware.md) for current limits. Larger changes get
 their own design documents; the roadmap records intent rather than replacing
@@ -15,71 +17,74 @@ those specifications.
 
 ## 0.1 — First beta: stability, integration, release readiness
 
-The beta is primarily about stabilizing and packaging what Vela already
-provides, removing unwanted desktop dependencies, and publishing a
-versioned release. Work landing during the 0.1 feature freeze is restricted
-to fixes, tests, CI, packaging, release engineering, documentation,
-translations, and the **Updates page exception** below.
+The beta stabilizes and packages what Vela already provides, removes unwanted
+desktop dependencies, and publishes a versioned, signed release. Work landing
+during the 0.1 feature freeze is restricted to fixes, tests, CI, packaging,
+release engineering, documentation and translations; the Updates page was
+the only feature exception.
 
-**Required for the 0.1 release:**
+**Done for 0.1:**
 
-- **Updates page:** complete
-  [#161](https://github.com/vela-desktop/vela/pull/161) (which supersedes
-  [#133](https://github.com/vela-desktop/vela/pull/133)) so Settings can
-  inspect the installed and available revision, check for updates, display
-  changes/errors and launch the updater, and so Vela checks for updates
-  in the background and sends a notification when one is available.
-  **This is a release blocker, not a feature that may slip to 0.2**, and
-  the notifications are part of it.
-- **NVIDIA capture performance:** fix and verify
-  [#132](https://github.com/vela-desktop/vela/issues/132) (blocking
-  synchronous SHM readback and missed 180 Hz virtual vblanks); do not
-  waive the regression by relaxing the tests.
-- **GPU and session verification:** follow the
-  [GPU CI policy](ci-quality.md#gpu-ci-policy), including full AMD and
-  NVIDIA suites on the exact release candidate; complement headless
-  coverage with practical physical-session smoke tests.
-- **Packaging and runtime independence:** clean installation and
-  correct portal/runtime dependencies, preserving an independent Vela
-  compositor and shell. Prefer the GTK portal for generic dialogs and
-  keep `xdg-desktop-portal-wlr` for screencast and screenshots, without
-  requiring `xdg-desktop-portal-kde` or Plasma Workspace. Review the open
-  [packaging #120](https://github.com/vela-desktop/vela/pull/120)
-  against this configuration; GTK remains an optional fallback on minimal
-  installations.
-- **Native Bluetooth pairing and device lifecycle:** implement the
-  session-scoped BlueZ pairing agent, confirmation/passkey flows and
-  robust connection/error handling described in
-  [#146](https://github.com/vela-desktop/vela/pull/146). This is a
-  **0.1 release requirement**, not deferred to 0.2; #146 is currently
-  a design-only draft, not an implemented fix.
-- **Vela Lock wallpaper quality:** correct the blurry/low-resolution
-  wallpaper appearance on the clock and lock screens, with physical-
-  pixel/scaling checks across relevant output scales as proposed in
-  [#149](https://github.com/vela-desktop/vela/pull/149). This is a
-  **0.1 release requirement**, not deferred to 0.2; #149 is currently
-  a design-only draft, not an implemented fix.
+- **Updates page:** Settings shows the installed and newest version, checks
+  for updates, shows what's new and errors, and launches the updater in a
+  terminal; Vela checks in the background and sends a notification
+  ([#161](https://github.com/vela-desktop/vela/pull/161), which superseded
+  [#133](https://github.com/vela-desktop/vela/pull/133);
+  [design](updates.md)). Real updates were verified in clean Arch, Fedora 44
+  and Ubuntu 26.10 containers.
+- **NVIDIA capture performance:**
+  [#132](https://github.com/vela-desktop/vela/issues/132) is fixed by
+  deferred SHM readback that no longer blocks presentation
+  ([#156](https://github.com/vela-desktop/vela/pull/156),
+  [#173](https://github.com/vela-desktop/vela/pull/173)), without
+  relaxing the tests.
+- **Native Bluetooth pairing and device lifecycle:** the session
+  `vela-bluetooth` daemon with its BlueZ pairing agent, confirmation,
+  PIN and passkey questions, and the shell, quick settings and Settings on
+  top of it ([#146](https://github.com/vela-desktop/vela/pull/146),
+  [#157](https://github.com/vela-desktop/vela/pull/157);
+  [design](bluetooth.md)).
+- **Vela Lock wallpaper quality:** a sharp blurred wallpaper on the
+  password screen ([#149](https://github.com/vela-desktop/vela/pull/149);
+  [notes](lock-wallpaper-quality.md)).
+- **Vulkan device loss:** the compositor detects a lost device, stops GPU
+  work and exits so the supervisor can restart it
+  ([#147](https://github.com/vela-desktop/vela/pull/147);
+  [policy](vulkan-device-loss.md)).
+- **Packaging and runtime independence:** clean installation with the GTK
+  portal for generic dialogs and `xdg-desktop-portal-wlr` for screencast
+  and screenshots, without `xdg-desktop-portal-kde` or Plasma Workspace
+  ([#120](https://github.com/vela-desktop/vela/pull/120)).
+- **Release channels:** Beta (`vela`, signed `v0.x.y` releases built from
+  a protected tag) and Experimental (`vela-git`, development commits) on
+  Arch, Fedora 44 and Ubuntu 26.10
+  ([#160](https://github.com/vela-desktop/vela/pull/160);
+  [release channels](release-channels.md)).
+- **X11 at native resolution:** X11 apps and fullscreen games run 1:1 in
+  the output's pixels, with direct scanout
+  ([#167](https://github.com/vela-desktop/vela/pull/167)).
 
-**Release engineering (0.1 infrastructure, not a desktop feature):**
-design and build a more mature release process for the first beta:
-versioned/tagged releases and release notes, reproducible artifact
-identification, CI/release-candidate verification, provenance/signing,
-publication and rollback/update-channel expectations. Reuse existing
-`vela-update` and provenance machinery; do not describe these capabilities
-as absent merely because the release process needs to mature. The exact
-workflow remains to be designed, separately from feature planning.
+**Release of `v0.1.0` (31 October 2026):**
 
-**Feature-freeze rule:** no new user-facing features besides the Updates
-page are added to 0.1. Core Wayland
-`text-input-v3`/`input-method-v2` and on-screen keyboard work target
-0.2 instead. Existing bug fixes, reliability work and necessary packaging
-are not reclassified as new features.
+- **GPU and session verification:** full AMD and NVIDIA suites on the
+  exact release commit, as the [GPU CI policy](ci-quality.md#gpu-ci-policy)
+  requires, plus physical-session smoke tests.
+- **Updates in a real session:** a real terminal and "Sign out to finish"
+  ([updates §11](updates.md#11-stages)); the Beta check finds `v0.1.0`.
+- **Release rehearsal:** the whole tag pipeline on a public fork first, as
+  [release channels](release-channels.md#rollout-validation) require. It
+  found two release-only pipeline bugs, fixed before the real tag
+  ([#177](https://github.com/vela-desktop/vela/pull/177)).
 
-**Other stabilization proposals, not shipped fixes:**
-[Vulkan device loss #147](https://github.com/vela-desktop/vela/pull/147)
-and [OOM contract #148](https://github.com/vela-desktop/vela/pull/148).
-Their final release-blocker classification depends on review and
-reproducible severity, not just on the existence of a design draft.
+**Feature-freeze rule:** no new user-facing features are added to 0.1. Core
+Wayland `text-input-v3`/`input-method-v2` and on-screen keyboard work target
+0.2 instead. Bug fixes, reliability work and necessary packaging are not
+reclassified as new features.
+
+**Stabilization proposal still open:**
+[OOM contract #148](https://github.com/vela-desktop/vela/pull/148). Whether
+it blocks a release depends on review and reproducible severity, not on the
+existence of a design draft.
 
 ## 0.2 — Touch, pen, input methods and completion of existing feature PRs
 
@@ -115,8 +120,6 @@ native on-screen keyboard, including their Wayland input foundations.
   blindly merging every draft.
 - Finish or explicitly supersede the related touch/keyboard design PRs
   once their accepted design is integrated into the implementation.
-  The Updates page #161 must already be finished for 0.1 and is not
-  part of this deferred-feature list.
 
 **Validation:** physical touchscreen, pressure-sensitive pen and
 convertible/tablet tests; rotation/scaling and gesture regression tests;
@@ -138,7 +141,7 @@ large redesign or renderer overhaul. Candidates:
   window position/size, moving windows across outputs/desktops by
   shortcut, and defined picture-in-picture behavior.
 - Displays and compatibility: projection menu (Super+P), mirroring,
-  self-scaling X11 application option, refined VRR/animation policy,
+  refined VRR/animation policy,
   and external touchscreen/output mapping that was explicitly
   outside the initial touch design.
 - Shell and Settings: Start search extended beyond existing app search
@@ -211,10 +214,7 @@ own design, cost/maintenance analysis and definition of done.
 
 | Work | Design | Pull request | Status | Release target |
 |---|---|---|---|---|
-| **Settings Updates page**: installed/latest revision, check, changes, update launch and update notifications | [Updates](updates.md) | [#161](https://github.com/vela-desktop/vela/pull/161) (supersedes #133) | implemented; real updates on real systems pending; **0.1 release blocker** | 0.1 |
-| **Release engineering**: versioned beta pipeline, gates, provenance, artifacts and release notes | separate infrastructure design pending | — | release infrastructure, **not a desktop feature** | 0.1 |
-| **Native Bluetooth pairing and device lifecycle** | [#146](https://github.com/vela-desktop/vela/pull/146) | #146 (design) | draft design; implementation and real pairing validation required; **0.1 release requirement** | 0.1 |
-| **Vela Lock wallpaper sharpness and scaling** | [#149](https://github.com/vela-desktop/vela/pull/149) | #149 (design) | draft design; implementation and physical-pixel validation required; **0.1 release requirement** | 0.1 |
+| **Host OOM allocation contract** | in the PR | [#148](https://github.com/vela-desktop/vela/pull/148) | draft; release classification after review | to be decided |
 | **Text input and input methods**: `text-input-v3`, `input-method-v2`, IME integration | reconcile with OSK design | — | not implemented | 0.2 |
 | **Touch, pressure-sensitive pen and tablet mode**: full agreed #94 stages T0–T5, P1–P2 and M1 | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design under discussion; implementation pending | 0.2 |
 | **On-screen keyboard**: full #95 K0–K5, including touch-only unlocking | [#95](https://github.com/vela-desktop/vela/pull/95) | #95 (design) | design under discussion; implementation pending | 0.2 |
@@ -257,12 +257,17 @@ Decisions already taken. Each design document explains why.
 - **Session**: login entry, systemd and D-Bus, portals, Xwayland, lock screen,
   idle, notifications, system tray, and Vela's own
   [polkit agent](polkit-agent.md) (User Account Control).
+- **Updates**: the [Updates page](updates.md) in Settings, background checks
+  and notifications, over `vela-update-daemon`; Beta and Experimental
+  [release channels](release-channels.md) on Arch, Fedora 44 and Ubuntu 26.10.
 - **Compositor and renderer**: a [C core](c-core.md), Vela's own scene and
   [Vulkan renderer](renderer.md), pixel-exact fractional scaling, late
-  latching, live acrylic blur, rounded corners and shadows, Vela's title bar.
+  latching, live acrylic blur, rounded corners and shadows, Vela's title bar,
+  and a clean exit on [Vulkan device loss](vulkan-device-loss.md).
 - **Displays and gaming**: native display configuration with compositor-owned
   rollback, multi-monitor hotplug with per-output scale, direct scanout, VRR,
-  tearing control, explicit sync, Night Light, and
+  tearing control, explicit sync, X11 apps and games at native resolution,
+  Night Light, and
   [brightness](brightness.md) per monitor over DDC/CI and the kernel backlight
   (implemented and tested, including on real hardware).
 - **Desktop**: Settings, Files (with a quick preview on Space: pictures, PDFs,
@@ -280,10 +285,12 @@ Decisions already taken. Each design document explains why.
 - **Audio**: one [native backend](audio.md) for the shell and Settings, with
   per-app inputs and outputs, levels, microphone in use, device profiles,
   codecs and sample rates.
+- **Bluetooth**: the [`vela-bluetooth`](bluetooth.md) daemon with its own
+  pairing agent, used by the shell, quick settings, Settings and audio.
 - **Reliability and security**: compositor and shell crash recovery,
   [`vela-report`](reporting.md) for guided bug reports, `vela-update`,
   [signed packages with verified provenance](package-provenance.md) for Arch
-  and Fedora, and CI with sanitizers, static analysis and real AMD and NVIDIA
+  and Fedora and for every Beta release, and CI with sanitizers, static analysis and real AMD and NVIDIA
   GPUs (RX 9070 XT and RTX 4070 Laptop) for GPU-affecting changes and releases.
 - **Languages**: English and Italian, switched live from Settings.
 

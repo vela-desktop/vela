@@ -250,10 +250,10 @@ bool vela_output_config_save(const struct vela_output_config_entry *entries, int
     char *slash = strrchr(dir, '/');
     if (slash) {
         *slash = '\0';
-        mkdir(dir, 0755);
+        mkdir(dir, 0700);
         *slash = '/';
     }
-    mkdir(dir, 0755);
+    mkdir(dir, 0700);
     char temporary[PATH_MAX + 8];
     int length = snprintf(temporary, sizeof(temporary), "%s.XXXXXX", path);
     if (length >= 0 && (size_t)length < sizeof(temporary)) {

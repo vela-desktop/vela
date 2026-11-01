@@ -5,14 +5,12 @@ settings, and how Vela shares Bluetooth with other desktop sessions. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** B0–B3 are implemented (PR #146): the daemon and agent run,
-> and Settings uses the shared client library; logind lock-state reporting
-> is already included as a safety prerequisite. B4 adds the shell (quick
-> settings, the question dialog and notifications) and `vela-audio`'s
-> batteries from the daemon; B5 the search leases and visibility; B6 the
-> docs and packaging; B7 tried it on real devices
-> ([hardware](hardware.md#bluetooth)). Everything in §3 is planned for beta
-> 0.1. See §12.
+> **Status:** done. B0–B3 (PR #146) are the daemon, the agent and the
+> Settings page on the shared client library; B4–B7 (PR #157) are the shell
+> (quick settings, the question dialog and notifications), `vela-audio`'s
+> batteries from the daemon, search leases and visibility, docs and
+> packaging, and tests on real devices ([hardware](hardware.md#bluetooth)).
+> See §12.
 
 ## 1. Why from scratch
 

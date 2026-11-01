@@ -20,6 +20,7 @@
 
 pkgname=vela
 _name=vela
+# Release builds set the version; a manual build gets the latest published Beta.
 pkgver=${VELA_RELEASE_VERSION:-0.1.0}
 pkgrel=1
 pkgdesc="A modern, fluid and sharp desktop environment for Wayland"
