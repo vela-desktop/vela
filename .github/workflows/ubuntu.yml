@@ -148,7 +148,7 @@ jobs:
           while IFS= read -r -d '' file; do
             [[ "$(head -c 4 "$file")" == $'\x7fELF' ]] || continue
             sections=$(readelf -S --wide "$file")
-            if grep -Eq '\.(debug_[a-z]+|symtab) ' <<< "$sections"; then
+            if grep -Eq '\.(z?debug_[a-z_]+|symtab) ' <<< "$sections"; then
               echo "Unstripped binary in the DEB: ${file#"$payload"}" >&2
               unstripped=1
             fi
