@@ -370,15 +370,21 @@ class AudioFixture:
     def default(self, kind):
         """The default sink or source's node.name, from the metadata; None
         while there is none (WirePlumber not ready or restarting)."""
-        result = subprocess.run(["pw-metadata", "-n", "default", "0", f"default.audio.{kind}"],
-                                env=self.env, capture_output=True, text=True, timeout=5)
-        for line in result.stdout.splitlines():
-            if f"key:'default.audio.{kind}'" in line and "value:'" in line:
-                value = line.split("value:'", 1)[1].split("'", 1)[0]
-                try:
-                    return json.loads(value).get("name")
-                except ValueError:
-                    return None
+        # pw-metadata can quit before the keys arrive (about 1 read in 1000):
+        # it found the metadata and printed nothing more. Read again; a key
+        # that really is missing is missing every time.
+        for _ in range(3):
+            result = subprocess.run(["pw-metadata", "-n", "default", "0", f"default.audio.{kind}"],
+                                    env=self.env, capture_output=True, text=True, timeout=5)
+            for line in result.stdout.splitlines():
+                if f"key:'default.audio.{kind}'" in line and "value:'" in line:
+                    value = line.split("value:'", 1)[1].split("'", 1)[0]
+                    try:
+                        return json.loads(value).get("name")
+                    except ValueError:
+                        return None
+            if 'Found "default" metadata' not in result.stdout:
+                return None
         return None
 
     def wait_for(self, predicate, what, timeout=5.0):
