@@ -34,7 +34,7 @@ PILOT_SECONDS = 600
 RECOVERY_SECONDS = 300
 SAFE_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C", "LANG": "C"}
 BASE_MODULES = ("__init__.py", "archive.py", "model.py", "discovery.py", "host.py", "pilot.py")
-MODULES = BASE_MODULES + ("diagnostics.py", "conditions.py", "calibration.py", "qualification.py", "campaign.py", "measurements.py", "desktop.py")
+MODULES = BASE_MODULES + ("diagnostics.py", "conditions.py", "calibration.py", "qualification.py", "campaign.py", "measurements.py", "desktop.py", "workloads.py", "platform_workloads.py", "pixels.py", "resources.py")
 
 
 @dataclass(frozen=True)
@@ -516,6 +516,8 @@ def instrument_payload(layout, directory):
             for name in ("vela-bench-probe", "vela-bench-desktop", "vela-screen-dump", "vela-bench-input")}
     if (Path(directory) / "vela-slowgpu").exists():
         payload[str(layout.helper.parent / "vela-slowgpu")] = probe_bytes(Path(directory) / "vela-slowgpu")
+    if (Path(directory) / "vela-pattern").exists():
+        payload[str(layout.helper.parent / "vela-pattern")] = probe_bytes(Path(directory) / "vela-pattern")
     if (Path(directory) / "vela-bench-scene").exists():
         payload[str(layout.helper.parent / "vela-bench-scene")] = probe_bytes(Path(directory) / "vela-bench-scene")
     return payload
@@ -567,7 +569,7 @@ def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=No
         # Original core resources must still be present in the ownership record;
         # existing unowned paths remain rejected by the checks below.
         additions = {str(layout.helper.parent / "vela_bench" / name) for name in MODULES if name not in BASE_MODULES}
-        additions |= {str(layout.helper.parent / name) for name in ("vela-bench-probe", "vela-bench-desktop", "vela-screen-dump", "vela-bench-input", "vela-slowgpu", "vela-bench-scene")}
+        additions |= {str(layout.helper.parent / name) for name in ("vela-bench-probe", "vela-bench-desktop", "vela-screen-dump", "vela-bench-input", "vela-slowgpu", "vela-bench-scene", "vela-pattern")}
         additions.add(str(layout.path("etc/systemd/system") / FAULT_UNIT))
         if not isinstance(record.get("files"), dict) or payload.keys() - record["files"].keys() - additions:
             raise BenchError("Installed code layout differs; code-only update refused")

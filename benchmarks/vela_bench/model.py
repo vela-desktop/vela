@@ -132,14 +132,15 @@ def make_plan(campaign, discovery, *, phases=None, targets=None, fast=False, exe
         plan["estimate"]["basis"] = "provisional instrument-control allowances; uncalibrated"
         plan["estimate"]["includes"] = ["fresh profile", "session launch", "instrument controls", "cleanup", "report"]
     elif any(name in MEASUREMENTS for name in selected):
-        from .measurements import PHASES as AVAILABLE, SPEC, VERSION
+        from .workloads import PHASES as AVAILABLE, implementation
         plan["execution_mode"] = "measure"
-        plan["scenario_revision"] = VERSION
-        plan["measurement_scope"] = "native-neutral-client-only; family coverage remains partial"
+        plan["scenario_revision"] = "fixed-measurement-phases-v1"
+        plan["measurement_scope"] = "fixed-native-workloads; family coverage remains partial"
         for block in blocks:
             if block["phase"] in AVAILABLE:
-                block.update(workload=VERSION, measurement_executed=True, measurement_spec=SPEC,
-                             requirements=["input", "presentation", "instrument-calibration"] +
+                module = implementation(block["phase"])
+                block.update(workload=module.VERSION, measurement_executed=True, measurement_spec=module.SPEC,
+                             requirements=(list(PHASES[block["phase"]]["requirements"]) if block["phase"] in ("scaling", "overhead") else ["input", "presentation", "instrument-calibration"]) +
                              (["delayed-gpu-producer-explicit-and-implicit"] if block["phase"] == "slow-apps" else []),
                              deadline_seconds=900)
         plan["estimate"]["maximum_seconds"] = 10 + sum(x["deadline_seconds"] for x in blocks)

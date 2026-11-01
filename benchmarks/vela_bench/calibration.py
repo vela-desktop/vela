@@ -103,16 +103,17 @@ def parse_input(rows, injections, *, count=INPUTS, delay=0):
             "excludes": ["physical switch", "USB polling", "panel scanout position", "pixel response"]}
 
 
-def capture_worker(target, primary, layout):
+def capture_worker(target, primary, layout, count=CAPTURES):
     """Called only in a reserved-UID user unit, never by a root workload."""
     primary = connector(primary)
+    if count not in (1, CAPTURES): raise BenchError('Unknown fixed capture sample count')
     helper = layout.helper.parent / "vela-bench-desktop"
     if target == "plasma":
         # Stream through the fixed native API, retaining its request/receipt
         # bounds. No portal or other capture backend is attempted.
         # Forward records immediately. Desktop actions synchronize against
         # their first pre-action captures, not completion of the whole batch.
-        with subprocess.Popen([str(helper), "--capture", primary, str(CAPTURES)],
+        with subprocess.Popen([str(helper), "--capture", primary, str(count)],
                               stdout=subprocess.PIPE, text=True) as process:
             for line in process.stdout:
                 print(line, end="", flush=True)
@@ -123,7 +124,7 @@ def capture_worker(target, primary, layout):
         raise BenchError("Unknown fixed capture adapter")
     path = layout.home / ".benchmark-capture.png"
     try:
-        for index in range(CAPTURES):
+        for index in range(count):
             begin = time.monotonic_ns()
             env = {key: value for key, value in os.environ.items() if not key.startswith("VELA_SCREEN_DUMP_")}
             completed = subprocess.run([str(layout.helper.parent / "vela-screen-dump"), str(path)], env=env,
@@ -138,7 +139,7 @@ def capture_worker(target, primary, layout):
             row.update(event="capture", backend="ext-image-copy-capture-v1", index=index,
                        begin_monotonic_ns=str(begin), end_monotonic_ns=str(end))
             print(json.dumps(row), flush=True)
-            if index + 1 < CAPTURES:
+            if index + 1 < count:
                 time.sleep(.1)
     finally:
         path.unlink(missing_ok=True)

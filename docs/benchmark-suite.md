@@ -5,7 +5,7 @@ compares Vela releases with one another. It measures responsiveness, motion,
 isolation from slow applications, fractional scaling and desktop overhead.
 The same scenarios and metric definitions serve both comparisons.
 
-> **Status:** implementation in progress, reviewed 2026-11-01. **P0 passed on
+> **Status:** implementation in progress, updated 2026-11-02. **P0 passed on
 > the initial machine for the installed Vela and Plasma Wayland sessions.**
 > All eight real-TTY qualification blocks passed, including independent
 > calibrations and worker crash/hang recovery for both desktops. P1 discovery,
@@ -20,7 +20,9 @@ The same scenarios and metric definitions serve both comparisons.
 > with P3. P3's native launcher/window/desktop observation workload passed
 > real-TTY fast acceptance on that machine, across separate responsiveness
 > and motion campaigns. Full family coverage, additional native shell/window
-> scenarios, scaling and overhead remain incomplete.
+> scenarios and the application corpus remain incomplete. P4 now implements
+> the native Wayland scaling pattern and UID-wide CPU/PSS measurements;
+> physical acceptance is pending.
 > No comparative performance results are included.
 > Initial acceptance baseline: `eb85cb9`. The 2026-11-01 integration includes
 > upstream `efdc9c6`; historical hardware acceptance does not qualify the new
@@ -41,8 +43,9 @@ Python 3.11+ is required. `run --phase check` is read-only; standalone
 rehearses selected measurement-phase slots with fixed instrument controls,
 three repetitions by default or one with `--fast`. It does not measure those
 families. Ordinary `run --phase responsiveness`, `motion` and `slow-apps`
-requests execute P2's client scenarios; scaling/overhead requests still fail
-before takeover, including mixed selections. `setup --tools-dir BUILD/tools`
+requests execute P2's client scenarios; scaling/overhead execute P4's partial
+pattern/resource workloads, with independently selectable or mixed phases.
+`setup --tools-dir BUILD/tools`
 installs the four fixed instruments and, when built, the bounded `vela-slowgpu`
 producer with the dedicated account and
 root-owned launcher. From a real local TTY, `qualify` requires one Start and
@@ -1246,6 +1249,61 @@ Alt+Tab/context menus, additional shell motion, desktop
 switching and observed interaction under slow-producer load remain unimplemented.
 The result is partial desktop coverage, not complete B1/B2/B3 or v1 acceptance.
 See [P3 commands](../benchmarks/README.md#p3-native-desktop-observation).
+
+### P4 implementation and acceptance scope
+
+`run --phase scaling` and `run --phase overhead` implement the separate fixed
+`p4-pattern-resources-v1` workload. Mixed P2/P4 selections retain each block's
+own version/specification in the immutable schedule and receipt. Default
+repetitions remain three; `--fast` changes only their count. Offline exports
+recompute original pixel and process/counter evidence, never trust only the
+saved aggregates. Neither phase claims complete family coverage.
+
+Scaling now covers a native Wayland coordinate pattern at 100/125/150/175/200%
+in opened, snapped-left, snapped-right, maximized and restored states. Each
+state starts a fresh 401×301-logical-pixel pattern, records its configure,
+preferred scale, viewport and actual buffer dimensions, injects the desktop's
+fixed default shortcuts, and captures the original physical output. Output
+configuration is read back. Before rendering, a recorded fixed pointer action
+parks the cursor at the output's bottom-right corner to prevent contamination.
+The decoder checks PNG CRCs, geometry, bounded
+decompression and all declared interior pixels without resampling. The client
+buffer establishes the expected rectangle; the oracle cannot shrink it to a
+good-looking subregion. Record the eight-logical-pixel corner exclusion plus
+pixel-grid allowance and at most two pixels of edge overhang. Overhanging
+pixels are counted as offscreen rather than discarded. Nonzero pixel errors
+are valid measured outcomes, separate from wrong/missing action identity,
+scale, capture route or restoration, which invalidate the block. Scale 1 is
+reapplied/read back on success and failure before ordinary session teardown.
+
+Overhead omits presentation/input/capture calibration and keeps capture off
+throughout. After ten seconds of startup settling, it measures 30 seconds
+of idle, 1,800 native animation submissions, and a fixed synthetic local
+SHA-256 workload (16,384 hashes of a fixed 1 MiB corpus). Source completion
+must fall inside its sampled window. One-second samples keep PID/start-time
+identity, service/workload cgroup membership, per-process PSS, disappeared
+processes and inventory intervals across the whole reserved UID. Cgroup CPU
+counters include processes that exit between samples. Report CPU seconds,
+percent of one logical CPU, UID/workload-separated PSS and root-controller
+CPU cost without automatic subtraction. PSS is a non-atomic observed-live-PID
+inventory; retained intervals and gaps expose this limit. Shared system
+services are not attributed. GPU and energy are explicitly unsupported for
+these initial collectors. Missing permissions/counters, counter resets,
+foreign UIDs/cgroups, sampling gaps and incomplete workloads invalidate data.
+
+Development validation covers rejection, schedules, phase-specific no-capture
+execution, raw audits/export, a complete isolated Vela 25-case controller run,
+and a fractional pattern through private KWin's native capture with verified
+scale restoration. The Vela fixture uses virtual input rather than kernel
+uinput and is headless; no physical P4 campaign is qualified yet. The new
+pixel oracle exposed nonzero fractional-edge differences; these are retained
+as measurements, not relaxed away to make the compositor pass.
+
+The application corpus (Qt/GTK/browser/Xwayland), resource interaction
+sequence, additional resource backends and real-TTY acceptance remain open.
+Coverage is `partial-pattern-only` / `partial-session-resources`;
+`full_suite_complete` and `performance_comparison_available` stay false.
+See [P4 commands](../benchmarks/README.md#p4-scaling-pattern-and-session-resources).
 
 ### Upstream integration review (2026-11-01)
 

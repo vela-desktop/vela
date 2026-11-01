@@ -274,9 +274,10 @@ class CLI(unittest.TestCase):
     def test_live_run_fails_before_creating_output_or_mutating_host(self):
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp) / "must-not-exist"
-            code, _, error = self.invoke(["run", "--fast", "--output", str(output)])
+            with patch('vela_bench.cli.require_root',side_effect=BenchError('explicit root invocation required')):
+                code, _, error = self.invoke(["run", "--fast", "--output", str(output)])
             self.assertEqual(code, 2)
-            self.assertIn("No sessions or settings were changed", error)
+            self.assertIn("explicit root invocation", error)
             self.assertFalse(output.exists())
 
     def test_check_run_produces_machine_readable_archive(self):

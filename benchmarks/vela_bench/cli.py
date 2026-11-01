@@ -100,11 +100,11 @@ def print_plan(plan):
     print(f"Plan fingerprint: {plan['fingerprint']}")
     if plan["takeover"]:
         print("Planned live execution requires a real TTY, isolated sessions, display control and restoration.")
-        print("Neutral-client input/animation and paired GPU-producer measurements are implemented; full family coverage remains incomplete.")
+        print("Native client, scaling-pattern and session-resource measurements are implemented; full family coverage remains incomplete.")
         if plan.get("execution_mode") == "exercise":
             print("P1 exercise: every phase slot runs fixed instrument controls only; no family measurements.")
         elif plan.get("execution_mode") == "measure":
-            print("P2 client-only scope; native shell/window scenarios and complete-family comparisons remain unavailable.")
+            print("P2 client and P4 pattern/resource measurements; full family coverage and performance comparisons remain unavailable.")
     else:
         print("Host-side checks only. No session takeover or settings changes.")
 
@@ -257,9 +257,10 @@ def main(argv=None):
                 export_latest_pilot(helper, args.output)
             return status
         if args.command == "phases":
-            from .measurements import PHASES as AVAILABLE
-            data = {name: dict(info, implemented=name in ("check", "calibrate", "report"),
-                               client_measurements_available=name in AVAILABLE,
+            from .workloads import PHASES as AVAILABLE
+            data = {name: dict(info, implemented=name in ("check", "calibrate", "report") or name in AVAILABLE,
+                               client_measurements_available=name in ('responsiveness','motion','slow-apps'),
+                               platform_measurements_available=name in ('scaling','overhead'),
                                exercise_available=name not in ("check", "calibrate", "report")) for name, info in PHASES.items()}
             if args.json:
                 print(json.dumps(data, indent=2))
@@ -268,6 +269,8 @@ def main(argv=None):
                     state = "available" if info["implemented"] else "planned"
                     if info["client_measurements_available"]:
                         state = "client-only"
+                    if info['platform_measurements_available']:
+                        state = 'partial-P4'
                     print(f"{name:16} {state:10} {info['description']}")
                     print(f"  requires: {', '.join(info['requirements']) or 'none'}; takeover: {info['takeover']}")
                     if info["exercise_available"]:
@@ -289,7 +292,7 @@ def main(argv=None):
                                                     phases=plan["phases"], exercise=True)
                 if plan["phases"] == ["calibrate"]:
                     return run_calibration_campaign(args, list(plan["targets"]), "calibrate", campaign["seed"])
-                from .measurements import PHASES as AVAILABLE
+                from .workloads import PHASES as AVAILABLE
                 if all(phase in AVAILABLE for phase in plan["phases"]):
                     return run_calibration_campaign(args, list(plan["targets"]), "calibrate", campaign["seed"], phases=plan["phases"])
                 if args.resume:

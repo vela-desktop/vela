@@ -26,6 +26,13 @@ durations were approximately 77–89 ms rather than the requested 150 ms,
 within the current declared tolerance. Full family coverage and comparative claims remain
 incomplete. There are no new published comparative results.
 
+P4 now implements native Wayland scaling-pattern captures and UID-wide
+CPU/PSS collection for idle, fixed client animation and synthetic local work.
+The corpus/resource-interaction coverage and physical P4 acceptance remain
+incomplete. Nonzero pixel differences are measured outcomes, not instrument
+failures; invalid identities, capture geometry or restoration still reject a
+block. See [P4 scope](benchmark-suite.md#p4-implementation-and-acceptance-scope).
+
 The 2026-11-01 benchmark-branch integration includes upstream `efdc9c6`.
 Deferred capture and cooperative GPU-producer dispatches require fresh
 instrument qualification; the older physical acceptance above does not

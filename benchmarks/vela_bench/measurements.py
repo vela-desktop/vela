@@ -332,6 +332,17 @@ def aggregate(blocks):
         group['independent_blocks'] = len(group['blocks'])
         group['aggregation'] = 'median-and-range-of-independent-block-statistics; no pooled quantiles or significance claim'
         group['block_statistics'] = {}
+        for metric,unit in (('cpu_percent_one_logical_cpu','% of one logical CPU'),
+                            ('cpu_seconds','s'),('pss_mib_median','MiB'),('session_pss_mib_median','MiB')):
+            values=[b['resources'][metric] for b in group['blocks'] if 'resources' in b]
+            if values:
+                group['block_statistics']['resources/'+metric]={'median':statistics.median(values),'min':min(values),'max':max(values),'unit':unit}
+        values=[b['metrics']['different_pixels'] for b in group['blocks'] if 'metrics' in b and 'different_pixels' in b['metrics']]
+        if values:
+            group['block_statistics']['pattern/different_pixels']={'median':statistics.median(values),'min':min(values),'max':max(values),'unit':'pixels'}
+        values=[b['metrics']['offscreen_pixels'] for b in group['blocks'] if 'metrics' in b and 'offscreen_pixels' in b['metrics']]
+        if values:
+            group['block_statistics']['pattern/offscreen_pixels']={'median':statistics.median(values),'min':min(values),'max':max(values),'unit':'pixels'}
         for scope, metric in (('input', 'injection_to_presentation_upper_ms'), ('motion', 'presentation_intervals_ms')):
             for quantile in ('p50', 'p95'):
                 values = [b[scope][metric][quantile] for b in group['blocks'] if scope in b]

@@ -64,7 +64,7 @@ def execution_selection(current, targets, *, case, fast, seed, phases, exercise)
     if case != "calibrate":
         raise BenchError("Phase execution cannot select fault qualification cases")
     if not exercise:
-        from .measurements import PHASES as AVAILABLE
+        from .workloads import PHASES as AVAILABLE
         if any(phase not in AVAILABLE for phase in phases):
             raise BenchError("Selected measurement phases are not implemented; no sessions or settings were changed")
     config = load_campaign()
@@ -91,7 +91,9 @@ def block_request(layout, run_id, block_id, target):
     if plan["case"] == "observe":
         from .desktop import PHASES as AVAILABLE, SPEC, VERSION
     else:
-        from .measurements import PHASES as AVAILABLE, SPEC, VERSION
+        from .workloads import PHASES as AVAILABLE, implementation
+        module = implementation(matches[0]["phase"]) if len(matches) == 1 else implementation("motion")
+        SPEC, VERSION = module.SPEC, module.VERSION
     workload = VERSION if measured else "p1-instrument-controls-v1"
     if (len(matches) != 1 or matches[0]["target"] != target
             or matches[0].get("workload") != workload or matches[0].get("fault")
@@ -103,7 +105,8 @@ def block_request(layout, run_id, block_id, target):
 
 
 def audit_block(source, block, plan, layout):
-    audit = audit_pilot(source, block["target"], block["fault"])
+    audit = audit_pilot(source, block["target"], block["fault"],
+                        instruments=not (plan.get("case")=="measure" and block.get("phase")=="overhead"))
     if plan["kind"] == "execution-campaign":
         expected = block_request(layout, plan["run_id"], block["id"], block["target"])
         state = read_json(source / "state.json")
@@ -112,7 +115,7 @@ def audit_block(source, block, plan, layout):
         audit["checks"]["fixed_workload_complete"] = receipt == dict(expected, status="passed")
         audit["method"] = expected["workload"]
         if plan["case"] == "measure":
-            from .measurements import audit_measurements
+            from .workloads import audit_measurements
             audit["measurements"] = audit_measurements(source, block["target"],
                 state["conditions_snapshot"]["profile"], block["phase"])
             audit["checks"]["measurement_raw_evidence"] = True
@@ -266,8 +269,8 @@ def inspect_campaign(directory):
         from .measurements import aggregate
         valid = [row for row in accepted if row["status"] == "complete"]
         result.update(execution_mode="measure", measurement_blocks_executed=len(valid),
-                      measurement_scope="native-neutral-client-only", measurements=aggregate(accepted),
-                      families={name: ("partial-client-only" if any(b.get("phase") == name for b in valid)
+                      measurement_scope="fixed-native-workloads", measurements=aggregate(accepted),
+                      families={name: (("partial-pattern-only" if name=="scaling" else "partial-session-resources" if name=="overhead" else "partial-client-only") if any(b.get("phase") == name for b in valid)
                                        else "measurement-incomplete") if name in plan["execution"]["phases"] else "not-selected"
                                 for name in MEASUREMENTS})
     if observed:
@@ -304,6 +307,15 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             if str(scene) not in setup["files"]:
                 raise BenchError("Desktop observation requires the installed vela-bench-scene instrument before takeover")
             trusted(scene)
+        if selection["case"] == "measure" and "scaling" in selection["execution"]["phases"]:
+            pattern = layout.helper.parent / "vela-pattern"
+            if str(pattern) not in setup["files"]:
+                raise BenchError("Scaling requires installed vela-pattern; run setup --tools-dir BUILD/tools")
+            trusted(pattern)
+        if selection['case']=='measure' and 'overhead' in selection['execution']['phases']:
+            if str(layout.probe) not in setup['files']:
+                raise BenchError('Resource animation requires installed vela-bench-probe before takeover')
+            trusted(layout.probe)
         if selection["case"] == "measure" and "slow-apps" in selection["execution"]["phases"]:
             producer = layout.helper.parent / "vela-slowgpu"
             if str(producer) not in setup["files"]:
@@ -336,7 +348,7 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
         if observed:
             print("P3 native launcher/window/desktop actions; coarse captures only, no frame-level motion ranking.", flush=True)
         if not observed:
-            print("P2 neutral-client measurements; native shell/window and full-family coverage remain incomplete." if measured else
+            print("Fixed native measurements; full application-corpus and family coverage remain incomplete." if measured else
                   "These are instrument/feasibility checks, not the five performance benchmarks.", flush=True)
         if exercise:
             print(f"P1 exercise: {', '.join(plan['execution']['phases'])}; {plan['execution']['repetitions']} complete repetitions per target.", flush=True)
@@ -367,7 +379,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                     raise BenchError("Installed versions or environment changed during campaign")
                 options = {"campaign_block_id": block["id"]} if exercise or measured or observed else {}
                 outcome = begin(host, [block["target"]], seconds=5, assume_yes=True, layout=layout,
-                      presentation_probe=not block["fault"], controlled=True, calibrate=not block["fault"],
+                      presentation_probe=not block["fault"] and not (measured and phase=="overhead"), controlled=True,
+                      calibrate=not block["fault"] and not (measured and phase=="overhead"),
                       countdown=False, run_id=attempt["pilot_run_id"], fault=block["fault"], campaign_run_id=plan["run_id"], **options)
                 if outcome == 130:
                     raise KeyboardInterrupt
@@ -406,6 +419,12 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                         metric = observation["actions"][0]["metrics"]
                         print(f"  P3 window drag: {metric['distance_pixels']:.1f} physical pixels; {len(metric['observed_positions'])} identified observations; coarse capture only.", flush=True)
                 for scenario, sample in audit.get("measurements", {}).get("scenarios", {}).items():
+                    if 'resources' in sample:
+                        metric=sample['resources']
+                        print(f"  P4 {scenario}: UID CPU {metric['cpu_percent_one_logical_cpu']:.2f}% of one logical CPU; median PSS {metric['pss_mib_median']:.2f} MiB; {metric['samples']} samples; capture off.",flush=True)
+                    if phase=='scaling' and 'metrics' in sample:
+                        metric=sample['metrics']
+                        print(f"  P4 {scenario}: {metric['different_pixels']} different pixels, {metric['offscreen_pixels']} offscreen; original capture retained.",flush=True)
                     if "input" in sample:
                         metric = sample["input"]["injection_to_presentation_upper_ms"]
                         print(f"  P2 {scenario}: 100 measured input actions; software presentation upper bound p50 {metric['p50']:.3f}, p95 {metric['p95']:.3f} ms.", flush=True)
@@ -461,8 +480,8 @@ table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:.5rem;bo
 pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
 </style>"""
     document += ("<h1>P3 desktop observation</h1><p>Native launcher, window and desktop actions verified through coarse output captures. No frame-level motion or optical latency claims.</p>" if observed else
-                 "<h1>P2 neutral-client measurements</h1><p>Measured client scenarios only. Native shell response, window movement, "
-                 "dedicated contention workloads, scaling and full-session overhead are incomplete. Software timestamps are not optical latency.</p>" if measured else
+                 "<h1>Native benchmark measurements</h1><p>Fixed client, scaling-pattern and session-resource scenarios. Additional shell response, window movement, "
+                 "dedicated contention workloads and full application-corpus coverage are incomplete. Software timestamps are not optical latency.</p>" if measured else
                  "<h1>P1 campaign core exercise</h1><p>Scheduled phase slots ran fixed instrument controls only. "
                  "Zero measurement blocks executed. The named benchmark families were not measured.</p>" if exercise else
                  "<h1>Qualification and calibration</h1><p>Instrument acceptance evidence.</p>")
@@ -490,6 +509,12 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
                     (group["phase"], group["target"], group["scenario"], group["independent_blocks"], metric + ' (' + values['unit'] + ')',
                      f"{values['median']:.3f}", f"{values['min']:.3f}–{values['max']:.3f}")) + "</tr>"
         document += "</table><h2>Raw-derived scenario results and paired load effects</h2><pre>" + escape(json.dumps(data["measurements"], indent=2)) + "</pre>"
+        document += '<h2>Original scaling captures</h2>'
+        for block in data['blocks']:
+            if block.get('status')=='complete' and block.get('phase')=='scaling':
+                for name, sample in block['audit']['measurements']['scenarios'].items():
+                    link=block['id']+'/'+sample['image_file']
+                    document += "<p><a href='"+escape(link)+"'>"+escape(block['id']+' / '+name)+"</a></p>"
     document += "<table><tr><th>Block</th><th>Phase</th><th>Target</th><th>Repetition</th><th>State</th><th>Acceptance</th></tr>"
     for block in data["blocks"]:
         document += "<tr>" + "".join(f"<td>{escape(value)}</td>" for value in
@@ -595,7 +620,8 @@ def read_export(directory):
     if manifest["kind"] != data.get("kind", "") + "-export":
         raise BenchError("Exported campaign kind changed")
     if data.get("execution_mode") == "measure":
-        from .measurements import aggregate, audit_measurements
+        from .measurements import aggregate
+        from .workloads import audit_measurements
         valid = [block for block in data["blocks"] if block.get("status") == "complete"]
         for block in valid:
             actual = audit_measurements(directory / block_identity(block["id"]), block["target"], block["profile"], block["phase"])

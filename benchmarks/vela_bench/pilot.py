@@ -193,9 +193,11 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
     request = None
     if campaign_block_id is not None:
         from .campaign import block_request
-        if campaign_run_id is None or len(plan["targets"]) != 1 or not calibrate or fault:
+        if campaign_run_id is None or len(plan["targets"]) != 1 or fault:
             raise BenchError("Campaign exercises require one target, fresh calibration and no fault")
         request = block_request(layout, campaign_run_id, campaign_block_id, next(iter(plan["targets"])))
+        if not calibrate and not (request["measurement_executed"] and request["block"]["phase"]=="overhead" and controlled and not presentation_probe):
+            raise BenchError("Only resource blocks may omit input/capture calibration")
         if request["measurement_executed"] and request["block"]["phase"] == "slow-apps":
             producer = layout.helper.parent / "vela-slowgpu"
             if str(producer) not in record["files"]:
@@ -526,7 +528,9 @@ def worker(host, layout=Layout()):
             if request:
                 from .campaign import block_request
                 targets = list(state["plan"]["targets"])
-                if (len(targets) != 1 or not state["plan"].get("instrument_calibration")
+                resource_only = (request.get('measurement_executed') is True and request.get('block',{}).get('phase')=='overhead'
+                                 and state['plan'].get('instrument_calibration') is False and state['plan'].get('presentation_probe') is False)
+                if (len(targets) != 1 or (not state["plan"].get("instrument_calibration") and not resource_only)
                         or not state["plan"].get("controlled_conditions") or state.get("fault")
                         or request != block_request(layout, state["campaign_run_id"], request["block"]["id"], targets[0])):
                     raise BenchError("Worker exercise request changed before takeover")
@@ -603,11 +607,11 @@ def worker(host, layout=Layout()):
                         verify_session(host, record, state, layout)
                 if state.get("conditions_snapshot"):
                     verify_conditions(host, record, layout, target, state["conditions_snapshot"])
+                def health():
+                    verify_session(host, record, state, layout)
+                    if host.run(["fgconsole"], timeout=5).stdout.strip() != str(state["target_vt"]):
+                        raise BenchError("Measurement lost the active benchmark VT")
                 if state["plan"].get("instrument_calibration"):
-                    def health():
-                        verify_session(host, record, state, layout)
-                        if host.run(["fgconsole"], timeout=5).stdout.strip() != str(state["target_vt"]):
-                            raise BenchError("Calibration lost the active benchmark VT; input injection stopped")
                     calibration = []
                     for condition in ("input", "input-capture", "input-delay"):
                         update(directory, state, "calibrate", target=target, scenario=condition)
@@ -632,7 +636,8 @@ def worker(host, layout=Layout()):
                         if request["workload"] == "p3-desktop-observation-v1":
                             from .desktop import run_observation as run_workload
                         else:
-                            from .measurements import run_workload
+                            from .workloads import implementation
+                            run_workload = implementation(phase).run_workload
                         measured = run_workload(host, record, directory, target, layout,
                             state["conditions_snapshot"]["profile"], phase, health,
                             progress=lambda label: update(directory, state, "measure", target=target, scenario=phase + '/' + label))
@@ -866,9 +871,11 @@ def launcher_main(argv=None):
         sub.add_parser(name)
     child = sub.add_parser("_session")
     child.add_argument("target", choices=("vela", "plasma"))
+    sub.add_parser("_resource-workload")
     capture = sub.add_parser("_capture")
     capture.add_argument("target", choices=("vela", "plasma"))
     capture.add_argument("primary")
+    capture.add_argument("--one", action="store_true")
     campaign = sub.add_parser("campaign")
     campaign.add_argument("--case", choices=("calibrate", "all", "calibration", "crash", "hang", "observe"), default="calibrate")
     campaign.add_argument("--target", action="append", choices=("vela", "plasma"))
@@ -882,12 +889,20 @@ def launcher_main(argv=None):
     args = parser.parse_args(argv)
     host = Host()
     try:
+        if args.command == "_resource-workload":
+            user = pwd.getpwnam(ACCOUNT)
+            if os.getuid()!=user.pw_uid or os.geteuid()!=user.pw_uid or user.pw_uid==0:
+                raise BenchError("Local workload requires reserved unprivileged UID")
+            check_profile_environment(os.environ,user.pw_dir,f"/run/user/{user.pw_uid}")
+            from .resources import hash_client
+            print(json.dumps(hash_client()),flush=True)
+            return 0
         if args.command == "_capture":
             user = pwd.getpwnam(ACCOUNT)
             if os.getuid() != user.pw_uid or os.geteuid() != user.pw_uid or user.pw_uid == 0:
                 raise BenchError("Capture may only run as the reserved unprivileged account")
             check_profile_environment(os.environ, user.pw_dir, f"/run/user/{user.pw_uid}")
-            capture_worker(args.target, args.primary, Layout())
+            capture_worker(args.target, args.primary, Layout(), count=1 if args.one else 12)
             return 0
         if args.command == "_session":
             print("vela-benchmark-session: " + json.dumps({"stage": "entry", "pid": os.getpid(),

@@ -74,6 +74,12 @@ endif()
 find_package(KF6Screen QUIET)
 find_package(Qt6 QUIET COMPONENTS Core Gui DBus)
 if(KF6Screen_FOUND AND TARGET Qt6::DBus)
+    if(VELA_BUILD_COMPOSITOR)
+        add_test(NAME benchmark-p4-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/p4_integration.py)
+        set_tests_properties(benchmark-p4-integration PROPERTIES
+            TIMEOUT 180 LABELS "gpu" RUN_SERIAL TRUE ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+    endif()
     add_executable(vela-bench-scene vela-bench-scene.cpp)
     target_link_libraries(vela-bench-scene PRIVATE Qt6::Gui)
     target_compile_options(vela-bench-scene PRIVATE -Wall -Wextra)

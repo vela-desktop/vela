@@ -153,6 +153,37 @@ def child(adapter, base):
         finally:
             process.terminate()
             process.communicate(timeout=5)
+    pattern = adapter.parent / 'vela-pattern'
+    if pattern.is_file():
+        import base64
+        import select
+        import time
+        from vela_bench.calibration import Lines
+        from vela_bench.pixels import pattern_metrics
+        scaled = copy.deepcopy(controlled)
+        scaled[0]['scale'] = 1.25
+        applied = native('--apply',json.dumps(scaled),env=display_env)
+        assert applied.returncode == 0, applied.stderr
+        compare_outputs(normalized_outputs(native('--outputs',env=display_env).stdout,'plasma'),scaled)
+        process = subprocess.Popen([str(pattern),'--benchmark','401','301'],env=display_env,
+                                   stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
+        try:
+            lines=Lines(process);meta=lines.next(time.monotonic()+5)
+            time.sleep(.3)
+            while lines.pending or select.select([process.stdout],[],[],.1)[0]:meta=lines.next(time.monotonic()+5)
+            assert meta['scale120']==150 and meta['logical_width']==401,meta
+            captured=native('--capture',scaled[0]['name'],'1',env=display_env)
+            assert captured.returncode==0,captured.stderr
+            record=json.loads(captured.stdout)
+            path=base/'fractional-pattern.png';path.write_bytes(base64.b64decode(record['png_base64'],validate=True))
+            metrics=pattern_metrics(path,meta,[800,600],1.25)
+            assert metrics['checked_pixels']>100000,metrics
+            checks['fractional_pattern_native_kwin_capture_and_scale_restore']=True
+        finally:
+            process.terminate();process.communicate(timeout=5)
+            applied=native('--apply',json.dumps(controlled),env=display_env)
+            assert applied.returncode==0,applied.stderr
+            compare_outputs(normalized_outputs(native('--outputs',env=display_env).stdout,'plasma'),controlled)
     print("PLASMA_PREFLIGHT_EVIDENCE " + json.dumps({"schema": 1, "scope": "isolated-virtual-kwin-no-hardware-qualification",
            "checks": checks, "endpoint": found, "outputs": inventory}, sort_keys=True), flush=True)
 

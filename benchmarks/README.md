@@ -430,7 +430,7 @@ sudo scripts/vela-bench run --phase calibrate --target vela --target plasma --fa
 three-versus-one repetitions apply to the future measurement families. Resume
 this selection with the same `run` arguments plus `--resume CAMPAIGN_ID`.
 Ordinary responsiveness/motion/slow-apps requests now execute the P2 client
-workloads below. Scaling/overhead still fail before takeover.
+workloads below. Scaling/overhead execute the partial P4 workloads described below.
 
 ## P2 neutral-client measurements
 
@@ -503,7 +503,8 @@ statistics. They do not pool actions/frames as repetitions, infer p99 or claim
 significance. Offline `status`/`report` revalidate raw P2 data and aggregates.
 Family coverage remains `partial-client-only`; full-suite completion and
 complete-family performance comparison stay false. Native shell response,
-window movement, scaling and session overhead are later stages.
+window movement is separately observed by P3; P4 implements the partial
+scaling-pattern and session-resource workloads below.
 
 CPU and isolated native Wayland/GPU tests cover this implementation. A
 headless backend cannot qualify physical presentation timing; its test-only
@@ -614,6 +615,73 @@ The new recorder/capture probe are available for development but are not
 installed benchmark instruments or replacements for the declared capture
 routes. See the [upstream integration review](../docs/benchmark-suite.md#upstream-integration-review-2026-11-01)
 for reuse decisions, timing limitations and the P4 implementation order.
+
+## P4 scaling pattern and session resources
+
+The fixed `p4-pattern-resources-v1` workloads now run through `run` with
+independent `scaling` and `overhead` selections. They use the same isolated
+sessions, immutable block receipts, three repetitions/default or one/`--fast`,
+checkpoint/resume, hardware restoration and raw-data re-audit. Physical TTY
+acceptance of P4 is pending; this remains partial family coverage.
+
+Build and refresh the installed instruments from the same checkout:
+
+```sh
+cmake --build build-native-displays --target vela-pattern vela-bench-input vela-bench-probe vela-bench-desktop vela-screen-dump
+sudo scripts/vela-bench setup --tools-dir build-native-displays/tools
+scripts/vela-bench plan --phase scaling --phase overhead --target vela --target plasma --fast
+```
+
+From a real TTY after signing out of the personal desktop:
+
+```sh
+sudo scripts/vela-bench run --phase scaling --phase overhead --target vela --target plasma --fast
+```
+
+Omit either phase to run it alone. Omit `--fast` for three complete blocks per
+condition; it never reduces the scale/state/sample/work matrix. Changed source
+or binary hashes need a new campaign, not a resume of older P2/P3 results.
+The installed desktop is measured; building these tools does not install Vela.
+
+`scaling` runs the native Wayland coordinate pattern at 100/125/150/175/200%,
+each opened, snapped left/right, maximized and restored: 25 captures per
+desktop/repetition. It uses the desktop's default shortcuts, validates native
+configure/preferred-scale/buffer/viewport evidence, applies and reads back each
+output scale, and retains the original physical-output PNG. The pointer is
+parked at the output's bottom-right corner before rendering, with its injection
+receipt retained to prevent cursor contamination. A dependency-free bounded
+PNG decoder rechecks pixels offline. The fixed eight-logical-pixel
+corner exclusion plus pixel-grid allowance is recorded; a maximum two-pixel
+edge overhang is located and counted as offscreen pixels, not silently cropped
+away. Expected buffer size is established by the client, not inferred by
+shrinking the rectangle to whichever pixels matched. Different pixels and
+offscreen pixels are measured outcomes: a completed instrument run can report
+nonzero errors. Wrong scale/backend/identity/state, truncated PNGs or failed
+restoration invalidate the run. Scale 1 is restored before normal teardown,
+including after a failed case; PID 1 retains the overall recovery responsibility.
+
+`overhead` does not run input, presentation or capture calibration. It waits
+ten seconds after session readiness, then records a 30-second idle window,
+1,800 native client animation submissions and a fixed local SHA-256 workload
+(16,384 hashes of the same 1 MiB corpus). The latter is synthetic work, not a
+browser/application benchmark. Completion evidence is checked against sampling
+intervals. Sampling is once per second without catch-up bursts. CPU comes
+from the entire reserved UID's cgroup, including exited processes, expressed
+as seconds and percent of one logical CPU. Per-process PSS includes services
+outside the compositor child tree; process identity is PID plus start time.
+Workload/service membership is retained separately, as are vanished processes
+and non-atomic inventory intervals. Root-controller CPU is reported without
+subtracting estimated collector costs; user-unit helpers remain in UID totals.
+Missing PSS/cgroup access fails explicitly. GPU/energy are `unsupported`, not
+zero; shared system services are not attributed to the desktop.
+
+The HTML links original scaling captures and reports independent-block CPU/PSS
+and pixel-error statistics without pooling repetitions. Exports recompute
+pixel and resource metrics, workload completion and session UID binding.
+Coverage stays `partial-pattern-only` / `partial-session-resources` and
+`full_suite_complete=false`. The Qt/GTK/browser/Xwayland corpus, resource
+interaction sequence, optional GPU/energy sources and complete-family
+comparison remain open.
 
 ### P1 scheduled block exercise
 

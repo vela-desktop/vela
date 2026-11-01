@@ -146,6 +146,7 @@ def discover(*, sysroot=Path("/sys"), procroot=Path("/proc"), session_dir=Path("
             "calibration_execution_available": True,
             "campaign_exercise_available": True,
             "neutral_client_measurements_available": ["responsiveness", "motion", "slow-apps"],
-            "limitations": ["P0/P1 passed on the initial Vela/Plasma setup. P2 neutral-client workloads are implemented and await real-TTY acceptance; full family coverage remains incomplete.",
+            "platform_measurements_available": ["scaling", "overhead"],
+            "limitations": ["Historical P0/P1 and P2/P3 fast acceptance covers the initial Vela/Plasma setup. Current P4 pattern/resources need physical acceptance; full family coverage remains incomplete.",
                             "No active display, brightness or power-profile changes are made by discovery.",
                             "Planning budgets are provisional; they are not measured durations."]}

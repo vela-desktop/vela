@@ -153,7 +153,7 @@ class Metrics(unittest.TestCase):
             with self.assertRaises(BenchError):audit_measurements(root,'vela',{},'responsiveness')
 
     def test_unsupported_phase_cannot_be_dispatched_by_privileged_executor(self):
-        for phase in ('overhead','scaling','check'):
+        for phase in ('report','check'):
             with self.subTest(phase=phase),self.assertRaises(BenchError):
                 execution_selection({'targets':{'vela':{}}},['vela'],case='calibrate',fast=True,seed=0,phases=[phase],exercise=False)
 
@@ -220,7 +220,7 @@ class MeasurementCampaign(unittest.TestCase):
         output=export_campaign(self.layout.path('exports'),data,self.layout)
         self.assertEqual(read_export(output),data)
         text=(output/'report.html').read_text()
-        self.assertIn('P2 neutral-client measurements',text)
+        self.assertIn('Native benchmark measurements',text)
         self.assertIn('No p99',text)
         self.assertNotIn('Zero measurement blocks executed',text)
 
