@@ -112,7 +112,7 @@ public:
     QDateTime installFinished() const;
     bool needsRelogin() const { return m_needsRelogin; }
     bool autoCheck() const { return m_autoCheckAsked.value(m_autoCheck); }
-    uint checkInterval() const { return m_checkIntervalAsked.value(m_checkInterval); }
+    uint checkInterval() const { return m_checkInterval; }
     QDateTime nextCheck() const;
     bool waitingForNetwork() const { return m_waitingForNetwork; }
     QString announce() const { return m_announce; }
@@ -184,7 +184,6 @@ private:
     QString m_announce;
     QString m_error;
     Requested m_autoCheckAsked;
-    Requested m_checkIntervalAsked;
 };
 
 } // namespace vela::updates
