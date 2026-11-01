@@ -201,13 +201,17 @@ class QtShell(RealShell):
                 time.sleep(0.3) # the toast's entrance animation has finished
 
                 self.vela.input("move", x, y, "sleep", 100, "click", "right")
-                self.vela.wait_for(
+                remaining_state = self.vela.wait_for(
                     lambda s: (p := self.layer(s, "vela-notifications"))
                     and p["h"] < initial_height - 20,
                     timeout=8, what="only the hovered toast dismissed")
 
-                # The other toast moves into the same place and remains clickable.
-                self.vela.input("move", x, y, "sleep", 100, "click", "right")
+                # The layer is bottom-anchored. After removing the first (top)
+                # toast it shrinks and its origin moves down, so the old
+                # absolute click coordinates are no longer inside the tile.
+                remaining = self.layer(remaining_state, "vela-notifications")
+                self.vela.input("move", remaining["x"] + 75, remaining["y"] + 55,
+                                "sleep", 100, "click", "right")
                 self.vela.wait_for(
                     lambda s: not self.mapped(s, "vela-notifications"),
                     timeout=8, what="remaining toast dismissed")
