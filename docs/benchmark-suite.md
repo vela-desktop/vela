@@ -5,7 +5,7 @@ compares Vela releases with one another. It measures responsiveness, motion,
 isolation from slow applications, fractional scaling and desktop overhead.
 The same scenarios and metric definitions serve both comparisons.
 
-> **Status:** implementation in progress, updated 2026-10-22. **P0 passed on
+> **Status:** implementation in progress, reviewed 2026-11-01. **P0 passed on
 > the initial machine for the installed Vela and Plasma Wayland sessions.**
 > All eight real-TTY qualification blocks passed, including independent
 > calibrations and worker crash/hang recovery for both desktops. P1 discovery,
@@ -22,7 +22,9 @@ The same scenarios and metric definitions serve both comparisons.
 > and motion campaigns. Full family coverage, additional native shell/window
 > scenarios, scaling and overhead remain incomplete.
 > No comparative performance results are included.
-> Repository baseline: `eb85cb9`.
+> Initial acceptance baseline: `eb85cb9`. The 2026-11-01 integration includes
+> upstream `efdc9c6`; historical hardware acceptance does not qualify the new
+> capture implementation or GPU-producer workload.
 
 The [implementation guide](../benchmarks/README.md) documents current commands,
 capability limits and restoration. Start without interrupting the desktop:
@@ -1244,6 +1246,38 @@ Alt+Tab/context menus, additional shell motion, desktop
 switching and observed interaction under slow-producer load remain unimplemented.
 The result is partial desktop coverage, not complete B1/B2/B3 or v1 acceptance.
 See [P3 commands](../benchmarks/README.md#p3-native-desktop-observation).
+
+### Upstream integration review (2026-11-01)
+
+The benchmark branch integrates `main` through `efdc9c6`, including the
+`v0.1.0` release history. Installed Beta/Experimental artifacts and this source
+checkout are different identities: an archive must describe the executable
+actually run. The following decisions guide the remaining implementation;
+they do not claim that P4 or a new capture backend is already implemented.
+
+| Upstream implementation | Benchmark use | Decision and acceptance work |
+|---|---|---|
+| Deferred SHM readback, shared staging and queue/damage fixes (`#111`, `#156`, `#173`) | Reduce interference from P0/P3 captures; inspect capture latency and throughput | Integrated through the existing capture protocol. Repeat capture-off/on, known-delay and cadence controls on the exact installed candidate. Existing coarse qualification does not become fine-grained motion qualification automatically. |
+| `vela-capture-probe` and `functional-capture` | Instrument diagnostics for latency, new/reused buffers, concurrency, idle waiting and queue pressure | Reuse the tests and workload ideas before extending observation. The probe currently exports aggregate percentiles, not the raw per-request series required for an audited benchmark. Its completion latency includes source-damage waiting; FPS is capture throughput, not monitor FPS. |
+| `vela-screen-record` and `scripts/recording_core.py` | Optional raw video evidence and deterministic shell-action fixtures | Reuse small components behind a declared adapter, after recording per-request bounds, timestamp origin, capture failures and workload identity. Keep raw frames/times. The current recorder falls back to receipt-time `CLOCK_MONOTONIC` when a presentation timestamp is absent and retries failures; those facts must become explicit evidence before timing use. Preserve P3's current route until the replacement is qualified. |
+| Before/after and promo scenes | Design fixed launcher, maximize, drag and quick-settings workloads; attach optional illustrations | Reuse action/readiness patterns. The current headless/private-services orchestration, synthetic fixtures, optional speed/scale changes, visual alignment and fixed-rate video export serve demonstrations. They cannot replace physical full-session runs or supply primary latency/regularity metrics. Builds/cherry-picks stay outside benchmark v1. |
+| Cooperative `vela-slowgpu` dispatches and portable linear DMA-BUF allocation (`#124`, `#126`) | Improve portability and separate delayed acquire from a single long unpreemptible dispatch | Integrated, preserving JSON, full-job GPU timestamps and bounded execution. Calibration records dispatch count; 150 ms requests use 50 dispatches by default. `--monolithic` remains a developer diagnostic, outside the current fixed campaign selection. Old single-dispatch archives and cooperative runs are different stimuli, even with equal requested duration. Do not pool them or attribute the difference solely to a desktop version. |
+| X11 native-pixel coordinates/RandR/DPI and `test_x11_native.py` (`#167`) | P4 Xwayland scaling oracle for geometry, native pixels and input mapping | Reuse the checkerboard, geometry and coordinate assertions alongside the existing Wayland pattern. Compare default Xwayland policy separately from native Wayland; no forced DPI policy or font-quality ranking. Headless source tests do not establish the installed DE's physical-output result. |
+| Renderer identity checks and strict AMD/NVIDIA GPU workflows | Verify real GPU selection and prevent a software-renderer/skip result from appearing as hardware coverage | Reuse selected-node/vendor checks and exact-candidate provenance. These workflows validate Vela on GPU-backed headless outputs, not a Vela/Plasma physical TTY campaign. Dispatch and hardware qualification remain separate from hosted CPU CI. |
+| Beta/Experimental packages and release branches | P5 comparisons of installed Vela releases | Extend discovery to distinguish `vela` and `vela-git`, artifact/channel/source metadata and component hashes. Never derive the installed binary's commit from this checkout or invoke the updater during a measurement. Archive comparison remains across external installations. |
+| Native Bluetooth and update daemons | P4 full-session resource inventory | Include target services started through the supervisor, D-Bus or user manager, including new helpers outside the compositor child tree. Record their identity/activity and common network/cache conditions. Keep default services active and collector/client costs separate; no live updater or device-pairing action is needed to discover them. |
+
+Implementation order: first requalify the existing instruments against the
+current installed target; next implement P4 pattern/geometry evidence using
+the existing sharpness and X11 oracles, then P4 UID-wide resource sampling.
+Persistent high-cadence capture and further shell scenes are a separate P3
+extension with a versioned workload, raw timing records, capture-off/on
+controls and a compatible Plasma adapter. Vela-private `state` counters
+(`readback`, output `frames`/`missed`, scanout) may explain results in a separate
+diagnostic channel; they are not common cross-desktop primary metrics.
+
+The review does not transfer AMD/NVIDIA CI or historical TTY acceptance to
+this integration. Physical P0/P2/P3 requalification remains outstanding.
 
 The current `p0-instruments-v1` qualification fixes 20 input actions in
 capture-off/on conditions, 12 captures, five known-delay input actions,

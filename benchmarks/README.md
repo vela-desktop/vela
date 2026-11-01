@@ -598,6 +598,23 @@ desktop-switch animations, observations under slow-producer load and
 fine-grained motion remain explicit coverage gaps; full-suite and automated
 complete-family comparison flags stay false.
 
+### Integration with current upstream tools
+
+The 2026-11-01 integration includes upstream `efdc9c6`. The shared
+`vela-input` retains the interactive/checkpoint modes and the benchmark's
+fixed evdev-keycode action. The shared `vela-slowgpu` retains portable linear
+DMA-BUF allocation, cooperative dispatches, developer `--monolithic` and
+benchmark JSON/deadline controls. JSON calibration now records `dispatches`:
+the fixed 150 ms campaign request uses 50 dispatches, while GPU timestamps
+still span the whole job. This changes the stimulus from historical
+single-dispatch runs; equal requested delay is not comparison compatibility.
+Changed instrument hashes require a new campaign, not resume of an old one.
+
+The new recorder/capture probe are available for development but are not
+installed benchmark instruments or replacements for the declared capture
+routes. See the [upstream integration review](../docs/benchmark-suite.md#upstream-integration-review-2026-11-01)
+for reuse decisions, timing limitations and the P4 implementation order.
+
 ### P1 scheduled block exercise
 
 The common executor can run the planned phase/target/repetition slots before
