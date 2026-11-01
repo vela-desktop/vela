@@ -85,9 +85,12 @@ that the update runs in a terminal.
 
 Before every Beta, run the tag pipeline on a public fork of the repository
 with the exact release commit. In the fork, the workflow runs from the
-tagged commit, so its `main` does not need to be updated; delete the
-fork's previous release before tagging again, because `publish-beta`
-refuses to replace published bytes. Then check:
+tagged commit, so its `main` does not need to be updated. To try again,
+delete the previous release together with its tag
+(`gh release delete v0.x.y --cleanup-tag`), then push the tag again:
+`publish-beta` refuses to replace published bytes, and an unchanged tag
+does not start the pipeline. This works because immutable releases are
+off on the fork; never enable them there. Then check:
 
 - a rerun of `publish-beta` keeps the published assets unchanged;
 - each package matches its manifest and its attestation names the fork,
