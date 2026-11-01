@@ -6,10 +6,12 @@ devices, WirePlumber's policy on them, the fake app, levels, restarts and
 isolation. Everything the library's tests (A1) will stand on."""
 
 import os
+import subprocess
 import sys
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -137,6 +139,31 @@ class FixtureTest(unittest.TestCase):
         self.audio.stream("--no-such-option")
         with self.assertRaises(RuntimeError):
             self.audio.stop()
+
+
+class DefaultReadTest(unittest.TestCase):
+    """default() against scripted pw-metadata output: the race it reads
+    again for happens about once in 1000 reads, too rarely to wait for."""
+
+    HEADER = 'Found "default" metadata 35\n'
+    KEY = HEADER + ("update: id:0 key:'default.audio.sink' value:'{ \"name\": \"%s\" }' type:'Spa:String:JSON'\n"
+                    % HEADPHONES)
+
+    def reads(self, *outputs):
+        """default("sink") with pw-metadata printing `outputs` in turn; the
+        answer and how many times pw-metadata ran."""
+        results = [subprocess.CompletedProcess([], 0, stdout=output, stderr="") for output in outputs]
+        with mock.patch("fixture.subprocess.run", side_effect=results) as run:
+            return AudioFixture(fake_stream="unused").default("sink"), run.call_count
+
+    def test_header_without_keys_is_read_again(self):
+        self.assertEqual(self.reads(self.HEADER, self.KEY), (HEADPHONES, 2))
+
+    def test_missing_key_is_missing_every_time(self):
+        self.assertEqual(self.reads(self.HEADER, self.HEADER, self.HEADER), (None, 3))
+
+    def test_no_metadata_answers_at_once(self):
+        self.assertEqual(self.reads(""), (None, 1))
 
 
 if __name__ == "__main__":
