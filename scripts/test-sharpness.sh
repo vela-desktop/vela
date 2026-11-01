@@ -12,6 +12,8 @@
 set -u
 cd "$(dirname "$0")/.."
 BUILD="${VELA_BUILD:-build}"
+# CTest forwards its selected Python; standalone runs keep the PATH default.
+PYTHON="${VELA_TEST_PYTHON:-python3}"
 for binary in "$BUILD/compositor/vela-compositor" "$BUILD/tools/vela-pattern" \
         "$BUILD/tools/vela-screen-dump" "$BUILD/tools/vela-input"; do
     if [ ! -x "$binary" ]; then
@@ -29,7 +31,7 @@ export XDG_CONFIG_HOME="$TMP/config" XDG_DATA_HOME="$TMP/data" XDG_CACHE_HOME="$
 for scale in $SCALES; do
     echo "== scale $scale"
     # Rounded corners (radius 8 logical) touch only those squares.
-    CORNER=$(python3 -c "import math; print(math.ceil(8 * $scale) + 1)")
+    CORNER=$("$PYTHON" -c "import math; print(math.ceil(8 * $scale) + 1)")
     WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 VELA_DEBUG_INPUT=1 VELA_SCALE=$scale \
         VELA_OUTPUT_SIZE=2560x1440@60 "$BUILD/compositor/vela-compositor" > "$TMP/log" 2>&1 &
     PID=$!
@@ -39,6 +41,15 @@ for scale in $SCALES; do
         [ -n "$DISPLAY_NAME" ] && break
     done
     export WAYLAND_DISPLAY=$DISPLAY_NAME
+    # In real-GPU CI, inspect the renderer Vela actually selected, not just vulkaninfo.
+    if [ -n "${VELA_GPU_EXPECT_VENDOR:-}" ]; then
+        if ! "$PYTHON" tests/functional/renderer_identity.py "$TMP/log" "$VELA_GPU_EXPECT_VENDOR"; then
+            kill "$PID" 2> /dev/null
+            wait "$PID" 2> /dev/null
+            rm -rf "$TMP"
+            exit 1
+        fi
+    fi
     "$BUILD/tools/vela-pattern" 401 301 2> "$TMP/pattern.log" &
     CLIENT=$!
     sleep 1
@@ -46,7 +57,7 @@ for scale in $SCALES; do
     check() {
         sleep 0.8
         "$BUILD/tools/vela-screen-dump" "$TMP/shot.png" || { echo "capture failed"; FAILED=1; return; }
-        python3 scripts/sharpness-check.py "$TMP/shot.png" "$1" "$CORNER" || FAILED=1
+        "$PYTHON" scripts/sharpness-check.py "$TMP/shot.png" "$1" "$CORNER" || FAILED=1
     }
     check opened
     "$BUILD/tools/vela-input" key super+Left; check "snapped left"

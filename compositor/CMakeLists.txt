@@ -51,8 +51,8 @@ vela_server_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-
 vela_server_protocol(${PROJECT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml
     wlr-layer-shell-unstable-v1)
 
-# Protocols wlroots doesn't implement: we implement them, so the interface code
-# is needed too.
+# Protocols implemented by Vela need interface code, including the output
+# capture adapter and its referenced foreign-toplevel interface.
 set(VELA_OWN_PROTOCOL_SOURCES)
 function(vela_own_protocol xml name)
     set(header ${VELA_GENERATED_DIR}/${name}-protocol.h)
@@ -70,6 +70,13 @@ endfunction()
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
     ext-background-effect-v1)
 vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-output-preview-v1.xml vela-output-preview-v1)
+vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml
+    ext-image-capture-source-v1)
+vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml
+    ext-foreign-toplevel-list-v1)
+# Xwayland's own xdg-output: the outputs in pixels (x11_root.c).
+vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/xdg-output-unstable-v1.xml
+    xdg-output-unstable-v1)
 
 # Client side, to talk to the host compositor when Vela runs in a window
 # (nested.c).
@@ -128,7 +135,8 @@ add_library(vela-pure STATIC
     src/path_security.c
     src/sun.c
     src/sync.c
-    src/util.c)
+    src/util.c
+    src/x11_space.c)
 target_include_directories(vela-pure PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(vela-pure PUBLIC _GNU_SOURCE)
 target_compile_options(vela-pure PRIVATE -Wall -Wextra -Wno-unused-parameter)
@@ -142,6 +150,7 @@ add_executable(vela-compositor
     src/a11y.c
     src/error_screen.c
     src/bindings.c
+    src/bluetooth.c
     src/brightness.c
     src/command.c
     src/decoration.c
@@ -169,8 +178,10 @@ add_executable(vela-compositor
     src/supervisor_children.c
     src/switcher.c
     src/text.c
+    src/updates.c
     src/view.c
     src/workspace.c
+    src/x11_root.c
     src/xwayland.c
     src/render/allocator.c
     src/render/formats.c
@@ -181,6 +192,7 @@ add_executable(vela-compositor
     src/render/texture.c
     src/render/vulkan.c
     src/scene/capture.c
+    src/scene/output_capture.c
     src/scene/effects.c
     src/scene/frame.c
     src/scene/ready.c
@@ -200,6 +212,13 @@ target_compile_definitions(vela-compositor PRIVATE WLR_USE_UNSTABLE
 target_compile_options(vela-compositor PRIVATE -Wall -Wextra -Wno-unused-parameter
     -Wno-missing-field-initializers)
 set_target_properties(vela-compositor PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+# logind lock hints are best-effort when libsystemd is available.
+pkg_check_modules(VELA_LOCK_SYSTEMD IMPORTED_TARGET libsystemd)
+if(VELA_LOCK_SYSTEMD_FOUND)
+    target_compile_definitions(vela-compositor PRIVATE VELA_HAVE_SYSTEMD_LOCK_HINT=1)
+    target_link_libraries(vela-compositor PRIVATE PkgConfig::VELA_LOCK_SYSTEMD)
+endif()
+
 target_link_libraries(vela-compositor PRIVATE
     vela-pure
     PkgConfig::WLROOTS
@@ -228,6 +247,26 @@ install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # sharpness geometry, color, sun, settings. They need GoogleTest (the gtest
 # package) and the test tools enabled.
 if(VELA_BUILD_TOOLS)
+    add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
+    target_include_directories(vela-device-loss-policy-test PRIVATE src)
+    set_target_properties(vela-device-loss-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    target_compile_options(vela-device-loss-policy-test PRIVATE -Wall -Wextra -Werror)
+    add_test(NAME compositor.device-loss-policy COMMAND vela-device-loss-policy-test)
+
+    # Run the production vkCreateDevice/vela_vulkan_create error path against
+    # deterministic entry-point stubs, without opening a GPU or Wayland session.
+    add_executable(vela-vulkan-device-init-test tests/vulkan_device_init_test.c src/render/formats.c)
+    target_include_directories(vela-vulkan-device-init-test PRIVATE src)
+    target_compile_definitions(vela-vulkan-device-init-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-vulkan-device-init-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-vulkan-device-init-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-vulkan-device-init-test PRIVATE vela-pure PkgConfig::VULKAN
+        PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM)
+    set_target_properties(vela-vulkan-device-init-test PROPERTIES C_STANDARD 17
+        C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.vulkan-device-init COMMAND vela-vulkan-device-init-test)
+
     # GPU-free policy test: verifies that the cursor-specific flags cannot
     # leak into ordinary output/capture allocations.
     add_executable(vela-cursor-policy-test tests/cursor_policy_test.c)
@@ -309,6 +348,33 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-wait-arrays-oom-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.wait-arrays-oom COMMAND vela-wait-arrays-oom-test)
 
+    # Production readback helpers: packed alpha, untouched padding and Vulkan
+    # allocation/map failures, with Vulkan entry points stubbed instead of a GPU.
+    add_executable(vela-readback-test tests/readback_test.c src/render/formats.c
+        src/render/wait_arrays.c ${VELA_SHADERS})
+    target_include_directories(vela-readback-test PRIVATE src ${VELA_SHADER_DIR} ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-readback-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
+    target_compile_options(vela-readback-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-readback-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-readback-test PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::VULKAN PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN)
+    set_target_properties(vela-readback-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.readback COMMAND vela-readback-test)
+
+    # Real output-source damage/idle policy with GPU work replaced by terminal
+    # frame notifications; no private wlroots session state is accessed.
+    add_executable(vela-capture-damage-test tests/capture_damage_test.c ${VELA_OWN_PROTOCOL_SOURCES})
+    target_include_directories(vela-capture-damage-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-capture-damage-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
+    target_compile_options(vela-capture-damage-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter)
+    target_link_options(vela-capture-damage-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-capture-damage-test PRIVATE PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN PkgConfig::VULKAN m)
+    set_target_properties(vela-capture-damage-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.capture-damage COMMAND vela-capture-damage-test)
+
     # Linux /proc enumeration and SIGTERM/SIGKILL child cleanup, no GPU.
     add_executable(vela-supervisor-children-test
         tests/supervisor_children_test.c src/supervisor_children.c)
@@ -317,6 +383,36 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-supervisor-children-test PRIVATE -Wall -Wextra -Werror)
     set_target_properties(vela-supervisor-children-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.supervisor-children COMMAND vela-supervisor-children-test)
+
+    # Xwayland's own xdg-output: the global filter, the outputs in pixels and
+    # their updates, with headless wlroots outputs and two clients, no GPU.
+    set(xdg_output_client ${VELA_GENERATED_DIR}/xdg-output-unstable-v1-client-protocol.h)
+    add_custom_command(
+        OUTPUT ${xdg_output_client}
+        COMMAND ${WAYLAND_SCANNER} client-header
+            ${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/xdg-output-unstable-v1.xml ${xdg_output_client}
+        DEPENDS ${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/xdg-output-unstable-v1.xml
+        COMMENT "Generating xdg-output-unstable-v1-client-protocol.h")
+    add_executable(vela-x11-root-test tests/x11_root_test.c src/x11_root.c ${VELA_OWN_PROTOCOL_SOURCES}
+        ${VELA_PROTOCOL_HEADERS} ${xdg_output_client})
+    target_include_directories(vela-x11-root-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-x11-root-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
+    target_compile_options(vela-x11-root-test PRIVATE -Wall -Wextra -Wno-unused-parameter
+        -Wno-missing-field-initializers)
+    target_link_libraries(vela-x11-root-test PRIVATE vela-pure PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER
+        PkgConfig::WAYLAND_CLIENT PkgConfig::PIXMAN)
+    set_target_properties(vela-x11-root-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.x11-root COMMAND vela-x11-root-test)
+
+    # Which vela-update-daemon the compositor starts, if any.
+    add_executable(vela-updates-start-test tests/updates_start_test.c src/updates.c)
+    target_include_directories(vela-updates-start-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-updates-start-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
+    target_compile_options(vela-updates-start-test PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(vela-updates-start-test PRIVATE PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER
+        PkgConfig::PIXMAN)
+    set_target_properties(vela-updates-start-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.updates-start COMMAND vela-updates-start-test)
 
     find_package(GTest)
     if(GTest_FOUND)
@@ -333,7 +429,8 @@ if(VELA_BUILD_TOOLS)
             tests/path_security_test.cpp
             tests/diagnostics_test.cpp
             tests/sync_test.cpp
-            tests/buffer_test.cpp)
+            tests/buffer_test.cpp
+            tests/x11_space_test.cpp)
         target_compile_options(vela-compositor-tests PRIVATE -Wall -Wextra)
         target_link_libraries(vela-compositor-tests PRIVATE vela-pure GTest::gtest_main)
         include(GoogleTest)

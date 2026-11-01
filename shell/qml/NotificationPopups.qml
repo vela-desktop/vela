@@ -107,6 +107,7 @@ Window {
                     Text {
                         width: parent.width - 20
                         text: toast.summary
+                        textFormat: Text.PlainText // the spec's summary has no markup
                         visible: text !== ""
                         color: Theme.text
                         font.pixelSize: Theme.fontBody

@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Vela Beta release package for Arch / CachyOS.
+#
+#   sh packaging/vela-update --channel beta    installs a verified Beta release
+#   vela-update --channel beta                updates after installation
+#
+# For a manual build, copy PKGBUILD.beta as PKGBUILD into a clean build
+# directory; plain makepkg in packaging/arch builds Experimental instead.
+#
+# The public repository is fetched over HTTPS, without SSH keys. To build
+# from a local copy, including changes not yet pushed but
+# already committed:
+#
+#   VELA_GIT_URL=file:///path/to/vela makepkg -si
+#
+# This is the tagged Beta package. It is never built on ordinary main pushes.
+# The release pipeline pins the exact tagged commit and validates the version.
+
+pkgname=vela
+_name=vela
+# Release builds set the version; a manual build gets the latest published Beta.
+pkgver=${VELA_RELEASE_VERSION:-0.1.0}
+pkgrel=1
+pkgdesc="A modern, fluid and sharp desktop environment for Wayland"
+arch=('x86_64')
+url="https://github.com/vela-desktop/vela"
+license=('GPL-3.0-or-later')
+depends=(
+    'wlroots0.20' 'wayland' 'libxkbcommon' 'pixman' 'libinput' 'libdrm' 'mesa' 'vulkan-icd-loader'
+    'freetype2' 'harfbuzz' 'fontconfig' 'librsvg' 'cairo'
+    'qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'layer-shell-qt'
+    'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland'
+    # Desktop defaults: GTK for generic portals and wlr for screen capture.
+    'konsole' 'breeze-icons' 'xdg-desktop-portal' 'xdg-desktop-portal-gtk' 'xdg-desktop-portal-wlr' 'xdg-utils'
+    # Runtime requirements of vela-update; build toolchain is installed on demand.
+    'git' 'curl' 'cosign' 'sudo' 'util-linux'
+    'xdg-terminal-exec' # Settings > Updates runs vela-update in the user's terminal (docs/updates.md §6.3)
+    'pipewire' 'wireplumber'
+    'systemd-libs' # sd-bus: laptop backlight (docs/brightness.md §5.3), vela-bluetooth (docs/bluetooth.md), vela-update-daemon (docs/updates.md)
+)
+makedepends=('cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols>=1.37' 'qt6-tools' 'qt6-multimedia')
+optdepends=(
+    'networkmanager: network and Wi-Fi (quick settings and Settings)'
+    'bluez: Bluetooth, all it needs (docs/bluetooth.md)'
+    'pipewire-pulse: sound for apps that still use PulseAudio'
+    'power-profiles-daemon: energy saver'
+    'udisks2: unmounted drives in File Explorer'
+    'kimageformats: AVIF, HEIF, JPEG XL and other pictures in File Explorer (thumbnails, quick preview)'
+    'qt6-multimedia: videos and sounds in the File Explorer quick preview'
+    'kdeconnect: share with your phone'
+    'bluedevil: send files over Bluetooth from Files (requires bluez-obex)'
+    'bluez-obex: OBEX file transfers (optional Bluedevil backend)'
+)
+conflicts=('vela-git')
+backup=('etc/pam.d/vela-lock' 'etc/xdg/xdg-desktop-portal-wlr/Vela')
+source=("$_name::git+${VELA_GIT_URL:-https://github.com/vela-desktop/vela.git#tag=v${pkgver}}")
+sha256sums=('SKIP')
+
+build() {
+    # vela-shell uses Qt6::GuiPrivate; rebuild the package after Qt upgrades.
+    # Do not pin qt6-base to an exact version on rolling Arch derivatives.
+
+    # makepkg.conf gives the build options (CMAKE_BUILD_TYPE=None).
+    cmake -B build -S "$_name" \
+        -DCMAKE_BUILD_TYPE=None \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_INSTALL_LIBEXECDIR=lib/vela \
+        -DVELA_BUILD_TOOLS=OFF \
+        -Wno-dev
+    cmake --build build
+}
+
+check() {
+    # Lightweight build/packaging checks; GPU-intensive tests remain in CI.
+    test -x build/compositor/vela-compositor
+    test -x build/shell/vela-shell
+    bash -n "$_name/packaging/vela-update"
+    sh -n "$_name/packaging/arch/vela-qt-rebuild-notice"
+    PYTHONPYCACHEPREFIX="$srcdir/.vela-pycache" python -m py_compile "$_name/packaging/verify-attestation.py"
+    PYTHONPYCACHEPREFIX="$srcdir/.vela-pycache" python -m py_compile "$_name/packaging/vela-update-state"
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm755 "$_name/packaging/vela-update" "$pkgdir/usr/bin/vela-update"
+    install -Dm755 "$_name/packaging/vela-update-beta" "$pkgdir/usr/lib/vela/vela-update-beta"
+    install -Dm644 "$_name/packaging/verify-attestation.py" "$pkgdir/usr/lib/vela/verify-attestation.py"
+    install -Dm755 "$_name/packaging/vela-update-state" "$pkgdir/usr/lib/vela/vela-update-state"
+    install -Dm644 "$_name/packaging/arch/vela-qt-private-rebuild.hook" \
+        "$pkgdir/usr/share/libalpm/hooks/vela-qt-private-rebuild.hook"
+    install -Dm755 "$_name/packaging/arch/vela-qt-rebuild-notice" \
+        "$pkgdir/usr/lib/vela/vela-qt-rebuild-notice"
+}

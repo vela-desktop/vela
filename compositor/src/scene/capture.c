@@ -5,6 +5,7 @@
 
 #include "render/renderer.h"
 #include "scene/frame.h"
+#include "scene/scene.h"
 #include "view.h"
 
 #include <drm_fourcc.h>
@@ -35,13 +36,107 @@ struct frame_event {
     struct timespec when;
 };
 
+// A deferred protocol frame owns its renderer request until ready/failure or
+// protocol destruction. Repeated source damage while it runs must not queue a
+// second copy of the same frame.
+struct pending_capture {
+    struct wlr_ext_image_copy_capture_frame_v1 *frame;
+    struct vela_readback *readback;
+    enum wl_output_transform transform;
+    struct timespec when;
+    struct wl_listener destroy;
+    struct wl_listener constraints;
+};
+
+static void destroy_pending(struct pending_capture *pending)
+{
+    wl_list_remove(&pending->destroy.link);
+    wl_list_remove(&pending->constraints.link);
+    vela_readback_cancel(pending->readback);
+    free(pending);
+}
+
+static void handle_frame_destroy(struct wl_listener *listener, void *data)
+{
+    struct pending_capture *pending = wl_container_of(listener, pending, destroy);
+    destroy_pending(pending);
+}
+
+static void handle_constraints(struct wl_listener *listener, void *data)
+{
+    struct pending_capture *pending = wl_container_of(listener, pending, constraints);
+    wlr_ext_image_copy_capture_frame_v1_fail(pending->frame,
+        EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS);
+}
+
+static void readback_done(void *data, bool ok)
+{
+    struct pending_capture *pending = data;
+    struct wlr_ext_image_copy_capture_frame_v1 *frame = pending->frame;
+    enum wl_output_transform transform = pending->transform;
+    struct timespec when = pending->when;
+    // The renderer already retired the request. Detach before ready/fail,
+    // which synchronously destroys the protocol frame and emits destroy.
+    pending->readback = NULL;
+    destroy_pending(pending);
+    if (ok) {
+        wlr_ext_image_copy_capture_frame_v1_ready(frame, transform, &when);
+    } else {
+        wlr_ext_image_copy_capture_frame_v1_fail(frame, EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
+    }
+}
+
+void vela_capture_copy_frame(struct wlr_ext_image_capture_source_v1 *source,
+    struct wlr_ext_image_copy_capture_frame_v1 *frame, struct wlr_buffer *buffer,
+    struct vela_renderer *renderer, struct wl_event_loop *loop,
+    enum wl_output_transform transform, const struct timespec *when)
+{
+    if (wl_signal_get(&frame->events.destroy, handle_frame_destroy)) {
+        return;
+    }
+    if (!buffer) {
+        wlr_ext_image_copy_capture_frame_v1_fail(frame, EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_STOPPED);
+        return;
+    }
+    if (buffer->width != frame->buffer->width || buffer->height != frame->buffer->height) {
+        wlr_ext_image_copy_capture_frame_v1_fail(frame, EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS);
+        return;
+    }
+    struct wlr_dmabuf_attributes dmabuf;
+    if (wlr_buffer_get_dmabuf(frame->buffer, &dmabuf)) {
+        // wlroots' GPU-to-GPU copy path has its own synchronization contract.
+        if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame, buffer, vela_renderer_wlr(renderer))) {
+            wlr_ext_image_copy_capture_frame_v1_ready(frame, transform, when);
+        }
+        return;
+    }
+    struct pending_capture *pending = calloc(1, sizeof(*pending));
+    if (!pending) {
+        wlr_ext_image_copy_capture_frame_v1_fail(frame, EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
+        return;
+    }
+    pending->frame = frame;
+    pending->transform = transform;
+    pending->when = *when;
+    pending->readback = vela_renderer_readback(renderer, loop, buffer, frame->buffer, readback_done, pending);
+    if (!pending->readback) {
+        free(pending);
+        wlr_ext_image_copy_capture_frame_v1_fail(frame, EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
+        return;
+    }
+    pending->destroy.notify = handle_frame_destroy;
+    wl_signal_add(&frame->events.destroy, &pending->destroy);
+    pending->constraints.notify = handle_constraints;
+    wl_signal_add(&source->events.constraints_update, &pending->constraints);
+}
+
 static void copy_frame(struct wlr_ext_image_capture_source_v1 *source, struct wlr_ext_image_copy_capture_frame_v1 *frame,
     struct wlr_ext_image_capture_source_v1_frame_event *base_event)
 {
+    struct vela_window_capture *capture = (struct vela_window_capture *)source;
     struct frame_event *event = (struct frame_event *)base_event;
-    if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame, event->buffer, vela_renderer_wlr(event->renderer))) {
-        wlr_ext_image_copy_capture_frame_v1_ready(frame, WL_OUTPUT_TRANSFORM_NORMAL, &event->when);
-    }
+    vela_capture_copy_frame(source, frame, event->buffer, event->renderer, capture->scene->event_loop,
+        WL_OUTPUT_TRANSFORM_NORMAL, &event->when);
 }
 
 // A buffer as large as the window, in a format we can both draw and read back

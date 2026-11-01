@@ -37,7 +37,9 @@ elif command[:1] == ["fetch"] or command[:2] == ["remote", "update"]:
         [real_git, "-C", directory, "config", "remote.origin.url"], text=True).strip()
 if url is not None:
     with open(os.environ["TEST_CALLS"], "a") as log:
-        log.write(json.dumps(dict(tool="git", args=args, operation=operation, url=url)) + "\n")
+        log.write(json.dumps(dict(tool="git", args=args, operation=operation, url=url,
+                                  low_speed=[os.environ.get("GIT_HTTP_LOW_SPEED_LIMIT"),
+                                             os.environ.get("GIT_HTTP_LOW_SPEED_TIME")])) + "\n")
     # No network or credentials: only the public HTTPS endpoint (mapped to
     # our real local repository below) and paths inside this fixture exist.
     local = url.removeprefix("file://").split("#", 1)[0]
@@ -75,16 +77,31 @@ os.execv(os.environ["TEST_REAL_MV"], [os.environ["TEST_REAL_MV"], *sys.argv[1:]]
 '''
 STUB = r'''#!/usr/bin/env python3
 import json, os, pathlib, subprocess, sys
+BUILT = b"built by the makepkg stub\n"
 name = pathlib.Path(sys.argv[0]).name
 args = sys.argv[1:]
 def record(**extra):
     with open(os.environ["TEST_CALLS"], "a") as log:
         log.write(json.dumps(dict(tool=name, args=args, **extra)) + "\n")
 if name == "pacman":
+    # A vela-git installation is not an installed 'vela' Beta package.
+    if args == ["-Q", "vela"]:
+        if os.environ.get("TEST_BETA_INSTALLED") == "1":
+            print("vela 0.1.0-1")
+            sys.exit(0)
+        if os.environ.get("TEST_INSTALLED"):
+            # Like pacman: vela-git provides vela, so -Q vela answers with it.
+            print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
+            sys.exit(0)
+        sys.exit(1)
+    if args == ["-Qq", "base-devel"]:
+        sys.exit(0 if os.environ.get("TEST_BASE_DEVEL", "1") == "1" else 1)
     if not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
     print("vela-git 0.1.0.r1.g" + os.environ["TEST_INSTALLED"] + "-1")
 elif name == "rpm":
+    if args == ["-q", "vela"]:
+        sys.exit(0 if os.environ.get("TEST_BETA_INSTALLED") == "1" else 1)
     if args[:2] == ["--eval", "%{?fedora}"]:
         print(os.environ.get("TEST_FEDORA_RELEASE", "44"))
         sys.exit(0)
@@ -162,12 +179,25 @@ while True:
     subprocess.run(["git", "-C", "checkout", "checkout", "--quiet", "--detach", fragment], check=True)
     sha = subprocess.check_output(["git", "-C", "checkout", "rev-parse", "HEAD"], text=True).strip()
     record(sha=sha, url=url, pkgbuild=pathlib.Path("PKGBUILD").read_text(),
-           makeflags=os.environ.get("MAKEFLAGS"))
+           makeflags=os.environ.get("MAKEFLAGS"), argv=args)
     if os.environ.get("TEST_FAIL_BUILD_INSTALL"):
         dest = pathlib.Path(os.environ["PKGDEST"])
         dest.mkdir(parents=True, exist_ok=True)
-        (dest / ("vela-git-0.1.0.r1.g" + sha[:7] + "-1-x86_64.pkg.tar.zst")).touch()
+        (dest / ("vela-git-0.1.0.r1.g" + sha[:7] + "-1-x86_64.pkg.tar.zst")).write_bytes(BUILT)
         sys.exit(1)
+    if "--install" not in args:
+        # Channel transitions build without installing, then let the updater
+        # use a single pacman conflict-replacement transaction.
+        dest = pathlib.Path(os.environ["PKGDEST"])
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / ("vela-git-0.1.0.r1.g" + sha[:7] + "-1-x86_64.pkg.tar.zst")).write_bytes(BUILT)
+        if os.environ.get("TEST_DEBUG_PACKAGES"):
+            # makepkg.conf's "debug" option and SIGNPKG, written after the
+            # package itself: newer files sharing its name's prefix.
+            import time
+            time.sleep(0.02)
+            (dest / ("vela-git-debug-0.1.0.r1.g" + sha[:7] + "-1-x86_64.pkg.tar.zst")).touch()
+            (dest / ("vela-git-0.1.0.r1.g" + sha[:7] + "-1-x86_64.pkg.tar.zst.sig")).touch()
 elif name == "cosign":
     record()
     if args[:1] != ["verify-blob-attestation"]:
@@ -301,7 +331,13 @@ elif name == "curl":
     else:
         sys.exit(22)
 elif name == "sudo":
-    record()
+    # Whether a package install is of a package makepkg built here, not one
+    # downloaded: only a verified download may ever be installed.
+    package = pathlib.Path(args[-1]) if args[:1] == ["pacman"] and "-U" in args else None
+    if package is not None:
+        record(built=package.is_file() and package.read_bytes() == BUILT)
+    else:
+        record()
     sys.exit(int(os.environ.get("TEST_FAIL_INSTALL", "0")))
 else:
     sys.exit("Unexpected tool: " + name)
@@ -325,7 +361,21 @@ class UpdateFixture(unittest.TestCase):
         # explicit bootstrap test below runs the updater from a Git checkout.
         self.update_script = bin_dir / "vela-update-under-test"
         shutil.copyfile(UPDATER, self.update_script)
+        # The installed Beta helper must be selected before Experimental parsing.
+        helper = bin_dir / "vela-update-beta"
+        helper.write_text('#!/bin/sh\necho beta-dispatched\n')
+        helper.chmod(0o755)
+        # Use a disposable fixture identity, never a production override of
+        # /etc/os-release. This also lets Arch tests run on Ubuntu CI hosts.
+        self.os_release = self.directory / "os-release"
+        self.os_release.write_text("ID=arch\n")
+        script = self.update_script.read_text()
+        self.assertEqual(script.count("/etc/os-release"), 2)
+        self.update_script.write_text(
+            script.replace("/etc/os-release", str(self.os_release)))
         shutil.copyfile(ROOT / "packaging/verify-attestation.py", bin_dir / "verify-attestation.py")
+        shutil.copyfile(ROOT / "packaging/vela-update-state", bin_dir / "vela-update-state")
+        self.state = self.directory / "home/.local/state/vela-update"
         self.calls_file = self.directory / "calls.jsonl"
         # Ignore the developer's Git rewrites, SSH keys, credentials and test
         # controls. Git is restricted to file transport even if a stub errs.
@@ -353,8 +403,9 @@ class UpdateFixture(unittest.TestCase):
         packaging.mkdir(parents=True)
         self.pkgbuild = packaging / "PKGBUILD"
         self.pkgbuild.write_text((ROOT / "packaging/arch/PKGBUILD").read_text())
-        shutil.copyfile(UPDATER, self.source / "packaging/vela-update")
+        shutil.copyfile(self.update_script, self.source / "packaging/vela-update")
         shutil.copyfile(ROOT / "packaging/verify-attestation.py", self.source / "packaging/verify-attestation.py")
+        shutil.copyfile(ROOT / "packaging/vela-update-state", self.source / "packaging/vela-update-state")
         self.base = self.commit("base")
         self.pkgbuild.write_text(self.pkgbuild.read_text() + "\n# main package\n")
         self.main = self.commit("main update")
@@ -364,6 +415,8 @@ class UpdateFixture(unittest.TestCase):
         self.git("checkout", "--quiet", "main")
         self.env.update(TEST_INSTALLED=self.base[:7],
                         TEST_CI_RUN="", TEST_DOWNLOAD_SHA="", TEST_FAIL_DOWNLOAD="")
+
+
 
     def git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.source), *args],
@@ -385,6 +438,24 @@ class UpdateFixture(unittest.TestCase):
     def write_config(self, source):
         self.config.parent.mkdir(parents=True, exist_ok=True)
         self.config.write_text(f"source={source}\n")
+
+    def cached_downloads(self):
+        """Cached packages that makepkg did not build here: never an
+        unverified download."""
+        built = b"built by the makepkg stub\n"
+        return [path for path in (self.mirror.parent / "packages").glob("*.pkg.tar.zst")
+                if path.read_bytes() != built]
+
+    def download_installs(self):
+        """Package installs of anything makepkg did not build here."""
+        return [call for call in self.calls("sudo")
+                if call["args"][:1] == ["pacman"] and "-U" in call["args"] and not call["built"]]
+
+    def skip_if_host_pacman(self):
+        # With the stub removed, an Arch host's own pacman still selects the
+        # Arch backend for an unknown distribution, as it should there.
+        if shutil.which("pacman", path=self.env["PATH"]):
+            self.skipTest("this host's pacman selects the Arch backend")
 
     def calls(self, tool):
         if not self.calls_file.exists():
@@ -428,6 +499,67 @@ class UpdateFixture(unittest.TestCase):
 
 
 class UpdateRevision(UpdateFixture):
+    def test_explicit_arch_beta_to_experimental_is_single_transaction(self):
+        if not self.os_release.read_text().startswith("ID=arch"):
+            self.skipTest("Arch-only native package transition")
+        self.env["TEST_BETA_INSTALLED"] = "1"
+        self.env["TEST_INSTALLED"] = ""
+        self.run_update("--channel", "experimental", "--build")
+        install_calls = [call for call in self.calls("sudo")
+                         if call["args"][:1] == ["pacman"]]
+        self.assertEqual(len(install_calls), 1)
+        self.assertEqual(install_calls[0]["args"][:4],
+                         ["pacman", "--noconfirm", "--ask=4", "-U"])
+
+    def test_installed_beta_defaults_to_beta_helper(self):
+        self.env["TEST_BETA_INSTALLED"] = "1"
+        result = self.run_update("--check", source=False)
+        self.assertIn("beta-dispatched", result.stdout)
+        self.assertEqual(self.calls("makepkg"), [])
+        self.os_release.write_text("ID=fedora\nVERSION_ID=44\n")
+        result = self.run_update("--check", source=False)
+        self.assertIn("beta-dispatched", result.stdout)
+
+
+    def test_missing_base_devel_installed_for_local_build(self):
+        """An unattended local build installs base-devel without a prompt."""
+        self.env["TEST_BASE_DEVEL"] = "0"
+        self.run_update("--build")
+        self.assertTrue(any(c["args"] == ["pacman", "-S", "--needed", "--noconfirm", "base-devel"]
+                            for c in self.calls("sudo")))
+        self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
+        self.assertIn("--noconfirm", self.calls("makepkg")[0]["argv"])
+
+    def test_verified_download_without_base_devel_never_provisions_build_tools(self):
+        """A verified prebuilt package must not install a local build toolchain."""
+        self.env.update(TEST_BASE_DEVEL="0", TEST_CI_RUN="123",
+                        TEST_DOWNLOAD_SHA=self.nvidia[:7])
+        self.run_update("--branch", "fix/nvidia", "--download")
+        sudo = self.calls("sudo")
+        self.assertEqual(sudo[0]["args"][:2], ["pacman", "-U"])
+        self.assertFalse(any(c["args"][:3] == ["pacman", "-S", "--needed"] for c in sudo))
+        self.assertEqual(self.calls("makepkg"), [])
+
+    def test_missing_base_devel_noninteractive_build_fallback_after_failed_download(self):
+        """Falling back to local compilation also uses noninteractive pacman."""
+        self.env.update(TEST_BASE_DEVEL="0", TEST_CI_RUN="123", TEST_FAIL_DOWNLOAD="1")
+        self.run_update("--download")
+        self.assertTrue(any(c["args"] == ["pacman", "-S", "--needed", "--noconfirm", "base-devel"]
+                            for c in self.calls("sudo")))
+        self.assertIn("--noconfirm", self.calls("makepkg")[0]["argv"])
+
+    def test_present_base_devel_not_reinstalled(self):
+        self.run_update("--build")
+        self.assertFalse(any(c["args"] == ["pacman", "-S", "--needed", "base-devel"]
+                             for c in self.calls("sudo")))
+
+    def test_failed_base_devel_install_stops_before_makepkg(self):
+        self.env["TEST_BASE_DEVEL"] = "0"
+        self.env["TEST_FAIL_INSTALL"] = "1"
+        result = self.run_update("--build", status=1)
+        self.assertIn("could not install base-devel", result.stderr)
+        self.assertEqual(self.calls("makepkg"), [])
+
     def test_default_build_uses_main(self):
         self.run_update("--build")
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
@@ -470,7 +602,7 @@ class UpdateRevision(UpdateFixture):
     def test_build_skips_ready_artifact_and_respects_jobs(self):
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.main[:7])
         self.run_update("--build", "--jobs", "2")
-        self.assertEqual(self.calls("gh") + self.calls("sudo"), [])
+        self.assertEqual(self.calls("gh") + self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
         self.assertEqual(self.calls("makepkg")[0]["makeflags"], "-j2")
 
@@ -528,9 +660,9 @@ class UpdateRevision(UpdateFixture):
                         TEST_REJECT_ATTEST="1")
         result = self.run_update("--branch", "fix/nvidia", "--download")
         self.assertIn("provenance verification failed", result.stderr)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.nvidia)
-        self.assertEqual(list((self.mirror.parent / "packages").glob("*.pkg.tar.zst")), [])
+        self.assertEqual(self.cached_downloads(), [])
 
     def test_workflow_artifact_attestation_failure_shows_reason_and_builds(self):
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.nvidia[:7],
@@ -538,7 +670,7 @@ class UpdateRevision(UpdateFixture):
         result = self.run_update("--branch", "fix/nvidia", "--download")
         self.assertIn("simulated cosign attestation rejection", result.stderr)
         self.assertIn("provenance verification failed", result.stderr)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.nvidia)
 
     def test_workflow_artifact_attestation_is_tied_to_selected_sha(self):
@@ -561,7 +693,7 @@ class UpdateRevision(UpdateFixture):
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.main[:7])
         self.run_update("--branch", "fix/nvidia", "--download")
         self.assertTrue(any(call["args"][:2] == ["run", "download"] for call in self.calls("gh")))
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.nvidia)
 
     def test_missing_revision_never_installed(self):
@@ -1031,20 +1163,20 @@ class UpdatePublicReleases(UpdateFixture):
         result = self.run_update("--download", source=False)
         self.assertIn("invalid public release manifest", result.stderr)
         self.assertEqual(len(self.calls("curl")), 1)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_bad_digest_falls_back_to_local_build(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_BAD_RELEASE_DIGEST="1")
         result = self.run_update("--download", source=False)
         self.assertIn("unverified or corrupt", result.stderr)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_corrupted_download_falls_back_to_local_build(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_CORRUPT_RELEASE="1")
         self.run_update("--download", source=False)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_official_url_alias_release_uses_canonical_provenance(self):
@@ -1065,28 +1197,28 @@ class UpdatePublicReleases(UpdateFixture):
         result = self.run_update("--download")
         self.assertIn("simulated cosign attestation rejection", result.stderr)
         self.assertIn("provenance verification failed", result.stderr)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_public_release_without_attestation_falls_back_to_source(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_REJECT_ATTEST="1")
         result = self.run_update("--download", source=False)
         self.assertIn("provenance verification failed", result.stderr)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
-        self.assertFalse(list((self.mirror.parent / "packages").glob("*.pkg.tar.zst")))
+        self.assertEqual(self.cached_downloads(), [])
 
     def test_signed_self_hosted_runner_is_rejected(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_SELF_HOSTED="1")
         result = self.run_update("--download")
         self.assertIn("non-GitHub-hosted runner", result.stderr)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_public_release_with_wrong_source_provenance_falls_back(self):
         self.env.update(TEST_RELEASE_SHA=self.main, TEST_WRONG_ATTEST_SHA="1")
         self.run_update("--download", source=False)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_missing_cosign_never_installs_unattested_binary(self):
@@ -1097,13 +1229,13 @@ class UpdatePublicReleases(UpdateFixture):
         cosign.write_text("not an executable")
         result = self.run_update("--download", source=False)
         self.assertIn("provenance verification failed", result.stderr)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_absent_release_keeps_build_fallback(self):
         result = self.run_update("--download", source=False)
         self.assertNotIn("release lookup failed", result.stderr)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_invalid_manifest_reports_error_and_builds(self):
@@ -1112,7 +1244,7 @@ class UpdatePublicReleases(UpdateFixture):
                 self.env.update(TEST_RELEASE_SHA=self.main, TEST_BAD_RELEASE_MANIFEST=mode)
                 result = self.run_update("--download", source=False)
                 self.assertIn("invalid public release manifest", result.stderr)
-                self.assertEqual(self.calls("sudo"), [])
+                self.assertEqual(self.download_installs(), [])
                 self.assertEqual(self.calls("makepkg")[-1]["sha"], self.main)
 
     def test_http_failures_other_than_404_are_reported_and_build(self):
@@ -1122,14 +1254,14 @@ class UpdatePublicReleases(UpdateFixture):
                 result = self.run_update("--download", source=False)
                 self.assertIn("HTTP " + code, result.stderr)
                 self.assertIn("optional public release lookup failed", result.stderr)
-                self.assertEqual(self.calls("sudo"), [])
+                self.assertEqual(self.download_installs(), [])
                 self.assertEqual(self.calls("makepkg")[-1]["sha"], self.main)
 
     def test_http_404_is_quiet_and_falls_back_to_build(self):
         self.env["TEST_RELEASE_HTTP"] = "404"
         result = self.run_update("--download", source=False)
         self.assertNotIn("optional public release lookup failed", result.stderr)
-        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.download_installs(), [])
         self.assertEqual(self.calls("makepkg")[0]["sha"], self.main)
 
     def test_release_lookup_network_error_is_visible_without_aborting_build(self):
@@ -1234,6 +1366,248 @@ class UpdateConcurrency(UpdateFixture):
         self.assertFalse(list(self.mirror.parent.glob("vela-mirror.*")))
         self.env.pop("TEST_PAUSE_BUILD", None)
         self.run_update("--check")
+
+
+class UpdateReport(UpdateFixture):
+    """What the desktop reads (docs/updates.md §5): --check --json and the
+    state files."""
+
+    def read_state(self, name):
+        return json.loads((self.state / name).read_text())
+
+    def check_json(self, *args, status=0):
+        result = self.run_update("--check", "--json", *args, status=status)
+        return json.loads(result.stdout)  # stdout is nothing but the JSON
+
+    def test_vela_git_providing_vela_stays_experimental(self):
+        result = self.run_update("--check", source=False)
+        self.assertNotIn("beta-dispatched", result.stdout)
+
+    def test_update_available_lists_the_commits(self):
+        payload = self.check_json()
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["channel"], "experimental")
+        self.assertEqual(payload["status"], "update-available")
+        self.assertEqual(payload["installed_package"], "vela-git")
+        self.assertEqual(payload["installed_version"], "0.1.0.r1.g" + self.base[:7] + "-1")
+        self.assertEqual(payload["commit"], self.main)
+        self.assertEqual(payload["tag"], "")
+        self.assertEqual(payload["source"], str(self.source))
+        self.assertEqual(payload["changes"], [{"commit": self.main, "summary": "main update"}])
+        self.assertEqual(payload["changes_total"], 1)
+        self.assertIsNone(payload["error"])
+        self.assertEqual(self.read_state("check.json"), payload)
+        self.assertFalse((self.state / "run.json").exists())
+        self.assertFalse(list(self.mirror.parent.glob("changes.*")))
+
+    def test_up_to_date_json_exits_0_and_human_check_keeps_1(self):
+        self.env["TEST_INSTALLED"] = self.main[:7]
+        self.assertEqual(self.check_json()["status"], "up-to-date")
+        self.run_update("--check", status=1)
+        self.assertEqual(self.read_state("check.json")["status"], "up-to-date")
+
+    def test_another_branch_has_no_change_list(self):
+        payload = self.check_json("--branch=fix/nvidia")
+        self.assertEqual(payload["status"], "update-available")
+        self.assertEqual(payload["changes"], [{"commit": self.nvidia, "summary": "NVIDIA fix"}])
+        self.env["TEST_INSTALLED"] = self.nvidia[:7]
+        payload = self.check_json()
+        self.assertEqual(payload["changes"], [])  # main isn't after the NVIDIA fix
+        self.assertEqual(payload["changes_total"], 0)
+
+    def test_no_package_and_beta_package(self):
+        self.env["TEST_INSTALLED"] = ""
+        payload = self.check_json()
+        self.assertEqual(payload["status"], "not-installed")
+        self.assertEqual(payload["installed_package"], "")
+        self.env["TEST_BETA_INSTALLED"] = "1"
+        payload = self.check_json("--channel", "experimental")
+        self.assertEqual(payload["status"], "update-available")
+        self.assertEqual(payload["installed_package"], "vela")
+        self.assertEqual(payload["installed_version"], "0.1.0-1")
+
+    def test_json_needs_check(self):
+        self.run_update("--json", status=2)
+
+    def test_failed_checks_have_codes(self):
+        payload = self.check_json("--branch=missing", status=1)
+        self.assertEqual(payload["status"], "error")
+        self.assertEqual(payload["error"]["code"], "not-found")
+        self.env["TEST_FAIL_FETCH"] = "1"
+        payload = self.check_json(status=1)
+        self.assertEqual(payload["error"]["code"], "network")
+        self.assertEqual(self.read_state("check.json")["error"]["code"], "network")
+
+    def test_unsupported_distribution_still_answers_in_json(self):
+        self.os_release.write_text("ID=ubuntu\nVERSION_ID=24.04\n")
+        payload = self.check_json(status=1)
+        self.assertEqual(payload["error"]["code"], "unsupported")
+        # Before the lock: the state files are not this run's to write.
+        self.assertFalse((self.state / "check.json").exists())
+
+    def test_install_reports_its_phase_and_result(self):
+        proc, release = self.start_paused_build()
+        try:
+            run = self.read_state("run.json")
+            self.assertEqual(run["action"], "install")
+            self.assertEqual(run["channel"], "experimental")
+            self.assertEqual(run["phase"], "building")
+            self.assertGreater(run["start_time"], 0)
+            # A check meanwhile is busy, and leaves the files alone.
+            payload = self.check_json(status=1)
+            self.assertEqual(payload["error"]["code"], "busy")
+            self.assertEqual(self.read_state("run.json"), run)
+        finally:
+            release.touch()
+            stdout, stderr = proc.communicate(timeout=30)
+        self.assertEqual(proc.returncode, 0, stdout + stderr)
+        self.assertFalse((self.state / "run.json").exists())
+        install = self.read_state("install.json")
+        self.assertEqual(install["result"], "success")
+        self.assertIsNone(install["error"])
+
+    def test_interrupted_install_is_cancelled(self):
+        proc, release = self.start_paused_build()
+        proc.send_signal(signal.SIGTERM)
+        try:
+            proc.communicate(timeout=8)
+        finally:
+            release.touch()
+        install = self.read_state("install.json")
+        self.assertEqual(install["result"], "cancelled")
+        self.assertEqual(install["error"]["code"], "cancelled")
+        self.assertFalse((self.state / "run.json").exists())
+
+    def test_failed_installs_record_why(self):
+        for variable, code in (("TEST_FAIL_BUILD", "build-failed"),
+                               ("TEST_FAIL_BUILD_INSTALL", "install-failed")):
+            with self.subTest(code=code):
+                self.env[variable] = "1"
+                self.run_update("--build", status=1)
+                install = self.read_state("install.json")
+                self.assertEqual(install["result"], "failed")
+                self.assertEqual(install["error"]["code"], code)
+                del self.env[variable]
+
+
+class UpdateRobustness(UpdateFixture):
+    """Fixes from the vela-update review: network stalls, shallow history,
+    the Arch install step, package selection, option validation."""
+
+    def test_git_has_a_network_stall_timeout(self):
+        self.run_update("--check")
+        calls = self.calls("git")
+        self.assertTrue(calls)
+        self.assertTrue(all(call["low_speed"] == ["1000", "60"] for call in calls), calls)
+
+    def test_source_option_values_never_reach_git_as_options(self):
+        for args in (("--source=--upload-pack=touch x",), ("--source", "-x")):
+            with self.subTest(args=args):
+                result = self.run_update(*args, "--check", status=2, source=False)
+                self.assertIn("--source needs a value", result.stderr)
+        self.assertEqual(self.calls("git"), [])
+
+    def test_commit_needs_four_to_forty_digits(self):
+        for value in ("abc", "a" * 41):
+            with self.subTest(value=value):
+                self.run_update("--commit", value, "--check", status=2)
+        self.assertEqual(self.calls("git"), [])
+
+    def shallow_checkout(self):
+        checkout = self.directory / "checkout"
+        subprocess.run(["git", "clone", "--quiet", "--depth", "1", "--branch", "main",
+                        self.source.as_uri(), str(checkout)], check=True, timeout=30)
+        subprocess.run(["git", "-C", str(checkout), "remote", "set-url", "origin", HTTPS_SOURCE],
+                       check=True, timeout=10)
+        return checkout
+
+    def history(self):
+        shallow = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "rev-parse", "--is-shallow-repository"],
+            env=self.env, text=True).strip()
+        count = subprocess.check_output(
+            ["git", "-C", str(self.mirror), "rev-list", "--count", self.main],
+            env=self.env, text=True).strip()
+        return shallow, count
+
+    def test_shallow_checkout_is_not_used_to_seed_the_mirror(self):
+        checkout = self.shallow_checkout()
+        result = subprocess.run(["sh", str(checkout / "packaging/vela-update"), "--check"],
+                                env=self.env, input="", text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("shallow clone: downloading the full history", result.stdout)
+        self.assertNotIn("Reusing Git objects", result.stdout)
+        self.assertEqual([(c["operation"], c["url"]) for c in self.calls("git")],
+                         [("clone", HTTPS_SOURCE)])
+        self.assertEqual(self.history(), ("false", "2"))
+
+    def test_shallow_cached_mirror_is_completed(self):
+        # As an older vela-update left it after a shallow checkout's bootstrap.
+        subprocess.run(["git", "clone", "--quiet", "--mirror", "--depth", "1",
+                        self.source.as_uri(), str(self.mirror)], check=True, timeout=30)
+        subprocess.run(["git", "-C", str(self.mirror), "remote", "set-url", "origin", HTTPS_SOURCE],
+                       check=True, timeout=10)
+        result = self.run_update("--check", source=False)
+        self.assertIn("Completing the cached Git history", result.stdout)
+        self.assertEqual(self.history(), ("false", "2"))
+        # The installed base commit is now an ancestor: its changes are listed.
+        self.assertIn("main update", result.stdout)
+
+    def test_shallow_source_folder_is_refused(self):
+        checkout = self.shallow_checkout()
+        result = self.run_update("--check", "--source", str(checkout), status=1, source=False)
+        self.assertIn("incomplete Git history", result.stderr)
+        self.assertFalse(self.mirror.exists())
+        self.assertFalse(self.config.exists())
+
+    def test_arch_build_installs_as_its_own_step(self):
+        result = self.run_update("--build")
+        build = self.calls("makepkg")[0]
+        self.assertNotIn("--install", build["argv"])
+        installs = [c for c in self.calls("sudo") if c["args"][:1] == ["pacman"]]
+        self.assertEqual(len(installs), 1)
+        # Unattended (no terminal): no confirmation prompt, as makepkg had.
+        self.assertEqual(installs[0]["args"][:3], ["pacman", "-U", "--noconfirm"])
+        self.assertIn(".g" + self.main[:7] + "-", installs[0]["args"][-1])
+        self.assertIn("Vela is up to date", result.stdout)
+
+    def test_failed_pacman_install_after_build_keeps_package(self):
+        self.env["TEST_FAIL_INSTALL"] = "1"
+        result = self.run_update("--build", status=1)
+        self.assertIn("the package is ready but wasn't installed", result.stderr)
+        self.assertEqual(self.read_install()["error"]["code"], "install-failed")
+
+    def read_install(self):
+        return json.loads((self.state / "install.json").read_text())
+
+    def test_debug_package_and_signature_are_never_installed(self):
+        self.env["TEST_DEBUG_PACKAGES"] = "1"
+        self.run_update("--build")
+        installs = [c for c in self.calls("sudo") if c["args"][:1] == ["pacman"]]
+        package = Path(installs[0]["args"][-1]).name
+        self.assertTrue(package.startswith("vela-git-0.1.0."), package)
+        self.assertTrue(package.endswith(".pkg.tar.zst"), package)
+
+    def test_prune_keeps_three_of_each_package_with_signatures(self):
+        packages = self.mirror.parent / "packages"
+        packages.mkdir(parents=True)
+        for index in range(5):
+            stamp = time.time() - 1000 + index
+            for name in (f"vela-git-0.0.{index}.r1.g000000{index}-1-x86_64.pkg.tar.zst",
+                         f"vela-git-0.0.{index}.r1.g000000{index}-1-x86_64.pkg.tar.zst.sig",
+                         f"vela-git-debug-0.0.{index}.r1.g000000{index}-1-x86_64.pkg.tar.zst"):
+                (packages / name).touch()
+                os.utime(packages / name, (stamp, stamp))
+        self.env["TEST_DEBUG_PACKAGES"] = "1"
+        self.run_update("--build")
+        names = sorted(path.name for path in packages.iterdir())
+        main = [n for n in names if n.startswith("vela-git-0") and n.endswith(".zst")]
+        debug = [n for n in names if n.startswith("vela-git-debug-")]
+        signatures = [n for n in names if n.endswith(".sig")]
+        self.assertEqual(len(main), 3, names)
+        self.assertEqual(len(debug), 3, names)
+        self.assertEqual(sorted(s.removesuffix(".sig") for s in signatures), main)
+        self.assertTrue(any(".g" + self.main[:7] + "-" in n for n in main))
 
 
 class PackageSources(unittest.TestCase):

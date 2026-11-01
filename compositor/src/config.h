@@ -46,6 +46,7 @@
 //   language=                it, en, or empty (like the system)
 //   polkit-agent=yes         start Vela's polkit agent (docs/polkit-agent.md)
 //   brightness=yes           drive the monitors' brightness (docs/brightness.md)
+//   update-check=yes         check for updates in the background (docs/updates.md)
 //
 // The old Italian names are still read (legacy_names.h).
 
@@ -78,6 +79,8 @@ bool vela_config_flag(const struct vela_config *config, const char *key, bool fa
 // Changes one key in the file and leaves the rest as it is (comments too): for
 // what is also turned on outside Settings (quick settings, shortcuts).
 void vela_config_write(const char *key, const char *value);
+// Checked variant for callers that must report persistence failures.
+bool vela_config_write_checked(const char *key, const char *value);
 
 // Rewrites vela.conf with the English names of keys and values if it still has
 // the old Italian ones. At startup.

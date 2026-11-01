@@ -19,14 +19,8 @@ class FedoraFixture(UpdateFixture):
             stub.write_text(STUB)
             stub.chmod(0o755)
         self.env["TEST_FEDORA"] = "1"
-        # Test Fedora's identity without altering CI's real /etc/os-release.
-        self.os_release = self.directory / "os-release"
+        # Base fixture already retargets the disposable updater copy.
         self.os_release.write_text("ID=fedora\n")
-        # Only the disposable updater copy is retargeted; production reads the
-        # host's real /etc/os-release with no environment override.
-        script = self.update_script.read_text()
-        self.assertEqual(script.count("/etc/os-release"), 2)
-        self.update_script.write_text(script.replace("/etc/os-release", str(self.os_release)))
         # The source archive version is read from the selected Git commit.
         (self.source / "CMakeLists.txt").write_text("project(vela\n    VERSION 0.1.0\n)\n")
         fedora = self.source / "packaging/fedora"
@@ -53,9 +47,9 @@ class FedoraUpdates(FedoraFixture):
             line.split(":", 1)[1].strip()
             for line in spec.splitlines() if line.startswith("Recommends:")
         }
-        for name in ("git", "util-linux", "rpm", "dnf5"):
+        for name in ("git", "curl", "util-linux", "rpm", "dnf5"):
             self.assertIn(name, required)
-        for name in ("curl", "rpm-build", "dnf5-plugins"):
+        for name in ("rpm-build", "dnf5-plugins"):
             self.assertIn(name, recommended)
 
     def test_multiple_runs_select_the_fedora_artifact(self):
@@ -161,6 +155,7 @@ class FedoraUpdates(FedoraFixture):
 
     def test_reject_dnf_based_fedora_derivative(self):
         # DNF/RPM and a Fedora macro are not enough to allow the RPM backend.
+        self.skip_if_host_pacman()
         self.os_release.write_text("ID=nobara\nID_LIKE=fedora\n")
         self.env["TEST_FEDORA_RELEASE"] = "44"
         result = self.run_update("--check", status=1)
@@ -178,8 +173,9 @@ class FedoraUpdates(FedoraFixture):
 
     def test_project_version_controls_rpm_version(self):
         import re
+        # The selected commit's version, not this checkout's.
         version = re.search(r"(?m)^\s*VERSION\s+([0-9]+(?:\.[0-9]+)+)\s*$",
-                            (ROOT / "CMakeLists.txt").read_text()).group(1)
+                            (self.source / "CMakeLists.txt").read_text()).group(1)
         self.assertIn("Version:        %{vela_version}", self.spec.read_text())
         self.run_update("--build")
         self.assertIn("vela_version " + version, self.calls("rpmbuild")[0]["args"])

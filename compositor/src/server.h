@@ -41,10 +41,12 @@ struct vela_tree;
 struct vela_view;
 struct vela_vulkan;
 struct vela_workspaces;
+struct vela_x11_root;
 struct wlr_allocator;
 struct wlr_compositor;
 struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_foreign_toplevel_manager_v1;
+struct wlr_xdg_output_manager_v1;
 struct wlr_xdg_shell;
 struct wlr_xwayland;
 struct wlr_backend;
@@ -112,6 +114,8 @@ struct vela_server {
     int vrr_mode;
     bool nested; // inside another session (Wayland or X11 window)
     bool unsupported_gpu; // renderer initialization failed; supervisor must not retry
+    bool init_device_lost; // Vulkan context could not be created after a device loss
+    bool supervised; // socket was handed over by supervisor; it owns the final stop hook
     char socket_name[64]; // our WAYLAND_DISPLAY
     // Exact XDG_RUNTIME_DIR inode inherited from the supervisor; -1 when
     // running nested/headless without supervision.
@@ -177,6 +181,13 @@ struct vela_server {
     // the state an app sets before mapping (xwayland.c)
     uint32_t xwayland_state_atoms[4];
     struct wl_event_source *xwayland_property_timer; // non-blocking property reply polling
+    // The outputs as Xwayland sees them, in pixels (x11_root.h).
+    struct vela_x11_root *x11_root;
+    int xwayland_dpi; // the Xft.dpi published (xwayland.c), 0: none yet
+    // Reading the root's RESOURCE_MANAGER after a change (xwayland.c).
+    unsigned int xwayland_resources_cookie;
+    bool xwayland_resources_pending;
+    struct wlr_xdg_output_manager_v1 *xdg_outputs;
     struct wl_event_source *output_check;
     struct vela_seen_output *seen_outputs;
     int seen_output_count;
@@ -187,6 +198,10 @@ struct vela_server {
     // it returns to when the one above closes.
     struct vela_layer_surface *focused_layer;
     struct vela_layer_surface *previous_layer;
+    // Super tap: show the taskbar before Qt finishes mapping Start. A bounded
+    // timer restores fullscreen if no panel ever arrives.
+    bool start_preview;
+    struct wl_event_source *start_preview_timer;
     struct vela_interaction *interaction; // the pointer on windows (interact.h)
     struct vela_switcher *switcher; // Alt+Tab (switcher.h)
     struct vela_snapping *snapping; // preview, assist, snap layouts (snap.h)
@@ -195,6 +210,8 @@ struct vela_server {
     struct vela_ready ready;
     struct vela_child shell; // the launched and supervised shell (shell.h)
     struct vela_child polkit_agent; // the polkit agent (polkit.h)
+    struct vela_child bluetooth; // vela-bluetooth (bluetooth.h)
+    struct vela_child updates; // vela-update-daemon (updates.h)
     struct vela_brightness *brightness; // every output's brightness (brightness.h)
     struct vela_commands *commands; // the command socket (command.h)
     // wlr-output-management (output_manager.h).
@@ -208,7 +225,7 @@ struct vela_server {
 
 // Creates the display, backend, renderer and protocols. NULL if something
 // essential is missing (the reason is already in the log).
-struct vela_server *vela_server_create(bool *unsupported_gpu);
+struct vela_server *vela_server_create(bool *unsupported_gpu, bool *device_lost);
 
 // Opens the Wayland socket, starts the backend and launches `startup_command`
 // (the shell, relaunched when it fails; NULL or empty: nothing).

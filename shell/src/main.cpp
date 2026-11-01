@@ -11,6 +11,10 @@
 #include "appmodel.h"
 #include "audio.h"
 #include "audioapps.h"
+#include "bluetooth/bluetooth.h"
+#include "bluetoothprompts.h"
+#include "updatenotices.h"
+#include "updates/updates.h"
 #include "brightness.h"
 #include "clipboard.h"
 #include "config.h"
@@ -48,6 +52,7 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -62,10 +67,40 @@
 #include <memory>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
+Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
 
 namespace {
 
 using LayerWindow = LayerShellQt::Window;
+
+// Opt-in diagnostics for the real functional test: observe the event *before*
+// Qt Quick maps it into MouseArea coordinates. Never adjust or consume input.
+class SelectionInputTrace : public QObject {
+public:
+    explicit SelectionInputTrace(QQuickWindow* window) : QObject(window), m_window(window) {}
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (watched == m_window && (event->type() == QEvent::MouseButtonPress
+                || event->type() == QEvent::MouseButtonRelease || event->type() == QEvent::MouseMove)) {
+            const auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton || (mouse->buttons() & Qt::LeftButton)) {
+                const QPointF local = mouse->position();
+                const QPointF global = mouse->globalPosition();
+                const QString screenName = m_window->screen() ? m_window->screen()->name() : QStringLiteral("none");
+                qInfo("VELA_SELECTION qt event=%d screen=%s local=%.8f,%.8f global=%.8f,%.8f "
+                      "window=%dx%d effectiveDpr=%.8f",
+                      int(event->type()), qPrintable(screenName), local.x(), local.y(), global.x(), global.y(),
+                      m_window->width(), m_window->height(), m_window->effectiveDevicePixelRatio());
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QQuickWindow* m_window;
+};
 
 void releaseHiddenPanel(QQuickWindow* window)
 {
@@ -107,6 +142,10 @@ void setupWallpaper(QQuickWindow* window, QScreen* screen)
     layer->setExclusiveZone(-1); // the whole output, also below the taskbar
     // Desktop icons take the keyboard when clicked (F2, Del, Ctrl+C...).
     layer->setKeyboardInteractivity(LayerWindow::KeyboardInteractivityOnDemand);
+    if (qEnvironmentVariableIsSet("VELA_DEBUG_SELECTION")) {
+        window->setProperty("selectionTraceEnabled", true);
+        window->installEventFilter(new SelectionInputTrace(window));
+    }
 }
 
 // The shell's other windows: one each, made layer-shell surfaces by
@@ -153,6 +192,8 @@ const Panel panels[] = {
     // Questions such as "Empty Recycle Bin", and what to share on screen.
     { "ConfirmDialog", "vela-confirm", layerOverlay, centered, 0, keysOnDemand },
     { "SourceChooser", "vela-share", layerOverlay, centered, 0, keysOnDemand },
+    // The Bluetooth agent's questions (docs/bluetooth.md §9.3).
+    { "BluetoothDialog", "vela-bluetooth-question", layerOverlay, centered, 0, keysOnDemand },
     { "PropertiesDialog", "vela-properties", layerTop, centered, 0, keysOnDemand },
     { "QuickSettings", "vela-quick-settings", layerTop, bottomRight, 0, keysOnDemand },
     { "NotificationCenter", "vela-notification-center", layerTop, bottomRight, 0, keysOnDemand },
@@ -342,11 +383,31 @@ int main(int argc, char* argv[])
     // History turned on or off from Settings (vela-shell.conf).
     QObject::connect(&config, &Config::clipboardChanged, &clipboard,
         [&config, &clipboard] { clipboard.setEnabled(config.clipboardHistory()); });
-    SystemStatus status;
+    // Bluetooth (docs/bluetooth.md §9.2, §9.3): the shell is Vela's UI, and
+    // draws the questions Settings doesn't.
+    vela::bluetooth::Bluetooth bluetooth(true);
+    // Settings says itself that the PC is still visible, while it is open.
+    BluetoothPrompts bluetoothPrompts(&bluetooth, &notifications, [&windows] {
+        for (const ForeignToplevel* window : windows.windows()) {
+            if (window->appId == QLatin1String("vela-settings")) {
+                return true;
+            }
+        }
+        return false;
+    });
+    QObject::connect(&windows, &ForeignToplevelManager::windowsChanged,
+        &bluetoothPrompts, &BluetoothPrompts::settingsWindowsChanged);
+    // Updates (docs/updates.md §9.2): a new one, and "Sign out to finish".
+    vela::updates::Updates updates;
+    UpdateNotices updateNotices(
+        &updates, &notifications, [&system] { system.trigger(QStringLiteral("updates-settings")); },
+        [&shell] { shell.logout(); });
+    SystemStatus status(&bluetooth);
     Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
+    audio.setBluetooth(&bluetooth); // headsets' batteries
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);
@@ -407,6 +468,8 @@ int main(int argc, char* argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Clip"), &clipboard);
     engine.rootContext()->setContextProperty(QStringLiteral("Snip"), &snip);
     engine.rootContext()->setContextProperty(QStringLiteral("Status"), &status);
+    qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
+    engine.rootContext()->setContextProperty(QStringLiteral("BluetoothPrompts"), &bluetoothPrompts);
     engine.rootContext()->setContextProperty(QStringLiteral("Brightness"), &brightness);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Sound"), &sound);

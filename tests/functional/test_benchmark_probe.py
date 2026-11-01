@@ -153,6 +153,9 @@ finally:
                 self.assertEqual(process.returncode, 0, errors.decode() + output.decode())
                 output = ''.join(json.dumps(row)+'\n' for row in lines.records).encode() + lines.pending + output
                 rows = [json.loads(line) for line in output.splitlines()]
+                calibration = next(row for row in rows if row.get('event') == 'calibrated')
+                self.assertEqual(calibration['dispatches'], 50)
+                self.assertGreaterEqual(calibration['iterations'], calibration['dispatches'])
                 visible = [r for r in rows if r.get("event") == "producer-presented"]
                 self.assertGreaterEqual(len(visible), 5)
                 window = [begin, end]

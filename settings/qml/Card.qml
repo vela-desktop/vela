@@ -74,6 +74,7 @@ Fill {
             Text {
                 width: parent.width
                 text: card.title
+                textFormat: Text.PlainText
                 color: Theme.text
                 font.pixelSize: Theme.fontBody
                 elide: Text.ElideRight
@@ -82,6 +83,7 @@ Fill {
                 visible: card.description !== ""
                 width: parent.width
                 text: card.description
+                textFormat: Text.PlainText
                 color: Theme.textSecondary
                 font.pixelSize: Theme.fontCaption
                 wrapMode: Text.Wrap

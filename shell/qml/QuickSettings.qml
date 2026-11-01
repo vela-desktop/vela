@@ -4,13 +4,15 @@
 import QtQuick
 import QtQuick.Templates as T
 import Vela.Audio
+import Vela.Bluetooth
 import Vela.Controls
 
 // Quick settings (Win+A, or a click on the taskbar's system icons), like
 // Windows 11: tiles to turn on and off (Wi-Fi, Bluetooth, airplane mode, power
 // saving, night light...), brightness and volume, battery and Settings at the
 // bottom. An acrylic panel at the bottom right. Some tiles have a page of
-// their own: the Wi-Fi arrow lists the networks to choose one, Accessibility
+// their own: the Wi-Fi arrow lists the networks to choose one, the
+// Bluetooth arrow the paired devices to connect or disconnect, Accessibility
 // turns on the magnifier, color filters and sticky keys; the arrow next to
 // the volume opens the sound page (outputs and the mixer, Win+Ctrl+V). The
 // brightness is the display the panel opens on (docs/brightness.md §8); with
@@ -26,8 +28,8 @@ Window {
     height: room + d.roomHeight + 12
     color: "transparent"
 
-    // "" the quick settings; "wifi", "sound", "brightness" and "accessibility"
-    // their pages.
+    // "" the quick settings; "wifi", "bluetooth", "sound", "brightness" and
+    // "accessibility" their pages.
     property string page: ""
 
     // The brightness of the display the panel is on, and of every display
@@ -92,6 +94,10 @@ Window {
             wifiPage.password = ""
             Network.scan() // cached networks appear immediately, rescan in background
         }
+        if (name === "bluetooth") {
+            devicesView.expanded = ""
+            Bluetooth.clearError()
+        }
         panel.forceActiveFocus()
     }
     // At the bottom right, above the taskbar: from panel to output
@@ -153,7 +159,8 @@ Window {
     // configures per change, none per frame, and at rest the window is just
     // the panel and its shadow, so clicks above it reach what is below.
     readonly property real targetHeight: page === "" ? content.height + 24 + footer.height
-        : (page === "wifi" ? wifiPage.finalHeight : page === "sound" ? soundPage.height
+        : (page === "wifi" ? wifiPage.finalHeight : page === "bluetooth" ? bluetoothPage.finalHeight
+           : page === "sound" ? soundPage.height
            : page === "brightness" ? brightnessPage.height : accessPage.height) + 32
     onTargetHeightChanged: d.fit()
 
@@ -650,18 +657,22 @@ Window {
                             onToggled: root.openSettings("network")
                             onContextMenu: root.openSettings("network")
                         }
+                        // vela-bluetooth's (docs/bluetooth.md §9.2). A blocked
+                        // platform switch shows it off: turning it on
+                        // unblocks it.
                         Tile {
-                            visible: Status.bluetoothAvailable
-                            icon: Status.bluetoothEnabled ? "network-bluetooth" : "network-bluetooth-inactive"
+                            objectName: "bluetoothTile"
+                            visible: Bluetooth.available || Bluetooth.platformBlocked
+                            icon: Bluetooth.powered ? "network-bluetooth" : "network-bluetooth-inactive"
                             label: qsTr("Bluetooth")
-                            checked: Status.bluetoothEnabled
-                            split: true
-                            onToggled: Status.setBluetoothEnabled(!Status.bluetoothEnabled)
-                            onDetails: root.openSettings("bluetooth-settings")
+                            checked: Bluetooth.powered
+                            split: Bluetooth.available
+                            onToggled: Bluetooth.setPowered(!Bluetooth.powered)
+                            onDetails: root.showPage("bluetooth")
                             onContextMenu: root.openSettings("bluetooth-settings")
                         }
                         Tile {
-                            visible: Status.wifiAvailable || Status.bluetoothAvailable
+                            visible: Status.wifiAvailable || Bluetooth.available || Bluetooth.platformBlocked
                             icon: "network-flightmode-on"
                             label: qsTr("Airplane mode")
                             checked: Status.airplane
@@ -903,6 +914,67 @@ Window {
                     Link {
                         text: qsTr("More Wi-Fi settings")
                         target: "network"
+                    }
+                }
+
+                // -------------------------------------------------- Bluetooth --
+                // The paired devices (BluetoothDevices, docs/bluetooth.md
+                // §9.2), the switch and the refusals. Adding a device is
+                // Settings' job.
+                Column {
+                    id: bluetoothPage
+                    objectName: "bluetoothPage"
+                    visible: root.page === "bluetooth"
+                    x: 16
+                    y: 16
+                    width: parent.width - 32
+                    spacing: 8
+                    readonly property bool listed: Bluetooth.powered && Bluetooth.paired.length > 0
+                    // Its height once the devices have finished opening or
+                    // closing, as the Wi-Fi page's.
+                    readonly property real finalHeight: height
+                        + (devicesView.visible ? devicesView.finalHeight - devicesView.height : 0)
+
+                    PageHeader {
+                        title: qsTr("Bluetooth")
+                        Switch {
+                            showLabel: false
+                            checked: Bluetooth.powered
+                            Accessible.name: qsTr("Bluetooth")
+                            onToggled: Bluetooth.setPowered(checked)
+                        }
+                    }
+                    Text {
+                        visible: !bluetoothPage.listed
+                        width: parent.width
+                        topPadding: 8
+                        bottomPadding: 8
+                        text: !Bluetooth.powered ? qsTr("Bluetooth is turned off.") : qsTr("No paired devices.")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontBody
+                        wrapMode: Text.WordWrap
+                    }
+                    BluetoothDevices {
+                        id: devicesView
+                        visible: bluetoothPage.listed
+                        width: parent.width
+                    }
+                    // A refusal that isn't a device's own (the screen locked,
+                    // another session in front...).
+                    Text {
+                        objectName: "bluetoothError"
+                        visible: text !== ""
+                        width: parent.width
+                        text: Bluetooth.error
+                        textFormat: Text.PlainText
+                        color: Theme.critical
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.WordWrap
+                    }
+                    Item { width: 1; height: 4 }
+                    Link {
+                        text: qsTr("More Bluetooth settings")
+                        target: "bluetooth-settings"
                     }
                 }
 

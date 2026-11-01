@@ -23,7 +23,7 @@ class Failures(unittest.TestCase):
                 self.assertNotIn(b'no Wayland compositor',result.stderr)
 
     def test_deadline_includes_stalled_registry_exchange(self):
-        for args in ([],['--fullscreen'],['--fullscreen','--implicit']):
+        for args in ([],['--fullscreen'],['--fullscreen','--implicit'],['--monolithic']):
             with self.subTest(args=args):
                 client,server=socket.socketpair()
                 with client,server:

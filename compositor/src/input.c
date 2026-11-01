@@ -14,6 +14,7 @@
 #include "output.h"
 #include "nested.h"
 #include "scene/scene.h"
+#include "scene/surface.h"
 #include "server.h"
 #include "shell.h"
 #include "util.h"
@@ -320,10 +321,11 @@ void vela_input_constrain(struct vela_input *input, struct wlr_surface *surface)
         // Unlocked: the cursor shows again where the app says it left it.
         if (previous->type == WLR_POINTER_CONSTRAINT_V1_LOCKED && previous->current.cursor_hint.enabled
             && seat->pointer_state.focused_surface == previous->surface) {
-            double origin_x = cursor->x - seat->pointer_state.sx;
-            double origin_y = cursor->y - seat->pointer_state.sy;
-            wlr_cursor_warp(cursor, NULL, origin_x + previous->current.cursor_hint.x,
-                origin_y + previous->current.cursor_hint.y);
+            double density = vela_surface_density(previous->surface);
+            double origin_x = cursor->x - seat->pointer_state.sx / density;
+            double origin_y = cursor->y - seat->pointer_state.sy / density;
+            wlr_cursor_warp(cursor, NULL, origin_x + previous->current.cursor_hint.x / density,
+                origin_y + previous->current.cursor_hint.y / density);
         }
         input->active_constraint = NULL;
         wlr_pointer_constraint_v1_send_deactivated(previous); // can destroy it
@@ -348,13 +350,14 @@ static bool constrain_motion(struct vela_input *input, double *dx, double *dy)
         return false;
     }
     // Surface coordinates.
+    double density = vela_surface_density(constraint->surface);
     double sx = seat->pointer_state.sx;
     double sy = seat->pointer_state.sy;
-    double x = sx + *dx;
-    double y = sy + *dy;
-    if (wlr_region_confine(&constraint->region, sx, sy, sx + *dx, sy + *dy, &x, &y)) {
-        *dx = x - sx;
-        *dy = y - sy;
+    double x = sx + *dx * density;
+    double y = sy + *dy * density;
+    if (wlr_region_confine(&constraint->region, sx, sy, sx + *dx * density, sy + *dy * density, &x, &y)) {
+        *dx = (x - sx) / density;
+        *dy = (y - sy) / density;
     }
     return true;
 }
@@ -389,9 +392,14 @@ static void handle_motion(struct wl_listener *listener, void *data)
     struct vela_server *server = input->server;
     struct wlr_pointer_motion_event *event = data;
     vela_lock_note_activity(server->lock);
-    // Raw motion goes to games even if the cursor doesn't move.
+    // Raw motion goes to games even if the cursor doesn't move. The
+    // accelerated motion is in the focused surface's coordinates, like
+    // wl_pointer's: X11 pixels for an X11 window.
+    struct wlr_surface *focused = server->seat->pointer_state.focused_surface;
+    double density = focused ? vela_surface_density(focused) : 1.0;
     wlr_relative_pointer_manager_v1_send_relative_motion(input->relative_pointers, server->seat,
-        (uint64_t)event->time_msec * 1000, event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy);
+        (uint64_t)event->time_msec * 1000, event->delta_x * density, event->delta_y * density, event->unaccel_dx,
+        event->unaccel_dy);
     double dx = event->delta_x;
     double dy = event->delta_y;
     if (!constrain_motion(input, &dx, &dy)) {
@@ -607,7 +615,10 @@ static void handle_request_start_drag(struct wl_listener *listener, void *data)
     struct vela_input *input = wl_container_of(listener, input, request_start_drag);
     struct wlr_seat_request_start_drag_event *event = data;
     struct wlr_seat *seat = input->server->seat;
-    if (wlr_seat_validate_pointer_grab_serial(seat, event->origin, event->serial)) {
+    // Reject delayed client requests once the session is locked, even if
+    // their pre-lock pointer serial is still considered valid by wlroots.
+    if (!input->server->locked
+        && wlr_seat_validate_pointer_grab_serial(seat, event->origin, event->serial)) {
         wlr_seat_start_pointer_drag(seat, event->drag, event->serial);
     } else if (event->drag->source) {
         wlr_data_source_destroy(event->drag->source);

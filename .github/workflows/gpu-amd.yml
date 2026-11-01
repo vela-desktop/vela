@@ -1,0 +1,291 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Opt-in real-hardware GPU tests. Never run automatically on PRs or pushes.
+# The self-hosted runner must have the custom 'vela-amd' label.
+name: GPU CI - AMD (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      collect_coverage:
+        description: Collect instrumented GCC coverage from the GPU test suite
+        type: boolean
+        default: false
+      record_promo_smoke:
+        description: Record and verify isolated promo scenes at 100% and 125% scaling
+        type: boolean
+        default: false
+      tests:
+        description: Only the CTest entries matching this regex (e.g. functional-shell); empty runs all
+        type: string
+        default: ''
+      test_filter:
+        description: With tests, only the Python test methods whose names contain this (like unittest -k)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vela-amd-gpu-manual
+  cancel-in-progress: false
+
+jobs:
+  gpu-amd:
+    name: RADV functional and sharpness tests
+    runs-on: [self-hosted, linux, x64, vela-amd]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout selected revision (without persisting credentials)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Use an isolated runtime directory rather than a user's Wayland session.
+      # Limit Vulkan discovery to AMD's RADV ICD to avoid a Lavapipe false pass.
+      - name: Qualify hardware Vulkan (AMD RADV >= 1.4)
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v vulkaninfo >/dev/null || { echo '::error::Install vulkan-tools'; exit 1; }
+          # Use the system interpreter: Arch's python-dbus, numpy and
+          # Pillow packages install into /usr/bin/python3, while CMake might
+          # auto-detect a different ~/.local/bin/python3.12.
+          test -x /usr/bin/python3 || { echo '::error::Install the system python package'; exit 1; }
+          command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
+          command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
+          /usr/bin/python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow for system Python'; exit 1; }
+          # Strict GPU CI rejects the nine agent tests if dbus-python or
+          # dbus-daemon is missing. Fail before the expensive GPU test run.
+          /usr/bin/python3 -c 'import dbus' || { echo '::error::System Python D-Bus bindings missing; install python-dbus on the AMD runner'; exit 1; }
+          command -v dbus-daemon >/dev/null || { echo '::error::D-Bus daemon missing on the AMD runner; install dbus'; exit 1; }
+          # Strict GPU CI rejects the X11 native-resolution tests if these are
+          # missing (Arch: xorg-xwayland, xorg-xrandr, xorg-xrdb, xorg-xprop).
+          for tool in Xwayland xrandr xrdb xprop; do
+            command -v "$tool" >/dev/null || { echo "::error::Install $tool on the AMD runner"; exit 1; }
+          done
+          echo "GPU CTest interpreter: /usr/bin/python3 ($(/usr/bin/python3 --version))"
+
+          # Arch/CachyOS use radeon_icd.json; some distros use an x86_64 suffix.
+          icd=
+          for candidate in \
+            /usr/share/vulkan/icd.d/radeon_icd.json \
+            /usr/share/vulkan/icd.d/radeon_icd.x86_64.json; do
+            if [[ -f "$candidate" ]]; then
+              icd="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$icd" ]]; then
+            echo '::error::RADV Vulkan ICD manifest not found; check vulkan-radeon installation'
+            exit 1
+          fi
+          echo "Using RADV ICD manifest: $icd"
+          runtime="$RUNNER_TEMP/vela-amd-xdg"
+          mkdir -p "$runtime"
+          chmod 700 "$runtime"
+          echo "XDG_RUNTIME_DIR=$runtime" >> "$GITHUB_ENV"
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VELA_GPU_CI_STRICT=1" >> "$GITHUB_ENV"
+          # Diagnostic-only counters: no change to GPU test scheduling or assertions.
+          echo "VELA_FUNCTIONAL_PROFILE=1" >> "$GITHUB_ENV"
+          echo "VELA_GPU_EXPECT_VENDOR=0x1002" >> "$GITHUB_ENV"
+          # Thirty Vulkan teardown cycles with validation on actual AMD hardware.
+          echo "VELA_SHUTDOWN_STRESS_CYCLES=30" >> "$GITHUB_ENV"
+          echo "VELA_SHUTDOWN_VALIDATE=1" >> "$GITHUB_ENV"
+          export XDG_RUNTIME_DIR="$runtime" VK_DRIVER_FILES="$icd"
+
+          if ! compgen -G '/dev/dri/renderD*' >/dev/null; then
+            echo '::error::No DRM render node under /dev/dri'
+            exit 1
+          fi
+
+          vulkaninfo --summary | tee "$RUNNER_TEMP/vela-amd-vulkan.txt"
+          python3 - "$RUNNER_TEMP/vela-amd-vulkan.txt" <<'PY'
+          import re
+          import sys
+
+          report = open(sys.argv[1], encoding="utf-8").read()
+          devices = re.split(r"(?m)^\s*GPU\d+:\s*$", report)[1:]
+          for device in devices:
+              vendor = re.search(r"(?m)^\s*vendorID\s*=\s*0x1002\b", device)
+              version = re.search(r"(?m)^\s*apiVersion\s*=\s*(\d+)\.(\d+)", device)
+              radv = re.search(r"(?m)^\s*driverID\s*=\s*DRIVER_ID_MESA_RADV\b", device)
+              if vendor and radv and version and tuple(map(int, version.groups())) >= (1, 4):
+                  print("Hardware AMD RADV with Vulkan >= 1.4 confirmed.")
+                  break
+          else:
+              print("::error::No AMD RADV Vulkan >= 1.4 device found", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Configure Vela with GPU tests
+        shell: bash
+        env:
+          COLLECT_COVERAGE: ${{ inputs.collect_coverage }}
+        run: |
+          set -euo pipefail
+          extra_flags=(-DCMAKE_BUILD_TYPE=RelWithDebInfo)
+          if [[ "$COLLECT_COVERAGE" == "true" ]]; then
+            for tool in gcc g++ gcov gcovr; do
+              command -v "$tool" >/dev/null || { echo "::error::Install $tool on the GPU runner for coverage mode"; exit 1; }
+            done
+            # Tests skip their throughput floors in an instrumented build.
+            echo "VELA_GPU_COVERAGE=1" >> "$GITHUB_ENV"
+            extra_flags=(-DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+              -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage
+              -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage)
+          fi
+          cmake -S . -B "$RUNNER_TEMP/vela-gpu-build" -G Ninja \
+            "${extra_flags[@]}" \
+            -DPython3_EXECUTABLE=/usr/bin/python3 \
+            -DVELA_BUILD_COMPOSITOR=ON \
+            -DVELA_BUILD_SHELL=ON \
+            -DVELA_BUILD_TOOLS=ON \
+            -DVELA_BUILD_GPU_TEST_TOOLS=ON
+
+      - name: Build exact checked-out revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          jobs="$(nproc)"
+          if (( jobs > 8 )); then jobs=8; fi
+          cmake --build "$RUNNER_TEMP/vela-gpu-build" --parallel "$jobs"
+
+      - name: Real GPU functional and sharpness suites
+        shell: bash
+        env:
+          TESTS: ${{ inputs.tests }}
+          VELA_TEST_FILTER: ${{ inputs.test_filter }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$VELA_TEST_FILTER" && -z "$TESTS" ]]; then
+            echo '::error::test_filter needs tests too, to pick the suite it filters'
+            exit 1
+          fi
+          only=()
+          if [[ -n "$TESTS" ]]; then only=(-R "$TESTS"); fi
+          ctest --test-dir "$RUNNER_TEMP/vela-gpu-build" \
+            -L '^gpu$' "${only[@]}" --output-on-failure \
+            --output-junit "$RUNNER_TEMP/vela-amd-junit.xml" \
+            | tee "$RUNNER_TEMP/vela-amd-ctest.log"
+
+      - name: Reject skipped or missing GPU tests
+        shell: bash
+        env:
+          PARTIAL: ${{ inputs.tests != '' || inputs.test_filter != '' }}
+          TEST_FILTER: ${{ inputs.test_filter }}
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/vela-amd-junit.xml" <<'PY'
+          import os
+          import sys
+          import xml.etree.ElementTree as ET
+
+          cases = list(ET.parse(sys.argv[1]).iter("testcase"))
+          skipped = [case.attrib.get("name", "<unnamed>")
+                     for case in cases if case.find("skipped") is not None]
+          if not cases:
+              print("::error::No GPU tests were executed")
+              sys.exit(1)
+
+          names = {case.attrib.get("name", "") for case in cases}
+          missing = [name for name in ("sharpness", "sharpness-cpu")
+                     if name not in names]
+          if not any(name.startswith("functional-") for name in names):
+              missing.append("functional-*")
+          # test_filter applies only to functional-* entries: on sharpness
+          # alone it would be ignored, and the run would pass without it.
+          if os.environ["TEST_FILTER"] and not any(name.startswith("functional-") for name in names):
+              print("::error::test_filter selected no functional test: tests must pick a functional-* entry")
+              sys.exit(1)
+          # A partial run, asked for by name, needs only what it selected.
+          if missing and os.environ["PARTIAL"] != "true":
+              print("::error::Required GPU suites missing: " + ", ".join(missing))
+              sys.exit(1)
+          if skipped:
+              print("::error::GPU tests skipped: " + ", ".join(skipped))
+              sys.exit(1)
+          print(f"All {len(cases)} GPU CTest entries were executed (none skipped).")
+          PY
+
+      # Explicitly opt in to video encoding: raw frames can use substantial disk.
+      - name: Smoke test real promo capture (100% and 125% scaling)
+        if: inputs.record_promo_smoke
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          for required in ffmpeg ffprobe dbus-daemon pipewire wireplumber pw-cat pw-dump unshare; do
+            command -v "$required" >/dev/null || { echo "::error::Missing promo dependency: $required"; exit 1; }
+          done
+          for scale in 1.0 1.25; do
+            out="$RUNNER_TEMP/vela-promo-smoke-$scale"
+            /usr/bin/python3 scripts/record-promo.py desktop start-menu snap-assist \
+              --build "$RUNNER_TEMP/vela-gpu-build" \
+              --out "$out" --resolution 1280x720 --scale "$scale" --fps 30 --no-reel
+            /usr/bin/python3 scripts/verify-promo.py --out "$out" desktop start-menu snap-assist
+            # Do not retain massive frames or footage on a self-hosted runner.
+            rm -rf -- "$out"
+          done
+
+      # Generate the report only after all mandatory GPU tests have executed
+      # without skips; untrusted pull request code is never auto-dispatched.
+      - name: Generate instrumented GPU coverage
+        if: inputs.collect_coverage && inputs.tests == '' && inputs.test_filter == ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/coverage-report.sh "$RUNNER_TEMP/vela-gpu-build" "$RUNNER_TEMP/vela-amd-coverage"
+          cat "$RUNNER_TEMP/vela-amd-coverage/coverage-summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve GPU coverage
+        if: inputs.collect_coverage && inputs.tests == '' && inputs.test_filter == ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vela-amd-coverage
+          path: ${{ runner.temp }}/vela-amd-coverage/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Vulkan and CTest diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vela-amd-gpu-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/vela-amd-vulkan.txt
+            ${{ runner.temp }}/vela-amd-ctest.log
+            ${{ runner.temp }}/vela-amd-junit.xml
+            ${{ runner.temp }}/vela-gpu-build/Testing/Temporary/LastTest.log
+
+  publish-amd-coverage:
+    name: Codecov AMD upload (GitHub hosted)
+    needs: [gpu-amd]
+    if: inputs.collect_coverage && inputs.tests == '' && inputs.test_filter == ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: vela-amd-coverage
+          path: gpu-coverage
+      - name: Ensure Cobertura report is present
+        run: test -s gpu-coverage/coverage.xml
+      - name: Upload to Codecov for the exact tested SHA
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ./gpu-coverage/coverage.xml
+          flags: gpu-amd
+          use_oidc: true
+          disable_search: true
+          fail_ci_if_error: false

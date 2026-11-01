@@ -9,6 +9,7 @@
 // render/renderer.h.
 
 #include "render/renderer.h"
+#include "render/device_loss_policy.h"
 
 #include <vulkan/vulkan.h>
 #include <wayland-server-core.h>
@@ -46,6 +47,9 @@ struct vela_vulkan {
     VkPhysicalDevice physical;
     VkDevice device;
     VkQueue queue;
+    struct vela_device_loss_policy loss;
+    bool terminal_error; // unrecoverable sync/render failure other than device loss
+    struct wl_display *loss_display;
     uint32_t queue_family;
     char name[256];
 
@@ -77,16 +81,24 @@ struct vela_vulkan {
     VkPhysicalDeviceDrmPropertiesEXT drm;
 };
 
+static inline bool vela_vulkan_unusable(const struct vela_vulkan *vk)
+{
+    return vk->loss.lost || vk->terminal_error;
+}
+
 uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t type_bits, VkMemoryPropertyFlags flags);
 // A dmabuf of that format and modifier can be imported for that use.
 bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
     VkImageUsageFlags usage);
 // A dmabuf as a VkImage, without copies (all planes in the same dmabuf).
-bool vela_vulkan_import_dmabuf(const struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
+bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
     VkFormat format, VkImageUsageFlags usage, VkImage *image, VkDeviceMemory *memory);
-VkShaderModule vela_vulkan_shader(const struct vela_vulkan *vk, const uint32_t *code, size_t bytes);
+VkShaderModule vela_vulkan_shader(struct vela_vulkan *vk, const uint32_t *code, size_t bytes);
 
 // --------------------------------------------------------------- drawing --
+// Classify Vulkan errors centrally and stop the Wayland loop on first GPU loss.
+bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *operation);
+
 
 // The constants of every draw (see shaders/push.glsl): 160 bytes, below the
 // 256 Vulkan 1.4 guarantees.
@@ -192,6 +204,8 @@ struct vela_staging {
 // -------------------------------------------------------- renderer state --
 
 #define VELA_TIMING_SLOTS 64
+#define VELA_READBACK_MAX_JOBS 4
+#define VELA_READBACK_MAX_BYTES (128u * 1024u * 1024u)
 
 // A command buffer of the pool: free when it isn't recording and the GPU has
 // finished the submission that contained it (point).
@@ -223,8 +237,11 @@ struct staging_chunk {
     VkDeviceMemory memory;
     uint8_t *data;
     VkDeviceSize size;
+    VkDeviceSize allocation_size; // includes Vulkan's alignment requirements
     VkDeviceSize used;
     uint64_t point; // last submission reading it; UINT64_MAX: in use by commands not submitted yet
+    unsigned readers; // pending CPU readbacks: GPU completion alone cannot recycle the slice
+    bool readback; // memory the CPU reads quickly (cached), for copies from the GPU
 };
 
 struct pipeline_entry {
@@ -246,6 +263,7 @@ struct vela_renderer {
     VkSemaphore timeline;
     uint64_t last_point;
     uint64_t completed;
+    uint64_t readback_point; // later draws must follow submitted readback reads, even after cancellation
 
     VkSemaphore *free_waits;
     int free_wait_count, free_wait_capacity;
@@ -257,6 +275,14 @@ struct vela_renderer {
     int retired_count, retired_capacity;
     struct staging_chunk *staging;
     int staging_count, staging_capacity;
+
+    struct vela_readback *readbacks[VELA_READBACK_MAX_JOBS];
+    size_t readback_next; // round-robin cursor in the bounded queue
+    struct wl_event_source *readback_timer;
+    int readback_fd; // one-shot timerfd: yield through epoll without a millisecond floor
+    size_t readback_count, readback_bytes;
+    uint64_t readback_completed, readback_cancelled, readback_failed, readback_rejected;
+    uint64_t readback_submitted;
 
     // The arrays of a submission, reused (they only grow).
     VkSemaphoreSubmitInfo *wait_infos;
@@ -296,13 +322,19 @@ VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *renderer);
 // submission, before it.
 VkCommandBuffer vela_renderer_upload_commands(struct vela_renderer *renderer);
 bool vela_renderer_stage(struct vela_renderer *renderer, VkDeviceSize size, struct vela_staging *out);
+// The same for copies the CPU reads back (captures): cached memory, where
+// reading is many times faster than from the uncached memory uploads use.
+bool vela_renderer_stage_readback(struct vela_renderer *renderer, VkDeviceSize size, struct vela_staging *out);
 // Submits `cmd` (still recording). wait_fds: sync_files to wait for first,
 // closed by the renderer. release_fd, if not NULL, gets a sync_file signaled
 // at the end of the work (-1 if not available: then the CPU has already
 // waited). Returns the timeline point, 0 if the submission failed.
 uint64_t vela_renderer_submit(struct vela_renderer *renderer, VkCommandBuffer cmd, const int *wait_fds,
     int wait_count, int *release_fd);
-void vela_renderer_wait(struct vela_renderer *renderer, uint64_t point);
+// Compositor-owned readback: GPU-wait for earlier draws, then make later
+// submissions GPU-wait for this copy. Queue order alone is not a dependency.
+uint64_t vela_renderer_submit_readback(struct vela_renderer *renderer, VkCommandBuffer cmd);
+bool vela_renderer_wait(struct vela_renderer *renderer, uint64_t point);
 // Frees what the GPU has finished using (retired images, semaphores, extra
 // staging blocks).
 void vela_renderer_collect(struct vela_renderer *renderer);

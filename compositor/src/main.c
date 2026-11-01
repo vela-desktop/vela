@@ -4,6 +4,7 @@
 #include "server.h"
 #include "error_screen.h"
 #include "supervisor.h"
+#include "render/renderer.h"
 
 #include <getopt.h>
 #include <signal.h>
@@ -42,7 +43,12 @@ static void print_usage(const char *program)
            "  VELA_LOCK          locker to use instead of vela-lock\n"
            "  VELA_POLKIT_AGENT  polkit agent to start instead of vela-polkit-agent, 0: none\n"
            "                     (by default only in a real session; polkit-agent= in vela.conf)\n"
+           "  VELA_BLUETOOTH     Bluetooth daemon to start instead of vela-bluetooth, 0: none\n"
+           "                     (by default only in a real session)\n"
+           "  VELA_UPDATE_DAEMON update daemon to start instead of vela-update-daemon, 0: none\n"
+           "                     (by default only in a real session)\n"
            "  VELA_VULKAN_VALIDATION=1  Vulkan validation layers (for development)\n"
+           "  VELA_SKIP_VULKAN_CLEANUP=1  diagnostic: skip explicit Vulkan cleanup on exit\n"
            "  VELA_NATURAL_SCROLL=0  classic touchpad scrolling\n"
            "  VELA_STATS=1       every 2 s, per output: fps, frame cost, latency, missed vblanks\n"
            "  VELA_DEBUG=1       verbose log\n"
@@ -99,7 +105,11 @@ int main(int argc, char *argv[])
     wlr_log_init(debug && *debug ? WLR_DEBUG : WLR_INFO, NULL);
 
     bool unsupported_gpu = false;
-    struct vela_server *server = vela_server_create(&unsupported_gpu);
+    bool init_device_lost = false;
+    struct vela_server *server = vela_server_create(&unsupported_gpu, &init_device_lost);
+    if (init_device_lost) {
+        return VELA_EXIT_DEVICE_LOST;
+    }
     if (unsupported_gpu) {
         return VELA_EXIT_UNSUPPORTED_GPU;
     }
@@ -107,6 +117,8 @@ int main(int argc, char *argv[])
         return 1;
     }
     vela_server_run(server);
+    bool device_lost = vela_vulkan_device_lost(server->vulkan);
+    bool terminal_error = vela_vulkan_terminal_failure(server->vulkan);
     vela_server_destroy(server);
-    return 0;
+    return device_lost ? VELA_EXIT_DEVICE_LOST : (terminal_error ? 1 : 0);
 }

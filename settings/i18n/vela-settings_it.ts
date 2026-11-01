@@ -237,6 +237,45 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>AddDeviceDialog</name>
+    <message>
+        <source>Add a device</source>
+        <translation>Aggiungi un dispositivo</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Make sure your device is turned on and discoverable. Select it below to add it.</source>
+        <translation>Assicurati che il dispositivo sia acceso e individuabile. Selezionalo qui sotto per aggiungerlo.</translation>
+    </message>
+    <message>
+        <source>Discoverable as &quot;%1&quot;</source>
+        <translation>Individuabile come &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Another app is searching for devices, so this PC isn&apos;t made visible. Pairing from this PC still works.</source>
+        <translation>Un&apos;altra app sta cercando dispositivi, quindi questo PC non viene reso visibile. L&apos;associazione da questo PC funziona comunque.</translation>
+    </message>
+    <message>
+        <source>Wait for %1 to finish pairing.</source>
+        <translation>Attendi che %1 finisca l&apos;associazione.</translation>
+    </message>
+    <message>
+        <source>Looking for devices...</source>
+        <translation>Ricerca dei dispositivi...</translation>
+    </message>
+    <message>
+        <source>No devices found</source>
+        <translation>Nessun dispositivo trovato</translation>
+    </message>
+    <message>
+        <source>Search again</source>
+        <translation>Cerca di nuovo</translation>
+    </message>
+</context>
+<context>
     <name>AppsPage</name>
     <message>
         <source>Installed apps</source>
@@ -291,46 +330,34 @@ Specifiche sistema
     </message>
 </context>
 <context>
-    <name>Bluetooth</name>
+    <name>BluetoothDevice</name>
     <message>
-        <source>Pairing failed: the device rejected it.</source>
-        <translation>Associazione non riuscita: il dispositivo l&apos;ha rifiutata.</translation>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
     </message>
     <message>
-        <source>The device isn&apos;t responding. Make sure it&apos;s on and nearby.</source>
-        <translation>Il dispositivo non risponde. Controlla che sia acceso e vicino.</translation>
+        <source>Disconnect</source>
+        <translation>Disconnetti</translation>
     </message>
     <message>
-        <source>Bluetooth is turned off.</source>
-        <translation>Il Bluetooth è spento.</translation>
+        <source>Connect</source>
+        <translation>Connetti</translation>
     </message>
     <message>
-        <source>The operation failed.</source>
-        <translation>Operazione non riuscita.</translation>
+        <source>Rename</source>
+        <translation>Rinomina</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Rimuovi</translation>
+    </message>
+    <message>
+        <source>Sound settings</source>
+        <translation>Impostazioni audio</translation>
     </message>
 </context>
 <context>
     <name>BluetoothPage</name>
-    <message>
-        <source>Connecting...</source>
-        <translation>Connessione in corso...</translation>
-    </message>
-    <message>
-        <source>Connected</source>
-        <translation>Connesso</translation>
-    </message>
-    <message>
-        <source>Paired</source>
-        <translation>Associato</translation>
-    </message>
-    <message>
-        <source> · Battery </source>
-        <translation> · Batteria </translation>
-    </message>
-    <message>
-        <source>Bluetooth isn&apos;t available</source>
-        <translation>Bluetooth non disponibile</translation>
-    </message>
     <message>
         <source>There&apos;s no Bluetooth adapter, or the bluetooth service isn&apos;t running.</source>
         <translation>Non c&apos;è un adattatore Bluetooth, o il servizio bluetooth non è attivo.</translation>
@@ -338,10 +365,6 @@ Specifiche sistema
     <message>
         <source>Bluetooth</source>
         <translation>Bluetooth</translation>
-    </message>
-    <message>
-        <source>Discoverable as &quot;</source>
-        <translation>Individuabile come &quot;</translation>
     </message>
     <message>
         <source>Off</source>
@@ -360,20 +383,36 @@ Specifiche sistema
         <translation>Aggiungi dispositivo</translation>
     </message>
     <message>
-        <source>Disconnect</source>
-        <translation>Disconnetti</translation>
-    </message>
-    <message>
-        <source>Connect</source>
-        <translation>Connetti</translation>
-    </message>
-    <message>
         <source>Remove</source>
         <translation>Rimuovi</translation>
     </message>
     <message>
         <source>Related settings</source>
         <translation>Impostazioni correlate</translation>
+    </message>
+    <message>
+        <source>Bluetooth isn&apos;t available on this PC</source>
+        <translation>Il Bluetooth non è disponibile su questo PC</translation>
+    </message>
+    <message>
+        <source>Discoverable as &quot;%1&quot;</source>
+        <translation>Individuabile come &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>Attivato</translation>
+    </message>
+    <message>
+        <source>Advanced</source>
+        <translation>Avanzate</translation>
+    </message>
+    <message>
+        <source>Bluetooth adapter</source>
+        <translation>Adattatore Bluetooth</translation>
+    </message>
+    <message>
+        <source>The one this PC uses</source>
+        <translation>Quello che usa questo PC</translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -404,44 +443,87 @@ Specifiche sistema
         <translation>Rimuovere il dispositivo?</translation>
     </message>
     <message>
-        <source>Yes</source>
-        <translation>Sì</translation>
+        <source>To use %1 again, you&apos;ll need to pair it once more.</source>
+        <translation>Per usare di nuovo %1 dovrai associarlo un&apos;altra volta.</translation>
     </message>
     <message>
-        <source>No</source>
-        <translation>No</translation>
+        <source>Rename this device</source>
+        <translation>Rinomina questo dispositivo</translation>
     </message>
     <message>
-        <source>To use </source>
-        <translation>Per usare di nuovo </translation>
+        <source>Rename</source>
+        <translation>Rinomina</translation>
     </message>
     <message>
-        <source> again, you&apos;ll need to pair it once more.</source>
-        <translation> dovrai associarlo un&apos;altra volta.</translation>
-    </message>
-    <message>
-        <source>Add a device</source>
-        <translation>Aggiungi un dispositivo</translation>
+        <source>Name</source>
+        <translation>Nome</translation>
     </message>
     <message>
         <source>Cancel</source>
         <translation>Annulla</translation>
     </message>
+</context>
+<context>
+    <name>BluetoothQuestion</name>
     <message>
-        <source>Make sure your device is turned on and discoverable. Select it below to connect.</source>
-        <translation>Assicurati che il dispositivo sia acceso e individuabile. Selezionalo qui sotto per connetterlo.</translation>
+        <source>Does %1 show this code?</source>
+        <translation>%1 mostra questo codice?</translation>
     </message>
     <message>
-        <source>Pairing...</source>
-        <translation>Associazione in corso...</translation>
+        <source>%1 wants to pair with this PC.</source>
+        <translation>%1 vuole associarsi a questo PC.</translation>
     </message>
     <message>
-        <source>Looking for devices...</source>
-        <translation>Ricerca dei dispositivi...</translation>
+        <source>Allow %1 to use %2?</source>
+        <translation>Consentire a %1 di usare %2?</translation>
     </message>
     <message>
-        <source>No devices found</source>
-        <translation>Nessun dispositivo trovato</translation>
+        <source>Type the 6-digit code shown on %1.</source>
+        <translation>Digita il codice di 6 cifre mostrato su %1.</translation>
+    </message>
+    <message>
+        <source>Type the PIN for %1.</source>
+        <translation>Digita il PIN di %1.</translation>
+    </message>
+    <message>
+        <source>Type this code on %1, then press Enter on it.</source>
+        <translation>Digita questo codice su %1, poi premi Invio sul dispositivo.</translation>
+    </message>
+    <message>
+        <source>Code %1</source>
+        <translation>Codice %1</translation>
+    </message>
+    <message>
+        <source>%1 of 6 digits typed</source>
+        <translation>%1 cifre su 6 digitate</translation>
+    </message>
+    <message>
+        <source>Code</source>
+        <translation>Codice</translation>
+    </message>
+    <message>
+        <source>PIN</source>
+        <translation>PIN</translation>
+    </message>
+    <message>
+        <source>Time left: %1 s</source>
+        <translation>Tempo rimasto: %1 s</translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation>Consenti</translation>
+    </message>
+    <message>
+        <source>Pair</source>
+        <translation>Associa</translation>
+    </message>
+    <message>
+        <source>Deny</source>
+        <translation>Nega</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
     </message>
 </context>
 <context>
@@ -766,6 +848,45 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>DeviceState</name>
+    <message>
+        <source>Waiting for you...</source>
+        <translation>In attesa di una tua risposta...</translation>
+    </message>
+    <message>
+        <source>Pairing...</source>
+        <translation>Associazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connecting...</source>
+        <translation>Connessione in corso...</translation>
+    </message>
+    <message>
+        <source>Disconnecting...</source>
+        <translation>Disconnessione in corso...</translation>
+    </message>
+    <message>
+        <source>Removing...</source>
+        <translation>Rimozione in corso...</translation>
+    </message>
+    <message>
+        <source>Renaming...</source>
+        <translation>Ridenominazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>Connesso</translation>
+    </message>
+    <message>
+        <source>Paired</source>
+        <translation>Associato</translation>
+    </message>
+    <message>
+        <source>Battery %1%</source>
+        <translation>Batteria %1%</translation>
+    </message>
+</context>
+<context>
     <name>Dialog</name>
     <message>
         <source>OK</source>
@@ -962,10 +1083,6 @@ Specifiche sistema
         <translation>Un gioco a schermo intero va sullo schermo senza essere ridisegnato. Se un gioco mostra schermo nero o immagini corrotte, disattivalo</translation>
     </message>
     <message>
-        <source>direct scanout black screen glitch game full screen flicker</source>
-        <translation>scanout diretto schermo nero glitch gioco schermo intero</translation>
-    </message>
-    <message>
         <source>Related settings</source>
         <translation>Impostazioni correlate</translation>
     </message>
@@ -1068,12 +1185,16 @@ Specifiche sistema
         <translation>Bluetooth</translation>
     </message>
     <message>
-        <source>Discoverable as &quot;</source>
-        <translation>Individuabile come &quot;</translation>
-    </message>
-    <message>
         <source>Off</source>
         <translation>Disattivato</translation>
+    </message>
+    <message>
+        <source>Discoverable as &quot;%1&quot;</source>
+        <translation>Individuabile come &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>Attivato</translation>
     </message>
     <message>
         <source>View all devices</source>
@@ -1259,6 +1380,10 @@ Specifiche sistema
     <message>
         <source>About</source>
         <translation>Informazioni</translation>
+    </message>
+    <message>
+        <source>Updates</source>
+        <translation>Aggiornamenti</translation>
     </message>
     <message>
         <source>Bluetooth &amp; devices</source>
@@ -1449,6 +1574,26 @@ Specifiche sistema
         <translation>nome dispositivo hostname</translation>
     </message>
     <message>
+        <source>update upgrade new version install check release channel beta experimental</source>
+        <translation>aggiornamento aggiornare aggiorna nuova versione installa controlla release canale beta sperimentale update</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>Controlla aggiornamenti</translation>
+    </message>
+    <message>
+        <source>update check new version</source>
+        <translation>aggiornamento controlla verifica nuova versione update</translation>
+    </message>
+    <message>
+        <source>Update channel</source>
+        <translation>Canale di aggiornamento</translation>
+    </message>
+    <message>
+        <source>beta experimental channel branch commit development</source>
+        <translation>beta sperimentale canale branch commit sviluppo</translation>
+    </message>
+    <message>
         <source>Bluetooth</source>
         <translation>Bluetooth</translation>
     </message>
@@ -1635,6 +1780,13 @@ Specifiche sistema
     <message>
         <source>Find a setting</source>
         <translation>Trova un&apos;impostazione</translation>
+    </message>
+</context>
+<context>
+    <name>MoreMenu</name>
+    <message>
+        <source>More options</source>
+        <translation>Altre opzioni</translation>
     </message>
 </context>
 <context>
@@ -2404,6 +2556,21 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>StillVisibleCard</name>
+    <message>
+        <source>Your PC is still visible to nearby devices</source>
+        <translation>Il PC è ancora visibile ai dispositivi vicini</translation>
+    </message>
+    <message>
+        <source>Another app is searching for devices.</source>
+        <translation>Un&apos;altra app sta cercando dispositivi.</translation>
+    </message>
+    <message>
+        <source>Stop being visible</source>
+        <translation>Non essere più visibile</translation>
+    </message>
+</context>
+<context>
     <name>Switch</name>
     <message>
         <source>On</source>
@@ -2466,6 +2633,14 @@ Specifiche sistema
     <message>
         <source>Clipboard history (Win+V), clear</source>
         <translation>Cronologia degli Appunti (Win+V), cancella</translation>
+    </message>
+    <message>
+        <source>Updates</source>
+        <translation>Aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Check for updates, what&apos;s new, update channel</source>
+        <translation>Controlla aggiornamenti, novità, canale di aggiornamento</translation>
     </message>
     <message>
         <source>About</source>
@@ -2642,6 +2817,216 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>UpdateOptions</name>
+    <message>
+        <source>Beta</source>
+        <translation>Beta</translation>
+    </message>
+    <message>
+        <source>Experimental</source>
+        <translation>Sperimentale</translation>
+    </message>
+    <message>
+        <source>More options</source>
+        <translation>Altre opzioni</translation>
+    </message>
+    <message>
+        <source>Check for updates automatically</source>
+        <translation>Controlla automaticamente gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Not on metered connections</source>
+        <translation>Non sulle connessioni a consumo</translation>
+    </message>
+    <message>
+        <source>Update channel</source>
+        <translation>Canale di aggiornamento</translation>
+    </message>
+    <message>
+        <source>Tested, signed releases</source>
+        <translation>Versioni testate e firmate</translation>
+    </message>
+    <message>
+        <source>The latest development version, as it&apos;s made</source>
+        <translation>L&apos;ultima versione di sviluppo, man mano che cambia</translation>
+    </message>
+    <message>
+        <source>Advanced options</source>
+        <translation>Opzioni avanzate</translation>
+    </message>
+    <message>
+        <source>Install from another repository, branch or commit</source>
+        <translation>Installa da un altro repository, branch o commit</translation>
+    </message>
+    <message>
+        <source>Source: a repository URL or a folder</source>
+        <translation>Origine: l&apos;URL di un repository o una cartella</translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation>Origine</translation>
+    </message>
+    <message>
+        <source>Branch or commit</source>
+        <translation>Branch o commit</translation>
+    </message>
+    <message>
+        <source>The default branch</source>
+        <translation>Il branch predefinito</translation>
+    </message>
+    <message>
+        <source>Install this revision</source>
+        <translation>Installa questa revisione</translation>
+    </message>
+    <message>
+        <source>Installed version</source>
+        <translation>Versione installata</translation>
+    </message>
+    <message>
+        <source>%1, %2 channel</source>
+        <translation>%1, canale %2</translation>
+    </message>
+    <message>
+        <source>Not installed from a package</source>
+        <translation>Non installato da un pacchetto</translation>
+    </message>
+    <message>
+        <source>Switch to Beta?</source>
+        <translation>Passare al canale Beta?</translation>
+    </message>
+    <message>
+        <source>Switch to Experimental?</source>
+        <translation>Passare al canale Sperimentale?</translation>
+    </message>
+    <message>
+        <source>Switch</source>
+        <translation>Cambia</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Beta installs tested, signed releases. The vela-git package is replaced by vela, and Vela may go back to an older version than the one you have.</source>
+        <translation>Beta installa versioni testate e firmate. Il pacchetto vela-git viene sostituito da vela, e Vela potrebbe tornare a una versione più vecchia di quella che hai.</translation>
+    </message>
+    <message>
+        <source>Experimental installs the latest development version, downloaded or built on this PC. It changes often and may be less stable. The vela package is replaced by vela-git.</source>
+        <translation>Sperimentale installa l&apos;ultima versione di sviluppo, scaricata o compilata su questo PC. Cambia spesso e può essere meno stabile. Il pacchetto vela viene sostituito da vela-git.</translation>
+    </message>
+    <message>
+        <source>The update runs in a terminal, where your password is asked for.</source>
+        <translation>L&apos;aggiornamento si svolge in un terminale, dove ti viene chiesta la password.</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateStatusCard</name>
+    <message>
+        <source>getting ready</source>
+        <translation>preparazione</translation>
+    </message>
+    <message>
+        <source>downloading</source>
+        <translation>download</translation>
+    </message>
+    <message>
+        <source>verifying</source>
+        <translation>verifica</translation>
+    </message>
+    <message>
+        <source>building</source>
+        <translation>compilazione</translation>
+    </message>
+    <message>
+        <source>installing</source>
+        <translation>installazione</translation>
+    </message>
+    <message>
+        <source>Last checked: today, %1</source>
+        <translation>Ultimo controllo: oggi, %1</translation>
+    </message>
+    <message>
+        <source>Last checked: yesterday, %1</source>
+        <translation>Ultimo controllo: ieri, %1</translation>
+    </message>
+    <message>
+        <source>Last checked: %1, %2</source>
+        <translation>Ultimo controllo: %1, %2</translation>
+    </message>
+    <message>
+        <source>The update service isn&apos;t running</source>
+        <translation>Il servizio di aggiornamento non è attivo</translation>
+    </message>
+    <message>
+        <source>Checking for updates...</source>
+        <translation>Controllo degli aggiornamenti in corso...</translation>
+    </message>
+    <message>
+        <source>Opening the terminal...</source>
+        <translation>Apertura del terminale...</translation>
+    </message>
+    <message>
+        <source>Updating in the terminal: %1</source>
+        <translation>Aggiornamento nel terminale: %1</translation>
+    </message>
+    <message>
+        <source>Updating in the terminal</source>
+        <translation>Aggiornamento nel terminale</translation>
+    </message>
+    <message>
+        <source>Vela %1 is available</source>
+        <translation>È disponibile Vela %1</translation>
+    </message>
+    <message>
+        <source>You&apos;re up to date</source>
+        <translation>Vela è aggiornato</translation>
+    </message>
+    <message>
+        <source>You have a newer version than the latest release</source>
+        <translation>Hai una versione più recente dell&apos;ultima release</translation>
+    </message>
+    <message>
+        <source>Development build: not installed from a package</source>
+        <translation>Build di sviluppo: non installata da un pacchetto</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t check for updates</source>
+        <translation>Impossibile controllare gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Updates haven&apos;t been checked yet</source>
+        <translation>Gli aggiornamenti non sono ancora stati controllati</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t check for updates or install them until it starts again.</source>
+        <translation>Vela non può controllare né installare aggiornamenti finché il servizio non riparte.</translation>
+    </message>
+    <message>
+        <source>Follow the update in the terminal window. Your password is asked for there.</source>
+        <translation>Segui l&apos;aggiornamento nella finestra del terminale: la password ti viene chiesta lì.</translation>
+    </message>
+    <message>
+        <source>Install now</source>
+        <translation>Installa ora</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>Controlla aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Sign out to finish updating. Until then, the version you signed in with keeps running.</source>
+        <translation>Esci per completare l&apos;aggiornamento. Fino ad allora resta in uso la versione con cui hai effettuato l&apos;accesso.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t check for updates: %1</source>
+        <translation>Impossibile controllare gli aggiornamenti: %1</translation>
+    </message>
+    <message>
+        <source>The last update didn&apos;t finish: %1</source>
+        <translation>L&apos;ultimo aggiornamento non è stato completato: %1</translation>
+    </message>
+</context>
+<context>
     <name>VolumeMixerPage</name>
     <message>
         <source>Default</source>
@@ -2702,6 +3087,146 @@ Specifiche sistema
     <message>
         <source>Every app uses the default output and input again</source>
         <translation>Ogni app torna a usare l&apos;output e l&apos;input predefiniti</translation>
+    </message>
+</context>
+<context>
+    <name>WhatsNew</name>
+    <message>
+        <source>What&apos;s new</source>
+        <translation>Novità</translation>
+    </message>
+    <message>
+        <source>Vela %1</source>
+        <translation>Vela %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>and %n more</source>
+        <translation>
+            <numerusform>e un altro</numerusform>
+            <numerusform>e altri %n</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
+    <name>vela::bluetooth::Bluetooth</name>
+    <message>
+        <source>Bluetooth is busy. Try again in a moment.</source>
+        <translation>Il Bluetooth è occupato. Riprova tra un momento.</translation>
+    </message>
+    <message>
+        <source>Wait for %1 to finish pairing.</source>
+        <translation>Attendi che %1 finisca l&apos;associazione.</translation>
+    </message>
+    <message>
+        <source>Bluetooth can&apos;t be changed while the screen is locked or another session is in use.</source>
+        <translation>Il Bluetooth non si può modificare mentre lo schermo è bloccato o è in uso un&apos;altra sessione.</translation>
+    </message>
+    <message>
+        <source>This app isn&apos;t allowed to change Bluetooth.</source>
+        <translation>Questa app non può modificare il Bluetooth.</translation>
+    </message>
+    <message>
+        <source>There&apos;s no Bluetooth adapter.</source>
+        <translation>Non c&apos;è nessun adattatore Bluetooth.</translation>
+    </message>
+    <message>
+        <source>The device isn&apos;t there anymore.</source>
+        <translation>Il dispositivo non c&apos;è più.</translation>
+    </message>
+    <message>
+        <source>That code isn&apos;t valid.</source>
+        <translation>Il codice non è valido.</translation>
+    </message>
+    <message>
+        <source>That name can&apos;t be used. Use up to 248 characters, without control characters.</source>
+        <translation>Questo nome non si può usare. Usa al massimo 248 caratteri, senza caratteri di controllo.</translation>
+    </message>
+    <message>
+        <source>Bluetooth isn&apos;t responding.</source>
+        <translation>Il Bluetooth non risponde.</translation>
+    </message>
+</context>
+<context>
+    <name>vela::updates::Updates</name>
+    <message>
+        <source>Another update is already running.</source>
+        <translation>È già in corso un altro aggiornamento.</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t update itself on this system.</source>
+        <translation>Vela non può aggiornarsi su questo sistema.</translation>
+    </message>
+    <message>
+        <source>A program needed to update Vela isn&apos;t installed.</source>
+        <translation>Manca un programma necessario per aggiornare Vela.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t connect. Check your internet connection.</source>
+        <translation>Impossibile connettersi. Controlla la connessione a Internet.</translation>
+    </message>
+    <message>
+        <source>GitHub is limiting requests. Try again later.</source>
+        <translation>GitHub sta limitando le richieste. Riprova più tardi.</translation>
+    </message>
+    <message>
+        <source>No Beta release has been published yet.</source>
+        <translation>Non è ancora stata pubblicata nessuna versione Beta.</translation>
+    </message>
+    <message>
+        <source>The update wasn&apos;t found.</source>
+        <translation>Aggiornamento non trovato.</translation>
+    </message>
+    <message>
+        <source>The installed version is newer than the update.</source>
+        <translation>La versione installata è più recente dell&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>The update couldn&apos;t be verified, so it wasn&apos;t installed.</source>
+        <translation>Non è stato possibile verificare l&apos;aggiornamento, quindi non è stato installato.</translation>
+    </message>
+    <message>
+        <source>Building the update failed.</source>
+        <translation>La compilazione dell&apos;aggiornamento non è riuscita.</translation>
+    </message>
+    <message>
+        <source>The package manager didn&apos;t install the update.</source>
+        <translation>Il gestore dei pacchetti non ha installato l&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>The update was interrupted.</source>
+        <translation>L&apos;aggiornamento è stato interrotto.</translation>
+    </message>
+    <message>
+        <source>The terminal didn&apos;t start the update.</source>
+        <translation>Il terminale non ha avviato l&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>Something went wrong.</source>
+        <translation>Qualcosa è andato storto.</translation>
+    </message>
+    <message>
+        <source>An update or a check is already running.</source>
+        <translation>È già in corso un aggiornamento o un controllo.</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t update to that: %1</source>
+        <translation>Vela non può aggiornarsi a questa revisione: %1</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t open a terminal to run the update.</source>
+        <translation>Impossibile aprire un terminale per l&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>This app isn&apos;t allowed to update Vela.</source>
+        <translation>Questa app non è autorizzata ad aggiornare Vela.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t start vela-update.</source>
+        <translation>Impossibile avviare vela-update.</translation>
+    </message>
+    <message>
+        <source>The update service isn&apos;t responding.</source>
+        <translation>Il servizio di aggiornamento non risponde.</translation>
     </message>
 </context>
 </TS>

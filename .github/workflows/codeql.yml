@@ -5,9 +5,9 @@ name: CodeQL
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/**']
   schedule:
     - cron: '23 4 * * 3'
   workflow_dispatch:
@@ -21,28 +21,46 @@ concurrency:
 
 jobs:
   analyze:
-    name: C/C++ security analysis
+    name: ${{ matrix.check_name }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Keep the C/C++ job name and SARIF category stable for existing checks
+          # and alerts. Restore Python and Actions, previously scanned only by
+          # CodeQL default setup (which is no longer active).
+          - language: c-cpp
+            check_name: C/C++ security analysis
+            build_mode: none
+          - language: python
+            check_name: Python security analysis
+            build_mode: none
+          - language: actions
+            check_name: GitHub Actions security analysis
+            build_mode: none
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # "none" gives broad source coverage without making CodeQL depend on the
-      # distro-specific Vela build environment. The normal Arch/Fedora builds,
-      # static analyzers and sanitizers remain separate required checks.
+      # No-build mode supports all three languages. For C/C++ it avoids coupling
+      # the security scan to Vela's distro-specific build dependencies; the
+      # regular Arch/Fedora builds, static analyzers and sanitizers remain the
+      # separate required checks.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
-          languages: c-cpp
-          build-mode: none
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build_mode }}
           queries: security-extended
 
       - name: Analyze
-        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
-          category: /language:c-cpp
+          category: /language:${{ matrix.language }}

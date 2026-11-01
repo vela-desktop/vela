@@ -216,6 +216,7 @@ Window {
                                         id: summaryText
                                         width: parent.width - timeText.width - 30
                                         text: item.summary
+                                        textFormat: Text.PlainText // the spec's summary has no markup
                                         color: Theme.text
                                         font.pixelSize: Theme.fontBody
                                         font.weight: Font.DemiBold

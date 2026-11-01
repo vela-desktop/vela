@@ -5,8 +5,10 @@
 supervisor restarting the compositor after a crash (locked too)."""
 
 import os
+import select
 import signal
 import socket
+import subprocess
 import struct
 import tempfile
 import time
@@ -53,6 +55,101 @@ class Lock(unittest.TestCase):
             vela.wait_for_log("vela-testlock: locked")
             image = vela.pixels()
             self.assertEqual(image.at(image.width // 2, image.height // 2), (16, 32, 64))
+
+    def test_hidden_window_resize_border_does_not_steal_lock_pointer(self):
+        """Mouse motion at an invisible desktop resize border must reach the locker.
+
+        Before the fix, resize_border_at() still walks disabled window children,
+        chooses an east/west resize cursor, clears pointer focus and returns.
+        This is why the lock screen can display a resize arrow over empty space.
+        """
+        with Session(lock_hold_ms=8000, env={"VELA_TESTLOCK_LOG_POINTER": "1"}) as vela:
+            window = vela.open_window(400, 300, decorated=True)
+            frame = vela.state().window(window)
+            x = frame["x"] + frame["w"] + 4
+            y = frame["y"] + frame["h"] // 2
+            # Start outside the invisible resize band so that the second
+            # move crosses into it only after the lock surface has mapped.
+            vela.input("move", x + 60, y)
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"], what="locked")
+            vela.wait_for_log("vela-testlock: locked")
+            # Ensure the opaque lock surface has actually committed.
+            vela.wait_for(lambda _: vela.pixels().at(10, 10) == (16, 32, 64),
+                          what="mapped lock surface", read_state=False)
+            vela.input("move", x, y)
+            vela.wait_for_log(f"vela-testlock: pointer-motion {x} {y}", timeout=3)
+            self.assertTrue(vela.state()["locked"], "pointer movement must not unlock")
+
+
+    def test_stationary_pointer_click_reaches_new_lock_surface(self):
+        """Pointer focus is assigned when the lock surface maps, without motion."""
+        with Session(lock_hold_ms=6000, env={"VELA_TESTLOCK_LOG_POINTER": "1"}) as vela:
+            vela.input("move", 350, 260)
+            vela.command("lock")
+            vela.wait_for_log("vela-testlock: locked")
+            vela.wait_for(lambda _: vela.pixels().at(10, 10) == (16, 32, 64),
+                          what="mapped lock surface", read_state=False)
+            # Do not move the mouse after locking: a missing map-time retarget
+            # cannot be hidden by the normal pointer-motion event path.
+            vela.input("click")
+            vela.wait_for_log("vela-testlock: pointer-button 272 1", timeout=3)
+            vela.wait_for_log("vela-testlock: pointer-button 272 0", timeout=3)
+            self.assertTrue(vela.state()["locked"])
+
+    def test_keyboard_move_size_is_cancelled_before_lock(self):
+        """Keyboard Move/Size must not steal the locker's password keystrokes."""
+        for mode in ("move", "resize"):
+            with self.subTest(mode=mode):
+                with Session(lock_hold_ms=10000, env={"VELA_TESTLOCK_LOG_KEYBOARD": "1"}) as vela:
+                    window = vela.open_window(400, 300, decorated=True)
+                    vela.wait_for(lambda s: s["focused"] == window)
+                    original = vela.state().window(window)
+                    vela.command(f"window active {mode}")
+                    # The headless backend has no physical keyboard. vela-input
+                    # normally disconnects after each gesture, so the seat has
+                    # no keyboard when the locker maps. Keep one virtual device
+                    # connected throughout the lock, as a real keyboard would.
+                    # The checkpoint roundtrip proves that it was registered.
+                    keyboard = subprocess.Popen(
+                        [tool("vela-input"), "checkpoint"], env=vela.client_env,
+                        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE, text=True)
+                    try:
+                        ready, _, _ = select.select([keyboard.stdout], [], [], 5)
+                        self.assertTrue(ready, "virtual keyboard did not register")
+                        self.assertEqual(keyboard.stdout.readline().strip(), "READY")
+                        vela.command("lock")
+                        vela.wait_for_log("vela-testlock: locked")
+                        # Check actual wl_keyboard focus before delivering a key.
+                        vela.wait_for_log("vela-testlock: keyboard-enter", timeout=5)
+                        vela.input("key", "Right")
+                        # Linux input-event-codes: KEY_RIGHT = 106.
+                        vela.wait_for_log("vela-testlock: keyboard-key 106 1", timeout=3)
+                        self.assertTrue(vela.state()["locked"])
+                        frame = vela.state().window(window)
+                        self.assertEqual(tuple(frame[k] for k in ("x", "y", "w", "h")),
+                                         tuple(original[k] for k in ("x", "y", "w", "h")))
+                    finally:
+                        if keyboard.poll() is None:
+                            keyboard.terminate()
+                        keyboard.communicate(timeout=5)
+
+    def test_lock_pointer_retargets_after_output_layout_change(self):
+        """A cursor relocated to a surviving output must be able to click without moving."""
+        with Session(lock_hold_ms=8000, env={"VELA_TESTLOCK_LOG_POINTER": "1"}) as vela:
+            vela.command("test-output add 640x480")
+            vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two headless outputs")
+            vela.randr("--output", "HEADLESS-2", "--pos", "1920,0")
+            vela.input("move", 2000, 100)
+            vela.command("lock")
+            vela.wait_for_log("vela-testlock: locked")
+            vela.command("test-output remove HEADLESS-2")
+            vela.wait_for(lambda s: len(s["outputs"]) == 1, what="second output removed")
+            # A fresh click, not a motion event, must reach the remaining locker.
+            vela.input("click")
+            vela.wait_for_log("vela-testlock: pointer-button 272 1", timeout=3)
+            self.assertTrue(vela.state()["locked"])
 
     def test_missing_locker_never_exposes_desktop(self):
         # A failed launcher must hide windows and revoke keyboard focus even
@@ -199,6 +296,91 @@ class Lock(unittest.TestCase):
             vela.wait_for(lambda s: s.output["powered"], what="screen back on")
             vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked")
             self.assertTrue(vela.state().has(window))
+
+
+class VulkanShutdown(unittest.TestCase):
+    """Headless shutdown smoke tests; physical DRM/KMS regression tests are separate."""
+
+    @staticmethod
+    def shutdown_env():
+        # Opt-in on the dedicated GPU runners; generic CI may lack the layer.
+        return {"VELA_VULKAN_VALIDATION": "1"} if os.environ.get("VELA_SHUTDOWN_VALIDATE") == "1" else {}
+
+    def assert_cleanup_complete(self, vela):
+        self.assertEqual(vela.process.wait(timeout=20), 0)
+        log = vela.log_text()
+        self.assertIn("Shutdown: releasing Vulkan renderer, allocator and device", log)
+        self.assertEqual(log.count("Shutdown: Vulkan resource cleanup complete"), 1, log[-3000:])
+        self.assertNotIn("Shutdown: skipping Vulkan resource cleanup", log)
+        return log
+
+    def test_normal_logout_releases_gpu_resources(self):
+        with Session(env=self.shutdown_env()) as vela:
+            vela.open_window()
+            os.kill(vela.process.pid, signal.SIGTERM)
+            self.assert_cleanup_complete(vela)
+
+    def test_supervised_logout_does_not_restart(self):
+        # SIGTERM goes to the compositor child, not to its supervisor: this
+        # exercises the normal "Sign out" path and its zero-exit detection.
+        with Session(supervise=True, env=self.shutdown_env()) as vela:
+            vela.open_window()
+            pid = child_compositor(vela.process.pid)
+            self.assertIsNotNone(pid, "the supervised compositor must be running")
+            os.kill(pid, signal.SIGTERM)
+            log = self.assert_cleanup_complete(vela)
+            self.assertNotIn("vela-supervise: restarting it", log)
+            self.assertNotIn("vela-supervise: the compositor crashed", log)
+            self.assertEqual(log.count("Vela running on WAYLAND_DISPLAY="), 1, log[-3000:])
+
+    def test_repeated_normal_logout(self):
+        # Keep generic CI short; dedicated hardware CI runs thirty iterations
+        # with Vulkan validation enabled, with a window alive at shutdown.
+        cycles = int(os.environ.get("VELA_SHUTDOWN_STRESS_CYCLES", "3"))
+        self.assertGreaterEqual(cycles, 1)
+        self.assertLessEqual(cycles, 50)
+        for cycle in range(cycles):
+            with self.subTest(cycle=cycle + 1):
+                with Session(env=self.shutdown_env()) as vela:
+                    vela.open_window()
+                    os.kill(vela.process.pid, signal.SIGTERM)
+                    self.assert_cleanup_complete(vela)
+
+    def test_shutdown_after_locked_output_power_cycle(self):
+        # Headless power state changes are not real DRM/KMS power cycling.
+        with Session(lock_hold_ms=2000, env=self.shutdown_env()) as vela:
+            vela.open_window()
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            vela.command("test-power off")
+            vela.wait_for(lambda s: not s.output["powered"], what="screen off")
+            vela.command("test-power on")
+            vela.wait_for(lambda s: s.output["powered"], what="screen on")
+            vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked")
+            os.kill(vela.process.pid, signal.SIGTERM)
+            self.assert_cleanup_complete(vela)
+
+    def test_shutdown_while_locked_after_output_power_cycle(self):
+        # Different lifetime path: shutdown while lock surfaces are still live.
+        with Session(lock_hold_ms=15000, env=self.shutdown_env()) as vela:
+            vela.open_window()
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            vela.command("test-power off")
+            vela.wait_for(lambda s: not s.output["powered"], what="screen off")
+            vela.command("test-power on")
+            vela.wait_for(lambda s: s.output["powered"], what="screen on")
+            self.assertTrue(vela.state()["locked"])
+            os.kill(vela.process.pid, signal.SIGTERM)
+            self.assert_cleanup_complete(vela)
+
+    def test_diagnostic_cleanup_opt_out(self):
+        with Session(env={"VELA_SKIP_VULKAN_CLEANUP": "1"}) as vela:
+            os.kill(vela.process.pid, signal.SIGTERM)
+            self.assertEqual(vela.process.wait(timeout=15), 0)
+            log = vela.log_text()
+            self.assertIn("Shutdown: skipping Vulkan resource cleanup", log)
+            self.assertNotIn("Shutdown: Vulkan resource cleanup complete", log)
 
 
 class Caffeine(unittest.TestCase):

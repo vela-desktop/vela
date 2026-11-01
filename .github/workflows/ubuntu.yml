@@ -1,0 +1,288 @@
+name: Ubuntu 26.10 build
+
+on:
+  workflow_call:
+  pull_request:
+  push:
+    branches: [main, 'release/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-build:
+    name: Compile and test (Ubuntu 26.10)
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:26.10
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-ubuntu
+      CCACHE_MAXSIZE: 750M
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git build-essential cmake ninja-build ccache pkgconf \
+            libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+            libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
+            libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
+            libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev \
+            libpolkit-gobject-1-dev zlib1g-dev libgtest-dev libsystemd-dev \
+            qt6-base-dev qt6-base-private-dev qt6-declarative-dev \
+            qt6-svg-dev qt6-wayland-dev qt6-tools-dev qt6-tools-dev-tools \
+            qt6-l10n-tools liblayershellqtinterface-dev \
+            libpipewire-0.3-dev libwireplumber-0.5-dev \
+            dpkg-dev file \
+            python3 python3-numpy python3-pil dbus
+          # Fail on missing packages: no distro-specific vendoring/fallbacks.
+          pkg-config --modversion wlroots-0.20
+          pkg-config --modversion vulkan
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Restore Ubuntu compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache-ubuntu
+          key: ccache-ubuntu2610-relwithdebinfo-v1-${{ github.sha }}
+          restore-keys: |
+            ccache-ubuntu2610-relwithdebinfo-v1-
+      - name: Configure all desktop components
+        run: |
+          channel=experimental
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then channel=beta; fi
+          cmake -S . -B build-ubuntu -G Ninja \
+            -DVELA_PACKAGE_CHANNEL="$channel" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DVELA_BUILD_COMPOSITOR=ON \
+            -DVELA_BUILD_SHELL=ON \
+            -DVELA_BUILD_POLKIT=ON \
+            -DVELA_BUILD_REPORT=ON \
+            -DVELA_BUILD_TOOLS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_INSTALL_LIBEXECDIR=libexec/vela \
+            -DVELA_PACKAGE_DEB=ON \
+            -DVELA_PACKAGE_COMMIT="${GITHUB_SHA:0:7}"
+      - name: Build
+        run: |
+          ccache --zero-stats
+          cmake --build build-ubuntu --parallel 2
+      - name: Ubuntu compiler cache statistics
+        if: always()
+        run: ccache --show-stats || true
+      - name: Non-GPU CTest suite
+        run: |
+          set -euo pipefail
+          # Test selection is driven by CTest labels, not name prefixes.
+          # Fail closed if the registered non-GPU suite unexpectedly shrinks.
+          ctest --test-dir build-ubuntu -N -LE 'gpu|distro-packaging' > /tmp/vela-ubuntu-tests.txt
+          cat /tmp/vela-ubuntu-tests.txt
+          count=$(sed -n 's/^Total Tests: //p' /tmp/vela-ubuntu-tests.txt)
+          if [[ ! "$count" =~ ^[0-9]+$ ]] || (( count < 200 )); then
+            echo "Expected at least 200 non-GPU tests; discovered ${count:-none}" >&2
+            exit 1
+          fi
+          ctest --test-dir build-ubuntu --output-on-failure --parallel 2 -LE 'gpu|distro-packaging'
+      - name: Build channel-specific DEB
+        run: |
+          set -euo pipefail
+          cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
+          dpkg-deb --info build-ubuntu/packages/*.deb
+          dpkg-deb -f build-ubuntu/packages/*.deb Depends
+          # These must be strong Depends, not Recommends: the shell's theme
+          # icons are otherwise blank on a minimal Ubuntu installation.
+          for dependency in breeze-icon-theme qt6-svg-plugins; do
+            dpkg-deb -f build-ubuntu/packages/*.deb Depends |
+              tr ',' '\n' | grep -Eq "^[[:space:]]*${dependency}([[:space:]]|$)" || {
+                echo "Missing hard DEB dependency: $dependency" >&2
+                exit 1
+              }
+          done
+          # Verify the commit stamp without hard-coding the next project version.
+          deb_version=$(dpkg-deb -f build-ubuntu/packages/*.deb Version)
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+            test "$deb_version" = "${GITHUB_REF_NAME#v}"
+            test "$(dpkg-deb -f build-ubuntu/packages/*.deb Package)" = vela
+          else
+            case "$deb_version" in
+              *"+git${GITHUB_SHA:0:7}") ;;
+              *) echo "Unexpected experimental DEB version: $deb_version" >&2; exit 1 ;;
+            esac
+          fi
+          # Both channels must replace each other without leaving file conflicts.
+          other=vela
+          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then other=vela-git; fi
+          for field in Conflicts Replaces; do
+            dpkg-deb -f build-ubuntu/packages/*.deb "$field" |
+              tr ',' '\n' | grep -Eq "^[[:space:]]*${other}([[:space:]]|$)" || {
+                echo "Missing DEB $field metadata for $other" >&2
+                exit 1
+              }
+          done
+          dpkg-deb --contents build-ubuntu/packages/*.deb > /tmp/vela-deb-files.txt
+          cat /tmp/vela-deb-files.txt
+          # Stripped binaries, xz payload: with debug info the DEB was 78 MiB.
+          ls -l build-ubuntu/packages/*.deb
+          ar t build-ubuntu/packages/*.deb | grep -Fxq data.tar.xz || {
+            echo "DEB payload is not xz-compressed" >&2
+            exit 1
+          }
+          payload=$(mktemp -d)
+          dpkg-deb -x build-ubuntu/packages/*.deb "$payload"
+          unstripped=0
+          while IFS= read -r -d '' file; do
+            [[ "$(head -c 4 "$file")" == $'\x7fELF' ]] || continue
+            sections=$(readelf -S --wide "$file")
+            if grep -Eq '\.(z?debug_[a-z_]+|symtab) ' <<< "$sections"; then
+              echo "Unstripped binary in the DEB: ${file#"$payload"}" >&2
+              unstripped=1
+            fi
+          done < <(find "$payload" -type f -print0)
+          (( unstripped == 0 ))
+          grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
+          grep -q '/usr/bin/vela-update$' /tmp/vela-deb-files.txt
+          grep -q '/usr/share/wayland-sessions/vela.desktop$' /tmp/vela-deb-files.txt
+          grep -q '/usr/libexec/vela/vela-bluetooth$' /tmp/vela-deb-files.txt
+          grep -q '/usr/libexec/vela/vela-update-daemon$' /tmp/vela-deb-files.txt
+          grep -q '/usr/libexec/vela/vela-update-state$' /tmp/vela-deb-files.txt
+          # Settings > Updates runs vela-update in a terminal (docs/updates.md §6.3).
+          dpkg-deb -f build-ubuntu/packages/*.deb Depends | tr ',' '\n' | grep -Eq '^[[:space:]]*xdg-terminal-exec([[:space:]]|$)' || {
+            echo "Missing DEB dependency: xdg-terminal-exec" >&2
+            exit 1
+          }
+          # Bluetooth needs only BlueZ, recommended (docs/bluetooth.md §10).
+          dpkg-deb -f build-ubuntu/packages/*.deb Recommends | tr ',' '\n' | grep -Eq '^[[:space:]]*bluez([[:space:]]|$)' || {
+            echo "Missing DEB recommendation: bluez" >&2
+            exit 1
+          }
+      - name: Attest official Ubuntu Beta DEB provenance
+        if: startsWith(github.ref, 'refs/tags/v0.')
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: build-ubuntu/packages/*.deb
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vela-ubuntu-26.10-deb
+          path: build-ubuntu/packages/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+  ubuntu-package-install:
+    name: Install DEB (clean Ubuntu 26.10)
+    needs: ubuntu-build
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:26.10
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: vela-ubuntu-26.10-deb
+          path: deb
+      - name: Resolve dependencies and install package
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends file dpkg-dev
+          apt-get install -y --no-install-recommends ./deb/*.deb
+          pkg=vela-git
+          case "$GITHUB_REF" in refs/tags/v0.*) pkg=vela ;; esac
+          dpkg-query -W -f='${Status}\n' "$pkg" | grep -Fx 'install ok installed'
+          # --no-install-recommends must still pull in both runtime icon packages.
+          for dependency in breeze-icon-theme qt6-svg-plugins; do
+            dpkg-query -W -f='${Status}\n' "$dependency" | grep -Fx 'install ok installed'
+          done
+          test -f /usr/share/icons/breeze-dark/index.theme
+          test -f "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/qt6/plugins/iconengines/libqsvgicon.so"
+          test -x /usr/bin/vela-compositor
+          test -x /usr/bin/vela-session
+          test -x /usr/bin/vela-update
+          test -x /usr/libexec/vela/vela-bluetooth
+          ldd /usr/libexec/vela/vela-bluetooth | grep -F libsystemd.so
+          test -x /usr/libexec/vela/vela-update-daemon
+          ldd /usr/libexec/vela/vela-update-daemon | grep -F libsystemd.so
+          command -v xdg-terminal-exec
+          /usr/bin/vela-update --help >/dev/null
+          test -f /usr/share/wayland-sessions/vela.desktop
+          # Ensure session entry references an executable available in the clean image.
+          session_exec=$(sed -n 's/^Exec=//p' /usr/share/wayland-sessions/vela.desktop | head -n 1)
+          test -n "$session_exec"
+          session_bin=${session_exec%% *}
+          case "$session_bin" in
+            /*) test -x "$session_bin" ;;
+            *) command -v "$session_bin" >/dev/null ;;
+          esac
+          # Inspect all installed ELF objects for unresolved DT_NEEDED dependencies.
+          dpkg-query -L "$pkg" | while IFS= read -r path; do
+            if [ -f "$path" ] && file -b "$path" | grep -q '^ELF '; then
+              if ldd "$path" 2>&1 | grep -q 'not found'; then
+                echo "Missing ELF dependency: $path" >&2
+                ldd "$path" >&2 || true
+                exit 1
+              fi
+            fi
+          done
+          # QML imports are loaded at runtime, so ELF dependency scanning misses them.
+          for module in QtQuick QtQuick/Controls QtQuick/Layouts QtQml/WorkerScript; do
+            test -f "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/qt6/qml/$module/qmldir" || \
+              test -f "/usr/lib/qt6/qml/$module/qmldir" || \
+              { echo "Missing QML module: $module" >&2; exit 1; }
+          done
+      - name: Remove package cleanly
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eu
+          pkg=vela-git
+          case "$GITHUB_REF" in refs/tags/v0.*) pkg=vela ;; esac
+          apt-get remove -y "$pkg"
+          test ! -e /usr/bin/vela-compositor
+          test ! -e /usr/bin/vela-update
+          test ! -e /usr/share/wayland-sessions/vela.desktop
+      - name: Exercise native APT channel replacements
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eu
+          work=$(mktemp -d)
+          for package in vela-channel-ci-git vela-channel-ci; do
+            if [ "$package" = vela-channel-ci ]; then
+              other=vela-channel-ci-git
+            else
+              other=vela-channel-ci
+            fi
+            mkdir -p "$work/$package/DEBIAN" "$work/$package/usr/share/vela-channel-ci"
+            printf 'Package: %s\nVersion: 0.1.0\nArchitecture: all\nMaintainer: Vela CI <ci@example.invalid>\nDescription: Disposable packaging migration fixture\nConflicts: %s\nReplaces: %s\n' \
+              "$package" "$other" "$other" > "$work/$package/DEBIAN/control"
+            printf '%s\n' "$package" > "$work/$package/usr/share/vela-channel-ci/marker"
+            dpkg-deb --build "$work/$package" "$work/$package.deb"
+          done
+          apt-get install -y "$work/vela-channel-ci-git.deb"
+          apt-get install -y --allow-downgrades "$work/vela-channel-ci.deb"
+          dpkg-query -W -f='${Status}' vela-channel-ci | grep -Fx 'install ok installed'
+          if dpkg-query -W -f='${Status}' vela-channel-ci-git 2>/dev/null | grep -Fx 'install ok installed'; then
+            echo "Old experimental fixture survived Beta replacement" >&2; exit 1
+          fi
+          apt-get install -y --allow-downgrades --reinstall "$work/vela-channel-ci-git.deb"
+          dpkg-query -W -f='${Status}' vela-channel-ci-git | grep -Fx 'install ok installed'
+          if dpkg-query -W -f='${Status}' vela-channel-ci 2>/dev/null | grep -Fx 'install ok installed'; then
+            echo "Old Beta fixture survived Experimental replacement" >&2; exit 1
+          fi
+          apt-get purge -y vela-channel-ci-git
+          rm -rf -- "$work"

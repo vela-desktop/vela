@@ -5,7 +5,8 @@
 // not depend on installed programs.
 //
 // Usage: vela-x11 [--menu X,Y] [--id-file PATH] [--backdrop-id-file PATH]
-//                 [--wine-style HEX] [--wine-backdrop] [WIDTH HEIGHT]
+//                 [--wine-style HEX] [--wine-backdrop] [--checker]
+//                 [--clicks PATH] [--ask-size] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
 //        vela-x11 --state XID below|skip-taskbar on|off
 //        vela-x11 --override-redirect XID on|off
@@ -23,8 +24,14 @@
 // override-redirect and as large as the screen; once it is shown the orange
 // window asks for fullscreen and the backdrop becomes managed, asking for
 // fullscreen, skip-taskbar/pager and below after mapping.
+// --checker draws a black and white checkerboard of single pixels instead of
+// orange (sharpness: drawn 1:1, it reaches the screen unchanged). --clicks
+// writes a line "X Y ROOT_X ROOT_Y" to PATH for every button press and
+// release: where in the window and in the root the pointer was. --ask-size
+// asks the window manager for the size before mapping, as Wine does.
 
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -44,11 +51,34 @@ static xcb_window_t create(xcb_connection_t* connection, xcb_screen_t* screen, i
     uint32_t color, int overrideRedirect)
 {
     xcb_window_t window = xcb_generate_id(connection);
-    const uint32_t values[] = { color, (uint32_t)overrideRedirect, XCB_EVENT_MASK_EXPOSURE };
+    const uint32_t values[]
+        = { color, (uint32_t)overrideRedirect,
+              XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE };
     xcb_create_window(connection, XCB_COPY_FROM_PARENT, window, screen->root, (int16_t)x, (int16_t)y,
         (uint16_t)width, (uint16_t)height, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen->root_visual,
         XCB_CW_BACK_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK, values);
     return window;
+}
+
+// A GC that fills with the 2x2 checkerboard tile.
+static xcb_gcontext_t checker_gc(xcb_connection_t* connection, xcb_screen_t* screen, xcb_window_t window)
+{
+    xcb_pixmap_t tile = xcb_generate_id(connection);
+    xcb_create_pixmap(connection, screen->root_depth, tile, window, 2, 2);
+    xcb_gcontext_t pen = xcb_generate_id(connection);
+    uint32_t color = 0x000000;
+    xcb_create_gc(connection, pen, tile, XCB_GC_FOREGROUND, &color);
+    const xcb_rectangle_t all = { 0, 0, 2, 2 };
+    xcb_poly_fill_rectangle(connection, tile, pen, 1, &all);
+    color = 0xffffff;
+    xcb_change_gc(connection, pen, XCB_GC_FOREGROUND, &color);
+    const xcb_point_t white[] = { { 0, 0 }, { 1, 1 } };
+    xcb_poly_point(connection, XCB_COORD_MODE_ORIGIN, tile, pen, 2, white);
+    xcb_free_gc(connection, pen);
+    xcb_gcontext_t gc = xcb_generate_id(connection);
+    const uint32_t values[] = { XCB_FILL_STYLE_TILED, tile };
+    xcb_create_gc(connection, gc, window, XCB_GC_FILL_STYLE | XCB_GC_TILE, values);
+    return gc;
 }
 
 static int write_xid_file(const char* path, xcb_window_t window)
@@ -114,6 +144,9 @@ int main(int argc, char** argv)
     int hasWineStyle = 0;
     int startFullscreen = 0;
     int wineBackdrop = 0;
+    int checker = 0;
+    int askSize = 0;
+    const char* clicksFile = NULL;
     int control = (argc == 4
         && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
             || !strcmp(argv[1], "--override-redirect")))
@@ -134,6 +167,16 @@ int main(int argc, char** argv)
                 ++arg;
                 continue;
             }
+            if (!strcmp(argv[arg], "--checker")) {
+                checker = 1;
+                ++arg;
+                continue;
+            }
+            if (!strcmp(argv[arg], "--ask-size")) {
+                askSize = 1;
+                ++arg;
+                continue;
+            }
             if (arg + 1 >= argc) {
                 break;
             }
@@ -144,6 +187,8 @@ int main(int argc, char** argv)
                 idFile = argv[arg + 1];
             } else if (!strcmp(argv[arg], "--backdrop-id-file")) {
                 backdropIdFile = argv[arg + 1];
+            } else if (!strcmp(argv[arg], "--clicks")) {
+                clicksFile = argv[arg + 1];
             } else if (!strcmp(argv[arg], "--wine-style")) {
                 wineStyle = (uint32_t)strtoul(argv[arg + 1], NULL, 0);
                 hasWineStyle = 1;
@@ -248,6 +293,34 @@ int main(int argc, char** argv)
             free(error);
             failed = 1;
         }
+        if (!failed && !strcmp(argv[1], "--override-redirect")) {
+            // ChangeWindowAttributes doesn't itself send an X11 notification
+            // to the window manager. wlroots learns the new override-redirect
+            // value from ConfigureNotify or MapNotify. Exercise a *mapped*
+            // transition by issuing a real ConfigureWindow, without an X11
+            // unmap/remap or a fabricated event. Restore the original size.
+            xcb_get_geometry_reply_t* geometry =
+                xcb_get_geometry_reply(connection, xcb_get_geometry(connection, target), NULL);
+            if (!geometry || !geometry->width || geometry->width == UINT16_MAX) {
+                fprintf(stderr, "vela-x11: cannot configure target after override-redirect change\n");
+                failed = 1;
+            } else {
+                const uint32_t widths[] = { (uint32_t)geometry->width + 1, geometry->width };
+                for (size_t i = 0; i < 2; ++i) {
+                    xcb_void_cookie_t configure = xcb_configure_window_checked(
+                        connection, target, XCB_CONFIG_WINDOW_WIDTH, &widths[i]);
+                    xcb_generic_error_t* configure_error = xcb_request_check(connection, configure);
+                    if (configure_error) {
+                        fprintf(stderr, "vela-x11: override-redirect configure failed (X11 error %d)\n",
+                            configure_error->error_code);
+                        free(configure_error);
+                        failed = 1;
+                        break;
+                    }
+                }
+            }
+            free(geometry);
+        }
         xcb_disconnect(connection);
         return failed;
     }
@@ -255,6 +328,21 @@ int main(int argc, char** argv)
     if (idFile && write_xid_file(idFile, window) != 0) {
         xcb_disconnect(connection);
         return 1;
+    }
+    FILE* clicks = NULL;
+    if (clicksFile) {
+        int fd = open(clicksFile, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        clicks = fd >= 0 ? fdopen(fd, "w") : NULL;
+        if (!clicks) {
+            perror("vela-x11: create clicks file");
+            if (fd >= 0) {
+                // Only the file made here: O_EXCL never opens another.
+                close(fd);
+                unlink(clicksFile);
+            }
+            xcb_disconnect(connection);
+            return 1;
+        }
     }
     if (hasWineStyle) {
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
@@ -274,6 +362,10 @@ int main(int argc, char** argv)
     xcb_atom_t protocols = atom(connection, "WM_PROTOCOLS");
     xcb_atom_t deleteWindow = atom(connection, "WM_DELETE_WINDOW");
     xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, protocols, XCB_ATOM_ATOM, 32, 1, &deleteWindow);
+    if (askSize) {
+        const uint32_t size[] = { (uint32_t)width, (uint32_t)height };
+        xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, size);
+    }
     xcb_map_window(connection, window);
     if (menu) {
         xcb_map_window(connection, create(connection, screen, menuX, menuY, 120, 80, 0x00c000, 1));
@@ -309,7 +401,9 @@ int main(int argc, char** argv)
         } else if (type == XCB_EXPOSE) {
             const xcb_expose_event_t* expose = (const xcb_expose_event_t*)event;
             xcb_gcontext_t* gc = expose->window == window ? &orange : &green;
-            if (*gc == XCB_NONE) {
+            if (*gc == XCB_NONE && checker && expose->window == window) {
+                *gc = checker_gc(connection, screen, window);
+            } else if (*gc == XCB_NONE) {
                 uint32_t color = expose->window == window ? 0xff8000 : 0x00c000;
                 *gc = xcb_generate_id(connection);
                 xcb_create_gc(connection, *gc, expose->window, XCB_GC_FOREGROUND, &color);
@@ -317,6 +411,11 @@ int main(int argc, char** argv)
             const xcb_rectangle_t area = { (int16_t)expose->x, (int16_t)expose->y, expose->width, expose->height };
             xcb_poly_fill_rectangle(connection, expose->window, *gc, 1, &area);
             xcb_flush(connection);
+        } else if ((type == XCB_BUTTON_PRESS || type == XCB_BUTTON_RELEASE) && clicks) {
+            // A release has the same layout.
+            const xcb_button_press_event_t* press = (const xcb_button_press_event_t*)event;
+            fprintf(clicks, "%d %d %d %d\n", press->event_x, press->event_y, press->root_x, press->root_y);
+            fflush(clicks);
         } else if (type == XCB_CLIENT_MESSAGE) {
             const xcb_client_message_event_t* message = (const xcb_client_message_event_t*)event;
             if (message->type == protocols && message->data.data32[0] == deleteWindow) {
@@ -325,6 +424,9 @@ int main(int argc, char** argv)
             }
         }
         free(event);
+    }
+    if (clicks) {
+        fclose(clicks);
     }
     xcb_disconnect(connection);
     return 0;
