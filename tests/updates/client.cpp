@@ -145,6 +145,9 @@ private Q_SLOTS:
         QCOMPARE(updates.activity(), QStringLiteral("idle"));
         QVERIFY(!updates.busy());
         QVERIFY(!updates.lastCheck().isValid());
+        QVERIFY(!updates.nextCheck().isValid());
+        QCOMPARE(updates.checkInterval(), 24u);
+        QVERIFY(!updates.waitingForNetwork());
         QVERIFY(updates.checkError().isEmpty());
         updates.check();
         updates.install({ { QStringLiteral("channel"), QStringLiteral("beta") } });
@@ -153,6 +156,29 @@ private Q_SLOTS:
         QVERIFY(updates.autoCheck());
         QVERIFY(updates.error().isEmpty());
         QCOMPARE(calls(), QStringList {});
+    }
+
+    void checkScheduleAndInterval()
+    {
+        nextCheck({});
+        QVERIFY(startDaemon());
+        auto updates = client();
+        QCOMPARE(updates->checkInterval(), 24u);
+        QVERIFY(updates->nextCheck().isValid());
+        QVERIFY(!updates->waitingForNetwork());
+
+        updates->setCheckInterval(12u);
+        QTRY_COMPARE(updates->checkInterval(), 12u);
+        updates->check();
+        QTRY_COMPARE(updates->status(), QStringLiteral("up-to-date"));
+        QTRY_VERIFY(!updates->busy());
+        QTRY_VERIFY(updates->nextCheck() > QDateTime::currentDateTime().addSecs(11 * 3600));
+
+        updates->setAutoCheck(false);
+        QTRY_VERIFY(!updates->autoCheck());
+        QTRY_VERIFY(!updates->nextCheck().isValid());
+        updates->setCheckInterval(48u);
+        QTRY_COMPARE(updates->checkInterval(), 48u);
     }
 
     void checkFindsAnUpdate()

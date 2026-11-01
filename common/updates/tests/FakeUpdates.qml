@@ -32,6 +32,9 @@ QtObject {
     property var installFinished: new Date(NaN)
     property bool needsRelogin: false
     property bool autoCheck: true
+    property int checkInterval: 24
+    property var nextCheck: new Date(Date.now() + 24 * 3600000)
+    property bool waitingForNetwork: false
     property string announce: ""
     property string error: ""
     property var calls: []
@@ -43,7 +46,8 @@ QtObject {
         commit = ""; changes = []; changesTotal = 0; notes = []
         source = "https://github.com/vela-desktop/vela.git"; lastCheck = new Date(); checkError = {}
         installResult = ""; installError = {}; installFinished = new Date(NaN); needsRelogin = false
-        autoCheck = true; announce = ""; error = ""; calls = []
+        autoCheck = true; checkInterval = 24; nextCheck = new Date(Date.now() + 24 * 3600000)
+        waitingForNetwork = false; announce = ""; error = ""; calls = []
     }
     // A failure as the client gives it.
     function failure(code, message) {
@@ -57,6 +61,7 @@ QtObject {
         record(["install"].concat(keys.map(k => k + "=" + options[k])).join(" "))
     }
     function setAutoCheck(on) { record("setAutoCheck " + on); autoCheck = on }
+    function setCheckInterval(hours) { record("setCheckInterval " + hours); checkInterval = hours }
     function announced(commit) { record("announced " + commit); if (commit === announce) announce = "" }
     function clearError() { error = "" }
 }

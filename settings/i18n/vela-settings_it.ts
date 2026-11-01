@@ -2839,6 +2839,34 @@ Specifiche sistema
         <translation>Non sulle connessioni a consumo</translation>
     </message>
     <message>
+        <source>Automatic check frequency</source>
+        <translation>Frequenza dei controlli automatici</translation>
+    </message>
+    <message>
+        <source>How often Vela checks for updates</source>
+        <translation>Ogni quanto Vela controlla gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Every 6 hours</source>
+        <translation>Ogni 6 ore</translation>
+    </message>
+    <message>
+        <source>Every 12 hours</source>
+        <translation>Ogni 12 ore</translation>
+    </message>
+    <message>
+        <source>Every 24 hours</source>
+        <translation>Ogni 24 ore</translation>
+    </message>
+    <message>
+        <source>Every 48 hours</source>
+        <translation>Ogni 48 ore</translation>
+    </message>
+    <message>
+        <source>Every 7 days</source>
+        <translation>Ogni 7 giorni</translation>
+    </message>
+    <message>
         <source>Update channel</source>
         <translation>Canale di aggiornamento</translation>
     </message>
@@ -2952,6 +2980,14 @@ Specifiche sistema
     <message>
         <source>Last checked: %1, %2</source>
         <translation>Ultimo controllo: %1, %2</translation>
+    </message>
+    <message>
+        <source>Next automatic check: %1</source>
+        <translation>Prossimo controllo automatico: %1</translation>
+    </message>
+    <message>
+        <source>Next check: waiting for a fully connected, unmetered network</source>
+        <translation>Prossimo controllo: in attesa di una connessione completa e non a consumo</translation>
     </message>
     <message>
         <source>The update service isn&apos;t running</source>

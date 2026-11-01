@@ -36,6 +36,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `bluetooth-adapter` | empty | The address of the Bluetooth adapter to use when there are two or more ([Bluetooth](bluetooth.md#62-the-model)), written by Settings > Bluetooth & devices > Advanced. Empty, or an adapter that isn't there: the first one. |
 | `brightness` | `yes` | Drive the monitors' own brightness ([brightness](brightness.md)) in the real session. `no` starts no `vela-brightness` and shows no brightness slider. |
 | `update-check` | `yes` | Check for Vela updates in the background and notify when one is available ([updates](updates.md#62-checking)), never on a metered connection. Written by Settings > System > Updates. |
+| `update-check-interval` | `24` | Hours between automatic checks: `6`, `12`, `24`, `48` or `168` (7 days). Set in Settings > System > Updates; invalid values fall back to 24 hours. |
 | `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. |
 | `keyboard-variant` | empty | Comma-separated XKB variants matching `keyboard-layout`. |
 | `keyboard-options` | empty | XKB options. |

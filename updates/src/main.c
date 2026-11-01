@@ -121,7 +121,13 @@ int main(void)
     struct vela_config settings;
     vela_config_read(&settings);
     d.auto_check = vela_config_flag(&settings, "update-check", true);
+    const char *interval = vela_config_get(&settings, "update-check-interval", "24");
+    char *end = NULL;
+    unsigned long hours = strtoul(interval, &end, 10);
+    d.check_interval_hours = *interval && *end == '\0' && hours <= UINT32_MAX
+        && vela_up_valid_check_interval((uint32_t)hours) ? (uint32_t)hours : 24;
     vela_config_finish(&settings);
+    d.timing.interval_us = milliseconds("VELA_UPDATE_INTERVAL_MS", (uint64_t)d.check_interval_hours * 3600 * 1000000ULL);
 
     // SIGCHLD for the children's sources (sd_event_add_child).
     sigset_t mask;

@@ -179,6 +179,7 @@ int vela_up_check_start(struct vela_up_daemon *d)
         return r;
     }
     d->auto_timer = sd_event_source_disable_unref(d->auto_timer);
+    d->next_check_at = 0;
     d->waiting_for_network = false;
     d->attempt_us = now_us(CLOCK_BOOTTIME);
     vela_up_changed(d);
@@ -194,17 +195,24 @@ static int on_auto_timer(sd_event_source *source, uint64_t usec, void *data)
 {
     struct vela_up_daemon *d = data;
     d->auto_timer = sd_event_source_disable_unref(d->auto_timer);
+    d->next_check_at = 0;
     if (!d->auto_check) {
+        vela_up_changed(d);
         return 0;
     }
     if (!network_allowed(d)) {
         // Retried when NetworkManager says the connection may be used.
         d->waiting_for_network = true;
+        vela_up_changed(d);
         return 0;
     }
     if (vela_up_check_start(d) < 0) {
         // Busy (an install runs) or broken: later.
-        sd_event_add_time_relative(d->event, &d->auto_timer, CLOCK_BOOTTIME, d->timing.retry_us, 0, on_auto_timer, d);
+        if (sd_event_add_time_relative(d->event, &d->auto_timer, CLOCK_BOOTTIME,
+                d->timing.retry_us, 0, on_auto_timer, d) >= 0) {
+            d->next_check_at = (int64_t)((now_us(CLOCK_REALTIME) + d->timing.retry_us + 999999) / 1000000);
+        }
+        vela_up_changed(d);
     }
     return 0;
 }
@@ -212,8 +220,10 @@ static int on_auto_timer(sd_event_source *source, uint64_t usec, void *data)
 void vela_up_schedule(struct vela_up_daemon *d)
 {
     d->auto_timer = sd_event_source_disable_unref(d->auto_timer);
+    d->next_check_at = 0;
     d->waiting_for_network = false;
     if (!d->auto_check || d->check_pid > 0) {
+        vela_up_changed(d);
         return;
     }
     uint64_t wait = d->timing.interval_us;
@@ -248,7 +258,11 @@ void vela_up_schedule(struct vela_up_daemon *d)
     int r = sd_event_add_time_relative(d->event, &d->auto_timer, CLOCK_BOOTTIME, delay, 0, on_auto_timer, d);
     if (r < 0) {
         vela_up_log("automatic check timer: %s", strerror(-r));
+    } else {
+        // Expose the timer's real deadline, including restart and retry delays.
+        d->next_check_at = (int64_t)((now_us(CLOCK_REALTIME) + delay + 999999) / 1000000);
     }
+    vela_up_changed(d);
 }
 
 void vela_up_set_auto_check(struct vela_up_daemon *d, bool on)
@@ -262,6 +276,30 @@ void vela_up_set_auto_check(struct vela_up_daemon *d, bool on)
     }
     vela_up_schedule(d);
     vela_up_changed(d);
+}
+
+bool vela_up_valid_check_interval(uint32_t hours)
+{
+    return hours == 6 || hours == 12 || hours == 24 || hours == 48 || hours == 168;
+}
+
+int vela_up_set_check_interval(struct vela_up_daemon *d, uint32_t hours)
+{
+    if (!vela_up_valid_check_interval(hours)) {
+        return -EINVAL;
+    }
+    if (hours == d->check_interval_hours) {
+        return 0;
+    }
+    char value[16];
+    snprintf(value, sizeof(value), "%u", hours);
+    if (!vela_config_write_checked("update-check-interval", value)) {
+        return -EIO;
+    }
+    d->check_interval_hours = hours;
+    d->timing.interval_us = (uint64_t)hours * 3600 * 1000000ULL;
+    vela_up_schedule(d);
+    return 0;
 }
 
 static void network_update(struct vela_up_daemon *d, sd_bus_message *m)

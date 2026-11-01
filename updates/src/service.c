@@ -105,6 +105,12 @@ static int get_number(sd_bus *bus, const char *path, const char *interface, cons
     if (strcmp(property, "ChangesTotal") == 0) {
         return sd_bus_message_append(reply, "u", d->check.valid ? d->check.changes_total : 0);
     }
+    if (strcmp(property, "CheckInterval") == 0) {
+        return sd_bus_message_append(reply, "u", d->check_interval_hours);
+    }
+    if (strcmp(property, "NextCheck") == 0) {
+        return sd_bus_message_append(reply, "x", d->next_check_at);
+    }
     if (strcmp(property, "InstallFinished") == 0) {
         return sd_bus_message_append(reply, "x", d->install.present ? d->install.finished_at : (int64_t)0);
     }
@@ -115,7 +121,8 @@ static int get_flag(sd_bus *bus, const char *path, const char *interface, const 
     sd_bus_message *reply, void *data, sd_bus_error *error)
 {
     struct vela_up_daemon *d = data;
-    bool value = strcmp(property, "NeedsRelogin") == 0 ? d->needs_relogin : d->auto_check;
+    bool value = strcmp(property, "NeedsRelogin") == 0 ? d->needs_relogin
+        : strcmp(property, "WaitingForNetwork") == 0 ? d->waiting_for_network : d->auto_check;
     return sd_bus_message_append(reply, "b", (int)value);
 }
 
@@ -202,6 +209,26 @@ static int method_set_auto_check(sd_bus_message *call, void *data, sd_bus_error 
     return sd_bus_reply_method_return(call, NULL);
 }
 
+static int method_set_check_interval(sd_bus_message *call, void *data, sd_bus_error *error)
+{
+    struct vela_up_daemon *d = data;
+    uint32_t hours;
+    int r = sd_bus_message_read(call, "u", &hours);
+    if (r >= 0) {
+        r = check_caller(call, error);
+    }
+    if (r < 0) {
+        return r;
+    }
+    if (!vela_up_valid_check_interval(hours)) {
+        return sd_bus_error_set(error, VELA_UP_ERROR("InvalidArgs"), "Unsupported check interval.");
+    }
+    if (vela_up_set_check_interval(d, hours) < 0) {
+        return sd_bus_error_set(error, VELA_UP_ERROR("Failed"), "Could not save the check interval.");
+    }
+    return sd_bus_reply_method_return(call, NULL);
+}
+
 static int method_announced(sd_bus_message *call, void *data, sd_bus_error *error)
 {
     struct vela_up_daemon *d = data;
@@ -235,6 +262,9 @@ static const sd_bus_vtable vtable[] = {
     SD_BUS_PROPERTY("Notes", "a(ss)", get_pairs, 0, CHANGES),
     SD_BUS_PROPERTY("Source", "s", get_string, 0, CHANGES),
     SD_BUS_PROPERTY("LastCheck", "x", get_number, 0, CHANGES),
+    SD_BUS_PROPERTY("CheckInterval", "u", get_number, 0, CHANGES),
+    SD_BUS_PROPERTY("NextCheck", "x", get_number, 0, CHANGES),
+    SD_BUS_PROPERTY("WaitingForNetwork", "b", get_flag, 0, CHANGES),
     SD_BUS_PROPERTY("Error", "(ss)", get_error, 0, CHANGES),
     SD_BUS_PROPERTY("InstallResult", "s", get_string, 0, CHANGES),
     SD_BUS_PROPERTY("InstallError", "(ss)", get_error, 0, CHANGES),
@@ -245,6 +275,7 @@ static const sd_bus_vtable vtable[] = {
     SD_BUS_METHOD("Check", "", "", method_check, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("Install", "a{sv}", "", method_install, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("SetAutoCheck", "b", "", method_set_auto_check, SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD("SetCheckInterval", "u", "", method_set_check_interval, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("Announced", "s", "", method_announced, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_VTABLE_END,
 };

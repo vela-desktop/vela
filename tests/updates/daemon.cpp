@@ -104,6 +104,9 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("LastCheck")).toLongLong(), 0);
         QCOMPARE(property(QStringLiteral("InstallFinished")).toLongLong(), 0);
         QCOMPARE(property(QStringLiteral("AutoCheck")).toBool(), true);
+        QCOMPARE(property(QStringLiteral("CheckInterval")).toUInt(), 24u);
+        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() > QDateTime::currentSecsSinceEpoch() + 500);
+        QCOMPARE(property(QStringLiteral("WaitingForNetwork")).toBool(), false);
         QCOMPARE(property(QStringLiteral("NeedsRelogin")).toBool(), false);
         QCOMPARE(property(QStringLiteral("Source")).toString(), QStringLiteral("https://github.com/vela-desktop/vela.git"));
         QCOMPARE(property(QStringLiteral("Error")).toStringList(), (QStringList { QString(), QString() }));
@@ -474,6 +477,49 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("AutoCheck")).toBool(), false);
     }
 
+    void checkIntervalPersistsAndReschedules()
+    {
+        nextCheck({});
+        QVERIFY(startDaemon());
+        // A newly started daemon holds its first automatic check for 10 minutes.
+        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() > QDateTime::currentSecsSinceEpoch() + 500);
+        QCOMPARE(call(QStringLiteral("SetCheckInterval"), { 12u }).type(), QDBusMessage::ReplyMessage);
+        QTRY_COMPARE(property(QStringLiteral("CheckInterval")).toUInt(), 12u);
+        QVERIFY(read(m_home.filePath(QStringLiteral("config/vela/vela.conf"))).contains("update-check-interval=12"));
+
+        // After a completed manual check, it schedules the configured interval.
+        QCOMPARE(call(QStringLiteral("Check")).type(), QDBusMessage::ReplyMessage);
+        QTRY_COMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("up-to-date"));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        const qint64 now = QDateTime::currentSecsSinceEpoch();
+        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() >= now + 12 * 3600 - 60);
+        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() <= now + 12 * 3600 + 60);
+
+        // Changing the interval immediately reschedules from the last attempt.
+        QCOMPARE(call(QStringLiteral("SetCheckInterval"), { 6u }).type(), QDBusMessage::ReplyMessage);
+        QTRY_COMPARE(property(QStringLiteral("CheckInterval")).toUInt(), 6u);
+        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() >= now + 6 * 3600 - 60);
+        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() <= now + 6 * 3600 + 60);
+
+        // Invalid choices cannot affect the schedule or the stored setting.
+        QCOMPARE(call(QStringLiteral("SetCheckInterval"), { 7u }).errorName(),
+            QStringLiteral("org.vela.Updates.Error.InvalidArgs"));
+        QCOMPARE(property(QStringLiteral("CheckInterval")).toUInt(), 6u);
+
+        stopDaemon();
+        QVERIFY(startDaemon());
+        QCOMPARE(property(QStringLiteral("CheckInterval")).toUInt(), 6u);
+        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() >= now + 6 * 3600 - 60);
+
+        QCOMPARE(call(QStringLiteral("SetAutoCheck"), { false }).type(), QDBusMessage::ReplyMessage);
+        QTRY_COMPARE(property(QStringLiteral("NextCheck")).toLongLong(), 0);
+        QCOMPARE(call(QStringLiteral("SetCheckInterval"), { 168u }).type(), QDBusMessage::ReplyMessage);
+        QCOMPARE(property(QStringLiteral("CheckInterval")).toUInt(), 168u);
+        QCOMPARE(property(QStringLiteral("NextCheck")).toLongLong(), 0);
+        QCOMPARE(call(QStringLiteral("SetAutoCheck"), { true }).type(), QDBusMessage::ReplyMessage);
+        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() >= now + 168 * 3600 - 60);
+    }
+
     void automaticChecksWaitForAFreeConnection()
     {
         nextCheck({});
@@ -481,6 +527,8 @@ private Q_SLOTS:
         QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_FIRST_CHECK_MS"), QStringLiteral("200") } }));
         QTest::qWait(700);
         QCOMPARE(calls(), QStringList {});
+        QCOMPARE(property(QStringLiteral("NextCheck")).toLongLong(), 0);
+        QCOMPARE(property(QStringLiteral("WaitingForNetwork")).toBool(), true);
         m_network.set(2, 4);
         QTRY_COMPARE(calls(), QStringList { QStringLiteral("--check --json") });
 
