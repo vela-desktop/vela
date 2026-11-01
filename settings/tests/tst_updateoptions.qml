@@ -67,6 +67,23 @@ Item {
             verify(toggle.checked)
         }
 
+        function test_check_interval() {
+            const choice = find("checkInterval")
+            compare(choice.currentIndex, 2)
+            // User choosing 12h, then the daemon reporting a changed setting.
+            choice.activated(1)
+            compare(Updates.calls, ["setCheckInterval 12"])
+            compare(choice.currentIndex, 1)
+            Updates.checkInterval = 48
+            compare(choice.currentIndex, 3)
+            // The chosen frequency remains stored while automatic checks are off.
+            Updates.autoCheck = false
+            verify(choice.enabled)
+            choice.activated(4)
+            compare(Updates.calls[1], "setCheckInterval 168")
+            compare(choice.currentIndex, 4)
+        }
+
         function test_channel_change_is_asked_first() {
             compare(find("channel").currentIndex, 1)
             choose(0)
