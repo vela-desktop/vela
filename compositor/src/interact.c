@@ -114,24 +114,26 @@ static bool border_in(struct vela_tree *tree, double lx, double ly, struct vela_
 static struct vela_view *resize_border_at(struct vela_server *server, double lx, double ly, uint32_t *edges)
 {
     *edges = 0;
-    // Above the windows (taskbar, menus, panels): no borders.
-    struct vela_hit hit = vela_scene_at(server->scene, lx, ly);
-    struct vela_owner *owner = hit.owner;
-    if (owner && owner->kind == VELA_OWNER_LAYER) {
-        uint32_t layer = ((struct vela_layer_surface *)owner)->layer;
-        if (layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP || layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
-            return NULL;
-        }
-    }
     // From the topmost window: the first covering the point wins. A game in
     // front has its own layer, above the windows: the borders of the ones
     // it covers are not there.
     struct vela_view *view = NULL;
-    if (border_in(server->layers.fullscreen, lx, ly, &view, edges)
-        || border_in(server->layers.windows, lx, ly, &view, edges)) {
-        return view;
+    if (!border_in(server->layers.fullscreen, lx, ly, &view, edges)) {
+        border_in(server->layers.windows, lx, ly, &view, edges);
     }
-    return NULL;
+    if (!view) {
+        return NULL;
+    }
+    // What is drawn there decides: the panels, a menu sticking out of a
+    // window (its own too), an X11 menu, the window menu... cover the border.
+    // The window's title bar doesn't, nor what is below the window.
+    struct vela_hit hit = vela_scene_at(server->scene, lx, ly);
+    int order = hit.node ? vela_node_order(hit.node, &view->tree->node) : -1;
+    if (order > 0 || (order == 0 && hit.surface)) {
+        *edges = 0;
+        return NULL;
+    }
+    return view;
 }
 
 static void unhover_decoration(struct vela_interaction *interaction)

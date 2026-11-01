@@ -10,7 +10,10 @@ collecting the messages."""
 import time
 import unittest
 
-from harness import Session
+from harness import Session, tool
+
+MAGENTA = (255, 0, 255)  # vela-pattern's menu (xdg-popup)
+GREEN = (0, 192, 0)  # vela-x11's menu (override-redirect)
 
 
 class Interaction(unittest.TestCase):
@@ -36,6 +39,61 @@ class Interaction(unittest.TestCase):
                         "move", grab_x + 50, grab_y, "sleep", "50", "move", grab_x + 100, grab_y, "sleep", "100", "up")
         state = self.vela.wait_for(lambda s: s.window(window)["w"] == w + 100, what="100 wider")
         self.assertEqual(state.window(window)["x"], x)
+
+    def drag_border(self, x, y):
+        """Presses at (x, y) and drags 100 to the right."""
+        self.vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x + 50, y, "sleep", "50",
+                        "move", x + 100, y, "sleep", "100", "up")
+        time.sleep(0.2)
+
+    def centered(self, width, height, title_bar=0):
+        """Where a new window opens: centered on the output (its surface)."""
+        output = self.vela.state().output
+        return (output["w"] - width) // 2, (output["h"] - height - title_bar) // 2 + title_bar
+
+    def test_menu_covers_the_border_below_it(self):
+        # A menu of the window above, sticking out over the invisible border
+        # of the one below: the menu gets the press, not the border.
+        window = self.vela.open_window(300, 200, decorated=True)
+        x, y, w, h = self.frame(window)
+        grab_x, grab_y = x + w + 4, y + h // 2
+        left, top = self.centered(200, 150)
+        self.vela.open_window(command=[tool("vela-pattern"), "--popup", f"{grab_x - 100 - left},{grab_y - 75 - top}",
+                                       "200", "150"])
+        self.vela.wait_for(lambda _: self.vela.pixels().at(grab_x, grab_y) == MAGENTA, what="the menu on the border",
+                           read_state=False)
+        self.drag_border(grab_x, grab_y)
+        state = self.vela.state()
+        self.assertEqual(state.window(window)["w"], w)
+        self.assertNotEqual(state["focused"], window)
+
+    def test_own_menu_covers_its_border(self):
+        # The window's own menu, past its right edge: the menu again.
+        left, top = self.centered(300, 200, title_bar=32)
+        grab_x, grab_y = left + 300 + 4, top + 100
+        window = self.vela.open_window(command=[tool("vela-pattern"), "--decorated", "--popup",
+                                                f"{grab_x - 100 - left},{grab_y - 75 - top}", "300", "200"])
+        x, y, w, h = self.frame(window)
+        self.assertEqual((x + w + 4, y + h - 100), (grab_x, grab_y))
+        self.vela.wait_for(lambda _: self.vela.pixels().at(grab_x, grab_y) == MAGENTA, what="the menu on the border",
+                           read_state=False)
+        self.drag_border(grab_x, grab_y)
+        self.assertEqual(self.vela.state().window(window)["w"], w)
+
+    def test_x11_menu_covers_the_border_below_it(self):
+        window = self.vela.open_window(300, 200, decorated=True)
+        x, y, w, h = self.frame(window)
+        grab_x, grab_y = x + w + 4, y + h // 2
+        display = self.vela.wait_for_log("Xwayland on DISPLAY=", lambda line: line.split("DISPLAY=", 1)[1].split()[0])
+        # The menu is 120x80, at a point of the screen.
+        self.vela.open_window(command=[tool("vela-x11"), "--menu", f"{grab_x - 60},{grab_y - 40}", "200", "150"],
+                              env=dict(self.vela.client_env, DISPLAY=display))
+        self.vela.wait_for(lambda _: self.vela.pixels().at(grab_x, grab_y) == GREEN, what="the menu on the border",
+                           read_state=False)
+        self.drag_border(grab_x, grab_y)
+        state = self.vela.state()
+        self.assertEqual(state.window(window)["w"], w)
+        self.assertNotEqual(state["focused"], window)
 
     def test_keyboard_move_and_cancel(self):
         window = self.vela.open_window(300, 200, decorated=True)

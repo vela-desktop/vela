@@ -161,6 +161,7 @@ struct vela_hit {
     struct wlr_surface *surface; // NULL: one of our nodes (the title bar)
     double sx, sy;
     void *owner; // the nearest `data` going up the tree
+    struct vela_node *node; // the surface or rectangle hit
 };
 struct vela_hit vela_scene_at(struct vela_scene *scene, double lx, double ly);
 
@@ -183,6 +184,9 @@ void vela_node_raise_to_top(struct vela_node *node);
 void vela_node_place_above(struct vela_node *node, struct vela_node *sibling);
 void vela_node_place_below(struct vela_node *node, struct vela_node *sibling);
 void vela_node_reparent(struct vela_node *node, struct vela_tree *parent);
+// Which is drawn on top: > 0 `node`, < 0 `other`, 0 when one contains the
+// other (or they are in different trees).
+int vela_node_order(const struct vela_node *node, const struct vela_node *other);
 
 void vela_tree_set_shape(struct vela_tree *tree, const struct vela_shape *shape);
 void vela_rect_node_set_size(struct vela_rect_node *rect, double width, double height);

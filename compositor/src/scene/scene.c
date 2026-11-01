@@ -193,6 +193,45 @@ void vela_node_reparent(struct vela_node *node, struct vela_tree *parent)
     vela_scene_changed(node->scene);
 }
 
+static int depth(const struct vela_node *node)
+{
+    int depth = 0;
+    for (; node->parent; node = &node->parent->node) {
+        ++depth;
+    }
+    return depth;
+}
+
+int vela_node_order(const struct vela_node *node, const struct vela_node *other)
+{
+    int a = depth(node);
+    int b = depth(other);
+    for (; a > b; --a) {
+        node = &node->parent->node;
+    }
+    for (; b > a; --b) {
+        other = &other->parent->node;
+    }
+    if (node == other) {
+        return 0; // one inside the other
+    }
+    // Up to the children of the closest common ancestor: their order decides.
+    while (node->parent != other->parent) {
+        node = &node->parent->node;
+        other = &other->parent->node;
+    }
+    if (!node->parent) {
+        return 0; // different trees
+    }
+    // Children are bottom to top: `node` is above if it follows `other`.
+    for (const struct wl_list *link = other->link.next; link != &other->parent->children; link = link->next) {
+        if (link == &node->link) {
+            return 1;
+        }
+    }
+    return -1;
+}
+
 static bool same_shape(const struct vela_shape *a, const struct vela_shape *b)
 {
     return a->enabled == b->enabled && a->x == b->x && a->y == b->y && a->width == b->width
@@ -371,6 +410,9 @@ static bool hit_node(struct vela_node *node, double lx, double ly, struct vela_h
         }
         break;
     }
+    }
+    if (found && !hit->node) {
+        hit->node = node; // the first found is the deepest
     }
     if (found && !hit->owner && node->data) {
         hit->owner = node->data;
