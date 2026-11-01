@@ -52,7 +52,9 @@ required checks, and CI runs on pushes to either.
   version. The rehearsal and the GPU suites run on that commit.
 - **A minor release** (`v0.<minor>.0`) is tagged on `main`; its
   `release/0.<minor>` branch is then created from the tag, and `main`
-  moves to the next minor version.
+  moves to the next minor version. The fallback version in
+  `packaging/arch/PKGBUILD.beta`, used by manual builds, stays on the
+  latest published tag.
 
 There is one Beta channel, and the updater offers the highest published
 `v0.x.y`: once `v0.<minor+1>.0` is out, Beta users move to it, so the
