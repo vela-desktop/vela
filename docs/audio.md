@@ -175,8 +175,14 @@ server says: optimistic values exist only in the Qt layer (§5.4).
     that position (the same tolerance as the optimistic-write confirmation).
     A sound card's hardware mixer may report e.g. 59.6% for a requested 60%,
     or 96.0007% for 96% on a FiiO K11 in 1 dB steps. The next knob/wheel
-    event must move to 62% / 98%, not request 60% / 96% again. Values farther
-    off-grid still move to the next grid position in the chosen direction.
+    event must move to 62% / 98%, not request 60% / 96% again. A device with
+    more positions than the grid, but not many more, sets the one nearest to
+    the request, up to half of its own step away (60% on 64 intervals reads
+    back as 59.375%): the tolerance is then that half step, exactly half
+    included, when it is larger. Not the sum of the two: a position the
+    device can hold that no request reads back as stays off the grid. Values
+    farther off-grid still move to the next grid position in the chosen
+    direction (51% on 100 intervals: 52% up, 50% down).
 - **Maximum 100%.** Vela never writes more than 1.0. A value above 100% set
   by another program is shown as 100% (slider at the end) and left alone;
   the first step down lands back on the grid.
