@@ -29,8 +29,9 @@
 // --transient-maximized: initially maximizes that child.
 // --transient-siblings: create two overlapping siblings to test Z-order.
 // --fullscreen-parent: request fullscreen for the parent before mapping.
-// --log-pointer: writes "vela-pattern: pointer-button BUTTON STATE" to stderr
-// for every button event on its surfaces (where the clicks go).
+// --log-pointer: writes "vela-pattern: pointer-button BUTTON STATE SURFACE" to
+// stderr for every button event, SURFACE being "window" or "popup" (where
+// the clicks go).
 
 #define _GNU_SOURCE
 #include <math.h>
@@ -93,16 +94,23 @@ static int fullscreenParent;
 static int logPointer;
 static struct wl_seat* seat;
 
+static struct wl_surface* pointerSurface; // the one the pointer entered
+
 static void onPointerEnter(void* data, struct wl_pointer* pointer, uint32_t serial, struct wl_surface* surface,
     wl_fixed_t x, wl_fixed_t y)
 {
+    pointerSurface = surface;
 }
-static void onPointerLeave(void* data, struct wl_pointer* pointer, uint32_t serial, struct wl_surface* surface) { }
+static void onPointerLeave(void* data, struct wl_pointer* pointer, uint32_t serial, struct wl_surface* surface)
+{
+    pointerSurface = NULL;
+}
 static void onPointerMotion(void* data, struct wl_pointer* pointer, uint32_t time, wl_fixed_t x, wl_fixed_t y) { }
 static void onPointerButton(void* data, struct wl_pointer* pointer, uint32_t serial, uint32_t time, uint32_t button,
     uint32_t state)
 {
-    fprintf(stderr, "vela-pattern: pointer-button %u %u\n", button, state);
+    const char* where = !pointerSurface ? "none" : pointerSurface == popupSurface ? "popup" : "window";
+    fprintf(stderr, "vela-pattern: pointer-button %u %u %s\n", button, state, where);
 }
 static void onPointerAxis(void* data, struct wl_pointer* pointer, uint32_t time, uint32_t axis, wl_fixed_t value) { }
 
