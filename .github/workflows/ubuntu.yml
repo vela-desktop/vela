@@ -136,6 +136,24 @@ jobs:
           done
           dpkg-deb --contents build-ubuntu/packages/*.deb > /tmp/vela-deb-files.txt
           cat /tmp/vela-deb-files.txt
+          # Stripped binaries, xz payload: with debug info the DEB was 78 MiB.
+          ls -l build-ubuntu/packages/*.deb
+          ar t build-ubuntu/packages/*.deb | grep -Fxq data.tar.xz || {
+            echo "DEB payload is not xz-compressed" >&2
+            exit 1
+          }
+          payload=$(mktemp -d)
+          dpkg-deb -x build-ubuntu/packages/*.deb "$payload"
+          unstripped=0
+          while IFS= read -r -d '' file; do
+            [[ "$(head -c 4 "$file")" == $'\x7fELF' ]] || continue
+            sections=$(readelf -S --wide "$file")
+            if grep -Eq '\.(z?debug_[a-z_]+|symtab) ' <<< "$sections"; then
+              echo "Unstripped binary in the DEB: ${file#"$payload"}" >&2
+              unstripped=1
+            fi
+          done < <(find "$payload" -type f -print0)
+          (( unstripped == 0 ))
           grep -q '/usr/bin/vela-compositor$' /tmp/vela-deb-files.txt
           grep -q '/usr/bin/vela-update$' /tmp/vela-deb-files.txt
           grep -q '/usr/share/wayland-sessions/vela.desktop$' /tmp/vela-deb-files.txt
