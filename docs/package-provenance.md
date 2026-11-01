@@ -60,7 +60,7 @@ are outside the updater's verification boundary.
 
 Install Cosign for verified prebuilt packages (Arch: `sudo pacman -S cosign`;
 Fedora 44: use the upstream RPM instructions in [installation.md](installation.md#fedora-44);
-Ubuntu 26.10: a trusted Cosign executable). Beta cannot install without it.
+Ubuntu 26.10: `sudo apt install cosign`, from universe). Beta cannot install without it.
 No GitHub login or GitHub CLI is needed for Beta releases. On Experimental,
 if verification is unavailable, use `vela-update --build`. No `--insecure`
 bypass is provided.

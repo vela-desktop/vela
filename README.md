@@ -324,13 +324,13 @@ sh vela/packaging/vela-update --channel beta
 
 ### Ubuntu 26.10
 
-Ubuntu 26.10 with the **universe** repository enabled. Install a trusted Cosign
-executable before the Beta. Ubuntu support is newer and less tested than Arch and
-Fedora; on Ubuntu the Experimental channel always builds a local DEB.
+Ubuntu 26.10 with the **universe** repository enabled, which also provides Cosign.
+Ubuntu support is newer and less tested than Arch and Fedora; on Ubuntu the
+Experimental channel always builds a local DEB.
 
 ```sh
 sudo apt update
-sudo apt install git ca-certificates sudo
+sudo apt install git ca-certificates sudo cosign
 git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update --channel beta
 ```
