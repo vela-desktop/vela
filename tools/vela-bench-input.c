@@ -56,6 +56,7 @@ int main(int argc, char **argv)
         setup |= libevdev_enable_event_code(device, EV_KEY, KEY_RIGHT, NULL);
         setup |= libevdev_enable_event_code(device, EV_KEY, KEY_UP, NULL);
         setup |= libevdev_enable_event_code(device, EV_KEY, KEY_DOWN, NULL);
+        setup |= libevdev_enable_event_code(device, EV_KEY, KEY_PAGEUP, NULL);
         setup |= libevdev_enable_event_code(device, EV_KEY, BTN_LEFT, NULL);
         setup |= libevdev_enable_event_code(device, EV_KEY, BTN_RIGHT, NULL);
         setup |= libevdev_enable_event_type(device, EV_ABS);
@@ -92,9 +93,12 @@ int main(int argc, char **argv)
         else if (desktop && !strcmp(command, "down\n")) result = key(input, BTN_LEFT, 1);
         else if (desktop && !strcmp(command, "up\n")) result = key(input, BTN_LEFT, 0);
         else if (desktop && (!strcmp(command, "snap-left\n") || !strcmp(command, "snap-right\n")
-                            || !strcmp(command, "maximize\n") || !strcmp(command, "restore\n"))) {
+                            || !strcmp(command, "maximize\n") || !strcmp(command, "restore\n")
+                            || !strcmp(command, "maximize-toggle\n"))) {
+            // Vela uses Up/Down; Plasma's default maximize action toggles
+            // with PageUp. PageDown minimizes rather than restoring there.
             unsigned code = !strcmp(command,"snap-left\n") ? KEY_LEFT : !strcmp(command,"snap-right\n") ? KEY_RIGHT
-                : !strcmp(command,"maximize\n") ? KEY_UP : KEY_DOWN;
+                : !strcmp(command,"maximize\n") ? KEY_UP : !strcmp(command,"restore\n") ? KEY_DOWN : KEY_PAGEUP;
             result = key(input, KEY_LEFTMETA, 1);
             result |= pulse(input, code);
             result |= key(input, KEY_LEFTMETA, 0);

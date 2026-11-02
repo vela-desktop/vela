@@ -70,6 +70,16 @@ if(BENCH_EVDEV_FOUND)
     add_executable(vela-bench-input vela-bench-input.c)
     target_link_libraries(vela-bench-input PRIVATE PkgConfig::BENCH_EVDEV)
     target_compile_options(vela-bench-input PRIVATE -Wall -Wextra)
+    add_executable(vela-bench-input-fixture vela-bench-input.c ../benchmarks/tests/input_fixture.c)
+    target_link_libraries(vela-bench-input-fixture PRIVATE PkgConfig::BENCH_EVDEV)
+    target_compile_options(vela-bench-input-fixture PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    foreach(symbol getuid geteuid libevdev_uinput_create_from_device libevdev_uinput_write_event
+                   libevdev_uinput_get_syspath libevdev_uinput_destroy)
+        target_link_options(vela-bench-input-fixture PRIVATE "LINKER:--wrap=${symbol}")
+    endforeach()
+    add_test(NAME benchmark-input-cli COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/benchmarks/tests/input_cli.py $<TARGET_FILE:vela-bench-input-fixture>)
+    set_tests_properties(benchmark-input-cli PROPERTIES TIMEOUT 15)
 endif()
 find_package(KF6Screen QUIET)
 find_package(Qt6 QUIET COMPONENTS Core Gui DBus)
@@ -92,6 +102,10 @@ if(KF6Screen_FOUND AND TARGET Qt6::DBus)
         add_test(NAME benchmark-plasma-integration COMMAND ${Python3_EXECUTABLE}
             ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_integration.py $<TARGET_FILE:vela-bench-desktop>)
         set_tests_properties(benchmark-plasma-integration PROPERTIES TIMEOUT 45 LABELS "gpu")
+        add_test(NAME benchmark-plasma-scaling-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_scaling_integration.py $<TARGET_FILE:vela-bench-desktop>)
+        set_tests_properties(benchmark-plasma-scaling-integration PROPERTIES TIMEOUT 180
+            LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
     endif()
 endif()
 add_test(NAME benchmark-probe-cli COMMAND ${Python3_EXECUTABLE}

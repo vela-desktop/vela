@@ -81,6 +81,37 @@ class Pixels(unittest.TestCase):
             with self.assertRaises(BenchError):png_rgb(path)
 
 
+class ScalingState(unittest.TestCase):
+    def test_plasma_toggle_receipts_cannot_accept_top_tiling_or_vela_shortcuts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)
+            profile={'outputs':[],'mode':{'width':1920,'height':1080}}
+            def fixture(state,commands):
+                name=f'plasma-scale-100-{state}.png';(directory/name).write_bytes(b'fixture')
+                return {'scale':1.,'state':state,'image_file':name,'image_sha256':hashlib.sha256(b'fixture').hexdigest(),
+                    'outputs':[],'capture':{'event':'capture','index':0,'backend':'kwin-screenshot2-v1',
+                        'width':1920,'height':1080,'begin_monotonic_ns':30,'end_monotonic_ns':31},
+                    'pattern':{'monotonic_ns':20,'logical_width':1920,'logical_height':1000,
+                        'buffer_width':1920,'buffer_height':1000,'maximized':True},
+                    'injections':[{'event':'injected','command':c,'before_monotonic_ns':10+i,
+                                   'after_monotonic_ns':11+i} for i,c in enumerate(commands)]}
+            with patch('vela_bench.platform_workloads.pattern_metrics',return_value={'fixture':True}):
+                row=fixture('maximized',['maximize-toggle'])
+                self.assertEqual(scaling_metrics(row,directory,profile,'plasma'),{'fixture':True})
+                row['pattern'].update(maximized=False,logical_height=517,buffer_height=517)
+                with self.assertRaisesRegex(BenchError,'acknowledge maximization'):
+                    scaling_metrics(row,directory,profile,'plasma')
+                row=fixture('maximized',['maximize'])
+                with self.assertRaisesRegex(BenchError,'actions were not verified'):
+                    scaling_metrics(row,directory,profile,'plasma')
+                row=fixture('restored',['maximize-toggle','maximize-toggle'])
+                row['pattern'].update(maximized=False,logical_width=401,logical_height=301,buffer_width=401,buffer_height=301)
+                self.assertEqual(scaling_metrics(row,directory,profile,'plasma'),{'fixture':True})
+                row['injections'][1]['command']='restore'
+                with self.assertRaisesRegex(BenchError,'actions were not verified'):
+                    scaling_metrics(row,directory,profile,'plasma')
+
+
 class ResourceAccounting(unittest.TestCase):
     def test_cpu_comes_from_whole_cgroup_even_when_pid_exits(self):
         rows=[sample(),sample(3_000_000_000,600_000,pid=33)]

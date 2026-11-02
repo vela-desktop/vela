@@ -22,7 +22,7 @@ from .diagnostics import user_command, stop_instrument, parse_probe
 from .pixels import pattern_metrics
 from . import resources
 
-VERSION = 'p4-pattern-resources-v1'
+VERSION = 'p4-pattern-resources-v2'
 PHASES = ('scaling','overhead')
 SCALES = (1.0,1.25,1.5,1.75,2.0)
 STATES = ('opened','snap-left','snap-right','maximized','restored')
@@ -30,6 +30,8 @@ SPEC = {'version':VERSION,'scales':list(SCALES),'states':list(STATES),'pattern_l
         'capture_backend_fallback':False,'pixel_oracle':'coordinate-pattern-v1',
         'maximum_pattern_edge_overhang_pixels':2,'excluded_corner_radius_logical_pixels':8,
         'pattern_pointer_parking':'bottom-right-output-corner',
+        'scaling_shortcuts':{'vela':{'maximize':'Meta+Up','restore':'Meta+Down'},
+                             'plasma':{'maximize':'Meta+PageUp','restore':'Meta+PageUp'}},
         'resource_idle_seconds':30,'resource_settle_seconds':10,'resource_sample_interval_seconds':1,
         'active_animation_frames':1800,'hash_chunks':resources.HASH_CHUNKS,
         'capture_during_resource_measurement':False,'energy_required':False,
@@ -46,6 +48,13 @@ def apply_outputs(host,record,layout,target,outputs):
     observed=query_outputs(host,record,layout,target)
     compare_outputs(observed,outputs)
     return observed
+
+
+def scaling_actions(target,state):
+    if target not in ('vela','plasma'): raise BenchError('Unknown scaling desktop')
+    maximize,restore=('maximize','restore') if target=='vela' else ('maximize-toggle','maximize-toggle')
+    return {'opened':[],'snap-left':['snap-left'],'snap-right':['snap-right'],
+            'maximized':[maximize],'restored':[maximize,restore]}[state]
 
 
 def scaling_metrics(row,directory,profile,target):
@@ -81,8 +90,7 @@ def scaling_metrics(row,directory,profile,target):
             not .35 <= logical[0]*scale/profile['mode']['width'] <= .65):
         raise BenchError('Pattern did not establish half-output geometry')
     injections=row['injections']
-    commands={'opened':[],'snap-left':['snap-left'],'snap-right':['snap-right'],
-              'maximized':['maximize'],'restored':['maximize','restore']}[state]
+    commands=scaling_actions(target,state)
     if ([r.get('command') for r in injections]!=commands or any(r.get('event')!='injected'
             or any(type(r.get(k)) is not int for k in ('before_monotonic_ns','after_monotonic_ns'))
             or not 0 <= r['before_monotonic_ns'] <= r['after_monotonic_ns'] <= capture['begin_monotonic_ns']
@@ -133,8 +141,7 @@ def run_scaling(host,record,directory,target,layout,profile,health,progress,resu
                     meta=scene_lines.next(time.monotonic()+10)
                     injections=[]
                     time.sleep(.6)
-                    actions={'opened':[],'snap-left':['snap-left'],'snap-right':['snap-right'],
-                             'maximized':['maximize'],'restored':['maximize','restore']}[state]
+                    actions=scaling_actions(target,state)
                     for action in actions:
                         health()
                         keyboard.stdin.write((action+'\n').encode()); keyboard.stdin.flush()

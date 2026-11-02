@@ -1262,7 +1262,7 @@ See [P3 commands](../benchmarks/README.md#p3-native-desktop-observation).
 ### P4 implementation and acceptance scope
 
 `run --phase scaling` and `run --phase overhead` implement the separate fixed
-`p4-pattern-resources-v1` workload. Mixed P2/P4 selections retain each block's
+`p4-pattern-resources-v2` workload. Mixed P2/P4 selections retain each block's
 own version/specification in the immutable schedule and receipt. Default
 repetitions remain three; `--fast` changes only their count. Offline exports
 recompute original pixel and process/counter evidence, never trust only the
@@ -1272,7 +1272,13 @@ Scaling now covers a native Wayland coordinate pattern at 100/125/150/175/200%
 in opened, snapped-left, snapped-right, maximized and restored states. Each
 state starts a fresh 401×301-logical-pixel pattern, records its configure,
 preferred scale, viewport and actual buffer dimensions, injects the desktop's
-fixed default shortcuts, and captures the original physical output. Output
+fixed default shortcuts, and captures the original physical output. Window
+actions are target-specific: Vela uses Meta+Up/Meta+Down to maximize/restore,
+while Plasma uses its Meta+PageUp toggle twice for the restored case. Plasma's
+Meta+Up tiles to the top and Meta+PageDown minimizes. Version 2 corrects the
+shared mapping used in version 1; a changed campaign must start anew rather
+than reuse a version 1 completion. Native maximized state and original-size
+restoration remain mandatory. Output
 configuration is read back. Before rendering, a recorded fixed pointer action
 parks the cursor at the output's bottom-right corner to prevent contamination.
 The decoder checks PNG CRCs, geometry, bounded
@@ -1303,7 +1309,11 @@ foreign UIDs/cgroups, sampling gaps and incomplete workloads invalidate data.
 Development validation covers rejection, schedules, phase-specific no-capture
 execution, raw audits/export, a complete isolated Vela 25-case controller run,
 and a fractional pattern through private KWin's native capture with verified
-scale restoration. The Vela fixture uses virtual input rather than kernel
+scale restoration. A private KWin 25-case controller check also verifies its
+effective/default shortcut mapping and reproduces top tiling before testing
+maximize/restore through D-Bus action fixtures. Its virtual VRR policy and
+pointer parking are fixture boundaries, not physical hardware qualification.
+The Vela fixture uses virtual input rather than kernel
 uinput and is headless; no physical P4 campaign is qualified yet. The new
 pixel oracle exposed nonzero fractional-edge differences; these are retained
 as measurements, not relaxed away to make the compositor pass.

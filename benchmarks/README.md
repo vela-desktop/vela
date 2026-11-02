@@ -627,7 +627,7 @@ for reuse decisions, timing limitations and the P4 implementation order.
 
 ## P4 scaling pattern and session resources
 
-The fixed `p4-pattern-resources-v1` workloads now run through `run` with
+The fixed `p4-pattern-resources-v2` workloads now run through `run` with
 independent `scaling` and `overhead` selections. They use the same isolated
 sessions, immutable block receipts, three repetitions/default or one/`--fast`,
 checkpoint/resume, hardware restoration and raw-data re-audit. Physical TTY
@@ -654,7 +654,11 @@ The installed desktop is measured; building these tools does not install Vela.
 
 `scaling` runs the native Wayland coordinate pattern at 100/125/150/175/200%,
 each opened, snapped left/right, maximized and restored: 25 captures per
-desktop/repetition. It uses the desktop's default shortcuts, validates native
+desktop/repetition. It uses the desktop's default shortcuts: Vela maximizes
+with Meta+Up and restores with Meta+Down; Plasma toggles maximization/restoration
+with Meta+PageUp. Meta+Up in Plasma tiles to the top, and Meta+PageDown minimizes;
+neither substitutes for those actions. The exact per-target mapping is part of
+the versioned specification and receipts. The workload validates native
 configure/preferred-scale/buffer/viewport evidence, applies and reads back each
 output scale, and retains the original physical-output PNG. The pointer is
 parked at the output's bottom-right corner before rendering, with its injection
@@ -668,6 +672,9 @@ offscreen pixels are measured outcomes: a completed instrument run can report
 nonzero errors. Wrong scale/backend/identity/state, truncated PNGs or failed
 restoration invalidate the run. Scale 1 is restored before normal teardown,
 including after a failed case; PID 1 retains the overall recovery responsibility.
+Version 2 corrects the former shared Vela shortcut mapping. Changed source,
+instrument and specification identities require a new campaign; failed version 1
+campaigns remain failed and are not resumed with the new workload.
 
 `overhead` does not run input, presentation or capture calibration. It waits
 ten seconds after session readiness, then records a 30-second idle window,
@@ -865,6 +872,25 @@ JSON evidence locally, run unprivileged:
 ```sh
 python3 benchmarks/tests/plasma_integration.py build-native-displays/tools/vela-bench-desktop benchmark-results/plasma-preflight-selftest/real-kwin.json
 ```
+
+`benchmark-plasma-scaling-integration` runs the production 25-case P4 controller
+on a private KWin with disposable HOME/runtime/bus. It reads effective/default
+KWin shortcuts, reproduces the wrong top-tiling stimulus, and verifies corrected
+maximize/restore, original captures, offline pixel audits and scale restoration.
+Input is an explicit D-Bus action fixture; pointer parking is a no-op because
+KWin captures exclude the pointer. The virtual output's uncontrollable VRR policy
+is retained. This does not qualify kernel uinput or physical hardware controls.
+It requires PyGObject in addition to KWin and the native tools:
+
+```sh
+ctest --test-dir build-native-displays -R '^benchmark-plasma-scaling-integration$' --output-on-failure
+```
+
+`benchmark-input-cli` links the production C parser to an event sink, replacing
+only the UID checks and uinput boundary in a test executable. It verifies the
+actual Meta/PageUp versus Meta/Up/Down event sequences, release order, timestamps
+and rejection outside desktop mode. It runs unprivileged without a kernel
+input device; the fixture executable is not installed as an instrument.
 
 Account/session tests simulate NSS, system commands and process inventories;
 they exercise real profile files only inside temporary test directories.
