@@ -630,8 +630,10 @@ for reuse decisions, timing limitations and the P4 implementation order.
 The fixed `p4-pattern-resources-v3` workloads now run through `run` with
 independent `scaling` and `overhead` selections. They use the same isolated
 sessions, immutable block receipts, three repetitions/default or one/`--fast`,
-checkpoint/resume, hardware restoration and raw-data re-audit. Physical TTY
-acceptance of P4 is pending; this remains partial family coverage.
+checkpoint/resume, hardware restoration and raw-data re-audit. Initial fast
+physical acceptance passed for the native scaling pattern and session-resource
+workloads on Vela/Plasma in separate campaigns; this remains partial family
+coverage, with three-repetition acceptance outstanding.
 
 Build and refresh the installed instruments from the same checkout:
 
@@ -700,6 +702,29 @@ still refused; PID reuse, migration or command changes also invalidate data.
 Boundary errors now include the offending PID, start time, name and cgroup.
 Missing PSS/cgroup access fails explicitly. GPU/energy are `unsupported`, not
 zero; shared system services are not attributed to the desktop.
+
+On 2026-11-02, physical fast campaign `8f918718608a4d20a4fa061b0bad99b1`
+passed both version 3 overhead blocks: idle, 1,800-frame animation and the
+fixed hash corpus, with capture disabled, verified lifecycle/isolation,
+hardware conditions, completion receipts and restoration. Export hashes,
+raw resource records, completion timestamps and stored aggregates were
+independently rechecked. The launch clients were verified in the root pilot
+cgroup, outside the UID CPU total, and their observed PSS/ticks remained
+separate. There were no cleanup errors. This is one complete block per
+desktop, not three independent repetitions or a completed B5 family.
+
+| Initial-machine fast sample | Vela | Plasma |
+|---|---:|---:|
+| Idle median session PSS (MiB) | 359.59 | 668.90 |
+| Animation median UID PSS (MiB) | 368.06 | 683.68 |
+| Animation CPU (% of one logical CPU) | 8.95 | 9.61 |
+
+These describe this execution, without a repeatability estimate or a general
+desktop ranking. Native scaling's 25 cases per desktop passed separately in
+version 2 campaign `09b2776c59c24c2f8bd2108dff5be738`; its original version 2
+auditor rechecked all 50 captures and restoration without rewriting evidence.
+The next acceptance run uses the normal three-repetition schedule. Source
+identities remain separate; the old and current campaigns are not pooled.
 
 The HTML links original scaling captures and reports independent-block CPU/PSS
 and pixel-error statistics without pooling repetitions. Exports recompute

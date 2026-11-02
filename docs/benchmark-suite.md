@@ -1328,16 +1328,25 @@ pointer parking are fixture boundaries, not physical hardware qualification.
 The Vela fixture uses virtual input rather than kernel
 uinput and is headless. The initial fast physical version 2 campaign completed
 both 25-case scaling blocks with restoration, but stopped in Vela resource
-collection at the waiting-client boundary check. Version 3 resource acceptance
-on physical desktops remains outstanding; no complete P4 campaign is qualified
-yet. A private real-user-manager fixture verifies the waiting client and a
+collection at the waiting-client boundary check. On 2026-11-02, fast campaign
+`8f918718608a4d20a4fa061b0bad99b1` passed both version 3 resource blocks on
+physical Vela/Plasma sessions: idle, fixed 1,800-frame animation and hash work,
+capture off, isolated full sessions, conditions, receipts and restoration.
+Export hashes, raw process/cgroup records, workload timestamps, aggregates
+and lifecycle acceptance were independently re-audited, with no cleanup errors.
+The exact waiting clients remained in the root pilot cgroup and were recorded
+separately from session PSS and the UID CPU total. One independent block per
+desktop is fast acceptance; normal three-repetition acceptance remains open.
+A private real-user-manager fixture also verifies the waiting client and a
 separate harmless workload, with root cgroup/unknown-process rejection covered
 by CPU fixtures. The new
 pixel oracle exposed nonzero fractional-edge differences; these are retained
 as measurements, not relaxed away to make the compositor pass.
 
 The application corpus (Qt/GTK/browser/Xwayland), resource interaction
-sequence, additional resource backends and real-TTY acceptance remain open.
+sequence, additional resource backends and normal repeated real-TTY acceptance
+remain open. The initial pattern/resource slices have fast physical acceptance;
+this does not complete the P4 stage or either full family.
 Coverage is `partial-pattern-only` / `partial-session-resources`;
 `full_suite_complete` and `performance_comparison_available` stay false.
 See [P4 commands](../benchmarks/README.md#p4-scaling-pattern-and-session-resources).
