@@ -288,6 +288,9 @@ static void handle_constraint_destroy(struct wl_listener *listener, void *data)
     struct vela_constraint *constraint = wl_container_of(listener, constraint, destroy);
     if (constraint->input->active_constraint == constraint->wlr) {
         constraint->input->active_constraint = NULL;
+        // The app let go of the pointer, maybe with a window opened over it
+        // meanwhile: it goes to what is under it (vela_interact_rebase()).
+        vela_scene_changed(constraint->input->server->scene);
     }
     wl_list_remove(&constraint->destroy.link);
     free(constraint);

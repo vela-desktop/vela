@@ -119,6 +119,12 @@ struct vela_scene {
     struct wlr_linux_dmabuf_v1 *linux_dmabuf;
     // For the explicit sync release points.
     struct wl_event_loop *event_loop;
+    // Called once the dispatch in progress is over, after a change: what is
+    // under the cursor may be something else (a window opened, closed, went
+    // fullscreen, a menu appeared). Once for all the changes of a dispatch.
+    void (*rearranged)(void *data);
+    void *rearranged_data;
+    struct wl_event_source *rearranged_idle;
     // The acrylic tint of blurs (premultiplied sRGB): Windows 11's dark theme
     // one, or the light one when the shell is light.
     struct wlr_render_color acrylic_tint;
@@ -161,6 +167,7 @@ struct vela_hit {
     struct wlr_surface *surface; // NULL: one of our nodes (the title bar)
     double sx, sy;
     void *owner; // the nearest `data` going up the tree
+    struct vela_node *node; // the surface or rectangle hit
 };
 struct vela_hit vela_scene_at(struct vela_scene *scene, double lx, double ly);
 
@@ -183,6 +190,9 @@ void vela_node_raise_to_top(struct vela_node *node);
 void vela_node_place_above(struct vela_node *node, struct vela_node *sibling);
 void vela_node_place_below(struct vela_node *node, struct vela_node *sibling);
 void vela_node_reparent(struct vela_node *node, struct vela_tree *parent);
+// Which is drawn on top: > 0 `node`, < 0 `other`, 0 when one contains the
+// other (or they are in different trees).
+int vela_node_order(const struct vela_node *node, const struct vela_node *other);
 
 void vela_tree_set_shape(struct vela_tree *tree, const struct vela_shape *shape);
 void vela_rect_node_set_size(struct vela_rect_node *rect, double width, double height);

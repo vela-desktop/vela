@@ -7,10 +7,14 @@ click on the title, Alt+Space), snapping by dragging against the edge with
 Snap Assist, snap layouts (Win+Z) and snap groups. The shell is a FakeShell
 collecting the messages."""
 
+import os
 import time
 import unittest
 
-from harness import Session
+from harness import Session, tool
+
+MAGENTA = (255, 0, 255)  # vela-pattern's menu (xdg-popup)
+GREEN = (0, 192, 0)  # vela-x11's menu (override-redirect)
 
 
 class Interaction(unittest.TestCase):
@@ -27,6 +31,10 @@ class Interaction(unittest.TestCase):
         w = self.vela.state().window(window)
         return w["x"], w["y"], w["w"], w["h"]
 
+    def center(self, window):
+        x, y, w, h = self.frame(window)
+        return x + w // 2, y + h // 2
+
     def test_resize_from_invisible_border(self):
         window = self.vela.open_window(300, 200, decorated=True)
         x, y, w, h = self.frame(window)
@@ -36,6 +44,179 @@ class Interaction(unittest.TestCase):
                         "move", grab_x + 50, grab_y, "sleep", "50", "move", grab_x + 100, grab_y, "sleep", "100", "up")
         state = self.vela.wait_for(lambda s: s.window(window)["w"] == w + 100, what="100 wider")
         self.assertEqual(state.window(window)["x"], x)
+
+    def drag_border(self, x, y):
+        """Presses at (x, y) and drags 100 to the right."""
+        self.vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x + 50, y, "sleep", "50",
+                        "move", x + 100, y, "sleep", "100", "up")
+        time.sleep(0.2)
+
+    def centered(self, width, height, title_bar=0):
+        """Where a new window opens: centered on the output (its surface)."""
+        output = self.vela.state().output
+        return (output["w"] - width) // 2, (output["h"] - height - title_bar) // 2 + title_bar
+
+    def test_menu_covers_the_border_below_it(self):
+        # A menu of the window above, sticking out over the invisible border
+        # of the one below: the menu gets the press, not the border.
+        window = self.vela.open_window(300, 200, decorated=True)
+        x, y, w, h = self.frame(window)
+        grab_x, grab_y = x + w + 4, y + h // 2
+        left, top = self.centered(200, 150)
+        log = self.client_log()
+        self.vela.open_window(command=[tool("vela-pattern"), "--log-pointer", "--popup",
+                                       f"{grab_x - 100 - left},{grab_y - 75 - top}", "200", "150"])
+        self.vela.wait_for(lambda _: self.vela.pixels().at(grab_x, grab_y) == MAGENTA, what="the menu on the border",
+                           read_state=False)
+        self.drag_border(grab_x, grab_y)
+        self.wait_click(log, self.pattern_click("popup"))
+        state = self.vela.state()
+        self.assertEqual(state.window(window)["w"], w)
+        self.assertNotEqual(state["focused"], window)
+
+    def test_own_menu_covers_its_border(self):
+        # The window's own menu, past its right edge: the menu again.
+        left, top = self.centered(300, 200, title_bar=32)
+        grab_x, grab_y = left + 300 + 4, top + 100
+        log = self.client_log()
+        window = self.vela.open_window(command=[tool("vela-pattern"), "--decorated", "--log-pointer", "--popup",
+                                                f"{grab_x - 100 - left},{grab_y - 75 - top}", "300", "200"])
+        x, y, w, h = self.frame(window)
+        self.assertEqual((x + w + 4, y + h - 100), (grab_x, grab_y))
+        self.vela.wait_for(lambda _: self.vela.pixels().at(grab_x, grab_y) == MAGENTA, what="the menu on the border",
+                           read_state=False)
+        self.drag_border(grab_x, grab_y)
+        self.wait_click(log, self.pattern_click("popup"))
+        self.assertEqual(self.vela.state().window(window)["w"], w)
+
+    def test_x11_menu_covers_the_border_below_it(self):
+        window = self.vela.open_window(300, 200, decorated=True)
+        x, y, w, h = self.frame(window)
+        grab_x, grab_y = x + w + 4, y + h // 2
+        display = self.vela.wait_for_log("Xwayland on DISPLAY=", lambda line: line.split("DISPLAY=", 1)[1].split()[0])
+        # The menu is 120x80, at a point of the screen.
+        self.vela.open_window(command=[tool("vela-x11"), "--menu", f"{grab_x - 60},{grab_y - 40}", "200", "150"],
+                              env=dict(self.vela.client_env, DISPLAY=display))
+        self.vela.wait_for(lambda _: self.vela.pixels().at(grab_x, grab_y) == GREEN, what="the menu on the border",
+                           read_state=False)
+        self.drag_border(grab_x, grab_y)
+        state = self.vela.state()
+        self.assertEqual(state.window(window)["w"], w)
+        self.assertNotEqual(state["focused"], window)
+
+    def x11_clicks(self, *args):
+        """Opens vela-x11 writing its button events to a file; (window, the
+        file)."""
+        display = self.vela.wait_for_log("Xwayland on DISPLAY=", lambda line: line.split("DISPLAY=", 1)[1].split()[0])
+        clicks = os.path.join(self.vela.directory, f"clicks-{len(self.vela.clients)}")
+        window = self.vela.open_window(command=[tool("vela-x11"), "--clicks", clicks, *map(str, args)],
+                                       env=dict(self.vela.client_env, DISPLAY=display))
+        return window, clicks
+
+    def client_log(self):
+        """The log of the next client open_window() starts."""
+        return os.path.join(self.vela.directory, f"client-{len(self.vela.clients) + 1}.log")
+
+    def pattern_clicks(self, width, height):
+        """Opens vela-pattern logging its button events; (window, its log)."""
+        log = self.client_log()
+        window = self.vela.open_window(command=[tool("vela-pattern"), "--log-pointer", str(width), str(height)])
+        return window, log
+
+    def wait_click(self, path, clicked):
+        """Until `clicked(text)` of the file at `path` is true."""
+        def done(_):
+            try:
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    return clicked(f.read())
+            except FileNotFoundError:
+                return False
+        self.vela.wait_for(done, read_state=False, what="the press and the release")
+
+    def click_reaches(self, path, clicked):
+        """A click where the pointer is, without moving it, reaches the app
+        writing `path`."""
+        self.vela.input("down", "sleep", "50", "up")
+        self.wait_click(path, clicked)
+
+    @staticmethod
+    def pattern_click(surface="window"):
+        """vela-pattern's log has a press and a release of the left button on
+        `surface`."""
+        def clicked(text):
+            lines = text.splitlines()
+            return all(f"vela-pattern: pointer-button 272 {state} {surface}" in lines for state in (1, 0))
+        return clicked
+
+    @staticmethod
+    def x11_click(text):
+        """vela-x11's file has a press and a release."""
+        return len(text.splitlines()) >= 2
+
+    # What is under a pointer at rest changes: the pointer follows, as if it
+    # had moved. Before, it stayed with what was there until the next motion.
+
+    def test_pointer_follows_a_window_opening_under_it(self):
+        below = self.vela.open_window(500, 400)
+        self.vela.input("move", *self.center(below))
+        window, log = self.pattern_clicks(300, 200)
+        self.vela.wait_still(window)
+        self.click_reaches(log, self.pattern_click())
+
+    def test_pointer_follows_an_x11_window_opening_under_it(self):
+        # Opening, it rises under the pointer: X11 places the click with
+        # where in the window the pointer is, which must follow too.
+        below = self.vela.open_window(500, 400)
+        x, y = self.center(below)
+        self.vela.input("move", x, y)
+        window, clicks = self.x11_clicks(300, 200)
+        self.vela.wait_still(window)
+        self.click_reaches(clicks, self.x11_click)
+        left, top, _, _ = self.frame(window)
+        with open(clicks, encoding="ascii") as f:
+            press = tuple(map(int, f.readline().split()))
+        self.assertEqual(press, (x - left, y - top - 32, x, y))
+
+    def test_locked_pointer_stays_with_its_app(self):
+        # A game locking the pointer: what opens over it doesn't take the
+        # pointer away, as moving the mouse wouldn't. Let go, the pointer goes
+        # to what is there now.
+        log = self.client_log()
+        game = self.vela.open_window(command=[tool("vela-pattern"), "--lock-pointer", "500", "400"])
+        self.vela.wait_still(game)
+        px, py = self.center(game)
+        self.vela.input("move", px, py)
+        self.wait_click(log, lambda text: "vela-pattern: pointer-locked" in text.splitlines())
+        window, above = self.pattern_clicks(300, 200)
+        self.vela.wait_still(window)
+        x, y, w, h = self.frame(window)
+        self.assertTrue(x <= px < x + w and y <= py < y + h, "the window opens under the pointer")
+        self.click_reaches(log, self.pattern_click())
+        with open(log, encoding="utf-8") as f:
+            self.assertNotIn("vela-pattern: pointer-unlocked", f.read().splitlines())
+        with open(above, encoding="utf-8") as f:
+            self.assertFalse([line for line in f.read().splitlines()
+                              if line.startswith("vela-pattern: pointer-button")])
+        # A middle click: the game lets the pointer go.
+        self.vela.input("click", "middle")
+        self.wait_click(log, lambda text: "vela-pattern: pointer-released" in text.splitlines())
+        self.click_reaches(above, self.pattern_click())
+
+    def test_pointer_follows_a_window_closing_above(self):
+        window, log = self.pattern_clicks(500, 400)
+        above = self.vela.open_window(300, 200)
+        self.vela.input("move", *self.center(above))
+        self.vela.command(f"window {above} close")
+        self.vela.wait_for(lambda s: not any(w["id"] == above for w in s.windows), what="the window closed")
+        self.click_reaches(log, self.pattern_click())
+
+    def test_pointer_follows_a_game_going_fullscreen_over_a_border(self):
+        window = self.vela.open_window(300, 200, decorated=True)
+        x, y, w, h = self.frame(window)
+        self.vela.input("move", x + w + 4, y + h // 2)
+        game, clicks = self.x11_clicks("--start-fullscreen", 640, 480)
+        self.vela.wait_for(lambda s: s.window(game)["fullscreen"] and s["focused"] == game, what="the game in front")
+        self.click_reaches(clicks, self.x11_click)
 
     def test_keyboard_move_and_cancel(self):
         window = self.vela.open_window(300, 200, decorated=True)

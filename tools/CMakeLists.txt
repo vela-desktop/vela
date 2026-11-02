@@ -119,9 +119,12 @@ add_executable(vela-testlock vela-testlock.c)
 target_link_libraries(vela-testlock PRIVATE proto-session-lock)
 
 # Sharpness test client (scripts/test-sharpness.sh).
+vela_client_protocol(proto-pointer-constraints
+    ${TOOLS_WAYLAND_PROTOCOLS_DIR}/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml
+    pointer-constraints-unstable-v1)
 add_executable(vela-pattern vela-pattern.c)
 target_link_libraries(vela-pattern PRIVATE proto-xdg-shell proto-viewporter proto-fractional-scale
-    proto-xdg-decoration)
+    proto-xdg-decoration proto-pointer-constraints)
 
 # Fake shell pieces (wallpaper, blurred taskbar) for tests without the Qt
 # shell.

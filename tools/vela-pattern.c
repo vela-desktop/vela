@@ -29,6 +29,13 @@
 // --transient-maximized: initially maximizes that child.
 // --transient-siblings: create two overlapping siblings to test Z-order.
 // --fullscreen-parent: request fullscreen for the parent before mapping.
+// --log-pointer: writes "vela-pattern: pointer-button BUTTON STATE SURFACE" to
+// stderr for every button event, SURFACE being "window" or "popup" (where
+// the clicks go).
+// --lock-pointer: locks the pointer (pointer-constraints) once it enters the
+// window, as games do, and logs "vela-pattern: pointer-locked" and
+// "vela-pattern: pointer-unlocked"; a middle click lets the pointer go (the
+// lock is destroyed). Implies --log-pointer.
 
 #define _GNU_SOURCE
 #include <math.h>
@@ -42,6 +49,7 @@
 #include <wayland-client.h>
 
 #include "fractional-scale-v1-client-protocol.h"
+#include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -92,10 +100,83 @@ static int transientDelayMs = -1;
 static int transientMaximized;
 static int transientSiblings;
 static int fullscreenParent;
+static int logPointer;
+static int lockPointer;
+static struct wl_seat* seat;
+static struct zwp_pointer_constraints_v1* pointerConstraints;
+static struct zwp_locked_pointer_v1* lockedPointer;
+static int lockReleased; // let go: not locked again
+
+static struct wl_surface* pointerSurface; // the one the pointer entered
+
+static void onLocked(void* data, struct zwp_locked_pointer_v1* locked)
+{
+    fprintf(stderr, "vela-pattern: pointer-locked\n");
+}
+static void onUnlocked(void* data, struct zwp_locked_pointer_v1* locked)
+{
+    fprintf(stderr, "vela-pattern: pointer-unlocked\n");
+}
+static const struct zwp_locked_pointer_v1_listener lockedListener = { onLocked, onUnlocked };
+
+static void onPointerEnter(void* data, struct wl_pointer* pointer, uint32_t serial, struct wl_surface* entered,
+    wl_fixed_t x, wl_fixed_t y)
+{
+    pointerSurface = entered;
+    // Like a game: once the pointer is on the window, it stays there.
+    if (lockPointer && pointerConstraints && !lockedPointer && !lockReleased && entered == surface) {
+        lockedPointer = zwp_pointer_constraints_v1_lock_pointer(pointerConstraints, surface, pointer, NULL,
+            ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
+        zwp_locked_pointer_v1_add_listener(lockedPointer, &lockedListener, NULL);
+    }
+}
+static void onPointerLeave(void* data, struct wl_pointer* pointer, uint32_t serial, struct wl_surface* surface)
+{
+    pointerSurface = NULL;
+}
+static void onPointerMotion(void* data, struct wl_pointer* pointer, uint32_t time, wl_fixed_t x, wl_fixed_t y) { }
+static void onPointerButton(void* data, struct wl_pointer* pointer, uint32_t serial, uint32_t time, uint32_t button,
+    uint32_t state)
+{
+    const char* where = !pointerSurface ? "none" : pointerSurface == popupSurface ? "popup" : "window";
+    fprintf(stderr, "vela-pattern: pointer-button %u %u %s\n", button, state, where);
+    if (lockedPointer && button == 0x112 && state == WL_POINTER_BUTTON_STATE_RELEASED) { // BTN_MIDDLE
+        zwp_locked_pointer_v1_destroy(lockedPointer);
+        lockedPointer = NULL;
+        lockReleased = 1;
+        fprintf(stderr, "vela-pattern: pointer-released\n");
+    }
+}
+static void onPointerAxis(void* data, struct wl_pointer* pointer, uint32_t time, uint32_t axis, wl_fixed_t value) { }
+
+static const struct wl_pointer_listener pointerListener = {
+    .enter = onPointerEnter,
+    .leave = onPointerLeave,
+    .motion = onPointerMotion,
+    .button = onPointerButton,
+    .axis = onPointerAxis,
+};
+
+static void onSeatCapabilities(void* data, struct wl_seat* seat, uint32_t capabilities)
+{
+    static struct wl_pointer* pointer;
+    if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
+        pointer = wl_seat_get_pointer(seat);
+        wl_pointer_add_listener(pointer, &pointerListener, NULL);
+    }
+}
+
+static const struct wl_seat_listener seatListener = { .capabilities = onSeatCapabilities };
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
-    if (!strcmp(interface, wl_compositor_interface.name)) {
+    if (logPointer && !seat && !strcmp(interface, wl_seat_interface.name)) {
+        // Version 1: no pointer frames to answer.
+        seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+        wl_seat_add_listener(seat, &seatListener, NULL);
+    } else if (lockPointer && !strcmp(interface, zwp_pointer_constraints_v1_interface.name)) {
+        pointerConstraints = wl_registry_bind(registry, name, &zwp_pointer_constraints_v1_interface, 1);
+    } else if (!strcmp(interface, wl_compositor_interface.name)) {
         compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
     } else if (!strcmp(interface, zxdg_decoration_manager_v1_interface.name)) {
         decorationManager = wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1);
@@ -413,6 +494,10 @@ int main(int argc, char** argv)
             transientMaximized = 1;
         } else if (!strcmp(argv[arg], "--transient-siblings")) {
             transientSiblings = 1;
+        } else if (!strcmp(argv[arg], "--log-pointer")) {
+            logPointer = 1;
+        } else if (!strcmp(argv[arg], "--lock-pointer")) {
+            logPointer = lockPointer = 1;
         } else if (!strcmp(argv[arg], "--fullscreen-parent")) {
             fullscreenParent = 1;
         } else if (!strcmp(argv[arg], "--app-id") && arg + 1 < argc) {
