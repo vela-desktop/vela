@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Temporary: on-demand Vast.ai VMs with an RTX 4060 Ti, to find out whether
+# they can replace the self-hosted NVIDIA runner. Two VM images, since we
+# don't yet know which one ships a driver with Vulkan and GBM.
+runners:
+  - name: vast-4060ti-cli
+    cloud: vast_ai
+    instance_type: 1xRTX_4060_Ti
+    machine_image: vastai/kvm:ubuntu_cli_22.04-2025-11-21
+    labels:
+      - cirun-vast-4060ti-cli
+    extra_config:
+      disk_space: 60
+      min_ram: 16
+      vm: true
+  - name: vast-4060ti-desktop
+    cloud: vast_ai
+    instance_type: 1xRTX_4060_Ti
+    machine_image: vastai/kvm:ubuntu_desktop_24.04-2025-11-24
+    labels:
+      - cirun-vast-4060ti-desktop
+    extra_config:
+      disk_space: 60
+      min_ram: 16
+      vm: true
