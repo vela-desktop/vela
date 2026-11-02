@@ -3046,6 +3046,10 @@ Specifiche sistema
         <translation>Installa ora</translation>
     </message>
     <message>
+        <source>Check again</source>
+        <translation>Controlla di nuovo</translation>
+    </message>
+    <message>
         <source>Check for updates</source>
         <translation>Controlla aggiornamenti</translation>
     </message>
