@@ -1,16 +1,16 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# Temporary: an on-demand Vast.ai container with an RTX 4060 Ti, to find out
-# whether it can replace the self-hosted NVIDIA runner. Vast gives its
-# containers /dev/dri and the NVIDIA graphics driver; this one tries Arch
-# again, by another name: Cirun never created archlinux:latest.
+# The NVIDIA GPU CI runner (gpu-nvidia.yml): a fresh Vast.ai container with
+# one RTX 4060 Ti for each run. Vast gives its containers /dev/dri and the
+# NVIDIA graphics driver. Ubuntu, because both Vast's and Cirun's start-up
+# scripts need apt; 26.10, the release Vela's Ubuntu CI builds on.
 runners:
-  - name: vast-4060ti-arch
+  - name: vast-4060ti
     cloud: vast_ai
     instance_type: 1xRTX_4060_Ti
-    machine_image: archlinux/archlinux:latest
+    machine_image: ubuntu:26.10
     labels:
-      - cirun-vast-4060ti-arch
+      - cirun-vast-4060ti
     extra_config:
       disk_space: 40
