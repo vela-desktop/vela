@@ -239,11 +239,13 @@ class ResourceCampaign(unittest.TestCase):
         source=self.layout.base/'pilots'/block['pilot_run_id'];target=block['target']
         path=source/f'{target}-resources-active-animation.json'
         original=read_json(path)
-        for case in ('uid','overlap','reset'):
+        for case in ('uid','overlap','reset','transport'):
             broken=copy.deepcopy(original)
             if case=='uid':broken['uid']=1002
             if case=='overlap':broken['samples'][0]['begin_monotonic_ns']=1
             if case=='reset':broken['samples'][-1]['cpu_usage_usec']=0
+            if case=='transport':broken['controller_transport']={'pid':22,'start_ticks':42,'initial_cpu_ticks':0,
+                'parent_pid':99,'cgroup':'0::/system.slice/vela-benchmark-pilot.service','command':['/usr/bin/systemd-run']}
             atomic_json(path,broken)
             with self.subTest(case=case),self.assertRaises(BenchError):audit_measurements(source,target,block['profile'],'overhead')
         atomic_json(path,original)

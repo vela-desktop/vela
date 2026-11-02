@@ -22,7 +22,7 @@ from .diagnostics import user_command, stop_instrument, parse_probe
 from .pixels import pattern_metrics
 from . import resources
 
-VERSION = 'p4-pattern-resources-v2'
+VERSION = 'p4-pattern-resources-v3'
 PHASES = ('scaling','overhead')
 SCALES = (1.0,1.25,1.5,1.75,2.0)
 STATES = ('opened','snap-left','snap-right','maximized','restored')
@@ -35,6 +35,7 @@ SPEC = {'version':VERSION,'scales':list(SCALES),'states':list(STATES),'pattern_l
         'resource_idle_seconds':30,'resource_settle_seconds':10,'resource_sample_interval_seconds':1,
         'active_animation_frames':1800,'hash_chunks':resources.HASH_CHUNKS,
         'capture_during_resource_measurement':False,'energy_required':False,
+        'resource_transport_accounting':'exact-controller-child-pid-start-cgroup-command; separate-from-session',
         'scope':'native-wayland-pattern-and-reserved-uid-resources; application-corpus-incomplete'}
 
 
@@ -190,7 +191,7 @@ def resource_condition(host,record,directory,target,layout,label,health,progress
     if progress: progress('resources/'+label)
     rows=[]
     cpu_before=time.monotonic_ns()
-    process=None
+    process=None;transport=None
     with (directory/f'{target}-resources-{label}.stderr').open('wb') as errors, ThreadPoolExecutor(max_workers=1) as pool:
         try:
             health(); rows.append(resources.snapshot(record['uid']))
@@ -198,30 +199,33 @@ def resource_condition(host,record,directory,target,layout,label,health,progress
             else:
                 command=([str(layout.probe),'--frames',str(SPEC['active_animation_frames']),'--timeout','55'] if label=='active-animation'
                          else ['/usr/bin/python3','-I',str(layout.helper),'_resource-workload'])
-                process=host.spawn(user_command(record,layout,'measurement',command,runtime_seconds=120),errors)
+                request=user_command(record,layout,'measurement',command,runtime_seconds=120)
+                process=host.spawn(request,errors)
+                transport=resources.transport_identity(process,request)
                 future=pool.submit(process.communicate)
             end=time.monotonic()+SPEC['resource_idle_seconds']
             deadline=time.monotonic()+125
             while (time.monotonic()<end if future is None else not future.done()):
                 if time.monotonic()>deadline: raise BenchError('Resource workload deadline')
                 time.sleep(1)
-                health(); rows.append(resources.snapshot(record['uid']))
+                health(); rows.append(resources.snapshot(record['uid'],transport=transport))
             if future is not None:
                 output,_=future.result(timeout=2)
                 if process.returncode or len(output)>8*1024*1024: raise BenchError('Resource workload failed or output limit exceeded')
                 raw=output.decode()
                 (directory/f'{target}-resources-{label}.work.jsonl').write_text(raw)
             else: raw=''
-            health(); rows.append(resources.snapshot(record['uid']))
+            health(); rows.append(resources.snapshot(record['uid'],transport=transport))
         finally:
             stop_process(process)
             stop_instrument(host,record,layout,'measurement')
-            atomic_json(directory/f'{target}-resources-{label}.json',{'uid':record['uid'],'samples':rows,'controller_begin_monotonic_ns':cpu_before})
-    return resource_metrics(rows,record['uid'],label,raw)
+            atomic_json(directory/f'{target}-resources-{label}.json',{'uid':record['uid'],'samples':rows,
+                'controller_transport':transport,'controller_begin_monotonic_ns':cpu_before})
+    return resource_metrics(rows,record['uid'],label,raw,transport)
 
 
-def resource_metrics(rows,uid,label,raw):
-    metrics=resources.metrics(rows,uid)
+def resource_metrics(rows,uid,label,raw,transport=None):
+    metrics=resources.metrics(rows,uid,transport)
     if label=='idle':
         if raw or metrics['elapsed_seconds']<SPEC['resource_idle_seconds']: raise BenchError('Resource idle window incomplete')
     elif label=='active-animation':
@@ -315,7 +319,7 @@ def audit_measurements(directory,target,profile,phase):
                 raise BenchError('Resource inventory differs from the measured session or settling interval')
             previous_end=source['samples'][-1]['end_monotonic_ns']
             raw='' if label=='idle' else (directory/f'{target}-resources-{label}.work.jsonl').read_text()
-            if sample!={'resources':resource_metrics(source['samples'],source['uid'],label,raw)}:
+            if sample!={'resources':resource_metrics(source['samples'],source['uid'],label,raw,source.get('controller_transport'))}:
                 raise BenchError('Resource summary differs from raw process/cgroup evidence')
     else: raise BenchError('Unknown P4 phase')
     return saved

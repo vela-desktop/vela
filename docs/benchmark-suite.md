@@ -1262,7 +1262,7 @@ See [P3 commands](../benchmarks/README.md#p3-native-desktop-observation).
 ### P4 implementation and acceptance scope
 
 `run --phase scaling` and `run --phase overhead` implement the separate fixed
-`p4-pattern-resources-v2` workload. Mixed P2/P4 selections retain each block's
+`p4-pattern-resources-v3` workload. Mixed P2/P4 selections retain each block's
 own version/specification in the immutable schedule and receipt. Default
 repetitions remain three; `--fast` changes only their count. Offline exports
 recompute original pixel and process/counter evidence, never trust only the
@@ -1306,6 +1306,18 @@ services are not attributed. GPU and energy are explicitly unsupported for
 these initial collectors. Missing permissions/counters, counter resets,
 foreign UIDs/cgroups, sampling gaps and incomplete workloads invalidate data.
 
+Version 3 separates the controller's waiting launch client from the session.
+`setpriv` changes that client's UID but leaves it in the controller cgroup;
+the workload itself is started by the target user manager. Register only the
+actual spawned direct child and verify its PID/start time, parent PID, cgroup
+and full command line on every observation. Keep its PSS and observed CPU
+ticks as separate transport evidence, stating whether the UID CPU counter
+includes it. Live tick sampling may miss exit CPU; do not present it as a
+complete transport total or subtract an estimate. All other out-of-boundary
+UID processes remain errors, now with PID/name/start/cgroup diagnostics.
+The descriptor and raw observations are independently checked during offline
+resource auditing. This accounting revision requires a new campaign.
+
 Development validation covers rejection, schedules, phase-specific no-capture
 execution, raw audits/export, a complete isolated Vela 25-case controller run,
 and a fractional pattern through private KWin's native capture with verified
@@ -1314,7 +1326,13 @@ effective/default shortcut mapping and reproduces top tiling before testing
 maximize/restore through D-Bus action fixtures. Its virtual VRR policy and
 pointer parking are fixture boundaries, not physical hardware qualification.
 The Vela fixture uses virtual input rather than kernel
-uinput and is headless; no physical P4 campaign is qualified yet. The new
+uinput and is headless. The initial fast physical version 2 campaign completed
+both 25-case scaling blocks with restoration, but stopped in Vela resource
+collection at the waiting-client boundary check. Version 3 resource acceptance
+on physical desktops remains outstanding; no complete P4 campaign is qualified
+yet. A private real-user-manager fixture verifies the waiting client and a
+separate harmless workload, with root cgroup/unknown-process rejection covered
+by CPU fixtures. The new
 pixel oracle exposed nonzero fractional-edge differences; these are retained
 as measurements, not relaxed away to make the compositor pass.
 

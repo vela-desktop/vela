@@ -40,10 +40,34 @@ def process_stat(raw):
     return int(fields[11])+int(fields[12]), int(fields[19])
 
 
-def snapshot(uid, *, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup')):
+def transport_identity(process, command, *, proc=Path('/proc')):
+    """Register only our actual launch client, before sampling its target UID.
+
+    setpriv changes the client's credentials, not its inherited cgroup. The
+    real workload is separately started inside the target user manager.
+    """
+    if process.args!=command or command.count('/usr/bin/systemd-run')!=1:
+        raise BenchError('Resource transport command is not the owned launch request')
+    if process.poll() is not None:return None
+    path=proc/str(process.pid)
+    try:
+        ticks,start=process_stat((path/'stat').read_text())
+        parent=int(next(line.split()[1] for line in (path/'status').read_text().splitlines() if line.startswith('PPid:')))
+        if parent!=os.getpid():raise BenchError('Resource transport is not a direct controller child')
+        membership=(proc/str(parent)/'cgroup').read_text().strip()
+        if (path/'cgroup').read_text().strip()!=membership:
+            raise BenchError('Resource transport left its controller cgroup')
+        return {'pid':process.pid,'start_ticks':start,'initial_cpu_ticks':ticks,'parent_pid':parent,
+                'cgroup':membership,'command':command[command.index('/usr/bin/systemd-run'):]}
+    except (FileNotFoundError,ProcessLookupError):
+        if process.poll() is not None:return None
+        raise BenchError('Resource transport identity disappeared before registration')
+
+
+def snapshot(uid, *, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup'), transport=None):
     if type(uid) is not int or uid <= 0: raise BenchError('Resource inventory requires a reserved non-root UID')
     begin = time.monotonic_ns()
-    rows, vanished = [], []
+    rows, vanished, transports = [], [], []
     for path in sorted(proc.iterdir(), key=lambda p:p.name):
         if not path.name.isdigit(): continue
         try:
@@ -58,14 +82,26 @@ def snapshot(uid, *, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup')):
             if len(pss) != 1 or pss[0][2:] != ['kB'] or not pss[0][1].isdigit():
                 raise BenchError('Process PSS accounting unavailable')
             membership = path.joinpath('cgroup').read_text().strip()
-            if len(membership) > 4096 or not membership.startswith('0::/user.slice/user-'+str(uid)+'.slice/'):
-                raise BenchError('Reserved UID process escaped its session accounting boundary')
+            is_transport=transport is not None and int(path.name)==transport['pid']
+            if is_transport:
+                command=path.joinpath('cmdline').read_bytes().removesuffix(b'\0').decode().split('\0')
+                parent=int(values.get('PPid','0'))
+                if (start!=transport['start_ticks'] or membership!=transport['cgroup']
+                        or parent!=transport['parent_pid'] or command!=transport['command']):
+                    raise BenchError(f'Resource transport identity changed: PID {path.name}, cgroup {membership}')
+            elif len(membership) > 4096 or not membership.startswith('0::/user.slice/user-'+str(uid)+'.slice/'):
+                raise BenchError(f'Reserved UID process escaped its session accounting boundary: '
+                                 f'PID {path.name} ({values.get("Name","")}), start {start}, cgroup {membership}')
             again_ticks,again_start = process_stat(path.joinpath('stat').read_text())
             if again_start != start or again_ticks < ticks: raise BenchError('PID identity changed while sampling')
-            rows.append({'pid':int(path.name),'start_ticks':start,'cpu_ticks':again_ticks,
+            row={'pid':int(path.name),'start_ticks':start,'cpu_ticks':again_ticks,
                          'pss_kib':int(pss[0][1]),'name':values.get('Name','')[:80],
                          'cgroup':membership,'classification':'benchmark-workload' if
-                         any(unit in membership for unit in ('vela-benchmark-measurement.service','vela-benchmark-scene.service')) else 'session'})
+                         any(unit in membership for unit in ('vela-benchmark-measurement.service','vela-benchmark-scene.service')) else 'session'}
+            if is_transport:
+                row.update(classification='collector-transport',parent_pid=parent,command=command)
+                transports.append(row)
+            else:rows.append(row)
         except (FileNotFoundError, ProcessLookupError):
             # Exits are visible gaps in the point-in-time PSS inventory; cgroup
             # CPU still includes their work, unlike summing surviving PIDs.
@@ -82,14 +118,22 @@ def snapshot(uid, *, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup')):
     return {'event':'resource-sample','begin_monotonic_ns':begin,'end_monotonic_ns':time.monotonic_ns(),
             'uid':uid,'clock_ticks_per_second':os.sysconf('SC_CLK_TCK'),
             'cpu_begin_monotonic_ns':cpu_begin,'cpu_end_monotonic_ns':cpu_end,'cpu_usage_usec':usage,
-            'processes':rows,'vanished_during_inventory':vanished,
+            'processes':rows,'controller_transports':transports,'vanished_during_inventory':vanished,
             'collector_cpu_seconds':own.ru_utime+own.ru_stime}
 
 
-def metrics(rows, uid):
+def metrics(rows, uid, transport=None):
     if len(rows) < 2: raise BenchError('Resource window has fewer than two samples')
     previous = None
     process_counters = {}
+    transport_rows=[]
+    if transport is not None and (any(type(transport.get(k)) is not int or transport[k]<=0
+            for k in ('pid','start_ticks','parent_pid')) or type(transport.get('initial_cpu_ticks')) is not int
+            or transport['initial_cpu_ticks']<0 or not isinstance(transport.get('cgroup'),str)
+            or not transport['cgroup'].startswith('0::/') or '\n' in transport['cgroup']
+            or not isinstance(transport.get('command'),list) or not transport['command']
+            or transport['command'][0]!='/usr/bin/systemd-run'):
+        raise BenchError('Invalid controller transport identity')
     for row in rows:
         if (row.get('event') != 'resource-sample' or row.get('uid') != uid
                 or any(type(row.get(k)) is not int or row[k] < 0 for k in
@@ -103,12 +147,24 @@ def metrics(rows, uid):
                 or type(row.get('clock_ticks_per_second')) is not int or row['clock_ticks_per_second']<=0):
             raise BenchError('Invalid collector or process accounting coverage')
         identities = set()
+        controls=row.get('controller_transports',[])
+        if not isinstance(controls,list) or len(controls)>1:raise BenchError('Invalid controller transport inventory')
+        for control in controls:
+            if (transport is None or any(control.get(k)!=transport[k] for k in
+                    ('pid','start_ticks','parent_pid','cgroup','command'))
+                    or control.get('classification')!='collector-transport'
+                    or any(type(control.get(k)) is not int or control[k]<0 for k in ('cpu_ticks','pss_kib'))
+                    or control['cpu_ticks'] < (transport_rows[-1]['cpu_ticks'] if transport_rows else transport['initial_cpu_ticks'])):
+                raise BenchError('Controller transport differs from its registered identity')
+            transport_rows.append(control)
         for process in row['processes']:
             if (any(type(process.get(k)) is not int or process[k] < 0 for k in ('pid','start_ticks','cpu_ticks','pss_kib'))
                     or not process['pid'] or not isinstance(process.get('cgroup'),str)
                     or not process['cgroup'].startswith(f'0::/user.slice/user-{uid}.slice/')
                     or process.get('classification') not in ('session','benchmark-workload')):
                 raise BenchError('Invalid process resource identity')
+            if transport and process['pid']==transport['pid']:
+                raise BenchError('Controller transport was counted as a session process')
             key = (process['pid'],process['start_ticks'])
             if key in identities: raise BenchError('Duplicate process in resource inventory')
             if process['cpu_ticks'] < process_counters.get(key,0): raise BenchError('Live process CPU counter moved backwards')
@@ -135,8 +191,15 @@ def metrics(rows, uid):
             'inventory_process_identities':len({(p['pid'],p['start_ticks']) for row in rows for p in row['processes']}),
             'vanished_during_inventory':sum(len(row['vanished_during_inventory']) for row in rows),
             'collector_cpu_seconds':last['collector_cpu_seconds']-first['collector_cpu_seconds'],
-            'collector_cpu_scope':'root-controller-process-only; helpers remain in UID totals',
-            'pss_scope':'observed-live-processes; non-atomic inventory intervals retained',
+            'collector_cpu_scope':'root-controller-process-only; registered launch transport separately observed',
+            'collector_transport_samples':len(transport_rows),
+            'collector_transport_pss_mib_max':max((r['pss_kib']/1024 for r in transport_rows),default=None),
+            'collector_transport_cpu_seconds_observed':((transport_rows[-1]['cpu_ticks']-transport['initial_cpu_ticks'])/rows[0]['clock_ticks_per_second']
+                                                       if transport_rows else None),
+            'collector_transport_cpu_scope':'observed-live-client-only; exit CPU may be missing; not subtracted',
+            'collector_transport_in_uid_cpu_totals':(transport['cgroup'].startswith(f'0::/user.slice/user-{uid}.slice/')
+                                                     if transport else None),
+            'pss_scope':'observed-live-session-and-workload-PIDs; registered-controller-transport-separate; non-atomic inventory',
             'maximum_inventory_span_ms':max(row['end_monotonic_ns']-row['begin_monotonic_ns'] for row in rows)/1e6,
             'shared_system_services':'not-attributed','gpu':'unsupported','energy':'unsupported',
             'capture_enabled':False,'estimated_collector_cost_subtracted':False}

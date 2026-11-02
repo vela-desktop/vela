@@ -627,7 +627,7 @@ for reuse decisions, timing limitations and the P4 implementation order.
 
 ## P4 scaling pattern and session resources
 
-The fixed `p4-pattern-resources-v2` workloads now run through `run` with
+The fixed `p4-pattern-resources-v3` workloads now run through `run` with
 independent `scaling` and `overhead` selections. They use the same isolated
 sessions, immutable block receipts, three repetitions/default or one/`--fast`,
 checkpoint/resume, hardware restoration and raw-data re-audit. Physical TTY
@@ -672,8 +672,9 @@ offscreen pixels are measured outcomes: a completed instrument run can report
 nonzero errors. Wrong scale/backend/identity/state, truncated PNGs or failed
 restoration invalidate the run. Scale 1 is restored before normal teardown,
 including after a failed case; PID 1 retains the overall recovery responsibility.
-Version 2 corrects the former shared Vela shortcut mapping. Changed source,
-instrument and specification identities require a new campaign; failed version 1
+Version 2 corrected the former shared Vela shortcut mapping; version 3 separates
+the root controller's launch client from session resources. Changed source,
+instrument and specification identities require a new campaign; older failed
 campaigns remain failed and are not resumed with the new workload.
 
 `overhead` does not run input, presentation or capture calibration. It waits
@@ -688,6 +689,15 @@ outside the compositor child tree; process identity is PID plus start time.
 Workload/service membership is retained separately, as are vanished processes
 and non-atomic inventory intervals. Root-controller CPU is reported without
 subtracting estimated collector costs; user-unit helpers remain in UID totals.
+The waiting `systemd-run` client inherits the controller's cgroup even after
+`setpriv` changes its UID. Register that exact direct child before sampling;
+verify PID/start time, parent PID, cgroup and complete command line. Its PSS and
+observed CPU ticks are retained separately as collector transport evidence,
+with an explicit flag indicating whether its CPU lies inside the UID counter.
+Tick observations can miss exit CPU and are not a complete transport CPU total.
+No cost is subtracted. An unrelated process with the same name or cgroup is
+still refused; PID reuse, migration or command changes also invalidate data.
+Boundary errors now include the offending PID, start time, name and cgroup.
 Missing PSS/cgroup access fails explicitly. GPU/energy are `unsupported`, not
 zero; shared system services are not attributed to the desktop.
 
@@ -927,4 +937,15 @@ gettys, desktop sessions or system services:
 
 ```sh
 python3 benchmarks/tests/vt_integration.py
+```
+
+The resource transport integration starts a randomized user service that only
+reports its PID and sleeps for three seconds. It verifies the live waiting
+client, separate workload cgroup, exact transport identity, PSS separation and
+raw metric recomputation. Only those two owned PIDs are inventoried. The
+root-controller cgroup case is covered by CPU fixtures; this unprivileged test
+uses the caller's user manager and does not qualify physical session resources:
+
+```sh
+python3 benchmarks/tests/resource_integration.py
 ```
