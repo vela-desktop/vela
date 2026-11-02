@@ -35,6 +35,7 @@ fi
 lsmod | grep -E '^nvidia' || true
 echo "nvidia_drm modeset: $(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null || echo 'module not loaded')"
 dpkg -l 2>/dev/null | awk '/nvidia|libnvidia/ {print $2, $3}' | head -40
+ls /usr/lib/x86_64-linux-gnu/libnvidia-* /usr/lib/libnvidia-* 2>/dev/null | head -40
 
 section "Render nodes"
 ls -l /dev/dri 2>/dev/null || echo "no /dev/dri"
@@ -57,9 +58,14 @@ ls -l /usr/lib/x86_64-linux-gnu/gbm 2>/dev/null || echo "no GBM backend director
 
 section "Host packages"
 export DEBIAN_FRONTEND=noninteractive
-"${sudo[@]}" apt-get update -qq
-"${sudo[@]}" apt-get install -y -qq vulkan-tools libgbm-dev gcc pciutils >/dev/null \
-    && echo "installed vulkan-tools libgbm-dev gcc" || echo "apt-get install FAILED"
+if command -v pacman >/dev/null; then
+    "${sudo[@]}" pacman -Sy --noconfirm --needed vulkan-tools mesa gcc pciutils >/dev/null \
+        && echo "installed vulkan-tools mesa gcc" || echo "pacman install FAILED"
+else
+    "${sudo[@]}" apt-get update -qq
+    "${sudo[@]}" apt-get install -y -qq vulkan-tools libgbm-dev gcc pciutils >/dev/null \
+        && echo "installed vulkan-tools libgbm-dev gcc" || echo "apt-get install FAILED"
+fi
 
 section "Host Vulkan"
 vulkaninfo --summary 2>&1 | tee /tmp/vk-host.txt | head -80
@@ -74,6 +80,19 @@ if [[ -n $render_node ]] && gcc -O2 -o /tmp/gbm-probe "$here/gbm-probe.c" -lgbm;
     /tmp/gbm-probe "$render_node" && note "host GBM: PASS" || note "host GBM: FAIL"
 else
     note "host GBM: not run"
+fi
+
+in_container=false
+if [[ -e /.dockerenv || -e /run/.containerenv ]] || grep -qE 'docker|containerd|kubepods' /proc/1/cgroup 2>/dev/null; then
+    in_container=true
+fi
+note "running in: $([[ $in_container == true ]] && echo container || echo VM) ($ID, NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-unset})"
+# Already in a container, or already on Arch: nothing more to learn from
+# starting an Arch container here.
+if [[ $in_container == true || $ID == arch ]]; then
+    section "Summary"
+    printf '%s\n' "${summary[@]}" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+    exit 0
 fi
 
 section "Container runtime"

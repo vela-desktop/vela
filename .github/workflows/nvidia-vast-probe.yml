@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# Temporary: checks whether Vast.ai VMs (through Cirun) could replace the
-# self-hosted NVIDIA runner. Runs only on pushes to its own branch, which is
-# never merged.
+# Temporary: checks whether Vast.ai machines (through Cirun) could replace
+# the self-hosted NVIDIA runner. Runs only on pushes to its own branch, which
+# is never merged. One machine at a time: the VM starts after the container.
 name: NVIDIA probe (Vast.ai)
 
 on:
@@ -14,13 +14,21 @@ permissions:
   contents: read
 
 jobs:
-  probe:
-    name: Probe ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [cirun-vast-4060ti-cli, cirun-vast-4060ti-desktop]
-    runs-on: "${{ matrix.runner }}--${{ github.run_id }}"
+  arch-container:
+    name: Probe Arch container
+    runs-on: "cirun-vast-4060ti-arch--${{ github.run_id }}"
+    timeout-minutes: 30
+    steps:
+      - name: Fetch the probe
+        run: curl -fsSL "https://github.com/$GITHUB_REPOSITORY/archive/$GITHUB_SHA.tar.gz" | tar -xz --strip-components=1
+      - name: Driver, render node, Vulkan and GBM
+        run: bash .github/nvidia-probe/probe.sh
+
+  ubuntu-vm:
+    name: Probe Ubuntu 24.04 VM
+    needs: arch-container
+    if: ${{ !cancelled() }}
+    runs-on: "cirun-vast-4060ti-vm--${{ github.run_id }}"
     timeout-minutes: 30
     steps:
       # actions/checkout v7 fails with the git of the Vast.ai images (2.34).
