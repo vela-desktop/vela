@@ -1,16 +1,21 @@
 {
-  "collected_at": "2026-11-01T10:27:19+00:00",
+  "collected_at": "2026-11-02T11:04:17+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 59,
+      "count": 63,
       "referrer": "reddit.com",
-      "uniques": 49
+      "uniques": 51
     },
     {
-      "count": 53,
+      "count": 58,
       "referrer": "github.com",
-      "uniques": 24
+      "uniques": 27
+    },
+    {
+      "count": 55,
+      "referrer": "velade.org",
+      "uniques": 51
     },
     {
       "count": 28,
@@ -18,9 +23,14 @@
       "uniques": 25
     },
     {
-      "count": 27,
-      "referrer": "velade.org",
-      "uniques": 24
+      "count": 20,
+      "referrer": "news.ycombinator.com",
+      "uniques": 18
+    },
+    {
+      "count": 3,
+      "referrer": "Google",
+      "uniques": 3
     },
     {
       "count": 2,
@@ -34,12 +44,12 @@
     },
     {
       "count": 1,
-      "referrer": "Google",
+      "referrer": "com.fluxer",
       "uniques": 1
     },
     {
       "count": 1,
-      "referrer": "forum.endeavouros.com",
+      "referrer": "lotusreader.netlify.app",
       "uniques": 1
     }
   ],
