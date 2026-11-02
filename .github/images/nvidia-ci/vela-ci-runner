@@ -17,6 +17,15 @@ if [ -n "$backend" ] && [ "$backend" != /usr/lib/gbm/nvidia-drm_gbm.so ]; then
     ln -sf "$backend" /usr/lib/gbm/nvidia-drm_gbm.so
 fi
 
+# Without NVIDIA's EGL registered with glvnd, Qt's windows draw with Mesa's
+# EGL in software, which no NVIDIA user does.
+vendors=/usr/share/glvnd/egl_vendor.d
+if [ ! -e "$vendors/10_nvidia.json" ] && ldconfig -p | grep -q libEGL_nvidia.so.0; then
+    mkdir -p "$vendors"
+    printf '{"file_format_version": "1.0.0", "ICD": {"library_path": "libEGL_nvidia.so.0"}}\n' \
+        > "$vendors/10_nvidia.json"
+fi
+
 # Some hosts' NVIDIA drivers don't give Vulkan the dmabuf extensions Vela
 # needs (compositor/src/render/vulkan.c). Exit without a runner, so that
 # scripts/vast-runner.py destroys this instance and tries another offer.

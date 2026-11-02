@@ -189,6 +189,13 @@ jobs:
               sys.exit(1)
           PY
 
+          # Qt's windows must draw with NVIDIA's EGL, as for NVIDIA's users.
+          ls /usr/share/glvnd/egl_vendor.d /usr/share/egl/egl_external_platform.d
+          test -e /usr/share/glvnd/egl_vendor.d/10_nvidia.json \
+            || { echo "::error::NVIDIA's EGL isn't registered with glvnd"; exit 1; }
+          ls /usr/share/egl/egl_external_platform.d | grep -q wayland \
+            || { echo "::error::No EGL Wayland platform for NVIDIA (egl-wayland)"; exit 1; }
+
           # Buffers come from GBM: with Mesa's backend instead of NVIDIA's,
           # every allocation fails and so does every test.
           python3 - <<'PY'

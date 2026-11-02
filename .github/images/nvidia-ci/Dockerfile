@@ -17,8 +17,9 @@ RUN pacman -Syu --noconfirm --needed \
         pipewire wireplumber systemd-libs \
     # What the GPU suites run against (docs/ci-quality.md).
         breeze-icons noto-fonts python-dbus python-gobject dbus glib2 xorg-xrandr xorg-xrdb xorg-xprop \
-    # NVIDIA's Vulkan ICD needs libXext and libglvnd; the driver itself comes from the host.
-        vulkan-tools vulkan-validation-layers libxext libglvnd \
+    # NVIDIA's Vulkan ICD needs libXext and libglvnd, and its EGL needs egl-wayland
+    # for Qt's Wayland windows; the driver itself comes from the host.
+        vulkan-tools vulkan-validation-layers libxext libglvnd egl-wayland \
     # The workflow's options: coverage and the promo smoke test.
         gcovr ffmpeg util-linux \
     # The GitHub Actions runner (.NET): its install script doesn't know pacman.
