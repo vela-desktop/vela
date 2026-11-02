@@ -79,6 +79,34 @@ Item {
             verify(!next.visible)
         }
 
+        function test_update_available_can_be_rechecked() {
+            const recheck = find("recheck")
+            verify(!recheck.visible)
+            Updates.status = "update-available"
+            verify(recheck.visible)
+            compare(recheck.text, "Check again")
+            verify(recheck.enabled)
+            click(recheck)
+            compare(Updates.calls, ["check"])
+
+            // No second check can start while the daemon is already busy.
+            Updates.activity = "checking"
+            verify(!recheck.enabled)
+            click(recheck)
+            compare(Updates.calls, ["check"])
+            Updates.activity = "installing"
+            verify(!recheck.enabled)
+            Updates.activity = "idle"
+
+            // When the newest commit is already installed, one action remains.
+            Updates.status = "up-to-date"
+            verify(!recheck.visible)
+            compare(button().text, "Check for updates")
+            Updates.available = false
+            Updates.status = "update-available"
+            verify(!recheck.visible)
+        }
+
         function test_update_available_installs() {
             Updates.status = "update-available"
             Updates.version = "0.1.1"
