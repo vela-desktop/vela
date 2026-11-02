@@ -136,6 +136,9 @@ jobs:
           # Diagnostic-only counters: no change to GPU test scheduling or assertions.
           echo "VELA_FUNCTIONAL_PROFILE=1" >> "$GITHUB_ENV"
           echo "VELA_GPU_EXPECT_VENDOR=0x10de" >> "$GITHUB_ENV"
+          # Rented hosts have slow server CPUs: tests wait three times longer
+          # and capture throughput floors are skipped (the AMD runner checks them).
+          echo "VELA_TEST_TIME_SCALE=3" >> "$GITHUB_ENV"
           # Thirty Vulkan teardown cycles with validation on actual NVIDIA hardware.
           echo "VELA_SHUTDOWN_STRESS_CYCLES=30" >> "$GITHUB_ENV"
           echo "VELA_SHUTDOWN_VALIDATE=1" >> "$GITHUB_ENV"

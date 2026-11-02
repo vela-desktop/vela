@@ -23,7 +23,7 @@ import tempfile
 import time
 import unittest
 
-from harness import BUILD, Session, TimeoutError
+from harness import BUILD, TIME_SCALE, Session, TimeoutError
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROMPT = os.path.join(BUILD, "polkit", "vela-polkit-prompt")
@@ -73,7 +73,7 @@ class Prompt:
         return self.vela.wait_for(dialog_shown, what="the dialog with the keyboard")
 
     def read_line(self, timeout=3.0):
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         while b"\n" not in self.pending:
             left = deadline - time.monotonic()
             if left <= 0 or not select.select([self.process.stdout], [], [], left)[0]:

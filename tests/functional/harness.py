@@ -30,6 +30,9 @@ import zlib
 _PROFILE = os.environ.get("VELA_FUNCTIONAL_PROFILE") == "1"
 _WAYLAND_TRACE = re.compile(r"\[\d{2}:\d{2}:\d{2}\.\d{6}\] ")
 _METRICS = {}
+# Hosts with slow CPUs (the rented GPU CI's) wait this many times longer for
+# what the tests expect to happen; what they check stays the same.
+TIME_SCALE = float(os.environ.get("VELA_TEST_TIME_SCALE") or 1)
 
 
 def _profile(metric, duration):
@@ -207,7 +210,7 @@ class Session:
             return log.read()
 
     def wait_for_log(self, needle, extract=lambda line: line, timeout=15):
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         while time.monotonic() < deadline:
             for line in self.log_text().splitlines():
                 if needle in line:
@@ -241,7 +244,7 @@ class Session:
 
     def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05):
         """Waits until condition(state) is true; returns the state."""
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         last = None
         while time.monotonic() < deadline:
             last = self.state() if read_state else None
@@ -337,7 +340,7 @@ class Session:
         def geometry():
             window = self.state().window(identifier)
             return (window["x"], window["y"], window["w"], window["h"])
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         last = geometry()
         still_since = time.monotonic()
         while time.monotonic() < deadline:
@@ -408,7 +411,7 @@ class FakeShell:
     def wait_for(self, prefix, timeout=5.0, containing=""):
         """The last line starting with `prefix` (and `containing` that), as
         soon as it arrives."""
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         while time.monotonic() < deadline:
             lines = [line for line in self.received(prefix) if containing in line]
             if lines:

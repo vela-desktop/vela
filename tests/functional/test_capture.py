@@ -17,11 +17,13 @@ import threading
 import time
 import unittest
 
-from harness import Session, tool
+from harness import TIME_SCALE, Session, tool
 
 # GPU CI's coverage mode: an unoptimized build with gcov counters measures
 # the instrumentation, not the capture path, so throughput floors don't apply.
-INSTRUMENTED = os.environ.get("VELA_GPU_COVERAGE") == "1"
+# Neither do they on a host slow enough to need longer waits: it measures its
+# CPU.
+INSTRUMENTED = os.environ.get("VELA_GPU_COVERAGE") == "1" or TIME_SCALE > 1
 
 
 class Captures(unittest.TestCase):
