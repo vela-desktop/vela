@@ -3,13 +3,12 @@
 
 # The NVIDIA GPU CI runner (gpu-nvidia.yml): a fresh Vast.ai container with
 # one RTX 4060 Ti for each run. Vast gives its containers /dev/dri and the
-# NVIDIA graphics driver. Ubuntu, because both Vast's and Cirun's start-up
-# scripts need apt; 26.10, the release Vela's Ubuntu CI builds on.
+# NVIDIA graphics driver; the image (nvidia-ci-image.yml) has the rest.
 runners:
   - name: vast-4060ti
     cloud: vast_ai
     instance_type: 1xRTX_4060_Ti
-    machine_image: ubuntu:26.10
+    machine_image: ghcr.io/vela-desktop/vela-ci-nvidia:latest
     labels:
       - cirun-vast-4060ti
     extra_config:

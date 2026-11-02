@@ -3,7 +3,7 @@
 
 # Opt-in real-hardware GPU tests. Never run automatically on PRs or pushes.
 # Each run gets a fresh Vast.ai container with one RTX 4060 Ti through Cirun
-# (.cirun.yml): Ubuntu 26.10, where the dependencies are installed first.
+# (.cirun.yml), from the image of nvidia-ci-image.yml.
 name: GPU CI - NVIDIA (manual)
 
 on:
@@ -40,41 +40,6 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      # Vast gives the container the NVIDIA driver, its Vulkan ICD and GBM
-      # backend, and /dev/dri; everything else comes from Ubuntu.
-      - name: Install build and test dependencies
-        shell: bash
-        env:
-          DEBIAN_FRONTEND: noninteractive
-          COLLECT_COVERAGE: ${{ inputs.collect_coverage }}
-          RECORD_PROMO: ${{ inputs.record_promo_smoke }}
-        run: |
-          set -euo pipefail
-          packages=(
-            ca-certificates git build-essential cmake ninja-build pkgconf
-            libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev
-            libpixman-1-dev libinput-dev libgbm-dev libdrm-dev
-            libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev
-            libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev
-            libpolkit-gobject-1-dev zlib1g-dev libgtest-dev libsystemd-dev
-            qt6-base-dev qt6-base-private-dev qt6-declarative-dev
-            qt6-svg-dev qt6-wayland-dev qt6-tools-dev qt6-tools-dev-tools
-            qt6-l10n-tools liblayershellqtinterface-dev
-            libpipewire-0.3-dev libwireplumber-0.5-dev
-            qt6-wayland qt6-svg-plugins layer-shell-qt breeze-icon-theme
-            qml6-module-qtquick qml6-module-qtquick-controls
-            qml6-module-qtquick-layouts qml6-module-qtqml-workerscript
-            python3 python3-numpy python3-pil python3-dbus dbus dbus-daemon libglib2.0-bin
-            xwayland x11-xserver-utils x11-utils
-            vulkan-tools vulkan-validationlayers libxext6
-          )
-          if [[ "$COLLECT_COVERAGE" == "true" ]]; then packages+=(gcovr); fi
-          if [[ "$RECORD_PROMO" == "true" ]]; then
-            packages+=(ffmpeg pipewire pipewire-bin wireplumber util-linux)
-          fi
-          sudo -n apt-get update -qq
-          sudo -n apt-get install -y -qq --no-install-recommends "${packages[@]}"
-
       - name: Checkout selected revision (without persisting credentials)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
