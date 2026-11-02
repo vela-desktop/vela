@@ -24,10 +24,9 @@ import urllib.request
 
 VAST = "https://console.vast.ai/api"
 GITHUB = "https://api.github.com"
-# Turing and later GeForce cards: the drivers Vulkan 1.4 needs no longer
-# support older ones. The price cap decides among them.
+# GeForce RTX cards, from the RTX 2060 up: the drivers Vulkan 1.4 needs no
+# longer support anything before Turing. The price cap decides among them.
 GPUS = (
-    "GTX 1660", "GTX 1660 S", "GTX 1660 Ti",
     "RTX 2060", "RTX 2060S", "RTX 2070", "RTX 2070S", "RTX 2080", "RTX 2080S", "RTX 2080 Ti",
     "RTX 3050", "RTX 3060", "RTX 3060 Ti", "RTX 3070", "RTX 3070 Ti",
     "RTX 3080", "RTX 3080 Ti", "RTX 3090", "RTX 3090 Ti",
@@ -79,7 +78,7 @@ def suitable(offer, max_price, gpu=None):
             and offer.get("gpu_name") in ((gpu,) if gpu else GPUS)
             and offer.get("dph_total", float("inf")) <= max_price
             and offer.get("verification") == "verified"
-            and offer.get("reliability2", 0) >= 0.98
+            and offer.get("reliability2", 0) >= 0.95
             and offer.get("disk_space", 0) >= DISK_GB
             and offer.get("cpu_cores_effective", 0) >= 8
             and offer.get("cpu_ram", 0) >= 16000

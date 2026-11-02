@@ -32,17 +32,21 @@ class ChooseTests(unittest.TestCase):
 
     def test_rejects_what_cannot_run_the_suite(self):
         for bad in (offer(gpu_name="GTX 1080"),  # Pascal
+                    offer(gpu_name="GTX 1660 S"),  # below an RTX 2060
                     offer(driver_version="550.120"),  # no Vulkan 1.4
                     offer(driver_version=""),
                     offer(cpu_cores_effective=1.5),
                     offer(cpu_ram=8000),
                     offer(gpu_ram=4096),
                     offer(disk_space=20),
-                    offer(reliability2=0.95),
+                    offer(reliability2=0.94),
                     offer(verification="unverified"),
                     offer(inet_down=50)):
             with self.subTest(bad=bad):
                 self.assertFalse(m.suitable(bad, 0.12))
+
+    def test_reliability_floor(self):
+        self.assertTrue(m.suitable(offer(reliability2=0.95), 0.12))
 
     def test_chosen_gpu(self):
         offers = [offer(id=1, gpu_name="RTX 3060", dph_total=0.06), offer(id=2, gpu_name="RTX 4060")]
