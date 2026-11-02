@@ -44,7 +44,7 @@ jobs:
             for tool in sudo curl git cmake ninja vulkaninfo Xwayland xrandr xrdb xprop dbus-daemon gdbus; do
               command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
             done
-            python3 -c "import numpy, PIL, dbus"
+            python3 -c "import numpy, PIL, dbus; from gi.repository import GLib"
             id runner && test -x /usr/local/bin/vela-ci-runner
             pkg-config --modversion wlroots-0.20 vulkan'
       - name: Publish

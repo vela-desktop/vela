@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         qt6-wayland qt6-svg-plugins layer-shell-qt breeze-icon-theme \
         qml6-module-qtquick qml6-module-qtquick-controls \
         qml6-module-qtquick-layouts qml6-module-qtqml-workerscript \
-        python3 python3-numpy python3-pil python3-dbus dbus dbus-daemon libglib2.0-bin \
+        python3 python3-numpy python3-pil python3-dbus python3-gi dbus dbus-daemon libglib2.0-bin \
         xwayland x11-xserver-utils x11-utils \
     # NVIDIA's Vulkan ICD needs libXext.
         vulkan-tools vulkan-validationlayers libxext6 \
