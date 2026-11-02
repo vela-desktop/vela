@@ -7,7 +7,7 @@ import Vela.Updates
 
 // The top of System > Updates (docs/updates.md §9.1): the state in words,
 // when it was last checked and the button: "Check for updates", or "Install
-// now" when there is an update. Below: "Sign out to finish updating", the
+// now" alongside "Check again" when there is an update. Below: "Sign out to finish updating", the
 // last check's failure beside the last completed check, the last install's
 // failure while nothing happened since, and a refusal.
 Card {
@@ -80,13 +80,29 @@ Card {
         : ""
     minimumHeight: 80
 
-    trailing: Button {
-        objectName: "action"
-        visible: Updates.available
-        text: card.hasUpdate ? qsTr("Install now") : qsTr("Check for updates")
-        accent: card.hasUpdate
-        usable: !Updates.busy
-        onClicked: card.hasUpdate ? Updates.install({}) : Updates.check()
+    trailing: Row {
+        spacing: 8
+
+        // An available update can become outdated before installation.
+        // Checking again refreshes the proposed commit and release notes
+        // without installing anything or changing the automatic schedule.
+        Button {
+            objectName: "recheck"
+            visible: Updates.available && card.hasUpdate
+            icon.name: "view-refresh"
+            text: qsTr("Check again")
+            usable: !Updates.busy
+            onClicked: Updates.check()
+        }
+
+        Button {
+            objectName: "action"
+            visible: Updates.available
+            text: card.hasUpdate ? qsTr("Install now") : qsTr("Check for updates")
+            accent: card.hasUpdate
+            usable: !Updates.busy
+            onClicked: card.hasUpdate ? Updates.install({}) : Updates.check()
+        }
     }
 
     contentItem: Column {
