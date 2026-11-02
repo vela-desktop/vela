@@ -350,7 +350,10 @@ Top card, after Windows Update:
   installed from a package";
 - "Last checked: today, 10:24";
 - the button: "Check for updates", or "Install now" (accent) when there is
-  an update; disabled while busy;
+  an update. When an update is already available, "Check again" remains
+  beside "Install now" so users can refresh the offered commit and changes
+  without installing the older result or waiting for the automatic timer.
+  Both actions are disabled while busy;
 - "Sign out to finish updating" when `NeedsRelogin`;
 - the last check's failure, below the last completed check;
 - the last install's failure, if it was the last thing that happened: no
