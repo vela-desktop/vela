@@ -1,37 +1,32 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# Temporary: on-demand Vast.ai VMs with an Ada GPU, to find out whether
+# Temporary: on-demand Vast.ai VMs with an RTX 4060 Ti, to find out whether
 # they can replace the self-hosted NVIDIA runner. Two VM images, since we
-# don't yet know which one ships a driver with Vulkan and GBM. Few hosts
-# rent their GPUs as VMs, so Cirun tries the cheapest first, then the next.
+# don't yet know which one ships a driver with Vulkan and GBM. The second
+# spelling of the GPU is in case Cirun only turns the first underscore into
+# a space: it found no offer for 1xRTX_4060_Ti while Vast listed some.
 runners:
-  - name: vast-ada-cli
+  - name: vast-4060ti-cli
     cloud: vast_ai
     instance_type:
       - 1xRTX_4060_Ti
-      - 1xRTX_4070
-      - 1xRTX_4070_Ti
-      - 1xRTX_4080
-      - 1xRTX_4090
+      - 1xRTX 4060 Ti
     machine_image: vastai/kvm:ubuntu_cli_22.04-2025-11-21
     labels:
-      - cirun-vast-ada-cli
+      - cirun-vast-4060ti-cli
     extra_config:
       disk_space: 60
       min_ram: 16
       vm: true
-  - name: vast-ada-desktop
+  - name: vast-4060ti-desktop
     cloud: vast_ai
     instance_type:
       - 1xRTX_4060_Ti
-      - 1xRTX_4070
-      - 1xRTX_4070_Ti
-      - 1xRTX_4080
-      - 1xRTX_4090
+      - 1xRTX 4060 Ti
     machine_image: vastai/kvm:ubuntu_desktop_24.04-2025-11-24
     labels:
-      - cirun-vast-ada-desktop
+      - cirun-vast-4060ti-desktop
     extra_config:
       disk_space: 60
       min_ram: 16
