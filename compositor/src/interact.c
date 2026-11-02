@@ -26,6 +26,7 @@
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/edges.h>
@@ -312,16 +313,25 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
     vela_input_constrain(input, hit.surface);
 }
 
+// Locked by an app (a game): no motion reaches it, and the pointer stays on
+// it, as when the mouse moves (input.c, constrain_motion()).
+static bool pointer_locked(struct vela_server *server)
+{
+    struct wlr_pointer_constraint_v1 *constraint = server->input->active_constraint;
+    return constraint && constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED
+        && server->seat->pointer_state.focused_surface == constraint->surface;
+}
+
 void vela_interact_rebase(struct vela_server *server)
 {
     struct vela_interaction *interaction = server->interaction;
     struct wlr_cursor *cursor = server->cursor;
     struct wlr_seat *seat = server->seat;
-    // Only a pointer at rest: a press, a drag or a Move/Size keeps what it
-    // started on, and the lock screen retargets its own (lock.c).
+    // Only a pointer at rest: a press, a drag, a Move/Size and a pointer an app
+    // locked keep their target; the lock screen retargets its own (lock.c).
     if (server->locked || server->cursor_mode != VELA_CURSOR_PASSTHROUGH || interaction->keyboard.view
         || seat->pointer_state.button_count > 0 || seat->drag || wlr_seat_pointer_has_grab(seat)
-        || server->input->implicit_grab.surface) {
+        || server->input->implicit_grab.surface || pointer_locked(server)) {
         return;
     }
     // What vela_interact_motion() would choose here, without telling the apps
@@ -497,7 +507,7 @@ void vela_interact_button(struct vela_server *server, struct wlr_pointer_button_
         // All buttons released: the pointer goes back to what's under it.
         if (input->implicit_grab.surface && seat->pointer_state.button_count == 0) {
             memset(&input->implicit_grab, 0, sizeof(input->implicit_grab));
-            if (server->cursor_mode == VELA_CURSOR_PASSTHROUGH) {
+            if (server->cursor_mode == VELA_CURSOR_PASSTHROUGH && !pointer_locked(server)) {
                 vela_interact_motion(server, event->time_msec);
             }
         }

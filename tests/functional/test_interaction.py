@@ -177,6 +177,31 @@ class Interaction(unittest.TestCase):
             press = tuple(map(int, f.readline().split()))
         self.assertEqual(press, (x - left, y - top - 32, x, y))
 
+    def test_locked_pointer_stays_with_its_app(self):
+        # A game locking the pointer: what opens over it doesn't take the
+        # pointer away, as moving the mouse wouldn't. Let go, the pointer goes
+        # to what is there now.
+        log = self.client_log()
+        game = self.vela.open_window(command=[tool("vela-pattern"), "--lock-pointer", "500", "400"])
+        self.vela.wait_still(game)
+        px, py = self.center(game)
+        self.vela.input("move", px, py)
+        self.wait_click(log, lambda text: "vela-pattern: pointer-locked" in text.splitlines())
+        window, above = self.pattern_clicks(300, 200)
+        self.vela.wait_still(window)
+        x, y, w, h = self.frame(window)
+        self.assertTrue(x <= px < x + w and y <= py < y + h, "the window opens under the pointer")
+        self.click_reaches(log, self.pattern_click())
+        with open(log, encoding="utf-8") as f:
+            self.assertNotIn("vela-pattern: pointer-unlocked", f.read().splitlines())
+        with open(above, encoding="utf-8") as f:
+            self.assertFalse([line for line in f.read().splitlines()
+                              if line.startswith("vela-pattern: pointer-button")])
+        # A middle click: the game lets the pointer go.
+        self.vela.input("click", "middle")
+        self.wait_click(log, lambda text: "vela-pattern: pointer-released" in text.splitlines())
+        self.click_reaches(above, self.pattern_click())
+
     def test_pointer_follows_a_window_closing_above(self):
         window, log = self.pattern_clicks(500, 400)
         above = self.vela.open_window(300, 200)
