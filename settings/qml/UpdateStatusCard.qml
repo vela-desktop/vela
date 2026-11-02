@@ -85,7 +85,7 @@ Card {
 
         // An available update can become outdated before installation.
         // Checking again refreshes the proposed commit and release notes
-        // without installing anything or changing the automatic schedule.
+        // without installing anything. The daemon schedules the next automatic check.
         Button {
             objectName: "recheck"
             visible: Updates.available && card.hasUpdate
