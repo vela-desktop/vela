@@ -34,7 +34,8 @@
 // the clicks go).
 // --lock-pointer: locks the pointer (pointer-constraints) once it enters the
 // window, as games do, and logs "vela-pattern: pointer-locked" and
-// "vela-pattern: pointer-unlocked"; implies --log-pointer.
+// "vela-pattern: pointer-unlocked"; a middle click lets the pointer go (the
+// lock is destroyed). Implies --log-pointer.
 
 #define _GNU_SOURCE
 #include <math.h>
@@ -100,6 +101,7 @@ static int lockPointer;
 static struct wl_seat* seat;
 static struct zwp_pointer_constraints_v1* pointerConstraints;
 static struct zwp_locked_pointer_v1* lockedPointer;
+static int lockReleased; // let go: not locked again
 
 static struct wl_surface* pointerSurface; // the one the pointer entered
 
@@ -118,7 +120,7 @@ static void onPointerEnter(void* data, struct wl_pointer* pointer, uint32_t seri
 {
     pointerSurface = entered;
     // Like a game: once the pointer is on the window, it stays there.
-    if (lockPointer && pointerConstraints && !lockedPointer && entered == surface) {
+    if (lockPointer && pointerConstraints && !lockedPointer && !lockReleased && entered == surface) {
         lockedPointer = zwp_pointer_constraints_v1_lock_pointer(pointerConstraints, surface, pointer, NULL,
             ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
         zwp_locked_pointer_v1_add_listener(lockedPointer, &lockedListener, NULL);
@@ -134,6 +136,12 @@ static void onPointerButton(void* data, struct wl_pointer* pointer, uint32_t ser
 {
     const char* where = !pointerSurface ? "none" : pointerSurface == popupSurface ? "popup" : "window";
     fprintf(stderr, "vela-pattern: pointer-button %u %u %s\n", button, state, where);
+    if (lockedPointer && button == 0x112 && state == WL_POINTER_BUTTON_STATE_RELEASED) { // BTN_MIDDLE
+        zwp_locked_pointer_v1_destroy(lockedPointer);
+        lockedPointer = NULL;
+        lockReleased = 1;
+        fprintf(stderr, "vela-pattern: pointer-released\n");
+    }
 }
 static void onPointerAxis(void* data, struct wl_pointer* pointer, uint32_t time, uint32_t axis, wl_fixed_t value) { }
 
