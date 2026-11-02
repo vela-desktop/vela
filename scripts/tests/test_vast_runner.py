@@ -22,6 +22,16 @@ class ChooseTests(unittest.TestCase):
         offers = [offer(id=1, dph_total=0.11), offer(id=2, dph_total=0.07), offer(id=3, dph_total=0.09)]
         self.assertEqual([o["id"] for o in m.choose(offers, 0.12)], [2, 3, 1])
 
+    def test_newer_drivers_first(self):
+        offers = [offer(id=1, dph_total=0.07, driver_version="580.173.02"),
+                  offer(id=2, dph_total=0.10, driver_version="595.84"),
+                  offer(id=3, dph_total=0.08, driver_version="570.133.20")]
+        self.assertEqual([o["id"] for o in m.choose(offers, 0.12)], [2, 1, 3])
+
+    def test_tried_machines_are_skipped(self):
+        offers = [offer(id=1, machine_id=10), offer(id=2, machine_id=20, dph_total=0.09)]
+        self.assertEqual([o["id"] for o in m.choose(offers, 0.12, tried={10})], [2])
+
     def test_only_one_gpu(self):
         # Cirun rented 2x and 4x offers for "1x": never again.
         self.assertEqual(m.choose([offer(num_gpus=2), offer(num_gpus=4)], 0.12), [])

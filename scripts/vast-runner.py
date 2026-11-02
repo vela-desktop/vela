@@ -36,8 +36,11 @@ GPUS = (
 )
 DISK_GB = 40
 MIN_DRIVER = 570  # Vulkan 1.4
-ATTEMPTS = 4
-ONLINE_TIMEOUT = 15 * 60
+# A host with driver 580.173 gave Vulkan no dmabuf extensions, one with
+# 595.84 did: newer drivers are tried first, still under the price cap.
+PREFERRED_DRIVER = 590
+ATTEMPTS = 5
+ONLINE_TIMEOUT = 12 * 60
 
 
 def request(method, url, headers, body=None):
@@ -87,8 +90,9 @@ def suitable(offer, max_price, gpu=None):
             and driver_major(offer) >= MIN_DRIVER)
 
 
-def choose(offers, max_price, gpu=None):
-    return sorted((o for o in offers if suitable(o, max_price, gpu)), key=lambda o: o["dph_total"])
+def choose(offers, max_price, gpu=None, tried=()):
+    fitting = (o for o in offers if suitable(o, max_price, gpu) and o.get("machine_id") not in tried)
+    return sorted(fitting, key=lambda o: (driver_major(o) < PREFERRED_DRIVER, o["dph_total"]))
 
 
 def search(max_price, gpu=None):
@@ -127,8 +131,9 @@ def stop(org, label):
 
 
 def wait_online(org, runner_id, instance_id):
-    deadline = time.monotonic() + ONLINE_TIMEOUT
-    while time.monotonic() < deadline:
+    start = time.monotonic()
+    last = None
+    while time.monotonic() - start < ONLINE_TIMEOUT:
         if github("GET", f"/orgs/{org}/actions/runners/{runner_id}").get("status") == "online":
             return True
         state = next((i for i in vast("GET", "/v1/instances/").get("instances", [])
@@ -136,20 +141,29 @@ def wait_online(org, runner_id, instance_id):
         if state is None or state.get("actual_status") in ("exited", "offline"):
             print(f"Instance {instance_id} stopped: {state and state.get('status_msg')}")
             return False
+        now = (state.get("actual_status"), (state.get("status_msg") or "").strip()[:100])
+        if now != last:
+            print(f"  {int(time.monotonic() - start)} s: {now[0]}, {now[1]}", flush=True)
+            last = now
         time.sleep(15)
     print(f"Runner not online after {ONLINE_TIMEOUT // 60} minutes")
     return False
 
 
 def start(org, label, image, runner_version, max_price, gpu, output):
-    candidates = choose(search(max_price, gpu), max_price, gpu)
-    if not candidates:
-        sys.exit(f"No single {gpu or 'Turing or later GeForce'} offer under ${max_price}/h fits")
-    for attempt, offer in enumerate(candidates[:ATTEMPTS], 1):
+    tried = set()
+    for attempt in range(1, ATTEMPTS + 1):
+        # Offers come and go: search again for every attempt.
+        candidates = choose(search(max_price, gpu), max_price, gpu, tried)
+        if not candidates:
+            sys.exit(f"No single {gpu or 'RTX'} offer under ${max_price}/h fits"
+                     + (f" after {attempt - 1} attempts" if tried else ""))
+        offer = candidates[0]
+        tried.add(offer.get("machine_id"))
         name = f"{label}-{attempt}"
         summary = (f"{offer['gpu_name']}, ${offer['dph_total']:.3f}/h, {offer.get('geolocation')}, "
                    f"driver {offer.get('driver_version')}, {offer['cpu_cores_effective']:g} CPUs")
-        print(f"Attempt {attempt}: offer {offer['id']} ({summary})")
+        print(f"Attempt {attempt}: offer {offer['id']} ({summary})", flush=True)
         jit = github("POST", f"/orgs/{org}/actions/runners/generate-jitconfig", {
             "name": name, "runner_group_id": 1, "labels": [label], "work_folder": "_work"})
         try:
@@ -175,7 +189,7 @@ def start(org, label, image, runner_version, max_price, gpu, output):
                     out.write(f"gpu={summary}\n")
             return
         stop(org, name)
-    sys.exit(f"No runner came online after {min(len(candidates), ATTEMPTS)} offers")
+    sys.exit(f"No runner came online after {ATTEMPTS} offers")
 
 
 def main():

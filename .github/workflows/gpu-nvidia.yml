@@ -44,7 +44,7 @@ jobs:
     name: Rent a Vast.ai GPU
     runs-on: ubuntu-latest
     environment: gpu-nvidia
-    timeout-minutes: 25
+    timeout-minutes: 65
     outputs:
       gpu: ${{ steps.rent.outputs.gpu }}
     steps:
