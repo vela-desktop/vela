@@ -1,18 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# The container of the NVIDIA GPU CI (gpu-nvidia.yml), started on Vast.ai by
-# Cirun (.cirun.yml). Vast adds the NVIDIA driver, its Vulkan ICD and GBM
+# The container of the NVIDIA GPU CI (gpu-nvidia.yml), rented on Vast.ai by
+# scripts/vast-runner.py. Vast adds the NVIDIA driver, its Vulkan ICD and GBM
 # backend, and /dev/dri; this image has everything else.
 FROM ubuntu:26.10
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Vast's start-up script runs sshd and Cirun's creates the runner's user with
-# adduser and gives it sudo: the minimal Ubuntu image has none of them.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        adduser sudo openssh-server openssh-client ca-certificates curl wget \
-        git rsync less locales tar \
+        sudo ca-certificates curl git tar \
     # Build dependencies, as in ubuntu.yml.
         build-essential cmake ninja-build pkgconf \
         libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
@@ -35,3 +32,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # The workflow's options: coverage and the promo smoke test.
         gcovr ffmpeg pipewire pipewire-bin wireplumber util-linux \
     && rm -rf /var/lib/apt/lists/*
+
+# The libraries of the GitHub Actions runner: its own script knows them. The
+# runner itself is downloaded at start, at the version GitHub wants then.
+ARG RUNNER_VERSION=2.336.0
+RUN mkdir /tmp/runner && cd /tmp/runner \
+    && curl -fsSL "https://github.com/actions/runner/releases/download/v$RUNNER_VERSION/actions-runner-linux-x64-$RUNNER_VERSION.tar.gz" | tar -xz \
+    && ./bin/installdependencies.sh \
+    && cd / && rm -rf /tmp/runner /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /bin/bash runner \
+    && echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner \
+    && chmod 440 /etc/sudoers.d/runner
+COPY --chmod=755 vela-ci-runner /usr/local/bin/vela-ci-runner
+CMD ["/usr/local/bin/vela-ci-runner"]

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Opt-in real-hardware GPU tests. Never run automatically on PRs or pushes.
-# Each run gets a fresh Vast.ai container with one RTX 4060 Ti through Cirun
-# (.cirun.yml), from the image of nvidia-ci-image.yml.
+# Each run rents a fresh single-GPU Vast.ai container (scripts/vast-runner.py)
+# from the image of nvidia-ci-image.yml, and destroys it at the end.
 name: GPU CI - NVIDIA (manual)
 
 on:
@@ -25,6 +25,10 @@ on:
         description: With tests, only the Python test methods whose names contain this (like unittest -k)
         type: string
         default: ''
+      gpu:
+        description: Rent this GPU (e.g. RTX 3060) instead of the cheapest that fits
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -34,12 +38,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The Vast key and the GitHub App that registers runners stay in this
+  # environment, on GitHub's machines; the rented one never sees them.
+  start-runner:
+    name: Rent a Vast.ai GPU
+    runs-on: ubuntu-latest
+    environment: gpu-nvidia
+    timeout-minutes: 25
+    outputs:
+      gpu: ${{ steps.rent.outputs.gpu }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Token for the organization's runners
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.VELA_RUNNER_APP_ID }}
+          private-key: ${{ secrets.VELA_RUNNER_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-organization-self-hosted-runners: write
+      - name: Rent the cheapest fitting GPU and start a runner on it
+        id: rent
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+          GPU: ${{ inputs.gpu }}
+          ORG: ${{ github.repository_owner }}
+          LABEL: vela-vast-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          version=$(gh api repos/actions/runner/releases/latest --jq '.tag_name | ltrimstr("v")')
+          python3 scripts/vast-runner.py start --org "$ORG" --label "$LABEL" --gpu "$GPU" \
+            --image "ghcr.io/$ORG/vela-ci-nvidia:latest" --runner-version "$version" --max-price 0.12
+
   gpu-nvidia:
     name: NVIDIA functional and sharpness tests
-    runs-on: "cirun-vast-4060ti--${{ github.run_id }}"
+    needs: start-runner
+    runs-on: vela-vast-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 90
 
     steps:
+      - name: Rented GPU
+        env:
+          GPU: ${{ needs.start-runner.outputs.gpu }}
+        run: echo "Rented on Vast.ai - $GPU" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Checkout selected revision (without persisting credentials)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -282,6 +326,32 @@ jobs:
             ${{ runner.temp }}/vela-nvidia-ctest.log
             ${{ runner.temp }}/vela-nvidia-junit.xml
             ${{ runner.temp }}/vela-gpu-build/Testing/Temporary/LastTest.log
+
+  stop-runner:
+    name: Destroy the Vast.ai GPU
+    needs: [start-runner, gpu-nvidia]
+    if: always()
+    runs-on: ubuntu-latest
+    environment: gpu-nvidia
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Token for the organization's runners
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.VELA_RUNNER_APP_ID }}
+          private-key: ${{ secrets.VELA_RUNNER_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-organization-self-hosted-runners: write
+      - name: Destroy every instance and runner of this run
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+          ORG: ${{ github.repository_owner }}
+          LABEL: vela-vast-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 scripts/vast-runner.py stop --org "$ORG" --label "$LABEL"
 
   publish-nvidia-coverage:
     name: Codecov NVIDIA upload (GitHub hosted)

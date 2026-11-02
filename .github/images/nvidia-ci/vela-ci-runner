@@ -1,0 +1,19 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# The container's command on Vast.ai: runs one job as the just-in-time runner
+# that scripts/vast-runner.py registered, as the unprivileged user "runner".
+# The workflow destroys the instance afterwards; the timeout is a backstop.
+set -eu
+: "${VELA_RUNNER_JITCONFIG:?}" "${VELA_RUNNER_VERSION:?}"
+
+dir=/home/runner/actions-runner
+mkdir -p "$dir"
+curl -fsSL "https://github.com/actions/runner/releases/download/v$VELA_RUNNER_VERSION/actions-runner-linux-x64-$VELA_RUNNER_VERSION.tar.gz" \
+    | tar -xz -C "$dir"
+chown -R runner:runner "$dir"
+
+jit=$VELA_RUNNER_JITCONFIG
+unset VELA_RUNNER_JITCONFIG
+exec timeout 150m sudo -u runner -H sh -c 'cd "$1" && exec ./run.sh --jitconfig "$2"' sh "$dir" "$jit"
