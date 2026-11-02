@@ -36,7 +36,7 @@ block. See [P4 scope](benchmark-suite.md#p4-implementation-and-acceptance-scope)
 The 2026-11-01 benchmark-branch integration includes upstream `efdc9c6`.
 Deferred capture and cooperative GPU-producer dispatches require fresh
 instrument qualification; the older physical acceptance above does not
-qualify this candidate. The [upstream integration review](benchmark-suite.md#upstream-integration-review-2026-11-01)
+qualify this candidate. The [upstream integration review](benchmark-suite.md#upstream-integration-review-2026-11-02)
 records what can be reused for observation, fractional scaling and session
 accounting, and which timing/provenance gaps remain.
 

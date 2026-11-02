@@ -1314,13 +1314,16 @@ Coverage is `partial-pattern-only` / `partial-session-resources`;
 `full_suite_complete` and `performance_comparison_available` stay false.
 See [P4 commands](../benchmarks/README.md#p4-scaling-pattern-and-session-resources).
 
-### Upstream integration review (2026-11-01)
+### Upstream integration review (2026-11-02)
 
-The benchmark branch integrates `main` through `efdc9c6`, including the
+The benchmark branch integrates `main` through `cd5ff9f`, including the
 `v0.1.0` release history. Installed Beta/Experimental artifacts and this source
 checkout are different identities: an archive must describe the executable
 actually run. The following decisions guide the remaining implementation;
-they do not claim that P4 or a new capture backend is already implemented.
+P4's implemented partial scope is described above. The latest pointer-lock
+and visible-resize-border fixes (`#189`, `#192`) also extend `vela-pattern`:
+the benchmark metadata mode remains available, and pointer logging/locking
+stay opt-in rather than changing the fixed P4 stimulus.
 
 | Upstream implementation | Benchmark use | Decision and acceptance work |
 |---|---|---|
@@ -1335,8 +1338,9 @@ they do not claim that P4 or a new capture backend is already implemented.
 | Native Bluetooth and update daemons | P4 full-session resource inventory | Include target services started through the supervisor, D-Bus or user manager, including new helpers outside the compositor child tree. Record their identity/activity and common network/cache conditions. Keep default services active and collector/client costs separate; no live updater or device-pairing action is needed to discover them. |
 
 Implementation order: first requalify the existing instruments against the
-current installed target; next implement P4 pattern/geometry evidence using
-the existing sharpness and X11 oracles, then P4 UID-wide resource sampling.
+current installed target, then accept the initial P4 pattern and UID-wide
+resource workloads on physical outputs. Extend the P4 corpus using the
+existing sharpness and X11 oracles.
 Persistent high-cadence capture and further shell scenes are a separate P3
 extension with a versioned workload, raw timing records, capture-off/on
 controls and a compatible Plasma adapter. Vela-private `state` counters

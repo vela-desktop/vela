@@ -622,7 +622,7 @@ Changed instrument hashes require a new campaign, not resume of an old one.
 
 The new recorder/capture probe are available for development but are not
 installed benchmark instruments or replacements for the declared capture
-routes. See the [upstream integration review](../docs/benchmark-suite.md#upstream-integration-review-2026-11-01)
+routes. See the [upstream integration review](../docs/benchmark-suite.md#upstream-integration-review-2026-11-02)
 for reuse decisions, timing limitations and the P4 implementation order.
 
 ## P4 scaling pattern and session resources
