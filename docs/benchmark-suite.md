@@ -117,6 +117,15 @@ stopping its processes and before profile deletion, without following links
 and with a 128 KiB limit. Missing exit properties are unavailable evidence,
 not evidence of success.
 
+VT reservation masks both exact getty and autovt instance names, preserving
+pre-existing masks. Alias `UnitFileState` is insufficient: it can describe
+the canonical loaded unit while the alias template remains startable. Verify
+the actual masks and inactive/masked states before switching VT; keep
+`StandardInput=tty-fail` to refuse occupied terminals. A failed `systemd-run`
+launch records bounded exit properties/session journal even before session
+stdio exists. Campaign auditing retains that primary error instead of
+requiring a completion receipt from a failed pilot.
+
 Display-manager recovery retries `start-limit-hit` once only when the
 immediately preceding state was verified `inactive` with `Result=success`.
 It journals reset intent and clears only that service's transient counter,

@@ -358,7 +358,30 @@ def session_command(target, vt, record, layout=Layout(), *, directory=None):
     return command + ["/usr/bin/python3", "-I", str(layout.helper), "_session", target]
 
 
-def reserve_vt(host, directory, state):
+def launch_session(host, target, vt, record, layout, directory):
+    began=int(time.time())-1
+    try:
+        host.run(session_command(target,vt,record,layout,directory=directory),timeout=50)
+    except BenchError as exc:
+        evidence={'schema':1,'status':'failed','error':str(exc),'unit':SESSION_UNIT}
+        for name,command in (
+            ('properties',['systemctl','show',SESSION_UNIT,'--property=LoadState','--property=ActiveState',
+                           '--property=Result','--property=ExecMainCode','--property=ExecMainStatus']),
+            ('journal',['journalctl','--no-pager','-b','--unit='+SESSION_UNIT,'--since=@'+str(began),'-n','30','-o','short-precise'])):
+            try:
+                result=host.run(command,check=False,timeout=5)
+                evidence[name]=properties(result.stdout) if name=='properties' else result.stdout[-8192:]
+                if result.returncode: evidence[name+'_error']=getattr(result,'stderr','')[-1000:]
+            except (BenchError,OSError) as diagnostic:
+                evidence[name+'_error']=str(diagnostic)
+        atomic_json(directory/f'{target}-launch-failure.json',evidence)
+        code=evidence.get('properties',{}).get('ExecMainStatus','unavailable')
+        detail=evidence.get('journal','').strip()
+        raise BenchError(f'{target} session launch failed (ExecMainStatus={code}): {exc}'
+                         + ('; session journal: '+detail if detail else '')) from exc
+
+
+def reserve_vt(host, directory, state, layout=Layout()):
     # logind may automatically start a getty when a free VT becomes active.
     # Never vhangup a login prompt or remove a pre-existing administrator mask.
     for name in ("getty", "autovt"):
@@ -366,10 +389,25 @@ def reserve_vt(host, directory, state):
         info = properties(host.run(["systemctl", "show", unit, "--property=ActiveState", "--property=UnitFileState"], check=False).stdout)
         if info.get("ActiveState") not in ("inactive", "failed"):
             raise BenchError(f"Target VT is occupied by {unit}")
-        if info.get("UnitFileState") not in ("masked", "masked-runtime"):
+        # UnitFileState belongs to the loaded canonical unit, not necessarily
+        # to this requested alias name. Masking getty@ttyN can make a query of
+        # autovt@ttyN report masked while its own template still starts a getty.
+        # Preserve explicit administrator masks, but reserve BOTH path names.
+        paths=[layout.path(parent)/unit for parent in ('etc/systemd/system','run/systemd/system')]
+        def masked(path):
+            return ((path.is_symlink() and os.readlink(path)=='/dev/null')
+                    or (not path.is_symlink() and path.is_file() and path.stat().st_size==0))
+        if not any(masked(path) for path in paths):
             state["masked_units"].append(unit)
             update(directory, state, "reserve-vt")
             host.run(["systemctl", "mask", "--runtime", unit])
+            if not masked(paths[1]):
+                raise BenchError(f'Target VT runtime mask was not created for {unit}')
+    for name in ('getty','autovt'):
+        unit=f"{name}@tty{state['target_vt']}.service"
+        info=properties(host.run(['systemctl','show',unit,'--property=LoadState','--property=ActiveState'],check=False).stdout)
+        if info.get('LoadState')!='masked' or info.get('ActiveState') not in ('inactive','failed'):
+            raise BenchError(f'Target VT reservation did not hold for {unit}; refusing takeover')
 
 
 def select_login_session(sessions_, uid):
@@ -555,7 +593,7 @@ def worker(host, layout=Layout()):
                 update(directory, state, "takeover", conditions_restore_required=True)
             if state["display_manager_was_active"]:
                 host.run(["systemctl", "stop", "display-manager.service"], timeout=45)
-            reserve_vt(host, directory, state)
+            reserve_vt(host, directory, state, layout)
             # JSON object key sorting must never reorder the planned targets.
             order = state["plan"].get("target_order", list(state["plan"]["targets"]))
             diagnostic_failures = []
@@ -576,7 +614,7 @@ def worker(host, layout=Layout()):
                 descriptor = os.open(directory / f"{target}-launch.stderr", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                 os.close(descriptor)
                 host.run(["chvt", str(state["target_vt"])])
-                host.run(session_command(target, state["target_vt"], record, layout, directory=directory), timeout=50)
+                launch_session(host,target,state['target_vt'],record,layout,directory)
                 evidence = wait_session(host, record, state, directory, layout)
                 atomic_json(directory / f"{target}-session.json", evidence)
                 if state.get("conditions_snapshot"):

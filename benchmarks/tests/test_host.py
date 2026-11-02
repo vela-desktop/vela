@@ -1114,13 +1114,19 @@ class HostOperations(unittest.TestCase):
         directory = self.pilot_state()
         state = read_json(directory / "state.json")
         state["masked_units"] = []
-        responses = [SimpleNamespace(stdout="ActiveState=inactive\nUnitFileState=masked\n"),
-                     SimpleNamespace(stdout="ActiveState=inactive\nUnitFileState=disabled\n"),
-                     SimpleNamespace(stdout="")]
-        with patch.object(self.host, "run", side_effect=responses) as run:
-            reserve_vt(self.host, directory, state)
+        parent=self.layout.path('etc/systemd/system');parent.mkdir(parents=True,exist_ok=True)
+        (parent/'getty@tty8.service').symlink_to('/dev/null')
+        calls=[]
+        def invoke(argv,**kwargs):
+            calls.append(argv)
+            if argv[1]=='mask':
+                path=self.layout.path('run/systemd/system')/argv[-1]
+                path.parent.mkdir(parents=True,exist_ok=True);path.symlink_to('/dev/null')
+            return SimpleNamespace(stdout='ActiveState=inactive\nLoadState=masked\nUnitFileState=masked\n')
+        with patch.object(self.host, "run", side_effect=invoke):
+            reserve_vt(self.host, directory, state,self.layout)
         self.assertEqual(state["masked_units"], ["autovt@tty8.service"])
-        self.assertEqual(run.call_args.args[0], ["systemctl", "mask", "--runtime", "autovt@tty8.service"])
+        self.assertEqual([c for c in calls if c[1]=='mask'],[["systemctl", "mask", "--runtime", "autovt@tty8.service"]])
 
     def test_active_getty_prevents_tty_takeover(self):
         self.setup_account()
@@ -1129,7 +1135,7 @@ class HostOperations(unittest.TestCase):
         state["masked_units"] = []
         with patch.object(self.host, "run", return_value=SimpleNamespace(stdout="ActiveState=active\n")) as run:
             with self.assertRaisesRegex(BenchError, "VT is occupied"):
-                reserve_vt(self.host, directory, state)
+                reserve_vt(self.host, directory, state,self.layout)
         self.assertEqual(run.call_count, 1)
 
     def test_recovery_does_not_restore_an_old_boot_display_state(self):

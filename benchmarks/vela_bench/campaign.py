@@ -110,6 +110,9 @@ def audit_block(source, block, plan, layout):
     if plan["kind"] == "execution-campaign":
         expected = block_request(layout, plan["run_id"], block["id"], block["target"])
         state = read_json(source / "state.json")
+        if audit['status']!='passed':
+            audit['error']=state.get('error') or audit.get('error') or 'Pilot did not pass lifecycle/instrument acceptance'
+            return audit
         receipt = read_json(source / "block-workload.json")
         audit["checks"]["block_binding"] = state.get("campaign_block") == expected
         audit["checks"]["fixed_workload_complete"] = receipt == dict(expected, status="passed")
@@ -388,7 +391,7 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                 audit = audit_block(source, block, plan, layout)
                 attempt["audit"] = audit
                 if audit["status"] != "passed":
-                    raise BenchError("Selected block did not pass its acceptance checks")
+                    raise BenchError(audit.get('error') or "Selected block did not pass its acceptance checks")
                 state = read_json(source / "state.json")
                 if condition_identity(state["conditions_snapshot"]) != resolved_conditions(directory, plan):
                     raise BenchError("Executed hardware condition differs from the immutable campaign condition")

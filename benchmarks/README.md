@@ -217,12 +217,18 @@ Without `--probe`, `session-test` continues to run only lifecycle checks.
 The root worker lives outside the reserved UID's teardown scope. PID 1 invokes
 cleanup through `ExecStopPost`, including after timeout or worker failure.
 The pilot stops an initially active display manager, reserves a free VT by
-temporarily masking only previously unmasked getty instances, starts complete
+temporarily masking both exact `getty@ttyN.service` and `autovt@ttyN.service`
+names, while preserving existing administrator masks, starts complete
 installed session entries as the benchmark UID with `PAMName` and a controlling
 TTY, then verifies active local Wayland/logind state, native runtime/bus and
 the graphical session target. It checks a synthetic world-readable fixture
 under `/home` is hidden in both the session leader's and user manager's mount
 views. It does not inspect personal documents.
+
+Mask files and inactive/masked unit state are verified before switching VT.
+An alias can report its canonical unit's `UnitFileState` without having its
+own mask; that property alone does not reserve the VT. Occupied terminals
+remain refused (`StandardInput=tty-fail`).
 
 Teardown stops the owned transient session unit, terminates the reserved UID,
 stops its user manager/runtime and verifies that no PID/runtime remains before
@@ -245,8 +251,11 @@ sudo scripts/vela-bench recover
 Root-only pilot state, event journal and per-target verification evidence live
 under `/var/lib/vela-benchmark/pilots/RUN_ID/`. `active.json` identifies the latest
 pilot. Session output is in the journal for `vela-benchmark-session.service`
-and `vela-benchmark-pilot.service`. These are lifecycle diagnostics, separate
-from performance archives consumed by `report`/`compare`. When requested,
+and `vela-benchmark-pilot.service`. Failed launches also save
+`TARGET-launch-failure.json` with exit properties and a bounded session journal,
+including failures before PID 1 opens the session's output file. A failed pilot
+keeps its original error rather than requiring a workload completion receipt.
+These are lifecycle diagnostics. When requested,
 `TARGET-SCENARIO.jsonl`, `.stderr` and `.json` preserve probe evidence here;
 each profile reset also creates private sticky `.X11-unix` and `.ICE-unix`
 directories so Xwayland/ICE can create their standard sockets.
@@ -881,4 +890,15 @@ PyGObject and a running user manager:
 
 ```sh
 python3 benchmarks/tests/manager_integration.py benchmark-results/manager-recovery-selftest/evidence.json
+```
+
+The alias reservation regression uses private randomized user templates running
+only `/usr/bin/true`. It reproduces misleading canonical mask state through an
+alias, applies the production reservation logic and verifies both names reject
+activation. It cleans up its own units afterwards and requires PyGObject and a
+running user manager. Run unprivileged; it does not address physical TTYs,
+gettys, desktop sessions or system services:
+
+```sh
+python3 benchmarks/tests/vt_integration.py
 ```
