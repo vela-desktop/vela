@@ -52,9 +52,9 @@ int main(int argc, char **argv)
                  gbm_bo_create(dev, 256, 256, GBM_FORMAT_ARGB8888, GBM_BO_USE_RENDERING));
     ok &= try_bo("XRGB8888 linear modifier",
                  gbm_bo_create_with_modifiers(dev, 256, 256, GBM_FORMAT_XRGB8888, &linear, 1));
-    ok &= try_bo("ARGB8888 linear",
-                 gbm_bo_create(dev, 256, 256, GBM_FORMAT_ARGB8888,
-                               GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR));
+    // As vela-slowgpu allocates its buffers.
+    ok &= try_bo("XRGB8888 GBM_BO_USE_LINEAR",
+                 gbm_bo_create(dev, 256, 256, GBM_FORMAT_XRGB8888, GBM_BO_USE_LINEAR));
 
     gbm_device_destroy(dev);
     close(fd);

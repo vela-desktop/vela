@@ -27,8 +27,9 @@ id
 
 section "NVIDIA driver"
 lspci -nn | grep -i nvidia || true
-if nvidia-smi --query-gpu=name,driver_version --format=csv,noheader; then
+if nvidia-smi -L; then
     note "driver: $(nvidia-smi --query-gpu=name,driver_version --format=csv,noheader | head -1)"
+    note "GPUs visible: $(nvidia-smi -L | grep -c '^GPU ')"
 else
     note "driver: nvidia-smi FAILED"
 fi
@@ -59,11 +60,11 @@ ls -l /usr/lib/x86_64-linux-gnu/gbm 2>/dev/null || echo "no GBM backend director
 section "Host packages"
 export DEBIAN_FRONTEND=noninteractive
 if command -v pacman >/dev/null; then
-    "${sudo[@]}" pacman -Sy --noconfirm --needed vulkan-tools mesa gcc pciutils >/dev/null \
+    "${sudo[@]}" pacman -Sy --noconfirm --needed vulkan-tools mesa gcc pciutils libxext kmod >/dev/null \
         && echo "installed vulkan-tools mesa gcc" || echo "pacman install FAILED"
 else
     "${sudo[@]}" apt-get update -qq
-    "${sudo[@]}" apt-get install -y -qq vulkan-tools libgbm-dev gcc pciutils >/dev/null \
+    "${sudo[@]}" apt-get install -y -qq vulkan-tools libgbm-dev gcc pciutils libxext6 kmod >/dev/null \
         && echo "installed vulkan-tools libgbm-dev gcc" || echo "apt-get install FAILED"
 fi
 
