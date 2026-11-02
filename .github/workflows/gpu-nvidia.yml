@@ -189,6 +189,27 @@ jobs:
               sys.exit(1)
           PY
 
+          # Buffers come from GBM: with Mesa's backend instead of NVIDIA's,
+          # every allocation fails and so does every test.
+          python3 - <<'PY'
+          import ctypes
+          import os
+          from pathlib import Path
+          import sys
+
+          gbm = ctypes.CDLL("libgbm.so.1")
+          gbm.gbm_create_device.restype = ctypes.c_void_p
+          gbm.gbm_device_get_backend_name.argtypes = [ctypes.c_void_p]
+          gbm.gbm_device_get_backend_name.restype = ctypes.c_char_p
+          for node in sorted(Path("/dev/dri").glob("renderD*")):
+              if (Path("/sys/class/drm") / node.name / "device/vendor").read_text().strip() == "0x10de":
+                  device = gbm.gbm_create_device(os.open(node, os.O_RDWR | os.O_CLOEXEC))
+                  name = gbm.gbm_device_get_backend_name(device).decode() if device else "none"
+                  print(f"GBM backend on {node}: {name}")
+                  sys.exit(0 if name == "nvidia" else "::error::GBM doesn't use NVIDIA's backend")
+          sys.exit("::error::No NVIDIA render node for GBM")
+          PY
+
           # The dmabuf extensions the renderer requires (compositor/src/render/vulkan.c):
           # some drivers leave them out, and every test would fail at start.
           vulkaninfo > "$RUNNER_TEMP/vela-nvidia-vulkan-full.txt" 2>/dev/null || true

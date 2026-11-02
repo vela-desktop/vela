@@ -8,6 +8,15 @@
 set -eu
 : "${VELA_RUNNER_JITCONFIG:?}" "${VELA_RUNNER_VERSION:?}"
 
+# The NVIDIA container toolkit mounts the driver's GBM backend where Debian
+# keeps it; Arch's libgbm looks in /usr/lib/gbm, and would fall back on
+# Mesa's backend, which can't allocate on NVIDIA.
+backend=$(find /usr -name nvidia-drm_gbm.so 2>/dev/null | head -n 1)
+if [ -n "$backend" ] && [ "$backend" != /usr/lib/gbm/nvidia-drm_gbm.so ]; then
+    mkdir -p /usr/lib/gbm
+    ln -sf "$backend" /usr/lib/gbm/nvidia-drm_gbm.so
+fi
+
 # Some hosts' NVIDIA drivers don't give Vulkan the dmabuf extensions Vela
 # needs (compositor/src/render/vulkan.c). Exit without a runner, so that
 # scripts/vast-runner.py destroys this instance and tries another offer.

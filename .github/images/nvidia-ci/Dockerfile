@@ -16,7 +16,7 @@ RUN pacman -Syu --noconfirm --needed \
         pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
         pipewire wireplumber systemd-libs \
     # What the GPU suites run against (docs/ci-quality.md).
-        breeze-icons python-dbus python-gobject dbus glib2 xorg-xrandr xorg-xrdb xorg-xprop \
+        breeze-icons noto-fonts python-dbus python-gobject dbus glib2 xorg-xrandr xorg-xrdb xorg-xprop \
     # NVIDIA's Vulkan ICD needs libXext and libglvnd; the driver itself comes from the host.
         vulkan-tools vulkan-validation-layers libxext libglvnd \
     # The workflow's options: coverage and the promo smoke test.
