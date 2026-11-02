@@ -32,6 +32,11 @@ struct vela_interaction {
     // Vela's title bar under the mouse, and the last clicks on title and icon
     // (for double clicks).
     struct vela_view *hovered_decoration;
+    // The cursor Vela set itself (the resize arrows, the default one); NULL
+    // while an app has the pointer and chooses it.
+    const char *cursor;
+    // Where in the surface under it the pointer was last sent to be.
+    double pointer_sx, pointer_sy;
     struct {
         struct vela_view *view;
         uint32_t time_msec;
@@ -58,6 +63,9 @@ void vela_interaction_destroy(struct vela_interaction *interaction);
 
 // The cursor moved (or what's under it changed).
 void vela_interact_motion(struct vela_server *server, uint32_t time_msec);
+// The scene changed under a pointer at rest: if what is under it is now
+// something else, as if it had moved.
+void vela_interact_rebase(struct vela_server *server);
 void vela_interact_button(struct vela_server *server, struct wlr_pointer_button_event *event);
 // Starts moving or resizing (`edges`: WLR_EDGE_*). Requests from apps count
 // only from the window under the pointer (from_modifier: false).

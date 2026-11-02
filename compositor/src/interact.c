@@ -26,6 +26,7 @@
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/edges.h>
@@ -68,23 +69,12 @@ static const char *resize_cursor(uint32_t edges)
     return left ? "w-resize" : "e-resize";
 }
 
-// The invisible borders to resize windows with Vela's bar, like Windows 11:
-// the window and the edges (WLR_EDGE_*) under the point, or NULL.
-static struct vela_view *resize_border_at(struct vela_server *server, double lx, double ly, uint32_t *edges)
+// The windows of `tree` from the topmost: true at the first one covering the
+// point or with its border there (*found: that window, NULL if it covers it).
+static bool border_in(struct vela_tree *tree, double lx, double ly, struct vela_view **found, uint32_t *edges)
 {
-    *edges = 0;
-    // Above the windows (taskbar, menus, panels): no borders.
-    struct vela_hit hit = vela_scene_at(server->scene, lx, ly);
-    struct vela_owner *owner = hit.owner;
-    if (owner && owner->kind == VELA_OWNER_LAYER) {
-        uint32_t layer = ((struct vela_layer_surface *)owner)->layer;
-        if (layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP || layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
-            return NULL;
-        }
-    }
-    // From the topmost window: the first covering the point wins.
     struct vela_node *child;
-    wl_list_for_each_reverse (child, &server->layers.windows->children, link) {
+    wl_list_for_each_reverse (child, &tree->children, link) {
         struct vela_view *view = view_of(child->data);
         if (!view || !child->enabled || !view->mapped || view->minimized) {
             continue;
@@ -93,7 +83,8 @@ static struct vela_view *resize_border_at(struct vela_server *server, double lx,
         bool resizable = view->decoration && !view->maximized && !view->fullscreen && vela_view_resizable(view);
         bool inside = lx >= f.x && lx < f.x + f.width && ly >= f.y && ly < f.y + f.height;
         if (inside && !(resizable && ly < f.y + BORDER_INNER)) {
-            return NULL; // the window covers the point
+            *found = NULL; // the window covers the point
+            return true;
         }
         if (!resizable || lx < f.x - BORDER_BAND || lx >= f.x + f.width + BORDER_BAND || ly < f.y - BORDER_BAND
             || ly >= f.y + f.height + BORDER_BAND) {
@@ -113,9 +104,43 @@ static struct vela_view *resize_border_at(struct vela_server *server, double lx,
         }
         *edges = (top ? WLR_EDGE_TOP : 0) | (bottom ? WLR_EDGE_BOTTOM : 0) | (left ? WLR_EDGE_LEFT : 0)
             | (right ? WLR_EDGE_RIGHT : 0);
-        return *edges ? view : NULL;
+        *found = *edges ? view : NULL;
+        return true;
     }
-    return NULL;
+    return false;
+}
+
+// The invisible borders to resize windows with Vela's bar, like Windows 11:
+// the window and the edges (WLR_EDGE_*) under the point, or NULL.
+static struct vela_view *resize_border_at(struct vela_server *server, double lx, double ly, uint32_t *edges)
+{
+    *edges = 0;
+    // From the topmost window: the first covering the point wins. A game in
+    // front has its own layer, above the windows: the borders of the ones
+    // it covers are not there.
+    struct vela_view *view = NULL;
+    if (!border_in(server->layers.fullscreen, lx, ly, &view, edges)) {
+        border_in(server->layers.windows, lx, ly, &view, edges);
+    }
+    if (!view) {
+        return NULL;
+    }
+    // What is drawn there decides: the panels, a menu sticking out of a
+    // window (its own too), an X11 menu, the window menu... cover the border.
+    // The window's title bar doesn't, nor what is below the window.
+    struct vela_hit hit = vela_scene_at(server->scene, lx, ly);
+    int order = hit.node ? vela_node_order(hit.node, &view->tree->node) : -1;
+    if (order > 0 || (order == 0 && hit.surface)) {
+        *edges = 0;
+        return NULL;
+    }
+    return view;
+}
+
+static void set_cursor(struct vela_server *server, const char *name)
+{
+    server->interaction->cursor = name;
+    wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, name);
 }
 
 static void unhover_decoration(struct vela_interaction *interaction)
@@ -135,13 +160,14 @@ static void lock_pointer_focus(struct vela_server *server, uint32_t time_msec, b
     struct wlr_cursor *cursor = server->cursor;
     struct vela_hit hit = vela_scene_at(server->scene, cursor->x, cursor->y);
     if (hit.surface) {
+        server->interaction->cursor = NULL;
         wlr_seat_pointer_notify_enter(seat, hit.surface, hit.sx, hit.sy);
         if (notify_motion) {
             wlr_seat_pointer_notify_motion(seat, time_msec, hit.sx, hit.sy);
         }
     } else {
         wlr_seat_pointer_clear_focus(seat);
-        wlr_cursor_set_xcursor(cursor, server->cursor_manager, "default");
+        set_cursor(server, "default");
     }
 }
 
@@ -251,7 +277,7 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
             interaction->hovered_decoration = NULL;
             wlr_seat_pointer_clear_focus(seat);
             vela_input_constrain(input, NULL);
-            wlr_cursor_set_xcursor(cursor, server->cursor_manager, resize_cursor(edges));
+            set_cursor(server, resize_cursor(edges));
             return;
         }
     }
@@ -274,14 +300,68 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
         vela_snap_hover_maximize(server, NULL);
     }
     if (!hit.surface) {
-        wlr_cursor_set_xcursor(cursor, server->cursor_manager, "default");
+        set_cursor(server, "default");
         wlr_seat_pointer_clear_focus(seat);
         vela_input_constrain(input, NULL);
         return;
     }
+    interaction->cursor = NULL;
+    interaction->pointer_sx = hit.sx;
+    interaction->pointer_sy = hit.sy;
     wlr_seat_pointer_notify_enter(seat, hit.surface, hit.sx, hit.sy);
     wlr_seat_pointer_notify_motion(seat, time_msec, hit.sx, hit.sy);
     vela_input_constrain(input, hit.surface);
+}
+
+// Locked by an app (a game): no motion reaches it, and the pointer stays on
+// it, as when the mouse moves (input.c, constrain_motion()).
+static bool pointer_locked(struct vela_server *server)
+{
+    struct wlr_pointer_constraint_v1 *constraint = server->input->active_constraint;
+    return constraint && constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED
+        && server->seat->pointer_state.focused_surface == constraint->surface;
+}
+
+void vela_interact_rebase(struct vela_server *server)
+{
+    struct vela_interaction *interaction = server->interaction;
+    struct wlr_cursor *cursor = server->cursor;
+    struct wlr_seat *seat = server->seat;
+    // Only a pointer at rest: a press, a drag, a Move/Size and a pointer an app
+    // locked keep their target; the lock screen retargets its own (lock.c).
+    if (server->locked || server->cursor_mode != VELA_CURSOR_PASSTHROUGH || interaction->keyboard.view
+        || seat->pointer_state.button_count > 0 || seat->drag || wlr_seat_pointer_has_grab(seat)
+        || server->input->implicit_grab.surface || pointer_locked(server)) {
+        return;
+    }
+    // What vela_interact_motion() would choose here, without telling the apps
+    // a motion that didn't happen when nothing changed.
+    uint32_t edges = 0;
+    const char *wanted = NULL;
+    struct wlr_surface *surface = NULL;
+    bool moved = false;
+    struct vela_view *decorated = NULL;
+    if (resize_border_at(server, cursor->x, cursor->y, &edges)) {
+        wanted = resize_cursor(edges);
+    } else {
+        struct vela_hit hit = vela_scene_at(server->scene, cursor->x, cursor->y);
+        surface = hit.surface;
+        // The same window, moved under the pointer: the app must know where
+        // in it the pointer is now (X11 apps place their clicks with it).
+        moved = surface && (hit.sx != interaction->pointer_sx || hit.sy != interaction->pointer_sy);
+        if (!surface) {
+            wanted = "default";
+            decorated = view_of(hit.owner);
+            if (decorated && !decorated->decoration) {
+                decorated = NULL;
+            }
+        }
+    }
+    if (wanted != interaction->cursor || surface != seat->pointer_state.focused_surface || moved
+        || decorated != interaction->hovered_decoration) {
+        vela_interact_motion(server, (uint32_t)(vela_now_ns() / 1000000));
+        wlr_seat_pointer_notify_frame(seat); // as after a real motion
+    }
 }
 
 static void decoration_press(struct vela_server *server, struct vela_view *view, uint32_t time_msec)
@@ -427,7 +507,7 @@ void vela_interact_button(struct vela_server *server, struct wlr_pointer_button_
         // All buttons released: the pointer goes back to what's under it.
         if (input->implicit_grab.surface && seat->pointer_state.button_count == 0) {
             memset(&input->implicit_grab, 0, sizeof(input->implicit_grab));
-            if (server->cursor_mode == VELA_CURSOR_PASSTHROUGH) {
+            if (server->cursor_mode == VELA_CURSOR_PASSTHROUGH && !pointer_locked(server)) {
                 vela_interact_motion(server, event->time_msec);
             }
         }
@@ -560,7 +640,7 @@ void vela_interact_begin_keyboard(struct vela_server *server, struct vela_view *
         wlr_cursor_warp(cursor, NULL, frame.x + frame.width / 2.0, frame.y + frame.height / 2.0);
     }
     wlr_seat_pointer_clear_focus(server->seat);
-    wlr_cursor_set_xcursor(cursor, server->cursor_manager, mode == VELA_CURSOR_MOVE ? "move" : "all-scroll");
+    set_cursor(server, mode == VELA_CURSOR_MOVE ? "move" : "all-scroll");
 }
 
 static void keyboard_key(struct vela_server *server, xkb_keysym_t sym, uint32_t modifiers)
@@ -647,7 +727,7 @@ static void finish_keyboard(struct vela_server *server, bool confirm)
     memset(&interaction->keyboard, 0, sizeof(interaction->keyboard));
     server->cursor_mode = VELA_CURSOR_PASSTHROUGH;
     server->grabbed = NULL;
-    wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, "default");
+    set_cursor(server, "default");
     vela_interact_motion(server, 0);
 }
 

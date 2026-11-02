@@ -193,6 +193,45 @@ void vela_node_reparent(struct vela_node *node, struct vela_tree *parent)
     vela_scene_changed(node->scene);
 }
 
+static int depth(const struct vela_node *node)
+{
+    int depth = 0;
+    for (; node->parent; node = &node->parent->node) {
+        ++depth;
+    }
+    return depth;
+}
+
+int vela_node_order(const struct vela_node *node, const struct vela_node *other)
+{
+    int a = depth(node);
+    int b = depth(other);
+    for (; a > b; --a) {
+        node = &node->parent->node;
+    }
+    for (; b > a; --b) {
+        other = &other->parent->node;
+    }
+    if (node == other) {
+        return 0; // one inside the other
+    }
+    // Up to the children of the closest common ancestor: their order decides.
+    while (node->parent != other->parent) {
+        node = &node->parent->node;
+        other = &other->parent->node;
+    }
+    if (!node->parent) {
+        return 0; // different trees
+    }
+    // Children are bottom to top: `node` is above if it follows `other`.
+    for (const struct wl_list *link = other->link.next; link != &other->parent->children; link = link->next) {
+        if (link == &node->link) {
+            return 1;
+        }
+    }
+    return -1;
+}
+
 static bool same_shape(const struct vela_shape *a, const struct vela_shape *b)
 {
     return a->enabled == b->enabled && a->x == b->x && a->y == b->y && a->width == b->width
@@ -303,9 +342,21 @@ struct vela_scene *vela_scene_create(void)
 
 void vela_scene_destroy(struct vela_scene *scene)
 {
+    if (scene->rearranged_idle) {
+        wl_event_source_remove(scene->rearranged_idle);
+    }
     wl_list_remove(&scene->new_surface.link);
     vela_node_destroy(&scene->root->node);
     free(scene);
+}
+
+static void rearranged(void *data)
+{
+    struct vela_scene *scene = data;
+    scene->rearranged_idle = NULL;
+    if (scene->rearranged) {
+        scene->rearranged(scene->rearranged_data);
+    }
 }
 
 void vela_scene_changed(struct vela_scene *scene)
@@ -313,6 +364,9 @@ void vela_scene_changed(struct vela_scene *scene)
     struct vela_output_frame *frame;
     wl_list_for_each (frame, &scene->frames, link) {
         vela_output_schedule_frame(frame->owner);
+    }
+    if (scene->rearranged && !scene->rearranged_idle && scene->event_loop) {
+        scene->rearranged_idle = wl_event_loop_add_idle(scene->event_loop, rearranged, scene);
     }
 }
 
@@ -371,6 +425,9 @@ static bool hit_node(struct vela_node *node, double lx, double ly, struct vela_h
         }
         break;
     }
+    }
+    if (found && !hit->node) {
+        hit->node = node; // the first found is the deepest
     }
     if (found && !hit->owner && node->data) {
         hit->owner = node->data;
