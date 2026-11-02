@@ -2,6 +2,44 @@
 
 Vela measures *observable* behavior rather than treating low memory use or high frame rate as substitutes for visual quality. This page explains the scope of the numbers in the [README](../README.md#performance).
 
+The [automated benchmark suite design](benchmark-suite.md) proposes one
+unattended campaign for desktop comparisons and Vela-version regressions.
+It covers responsiveness, motion, slow applications, fractional scaling and
+desktop overhead. P0 instrument and recovery qualification passed on the
+initial Vela/Plasma machine on 2026-10-22, including independent calibrations,
+coarse capture and crash/hang recovery with verified hardware restoration.
+The common campaign executor and checkpoint/resume are implemented, with
+an instrument-only `--exercise` mode for phase/repetition acceptance. P1's
+campaign-core acceptance also passed on that setup on 2026-10-22: four blocks
+across two phases in fast mode and six blocks in normal mode, with verified
+restoration. P2 now implements native-client responsiveness, animation and
+paired GPU-producer measurements, with warm-up exclusions, raw audits and
+independent-block statistics. A six-block real-TTY P2 fast campaign passed
+on that machine, including raw-data audits and restoration; normal
+three-repetition acceptance was deferred by the operator. P3 adds verified
+native launcher/window/desktop actions through coarse output capture, with
+isolated Vela/KWin tests and initial-machine real-TTY fast acceptance passed.
+P3 responsiveness and motion passed in separate campaigns with different scene
+builds; these are functional checks, not repeated comparative measurements.
+The GPU producer's achieved median
+durations were approximately 77–89 ms rather than the requested 150 ms,
+within the current declared tolerance. Full family coverage and comparative claims remain
+incomplete. There are no new published comparative results.
+
+P4 now implements native Wayland scaling-pattern captures and UID-wide
+CPU/PSS collection for idle, fixed client animation and synthetic local work.
+The corpus/resource-interaction coverage and physical P4 acceptance remain
+incomplete. Nonzero pixel differences are measured outcomes, not instrument
+failures; invalid identities, capture geometry or restoration still reject a
+block. See [P4 scope](benchmark-suite.md#p4-implementation-and-acceptance-scope).
+
+The 2026-11-01 benchmark-branch integration includes upstream `efdc9c6`.
+Deferred capture and cooperative GPU-producer dispatches require fresh
+instrument qualification; the older physical acceptance above does not
+qualify this candidate. The [upstream integration review](benchmark-suite.md#upstream-integration-review-2026-11-02)
+records what can be reused for observation, fractional scaling and session
+accounting, and which timing/provenance gaps remain.
+
 ## Existing published observations
 
 The README previously reported, from the primary development machine (Ryzen 9 9950X, Radeon RX 9070 XT, CachyOS with Mesa/RADV):

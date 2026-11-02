@@ -45,6 +45,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <time.h>
 #include <wayland-client.h>
 
 #include "fractional-scale-v1-client-protocol.h"
@@ -73,6 +74,9 @@ static uint32_t scale120 = 120;
 static int configured;
 static int legacy;
 static int running = 1;
+static int benchmark;
+static unsigned benchmarkSequence;
+static int maximized;
 
 #define POPUP_WIDTH 200
 #define POPUP_HEIGHT 150
@@ -251,6 +255,17 @@ static void draw(void)
     wl_surface_commit(surface);
     fprintf(stderr, "vela-pattern: %dx%d logical, scale %u/120, buffer %dx%d\n", logicalWidth, logicalHeight,
         scale120, width, height);
+    if (benchmark) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        printf("{\"event\":\"pattern\",\"method\":\"coordinate-pattern-v1\",\"protocol\":\"wayland\","
+               "\"viewport\":true,\"sequence\":%u,\"logical_width\":%d,\"logical_height\":%d,"
+               "\"scale120\":%u,\"buffer_width\":%d,\"buffer_height\":%d,\"maximized\":%s,"
+               "\"monotonic_ns\":%llu}\n", ++benchmarkSequence, logicalWidth, logicalHeight,
+               scale120, width, height, maximized ? "true" : "false",
+               (unsigned long long)now.tv_sec*1000000000ull+(unsigned long long)now.tv_nsec);
+        fflush(stdout);
+    }
 }
 
 // The menu: a magenta rectangle at scale 1.
@@ -436,6 +451,9 @@ static void onToplevelConfigure(void* data, struct xdg_toplevel* t, int32_t widt
 {
     pendingWidth = width;
     pendingHeight = height;
+    maximized = 0;
+    uint32_t* state;
+    wl_array_for_each(state, states) if (*state == XDG_TOPLEVEL_STATE_MAXIMIZED) maximized = 1;
 }
 
 static void onToplevelClose(void* data, struct xdg_toplevel* t)
@@ -458,6 +476,8 @@ int main(int argc, char** argv)
     for (; arg < argc && !strncmp(argv[arg], "--", 2); ++arg) {
         if (!strcmp(argv[arg], "--scale1")) {
             legacy = 1;
+        } else if (!strcmp(argv[arg], "--benchmark")) {
+            benchmark = 1;
         } else if (!strcmp(argv[arg], "--decorated")) {
             decorated = 1;
         } else if (!strcmp(argv[arg], "--popup") && arg + 1 < argc
