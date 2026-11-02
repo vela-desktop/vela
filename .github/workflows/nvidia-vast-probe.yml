@@ -14,9 +14,9 @@ permissions:
   contents: read
 
 jobs:
-  arch-container:
-    name: Probe Arch container
-    runs-on: "cirun-vast-4060ti-arch--${{ github.run_id }}"
+  container:
+    name: Probe Ubuntu 24.04 container
+    runs-on: "cirun-vast-4060ti-container--${{ github.run_id }}"
     timeout-minutes: 30
     steps:
       - name: Fetch the probe
@@ -26,7 +26,7 @@ jobs:
 
   ubuntu-vm:
     name: Probe Ubuntu 24.04 VM
-    needs: arch-container
+    needs: container
     if: ${{ !cancelled() }}
     runs-on: "cirun-vast-4060ti-vm--${{ github.run_id }}"
     timeout-minutes: 30

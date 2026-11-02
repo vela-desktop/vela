@@ -2,17 +2,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Temporary: on-demand Vast.ai machines with an RTX 4060 Ti, to find out
-# whether they can replace the self-hosted NVIDIA runner. An Arch container
-# (does Vast give it /dev/dri?) and an Ubuntu 24.04 VM (Vast's VMs only boot
-# its own Ubuntu images). No RAM or disk minimum: Cirun found no 4060 Ti VM
+# whether they can replace the self-hosted NVIDIA runner. A container (does
+# Vast give it /dev/dri?) and an Ubuntu 24.04 VM (Vast's VMs only boot its
+# own Ubuntu images). Cirun never created the container from archlinux:latest. No RAM or disk minimum: Cirun found no 4060 Ti VM
 # with them, while Vast listed several.
 runners:
-  - name: vast-4060ti-arch
+  - name: vast-4060ti-container
     cloud: vast_ai
     instance_type: 1xRTX_4060_Ti
-    machine_image: archlinux:latest
+    machine_image: ubuntu:24.04
     labels:
-      - cirun-vast-4060ti-arch
+      - cirun-vast-4060ti-container
   - name: vast-4060ti-vm
     cloud: vast_ai
     instance_type: 1xRTX_4060_Ti
