@@ -150,7 +150,7 @@ def wait_online(org, runner_id, instance_id):
     return False
 
 
-def start(org, label, image, runner_version, max_price, gpu, output):
+def start(org, label, image, runner_version, max_price, gpu):
     tried = set()
     for attempt in range(1, ATTEMPTS + 1):
         # Offers come and go: search again for every attempt.
@@ -184,7 +184,9 @@ def start(org, label, image, runner_version, max_price, gpu, output):
         instance_id = created.get("new_contract")
         if instance_id and wait_online(org, jit["runner"]["id"], instance_id):
             print(f"Runner {name} online on instance {instance_id}")
-            if output:
+            # The job's outputs: only the file the runner names, never a path
+            # from the command line.
+            if output := os.environ.get("GITHUB_OUTPUT"):
                 with open(output, "a", encoding="utf-8") as out:
                     out.write(f"gpu={summary}\n")
             return
@@ -201,7 +203,6 @@ def main():
     parser.add_argument("--runner-version")
     parser.add_argument("--max-price", type=float, default=0.12)
     parser.add_argument("--gpu", default="", help="One GPU from the list instead of the cheapest")
-    parser.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
     args = parser.parse_args()
     if args.gpu and args.gpu not in GPUS:
         parser.error(f"--gpu must be one of: {', '.join(GPUS)}")
@@ -210,8 +211,7 @@ def main():
     elif not args.image or not args.runner_version:
         parser.error("start needs --image and --runner-version")
     else:
-        start(args.org, args.label, args.image, args.runner_version, args.max_price, args.gpu or None,
-              args.output)
+        start(args.org, args.label, args.image, args.runner_version, args.max_price, args.gpu or None)
 
 
 if __name__ == "__main__":
