@@ -388,8 +388,16 @@ class QtShell(RealShell):
                         "sleep", 200, "up")
         self.vela.wait_for(lambda s: not any(layer["namespace"] == "vela-snip" and layer["mapped"]
                                            for layer in s["layers"]), what="snipping completed")
-        paths = [os.path.join(pictures, name) for name in os.listdir(pictures)
-                 if name.endswith(".png") and previous.get(name) != os.stat(os.path.join(pictures, name)).st_ino]
+
+        def saved():
+            return [os.path.join(pictures, name) for name in os.listdir(pictures)
+                    if name.endswith(".png") and previous.get(name) != os.stat(os.path.join(pictures, name)).st_ino
+                    ] if os.path.isdir(pictures) else []
+
+        # The shell saves the PNG after closing its overlays: on a slow host,
+        # a moment after they're gone.
+        self.vela.wait_for(lambda _: saved(), read_state=False, what="the snip saved to the isolated Pictures directory")
+        paths = saved()
         self.assertEqual(len(paths), 1, "one snip saved to the isolated Pictures directory")
         cut = Image.read(paths[0])
         # Qt maps screen logical coordinates to physical image pixels using
