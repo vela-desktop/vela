@@ -199,6 +199,10 @@ jobs:
           # software, silently, whenever NVIDIA's can't draw.
           vendor=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
           echo "__EGL_VENDOR_LIBRARY_FILENAMES=$vendor" >> "$GITHUB_ENV"
+          # Qt's errors and its GL renderer in the test logs, not in a journal
+          # the container doesn't have.
+          echo "QT_FORCE_STDERR_LOGGING=1" >> "$GITHUB_ENV"
+          echo "QSG_INFO=1" >> "$GITHUB_ENV"
           ls -l /dev/dri /dev/nvidia* || true
           # egl-wayland finds the compositor's GPU among NVIDIA's EGL devices
           # by its DRM nodes: without them, Qt gets no EGL display.
