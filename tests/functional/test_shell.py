@@ -18,7 +18,7 @@ import subprocess
 import time
 import unittest
 
-from harness import BUILD, Image, Session, tool
+from harness import BUILD, TIME_SCALE, Image, Session, tool
 
 SHELL = os.path.join(BUILD, "shell", "vela-shell")
 OUTPUT_CASES = (("normal", 1, "above"), ("90", 1, "above"), ("180", 1.25, "right"),
@@ -258,7 +258,7 @@ class QtShell(RealShell):
                     def edge_y(y):
                         return int(y * py)
                     for ex, ey in ends:
-                        ready, _, _ = select.select([pointer.stdout], [], [], 5)
+                        ready, _, _ = select.select([pointer.stdout], [], [], 5 * TIME_SCALE)
                         self.assertTrue(ready, f"virtual pointer did not reach {ex, ey} checkpoint")
                         self.assertEqual(pointer.stdout.readline(), b"READY\n",
                                          "virtual pointer checkpoint failed")

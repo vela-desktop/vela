@@ -14,6 +14,7 @@ has no software fallback): without one, run.py skips the tests."""
 
 import atexit
 import json
+import math
 import os
 import re
 import shutil
@@ -33,6 +34,8 @@ _METRICS = {}
 # Hosts with slow CPUs (the rented GPU CI's) wait this many times longer for
 # what the tests expect to happen; what they check stays the same.
 TIME_SCALE = float(os.environ.get("VELA_TEST_TIME_SCALE") or 1)
+if not math.isfinite(TIME_SCALE) or TIME_SCALE <= 0:
+    raise ValueError(f"VELA_TEST_TIME_SCALE must be a positive number, not {TIME_SCALE}")
 
 
 def _profile(metric, duration):
@@ -258,7 +261,7 @@ class Session:
         # Errors come first, wherever they are: the tail can be all animation.
         lines = [line for line in self.log_text().splitlines(keepends=True) if not _WAYLAND_TRACE.match(line)]
         errors = "".join(line for line in lines if "[ERROR]" in line)
-        raise TimeoutError(f"after {timeout} s this still isn't true: {what}\nlast state: {last}\n"
+        raise TimeoutError(f"after {timeout * TIME_SCALE:g} s this still isn't true: {what}\nlast state: {last}\n"
                            f"--- Vela's errors ---\n{errors[-2500:]}"
                            f"--- end of the Vela log ---\n{''.join(lines)[-2500:]}")
 

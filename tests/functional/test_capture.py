@@ -135,7 +135,7 @@ class DeferredCapture(unittest.TestCase):
             before = self.wallpaper(vela)
             process = self.probe(vela, "repeat", 4)
             for round_number in (1, 2):
-                self.assertTrue(select.select([process.stdout], [], [], 5)[0], "capture round timed out")
+                self.assertTrue(select.select([process.stdout], [], [], 5 * TIME_SCALE)[0], "capture round timed out")
                 self.assertEqual(process.stdout.readline().strip(), f"round {round_number}")
                 # Headless hardware-cursor motion is outside the captured
                 # output image. Commit another real wallpaper buffer instead;
