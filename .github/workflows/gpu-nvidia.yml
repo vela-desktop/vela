@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Opt-in real-hardware GPU tests. Never run automatically on PRs or pushes.
-# The self-hosted runner must have the custom 'vela-nvidia' label.
+# Each run rents a fresh single-GPU Vast.ai container (scripts/vast-runner.py)
+# from the image of nvidia-ci-image.yml, and destroys it at the end.
 name: GPU CI - NVIDIA (manual)
 
 on:
@@ -24,6 +25,10 @@ on:
         description: With tests, only the Python test methods whose names contain this (like unittest -k)
         type: string
         default: ''
+      gpu:
+        description: Rent this GPU (e.g. RTX 3060) instead of the cheapest that fits
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -33,12 +38,61 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The Vast key and the GitHub App that registers runners stay in this
+  # environment, on GitHub's machines; the rented one never sees them.
+  start-runner:
+    name: Rent a Vast.ai GPU
+    runs-on: ubuntu-latest
+    environment: gpu-nvidia
+    timeout-minutes: 65
+    outputs:
+      gpu: ${{ steps.rent.outputs.gpu }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Token for the organization's runners
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.VELA_RUNNER_APP_ID }}
+          private-key: ${{ secrets.VELA_RUNNER_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-organization-self-hosted-runners: write
+      - name: Rent the cheapest fitting GPU and start a runner on it
+        id: rent
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+          GPU: ${{ inputs.gpu }}
+          ORG: ${{ github.repository_owner }}
+          LABEL: vela-vast-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          version=$(gh api repos/actions/runner/releases/latest --jq '.tag_name | ltrimstr("v")')
+          # The image built from this revision's .github/images/nvidia-ci (see
+          # nvidia-ci-image.yml), not whichever was published last. Checked
+          # before renting: a missing image would cost a rental.
+          tag="tree-$(git rev-parse HEAD:.github/images/nvidia-ci)"
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:$ORG/vela-ci-nvidia:pull" | jq -r .token)
+          curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+            "https://ghcr.io/v2/$ORG/vela-ci-nvidia/manifests/$tag" \
+            || { echo "::error::No vela-ci-nvidia:$tag yet: run nvidia-ci-image.yml on this revision first"; exit 1; }
+          python3 scripts/vast-runner.py start --org "$ORG" --label "$LABEL" --gpu "$GPU" \
+            --image "ghcr.io/$ORG/vela-ci-nvidia:$tag" --runner-version "$version" --max-price 0.12
+
   gpu-nvidia:
     name: NVIDIA functional and sharpness tests
-    runs-on: [self-hosted, linux, x64, vela-nvidia]
+    needs: start-runner
+    runs-on: vela-vast-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 90
 
     steps:
+      - name: Rented GPU
+        env:
+          GPU: ${{ needs.start-runner.outputs.gpu }}
+        run: echo "Rented on Vast.ai - $GPU" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Checkout selected revision (without persisting credentials)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,7 +118,8 @@ jobs:
           command -v nvidia-smi >/dev/null || { echo '::error::nvidia-smi unavailable: check the NVIDIA driver'; exit 1; }
 
           # NVIDIA's proprietary Vulkan ICD should be the only enumerated GPU.
-          # Prefer the usual Arch path, with distro-specific fallbacks.
+          # The NVIDIA container toolkit puts it in /etc; the others are
+          # where distribution packages install it.
           icd=
           for candidate in \
             /usr/share/vulkan/icd.d/nvidia_icd.json \
@@ -90,6 +145,9 @@ jobs:
           # Diagnostic-only counters: no change to GPU test scheduling or assertions.
           echo "VELA_FUNCTIONAL_PROFILE=1" >> "$GITHUB_ENV"
           echo "VELA_GPU_EXPECT_VENDOR=0x10de" >> "$GITHUB_ENV"
+          # Rented hosts have slow server CPUs: tests wait three times longer
+          # and capture throughput floors are skipped (the AMD runner checks them).
+          echo "VELA_TEST_TIME_SCALE=3" >> "$GITHUB_ENV"
           # Thirty Vulkan teardown cycles with validation on actual NVIDIA hardware.
           echo "VELA_SHUTDOWN_STRESS_CYCLES=30" >> "$GITHUB_ENV"
           echo "VELA_SHUTDOWN_VALIDATE=1" >> "$GITHUB_ENV"
@@ -139,6 +197,100 @@ jobs:
               print("::error::No NVIDIA proprietary Vulkan >= 1.4 device found", file=sys.stderr)
               sys.exit(1)
           PY
+
+          # Qt's windows must draw with NVIDIA's EGL, as for NVIDIA's users.
+          ls /usr/share/glvnd/egl_vendor.d /usr/share/egl/egl_external_platform.d
+          test -e /usr/share/glvnd/egl_vendor.d/10_nvidia.json \
+            || { echo "::error::NVIDIA's EGL isn't registered with glvnd"; exit 1; }
+          ls /usr/share/egl/egl_external_platform.d | grep -q wayland \
+            || { echo "::error::No EGL Wayland platform for NVIDIA (egl-wayland)"; exit 1; }
+          # Only NVIDIA's: glvnd would otherwise fall back on Mesa's EGL in
+          # software, silently, whenever NVIDIA's can't draw.
+          vendor=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+          echo "__EGL_VENDOR_LIBRARY_FILENAMES=$vendor" >> "$GITHUB_ENV"
+          # Qt's errors and its GL renderer in the test logs, not in a journal
+          # the container doesn't have.
+          echo "QT_FORCE_STDERR_LOGGING=1" >> "$GITHUB_ENV"
+          echo "QSG_INFO=1" >> "$GITHUB_ENV"
+          ls -l /dev/dri /dev/nvidia* || true
+          # egl-wayland finds the compositor's GPU among NVIDIA's EGL devices
+          # by its DRM nodes: without them, Qt gets no EGL display.
+          __EGL_VENDOR_LIBRARY_FILENAMES=$vendor python3 - <<'PY'
+          import ctypes
+          import os
+          from pathlib import Path
+          import sys
+
+          egl = ctypes.CDLL("libEGL.so.1")
+          gbm = ctypes.CDLL("libgbm.so.1")
+          egl.eglGetProcAddress.restype = ctypes.c_void_p
+          egl.eglGetProcAddress.argtypes = [ctypes.c_char_p]
+          egl.eglQueryString.restype = ctypes.c_char_p
+          egl.eglQueryString.argtypes = [ctypes.c_void_p, ctypes.c_int]
+          egl.eglGetPlatformDisplay.restype = ctypes.c_void_p
+          egl.eglGetPlatformDisplay.argtypes = [ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+          egl.eglInitialize.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+          egl.eglGetError.restype = ctypes.c_int
+          gbm.gbm_create_device.restype = ctypes.c_void_p
+
+          extensions = (egl.eglQueryString(None, 0x3055) or b"").decode().split()
+          print("EGL client extensions:", *extensions)
+          if not {"EGL_KHR_platform_wayland", "EGL_EXT_platform_wayland"} & set(extensions):
+              sys.exit("::error::NVIDIA's EGL has no Wayland platform: Qt's windows can't draw")
+          query_devices = ctypes.CFUNCTYPE(ctypes.c_uint, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p),
+                                           ctypes.POINTER(ctypes.c_int))(egl.eglGetProcAddress(b"eglQueryDevicesEXT"))
+          device_string = ctypes.CFUNCTYPE(ctypes.c_char_p, ctypes.c_void_p, ctypes.c_int)(
+              egl.eglGetProcAddress(b"eglQueryDeviceStringEXT"))
+          devices = (ctypes.c_void_p * 16)()
+          count = ctypes.c_int(0)
+          query_devices(16, devices, ctypes.byref(count))
+          nodes = set()
+          for device in devices[:count.value]:
+              card, render = device_string(device, 0x3233), device_string(device, 0x3377)
+              print(f"EGL device: {card} {render} {device_string(device, 0x3055)}")
+              nodes.add(render)
+
+          node = next((n for n in sorted(Path("/dev/dri").glob("renderD*"))
+                       if (Path("/sys/class/drm") / n.name / "device/vendor").read_text().strip() == "0x10de"), None)
+          if node is None:
+              sys.exit("::error::No NVIDIA render node")
+          display = egl.eglGetPlatformDisplay(0x31D7, gbm.gbm_create_device(os.open(node, os.O_RDWR | os.O_CLOEXEC)), None)
+          if not display or not egl.eglInitialize(display, None, None):
+              sys.exit(f"::error::NVIDIA's EGL doesn't start on {node} (EGL error {egl.eglGetError():#x})")
+          print(f"EGL on {node}: {egl.eglQueryString(display, 0x3053).decode()}")
+          if str(node).encode() not in nodes:
+              sys.exit(f"::error::No NVIDIA EGL device has {node}: egl-wayland can't find the compositor's GPU")
+          PY
+
+          # Buffers come from GBM: with Mesa's backend instead of NVIDIA's,
+          # every allocation fails and so does every test.
+          python3 - <<'PY'
+          import ctypes
+          import os
+          from pathlib import Path
+          import sys
+
+          gbm = ctypes.CDLL("libgbm.so.1")
+          gbm.gbm_create_device.restype = ctypes.c_void_p
+          gbm.gbm_device_get_backend_name.argtypes = [ctypes.c_void_p]
+          gbm.gbm_device_get_backend_name.restype = ctypes.c_char_p
+          for node in sorted(Path("/dev/dri").glob("renderD*")):
+              if (Path("/sys/class/drm") / node.name / "device/vendor").read_text().strip() == "0x10de":
+                  device = gbm.gbm_create_device(os.open(node, os.O_RDWR | os.O_CLOEXEC))
+                  name = gbm.gbm_device_get_backend_name(device).decode() if device else "none"
+                  print(f"GBM backend on {node}: {name}")
+                  sys.exit(0 if name == "nvidia" else "::error::GBM doesn't use NVIDIA's backend")
+          sys.exit("::error::No NVIDIA render node for GBM")
+          PY
+
+          # The dmabuf extensions the renderer requires (compositor/src/render/vulkan.c):
+          # some drivers leave them out, and every test would fail at start.
+          vulkaninfo > "$RUNNER_TEMP/vela-nvidia-vulkan-full.txt" 2>/dev/null || true
+          for ext in VK_EXT_image_drm_format_modifier VK_KHR_external_memory_fd VK_EXT_external_memory_dma_buf \
+                     VK_EXT_queue_family_foreign VK_KHR_external_semaphore_fd VK_EXT_physical_device_drm; do
+            grep -q "$ext" "$RUNNER_TEMP/vela-nvidia-vulkan-full.txt" \
+              || { echo "::error::NVIDIA Vulkan here lacks $ext, which Vela needs"; exit 1; }
+          done
 
       - name: Configure Vela with GPU tests
         shell: bash
@@ -280,6 +432,32 @@ jobs:
             ${{ runner.temp }}/vela-nvidia-ctest.log
             ${{ runner.temp }}/vela-nvidia-junit.xml
             ${{ runner.temp }}/vela-gpu-build/Testing/Temporary/LastTest.log
+
+  stop-runner:
+    name: Destroy the Vast.ai GPU
+    needs: [start-runner, gpu-nvidia]
+    if: always()
+    runs-on: ubuntu-latest
+    environment: gpu-nvidia
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Token for the organization's runners
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.VELA_RUNNER_APP_ID }}
+          private-key: ${{ secrets.VELA_RUNNER_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-organization-self-hosted-runners: write
+      - name: Destroy every instance and runner of this run
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+          ORG: ${{ github.repository_owner }}
+          LABEL: vela-vast-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 scripts/vast-runner.py stop --org "$ORG" --label "$LABEL"
 
   publish-nvidia-coverage:
     name: Codecov NVIDIA upload (GitHub hosted)
