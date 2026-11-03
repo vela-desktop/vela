@@ -21,11 +21,13 @@ The same scenarios and metric definitions serve both comparisons.
 > real-TTY fast acceptance on that machine, across separate responsiveness
 > and motion campaigns. Full family coverage, additional native shell/window
 > scenarios and the application corpus remain incomplete. P4 now implements
-> the native Wayland scaling pattern and UID-wide CPU/PSS measurements;
-> physical acceptance is pending.
-> No comparative performance results are included.
-> Initial acceptance baseline: `eb85cb9`. The 2026-11-01 integration includes
-> upstream `efdc9c6`; historical hardware acceptance does not qualify the new
+> the native Wayland scaling pattern and UID-wide CPU/PSS measurements, with
+> fast physical acceptance for the initial slices. The new capture-free window
+> interaction resource condition is development-tested on private Vela/KWin.
+> Normal repetitions are deferred while implementation continues; P4 remains
+> partial and no complete-suite performance ranking is available.
+> Initial acceptance baseline: `eb85cb9`. The 2026-11-03 integration includes
+> upstream `8acbfda`; historical hardware acceptance does not qualify the new
 > capture implementation or GPU-producer workload.
 
 The [implementation guide](../benchmarks/README.md) documents current commands,
@@ -1262,7 +1264,7 @@ See [P3 commands](../benchmarks/README.md#p3-native-desktop-observation).
 ### P4 implementation and acceptance scope
 
 `run --phase scaling` and `run --phase overhead` implement the separate fixed
-`p4-pattern-resources-v3` workload. Mixed P2/P4 selections retain each block's
+`p4-pattern-resources-v4` workload. Mixed P2/P4 selections retain each block's
 own version/specification in the immutable schedule and receipt. Default
 repetitions remain three; `--fast` changes only their count. Offline exports
 recompute original pixel and process/counter evidence, never trust only the
@@ -1293,7 +1295,8 @@ reapplied/read back on success and failure before ordinary session teardown.
 
 Overhead omits presentation/input/capture calibration and keeps capture off
 throughout. After ten seconds of startup settling, it measures 30 seconds
-of idle, 1,800 native animation submissions, and a fixed synthetic local
+of idle, 1,800 native animation submissions, a fixed native window interaction
+sequence and a fixed synthetic local
 SHA-256 workload (16,384 hashes of a fixed 1 MiB corpus). Source completion
 must fall inside its sampled window. One-second samples keep PID/start-time
 identity, service/workload cgroup membership, per-process PSS, disappeared
@@ -1317,6 +1320,26 @@ complete transport total or subtract an estimate. All other out-of-boundary
 UID processes remain errors, now with PID/name/start/cgroup diagnostics.
 The descriptor and raw observations are independently checked during offline
 resource auditing. This accounting revision requires a new campaign.
+
+Version 4 adds a capture-free `window-interaction` resource condition: 12
+maximize/restore cycles on one native pattern window (24 actions) using each
+desktop's default shortcuts, with at least 750 ms between commands. Validate
+every injection, contiguous native configure/buffer source record, maximized
+state and restored 401×301 size against the fixed primary output at scale 1.
+Retain order, receipts and both native/root timestamps; all source work must
+fall inside the CPU/PSS sample window. Source records establish state and
+buffer submission, not presentation or optical latency. Scene teardown follows
+the final resource sample, so its exit CPU is outside the measured condition.
+The root input emitter's own cost remains explicitly unmeasured/outside UID CPU;
+the device must be removed before acceptance. Incomplete sequences fail and
+retain partial native evidence. The four conditions stay separate in reports;
+`--fast` runs the complete 24-action sequence once per selected desktop.
+
+The version 3 auditor remains available for original three-condition archives.
+Accepted measurement method/specification must match the immutable planned
+block, preventing a version 3 result from satisfying version 4's larger workload.
+Archive hashes, raw metrics and old aggregates are recomputed without rewriting
+historical evidence. Source changes still require a new campaign.
 
 Development validation covers rejection, schedules, phase-specific no-capture
 execution, raw audits/export, a complete isolated Vela 25-case controller run,
@@ -1343,17 +1366,26 @@ by CPU fixtures. The new
 pixel oracle exposed nonzero fractional-edge differences; these are retained
 as measurements, not relaxed away to make the compositor pass.
 
+The production asynchronous resource controller and the full 24-action native
+sequence passed on private headless Vela and virtual KWin. Those tests use
+explicit input, root-transport and resource-counter fixtures, verify source
+states/cadence, sample bounds, raw audit and owned-process cleanup, and perform
+no captures. They qualify neither kernel uinput nor physical resource values
+for version 4. CPU rejection tests cover missing tools, malformed/lost/reordered
+actions, incorrect geometry/backend/scale, bad clocks/cadence, input cleanup,
+partial failure evidence, raw export tampering and method downgrade attempts.
+
 The application corpus (Qt/GTK/browser/Xwayland), resource interaction
-sequence, additional resource backends and normal repeated real-TTY acceptance
+extensions beyond maximize/restore, additional resource backends and normal repeated real-TTY acceptance
 remain open. The initial pattern/resource slices have fast physical acceptance;
 this does not complete the P4 stage or either full family.
 Coverage is `partial-pattern-only` / `partial-session-resources`;
 `full_suite_complete` and `performance_comparison_available` stay false.
 See [P4 commands](../benchmarks/README.md#p4-scaling-pattern-and-session-resources).
 
-### Upstream integration review (2026-11-02)
+### Upstream integration review (2026-11-03)
 
-The benchmark branch integrates `main` through `cd5ff9f`, including the
+The benchmark branch integrates `main` through `8acbfda`, including the
 `v0.1.0` release history. Installed Beta/Experimental artifacts and this source
 checkout are different identities: an archive must describe the executable
 actually run. The following decisions guide the remaining implementation;
@@ -1361,6 +1393,8 @@ P4's implemented partial scope is described above. The latest pointer-lock
 and visible-resize-border fixes (`#189`, `#192`) also extend `vela-pattern`:
 the benchmark metadata mode remains available, and pointer logging/locking
 stay opt-in rather than changing the fixed P4 stimulus.
+The subsequent three upstream commits only update GitHub Actions dependencies;
+they add no runtime benchmark adapter or stimulus.
 
 | Upstream implementation | Benchmark use | Decision and acceptance work |
 |---|---|---|
@@ -1374,10 +1408,11 @@ stay opt-in rather than changing the fixed P4 stimulus.
 | Beta/Experimental packages and release branches | P5 comparisons of installed Vela releases | Extend discovery to distinguish `vela` and `vela-git`, artifact/channel/source metadata and component hashes. Never derive the installed binary's commit from this checkout or invoke the updater during a measurement. Archive comparison remains across external installations. |
 | Native Bluetooth and update daemons | P4 full-session resource inventory | Include target services started through the supervisor, D-Bus or user manager, including new helpers outside the compositor child tree. Record their identity/activity and common network/cache conditions. Keep default services active and collector/client costs separate; no live updater or device-pairing action is needed to discover them. |
 
-Implementation order: first requalify the existing instruments against the
-current installed target, then accept the initial P4 pattern and UID-wide
-resource workloads on physical outputs. Extend the P4 corpus using the
-existing sharpness and X11 oracles.
+Implementation now extends the P4 corpus using the existing sharpness and X11
+oracles, alongside additional representative resource interactions/application
+work. On 2026-11-03 the operator deferred normal repeated physical acceptance
+to continue implementation. Track requalification separately; it does not block
+development, change the three-repetition default or qualify new code implicitly.
 Persistent high-cadence capture and further shell scenes are a separate P3
 extension with a versioned workload, raw timing records, capture-off/on
 controls and a compatible Plasma adapter. Vela-private `state` counters

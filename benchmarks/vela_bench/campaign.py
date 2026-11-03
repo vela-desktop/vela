@@ -18,6 +18,7 @@ from .discovery import discover, file_hash
 from .host import Layout, load_setup, require_workers_stopped, trusted
 from .model import fingerprint, load_campaign, make_plan, MEASUREMENTS
 from .qualification import audit_pilot, qualification_summary
+from .calibration import require_uinput
 
 
 def identity(value):
@@ -122,6 +123,8 @@ def audit_block(source, block, plan, layout):
             audit["measurements"] = audit_measurements(source, block["target"],
                 state["conditions_snapshot"]["profile"], block["phase"])
             audit["checks"]["measurement_raw_evidence"] = True
+            audit['checks']['measurement_method_binding']=(audit['measurements'].get('method')==expected['workload']
+                and audit['measurements'].get('spec')==expected['block']['measurement_spec'])
         if plan["case"] == "observe":
             from .desktop import audit_observation
             audit["desktop_observation"] = audit_observation(source, block["target"],
@@ -319,6 +322,12 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             if str(layout.probe) not in setup['files']:
                 raise BenchError('Resource animation requires installed vela-bench-probe before takeover')
             trusted(layout.probe)
+            for name in ('vela-pattern','vela-bench-input'):
+                path=layout.helper.parent/name
+                if str(path) not in setup['files']:
+                    raise BenchError(f'Resource interactions require installed {name} before takeover; run setup --tools-dir BUILD/tools')
+                trusted(path)
+            require_uinput()
         if selection["case"] == "measure" and "slow-apps" in selection["execution"]["phases"]:
             producer = layout.helper.parent / "vela-slowgpu"
             if str(producer) not in setup["files"]:
@@ -425,6 +434,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                     if 'resources' in sample:
                         metric=sample['resources']
                         print(f"  P4 {scenario}: UID CPU {metric['cpu_percent_one_logical_cpu']:.2f}% of one logical CPU; median PSS {metric['pss_mib_median']:.2f} MiB; {metric['samples']} samples; capture off.",flush=True)
+                        if scenario=='window-interaction':
+                            print(f"    {metric['workload']['verified_actions']} native window actions verified; configure/buffer evidence, not presentation latency.",flush=True)
                     if phase=='scaling' and 'metrics' in sample:
                         metric=sample['metrics']
                         print(f"  P4 {scenario}: {metric['different_pixels']} different pixels, {metric['offscreen_pixels']} offscreen; original capture retained.",flush=True)
@@ -541,7 +552,11 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
         for image in (f"{block['id']}/{block['target']}-capture-00.png", f"{block['id']}/{block['target']}-capture-11.png"):
             if (directory / image).is_file():
                 document += f"<p><img src='{escape(image)}' alt='Original isolated-session calibration capture'></p>"
-    document += "<p>Capture is calibrated for coarse state observations only; fine-grained desktop motion remains unsupported.</p></html>\n"
+    if measured and {b.get('phase') for b in data['blocks']}=={'overhead'}:
+        document += '<p>Resource measurements keep capture off. Native state records do not establish presentation or optical latency.</p>'
+    else:
+        document += "<p>Capture is calibrated for coarse state observations only; fine-grained desktop motion remains unsupported.</p>"
+    document += '</html>\n'
     (directory / "report.html").write_text(document, encoding="utf-8")
 
 
@@ -628,6 +643,8 @@ def read_export(directory):
         valid = [block for block in data["blocks"] if block.get("status") == "complete"]
         for block in valid:
             actual = audit_measurements(directory / block_identity(block["id"]), block["target"], block["profile"], block["phase"])
+            if actual.get('method')!=block.get('workload') or actual.get('spec')!=block.get('measurement_spec'):
+                raise BenchError('Exported measurement method differs from its planned block')
             if actual != block.get("audit", {}).get("measurements"):
                 raise BenchError("Exported measurement audit differs from raw evidence")
         if (data.get("measurement_blocks_executed") != len(valid) or data.get("measurements") != aggregate(data["blocks"])

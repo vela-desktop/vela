@@ -48,7 +48,7 @@ def keyboard():
                           'after_monotonic_ns':time.monotonic_ns()}),flush=True)
 
 
-def child(adapter,directory):
+def child(adapter,directory,interaction=False):
     from types import SimpleNamespace
     from vela_bench.calibration import Lines,stop_process
     from vela_bench.conditions import normalized_outputs,desired_profile
@@ -70,6 +70,13 @@ def child(adapter,directory):
     # Virtual outputs have no controllable hardware VRR policy. Preserve their
     # reported policy; this fixture qualifies actions/capture, not hardware.
     profile['outputs'][0]['vrr']=initial[0]['vrr']
+    if interaction:
+        from interaction_integration import run_condition
+        result=run_condition(env,'plasma',profile,directory,adapter.parent/'vela-pattern',
+                             [sys.executable,str(Path(__file__).resolve()),'--keyboard'])
+        result['default_shortcuts_verified']=True
+        print('PLASMA_SCALING_EVIDENCE '+json.dumps(result),flush=True)
+        return
     # Reproduce the original stimulus: Meta+Up is top tiling, not maximize.
     process=subprocess.Popen([str(adapter.parent/'vela-pattern'),'--benchmark','401','301'],
         env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
@@ -109,7 +116,7 @@ def child(adapter,directory):
         'offline_pixel_audit':True,'scale1_restored':True}),flush=True)
 
 
-def main(adapter):
+def main(adapter,interaction=False):
     try:import gi
     except ImportError:
         print('SKIP: private KWin shortcut check needs PyGObject');return 77
@@ -123,7 +130,8 @@ def main(adapter):
              'QT_QPA_PLATFORM':'wayland','DBUS_SYSTEM_BUS_ADDRESS':'unix:path='+str(base/'no-system-bus')}
         command=['dbus-run-session','--','kwin_wayland','--virtual','--width','1920','--height','1080',
             '--socket','wayland-vela-scaling-check','--no-lockscreen','--no-kactivities','--exit-with-session',
-            shlex.join([sys.executable,str(Path(__file__).resolve()),'--child',str(Path(adapter).resolve()),str(base)])]
+            shlex.join([sys.executable,str(Path(__file__).resolve()),'--child',str(Path(adapter).resolve()),str(base),
+                        *(['--interactions'] if interaction else [])])]
         process=subprocess.Popen(command,env=env,start_new_session=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         try:
             log,_=process.communicate(timeout=160)
@@ -142,5 +150,5 @@ def main(adapter):
 
 if __name__=='__main__':
     if sys.argv[1]=='--keyboard':keyboard()
-    elif sys.argv[1]=='--child':child(Path(sys.argv[2]),Path(sys.argv[3]))
-    else:sys.exit(main(sys.argv[1]))
+    elif sys.argv[1]=='--child':child(Path(sys.argv[2]),Path(sys.argv[3]),'--interactions' in sys.argv[4:])
+    else:sys.exit(main(sys.argv[1],'--interactions' in sys.argv[2:]))

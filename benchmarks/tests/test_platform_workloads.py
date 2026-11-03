@@ -14,7 +14,7 @@ from vela_bench import BenchError
 from vela_bench.archive import atomic_json
 from vela_bench.campaign import execution_selection
 from vela_bench.pixels import png_rgb, pattern_metrics
-from vela_bench.platform_workloads import SPEC, VERSION, scaling_metrics, audit_measurements
+from vela_bench.platform_workloads import SPEC, VERSION, RESOURCE_CONDITIONS, scaling_metrics, audit_measurements
 from vela_bench.resources import metrics, snapshot, process_stat
 from vela_bench import resources
 
@@ -175,7 +175,10 @@ class ResourceCampaign(unittest.TestCase):
     def setUp(self):
         import test_measurements
         test_measurements.MeasurementCampaign.setUp(self)
+        self.input_check=patch('vela_bench.campaign.require_uinput').start()
         self.setup['files'][str(self.layout.probe)]='fixture-probe-hash'
+        for name in ('vela-pattern','vela-bench-input'):
+            self.setup['files'][str(self.layout.helper.parent/name)]='fixture-instrument-hash'
 
     def fake_begin(self,host,targets,**options):
         import json
@@ -191,7 +194,7 @@ class ResourceCampaign(unittest.TestCase):
         state=read_json(source/'state.json');state['campaign_block']=request
         atomic_json(source/'state.json',state)
         scenarios={}
-        for index,label in enumerate(('idle','active-animation','local-hash')):
+        for index,label in enumerate(RESOURCE_CONDITIONS):
             offset=index*50_000_000_000
             rows=[sample((i+11)*1_000_000_000+offset,100_000+i*10_000) for i in range(34)]
             raw=''
@@ -205,9 +208,13 @@ class ResourceCampaign(unittest.TestCase):
                 'chunks':resources.HASH_CHUNKS,'bytes':len(resources.HASH_DATA)*resources.HASH_CHUNKS,
                 'digest':hashlib.sha256(resources.HASH_DATA).hexdigest(),
                 'begin_monotonic_ns':12_000_000_000+offset,'end_monotonic_ns':16_000_000_000+offset})
-            atomic_json(source/f'{target}-resources-{label}.json',{'uid':1001,'samples':rows})
+            if label=='window-interaction':
+                from test_interactions import transcript
+                raw=json.dumps(transcript(target,state['conditions_snapshot']['profile'],12_000_000_000+offset))
+            atomic_json(source/f'{target}-resources-{label}.json',{'uid':1001,'samples':rows,
+                **({'interaction_input_cleanup':'passed'} if label=='window-interaction' else {})})
             if raw:(source/f'{target}-resources-{label}.work.jsonl').write_text(raw)
-            scenarios[label]={'resources':resource_metrics(rows,1001,label,raw)}
+            scenarios[label]={'resources':resource_metrics(rows,1001,label,raw,target=target,profile=state['conditions_snapshot']['profile'])}
         atomic_json(source/f'{target}-session.json',{'session':{'User':'1001'}})
         atomic_json(source/f'{target}-measurements.json',{'schema':1,'method':VERSION,'phase':'overhead','spec':SPEC,
             'settling_begin_monotonic_ns':0,'settling_end_monotonic_ns':10_000_000_000,
@@ -215,7 +222,7 @@ class ResourceCampaign(unittest.TestCase):
         atomic_json(source/'block-workload.json',dict(request,status='passed'))
         return 0
 
-    def test_executor_disables_input_and_capture_then_exports_and_reaudits_resources(self):
+    def test_executor_disables_calibration_and_capture_then_exports_and_reaudits_resources(self):
         import test_measurements
         from vela_bench.campaign import latest,export_campaign,read_export
         result=test_measurements.MeasurementCampaign.run_campaign(self,phases=['overhead'])
@@ -226,6 +233,7 @@ class ResourceCampaign(unittest.TestCase):
         output=export_campaign(self.layout.path('exports'),data,self.layout)
         self.assertEqual(read_export(output),data)
         self.assertFalse(data['full_suite_complete'])
+        self.assertIn('window-interaction',data['blocks'][0]['audit']['measurements']['scenarios'])
         first=next(output.glob('overhead-*/vela-resources-idle.json'))
         first.write_text('{}')
         with self.assertRaises(BenchError):read_export(output)
@@ -258,6 +266,62 @@ class ResourceCampaign(unittest.TestCase):
         with self.assertRaisesRegex(BenchError,'vela-pattern'):
             test_measurements.MeasurementCampaign.run_campaign(self,phases=['scaling'])
         self.assertEqual(self.options,[])
+
+    def test_missing_window_instruments_are_refused_before_resource_takeover(self):
+        import test_measurements
+        original=dict(self.setup['files'])
+        for name in ('vela-pattern','vela-bench-input'):
+            self.setup['files']=dict(original)
+            del self.setup['files'][str(self.layout.helper.parent/name)]
+            with self.subTest(name=name),self.assertRaisesRegex(BenchError,name):
+                test_measurements.MeasurementCampaign.run_campaign(self,phases=['overhead'])
+        self.assertEqual(self.options,[])
+
+    def test_missing_kernel_input_is_refused_before_starting_resource_workers(self):
+        import test_measurements
+        self.input_check.side_effect=BenchError('Missing kernel uinput device')
+        with self.assertRaisesRegex(BenchError,'Missing kernel uinput'):
+            test_measurements.MeasurementCampaign.run_campaign(self,phases=['overhead'])
+        self.assertEqual(self.options,[])
+
+    def test_window_cleanup_and_native_action_transcript_are_reaudited(self):
+        import json,test_measurements
+        from vela_bench.campaign import latest
+        from vela_bench.archive import read_json
+        test_measurements.MeasurementCampaign.run_campaign(self,phases=['overhead'])
+        block=latest(self.layout)['blocks'][0];target=block['target']
+        source=self.layout.base/'pilots'/block['pilot_run_id']
+        path=source/f'{target}-resources-window-interaction.json'
+        original=read_json(path);changed=copy.deepcopy(original);changed['interaction_input_cleanup']='failed'
+        atomic_json(path,changed)
+        with self.assertRaisesRegex(BenchError,'input cleanup'):audit_measurements(source,target,block['profile'],'overhead')
+        atomic_json(path,original)
+        transcript_path=source/f'{target}-resources-window-interaction.work.jsonl'
+        changed=json.loads(transcript_path.read_text());changed['actions'].pop()
+        transcript_path.write_text(json.dumps(changed))
+        with self.assertRaisesRegex(BenchError,'fixed action count'):audit_measurements(source,target,block['profile'],'overhead')
+
+    def test_v3_raw_resource_archive_remains_auditable_without_new_condition(self):
+        import test_measurements
+        from vela_bench.campaign import latest,audit_block,export_campaign,read_export
+        from vela_bench.archive import read_json
+        from vela_bench.platform_workloads import SPEC_V3
+        test_measurements.MeasurementCampaign.run_campaign(self,phases=['overhead'])
+        data=latest(self.layout);block=data['blocks'][0];target=block['target']
+        source=self.layout.base/'pilots'/block['pilot_run_id'];path=source/f'{target}-measurements.json'
+        saved=read_json(path);del saved['scenarios']['window-interaction']
+        atomic_json(path,saved)
+        with self.assertRaisesRegex(BenchError,'Incomplete resource matrix'):audit_measurements(source,target,block['profile'],'overhead')
+        saved['method']=SPEC_V3['version'];saved['spec']=SPEC_V3;atomic_json(path,saved)
+        self.assertEqual(audit_measurements(source,target,block['profile'],'overhead'),saved)
+        plan=read_json(self.layout.base/'campaigns'/data['run_id']/'plan.json')
+        audit=audit_block(source,block,plan,self.layout)
+        self.assertEqual(audit['status'],'failed')
+        self.assertFalse(audit['checks']['measurement_method_binding'])
+        data['blocks'][0]['audit']['measurements']=saved
+        output=export_campaign(self.layout.path('downgrade-export'),data,self.layout)
+        with self.assertRaisesRegex(BenchError,'method differs from its planned block'):
+            read_export(output)
 
 
 class ResourceLifecycle(unittest.TestCase):

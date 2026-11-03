@@ -20,13 +20,14 @@ from .calibration import Lines, stop_process
 from .conditions import compare_outputs, display_command, normalized_outputs
 from .diagnostics import user_command, stop_instrument, parse_probe
 from .pixels import pattern_metrics
-from . import resources
+from . import resources, interactions
 
-VERSION = 'p4-pattern-resources-v3'
+VERSION = 'p4-pattern-resources-v4'
 PHASES = ('scaling','overhead')
 SCALES = (1.0,1.25,1.5,1.75,2.0)
 STATES = ('opened','snap-left','snap-right','maximized','restored')
-SPEC = {'version':VERSION,'scales':list(SCALES),'states':list(STATES),'pattern_logical_size':[401,301],
+# Retain the original v3 specification for archive reads; extend SPEC below.
+SPEC_V3 = {'version':'p4-pattern-resources-v3','scales':list(SCALES),'states':list(STATES),'pattern_logical_size':[401,301],
         'capture_backend_fallback':False,'pixel_oracle':'coordinate-pattern-v1',
         'maximum_pattern_edge_overhang_pixels':2,'excluded_corner_radius_logical_pixels':8,
         'pattern_pointer_parking':'bottom-right-output-corner',
@@ -37,6 +38,8 @@ SPEC = {'version':VERSION,'scales':list(SCALES),'states':list(STATES),'pattern_l
         'capture_during_resource_measurement':False,'energy_required':False,
         'resource_transport_accounting':'exact-controller-child-pid-start-cgroup-command; separate-from-session',
         'scope':'native-wayland-pattern-and-reserved-uid-resources; application-corpus-incomplete'}
+SPEC=dict(SPEC_V3,version=VERSION,window_interaction=interactions.SPEC)
+RESOURCE_CONDITIONS=('idle','active-animation','window-interaction','local-hash')
 
 
 def query_outputs(host,record,layout,target):
@@ -53,7 +56,7 @@ def apply_outputs(host,record,layout,target,outputs):
 
 def scaling_actions(target,state):
     if target not in ('vela','plasma'): raise BenchError('Unknown scaling desktop')
-    maximize,restore=('maximize','restore') if target=='vela' else ('maximize-toggle','maximize-toggle')
+    maximize,restore=(interactions.command(target,'maximize'),interactions.command(target,'restore'))
     return {'opened':[],'snap-left':['snap-left'],'snap-right':['snap-right'],
             'maximized':[maximize],'restored':[maximize,restore]}[state]
 
@@ -187,22 +190,36 @@ def run_scaling(host,record,directory,target,layout,profile,health,progress,resu
         result['scale1_restored']=True
 
 
-def resource_condition(host,record,directory,target,layout,label,health,progress):
+def resource_condition(host,record,directory,target,layout,label,health,progress,profile=None):
+    if label not in RESOURCE_CONDITIONS:raise BenchError('Unknown fixed resource condition')
     if progress: progress('resources/'+label)
     rows=[]
     cpu_before=time.monotonic_ns()
-    process=None;transport=None
+    process=keyboard=None;transport=None;sysfs=None;input_cleanup='not-started'
     with (directory/f'{target}-resources-{label}.stderr').open('wb') as errors, ThreadPoolExecutor(max_workers=1) as pool:
         try:
             health(); rows.append(resources.snapshot(record['uid']))
             if label=='idle': future=None
             else:
                 command=([str(layout.probe),'--frames',str(SPEC['active_animation_frames']),'--timeout','55'] if label=='active-animation'
+                         else [str(layout.helper.parent/'vela-pattern'),'--benchmark','401','301'] if label=='window-interaction'
                          else ['/usr/bin/python3','-I',str(layout.helper),'_resource-workload'])
+                if label=='window-interaction':
+                    keyboard=host.spawn([str(layout.helper.parent/'vela-bench-input'),'--desktop'],errors)
+                    key_lines=Lines(keyboard);ready=key_lines.next(time.monotonic()+5)
+                    candidate=ready.get('sysfs','')
+                    if (ready.get('event')!='uinput-ready' or ready.get('method')!='linux-uinput-fixed-desktop-v1'
+                            or ready.get('clock')!='CLOCK_MONOTONIC'
+                            or not re.fullmatch(r'/sys/devices/virtual/input/input[0-9]+',candidate)):
+                        raise BenchError('Invalid window interaction input device')
+                    sysfs=candidate
+                    time.sleep(.5)
                 request=user_command(record,layout,'measurement',command,runtime_seconds=120)
                 process=host.spawn(request,errors)
                 transport=resources.transport_identity(process,request)
-                future=pool.submit(process.communicate)
+                future=(pool.submit(interactions.run,process,keyboard,target,profile,ready,key_lines,
+                                    directory/f'{target}-window-interaction-failure.json')
+                        if label=='window-interaction' else pool.submit(process.communicate))
             end=time.monotonic()+SPEC['resource_idle_seconds']
             deadline=time.monotonic()+125
             while (time.monotonic()<end if future is None else not future.done()):
@@ -211,20 +228,31 @@ def resource_condition(host,record,directory,target,layout,label,health,progress
                 health(); rows.append(resources.snapshot(record['uid'],transport=transport))
             if future is not None:
                 output,_=future.result(timeout=2)
-                if process.returncode or len(output)>8*1024*1024: raise BenchError('Resource workload failed or output limit exceeded')
+                if (process.returncode or len(output)>8*1024*1024
+                        or (label=='window-interaction' and process.poll() is not None)):
+                    raise BenchError('Resource workload failed or output limit exceeded')
                 raw=output.decode()
                 (directory/f'{target}-resources-{label}.work.jsonl').write_text(raw)
             else: raw=''
             health(); rows.append(resources.snapshot(record['uid'],transport=transport))
         finally:
+            stop_process(keyboard)
+            if sysfs:
+                deadline=time.monotonic()+2
+                while Path(sysfs).exists() and time.monotonic()<deadline:time.sleep(.05)
+                input_cleanup='passed' if not Path(sysfs).exists() else 'failed'
+            elif keyboard is not None:input_cleanup='unverified'
             stop_process(process)
             stop_instrument(host,record,layout,'measurement')
             atomic_json(directory/f'{target}-resources-{label}.json',{'uid':record['uid'],'samples':rows,
-                'controller_transport':transport,'controller_begin_monotonic_ns':cpu_before})
-    return resource_metrics(rows,record['uid'],label,raw,transport)
+                'controller_transport':transport,'controller_begin_monotonic_ns':cpu_before,
+                **({'interaction_input_cleanup':input_cleanup} if label=='window-interaction' else {})})
+            if label=='window-interaction' and sysfs and input_cleanup!='passed':
+                raise BenchError('Window interaction input device was not removed')
+    return resource_metrics(rows,record['uid'],label,raw,transport,target=target,profile=profile)
 
 
-def resource_metrics(rows,uid,label,raw,transport=None):
+def resource_metrics(rows,uid,label,raw,transport=None,*,target=None,profile=None):
     metrics=resources.metrics(rows,uid,transport)
     if label=='idle':
         if raw or metrics['elapsed_seconds']<SPEC['resource_idle_seconds']: raise BenchError('Resource idle window incomplete')
@@ -239,12 +267,14 @@ def resource_metrics(rows,uid,label,raw,transport=None):
                 or work.get('digest')!=hashlib.sha256(resources.HASH_DATA).hexdigest()):
             raise BenchError('Local resource workload did not complete its fixed work')
         metrics['workload']=work
+    elif label=='window-interaction':
+        metrics['workload']=interactions.audit(raw,target,profile)
     else: raise BenchError('Unknown resource condition')
     if label!='idle':
         stamps=[decode_json(line) for line in raw.splitlines()]
-        begin=(stamps[0].get('begin_monotonic_ns') if label=='local-hash' else
+        begin=(stamps[0].get('begin_monotonic_ns') if label in ('local-hash','window-interaction') else
                next(r['monotonic_ns'] for r in stamps if r.get('event')=='commit'))
-        end=(stamps[0].get('end_monotonic_ns') if label=='local-hash' else stamps[-1].get('monotonic_ns',0))
+        end=(stamps[0].get('end_monotonic_ns') if label in ('local-hash','window-interaction') else stamps[-1].get('monotonic_ns',0))
         # Presentation summaries do not carry a monotonic stamp; their last
         # feedback does. Keep this bound independent of process exit timing.
         if label=='active-animation': end=max(r.get('received_monotonic_ns',0) for r in stamps)
@@ -263,8 +293,8 @@ def run_workload(host,record,directory,target,layout,profile,phase,health,progre
             time.sleep(SPEC['resource_settle_seconds'])
             health()
             result['settling_end_monotonic_ns']=time.monotonic_ns()
-            for label in ('idle','active-animation','local-hash'):
-                result['scenarios'][label]={'resources':resource_condition(host,record,directory,target,layout,label,health,progress)}
+            for label in RESOURCE_CONDITIONS:
+                result['scenarios'][label]={'resources':resource_condition(host,record,directory,target,layout,label,health,progress,profile)}
         else: raise BenchError('Unknown P4 phase')
         result['status']='passed'
     except (BenchError,OSError,ValueError,KeyError,TypeError,subprocess.TimeoutExpired) as exc:
@@ -276,7 +306,9 @@ def run_workload(host,record,directory,target,layout,profile,phase,health,progre
 def audit_measurements(directory,target,profile,phase):
     directory=Path(directory)
     saved=read_json(directory/f'{target}-measurements.json')
-    if (saved.get('schema')!=1 or saved.get('method')!=VERSION or saved.get('spec')!=SPEC or saved.get('phase')!=phase
+    legacy=saved.get('method')==SPEC_V3['version']
+    if (saved.get('schema')!=1 or saved.get('method') not in (VERSION,SPEC_V3['version'])
+            or saved.get('spec')!=(SPEC_V3 if legacy else SPEC) or saved.get('phase')!=phase
             or saved.get('status')!='passed' or saved.get('failures')!=[] or saved.get('family_complete') is not False):
         raise BenchError('P4 workload failed or specification changed')
     if phase=='scaling':
@@ -304,7 +336,8 @@ def audit_measurements(directory,target,profile,phase):
                     raise BenchError('Pattern configure stream identity or ordering changed')
                 last=event['monotonic_ns']
     elif phase=='overhead':
-        if set(saved['scenarios'])!={'idle','active-animation','local-hash'}: raise BenchError('Incomplete resource matrix')
+        labels=('idle','active-animation','local-hash') if legacy else RESOURCE_CONDITIONS
+        if set(saved['scenarios'])!=set(labels): raise BenchError('Incomplete resource matrix')
         began,ended=saved.get('settling_begin_monotonic_ns'),saved.get('settling_end_monotonic_ns')
         if type(began) is not int or type(ended) is not int or not 0<=began<=ended-SPEC['resource_settle_seconds']*1_000_000_000:
             raise BenchError('Resource startup settling interval unavailable')
@@ -312,14 +345,17 @@ def audit_measurements(directory,target,profile,phase):
         uid=session.get('session',{}).get('User','')
         if not isinstance(uid,str) or not uid.isdigit() or int(uid)<=0: raise BenchError('Missing reserved session UID')
         previous_end=ended
-        for label in ('idle','active-animation','local-hash'):
+        for label in labels:
             sample=saved['scenarios'][label]
             source=read_json(directory/f'{target}-resources-{label}.json')
             if source['uid']!=int(uid) or source['samples'][0]['begin_monotonic_ns']<previous_end:
                 raise BenchError('Resource inventory differs from the measured session or settling interval')
             previous_end=source['samples'][-1]['end_monotonic_ns']
             raw='' if label=='idle' else (directory/f'{target}-resources-{label}.work.jsonl').read_text()
-            if sample!={'resources':resource_metrics(source['samples'],source['uid'],label,raw,source.get('controller_transport'))}:
+            if label=='window-interaction' and source.get('interaction_input_cleanup')!='passed':
+                raise BenchError('Window interaction input cleanup was not verified')
+            if sample!={'resources':resource_metrics(source['samples'],source['uid'],label,raw,
+                                                    source.get('controller_transport'),target=target,profile=profile)}:
                 raise BenchError('Resource summary differs from raw process/cgroup evidence')
     else: raise BenchError('Unknown P4 phase')
     return saved

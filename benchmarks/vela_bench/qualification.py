@@ -78,11 +78,11 @@ def audit_pilot(directory, target, fault=None, *, instruments=True):
         else:
             checks["successful_run"] = state.get("stage") == "done" and state.get("result") == "passed"
             if not instruments:
-                checks["capture_and_input_disabled"] = (state.get("campaign_block",{}).get("measurement_executed") is True
+                checks["capture_and_input_calibration_disabled"] = (state.get("campaign_block",{}).get("measurement_executed") is True
                     and state["campaign_block"]["block"]["phase"]=="overhead"
                     and state["plan"].get("instrument_calibration") is False
                     and state["plan"].get("presentation_probe") is False)
-                return {"schema":1,"method":"uid-resource-lifecycle-v1","target":target,"fault":None,
+                return {"schema":1,"method":"uid-resource-lifecycle-v2","target":target,"fault":None,
                         "status":"passed" if all(checks.values()) else "failed","checks":checks,
                         "performance_comparison_available":False}
             for scenario, delay in SCENARIOS.items():

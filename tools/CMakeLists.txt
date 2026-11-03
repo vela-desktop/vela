@@ -89,6 +89,10 @@ if(KF6Screen_FOUND AND TARGET Qt6::DBus)
             ${PROJECT_SOURCE_DIR}/benchmarks/tests/p4_integration.py)
         set_tests_properties(benchmark-p4-integration PROPERTIES
             TIMEOUT 180 LABELS "gpu" RUN_SERIAL TRUE ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+        add_test(NAME benchmark-resource-interaction-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/interaction_integration.py)
+        set_tests_properties(benchmark-resource-interaction-integration PROPERTIES
+            TIMEOUT 90 LABELS "gpu" RUN_SERIAL TRUE ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
     endif()
     add_executable(vela-bench-scene vela-bench-scene.cpp)
     target_link_libraries(vela-bench-scene PRIVATE Qt6::Gui)
@@ -105,6 +109,10 @@ if(KF6Screen_FOUND AND TARGET Qt6::DBus)
         add_test(NAME benchmark-plasma-scaling-integration COMMAND ${Python3_EXECUTABLE}
             ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_scaling_integration.py $<TARGET_FILE:vela-bench-desktop>)
         set_tests_properties(benchmark-plasma-scaling-integration PROPERTIES TIMEOUT 180
+            LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+        add_test(NAME benchmark-plasma-resource-interaction-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_scaling_integration.py $<TARGET_FILE:vela-bench-desktop> --interactions)
+        set_tests_properties(benchmark-plasma-resource-interaction-integration PROPERTIES TIMEOUT 90
             LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
     endif()
 endif()

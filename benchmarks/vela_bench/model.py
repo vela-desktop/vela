@@ -18,7 +18,7 @@ PHASES = {
     "motion": {"description": "Client animation and real window movement", "requirements": ["presentation", "capture", "window-movement"], "takeover": True},
     "slow-apps": {"description": "Paired controls, delayed producer and contention", "requirements": ["input", "presentation", "capture", "load"], "takeover": True},
     "scaling": {"description": "Pixel geometry across scales and window states", "requirements": ["display", "capture", "pixel-pattern"], "takeover": True},
-    "overhead": {"description": "Full-session resource inventory and accounting", "requirements": ["process-inventory", "resource-counters"], "takeover": True},
+    "overhead": {"description": "Full-session resources at rest and during fixed window interactions/work", "requirements": ["process-inventory", "resource-counters", "window-interaction-input"], "takeover": True},
     "report": {"description": "Validate an archive and generate offline HTML", "requirements": [], "takeover": False},
 }
 MEASUREMENTS = tuple(name for name in PHASES if name not in ("check", "calibrate", "report"))
@@ -31,7 +31,7 @@ BUDGETS = {
     "motion": (20, 60, 900),
     "slow-apps": (150, 60, 900),
     "scaling": (180, 120, 720),
-    "overhead": (240, 90, 660),
+    "overhead": (270, 110, 660),
 }
 DEFAULT_DISPLAY = {"output": "primary", "resolution": "native", "refresh": "highest-common-fixed", "scale": 1.0,
                    "brightness_percent": 100, "power_profile": "performance"}

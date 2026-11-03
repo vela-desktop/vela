@@ -25,6 +25,11 @@ INPUTS = 20
 CAPTURES = 12
 
 
+def require_uinput():
+    if not Path('/dev/uinput').is_char_device():
+        raise BenchError('Missing kernel uinput device; enable uinput before input benchmarks')
+
+
 class Lines:
     def __init__(self, process, *, max_record_bytes=65536):
         self.process, self.pending, self.records = process, b"", []

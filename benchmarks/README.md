@@ -622,18 +622,20 @@ Changed instrument hashes require a new campaign, not resume of an old one.
 
 The new recorder/capture probe are available for development but are not
 installed benchmark instruments or replacements for the declared capture
-routes. See the [upstream integration review](../docs/benchmark-suite.md#upstream-integration-review-2026-11-02)
+routes. See the [upstream integration review](../docs/benchmark-suite.md#upstream-integration-review-2026-11-03)
 for reuse decisions, timing limitations and the P4 implementation order.
 
 ## P4 scaling pattern and session resources
 
-The fixed `p4-pattern-resources-v3` workloads now run through `run` with
+The fixed `p4-pattern-resources-v4` workloads now run through `run` with
 independent `scaling` and `overhead` selections. They use the same isolated
 sessions, immutable block receipts, three repetitions/default or one/`--fast`,
 checkpoint/resume, hardware restoration and raw-data re-audit. Initial fast
-physical acceptance passed for the native scaling pattern and session-resource
-workloads on Vela/Plasma in separate campaigns; this remains partial family
-coverage, with three-repetition acceptance outstanding.
+physical acceptance passed for the version 2 native scaling pattern and version 3
+session-resource workloads on Vela/Plasma in separate campaigns. Version 4 adds
+window interactions, checked on private Vela/KWin sessions; physical acceptance
+of this extension remains open. Three-repetition acceptance is deferred while
+implementation continues; defaults remain three repetitions or one with `--fast`.
 
 Build and refresh the installed instruments from the same checkout:
 
@@ -675,13 +677,15 @@ nonzero errors. Wrong scale/backend/identity/state, truncated PNGs or failed
 restoration invalidate the run. Scale 1 is restored before normal teardown,
 including after a failed case; PID 1 retains the overall recovery responsibility.
 Version 2 corrected the former shared Vela shortcut mapping; version 3 separates
-the root controller's launch client from session resources. Changed source,
+the root controller's launch client from session resources; version 4 adds the
+fixed resource interaction sequence. Changed source,
 instrument and specification identities require a new campaign; older failed
 campaigns remain failed and are not resumed with the new workload.
 
 `overhead` does not run input, presentation or capture calibration. It waits
 ten seconds after session readiness, then records a 30-second idle window,
-1,800 native client animation submissions and a fixed local SHA-256 workload
+1,800 native client animation submissions, 12 maximize/restore cycles (24
+verified window actions), and a fixed local SHA-256 workload
 (16,384 hashes of the same 1 MiB corpus). The latter is synthetic work, not a
 browser/application benchmark. Completion evidence is checked against sampling
 intervals. Sampling is once per second without catch-up bursts. CPU comes
@@ -703,6 +707,27 @@ Boundary errors now include the offending PID, start time, name and cgroup.
 Missing PSS/cgroup access fails explicitly. GPU/energy are `unsupported`, not
 zero; shared system services are not attributed to the desktop.
 
+The new `window-interaction` condition uses the target's default shortcuts on
+one native 401×301 pattern window, with a minimum 750 ms command interval.
+Every action must produce a new configure/buffer record with the expected
+maximized state or restored size. Retain the complete source stream, injection
+receipts, native/root timestamps and exact action order. Missing/incorrect
+state, lost actions, changed backend/scale or sampling outside the workload
+invalidates the block. Partial failures retain `TARGET-window-interaction-failure.json`.
+Capture remains off. These records prove native state and buffer submission,
+not presentation/optical latency. The scene remains mapped through the final
+resource sample and is closed during cleanup; exit CPU is outside this condition.
+The root uinput emitter's own cost is explicitly unmeasured/outside UID totals.
+Its device must disappear before the condition is accepted. `--fast` keeps all
+24 actions and changes only the number of independent blocks.
+
+Resource-only runs now require installed `vela-pattern` and `vela-bench-input`
+as well as the probe; missing tools and a missing kernel `/dev/uinput` device
+fail before Start/takeover. Refresh with the
+existing `setup --tools-dir BUILD/tools` command. Completed version 3 archives
+remain hash/raw auditable under their original three-condition specification.
+They cannot satisfy a version 4 block or be resumed/pooled as the new stimulus.
+
 On 2026-11-02, physical fast campaign `8f918718608a4d20a4fa061b0bad99b1`
 passed both version 3 overhead blocks: idle, 1,800-frame animation and the
 fixed hash corpus, with capture disabled, verified lifecycle/isolation,
@@ -723,15 +748,15 @@ These describe this execution, without a repeatability estimate or a general
 desktop ranking. Native scaling's 25 cases per desktop passed separately in
 version 2 campaign `09b2776c59c24c2f8bd2108dff5be738`; its original version 2
 auditor rechecked all 50 captures and restoration without rewriting evidence.
-The next acceptance run uses the normal three-repetition schedule. Source
-identities remain separate; the old and current campaigns are not pooled.
+Normal three-repetition acceptance remains tracked separately from development.
+Source identities remain separate; the old and current campaigns are not pooled.
 
 The HTML links original scaling captures and reports independent-block CPU/PSS
 and pixel-error statistics without pooling repetitions. Exports recompute
 pixel and resource metrics, workload completion and session UID binding.
 Coverage stays `partial-pattern-only` / `partial-session-resources` and
 `full_suite_complete=false`. The Qt/GTK/browser/Xwayland corpus, resource
-interaction sequence, optional GPU/energy sources and complete-family
+interactions beyond maximize/restore, optional GPU/energy sources and complete-family
 comparison remain open.
 
 ### P1 scheduled block exercise
@@ -919,6 +944,17 @@ It requires PyGObject in addition to KWin and the native tools:
 
 ```sh
 ctest --test-dir build-native-displays -R '^benchmark-plasma-scaling-integration$' --output-on-failure
+```
+
+The window-resource integration tests run the production asynchronous
+`window-interaction` condition, its 24-action native transcript, raw audit and
+owned-process/device cleanup on both private compositors. Vela uses virtual
+keyboard input; KWin uses its verified default D-Bus action. Root transport and
+CPU/PSS counters are explicit fixtures: these tests provide functional evidence,
+not physical resource values or kernel uinput qualification. No capture is used:
+
+```sh
+ctest --test-dir build-native-displays -R '^benchmark-(plasma-)?resource-interaction-integration$' --output-on-failure
 ```
 
 `benchmark-input-cli` links the production C parser to an event sink, replacing

@@ -28,7 +28,7 @@ from .archive import append_event, atomic_json, read_json
 from .discovery import sessions
 from .diagnostics import SCENARIOS, pilot_results, run_probe
 from .conditions import apply_conditions, restore_conditions, snapshot_conditions, verify_conditions
-from .calibration import capture_worker, prepare_fault_input, run_input
+from .calibration import capture_worker, prepare_fault_input, require_uinput, run_input
 from .host import (ACCOUNT, Host, Layout, PILOT_UNIT, SESSION_UNIT, check_account,
                    control_lock, isolation_properties, load_setup, require_root, reset_profile, stop_user, trusted,
                    PILOT_SECONDS, RECOVERY_SECONDS, FAULT_UNIT, require_workers_stopped)
@@ -221,14 +221,16 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
             trusted(path)
         if str(layout.helper.parent / "vela-bench-desktop") not in record["files"]:
             raise BenchError("Install controlled-session instruments first: setup --tools-dir BUILD/tools")
-    if calibrate or fault:
-        for name in (("vela-bench-input", "vela-screen-dump") if calibrate else ("vela-bench-input",)):
+    resource_interaction=bool(request and request['measurement_executed'] and request['block']['phase']=='overhead')
+    if calibrate or fault or resource_interaction:
+        needed=list(("vela-bench-input", "vela-screen-dump") if calibrate else ("vela-bench-input",))
+        if resource_interaction:needed+=['vela-pattern','vela-bench-probe']
+        for name in needed:
             path = layout.helper.parent / name
             if str(path) not in record["files"]:
-                raise BenchError("Install calibration instruments first: setup --tools-dir BUILD/tools")
+                raise BenchError("Install required input/resource instruments first: setup --tools-dir BUILD/tools")
             trusted(path)
-        if not Path("/dev/uinput").is_char_device():
-            raise BenchError("Missing kernel uinput device; enable uinput before qualification")
+        require_uinput()
     user = check_account(record, host, layout)
     if host.pids(user.pw_uid) or layout.path(f"run/user/{user.pw_uid}").exists():
         raise BenchError("Reserved account is in use; not starting a concurrent pilot")
