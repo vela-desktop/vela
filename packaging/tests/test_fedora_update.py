@@ -173,8 +173,9 @@ class FedoraUpdates(FedoraFixture):
 
     def test_project_version_controls_rpm_version(self):
         import re
+        # The selected commit's version, not this checkout's.
         version = re.search(r"(?m)^\s*VERSION\s+([0-9]+(?:\.[0-9]+)+)\s*$",
-                            (ROOT / "CMakeLists.txt").read_text()).group(1)
+                            (self.source / "CMakeLists.txt").read_text()).group(1)
         self.assertIn("Version:        %{vela_version}", self.spec.read_text())
         self.run_update("--build")
         self.assertIn("vela_version " + version, self.calls("rpmbuild")[0]["args"])
