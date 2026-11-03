@@ -56,8 +56,9 @@ class Prompt:
 
     def __init__(self, vela):
         self.vela = vela
+        # Its errors in Vela's log, which a failing test prints.
         self.process = subprocess.Popen([PROMPT], env=vela.client_env, stdin=subprocess.PIPE,
-                                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                                        stdout=subprocess.PIPE, stderr=vela.log)
         vela.clients.append(self.process)
         self.pending = b""
 
