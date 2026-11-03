@@ -6,7 +6,15 @@
 # on the host. See docs/distrobox.md.
 set -eu
 
-name=${VELA_DISTROBOX_NAME:-vela-nested}
+config_home=${XDG_CONFIG_HOME:-"$HOME/.config"}
+name_file="$config_home/vela-distrobox/container-name"
+if [ -n "${VELA_DISTROBOX_NAME:-}" ]; then
+    name=$VELA_DISTROBOX_NAME
+elif [ -r "$name_file" ]; then
+    name=$(cat "$name_file")
+else
+    name=vela-nested
+fi
 image=${VELA_DISTROBOX_IMAGE:-quay.io/toolbx/arch-toolbox:latest}
 data_home=${XDG_DATA_HOME:-"$HOME/.local/share"}
 box_home="$data_home/vela-distrobox/home"
@@ -60,7 +68,8 @@ box_exists() {
 }
 
 write_launcher() {
-    mkdir -p "$(dirname "$wrapper")" "$(dirname "$desktop")"
+    mkdir -p "$(dirname "$wrapper")" "$(dirname "$desktop")" "$(dirname "$name_file")"
+    printf '%s\n' "$name" >"$name_file"
     # Atomic replacement also works when setup runs from the installed wrapper.
     tmp=$(mktemp "$(dirname "$wrapper")/.vela-distrobox.XXXXXXXX")
     cp "$0" "$tmp"
