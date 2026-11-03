@@ -13,8 +13,10 @@ The same scenarios and metric definitions serve both comparisons.
 > **P1 campaign-core acceptance passed on the initial Vela/Plasma machine:**
 > a four-block multi-phase `--fast` exercise and a six-block normal exercise
 > verified phase scheduling, complete repetitions and restoration.
-> P2 neutral-client input, animation and paired GPU-producer workloads are
-> implemented, with raw-data audits and independent-block statistics. Their
+> P2 client-measurement implementation is complete: input, animation, paired
+> GPU-producer tests and dedicated CPU/GPU contention, with raw-data audits
+> and independent-block statistics. The v2 contention extension is verified on
+> private compositors; its physical qualification remains open. Their
 > six-block real-TTY `--fast` acceptance passed on the initial Vela/Plasma
 > machine; the operator deferred normal three-repetition acceptance to proceed
 > with P3. P3's native launcher/window/desktop observation workload passed
@@ -1094,7 +1096,7 @@ relative changes; relative changes from near-zero baselines need care.
 |---|---|---|
 | P0 Feasibility | Prototype TTY lifecycle under the dedicated benchmark UID, profile/runtime reset, direct session launch, common input/feedback, capture and overhead calibration | On the initial machine: TTY → Vela → Plasma → TTY using the setup-managed account, with no graphical greeter; previous display-manager/output/brightness/power-profile states restored; operator/previous-target fixture state does not leak; crash/hang recovery; verified capture cadence/geometry and instrument controls (§7.4). Validate the same contracts on GNOME before calling its adapter supported |
 | P1 Campaign core | Fixed phase list/requirements and CLI, checks, start notice/estimate, Python coordinator, fixed privileged launcher, systemd supervision, JSON/JSONL state and static reports | Missing targets fail before takeover; warning precedes termination; phases run independently; default schedules three blocks and `--fast` one with identical per-block work; fresh calibration runs; interrupted blocks restart cleanly while completed blocks remain intact |
-| P2 Primary measurements | B1 neutral client, B2 client motion and B3 paired slow-producer tests | Repeated real-output runs with raw data; common clients on Vela/Plasma; controls detect an intentionally introduced problem in an isolated fixture |
+| P2 Primary measurements | B1 neutral client, B2 client motion and B3 paired slow-producer plus dedicated CPU/GPU contention tests | Repeated real-output runs with raw data; common clients on Vela/Plasma; controls detect an intentionally introduced problem in an isolated fixture |
 | P3 Desktop observation | Automated launcher/window/desktop actions and one validated capture route per supported adapter | Verified actions/content; no mid-run dialogs or automatic backend substitution; insufficient capture cadence cannot produce fine-grained motion claims |
 | P4 Scaling and overhead | B4 pattern/corpus and B5 full-session accounting with optional energy sources | Reproducible pixel/geometry evidence; no peripheral battery accepted as computer energy; collector/process boundaries verified |
 | P5 Complete v1 | All five primary families, supported installed targets, archive comparison and operator documentation | One Start from a TTY uses the provisioned account, produces the complete offline report and restores initial service state; no provisioning/login prompts during measurement; Vela-version comparison uses archives across external updates; no side-by-side version manager or target build/install/update steps; every gap remains visible |
@@ -1143,7 +1145,7 @@ remain P3–P5 work.
 
 ### P2 implementation and acceptance scope
 
-The `p2-neutral-client-v1` workload now runs through the same executor after
+The current `p2-neutral-client-v2` workload runs through the same executor after
 fresh instrument calibration. Each block keeps its own raw evidence and can
 be resumed only under the same immutable selection, installation and hardware
 conditions. `--fast` changes independent repetition count only, never sample
@@ -1153,7 +1155,7 @@ budgets, warm-up or controls:
 |---|---|---|
 | responsiveness | Focused native Wayland SHM client, F24 response matched to presentation | Five warm-up actions, then 100 measured; all 105 actions validated. Report injection interval, injection-to-presentation lower/upper bounds, client receipt and receipt-to-presentation separately |
 | motion | Native client animation with identified submissions and feedback | 30 warm-up submissions, then 600 measured; retain presented/discarded counts, p50/p95 intervals, maximum gap and gaps over 1.5 fixed refresh periods. These are client update gaps, not missed kernel vblanks |
-| slow-apps | Responsive input/animation client alongside the 150 ms GPU acquire-fence producer, explicit then implicit synchronization | Each mode gets a fresh no-load input/animation control in the same block. Collect both absolute metrics and loaded-minus-control differences. CPU/GPU contention as dedicated workloads remains unimplemented |
+| slow-apps | Responsive input/animation client alongside the 150 ms GPU acquire-fence producer, explicit then implicit synchronization | Each mode gets a fresh no-load input/animation control in the same block. Collect both absolute metrics and loaded-minus-control differences. CPU and GPU contention each have a separate fresh paired control and recorded achieved load |
 
 The GPU producer uses the compositor's DRM device, reports Vulkan device and
 queue identity, timestamps each compute job with GPU queries, verifies that
@@ -1195,9 +1197,56 @@ and show median/range of independent block p50/p95 values. They do not pool
 frames/actions as independent repetitions, report p99 from these samples or
 claim statistical significance. Coverage is `partial-client-only`, including
 when all selected P2 blocks finish: B1 still needs native shell response, B2
-real window motion, and B3 desktop observation/dedicated contention workloads.
+real window motion, and B3 desktop observation under load.
 `full_suite_complete` and automated complete-family comparison remain false.
 See the implementation guide for the P2 build, TTY run and resume commands.
+
+### P2 implementation closure: dedicated contention (v2)
+
+P2 is implementation-complete within its defined neutral-client scope. It
+adds separate CPU and GPU contention to the explicit/implicit delayed producer
+cases. Each of four loads gets its own no-load input/animation control, giving
+eight slow-apps conditions per desktop/repetition. All conditions keep five
+input warm-ups plus 100 measured actions, and 30 animation warm-ups plus 600
+measured frames. `--fast` changes repetitions only. P3/P5 family coverage and
+physical acceptance are separate gates; this closure does not declare the
+whole B1/B2/B3 families or the suite complete.
+
+The fixed CPU helper starts one pinned integer worker for every allowed CPU,
+capped at 32. Reports retain allowed CPU count, selected CPUs, worker PIDs,
+work chunks/checksums and CLOCK_PROCESS_CPUTIME_ID counters. All workers must
+make progress across the measured interval and achieve at least 0.25 CPU
+seconds per sampled wall second. Their 500 ms samples expose a maximum 2 s
+gap tolerance and the enclosing interval's uncertainty. EOF stops and reaps
+all workers; parent-death signals and the existing supervised instrument
+cgroup bound abnormal cleanup. Work runs as the benchmark UID, never root.
+
+The GPU case uses a graphics-capable compute queue on the same compositor
+DRM/Vulkan device, 256 workgroups of 64 invocations, and a separate shader
+with per-invocation outputs. Jobs target 5 ms through recorded calibration and
+submit continuously without waiting for Wayland frame callbacks. This is
+separate from the acquire-fence producer and creates no occluding surface.
+GPU query timestamps, completed jobs and host monotonic progress must cover
+the full input/animation window; timestamp spans must occupy at least 35% of
+the enclosing sampled wall interval. These spans can include preemption and
+do not measure global utilization or establish full GPU saturation. Device,
+calibration and achieved work remain visible for future compatibility checks.
+
+Source/UID/sequence/clock mismatches, stalled or missing workers, incomplete
+GPU work, incompatible devices or insufficient achieved load invalidate the
+block. Failure still preserves the source stream. Original v1 archives retain
+their original method and specification and are re-auditable; an old smaller
+workload cannot satisfy the new immutable v2 block. The installed CPU helper
+and GPU contention capability are checked before takeover. Helpers, methods,
+controls and thresholds are fixed; the runner does not accept custom loads.
+
+Private Vela development executes the full eight-condition production
+controller with virtual input and a two-core CPU-affinity fixture, then
+re-audits all input, presentation and load evidence. Cross-compositor checks
+exercise real CPU/GPU work alongside foreground animation on virtual KWin;
+that check makes no input timing claim. These validate implementation paths,
+not physical display timing or kernel uinput. Physical v2 acceptance and
+normal repetitions remain deferred; no old acceptance is transferred to v2.
 
 ### P3 implementation and acceptance scope
 

@@ -49,7 +49,7 @@ def keyboard():
                           'after_monotonic_ns':time.monotonic_ns()}),flush=True)
 
 
-def child(adapter,directory,interaction=False,corpus_mode=False):
+def child(adapter,directory,interaction=False,corpus_mode=False,contention_mode=False):
     from types import SimpleNamespace
     from vela_bench.calibration import Lines,stop_process
     from vela_bench.conditions import normalized_outputs,desired_profile
@@ -71,6 +71,10 @@ def child(adapter,directory,interaction=False,corpus_mode=False):
     # Virtual outputs have no controllable hardware VRR policy. Preserve their
     # reported policy; this fixture qualifies actions/capture, not hardware.
     profile['outputs'][0]['vrr']=initial[0]['vrr']
+    if contention_mode:
+        from contention_integration import motion_only
+        print('PLASMA_SCALING_EVIDENCE '+json.dumps(motion_only(env,'plasma',directory,adapter.parent)),flush=True)
+        return
     if interaction:
         from interaction_integration import run_condition
         result=run_condition(env,'plasma',profile,directory,adapter.parent/'vela-pattern',
@@ -147,7 +151,9 @@ def child(adapter,directory,interaction=False,corpus_mode=False):
         'offline_pixel_audit':True,'scale1_restored':True}),flush=True)
 
 
-def main(adapter,interaction=False,corpus_mode=False):
+def main(adapter,interaction=False,corpus_mode=False,contention_mode=False):
+    if contention_mode and (os.getuid()==0 or not any(Path('/dev/dri').glob('renderD*'))):
+        print('SKIP: private contention needs an unprivileged user and render node');return 77
     try:import gi
     except ImportError:
         print('SKIP: private KWin shortcut check needs PyGObject');return 77
@@ -163,7 +169,7 @@ def main(adapter,interaction=False,corpus_mode=False):
         command=['dbus-run-session','--','kwin_wayland','--virtual','--width','1920','--height','1080',
             *(['--xwayland'] if corpus_mode else []),'--socket','wayland-vela-scaling-check','--no-lockscreen','--no-kactivities','--exit-with-session',
             shlex.join([sys.executable,str(Path(__file__).resolve()),'--child',str(Path(adapter).resolve()),str(base),
-                        *(['--interactions'] if interaction else []),*(['--corpus'] if corpus_mode else [])])]
+                        *(['--interactions'] if interaction else []),*(['--corpus'] if corpus_mode else []),*(['--contention'] if contention_mode else [])])]
         process=subprocess.Popen(command,env=env,start_new_session=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         try:
             log,_=process.communicate(timeout=500 if corpus_mode else 160)
@@ -182,5 +188,5 @@ def main(adapter,interaction=False,corpus_mode=False):
 
 if __name__=='__main__':
     if sys.argv[1]=='--keyboard':keyboard()
-    elif sys.argv[1]=='--child':child(Path(sys.argv[2]),Path(sys.argv[3]),'--interactions' in sys.argv[4:],'--corpus' in sys.argv[4:])
-    else:sys.exit(main(sys.argv[1],'--interactions' in sys.argv[2:],'--corpus' in sys.argv[2:]))
+    elif sys.argv[1]=='--child':child(Path(sys.argv[2]),Path(sys.argv[3]),'--interactions' in sys.argv[4:],'--corpus' in sys.argv[4:],'--contention' in sys.argv[4:])
+    else:sys.exit(main(sys.argv[1],'--interactions' in sys.argv[2:],'--corpus' in sys.argv[2:],'--contention' in sys.argv[2:]))

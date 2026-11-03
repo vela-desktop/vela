@@ -443,12 +443,19 @@ workloads below. Scaling/overhead execute the partial P4 workloads described bel
 
 ## P2 neutral-client measurements
 
+P2 implementation is complete for its declared client-only scope in
+`p2-neutral-client-v2`: input, animation, paired delayed producers and separate
+CPU/GPU contention. Native shell/window observations belong to P3; complete
+five-family comparison belongs to P5. Physical qualification of the v2 extension
+is still open, and normal repetitions remain deferred by the operator.
+
 Build the native clients and install the updated launcher/instruments (the
 existing build must enable `VELA_BUILD_TOOLS` and
 `VELA_BUILD_GPU_TEST_TOOLS`; the latter requires Vulkan/GBM/libdrm and `glslc`):
 
 ```sh
-cmake --build build-native-displays --target vela-bench-probe vela-bench-input vela-bench-desktop vela-screen-dump vela-slowgpu
+cmake -S . -B build-native-displays
+cmake --build build-native-displays --target vela-bench-probe vela-bench-input vela-bench-desktop vela-screen-dump vela-slowgpu vela-bench-cpuload
 sudo scripts/vela-bench setup --tools-dir build-native-displays/tools
 scripts/vela-bench plan --phase responsiveness --phase motion --phase slow-apps --target vela --target plasma --fast
 ```
@@ -478,7 +485,7 @@ are exported in `conditions-recovery.json`. This is a recovery measure, not a
 fix for the underlying KWin/amdgpu RA24 format incompatibility; another rejection
 still stops the campaign.
 
-The versioned `p2-neutral-client-v1` workload fixes these samples for both modes:
+The versioned `p2-neutral-client-v2` workload fixes these samples for both modes:
 
 - Input: five warm-up actions plus 100 measured F24 responses, one outstanding
   action at a time. Save and validate all 105 actions and matching feedback;
@@ -496,15 +503,44 @@ The versioned `p2-neutral-client-v1` workload fixes these samples for both modes
   continued presentation while the foreground client runs. Its larger window
   keeps a visible region around the foreground probe. GPU duration must have
   a median of 75–225 ms for the fixed 150 ms request; gaps in production or
-  visible updates over two seconds invalidate coverage. Dedicated CPU/GPU
-  contention cases remain unavailable, and absence of resource contention is
-  never inferred from use of a compute-only queue.
+  visible updates over two seconds invalidate coverage. The absence of
+  contention is never inferred merely from use of a compute-only queue.
+- **CPU contention:** a fresh input/animation control, then the same tests while
+  one integer worker runs on each allowed CPU, capped at 32 workers. Each worker
+  records its pinned CPU, PID, work counters and kernel CPU time every 500 ms.
+  The audit requires all workers to cover the measured window and achieve at
+  least 25% CPU time per sampled wall interval. EOF must stop and reap them all.
+- **GPU contention:** another fresh control, then offscreen compute on a
+  graphics-capable queue of the compositor’s DRM/Vulkan device. Uses 256 × 64
+  invocations, separate result elements, approximately 5 ms calibrated jobs,
+  and no Wayland frame pacing or delayed acquire-fence surface. Record real
+  completed jobs, timestamp spans, calibration and queue/device identity.
+  Timestamp-span/elapsed must be at least 0.35 over the enclosing sampled
+  window. This is not global GPU utilization or proof of full saturation.
 
 Missing GPU timestamps, permissions or synchronization support fail that
 workload explicitly. The suite adds no permission rule, sync-mode fallback or
 special desktop configuration. Snapshot/restore and instrument requirements
 remain those already documented above; `slow-apps` additionally requires the
-installed `vela-slowgpu` before any block takes over the machine.
+installed `vela-slowgpu` with `--contention` support and `vela-bench-cpuload`
+before any block takes over the machine. Reconfigure, build and refresh setup
+with the commands above after updating the checkout.
+
+CPU and GPU contention retain their own achieved-load records and each use a
+fresh no-load control. No capture runs in these P2 measurements. Invalid load,
+missing workers/jobs or incomplete coverage fails the block, preserves raw
+evidence and never becomes a successful zero-degradation result. Both modes
+use the same complete work/sample policy with normal or `--fast` repetitions.
+Historical v1 exports keep their original four slow-apps conditions and remain
+readable; they cannot satisfy a v2 block or resume across a source change.
+
+Development checks use private compositors and explicit input/CPU-affinity
+fixtures; they do not qualify kernel uinput or physical timings:
+
+```sh
+VELA_BUILD="$PWD/build-native-displays" python3 benchmarks/tests/contention_integration.py
+python3 benchmarks/tests/plasma_scaling_integration.py build-native-displays/tools/vela-bench-desktop --contention
+```
 
 Reports record `execution_mode=measure`, the accepted measurement-block count,
 per-scenario raw-derived results and median/range of independent block p50/p95

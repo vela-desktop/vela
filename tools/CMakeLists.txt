@@ -65,6 +65,11 @@ vela_client_protocol(proto-presentation-time
 add_executable(vela-bench-probe vela-bench-probe.c)
 target_link_libraries(vela-bench-probe PRIVATE proto-xdg-shell proto-presentation-time)
 target_compile_options(vela-bench-probe PRIVATE -Wall -Wextra -Wno-unused-parameter)
+add_executable(vela-bench-cpuload vela-bench-cpuload.c)
+target_compile_options(vela-bench-cpuload PRIVATE -Wall -Wextra)
+add_test(NAME benchmark-contention-cli COMMAND ${Python3_EXECUTABLE}
+    ${PROJECT_SOURCE_DIR}/benchmarks/tests/contention_cli.py $<TARGET_FILE:vela-bench-cpuload>)
+set_tests_properties(benchmark-contention-cli PROPERTIES TIMEOUT 20 SKIP_RETURN_CODE 77)
 pkg_check_modules(BENCH_EVDEV IMPORTED_TARGET libevdev)
 if(BENCH_EVDEV_FOUND)
     add_executable(vela-bench-input vela-bench-input.c)
@@ -241,10 +246,26 @@ add_custom_command(
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/slow.comp
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/slow.comp
     COMMENT "Compilo lo shader di vela-slowgpu")
-add_executable(vela-slowgpu vela-slowgpu.c ${TOOLS_SHADER})
+set(CONTENTION_SHADER ${CMAKE_CURRENT_BINARY_DIR}/shaders/contention.comp.spv.inc)
+add_custom_command(OUTPUT ${CONTENTION_SHADER}
+    COMMAND ${TOOLS_GLSLC} --target-env=vulkan1.3 -O -mfmt=num -o ${CONTENTION_SHADER}
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/contention.comp
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/contention.comp ${TOOLS_SHADER})
+add_executable(vela-slowgpu vela-slowgpu.c ${TOOLS_SHADER} ${CONTENTION_SHADER})
 add_test(NAME benchmark-slowgpu-cli COMMAND ${Python3_EXECUTABLE}
     ${PROJECT_SOURCE_DIR}/benchmarks/tests/slowgpu_cli.py $<TARGET_FILE:vela-slowgpu>)
-set_tests_properties(benchmark-slowgpu-cli PROPERTIES TIMEOUT 15)
+set_tests_properties(benchmark-slowgpu-cli PROPERTIES TIMEOUT 20)
+if(TARGET vela-bench-desktop AND BENCH_KWIN AND BENCH_DBUS_RUN)
+    add_test(NAME benchmark-plasma-contention-integration COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_scaling_integration.py $<TARGET_FILE:vela-bench-desktop> --contention)
+    set_tests_properties(benchmark-plasma-contention-integration PROPERTIES TIMEOUT 150 LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+endif()
+if(VELA_BUILD_COMPOSITOR)
+    add_test(NAME benchmark-p2-contention-integration COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/benchmarks/tests/contention_integration.py)
+    set_tests_properties(benchmark-p2-contention-integration PROPERTIES TIMEOUT 280 LABELS "gpu"
+        RUN_SERIAL TRUE SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+endif()
 target_include_directories(vela-slowgpu PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 target_link_libraries(vela-slowgpu PRIVATE proto-xdg-shell proto-linux-dmabuf proto-linux-drm-syncobj proto-presentation-time
     PkgConfig::TOOLS_VULKAN PkgConfig::TOOLS_GBM PkgConfig::TOOLS_DRM)

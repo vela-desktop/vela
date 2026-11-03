@@ -29,7 +29,7 @@ BUDGETS = {
     "calibrate": (0, 240, 600),
     "responsiveness": (20, 60, 900),
     "motion": (20, 60, 900),
-    "slow-apps": (150, 60, 900),
+    "slow-apps": (300, 90, 900),
     "scaling": (360, 180, 900),
     "overhead": (270, 110, 660),
 }
@@ -141,7 +141,7 @@ def make_plan(campaign, discovery, *, phases=None, targets=None, fast=False, exe
                 module = implementation(block["phase"])
                 block.update(workload=module.VERSION, measurement_executed=True, measurement_spec=module.SPEC,
                              requirements=(list(PHASES[block["phase"]]["requirements"]) if block["phase"] in ("scaling", "overhead") else ["input", "presentation", "instrument-calibration"]) +
-                             (["delayed-gpu-producer-explicit-and-implicit"] if block["phase"] == "slow-apps" else []),
+                             (["delayed-gpu-producer-explicit-and-implicit", "pinned-cpu-contention", "graphics-compute-contention"] if block["phase"] == "slow-apps" else []),
                              deadline_seconds=900)
         plan["estimate"]["maximum_seconds"] = 10 + sum(x["deadline_seconds"] for x in blocks)
     plan["fingerprint"] = fingerprint(plan)

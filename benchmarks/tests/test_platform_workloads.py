@@ -168,7 +168,7 @@ class P4Planning(unittest.TestCase):
     def test_mixed_p2_p4_schedule_keeps_distinct_immutable_workloads(self):
         plan=execution_selection({'targets':{'vela':{}}},['vela'],case='calibrate',fast=True,seed=0,
             phases=['motion','overhead'],exercise=False)
-        self.assertEqual([b['workload'] for b in plan['blocks']],['p2-neutral-client-v1',VERSION])
+        self.assertEqual([b['workload'] for b in plan['blocks']],['p2-neutral-client-v2',VERSION])
 
 
 class ResourceCampaign(unittest.TestCase):

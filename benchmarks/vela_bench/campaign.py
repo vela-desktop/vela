@@ -125,6 +125,8 @@ def audit_block(source, block, plan, layout):
             audit["measurements"] = audit_measurements(source, block["target"],
                 state["conditions_snapshot"]["profile"], block["phase"])
             audit["checks"]["measurement_raw_evidence"] = True
+            if expected['workload']=='p2-neutral-client-v2' and block['phase']=='slow-apps':
+                audit['checks']['contention_uid_binding']=audit['measurements'].get('contention_uid')==plan['context']['uid']
             if "corpus_inventory" in expected:
                 audit['checks']['corpus_inventory_binding']=(audit['measurements'].get('corpus_inventory')==expected['corpus_inventory']
                     and audit['measurements'].get('corpus_uid')==plan['context']['uid'])
@@ -343,6 +345,12 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             if str(producer) not in setup["files"]:
                 raise BenchError("Selected slow-apps phase requires the installed vela-slowgpu instrument before takeover")
             trusted(producer)
+            cpu=layout.helper.parent/'vela-bench-cpuload'
+            if str(cpu) not in setup['files']:
+                raise BenchError('Slow-apps requires the installed vela-bench-cpuload; build and refresh setup --tools-dir BUILD/tools')
+            trusted(cpu)
+            if '--contention' not in host.run([str(producer),'--help'],timeout=10).stdout:
+                raise BenchError('Installed GPU producer lacks the fixed contention workload; rebuild and refresh setup')
         if resume:
             directory = root / identity(resume)
             previous = inspect_campaign(directory)
@@ -360,7 +368,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
         atomic_json(layout.base / "campaign-active.json", {"run_id": plan["run_id"]})
         pending = [block for block in plan["blocks"] if completion(directory, block) is None]
         print(f"Campaign {plan['run_id']}: {len(pending)} pending blocks; completed blocks are retained.", flush=True)
-        print(f"Provisional duration: about {len(pending)}–{len(pending) * 3} minutes; hard per-block budget 900 seconds.", flush=True)
+        nominal=sum(block.get('measurement_budget_seconds',30)+block.get('preparation_budget_seconds',60) for block in pending)
+        print(f"Provisional duration: about {max(1,round(nominal/60))}–{max(1,round(nominal/30))} minutes; hard per-block budget 900 seconds.", flush=True)
         print("This takes over the machine, changes/restores hardware conditions and launches fresh isolated desktops.", flush=True)
         print("After START, the supervised worker activates the greeter VT to resolve and freeze the hardware profile.", flush=True)
         if any(block["fault"] for block in pending):
@@ -465,6 +474,11 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                     if "producer" in sample:
                         metric = sample["producer"]
                         print(f"  P2 {scenario}: {metric['completed']} GPU jobs; measured GPU duration p50 {metric['gpu_duration_ms']['p50']:.3f} ms; visible production verified.", flush=True)
+                    if 'contention' in sample:
+                        load=sample['contention']
+                        detail=(f"{load['worker_count']} pinned CPU workers; mean achieved CPU fraction {load['mean_worker_cpu_fraction']:.3f}" if load['kind']=='cpu' else
+                                f"{load['jobs']} completed GPU jobs; timestamp span / elapsed {load['timestamp_span_fraction']:.3f}; global GPU utilization unmeasured")
+                        print(f"    P2 {scenario} contention: {detail}; paired control and complete measurement-window coverage verified.",flush=True)
                 for client,availability in audit.get('measurements',{}).get('corpus_availability',{}).items():
                     print(f"  P4 corpus {client}: {availability['status']}"+
                           (f" ({availability['reason']})" if availability.get('reason') else ''),flush=True)
@@ -515,7 +529,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
 </style>"""
     document += ("<h1>P3 desktop observation</h1><p>Native launcher, window and desktop actions verified through coarse output captures. No frame-level motion or optical latency claims.</p>" if observed else
                  "<h1>Native benchmark measurements</h1><p>Fixed client, scaling-pattern and session-resource scenarios. Additional shell response, window movement, "
-                 "dedicated contention workloads and full application-corpus coverage are incomplete. Software timestamps are not optical latency.</p>" if measured else
+                 "full application-corpus coverage are incomplete. Contention coverage is declared per workload version. Software timestamps are not optical latency.</p>" if measured else
                  "<h1>P1 campaign core exercise</h1><p>Scheduled phase slots ran fixed instrument controls only. "
                  "Zero measurement blocks executed. The named benchmark families were not measured.</p>" if exercise else
                  "<h1>Qualification and calibration</h1><p>Instrument acceptance evidence.</p>")
@@ -671,6 +685,12 @@ def read_export(directory):
             actual = audit_measurements(directory / block_identity(block["id"]), block["target"], block["profile"], block["phase"])
             if actual.get('method')!=block.get('workload') or actual.get('spec')!=block.get('measurement_spec'):
                 raise BenchError('Exported measurement method differs from its planned block')
+            if actual.get('method')=='p2-neutral-client-v2' and block.get('phase')=='slow-apps':
+                if 'campaign-plan.json' not in manifest['files']:
+                    raise BenchError('Exported contention has no hashed immutable plan')
+                plan=read_json(directory/'campaign-plan.json')
+                if actual.get('contention_uid')!=plan['context']['uid']:
+                    raise BenchError('Exported contention UID differs from the planned benchmark account')
             if actual.get('method')=='p4-pattern-resources-v5' and block.get('phase')=='scaling':
                 if 'campaign-plan.json' not in manifest['files']:
                     raise BenchError('Exported corpus has no hashed immutable plan')

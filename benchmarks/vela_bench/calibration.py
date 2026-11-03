@@ -218,7 +218,7 @@ def stop_process(process):
 
 def run_input(host, record, directory, target, layout, health, *, delay=0, capture_profile=None,
               measurement_name=None):
-    if measurement_name not in (None, "measure-input", "measure-explicit-control-input", "measure-implicit-control-input", "measure-explicit-input", "measure-implicit-input"):
+    if measurement_name not in (None, "measure-input", "measure-explicit-control-input", "measure-implicit-control-input", "measure-explicit-input", "measure-implicit-input", "measure-cpu-control-input", "measure-cpu-input", "measure-gpu-control-input", "measure-gpu-input"):
         raise BenchError("Unknown fixed input measurement")
     count = 105 if measurement_name else INPUTS if delay == 0 else 5
     if measurement_name and (delay or capture_profile):

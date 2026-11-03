@@ -10,16 +10,16 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import BenchError
+from . import BenchError, contention
 from .archive import atomic_json, decode_json, read_json
 from .calibration import Lines, parse_input, run_input, stop_process
 from .diagnostics import distribution, parse_probe, stop_instrument, user_command
 
-VERSION = 'p2-neutral-client-v1'
+VERSION = 'p2-neutral-client-v2'
 PHASES = ('responsiveness', 'motion', 'slow-apps')
 INPUT_WARMUP, INPUT_SAMPLES = 5, 100
 MOTION_WARMUP, MOTION_SAMPLES = 30, 600
-SPEC = {'version': VERSION, 'input_warmup_actions': INPUT_WARMUP, 'input_actions': INPUT_SAMPLES,
+SPEC_V1 = {'version': 'p2-neutral-client-v1', 'input_warmup_actions': INPUT_WARMUP, 'input_actions': INPUT_SAMPLES,
         'motion_warmup_frames': MOTION_WARMUP, 'motion_frames': MOTION_SAMPLES,
         'producer_delay_ms': 150, 'producer_sync_modes': ['explicit', 'implicit'],
         'neutral_buffer_size': [640, 360], 'producer_buffer_size': [1024, 640],
@@ -27,6 +27,7 @@ SPEC = {'version': VERSION, 'input_warmup_actions': INPUT_WARMUP, 'input_actions
         'scope': 'native-neutral-client-only', 'shell_response': False, 'window_movement': False,
         'cpu_contention_workload': False, 'gpu_contention_workload': False,
         'gpu_producer_contention_excluded': False}
+SPEC=dict(SPEC_V1,version=VERSION,cpu_contention_workload=True,gpu_contention_workload=True,contention=contention.SPEC)
 
 
 def records(path):
@@ -47,7 +48,7 @@ def native(rows):
         raise BenchError('Measurement requires the declared native Wayland SHM client')
 
 
-def input_metrics(rows, injections):
+def input_metrics(rows, injections, *, method=VERSION):
     native(rows)
     parse_input(rows, injections, count=INPUT_WARMUP + INPUT_SAMPLES)
     inputs = {row['action_id']: row for row in rows if row.get('event') == 'input'}
@@ -63,7 +64,7 @@ def input_metrics(rows, injections):
         receipt.append(inputs[action]['received_monotonic_ns'] - injection['before_monotonic_ns'])
         client.append(stamp - inputs[action]['received_monotonic_ns'])
         uncertainty.append(injection['after_monotonic_ns'] - injection['before_monotonic_ns'])
-    return {'method': VERSION, 'scope': 'software-input-to-neutral-client-presentation',
+    return {'method': method, 'scope': 'software-input-to-neutral-client-presentation',
             'warmup_actions': INPUT_WARMUP, 'actions': INPUT_SAMPLES, 'failed_actions': 0,
             'injection_to_presentation_upper_ms': distribution(upper),
             'injection_to_presentation_lower_ms': distribution(lower),
@@ -75,7 +76,7 @@ def input_metrics(rows, injections):
             'optical_latency': False, 'p99_available': False}
 
 
-def motion_metrics(raw, rows, profile, *, physical_output_required=True):
+def motion_metrics(raw, rows, profile, *, physical_output_required=True, method=VERSION):
     native(rows)
     parse_probe(raw, frames=MOTION_WARMUP + MOTION_SAMPLES)
     shown = [row for row in rows if row.get('event') == 'presented' and row['frame'] > MOTION_WARMUP]
@@ -88,7 +89,7 @@ def motion_metrics(raw, rows, profile, *, physical_output_required=True):
         raise BenchError('Presentation feedback does not verify the declared fixed refresh')
     gaps = [b['presentation_ns'] - a['presentation_ns'] for a, b in zip(shown, shown[1:])]
     commits = [r for r in rows if r.get('event') == 'commit' and r['frame'] > MOTION_WARMUP]
-    return {'method': VERSION, 'scope': 'neutral-client-active-animation',
+    return {'method': method, 'scope': 'neutral-client-active-animation',
             'warmup_frames': MOTION_WARMUP, 'submitted': MOTION_SAMPLES,
             'presented': len(shown), 'discarded': len(discarded),
             'presentation_intervals_ms': distribution(gaps),
@@ -186,13 +187,13 @@ def run_motion(host, record, directory, target, layout, profile, label):
     return outcome
 
 
-def input_result(directory, target, label):
+def input_result(directory, target, label, *, method=VERSION):
     prefix = directory / (target + '-measure-' + label + 'input')
     saved = read_json(prefix.with_suffix('.json'))
     if saved.get('status') != 'passed' or saved.get('uinput_cleanup') != 'passed':
         raise BenchError('Input measurement or uinput cleanup failed')
     _, rows = records(prefix.with_suffix('.jsonl'))
-    return input_metrics(rows, read_json(prefix.with_suffix('.injections.json')))
+    return input_metrics(rows, read_json(prefix.with_suffix('.injections.json')),method=method)
 
 
 def paired_metrics(control, loaded):
@@ -201,6 +202,38 @@ def paired_metrics(control, loaded):
             'animation_p95_interval_delta_ms': loaded['motion']['presentation_intervals_ms']['p95'] - control['motion']['presentation_intervals_ms']['p95'],
             'animation_gap_count_delta': loaded['motion']['gaps_over_1_5_refresh_periods'] - control['motion']['gaps_over_1_5_refresh_periods'],
             'scope': 'same-block-neutral-client-paired-control', 'causal_isolation_from_gpu_contention': False}
+
+
+def run_contention(host,record,directory,target,layout,kind,measure,control,health,progress):
+    prefix=directory/f'{target}-contention-{kind}'
+    command=([str(layout.helper.parent/'vela-bench-cpuload'),'--json','--until-stdin-eof'] if kind=='cpu' else
+             [str(layout.helper.parent/'vela-slowgpu'),'--contention','--json','--until-stdin-eof'])
+    process=None;lines=None
+    with prefix.with_suffix('.stderr').open('wb') as errors,ThreadPoolExecutor(max_workers=1) as pool:
+        try:
+            if progress:progress(kind+'-contention-start')
+            health()
+            process=host.spawn(user_command(record,layout,'producer',command,runtime_seconds=120),errors)
+            lines=Lines(process);deadline=time.monotonic()+105
+            lines.next(deadline)
+            while not contention.ready(lines.records,kind,record['uid']):lines.next(deadline)
+            def drain():
+                while lines.next(deadline).get('event')!=kind+'-load-summary':pass
+            future=pool.submit(drain)
+            try:
+                sample=measure(kind+'-')
+            finally:
+                process.stdin.close();process.stdin=None
+            future.result(timeout=8)
+            if process.wait(timeout=5):raise BenchError('Contention helper failed')
+            window=[sample['input']['window_monotonic_ns'][0],sample['motion']['window_monotonic_ns'][1]]
+            sample['contention']=contention.metrics(lines.records,kind,window,record['uid'])
+            sample['degradation']=paired_metrics(control,sample)
+            health()
+            return sample
+        finally:
+            stop_instrument(host,record,layout,'producer');stop_process(process)
+            if lines:prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(row)+'\n' for row in lines.records))
 
 
 def run_workload(host, record, directory, target, layout, profile, phase, health, progress=None):
@@ -271,8 +304,20 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
                         stop_instrument(host, record, layout, 'producer')
                         if lines:
                             prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in lines.records))
+            result['contention_uid']=record['uid']
+            for kind in ('cpu','gpu'):
+                prefix=directory/f'{target}-contention-{kind}'
+                control_name=kind+'-control'
+                result['scenarios'][control_name]=measure(control_name+'-')
+                sample=run_contention(host,record,directory,target,layout,kind,measure,
+                    result['scenarios'][control_name],health,progress)
+                if kind=='gpu':
+                    gpu=sample['contention']['source'];producer=result['scenarios']['explicit']['producer']['device']
+                    if any(gpu[key]!=producer[key] for key in ('vendor_id','device_id','drm_major','drm_minor')):
+                        raise BenchError('GPU contention changed device from the acquire-fence producer')
+                result['scenarios'][kind]=sample
         result['status'] = 'passed'
-    except (BenchError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+    except (BenchError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
         result['failures'].append(str(exc))
         if 'prefix' in locals() and prefix.with_suffix('.stderr').is_file():
             detail = prefix.with_suffix('.stderr').read_text(errors='replace')[-8192:].strip()
@@ -285,20 +330,22 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
 
 def audit_measurements(directory, target, profile, phase):
     saved = read_json(directory / f'{target}-measurements.json')
-    if saved.get('status') != 'passed' or saved.get('spec') != SPEC or saved.get('phase') != phase or saved.get('method') != VERSION or saved.get('failures') != []:
+    method=saved.get('method');spec={SPEC_V1['version']:SPEC_V1,VERSION:SPEC}.get(method)
+    if not spec or saved.get('status') != 'passed' or saved.get('spec') != spec or saved.get('phase') != phase or saved.get('failures') != []:
         raise BenchError('Measurement workload failed or its specification changed')
     names = ['neutral'] if phase != 'slow-apps' else ['explicit-control', 'explicit', 'implicit-control', 'implicit']
+    if phase=='slow-apps' and method==VERSION:names+=['cpu-control','cpu','gpu-control','gpu']
     actual = {}
     for name in names:
         label = '' if name == 'neutral' else name + '-'
         row = {}
         if phase != 'motion':
-            row['input'] = input_result(directory, target, label)
+            row['input'] = input_result(directory, target, label,method=method)
         if phase != 'responsiveness':
             prefix = directory / f'{target}-measure-{name}-motion'
             outcome = read_json(prefix.with_suffix('.json'))
             raw, rows = records(prefix.with_suffix('.jsonl'))
-            row['motion'] = motion_metrics(raw, rows, profile)
+            row['motion'] = motion_metrics(raw, rows, profile,method=method)
             if outcome.get('status') != 'passed' or outcome.get('metrics') != row['motion']:
                 raise BenchError('Motion summary differs from raw evidence')
         if name in ('explicit', 'implicit'):
@@ -310,6 +357,19 @@ def audit_measurements(directory, target, profile, phase):
                 explicit = actual['explicit']['producer']['device']
                 if any(row['producer']['device'][key] != explicit[key] for key in ('vendor_id','device_id','drm_major','drm_minor')):
                     raise BenchError('GPU device differs between synchronization conditions')
+        if name in ('cpu','gpu'):
+            _,load=records(directory/f'{target}-contention-{name}.jsonl')
+            session=read_json(directory/f'{target}-session.json')
+            uid=session.get('session',{}).get('User','')
+            if not isinstance(uid,str) or not uid.isdigit() or int(uid)<=0 or saved.get('contention_uid')!=int(uid):
+                raise BenchError('Contention UID differs from the reserved login session')
+            window=[row['input']['window_monotonic_ns'][0],row['motion']['window_monotonic_ns'][1]]
+            row['contention']=contention.metrics(load,name,window,int(uid))
+            row['degradation']=paired_metrics(actual[name+'-control'],row)
+            if name=='gpu':
+                gpu=row['contention']['source'];producer=actual['explicit']['producer']['device']
+                if any(gpu[key]!=producer[key] for key in ('vendor_id','device_id','drm_major','drm_minor')):
+                    raise BenchError('GPU contention device differs from acquire-fence producer')
         actual[name] = row
     if saved.get('scenarios') != actual or saved.get('family_complete') is not False:
         raise BenchError('Measurement summary differs from raw evidence or overstates coverage')
@@ -346,6 +406,11 @@ def aggregate(blocks):
         values=[b['metrics']['span_error_pixels'] for b in group['blocks'] if 'metrics' in b and 'span_error_pixels' in b['metrics']]
         if values:
             group['block_statistics']['corpus/span_error_pixels']={'median':statistics.median(values),'min':min(values),'max':max(values),'unit':'physical pixels'}
+        for metric in ('cpu_seconds','mean_worker_cpu_fraction','gpu_timestamp_seconds','timestamp_span_fraction','mean_job_ms'):
+            values=[b['contention'][metric] for b in group['blocks'] if metric in b.get('contention',{})]
+            if values:
+                group['block_statistics']['contention/'+metric]={'median':statistics.median(values),'min':min(values),'max':max(values),
+                    'unit':'ms' if metric.endswith('_ms') else 's' if metric.endswith('seconds') else 'fraction'}
         for scope, metric in (('input', 'injection_to_presentation_upper_ms'), ('motion', 'presentation_intervals_ms')):
             for quantile in ('p50', 'p95'):
                 values = [b[scope][metric][quantile] for b in group['blocks'] if scope in b]

@@ -16,14 +16,15 @@ class Failures(unittest.TestCase):
     def test_help_and_invalid_arguments_before_display_connection(self):
         self.assertEqual(subprocess.run([TOOL,'--help'],env={},capture_output=True).returncode,0)
         for args in (['150oops'],['nan'],['0'],['1001'],['--json'],['--until-stdin-eof'],
-                     ['--timeout'],['--json','--until-stdin-eof','--timeout','0']):
+                     ['--contention'],['5','--contention','--json','--until-stdin-eof'],
+                     ['--contention','--implicit','--json','--until-stdin-eof'],['--timeout'],['--json','--until-stdin-eof','--timeout','0']):
             with self.subTest(args=args):
                 result=subprocess.run([TOOL,*args],env={},capture_output=True,timeout=3)
                 self.assertNotEqual(result.returncode,0)
                 self.assertNotIn(b'no Wayland compositor',result.stderr)
 
     def test_deadline_includes_stalled_registry_exchange(self):
-        for args in ([],['--fullscreen'],['--fullscreen','--implicit'],['--monolithic']):
+        for args in ([],['--fullscreen'],['--fullscreen','--implicit'],['--monolithic'],['--contention']):
             with self.subTest(args=args):
                 client,server=socket.socketpair()
                 with client,server:

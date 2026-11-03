@@ -236,6 +236,22 @@ class MeasurementCampaign(unittest.TestCase):
             self.assertEqual(block['measurement_spec'],SPEC)
             self.assertEqual(block['audit']['measurements']['scenarios']['neutral']['motion']['submitted'],600)
 
+    def test_missing_cpu_instrument_is_rejected_before_any_session(self):
+        self.setup['files'][str(self.layout.helper.parent/'vela-slowgpu')]='fixture'
+        with self.assertRaisesRegex(BenchError,'vela-bench-cpuload'):
+            self.run_campaign(phases=['slow-apps'])
+        self.assertEqual(self.calls,[])
+
+    def test_old_gpu_binary_is_rejected_before_takeover(self):
+        from vela_bench.campaign import execute
+        from types import SimpleNamespace
+        for name in ('vela-slowgpu','vela-bench-cpuload'):
+            self.setup['files'][str(self.layout.helper.parent/name)]='fixture'
+        with self.assertRaisesRegex(BenchError,'lacks the fixed contention'):
+            execute(SimpleNamespace(run=lambda *args,**kwargs:SimpleNamespace(stdout='old help')),assume_yes=True,
+                layout=self.layout,phases=['slow-apps'],fast=True)
+        self.assertEqual(self.calls,[])
+
     def test_missing_gpu_instrument_is_rejected_before_any_session(self):
         with self.assertRaisesRegex(BenchError,'requires the installed'):
             self.run_campaign(phases=['slow-apps'])
@@ -279,23 +295,28 @@ class SlowWorkload(unittest.TestCase):
             return outcome
         class FakeLines:
             def __init__(self,process):
-                self.records=[];self.rows=iter(gpu_rows(process.mode,100))
+                self.records=[]
+                from test_contention import load_rows
+                self.rows=iter(load_rows(process.kind) if process.kind else gpu_rows(process.mode,100))
             def next(self,deadline):
                 row=next(self.rows);self.records.append(row);return row
         class Host:
             def run(self,*args,**kwargs):return SimpleNamespace(returncode=0)
             def spawn(self,command,errors):
-                return SimpleNamespace(mode='implicit' if '--implicit' in command else 'explicit',
+                return SimpleNamespace(kind='cpu' if any(v.endswith('vela-bench-cpuload') for v in command) else 'gpu' if '--contention' in command else None,
+                    mode='implicit' if '--implicit' in command else 'explicit',
                     stdin=io.BytesIO(),stdout=None,stderr=None,poll=lambda:0,wait=lambda timeout:0)
         with tempfile.TemporaryDirectory() as tmp, patch('vela_bench.measurements.run_input',side_effect=inject), \
                 patch('vela_bench.measurements.run_motion',side_effect=animate), \
                 patch('vela_bench.measurements.Lines',FakeLines):
             directory=Path(tmp)
+            atomic_json(directory/'vela-session.json',{'session':{'User':'1001'}})
             result=run_workload(Host(),{'uid':1001,'gid':1001},directory,'vela',Layout(),profile,'slow-apps',lambda:None)
             self.assertEqual(result['status'],'passed',result['failures'])
             self.assertEqual(calls,['measure-explicit-control-input','motion-explicit-control',
                 'measure-explicit-input','motion-explicit','measure-implicit-control-input','motion-implicit-control',
-                'measure-implicit-input','motion-implicit'])
+                'measure-implicit-input','motion-implicit','measure-cpu-control-input','motion-cpu-control',
+                'measure-cpu-input','motion-cpu','measure-gpu-control-input','motion-gpu-control','measure-gpu-input','motion-gpu'])
             self.assertEqual(audit_measurements(directory,'vela',profile,'slow-apps'),result)
 
 
