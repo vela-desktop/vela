@@ -224,7 +224,10 @@ jobs:
           egl.eglGetError.restype = ctypes.c_int
           gbm.gbm_create_device.restype = ctypes.c_void_p
 
-          print("EGL client extensions:", (egl.eglQueryString(None, 0x3055) or b"").decode())
+          extensions = (egl.eglQueryString(None, 0x3055) or b"").decode().split()
+          print("EGL client extensions:", *extensions)
+          if not {"EGL_KHR_platform_wayland", "EGL_EXT_platform_wayland"} & set(extensions):
+              sys.exit("::error::NVIDIA's EGL has no Wayland platform: Qt's windows can't draw")
           query_devices = ctypes.CFUNCTYPE(ctypes.c_uint, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p),
                                            ctypes.POINTER(ctypes.c_int))(egl.eglGetProcAddress(b"eglQueryDevicesEXT"))
           device_string = ctypes.CFUNCTYPE(ctypes.c_char_p, ctypes.c_void_p, ctypes.c_int)(
