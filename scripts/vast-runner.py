@@ -14,6 +14,7 @@ self-hosted runners: read and write).
 """
 
 import argparse
+import itertools
 import json
 import os
 import sys
@@ -122,7 +123,7 @@ def instances(label):
 
 def runners(org, label):
     found = []
-    for page in range(1, 100):
+    for page in itertools.count(1):
         batch = github("GET", f"/orgs/{org}/actions/runners?per_page=100&page={page}").get("runners", [])
         found += batch
         if len(batch) < 100:
