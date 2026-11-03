@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Builds the container of the NVIDIA GPU CI and publishes it as
+# ghcr.io/vela-desktop/vela-ci-nvidia, which Vast.ai pulls for every run
+# (scripts/vast-runner.py). The package must be public: Vast pulls it
+# without credentials.
+name: NVIDIA CI image
+
+on:
+  push:
+    branches: [main, 'release/**', ci/nvidia-vast-probe]
+    paths:
+      - .github/images/nvidia-ci/**
+      - .github/workflows/nvidia-ci-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nvidia-ci-image
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/vela-ci-nvidia
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build
+        run: |
+          # Also tagged with the Git tree of the image's directory: gpu-nvidia.yml
+          # rents the image built from the files of the revision it tests.
+          tree=$(git rev-parse HEAD:.github/images/nvidia-ci)
+          echo "TREE=$tree" >> "$GITHUB_ENV"
+          docker build --pull -t "$IMAGE:latest" -t "$IMAGE:${GITHUB_SHA::12}" -t "$IMAGE:tree-$tree" \
+            .github/images/nvidia-ci
+      - name: Check what the runner and the GPU suites need
+        run: |
+          docker run --rm "$IMAGE:latest" sh -c '
+            set -e
+            for tool in sudo curl git cmake ninja vulkaninfo Xwayland xrandr xrdb xprop dbus-daemon gdbus; do
+              command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
+            done
+            python3 -c "import numpy, PIL, dbus; from gi.repository import GLib"
+            id runner && test -x /usr/local/bin/vela-ci-runner
+            pkg-config --modversion wlroots-0.20 vulkan'
+      - name: Publish
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:${GITHUB_SHA::12}"
+          docker push "$IMAGE:tree-$TREE"
+          docker logout ghcr.io

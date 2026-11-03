@@ -14,7 +14,7 @@ import tempfile
 import time
 import unittest
 
-from harness import Session, tool
+from harness import TIME_SCALE, Session, tool
 
 
 def child_compositor(supervisor_pid):
@@ -116,7 +116,7 @@ class Lock(unittest.TestCase):
                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, text=True)
                     try:
-                        ready, _, _ = select.select([keyboard.stdout], [], [], 5)
+                        ready, _, _ = select.select([keyboard.stdout], [], [], 5 * TIME_SCALE)
                         self.assertTrue(ready, "virtual keyboard did not register")
                         self.assertEqual(keyboard.stdout.readline().strip(), "READY")
                         vela.command("lock")
