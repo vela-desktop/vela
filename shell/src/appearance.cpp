@@ -7,6 +7,7 @@
 #include "iconprovider.h"
 #include "language.h"
 #include "mica.h"
+#include "themefile.h"
 
 #include <QDir>
 #include <QFile>
@@ -63,7 +64,11 @@ void Appearance::watch()
 {
     // Whoever writes the files replaces them: the directories are watched too.
     const QString shellConfig = QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell")).fileName();
-    for (const QString& path : { shellConfig, wallpaperTintCachePath(), vela::language::configPath() }) {
+    // The chosen theme too: editing it shows at once.
+    for (const QString& path : { shellConfig, wallpaperTintCachePath(), vela::language::configPath(), m_themeFile }) {
+        if (path.isEmpty()) {
+            continue;
+        }
         const QFileInfo info(path);
         if (info.exists() && !m_watcher.files().contains(path)) {
             m_watcher.addPath(path);
@@ -93,8 +98,22 @@ void Appearance::reload()
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
     const Motion motion = configuredMotion();
+    const QString themeFile = vela::themes::locate(vela::themes::configuredName(vela::language::configPath()));
+    const QVariantMap theme = themeFile.isEmpty() ? QVariantMap() : vela::themes::load(themeFile);
+    if (themeFile != m_themeFile) {
+        if (!m_themeFile.isEmpty()) {
+            m_watcher.removePath(m_themeFile);
+        }
+        m_themeFile = themeFile;
+        if (m_watching && !themeFile.isEmpty()) {
+            m_watcher.addPath(themeFile);
+        }
+    }
+    const bool themeChanged = theme != m_theme;
+    m_theme = theme;
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
-        if (motion.effects != m_animationEffects || motion.duration != m_animationDuration) {
+        // Only the theme or the motion: the icons stay as they are.
+        if (themeChanged || motion.effects != m_animationEffects || motion.duration != m_animationDuration) {
             m_animationEffects = motion.effects;
             m_animationDuration = motion.duration;
             emit changed();

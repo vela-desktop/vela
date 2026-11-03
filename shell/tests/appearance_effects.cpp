@@ -74,6 +74,31 @@ private slots:
         QVERIFY(writeConf("animation-effects=no\nanimation-duration=200\n"));
         QTRY_COMPARE(appearance.animationDuration(), 2.0);
     }
+
+    // Style.theme: theme= of vela.conf, then the theme file itself, live.
+    void followsTheTheme()
+    {
+        const QString themes = qEnvironmentVariable("XDG_CONFIG_HOME") + QStringLiteral("/vela/themes");
+        QDir().mkpath(themes);
+        const auto writeTheme = [&](const QByteArray& text) {
+            QSaveFile file(themes + QStringLiteral("/test.conf"));
+            return file.open(QIODevice::WriteOnly) && file.write(text) == text.size() && file.commit();
+        };
+        QVERIFY(writeTheme("radius=6\n"));
+        QVERIFY(writeConf("theme=test\n"));
+        Appearance appearance;
+        QCOMPARE(appearance.theme().value(QStringLiteral("radius")).toDouble(), 6.0);
+        appearance.watch();
+        QSignalSpy changed(&appearance, &Appearance::changed);
+        QVERIFY(writeTheme("radius=10\n"));
+        QTRY_COMPARE(appearance.theme().value(QStringLiteral("radius")).toDouble(), 10.0);
+        QVERIFY(changed.count() >= 1);
+        QVERIFY(writeConf("theme=\n"));
+        QTRY_VERIFY(appearance.theme().isEmpty());
+        QVERIFY(writeConf("theme=../vela\n")); // not a theme's name
+        QTest::qWait(300);
+        QVERIFY(appearance.theme().isEmpty());
+    }
 };
 
 int main(int argc, char** argv)

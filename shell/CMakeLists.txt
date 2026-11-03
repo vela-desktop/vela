@@ -217,6 +217,15 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-mimeapps-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-mimeapps COMMAND vela-mimeapps-test)
 
+    qt_add_executable(vela-themefile-test tests/themefile.cpp src/themefile.h)
+    target_include_directories(vela-themefile-test PRIVATE src)
+    target_compile_definitions(vela-themefile-test PRIVATE
+        THEMES_DIR="${PROJECT_SOURCE_DIR}/themes"
+        THEME_QML="${PROJECT_SOURCE_DIR}/common/controls/Theme.qml")
+    target_compile_options(vela-themefile-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-themefile-test PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+    add_test(NAME shell-themefile COMMAND vela-themefile-test)
+
     # The shell's own pieces (tests/tst_*.qml) under Qt Quick Test, with fakes
     # of what its windows find in their context (Vela.Bluetooth, Shell,
     # BluetoothPrompts), with animation effects on and off.

@@ -30,6 +30,7 @@
 #include "levelmeter.h"
 #include "mediakeys.h"
 #include "mica.h"
+#include "themefile.h"
 #include "network.h"
 #include "notifications.h"
 #include "servicemenus.h"
@@ -426,12 +427,18 @@ int main(int argc, char* argv[])
     // preview), and the title bars' Mica colors in the apps' mode, with the
     // formula Vela's apps use for their content (mica.h).
     QColor tint = shell.wallpaperTint(config.wallpaper());
+    // A theme's accent and window background (themes/<name>.conf) win, as in
+    // Theme.qml: the title bars match the apps' content.
     auto sendLook = [&config, style, &tint] {
+        const QVariant themeAccent = vela::themes::themed(style->theme(), QStringLiteral("accent"), style->light());
+        const QColor accent = themeAccent.typeId() == QMetaType::QColor ? themeAccent.value<QColor>() : style->accent();
         ShellController::sendToCompositor("theme " + config.shellTheme().toLatin1() + ' '
-            + config.appTheme().toLatin1() + ' ' + style->accent().name().toLatin1());
+            + config.appTheme().toLatin1() + ' ' + accent.name().toLatin1());
         const bool appsLight = config.appTheme() == QLatin1String("light");
-        ShellController::sendToCompositor("mica " + micaFromTint(tint, true, appsLight).name().toLatin1() + ' '
-            + micaFromTint(tint, false, appsLight).name().toLatin1());
+        const QVariant background = vela::themes::themed(style->theme(), QStringLiteral("background"), appsLight);
+        const QColor active = background.typeId() == QMetaType::QColor ? background.value<QColor>() : micaFromTint(tint, true, appsLight);
+        const QColor inactive = background.typeId() == QMetaType::QColor ? active : micaFromTint(tint, false, appsLight);
+        ShellController::sendToCompositor("mica " + active.name().toLatin1() + ' ' + inactive.name().toLatin1());
     };
     sendLook();
     QObject::connect(&config, &Config::wallpaperChanged, &shell, [&] {

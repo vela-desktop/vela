@@ -22,6 +22,12 @@ Page {
             onClicked: root.navigate("colors")
         }
         LinkCard {
+            icon: "preferences-desktop-theme"
+            title: qsTr("Themes")
+            description: qsTr("Colors and corners of the shell and the apps")
+            onClicked: root.navigate("themes")
+        }
+        LinkCard {
             icon: "preferences-system-windows"
             title: qsTr("Taskbar")
             description: qsTr("Alignment, taskbar behaviors")

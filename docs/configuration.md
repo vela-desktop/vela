@@ -30,6 +30,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | Key | Default | Meaning |
 |---|---|---|
 | `language` | system | Interface language: `it`, `en`, or empty to follow the system (Italian if the system is Italian, English otherwise). |
+| `theme` | empty | A theme's name (Settings > Personalization > Themes): `themes/<name>.conf`, see [Theme files](#theme-files). Empty is Vela's own look. |
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
@@ -70,6 +71,31 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `touchpad-four-fingers` | `desktop` | Four-finger gesture mode. |
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
+
+### Theme files
+
+A theme changes the colors and corner radii of the shell and of Vela's apps. `theme=rose-pine` loads the first `vela/themes/rose-pine.conf` found in `~/.config` (your own themes) and then in the data directories (`/usr/share/vela/themes/`, the installed ones). The shell and the apps reload it when it changes.
+
+```ini
+# Rosé Pine: the first line names the theme in Settings
+dark.background=#191724
+light.background=#FAF4ED
+accent=#C4A7E7
+radius=6
+```
+
+Each key is a token of [`Theme.qml`](../common/controls/Theme.qml): `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token the theme leaves out keeps Vela's value. Values are colors (`#RRGGBB` or `#AARRGGBB`) or numbers; any other line is skipped with a warning in the log.
+
+The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars, opaque) and `accent` in place of Mica and the chosen accent. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
+
+| Tokens | Kind |
+|---|---|
+| `background` (windows), `taskbar`, `surface` (shell panels), `popup` (shell menus), `backdrop` (Task View), `taskCard`, `taskCardHover` | color |
+| `control`, `controlHover`, `controlPressed`, `controlStroke`, `stroke` | color |
+| `card`, `cardHover`, `cardPressed`, `cardStroke`, `flyout`, `dialog`, `dialogFooter`, `field` | color |
+| `text`, `textSecondary`, `textTertiary` | color |
+| `accent` (over the one chosen in Settings > Colors) | color |
+| `radius` (controls), `radiusCard`, `radiusOverlay` (menus, dialogs, panels) | pixels, 0–24 |
 
 ## Display configuration
 
