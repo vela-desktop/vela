@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """P3 complete coarse desktop actions, including paired observed load cases."""
 import json
+import hashlib
 from pathlib import Path
 import select
 import re
@@ -96,17 +97,18 @@ def visual_timing(rows,receipts,minimum=12):
             'first_observed_response_lower_ms':0,'first_observed_response_upper_ms':None,
             'first_observed_stable_state_upper_ms':None}
     if changed_rows:result['first_observed_response_upper_ms']=(changed_rows[0]['end_monotonic_ns']-before)/1e6
-    final=rows[-1]['tiles']
+    final=rows[-1]['tiles'];stability_limit=min(8,minimum-1)
     for i,row in enumerate(post):
-        if len(post[i:])>=2 and all(changed(r['tiles'],final)<=8 for r in post[i:]):
+        if (changed_rows and row['begin_monotonic_ns']>=changed_rows[0]['begin_monotonic_ns']
+                and len(post[i:])>=2 and all(changed(r['tiles'],final)<=stability_limit for r in post[i:])):
             result['first_observed_stable_state_upper_ms']=(row['end_monotonic_ns']-before)/1e6;break
     return result
 
 
-def metrics(action,directory,target,profile,streams,uid,*,check_pixels=True):
+def metrics(action,directory,target,profile,streams,uid,*,check_pixels=True,pixel_reader=evidence):
     rows=validate_frames(action['captures'],target,profile,directory,action['id'])
     for row in rows if check_pixels else []:
-        pixels=evidence(directory/row['image_file'])
+        pixels=pixel_reader(directory/row['image_file'])
         if any(row.get(k)!=pixels[k] for k in ('width','height','tiles','markers')) or row.get('rectangles')!=pixels['rectangles']:
             raise BenchError('Desktop derived metadata differs from original pixels')
     kind=action['kind'];receipts=action['injections'];commands=[r.get('command') for r in receipts]
@@ -388,10 +390,17 @@ def audit_observation(directory,target,profile,phase):
               [('window-resize','resize'),*[(s,s) for s in ('snap-left','snap-right','maximize','restore','workspace-out','workspace-back')]] if phase=='motion' else
               [(mode+'-'+condition+'-'+name,kind) for mode in SPEC['loads'] for condition in ('control','loaded') for name,kind in (('launcher','launcher-open'),('launcher-close','launcher-close'),('drag','drag'))])
     if [(a.get('id'),a.get('kind')) for a in saved['actions']]!=expected:raise BenchError('P3 extended action matrix incomplete')
+    # Decode byte-identical captures once per audit, after checking each file's
+    # digest. The cache stores only derived detector data, never skips raw hashes.
+    pixel_cache={}
+    def read_pixels(path):
+        digest=hashlib.sha256(path.read_bytes()).digest()
+        if digest not in pixel_cache:pixel_cache[digest]=evidence(path)
+        return pixel_cache[digest]
     previous=-1
     for action in saved['actions']:
         if action['captures'][0]['begin_monotonic_ns']<previous:raise BenchError('P3 action order changed')
-        if action.get('metrics')!=metrics(action,directory,target,profile,action['source_streams'],uid):raise BenchError('P3 metrics differ from raw pixels/sources')
+        if action.get('metrics')!=metrics(action,directory,target,profile,action['source_streams'],uid,pixel_reader=read_pixels):raise BenchError('P3 metrics differ from raw pixels/sources')
         previous=action['captures'][-1]['end_monotonic_ns']
     if phase in ('responsiveness','motion'):
         # Audit the original method from a separate immutable source file.
@@ -401,7 +410,7 @@ def audit_observation(directory,target,profile,phase):
         legacy.audit_observation(directory,target,profile,phase,saved=base)
         for action in base['actions']:
             for row in action['captures']:
-                pixels=evidence(directory/row['image_file'])
+                pixels=read_pixels(directory/row['image_file'])
                 if any(row.get(k)!=pixels[k] for k in ('width','height','tiles','markers')):raise BenchError('P3 base metadata differs from original PNG')
         if base['actions'][-1]['captures'][-1]['end_monotonic_ns']>saved['actions'][0]['captures'][0]['begin_monotonic_ns']:raise BenchError('P3 base/extension clocks overlap')
     if phase=='motion':

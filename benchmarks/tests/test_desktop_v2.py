@@ -86,9 +86,11 @@ class DesktopV2(unittest.TestCase):
         rows=[{'tiles':[0]*576,'begin_monotonic_ns':i*100_000_000,'end_monotonic_ns':i*100_000_000+1} for i in range(12)]
         receipts=[{'event':'injected','action_id':1,'command':'launcher','before_monotonic_ns':110_000_000,'after_monotonic_ns':111_000_000}]
         result=desktop.visual_timing(rows,receipts)
-        self.assertIsNone(result['first_observed_response_upper_ms']);self.assertFalse(result['fine_grained_motion'])
+        self.assertIsNone(result['first_observed_response_upper_ms']);self.assertIsNone(result['first_observed_stable_state_upper_ms']);self.assertFalse(result['fine_grained_motion'])
         for row in rows[3:]:row['tiles'][:5]=[0xffffff]*5
-        self.assertIsNotNone(desktop.visual_timing(rows,receipts,minimum=4)['first_observed_response_upper_ms'])
+        menu=desktop.visual_timing(rows,receipts,minimum=4)
+        self.assertIsNotNone(menu['first_observed_response_upper_ms'])
+        self.assertGreaterEqual(menu['first_observed_stable_state_upper_ms'],menu['first_observed_response_upper_ms'])
         self.assertIsNone(desktop.visual_timing(rows,receipts)['first_observed_response_upper_ms'])
 
     def test_held_alt_tab_requires_two_identified_native_focus_sources(self):

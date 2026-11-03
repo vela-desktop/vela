@@ -562,6 +562,12 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
                 metric = action["metrics"]
                 detail = (f"First observed response: 0–{metric['first_observed_response_upper_ms']:.1f} ms" if metric.get('first_observed_response_upper_ms') is not None else
                           f"Identified movement: {metric['distance_pixels']:.1f} physical pixels" if action["kind"]=="drag" else "Final state verified")
+                if metric.get('first_observed_stable_state_upper_ms') is not None:
+                    detail+=f"; sampled stable state ≤{metric['first_observed_stable_state_upper_ms']:.1f} ms"
+                if action['kind'] in ('drag','resize'):
+                    detail+=f"; {metric['distance_pixels']:.1f} physical pixels"
+                    if 'longest_observed_unchanged_interval_upper_ms' in metric:
+                        detail+=f"; longest sampled pause bound {metric['longest_observed_unchanged_interval_upper_ms']:.1f} ms"
                 links = " · ".join("<a href='"+escape(block["id"]+'/'+image['image_file'])+"'>"+label+"</a>"
                                     for image,label in ((action['captures'][0],'before'),(action['captures'][-1],'after')))
                 document += "<tr>" + "".join("<td>"+escape(value)+"</td>" for value in (block["id"],action["id"],detail))+"<td>"+links+"</td></tr>"

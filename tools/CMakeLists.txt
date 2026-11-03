@@ -151,7 +151,7 @@ if(KF6Screen_FOUND AND TARGET Qt6::DBus)
     find_program(BENCH_DBUS_RUN NAMES dbus-run-session)
     if(BENCH_DBUS_RUN AND VELA_BUILD_COMPOSITOR)
         foreach(phase motion responsiveness)
-            add_test(NAME benchmark-p3-${phase}-integration COMMAND ${BENCH_DBUS_RUN} -- ${Python3_EXECUTABLE}
+            add_test(NAME benchmark-p3-${phase}-integration COMMAND ${Python3_EXECUTABLE}
                 ${PROJECT_SOURCE_DIR}/benchmarks/tests/desktop_integration.py ${phase})
             set_tests_properties(benchmark-p3-${phase}-integration PROPERTIES TIMEOUT 900 LABELS "gpu"
                 RUN_SERIAL TRUE SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
@@ -276,7 +276,7 @@ if(TARGET vela-bench-desktop AND BENCH_KWIN AND BENCH_DBUS_RUN)
     set_tests_properties(benchmark-plasma-contention-integration PROPERTIES TIMEOUT 150 LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
 endif()
 if(TARGET vela-bench-desktop AND BENCH_DBUS_RUN AND VELA_BUILD_COMPOSITOR)
-    add_test(NAME benchmark-p3-loads-integration COMMAND ${BENCH_DBUS_RUN} -- ${Python3_EXECUTABLE}
+    add_test(NAME benchmark-p3-loads-integration COMMAND ${Python3_EXECUTABLE}
         ${PROJECT_SOURCE_DIR}/benchmarks/tests/desktop_integration.py slow-apps)
     set_tests_properties(benchmark-p3-loads-integration PROPERTIES TIMEOUT 900 LABELS "gpu" RUN_SERIAL TRUE
         SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")

@@ -656,6 +656,7 @@ pixels fixed while still submitting/presenting buffers and running GPU jobs,
 so changing load pixels cannot satisfy the native UI detector. Two-workspace
 setup is an explicit disposable fixture; default effects remain enabled.
 Full-suite and automated complete-family comparison flags remain false.
+All three production-controller phases pass on private Vela and virtual KWin.
 Physical v2 acceptance is outstanding; private-compositor development checks
 use fixture input and do not qualify kernel uinput or physical timing.
 
@@ -663,19 +664,19 @@ Run the private production-controller regression (no root, physical VT or
 personal desktop changes):
 
 ```sh
-VELA_BUILD="$PWD/build-native-displays" dbus-run-session -- python3 benchmarks/tests/desktop_integration.py motion
+VELA_BUILD="$PWD/build-native-displays" python3 benchmarks/tests/desktop_integration.py motion
 # Replace motion with responsiveness or slow-apps. GPU load tools are needed for slow-apps.
 VELA_BUILD="$PWD/build-native-displays" python3 benchmarks/tests/desktop_integration.py --plasma motion
 ```
 
-Each command also reopens the PNG evidence for raw audit. That offline step
+Each command owns a private D-Bus/process group and also reopens the PNG evidence for raw audit. That offline step
 can take several minutes and runs after the scene is stopped. Test fixtures
 are development evidence only; the installed runner always uses kernel uinput
 and the P0-qualified backend with no fallback.
 
 ### Integration with current upstream tools
 
-The 2026-11-01 integration includes upstream `efdc9c6`. The shared
+The 2026-11-03 integration includes upstream `cd7ea37`. The shared
 `vela-input` retains the interactive/checkpoint modes and the benchmark's
 fixed evdev-keycode action. The shared `vela-slowgpu` retains portable linear
 DMA-BUF allocation, cooperative dispatches, developer `--monolithic` and

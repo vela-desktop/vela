@@ -125,6 +125,25 @@ def main(phase):
         finally:
             if os.environ.get('VELA_P3_EVIDENCE'):shutil.copytree(directory,os.environ['VELA_P3_EVIDENCE'])
 
+def vela_private(phase):
+    # D-Bus-activated services can inherit test stdout after the controller
+    # exits. Own their process group and log file as well as the compositor.
+    with tempfile.TemporaryDirectory(prefix='vela-p3-bus-') as temporary:
+        path=Path(temporary)/'session.log'
+        with path.open('w') as log:
+            process=subprocess.Popen(['dbus-run-session','--',sys.executable,str(Path(__file__).resolve()),'--vela-child',phase],
+                stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+            try:
+                status=process.wait(timeout=850)
+                print(path.read_text()[-8000:])
+                if status:raise RuntimeError('Private Vela P3 failed: '+str(status))
+            finally:
+                try:os.killpg(process.pid,signal.SIGTERM)
+                except ProcessLookupError:pass
+                try:process.wait(timeout=3)
+                except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait(timeout=3)
+
+
 def plasma(phase):
     with tempfile.TemporaryDirectory(prefix='vela-p3-kwin-') as temporary:
         base=Path(temporary);runtime=base/'runtime';runtime.mkdir(mode=0o700);directory=base/'evidence';directory.mkdir()
@@ -172,6 +191,8 @@ def plasma_child(directory,phase):
 
 if __name__=='__main__':
     if os.getuid()==0:sys.exit(77)
-    if sys.argv[1]=='--plasma-child':plasma_child(sys.argv[2],sys.argv[3])
+    if len(sys.argv)==1:sys.argv.append('motion')
+    if sys.argv[1]=='--vela-child':main(sys.argv[2])
+    elif sys.argv[1]=='--plasma-child':plasma_child(sys.argv[2],sys.argv[3])
     elif sys.argv[1]=='--plasma':plasma(sys.argv[2])
-    else:main(sys.argv[1] if len(sys.argv)>1 else 'motion')
+    else:vela_private(sys.argv[1] if len(sys.argv)>1 else 'motion')

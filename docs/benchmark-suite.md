@@ -21,8 +21,11 @@ The same scenarios and metric definitions serve both comparisons.
 > machine; the operator deferred normal three-repetition acceptance to proceed
 > with P3. P3's native launcher/window/desktop observation workload passed
 > real-TTY fast acceptance on that machine, across separate responsiveness
-> and motion campaigns. Full family coverage, additional native shell/window
-> scenarios and the application corpus remain incomplete. P4 now implements
+> and motion campaigns under the historical v1 method. P3 v2 now completes
+> the coarse observation implementation: switcher/menu, window transitions,
+> workspace switching and paired observed loads, verified on private Vela/KWin.
+> Physical v2 qualification remains open. Full five-family coverage remains
+> incomplete. P4 now implements
 > the native Wayland scaling pattern and UID-wide CPU/PSS measurements, with
 > fast physical acceptance for the initial slices. The new capture-free window
 > interaction resource condition is development-tested on private Vela/KWin.
@@ -31,7 +34,7 @@ The same scenarios and metric definitions serve both comparisons.
 > Normal repetitions are deferred while implementation continues; P4 remains
 > partial and no complete-suite performance ranking is available.
 > Initial acceptance baseline: `eb85cb9`. The 2026-11-03 integration includes
-> upstream `8acbfda`; historical hardware acceptance does not qualify the new
+> upstream `cd7ea37`; historical hardware acceptance does not qualify the new
 > capture implementation or GPU-producer workload.
 
 The [implementation guide](../benchmarks/README.md) documents current commands,
@@ -1362,14 +1365,17 @@ immutable plan. Missing instruments or old shortcut/workspace/load capabilities
 fail before takeover. Failures retain collected evidence and run cleanup.
 
 Reports include before/after images, first-visible and first-observed-stable
-fingerprint bounds, maximum capture gaps, observed unchanged-position intervals
+fingerprint bounds (stability must follow an observed response), maximum capture gaps, observed unchanged-position intervals
 and loaded-minus-control deltas. These include capture delay and cannot establish
 usability, animation completion, frame cadence, optical latency or missed
 refreshes. `family_complete`, full-suite and automated comparative ranking
 flags remain false until the broader P5 family requirements are met.
 
-Development verification uses private runtime/home/D-Bus compositors, fixture
-input and reopened original PNG audits. These runs validate implementation,
+283 CPU tests pass (19 environment-dependent skips), alongside native input,
+load CLI/deadline and owned-process cleanup checks. Development verification
+passes all three production-controller phases on both
+private Vela and virtual KWin, with 24 slow-apps sequences per desktop. It uses
+private runtime/home/D-Bus compositors, fixture input and reopened original PNG audits. These runs validate implementation,
 not physical kernel uinput, monitor timing or real-TTY v2 qualification. The
 historical v1 physical results above remain labelled with their original scope.
 
@@ -1537,7 +1543,7 @@ they cannot satisfy a new v5 planned block.
 
 ### Upstream integration review (2026-11-03)
 
-The benchmark branch integrates `main` through `8acbfda`, including the
+The benchmark branch integrates `main` through `cd7ea37`, including the
 `v0.1.0` release history. Installed Beta/Experimental artifacts and this source
 checkout are different identities: an archive must describe the executable
 actually run. The following decisions guide the remaining implementation;
@@ -1545,8 +1551,14 @@ P4's implemented partial scope is described above. The latest pointer-lock
 and visible-resize-border fixes (`#189`, `#192`) also extend `vela-pattern`:
 the benchmark metadata mode remains available, and pointer logging/locking
 stay opt-in rather than changing the fixed P4 stimulus.
-The subsequent three upstream commits only update GitHub Actions dependencies;
-they add no runtime benchmark adapter or stimulus.
+Subsequent GitHub Actions dependency updates add no runtime adapter. The latest
+two commits add rented NVIDIA GPU CI (`#199`) and make manual Beta packaging
+fetch `v0.1.1` (`#202`). They leave the measured compositor/tools unchanged.
+The shared functional harness now supports `VELA_TEST_TIME_SCALE` for slow
+CI hosts; private development tests may use its readiness waits, but benchmark
+stimuli, sample counts, capture intervals and acceptance thresholds remain
+fixed. Rented GPU provisioning is a CI concern, never an action of the TTY
+benchmark or an implicit physical/NVIDIA qualification.
 
 | Upstream implementation | Benchmark use | Decision and acceptance work |
 |---|---|---|
