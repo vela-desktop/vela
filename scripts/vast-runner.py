@@ -103,6 +103,10 @@ def search(max_price, gpu=None):
         "rented": {"eq": False},
         "verified": {"eq": True},
         "dph_total": {"lte": max_price},
+        # Server side too, so that unfit offers don't fill the limit; suitable()
+        # still checks everything.
+        "reliability2": {"gte": 0.95},
+        "cpu_cores_effective": {"gte": 8},
         "allocated_storage": DISK_GB,
         "type": "on-demand",
         "order": [["dph_total", "asc"]],
@@ -117,7 +121,12 @@ def instances(label):
 
 
 def runners(org, label):
-    found = github("GET", f"/orgs/{org}/actions/runners?per_page=100").get("runners", [])
+    found = []
+    for page in range(1, 100):
+        batch = github("GET", f"/orgs/{org}/actions/runners?per_page=100&page={page}").get("runners", [])
+        found += batch
+        if len(batch) < 100:
+            break
     return [r for r in found if r.get("name", "").startswith(label)]
 
 

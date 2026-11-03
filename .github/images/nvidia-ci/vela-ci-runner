@@ -40,7 +40,8 @@ fi
 # Some hosts' NVIDIA drivers don't give Vulkan the dmabuf extensions Vela
 # needs (compositor/src/render/vulkan.c). Exit without a runner, so that
 # scripts/vast-runner.py destroys this instance and tries another offer.
-for icd in /etc/vulkan/icd.d/nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json; do
+for icd in /etc/vulkan/icd.d/nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json \
+           /etc/vulkan/icd.d/nvidia_icd.x86_64.json /usr/share/vulkan/icd.d/nvidia_icd.x86_64.json; do
     [ -f "$icd" ] && break
 done
 extensions=$(VK_DRIVER_FILES=$icd vulkaninfo 2>/dev/null || true)
