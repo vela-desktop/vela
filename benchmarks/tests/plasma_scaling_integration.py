@@ -4,6 +4,7 @@
 
 """P4 controller on private KWin, with D-Bus action fixtures, not kernel input."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import select
@@ -48,7 +49,7 @@ def keyboard():
                           'after_monotonic_ns':time.monotonic_ns()}),flush=True)
 
 
-def child(adapter,directory,interaction=False):
+def child(adapter,directory,interaction=False,corpus_mode=False):
     from types import SimpleNamespace
     from vela_bench.calibration import Lines,stop_process
     from vela_bench.conditions import normalized_outputs,desired_profile
@@ -94,8 +95,8 @@ def child(adapter,directory,interaction=False):
             if command[0].endswith('vela-bench-input'):
                 argv=[sys.executable,str(Path(__file__).resolve()),'--keyboard']
             else:
-                at=next(i for i,v in enumerate(command) if v.endswith('/vela-pattern'))
-                argv=[str(adapter.parent/'vela-pattern'),*command[at+1:]]
+                at=next(i for i,v in enumerate(command) if Path(v).name in ('vela-pattern','vela-bench-corpus-qt','vela-bench-corpus-gtk','vela-bench-corpus-web'))
+                argv=[str(adapter.parent/Path(command[at]).name),*command[at+1:]]
             return subprocess.Popen(argv,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,bufsize=0)
         def run(self,command,**options):
             if '_capture' in command:
@@ -103,7 +104,37 @@ def child(adapter,directory,interaction=False):
             if '--outputs' in command:return native('--outputs')
             if '--apply' in command:return native('--apply',command[command.index('--apply')+1])
             return SimpleNamespace(stdout='',returncode=0)
-    result=run_workload(Host(),{'uid':os.getuid(),'gid':os.getgid()},directory,'plasma',layout,
+    from vela_bench import corpus
+    inventory={case:{'tool':binary,'status':'unsupported','reason':'not-installed'} for case,binary in corpus.CASES.items()}
+    if corpus_mode:
+        for case,binary in corpus.CASES.items():
+            inventory[case]={'tool':binary,'status':'available','binary_sha256':hashlib.sha256((adapter.parent/binary).read_bytes()).hexdigest(),
+                'description':json.loads(subprocess.check_output([str(adapter.parent/binary),'--describe'],env=env,text=True))}
+    record={'uid':os.getuid(),'gid':os.getgid(),'corpus_inventory':inventory}
+    if corpus_mode:
+        from vela_bench.archive import atomic_json
+        from vela_bench.platform_workloads import apply_outputs
+        result={'scenarios':{}}
+        with (directory/'corpus-errors').open('wb') as errors:
+            keys_process=Host().spawn([str(layout.helper.parent/'vela-bench-input')],errors)
+            try:
+                keys=Lines(keys_process);keys.next(time.monotonic()+5);time.sleep(.5)
+                corpus.run(Host(),record,directory,'plasma',layout,profile,lambda:None,
+                    lambda label:print(label,flush=True),result,keys_process,keys,errors)
+                assert len(corpus.audit(result,directory,profile,'plasma'))==sum(v.get('cases',0) for v in result['corpus_availability'].values())
+                assert all(result['corpus_availability'][case]['status']=='supported' for case in ('qt-wayland','gtk-wayland','qt-xwayland'))
+            finally:
+                stop_process(keys_process);apply_outputs(Host(),record,layout,'plasma',profile['outputs'])
+                atomic_json(directory/'corpus-result.json',result)
+                if os.environ.get('VELA_P4_EVIDENCE'):
+                    import shutil
+                    output=Path(os.environ['VELA_P4_EVIDENCE']);output.mkdir()
+                    for path in directory.iterdir():
+                        if path.is_file():shutil.copyfile(path,output/path.name)
+        print('PLASMA_SCALING_EVIDENCE '+json.dumps({'corpus':result['corpus_availability'],'cases':len(result['scenarios']),
+            'scope':'private-kwin; fixture-input; not physical acceptance','raw_audit':True}),flush=True)
+        return
+    result=run_workload(Host(),record,directory,'plasma',layout,
                         profile,'scaling',lambda:None)
     assert result['status']=='passed',result['failures']
     assert len(result['scenarios'])==25
@@ -116,7 +147,7 @@ def child(adapter,directory,interaction=False):
         'offline_pixel_audit':True,'scale1_restored':True}),flush=True)
 
 
-def main(adapter,interaction=False):
+def main(adapter,interaction=False,corpus_mode=False):
     try:import gi
     except ImportError:
         print('SKIP: private KWin shortcut check needs PyGObject');return 77
@@ -127,14 +158,15 @@ def main(adapter,interaction=False):
         env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','HOME':str(home),'XDG_RUNTIME_DIR':str(runtime),
              'XDG_CONFIG_HOME':str(home/'config'),'XDG_DATA_HOME':str(home/'data'),
              'XDG_STATE_HOME':str(home/'state'),'XDG_CACHE_HOME':str(home/'cache'),
+             **({'VELA_P4_EVIDENCE':os.environ['VELA_P4_EVIDENCE']} if os.environ.get('VELA_P4_EVIDENCE') else {}),
              'QT_QPA_PLATFORM':'wayland','DBUS_SYSTEM_BUS_ADDRESS':'unix:path='+str(base/'no-system-bus')}
         command=['dbus-run-session','--','kwin_wayland','--virtual','--width','1920','--height','1080',
-            '--socket','wayland-vela-scaling-check','--no-lockscreen','--no-kactivities','--exit-with-session',
+            *(['--xwayland'] if corpus_mode else []),'--socket','wayland-vela-scaling-check','--no-lockscreen','--no-kactivities','--exit-with-session',
             shlex.join([sys.executable,str(Path(__file__).resolve()),'--child',str(Path(adapter).resolve()),str(base),
-                        *(['--interactions'] if interaction else [])])]
+                        *(['--interactions'] if interaction else []),*(['--corpus'] if corpus_mode else [])])]
         process=subprocess.Popen(command,env=env,start_new_session=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         try:
-            log,_=process.communicate(timeout=160)
+            log,_=process.communicate(timeout=500 if corpus_mode else 160)
             records=[line.removeprefix('PLASMA_SCALING_EVIDENCE ') for line in log.splitlines()
                      if line.startswith('PLASMA_SCALING_EVIDENCE ')]
             if len(records)!=1:raise RuntimeError('Private KWin scaling failed: '+log[-8000:])
@@ -150,5 +182,5 @@ def main(adapter,interaction=False):
 
 if __name__=='__main__':
     if sys.argv[1]=='--keyboard':keyboard()
-    elif sys.argv[1]=='--child':child(Path(sys.argv[2]),Path(sys.argv[3]),'--interactions' in sys.argv[4:])
-    else:sys.exit(main(sys.argv[1],'--interactions' in sys.argv[2:]))
+    elif sys.argv[1]=='--child':child(Path(sys.argv[2]),Path(sys.argv[3]),'--interactions' in sys.argv[4:],'--corpus' in sys.argv[4:])
+    else:sys.exit(main(sys.argv[1],'--interactions' in sys.argv[2:],'--corpus' in sys.argv[2:]))

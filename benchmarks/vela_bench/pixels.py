@@ -64,9 +64,21 @@ def png_rgb(path):
         destination = y*width*3
         if channels == 3: rgb[destination:destination+width*3] = row
         else:
-            for x in range(width): rgb[destination+x*3:destination+x*3+3] = row[x*4:x*4+3]
+            for component in range(3):
+                rgb[destination+component:destination+width*3:3]=row[component::4]
         previous = row
     return width, height, rgb
+
+
+def png_bytes(width,height,rgb):
+    if (type(width) is not int or type(height) is not int or not 0<width<=8192 or not 0<height<=8192
+            or width*height>16777216 or len(rgb)!=width*height*3):
+        raise BenchError('Invalid unscaled RGB crop dimensions')
+    def chunk(kind,data):
+        return struct.pack('!I',len(data))+kind+data+struct.pack('!I',zlib.crc32(kind+data)&0xffffffff)
+    rows=b''.join(b'\0'+bytes(rgb[y*width*3:(y+1)*width*3]) for y in range(height))
+    return (b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('!IIBBBBB',width,height,8,2,0,0,0))
+            +chunk(b'IDAT',zlib.compress(rows,3))+chunk(b'IEND',b''))
 
 
 def pattern_metrics(path, metadata, output_size, scale):

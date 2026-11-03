@@ -20,9 +20,9 @@ from .calibration import Lines, stop_process
 from .conditions import compare_outputs, display_command, normalized_outputs
 from .diagnostics import user_command, stop_instrument, parse_probe
 from .pixels import pattern_metrics
-from . import resources, interactions
+from . import resources, interactions, corpus
 
-VERSION = 'p4-pattern-resources-v4'
+VERSION = 'p4-pattern-resources-v5'
 PHASES = ('scaling','overhead')
 SCALES = (1.0,1.25,1.5,1.75,2.0)
 STATES = ('opened','snap-left','snap-right','maximized','restored')
@@ -38,7 +38,9 @@ SPEC_V3 = {'version':'p4-pattern-resources-v3','scales':list(SCALES),'states':li
         'capture_during_resource_measurement':False,'energy_required':False,
         'resource_transport_accounting':'exact-controller-child-pid-start-cgroup-command; separate-from-session',
         'scope':'native-wayland-pattern-and-reserved-uid-resources; application-corpus-incomplete'}
-SPEC=dict(SPEC_V3,version=VERSION,window_interaction=interactions.SPEC)
+SPEC_V4=dict(SPEC_V3,version='p4-pattern-resources-v4',window_interaction=interactions.SPEC)
+SPEC=dict(SPEC_V4,version=VERSION,corpus=corpus.SPEC,
+          scope='native-pattern-controlled-toolkit-corpus-and-uid-resources; families-incomplete')
 RESOURCE_CONDITIONS=('idle','active-animation','window-interaction','local-hash')
 
 
@@ -178,6 +180,7 @@ def run_scaling(host,record,directory,target,layout,profile,health,progress,resu
                         raise BenchError(f'Scaling {label}: {exc}') from exc
                     stop_process(scene); scene=None
                     stop_instrument(host,record,layout,'scene')
+            corpus.run(host,record,directory,target,layout,profile,health,progress,result,keyboard,lines,errors)
     finally:
         stop_process(scene)
         stop_instrument(host,record,layout,'scene')
@@ -307,13 +310,14 @@ def audit_measurements(directory,target,profile,phase):
     directory=Path(directory)
     saved=read_json(directory/f'{target}-measurements.json')
     legacy=saved.get('method')==SPEC_V3['version']
-    if (saved.get('schema')!=1 or saved.get('method') not in (VERSION,SPEC_V3['version'])
-            or saved.get('spec')!=(SPEC_V3 if legacy else SPEC) or saved.get('phase')!=phase
+    if (saved.get('schema')!=1 or saved.get('method') not in (VERSION,SPEC_V3['version'],SPEC_V4['version'])
+            or saved.get('spec')!=({SPEC_V3['version']:SPEC_V3,SPEC_V4['version']:SPEC_V4,VERSION:SPEC}.get(saved.get('method'))) or saved.get('phase')!=phase
             or saved.get('status')!='passed' or saved.get('failures')!=[] or saved.get('family_complete') is not False):
         raise BenchError('P4 workload failed or specification changed')
     if phase=='scaling':
         expected=[f'{round(scale*100)}-{state}' for scale in SCALES for state in STATES]
-        if sorted(saved['scenarios'])!=sorted(expected) or saved.get('scale1_restored') is not True:
+        corpus_cases=corpus.audit(saved,directory,profile,target) if saved['method']==VERSION else []
+        if sorted(saved['scenarios'])!=sorted(expected+corpus_cases) or saved.get('scale1_restored') is not True:
             raise BenchError('Incomplete scaling matrix or scale restoration')
         previous_end=-1
         for name in expected:
@@ -335,6 +339,8 @@ def audit_measurements(directory,target,profile,phase):
                         or event['monotonic_ns']<last or event.get('method')!='coordinate-pattern-v1'):
                     raise BenchError('Pattern configure stream identity or ordering changed')
                 last=event['monotonic_ns']
+        if corpus_cases and min(saved['scenarios'][name]['source_events'][0]['monotonic_ns'] for name in corpus_cases)<previous_end:
+            raise BenchError('Corpus evidence precedes native pattern completion')
     elif phase=='overhead':
         labels=('idle','active-animation','local-hash') if legacy else RESOURCE_CONDITIONS
         if set(saved['scenarios'])!=set(labels): raise BenchError('Incomplete resource matrix')

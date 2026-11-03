@@ -30,7 +30,7 @@ BUDGETS = {
     "responsiveness": (20, 60, 900),
     "motion": (20, 60, 900),
     "slow-apps": (150, 60, 900),
-    "scaling": (180, 120, 720),
+    "scaling": (360, 180, 900),
     "overhead": (270, 110, 660),
 }
 DEFAULT_DISPLAY = {"output": "primary", "resolution": "native", "refresh": "highest-common-fixed", "scale": 1.0,

@@ -678,7 +678,9 @@ def worker(host, layout=Layout()):
                         else:
                             from .workloads import implementation
                             run_workload = implementation(phase).run_workload
-                        measured = run_workload(host, record, directory, target, layout,
+                        workload_record=(dict(record,corpus_inventory=request['corpus_inventory'])
+                                         if 'corpus_inventory' in request else record)
+                        measured = run_workload(host, workload_record, directory, target, layout,
                             state["conditions_snapshot"]["profile"], phase, health,
                             progress=lambda label: update(directory, state, "measure", target=target, scenario=phase + '/' + label))
                         if measured["status"] != "passed":

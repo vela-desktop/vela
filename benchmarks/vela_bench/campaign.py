@@ -102,7 +102,9 @@ def block_request(layout, run_id, block_id, target):
             or (measured and (matches[0].get("phase") not in AVAILABLE or matches[0].get("measurement_spec") != SPEC))):
         raise BenchError("Exercise request does not identify one fixed instrument-control block")
     return {"schema": 1, "campaign_run_id": run_id, "plan_fingerprint": fingerprint(plan),
-            "block": matches[0], "workload": workload, "measurement_executed": measured}
+            "block": matches[0], "workload": workload, "measurement_executed": measured,
+            **({"corpus_inventory": plan["context"]["corpus_inventory"]}
+               if measured and matches[0].get("phase")=="scaling" and workload=="p4-pattern-resources-v5" else {})}
 
 
 def audit_block(source, block, plan, layout):
@@ -123,6 +125,9 @@ def audit_block(source, block, plan, layout):
             audit["measurements"] = audit_measurements(source, block["target"],
                 state["conditions_snapshot"]["profile"], block["phase"])
             audit["checks"]["measurement_raw_evidence"] = True
+            if "corpus_inventory" in expected:
+                audit['checks']['corpus_inventory_binding']=(audit['measurements'].get('corpus_inventory')==expected['corpus_inventory']
+                    and audit['measurements'].get('corpus_uid')==plan['context']['uid'])
             audit['checks']['measurement_method_binding']=(audit['measurements'].get('method')==expected['workload']
                 and audit['measurements'].get('spec')==expected['block']['measurement_spec'])
         if plan["case"] == "observe":
@@ -274,9 +279,12 @@ def inspect_campaign(directory):
     if measured:
         from .measurements import aggregate
         valid = [row for row in accepted if row["status"] == "complete"]
+        corpus_supported=any(row.get('phase')=='scaling' and any(
+            item.get('status')=='supported' for item in row.get('audit',{}).get('measurements',{}).get('corpus_availability',{}).values())
+            for row in valid)
         result.update(execution_mode="measure", measurement_blocks_executed=len(valid),
                       measurement_scope="fixed-native-workloads", measurements=aggregate(accepted),
-                      families={name: (("partial-pattern-only" if name=="scaling" else "partial-session-resources" if name=="overhead" else "partial-client-only") if any(b.get("phase") == name for b in valid)
+                      families={name: (("partial-pattern-and-corpus-evidence" if name=="scaling" and corpus_supported else "partial-pattern-only" if name=="scaling" else "partial-session-resources" if name=="overhead" else "partial-client-only") if any(b.get("phase") == name for b in valid)
                                        else "measurement-incomplete") if name in plan["execution"]["phases"] else "not-selected"
                                 for name in MEASUREMENTS})
     if observed:
@@ -318,6 +326,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             if str(pattern) not in setup["files"]:
                 raise BenchError("Scaling requires installed vela-pattern; run setup --tools-dir BUILD/tools")
             trusted(pattern)
+            from .corpus import describe_inventory
+            current['corpus_inventory']=describe_inventory(host,layout,setup)
         if selection['case']=='measure' and 'overhead' in selection['execution']['phases']:
             if str(layout.probe) not in setup['files']:
                 raise BenchError('Resource animation requires installed vela-bench-probe before takeover')
@@ -387,7 +397,11 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             append_event(directory / "events.jsonl", {"event": "block-start", **attempt})
             print(f"[{block['id']}] fresh profile/session/calibration; attempt {attempts}", flush=True)
             try:
-                if context(host, layout, selected) != plan["context"]:
+                refreshed=context(host, layout, selected)
+                if 'corpus_inventory' in plan['context']:
+                    from .corpus import describe_inventory
+                    refreshed['corpus_inventory']=describe_inventory(host,layout,load_setup(host,layout))
+                if refreshed != plan["context"]:
                     raise BenchError("Installed versions or environment changed during campaign")
                 options = {"campaign_block_id": block["id"]} if exercise or measured or observed else {}
                 outcome = begin(host, [block["target"]], seconds=5, assume_yes=True, layout=layout,
@@ -438,7 +452,10 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                             print(f"    {metric['workload']['verified_actions']} native window actions verified; configure/buffer evidence, not presentation latency.",flush=True)
                     if phase=='scaling' and 'metrics' in sample:
                         metric=sample['metrics']
-                        print(f"  P4 {scenario}: {metric['different_pixels']} different pixels, {metric['offscreen_pixels']} offscreen; original capture retained.",flush=True)
+                        if 'span_error_pixels' in metric:
+                            print(f"  P4 {scenario}: canvas span error {metric['span_error_pixels']:.2f} physical pixels; {metric['offscreen_pixels']} offscreen; original and unscaled crop retained; text quality not scored.",flush=True)
+                        else:
+                            print(f"  P4 {scenario}: {metric['different_pixels']} different pixels, {metric['offscreen_pixels']} offscreen; original capture retained.",flush=True)
                     if "input" in sample:
                         metric = sample["input"]["injection_to_presentation_upper_ms"]
                         print(f"  P2 {scenario}: 100 measured input actions; software presentation upper bound p50 {metric['p50']:.3f}, p95 {metric['p95']:.3f} ms.", flush=True)
@@ -448,6 +465,9 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                     if "producer" in sample:
                         metric = sample["producer"]
                         print(f"  P2 {scenario}: {metric['completed']} GPU jobs; measured GPU duration p50 {metric['gpu_duration_ms']['p50']:.3f} ms; visible production verified.", flush=True)
+                for client,availability in audit.get('measurements',{}).get('corpus_availability',{}).items():
+                    print(f"  P4 corpus {client}: {availability['status']}"+
+                          (f" ({availability['reason']})" if availability.get('reason') else ''),flush=True)
                 remaining_phase = [row for row in plan["blocks"] if row.get("phase", "qualify" if row["fault"] else "calibrate") == phase]
                 if all(completion(directory, row) is not None for row in remaining_phase):
                     append_event(directory / "events.jsonl", {"event": "phase-complete", "phase": phase})
@@ -528,7 +548,13 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
             if block.get('status')=='complete' and block.get('phase')=='scaling':
                 for name, sample in block['audit']['measurements']['scenarios'].items():
                     link=block['id']+'/'+sample['image_file']
-                    document += "<p><a href='"+escape(link)+"'>"+escape(block['id']+' / '+name)+"</a></p>"
+                    document += "<p><a href='"+escape(link)+"'>"+escape(block['id']+' / '+name)+"</a>"
+                    if sample.get('crop_file'):
+                        document += " · <a href='"+escape(block['id']+'/'+sample['crop_file'])+"'>physical pixel crop</a>"
+                    document += '</p>'
+                corpus=block['audit']['measurements'].get('corpus_availability')
+                if corpus is not None:
+                    document += '<p>Controlled Qt, GTK, embedded Qt WebEngine and Xwayland fixtures. Geometry and original visual evidence; text quality is not scored.</p><pre>'+escape(json.dumps(corpus,indent=2))+'</pre>'
     document += "<table><tr><th>Block</th><th>Phase</th><th>Target</th><th>Repetition</th><th>State</th><th>Acceptance</th></tr>"
     for block in data["blocks"]:
         document += "<tr>" + "".join(f"<td>{escape(value)}</td>" for value in
@@ -645,6 +671,13 @@ def read_export(directory):
             actual = audit_measurements(directory / block_identity(block["id"]), block["target"], block["profile"], block["phase"])
             if actual.get('method')!=block.get('workload') or actual.get('spec')!=block.get('measurement_spec'):
                 raise BenchError('Exported measurement method differs from its planned block')
+            if actual.get('method')=='p4-pattern-resources-v5' and block.get('phase')=='scaling':
+                if 'campaign-plan.json' not in manifest['files']:
+                    raise BenchError('Exported corpus has no hashed immutable plan')
+                plan=read_json(directory/'campaign-plan.json')
+                if (actual.get('corpus_inventory')!=plan['context'].get('corpus_inventory')
+                        or actual.get('corpus_uid')!=plan['context']['uid']):
+                    raise BenchError('Exported corpus differs from frozen campaign tools/session')
             if actual != block.get("audit", {}).get("measurements"):
                 raise BenchError("Exported measurement audit differs from raw evidence")
         if (data.get("measurement_blocks_executed") != len(valid) or data.get("measurements") != aggregate(data["blocks"])

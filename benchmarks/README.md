@@ -627,20 +627,21 @@ for reuse decisions, timing limitations and the P4 implementation order.
 
 ## P4 scaling pattern and session resources
 
-The fixed `p4-pattern-resources-v4` workloads now run through `run` with
+The fixed `p4-pattern-resources-v5` workloads now run through `run` with
 independent `scaling` and `overhead` selections. They use the same isolated
 sessions, immutable block receipts, three repetitions/default or one/`--fast`,
 checkpoint/resume, hardware restoration and raw-data re-audit. Initial fast
 physical acceptance passed for the version 2 native scaling pattern and version 3
 session-resource workloads on Vela/Plasma in separate campaigns. Version 4 adds
 window interactions, checked on private Vela/KWin sessions; physical acceptance
-of this extension remains open. Three-repetition acceptance is deferred while
+of this extension remains open. Version 5 adds the controlled toolkit scaling
+corpus described below. Three-repetition acceptance is deferred while
 implementation continues; defaults remain three repetitions or one with `--fast`.
 
 Build and refresh the installed instruments from the same checkout:
 
 ```sh
-cmake --build build-native-displays --target vela-pattern vela-bench-input vela-bench-probe vela-bench-desktop vela-screen-dump
+cmake --build build-native-displays --target vela-pattern vela-bench-input vela-bench-probe vela-bench-desktop vela-screen-dump vela-bench-corpus
 sudo scripts/vela-bench setup --tools-dir build-native-displays/tools
 scripts/vela-bench plan --phase scaling --phase overhead --target vela --target plasma --fast
 ```
@@ -754,10 +755,40 @@ Source identities remain separate; the old and current campaigns are not pooled.
 The HTML links original scaling captures and reports independent-block CPU/PSS
 and pixel-error statistics without pooling repetitions. Exports recompute
 pixel and resource metrics, workload completion and session UID binding.
-Coverage stays `partial-pattern-only` / `partial-session-resources` and
-`full_suite_complete=false`. The Qt/GTK/browser/Xwayland corpus, resource
+Coverage stays `partial-pattern-and-corpus-evidence` (or `partial-pattern-only` without supported clients) / `partial-session-resources` and
+`full_suite_complete=false`. Broader application coverage beyond the controlled corpus, resource
 interactions beyond maximize/restore, optional GPU/energy sources and complete-family
 comparison remain open.
+
+### Controlled Qt/GTK/browser/Xwayland scaling clients
+
+Version 5 extends `run --phase scaling` with four local reference applications:
+Qt Widgets Wayland, GTK4 Wayland, an inline HTML page in Qt WebEngine and Qt
+Widgets Xwayland. Each available case runs all 25 scale/state conditions in
+addition to the native pattern. Build `vela-bench-corpus`, refresh setup with
+`--tools-dir`, then use the same `run --phase scaling ... --fast` command above.
+Qt Widgets, Fontconfig and XCB, GTK4 ≥4.12, and Qt WebEngineWidgets are optional
+build dependencies for their respective fixtures. The runner installs no
+packages. Missing clients are reported as unsupported, never as tested.
+
+Original output PNGs and unscaled physical-pixel crops are linked in HTML.
+The raw audit binds tool/content/font hashes, toolkit/engine versions, source
+backend/UID/state and input receipts, and recomputes marker geometry and crop
+pixels. Text quality is visual evidence only. The browser uses a fresh
+memory-only profile, inline-only content and a required sandbox; it does not
+use Firefox or personal browser files. Xwayland keeps default desktop policy,
+with its actual client/root coordinate mapping recorded separately.
+
+Private compositor development checks (fixture input, not real-TTY acceptance):
+
+```sh
+VELA_BUILD="$PWD/build-native-displays" VELA_TEST_CORPUS=full python3 benchmarks/tests/p4_integration.py
+python3 benchmarks/tests/plasma_scaling_integration.py build-native-displays/tools/vela-bench-desktop --corpus
+```
+
+Both checks audit original pixels and source metadata. They do not qualify
+kernel uinput, PAM, logind or physical monitor restoration. The HTML keeps the
+family marked partial; the suite still has no complete performance ranking.
 
 ### P1 scheduled block exercise
 

@@ -5,7 +5,7 @@ compares Vela releases with one another. It measures responsiveness, motion,
 isolation from slow applications, fractional scaling and desktop overhead.
 The same scenarios and metric definitions serve both comparisons.
 
-> **Status:** implementation in progress, updated 2026-11-02. **P0 passed on
+> **Status:** implementation in progress, updated 2026-11-03. **P0 passed on
 > the initial machine for the installed Vela and Plasma Wayland sessions.**
 > All eight real-TTY qualification blocks passed, including independent
 > calibrations and worker crash/hang recovery for both desktops. P1 discovery,
@@ -24,6 +24,8 @@ The same scenarios and metric definitions serve both comparisons.
 > the native Wayland scaling pattern and UID-wide CPU/PSS measurements, with
 > fast physical acceptance for the initial slices. The new capture-free window
 > interaction resource condition is development-tested on private Vela/KWin.
+> A controlled Qt/GTK/embedded-browser/Xwayland scaling corpus is implemented
+> with 100 additional cases per supported desktop/repetition and raw pixel audits.
 > Normal repetitions are deferred while implementation continues; P4 remains
 > partial and no complete-suite performance ranking is available.
 > Initial acceptance baseline: `eb85cb9`. The 2026-11-03 integration includes
@@ -1264,7 +1266,7 @@ See [P3 commands](../benchmarks/README.md#p3-native-desktop-observation).
 ### P4 implementation and acceptance scope
 
 `run --phase scaling` and `run --phase overhead` implement the separate fixed
-`p4-pattern-resources-v4` workload. Mixed P2/P4 selections retain each block's
+`p4-pattern-resources-v5` workload. Mixed P2/P4 selections retain each block's
 own version/specification in the immutable schedule and receipt. Default
 repetitions remain three; `--fast` changes only their count. Offline exports
 recompute original pixel and process/counter evidence, never trust only the
@@ -1375,13 +1377,53 @@ for version 4. CPU rejection tests cover missing tools, malformed/lost/reordered
 actions, incorrect geometry/backend/scale, bad clocks/cadence, input cleanup,
 partial failure evidence, raw export tampering and method downgrade attempts.
 
-The application corpus (Qt/GTK/browser/Xwayland), resource interaction
+Broader application coverage beyond the controlled toolkit fixtures, resource interaction
 extensions beyond maximize/restore, additional resource backends and normal repeated real-TTY acceptance
 remain open. The initial pattern/resource slices have fast physical acceptance;
 this does not complete the P4 stage or either full family.
-Coverage is `partial-pattern-only` / `partial-session-resources`;
+Coverage is `partial-pattern-and-corpus-evidence` (or `partial-pattern-only` when all corpus cases are unavailable) / `partial-session-resources`;
 `full_suite_complete` and `performance_comparison_available` stay false.
 See [P4 commands](../benchmarks/README.md#p4-scaling-pattern-and-session-resources).
+
+### Controlled toolkit scaling corpus (version 5)
+
+Scaling retains all 25 native-pattern cases and adds five scales × five states
+for each supported controlled client: Qt Widgets Wayland, GTK4 Wayland,
+inline local HTML in Qt WebEngine, and Qt Widgets Xwayland. These are fixed
+reference applications, not the user's installed Firefox profile or a full
+real-application corpus. `--fast` retains the complete matrix and changes only
+the repetition count. Every state starts a fresh client. Toolkit/engine
+versions, fixed content digest, DejaVu Sans font file/digest, requested font
+size, actual backend and native canvas/configure metadata accompany the image.
+The installed binary digests and descriptors are frozen before START, checked
+between blocks and bound to the immutable request and offline export.
+
+Each client renders four family-specific colored markers around its real
+content. The audit rejects missing/ambiguous markers and recomputes physical
+canvas spans, two-pixel geometry tolerance and offscreen bounds from the
+original full-output capture. Geometry differences are measured outcomes;
+invalid identity/backend/state is an instrument failure. An additional crop
+retains the entire identified canvas intersection with the output, with no
+resampling; its decoded pixels must equal that rectangle of the original.
+Text/font quality remains visual evidence, with no sharpness or blur score.
+Xwayland preserves the desktop's default DPI/scaling policy and records its
+client/root dimensions; the oracle maps these to physical output pixels
+rather than assuming the root uses Wayland logical coordinates.
+
+The browser uses a fresh off-record profile, inline-only requests, a fixed CSP
+and the normal sandbox. The runner never disables that sandbox. Missing
+optional binaries and declared initial capability failures are explicit
+unsupported cases, not successful tests. A later failure cannot erase cases
+already executed. A missing GTK/Qt/WebEngine build dependency does not prevent
+building the other fixtures. The fixed `vela-bench-corpus` CMake target builds
+available clients; setup installs their owned bytes with the other instruments.
+All four fixtures passed their 25-case matrices on private headless Vela and
+virtual KWin, including the sandboxed WebEngine page and Xwayland. Their source
+metadata and original/crop pixels were also re-audited after JSON reload. These
+checks use fixture input and do not qualify kernel uinput, PAM/logind or physical
+monitor restoration. The full five-family suite and physical acceptance of this
+extension remain open. Historical v3/v4 exports keep their original specifications and auditors;
+they cannot satisfy a new v5 planned block.
 
 ### Upstream integration review (2026-11-03)
 
