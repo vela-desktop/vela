@@ -565,7 +565,7 @@ evidence; omitting `--fast` would run 18 blocks.
 
 ## P3 native desktop observation
 
-P3 has its own fixed observation workload, `p3-desktop-observation-v1`, and
+P3 has its own fixed observation workload, `p3-desktop-observation-v2`, and
 keeps its results separate from P2 client timings. It reuses the same
 supervised campaign, account isolation, calibration, condition verification,
 checkpoint/resume, restoration and offline export. It does not change the
@@ -575,7 +575,7 @@ Build/install the scene alongside the existing instruments. Inspect the plan
 from the ordinary desktop without changing the host:
 
 ```sh
-cmake --build build-native-displays --target vela-bench-scene vela-bench-input vela-bench-desktop vela-bench-probe vela-screen-dump
+cmake --build build-native-displays --target vela-bench-scene vela-bench-input vela-bench-desktop vela-bench-probe vela-screen-dump vela-slowgpu vela-bench-cpuload
 sudo scripts/vela-bench setup --tools-dir build-native-displays/tools
 scripts/vela-bench observe --dry-run --target vela --target plasma --fast
 ```
@@ -586,9 +586,9 @@ After logout, run from the local TTY:
 sudo scripts/vela-bench observe --target vela --target plasma --fast
 ```
 
-One START runs four blocks: responsiveness and motion on each desktop. Normal
-mode runs 12 blocks with three independent repetitions. Select either phase
-with `--phase responsiveness` or `--phase motion`; resume with the identical
+One START runs six blocks: responsiveness, motion and slow-apps on each desktop.
+Normal mode runs 18 blocks with three independent repetitions. Select phases
+with `--phase responsiveness`, `--phase motion` or `--phase slow-apps`; resume with the identical
 arguments plus `--resume CAMPAIGN_ID`. Code/tool changes require a new campaign.
 
 The responsiveness block installs one fixed `velabenchscene` application entry
@@ -639,10 +639,39 @@ These separate campaigns establish initial-machine fast acceptance of the
 implemented P3 actions. Their scene builds differ, and they provide no repeated
 performance-comparison evidence; normal P3 repetition acceptance remains unrun.
 Failed analyses keep their captures and input intervals alongside the error.
-Alt+Tab/context menus, shell-panel and
-desktop-switch animations, observations under slow-producer load and
-fine-grained motion remain explicit coverage gaps; full-suite and automated
-complete-family comparison flags stay false.
+The historical physical campaigns cover P3 v1 only. P3 v2 additionally implements
+held Alt+Tab with two identified focus sources, native window menus, resize,
+snap/maximize/restore, workspace out/back with owned workspace cleanup, and
+24 launcher/drag action sequences paired without/with explicit/implicit delayed
+producers and CPU/GPU contention. Build and refresh all instruments before
+starting the new workload. Old v1 completions cannot satisfy v2 plans; v1
+archives keep their original reader.
+
+P3 is implementation-complete within its coarse observation scope. Offline
+audit recomputes source identities, marker/footer geometry and fingerprints
+from original PNGs. Paired loaded-minus-control bounds and sampled stable states
+include capture delay; they do not measure frame cadence, animation completion
+or optical latency. The P3-only producer flag `--desktop-load` keeps exposed
+pixels fixed while still submitting/presenting buffers and running GPU jobs,
+so changing load pixels cannot satisfy the native UI detector. Two-workspace
+setup is an explicit disposable fixture; default effects remain enabled.
+Full-suite and automated complete-family comparison flags remain false.
+Physical v2 acceptance is outstanding; private-compositor development checks
+use fixture input and do not qualify kernel uinput or physical timing.
+
+Run the private production-controller regression (no root, physical VT or
+personal desktop changes):
+
+```sh
+VELA_BUILD="$PWD/build-native-displays" dbus-run-session -- python3 benchmarks/tests/desktop_integration.py motion
+# Replace motion with responsiveness or slow-apps. GPU load tools are needed for slow-apps.
+VELA_BUILD="$PWD/build-native-displays" python3 benchmarks/tests/desktop_integration.py --plasma motion
+```
+
+Each command also reopens the PNG evidence for raw audit. That offline step
+can take several minutes and runs after the scene is stopped. Test fixtures
+are development evidence only; the installed runner always uses kernel uinput
+and the P0-qualified backend with no fallback.
 
 ### Integration with current upstream tools
 

@@ -65,6 +65,9 @@ vela_client_protocol(proto-presentation-time
 add_executable(vela-bench-probe vela-bench-probe.c)
 target_link_libraries(vela-bench-probe PRIVATE proto-xdg-shell proto-presentation-time)
 target_compile_options(vela-bench-probe PRIVATE -Wall -Wextra -Wno-unused-parameter)
+add_executable(vela-bench-kwin-input-fixture ../benchmarks/tests/kwin_input_fixture.c)
+target_link_libraries(vela-bench-kwin-input-fixture PRIVATE PkgConfig::TOOLS_WAYLAND_CLIENT)
+target_compile_options(vela-bench-kwin-input-fixture PRIVATE -Wall -Wextra)
 add_executable(vela-bench-cpuload vela-bench-cpuload.c)
 target_compile_options(vela-bench-cpuload PRIVATE -Wall -Wextra)
 add_test(NAME benchmark-contention-cli COMMAND ${Python3_EXECUTABLE}
@@ -146,6 +149,14 @@ if(KF6Screen_FOUND AND TARGET Qt6::DBus)
     target_compile_options(vela-bench-desktop PRIVATE -Wall -Wextra)
     find_program(BENCH_KWIN NAMES kwin_wayland)
     find_program(BENCH_DBUS_RUN NAMES dbus-run-session)
+    if(BENCH_DBUS_RUN AND VELA_BUILD_COMPOSITOR)
+        foreach(phase motion responsiveness)
+            add_test(NAME benchmark-p3-${phase}-integration COMMAND ${BENCH_DBUS_RUN} -- ${Python3_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/benchmarks/tests/desktop_integration.py ${phase})
+            set_tests_properties(benchmark-p3-${phase}-integration PROPERTIES TIMEOUT 900 LABELS "gpu"
+                RUN_SERIAL TRUE SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+        endforeach()
+    endif()
     if(BENCH_KWIN AND BENCH_DBUS_RUN)
         if(TARGET vela-bench-corpus-qt AND TARGET vela-bench-corpus-gtk AND TARGET vela-bench-corpus-web AND BENCH_XWAYLAND)
             add_test(NAME benchmark-plasma-corpus-integration COMMAND ${Python3_EXECUTABLE}
@@ -153,6 +164,10 @@ if(KF6Screen_FOUND AND TARGET Qt6::DBus)
             set_tests_properties(benchmark-plasma-corpus-integration PROPERTIES
                 TIMEOUT 550 LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
         endif()
+        add_test(NAME benchmark-plasma-p3-motion-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/desktop_integration.py --plasma motion)
+        set_tests_properties(benchmark-plasma-p3-motion-integration PROPERTIES TIMEOUT 900 LABELS "gpu"
+            RUN_SERIAL TRUE SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
         add_test(NAME benchmark-plasma-integration COMMAND ${Python3_EXECUTABLE}
             ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_integration.py $<TARGET_FILE:vela-bench-desktop>)
         set_tests_properties(benchmark-plasma-integration PROPERTIES TIMEOUT 45 LABELS "gpu")
@@ -259,6 +274,12 @@ if(TARGET vela-bench-desktop AND BENCH_KWIN AND BENCH_DBUS_RUN)
     add_test(NAME benchmark-plasma-contention-integration COMMAND ${Python3_EXECUTABLE}
         ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_scaling_integration.py $<TARGET_FILE:vela-bench-desktop> --contention)
     set_tests_properties(benchmark-plasma-contention-integration PROPERTIES TIMEOUT 150 LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+endif()
+if(TARGET vela-bench-desktop AND BENCH_DBUS_RUN AND VELA_BUILD_COMPOSITOR)
+    add_test(NAME benchmark-p3-loads-integration COMMAND ${BENCH_DBUS_RUN} -- ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/benchmarks/tests/desktop_integration.py slow-apps)
+    set_tests_properties(benchmark-p3-loads-integration PROPERTIES TIMEOUT 900 LABELS "gpu" RUN_SERIAL TRUE
+        SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
 endif()
 if(VELA_BUILD_COMPOSITOR)
     add_test(NAME benchmark-p2-contention-integration COMMAND ${Python3_EXECUTABLE}

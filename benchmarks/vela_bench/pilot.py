@@ -606,7 +606,7 @@ def worker(host, layout=Layout()):
                 update(directory, state, "prepare", target=target)
                 stop_user(host, record, layout)
                 reset_profile(host, record, layout)
-                if request and request["workload"] == "p3-desktop-observation-v1":
+                if request and request["workload"] == "p3-desktop-observation-v2":
                     from .desktop import prepare_scene
                     prepare_scene(layout, record)
                 marker = layout.home / ".pilot-profile"
@@ -673,7 +673,7 @@ def worker(host, layout=Layout()):
                     phase = request["block"]["phase"]
                     update(directory, state, "measure" if request["measurement_executed"] else "exercise", target=target, scenario=phase)
                     if request["measurement_executed"] and not diagnostic_failures:
-                        if request["workload"] == "p3-desktop-observation-v1":
+                        if request["workload"] == "p3-desktop-observation-v2":
                             from .desktop import run_observation as run_workload
                         else:
                             from .workloads import implementation

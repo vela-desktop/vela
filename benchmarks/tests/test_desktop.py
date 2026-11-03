@@ -9,7 +9,9 @@ from unittest.mock import patch
 
 from vela_bench import BenchError
 from vela_bench.archive import atomic_json
-from vela_bench.desktop import SCENE, SPEC, action_metrics, changed, validate_frames, audit_observation
+from vela_bench.desktop_legacy import SCENE, SPEC, action_metrics, changed, validate_frames
+from vela_bench.desktop import audit_observation
+from vela_bench import desktop
 from vela_bench.campaign import execution_selection
 from vela_bench.cli import main
 
@@ -76,7 +78,7 @@ class DesktopObservation(unittest.TestCase):
         import subprocess
         import sys
         from types import SimpleNamespace
-        from vela_bench.desktop import run_observation
+        from vela_bench.desktop_legacy import run_observation
         from vela_bench.host import Layout
         from vela_bench.archive import read_json
         # Pipe/controller fixture: no uinput, GUI, PAM or host service calls.
@@ -158,11 +160,11 @@ else:
         current={'targets':{'vela':{},'plasma':{}}}
         fast=execution_selection(current,['vela','plasma'],case='observe',fast=True,seed=0,phases=None,exercise=False)
         normal=execution_selection(current,['vela','plasma'],case='observe',fast=False,seed=0,phases=None,exercise=False)
-        self.assertEqual((len(fast['blocks']),len(normal['blocks'])),(4,12))
+        self.assertEqual((len(fast['blocks']),len(normal['blocks'])),(6,18))
         for block in fast['blocks']+normal['blocks']:
-            self.assertEqual(block['measurement_spec'],SPEC)
+            self.assertEqual(block['measurement_spec'],desktop.SPEC)
             self.assertTrue(block['measurement_executed'])
-        for phase in ('slow-apps','scaling','overhead','check'):
+        for phase in ('scaling','overhead','check'):
             with self.subTest(phase=phase),self.assertRaises(BenchError):
                 execution_selection(current,['vela'],case='observe',fast=True,seed=0,phases=[phase],exercise=False)
 
@@ -170,12 +172,12 @@ else:
         with patch('vela_bench.cli.run_calibration_campaign',return_value=0) as run:
             self.assertEqual(main(['observe','--target','vela','--fast']),0)
         self.assertEqual(run.call_args.args[2],'observe')
-        self.assertEqual(run.call_args.kwargs['phases'],['responsiveness','motion'])
+        self.assertEqual(run.call_args.kwargs['phases'],['responsiveness','motion','slow-apps'])
         self.assertNotIn('exercise',run.call_args.kwargs)
 
     def test_complete_launcher_audit_requires_launch_receipt_content_and_return_to_baseline(self):
         import hashlib
-        from vela_bench.desktop import LAUNCHED, VERSION
+        from vela_bench.desktop_legacy import LAUNCHED, VERSION
         with tempfile.TemporaryDirectory() as tmp:
             directory=Path(tmp)
             sample={'schema':1,'method':VERSION,'spec':SPEC,'phase':'responsiveness','status':'passed','failures':[],
@@ -224,7 +226,13 @@ class ObservationCampaign(unittest.TestCase):
         self.fail_plasma=False
         scene=str(self.layout.helper.parent/'vela-bench-scene')
         self.setup['files'][scene]='fixture-hash'
+        self.context['uid']=1001
+        patch('vela_bench.campaign.require_uinput').start()
         self.options=[]
+        from types import SimpleNamespace
+        self.host=SimpleNamespace(run=lambda *a,**k:SimpleNamespace(stdout='--observe --peer --workspace --desktop-load --contention P3 v2'))
+        for name in ('vela-bench-desktop','vela-bench-input','vela-slowgpu','vela-bench-cpuload'):self.setup['files'][str(self.layout.helper.parent/name)]='fixture-hash'
+        patch('vela_bench.desktop.audit_observation',side_effect=self.audit_fixture).start()
         patch('vela_bench.campaign.audit_pilot',return_value={'status':'passed','checks':{'restored':True}}).start()
 
     def fake_begin(self, host, targets, **options):
@@ -246,7 +254,7 @@ class ObservationCampaign(unittest.TestCase):
             (directory/name).write_bytes(image)
             row.update(image_file=name,image_sha256=hashlib.sha256(image).hexdigest())
         from vela_bench.desktop import VERSION
-        result={'schema':1,'method':VERSION,'spec':SPEC,'phase':'motion','status':'passed','failures':[],
+        result={'schema':1,'uid':1001,'method':VERSION,'spec':desktop.SPEC,'phase':'motion','status':'passed','failures':[],
                 'uinput_cleanup':'passed','family_complete':False,'actions':[{
                     'id':'window-drag','kind':'drag','captures':rows,'injections':actions('drag'),
                     'metrics':action_metrics(rows,actions('drag'),'drag')}]}
@@ -254,12 +262,20 @@ class ObservationCampaign(unittest.TestCase):
         atomic_json(directory/'block-workload.json',dict(request,status='passed'))
         return 0
 
+    def audit_fixture(self,directory,target,profile,phase):
+        from vela_bench.archive import read_json
+        result=read_json(Path(directory)/f'{target}-desktop.json')
+        for action in result['actions']:
+            value=action_metrics(action['captures'],action['injections'],action['kind'])
+            if action['metrics']!=value:raise BenchError('Fixture metrics differ')
+        return result
+
     def run_campaign(self,**options):
         import contextlib,io
         from types import SimpleNamespace
         from vela_bench.campaign import execute
         with contextlib.redirect_stdout(io.StringIO()):
-            return execute(SimpleNamespace(),assume_yes=True,layout=self.layout,case='observe',
+            return execute(self.host,assume_yes=True,layout=self.layout,case='observe',
                            **dict({'phases':['motion'],'fast':True},**options))
 
     def test_export_reaudits_observed_positions_and_keeps_coverage_partial(self):
@@ -283,14 +299,32 @@ class ObservationCampaign(unittest.TestCase):
         atomic_json(output/name,sample)
         manifest=read_json(output/'manifest.json'); manifest['files'][name]=file_hash(output/name)
         atomic_json(output/'manifest.json',manifest)
-        with self.assertRaisesRegex(BenchError,'metrics differ'): read_export(output)
+        with self.assertRaisesRegex(BenchError,'[Mm]etrics differ'): read_export(output)
+
+    def test_v2_export_binds_method_and_uid_to_hashed_plan(self):
+        from vela_bench.campaign import latest,export_campaign,read_export
+        from vela_bench.archive import read_json
+        from vela_bench.discovery import file_hash
+        self.assertEqual(self.run_campaign(),0)
+        output=export_campaign(self.layout.path('exports'),latest(self.layout),self.layout)
+        name='motion-vela-r1/vela-desktop.json';path=output/name;original=read_json(path)
+        for field,value in [('uid',1002),('method','p3-desktop-observation-v1')]:
+            changed=dict(original,**{field:value});atomic_json(path,changed)
+            manifest=read_json(output/'manifest.json');manifest['files'][name]=file_hash(path);atomic_json(output/'manifest.json',manifest)
+            with self.subTest(field=field),self.assertRaisesRegex(BenchError,'UID|method'):read_export(output)
+
+    def test_old_native_capabilities_are_refused_before_takeover(self):
+        from types import SimpleNamespace
+        self.host.run=lambda *a,**k:SimpleNamespace(stdout='old instruments')
+        with self.assertRaisesRegex(BenchError,'P3 v2'):self.run_campaign()
+        self.assertEqual(self.calls,[])
 
     def test_normal_schedule_has_six_independent_motion_blocks_and_same_spec(self):
         from vela_bench.campaign import latest
         self.assertEqual(self.run_campaign(fast=False),0)
         data=latest(self.layout)
         self.assertEqual(data['measurement_blocks_executed'],6)
-        self.assertTrue(all(b['measurement_spec']==SPEC for b in data['blocks']))
+        self.assertTrue(all(b['measurement_spec']==desktop.SPEC for b in data['blocks']))
 
     def test_missing_scene_is_refused_before_takeover(self):
         self.setup['files'].clear()

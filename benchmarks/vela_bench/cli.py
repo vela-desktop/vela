@@ -51,7 +51,7 @@ def parser():
     qualification.add_argument("--output", type=Path, default=Path("benchmark-results"))
     observe = commands.add_parser("observe", help="P3 native launcher/window/desktop observations from a TTY")
     observe.add_argument("--target", action="append", choices=("vela", "plasma"))
-    observe.add_argument("--phase", action="append", choices=("responsiveness", "motion"))
+    observe.add_argument("--phase", action="append", choices=("responsiveness", "motion", "slow-apps"))
     observe.add_argument("--fast", action="store_true")
     observe.add_argument("--dry-run", action="store_true", help="Show the fixed P3 plan without changing the host")
     observe.add_argument("--resume")
@@ -179,7 +179,7 @@ def main(argv=None):
                     phases=args.phase,exercise=False),indent=2))
                 return 0
             return run_calibration_campaign(args, args.target or ["vela", "plasma"], "observe", args.seed,
-                                            phases=args.phase or ["responsiveness", "motion"])
+                                            phases=args.phase or ["responsiveness", "motion", "slow-apps"])
         if args.command == "qualify":
             if args.dry_run:
                 selected = list(preview(args.target)["targets"])

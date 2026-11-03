@@ -58,7 +58,7 @@ static const uint32_t shaderCode[] = {
 static const uint32_t contentionShaderCode[] = {
 #include "contention.comp.spv.inc"
 };
-static int contention;
+static int contention, desktopLoad;
 static uint64_t loadGpuNs,loadSequence,loadLastSample;
 static struct wl_compositor* compositor;
 static struct xdg_wm_base* wmBase;
@@ -340,10 +340,10 @@ static void setupVulkan(void)
                 "\"timestamp_valid_bits\":%u,\"timestamp_period_ns\":%.9g,\"sample_period_ns\":500000000}\n",
                 getuid(),getpid(),identity.vendorID,identity.deviceID,major(node.st_rdev),minor(node.st_rdev),chosen,timestampBits,timestampPeriod);
         } else printf("{\"event\":\"producer\",\"schema\":1,\"method\":\"delayed-gpu-acquire-v1\","
-               "\"sync\":\"%s\",\"requested_delay_ms\":%.3f,\"vendor_id\":%u,\"device_id\":%u,"
+               "\"uid\":%u,\"pid\":%d,\"desktop_static\":%s,\"sync\":\"%s\",\"requested_delay_ms\":%.3f,\"vendor_id\":%u,\"device_id\":%u,"
                "\"drm_major\":%u,\"drm_minor\":%u,\"queue_family\":%d,\"compute_only_queue\":%s,"
                "\"contention_excluded\":false,\"timestamp_valid_bits\":%u,\"timestamp_period_ns\":%.9g,\"buffer_width\":%d,\"buffer_height\":%d}\n",
-               implicitSync ? "implicit" : "explicit", requestedDelay, identity.vendorID, identity.deviceID,
+               getuid(), getpid(), desktopLoad ? "true" : "false", implicitSync ? "implicit" : "explicit", requestedDelay, identity.vendorID, identity.deviceID,
                major(node.st_rdev), minor(node.st_rdev), chosen,
                family[chosen].queueFlags & VK_QUEUE_GRAPHICS_BIT ? "false" : "true", timestampBits, timestampPeriod, WIDTH, HEIGHT);
     }
@@ -693,7 +693,8 @@ static void draw(void)
     static const uint32_t colors[] = { 0xffd04040, 0xff40b040, 0xff4060d0, 0xffd0b040 };
     static unsigned frame;
     struct Buffer* b = freeBuffer(frame);
-    fill(b, colors[frame++ % 4]);
+    fill(b, colors[desktopLoad ? 0 : frame % 4]);
+    ++frame;
 
     const int syncFile = runJob(1); // the GPU is still working when the commit goes out
     const uint64_t submissionNs = (uint64_t)(nowMs() * 1e6);
@@ -805,8 +806,10 @@ int main(int argc, char* argv[])
             unsigned long value = strtoul(argv[i], &end, 10);
             if (errno || !*argv[i] || *end || value < 1 || value > 110) return 2;
             timeoutSeconds = (unsigned)value;
+        } else if (!strcmp(argv[i], "--desktop-load")) {
+            desktopLoad=1;
         } else if (!strcmp(argv[i], "--help")) {
-            puts("Usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic] [--json --until-stdin-eof [--timeout 1..110]] [--contention]\n"
+            puts("Usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic] [--json --until-stdin-eof [--timeout 1..110]] [--contention] [--desktop-load]\n"
                  "JSON mode: bounded startup/runtime, GPU timestamps and fixed synchronization evidence.");
             return 0;
         } else {
@@ -821,6 +824,7 @@ int main(int argc, char* argv[])
         }
     }
     if (!isfinite(targetMs) || targetMs < 1 || targetMs > 1000 || jsonOutput != untilEof) return 2;
+    if(desktopLoad && (!jsonOutput || contention || wantFullscreen || monolithic))return 2;
     if(contention) {
         if(!jsonOutput || implicitSync || wantFullscreen || monolithic || targetMs!=150.)return 2;
         targetMs=5.;

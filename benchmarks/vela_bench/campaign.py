@@ -46,14 +46,14 @@ def execution_selection(current, targets, *, case, fast, seed, phases, exercise)
         from .desktop import PHASES as AVAILABLE, SPEC, VERSION
         phases = phases or list(AVAILABLE)
         if exercise or any(phase not in AVAILABLE for phase in phases):
-            raise BenchError("Desktop observation supports only responsiveness and motion")
+            raise BenchError("Desktop observation supports responsiveness, motion and slow-apps")
         config = load_campaign(); config["seed"] = seed
         schedule = make_plan(config, {"targets": current["targets"], "environment": current.get("environment", {}),
             "suite": {"installed_files": current.get("launcher_files", {})}},
             phases=phases, targets=targets, fast=fast, exercise=True)
         for block in schedule["blocks"]:
             block.update(workload=VERSION, measurement_executed=True, measurement_spec=SPEC,
-                         measurement_budget_seconds=120, requirements=["input", "capture", "native-scene", "instrument-calibration"])
+                         measurement_budget_seconds=240 if block["phase"]=="slow-apps" else 120, requirements=["input", "capture", "native-scene", "instrument-calibration"])
         schedule.update(execution_mode="observe", scenario_revision=VERSION)
         schedule["estimate"]["basis"] = "provisional desktop action/capture allowances; physical acceptance pending"
         schedule["estimate"]["minimum_seconds"] = 10 + sum(b["measurement_budget_seconds"] + b["preparation_budget_seconds"] for b in schedule["blocks"])
@@ -137,6 +137,10 @@ def audit_block(source, block, plan, layout):
             audit["desktop_observation"] = audit_observation(source, block["target"],
                 state["conditions_snapshot"]["profile"], block["phase"])
             audit["checks"]["desktop_raw_evidence"] = True
+            if expected['workload']=='p3-desktop-observation-v2':
+                audit['checks']['desktop_uid_binding']=audit['desktop_observation'].get('uid')==plan['context']['uid']
+            audit['checks']['desktop_method_binding']=(audit['desktop_observation'].get('method')==expected['workload']
+                and audit['desktop_observation'].get('spec')==expected['block']['measurement_spec'])
         audit["status"] = "passed" if all(audit["checks"].values()) else "failed"
     return audit
 
@@ -323,6 +327,25 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             if str(scene) not in setup["files"]:
                 raise BenchError("Desktop observation requires the installed vela-bench-scene instrument before takeover")
             trusted(scene)
+            help=host.run([str(scene),'--help'],timeout=10).stdout
+            if '--observe' not in help or '--peer' not in help:
+                raise BenchError('Installed scene lacks P3 v2; rebuild instruments and refresh setup')
+            adapter=layout.helper.parent/'vela-bench-desktop'
+            if str(adapter) not in setup['files']:raise BenchError('Desktop observation requires the installed vela-bench-desktop')
+            trusted(adapter)
+            if '--workspace' not in host.run([str(adapter),'--help'],timeout=10).stdout:raise BenchError('Installed adapter lacks P3 workspace support')
+            input_tool=layout.helper.parent/'vela-bench-input'
+            if str(input_tool) not in setup['files']:raise BenchError('Desktop observation requires installed vela-bench-input')
+            trusted(input_tool)
+            if 'P3 v2' not in host.run([str(input_tool),'--help'],timeout=10).stdout:raise BenchError('Installed input helper lacks P3 v2 fixed shortcuts')
+            require_uinput()
+            if 'slow-apps' in selection['execution']['phases']:
+                for name in ('vela-slowgpu','vela-bench-cpuload'):
+                    tool=layout.helper.parent/name
+                    if str(tool) not in setup['files']:raise BenchError('Observed slow-apps requires installed '+name)
+                    trusted(tool)
+                help=host.run([str(layout.helper.parent/'vela-slowgpu'),'--help'],timeout=10).stdout
+                if '--contention' not in help or '--desktop-load' not in help:raise BenchError('Installed GPU helper lacks P3 observed load support')
         if selection["case"] == "measure" and "scaling" in selection["execution"]["phases"]:
             pattern = layout.helper.parent / "vela-pattern"
             if str(pattern) not in setup["files"]:
@@ -446,13 +469,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                 print(f"Block passed: {block['id']}; acceptance checks and restoration verified.", flush=True)
                 observation = audit.get("desktop_observation")
                 if observation:
-                    if block["phase"] == "responsiveness":
-                        bounds = [a["metrics"]["first_observed_response_upper_ms"] for a in observation["actions"]
-                                  if a["kind"] == "launcher-open" and a["id"] != "launcher-0"]
-                        print(f"  P3 launcher: {len(bounds)} measured openings; first-observation upper bounds {min(bounds):.1f}–{max(bounds):.1f} ms; app launch and desktop hide/restore verified.", flush=True)
-                    else:
-                        metric = observation["actions"][0]["metrics"]
-                        print(f"  P3 window drag: {metric['distance_pixels']:.1f} physical pixels; {len(metric['observed_positions'])} identified observations; coarse capture only.", flush=True)
+                    actions=observation.get('base',{}).get('actions',[])+observation['actions']
+                    print(f"  P3 {block['phase']}: {len(actions)} verified native action sequences; coarse output observations only.",flush=True)
                 for scenario, sample in audit.get("measurements", {}).get("scenarios", {}).items():
                     if 'resources' in sample:
                         metric=sample['resources']
@@ -540,14 +558,16 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
     if observed:
         document += "<h2>Verified desktop actions</h2><table><tr><th>Block</th><th>Action</th><th>Observation</th><th>Captures</th></tr>"
         for block in data["observations"]:
-            for action in block["result"]["actions"]:
+            for action in block["result"].get("base",{}).get("actions",[])+block["result"]["actions"]:
                 metric = action["metrics"]
-                detail = (f"First observed response: 0–{metric['first_observed_response_upper_ms']:.1f} ms" if action["kind"]=="launcher-open" else
+                detail = (f"First observed response: 0–{metric['first_observed_response_upper_ms']:.1f} ms" if metric.get('first_observed_response_upper_ms') is not None else
                           f"Identified movement: {metric['distance_pixels']:.1f} physical pixels" if action["kind"]=="drag" else "Final state verified")
                 links = " · ".join("<a href='"+escape(block["id"]+'/'+image['image_file'])+"'>"+label+"</a>"
                                     for image,label in ((action['captures'][0],'before'),(action['captures'][-1],'after')))
                 document += "<tr>" + "".join("<td>"+escape(value)+"</td>" for value in (block["id"],action["id"],detail))+"<td>"+links+"</td></tr>"
-        document += "</table><p>launcher-0 is warm-up. Captures are evidence of coarse state changes, not frame cadence.</p>"
+        document += "</table><h2>Observed load effects</h2><pre>"+escape(json.dumps({b['id']:b['result'].get('paired_effects',{}) for b in data['observations'] if b['phase']=='slow-apps'},indent=2))+"</pre>"
+        document += "<p>Stable-state bounds describe sampled fingerprints, not usability or animation completion. Loaded/control deltas include capture delay and are not frame-level degradation scores.</p>"
+        document += "<p>launcher-0 is warm-up. Captures are evidence of coarse state changes, not frame cadence.</p>"
     if measured:
         document += "<h2>Independent block statistics</h2><p>Each row is a scenario/target. Values are the median and range of independent block statistics, in the displayed units; actions/frames are not pooled as repetitions. No p99 or significance claim.</p>"
         document += "<table><tr><th>Phase</th><th>Target</th><th>Scenario</th><th>Blocks</th><th>Statistic</th><th>Median</th><th>Range</th></tr>"
@@ -709,6 +729,11 @@ def read_export(directory):
         observations = []
         for block in valid:
             actual = audit_observation(directory / block_identity(block["id"]), block["target"], block["profile"], block["phase"])
+            if actual.get('method')!=block.get('workload') or actual.get('spec')!=block.get('measurement_spec'):
+                raise BenchError('Exported desktop method differs from planned block')
+            if actual.get('method')=='p3-desktop-observation-v2':
+                if 'campaign-plan.json' not in manifest['files']:raise BenchError('Exported desktop has no hashed immutable plan')
+                if actual.get('uid')!=read_json(directory/'campaign-plan.json')['context']['uid']:raise BenchError('Exported desktop UID differs from planned benchmark account')
             if actual != block.get("audit", {}).get("desktop_observation"):
                 raise BenchError("Exported desktop audit differs from captured evidence")
             observations.append({"id":block["id"],"target":block["target"],"phase":block["phase"],"result":actual})

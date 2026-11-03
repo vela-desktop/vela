@@ -32,6 +32,19 @@ def main(binary):
         result,keys,rows=run(binary,command,desktop)
         assert result.returncode!=0 and len(rows)==1,(result,rows)
         assert not any(value==1 for _,value in keys),keys
+    commands='alt-tab-begin\nalt-tab-end\nwindow-menu\nwindow-menu-plasma\nworkspace-next\nworkspace-previous\nworkspace-first-plasma\nworkspace-second-plasma\nquit\n'
+    result,keys,rows=run(binary,commands)
+    assert result.returncode==0,result.stderr
+    expected=[(56,1),(15,1),(15,0),(56,0),
+              (56,1),(57,1),(57,0),(56,0),(56,1),(61,1),(61,0),(56,0),
+              (125,1),(29,1),(106,1),(106,0),(29,0),(125,0),
+              (125,1),(29,1),(105,1),(105,0),(29,0),(125,0),
+              (29,1),(59,1),(59,0),(29,0),(29,1),(60,1),(60,0),(29,0)]
+    assert keys[:len(expected)]==expected,keys
+    assert [r['action_id'] for r in rows[1:]]==list(range(1,9)),rows
+    for command in commands.splitlines()[:-1]:
+        result,keys,rows=run(binary,command+'\n',False)
+        assert result.returncode!=0 and len(rows)==1 and not any(v==1 for _,v in keys),(command,keys,rows)
     print('Production evdev shortcut/timestamp/guard checks passed; no kernel device used.')
 
 

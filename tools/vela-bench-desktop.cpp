@@ -11,6 +11,8 @@
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusReply>
+#include <QDBusArgument>
+#include <QDBusVariant>
 #include <QDBusUnixFileDescriptor>
 #include <QEventLoop>
 #include <QImage>
@@ -122,6 +124,25 @@ static QJsonArray markers(const QImage &source)
     }
     return found;
 }
+static QJsonObject sceneRectangles(const QImage &image,const QJsonArray &found)
+{
+    QJsonObject result;
+    for(const auto value:found) {
+        const auto m=value.toObject();const auto id=m["frame"].toInteger();
+        if(id!=0x715000 && id!=0x715002)continue;
+        const QRgb color=id==0x715000?qRgb(200,80,120):qRgb(200,120,80);
+        int matches=0,cx=0,cy=0;
+        for(int y=0;y+16<=image.height();++y)for(int x=0;x+16<=image.width();++x) {
+            if((image.pixel(x,y)|0xff000000)!=color || (x && (image.pixel(x-1,y)|0xff000000)==color)
+               || (y && (image.pixel(x,y-1)|0xff000000)==color))continue;
+            if((image.pixel(x+15,y)|0xff000000)!=color || (image.pixel(x,y+15)|0xff000000)!=color
+               || (image.pixel(x+15,y+15)|0xff000000)!=color || (image.pixel(x+8,y+8)|0xff000000)!=color)continue;
+            ++matches;cx=x+8;cy=y+8;
+        }
+        if(matches==1) {int x=m["x"].toInt()-16,y=m["y"].toInt()-16;result[QString::number(id)]=QJsonArray{x,y,cx-x+16,cy-y+16};}
+    }
+    return result;
+}
 static QJsonObject imageRecord(const QImage &image)
 {
     if (image.isNull() || image.width() > 8192 || image.height() > 8192 || quint64(image.width()) * image.height() > 16777216) fail("invalid image dimensions");
@@ -133,7 +154,9 @@ static QJsonObject imageRecord(const QImage &image)
     for (int y = 0; y < 18; ++y)
         for (int x = 0; x < 32; ++x)
             tiles.append(int(image.pixel((2*x+1)*image.width()/64, (2*y+1)*image.height()/36) & 0xffffff));
-    return {{"width", image.width()}, {"height", image.height()}, {"markers", markers(image)}, {"tiles", tiles},
+    const auto found=markers(image);
+    return {{"width", image.width()}, {"height", image.height()}, {"markers", found}, {"tiles", tiles},
+            {"rectangles",sceneRectangles(image,found)},
             {"png_base64", QString::fromLatin1(png.toBase64())}};
 }
 static KScreen::ConfigPtr wait(KScreen::ConfigOperation *operation, bool setting = false)
@@ -281,15 +304,90 @@ static void capture(const QString &name, int count)
         if (i + 1 < count) QThread::msleep(100);
     }
 }
+static QByteArray velaCommand(const QByteArray &command,bool answer)
+{
+    const QByteArray runtime=qgetenv("XDG_RUNTIME_DIR"),display=qgetenv("WAYLAND_DISPLAY");
+    if(runtime.isEmpty() || display.isEmpty() || display.contains('/') || display.contains(".."))fail("invalid Vela workspace endpoint");
+    QByteArray path=runtime+"/vela-"+display+".sock";
+    sockaddr_un address{};address.sun_family=AF_UNIX;
+    if(size_t(path.size())>=sizeof(address.sun_path))fail("workspace endpoint too long");
+    std::memcpy(address.sun_path,path.constData(),path.size()+1);
+    int fd=socket(AF_UNIX,SOCK_STREAM|SOCK_CLOEXEC,0);
+    timeval timeout{3,0};setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);
+    ucred peer{};socklen_t length=sizeof peer;
+    if(fd<0 || connect(fd,reinterpret_cast<sockaddr*>(&address),sizeof address)
+       || getsockopt(fd,SOL_SOCKET,SO_PEERCRED,&peer,&length) || peer.uid!=getuid())fail("workspace socket is not owned by this UID");
+    if(write(fd,command.constData(),size_t(command.size()))!=command.size())fail("workspace command write");
+    QByteArray reply;
+    if(answer)while(!reply.endsWith('\n')) {char buffer[4096];ssize_t n=read(fd,buffer,sizeof buffer);if(n<=0 || reply.size()>262144)fail("workspace state unavailable");reply.append(buffer,n);}
+    close(fd);return reply;
+}
+static QJsonObject workspaceState(const QString &target)
+{
+    QJsonArray names,ids;QString current;
+    if(target=="vela") {
+        auto value=QJsonDocument::fromJson(velaCommand("workspaces\n",true)).object();
+        names=value["names"].toArray();int index=value["current"].toInt(-1);
+        if(index<0 || index>=names.size())fail("invalid Vela workspace state");
+        for(int i=0;i<names.size();++i)ids.append(QString::number(i));
+        current=QString::number(index);
+    } else if(target=="plasma") {
+        auto message=QDBusMessage::createMethodCall("org.kde.KWin","/VirtualDesktopManager","org.freedesktop.DBus.Properties","GetAll");
+        message<<QString("org.kde.KWin.VirtualDesktopManager");
+        const auto reply=QDBusConnection::sessionBus().call(message,QDBus::Block,3000);
+        if(reply.type()==QDBusMessage::ErrorMessage || reply.arguments().size()!=1)fail("KWin workspace properties unavailable");
+        const QVariantMap map=qdbus_cast<QVariantMap>(reply.arguments()[0]);
+        current=map.value("current").toString();
+        const QDBusArgument desks=qvariant_cast<QDBusArgument>(map.value("desktops"));
+        desks.beginArray();while(!desks.atEnd()) {int position;QString id,name;desks.beginStructure();desks>>position>>id>>name;desks.endStructure();ids.append(id);names.append(name);}desks.endArray();
+        if(names.size()!=map.value("count").toInt())fail("KWin workspace count differs");
+    } else fail("unknown workspace adapter");
+    int index=-1;for(int i=0;i<ids.size();++i)if(ids[i].toString()==current)index=i;
+    if(names.isEmpty() || names.size()>32 || index<0)fail("invalid workspace topology");
+    return {{"schema",1},{"event","workspace-state"},{"target",target},{"uid",qint64(getuid())},
+        {"count",names.size()},{"current_index",index},{"ids",ids},{"names",names}};
+}
+static void workspace(const QString &target,const QString &operation)
+{
+    auto initial=workspaceState(target);const int count=initial["count"].toInt();
+    if(operation=="create" && count==1) {
+        if(target=="vela") {velaCommand("workspace new\n",false);QThread::msleep(30);velaCommand("workspace rename 1 Vela benchmark fixture\n",false);}
+        else {
+            auto request=QDBusMessage::createMethodCall("org.kde.KWin","/VirtualDesktopManager","org.kde.KWin.VirtualDesktopManager","createDesktop");
+            request<<quint32(1)<<QString("Vela benchmark fixture");
+            if(QDBusConnection::sessionBus().call(request,QDBus::Block,3000).type()==QDBusMessage::ErrorMessage)fail("workspace fixture creation failed");
+        }
+    } else if(operation=="remove") {
+        if(count!=2 || initial["names"].toArray()[1].toString()!="Vela benchmark fixture" || initial["current_index"].toInt()!=0)
+            fail("refusing to remove a workspace not created by the fixture");
+        if(target=="vela")velaCommand("workspace close 1\n",false);
+        else {
+            auto request=QDBusMessage::createMethodCall("org.kde.KWin","/VirtualDesktopManager","org.kde.KWin.VirtualDesktopManager","removeDesktop");
+            request<<initial["ids"].toArray()[1].toString();
+            if(QDBusConnection::sessionBus().call(request,QDBus::Block,3000).type()==QDBusMessage::ErrorMessage)fail("workspace fixture removal failed");
+        }
+    } else if(operation!="state" && operation!="create")fail("unknown workspace operation");
+    QJsonObject final;
+    for(int attempt=0;attempt<30;++attempt) {
+        final=workspaceState(target);
+        if((operation=="create" && count==1 && final["count"].toInt()!=2)
+           || (operation=="remove" && final["count"].toInt()!=1)) {QThread::msleep(50);continue;}
+        final["begin_monotonic_ns"]=QString::number(monotonicNs());print(final);return;
+    }
+    fail("workspace fixture state did not settle");
+}
 int main(int argc, char **argv)
 {
     if (argc == 2 && !std::strcmp(argv[1], "--help")) {
-        std::puts("Usage: vela-bench-desktop --resolve-wayland | --outputs | --apply JSON | --capture CONNECTOR [COUNT] | --analyze PNG\nUnprivileged adapter; JSONL output; no backend fallback.");
+        std::puts("Usage: vela-bench-desktop --resolve-wayland | --outputs | --apply JSON | --capture CONNECTOR [COUNT] | --analyze PNG | --workspace TARGET state|create|remove\nUnprivileged adapter; JSONL output; no backend fallback.");
         return 0;
     }
     if (getuid() == 0 || geteuid() == 0) fail("desktop operations must run unprivileged");
     signal(SIGALRM, [](int) { _exit(124); });
     alarm(60);
+    if(argc==4 && !std::strcmp(argv[1],"--workspace")) {
+        QCoreApplication application(argc,argv);workspace(QString::fromLocal8Bit(argv[2]),QString::fromLocal8Bit(argv[3]));return 0;
+    }
     if (argc == 2 && !std::strcmp(argv[1], "--resolve-wayland")) {
         QCoreApplication application(argc, argv);
         resolveWaylandSocket();

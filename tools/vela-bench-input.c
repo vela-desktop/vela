@@ -31,7 +31,7 @@ static int pulse(struct libevdev_uinput *input, unsigned code)
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--help")) {
-        puts("Usage: vela-bench-input [--desktop]\nPrivate stdin: pulse or quit for F24 calibration; desktop mode adds fixed shortcuts, search and bounded absolute points. No shell commands.");
+        puts("Usage: vela-bench-input [--desktop]\nPrivate stdin: pulse or quit for F24 calibration; desktop mode adds fixed shortcuts, search and bounded absolute points. P3 v2: held Alt+Tab, window menus and workspace shortcuts. No shell commands.");
         return 0;
     }
     int desktop = argc == 2 && !strcmp(argv[1], "--desktop");
@@ -88,6 +88,18 @@ int main(int argc, char **argv)
         int result = 0;
         if (!strcmp(command, "pulse\n")) result = pulse(input, KEY_F24);
         else if (desktop && !strcmp(command, "launcher\n")) result = pulse(input, KEY_LEFTMETA);
+        else if (desktop && !strcmp(command,"alt-tab-begin\n")) {
+            result=key(input,KEY_LEFTALT,1);result|=pulse(input,KEY_TAB);
+        } else if (desktop && !strcmp(command,"alt-tab-end\n"))result=key(input,KEY_LEFTALT,0);
+        else if (desktop && (!strcmp(command,"window-menu\n") || !strcmp(command,"window-menu-plasma\n"))) {
+            result=key(input,KEY_LEFTALT,1);result|=pulse(input,!strcmp(command,"window-menu\n")?KEY_SPACE:KEY_F3);result|=key(input,KEY_LEFTALT,0);
+        } else if (desktop && (!strcmp(command,"workspace-next\n") || !strcmp(command,"workspace-previous\n"))) {
+            result=key(input,KEY_LEFTMETA,1);result|=key(input,KEY_LEFTCTRL,1);
+            result|=pulse(input,!strcmp(command,"workspace-next\n")?KEY_RIGHT:KEY_LEFT);
+            result|=key(input,KEY_LEFTCTRL,0);result|=key(input,KEY_LEFTMETA,0);
+        } else if (desktop && (!strcmp(command,"workspace-first-plasma\n") || !strcmp(command,"workspace-second-plasma\n"))) {
+            result=key(input,KEY_LEFTCTRL,1);result|=pulse(input,!strcmp(command,"workspace-first-plasma\n")?KEY_F1:KEY_F2);result|=key(input,KEY_LEFTCTRL,0);
+        }
         else if (desktop && !strcmp(command, "escape\n")) result = pulse(input, KEY_ESC);
         else if (desktop && !strcmp(command, "enter\n")) result = pulse(input, KEY_ENTER);
         else if (desktop && !strcmp(command, "down\n")) result = key(input, BTN_LEFT, 1);
@@ -128,7 +140,7 @@ int main(int argc, char **argv)
         printf("{\"event\":\"injected\",\"action_id\":%u,\"before_monotonic_ns\":%llu,\"after_monotonic_ns\":%llu}\n", count, before, after);
     }
     if (desktop) {
-        key(input, BTN_LEFT, 0); key(input, KEY_LEFTMETA, 0); key(input, KEY_LEFTALT, 0);
+        key(input, BTN_LEFT, 0); key(input, KEY_LEFTMETA, 0); key(input, KEY_LEFTALT, 0); key(input,KEY_LEFTCTRL,0);
     }
     libevdev_uinput_destroy(input);
     libevdev_free(device);

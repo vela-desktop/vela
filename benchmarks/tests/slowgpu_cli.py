@@ -16,7 +16,8 @@ class Failures(unittest.TestCase):
     def test_help_and_invalid_arguments_before_display_connection(self):
         self.assertEqual(subprocess.run([TOOL,'--help'],env={},capture_output=True).returncode,0)
         for args in (['150oops'],['nan'],['0'],['1001'],['--json'],['--until-stdin-eof'],
-                     ['--contention'],['5','--contention','--json','--until-stdin-eof'],
+                     ['--desktop-load'],['--desktop-load','--contention','--json','--until-stdin-eof'],
+                     ['--desktop-load','--fullscreen','--json','--until-stdin-eof'],['--contention'],['5','--contention','--json','--until-stdin-eof'],
                      ['--contention','--implicit','--json','--until-stdin-eof'],['--timeout'],['--json','--until-stdin-eof','--timeout','0']):
             with self.subTest(args=args):
                 result=subprocess.run([TOOL,*args],env={},capture_output=True,timeout=3)

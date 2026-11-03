@@ -1250,8 +1250,8 @@ normal repetitions remain deferred; no old acceptance is transferred to v2.
 
 ### P3 implementation and acceptance scope
 
-`observe` executes the separate fixed `p3-desktop-observation-v1` workload,
-with independently selectable responsiveness/motion phases, one repetition
+`observe` executes the separate fixed `p3-desktop-observation-v2` workload,
+with independently selectable responsiveness/motion/slow-apps phases, one repetition
 in fast mode or three in normal mode. It uses the common privileged campaign
 and per-block session/calibration/restoration contracts. P2 archives and metric
 identities remain unchanged. A missing scene tool fails before takeover.
@@ -1307,10 +1307,71 @@ because of the grip correction; they are separate functional acceptance evidence
 not one complete campaign or repeated performance-comparison evidence.
 Normal three-repetition P3 acceptance has not been run. Coarse captures do not
 establish frame-by-frame regularity or missed refreshes.
-Alt+Tab/context menus, additional shell motion, desktop
-switching and observed interaction under slow-producer load remain unimplemented.
-The result is partial desktop coverage, not complete B1/B2/B3 or v1 acceptance.
+Those physical campaigns used the historical v1 action subset. The v2
+implementation closes the P3 scope described below; physical v2 acceptance
+is still outstanding. This is partial B1/B2/B3 coverage, not full-suite v1
+acceptance.
 See [P3 commands](../benchmarks/README.md#p3-native-desktop-observation).
+
+### P3 implementation closure: native actions and observed loads (v2)
+
+P3 is implementation-complete within its explicitly coarse desktop-observation
+scope. The new workload identity prevents a v1 completion from satisfying a
+v2 plan, while historical v1 archives retain their original auditor. Default
+execution is three complete repetitions; `--fast` runs the identical matrix
+once. No new physical repetition run is a prerequisite for code closure.
+
+Responsiveness retains the launcher/search/application-launch and show-desktop
+controls above, and adds native held Alt+Tab across two independently identified
+Wayland windows, plus the focused window's native menu open/close. Focus must
+exchange between the two sources and return; the menu must take focus and
+Escape must restore the closed baseline. The provisional menu detector uses
+four changed global grid samples because its area is much smaller than a
+launcher; launcher/switcher retain twelve. These are declared state-detector
+thresholds, with native source identity and paired functional checks.
+
+Motion retains the verified system drag and adds system resize, snap left/right,
+maximize/restore and workspace out/back. Restore is a second stimulus after the
+maximize transition has been observed, including on KWin. Capture marker and
+footer coordinates independently establish window rectangles; they must agree
+with the native configure stream. Move/resize must traverse the exact bounded
+physical pointer path, have an accepted native request, at least three observed
+geometries and at least 80 pixels of change. Workspace switching uses the
+adapters' declared default shortcuts and native state queries. If a fresh
+profile has one workspace, create a named second fixture, return to the first,
+remove only that owned addition and verify the original topology. Existing
+workspace names/counts and default effects remain unchanged.
+
+Slow-apps observes launcher open/close and actual window dragging, each with a
+fresh no-load control and a loaded condition for explicit/implicit delayed GPU
+acquisition, dedicated CPU contention and dedicated GPU contention: 24 action
+sequences per desktop/repetition. It reuses the P2 load instruments and audits
+continuous work over the captured interval, device identities and benchmark
+UID. For this P3 workload only, `vela-slowgpu --desktop-load` keeps its exposed
+buffer colour fixed and the scene is raised above it: buffer submissions,
+fences and presentation continue, but a changing load image cannot masquerade
+as native UI response. This fixture is declared in the v2 specification and
+does not alter the P2 workload. The producer is never completely covered.
+
+Every action keeps twelve original PNGs, source configure/focus clocks and
+fixed input receipts. The v2 auditor decodes PNGs and recomputes all markers,
+32×18 fingerprints and identified rectangles, including the retained base
+sequences. Rehashed derived metadata cannot replace original pixels. The live
+campaign and reopened export bind the method/specification/UID to the hashed
+immutable plan. Missing instruments or old shortcut/workspace/load capabilities
+fail before takeover. Failures retain collected evidence and run cleanup.
+
+Reports include before/after images, first-visible and first-observed-stable
+fingerprint bounds, maximum capture gaps, observed unchanged-position intervals
+and loaded-minus-control deltas. These include capture delay and cannot establish
+usability, animation completion, frame cadence, optical latency or missed
+refreshes. `family_complete`, full-suite and automated comparative ranking
+flags remain false until the broader P5 family requirements are met.
+
+Development verification uses private runtime/home/D-Bus compositors, fixture
+input and reopened original PNG audits. These runs validate implementation,
+not physical kernel uinput, monitor timing or real-TTY v2 qualification. The
+historical v1 physical results above remain labelled with their original scope.
 
 ### P4 implementation and acceptance scope
 
