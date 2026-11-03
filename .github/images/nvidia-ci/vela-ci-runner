@@ -26,6 +26,17 @@ if [ ! -e "$vendors/10_nvidia.json" ] && ldconfig -p | grep -q libEGL_nvidia.so.
         > "$vendors/10_nvidia.json"
 fi
 
+# Some hosts pass no NVIDIA DRM render node into the container, and Vela
+# can't start there either: try another offer.
+found=
+for node in /dev/dri/renderD*; do
+    [ "$(cat "/sys/class/drm/${node##*/}/device/vendor" 2>/dev/null)" = 0x10de ] && found=$node && break
+done
+if [ -z "$found" ]; then
+    echo "vela-ci-runner: no NVIDIA render node in /dev/dri" >&2
+    exit 1
+fi
+
 # Some hosts' NVIDIA drivers don't give Vulkan the dmabuf extensions Vela
 # needs (compositor/src/render/vulkan.c). Exit without a runner, so that
 # scripts/vast-runner.py destroys this instance and tries another offer.
