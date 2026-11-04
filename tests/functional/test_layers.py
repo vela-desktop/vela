@@ -106,31 +106,54 @@ class BlurPolicy(unittest.TestCase):
     WALLPAPER = (0x40, 0x80, 0xc0)
     TINT = (0.11, 0.11, 0.12, 0.55) # the dark shell's (scene.c), straight sRGB and amount
 
-    def expected(self, acrylic):
+    def expected(self, acrylic, saturation=1.25, amount=TINT[3]):
         """Per channel, the lowest and highest value the dither allows: it adds
-        up to 1/255 either way in linear light, before the panel."""
+        up to 1/255 either way in linear light, before the panel. A theme's
+        blur-look can change the saturation and the tint's amount."""
         c = [to_linear(v / 255) for v in self.WALLPAPER]
         if acrylic:
             luma = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
-            c = [luma + (v - luma) * 1.25 for v in c]
-            amount = self.TINT[3]
+            c = [luma + (v - luma) * saturation for v in c]
             c = [v * (1 - amount) + to_linear(t) * amount for v, t in zip(c, self.TINT[:3])]
         under = 1 - 128 / 255 # the panel's black at 50%
         return [(to_srgb((v - 1 / 255) * under) - 1, to_srgb((v + 1 / 255) * under) + 1) for v in c]
 
+    def start(self, vela, namespace):
+        color = "%02x%02x%02x" % self.WALLPAPER
+        for args in (["wallpaper", "--color", color],
+                     ["taskbar", "--blur", "--clear", "--namespace", namespace]):
+            vela.clients.append(subprocess.Popen([tool("vela-panel"), *args], env=vela.client_env))
+        vela.wait_for(lambda s: s.output["frames"] > 0)
+        time.sleep(0.6)
+
+    def check(self, vela, label, expected):
+        """Every sampled pixel of the taskbar within the expected range."""
+        image = vela.pixels()
+        for y in range(image.height - BAR + 8, image.height - 8, 6):
+            for x in range(40, image.width - 40, 97):
+                pixel = image.at(x, y)
+                self.assertTrue(all(lo <= v <= hi for v, (lo, hi) in zip(pixel, expected)),
+                                f"{label} at ({x}, {y}): {pixel}, expected within {expected}")
+
     def test_acrylic_only_for_vela(self):
         for namespace, acrylic in (("vela-test", True), ("test", False)):
             with self.subTest(namespace=namespace), Session() as vela:
-                color = "%02x%02x%02x" % self.WALLPAPER
-                for args in (["wallpaper", "--color", color],
-                             ["taskbar", "--blur", "--clear", "--namespace", namespace]):
-                    vela.clients.append(subprocess.Popen([tool("vela-panel"), *args], env=vela.client_env))
-                vela.wait_for(lambda s: s.output["frames"] > 0)
-                time.sleep(0.6)
-                image = vela.pixels()
-                expected = self.expected(acrylic)
-                for y in range(image.height - BAR + 8, image.height - 8, 6):
-                    for x in range(40, image.width - 40, 97):
-                        pixel = image.at(x, y)
-                        self.assertTrue(all(lo <= v <= hi for v, (lo, hi) in zip(pixel, expected)),
-                                        f"{namespace} at ({x}, {y}): {pixel}, expected within {expected}")
+                self.start(vela, namespace)
+                self.check(vela, namespace, self.expected(acrylic))
+
+    def test_theme_blur_look(self):
+        """A theme's blur-saturation and blur-tint (the shell's blur-look)
+        change Vela's acrylic, not a client's blur, and -1 is Vela's own
+        again (docs/configuration.md, "Theme files")."""
+        for namespace, acrylic in (("vela-test", True), ("test", False)):
+            with self.subTest(namespace=namespace), Session() as vela:
+                self.start(vela, namespace)
+                vela.command("blur-look 2 -1 0")
+                time.sleep(0.4)
+                self.check(vela, f"{namespace}, blur-look 2 -1 0", self.expected(acrylic, saturation=2, amount=0))
+                vela.command("blur-look 1.5 -1 0.2")
+                time.sleep(0.4)
+                self.check(vela, f"{namespace}, blur-look 1.5 -1 0.2", self.expected(acrylic, saturation=1.5, amount=0.2))
+                vela.command("blur-look -1 -1 -1")
+                time.sleep(0.4)
+                self.check(vela, f"{namespace}, blur-look -1 -1 -1", self.expected(acrylic))

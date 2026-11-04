@@ -85,6 +85,19 @@ struct vela_tree {
     struct vela_shape shape;
 };
 
+// How an acrylic blur looks (docs/configuration.md, "Theme files"): a theme
+// can make the glass more vivid (saturation, Vela's 1.25; 1 to 3), blurrier or
+// clearer (strength, a factor of the radius; the radius stays within 0.5 and
+// 6) and lighten or drop the gray wash (tint, the acrylic tint's opacity,
+// Vela's 0.55; 0 to 1). A negative value keeps Vela's own.
+struct vela_blur_look {
+    float saturation;
+    float strength;
+    float tint;
+};
+
+#define VELA_BLUR_LOOK_DEFAULT ((struct vela_blur_look) { -1.0f, -1.0f, -1.0f })
+
 // An app surface with its subsurfaces, read live.
 struct vela_surface_node {
     struct vela_node node;
@@ -128,6 +141,9 @@ struct vela_scene {
     // The acrylic tint of blurs (premultiplied sRGB): Windows 11's dark theme
     // one, or the light one when the shell is light.
     struct wlr_render_color acrylic_tint;
+    // The look of acrylic blurs: the shell's "blur-look", from the theme's
+    // blur-* keys.
+    struct vela_blur_look blur_look;
     // The color filters of all outputs: a 3x3 matrix by rows in linear space,
     // if color_filtered. Applied while drawing.
     bool color_filtered;

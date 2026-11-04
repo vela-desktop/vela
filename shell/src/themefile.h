@@ -6,6 +6,7 @@
 
 #include "themetokens.h" // generated from Theme.qml (common/CMakeLists.txt)
 
+#include <QByteArray>
 #include <QColor>
 #include <QDir>
 #include <QFile>
@@ -21,16 +22,23 @@
 #include <QVariantMap>
 #include <QtLogging>
 
+#include <algorithm>
 #include <cmath>
+#include <iterator>
 
 // Theme files (theme=<name> in vela.conf, themes/<name>.conf): the colors and
-// corner radii that Theme.qml takes over Vela's own (docs/configuration.md,
-// "Theme files"). `key=value` lines and `#` comments:
+// corner radii that Theme.qml takes over Vela's own, and the blur the
+// compositor draws behind the shell's panels (docs/configuration.md, "Theme
+// files"). `key=value` lines and `#` comments:
 //
 //   <token>, dark.<token>, light.<token>   a Theme.qml token, for both modes
 //                                          or one; a color (#RRGGBB,
 //                                          #AARRGGBB) or a number, as the
 //                                          token's type says
+//   blur-saturation, blur-strength,        the blur behind Vela's acrylic
+//   blur-tint                              surfaces, which the compositor
+//                                          draws (blurLook()); numbers, for
+//                                          both modes
 //   inherits=<name>                        the theme this one starts from
 //   schema-version=1                       the format; another one is not used
 //
@@ -65,6 +73,28 @@ inline bool validName(const QString& name)
 {
     static const QRegularExpression safe(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"));
     return safe.match(name).hasMatch();
+}
+
+// The compositor's keys: the look of the blur behind Vela's acrylic surfaces
+// (the taskbar, Start, quick settings...). Theme.qml has no token for them.
+inline constexpr const char* blurKeys[] = { "blur-saturation", "blur-strength", "blur-tint" };
+
+inline bool isBlurKey(const QString& key)
+{
+    return std::any_of(std::begin(blurKeys), std::end(blurKeys), [&key](const char* k) { return key == QLatin1String(k); });
+}
+
+// The compositor's "blur-look <saturation> <strength> <tint>" for a theme:
+// its blur-* keys, -1 (Vela's own) for each it leaves out. The compositor
+// keeps each within its range (compositor/src/scene/scene.h).
+inline QByteArray blurLook(const QVariantMap& theme)
+{
+    QByteArray line("blur-look");
+    for (const char* key : blurKeys) {
+        const QVariant value = theme.value(QLatin1String(key));
+        line += ' ' + QByteArray::number(value.typeId() == QMetaType::Double ? value.toDouble() : -1.0);
+    }
+    return line;
 }
 
 // A token's type, from Theme.qml's property; nullptr when Theme.qml has none.
@@ -264,9 +294,9 @@ inline File read(QIODevice& in, const QString& origin = QString())
             ? key.section(u'.', 1)
             : key;
         const Token* t = token(name);
-        if (!t) {
+        if (!t && !isBlurKey(key)) {
             problem(Problem::UnknownToken, number, key, value);
-        } else if (t->kind == TokenKind::Color) {
+        } else if (t && t->kind == TokenKind::Color) {
             if (validColor(value)) {
                 file.tokens.insert(key, QColor::fromString(value));
             } else {

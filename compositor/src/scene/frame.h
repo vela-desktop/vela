@@ -10,6 +10,7 @@
 // opaque app covers the output, its buffer goes straight to the primary plane
 // (direct scanout, §5.3).
 
+#include "scene/scene.h"
 #include <pixman.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -57,6 +58,7 @@ struct vela_element {
     // gray tint): only Vela's own surfaces do (docs/visual-coherence.md §6.7).
     struct wlr_box blur_box;
     bool acrylic;
+    struct vela_blur_look look; // an acrylic one's: the scene's blur_look
     bool visible; // not entirely covered
     int64_t visible_area; // uncovered pixels
     int order; // position in the list, from the bottom

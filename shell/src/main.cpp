@@ -439,6 +439,8 @@ int main(int argc, char* argv[])
         const QColor active = background.typeId() == QMetaType::QColor ? background.value<QColor>() : micaFromTint(tint, true, appsLight);
         const QColor inactive = background.typeId() == QMetaType::QColor ? active : micaFromTint(tint, false, appsLight);
         ShellController::sendToCompositor("mica " + active.name().toLatin1() + ' ' + inactive.name().toLatin1());
+        // The blur behind the shell's panels: the theme's blur-* keys.
+        ShellController::sendToCompositor(vela::themes::blurLook(style->theme()));
     };
     sendLook();
     QObject::connect(&config, &Config::wallpaperChanged, &shell, [&] {

@@ -127,6 +127,22 @@ private slots:
         QCOMPARE(variant.value(QStringLiteral("value")).toString(), QStringLiteral("red"));
     }
 
+    // The blur-* keys are the compositor's: numbers for both modes, sent as
+    // one blur-look line, -1 for each the theme leaves out.
+    void blurKeysAreTheCompositors()
+    {
+        QTest::ignoreMessage(QtWarningMsg, "theme test:3: blur-strength is a number, not \"strong\": skipped");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:4: dark.blur-tint is not a theme token, skipped");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:5: blur-luminosity is not a theme token, skipped");
+        const vela::themes::File file = read("blur-saturation=1.0\nblur-tint=0\nblur-strength=strong\n"
+                                             "dark.blur-tint=0.2\nblur-luminosity=0\n");
+        QCOMPARE(kinds(file.problems), (QStringList { "expects-number", "unknown-token", "unknown-token" }));
+        QCOMPARE(file.tokens.keys(), (QStringList { QStringLiteral("blur-saturation"), QStringLiteral("blur-tint") }));
+        QCOMPARE(vela::themes::blurLook(file.tokens), QByteArray("blur-look 1 -1 0"));
+        QCOMPARE(vela::themes::blurLook({}), QByteArray("blur-look -1 -1 -1"));
+        QCOMPARE(vela::themes::blurLook(read("blur-strength=0.25\n").tokens), QByteArray("blur-look -1 0.25 -1"));
+    }
+
     // The same lookup as Theme.qml's themed(): the mode's key, then the shared one.
     void themedLookup()
     {

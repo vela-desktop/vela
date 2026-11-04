@@ -587,8 +587,8 @@ checks the buttons' hover against `Theme.subtleHover`.
 |---|---|---|
 | dual Kawase blur | the effect the protocol asks for | every blur region |
 | dither | technical: no banding when the blur is written in 8 or 10 bits | every blur region |
-| saturation 1.25 | aesthetic: acrylic's recipe | Vela's surfaces |
-| gray tint (`acrylic_tint`) | aesthetic, and must precede the dither (K3) | Vela's surfaces |
+| saturation 1.25 (or the theme's `blur-saturation`) | aesthetic: acrylic's recipe | Vela's surfaces |
+| gray tint (`acrylic_tint`, its opacity the theme's `blur-tint`) | aesthetic, and must precede the dither (K3) | Vela's surfaces |
 | translucent fill | aesthetic: the panel's own color | drawn by the client |
 | Mica | aesthetic: a solid color | the title bar (K4) |
 | shadows | elevation | the owner of the surface (K2) |
@@ -601,6 +601,11 @@ namespace only changes its own look. When `add_surface()` finds a blur region it
 sets `acrylic` on the element from `wlr_layer_surface_v1_try_from_wlr_surface()`;
 otherwise `vela_pass_add_blur()` passes a zero tint and a saturation of 1. The
 shell's look doesn't change.
+
+A theme's `blur-*` keys reach the compositor as `blur-look <saturation>
+<strength> <tint>`, which the shell sends with `theme` and `mica`; `-1` keeps
+Vela's own value. They change Vela's surfaces only
+(`test_layers.BlurPolicy.test_theme_blur_look`).
 
 **Verified by** a functional test with `vela-panel`, which gets a `--namespace`
 option (today it always uses `vela-panel`, so the existing blur tests keep the

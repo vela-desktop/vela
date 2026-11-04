@@ -74,7 +74,7 @@ The Settings app is the preferred way to edit these values because it applies va
 
 ### Theme files
 
-A theme changes the colors and corner radii of the shell and of Vela's apps. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own themes) and then in the data directories (`/usr/share/vela/themes/`, the installed ones). The shell and the apps reload it when it, or a theme it inherits, changes.
+A theme changes the colors and corner radii of the shell and of Vela's apps, and the blur behind the shell's panels. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own themes) and then in the data directories (`/usr/share/vela/themes/`, the installed ones). The shell and the apps reload it when it, or a theme it inherits, changes.
 
 Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. It is the only theme installed.
 
@@ -92,12 +92,13 @@ The first comment line names the theme in Settings, and a `# Original author:` l
 
 - `inherits=<name>` starts from another theme: its tokens first, then this file's over them. A theme of yours can inherit the installed one of the same name (`~/.config/vela/themes/vela.conf` with `inherits=vela`). A parent that isn't installed, or that inherits back, is left out and the theme keeps its own tokens; a chain stops after 16 themes.
 - `schema-version=1` is the format, optional. A file with another version is not used, nor what it inherits.
+- `blur-saturation`, `blur-strength` and `blur-tint` are the blur the compositor draws behind Vela's acrylic surfaces (the shell's panels and menus), numbers for both modes. `blur-saturation` is the acrylic's saturation, 1–3 (Vela's: 1.25); `blur-strength` multiplies the blur's radius (Vela's: 1; the compositor keeps the result between half and six times its smallest blur); `blur-tint` is the opacity of the acrylic's gray wash, 0–1 (Vela's: 0.55; `0` leaves only the panels' own fills). A value outside its range is brought within it; a key the theme leaves out keeps Vela's value.
 
 A line that isn't a token, a token with a value of the wrong type and a broken `inherits=` are skipped with a warning in the log that names the file, the line and what is wrong. Settings > Personalization > Themes lists them under the theme too.
 
 Choosing a theme in Settings only shows it in the preview; **Apply** writes `theme=` and **Cancel** goes back to the one in use. A theme with its own `accent` replaces the accent color chosen in Settings > Colors while it is in use, and Settings says so.
 
-The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars, opaque) and `accent` in place of Mica and the chosen accent. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
+The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars, opaque) and `accent` in place of Mica and the chosen accent, and its `blur-*` keys. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
 
 | Tokens | Kind |
 |---|---|
