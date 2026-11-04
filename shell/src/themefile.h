@@ -239,8 +239,13 @@ inline QVariantMap parse(QIODevice& in, const QString& origin = QString())
             }
         } else if (key == QLatin1String("schema-version") && isNumber) {
             map.insert(key, d); // loadInherited rejects unsupported schemas.
-        } else if (tokenKind(bareKey) == TokenKind::Variant && allowedVariant(bareKey, value)) {
-            map.insert(key, value);
+        } else if (tokenKind(bareKey) == TokenKind::Variant) {
+            if (allowedVariant(bareKey, value)) {
+                map.insert(key, value);
+            } else {
+                qWarning("theme %s:%d: unsupported official variant %s=%s", qPrintable(origin), number,
+                    qPrintable(key), qPrintable(value));
+            }
         } else if (tokenKind(bareKey) == TokenKind::Number && isNumber && std::isfinite(d)) {
             map.insert(key, d);
         } else if (tokenKind(bareKey) == TokenKind::Color && value.startsWith(u'#') && QColor::isValidColorName(value)) {
