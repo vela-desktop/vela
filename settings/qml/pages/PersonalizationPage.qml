@@ -76,7 +76,7 @@ Page {
                     // A window, in the apps' mode.
                     color: preview.visualToken("background", Prefs.light
                         ? Qt.rgba(0.95, 0.95, 0.95, 0.97) : Qt.rgba(0.13, 0.13, 0.13, 0.96), true)
-                    Rectangle { x: 8; y: 8; width: parent.width * 0.4; height: 5; radius: 2; color: preview.visualToken("accent", Theme.accentFill) }
+                    Rectangle { x: 8; y: 8; width: parent.width * 0.4; height: 5; radius: 2; color: preview.visualToken("accent", Prefs.accent) }
                     Rectangle { x: 8; y: 20; width: parent.width * 0.7; height: 4; radius: 2; color: Prefs.light ? Qt.rgba(0, 0, 0, 0.2) : Qt.rgba(1, 1, 1, 0.2) }
                     Rectangle { x: 8; y: 30; width: parent.width * 0.55; height: 4; radius: 2; color: Prefs.light ? Qt.rgba(0, 0, 0, 0.2) : Qt.rgba(1, 1, 1, 0.2) }
                 }
@@ -97,7 +97,7 @@ Page {
                         spacing: 3
                         Repeater {
                             model: 5
-                            Rectangle { width: 8; height: 8; radius: 2; color: index === 0 ? preview.visualToken("accent", Theme.accentFill) : Prefs.shellTheme === "light" ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.45) }
+                            Rectangle { width: 8; height: 8; radius: 2; color: index === 0 ? preview.visualToken("accent", Prefs.accent) : Prefs.shellTheme === "light" ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.45) }
                         }
                     }
                 }
