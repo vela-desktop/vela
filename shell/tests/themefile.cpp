@@ -200,9 +200,9 @@ private slots:
 
     void inheritanceResolvesAndOverrides()
     {
-        write(data() + QStringLiteral("/vela/themes/vela.conf"), "# Vela: base\\naccent=#112233\\nradius=4\\n");
-        write(data() + QStringLiteral("/vela/themes/aero.conf"), "schema-version=1\\ninherits=vela\\nradius=6\\nstartmenu-variant=seven\\n");
-        write(config() + QStringLiteral("/vela/themes/custom.conf"), "inherits=aero\\naccent=#AABBCC\\n");
+        write(data() + QStringLiteral("/vela/themes/vela.conf"), "# Vela: base\naccent=#112233\nradius=4\n");
+        write(data() + QStringLiteral("/vela/themes/aero.conf"), "schema-version=1\ninherits=vela\nradius=6\nstartmenu-variant=seven\n");
+        write(config() + QStringLiteral("/vela/themes/custom.conf"), "inherits=aero\naccent=#AABBCC\n");
         const QVariantMap tokens = vela::themes::loadInherited(QStringLiteral("custom"));
         QCOMPARE(tokens.value(QStringLiteral("radius")).toDouble(), 6.0);
         QCOMPARE(tokens.value(QStringLiteral("accent")).value<QColor>(), QColor(0xAA, 0xBB, 0xCC));
@@ -213,23 +213,23 @@ private slots:
 
     void inheritanceCycleAndMissingParentHaveSafeFallback()
     {
-        write(data() + QStringLiteral("/vela/themes/one.conf"), "inherits=two\\ntext=#AABBCC\\n");
-        write(data() + QStringLiteral("/vela/themes/two.conf"), "inherits=one\\nradius=10\\n");
+        write(data() + QStringLiteral("/vela/themes/one.conf"), "inherits=two\ntext=#AABBCC\n");
+        write(data() + QStringLiteral("/vela/themes/two.conf"), "inherits=one\nradius=10\n");
         const QVariantMap tokens = vela::themes::loadInherited(QStringLiteral("one"));
         QCOMPARE(tokens.value(QStringLiteral("radius")).toDouble(), 10.0);
         QCOMPARE(tokens.value(QStringLiteral("text")).value<QColor>(), QColor(0xAA, 0xBB, 0xCC));
-        write(data() + QStringLiteral("/vela/themes/lone.conf"), "inherits=missing\\nradius=4\\n");
+        write(data() + QStringLiteral("/vela/themes/lone.conf"), "inherits=missing\nradius=4\n");
         QCOMPARE(vela::themes::loadInherited(QStringLiteral("lone")).value(QStringLiteral("radius")).toDouble(), 4.0);
     }
 
     void namedOfficialVariantsAreValidated()
     {
-        const QVariantMap ok = parse("taskbar-variant=floating-split\\nstartmenu-variant=seven\\n"
-            "quicksettings-variant=glass\\nnotifications-variant=aero\\n");
+        const QVariantMap ok = parse("taskbar-variant=floating-split\nstartmenu-variant=seven\n"
+            "quicksettings-variant=glass\nnotifications-variant=aero\n");
         QCOMPARE(ok.size(), 4);
         QCOMPARE(ok.value(QStringLiteral("taskbar-variant")).toString(), QStringLiteral("floating-split"));
         QTest::ignoreMessage(QtWarningMsg, "theme test:1: unsupported official variant taskbar-variant=custom.qml");
-        const QVariantMap unsafe = parse("taskbar-variant=custom.qml\\n");
+        const QVariantMap unsafe = parse("taskbar-variant=custom.qml\n");
         QVERIFY(unsafe.isEmpty());
     }
 
