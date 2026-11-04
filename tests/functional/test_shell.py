@@ -323,6 +323,58 @@ class QtShell(RealShell):
                          [(second, 2), (first, 2)], signals)
         self.assertNotIn("ActionInvoked", signals)
 
+    def test_notification_center_scroll_and_right_click_after_delegate_recycling(self):
+        """A long history still scrolls; right-click works on a scrolled delegate."""
+        with self.notification_signal_monitor() as capture:
+            ids = [self.send_notification(f"History #{n}", "['default', 'Open', 'reply', 'Reply']")
+                   for n in range(12)]
+            self.vela.input("key", "super+n", "sleep", "900")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-notification-center"),
+                timeout=8, what="notification center displaying a scrollable history")
+            center = self.layer(state, "vela-notification-center")
+            room = center["w"] - 372
+            x = center["x"] + room + 145
+            y = center["y"] + room + 140
+            # Multiple app records exceed the available notification-list height.
+            before = self.vela.pixels()
+            self.vela.input("move", x, y, "scroll", 6, "sleep", 450)
+            after = self.vela.pixels()
+            self.assertNotEqual(before.rows, after.rows, "History did not scroll")
+            self.vela.input("move", x, y, "sleep", 100, "click", "right")
+            self.assertTrue(self.mapped(self.vela.state(), "vela-notification-center"))
+            self.check_desktop()
+            signals = capture()
+
+        closed = self.notification_closed_events(signals)
+        self.assertEqual(len(closed), 1, signals)
+        self.assertIn(closed[0][0], ids, signals)
+        self.assertEqual(closed[0][1], 2, signals)
+        self.assertNotIn("ActionInvoked", signals)
+
+    def test_left_click_notification_center_secondary_action_preserved(self):
+        """The secondary action button still invokes its action on a left click."""
+        with self.notification_signal_monitor() as capture:
+            notification_id = self.send_notification(
+                "History action", "['default', 'Open', 'reply', 'Reply']")
+            self.vela.input("key", "super+n", "sleep", "900")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-notification-center"),
+                timeout=8, what="notification center displaying an actionable entry")
+            center = self.layer(state, "vela-notification-center")
+            room = center["w"] - 372
+            # A reply action is placed below the card's summary and body.
+            self.vela.input("move", center["x"] + room + 108,
+                            center["y"] + room + 140,
+                            "sleep", 130, "click", "left")
+            self.assertTrue(self.mapped(self.vela.state(), "vela-notification-center"))
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals), [(notification_id, 2)], signals)
+        invoked = re.findall(r"ActionInvoked[^\n]*?\(\s*(?:uint32\s+)?(\d+)\s*,\s*['\"]([^'\"]+)['\"]", signals)
+        self.assertEqual(invoked, [(str(notification_id), "reply")], signals)
+
     def test_left_click_notifications_preserve_default_action_semantics(self):
         """Left-click default actions still invoke once; plain toasts only dismiss."""
         with self.notification_signal_monitor() as capture:
