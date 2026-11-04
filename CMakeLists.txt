@@ -67,6 +67,8 @@ if(VELA_BUILD_SHELL)
     add_subdirectory(settings)
     add_subdirectory(explorer)
     add_subdirectory(lock)
+    # Theme files (docs/configuration.md, "Theme files"): theme= of vela.conf picks one.
+    install(DIRECTORY themes/ DESTINATION ${CMAKE_INSTALL_DATADIR}/vela/themes FILES_MATCHING PATTERN "*.conf")
 endif()
 if(VELA_BUILD_POLKIT)
     add_subdirectory(polkit)

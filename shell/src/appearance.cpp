@@ -7,6 +7,7 @@
 #include "iconprovider.h"
 #include "language.h"
 #include "mica.h"
+#include "themefile.h"
 
 #include <QDir>
 #include <QFile>
@@ -63,7 +64,13 @@ void Appearance::watch()
 {
     // Whoever writes the files replaces them: the directories are watched too.
     const QString shellConfig = QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell")).fileName();
-    for (const QString& path : { shellConfig, wallpaperTintCachePath(), vela::language::configPath() }) {
+    // The chosen theme and the themes it inherits too: editing one shows at once.
+    QStringList paths { shellConfig, wallpaperTintCachePath(), vela::language::configPath() };
+    paths += m_themeFiles;
+    for (const QString& path : std::as_const(paths)) {
+        if (path.isEmpty()) {
+            continue;
+        }
         const QFileInfo info(path);
         if (info.exists() && !m_watcher.files().contains(path)) {
             m_watcher.addPath(path);
@@ -93,8 +100,24 @@ void Appearance::reload()
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
     const Motion motion = configuredMotion();
+    const vela::themes::Resolved resolved = vela::themes::resolve(vela::themes::configuredName(vela::language::configPath()));
+    const QVariantMap& theme = resolved.tokens;
+    if (resolved.files != m_themeFiles) {
+        for (const QString& file : std::as_const(m_themeFiles)) {
+            if (!resolved.files.contains(file)) {
+                m_watcher.removePath(file);
+            }
+        }
+        m_themeFiles = resolved.files;
+        if (m_watching) {
+            watch();
+        }
+    }
+    const bool themeChanged = theme != m_theme;
+    m_theme = theme;
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
-        if (motion.effects != m_animationEffects || motion.duration != m_animationDuration) {
+        // Only the theme or the motion: the icons stay as they are.
+        if (themeChanged || motion.effects != m_animationEffects || motion.duration != m_animationDuration) {
             m_animationEffects = motion.effects;
             m_animationDuration = motion.duration;
             emit changed();

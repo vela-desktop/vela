@@ -6,7 +6,9 @@
 #include <QColor>
 #include <QFileSystemWatcher>
 #include <QObject>
+#include <QStringList>
 #include <QTimer>
+#include <QVariantMap>
 
 // The look of Vela's interfaces (Vela.Controls' Style): the apps' light or
 // dark mode ("Choose your mode"), accent color and Mica (see mica.h). System
@@ -21,6 +23,10 @@ class Appearance : public QObject {
     Q_PROPERTY(QColor accent READ accent NOTIFY changed)
     Q_PROPERTY(QColor mica READ mica NOTIFY changed)
     Q_PROPERTY(QColor micaInactive READ micaInactive NOTIFY changed)
+    // The chosen theme's values (theme= of vela.conf, themes/<name>.conf,
+    // themefile.h): colors as QColor, numbers as double. Theme.qml falls back
+    // to its own for what the theme leaves out.
+    Q_PROPERTY(QVariantMap theme READ theme NOTIFY changed)
     Q_PROPERTY(bool animationEffects READ animationEffects NOTIFY changed)
     // animation-duration in vela.conf as a factor: 1 is Vela's durations.
     Q_PROPERTY(qreal animationDuration READ animationDuration NOTIFY changed)
@@ -39,6 +45,7 @@ public:
     bool animationEffects() const { return m_animationEffects; }
     qreal animationDuration() const { return m_animationDuration; }
     QString iconMode() const { return m_iconMode; }
+    QVariantMap theme() const { return m_theme; }
 
     // Starts watching the files (after the first frame: startup stays fast).
     void watch();
@@ -58,6 +65,8 @@ private:
     QColor m_accent;
     QColor m_mica;
     QColor m_micaInactive;
+    QVariantMap m_theme;
+    QStringList m_themeFiles; // the chosen theme's chain, watched
     bool m_animationEffects = true;
     qreal m_animationDuration = 1.0;
     QString m_iconMode = QStringLiteral("d/");

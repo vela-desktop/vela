@@ -30,6 +30,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | Key | Default | Meaning |
 |---|---|---|
 | `language` | system | Interface language: `it`, `en`, or empty to follow the system (Italian if the system is Italian, English otherwise). |
+| `theme` | `vela` | A theme's name (Settings > Personalization > Themes): `themes/<name>.conf`, see [Theme files](#theme-files). `vela` (or empty) is Vela Official, Vela's own look. |
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
@@ -70,6 +71,42 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `touchpad-four-fingers` | `desktop` | Four-finger gesture mode. |
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
+
+### Theme files
+
+A theme changes the colors and corner radii of the shell and of Vela's apps. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own themes) and then in the data directories (`/usr/share/vela/themes/`, the installed ones). The shell and the apps reload it when it, or a theme it inherits, changes.
+
+Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. It is the only theme installed.
+
+```ini
+# Mine: the first line names the theme in Settings
+# Original author: your name
+inherits=vela
+dark.background=#191724
+light.background=#FAF4ED
+accent=#C4A7E7
+radius=6
+```
+
+The first comment line names the theme in Settings, and a `# Original author:` line among the first comments credits it there. Each other key is a token of [`Theme.qml`](../common/controls/Theme.qml): `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token the theme leaves out keeps Vela's value. A token is a color (`#RRGGBB` or `#AARRGGBB`) or a number, as its property in Theme.qml says; the list of tokens and their types is generated from Theme.qml at build time (`common/CMakeLists.txt`), so a token added there is themable at once.
+
+- `inherits=<name>` starts from another theme: its tokens first, then this file's over them. A theme of yours can inherit the installed one of the same name (`~/.config/vela/themes/vela.conf` with `inherits=vela`). A parent that isn't installed, or that inherits back, is left out and the theme keeps its own tokens; a chain stops after 16 themes.
+- `schema-version=1` is the format, optional. A file with another version is not used, nor what it inherits.
+
+A line that isn't a token, a token with a value of the wrong type and a broken `inherits=` are skipped with a warning in the log that names the file, the line and what is wrong. Settings > Personalization > Themes lists them under the theme too.
+
+Choosing a theme in Settings only shows it in the preview; **Apply** writes `theme=` and **Cancel** goes back to the one in use. A theme with its own `accent` replaces the accent color chosen in Settings > Colors while it is in use, and Settings says so.
+
+The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars, opaque) and `accent` in place of Mica and the chosen accent. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
+
+| Tokens | Kind |
+|---|---|
+| `background` (windows), `taskbar`, `surface` (shell panels), `popup` (shell menus), `backdrop` (Task View), `taskCard`, `taskCardHover` | color |
+| `control`, `controlHover`, `controlPressed`, `controlStroke`, `stroke` | color |
+| `card`, `cardHover`, `cardPressed`, `cardStroke`, `flyout`, `dialog`, `dialogFooter`, `field` | color |
+| `text`, `textSecondary`, `textTertiary` | color |
+| `accent` (over the one chosen in Settings > Colors) | color |
+| `radius` (controls), `radiusCard`, `radiusOverlay` (menus, dialogs, panels) | pixels, 0–24 |
 
 ## Display configuration
 
