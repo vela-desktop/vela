@@ -167,7 +167,7 @@ class QtShell(RealShell):
         return last
 
 
-    def send_notification(self, summary, actions="['default', 'Open']", body="Notification body"):
+    def send_notification(self, summary, actions="['default', 'Open']", body="Notification body", expire_timeout=120000):
         """Send an isolated D-Bus notification and return the exact ID assigned by Vela."""
         if not shutil.which("gdbus"):
             self.skipTest("gdbus required for desktop notification")
@@ -175,7 +175,7 @@ class QtShell(RealShell):
             "gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
             "--object-path", "/org/freedesktop/Notifications",
             "--method", "org.freedesktop.Notifications.Notify",
-            "Vela functional test", "0", "", summary, body, actions, "{}", "120000",
+            "Vela functional test", "0", "", summary, body, actions, "{}", str(expire_timeout),
         ], env=self.vela.client_env, check=True, capture_output=True, text=True, timeout=8)
         match = re.search(r"\buint32\s+(\d+)", result.stdout)
         self.assertIsNotNone(match, f"Notify did not return an ID: {result.stdout!r}")
@@ -253,6 +253,30 @@ class QtShell(RealShell):
 
         self.assertEqual(self.notification_closed_events(signals),
                          [(first, 2), (second, 2)], signals)
+        self.assertNotIn("ActionInvoked", signals)
+
+    def test_right_click_notification_keeps_hovered_timeout_paused(self):
+        """Hover prevents expiry; right-click then closes with reason 2, not reason 1."""
+        with self.notification_signal_monitor() as capture:
+            notification_id = self.send_notification(
+                "Hover timeout", expire_timeout=900)
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-notifications"),
+                timeout=8, what="short-timeout notification appeared")
+            popup = self.layer(state, "vela-notifications")
+            # Hold the pointer longer than the requested timeout. The notification
+            # must remain visible while hovered, including after its entrance.
+            self.vela.input("move", popup["x"] + 100, popup["y"] + 55, "sleep", 1300)
+            self.assertTrue(self.mapped(self.vela.state(), "vela-notifications"),
+                            "Toast expired while the pointer was hovering")
+            self.vela.input("click", "right")
+            self.vela.wait_for(
+                lambda s: not self.mapped(s, "vela-notifications"),
+                timeout=8, what="hovered notification dismissed by right click")
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals), [(notification_id, 2)], signals)
         self.assertNotIn("ActionInvoked", signals)
 
     def test_right_click_notification_nested_controls(self):
