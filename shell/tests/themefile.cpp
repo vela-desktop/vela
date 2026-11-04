@@ -233,6 +233,31 @@ private slots:
         QVERIFY(unsafe.isEmpty());
     }
 
+
+    void rejectCrossSurfaceTokensInUserStyles()
+    {
+        const QString path = data() + QStringLiteral("/vela/themes/taskbar/untrusted.conf");
+        write(path, "taskbar-height=40\ntext=#FFFFFF\nstartmenu-width=1200\n");
+        const QVariantMap tokens = vela::themes::load(path, vela::themes::Taskbar);
+        QCOMPARE(tokens.size(), 1);
+        QCOMPARE(tokens.value(QStringLiteral("taskbar-height")).toDouble(), 40.0);
+    }
+
+    void rejectWrongTokenTypesAndUnknownKeys()
+    {
+        const QVariantMap tokens = parse("accent=12\nradius=#FF00FF\n"
+            "taskbar-variant=evil.qml\nunknown-token=12\n"
+            "dark.text=#112233\n");
+        QCOMPARE(tokens.size(), 1);
+        QCOMPARE(tokens.value(QStringLiteral("dark.text")).value<QColor>(), QColor(0x11, 0x22, 0x33));
+    }
+
+    void incompatibleSchemaFailsSafe()
+    {
+        write(data() + QStringLiteral("/vela/themes/future.conf"), "schema-version=2\naccent=#112233\n");
+        QVERIFY(vela::themes::loadInherited(QStringLiteral("future")).isEmpty());
+    }
+
     // Every key of themes/ is a token read by Theme.qml (themed("...")),
     // Styles.qml (size(), flag(), picture()) or the shell (the blur's,
     // main.cpp), and every line parses: a typo fails here instead of doing
