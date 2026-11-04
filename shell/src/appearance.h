@@ -9,6 +9,8 @@
 #include <QTimer>
 #include <QVariantMap>
 
+#include "themefile.h"
+
 // The look of Vela's interfaces (Vela.Controls' Style): the apps' light or
 // dark mode ("Choose your mode"), accent color and Mica (see mica.h). System
 // UI (the shell, the polkit dialog) follows the shell's mode instead
@@ -22,10 +24,14 @@ class Appearance : public QObject {
     Q_PROPERTY(QColor accent READ accent NOTIFY changed)
     Q_PROPERTY(QColor mica READ mica NOTIFY changed)
     Q_PROPERTY(QColor micaInactive READ micaInactive NOTIFY changed)
-    // The chosen theme's values (theme= of vela.conf, themes/<name>.conf,
-    // themefile.h): colors as QColor, numbers as double. Theme.qml falls back
-    // to its own for what the theme leaves out.
+    // The chosen theme's and styles' values, merged (theme=, taskbar-style=,
+    // startmenu-style=, notifications-style= of vela.conf; themefile.h):
+    // colors as QColor, numbers as double, pictures as URLs. Theme.qml falls
+    // back to its own for what they leave out.
     Q_PROPERTY(QVariantMap theme READ theme NOTIFY changed)
+    // The surfaces with a style of their own: "taskbar", "startmenu",
+    // "notifications" (Styles.qml: their blur is rounded, glass from 4%).
+    Q_PROPERTY(QStringList chosenStyles READ chosenStyles NOTIFY changed)
     Q_PROPERTY(bool animationEffects READ animationEffects NOTIFY changed)
     // animation-duration in vela.conf as a factor: 1 is Vela's durations.
     Q_PROPERTY(qreal animationDuration READ animationDuration NOTIFY changed)
@@ -45,6 +51,11 @@ public:
     qreal animationDuration() const { return m_animationDuration; }
     QString iconMode() const { return m_iconMode; }
     QVariantMap theme() const { return m_theme; }
+    // The theme with only one surface's style (its blur look, main.cpp).
+    QVariantMap themeFor(vela::themes::Layer layer) const { return m_loaded.withStyle(layer); }
+    // Whether a surface has a style of its own (installed and chosen).
+    bool styleChosen(vela::themes::Layer layer) const { return !m_loaded.files[layer].isEmpty(); }
+    QStringList chosenStyles() const;
 
     // Starts watching the files (after the first frame: startup stays fast).
     void watch();
@@ -65,7 +76,7 @@ private:
     QColor m_mica;
     QColor m_micaInactive;
     QVariantMap m_theme;
-    QString m_themeFile; // watched while it is the chosen one
+    vela::themes::Loaded m_loaded; // its files are watched while chosen
     bool m_animationEffects = true;
     qreal m_animationDuration = 1.0;
     QString m_iconMode = QStringLiteral("d/");

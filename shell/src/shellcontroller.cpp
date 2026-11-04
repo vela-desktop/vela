@@ -483,6 +483,18 @@ QString ShellController::userInitial() const
     return name.isEmpty() ? QStringLiteral("?") : name.left(1).toUpper();
 }
 
+QString ShellController::userPicture() const
+{
+    const passwd* pw = getpwuid(getuid());
+    const QString login = pw ? QString::fromLocal8Bit(pw->pw_name) : qEnvironmentVariable("USER");
+    for (const QString& path : { QStringLiteral("/var/lib/AccountsService/icons/") + login, QDir::homePath() + QStringLiteral("/.face") }) {
+        if (QFileInfo(path).isReadable()) {
+            return QUrl::fromLocalFile(path).toString();
+        }
+    }
+    return {};
+}
+
 // --------------------------------------------------------- apps in Start --
 
 

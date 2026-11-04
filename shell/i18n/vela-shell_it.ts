@@ -1054,6 +1054,10 @@
         <translation>Cerca app</translation>
     </message>
     <message>
+        <source>Search programs and files</source>
+        <translation>Cerca programmi e file</translation>
+    </message>
+    <message>
         <source>Results</source>
         <translation>Risultati</translation>
     </message>
@@ -1088,6 +1092,69 @@
     <message>
         <source>Shut down</source>
         <translation>Arresta</translation>
+    </message>
+</context>
+<context>
+    <name>StartMenuSeven</name>
+    <message>
+        <source>Back</source>
+        <translation>Indietro</translation>
+    </message>
+    <message>
+        <source>All Programs</source>
+        <translation>Tutti i programmi</translation>
+    </message>
+    <message>
+        <source>Documents</source>
+        <translation>Documenti</translation>
+    </message>
+    <message>
+        <source>Pictures</source>
+        <translation>Immagini</translation>
+    </message>
+    <message>
+        <source>Music</source>
+        <translation>Musica</translation>
+    </message>
+    <message>
+        <source>Games</source>
+        <translation>Giochi</translation>
+    </message>
+    <message>
+        <source>Computer</source>
+        <translation>Computer</translation>
+    </message>
+    <message>
+        <source>Control Panel</source>
+        <translation>Pannello di controllo</translation>
+    </message>
+    <message>
+        <source>Devices and Printers</source>
+        <translation>Dispositivi e stampanti</translation>
+    </message>
+    <message>
+        <source>Default Programs</source>
+        <translation>Programmi predefiniti</translation>
+    </message>
+    <message>
+        <source>Help and Support</source>
+        <translation>Guida e supporto</translation>
+    </message>
+    <message>
+        <source>Shut down</source>
+        <translation>Arresta</translation>
+    </message>
+    <message>
+        <source>Sleep</source>
+        <translation>Sospendi</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>Riavvia il sistema</translation>
+    </message>
+    <message>
+        <source>Sign out</source>
+        <translation>Disconnetti</translation>
     </message>
 </context>
 <context>

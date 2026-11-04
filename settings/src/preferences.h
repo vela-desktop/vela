@@ -50,6 +50,9 @@ class Preferences : public QObject {
     // theme= in vela.conf: a theme's file name without .conf (themes/,
     // shell/src/themefile.h), "" for Vela's own look.
     Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
+    // taskbar-style=, startmenu-style=, notifications-style= in vela.conf: each
+    // surface's own style (themes/<surface>/), by surface; "" for none.
+    Q_PROPERTY(QVariantMap surfaceStyles READ surfaceStyles NOTIFY visualThemeChanged)
     // --- Keyboard ---
     // [{layout, variant}] in the chosen order; the first is the starting one.
     Q_PROPERTY(QVariantList keyboardLayouts READ keyboardLayouts NOTIFY keyboardChanged)
@@ -142,6 +145,13 @@ public:
     void setVisualTheme(const QString& theme);
     // The installed themes: { name, text }, the user's over the system's.
     Q_INVOKABLE QVariantList visualThemes() const;
+    QVariantMap surfaceStyles() const { return m_surfaceStyles; }
+    // surface: "taskbar", "startmenu" or "notifications"; style "" for none.
+    Q_INVOKABLE void setSurfaceStyle(const QString& surface, const QString& style);
+    // A surface's styles with their pictures: { name, text, images }.
+    Q_INVOKABLE QVariantList styleGallery(const QString& surface) const;
+    // No theme and no styles: Vela's own look.
+    Q_INVOKABLE void resetThemes();
 
     QVariantList keyboardLayouts() const { return m_layouts; }
     Q_INVOKABLE void addKeyboardLayout(const QString& layout, const QString& variant);
@@ -267,6 +277,7 @@ private:
     bool m_lockOnIdle = true;
     QString m_language;
     QString m_visualTheme;
+    QVariantMap m_surfaceStyles;
     QVariantList m_layouts;
     int m_repeatDelay = 400;
     int m_repeatRate = 30;

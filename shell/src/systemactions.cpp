@@ -161,6 +161,7 @@ QString SystemActions::command(const QString& name) const
         { QStringLiteral("night-light-settings"), QStringLiteral("night-light") },
         { QStringLiteral("accessibility-settings"), QStringLiteral("accessibility") },
         { QStringLiteral("colors-settings"), QStringLiteral("colors") },
+        { QStringLiteral("default-apps-settings"), QStringLiteral("default-apps") },
     };
     if (settingsPages.contains(name)) {
         const QString program = velaSettings();

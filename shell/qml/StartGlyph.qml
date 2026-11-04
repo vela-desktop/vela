@@ -5,13 +5,65 @@ import QtQuick
 import QtQuick.Shapes
 import Vela.Controls
 
-// Vela's symbol: a small stylized sail. It's the Start button.
+// Vela's symbol: a small stylized sail. It's the Start button. A taskbar
+// style can make it Windows 7's orb (taskbar-start-glyph=1): drawn, or the
+// style's pictures if installed (taskbar-orb, taskbar-orb-pressed).
 Item {
     id: root
     width: 22
     height: 22
+    readonly property bool orb: Styles.taskbar.startGlyph === 1
+
+    // The orb's pictures, over the drawn one.
+    Image {
+        anchors.centerIn: parent
+        width: 54
+        height: 54
+        visible: root.orb && source != ""
+        source: Shell.startMenuOpen ? Styles.taskbar.orbPressed : Styles.taskbar.orb
+        smooth: true
+    }
+
+    // The orb, drawn: a glass ball and the four-color flag.
+    Item {
+        visible: root.orb && Styles.taskbar.orb === ""
+        anchors.centerIn: parent
+        width: 34
+        height: 34
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            border.width: 1
+            border.color: "#B3FFFFFF"
+            gradient: Gradient {
+                GradientStop { position: 0; color: "#5DB4E8" }
+                GradientStop { position: 0.55; color: "#1A64A8" }
+                GradientStop { position: 1; color: "#0A3566" }
+            }
+        }
+        Rectangle { // the ball's gloss
+            x: 4; y: 2
+            width: 26; height: 14
+            radius: 13
+            gradient: Gradient {
+                GradientStop { position: 0; color: "#B3FFFFFF" }
+                GradientStop { position: 1; color: "#10FFFFFF" }
+            }
+        }
+        Grid {
+            anchors.centerIn: parent
+            columns: 2
+            spacing: 1
+            rotation: -8
+            Repeater {
+                model: ["#F35325", "#81BC06", "#05A6F0", "#FFBA08"]
+                Rectangle { required property string modelData; width: 8; height: 8; radius: 2; color: modelData }
+            }
+        }
+    }
 
     Shape {
+        visible: !root.orb
         anchors.fill: parent
         // Soft antialiasing on the slanted edges too.
         layer.enabled: true

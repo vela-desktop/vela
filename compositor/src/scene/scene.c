@@ -8,7 +8,9 @@
 #include "scene/frame.h"
 #include "scene/surface.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_subcompositor.h>
@@ -333,6 +335,7 @@ struct vela_scene *vela_scene_create(void)
     wl_list_init(&scene->frames);
     wl_list_init(&scene->new_surface.link);
     scene->acrylic_tint = (struct wlr_render_color) { 0.11f * 0.55f, 0.11f * 0.55f, 0.12f * 0.55f, 0.55f };
+    scene->blur_look = VELA_BLUR_LOOK_DEFAULT;
     scene->night_gains[0] = scene->night_gains[1] = scene->night_gains[2] = 1.0f;
     scene->allow_tearing = true;
     scene->allow_scanout = true;
@@ -348,6 +351,41 @@ void vela_scene_destroy(struct vela_scene *scene)
     wl_list_remove(&scene->new_surface.link);
     vela_node_destroy(&scene->root->node);
     free(scene);
+}
+
+bool vela_scene_set_blur_look(struct vela_scene *scene, const char *scope, struct vela_blur_look look)
+{
+    if (!scope || strcmp(scope, "*") == 0) {
+        scene->blur_look = look;
+        return true;
+    }
+    if (strlen(scope) >= sizeof(scene->panel_looks[0].scope)) {
+        return false;
+    }
+    for (int i = 0; i < scene->panel_look_count; ++i) {
+        if (strcmp(scene->panel_looks[i].scope, scope) == 0) {
+            scene->panel_looks[i].look = look;
+            return true;
+        }
+    }
+    const int capacity = (int)(sizeof(scene->panel_looks) / sizeof(scene->panel_looks[0]));
+    if (scene->panel_look_count >= capacity) {
+        return false;
+    }
+    struct vela_panel_blur_look *entry = &scene->panel_looks[scene->panel_look_count++];
+    snprintf(entry->scope, sizeof(entry->scope), "%s", scope);
+    entry->look = look;
+    return true;
+}
+
+struct vela_blur_look vela_scene_blur_look(const struct vela_scene *scene, const char *scope)
+{
+    for (int i = 0; scope && i < scene->panel_look_count; ++i) {
+        if (strcmp(scene->panel_looks[i].scope, scope) == 0) {
+            return scene->panel_looks[i].look;
+        }
+    }
+    return scene->blur_look;
 }
 
 static void rearranged(void *data)

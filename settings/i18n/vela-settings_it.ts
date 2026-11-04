@@ -1406,6 +1406,10 @@ Specifiche sistema
         <translation>Colori</translation>
     </message>
     <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
         <source>Taskbar</source>
         <translation>Barra delle applicazioni</translation>
     </message>
@@ -1640,6 +1644,10 @@ Specifiche sistema
     <message>
         <source>dark light theme apps mode</source>
         <translation>scuro chiaro dark light tema app</translation>
+    </message>
+    <message>
+        <source>theme palette colors corners radius rounded</source>
+        <translation>tema palette colori angoli raggio arrotondati stile</translation>
     </message>
     <message>
         <source>taskbar alignment left center end task</source>
@@ -2113,6 +2121,14 @@ Specifiche sistema
     <message>
         <source>Accent color, light or dark mode for apps</source>
         <translation>Colore principale, modalità chiara o scura delle app</translation>
+    </message>
+    <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
+        <source>Colors and corners of the shell and the apps</source>
+        <translation>Colori e angoli della shell e delle app</translation>
     </message>
     <message>
         <source>Taskbar</source>
@@ -2704,6 +2720,65 @@ Specifiche sistema
     <message>
         <source>In the taskbar buttons&apos; menu, to close an app that isn&apos;t responding right away</source>
         <translation>Nel menu dei pulsanti della barra delle applicazioni, per chiudere subito un&apos;app che non risponde</translation>
+    </message>
+</context>
+<context>
+    <name>ThemesPage</name>
+    <message>
+        <source>Vela (default)</source>
+        <translation>Vela (predefinito)</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>Tema</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed: Vela&apos;s own look is used</source>
+        <translation>&quot;%1&quot; non è installato: si usa l&apos;aspetto di Vela</translation>
+    </message>
+    <message>
+        <source>Colors and corners of the shell and the apps. A theme can bring its own accent color</source>
+        <translation>Colori e angoli della shell e delle app. Un tema può avere un suo colore principale</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Start menu</source>
+        <translation>Menu Start</translation>
+    </message>
+    <message>
+        <source>Quick settings</source>
+        <translation>Impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>Styles</source>
+        <translation>Stili</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>Nessuno</translation>
+    </message>
+    <message>
+        <source>As the theme draws it. Your own styles: ~/.config/vela/themes/%1/&lt;name&gt;.conf</source>
+        <translation>Come lo disegna il tema. I tuoi stili: ~/.config/vela/themes/%1/&lt;nome&gt;.conf</translation>
+    </message>
+    <message>
+        <source>In use</source>
+        <translation>In uso</translation>
+    </message>
+    <message>
+        <source>Use</source>
+        <translation>Usa</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>Reimposta</translation>
+    </message>
+    <message>
+        <source>Vela&apos;s own look: no theme and no styles. Light or dark mode and the accent stay</source>
+        <translation>L&apos;aspetto di Vela: nessun tema e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
     </message>
 </context>
 <context>

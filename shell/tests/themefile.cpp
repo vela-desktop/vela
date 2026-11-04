@@ -2,19 +2,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Tests of theme files (themefile.h): what a line becomes, which file a name
-// picks (the user's over the installed ones), and that the themes in themes/
-// only use tokens Theme.qml reads. All in temporary directories
-// (XDG_CONFIG_HOME, XDG_DATA_DIRS).
+// picks (the user's over the installed ones), the layers of a theme and its
+// styles, and that the files in themes/ only use tokens Theme.qml, Styles.qml
+// and the shell read, each style its own surface's. All in temporary
+// directories (XDG_CONFIG_HOME, XDG_DATA_DIRS).
 //
 //   ctest --test-dir build -R themefile      (or build/shell/vela-themefile-test)
 
 #include "themefile.h"
 
 #include <QBuffer>
+#include <QUrl>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <algorithm>
 
 namespace {
 
@@ -65,11 +69,11 @@ private slots:
         QCOMPARE(map.value(QStringLiteral("radius")).toDouble(), 6.0);
     }
 
-    // Not a color nor a number: skipped, with a warning that says where.
+    // Not a color, a number nor a picture: skipped, with a warning that says where.
     void badLinesAreSkipped()
     {
-        QTest::ignoreMessage(QtWarningMsg, "theme test:1: accent is neither a color nor a number");
-        QTest::ignoreMessage(QtWarningMsg, "theme test:2: text is neither a color nor a number");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: accent is neither a color, a number nor an asset:");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:2: text is neither a color, a number nor an asset:");
         QTest::ignoreMessage(QtWarningMsg, "theme test:3: not a key=value line");
         QTest::ignoreMessage(QtWarningMsg, "theme test:4: not a key=value line");
         const QVariantMap map = parse("accent=red\ntext=#12345\nradius\n=4\ncard=#ffffff\n");
@@ -84,6 +88,62 @@ private slots:
         QCOMPARE(vela::themes::themed(map, QStringLiteral("accent"), true).value<QColor>(), QColor(0x11, 0x11, 0x11));
         QCOMPARE(vela::themes::themed(map, QStringLiteral("background"), true).value<QColor>(), QColor(0x33, 0x33, 0x33));
         QVERIFY(!vela::themes::themed(map, QStringLiteral("background"), false).isValid());
+    }
+
+    // asset:<file>: the installed picture's URL, "" if missing; never outside.
+    void assets()
+    {
+        write(data() + QStringLiteral("/vela/themes/assets/aero/orb.png"), "png");
+        write(data() + QStringLiteral("/vela/secret.png"), "png");
+        const QVariantMap map = parse("taskbar-orb=asset:aero/orb.png\ntaskbar-tile-image=asset:aero/missing.png\n"
+                                      "taskbar-reflection=asset:../../secret.png\n");
+        QCOMPARE(map.value(QStringLiteral("taskbar-orb")).toString(),
+            QUrl::fromLocalFile(data() + QStringLiteral("/vela/themes/assets/aero/orb.png")).toString());
+        QCOMPARE(map.value(QStringLiteral("taskbar-tile-image")).toString(), QString());
+        QCOMPARE(map.value(QStringLiteral("taskbar-reflection")).toString(), QString());
+    }
+
+    // theme= and the three styles: each layer on its own, a style over the
+    // theme, a panel's look from the theme and its own style only.
+    void layers()
+    {
+        write(data() + QStringLiteral("/vela/themes/glass.conf"), "blur-strength=0.5\nradius=6\n");
+        write(data() + QStringLiteral("/vela/themes/taskbar/aero.conf"), "blur-strength=2\ntaskbar-height=40\n");
+        write(data() + QStringLiteral("/vela/themes/startmenu/big.conf"), "startmenu-width=900\n");
+        const QString conf = config() + QStringLiteral("/vela/vela.conf");
+        write(conf, "theme=glass\ntaskbar-style=aero\nstartmenu-style=big\nnotifications-style=missing\n");
+        const vela::themes::Loaded loaded = vela::themes::loadConfigured(conf);
+        QVERIFY(!loaded.files[vela::themes::Taskbar].isEmpty());
+        QVERIFY(loaded.files[vela::themes::Notifications].isEmpty()); // not installed
+        const QVariantMap merged = loaded.merged();
+        QCOMPARE(merged.value(QStringLiteral("radius")).toDouble(), 6.0);
+        QCOMPARE(merged.value(QStringLiteral("taskbar-height")).toDouble(), 40.0);
+        QCOMPARE(merged.value(QStringLiteral("startmenu-width")).toDouble(), 900.0);
+        QCOMPARE(loaded.withStyle(vela::themes::Taskbar).value(QStringLiteral("blur-strength")).toDouble(), 2.0);
+        // The Start menu's blur doesn't take the taskbar style's.
+        QCOMPARE(loaded.withStyle(vela::themes::StartMenu).value(QStringLiteral("blur-strength")).toDouble(), 0.5);
+        QCOMPARE(loaded.withStyle(vela::themes::Theme).value(QStringLiteral("blur-strength")).toDouble(), 0.5);
+    }
+
+    // Every style, with its pictures if it has any.
+    void gallery()
+    {
+        write(data() + QStringLiteral("/vela/themes/taskbar/plain.conf"), "taskbar-height=40\n");
+        write(data() + QStringLiteral("/vela/themes/taskbar/shown.conf"), "# Shown: one\ntaskbar-height=40\n");
+        write(data() + QStringLiteral("/vela/themes/screenshots/taskbar/shown.png"), "png");
+        write(data() + QStringLiteral("/vela/themes/notifications/glass.conf"), "notifications-radius=8\n");
+        write(data() + QStringLiteral("/vela/themes/screenshots/notifications/glass-qs.png"), "png");
+        write(data() + QStringLiteral("/vela/themes/screenshots/notifications/glass-nc.png"), "png");
+        const QVariantList taskbar = vela::themes::gallery(QStringLiteral("taskbar"));
+        QCOMPARE(taskbar.size(), 2);
+        QCOMPARE(taskbar[0].toMap().value(QStringLiteral("images")).toStringList().size(), 0);
+        QCOMPARE(taskbar[1].toMap().value(QStringLiteral("text")).toString(), QStringLiteral("Shown"));
+        QCOMPARE(taskbar[1].toMap().value(QStringLiteral("images")).toStringList().size(), 1);
+        const QStringList glass = vela::themes::gallery(QStringLiteral("notifications"))[0].toMap().value(QStringLiteral("images")).toStringList();
+        QCOMPARE(glass.size(), 2);
+        QVERIFY(glass[0].endsWith(QLatin1String("glass-qs.png"))); // quick settings, then the center
+        QVERIFY(vela::themes::gallery(QString()).isEmpty()); // themes have no gallery
+        QVERIFY(vela::themes::gallery(QStringLiteral("../x")).isEmpty());
     }
 
     void configuredNameIsTheLastOne()
@@ -119,34 +179,55 @@ private slots:
         QCOMPARE(list[1].toMap().value(QStringLiteral("text")).toString(), QStringLiteral("other"));
     }
 
-    // Every key of themes/*.conf is a token Theme.qml reads (themed("...")),
-    // and every line parses: a typo fails here instead of doing nothing.
+    // Every key of themes/ is a token read by Theme.qml (themed("...")),
+    // Styles.qml (size(), flag(), picture()) or the shell (the blur's,
+    // main.cpp), and every line parses: a typo fails here instead of doing
+    // nothing. A style sets only its own surface's keys (and its blur), so
+    // styles of different surfaces never change each other.
     void shippedThemesUseKnownTokens()
     {
-        QFile qml(QStringLiteral(THEME_QML));
-        QVERIFY(qml.open(QIODevice::ReadOnly | QIODevice::Text));
         QSet<QString> tokens;
-        const QRegularExpression themed(QStringLiteral("themed\\(\"([^\"]+)\""));
-        for (auto it = themed.globalMatch(QString::fromUtf8(qml.readAll())); it.hasNext();) {
-            tokens.insert(it.next().captured(1));
-        }
-        QVERIFY(tokens.contains(QStringLiteral("accent")));
-
-        const QDir themes(QStringLiteral(THEMES_DIR));
-        const QStringList files = themes.entryList({ QStringLiteral("*.conf") }, QDir::Files);
-        QVERIFY(!files.isEmpty());
-        QTest::failOnWarning(QRegularExpression(QStringLiteral("^theme ")));
-        for (const QString& name : files) {
-            const QVariantMap map = vela::themes::load(themes.filePath(name));
-            QVERIFY2(!map.isEmpty(), qPrintable(name));
-            for (const QString& key : map.keys()) {
-                QString token = key;
-                if (token.startsWith(QLatin1String("dark.")) || token.startsWith(QLatin1String("light."))) {
-                    token = token.section(u'.', 1);
-                }
-                QVERIFY2(tokens.contains(token), qPrintable(name + u':' + key + QStringLiteral(" is not a Theme.qml token")));
+        const QRegularExpression read(QStringLiteral("(?:themed|size|flag|picture)\\(\"([^\"]+)\"|\"(blur-[a-z]+)\""));
+        for (const char* source : { THEME_QML, STYLES_QML, SHELL_MAIN }) {
+            QFile file(QString::fromUtf8(source));
+            QVERIFY2(file.open(QIODevice::ReadOnly | QIODevice::Text), source);
+            for (auto it = read.globalMatch(QString::fromUtf8(file.readAll())); it.hasNext();) {
+                const QRegularExpressionMatch match = it.next();
+                tokens.insert(match.captured(1).isEmpty() ? match.captured(2) : match.captured(1));
             }
         }
+        for (const char* token : { "accent", "taskbar-height", "startmenu-layout", "quicksettings-radius", "menu-layout", "blur-tint" }) {
+            QVERIFY2(tokens.contains(QLatin1String(token)), token);
+        }
+
+        // The prefixes each kind of file may set, besides the blur's.
+        const QList<std::pair<QString, QStringList>> kinds {
+            { QString(), {} }, // a theme: any token
+            { QStringLiteral("taskbar"), { QStringLiteral("taskbar") } },
+            { QStringLiteral("startmenu"), { QStringLiteral("startmenu-"), QStringLiteral("menu-layout") } },
+            { QStringLiteral("notifications"), { QStringLiteral("notifications-"), QStringLiteral("quicksettings-") } },
+        };
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("^theme ")));
+        int count = 0;
+        for (const auto& [surface, prefixes] : kinds) {
+            const QDir dir(QStringLiteral(THEMES_DIR) + (surface.isEmpty() ? QString() : u'/' + surface));
+            for (const QString& name : dir.entryList({ QStringLiteral("*.conf") }, QDir::Files)) {
+                ++count;
+                const QString where = surface.isEmpty() ? name : surface + u'/' + name;
+                const QVariantMap map = vela::themes::load(dir.filePath(name));
+                for (const QString& key : map.keys()) {
+                    QString token = key;
+                    if (token.startsWith(QLatin1String("dark.")) || token.startsWith(QLatin1String("light."))) {
+                        token = token.section(u'.', 1);
+                    }
+                    QVERIFY2(tokens.contains(token), qPrintable(where + u':' + key + QStringLiteral(" is read by nothing")));
+                    const bool own = prefixes.isEmpty() || token.startsWith(QLatin1String("blur-"))
+                        || std::any_of(prefixes.cbegin(), prefixes.cend(), [&token](const QString& p) { return token.startsWith(p); });
+                    QVERIFY2(own, qPrintable(where + u':' + key + QStringLiteral(" belongs to another surface")));
+                }
+            }
+        }
+        QVERIFY(count >= 84); // the four themes and the styles of lowell's fork
     }
 };
 

@@ -31,6 +31,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 |---|---|---|
 | `language` | system | Interface language: `it`, `en`, or empty to follow the system (Italian if the system is Italian, English otherwise). |
 | `theme` | empty | A theme's name (Settings > Personalization > Themes): `themes/<name>.conf`, see [Theme files](#theme-files). Empty is Vela's own look. |
+| `taskbar-style`, `startmenu-style`, `notifications-style` | empty | A surface's own style (Settings > Personalization > Themes): `themes/taskbar/<name>.conf`, `themes/startmenu/<name>.conf`, `themes/notifications/<name>.conf` (quick settings and the notification center), see [Theme files](#theme-files). Empty is none. |
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
@@ -74,7 +75,7 @@ The Settings app is the preferred way to edit these values because it applies va
 
 ### Theme files
 
-A theme changes the colors and corner radii of the shell and of Vela's apps. `theme=rose-pine` loads the first `vela/themes/rose-pine.conf` found in `~/.config` (your own themes) and then in the data directories (`/usr/share/vela/themes/`, the installed ones). The shell and the apps reload it when it changes.
+A **theme** changes the colors and corner radii of the shell and of Vela's apps; a **style** changes one surface of the shell, like Windhawk's three stylers: the taskbar, the Start menu, or quick settings with the notification center. `theme=rose-pine` loads the first `vela/themes/rose-pine.conf` found in `~/.config` (your own) and then in the data directories (`/usr/share/vela/themes/`, the installed ones); `taskbar-style=aero` loads `vela/themes/taskbar/aero.conf` the same way. A style's values win over the theme's. The shell and the apps reload them when they change.
 
 ```ini
 # Rosé Pine: the first line names the theme in Settings
@@ -84,9 +85,11 @@ accent=#C4A7E7
 radius=6
 ```
 
-Each key is a token of [`Theme.qml`](../common/controls/Theme.qml): `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token the theme leaves out keeps Vela's value. Values are colors (`#RRGGBB` or `#AARRGGBB`) or numbers; any other line is skipped with a warning in the log.
+Each key is a token: `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token left out keeps Vela's value, so with no theme and no style nothing changes. Values are colors (`#RRGGBB` or `#AARRGGBB`), numbers, or `asset:<file>`, a picture in `vela/themes/assets/` (none is installed: Aero's pictures are Windows'; without them the drawn look stays). Any other line is skipped with a warning in the log. A style may only set its own surface's keys and the blur's (`shell/tests/themefile.cpp` checks the installed ones).
 
 The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars, opaque) and `accent` in place of Mica and the chosen accent. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
+
+Theme tokens ([`Theme.qml`](../common/controls/Theme.qml)):
 
 | Tokens | Kind |
 |---|---|
@@ -96,6 +99,28 @@ The compositor draws title bars and the snap preview, so the shell sends it the 
 | `text`, `textSecondary`, `textTertiary` | color |
 | `accent` (over the one chosen in Settings > Colors) | color |
 | `radius` (controls), `radiusCard`, `radiusOverlay` (menus, dialogs, panels) | pixels, 0–24 |
+| `menu-layout=1`: Windows 7's right-click menus, in the shell and in Files | flag |
+| `blur-saturation` (1–3, Vela's 1.25), `blur-strength` (a factor of the blur radius), `blur-tint` (the acrylic tint's opacity, 0–1): the glass of the shell's panels. In a style, they apply to that surface only | number |
+
+Style tokens ([`Styles.qml`](../shell/qml/Styles.qml)); flags are `0` or `1`:
+
+| Tokens | Meaning |
+|---|---|
+| `taskbar-height`, `taskbar-margin`, `taskbar-radius`, `taskbar-side-margin` | The bar's height; a margin or a radius makes it a floating pill, that far from the screen's sides at most. |
+| `taskbar-fit`, `taskbar-split-gap`, `taskbar-split-radius`, `taskbar-edge` (1 apps centered, 2 at the left), `taskbar-flush` | A pill that shrinks to the apps and the tray; the tray a pill of its own; the tray at the screen's edge; the apps' pill on the bottom edge. |
+| `taskbar-align-left`, `taskbar-task-view`, `taskbar-spacing` | Apps at the left (Start opens at the corner); the Task view button; the gap between buttons. |
+| `taskbar-button-width`, `taskbar-button-height`, `taskbar-button-radius`, `taskbar-icon-size`, `taskbar-bounce` | The buttons, and whether icons shrink while pressed. |
+| `taskbar-button-fill`, `taskbar-button-fill-active`, `taskbar-button-stroke`, `taskbar-button-gloss` | A tile under each open app (Windows 7's glass buttons). |
+| `taskbar-stroke`, `taskbar-start-glyph` (1: Windows 7's orb) | The bar's hairline; the Start button. |
+| `taskbar-orb`, `taskbar-orb-pressed`, `taskbar-tile-image`, `taskbar-tile-image-active`, `taskbar-tile-image-hover`, `taskbar-tile-image-idle-hover`, `taskbar-reflection`, `taskbar-reflection-opacity`, `taskbar-desktop-image`, `taskbar-desktop-image-hover` | Pictures (`asset:`) for the orb, the tiles, the streaks of light and the show desktop strip. |
+| `startmenu-width`, `startmenu-height` (with the margins: 660 × 732 is Vela's), `startmenu-radius`, `startmenu-surface`, `startmenu-cell-height` | The Start menu's size, corners, tint and rows. |
+| `startmenu-layout=1` | Windows 7's Start menu, on the taskbar at the corner. |
+| `quicksettings-radius`, `quicksettings-tile-radius`, `quicksettings-surface` | Quick settings' corners and tint. |
+| `quicksettings-borderless`, `quicksettings-inline-arrow`, `quicksettings-flat-footer`, `quicksettings-thick-slider` | WindowGlass's: no borders, the arrow beside the icon, no footer band, a thick slider. |
+| `notifications-radius`, `notifications-card-radius`, `notifications-surface`, `notifications-today-radius` | The notification center's corners, tint and today's mark. |
+| `notifications-glass`, `notifications-reflection`, `notifications-reflection-opacity` | Windows 7's glass over quick settings and the center. |
+
+Settings shows a style's pictures from `vela/themes/screenshots/<surface>/<name>.png` (`<name>-qs.png` and `<name>-nc.png` for quick settings and the center).
 
 ## Display configuration
 

@@ -19,13 +19,24 @@ Window {
     // when the taskbar is aligned left (placeStartMenu sets `atLeft`): the
     // panel rests 12 units from both.
     property bool atLeft: false
+    // A Start menu style (Styles.startMenu): its size, corners and tint; or
+    // Windows 7's menu (StartMenuSeven), which sits on the taskbar with no
+    // gap, at the corner when a taskbar style puts Start at the left.
+    readonly property QtObject style: Styles.startMenu
+    readonly property bool seven: style.seven
+    readonly property real gap: seven ? 0 : 12 // above the taskbar
+    // With a style, the blur is rounded like the panel (the compositor makes
+    // it glass from 4% alpha: the shadow in the corners must stay out).
+    readonly property real blurRadius: style.chosen ? style.radius : 0
     readonly property real room: shadow.reach
-    readonly property real roomLeft: atLeft ? 12 : room
-    width: roomLeft + 640 + room
+    readonly property real roomLeft: !atLeft ? room : !Styles.taskbar.alignLeft ? 12 : seven ? 0 : 10
+    readonly property real panelWidth: style.width - (seven ? 10 : 20)
+    width: roomLeft + panelWidth + room
     // On short outputs it gets shorter: the search at the top must stay
     // visible, the shadow above it is cut.
-    readonly property real panelHeight: Math.min(700, Screen.height - Theme.taskbarHeight - 44)
-    height: Math.min(room + panelHeight + 12, Screen.height - Theme.taskbarHeight)
+    readonly property real panelHeight: seven ? Math.min(style.height - 10, Screen.height - Styles.taskbar.height - 22)
+        : Math.min(style.height - 32, Screen.height - Styles.taskbar.height - 44)
+    height: Math.min(room + panelHeight + gap, Screen.height - Styles.taskbar.height)
     color: "transparent"
     // Asked of logind only once: can the computer suspend?
     readonly property bool canSuspend: Shell.canSuspend()
@@ -61,7 +72,7 @@ Window {
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
         return Qt.point((atLeft ? 0 : (Screen.width - root.width) / 2) + p.x,
-                        Screen.height - Theme.taskbarHeight - root.height + p.y)
+                        Screen.height - Styles.taskbar.height - root.height + p.y)
     }
 
     // An app's menu (docs/renderer.md §14.7): recent files and tasks at the
@@ -157,6 +168,7 @@ Window {
         // turns back from where it is, as it was.
         if (!motion.closing) {
             powerButton.menuOpen = false
+            sevenMenu.reset()
             Apps.query = ""
             search.text = ""
             notice.hide()
@@ -167,7 +179,7 @@ Window {
         Shell.startMenuOpen = true
         motion.open()
         search.forceActiveFocus()
-        Effects.setBlur(root, [motion.visibleArea])
+        Effects.setBlur(root, [motion.visibleArea], root.blurRadius)
     }
 
     function close() {
@@ -299,12 +311,12 @@ Window {
     PanelMotion {
         id: motion
         x: root.roomLeft
-        y: root.height - 12 - height
-        width: 640
+        y: root.height - root.gap - height
+        width: root.panelWidth
         height: root.panelHeight
         offset: Qt.point(0, 140)
         onClosed: root.visible = false
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the panel at rest
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], root.blurRadius) // the travel while it moves, the panel at rest
 
         Shadow {
             id: shadow
@@ -315,32 +327,72 @@ Window {
             id: panel
 
             anchors.fill: parent
-            radius: Theme.radiusOverlay
-            color: Theme.surface
+            radius: root.style.radius
+            // Windows 7: the Aero glass under a dark outer line (StartMenuSeven
+            // adds the rest).
+            color: root.seven ? "#E69EB6D0" : root.style.surface
             border.width: 1
-            border.color: Theme.stroke
+            border.color: root.seven ? "#B3101820" : Theme.stroke
+
+            StartMenuSeven {
+                id: sevenMenu
+                visible: root.seven
+                anchors.fill: parent
+                menu: root
+                searching: search.text.length > 0
+            }
 
             // --- search ---
+            // At the top; Windows 7's in the white column's bottom strip.
             Rectangle {
                 id: searchBox
-                anchors { top: parent.top; left: parent.left; right: parent.right; margins: 24 }
-                height: 38
-                radius: height / 2
-                color: Theme.control
-                border.width: search.activeFocus ? 1 : 0
+                z: 1
+                x: root.seven ? sevenMenu.searchArea.x : 24
+                y: root.seven ? sevenMenu.searchArea.y : 24
+                width: root.seven ? sevenMenu.searchArea.width : parent.width - 48
+                height: root.seven ? sevenMenu.searchArea.height : 38
+                radius: root.seven ? 3 : height / 2
+                color: root.seven ? "transparent" : Theme.control
+                border.width: search.activeFocus && !root.seven ? 1 : 0
                 border.color: Theme.accent
 
+                BorderImage { // Windows 7's field (AeroThemePlasma's lineedit.svg)
+                    visible: root.seven
+                    anchors.fill: parent
+                    source: search.activeFocus ? "qrc:/seven/search-focus.png" : "qrc:/seven/search.png"
+                    border { left: 6; top: 6; right: 6; bottom: 6 }
+                }
+                Shape { // and its magnifier, at the right end
+                    visible: root.seven
+                    x: parent.width - 22
+                    y: (parent.height - 14) / 2
+                    width: 14
+                    height: 14
+                    preferredRendererType: Shape.CurveRenderer
+                    ShapePath {
+                        strokeColor: "#4A78AE"
+                        strokeWidth: 1.6
+                        fillColor: "transparent"
+                        capStyle: ShapePath.RoundCap
+                        PathAngleArc { centerX: 5.5; centerY: 5.5; radiusX: 4.2; radiusY: 4.2; startAngle: 0; sweepAngle: 360 }
+                        PathMove { x: 8.6; y: 8.6 }
+                        PathLine { x: 12.5; y: 12.5 }
+                    }
+                }
+
                 Text {
-                    anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
+                    anchors { left: parent.left; leftMargin: root.seven ? 8 : 18; verticalCenter: parent.verticalCenter }
                     visible: search.text.length === 0
-                    text: qsTr("Search apps")
-                    color: Theme.textSecondary
-                    font.pixelSize: Theme.fontBody
+                    text: root.seven ? qsTr("Search programs and files") : qsTr("Search apps")
+                    color: root.seven ? "#7C8794" : Theme.textSecondary
+                    font.pixelSize: root.seven ? 15 : Theme.fontBody
+                    font.italic: root.seven
                 }
 
                 MenuTextField {
                     id: search
-                    anchors { left: parent.left; right: parent.right; leftMargin: 18; rightMargin: 18; verticalCenter: parent.verticalCenter }
+                    color: root.seven ? "#1B2B40" : Theme.text
+                    anchors { left: parent.left; right: parent.right; leftMargin: root.seven ? 8 : 18; rightMargin: root.seven ? 26 : 18; verticalCenter: parent.verticalCenter }
                     mapToScreen: (x, y) => root.screenPoint(search, x, y)
 
                     onTextChanged: {
@@ -365,7 +417,8 @@ Window {
 
             Text {
                 id: sectionTitle
-                anchors { top: searchBox.bottom; left: parent.left; topMargin: 20; leftMargin: 32 }
+                visible: !root.seven
+                anchors { top: parent.top; left: parent.left; topMargin: 24 + 38 + 20; leftMargin: 32 }
                 text: search.text.length > 0 ? qsTr("Results") : root.showPinned ? qsTr("Pinned") : qsTr("All apps")
                 color: Theme.text
                 font.pixelSize: Theme.fontBody
@@ -375,6 +428,7 @@ Window {
             // --- app grid ---
             GridView {
                 id: grid
+                visible: !root.seven
                 anchors {
                     top: sectionTitle.bottom; bottom: footer.top
                     left: parent.left; right: parent.right
@@ -383,7 +437,7 @@ Window {
                 clip: true
                 model: Apps
                 cellWidth: Math.floor(width / 6)
-                cellHeight: 96
+                cellHeight: root.style.cellHeight
                 keyNavigationWraps: true
                 boundsBehavior: Flickable.StopAtBounds
                 highlightFollowsCurrentItem: false
@@ -492,6 +546,7 @@ Window {
             // --- footer: user ---
             Rectangle {
                 id: footer
+                visible: !root.seven
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                 height: 60
                 color: "transparent"

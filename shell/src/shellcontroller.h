@@ -22,6 +22,9 @@ class ShellController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString userName READ userName CONSTANT)
     Q_PROPERTY(QString userInitial READ userInitial CONSTANT)
+    // The user's picture (AccountsService's, else ~/.face) as a file URL, or
+    // "" (a style's Start menu frames it: Windows 7's).
+    Q_PROPERTY(QString userPicture READ userPicture CONSTANT)
     // The Start menu state, shared by the menu window and the taskbar.
     Q_PROPERTY(bool startMenuOpen READ startMenuOpen WRITE setStartMenuOpen NOTIFY startMenuOpenChanged)
     // The apps pinned to Start (.desktop ids), in the chosen order.
@@ -63,6 +66,7 @@ public:
     QString primaryScreen() const;
     void setPreferredPrimaryOutput(const QString& name);
     QString userInitial() const;
+    QString userPicture() const;
 
     bool startMenuOpen() const { return m_startMenuOpen; }
     void setStartMenuOpen(bool open)

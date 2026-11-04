@@ -120,6 +120,10 @@ QtObject {
     readonly property int radius: Math.max(0, Math.min(24, themed("radius", 4))) // controls
     readonly property int radiusCard: Math.max(0, Math.min(24, themed("radiusCard", 6)))
     readonly property int radiusOverlay: Math.max(0, Math.min(24, themed("radiusOverlay", 8))) // menus, flyouts, dialogs, panels
+    // Windows 7's right-click menus (menu-layout=1, the Aero Start menu
+    // style's): light whatever the mode, a grey frame, a blue highlight. The
+    // shell's and Files' (MenuPanel.qml).
+    readonly property bool menuSeven: themed("menu-layout", 0) === 1
     // Shadows (Shadow.qml): WinUI's elevations for what floats. Flyouts:
     // menus, panels, previews; dialogs: above a window or the screen. The
     // compositor gives windows their own (scene/, two layers).

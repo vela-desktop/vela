@@ -356,6 +356,28 @@ static void mica(struct vela_server *server, const char *arguments)
 // theme <shell> <apps> [<accent>]: "light" or "dark", Vela's mode and the
 // apps' mode, and the accent as #rrggbb (an older shell doesn't send it: the
 // default stays).
+// blur-look <scope> <saturation> <strength> <tint> <glass>: a theme's blur,
+// for every acrylic surface ("*") or for the shell panel with that layer
+// namespace (its style's). -1: Vela's own; glass 1: the panel has a style.
+static void blur_look(struct vela_server *server, const char *arguments)
+{
+    char scope[48] = "";
+    struct vela_blur_look look = VELA_BLUR_LOOK_DEFAULT;
+    int glass = 0;
+    if (sscanf(arguments, "%47s %f %f %f %d", scope, &look.saturation, &look.strength, &look.tint, &glass) != 5) {
+        return;
+    }
+    look.glass = glass != 0;
+    if (!vela_scene_set_blur_look(server->scene, scope, look)) {
+        wlr_log(WLR_ERROR, "blur-look: no room for %s", scope);
+        return;
+    }
+    struct vela_output *output;
+    wl_list_for_each (output, &server->outputs, link) {
+        vela_output_frame_damage_whole(output->frame);
+    }
+}
+
 static void theme(struct vela_server *server, const char *arguments)
 {
     char shell_mode[16] = "";
@@ -500,6 +522,8 @@ static void run_command(struct vela_server *server, const char *line)
         mica(server, line + 5);
     } else if (starts_with(line, "theme ")) {
         theme(server, line + 6);
+    } else if (starts_with(line, "blur-look ")) {
+        blur_look(server, line + 10);
     } else if (strcmp(line, "paste") == 0) {
         vela_input_paste(server->input); // Win+V: the shell has put the item on the clipboard
     } else if (strcmp(line, "modifiers") == 0 || strcmp(line, "workspaces") == 0

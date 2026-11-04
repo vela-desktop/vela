@@ -130,6 +130,10 @@ void setupTaskbar(QQuickWindow* window, QScreen* screen)
         | LayerWindow::AnchorRight);
     layer->setExclusiveZone(window->height()); // maximized windows don't cover it
     layer->setKeyboardInteractivity(LayerWindow::KeyboardInteractivityNone);
+    // A taskbar style's height (taskbar-height): the reserved space follows.
+    QObject::connect(window, &QWindow::heightChanged, window, [window, layer] {
+        layer->setExclusiveZone(window->height());
+    });
 }
 
 void setupWallpaper(QQuickWindow* window, QScreen* screen)
@@ -252,11 +256,13 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
 
 // With the taskbar aligned left, Start opens at the bottom left: its window
 // touches the output's edge, and the panel rests 12 units from it
-// (StartMenu.qml's `atLeft`).
-void placeStartMenu(QQuickWindow* window, const QString& alignment)
+// (StartMenu.qml's `atLeft`). A taskbar style with its Start button at the
+// left (taskbar-align-left, Windows 7's) puts it there too.
+void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVariantMap& theme)
 {
     LayerWindow* layer = LayerWindow::get(window);
-    const bool left = alignment == QLatin1String("left");
+    const bool left = alignment == QLatin1String("left")
+        || theme.value(QStringLiteral("taskbar-align-left")).toDouble() != 0;
     layer->setAnchors(left ? bottomLeft : bottom);
     window->setProperty("atLeft", left);
 }
@@ -439,6 +445,32 @@ int main(int argc, char* argv[])
         const QColor active = background.typeId() == QMetaType::QColor ? background.value<QColor>() : micaFromTint(tint, true, appsLight);
         const QColor inactive = background.typeId() == QMetaType::QColor ? active : micaFromTint(tint, false, appsLight);
         ShellController::sendToCompositor("mica " + active.name().toLatin1() + ' ' + inactive.name().toLatin1());
+        // The blur's look (blur-saturation, blur-strength, blur-tint; -1: Vela's
+        // own): the theme's for every acrylic surface, then each panel's from
+        // the theme and its own style only, so that choosing a taskbar style
+        // leaves the Start menu as it was.
+        // A panel with a style of its own is glass from 4% alpha (a nearly
+        // clear taskbar); without one it stays as Vela draws it.
+        const auto look = [](const QVariantMap& map, bool glass) {
+            QByteArray line;
+            for (const char* key : { "blur-saturation", "blur-strength", "blur-tint" }) {
+                const QVariant value = map.value(QLatin1String(key));
+                line += ' ' + QByteArray::number(value.typeId() == QMetaType::Double ? value.toDouble() : -1.0);
+            }
+            return line + (glass ? " 1" : " 0");
+        };
+        using vela::themes::Layer;
+        ShellController::sendToCompositor("blur-look *" + look(style->themeFor(Layer::Theme), false));
+        static const std::pair<Layer, const char*> panels[] = {
+            { Layer::Taskbar, "vela-taskbar" },
+            { Layer::StartMenu, "vela-start-menu" },
+            { Layer::Notifications, "vela-quick-settings" },
+            { Layer::Notifications, "vela-notification-center" },
+        };
+        for (const auto& [layer, scope] : panels) {
+            ShellController::sendToCompositor(QByteArray("blur-look ") + scope
+                + look(style->themeFor(layer), style->styleChosen(layer)));
+        }
     };
     sendLook();
     QObject::connect(&config, &Config::wallpaperChanged, &shell, [&] {
@@ -499,10 +531,12 @@ int main(int argc, char* argv[])
             notificationPopups = window;
         }
     }
-    placeStartMenu(startMenu, config.taskbarAlignment());
-    QObject::connect(&config, &Config::taskbarChanged, startMenu, [&config, startMenu] {
-        placeStartMenu(startMenu, config.taskbarAlignment());
-    });
+    placeStartMenu(startMenu, config.taskbarAlignment(), style->theme());
+    const auto replaceStartMenu = [&config, startMenu, style] {
+        placeStartMenu(startMenu, config.taskbarAlignment(), style->theme());
+    };
+    QObject::connect(&config, &Config::taskbarChanged, startMenu, replaceStartMenu);
+    QObject::connect(style, &Appearance::changed, startMenu, replaceStartMenu);
     // Wallpapers on every output; the taskbar too, like in Windows (or only on
     // the main one, if the user wants that).
     ScreenWindows wallpapers(&engine, "Wallpaper", setupWallpaper);

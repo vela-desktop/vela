@@ -41,6 +41,19 @@ Item {
     signal closeAllRequested()
     signal pinToggled() // the entries must be rebuilt (a file was pinned or unpinned)
 
+    // Windows 7's look (Theme.menuSeven): its colors whatever the mode, for
+    // the frame, the rows and the glyphs.
+    readonly property bool seven: Theme.menuSeven
+    readonly property QtObject ink: QtObject {
+        readonly property color text: panel.seven ? "#1E1E1E" : Theme.text
+        readonly property color disabled: panel.seven ? "#8D8D8D" : Theme.textSecondary
+        readonly property color secondary: panel.seven ? "#6D6D6D" : Theme.textSecondary
+        readonly property color arrow: panel.seven ? "#4D4D4D" : Theme.textSecondary
+        readonly property color separator: panel.seven ? "#E2E3E3" : Theme.stroke
+        // Dark glyphs on the light menu.
+        readonly property string icons: panel.seven ? "image://icon/k/" : Theme.icons
+    }
+
     // --- sizes ---
     readonly property int padding: 4
     readonly property int rowHeight: 32
@@ -231,10 +244,24 @@ Item {
         Rectangle {
             id: look
             anchors.fill: parent
-            radius: Theme.radiusOverlay
-            color: panel.fill
+            radius: panel.seven ? 3 : Theme.radiusOverlay
+            color: panel.seven ? "#F2F2F2" : panel.fill
             border.width: 1
-            border.color: Theme.stroke
+            border.color: panel.seven ? "#979797" : Theme.stroke
+            Rectangle { // Windows 7's gutter line between the icons and the text
+                visible: panel.seven && panel.hasIcons
+                x: panel.textLeft - 8
+                y: 2
+                width: 1
+                height: parent.height - 4
+                color: "#E2E3E3"
+                Rectangle { x: 1; width: 1; height: parent.height; color: "#FFFFFF" }
+            }
+        }
+        Gradient {
+            id: sevenHighlight
+            GradientStop { position: 0; color: "#F3F9FF" }
+            GradientStop { position: 1; color: "#CFE3F8" }
         }
 
         // Clicks on the panel don't close the menu.
@@ -265,10 +292,10 @@ Item {
                     Rectangle {
                         visible: row.entry.separator === true
                         anchors.verticalCenter: parent.verticalCenter
-                        x: 0
-                        width: parent.width
+                        x: panel.seven ? panel.textLeft - 4 : 0
+                        width: parent.width - x - (panel.seven ? 4 : 0)
                         height: 1
-                        color: Theme.stroke
+                        color: panel.ink.separator
                     }
 
                     // The icon row of file menus: Cut, Copy, Rename...
@@ -291,10 +318,13 @@ Item {
                                     color: !iconButton.usable ? Theme.subtleRest
                                          : iconMouse.pressed ? Theme.subtlePressed : iconMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                                 }
-                                Icon {
+                                Image {
                                     anchors.centerIn: parent
+                                    width: 16
+                                    height: 16
                                     opacity: iconButton.usable ? 1 : 0.4
-                                    name: iconButton.modelData.icon
+                                    source: panel.ink.icons + encodeURIComponent(iconButton.modelData.icon)
+                                    sourceSize: Qt.size(width, height)
                                 }
                                 MouseArea {
                                     id: iconMouse
@@ -313,7 +343,7 @@ Item {
                         x: 16
                         anchors.verticalCenter: parent.verticalCenter
                         text: row.entry.header || ""
-                        color: Theme.textSecondary
+                        color: panel.ink.secondary
                         font.pixelSize: Theme.fontCaption
                         font.weight: Font.DemiBold
                     }
@@ -323,12 +353,23 @@ Item {
                         anchors.fill: parent
 
                         Fill {
+                            visible: !panel.seven
                             x: 4
                             width: parent.width - 8
                             height: parent.height
                             radius: Theme.radius
                             color: !row.isCurrent || !row.usable ? Theme.subtleRest
                                  : rowMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
+                        }
+                        Rectangle { // Windows 7's: a light blue box
+                            visible: panel.seven && row.isCurrent && row.usable
+                            x: 4
+                            width: parent.width - 8
+                            height: parent.height
+                            radius: 3
+                            border.width: 1
+                            border.color: "#A5C8EC"
+                            gradient: sevenHighlight
                         }
 
                         // Icon, or the check mark or dot of choice entries.
@@ -343,7 +384,7 @@ Item {
                                 anchors.fill: parent
                                 visible: row.entry.checked === undefined && !!row.entry.icon
                                 source: row.entry.icon
-                                    ? (row.entry.icon.indexOf(":") > 0 ? row.entry.icon : Theme.icons + encodeURIComponent(row.entry.icon))
+                                    ? (row.entry.icon.indexOf(":") > 0 ? row.entry.icon : panel.ink.icons + encodeURIComponent(row.entry.icon))
                                     : ""
                                 sourceSize: Qt.size(width, height)
                                 smooth: true
@@ -353,7 +394,7 @@ Item {
                                 visible: row.entry.checked === true && !row.entry.radio
                                 preferredRendererType: Shape.CurveRenderer
                                 ShapePath {
-                                    strokeColor: Theme.text
+                                    strokeColor: panel.ink.text
                                     strokeWidth: 1.5
                                     fillColor: "transparent"
                                     capStyle: ShapePath.RoundCap
@@ -369,7 +410,7 @@ Item {
                                 width: 6
                                 height: 6
                                 radius: 3
-                                color: Theme.text
+                                color: panel.ink.text
                             }
                         }
 
@@ -384,7 +425,7 @@ Item {
                                 const label = row.entry.liveText ? row.entry.liveText() : row.entry.text
                                 return panel.keyboardMode ? panel.styledText(label) : panel.plainText(label)
                             }
-                            color: row.usable ? Theme.text : Theme.textSecondary
+                            color: row.usable ? panel.ink.text : panel.ink.disabled
                             font.pixelSize: Theme.fontBody
                             elide: Text.ElideRight
                         }
@@ -392,7 +433,7 @@ Item {
                             id: shortcutText
                             anchors { right: parent.right; rightMargin: row.entry.children ? 36 : 16; verticalCenter: parent.verticalCenter }
                             text: row.entry.shortcut || ""
-                            color: Theme.textSecondary
+                            color: panel.ink.secondary
                             font.pixelSize: Theme.fontCaption
                         }
                         // Submenu arrow.
@@ -403,7 +444,7 @@ Item {
                             height: 10
                             preferredRendererType: Shape.CurveRenderer
                             ShapePath {
-                                strokeColor: Theme.textSecondary
+                                strokeColor: panel.ink.arrow
                                 strokeWidth: 1.2
                                 fillColor: "transparent"
                                 capStyle: ShapePath.RoundCap
@@ -459,9 +500,9 @@ Item {
                             rotation: row.entry.pin && row.entry.pin.pinned ? 0 : 45
                             preferredRendererType: Shape.CurveRenderer
                             ShapePath {
-                                strokeColor: Theme.text
+                                strokeColor: panel.ink.text
                                 strokeWidth: 1.2
-                                fillColor: row.entry.pin && row.entry.pin.pinned ? Theme.text : "transparent"
+                                fillColor: row.entry.pin && row.entry.pin.pinned ? panel.ink.text : "transparent"
                                 joinStyle: ShapePath.RoundJoin
                                 capStyle: ShapePath.RoundCap
                                 startX: 4.5; startY: 1
@@ -473,7 +514,7 @@ Item {
                                 PathLine { x: 4.5; y: 1 }
                             }
                             ShapePath {
-                                strokeColor: Theme.text
+                                strokeColor: panel.ink.text
                                 strokeWidth: 1.2
                                 capStyle: ShapePath.RoundCap
                                 startX: 7; startY: 8.5

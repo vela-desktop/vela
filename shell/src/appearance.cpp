@@ -64,8 +64,12 @@ void Appearance::watch()
 {
     // Whoever writes the files replaces them: the directories are watched too.
     const QString shellConfig = QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell")).fileName();
-    // The chosen theme too: editing it shows at once.
-    for (const QString& path : { shellConfig, wallpaperTintCachePath(), vela::language::configPath(), m_themeFile }) {
+    // The chosen theme and styles too: editing one shows at once.
+    QStringList paths { shellConfig, wallpaperTintCachePath(), vela::language::configPath() };
+    for (const QString& file : m_loaded.files) {
+        paths.append(file);
+    }
+    for (const QString& path : std::as_const(paths)) {
         if (path.isEmpty()) {
             continue;
         }
@@ -84,6 +88,17 @@ void Appearance::watch()
     }
 }
 
+QStringList Appearance::chosenStyles() const
+{
+    QStringList chosen;
+    for (int i = vela::themes::Taskbar; i < vela::themes::LayerCount; ++i) {
+        if (styleChosen(vela::themes::Layer(i))) {
+            chosen.append(QLatin1String(vela::themes::layerInfo(vela::themes::Layer(i)).directory));
+        }
+    }
+    return chosen;
+}
+
 void Appearance::reload()
 {
     QSettings shell(QStringLiteral("Vela"), QStringLiteral("vela-shell"));
@@ -98,18 +113,20 @@ void Appearance::reload()
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
     const Motion motion = configuredMotion();
-    const QString themeFile = vela::themes::locate(vela::themes::configuredName(vela::language::configPath()));
-    const QVariantMap theme = themeFile.isEmpty() ? QVariantMap() : vela::themes::load(themeFile);
-    if (themeFile != m_themeFile) {
-        if (!m_themeFile.isEmpty()) {
-            m_watcher.removePath(m_themeFile);
-        }
-        m_themeFile = themeFile;
-        if (m_watching && !themeFile.isEmpty()) {
-            m_watcher.addPath(themeFile);
+    vela::themes::Loaded loaded = vela::themes::loadConfigured(vela::language::configPath());
+    for (int i = 0; i < vela::themes::LayerCount; ++i) {
+        if (loaded.files[i] != m_loaded.files[i]) {
+            if (!m_loaded.files[i].isEmpty()) {
+                m_watcher.removePath(m_loaded.files[i]);
+            }
+            if (m_watching && !loaded.files[i].isEmpty()) {
+                m_watcher.addPath(loaded.files[i]);
+            }
         }
     }
-    const bool themeChanged = theme != m_theme;
+    const QVariantMap theme = loaded.merged();
+    const bool themeChanged = theme != m_theme || loaded.layers != m_loaded.layers || loaded.files != m_loaded.files;
+    m_loaded = std::move(loaded);
     m_theme = theme;
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
         // Only the theme or the motion: the icons stay as they are.
