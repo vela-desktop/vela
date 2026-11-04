@@ -399,6 +399,43 @@ class QtShell(RealShell):
         invoked = re.findall(r"ActionInvoked[^\n]*?\(\s*(?:uint32\s+)?(\d+)\s*,\s*['\"]([^'\"]+)['\"]", signals)
         self.assertEqual(invoked, [(str(notification_id), "reply")], signals)
 
+    def test_left_click_notification_center_default_and_plain_cards(self):
+        """Default action opens/closes the center; a plain card ignores left clicks."""
+        with self.notification_signal_monitor() as capture:
+            actionable = self.send_notification("Default history action")
+            self.vela.input("key", "super+n", "sleep", "900")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-notification-center"),
+                timeout=8, what="center with default action")
+            center = self.layer(state, "vela-notification-center")
+            room = center["w"] - 372
+            x, y = center["x"] + room + 145, center["y"] + room + 94
+            self.vela.input("move", x, y, "click", "left")
+            self.vela.wait_for(
+                lambda s: not self.mapped(s, "vela-notification-center"),
+                timeout=8, what="default action closes notification center")
+
+            plain = self.send_notification("Plain history entry", actions="[]")
+            self.vela.input("key", "super+n", "sleep", "900")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-notification-center"),
+                timeout=8, what="center with a plain entry")
+            center = self.layer(state, "vela-notification-center")
+            room = center["w"] - 372
+            x, y = center["x"] + room + 145, center["y"] + room + 94
+            self.vela.input("move", x, y, "click", "left")
+            self.assertTrue(self.mapped(self.vela.state(), "vela-notification-center"),
+                            "Plain history entries must ignore left clicks")
+            self.vela.input("move", x, y, "click", "right")
+            self.assertTrue(self.mapped(self.vela.state(), "vela-notification-center"))
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals),
+                         [(actionable, 2), (plain, 2)], signals)
+        invoked = re.findall(r"ActionInvoked[^\n]*?\(\s*(?:uint32\s+)?(\d+)\s*,\s*['\"]([^'\"]+)['\"]", signals)
+        self.assertEqual(invoked, [(str(actionable), "default")], signals)
+
     def test_left_click_notifications_preserve_default_action_semantics(self):
         """Left-click default actions still invoke once; plain toasts only dismiss."""
         with self.notification_signal_monitor() as capture:
