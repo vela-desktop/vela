@@ -76,7 +76,7 @@ The Settings app is the preferred way to edit these values because it applies va
 
 A theme changes the colors and corner radii of the shell and of Vela's apps, and the blur behind the shell's panels. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own themes) and then in the data directories (`/usr/share/vela/themes/`, the installed ones). The shell and the apps reload it when it, or a theme it inherits, changes.
 
-Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. It is the only theme installed.
+Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed theme is **Window Glass** (`window-glass.conf`, by lowell, after Windhawk's WindowGlass): flat gray glass over a light blur, 12 px corners, and a see-through Settings.
 
 ```ini
 # Mine: the first line names the theme in Settings
