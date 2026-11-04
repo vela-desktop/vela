@@ -2757,8 +2757,8 @@ Specifiche sistema
         <translation>inherits=%1 crea una catena di temi troppo lunga</translation>
     </message>
     <message>
-        <source>schema-version=%1 is for a newer Vela: the file isn&apos;t used</source>
-        <translation>schema-version=%1 è per un Vela più recente: il file non viene usato</translation>
+        <source>schema-version=%1 isn&apos;t a format this Vela reads: the file isn&apos;t used</source>
+        <translation>schema-version=%1 non è un formato che questo Vela sa leggere: il file non viene usato</translation>
     </message>
     <message>
         <source>Theme</source>

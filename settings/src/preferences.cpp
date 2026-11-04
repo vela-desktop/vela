@@ -72,6 +72,35 @@ Preferences::Preferences(QObject* parent)
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, &m_debounce, qOverload<>(&QTimer::start));
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, &m_debounce, qOverload<>(&QTimer::start));
     watchConfig();
+    // The theme files: a theme added, removed or edited shows in Themes
+    // (themesRevision) without touching the theme in use or a preview.
+    m_themesDebounce.setSingleShot(true);
+    m_themesDebounce.setInterval(150);
+    connect(&m_themesDebounce, &QTimer::timeout, this, [this] {
+        watchThemes();
+        ++m_themesRevision;
+        emit themesChanged();
+    });
+    connect(&m_themesWatcher, &QFileSystemWatcher::fileChanged, &m_themesDebounce, qOverload<>(&QTimer::start));
+    connect(&m_themesWatcher, &QFileSystemWatcher::directoryChanged, &m_themesDebounce, qOverload<>(&QTimer::start));
+    watchThemes();
+}
+
+void Preferences::watchThemes()
+{
+    // The directories for files added and removed, the files for edits; an
+    // editor that replaces a file drops it from the watcher, so add it again.
+    for (const QString& dir : vela::themes::directories()) {
+        if (!m_themesWatcher.directories().contains(dir)) {
+            m_themesWatcher.addPath(dir);
+        }
+        for (const QString& file : QDir(dir).entryList({ QStringLiteral("*.conf") }, QDir::Files)) {
+            const QString path = dir + u'/' + file;
+            if (!m_themesWatcher.files().contains(path)) {
+                m_themesWatcher.addPath(path);
+            }
+        }
+    }
 }
 
 void Preferences::watchConfig()
@@ -197,11 +226,16 @@ void Preferences::reloadCompositor()
     emit idleChanged();
     m_language = value(QStringLiteral("language"), {});
     emit languageChanged();
-    m_visualTheme = value(QStringLiteral("theme"), {});
-    if (m_visualTheme.isEmpty()) {
-        m_visualTheme = vela::themes::defaultTheme();
+    // As the shell reads it (themefile.h's configuredName()). Only a change
+    // is announced: the Themes page keeps a preview until then.
+    QString theme = value(QStringLiteral("theme"), {}).trimmed();
+    if (theme.isEmpty()) {
+        theme = vela::themes::defaultTheme();
     }
-    emit visualThemeChanged();
+    if (theme != m_visualTheme) {
+        m_visualTheme = theme;
+        emit visualThemeChanged();
+    }
 
     m_layouts.clear();
     const QStringList layouts = value(QStringLiteral("keyboard-layout"), {}).split(u',', Qt::SkipEmptyParts);
@@ -255,9 +289,10 @@ void Preferences::reloadCompositor()
 
 QString Preferences::compositorValue(const QString& key) const
 {
-    for (const auto& [k, v] : std::as_const(m_compositor)) {
-        if (k == key) {
-            return v;
+    // The last line of a key, as the compositor and the shell read it.
+    for (auto it = m_compositor.crbegin(); it != m_compositor.crend(); ++it) {
+        if (it->first == key) {
+            return it->second;
         }
     }
     return {};
@@ -534,10 +569,11 @@ void Preferences::saveCompositor(const QList<QPair<QString, QString>>& changes)
         lines << QStringLiteral("# Vela settings (written by the Settings app)");
     }
     for (const auto& [key, value] : changes) {
+        // The last line of the key: the one the compositor and the shell read.
         bool found = false;
-        for (QString& line : lines) {
-            if (line.startsWith(key + u'=')) {
-                line = key + u'=' + value;
+        for (auto line = lines.rbegin(); line != lines.rend(); ++line) {
+            if (line->startsWith(key + u'=')) {
+                *line = key + u'=' + value;
                 found = true;
                 break;
             }

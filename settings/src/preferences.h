@@ -50,6 +50,9 @@ class Preferences : public QObject {
     // theme= in vela.conf: a theme's file name without .conf (themes/,
     // shell/src/themefile.h); "vela", Vela Official, when it names none.
     Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
+    // Goes up when a theme file is added, removed or edited: what lists or
+    // resolves themes depends on it.
+    Q_PROPERTY(int themesRevision READ themesRevision NOTIFY themesChanged)
     // --- Keyboard ---
     // [{layout, variant}] in the chosen order; the first is the starting one.
     Q_PROPERTY(QVariantList keyboardLayouts READ keyboardLayouts NOTIFY keyboardChanged)
@@ -139,6 +142,7 @@ public:
     QString language() const { return m_language; }
     void setLanguage(const QString& language);
     QString visualTheme() const { return m_visualTheme; }
+    int themesRevision() const { return m_themesRevision; }
     void setVisualTheme(const QString& theme);
     // The installed themes: { name, text, author }, the user's over the
     // system's, Vela Official first.
@@ -239,6 +243,7 @@ signals:
     void idleChanged();
     void languageChanged();
     void visualThemeChanged();
+    void themesChanged();
     void keyboardChanged();
     void nightLightChanged();
     void inputChanged();
@@ -254,6 +259,7 @@ private:
     void reloadCompositor(); // vela.conf and the compositor's state
     void queryCompositor(); // night light, magnifier...: the current state
     void watchConfig();
+    void watchThemes();
     void saveLayouts();
 
     QString m_wallpaper;
@@ -309,6 +315,9 @@ private:
     bool m_clipboardHistory = false;
     QList<QPair<QString, QString>> m_compositor; // vela.conf, in file order
     QFileSystemWatcher m_watcher;
+    QFileSystemWatcher m_themesWatcher; // themes/ (watchThemes())
+    QTimer m_themesDebounce;
+    int m_themesRevision = 0;
     QTimer m_debounce;
 };
 

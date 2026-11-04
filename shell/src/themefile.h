@@ -9,6 +9,7 @@
 #include <QColor>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QIODevice>
 #include <QList>
 #include <QMap>
@@ -103,6 +104,30 @@ inline QStringList candidates(const QString& name)
     const QString relative = subdirectory() + u'/' + name + QStringLiteral(".conf");
     return QStandardPaths::locateAll(QStandardPaths::GenericConfigLocation, relative)
         + QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, relative);
+}
+
+// The directories themes are looked up in, the user's first: those that
+// exist, for the list and the file watchers.
+inline QStringList directories()
+{
+    QStringList roots { QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + subdirectory() };
+    roots += QStandardPaths::locateAll(QStandardPaths::GenericConfigLocation, subdirectory(), QStandardPaths::LocateDirectory);
+    roots += QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, subdirectory(), QStandardPaths::LocateDirectory);
+    QStringList existing;
+    for (const QString& root : std::as_const(roots)) {
+        const QString path = QDir::cleanPath(root);
+        if (!existing.contains(path) && QFileInfo(path).isDir()) {
+            existing.append(path);
+        }
+    }
+    return existing;
+}
+
+// A color as theme files write it: #RRGGBB or #AARRGGBB, nothing else.
+inline bool validColor(const QString& value)
+{
+    static const QRegularExpression color(QStringLiteral("^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"));
+    return color.match(value).hasMatch();
 }
 
 // The theme's file, or empty when the name is not valid or not installed.
@@ -242,7 +267,7 @@ inline File read(QIODevice& in, const QString& origin = QString())
         if (!t) {
             problem(Problem::UnknownToken, number, key, value);
         } else if (t->kind == TokenKind::Color) {
-            if (value.startsWith(u'#') && QColor::isValidColorName(value)) {
+            if (validColor(value)) {
                 file.tokens.insert(key, QColor::fromString(value));
             } else {
                 problem(Problem::ExpectsColor, number, key, value);
@@ -336,10 +361,8 @@ inline QVariant themed(const QVariantMap& theme, const QString& key, bool light)
 // over the installed ones of the same name; Vela Official comes first.
 inline QVariantList available()
 {
-    QStringList roots = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, subdirectory(), QStandardPaths::LocateDirectory);
-    roots.prepend(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + subdirectory());
-    QMap<QString, QString> files; // sorted by name; the first root wins
-    for (const QString& root : std::as_const(roots)) {
+    QMap<QString, QString> files; // sorted by name; the first root wins, as in candidates()
+    for (const QString& root : directories()) {
         for (const QString& file : QDir(root).entryList({ QStringLiteral("*.conf") }, QDir::Files)) {
             if (!files.contains(file.chopped(5)) && validName(file.chopped(5))) {
                 files.insert(file.chopped(5), root + u'/' + file);

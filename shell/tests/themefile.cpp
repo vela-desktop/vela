@@ -110,12 +110,16 @@ private slots:
         QTest::ignoreMessage(QtWarningMsg, "theme test:6: not a key=value line, skipped");
         QTest::ignoreMessage(QtWarningMsg, "theme test:7: not a key=value line, skipped");
         QTest::ignoreMessage(QtWarningMsg, "theme test:8: radiusCard is a number, not \"inf\": skipped");
+        // Qt reads these too, the format doesn't.
+        QTest::ignoreMessage(QtWarningMsg, "theme test:9: field is a color, #RRGGBB or #AARRGGBB, not \"#fff\": skipped");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:10: dialog is a color, #RRGGBB or #AARRGGBB, not \"#ffffffffffff\": skipped");
         const vela::themes::File file = read("accent=red\ntext=#12345\nradius=#FF00FF\naccnet=#ffffff\n"
-                                             "dark.subtleHover=#ffffff\nradius\n=4\nradiusCard=inf\ncard=#ffffff\n");
+                                             "dark.subtleHover=#ffffff\nradius\n=4\nradiusCard=inf\n"
+                                             "field=#fff\ndialog=#ffffffffffff\ncard=#ffffff\n");
         QCOMPARE(file.tokens.keys(), QStringList { QStringLiteral("card") });
         QCOMPARE(kinds(file.problems),
             (QStringList { "expects-color", "expects-color", "expects-number", "unknown-token", "unknown-token",
-                "not-key-value", "not-key-value", "expects-number" }));
+                "not-key-value", "not-key-value", "expects-number", "expects-color", "expects-color" }));
         QCOMPARE(file.problems[3].line, 4);
         QCOMPARE(file.problems[3].key, QStringLiteral("accnet"));
         const QVariantMap variant = vela::themes::toVariant(file.problems[0]);
@@ -171,6 +175,21 @@ private slots:
         QCOMPARE(list[1].toMap().value(QStringLiteral("author")).toString(), QStringLiteral("me"));
         QCOMPARE(list[2].toMap().value(QStringLiteral("text")).toString(), QStringLiteral("other"));
         QCOMPARE(list[2].toMap().value(QStringLiteral("author")).toString(), QString());
+
+        // The system's configuration (XDG_CONFIG_DIRS) between the two, in the
+        // list as in the lookup.
+        const QString system = qEnvironmentVariable("XDG_CONFIG_DIRS") + QStringLiteral("/vela/themes/");
+        write(system + QStringLiteral("site.conf"), "# Site: the system's\n");
+        write(system + QStringLiteral("other.conf"), "# Other: the system's\n");
+        QCOMPARE(vela::themes::locate(QStringLiteral("site")), system + QStringLiteral("site.conf"));
+        QCOMPARE(vela::themes::locate(QStringLiteral("other")), system + QStringLiteral("other.conf"));
+        const QVariantList all = vela::themes::available();
+        QStringList texts;
+        for (const QVariant& entry : all) {
+            texts.append(entry.toMap().value(QStringLiteral("text")).toString());
+        }
+        QCOMPARE(texts, (QStringList { "Vela Official", "Mine", "Other", "Site" }));
+        QDir(qEnvironmentVariable("XDG_CONFIG_DIRS")).removeRecursively();
     }
 
     // A theme's tokens over its parent's, over the grandparent's.
@@ -264,14 +283,23 @@ private slots:
         QVERIFY(resolved.problems.isEmpty());
     }
 
-    // Every theme in themes/ resolves without a problem and names its author;
-    // Vela Official is there and sets no token.
+    // Every theme in themes/, installed, resolves without a problem and names
+    // its author; Vela Official is there and sets no token.
     void shippedThemesAreClean()
     {
         const QDir themes(QStringLiteral(THEMES_DIR));
         const QStringList files = themes.entryList({ QStringLiteral("*.conf") }, QDir::Files);
         QVERIFY(files.contains(QStringLiteral("vela.conf")));
         QTest::failOnWarning(QRegularExpression(QStringLiteral("^theme ")));
+        for (const QString& name : files) {
+            QDir().mkpath(data());
+            QVERIFY(QFile::copy(themes.filePath(name), data() + name));
+        }
+        for (const QString& name : files) {
+            const vela::themes::Resolved resolved = vela::themes::resolve(name.chopped(5));
+            QVERIFY2(resolved.problems.isEmpty(), qPrintable(name));
+            QCOMPARE(resolved.files.first(), data() + name);
+        }
         for (const QString& name : files) {
             QFile in(themes.filePath(name));
             QVERIFY(in.open(QIODevice::ReadOnly | QIODevice::Text));

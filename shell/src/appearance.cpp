@@ -79,6 +79,13 @@ void Appearance::watch()
             m_watcher.addPath(info.absolutePath());
         }
     }
+    // The themes' directories: a theme added, removed or replaced there (the
+    // chosen one may be missing yet) shows at once too.
+    for (const QString& dir : vela::themes::directories()) {
+        if (!m_watcher.directories().contains(dir)) {
+            m_watcher.addPath(dir);
+        }
+    }
     if (!m_watching) {
         m_watching = true;
         connect(&m_watcher, &QFileSystemWatcher::fileChanged, &m_debounce, qOverload<>(&QTimer::start));

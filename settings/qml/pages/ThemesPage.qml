@@ -12,14 +12,15 @@ import Vela.Controls
 // ~/.config/vela/themes/<name>.conf.
 Page {
     id: page
-    readonly property var choices: { Prefs.visualTheme; return Prefs.visualThemes() }
+    readonly property var choices: { Prefs.visualTheme; Prefs.themesRevision; return Prefs.visualThemes() }
     // The theme in the preview: the one in use until another is chosen.
     property string previewed: Prefs.visualTheme
     readonly property bool inUse: previewed === Prefs.visualTheme
     readonly property int previewedIndex: choices.findIndex(t => t.name === previewed)
     readonly property var entry: previewedIndex >= 0 ? choices[previewedIndex] : ({ name: previewed, text: previewed, author: "" })
-    // As the shell would take it (themefile.h): its tokens, what is wrong in it.
-    readonly property var resolved: { Prefs.visualTheme; return Prefs.resolveTheme(previewed) }
+    // As the shell would take it (themefile.h): its tokens, what is wrong in
+    // it; again when a theme file changes (themesRevision).
+    readonly property var resolved: { Prefs.visualTheme; Prefs.themesRevision; return Prefs.resolveTheme(previewed) }
     readonly property bool ownAccent: ["accent", "dark.accent", "light.accent"].some(key => key in resolved.tokens)
 
     Connections {
@@ -45,7 +46,7 @@ Page {
         case "missing-parent": what = qsTr("inherits=%1, which isn't installed").arg(problem.value); break
         case "inheritance-cycle": what = qsTr("inherits=%1, which inherits back from this theme").arg(problem.value); break
         case "chain-too-long": what = qsTr("inherits=%1 makes too long a chain of themes").arg(problem.value); break
-        case "unsupported-schema": what = qsTr("schema-version=%1 is for a newer Vela: the file isn't used").arg(problem.value); break
+        case "unsupported-schema": what = qsTr("schema-version=%1 isn't a format this Vela reads: the file isn't used").arg(problem.value); break
         default: what = problem.kind
         }
         const file = problem.file.substring(problem.file.lastIndexOf("/") + 1)

@@ -98,6 +98,13 @@ private slots:
         QVERIFY(writeConf("theme=../vela\n")); // not a theme's name
         QTest::qWait(300);
         QVERIFY(appearance.theme().isEmpty());
+        // A theme chosen before its file exists: it shows once the file is there.
+        QVERIFY(writeConf("theme=later\n"));
+        QTest::qWait(300);
+        QVERIFY(appearance.theme().isEmpty());
+        QSaveFile later(themes + QStringLiteral("/later.conf"));
+        QVERIFY(later.open(QIODevice::WriteOnly) && later.write("radius=12\n") == 10 && later.commit());
+        QTRY_COMPARE(appearance.theme().value(QStringLiteral("radius")).toDouble(), 12.0);
     }
 };
 
