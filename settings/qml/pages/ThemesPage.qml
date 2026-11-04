@@ -13,26 +13,49 @@ import Vela.Controls
 Page {
     id: page
     readonly property var choices: { Prefs.visualTheme; return Prefs.visualThemes() }
-    readonly property int foundIndex: choices.findIndex(t => t.name === Prefs.visualTheme)
-    // Not installed (any more): Vela's own look is drawn, the first entry.
+    // Browsing themes never mutates vela.conf; Apply is an explicit action.
+    property string candidateTheme: Prefs.visualTheme
+    property bool customizing: false
+    readonly property int foundIndex: choices.findIndex(t => t.name === page.candidateTheme)
     readonly property int chosenIndex: Math.max(0, foundIndex)
     readonly property var chosen: choices[chosenIndex] ?? ({ text: "", author: "" })
+    readonly property var candidateTokens: Prefs.themePreview(page.candidateTheme)
 
-    PersonalizationPage.DesktopPreview {}
+    PersonalizationPage.DesktopPreview { themeTokens: page.candidateTokens }
 
     CardGroup {
         Card {
             icon: "preferences-desktop-theme"
             title: qsTr("Theme")
             description: page.foundIndex < 0
-                ? qsTr("\"%1\" isn't installed: Vela's own look is used").arg(Prefs.visualTheme)
+                ? qsTr("\"%1\" isn't installed: Vela's own look is used").arg(page.candidateTheme)
                 : page.chosen.author !== ""
-                ? qsTr("Colors and corners of the shell and the apps. Original author: %1").arg(page.chosen.author)
-                : qsTr("Colors and corners of the shell and the apps. A theme can bring its own accent color")
+                ? qsTr("Original author: %1").arg(page.chosen.author)
+                : qsTr("Preview a complete theme before applying it")
             trailing: Choice {
                 model: page.choices
                 currentIndex: page.chosenIndex
-                onChosen: index => Prefs.visualTheme = page.choices[index].name
+                onChosen: index => page.candidateTheme = page.choices[index].name
+            }
+        }
+        Card {
+            icon: "dialog-ok-apply"
+            title: page.candidateTheme === Prefs.visualTheme ? qsTr("Theme in use") : qsTr("Apply selected theme")
+            description: qsTr("Selecting a theme only changes its preview until you apply it")
+            trailing: Button {
+                text: qsTr("Apply")
+                accent: true
+                usable: page.foundIndex >= 0 && page.candidateTheme !== Prefs.visualTheme
+                onClicked: Prefs.visualTheme = page.candidateTheme
+            }
+        }
+        Card {
+            icon: "configure"
+            title: qsTr("Customize")
+            description: qsTr("Optional: override individual shell surfaces")
+            trailing: Button {
+                text: page.customizing ? qsTr("Hide") : qsTr("Customize")
+                onClicked: page.customizing = !page.customizing
             }
         }
     }
@@ -49,6 +72,7 @@ Page {
     readonly property string chosenStyle: Prefs.surfaceStyles[surface] || ""
 
     Row {
+        visible: page.customizing
         spacing: 8
         Repeater {
             model: page.surfaces
@@ -62,6 +86,7 @@ Page {
     }
 
     CardGroup {
+        visible: page.customizing
         title: qsTr("Styles")
         Card {
             title: qsTr("None")
@@ -122,7 +147,7 @@ Page {
             trailing: Button {
                 text: qsTr("Reset")
                 usable: Prefs.visualTheme !== "vela" || Object.values(Prefs.surfaceStyles).some(s => s !== "")
-                onClicked: Prefs.resetThemes()
+                onClicked: { Prefs.resetThemes(); page.candidateTheme = "vela" }
             }
         }
     }
