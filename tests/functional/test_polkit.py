@@ -23,7 +23,7 @@ import tempfile
 import time
 import unittest
 
-from harness import BUILD, Session, TimeoutError
+from harness import BUILD, TIME_SCALE, Session, TimeoutError
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROMPT = os.path.join(BUILD, "polkit", "vela-polkit-prompt")
@@ -56,8 +56,9 @@ class Prompt:
 
     def __init__(self, vela):
         self.vela = vela
+        # Its errors in Vela's log, which a failing test prints.
         self.process = subprocess.Popen([PROMPT], env=vela.client_env, stdin=subprocess.PIPE,
-                                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                                        stdout=subprocess.PIPE, stderr=vela.log)
         vela.clients.append(self.process)
         self.pending = b""
 
@@ -73,7 +74,7 @@ class Prompt:
         return self.vela.wait_for(dialog_shown, what="the dialog with the keyboard")
 
     def read_line(self, timeout=3.0):
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         while b"\n" not in self.pending:
             left = deadline - time.monotonic()
             if left <= 0 or not select.select([self.process.stdout], [], [], left)[0]:
@@ -92,13 +93,17 @@ class Prompt:
                 raise AssertionError(f"the prompt said {data!r}")
 
     def wait_exit(self, timeout=3.0):
-        return self.process.wait(timeout)
+        return self.process.wait(timeout * TIME_SCALE)
+
+
+# Before a new virtual keyboard types: it sends its keymap, and the client
+# must have it.
+KEYMAP_PAUSE = str(round(250 * TIME_SCALE))
 
 
 def type_and_enter(vela, text):
-    # A single vela-input invocation, with a pause first: its new virtual
-    # keyboard sends its keymap, and the client must have it.
-    vela.input("sleep", "250", "type", text, "sleep", "80", "key", "Return", "sleep", "80")
+    # A single vela-input invocation, with the keymap pause first.
+    vela.input("sleep", KEYMAP_PAUSE, "type", text, "sleep", "80", "key", "Return", "sleep", "80")
 
 
 class PromptTests(unittest.TestCase):
@@ -142,7 +147,7 @@ class PromptTests(unittest.TestCase):
     def test_escape_says_no(self):
         prompt = Prompt(self.vela)
         prompt.show()
-        self.vela.input("sleep", "250", "key", "Escape", "sleep", "80")
+        self.vela.input("sleep", KEYMAP_PAUSE, "key", "Escape", "sleep", "80")
         self.assertEqual(prompt.read_line(), "cancel")
         self.assertEqual(prompt.wait_exit(), 0)
         self.vela.wait_for(no_prompt, what="the prompt gone")
@@ -165,7 +170,7 @@ class PromptTests(unittest.TestCase):
         prompt.send("failed")
         type_and_enter(self.vela, PASSWORD)
         prompt.assert_silent()
-        self.vela.input("sleep", "250", "key", "Escape", "sleep", "80")
+        self.vela.input("sleep", KEYMAP_PAUSE, "key", "Escape", "sleep", "80")
         self.assertEqual(prompt.read_line(), "cancel")
 
     def test_choosing_another_identity(self):
@@ -174,7 +179,7 @@ class PromptTests(unittest.TestCase):
         me = os.getuid()
         prompt = Prompt(self.vela)
         prompt.show(identities=(f"{me + 1} admin Admin", "0 root root"))
-        self.vela.input("sleep", "250", "key", "shift+Tab", "sleep", "80", "key", "space", "sleep", "80")
+        self.vela.input("sleep", KEYMAP_PAUSE, "key", "shift+Tab", "sleep", "80", "key", "space", "sleep", "80")
         self.assertEqual(prompt.read_line(), "identity 0")
         prompt.send("request 0 Password: ")
         type_and_enter(self.vela, PASSWORD)
@@ -375,7 +380,7 @@ class AgentTests(unittest.TestCase):
         self.registrations()
         self.begin("c1")
         self.vela.wait_for(dialog_shown, timeout=8, what="the dialog")
-        self.vela.input("sleep", "250", "key", "Escape", "sleep", "80")
+        self.vela.input("sleep", KEYMAP_PAUSE, "key", "Escape", "sleep", "80")
         self.assertIn("Cancelled", self.result("c1"))
         self.vela.wait_for(no_prompt, what="the prompt gone")
 

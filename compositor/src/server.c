@@ -109,6 +109,11 @@ static void handle_new_output(struct wl_listener *listener, void *data)
     vela_output_create(server, data);
 }
 
+static void rebase_pointer(void *data)
+{
+    vela_interact_rebase(data);
+}
+
 // Every change (output plugged, moved, new mode) is reported to configuration
 // programs.
 static void handle_layout_change(struct wl_listener *listener, void *data)
@@ -247,6 +252,9 @@ static bool init(struct vela_server *server)
     vela_scene_watch(server->scene, server->compositor);
     server->scene->linux_dmabuf = dmabuf;
     server->scene->event_loop = server->loop;
+    // From the first dispatch on: the input is ready by then.
+    server->scene->rearranged = rebase_pointer;
+    server->scene->rearranged_data = server;
 
     // Creation order is stacking order (from the bottom).
     struct vela_tree *root = server->scene->root;
@@ -439,6 +447,8 @@ void vela_server_run(struct vela_server *server)
 
 void vela_server_destroy(struct vela_server *server)
 {
+    // Windows and outputs going away move nothing under a pointer any more.
+    server->scene->rearranged = NULL;
     if (server->start_preview_timer) {
         wl_event_source_remove(server->start_preview_timer);
         server->start_preview_timer = NULL;

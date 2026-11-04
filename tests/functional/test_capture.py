@@ -17,11 +17,13 @@ import threading
 import time
 import unittest
 
-from harness import Session, tool
+from harness import TIME_SCALE, Session, tool
 
 # GPU CI's coverage mode: an unoptimized build with gcov counters measures
 # the instrumentation, not the capture path, so throughput floors don't apply.
-INSTRUMENTED = os.environ.get("VELA_GPU_COVERAGE") == "1"
+# Neither do they on a host slow enough to need longer waits: it measures its
+# CPU.
+INSTRUMENTED = os.environ.get("VELA_GPU_COVERAGE") == "1" or TIME_SCALE > 1
 
 
 class Captures(unittest.TestCase):
@@ -133,7 +135,7 @@ class DeferredCapture(unittest.TestCase):
             before = self.wallpaper(vela)
             process = self.probe(vela, "repeat", 4)
             for round_number in (1, 2):
-                self.assertTrue(select.select([process.stdout], [], [], 5)[0], "capture round timed out")
+                self.assertTrue(select.select([process.stdout], [], [], 5 * TIME_SCALE)[0], "capture round timed out")
                 self.assertEqual(process.stdout.readline().strip(), f"round {round_number}")
                 # Headless hardware-cursor motion is outside the captured
                 # output image. Commit another real wallpaper buffer instead;
