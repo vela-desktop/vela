@@ -435,7 +435,7 @@ int main(int argc, char* argv[])
     QColor tint = shell.wallpaperTint(config.wallpaper());
     // A theme's accent and window background (themes/<name>.conf) win, as in
     // Theme.qml: the title bars match the apps' content. A see-through
-    // background (Window Glass) keeps Mica on the title bars, as in lowell's
+    // background (Window Glass) keeps Mica on the title bars, as in Lowell137's
     // fork: an opaque bar over glass content.
     auto sendLook = [&config, style, &tint] {
         const QVariant themeAccent = vela::themes::themed(style->theme(), QStringLiteral("accent"), style->light());

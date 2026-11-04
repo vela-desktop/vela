@@ -14,7 +14,7 @@ Window {
     minimumWidth: 640
     minimumHeight: 420
     visible: true
-    // Opaque even with a see-through theme (Window Glass): as in lowell's
+    // Opaque even with a see-through theme (Window Glass): as in Lowell137's
     // fork, and Qt draws the half-transparent toolbar (disabled buttons,
     // dividers) washed out over a see-through window.
     color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 1)

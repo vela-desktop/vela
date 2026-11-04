@@ -163,14 +163,14 @@ private slots:
     // A surface's styles, with their pictures (themes/screenshots/).
     void theGallery()
     {
-        write(data() + QStringLiteral("taskbar/pill.conf"), "# Pill: a floating taskbar\n# Original author: lowell\ntaskbar-radius=24\n");
+        write(data() + QStringLiteral("taskbar/pill.conf"), "# Pill: a floating taskbar\n# Original author: Lowell137\ntaskbar-radius=24\n");
         write(data() + QStringLiteral("taskbar/plain.conf"), "taskbar-height=40\n");
         write(data() + QStringLiteral("screenshots/taskbar/pill.png"), "png");
         const QVariantList gallery = vela::themes::gallery(QStringLiteral("taskbar"));
         QCOMPARE(gallery.size(), 2);
         const QVariantMap pill = gallery[0].toMap();
         QCOMPARE(pill.value(QStringLiteral("text")).toString(), QStringLiteral("Pill"));
-        QCOMPARE(pill.value(QStringLiteral("author")).toString(), QStringLiteral("lowell"));
+        QCOMPARE(pill.value(QStringLiteral("author")).toString(), QStringLiteral("Lowell137"));
         QCOMPARE(pill.value(QStringLiteral("images")).toStringList(),
             QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/taskbar/pill.png")).toString() });
         QVERIFY(gallery[1].toMap().value(QStringLiteral("images")).toStringList().isEmpty());
@@ -471,7 +471,7 @@ private slots:
                 QVERIFY2(names.contains(name), qPrintable(surface + u'/' + picture));
             }
         }
-        QCOMPARE(count, 22); // lowell's, one of each look: 11 taskbar, 5 Start menu, 6 quick settings styles
+        QCOMPARE(count, 22); // Lowell137's, one of each look: 11 taskbar, 5 Start menu, 6 quick settings styles
     }
 };
 

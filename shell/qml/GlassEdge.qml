@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 lowell
+// SPDX-FileCopyrightText: 2026 Lowell137
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 

@@ -33,7 +33,7 @@ or the compositor's frame scheduling.
 - INI-style `.conf` themes, custom user packages, layered per-surface
   styles, reactive QML tokens, compositor blur values, and built-in layouts.
   A theme is a complete look: it may set any surface's keys (Window Glass
-  brings lowell's pill taskbar, Start and quick settings this way).
+  brings Lowell137's pill taskbar, Start and quick settings this way).
 - `schema-version=1` and `inherits=<package-name>`; parent lookup within
   the same package family; maximum depth 16; no cycles.
 - Typed registry generated at build time from `Theme.qml` and `Styles.qml`
