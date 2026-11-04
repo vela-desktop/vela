@@ -259,14 +259,14 @@ class QtShell(RealShell):
         """Hover prevents expiry; right-click then closes with reason 2, not reason 1."""
         with self.notification_signal_monitor() as capture:
             notification_id = self.send_notification(
-                "Hover timeout", expire_timeout=900)
+                "Hover timeout", expire_timeout=2500)
             state = self.vela.wait_for(
                 lambda s: self.layer(s, "vela-notifications"),
                 timeout=8, what="short-timeout notification appeared")
             popup = self.layer(state, "vela-notifications")
             # Hold the pointer longer than the requested timeout. The notification
             # must remain visible while hovered, including after its entrance.
-            self.vela.input("move", popup["x"] + 100, popup["y"] + 55, "sleep", 1300)
+            self.vela.input("move", popup["x"] + 100, popup["y"] + 55, "sleep", 3200)
             self.assertTrue(self.mapped(self.vela.state(), "vela-notifications"),
                             "Toast expired while the pointer was hovering")
             self.vela.input("click", "right")
