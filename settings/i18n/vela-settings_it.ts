@@ -1406,6 +1406,10 @@ Specifiche sistema
         <translation>Colori</translation>
     </message>
     <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
         <source>Taskbar</source>
         <translation>Barra delle applicazioni</translation>
     </message>
@@ -1640,6 +1644,10 @@ Specifiche sistema
     <message>
         <source>dark light theme apps mode</source>
         <translation>scuro chiaro dark light tema app</translation>
+    </message>
+    <message>
+        <source>theme palette colors corners radius rounded</source>
+        <translation>tema tavolozza colori angoli raggio arrotondati</translation>
     </message>
     <message>
         <source>taskbar alignment left center end task</source>
@@ -2113,6 +2121,14 @@ Specifiche sistema
     <message>
         <source>Accent color, light or dark mode for apps</source>
         <translation>Colore principale, modalità chiara o scura delle app</translation>
+    </message>
+    <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
+        <source>Colors and corners of the shell and the apps</source>
+        <translation>Colori e angoli della shell e delle app</translation>
     </message>
     <message>
         <source>Taskbar</source>
@@ -2704,6 +2720,109 @@ Specifiche sistema
     <message>
         <source>In the taskbar buttons&apos; menu, to close an app that isn&apos;t responding right away</source>
         <translation>Nel menu dei pulsanti della barra delle applicazioni, per chiudere subito un&apos;app che non risponde</translation>
+    </message>
+</context>
+<context>
+    <name>ThemesPage</name>
+    <message>
+        <source>not a key=value line</source>
+        <translation>non è una riga chiave=valore</translation>
+    </message>
+    <message>
+        <source>%1 is not a theme token</source>
+        <translation>%1 non è un token dei temi</translation>
+    </message>
+    <message>
+        <source>%1 needs a color like #RRGGBB, not &quot;%2&quot;</source>
+        <translation>%1 vuole un colore come #RRGGBB, non &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>%1 needs a number, not &quot;%2&quot;</source>
+        <translation>%1 vuole un numero, non &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>inherits=%1 is not a theme name</source>
+        <translation>inherits=%1 non è il nome di un tema</translation>
+    </message>
+    <message>
+        <source>inherits=%1, which isn&apos;t installed</source>
+        <translation>inherits=%1, che non è installato</translation>
+    </message>
+    <message>
+        <source>inherits=%1, which inherits back from this theme</source>
+        <translation>inherits=%1, che a sua volta eredita da questo tema</translation>
+    </message>
+    <message>
+        <source>inherits=%1 makes too long a chain of themes</source>
+        <translation>inherits=%1 crea una catena di temi troppo lunga</translation>
+    </message>
+    <message>
+        <source>schema-version=%1 is for a newer Vela: the file isn&apos;t used</source>
+        <translation>schema-version=%1 è per un Vela più recente: il file non viene usato</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>Tema</translation>
+    </message>
+    <message>
+        <source>Colors and corners of the shell and the apps. Original author: %1</source>
+        <translation>Colori e angoli della shell e delle app. Autore originale: %1</translation>
+    </message>
+    <message>
+        <source>Colors and corners of the shell and the apps</source>
+        <translation>Colori e angoli della shell e delle app</translation>
+    </message>
+    <message>
+        <source>%1 is in use</source>
+        <translation>%1 è in uso</translation>
+    </message>
+    <message>
+        <source>Previewing %1</source>
+        <translation>Anteprima di %1</translation>
+    </message>
+    <message>
+        <source>Choose another theme to see it in the preview. Nothing changes until you apply it</source>
+        <translation>Scegli un altro tema per vederlo nell&apos;anteprima. Non cambia nulla finché non lo applichi</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed: Vela&apos;s own look is used</source>
+        <translation>&quot;%1&quot; non è installato: viene usato l&apos;aspetto di Vela</translation>
+    </message>
+    <message>
+        <source>Only the preview shows it. Apply to use it in the shell and the apps instead of %1</source>
+        <translation>Per ora si vede solo nell&apos;anteprima. Applicalo per usarlo nella shell e nelle app al posto di %1</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Applica</translation>
+    </message>
+    <message>
+        <source>This theme has its own accent color</source>
+        <translation>Questo tema ha un suo colore principale</translation>
+    </message>
+    <message>
+        <source>While it is in use, it replaces the accent color chosen in Colors</source>
+        <translation>Finché è in uso, sostituisce il colore principale scelto in Colori</translation>
+    </message>
+    <message>
+        <source>This theme has problems</source>
+        <translation>Questo tema ha dei problemi</translation>
+    </message>
+    <message>
+        <source>Vela uses what it can and skips the rest</source>
+        <translation>Vela usa quello che può e salta il resto</translation>
+    </message>
+    <message>
+        <source>Your own themes</source>
+        <translation>I tuoi temi</translation>
+    </message>
+    <message>
+        <source>A file in ~/.config/vela/themes/&lt;name&gt;.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change</source>
+        <translation>Un file in ~/.config/vela/themes/&lt;nome&gt;.conf compare qui. Inizia con inherits=vela, poi imposta solo i colori e gli angoli che vuoi cambiare</translation>
     </message>
 </context>
 <context>

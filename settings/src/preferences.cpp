@@ -10,6 +10,7 @@ extern "C" {
 }
 
 #include "iconprovider.h"
+#include "themefile.h"
 
 #include <QDir>
 #include <QTime>
@@ -196,6 +197,11 @@ void Preferences::reloadCompositor()
     emit idleChanged();
     m_language = value(QStringLiteral("language"), {});
     emit languageChanged();
+    m_visualTheme = value(QStringLiteral("theme"), {});
+    if (m_visualTheme.isEmpty()) {
+        m_visualTheme = vela::themes::defaultTheme();
+    }
+    emit visualThemeChanged();
 
     m_layouts.clear();
     const QStringList layouts = value(QStringLiteral("keyboard-layout"), {}).split(u',', Qt::SkipEmptyParts);
@@ -489,6 +495,8 @@ void Preferences::saveCompositorKeys(const QStringList& keys)
             changes.append({ key, m_lockOnIdle ? QStringLiteral("yes") : QStringLiteral("no") });
         } else if (key == QLatin1String("language")) {
             changes.append({ key, m_language });
+        } else if (key == QLatin1String("theme")) {
+            changes.append({ key, m_visualTheme });
         } else if (key == QLatin1String("keyboard-layout") || key == QLatin1String("keyboard-variant")) {
             QStringList values;
             for (const QVariant& value : std::as_const(m_layouts)) {
@@ -581,6 +589,35 @@ void Preferences::setLanguage(const QString& language)
         saveCompositorKeys(QStringList { QStringLiteral("language") });
         emit languageChanged();
     }
+}
+
+void Preferences::setVisualTheme(const QString& name)
+{
+    // Only a name themefile.h would load: a path stays out of vela.conf.
+    const QString theme = name.isEmpty() ? vela::themes::defaultTheme() : name;
+    if (theme != m_visualTheme && vela::themes::validName(theme)) {
+        m_visualTheme = theme;
+        // The shell and the apps follow (Appearance watches vela.conf).
+        saveCompositorKeys(QStringList { QStringLiteral("theme") });
+        emit visualThemeChanged();
+    }
+}
+
+QVariantList Preferences::visualThemes() const
+{
+    return vela::themes::available();
+}
+
+QVariantMap Preferences::resolveTheme(const QString& name) const
+{
+    // The same resolution as the shell's (Appearance), without applying it.
+    const vela::themes::Resolved resolved = vela::themes::resolve(name);
+    QVariantList problems;
+    for (const vela::themes::Problem& problem : resolved.problems) {
+        problems.append(vela::themes::toVariant(problem));
+    }
+    return { { QStringLiteral("installed"), !resolved.files.isEmpty() }, { QStringLiteral("tokens"), resolved.tokens },
+        { QStringLiteral("problems"), problems } };
 }
 
 void Preferences::saveLayouts()

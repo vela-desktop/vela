@@ -47,6 +47,9 @@ class Preferences : public QObject {
     // Vela's language (language= in vela.conf): "", "it" or "en". Empty: like
     // the system. The apps apply it themselves (shell/src/language.h).
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    // theme= in vela.conf: a theme's file name without .conf (themes/,
+    // shell/src/themefile.h); "vela", Vela Official, when it names none.
+    Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
     // --- Keyboard ---
     // [{layout, variant}] in the chosen order; the first is the starting one.
     Q_PROPERTY(QVariantList keyboardLayouts READ keyboardLayouts NOTIFY keyboardChanged)
@@ -135,6 +138,14 @@ public:
     void setLockOnIdle(bool on);
     QString language() const { return m_language; }
     void setLanguage(const QString& language);
+    QString visualTheme() const { return m_visualTheme; }
+    void setVisualTheme(const QString& theme);
+    // The installed themes: { name, text, author }, the user's over the
+    // system's, Vela Official first.
+    Q_INVOKABLE QVariantList visualThemes() const;
+    // A theme as the shell would use it, without choosing it (the preview):
+    // { installed, tokens, problems: [{ kind, file, line, key, value }] }.
+    Q_INVOKABLE QVariantMap resolveTheme(const QString& name) const;
 
     QVariantList keyboardLayouts() const { return m_layouts; }
     Q_INVOKABLE void addKeyboardLayout(const QString& layout, const QString& variant);
@@ -227,6 +238,7 @@ signals:
     void doNotDisturbChanged();
     void idleChanged();
     void languageChanged();
+    void visualThemeChanged();
     void keyboardChanged();
     void nightLightChanged();
     void inputChanged();
@@ -258,6 +270,7 @@ private:
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;
     QString m_language;
+    QString m_visualTheme;
     QVariantList m_layouts;
     int m_repeatDelay = 400;
     int m_repeatRate = 30;

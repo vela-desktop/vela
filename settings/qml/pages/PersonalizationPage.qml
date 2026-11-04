@@ -22,6 +22,12 @@ Page {
             onClicked: root.navigate("colors")
         }
         LinkCard {
+            icon: "preferences-desktop-theme"
+            title: qsTr("Themes")
+            description: qsTr("Colors and corners of the shell and the apps")
+            onClicked: root.navigate("themes")
+        }
+        LinkCard {
             icon: "preferences-system-windows"
             title: qsTr("Taskbar")
             description: qsTr("Alignment, taskbar behaviors")
@@ -29,8 +35,24 @@ Page {
         }
     }
 
-    // The preview: the wallpaper with a window and the taskbar in miniature.
+    // The preview: the wallpaper with a window and the taskbar in miniature,
+    // in the theme in use, or in the one Personalization > Themes previews.
     component DesktopPreview: Item {
+        id: preview
+        // A theme's tokens (themefile.h): the one in use, as Theme.qml takes it.
+        property var themeTokens: Style.theme
+        readonly property bool appsLight: Prefs.light
+        readonly property bool shellLight: Prefs.shellTheme === "light"
+        // Theme.qml's themed(), for a given mode: the window is in the apps'
+        // mode, the taskbar in Vela's.
+        function themed(key, light, fallback) {
+            const t = themeTokens || {}
+            const modeKey = (light ? "light." : "dark.") + key
+            return modeKey in t ? t[modeKey] : (key in t ? t[key] : fallback)
+        }
+        function accentFill(light) {
+            return Theme.accentFillOf(themed("accent", light, Style.accent), light)
+        }
         width: parent.width
         height: 210
         Rectangle {
@@ -58,23 +80,30 @@ Page {
                     height: parent.height * 0.52
                     radius: 3
                     // A window, in the apps' mode.
-                    color: Prefs.light ? Qt.rgba(0.95, 0.95, 0.95, 0.97) : Qt.rgba(0.13, 0.13, 0.13, 0.96)
-                    Rectangle { x: 8; y: 8; width: parent.width * 0.4; height: 5; radius: 2; color: Theme.accentFill }
-                    Rectangle { x: 8; y: 20; width: parent.width * 0.7; height: 4; radius: 2; color: Prefs.light ? Qt.rgba(0, 0, 0, 0.2) : Qt.rgba(1, 1, 1, 0.2) }
-                    Rectangle { x: 8; y: 30; width: parent.width * 0.55; height: 4; radius: 2; color: Prefs.light ? Qt.rgba(0, 0, 0, 0.2) : Qt.rgba(1, 1, 1, 0.2) }
+                    color: preview.themed("background", preview.appsLight,
+                        preview.appsLight ? Qt.rgba(0.95, 0.95, 0.95, 0.97) : Qt.rgba(0.13, 0.13, 0.13, 0.96))
+                    // The text: the theme's at the opacity of these lines.
+                    readonly property color line: {
+                        const text = preview.themed("text", preview.appsLight, preview.appsLight ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1))
+                        return Qt.rgba(text.r, text.g, text.b, 0.2)
+                    }
+                    Rectangle { x: 8; y: 8; width: parent.width * 0.4; height: 5; radius: 2; color: preview.accentFill(preview.appsLight) }
+                    Rectangle { x: 8; y: 20; width: parent.width * 0.7; height: 4; radius: 2; color: parent.line }
+                    Rectangle { x: 8; y: 30; width: parent.width * 0.55; height: 4; radius: 2; color: parent.line }
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                     height: 14
                     // The taskbar, in Vela's mode.
-                    color: Prefs.shellTheme === "light" ? Qt.rgba(0.94, 0.94, 0.95, 0.88) : Qt.rgba(0.11, 0.11, 0.13, 0.85)
+                    color: preview.themed("taskbar", preview.shellLight,
+                        preview.shellLight ? Qt.rgba(0.94, 0.94, 0.95, 0.88) : Qt.rgba(0.11, 0.11, 0.13, 0.85))
                     Row {
                         x: Prefs.taskbarAlignment === "left" ? 6 : (parent.width - width) / 2
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 3
                         Repeater {
                             model: 5
-                            Rectangle { width: 8; height: 8; radius: 2; color: index === 0 ? Theme.accentFill : Prefs.shellTheme === "light" ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.45) }
+                            Rectangle { width: 8; height: 8; radius: 2; color: index === 0 ? preview.accentFill(preview.shellLight) : preview.shellLight ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.45) }
                         }
                     }
                 }
