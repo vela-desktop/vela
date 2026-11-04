@@ -149,7 +149,9 @@ private slots:
     void configuredNameIsTheLastOne()
     {
         const QString conf = config() + QStringLiteral("/vela/vela.conf");
-        QCOMPARE(vela::themes::configuredName(conf), QString()); // no file
+        QCOMPARE(vela::themes::configuredName(conf), QStringLiteral("vela")); // no file: Vela Official
+        write(conf, "theme=\n");
+        QCOMPARE(vela::themes::configuredName(conf), QStringLiteral("vela"));
         write(conf, "language=it\ntheme=everblush\nscreen-off=5\ntheme= rose-pine \n");
         QCOMPARE(vela::themes::configuredName(conf), QStringLiteral("rose-pine"));
     }
@@ -177,6 +179,22 @@ private slots:
         QCOMPARE(list[0].toMap().value(QStringLiteral("name")).toString(), QStringLiteral("mine"));
         QCOMPARE(list[0].toMap().value(QStringLiteral("text")).toString(), QStringLiteral("Mine")); // not "Installed"
         QCOMPARE(list[1].toMap().value(QStringLiteral("text")).toString(), QStringLiteral("other"));
+    }
+
+    // Vela Official first; the name and the original author from the comments.
+    void namesAndAuthors()
+    {
+        write(data() + QStringLiteral("/vela/themes/aero.conf"),
+            "# Aero: Windows 7's glass, on two\n# lines.\n# Original author: lowell\nradius=3\n# Original author: not here\n");
+        write(data() + QStringLiteral("/vela/themes/vela.conf"), "# Vela Official: Vela's own look\n# Original author: Brando Giuffrida\n");
+        write(data() + QStringLiteral("/vela/themes/zen.conf"), "radius=2\n");
+        const QVariantList list = vela::themes::available();
+        QCOMPARE(list.size(), 3);
+        QCOMPARE(list[0].toMap().value(QStringLiteral("text")).toString(), QStringLiteral("Vela Official"));
+        QCOMPARE(list[0].toMap().value(QStringLiteral("author")).toString(), QStringLiteral("Brando Giuffrida"));
+        QCOMPARE(list[1].toMap().value(QStringLiteral("text")).toString(), QStringLiteral("Aero"));
+        QCOMPARE(list[1].toMap().value(QStringLiteral("author")).toString(), QStringLiteral("lowell"));
+        QCOMPARE(list[2].toMap().value(QStringLiteral("author")).toString(), QString());
     }
 
     // Every key of themes/ is a token read by Theme.qml (themed("...")),
@@ -214,6 +232,10 @@ private slots:
             for (const QString& name : dir.entryList({ QStringLiteral("*.conf") }, QDir::Files)) {
                 ++count;
                 const QString where = surface.isEmpty() ? name : surface + u'/' + name;
+                QFile text(dir.filePath(name));
+                QVERIFY(text.open(QIODevice::ReadOnly | QIODevice::Text));
+                QVERIFY2(QString::fromUtf8(text.readAll()).contains(QLatin1String("\n# Original author: ")),
+                    qPrintable(where + QStringLiteral(" names no original author")));
                 const QVariantMap map = vela::themes::load(dir.filePath(name));
                 for (const QString& key : map.keys()) {
                     QString token = key;
@@ -227,7 +249,8 @@ private slots:
                 }
             }
         }
-        QVERIFY(count >= 84); // the four themes and the styles of lowell's fork
+        QVERIFY(count >= 85); // Vela Official, and the themes and styles of lowell's fork
+        QVERIFY(QDir(QStringLiteral(THEMES_DIR)).exists(QStringLiteral("vela.conf")));
     }
 };
 

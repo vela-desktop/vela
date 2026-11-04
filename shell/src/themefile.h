@@ -31,6 +31,11 @@
 //   notifications-style=<name>    themes/notifications/<name>.conf (quick
 //                                 settings and the notification center)
 //
+// The first comment line names the file ("# Rosé Pine: ...") and a
+// "# Original author: <name>" line among the first comments credits it.
+// Vela's own look is a theme too, themes/vela.conf ("Vela Official"), and
+// the one used when theme= is empty or missing.
+//
 // `key=value` lines and `#` comments. A key is a Theme.qml token,
 // "dark.<token>" or "light.<token>" for one mode only. A value is a color
 // (#RRGGBB, #AARRGGBB), a number, or asset:<file>, a picture in
@@ -78,31 +83,40 @@ inline QString subdirectory(Layer layer = Theme)
     return dir.isEmpty() ? QStringLiteral("vela/themes") : QStringLiteral("vela/themes/") + dir;
 }
 
+// The theme when vela.conf chooses none: Vela's own (themes/vela.conf).
+inline QString defaultTheme()
+{
+    return QStringLiteral("vela");
+}
+
 // A name is a file name without ".conf": nothing that leads elsewhere.
 inline bool validName(const QString& name)
 {
     return !name.isEmpty() && !name.contains(u'/') && !name.startsWith(u'.');
 }
 
-// The chosen names in a vela.conf, by layer ("" where none); the last line
-// wins if a key is there twice (like the compositor).
+// The chosen names in a vela.conf, by layer ("" where none, but the theme:
+// defaultTheme()); the last line wins if a key is there twice (like the
+// compositor).
 using Choice = std::array<QString, LayerCount>;
 
 inline Choice configured(const QString& velaConf)
 {
     Choice choice;
     QFile file(velaConf);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return choice;
-    }
-    while (!file.atEnd()) {
-        const QString line = QString::fromUtf8(file.readLine()).trimmed();
-        for (int i = 0; i < LayerCount; ++i) {
-            const QString prefix = QLatin1String(layerInfo(Layer(i)).key) + u'=';
-            if (line.startsWith(prefix)) {
-                choice[i] = line.mid(prefix.size()).trimmed();
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!file.atEnd()) {
+            const QString line = QString::fromUtf8(file.readLine()).trimmed();
+            for (int i = 0; i < LayerCount; ++i) {
+                const QString prefix = QLatin1String(layerInfo(Layer(i)).key) + u'=';
+                if (line.startsWith(prefix)) {
+                    choice[i] = line.mid(prefix.size()).trimmed();
+                }
             }
         }
+    }
+    if (choice[Theme].isEmpty()) {
+        choice[Theme] = defaultTheme();
     }
     return choice;
 }
@@ -230,9 +244,10 @@ inline Loaded loadConfigured(const QString& velaConf)
 }
 
 // The installed themes ("") or a surface's styles ("taskbar"...), by name:
-// { name, text }. The text is the name the first line gives
-// ("# Rosé Pine: ..."), else the file name. The user's win over the
-// installed ones of the same name.
+// { name, text, author }. The text is the name the first line gives
+// ("# Rosé Pine: ..."), else the file name; the author, the "# Original
+// author:" line's ("" without one). The user's win over the installed ones
+// of the same name; Vela's own theme comes first.
 inline QVariantList available(const QString& surface = QString())
 {
     const Layer layer = layerFor(surface);
@@ -252,15 +267,31 @@ inline QVariantList available(const QString& surface = QString())
     QVariantList list;
     for (auto it = files.cbegin(); it != files.cend(); ++it) {
         QString text = it.key();
+        QString author;
         QFile file(it.value());
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            const QString first = QString::fromUtf8(file.readLine()).trimmed();
-            const qsizetype colon = first.indexOf(u':');
-            if (first.startsWith(u'#') && colon > 1) {
-                text = first.mid(1, colon - 1).trimmed();
+            // The leading comments: the name on the first line, the author below.
+            for (bool first = true; !file.atEnd(); first = false) {
+                const QString line = QString::fromUtf8(file.readLine()).trimmed();
+                if (!line.startsWith(u'#')) {
+                    break;
+                }
+                const QString comment = line.mid(1).trimmed();
+                const qsizetype colon = comment.indexOf(u':');
+                if (first && colon > 0) {
+                    text = comment.left(colon).trimmed();
+                } else if (comment.startsWith(QLatin1String("Original author:"))) {
+                    author = comment.mid(16).trimmed();
+                }
             }
         }
-        list.append(QVariantMap { { QStringLiteral("name"), it.key() }, { QStringLiteral("text"), text } });
+        const QVariantMap entry { { QStringLiteral("name"), it.key() }, { QStringLiteral("text"), text },
+            { QStringLiteral("author"), author } };
+        if (layer == Theme && it.key() == defaultTheme()) {
+            list.prepend(entry);
+        } else {
+            list.append(entry);
+        }
     }
     return list;
 }

@@ -2725,16 +2725,16 @@ Specifiche sistema
 <context>
     <name>ThemesPage</name>
     <message>
-        <source>Vela (default)</source>
-        <translation>Vela (predefinito)</translation>
-    </message>
-    <message>
         <source>Theme</source>
         <translation>Tema</translation>
     </message>
     <message>
         <source>&quot;%1&quot; isn&apos;t installed: Vela&apos;s own look is used</source>
         <translation>&quot;%1&quot; non è installato: si usa l&apos;aspetto di Vela</translation>
+    </message>
+    <message>
+        <source>Colors and corners of the shell and the apps. Original author: %1</source>
+        <translation>Colori e angoli della shell e delle app. Autore originale: %1</translation>
     </message>
     <message>
         <source>Colors and corners of the shell and the apps. A theme can bring its own accent color</source>
@@ -2773,12 +2773,16 @@ Specifiche sistema
         <translation>Usa</translation>
     </message>
     <message>
+        <source>Original author: %1</source>
+        <translation>Autore originale: %1</translation>
+    </message>
+    <message>
         <source>Reset</source>
         <translation>Reimposta</translation>
     </message>
     <message>
-        <source>Vela&apos;s own look: no theme and no styles. Light or dark mode and the accent stay</source>
-        <translation>L&apos;aspetto di Vela: nessun tema e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
+        <source>Vela Official and no styles. Light or dark mode and the accent stay</source>
+        <translation>Vela Official e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
     </message>
 </context>
 <context>

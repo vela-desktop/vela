@@ -30,7 +30,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | Key | Default | Meaning |
 |---|---|---|
 | `language` | system | Interface language: `it`, `en`, or empty to follow the system (Italian if the system is Italian, English otherwise). |
-| `theme` | empty | A theme's name (Settings > Personalization > Themes): `themes/<name>.conf`, see [Theme files](#theme-files). Empty is Vela's own look. |
+| `theme` | `vela` | A theme's name (Settings > Personalization > Themes): `themes/<name>.conf`, see [Theme files](#theme-files). `vela` (or empty) is Vela Official, Vela's own look. |
 | `taskbar-style`, `startmenu-style`, `notifications-style` | empty | A surface's own style (Settings > Personalization > Themes): `themes/taskbar/<name>.conf`, `themes/startmenu/<name>.conf`, `themes/notifications/<name>.conf` (quick settings and the notification center), see [Theme files](#theme-files). Empty is none. |
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
@@ -77,15 +77,18 @@ The Settings app is the preferred way to edit these values because it applies va
 
 A **theme** changes the colors and corner radii of the shell and of Vela's apps; a **style** changes one surface of the shell, like Windhawk's three stylers: the taskbar, the Start menu, or quick settings with the notification center. `theme=rose-pine` loads the first `vela/themes/rose-pine.conf` found in `~/.config` (your own) and then in the data directories (`/usr/share/vela/themes/`, the installed ones); `taskbar-style=aero` loads `vela/themes/taskbar/aero.conf` the same way. A style's values win over the theme's. The shell and the apps reload them when they change.
 
+Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none.
+
 ```ini
 # Rosé Pine: the first line names the theme in Settings
+# Original author: lowell
 dark.background=#191724
 light.background=#FAF4ED
 accent=#C4A7E7
 radius=6
 ```
 
-Each key is a token: `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token left out keeps Vela's value, so with no theme and no style nothing changes. Values are colors (`#RRGGBB` or `#AARRGGBB`), numbers, or `asset:<file>`, a picture in `vela/themes/assets/` (none is installed: Aero's pictures are Windows'; without them the drawn look stays). Any other line is skipped with a warning in the log. A style may only set its own surface's keys and the blur's (`shell/tests/themefile.cpp` checks the installed ones).
+The first comment line names the file in Settings, and a `# Original author:` line among the first comments credits it there; every installed file has one. Each key is a token: `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token left out keeps Vela's value, so with no theme and no style nothing changes. Values are colors (`#RRGGBB` or `#AARRGGBB`), numbers, or `asset:<file>`, a picture in `vela/themes/assets/` (none is installed: Aero's pictures are Windows'; without them the drawn look stays). Any other line is skipped with a warning in the log. A style may only set its own surface's keys and the blur's (`shell/tests/themefile.cpp` checks the installed ones).
 
 The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars, opaque) and `accent` in place of Mica and the chosen accent. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
 

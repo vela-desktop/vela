@@ -198,6 +198,9 @@ void Preferences::reloadCompositor()
     m_language = value(QStringLiteral("language"), {});
     emit languageChanged();
     m_visualTheme = value(QStringLiteral("theme"), {});
+    if (m_visualTheme.isEmpty()) {
+        m_visualTheme = vela::themes::defaultTheme();
+    }
     for (const char* surface : { "taskbar", "startmenu", "notifications" }) {
         m_surfaceStyles.insert(QLatin1String(surface), value(QLatin1String(surface) + QStringLiteral("-style"), {}));
     }
@@ -593,10 +596,11 @@ void Preferences::setLanguage(const QString& language)
     }
 }
 
-void Preferences::setVisualTheme(const QString& theme)
+void Preferences::setVisualTheme(const QString& name)
 {
     // Only a name themefile.h would load: a path stays out of vela.conf.
-    if (theme != m_visualTheme && (theme.isEmpty() || vela::themes::validName(theme))) {
+    const QString theme = name.isEmpty() ? vela::themes::defaultTheme() : name;
+    if (theme != m_visualTheme && vela::themes::validName(theme)) {
         m_visualTheme = theme;
         // The shell and the apps follow (Appearance watches vela.conf).
         saveCompositorKeys(QStringList { QStringLiteral("theme") });
@@ -628,7 +632,7 @@ QVariantList Preferences::styleGallery(const QString& surface) const
 void Preferences::resetThemes()
 {
     QStringList keys { QStringLiteral("theme") };
-    m_visualTheme.clear();
+    m_visualTheme = vela::themes::defaultTheme();
     for (auto it = m_surfaceStyles.begin(); it != m_surfaceStyles.end(); ++it) {
         it.value() = QString();
         keys.append(it.key() + QStringLiteral("-style"));

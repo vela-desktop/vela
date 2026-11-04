@@ -7,18 +7,16 @@ import Vela.Controls
 
 // Personalization > Themes (docs/configuration.md, "Theme files"): a theme
 // (theme= in vela.conf) with the colors and corners of the shell and the
-// apps; below it the surfaces' own styles, like Windhawk's three stylers
-// (taskbar-style=, startmenu-style=, notifications-style=). Your own go in
-// ~/.config/vela/themes/.
+// apps, Vela Official (themes/vela.conf) first; below it the surfaces' own
+// styles, like Windhawk's three stylers (taskbar-style=, startmenu-style=,
+// notifications-style=). Your own go in ~/.config/vela/themes/.
 Page {
     id: page
-    readonly property var choices: { Prefs.visualTheme; return [{ name: "", text: qsTr("Vela (default)") }].concat(Prefs.visualThemes()) }
-    readonly property int chosenIndex: {
-        for (let i = 0; i < choices.length; ++i) {
-            if (choices[i].name === Prefs.visualTheme) return i
-        }
-        return 0 // not installed (any more): Vela's own
-    }
+    readonly property var choices: { Prefs.visualTheme; return Prefs.visualThemes() }
+    readonly property int foundIndex: choices.findIndex(t => t.name === Prefs.visualTheme)
+    // Not installed (any more): Vela's own look is drawn, the first entry.
+    readonly property int chosenIndex: Math.max(0, foundIndex)
+    readonly property var chosen: choices[chosenIndex] ?? ({ text: "", author: "" })
 
     PersonalizationPage.DesktopPreview {}
 
@@ -26,8 +24,10 @@ Page {
         Card {
             icon: "preferences-desktop-theme"
             title: qsTr("Theme")
-            description: Prefs.visualTheme !== "" && page.chosenIndex === 0
+            description: page.foundIndex < 0
                 ? qsTr("\"%1\" isn't installed: Vela's own look is used").arg(Prefs.visualTheme)
+                : page.chosen.author !== ""
+                ? qsTr("Colors and corners of the shell and the apps. Original author: %1").arg(page.chosen.author)
                 : qsTr("Colors and corners of the shell and the apps. A theme can bring its own accent color")
             trailing: Choice {
                 model: page.choices
@@ -80,7 +80,9 @@ Page {
                 required property var modelData
                 readonly property bool inUse: page.chosenStyle === modelData.name
                 title: modelData.text
-                description: inUse ? qsTr("In use") : ""
+                description: [inUse ? qsTr("In use") : "",
+                              modelData.author ? qsTr("Original author: %1").arg(modelData.author) : ""]
+                    .filter(s => s !== "").join(" · ")
                 trailing: Button {
                     text: styleCard.inUse ? qsTr("In use") : qsTr("Use")
                     accent: !styleCard.inUse
@@ -116,10 +118,10 @@ Page {
         Card {
             icon: "edit-undo"
             title: qsTr("Reset")
-            description: qsTr("Vela's own look: no theme and no styles. Light or dark mode and the accent stay")
+            description: qsTr("Vela Official and no styles. Light or dark mode and the accent stay")
             trailing: Button {
                 text: qsTr("Reset")
-                usable: Prefs.visualTheme !== "" || Object.values(Prefs.surfaceStyles).some(s => s !== "")
+                usable: Prefs.visualTheme !== "vela" || Object.values(Prefs.surfaceStyles).some(s => s !== "")
                 onClicked: Prefs.resetThemes()
             }
         }

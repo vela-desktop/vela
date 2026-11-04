@@ -48,7 +48,7 @@ class Preferences : public QObject {
     // the system. The apps apply it themselves (shell/src/language.h).
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     // theme= in vela.conf: a theme's file name without .conf (themes/,
-    // shell/src/themefile.h), "" for Vela's own look.
+    // shell/src/themefile.h); "vela", Vela Official, when it names none.
     Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
     // taskbar-style=, startmenu-style=, notifications-style= in vela.conf: each
     // surface's own style (themes/<surface>/), by surface; "" for none.
@@ -143,14 +143,15 @@ public:
     void setLanguage(const QString& language);
     QString visualTheme() const { return m_visualTheme; }
     void setVisualTheme(const QString& theme);
-    // The installed themes: { name, text }, the user's over the system's.
+    // The installed themes: { name, text, author }, the user's over the
+    // system's, Vela Official first.
     Q_INVOKABLE QVariantList visualThemes() const;
     QVariantMap surfaceStyles() const { return m_surfaceStyles; }
     // surface: "taskbar", "startmenu" or "notifications"; style "" for none.
     Q_INVOKABLE void setSurfaceStyle(const QString& surface, const QString& style);
-    // A surface's styles with their pictures: { name, text, images }.
+    // A surface's styles with their pictures: { name, text, author, images }.
     Q_INVOKABLE QVariantList styleGallery(const QString& surface) const;
-    // No theme and no styles: Vela's own look.
+    // Vela Official and no styles: Vela's own look.
     Q_INVOKABLE void resetThemes();
 
     QVariantList keyboardLayouts() const { return m_layouts; }
