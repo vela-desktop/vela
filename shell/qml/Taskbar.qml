@@ -65,6 +65,7 @@ Window {
             Tasks.pinnedIds = pinnedIds
         }
         updateBlur()
+        Menus.setTrayAnchors(root.screenName, trayAnchors)
     }
 
     // The whole taskbar above the blurred background (acrylic). A single
@@ -115,6 +116,15 @@ Window {
         Menus.open(entries, x, y, Object.assign({ screen: root.screenName }, options || {}))
     }
     function fromHere() { Menus.panelScreen = root.screenName }
+
+    // In a centered pill (fit, not at the edge) the clock and the system
+    // icons are near the middle: their panels open above them (Menus).
+    readonly property var trayAnchors: fit && !edge
+        ? { clock: clock.x + clock.width / 2, icons: systemIcons.visible ? systemIcons.x + systemIcons.width / 2 : undefined }
+        : null
+    onTrayAnchorsChanged: Menus.setTrayAnchors(root.screenName, trayAnchors)
+    onScreenNameChanged: Menus.setTrayAnchors(root.screenName, trayAnchors)
+    Component.onDestruction: Menus.setTrayAnchors(root.screenName, null)
 
     // A button's jump list: pinned and recent files, the app's tasks, then the
     // app, pin/unpin, close.
@@ -790,7 +800,7 @@ Window {
 
         Fill {
             anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
-            radius: Theme.radius
+            radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: systemMouse.pressed ? Theme.subtlePressed : systemMouse.containsMouse || Menus.quickSettingsOpen ? Theme.subtleHover : Theme.subtleRest
         }
         Row {

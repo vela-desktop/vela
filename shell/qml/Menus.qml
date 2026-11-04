@@ -52,12 +52,41 @@ QtObject {
         panelScreen = ""
         return Qt.application.screens.find(s => s.name === name) || null
     }
-    // Puts `window` (hidden) on the panel's output.
+    // Puts `window` (hidden) on the panel's output; that output.
     function placeOnTargetScreen(window) {
         const screen = targetScreen()
         if (screen) {
             Shell.placeOnScreen(window, screen.name)
         }
+        return screen
+    }
+    // Where each output's taskbar has its clock and its system icons, while
+    // they sit in a centered pill (a taskbar style's fit): { screen: { clock,
+    // icons } }, x on the output. The notification center and quick settings
+    // open above them, not at the output's right edge, whether clicked or
+    // from the keyboard.
+    property var trayAnchors: ({})
+    function setTrayAnchors(screen, anchors) {
+        const all = Object.assign({}, trayAnchors)
+        if (anchors) {
+            all[screen] = anchors
+        } else {
+            delete all[screen]
+        }
+        trayAnchors = all
+    }
+    // Puts a tray panel (its panel `width` wide at `x` in its window) on the
+    // panel's output, above `button` ("clock", "icons") of a centered pill
+    // there, else at the bottom right.
+    function placeTrayPanel(window, button, x, width) {
+        const screen = placeOnTargetScreen(window)
+        const anchors = screen ? trayAnchors[screen.name] : undefined
+        if (!anchors || anchors[button] === undefined) {
+            Shell.placeAbove(window, -1)
+            return
+        }
+        const left = anchors[button] - x - width / 2
+        Shell.placeAbove(window, Math.round(Math.max(0, Math.min(screen.width - window.width, left))))
     }
     property bool previewHovered: false
     property bool previewButtonHovered: false

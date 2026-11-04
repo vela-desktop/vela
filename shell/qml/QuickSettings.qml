@@ -50,7 +50,7 @@ Window {
         if (!motion.closing) {
             page = ""
             d.settle()
-            Menus.placeOnTargetScreen(root)
+            Menus.placeTrayPanel(root, "icons", motion.x, motion.width)
         }
         visible = true
         Menus.quickSettingsOpen = true

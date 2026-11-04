@@ -29,7 +29,7 @@ Window {
         if (!motion.closing) {
             Notifications.collectPopups()
             month = new Date()
-            Menus.placeOnTargetScreen(root)
+            Menus.placeTrayPanel(root, "clock", motion.x, motion.width)
         }
         visible = true
         Menus.notificationCenterOpen = true
