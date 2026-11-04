@@ -60,7 +60,7 @@
 //                                          surface) this one starts from
 //   schema-version=1                       the format; another one is not used
 //
-// The first comment line names the file ("# Rosé Pine: ...") and a
+// The first comment line names the file ("# Window Glass: ...") and a
 // "# Original author: <name>" line among the first comments credits it.
 // Vela's own look is a theme too, themes/vela.conf ("Vela Official"): it sets
 // no token, and it is the one used when theme= names none.
@@ -612,7 +612,7 @@ inline Loaded loadConfigured(const QString& velaConf)
 
 // The installed themes ("") or a surface's styles ("taskbar"...), by name:
 // { name, text, author }. The text is the name the first line gives
-// ("# Rosé Pine: ..."), else the file name; the author, the "# Original
+// ("# Window Glass: ..."), else the file name; the author, the "# Original
 // author:" line's ("" without one). The user's win over the installed ones
 // of the same name; Vela Official comes first.
 inline QVariantList available(const QString& surface = QString())
