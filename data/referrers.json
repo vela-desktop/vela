@@ -1,31 +1,31 @@
 {
-  "collected_at": "2026-11-03T10:51:27+00:00",
+  "collected_at": "2026-11-04T10:54:13+00:00",
   "coverage": "top_10_only",
   "items": [
     {
       "count": 66,
-      "referrer": "reddit.com",
-      "uniques": 50
-    },
-    {
-      "count": 64,
       "referrer": "github.com",
-      "uniques": 30
+      "uniques": 31
     },
     {
-      "count": 57,
+      "count": 65,
+      "referrer": "reddit.com",
+      "uniques": 48
+    },
+    {
+      "count": 62,
       "referrer": "velade.org",
-      "uniques": 53
+      "uniques": 58
     },
     {
-      "count": 29,
+      "count": 27,
       "referrer": "com.reddit.frontpage",
-      "uniques": 26
+      "uniques": 24
     },
     {
-      "count": 20,
+      "count": 22,
       "referrer": "news.ycombinator.com",
-      "uniques": 18
+      "uniques": 19
     },
     {
       "count": 5,

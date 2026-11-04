@@ -1,18 +1,18 @@
 {
-  "collected_at": "2026-11-03T10:51:27+00:00",
+  "collected_at": "2026-11-04T10:54:13+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 487,
+      "count": 511,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 249
+      "uniques": 251
     },
     {
-      "count": 250,
+      "count": 254,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
-      "uniques": 6
+      "uniques": 8
     },
     {
       "count": 69,
@@ -33,22 +33,22 @@
       "uniques": 2
     },
     {
-      "count": 24,
+      "count": 25,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
       "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 22
+      "uniques": 23
     },
     {
-      "count": 21,
+      "count": 24,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 10
+      "uniques": 11
     },
     {
-      "count": 21,
+      "count": 23,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 7
+      "uniques": 8
     },
     {
       "count": 20,
