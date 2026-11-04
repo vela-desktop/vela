@@ -146,6 +146,9 @@ public:
     // The installed themes: { name, text, author }, the user's over the
     // system's, Vela Official first.
     Q_INVOKABLE QVariantList visualThemes() const;
+    // Resolve a *candidate* without modifying persistent configuration.
+    // The preview uses exactly the same theme loader as the running shell.
+    Q_INVOKABLE QVariantMap themePreview(const QString& name) const;
     QVariantMap surfaceStyles() const { return m_surfaceStyles; }
     // surface: "taskbar", "startmenu" or "notifications"; style "" for none.
     Q_INVOKABLE void setSurfaceStyle(const QString& surface, const QString& style);
