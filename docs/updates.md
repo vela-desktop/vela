@@ -228,7 +228,9 @@ Automatic checks:
   after the last check if that is later;
 - then every 6, 12, 24 (default), 48 or 168 hours, as selected in Settings;
   stored as `update-check-interval` in `vela.conf` and rescheduled immediately
-  when changed, including across restarts;
+  when changed, including across restarts. The timer uses the suspend-aware
+  monotonic clock; the displayed wall-clock deadline is refreshed after
+  discontinuous system-clock changes;
 - skipped while NetworkManager says the connection is metered (`Metered`
   is yes or guess-yes) or not fully connected (`Connectivity` below
   full, including the unknown state `0`); retried as soon as that changes.

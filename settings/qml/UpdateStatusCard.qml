@@ -15,6 +15,8 @@ Card {
     objectName: "status"
 
     readonly property bool hasUpdate: Updates.status === "update-available"
+    // Keep both actions usable without crowding out the version on narrow cards.
+    readonly property bool compactActions: width < 560
     // A completed check is shown; a failure then goes below it.
     readonly property bool checked: Updates.status !== "unknown" && Updates.status !== "error"
     readonly property bool checkFailed: Updates.checkError.code !== undefined
@@ -90,7 +92,9 @@ Card {
             objectName: "recheck"
             visible: Updates.available && card.hasUpdate
             icon.name: "view-refresh"
-            text: qsTr("Check again")
+            text: card.compactActions ? "" : qsTr("Check again")
+            subtle: card.compactActions
+            Accessible.name: qsTr("Check again")
             usable: !Updates.busy
             onClicked: Updates.check()
         }

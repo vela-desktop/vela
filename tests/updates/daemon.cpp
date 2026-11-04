@@ -506,10 +506,18 @@ private Q_SLOTS:
             QStringLiteral("org.vela.Updates.Error.InvalidArgs"));
         QCOMPARE(property(QStringLiteral("CheckInterval")).toUInt(), 6u);
 
+        // After a restart attempt_us is intentionally gone. The daemon must
+        // reconstruct the deadline from LastCheck, not the wall-clock time at
+        // which the test observed the manual check. The fake report deliberately
+        // uses a checked_at timestamp about 1000 seconds in the past.
+        const qint64 persistedCheckAt = property(QStringLiteral("LastCheck")).toLongLong();
+        QVERIFY(persistedCheckAt > 0);
         stopDaemon();
         QVERIFY(startDaemon());
         QCOMPARE(property(QStringLiteral("CheckInterval")).toUInt(), 6u);
-        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() >= now + 6 * 3600 - 60);
+        QCOMPARE(property(QStringLiteral("LastCheck")).toLongLong(), persistedCheckAt);
+        QVERIFY(qAbs(property(QStringLiteral("NextCheck")).toLongLong()
+            - (persistedCheckAt + 6 * 3600)) <= 2);
 
         QCOMPARE(call(QStringLiteral("SetAutoCheck"), { false }).type(), QDBusMessage::ReplyMessage);
         QTRY_COMPARE(property(QStringLiteral("NextCheck")).toLongLong(), 0);
@@ -517,7 +525,8 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("CheckInterval")).toUInt(), 168u);
         QCOMPARE(property(QStringLiteral("NextCheck")).toLongLong(), 0);
         QCOMPARE(call(QStringLiteral("SetAutoCheck"), { true }).type(), QDBusMessage::ReplyMessage);
-        QVERIFY(property(QStringLiteral("NextCheck")).toLongLong() >= now + 168 * 3600 - 60);
+        QVERIFY(qAbs(property(QStringLiteral("NextCheck")).toLongLong()
+            - (persistedCheckAt + 168 * 3600)) <= 2);
     }
 
     void automaticChecksWaitForAFreeConnection()

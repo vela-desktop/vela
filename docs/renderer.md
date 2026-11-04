@@ -831,7 +831,8 @@ debug overlay (§10) and for other compositor UI.
 
 - **Measurements** like Windows 11: a 32-logical-unit bar, 46×32 buttons,
   corners with radius 8, invisible 8-logical-unit resize borders outside the
-  window.
+  window. Only where they can be seen: a fullscreen game, a menu (another
+  window's, the window's own, X11's) or a panel drawn above covers them.
 - **Background**: live blur of what's behind, with a **tint derived from the
   desktop wallpaper** (like Mica on Windows): see §9.4.
 - **Minimize/maximize/close buttons**: glyphs drawn as SDFs (lines), sharp at

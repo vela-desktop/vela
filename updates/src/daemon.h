@@ -90,6 +90,8 @@ struct vela_up_daemon {
     int64_t next_check_at; // Unix seconds of scheduled check, or 0
     unsigned failures; // network errors in a row
     sd_event_source *auto_timer;
+    int clock_change_fd; // CLOCK_REALTIME timerfd: notice discontinuous clock steps
+    sd_event_source *clock_change_io;
     bool waiting_for_network; // due, but the connection is metered or down
     bool metered;
     bool connected;
@@ -130,6 +132,7 @@ void vela_up_set_auto_check(struct vela_up_daemon *d, bool on);
 bool vela_up_valid_check_interval(uint32_t hours);
 int vela_up_set_check_interval(struct vela_up_daemon *d, uint32_t hours);
 int vela_up_network_start(struct vela_up_daemon *d);
+int vela_up_clock_start(struct vela_up_daemon *d);
 void vela_up_check_free(struct vela_up_daemon *d);
 
 // install.c: Install() (§6.3). 0, or a negative errno with `error` set.

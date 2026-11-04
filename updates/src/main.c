@@ -95,6 +95,7 @@ int main(void)
     static struct vela_up_daemon d;
     d.inotify = -1;
     d.check_out = -1;
+    d.clock_change_fd = -1;
     d.command = command();
     d.timing = (struct vela_up_timing) {
         .first_check_us = milliseconds("VELA_UPDATE_FIRST_CHECK_MS", 10 * 60 * 1000000ULL),
@@ -177,6 +178,9 @@ int main(void)
     }
     if ((r = vela_up_network_start(&d)) < 0) {
         vela_up_log("following NetworkManager: %s", strerror(-r));
+    }
+    if ((r = vela_up_clock_start(&d)) < 0) {
+        vela_up_log("following wall-clock changes: %s", strerror(-r));
     }
     vela_up_schedule(&d);
 

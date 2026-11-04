@@ -2847,6 +2847,10 @@ Specifiche sistema
         <translation>Ogni quanto Vela controlla gli aggiornamenti</translation>
     </message>
     <message>
+        <source>Used when automatic checks are enabled</source>
+        <translation>Si applica quando i controlli automatici sono attivi</translation>
+    </message>
+    <message>
         <source>Every 6 hours</source>
         <translation>Ogni 6 ore</translation>
     </message>

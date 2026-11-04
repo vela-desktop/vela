@@ -78,6 +78,7 @@ Item {
             compare(choice.currentIndex, 3)
             // The chosen frequency remains stored while automatic checks are off.
             Updates.autoCheck = false
+            compare(find("intervalCard").description, "Used when automatic checks are enabled")
             verify(choice.enabled)
             choice.activated(4)
             compare(Updates.calls[1], "setCheckInterval 168")

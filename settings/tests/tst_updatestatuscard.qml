@@ -86,6 +86,13 @@ Item {
             verify(recheck.visible)
             compare(recheck.text, "Check again")
             verify(recheck.enabled)
+            card.width = 450
+            compare(recheck.text, "")
+            verify(recheck.subtle)
+            compare(recheck.Accessible.name, "Check again")
+            verify(recheck.width <= 48)
+            card.width = 700
+            compare(recheck.text, "Check again")
             click(recheck)
             compare(Updates.calls, ["check"])
 

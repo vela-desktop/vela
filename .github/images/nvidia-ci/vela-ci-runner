@@ -1,0 +1,64 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# The container's command on Vast.ai: runs one job as the just-in-time runner
+# that scripts/vast-runner.py registered, as the unprivileged user "runner".
+# The workflow destroys the instance afterwards; the timeout is a backstop.
+set -eu
+: "${VELA_RUNNER_JITCONFIG:?}" "${VELA_RUNNER_VERSION:?}"
+
+# The NVIDIA container toolkit mounts the driver's GBM backend where Debian
+# keeps it; Arch's libgbm looks in /usr/lib/gbm, and would fall back on
+# Mesa's backend, which can't allocate on NVIDIA.
+backend=$(find /usr -name nvidia-drm_gbm.so 2>/dev/null | head -n 1)
+if [ -n "$backend" ] && [ "$backend" != /usr/lib/gbm/nvidia-drm_gbm.so ]; then
+    mkdir -p /usr/lib/gbm
+    ln -sf "$backend" /usr/lib/gbm/nvidia-drm_gbm.so
+fi
+
+# Without NVIDIA's EGL registered with glvnd, Qt's windows draw with Mesa's
+# EGL in software, which no NVIDIA user does.
+vendors=/usr/share/glvnd/egl_vendor.d
+if [ ! -e "$vendors/10_nvidia.json" ] && ldconfig -p | grep -q libEGL_nvidia.so.0; then
+    mkdir -p "$vendors"
+    printf '{"file_format_version": "1.0.0", "ICD": {"library_path": "libEGL_nvidia.so.0"}}\n' \
+        > "$vendors/10_nvidia.json"
+fi
+
+# Some hosts pass no NVIDIA DRM render node into the container, and Vela
+# can't start there either: try another offer.
+found=
+for node in /dev/dri/renderD*; do
+    [ "$(cat "/sys/class/drm/${node##*/}/device/vendor" 2>/dev/null)" = 0x10de ] && found=$node && break
+done
+if [ -z "$found" ]; then
+    echo "vela-ci-runner: no NVIDIA render node in /dev/dri" >&2
+    exit 1
+fi
+
+# Some hosts' NVIDIA drivers don't give Vulkan the dmabuf extensions Vela
+# needs (compositor/src/render/vulkan.c). Exit without a runner, so that
+# scripts/vast-runner.py destroys this instance and tries another offer.
+for icd in /etc/vulkan/icd.d/nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json \
+           /etc/vulkan/icd.d/nvidia_icd.x86_64.json /usr/share/vulkan/icd.d/nvidia_icd.x86_64.json; do
+    [ -f "$icd" ] && break
+done
+extensions=$(VK_DRIVER_FILES=$icd vulkaninfo 2>/dev/null || true)
+for ext in VK_EXT_image_drm_format_modifier VK_KHR_external_memory_fd VK_EXT_external_memory_dma_buf \
+           VK_EXT_queue_family_foreign VK_KHR_external_semaphore_fd VK_EXT_physical_device_drm; do
+    case $extensions in
+        *"$ext"*) ;;
+        *) echo "vela-ci-runner: NVIDIA's Vulkan here has no $ext" >&2; exit 1 ;;
+    esac
+done
+
+dir=/home/runner/actions-runner
+mkdir -p "$dir"
+curl -fsSL "https://github.com/actions/runner/releases/download/v$VELA_RUNNER_VERSION/actions-runner-linux-x64-$VELA_RUNNER_VERSION.tar.gz" \
+    | tar -xz -C "$dir"
+chown -R runner:runner "$dir"
+
+jit=$VELA_RUNNER_JITCONFIG
+unset VELA_RUNNER_JITCONFIG
+exec timeout 150m sudo -u runner -H sh -c 'cd "$1" && exec ./run.sh --jitconfig "$2"' sh "$dir" "$jit"

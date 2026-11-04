@@ -61,9 +61,11 @@ CardGroup {
     }
 
     Card {
+        objectName: "intervalCard"
         icon: "appointment-new"
         title: qsTr("Automatic check frequency")
-        description: qsTr("How often Vela checks for updates")
+        description: Updates.autoCheck ? qsTr("How often Vela checks for updates")
+            : qsTr("Used when automatic checks are enabled")
         trailing: Choice {
             objectName: "checkInterval"
             model: [qsTr("Every 6 hours"), qsTr("Every 12 hours"), qsTr("Every 24 hours"),
