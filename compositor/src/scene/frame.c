@@ -74,6 +74,11 @@ static bool same_color(const struct wlr_render_color *a, const struct wlr_render
     return a->r == b->r && a->g == b->g && a->b == b->b && a->a == b->a;
 }
 
+static bool same_blur_look(const struct vela_blur_look *a, const struct vela_blur_look *b)
+{
+    return a->saturation == b->saturation && a->strength == b->strength && a->tint == b->tint && a->glass == b->glass;
+}
+
 static int64_t region_area(const pixman_region32_t *region)
 {
     int count = 0;
@@ -508,7 +513,7 @@ static bool same_look(const struct vela_element *a, const struct vela_element *b
         && same_color(&a->color, &b->color) && same_box(&a->shape_rect, &b->shape_rect)
         && a->shape_radius == b->shape_radius && same_box(&a->shadow_window, &b->shadow_window)
         && a->shadow_sigma == b->shadow_sigma && same_box(&a->blur_box, &b->blur_box) && a->acrylic == b->acrylic
-        && memcmp(&a->look, &b->look, sizeof(a->look)) == 0;
+        && same_blur_look(&a->look, &b->look);
 }
 
 // ---------------------------------------------------------------- drawing --

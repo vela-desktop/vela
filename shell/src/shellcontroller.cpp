@@ -65,6 +65,26 @@ const QStringList defaultStartPins {
     QStringLiteral("systemsettings.desktop"),
 };
 
+// The user's login and full name (GECOS field) from the password database;
+// empty when the account cannot be read. getpwuid_r: the shell has threads.
+struct Account {
+    QString login;
+    QString fullName;
+};
+
+Account account()
+{
+    long size = sysconf(_SC_GETPW_R_SIZE_MAX);
+    QByteArray buffer(size > 0 ? int(size) : 16384, Qt::Uninitialized);
+    passwd entry {};
+    passwd* found = nullptr;
+    if (getpwuid_r(getuid(), &entry, buffer.data(), size_t(buffer.size()), &found) != 0 || !found) {
+        return {};
+    }
+    return { QString::fromLocal8Bit(found->pw_name),
+        QString::fromLocal8Bit(found->pw_gecos).section(u',', 0, 0).trimmed() };
+}
+
 } // namespace
 
 ShellController::ShellController(QObject* parent)
@@ -441,15 +461,12 @@ void ShellController::setPreferredPrimaryOutput(const QString& name)
 
 QString ShellController::userName() const
 {
-    // The account's full name (GECOS field), otherwise the login.
-    if (const passwd* pw = getpwuid(getuid())) {
-        const QString gecos = QString::fromLocal8Bit(pw->pw_gecos).section(u',', 0, 0).trimmed();
-        if (!gecos.isEmpty()) {
-            return gecos;
-        }
-        return QString::fromLocal8Bit(pw->pw_name);
+    // The account's full name, otherwise the login.
+    const Account user = account();
+    if (!user.fullName.isEmpty()) {
+        return user.fullName;
     }
-    return qEnvironmentVariable("USER");
+    return user.login.isEmpty() ? qEnvironmentVariable("USER") : user.login;
 }
 
 QColor ShellController::wallpaperTint(const QString& wallpaper) const
@@ -485,8 +502,10 @@ QString ShellController::userInitial() const
 
 QString ShellController::userPicture() const
 {
-    const passwd* pw = getpwuid(getuid());
-    const QString login = pw ? QString::fromLocal8Bit(pw->pw_name) : qEnvironmentVariable("USER");
+    QString login = account().login;
+    if (login.isEmpty()) {
+        login = qEnvironmentVariable("USER");
+    }
     for (const QString& path : { QStringLiteral("/var/lib/AccountsService/icons/") + login, QDir::homePath() + QStringLiteral("/.face") }) {
         if (QFileInfo(path).isReadable()) {
             return QUrl::fromLocalFile(path).toString();
