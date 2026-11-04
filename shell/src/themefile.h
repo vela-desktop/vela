@@ -266,10 +266,13 @@ inline QString locate(const QString& name, Layer layer = Theme)
 
 // asset:<file>: a picture of themes/assets/ (the user's first), as a file
 // URL; empty if it isn't installed. None is installed (Aero's pictures are
-// Windows'): without them the drawn look stays.
+// Windows'): without them the drawn look stays. <file> may be in a
+// subdirectory (aero/orbNormal.png), never outside assets/: every part
+// starts with a letter or a digit, so no "..", no absolute path.
 inline QString assetUrl(const QString& name)
 {
-    static const QRegularExpression safe(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"));
+    static const QRegularExpression safe(
+        QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}(/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}){0,3}$"));
     if (!safe.match(name).hasMatch()) {
         return {};
     }

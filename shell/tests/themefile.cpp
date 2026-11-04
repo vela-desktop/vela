@@ -105,9 +105,11 @@ private slots:
         QTest::ignoreMessage(QtWarningMsg, "theme test:5: taskbar-tile-image is a picture, asset:<file>, not \"tile.png\": skipped");
         QDir().mkpath(config() + QStringLiteral("assets"));
         write(config() + QStringLiteral("assets/orb.png"), "png");
+        write(data() + QStringLiteral("assets/aero/orbNormal.png"), "png");
         const vela::themes::File file = read("taskbar-height=52\ntaskbar-variant=floating\nstartmenu-variant=classic\n"
                                              "taskbar-orb=asset:orb.png\ntaskbar-tile-image=tile.png\n"
-                                             "taskbar-reflection=asset:missing.png\ntaskbar-orb-pressed=asset:../orb.png\n");
+                                             "taskbar-reflection=asset:missing.png\ntaskbar-orb-pressed=asset:../orb.png\n"
+                                             "taskbar-desktop-image=asset:aero/orbNormal.png\ntaskbar-desktop-image-hover=asset:/etc/passwd\n");
         QCOMPARE(kinds(file.problems), (QStringList { "unknown-variant", "expects-asset" }));
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-height")).toDouble(), 52.0);
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-variant")).toString(), QStringLiteral("floating"));
@@ -115,6 +117,9 @@ private slots:
             QUrl::fromLocalFile(config() + QStringLiteral("assets/orb.png")).toString());
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-reflection")).toString(), QString()); // not installed
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-orb-pressed")).toString(), QString()); // outside assets/
+        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-desktop-image")).toString(), // a subdirectory, installed
+            QUrl::fromLocalFile(data() + QStringLiteral("assets/aero/orbNormal.png")).toString());
+        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-desktop-image-hover")).toString(), QString()); // absolute
     }
 
     // A style only sets its own surface's keys and the blur's: anything else
