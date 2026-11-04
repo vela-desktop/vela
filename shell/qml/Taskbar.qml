@@ -32,6 +32,10 @@ Window {
     readonly property bool edge: fit && style.edge > 0
     readonly property bool split: fit && !edge && style.splitGap > 0
     readonly property real fitGap: 8 + style.splitGap
+    // Inside a fitted pill, the room before the Start button and after the
+    // clock: a round end (radius up to half the height) would cut what sits
+    // in it, the clock's highlight and the notifications' badge.
+    readonly property int fitPadding: 10
     readonly property int edgeGap: Math.max(style.margin, 8) // the tray pill's gap to the screen's edge
     // The notification area, the system icons and the clock, side by side.
     readonly property real trayGroupWidth: (transferIndicator.visible ? transferIndicator.width + 4 : 0)
@@ -245,11 +249,11 @@ Window {
             id: floatingSurface
             visible: root.floating
             readonly property bool flush: root.edge && root.style.flush
-            x: root.fit ? buttons.x - 10 : root.sideMargin
+            x: root.fit ? buttons.x - root.fitPadding : root.sideMargin
             y: root.style.margin
             width: root.split ? buttons.width + 14
                 : root.edge ? buttons.width + 20
-                : root.fit ? buttons.width + root.fitGap + root.trayGroupWidth + 10
+                : root.fit ? buttons.width + root.fitGap + root.trayGroupWidth + 2 * root.fitPadding
                 : parent.width - 2 * root.sideMargin
             height: parent.height - (flush ? 1 : 2) * root.style.margin
             radius: root.style.radius
@@ -271,7 +275,7 @@ Window {
                 : floatingSurface.x + floatingSurface.width + root.style.splitGap
             y: floatingSurface.flush ? 3 : floatingSurface.y
             width: root.edge ? root.trayGroupWidth + 22
-                : buttons.x + buttons.width + root.fitGap + root.trayGroupWidth - x
+                : buttons.x + buttons.width + root.fitGap + root.trayGroupWidth + root.fitPadding - x
             height: floatingSurface.flush ? parent.height - 6 : floatingSurface.height
             radius: root.style.radius
             topLeftRadius: root.edge ? radius : root.style.splitRadius
@@ -876,6 +880,8 @@ Window {
 
         Fill {
             anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
+            // A floating style's buttons' corners: its highlight is one of them.
+            radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
         // Notifications to read: a number next to the clock, like Windows 11
