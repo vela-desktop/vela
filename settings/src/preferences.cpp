@@ -613,6 +613,23 @@ QVariantList Preferences::visualThemes() const
     return vela::themes::available();
 }
 
+QVariantMap Preferences::themePreview(const QString& name) const
+{
+    if (!vela::themes::validName(name) || vela::themes::locate(name).isEmpty()) {
+        return {};
+    }
+    QVariantMap tokens = vela::themes::loadInherited(name);
+    for (int i = vela::themes::Taskbar; i < vela::themes::LayerCount; ++i) {
+        const auto layer = vela::themes::Layer(i);
+        const QString surface = QLatin1String(vela::themes::layerInfo(layer).directory);
+        const QString selected = m_surfaceStyles.value(surface).toString();
+        if (!selected.isEmpty() && !vela::themes::locate(selected, layer).isEmpty()) {
+            tokens.insert(vela::themes::loadInherited(selected, layer));
+        }
+    }
+    return tokens;
+}
+
 void Preferences::setSurfaceStyle(const QString& surface, const QString& style)
 {
     if (!m_surfaceStyles.contains(surface) || m_surfaceStyles.value(surface).toString() == style
