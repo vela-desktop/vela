@@ -45,6 +45,8 @@ class CoreTest : public QObject {
 
     const Endpoint* endpoint(const QString& name) const { return core->snapshot().endpoint(name); }
     const Stream* stream(quint32 id) const { return core->snapshot().stream(id); }
+    QString linkedTo(quint32 id) const { return harness::linkedTo(*core, id); }
+    QString targetOf(quint32 id) const { return harness::targetOf(*core, id); }
 
 private slots:
     void init()
@@ -181,7 +183,7 @@ private slots:
         const quint32 meterId = meter->waitStreaming();
         QVERIFY(musicId && voiceId && meterId);
 
-        QTRY_VERIFY(stream(musicId) && stream(musicId)->endpoint == endpoint(speakers)->id);
+        QTRY_COMPARE(linkedTo(musicId), speakers);
         const Stream* m = stream(musicId);
         QCOMPARE(m->direction, Direction::Output);
         QCOMPARE(m->app.key, QStringLiteral("vela-player"));
@@ -189,9 +191,9 @@ private slots:
         QCOMPARE(m->mediaRole, QStringLiteral("Music"));
         QVERIFY(m->target.isEmpty());
         QVERIFY(m->isApp());
-        QTRY_VERIFY(stream(musicId)->running);
+        QTRY_VERIFY(stream(musicId) && stream(musicId)->running);
 
-        QTRY_VERIFY(stream(voiceId) && stream(voiceId)->endpoint == endpoint(microphone)->id);
+        QTRY_COMPARE(linkedTo(voiceId), microphone);
         QCOMPARE(stream(voiceId)->direction, Direction::Input);
         QVERIFY(stream(voiceId)->isApp());
 
@@ -201,9 +203,9 @@ private slots:
 
         // A stream's own volume, equal on every channel.
         QVERIFY(core->setVolume(musicId, 0.3));
-        QTRY_VERIFY(near(stream(musicId)->channelVolumes, { 0.3, 0.3 }));
+        QTRY_VERIFY(stream(musicId) && near(stream(musicId)->channelVolumes, { 0.3, 0.3 }));
         QVERIFY(core->setMuted(musicId, true));
-        QTRY_VERIFY(stream(musicId)->muted);
+        QTRY_VERIFY(stream(musicId) && stream(musicId)->muted);
 
         QCOMPARE(music->close(), 0);
         QTRY_VERIFY(!stream(musicId));
@@ -213,17 +215,17 @@ private slots:
     {
         auto music = player(QStringLiteral("vela-mover"));
         const quint32 id = music->waitStreaming();
-        QTRY_VERIFY(stream(id) && stream(id)->endpoint == endpoint(speakers)->id);
+        QTRY_COMPARE(linkedTo(id), speakers);
 
         QVERIFY(core->setTarget(id, headphones));
-        QTRY_COMPARE(stream(id)->target, headphones);
-        QTRY_COMPARE(stream(id)->endpoint, endpoint(headphones)->id);
+        QTRY_COMPARE(targetOf(id), headphones);
+        QTRY_COMPARE(linkedTo(id), headphones);
         QVERIFY(!core->setTarget(id, microphone)); // not an output
 
         // The default one again: it follows the default output.
         QVERIFY(core->setTarget(id, QString()));
-        QTRY_VERIFY(stream(id)->target.isEmpty());
-        QTRY_COMPARE(stream(id)->endpoint, endpoint(speakers)->id);
+        QTRY_COMPARE(targetOf(id), QString());
+        QTRY_COMPARE(linkedTo(id), speakers);
     }
 
     void chosenOutputIsRemembered()
@@ -232,23 +234,23 @@ private slots:
         const quint32 id = first->waitStreaming();
         QTRY_VERIFY(stream(id));
         QVERIFY(core->setTarget(id, headphones));
-        QTRY_COMPARE(stream(id)->endpoint, endpoint(headphones)->id);
+        QTRY_COMPARE(linkedTo(id), headphones);
         QTest::qWait(wireplumberSaveDelayMs);
         QCOMPARE(first->close(), 0);
 
         // The next time the app plays, WirePlumber sends it there again.
         auto again = player(QStringLiteral("vela-remembered"));
         const quint32 next = again->waitStreaming();
-        QTRY_VERIFY(stream(next) && stream(next)->endpoint == endpoint(headphones)->id);
+        QTRY_COMPARE(linkedTo(next), headphones);
 
         // Back to the default one; forgotten.
         QVERIFY(core->setTarget(next, QString()));
-        QTRY_COMPARE(stream(next)->endpoint, endpoint(speakers)->id);
+        QTRY_COMPARE(linkedTo(next), speakers);
         QTest::qWait(wireplumberSaveDelayMs);
         QCOMPARE(again->close(), 0);
         auto third = player(QStringLiteral("vela-remembered"));
         const quint32 last = third->waitStreaming();
-        QTRY_VERIFY(stream(last) && stream(last)->endpoint == endpoint(speakers)->id);
+        QTRY_COMPARE(linkedTo(last), speakers);
     }
 
     void inputChosenForAStream()
@@ -257,12 +259,12 @@ private slots:
         QTRY_VERIFY(endpoint(QStringLiteral("vela-test-usb-mic")));
         auto voice = recorder(QStringLiteral("vela-caller"));
         const quint32 id = voice->waitStreaming();
-        QTRY_VERIFY(stream(id) && stream(id)->endpoint == endpoint(microphone)->id);
+        QTRY_COMPARE(linkedTo(id), microphone);
         QVERIFY(core->setTarget(id, QStringLiteral("vela-test-usb-mic")));
-        QTRY_COMPARE(stream(id)->endpoint, endpoint(QStringLiteral("vela-test-usb-mic"))->id);
-        QCOMPARE(stream(id)->target, QStringLiteral("vela-test-usb-mic"));
+        QTRY_COMPARE(linkedTo(id), QStringLiteral("vela-test-usb-mic"));
+        QCOMPARE(targetOf(id), QStringLiteral("vela-test-usb-mic"));
         QVERIFY(core->setTarget(id, QString()));
-        QTRY_COMPARE(stream(id)->endpoint, endpoint(microphone)->id);
+        QTRY_COMPARE(linkedTo(id), microphone);
         QCOMPARE(voice->close(), 0);
         QCOMPARE(control(QStringLiteral("remove vela-test-usb-mic")), QStringLiteral("ok"));
     }

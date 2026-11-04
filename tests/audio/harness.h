@@ -6,6 +6,8 @@
 // What vela-audio's tests use inside the fixture (fixture.py): its control
 // socket, fake apps (vela-audio-fake-stream) and outside tools (wpctl).
 
+#include "core.h"
+
 #include <QLocalSocket>
 #include <QProcess>
 #include <QStringList>
@@ -23,6 +25,29 @@ inline const QString microphone = QStringLiteral("vela-test-microphone");
 
 // WirePlumber writes its state about a second after a change (fixture.py).
 constexpr int wireplumberSaveDelayMs = 1500;
+
+// The endpoint a stream is linked to, by name, or why there is none. A check
+// that waits on it fails with that reason when the stream is missing from
+// the snapshot, instead of crashing on a null stream.
+inline QString linkedTo(const vela::audio::Core& core, quint32 stream)
+{
+    if (!core.connected()) {
+        return QStringLiteral("(Core is not connected)");
+    }
+    const vela::audio::Stream* s = core.snapshot().stream(stream);
+    if (!s) {
+        return QStringLiteral("(stream %1 is not in the snapshot)").arg(stream);
+    }
+    const vela::audio::Endpoint* e = core.snapshot().endpoint(s->endpoint);
+    return e ? e->name : QStringLiteral("(stream %1 is not linked)").arg(stream);
+}
+
+// A stream's target.object, or why there is none, as linkedTo().
+inline QString targetOf(const vela::audio::Core& core, quint32 stream)
+{
+    const vela::audio::Stream* s = core.snapshot().stream(stream);
+    return s ? s->target : QStringLiteral("(stream %1 is not in the snapshot)").arg(stream);
+}
 
 // One command to the fixture; its answer ("ok [value]" or "error ...").
 inline QString control(const QString& command)
