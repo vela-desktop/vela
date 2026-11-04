@@ -10,6 +10,8 @@
 #include <QFileInfo>
 #include <QIODevice>
 #include <QMap>
+#include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <QString>
 #include <QStringList>
@@ -92,7 +94,8 @@ inline QString defaultTheme()
 // A name is a file name without ".conf": nothing that leads elsewhere.
 inline bool validName(const QString& name)
 {
-    return !name.isEmpty() && !name.contains(u'/') && !name.startsWith(u'.');
+    static const QRegularExpression safeName(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"));
+    return safeName.match(name).hasMatch();
 }
 
 // The chosen names in a vela.conf, by layer ("" where none, but the theme:
@@ -154,6 +157,19 @@ inline QString assetUrl(const QString& name)
     return file.isEmpty() ? QString() : QUrl::fromLocalFile(file).toString();
 }
 
+// Only identifiers of built-in Vela implementations may be selected by theme
+// files. No arbitrary QML paths, scripts, or extension code can be loaded.
+inline bool allowedVariant(const QString& key, const QString& value)
+{
+    static const QMap<QString, QStringList> variants {
+        { QStringLiteral("taskbar-variant"), { QStringLiteral("default"), QStringLiteral("floating"), QStringLiteral("floating-split"), QStringLiteral("dock") } },
+        { QStringLiteral("startmenu-variant"), { QStringLiteral("default"), QStringLiteral("seven") } },
+        { QStringLiteral("quicksettings-variant"), { QStringLiteral("default"), QStringLiteral("glass"), QStringLiteral("classic") } },
+        { QStringLiteral("notifications-variant"), { QStringLiteral("default"), QStringLiteral("aero") } },
+    };
+    return variants.contains(key) && variants.value(key).contains(value);
+}
+
 // The values of a file: a number as double, a color as QColor, a picture as
 // its URL (an empty string when not installed). A line that is none of these
 // is skipped with a warning (`origin` names the file in it).
@@ -172,8 +188,23 @@ inline QVariantMap parse(QIODevice& in, const QString& origin = QString())
         const QString value = equals > 0 ? line.mid(equals + 1).trimmed() : QString();
         bool isNumber = false;
         const double d = value.toDouble(&isNumber);
+        const QString bareKey = key.startsWith(QLatin1String("dark.")) || key.startsWith(QLatin1String("light."))
+            ? key.section(u'.', 1) : key;
         if (key.isEmpty() || value.isEmpty()) {
             qWarning("theme %s:%d: not a key=value line", qPrintable(origin), number);
+        } else if (key == QLatin1String("inherits")) {
+            if (validName(value)) {
+                map.insert(key, value);
+            } else {
+                qWarning("theme %s:%d: invalid parent theme", qPrintable(origin), number);
+            }
+        } else if (bareKey.endsWith(QLatin1String("-variant"))) {
+            if (allowedVariant(bareKey, value)) {
+                map.insert(key, value);
+            } else {
+                qWarning("theme %s:%d: unsupported official variant %s=%s", qPrintable(origin), number,
+                    qPrintable(key), qPrintable(value));
+            }
         } else if (isNumber) {
             map.insert(key, d);
         } else if (value.startsWith(u'#') && QColor::isValidColorName(value)) {
@@ -195,6 +226,45 @@ inline QVariantMap load(const QString& path)
         return {};
     }
     return parse(file, path);
+}
+
+// Resolve the one-parent inheritance chain within the same theme/style family.
+// Cycles, inaccessible parents and excessive depth cannot trap the shell.
+inline QVariantMap loadInherited(const QString& name, Layer layer = Theme, QSet<QString>* ancestors = nullptr, int depth = 0)
+{
+    if (!validName(name) || depth >= 16) {
+        qWarning("theme: invalid name or inheritance depth");
+        return {};
+    }
+    QSet<QString> stack;
+    if (!ancestors) {
+        ancestors = &stack;
+    }
+    if (ancestors->contains(name)) {
+        qWarning("theme: inheritance cycle at %s", qPrintable(name));
+        return {};
+    }
+    const QString path = locate(name, layer);
+    if (path.isEmpty()) {
+        qWarning("theme: missing inherited package %s", qPrintable(name));
+        return {};
+    }
+    ancestors->insert(name);
+    QVariantMap own = load(path);
+    const QString parent = own.take(QStringLiteral("inherits")).toString();
+    const QVariant version = own.take(QStringLiteral("schema-version"));
+    if (version.isValid() && version.toInt() != 1) {
+        qWarning("theme: unsupported schema in %s", qPrintable(path));
+        ancestors->remove(name);
+        return {};
+    }
+    QVariantMap resolved;
+    if (!parent.isEmpty()) {
+        resolved = loadInherited(parent, layer, ancestors, depth + 1);
+    }
+    resolved.insert(own);
+    ancestors->remove(name);
+    return resolved;
 }
 
 // A token's value as Theme.qml's themed() finds it: "dark.<key>" or
@@ -237,7 +307,7 @@ inline Loaded loadConfigured(const QString& velaConf)
     for (int i = 0; i < LayerCount; ++i) {
         loaded.files[i] = locate(choice[i], Layer(i));
         if (!loaded.files[i].isEmpty()) {
-            loaded.layers[i] = load(loaded.files[i]);
+            loaded.layers[i] = loadInherited(choice[i], Layer(i));
         }
     }
     return loaded;

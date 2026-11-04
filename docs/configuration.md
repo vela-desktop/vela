@@ -125,6 +125,44 @@ Style tokens ([`Styles.qml`](../shell/qml/Styles.qml)); flags are `0` or `1`:
 
 Settings shows a style's pictures from `vela/themes/screenshots/<surface>/<name>.png` (`<name>-qs.png` and `<name>-nc.png` for quick settings and the center).
 
+### Declarative inheritance and built-in variants
+
+Themes remain data-only. An optional `inherits=<package>` resolves a parent
+within the same family (global theme, taskbar style, Start menu style, or
+notifications style), then overrides only the specified values. The resolver
+limits depth, detects cycles, and falls back when parents are missing. Names
+cannot contain paths; executable QML or scripts are never loaded from themes.
+
+```ini
+# Vela Floating: an official complete look
+# Original author: Brando Giuffrida
+schema-version=1
+inherits=vela
+taskbar-variant=floating
+startmenu-variant=default
+quicksettings-variant=glass
+```
+
+Named variants select **Vela-maintained implementations**, not user code.
+Supported names in schema 1:
+
+| Token | Supported built-in variants |
+| --- | --- |
+| `taskbar-variant` | `default`, `floating`, `floating-split`, `dock` |
+| `startmenu-variant` | `default`, `seven` |
+| `quicksettings-variant` | `default`, `glass`, `classic` |
+| `notifications-variant` | `default`, `aero` |
+
+The existing numeric shell tokens can further tune a variant; styles remain
+backward-compatible as an optional user override. An unknown variant is
+rejected rather than treated as a QML component path. Schema 1 is explicit;
+legacy themes without a version are interpreted as schema 1.
+
+**Design note:** this is the migration-compatible theme engine foundation.
+The draft still requires a theme-candidate preview/revert workflow, typed
+validation for every token, and package-level dependency diagnostics before
+a stable third-party theme API is promised.
+
 ## Display configuration
 
 Persistent display layout is stored separately in:

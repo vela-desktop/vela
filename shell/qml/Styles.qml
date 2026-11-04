@@ -34,14 +34,16 @@ QtObject {
 
     // --- the taskbar (themes/taskbar/) ---
     readonly property QtObject taskbar: QtObject {
+        // Named built-in layouts; existing per-property styles remain compatible.
+        readonly property string variant: Theme.themed("taskbar-variant", "default")
         // A style is chosen: the compositor makes the bar glass from 4% alpha.
         readonly property bool chosen: Style.chosenStyles.indexOf("taskbar") >= 0
         // The bar's height; the panels it opens sit above it.
         readonly property int height: styles.size("taskbar-height", 48, 32, 96)
         // Floating: the bar is a pill this far from the window's edges, with
         // these corners; a margin or a radius makes it float.
-        readonly property int margin: styles.size("taskbar-margin", 0, 0, 24)
-        readonly property int radius: styles.size("taskbar-radius", 0, 0, 48)
+        readonly property int margin: styles.size("taskbar-margin", variant === "default" ? 0 : 10, 0, 24)
+        readonly property int radius: styles.size("taskbar-radius", variant === "default" ? 0 : 18, 0, 48)
         readonly property bool floating: margin > 0 || radius > 0
         // A floating bar that spans the screen keeps this gap at its sides.
         readonly property int sideMargin: styles.size("taskbar-side-margin", margin, 0, 400)
@@ -50,10 +52,10 @@ QtObject {
         // corners where they part. edge: two pills, the tray at the screen's
         // right edge, the apps centered (1) or at the left (2); flush: the
         // apps' pill sits on the bottom edge.
-        readonly property bool fit: styles.flag("taskbar-fit", false)
-        readonly property int splitGap: styles.size("taskbar-split-gap", 0, 0, 48)
+        readonly property bool fit: styles.flag("taskbar-fit", variant !== "default")
+        readonly property int splitGap: styles.size("taskbar-split-gap", variant === "floating-split" ? 8 : 0, 0, 48)
         readonly property int splitRadius: styles.size("taskbar-split-radius", 5, 0, 48)
-        readonly property int edge: styles.size("taskbar-edge", 0, 0, 2)
+        readonly property int edge: styles.size("taskbar-edge", variant === "dock" ? 1 : 0, 0, 2)
         readonly property bool flush: styles.flag("taskbar-flush", false)
         readonly property bool alignLeft: styles.flag("taskbar-align-left", false) // Windows 7
         readonly property color stroke: Theme.themed("taskbar-stroke", Theme.stroke)
@@ -102,27 +104,29 @@ QtObject {
         readonly property int radius: styles.size("startmenu-radius", Theme.radiusOverlay, 0, 48)
         readonly property color surface: Theme.themed("startmenu-surface", Theme.surface)
         readonly property int cellHeight: styles.size("startmenu-cell-height", 96, 64, 160)
-        // layout=1: Windows 7's menu (StartMenuSeven.qml), on the taskbar at
-        // the bottom left corner.
-        readonly property bool seven: styles.size("startmenu-layout", 0, 0, 1) === 1
+        // layout=1 is the legacy spelling of the official Seven variant.
+        readonly property string variant: Theme.themed("startmenu-variant", "default")
+        readonly property bool seven: styles.size("startmenu-layout", variant === "seven" ? 1 : 0, 0, 1) === 1
     }
 
     // --- quick settings and the notification center (themes/notifications/) ---
     readonly property QtObject quickSettings: QtObject {
         readonly property bool chosen: Style.chosenStyles.indexOf("notifications") >= 0
-        readonly property int radius: styles.size("quicksettings-radius", Theme.radiusOverlay, 0, 48)
+        readonly property string variant: Theme.themed("quicksettings-variant", "default")
+        readonly property int radius: styles.size("quicksettings-radius", variant === "classic" ? 0 : Theme.radiusOverlay, 0, 48)
         readonly property int tileRadius: styles.size("quicksettings-tile-radius", Theme.radius, 0, 24)
         readonly property color surface: Theme.themed("quicksettings-surface", Theme.surface)
         // WindowGlass's: borders only along the panel's top edge and the tiles'
         // bottom edge; a split tile's arrow right beside its icon; no footer
         // band (a line above the sliders, the mixer's icon by the arrow); a
         // thick slider with a wide knob.
-        readonly property bool borderless: styles.flag("quicksettings-borderless", false)
-        readonly property bool inlineArrow: styles.flag("quicksettings-inline-arrow", false)
-        readonly property bool flatFooter: styles.flag("quicksettings-flat-footer", false)
-        readonly property bool thickSlider: styles.flag("quicksettings-thick-slider", false)
+        readonly property bool borderless: styles.flag("quicksettings-borderless", variant === "glass")
+        readonly property bool inlineArrow: styles.flag("quicksettings-inline-arrow", variant === "glass")
+        readonly property bool flatFooter: styles.flag("quicksettings-flat-footer", variant === "glass")
+        readonly property bool thickSlider: styles.flag("quicksettings-thick-slider", variant === "glass")
     }
     readonly property QtObject notifications: QtObject {
+        readonly property string variant: Theme.themed("notifications-variant", "default")
         readonly property bool chosen: Style.chosenStyles.indexOf("notifications") >= 0
         readonly property int radius: styles.size("notifications-radius", Theme.radiusOverlay, 0, 48)
         readonly property int cardRadius: styles.size("notifications-card-radius", Theme.radius, 0, 24)
@@ -133,7 +137,7 @@ QtObject {
         readonly property bool focus: styles.flag("notifications-focus", true)
         // Windows 7's glass over both panels (AeroGlass.qml): a lit upper
         // half, a white line inside a dark edge, the streaks if installed.
-        readonly property bool glass: styles.flag("notifications-glass", false)
+        readonly property bool glass: styles.flag("notifications-glass", variant === "aero")
         readonly property string reflection: styles.picture("notifications-reflection")
         readonly property real reflectionOpacity: Math.max(0, Math.min(1, Theme.themed("notifications-reflection-opacity", 0.3)))
     }
