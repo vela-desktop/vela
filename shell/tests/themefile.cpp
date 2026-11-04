@@ -307,6 +307,34 @@ private slots:
         QDir(qEnvironmentVariable("XDG_CONFIG_DIRS")).removeRecursively();
     }
 
+    // A file larger than maxFileSize is not read: not used, listed by its name.
+    void aFileTooLargeIsNotUsed()
+    {
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("^theme .*big\\.conf: larger than 64 KiB: the file is not used$")));
+        write(data() + QStringLiteral("big.conf"), "# Big: a theme\nradius=6\n" + QByteArray(vela::themes::maxFileSize, '#'));
+        const vela::themes::Resolved resolved = vela::themes::resolve(QStringLiteral("big"));
+        QCOMPARE(kinds(resolved.problems), QStringList { "too-large" });
+        QVERIFY(resolved.tokens.isEmpty());
+        QVERIFY(resolved.files.isEmpty());
+        const QVariantList list = vela::themes::available();
+        QCOMPARE(list.size(), 1);
+        QCOMPARE(list[0].toMap().value(QStringLiteral("text")).toString(), QStringLiteral("big"));
+    }
+
+    // Until the user's own themes directory exists, the nearest one above it
+    // is watched, so that creating it is noticed.
+    void watchedDirectoriesIncludeTheUsersParent()
+    {
+        const QString config = qEnvironmentVariable("XDG_CONFIG_HOME");
+        QDir().mkpath(config);
+        QVERIFY(vela::themes::watchedDirectories().contains(QDir::cleanPath(config)));
+        QVERIFY(vela::themes::watchedDirectories(vela::themes::Taskbar).contains(QDir::cleanPath(config)));
+        QDir().mkpath(config + QStringLiteral("/vela/themes"));
+        QVERIFY(vela::themes::watchedDirectories().contains(QDir::cleanPath(config + QStringLiteral("/vela/themes"))));
+        QVERIFY(!vela::themes::watchedDirectories().contains(QDir::cleanPath(config)));
+        QVERIFY(vela::themes::watchedDirectories(vela::themes::Taskbar).contains(QDir::cleanPath(config + QStringLiteral("/vela/themes"))));
+    }
+
     // A theme's tokens over its parent's, over the grandparent's.
     void inheritsResolvesParentsFirst()
     {

@@ -256,13 +256,21 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
 
 // With the taskbar aligned left, Start opens at the bottom left: its window
 // touches the output's edge, and the panel rests 12 units from it
-// (StartMenu.qml's `atLeft`). A taskbar style with its Start button at the
-// left (taskbar-align-left, Windows 7's) puts it there too.
-void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVariantMap& theme)
+// (StartMenu.qml's `atLeft`). A taskbar style that puts the apps, Start
+// first, in a pill at the screen's left (taskbar-edge=2: Layer Mica UI) opens
+// it there too: Styles.qml's and Taskbar.qml's rule, floating && fit && edge.
+void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVariantMap& theme, bool light)
 {
     LayerWindow* layer = LayerWindow::get(window);
-    const bool left = alignment == QLatin1String("left")
-        || theme.value(QStringLiteral("taskbar-align-left")).toDouble() != 0;
+    const auto number = [&theme, light](const char* key, double fallback) {
+        const QVariant value = vela::themes::themed(theme, QLatin1String(key), light);
+        return value.typeId() == QMetaType::Double ? value.toDouble() : fallback;
+    };
+    const QVariant variantValue = vela::themes::themed(theme, QStringLiteral("taskbar-variant"), light);
+    const bool styled = variantValue.isValid() && variantValue.toString() != QLatin1String("default");
+    const bool floating = number("taskbar-margin", styled ? 10 : 0) > 0 || number("taskbar-radius", styled ? 18 : 0) > 0;
+    const bool fit = floating && number("taskbar-fit", styled ? 1 : 0) != 0;
+    const bool left = alignment == QLatin1String("left") || (fit && number("taskbar-edge", 0) == 2);
     layer->setAnchors(left ? bottomLeft : bottom);
     window->setProperty("atLeft", left);
 }
@@ -525,9 +533,9 @@ int main(int argc, char* argv[])
             notificationPopups = window;
         }
     }
-    placeStartMenu(startMenu, config.taskbarAlignment(), style->theme());
+    placeStartMenu(startMenu, config.taskbarAlignment(), style->theme(), style->light());
     const auto replaceStartMenu = [&config, startMenu, style] {
-        placeStartMenu(startMenu, config.taskbarAlignment(), style->theme());
+        placeStartMenu(startMenu, config.taskbarAlignment(), style->theme(), style->light());
     };
     QObject::connect(&config, &Config::taskbarChanged, startMenu, replaceStartMenu);
     QObject::connect(style, &Appearance::changed, startMenu, replaceStartMenu);

@@ -77,16 +77,18 @@ QtObject {
     }
     // Puts a tray panel (its panel `width` wide at `x` in its window) on the
     // panel's output, above `button` ("clock", "icons") of a centered pill
-    // there, else at the bottom right.
+    // there, else at the bottom right. Returns the window's left edge on the
+    // output, or -1 at the right edge (for the panel's screenPoint()).
     function placeTrayPanel(window, button, x, width) {
         const screen = placeOnTargetScreen(window)
         const anchors = screen ? trayAnchors[screen.name] : undefined
         if (!anchors || anchors[button] === undefined) {
             Shell.placeAbove(window, -1)
-            return
+            return -1
         }
-        const left = anchors[button] - x - width / 2
-        Shell.placeAbove(window, Math.round(Math.max(0, Math.min(screen.width - window.width, left))))
+        const left = Math.round(Math.max(0, Math.min(screen.width - window.width, anchors[button] - x - width / 2)))
+        Shell.placeAbove(window, left)
+        return left
     }
     property bool previewHovered: false
     property bool previewButtonHovered: false

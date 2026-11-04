@@ -83,7 +83,7 @@ void Appearance::watch()
     // The themes' and styles' directories: a file added, removed or replaced
     // there (the chosen one may be missing yet) shows at once too.
     for (int i = 0; i < vela::themes::LayerCount; ++i) {
-        for (const QString& dir : vela::themes::directories(vela::themes::Layer(i))) {
+        for (const QString& dir : vela::themes::watchedDirectories(vela::themes::Layer(i))) {
             if (!m_watcher.directories().contains(dir)) {
                 m_watcher.addPath(dir);
             }

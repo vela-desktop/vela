@@ -2769,6 +2769,10 @@ Specifiche sistema
         <translation>schema-version=%1 non è un formato che questo Vela sa leggere: il file non viene usato</translation>
     </message>
     <message>
+        <source>larger than 64 KiB: the file isn&apos;t used</source>
+        <translation>più grande di 64 KiB: il file non viene usato</translation>
+    </message>
+    <message>
         <source>Theme</source>
         <translation>Tema</translation>
     </message>

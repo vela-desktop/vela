@@ -114,6 +114,9 @@ inline QString defaultTheme()
 constexpr int schemaVersion = 1;
 // The longest inherits= chain: more is a mistake, not a theme.
 constexpr int maxChain = 16;
+// The largest file read: themes are a few hundred bytes, so anything bigger
+// is a mistake, and never read into memory whole.
+constexpr qint64 maxFileSize = 64 * 1024;
 
 // A name is a file name without ".conf": nothing that leads elsewhere.
 inline bool validName(const QString& name)
@@ -246,6 +249,29 @@ inline QStringList directories(Layer layer = Theme)
     return existing;
 }
 
+// What to watch for a layer's files: its directories (directories()) and,
+// while the user's own doesn't exist yet, the nearest directory above it that
+// does, so that one created later (~/.config/vela/themes/) is noticed and
+// watched in turn.
+inline QStringList watchedDirectories(Layer layer = Theme)
+{
+    QStringList dirs = directories(layer);
+    QString user = QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + subdirectory(layer));
+    while (!QFileInfo(user).isDir() && user.contains(u'/')) {
+        user = user.section(u'/', 0, -2);
+        if (user.isEmpty()) {
+            user = QStringLiteral("/");
+        }
+        if (QFileInfo(user).isDir()) {
+            if (!dirs.contains(user)) {
+                dirs.append(user);
+            }
+            break;
+        }
+    }
+    return dirs;
+}
+
 // A color as theme files write it: #RRGGBB or #AARRGGBB, nothing else.
 inline bool validColor(const QString& value)
 {
@@ -276,6 +302,7 @@ struct Problem {
         InheritanceCycle, // inherits= back into the chain
         ChainTooLong, // more than maxChain themes
         UnsupportedSchema, // schema-version= other than schemaVersion
+        TooLarge, // a file over maxFileSize
     };
     Kind kind;
     QString file;
@@ -300,6 +327,7 @@ inline QString kindName(Problem::Kind kind)
     case Problem::InheritanceCycle: return QStringLiteral("inheritance-cycle");
     case Problem::ChainTooLong: return QStringLiteral("chain-too-long");
     case Problem::UnsupportedSchema: return QStringLiteral("unsupported-schema");
+    case Problem::TooLarge: return QStringLiteral("too-large");
     }
     return {};
 }
@@ -342,6 +370,9 @@ inline QString describe(const Problem& p)
         break;
     case Problem::UnsupportedSchema:
         what = QStringLiteral("schema-version=%1, and this Vela reads %2: the file is not used").arg(p.value).arg(schemaVersion);
+        break;
+    case Problem::TooLarge:
+        what = QStringLiteral("larger than %1 KiB: the file is not used").arg(maxFileSize / 1024);
         break;
     }
     return p.line > 0 ? QStringLiteral("theme %1:%2: %3").arg(p.file).arg(p.line).arg(what)
@@ -450,11 +481,16 @@ inline Resolved resolve(const QString& name, Layer layer = Theme)
     QList<QVariantMap> chain; // the file first, then its parents
     QString path = locate(name, layer);
     while (!path.isEmpty()) {
+        const QString current = path;
+        if (QFileInfo(path).size() > maxFileSize) {
+            resolved.problems.append({ Problem::TooLarge, current, 0, {}, {} });
+            qWarning("%s", qPrintable(describe(resolved.problems.last())));
+            break;
+        }
         QFile in(path);
         if (!in.open(QIODevice::ReadOnly | QIODevice::Text)) {
             break;
         }
-        const QString current = path;
         File file = read(in, current, layer);
         resolved.problems += file.problems;
         const auto problem = [&resolved, &current](Problem::Kind kind, int line, const QString& value) {
@@ -600,7 +636,8 @@ inline QVariantList available(const QString& surface = QString())
         QString text = it.key();
         QString author;
         QFile file(it.value());
-        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        // A file too large isn't read (resolve() says why): its file name.
+        if (file.size() <= maxFileSize && file.open(QIODevice::ReadOnly | QIODevice::Text)) {
             // The leading comments: the name on the first line, the author below.
             for (bool first = true; !file.atEnd(); first = false) {
                 const QString line = QString::fromUtf8(file.readLine()).trimmed();

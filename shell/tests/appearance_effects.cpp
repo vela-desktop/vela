@@ -75,6 +75,23 @@ private slots:
         QTRY_COMPARE(appearance.animationDuration(), 2.0);
     }
 
+    // The user's themes directory created only after the watch began: its
+    // theme shows once the file is there.
+    void followsAThemesDirectoryCreatedLater()
+    {
+        const QString themes = qEnvironmentVariable("XDG_CONFIG_HOME") + QStringLiteral("/vela/themes");
+        QDir(themes).removeRecursively();
+        QVERIFY(writeConf("theme=fresh\n"));
+        Appearance appearance;
+        appearance.watch();
+        QVERIFY(appearance.theme().isEmpty());
+        QVERIFY(QDir().mkpath(themes));
+        QTest::qWait(300);
+        QSaveFile file(themes + QStringLiteral("/fresh.conf"));
+        QVERIFY(file.open(QIODevice::WriteOnly) && file.write("radius=7\n") == 9 && file.commit());
+        QTRY_COMPARE(appearance.theme().value(QStringLiteral("radius")).toDouble(), 7.0);
+    }
+
     // Style.theme: theme= of vela.conf, then the theme file itself, live.
     void followsTheTheme()
     {
@@ -113,6 +130,11 @@ int main(int argc, char** argv)
     QTemporaryDir home;
     qputenv("XDG_CONFIG_HOME", home.filePath(QStringLiteral("config")).toUtf8());
     qputenv("XDG_CACHE_HOME", home.filePath(QStringLiteral("cache")).toUtf8());
+    // Themes are looked up in the system's directories too: none of the
+    // machine's may count here.
+    qputenv("XDG_CONFIG_DIRS", home.filePath(QStringLiteral("sys-config")).toUtf8());
+    qputenv("XDG_DATA_HOME", home.filePath(QStringLiteral("data")).toUtf8());
+    qputenv("XDG_DATA_DIRS", home.filePath(QStringLiteral("sys-data")).toUtf8());
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
     AppearanceEffectsTest test;

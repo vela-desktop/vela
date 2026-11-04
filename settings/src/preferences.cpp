@@ -90,12 +90,16 @@ void Preferences::watchThemes()
 {
     // The directories for files added and removed, the files for edits; an
     // editor that replaces a file drops it from the watcher, so add it again.
-    // The themes' and every surface's styles'.
+    // The themes' and every surface's styles'; while the user's own don't
+    // exist yet, the directory above them, so that creating them is noticed.
     for (int i = 0; i < vela::themes::LayerCount; ++i) {
-        for (const QString& dir : vela::themes::directories(vela::themes::Layer(i))) {
+        const auto layer = vela::themes::Layer(i);
+        for (const QString& dir : vela::themes::watchedDirectories(layer)) {
             if (!m_themesWatcher.directories().contains(dir)) {
                 m_themesWatcher.addPath(dir);
             }
+        }
+        for (const QString& dir : vela::themes::directories(layer)) {
             for (const QString& file : QDir(dir).entryList({ QStringLiteral("*.conf") }, QDir::Files)) {
                 const QString path = dir + u'/' + file;
                 if (!m_themesWatcher.files().contains(path)) {

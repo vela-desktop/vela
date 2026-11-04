@@ -51,6 +51,7 @@ Page {
         case "inheritance-cycle": what = qsTr("inherits=%1, which inherits back from this theme").arg(problem.value); break
         case "chain-too-long": what = qsTr("inherits=%1 makes too long a chain of themes").arg(problem.value); break
         case "unsupported-schema": what = qsTr("schema-version=%1 isn't a format this Vela reads: the file isn't used").arg(problem.value); break
+        case "too-large": what = qsTr("larger than 64 KiB: the file isn't used"); break
         default: what = problem.kind
         }
         const file = problem.file.substring(problem.file.lastIndexOf("/") + 1)

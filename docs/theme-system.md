@@ -149,10 +149,13 @@ Never use an untrusted author's screenshot as proof of the resulting theme.
 
 ## Safety, packaging and maintainability
 
-- Data files have size/depth/range limits, no arbitrary imports, code,
-  installation hooks or untrusted process execution.
-- Theme assets must resolve inside allowed package roots, with symlinks and
-  packaged image limits handled explicitly (**planned hardening**).
+- Data files have size, depth and range limits (64 KiB a file, checked
+  before reading it; 16 files a chain; values clamped where they are used),
+  no arbitrary imports, code, installation hooks or untrusted process
+  execution.
+- Theme pictures, if they come back, must resolve inside allowed package
+  roots, with symlinks and packaged image limits handled explicitly
+  (**planned hardening**).
 - Theme IDs, schema and variant IDs are stable interfaces; implementation
   details remain private.
 - A compatibility matrix separates Vela-owned controls, third-party Qt, GTK,

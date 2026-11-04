@@ -50,7 +50,7 @@ Window {
         if (!motion.closing) {
             page = ""
             d.settle()
-            Menus.placeTrayPanel(root, "icons", motion.x, motion.width)
+            root.screenLeft = Menus.placeTrayPanel(root, "icons", motion.x, motion.width)
         }
         visible = true
         Menus.quickSettingsOpen = true
@@ -104,9 +104,13 @@ Window {
     }
     // At the bottom right, above the taskbar: from panel to output
     // coordinates.
+    // The window's left edge on the output, -1 at the output's right edge
+    // (Menus.placeTrayPanel(): above a centered taskbar's icons, or not).
+    property int screenLeft: -1
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
-        return Qt.point(Screen.width - root.width + p.x, Screen.height - Styles.taskbar.height - root.height + p.y)
+        return Qt.point((root.screenLeft >= 0 ? root.screenLeft : Screen.width - root.width) + p.x,
+                        Screen.height - Styles.taskbar.height - root.height + p.y)
     }
     // The outputs (or inputs) for one app (the mixer), in a menu under its
     // button.
@@ -222,14 +226,15 @@ Window {
         Keys.onEnterPressed: clicked()
         readonly property bool shownDown: down || litDown
         readonly property bool shownHovered: hovered || lit
+        // bare: no fill of its own, but the focus ring still shows.
         background: Fill {
-            visible: !half.bare
             readonly property int corner: Styles.quickSettings.tileRadius
             topLeftRadius: half.roundLeft ? corner : 0
             bottomLeftRadius: half.roundLeft ? corner : 0
             topRightRadius: half.roundRight ? corner : 0
             bottomRightRadius: half.roundRight ? corner : 0
-            color: half.on ? (half.shownDown ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.06))
+            color: half.bare ? "transparent"
+                 : half.on ? (half.shownDown ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.06))
                               : half.shownHovered ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.08)) : Theme.accent)
                  : (half.shownDown ? Theme.controlPressed : half.shownHovered ? Theme.controlHover : Theme.control)
             FocusRing { visible: half.visualFocus }
