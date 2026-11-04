@@ -434,7 +434,9 @@ int main(int argc, char* argv[])
     // formula Vela's apps use for their content (mica.h).
     QColor tint = shell.wallpaperTint(config.wallpaper());
     // A theme's accent and window background (themes/<name>.conf) win, as in
-    // Theme.qml: the title bars match the apps' content.
+    // Theme.qml: the title bars match the apps' content. A see-through
+    // background (Window Glass) keeps Mica on the title bars, as in lowell's
+    // fork: an opaque bar over glass content.
     auto sendLook = [&config, style, &tint] {
         const QVariant themeAccent = vela::themes::themed(style->theme(), QStringLiteral("accent"), style->light());
         const QColor accent = themeAccent.typeId() == QMetaType::QColor ? themeAccent.value<QColor>() : style->accent();
@@ -442,8 +444,9 @@ int main(int argc, char* argv[])
             + config.appTheme().toLatin1() + ' ' + accent.name().toLatin1());
         const bool appsLight = config.appTheme() == QLatin1String("light");
         const QVariant background = vela::themes::themed(style->theme(), QStringLiteral("background"), appsLight);
-        const QColor active = background.typeId() == QMetaType::QColor ? background.value<QColor>() : micaFromTint(tint, true, appsLight);
-        const QColor inactive = background.typeId() == QMetaType::QColor ? active : micaFromTint(tint, false, appsLight);
+        const bool themed = background.typeId() == QMetaType::QColor && background.value<QColor>().alpha() == 255;
+        const QColor active = themed ? background.value<QColor>() : micaFromTint(tint, true, appsLight);
+        const QColor inactive = themed ? active : micaFromTint(tint, false, appsLight);
         ShellController::sendToCompositor("mica " + active.name().toLatin1() + ' ' + inactive.name().toLatin1());
         // The blur's look (the blur-* keys): the theme's for every acrylic
         // surface, then each panel's from the theme and its own style only, so

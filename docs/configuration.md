@@ -77,7 +77,7 @@ The Settings app is the preferred way to edit these values because it applies va
 
 A **theme** is a complete look of the shell and of Vela's apps: colors and corner radii, the blur behind the shell's panels, and the shape of any shell surface. A **style** changes one surface of the shell over the theme, like Windhawk's three stylers: the taskbar, the Start menu, or quick settings with the notification center. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own) and then in the data directories (`/usr/share/vela/themes/`, the installed ones); `taskbar-style=aero` loads `vela/themes/taskbar/aero.conf` the same way. A style's values win over the theme's. The shell and the apps reload them when they, or what they inherit, change.
 
-Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed themes are lowell's **Window Glass** (`window-glass.conf`, after Windhawk's WindowGlass: flat gray glass over a light blur and a see-through Settings), **Aero**, **Rosé Pine** and **Everblush**, and **Vela Floating** and **Vela Seven**, Vela Official with built-in variants. The 80 installed styles are lowell's too, from Windhawk's stylers.
+Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed themes are lowell's **Window Glass** (`window-glass.conf`, after Windhawk's WindowGlass: flat gray glass over a light blur, a floating pill taskbar as wide as its apps, round Start and quick settings, and a see-through Settings), **Aero**, **Rosé Pine** and **Everblush**, and **Vela Floating** and **Vela Seven**, Vela Official with built-in variants. The 80 installed styles are lowell's too, from Windhawk's stylers.
 
 ```ini
 # Mine: the first line names the theme in Settings
@@ -101,7 +101,7 @@ Choosing a theme in Settings only shows it in the preview; **Apply** writes `the
 
 The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars) and `accent` in place of Mica and the chosen accent, and the `blur-*` keys: the theme's for every acrylic surface, then each panel's with its own style. A panel with a look of its own (a style, or the theme's keys for that surface) has its blur rounded like it, and glass from 4% alpha instead of half. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
 
-A `background` that is not opaque (`#AARRGGBB`) makes Settings see-through: it asks the compositor to blur what is behind it (`ext-background-effect-v1`), with the theme's blur, like the shell's panels. File Explorer stays opaque, in the same color: Qt draws its half-transparent toolbar washed out over a see-through window.
+A `background` that is not opaque (`#AARRGGBB`) makes Settings see-through: it asks the compositor to blur what is behind it (`ext-background-effect-v1`), with the theme's blur, like the shell's panels. The title bars keep Mica then, as in lowell's fork. File Explorer stays opaque, in the same color: Qt draws its half-transparent toolbar washed out over a see-through window.
 
 Theme tokens ([`Theme.qml`](../common/controls/Theme.qml)):
 
