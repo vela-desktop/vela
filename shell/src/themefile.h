@@ -21,6 +21,7 @@
 #include <QtLogging>
 
 #include <array>
+#include <cmath>
 
 // Theme files (docs/configuration.md, "Theme files"): the values Theme.qml
 // takes over Vela's own. Two kinds, like Windhawk's theme and its three
@@ -157,6 +158,44 @@ inline QString assetUrl(const QString& name)
     return file.isEmpty() ? QString() : QUrl::fromLocalFile(file).toString();
 }
 
+// Vela's stable schema-1 token registry. Types are checked once at load time
+// instead of relying on QML coercions for data supplied by third-party themes.
+enum class TokenKind { Unknown, Color, Number, Asset, Variant };
+
+inline TokenKind tokenKind(const QString& key)
+{
+    static const QSet<QString> colorTokens {
+        QStringLiteral("accent"), QStringLiteral("backdrop"), QStringLiteral("background"), QStringLiteral("card"), QStringLiteral("cardHover"), QStringLiteral("cardPressed"), QStringLiteral("cardStroke"), QStringLiteral("control"), QStringLiteral("controlHover"), QStringLiteral("controlPressed"), QStringLiteral("controlStroke"), QStringLiteral("dialog"), QStringLiteral("dialogFooter"), QStringLiteral("field"), QStringLiteral("flyout"), QStringLiteral("notifications-surface"), QStringLiteral("popup"), QStringLiteral("quicksettings-surface"), QStringLiteral("startmenu-surface"), QStringLiteral("stroke"), QStringLiteral("surface"), QStringLiteral("taskCard"), QStringLiteral("taskCardHover"), QStringLiteral("taskbar"), QStringLiteral("taskbar-button-fill"), QStringLiteral("taskbar-button-fill-active"), QStringLiteral("taskbar-button-stroke"), QStringLiteral("taskbar-stroke"), QStringLiteral("text"), QStringLiteral("textSecondary"), QStringLiteral("textTertiary")
+    };
+    static const QSet<QString> numberTokens {
+        QStringLiteral("blur-saturation"), QStringLiteral("blur-strength"), QStringLiteral("blur-tint"), QStringLiteral("menu-layout"), QStringLiteral("notifications-card-radius"), QStringLiteral("notifications-focus"), QStringLiteral("notifications-glass"), QStringLiteral("notifications-radius"), QStringLiteral("notifications-reflection-opacity"), QStringLiteral("notifications-today-radius"), QStringLiteral("quicksettings-borderless"), QStringLiteral("quicksettings-flat-footer"), QStringLiteral("quicksettings-inline-arrow"), QStringLiteral("quicksettings-radius"), QStringLiteral("quicksettings-thick-slider"), QStringLiteral("quicksettings-tile-radius"), QStringLiteral("radius"), QStringLiteral("radiusCard"), QStringLiteral("radiusOverlay"), QStringLiteral("startmenu-cell-height"), QStringLiteral("startmenu-height"), QStringLiteral("startmenu-layout"), QStringLiteral("startmenu-radius"), QStringLiteral("startmenu-width"), QStringLiteral("taskbar-align-left"), QStringLiteral("taskbar-bounce"), QStringLiteral("taskbar-button-gloss"), QStringLiteral("taskbar-button-height"), QStringLiteral("taskbar-button-radius"), QStringLiteral("taskbar-button-width"), QStringLiteral("taskbar-edge"), QStringLiteral("taskbar-fit"), QStringLiteral("taskbar-flush"), QStringLiteral("taskbar-height"), QStringLiteral("taskbar-icon-size"), QStringLiteral("taskbar-margin"), QStringLiteral("taskbar-radius"), QStringLiteral("taskbar-reflection-opacity"), QStringLiteral("taskbar-side-margin"), QStringLiteral("taskbar-spacing"), QStringLiteral("taskbar-split-gap"), QStringLiteral("taskbar-split-radius"), QStringLiteral("taskbar-start-glyph"), QStringLiteral("taskbar-task-view")
+    };
+    static const QSet<QString> assetTokens {
+        QStringLiteral("notifications-reflection"), QStringLiteral("taskbar-desktop-image"), QStringLiteral("taskbar-desktop-image-hover"), QStringLiteral("taskbar-orb"), QStringLiteral("taskbar-orb-pressed"), QStringLiteral("taskbar-reflection"), QStringLiteral("taskbar-tile-image"), QStringLiteral("taskbar-tile-image-active"), QStringLiteral("taskbar-tile-image-hover"), QStringLiteral("taskbar-tile-image-idle-hover")
+    };
+    static const QSet<QString> variantTokens {
+        QStringLiteral("notifications-variant"), QStringLiteral("quicksettings-variant"), QStringLiteral("startmenu-variant"), QStringLiteral("taskbar-variant")
+    };
+    if (colorTokens.contains(key)) return TokenKind::Color;
+    if (numberTokens.contains(key)) return TokenKind::Number;
+    if (assetTokens.contains(key)) return TokenKind::Asset;
+    if (variantTokens.contains(key)) return TokenKind::Variant;
+    return TokenKind::Unknown;
+}
+
+// Runtime isolation applies to *all* user-installed styles, not only built-ins.
+// Cross-surface overrides otherwise leak into the rest of the desktop.
+inline bool belongsToLayer(const QString& key, Layer layer)
+{
+    if (layer == Theme) return true;
+    if (key == QLatin1String("inherits") || key == QLatin1String("schema-version")) return true;
+    if (key.startsWith(QLatin1String("blur-"))) return true;
+    if (layer == Taskbar) return key == QLatin1String("taskbar") || key.startsWith(QLatin1String("taskbar-"));
+    if (layer == StartMenu) return key.startsWith(QLatin1String("startmenu-")) || key == QLatin1String("menu-layout");
+    if (layer == Notifications) return key.startsWith(QLatin1String("notifications-")) || key.startsWith(QLatin1String("quicksettings-"));
+    return false;
+}
+
 // Only identifiers of built-in Vela implementations may be selected by theme
 // files. No arbitrary QML paths, scripts, or extension code can be loaded.
 inline bool allowedVariant(const QString& key, const QString& value)
@@ -198,18 +237,15 @@ inline QVariantMap parse(QIODevice& in, const QString& origin = QString())
             } else {
                 qWarning("theme %s:%d: invalid parent theme", qPrintable(origin), number);
             }
-        } else if (bareKey.endsWith(QLatin1String("-variant"))) {
-            if (allowedVariant(bareKey, value)) {
-                map.insert(key, value);
-            } else {
-                qWarning("theme %s:%d: unsupported official variant %s=%s", qPrintable(origin), number,
-                    qPrintable(key), qPrintable(value));
-            }
-        } else if (isNumber) {
+        } else if (key == QLatin1String("schema-version") && isNumber) {
+            map.insert(key, d); // loadInherited rejects unsupported schemas.
+        } else if (tokenKind(bareKey) == TokenKind::Variant && allowedVariant(bareKey, value)) {
+            map.insert(key, value);
+        } else if (tokenKind(bareKey) == TokenKind::Number && isNumber && std::isfinite(d)) {
             map.insert(key, d);
-        } else if (value.startsWith(u'#') && QColor::isValidColorName(value)) {
+        } else if (tokenKind(bareKey) == TokenKind::Color && value.startsWith(u'#') && QColor::isValidColorName(value)) {
             map.insert(key, QColor::fromString(value));
-        } else if (value.startsWith(QLatin1String("asset:"))) {
+        } else if (tokenKind(bareKey) == TokenKind::Asset && value.startsWith(QLatin1String("asset:"))) {
             map.insert(key, assetUrl(value.mid(6).trimmed()));
         } else {
             qWarning("theme %s:%d: %s is neither a color, a number nor an asset:", qPrintable(origin), number,
@@ -219,13 +255,25 @@ inline QVariantMap parse(QIODevice& in, const QString& origin = QString())
     return map;
 }
 
-inline QVariantMap load(const QString& path)
+inline QVariantMap load(const QString& path, Layer layer = Theme)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return {};
     }
-    return parse(file, path);
+    QVariantMap raw = parse(file, path);
+    for (auto it = raw.begin(); it != raw.end();) {
+        const QString key = it.key();
+        const QString token = key.startsWith(QLatin1String("dark.")) || key.startsWith(QLatin1String("light."))
+            ? key.section(u'.', 1) : key;
+        if (!belongsToLayer(token, layer)) {
+            qWarning("theme %s: token %s cannot override another surface", qPrintable(path), qPrintable(key));
+            it = raw.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    return raw;
 }
 
 // Resolve the one-parent inheritance chain within the same theme/style family.
@@ -250,10 +298,10 @@ inline QVariantMap loadInherited(const QString& name, Layer layer = Theme, QSet<
         return {};
     }
     ancestors->insert(name);
-    QVariantMap own = load(path);
+    QVariantMap own = load(path, layer);
     const QString parent = own.take(QStringLiteral("inherits")).toString();
     const QVariant version = own.take(QStringLiteral("schema-version"));
-    if (version.isValid() && version.toInt() != 1) {
+    if (version.isValid() && version.toDouble() != 1.0) {
         qWarning("theme: unsupported schema in %s", qPrintable(path));
         ancestors->remove(name);
         return {};
