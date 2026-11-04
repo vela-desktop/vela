@@ -32,6 +32,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_tearing_control_v1.h>
+#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
@@ -291,11 +292,14 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
             e->blur_box = (struct wlr_box) { ext->x1, ext->y1, ext->x2 - ext->x1, ext->y2 - ext->y1 };
             // Mechanism for clients, policy for ourselves: Vela's surfaces
             // are layer surfaces named vela-... (the shell's panels, the
-            // polkit prompt); a client that picks such a name only changes its
-            // own look.
-            struct wlr_layer_surface_v1 *layer
-                = wlr_layer_surface_v1_try_from_wlr_surface(wlr_surface_get_root_surface(surface));
-            e->acrylic = layer && layer->namespace && strncmp(layer->namespace, "vela-", 5) == 0;
+            // polkit prompt) and windows whose app id is vela-... (Vela's
+            // apps, blurred behind with a theme's see-through background); a
+            // client that picks such a name only changes its own look.
+            struct wlr_surface *root = wlr_surface_get_root_surface(surface);
+            struct wlr_layer_surface_v1 *layer = wlr_layer_surface_v1_try_from_wlr_surface(root);
+            struct wlr_xdg_toplevel *toplevel = layer ? NULL : wlr_xdg_toplevel_try_from_wlr_surface(root);
+            const char *name = layer ? layer->namespace : toplevel ? toplevel->app_id : NULL;
+            e->acrylic = name && strncmp(name, "vela-", 5) == 0;
             e->look = e->acrylic ? v->scene->blur_look : VELA_BLUR_LOOK_DEFAULT;
         }
         pixman_region32_fini(&pixels);

@@ -92,13 +92,15 @@ The first comment line names the theme in Settings, and a `# Original author:` l
 
 - `inherits=<name>` starts from another theme: its tokens first, then this file's over them. A theme of yours can inherit the installed one of the same name (`~/.config/vela/themes/vela.conf` with `inherits=vela`). A parent that isn't installed, or that inherits back, is left out and the theme keeps its own tokens; a chain stops after 16 themes.
 - `schema-version=1` is the format, optional. A file with another version is not used, nor what it inherits.
-- `blur-saturation`, `blur-strength` and `blur-tint` are the blur the compositor draws behind Vela's acrylic surfaces (the shell's panels and menus), numbers for both modes. `blur-saturation` is the acrylic's saturation, 1–3 (Vela's: 1.25); `blur-strength` multiplies the blur's radius (Vela's: 1; the compositor keeps the result between half and six times its smallest blur); `blur-tint` is the opacity of the acrylic's gray wash, 0–1 (Vela's: 0.55; `0` leaves only the panels' own fills). A value outside its range is brought within it; a key the theme leaves out keeps Vela's value.
+- `blur-saturation`, `blur-strength` and `blur-tint` are the blur the compositor draws behind Vela's acrylic surfaces (the shell's panels and menus, and the windows of Vela's apps when they are see-through), numbers for both modes. `blur-saturation` is the acrylic's saturation, 1–3 (Vela's: 1.25); `blur-strength` multiplies the blur's radius (Vela's: 1; the compositor keeps the result between half and six times its smallest blur); `blur-tint` is the opacity of the acrylic's gray wash, 0–1 (Vela's: 0.55; `0` leaves only the panels' own fills). A value outside its range is brought within it; a key the theme leaves out keeps Vela's value.
 
 A line that isn't a token, a token with a value of the wrong type and a broken `inherits=` are skipped with a warning in the log that names the file, the line and what is wrong. Settings > Personalization > Themes lists them under the theme too.
 
 Choosing a theme in Settings only shows it in the preview; **Apply** writes `theme=` and **Cancel** goes back to the one in use. A theme with its own `accent` replaces the accent color chosen in Settings > Colors while it is in use, and Settings says so.
 
 The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars, opaque) and `accent` in place of Mica and the chosen accent, and its `blur-*` keys. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
+
+A `background` that is not opaque (`#AARRGGBB`) makes Settings see-through: it asks the compositor to blur what is behind it (`ext-background-effect-v1`), with the theme's blur, like the shell's panels. File Explorer stays opaque, in the same color: Qt draws its half-transparent toolbar washed out over a see-through window.
 
 | Tokens | Kind |
 |---|---|

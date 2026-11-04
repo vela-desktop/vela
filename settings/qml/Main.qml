@@ -17,6 +17,12 @@ Window {
     title: qsTr("Settings")
     color: Theme.background
 
+    // A theme's see-through background (Window Glass) is glass: the
+    // compositor blurs what is behind the window. Vela's own is opaque and
+    // asks for nothing.
+    readonly property var glass: Theme.background.a < 1 ? [Qt.rect(0, 0, width, height)] : []
+    onGlassChanged: Effects.setBlur(root, glass)
+
     onActiveChanged: {
         Theme.windowActive = active
         if (active) {
@@ -142,7 +148,12 @@ Window {
     Shortcut { sequences: [StandardKey.Back]; onActivated: root.back() }
     Shortcut { sequences: [StandardKey.Forward]; onActivated: root.forward() }
 
-    Component.onCompleted: navigate(Router.initialPage)
+    Component.onCompleted: {
+        if (glass.length) {
+            Effects.setBlur(root, glass)
+        }
+        navigate(Router.initialPage)
+    }
 
     Connections {
         target: Router

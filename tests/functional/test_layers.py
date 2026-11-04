@@ -126,11 +126,13 @@ class BlurPolicy(unittest.TestCase):
         vela.wait_for(lambda s: s.output["frames"] > 0)
         time.sleep(0.6)
 
-    def check(self, vela, label, expected):
-        """Every sampled pixel of the taskbar within the expected range."""
+    def check(self, vela, label, expected, box=None):
+        """Every sampled pixel of the box (x, y, width, height; the taskbar
+        by default) within the expected range."""
         image = vela.pixels()
-        for y in range(image.height - BAR + 8, image.height - 8, 6):
-            for x in range(40, image.width - 40, 97):
+        x0, y0, w, h = box or (40, image.height - BAR + 8, image.width - 80, BAR - 16)
+        for y in range(y0, y0 + h, 6):
+            for x in range(x0, x0 + w, 97 if box is None else 23):
                 pixel = image.at(x, y)
                 self.assertTrue(all(lo <= v <= hi for v, (lo, hi) in zip(pixel, expected)),
                                 f"{label} at ({x}, {y}): {pixel}, expected within {expected}")
@@ -140,6 +142,28 @@ class BlurPolicy(unittest.TestCase):
             with self.subTest(namespace=namespace), Session() as vela:
                 self.start(vela, namespace)
                 self.check(vela, namespace, self.expected(acrylic))
+
+    def test_acrylic_for_vela_windows(self):
+        """Windows are Vela's by app id, vela-...: Vela's apps with a theme's
+        see-through background get the acrylic and the theme's blur-look; a
+        client's window gets the plain blur either way."""
+        for app_id, acrylic in (("vela-test", True), ("test.app", False)):
+            with self.subTest(app_id=app_id), Session() as vela:
+                color = "%02x%02x%02x" % self.WALLPAPER
+                vela.clients.append(subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", color],
+                                                     env=vela.client_env))
+                vela.wait_for(lambda s: s.output["frames"] > 0)
+                identifier = vela.open_window(app_id=app_id, glass=True)
+                window = vela.state().window(identifier)
+                time.sleep(0.6)
+                # Away from the edges: there the blur also reads the window's
+                # own shadow.
+                box = (window["x"] + 48, window["y"] + 48, window["w"] - 96, window["h"] - 96)
+                self.check(vela, app_id, self.expected(acrylic), box)
+                vela.command("blur-look 2 -1 0")
+                time.sleep(0.4)
+                self.check(vela, f"{app_id}, blur-look 2 -1 0",
+                           self.expected(acrylic, saturation=2, amount=0) if acrylic else self.expected(False), box)
 
     def test_theme_blur_look(self):
         """A theme's blur-saturation and blur-tint (the shell's blur-look)

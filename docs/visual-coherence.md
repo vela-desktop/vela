@@ -595,17 +595,21 @@ checks the buttons' hover against `Theme.subtleHover`.
 
 "Vela's surfaces" are layer surfaces whose namespace starts with `vela-`: the
 shell's panels and the polkit prompt (`vela-polkit`, `vela-polkit-veil`)
-already use it. Keying a visual rule on the layer namespace is what other
-wlroots compositors do for blur; a third-party client that picks a `vela-`
-namespace only changes its own look. When `add_surface()` finds a blur region it
-sets `acrylic` on the element from `wlr_layer_surface_v1_try_from_wlr_surface()`;
-otherwise `vela_pass_add_blur()` passes a zero tint and a saturation of 1. The
+already use it. Windows whose app id starts with `vela-` are Vela's too: Vela's
+apps, which ask for a blur only when a theme's window background is
+see-through (Window Glass). Keying a visual rule on the layer namespace is what
+other wlroots compositors do for blur; a third-party client that picks a `vela-`
+namespace or app id only changes its own look. When `add_surface()` finds a
+blur region it sets `acrylic` on the element from
+`wlr_layer_surface_v1_try_from_wlr_surface()` or
+`wlr_xdg_toplevel_try_from_wlr_surface()`; otherwise `vela_pass_add_blur()` passes a zero tint and a saturation of 1. The
 shell's look doesn't change.
 
 A theme's `blur-*` keys reach the compositor as `blur-look <saturation>
 <strength> <tint>`, which the shell sends with `theme` and `mica`; `-1` keeps
 Vela's own value. They change Vela's surfaces only
-(`test_layers.BlurPolicy.test_theme_blur_look`).
+(`test_layers.BlurPolicy.test_theme_blur_look`,
+`test_acrylic_for_vela_windows`).
 
 **Verified by** a functional test with `vela-panel`, which gets a `--namespace`
 option (today it always uses `vela-panel`, so the existing blur tests keep the
