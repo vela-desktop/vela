@@ -19,7 +19,10 @@ Page {
     readonly property int foundIndex: choices.findIndex(t => t.name === page.candidateTheme)
     readonly property int chosenIndex: Math.max(0, foundIndex)
     readonly property var chosen: choices[chosenIndex] ?? ({ text: "", author: "" })
-    readonly property var candidateTokens: Prefs.themePreview(page.candidateTheme)
+    readonly property var candidateTokens: {
+        Prefs.surfaceStyles; // Re-resolve after advanced style overrides change.
+        return Prefs.themePreview(page.candidateTheme)
+    }
 
     PersonalizationPage.DesktopPreview { themeTokens: page.candidateTokens }
 
