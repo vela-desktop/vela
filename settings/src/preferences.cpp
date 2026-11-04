@@ -90,14 +90,17 @@ void Preferences::watchThemes()
 {
     // The directories for files added and removed, the files for edits; an
     // editor that replaces a file drops it from the watcher, so add it again.
-    for (const QString& dir : vela::themes::directories()) {
-        if (!m_themesWatcher.directories().contains(dir)) {
-            m_themesWatcher.addPath(dir);
-        }
-        for (const QString& file : QDir(dir).entryList({ QStringLiteral("*.conf") }, QDir::Files)) {
-            const QString path = dir + u'/' + file;
-            if (!m_themesWatcher.files().contains(path)) {
-                m_themesWatcher.addPath(path);
+    // The themes' and every surface's styles'.
+    for (int i = 0; i < vela::themes::LayerCount; ++i) {
+        for (const QString& dir : vela::themes::directories(vela::themes::Layer(i))) {
+            if (!m_themesWatcher.directories().contains(dir)) {
+                m_themesWatcher.addPath(dir);
+            }
+            for (const QString& file : QDir(dir).entryList({ QStringLiteral("*.conf") }, QDir::Files)) {
+                const QString path = dir + u'/' + file;
+                if (!m_themesWatcher.files().contains(path)) {
+                    m_themesWatcher.addPath(path);
+                }
             }
         }
     }
@@ -232,8 +235,15 @@ void Preferences::reloadCompositor()
     if (theme.isEmpty()) {
         theme = vela::themes::defaultTheme();
     }
-    if (theme != m_visualTheme) {
+    // Each surface's own style: "" for none.
+    QVariantMap styles;
+    for (int i = vela::themes::Taskbar; i < vela::themes::LayerCount; ++i) {
+        const auto& info = vela::themes::layerInfo(vela::themes::Layer(i));
+        styles.insert(QLatin1String(info.directory), value(QLatin1String(info.key), {}).trimmed());
+    }
+    if (theme != m_visualTheme || styles != m_surfaceStyles) {
         m_visualTheme = theme;
+        m_surfaceStyles = styles;
         emit visualThemeChanged();
     }
 
@@ -532,6 +542,8 @@ void Preferences::saveCompositorKeys(const QStringList& keys)
             changes.append({ key, m_language });
         } else if (key == QLatin1String("theme")) {
             changes.append({ key, m_visualTheme });
+        } else if (key.endsWith(QLatin1String("-style")) && m_surfaceStyles.contains(key.chopped(6))) {
+            changes.append({ key, m_surfaceStyles.value(key.chopped(6)).toString() });
         } else if (key == QLatin1String("keyboard-layout") || key == QLatin1String("keyboard-variant")) {
             QStringList values;
             for (const QVariant& value : std::as_const(m_layouts)) {
@@ -646,14 +658,50 @@ QVariantList Preferences::visualThemes() const
 
 QVariantMap Preferences::resolveTheme(const QString& name) const
 {
-    // The same resolution as the shell's (Appearance), without applying it.
-    const vela::themes::Resolved resolved = vela::themes::resolve(name);
+    // The same resolution as the shell's (Appearance), without applying it:
+    // the theme with the styles chosen for each surface over it.
+    vela::themes::Choice choice;
+    choice[vela::themes::Theme] = name;
+    for (int i = vela::themes::Taskbar; i < vela::themes::LayerCount; ++i) {
+        choice[i] = m_surfaceStyles.value(QLatin1String(vela::themes::layerInfo(vela::themes::Layer(i)).directory)).toString();
+    }
+    const vela::themes::Loaded loaded = vela::themes::load(choice);
+    const vela::themes::Resolved& theme = loaded.layers[vela::themes::Theme];
     QVariantList problems;
-    for (const vela::themes::Problem& problem : resolved.problems) {
+    for (const vela::themes::Problem& problem : theme.problems) {
         problems.append(vela::themes::toVariant(problem));
     }
-    return { { QStringLiteral("installed"), !resolved.files.isEmpty() }, { QStringLiteral("tokens"), resolved.tokens },
+    return { { QStringLiteral("installed"), !theme.files.isEmpty() }, { QStringLiteral("tokens"), loaded.merged() },
         { QStringLiteral("problems"), problems } };
+}
+
+void Preferences::setSurfaceStyle(const QString& surface, const QString& style)
+{
+    const QString name = style.trimmed();
+    if (!m_surfaceStyles.contains(surface) || m_surfaceStyles.value(surface).toString() == name
+        || (!name.isEmpty() && !vela::themes::validName(name))) {
+        return;
+    }
+    m_surfaceStyles.insert(surface, name);
+    saveCompositorKeys(QStringList { surface + QStringLiteral("-style") });
+    emit visualThemeChanged();
+}
+
+QVariantList Preferences::styleGallery(const QString& surface) const
+{
+    return vela::themes::gallery(surface);
+}
+
+void Preferences::resetThemes()
+{
+    QStringList keys { QStringLiteral("theme") };
+    m_visualTheme = vela::themes::defaultTheme();
+    for (auto it = m_surfaceStyles.begin(); it != m_surfaceStyles.end(); ++it) {
+        it.value() = QString();
+        keys.append(it.key() + QStringLiteral("-style"));
+    }
+    saveCompositorKeys(keys);
+    emit visualThemeChanged();
 }
 
 void Preferences::saveLayouts()

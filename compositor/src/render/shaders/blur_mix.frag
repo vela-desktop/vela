@@ -10,7 +10,9 @@
 // theme's blur-saturation) and a tint; other clients get the plain blur they
 // asked for (docs/visual-coherence.md §6.7). The panel itself gives the
 // shape: where its surface is transparent (outside the rounded corners)
-// nothing is blurred. The panel is then drawn on top.
+// nothing is blurred: from half its alpha on, or from 4% for a styled shell
+// panel (flags bit 4: the nearly clear taskbars of some styles). The panel is
+// then drawn on top.
 //
 // binding 0: the panel surface (uv); binding 1: the blurred background, read
 // at the output point: (pixel - pad) * shape.zw. color: the tint (linear,
@@ -39,6 +41,7 @@ void main()
     c = c * (1.0 - pc.color.a) + colorFilter(pc.color).rgb; // tint
     c += (noise(gl_FragCoord.xy) - 0.5) * (2.0 / 255.0);
     c = max(c, 0.0);
-    const float coverage = smoothstep(0.0, 0.5, texture(mask, uv).a) * shapeClip() * pc.alpha;
+    const float opaqueFrom = (pc.flags & 16u) != 0u ? 0.04 : 0.5;
+    const float coverage = smoothstep(0.0, opaqueFrom, texture(mask, uv).a) * shapeClip() * pc.alpha;
     outColor = vec4(c, 1.0) * coverage;
 }

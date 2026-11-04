@@ -353,21 +353,29 @@ static void mica(struct vela_server *server, const char *arguments)
     refresh_decorations(server);
 }
 
-// blur-look <saturation> <strength> <tint>: a theme's blur-* keys, the look
-// of every acrylic surface (struct vela_blur_look); a negative value keeps
-// Vela's own.
+// blur-look <scope> <saturation> <strength> <tint> <glass>: a theme's blur-*
+// keys (struct vela_blur_look), for every acrylic surface ("*") or for the
+// shell panel with that layer namespace (the theme and its style's). -1:
+// Vela's own; glass 1: the panel has a style.
 static void blur_look(struct vela_server *server, const char *arguments)
 {
+    char scope[48] = "";
     struct vela_blur_look look = VELA_BLUR_LOOK_DEFAULT;
-    if (sscanf(arguments, "%f %f %f", &look.saturation, &look.strength, &look.tint) != 3
+    int glass = 0;
+    if (sscanf(arguments, "%47s %f %f %f %d", scope, &look.saturation, &look.strength, &look.tint, &glass) != 5
         || !isfinite(look.saturation) || !isfinite(look.strength) || !isfinite(look.tint)) {
         return;
     }
-    const struct vela_blur_look *now = &server->scene->blur_look;
-    if (look.saturation == now->saturation && look.strength == now->strength && look.tint == now->tint) {
+    look.glass = glass != 0;
+    const struct vela_blur_look now = vela_scene_blur_look(server->scene, strcmp(scope, "*") == 0 ? NULL : scope);
+    if (look.saturation == now.saturation && look.strength == now.strength && look.tint == now.tint
+        && look.glass == now.glass && vela_scene_has_blur_look(server->scene, scope)) {
+        return; // the shell sends the whole look again on every change
+    }
+    if (!vela_scene_set_blur_look(server->scene, scope, look)) {
+        wlr_log(WLR_ERROR, "blur-look: no room for %s", scope);
         return;
     }
-    server->scene->blur_look = look;
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
         vela_output_frame_damage_whole(output->frame);

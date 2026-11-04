@@ -92,13 +92,24 @@ Page {
                     Rectangle { x: 8; y: 30; width: parent.width * 0.55; height: 4; radius: 2; color: parent.line }
                 }
                 Rectangle {
-                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    // The taskbar, in Vela's mode, with its style's shape
+                    // (Styles.qml): a floating pill, or one as wide as the
+                    // apps on it (fit), as a style or a variant draws it.
+                    readonly property string variant: preview.themed("taskbar-variant", preview.shellLight, "default")
+                    readonly property bool floating: variant !== "default"
+                        || preview.themed("taskbar-margin", preview.shellLight, 0) > 0
+                        || preview.themed("taskbar-radius", preview.shellLight, 0) > 0
+                    readonly property bool fit: preview.themed("taskbar-fit", preview.shellLight, variant !== "default" ? 1 : 0) !== 0
+                    width: fit ? icons.width + 16 : floating ? parent.width - 12 : parent.width
+                    x: (parent.width - width) / 2
+                    y: parent.height - height - (floating ? 4 : 0)
                     height: 14
-                    // The taskbar, in Vela's mode.
+                    radius: floating ? 7 : 0
                     color: preview.themed("taskbar", preview.shellLight,
                         preview.shellLight ? Qt.rgba(0.94, 0.94, 0.95, 0.88) : Qt.rgba(0.11, 0.11, 0.13, 0.85))
                     Row {
-                        x: Prefs.taskbarAlignment === "left" ? 6 : (parent.width - width) / 2
+                        id: icons
+                        x: Prefs.taskbarAlignment === "left" && !parent.fit ? 6 : (parent.width - width) / 2
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 3
                         Repeater {

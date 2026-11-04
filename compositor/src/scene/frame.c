@@ -77,7 +77,7 @@ static bool same_color(const struct wlr_render_color *a, const struct wlr_render
 
 static bool same_blur_look(const struct vela_blur_look *a, const struct vela_blur_look *b)
 {
-    return a->saturation == b->saturation && a->strength == b->strength && a->tint == b->tint;
+    return a->saturation == b->saturation && a->strength == b->strength && a->tint == b->tint && a->glass == b->glass;
 }
 
 static int64_t region_area(const pixman_region32_t *region)
@@ -294,13 +294,15 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
             // are layer surfaces named vela-... (the shell's panels, the
             // polkit prompt) and windows whose app id is vela-... (Vela's
             // apps, blurred behind with a theme's see-through background); a
-            // client that picks such a name only changes its own look.
+            // client that picks such a name only changes its own look. A
+            // panel has its style's look, a window the theme's.
             struct wlr_surface *root = wlr_surface_get_root_surface(surface);
             struct wlr_layer_surface_v1 *layer = wlr_layer_surface_v1_try_from_wlr_surface(root);
             struct wlr_xdg_toplevel *toplevel = layer ? NULL : wlr_xdg_toplevel_try_from_wlr_surface(root);
             const char *name = layer ? layer->namespace : toplevel ? toplevel->app_id : NULL;
             e->acrylic = name && strncmp(name, "vela-", 5) == 0;
-            e->look = e->acrylic ? v->scene->blur_look : VELA_BLUR_LOOK_DEFAULT;
+            e->look = !e->acrylic ? VELA_BLUR_LOOK_DEFAULT
+                : vela_scene_blur_look(v->scene, layer ? layer->namespace : NULL);
         }
         pixman_region32_fini(&pixels);
     }
@@ -613,7 +615,8 @@ void vela_draw_elements(struct vela_scene *scene, struct vela_pass *pass, const 
                     tint = (struct wlr_render_color) { tint.r * k, tint.g * k, tint.b * k, tint.a * k };
                 }
                 const float saturation = e->look.saturation >= 0.0f ? vela_clampf(e->look.saturation, 1.0f, 3.0f) : 1.25f;
-                vela_pass_add_blur(pass, &panel, &region, blur_strength(e), e->acrylic ? &tint : NULL, saturation);
+                vela_pass_add_blur(pass, &panel, &region, blur_strength(e), e->acrylic ? &tint : NULL, saturation,
+                    e->acrylic && e->look.glass);
             }
             pixman_region32_fini(&region);
         }

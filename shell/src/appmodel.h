@@ -73,6 +73,8 @@ public:
     Q_INVOKABLE bool launchId(const QString& id);
     // A single app's data by id (for the icons pinned to the taskbar).
     Q_INVOKABLE QVariantMap entry(const QString& id) const;
+    // The id of a row as filtered by the query ("" outside).
+    Q_INVOKABLE QString idAt(int row) const;
     // The app's actions for the jump list: [{id, name, icon}].
     Q_INVOKABLE QVariantList actions(const QString& id) const;
     Q_INVOKABLE bool launchAction(const QString& id, const QString& actionId);

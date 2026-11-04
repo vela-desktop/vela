@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "themetokens.h" // generated from Theme.qml (common/CMakeLists.txt)
+#include "themetokens.h" // generated from Theme.qml and Styles.qml (common/CMakeLists.txt)
 
 #include <QByteArray>
 #include <QColor>
@@ -18,43 +18,91 @@
 #include <QStandardPaths>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtLogging>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iterator>
 
-// Theme files (theme=<name> in vela.conf, themes/<name>.conf): the colors and
-// corner radii that Theme.qml takes over Vela's own, and the blur the
-// compositor draws behind the shell's panels (docs/configuration.md, "Theme
-// files"). `key=value` lines and `#` comments:
+// Theme files (docs/configuration.md, "Theme files"): the values Theme.qml
+// and Styles.qml take over Vela's own, and the blur the compositor draws
+// behind the shell's panels. Two kinds, like Windhawk's theme and its three
+// stylers:
 //
-//   <token>, dark.<token>, light.<token>   a Theme.qml token, for both modes
-//                                          or one; a color (#RRGGBB,
-//                                          #AARRGGBB) or a number, as the
-//                                          token's type says
+//   theme=<name>                  themes/<name>.conf: a complete look, colors
+//                                 and radii of the shell and the apps, and
+//                                 any surface's keys
+//   taskbar-style=<name>          themes/taskbar/<name>.conf
+//   startmenu-style=<name>        themes/startmenu/<name>.conf
+//   notifications-style=<name>    themes/notifications/<name>.conf (quick
+//                                 settings and the notification center)
+//
+// A style is the user's own choice for one surface, over the theme: it may
+// only set that surface's keys and the blur's (belongsTo()).
+//
+// `key=value` lines and `#` comments:
+//
+//   <token>, dark.<token>, light.<token>   a token, for both modes or one;
+//                                          a color (#RRGGBB, #AARRGGBB), a
+//                                          number, asset:<file> (a picture
+//                                          of themes/assets/) or one of
+//                                          Vela's layouts (variants()), as
+//                                          the token's type says
 //   blur-saturation, blur-strength,        the blur behind Vela's acrylic
 //   blur-tint                              surfaces, which the compositor
 //                                          draws (blurLook()); numbers, for
 //                                          both modes
-//   inherits=<name>                        the theme this one starts from
+//   inherits=<name>                        the theme (or style of the same
+//                                          surface) this one starts from
 //   schema-version=1                       the format; another one is not used
 //
-// The first comment line names the theme ("# Rosé Pine: ...") and a
+// The first comment line names the file ("# Rosé Pine: ...") and a
 // "# Original author: <name>" line among the first comments credits it.
 // Vela's own look is a theme too, themes/vela.conf ("Vela Official"): it sets
 // no token, and it is the one used when theme= names none.
 //
-// The user's themes (~/.config/vela/themes/) win over the installed ones
+// The user's files (~/.config/vela/themes/) win over the installed ones
 // (the data directories: a package, or a nested run's XDG_DATA_DIRS).
 namespace vela::themes {
 
-inline const QString& subdirectory()
+// The layers, in the order they apply: the theme, then each surface's style.
+enum Layer { Theme, Taskbar, StartMenu, Notifications, LayerCount };
+
+struct LayerInfo {
+    const char* key; // in vela.conf
+    const char* directory; // under themes/, "" for the theme
+};
+
+inline const LayerInfo& layerInfo(Layer layer)
 {
-    static const QString dir = QStringLiteral("vela/themes");
-    return dir;
+    static const std::array<LayerInfo, LayerCount> info { {
+        { "theme", "" },
+        { "taskbar-style", "taskbar" },
+        { "startmenu-style", "startmenu" },
+        { "notifications-style", "notifications" },
+    } };
+    return info[layer];
+}
+
+// "taskbar" -> Taskbar; "" -> Theme; anything else -> LayerCount.
+inline Layer layerFor(const QString& surface)
+{
+    for (int i = 0; i < LayerCount; ++i) {
+        if (surface == QLatin1String(layerInfo(Layer(i)).directory)) {
+            return Layer(i);
+        }
+    }
+    return LayerCount;
+}
+
+inline QString subdirectory(Layer layer = Theme)
+{
+    const QString dir = QString::fromLatin1(layerInfo(layer).directory);
+    return dir.isEmpty() ? QStringLiteral("vela/themes") : QStringLiteral("vela/themes/") + dir;
 }
 
 // The theme when vela.conf names none: Vela Official.
@@ -84,20 +132,23 @@ inline bool isBlurKey(const QString& key)
     return std::any_of(std::begin(blurKeys), std::end(blurKeys), [&key](const char* k) { return key == QLatin1String(k); });
 }
 
-// The compositor's "blur-look <saturation> <strength> <tint>" for a theme:
-// its blur-* keys, -1 (Vela's own) for each it leaves out. The compositor
-// keeps each within its range (compositor/src/scene/scene.h).
-inline QByteArray blurLook(const QVariantMap& theme)
+// The compositor's "blur-look <scope> <saturation> <strength> <tint> <glass>"
+// for a theme or a panel ("*", or its layer namespace): its blur-* keys, -1
+// (Vela's own) for each it leaves out. glass: the panel has a style of its
+// own (glass from 4% alpha). The compositor keeps each value within its range
+// (compositor/src/scene/scene.h).
+inline QByteArray blurLook(const QByteArray& scope, const QVariantMap& theme, bool glass = false)
 {
-    QByteArray line("blur-look");
+    QByteArray line("blur-look " + scope);
     for (const char* key : blurKeys) {
         const QVariant value = theme.value(QLatin1String(key));
         line += ' ' + QByteArray::number(value.typeId() == QMetaType::Double ? value.toDouble() : -1.0);
     }
-    return line;
+    return line + (glass ? " 1" : " 0");
 }
 
-// A token's type, from Theme.qml's property; nullptr when Theme.qml has none.
+// A token's type, from its property in Theme.qml or Styles.qml; nullptr when
+// neither has it.
 inline const Token* token(const QString& name)
 {
     for (const Token& t : tokens) {
@@ -108,41 +159,86 @@ inline const Token* token(const QString& name)
     return nullptr;
 }
 
-// theme= of a vela.conf, the last one if there are several (like the
-// compositor); Vela Official without one.
-inline QString configuredName(const QString& velaConf)
+// The layouts each variant key may name: Vela's own implementations, never
+// code from a theme. Styles.qml lays each of them out.
+inline const QMap<QString, QStringList>& variants()
 {
-    QString name;
+    static const QMap<QString, QStringList> list {
+        { QStringLiteral("taskbar-variant"),
+            { QStringLiteral("default"), QStringLiteral("floating"), QStringLiteral("floating-split"), QStringLiteral("dock") } },
+        { QStringLiteral("startmenu-variant"), { QStringLiteral("default"), QStringLiteral("seven") } },
+        { QStringLiteral("quicksettings-variant"), { QStringLiteral("default"), QStringLiteral("glass"), QStringLiteral("classic") } },
+        { QStringLiteral("notifications-variant"), { QStringLiteral("default"), QStringLiteral("aero") } },
+    };
+    return list;
+}
+
+// Whether a key (without dark./light.) may be set by a file of this layer: a
+// theme sets anything, a style its own surface's keys and the blur's.
+inline bool belongsTo(const QString& key, Layer layer)
+{
+    switch (layer) {
+    case Theme: return true;
+    case Taskbar: return isBlurKey(key) || key == QLatin1String("taskbar") || key.startsWith(QLatin1String("taskbar-"));
+    case StartMenu: return isBlurKey(key) || key.startsWith(QLatin1String("startmenu-")) || key == QLatin1String("menu-layout");
+    case Notifications:
+        return isBlurKey(key) || key.startsWith(QLatin1String("notifications-")) || key.startsWith(QLatin1String("quicksettings-"));
+    case LayerCount: break;
+    }
+    return false;
+}
+
+// The chosen names in a vela.conf, by layer: "" where none, but the theme
+// (defaultTheme()); the last line wins if a key is there twice (like the
+// compositor).
+using Choice = std::array<QString, LayerCount>;
+
+inline Choice configured(const QString& velaConf)
+{
+    Choice choice;
     QFile file(velaConf);
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         while (!file.atEnd()) {
             const QString line = QString::fromUtf8(file.readLine()).trimmed();
-            if (line.startsWith(QLatin1String("theme="))) {
-                name = line.mid(6).trimmed();
+            for (int i = 0; i < LayerCount; ++i) {
+                const QString prefix = QLatin1String(layerInfo(Layer(i)).key) + u'=';
+                if (line.startsWith(prefix)) {
+                    choice[i] = line.mid(prefix.size()).trimmed();
+                }
             }
         }
     }
-    return name.isEmpty() ? defaultTheme() : name;
+    if (choice[Theme].isEmpty()) {
+        choice[Theme] = defaultTheme();
+    }
+    return choice;
+}
+
+// theme= of a vela.conf; Vela Official without one.
+inline QString configuredName(const QString& velaConf)
+{
+    return configured(velaConf)[Theme];
 }
 
 // The files a name can be, the user's first; none when the name is not valid.
-inline QStringList candidates(const QString& name)
+inline QStringList candidates(const QString& name, Layer layer = Theme)
 {
-    if (!validName(name)) {
+    if (!validName(name) || layer >= LayerCount) {
         return {};
     }
-    const QString relative = subdirectory() + u'/' + name + QStringLiteral(".conf");
+    const QString relative = subdirectory(layer) + u'/' + name + QStringLiteral(".conf");
     return QStandardPaths::locateAll(QStandardPaths::GenericConfigLocation, relative)
         + QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, relative);
 }
 
-// The directories themes are looked up in, the user's first: those that
-// exist, for the list and the file watchers.
-inline QStringList directories()
+// The directories a layer's files are looked up in, the user's first: those
+// that exist, for the list and the file watchers.
+inline QStringList directories(Layer layer = Theme)
 {
-    QStringList roots { QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + subdirectory() };
-    roots += QStandardPaths::locateAll(QStandardPaths::GenericConfigLocation, subdirectory(), QStandardPaths::LocateDirectory);
-    roots += QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, subdirectory(), QStandardPaths::LocateDirectory);
+    const QString sub = subdirectory(layer);
+    QStringList roots { QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + sub };
+    roots += QStandardPaths::locateAll(QStandardPaths::GenericConfigLocation, sub, QStandardPaths::LocateDirectory);
+    roots += QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, sub, QStandardPaths::LocateDirectory);
     QStringList existing;
     for (const QString& root : std::as_const(roots)) {
         const QString path = QDir::cleanPath(root);
@@ -160,21 +256,42 @@ inline bool validColor(const QString& value)
     return color.match(value).hasMatch();
 }
 
-// The theme's file, or empty when the name is not valid or not installed.
-inline QString locate(const QString& name)
+// The file of a theme or style, or empty when the name is not valid or not
+// installed.
+inline QString locate(const QString& name, Layer layer = Theme)
 {
-    const QStringList files = candidates(name);
+    const QStringList files = candidates(name, layer);
     return files.isEmpty() ? QString() : files.first();
 }
 
-// What is wrong in a theme, where. Settings lists them (Personalization >
-// Themes) and the log has them in English (describe()).
+// asset:<file>: a picture of themes/assets/ (the user's first), as a file
+// URL; empty if it isn't installed. None is installed (Aero's pictures are
+// Windows'): without them the drawn look stays.
+inline QString assetUrl(const QString& name)
+{
+    static const QRegularExpression safe(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"));
+    if (!safe.match(name).hasMatch()) {
+        return {};
+    }
+    const QString relative = QStringLiteral("vela/themes/assets/") + name;
+    QString file = QStandardPaths::locate(QStandardPaths::GenericConfigLocation, relative);
+    if (file.isEmpty()) {
+        file = QStandardPaths::locate(QStandardPaths::GenericDataLocation, relative);
+    }
+    return file.isEmpty() ? QString() : QUrl::fromLocalFile(file).toString();
+}
+
+// What is wrong in a theme or style, where. Settings lists them
+// (Personalization > Themes) and the log has them in English (describe()).
 struct Problem {
     enum Kind {
         NotKeyValue, // a line without key=value
-        UnknownToken, // a key Theme.qml has no token for
+        UnknownToken, // a key no token is for
         ExpectsColor, // a color token with something else
         ExpectsNumber, // a number token with something else
+        ExpectsAsset, // a picture token without asset:
+        UnknownVariant, // a variant key naming no layout of Vela's
+        OtherSurface, // a style setting another surface's key
         InvalidParent, // inherits= with a name that can't be a theme
         MissingParent, // inherits= a theme that isn't installed
         InheritanceCycle, // inherits= back into the chain
@@ -186,6 +303,8 @@ struct Problem {
     int line = 0;
     QString key;
     QString value;
+
+    bool operator==(const Problem&) const = default;
 };
 
 inline QString kindName(Problem::Kind kind)
@@ -195,6 +314,9 @@ inline QString kindName(Problem::Kind kind)
     case Problem::UnknownToken: return QStringLiteral("unknown-token");
     case Problem::ExpectsColor: return QStringLiteral("expects-color");
     case Problem::ExpectsNumber: return QStringLiteral("expects-number");
+    case Problem::ExpectsAsset: return QStringLiteral("expects-asset");
+    case Problem::UnknownVariant: return QStringLiteral("unknown-variant");
+    case Problem::OtherSurface: return QStringLiteral("other-surface");
     case Problem::InvalidParent: return QStringLiteral("invalid-parent");
     case Problem::MissingParent: return QStringLiteral("missing-parent");
     case Problem::InheritanceCycle: return QStringLiteral("inheritance-cycle");
@@ -220,6 +342,16 @@ inline QString describe(const Problem& p)
         break;
     case Problem::ExpectsNumber:
         what = QStringLiteral("%1 is a number, not \"%2\": skipped").arg(p.key, p.value);
+        break;
+    case Problem::ExpectsAsset:
+        what = QStringLiteral("%1 is a picture, asset:<file>, not \"%2\": skipped").arg(p.key, p.value);
+        break;
+    case Problem::UnknownVariant:
+        what = QStringLiteral("%1=%2 is not one of Vela's layouts (%3): skipped")
+                   .arg(p.key, p.value, variants().value(p.key.section(u'.', -1)).join(QStringLiteral(", ")));
+        break;
+    case Problem::OtherSurface:
+        what = QStringLiteral("%1 is another surface's, not this style's: skipped").arg(p.key);
         break;
     case Problem::InvalidParent:
         what = QStringLiteral("inherits=%1 is not a theme name: inherits nothing").arg(p.value);
@@ -248,8 +380,9 @@ inline QVariantMap toVariant(const Problem& p)
         { QStringLiteral("line"), p.line }, { QStringLiteral("key"), p.key }, { QStringLiteral("value"), p.value } };
 }
 
-// One file: its tokens (a color as QColor, a number as double), what it
-// inherits and its format, and what is wrong in it (each also logged).
+// One file: its tokens (a color as QColor, a number as double, a picture as
+// its URL, "" when not installed, a variant as its name), what it inherits
+// and its format, and what is wrong in it (each also logged).
 struct File {
     QVariantMap tokens;
     QString parent;
@@ -259,7 +392,7 @@ struct File {
     QList<Problem> problems;
 };
 
-inline File read(QIODevice& in, const QString& origin = QString())
+inline File read(QIODevice& in, const QString& origin = QString(), Layer layer = Theme)
 {
     File file;
     const auto problem = [&file, &origin](Problem::Kind kind, int line, const QString& key = {}, const QString& value = {}) {
@@ -290,52 +423,70 @@ inline File read(QIODevice& in, const QString& origin = QString())
             file.schemaLine = number;
             continue;
         }
-        const QString name = key.startsWith(QLatin1String("dark.")) || key.startsWith(QLatin1String("light."))
-            ? key.section(u'.', 1)
-            : key;
+        const bool moded = key.startsWith(QLatin1String("dark.")) || key.startsWith(QLatin1String("light."));
+        const QString name = moded ? key.section(u'.', 1) : key;
         const Token* t = token(name);
-        if (!t && !isBlurKey(key)) {
+        const bool blur = !moded && isBlurKey(key);
+        if (!t && !blur) {
             problem(Problem::UnknownToken, number, key, value);
-        } else if (t && t->kind == TokenKind::Color) {
-            if (validColor(value)) {
-                file.tokens.insert(key, QColor::fromString(value));
-            } else {
-                problem(Problem::ExpectsColor, number, key, value);
-            }
-        } else {
-            bool isNumber = false;
-            const double d = value.toDouble(&isNumber);
+            continue;
+        }
+        if (!belongsTo(name, layer)) {
+            problem(Problem::OtherSurface, number, key, value);
+            continue;
+        }
+        bool isNumber = false;
+        const double d = value.toDouble(&isNumber);
+        if (blur || t->kind == TokenKind::Number) {
             if (isNumber && std::isfinite(d)) {
                 file.tokens.insert(key, d);
             } else {
                 problem(Problem::ExpectsNumber, number, key, value);
             }
+        } else if (t->kind == TokenKind::Color) {
+            if (validColor(value)) {
+                file.tokens.insert(key, QColor::fromString(value));
+            } else {
+                problem(Problem::ExpectsColor, number, key, value);
+            }
+        } else if (t->kind == TokenKind::Asset) {
+            if (value.startsWith(QLatin1String("asset:"))) {
+                file.tokens.insert(key, assetUrl(value.mid(6).trimmed()));
+            } else {
+                problem(Problem::ExpectsAsset, number, key, value);
+            }
+        } else if (variants().value(name).contains(value)) {
+            file.tokens.insert(key, value);
+        } else {
+            problem(Problem::UnknownVariant, number, key, value);
         }
     }
     return file;
 }
 
-// A theme as Theme.qml takes it: its tokens over its parents', the files it
-// was made of (the theme's first) and everything wrong on the way. A theme
+// A theme or style as Theme.qml takes it: its tokens over its parents', the
+// files it was made of (its own first) and everything wrong on the way. One
 // that isn't installed has no files: Vela's own look.
 struct Resolved {
     QVariantMap tokens;
     QStringList files;
     QList<Problem> problems;
+
+    bool operator==(const Resolved&) const = default;
 };
 
-inline Resolved resolve(const QString& name)
+inline Resolved resolve(const QString& name, Layer layer = Theme)
 {
     Resolved resolved;
-    QList<QVariantMap> chain; // the theme first, then its parents
-    QString path = locate(name);
+    QList<QVariantMap> chain; // the file first, then its parents
+    QString path = locate(name, layer);
     while (!path.isEmpty()) {
         QFile in(path);
         if (!in.open(QIODevice::ReadOnly | QIODevice::Text)) {
             break;
         }
         const QString current = path;
-        File file = read(in, current);
+        File file = read(in, current, layer);
         resolved.problems += file.problems;
         const auto problem = [&resolved, &current](Problem::Kind kind, int line, const QString& value) {
             resolved.problems.append({ kind, current, line, {}, value });
@@ -353,7 +504,7 @@ inline Resolved resolve(const QString& name)
         }
         // The first file of that name not already in the chain: a theme of
         // the user's can start from the installed one of the same name.
-        const QStringList parents = candidates(file.parent);
+        const QStringList parents = candidates(file.parent, layer);
         for (const QString& candidate : parents) {
             if (!resolved.files.contains(candidate)) {
                 path = candidate;
@@ -385,14 +536,90 @@ inline QVariant themed(const QVariantMap& theme, const QString& key, bool light)
     return theme.contains(modeKey) ? theme.value(modeKey) : theme.value(key);
 }
 
-// The installed themes, by name: { name, text, author }. The text is the
-// name the first line gives ("# Rosé Pine: ..."), else the file name; the
-// author, the "# Original author:" line's ("" without one). The user's win
-// over the installed ones of the same name; Vela Official comes first.
-inline QVariantList available()
+// The chosen theme and styles of a vela.conf, each resolved on its own (a
+// panel's blur look comes from the theme and its own style only), and merged
+// (what Theme.qml and Styles.qml take: a style's keys over the theme's).
+struct Loaded {
+    std::array<Resolved, LayerCount> layers;
+
+    QVariantMap merged() const
+    {
+        QVariantMap map;
+        for (const Resolved& layer : layers) {
+            map.insert(layer.tokens);
+        }
+        return map;
+    }
+    // The theme with just one surface's style.
+    QVariantMap withStyle(Layer layer) const
+    {
+        QVariantMap map = layers[Theme].tokens;
+        if (layer != Theme && layer < LayerCount) {
+            map.insert(layers[layer].tokens);
+        }
+        return map;
+    }
+    // Whether a surface has a look of its own: a style chosen for it and
+    // installed, or the theme's keys for it (a complete look, Window Glass's
+    // pill taskbar). Its blur is then rounded like it, glass from 4% alpha.
+    // Colors Theme.qml shares (taskbar) and the blur's keys don't count.
+    bool styled(Layer layer) const
+    {
+        if (layer == Theme || layer >= LayerCount) {
+            return false;
+        }
+        if (!layers[layer].files.isEmpty()) {
+            return true;
+        }
+        const QStringList keys = layers[Theme].tokens.keys();
+        return std::any_of(keys.begin(), keys.end(), [layer](const QString& key) {
+            const QString name = key.startsWith(QLatin1String("dark.")) || key.startsWith(QLatin1String("light."))
+                ? key.section(u'.', 1)
+                : key;
+            return name != QLatin1String("taskbar") && !isBlurKey(name) && belongsTo(name, layer);
+        });
+    }
+    // Every file read, for the watchers.
+    QStringList files() const
+    {
+        QStringList all;
+        for (const Resolved& layer : layers) {
+            all += layer.files;
+        }
+        return all;
+    }
+    bool operator==(const Loaded&) const = default;
+};
+
+inline Loaded load(const Choice& choice)
 {
+    Loaded loaded;
+    for (int i = 0; i < LayerCount; ++i) {
+        if (!choice[i].isEmpty()) {
+            loaded.layers[i] = resolve(choice[i], Layer(i));
+        }
+    }
+    return loaded;
+}
+
+inline Loaded loadConfigured(const QString& velaConf)
+{
+    return load(configured(velaConf));
+}
+
+// The installed themes ("") or a surface's styles ("taskbar"...), by name:
+// { name, text, author }. The text is the name the first line gives
+// ("# Rosé Pine: ..."), else the file name; the author, the "# Original
+// author:" line's ("" without one). The user's win over the installed ones
+// of the same name; Vela Official comes first.
+inline QVariantList available(const QString& surface = QString())
+{
+    const Layer layer = layerFor(surface);
+    if (layer >= LayerCount) {
+        return {};
+    }
     QMap<QString, QString> files; // sorted by name; the first root wins, as in candidates()
-    for (const QString& root : directories()) {
+    for (const QString& root : directories(layer)) {
         for (const QString& file : QDir(root).entryList({ QStringLiteral("*.conf") }, QDir::Files)) {
             if (!files.contains(file.chopped(5)) && validName(file.chopped(5))) {
                 files.insert(file.chopped(5), root + u'/' + file);
@@ -422,11 +649,45 @@ inline QVariantList available()
         }
         const QVariantMap entry { { QStringLiteral("name"), it.key() }, { QStringLiteral("text"), text },
             { QStringLiteral("author"), author } };
-        if (it.key() == defaultTheme()) {
+        if (layer == Theme && it.key() == defaultTheme()) {
             list.prepend(entry);
         } else {
             list.append(entry);
         }
+    }
+    return list;
+}
+
+// A surface's styles with their pictures (themes/screenshots/<surface>/
+// <name>.png, or <name>-qs.png and <name>-nc.png for quick settings and the
+// notification center): { name, text, author, images: [file URLs] }. Styles
+// without a picture are listed too, with none.
+inline QVariantList gallery(const QString& surface)
+{
+    QVariantList list;
+    const Layer layer = layerFor(surface);
+    if (layer == Theme || layer >= LayerCount) {
+        return list;
+    }
+    const QString dir = QStringLiteral("vela/themes/screenshots/") + surface + u'/';
+    const auto picture = [&dir](const QString& file) {
+        QString path = QStandardPaths::locate(QStandardPaths::GenericConfigLocation, dir + file);
+        if (path.isEmpty()) {
+            path = QStandardPaths::locate(QStandardPaths::GenericDataLocation, dir + file);
+        }
+        return path.isEmpty() ? QString() : QUrl::fromLocalFile(path).toString();
+    };
+    for (const QVariant& entry : available(surface)) {
+        QVariantMap style = entry.toMap();
+        const QString name = style.value(QStringLiteral("name")).toString();
+        QStringList images;
+        for (const QString& file : { name + QStringLiteral(".png"), name + QStringLiteral("-qs.png"), name + QStringLiteral("-nc.png") }) {
+            if (const QString url = picture(file); !url.isEmpty()) {
+                images.append(url);
+            }
+        }
+        style.insert(QStringLiteral("images"), images);
+        list.append(style);
     }
     return list;
 }

@@ -25,6 +25,12 @@ T.Slider {
     // The filled part and the knob's center: the accent, or gray for a muted
     // volume (Quick Settings).
     property color fillColor: Theme.accentFill
+    // A thick track and a wide knob without the center (a quick settings
+    // style's, WindowGlass's): the track spans the whole width, filled up to
+    // the knob's middle.
+    property bool thick: false
+    // The knob's edge (a style without borders turns it off).
+    property bool knobBorder: true
     property alias usable: control.enabled
     signal released(real value)
 
@@ -78,11 +84,11 @@ T.Slider {
         implicitWidth: 200
         implicitHeight: 32
         Rectangle {
-            x: control.trackStart
+            x: control.thick ? 0 : control.trackStart
             anchors.verticalCenter: parent.verticalCenter
-            width: control.trackLength
-            height: 4
-            radius: 2
+            width: control.thick ? control.availableWidth : control.trackLength
+            height: control.thick ? 10 : 4
+            radius: height / 2
             color: Theme.controlStrokeStrong
             opacity: 0.6
         }
@@ -97,11 +103,15 @@ T.Slider {
         Rectangle {
             readonly property real originRatio: control.ratioOf(control.origin)
             readonly property real position: control.visualPosition
-            x: control.trackStart + control.trackLength * Math.min(position, originRatio)
+            // Thick: from the track's start to the knob's middle.
+            readonly property real start: control.thick && originRatio === 0 ? 0
+                : control.trackStart + control.trackLength * Math.min(position, originRatio)
+            readonly property real end: control.trackStart + control.trackLength * Math.max(position, originRatio)
+            x: start
             anchors.verticalCenter: parent.verticalCenter
-            width: control.trackLength * Math.abs(position - originRatio)
-            height: 4
-            radius: 2
+            width: end - start
+            height: control.thick ? 10 : 4
+            radius: height / 2
             color: control.fillColor
         }
     }
@@ -109,13 +119,14 @@ T.Slider {
     handle: Rectangle {
         x: control.trackStart + control.visualPosition * control.trackLength - width / 2
         anchors.verticalCenter: parent.verticalCenter
-        implicitWidth: 20
-        implicitHeight: 20
-        radius: 10
-        color: Theme.light ? "#ffffff" : "#454545"
-        border.width: 1
+        implicitWidth: control.thick ? 40 : 20
+        implicitHeight: control.thick ? 25 : 20
+        radius: control.thick ? 12 : 10
+        color: control.thick ? Theme.popup : Theme.light ? "#ffffff" : "#454545"
+        border.width: control.knobBorder ? 1 : 0
         border.color: Theme.light ? Qt.rgba(0, 0, 0, 0.1) : Qt.rgba(1, 1, 1, 0.09)
         Rectangle {
+            visible: !control.thick
             anchors.centerIn: parent
             width: control.pressed ? 10 : control.hovered ? 14 : 12
             height: width

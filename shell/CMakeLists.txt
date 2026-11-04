@@ -115,12 +115,16 @@ set(VELA_QML_FILES
     qml/TaskbarButton.qml
     qml/StartGlyph.qml
     qml/StartMenu.qml
+    qml/StartMenuSeven.qml
+    qml/GlassEdge.qml
+    qml/AeroGlass.qml
     qml/tiles.js
     qml/AppTile.qml
     qml/Switcher.qml
     qml/Wallpaper.qml
     qml/NotificationPopups.qml
     qml/Menus.qml
+    qml/Styles.qml
     qml/ContextMenu.qml
     qml/MenuPanel.qml
     qml/MenuTextField.qml
@@ -153,12 +157,23 @@ foreach(file IN LISTS VELA_QML_FILES)
     get_filename_component(name ${file} NAME)
     set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name})
 endforeach()
-set_source_files_properties(qml/Menus.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Menus.qml qml/Styles.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(vela-shell
     URI Vela.Shell
     VERSION 1.0
     QML_FILES ${VELA_QML_FILES})
+
+# Windows 7's Start menu frames (startmenu-layout=1, StartMenuSeven.qml), from
+# AeroThemePlasma's SevenStart, GPL-3.0 (shell/data/seven/README.md): ":/seven/*.png".
+qt_add_resources(vela-shell "seven"
+    PREFIX "/seven"
+    BASE ${CMAKE_CURRENT_SOURCE_DIR}/data/seven
+    FILES
+        data/seven/arrow.png data/seven/arrow-hover.png data/seven/arrow-pressed.png
+        data/seven/avatar-frame.png data/seven/item-hover.png data/seven/panel.png
+        data/seven/place-hover.png data/seven/search.png data/seven/search-focus.png
+        data/seven/shutdown.png data/seven/shutdown-hover.png data/seven/shutdown-pressed.png)
 
 target_compile_options(vela-shell PRIVATE -Wall -Wextra)
 target_link_libraries(vela-shell PRIVATE
@@ -221,7 +236,8 @@ if(VELA_BUILD_TOOLS)
     target_include_directories(vela-themefile-test PRIVATE src)
     target_compile_definitions(vela-themefile-test PRIVATE
         THEMES_DIR="${PROJECT_SOURCE_DIR}/themes"
-        THEME_QML="${PROJECT_SOURCE_DIR}/common/controls/Theme.qml")
+        THEME_QML="${PROJECT_SOURCE_DIR}/common/controls/Theme.qml"
+        STYLES_QML="${PROJECT_SOURCE_DIR}/shell/qml/Styles.qml")
     target_compile_options(vela-themefile-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-themefile-test PRIVATE vela-theme-tokens Qt6::Core Qt6::Gui Qt6::Test)
     add_test(NAME shell-themefile COMMAND vela-themefile-test)

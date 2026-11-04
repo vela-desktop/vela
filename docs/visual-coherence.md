@@ -605,9 +605,13 @@ blur region it sets `acrylic` on the element from
 `wlr_xdg_toplevel_try_from_wlr_surface()`; otherwise `vela_pass_add_blur()` passes a zero tint and a saturation of 1. The
 shell's look doesn't change.
 
-A theme's `blur-*` keys reach the compositor as `blur-look <saturation>
-<strength> <tint>`, which the shell sends with `theme` and `mica`; `-1` keeps
-Vela's own value. They change Vela's surfaces only
+A theme's `blur-*` keys reach the compositor as `blur-look <scope>
+<saturation> <strength> <tint> <glass>`, which the shell sends with `theme`
+and `mica`: `*` for every acrylic surface (the theme's), then one per shell
+panel by layer namespace (the theme with that panel's style). `-1` keeps
+Vela's own value; `glass 1`, a panel with a look of its own, is glass from 4%
+alpha instead of half (a nearly clear taskbar). Vela's apps' windows take the
+`*` look. They change Vela's surfaces only
 (`test_layers.BlurPolicy.test_theme_blur_look`,
 `test_acrylic_for_vela_windows`).
 

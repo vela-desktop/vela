@@ -2741,6 +2741,18 @@ Specifiche sistema
         <translation>%1 vuole un numero, non &quot;%2&quot;</translation>
     </message>
     <message>
+        <source>%1 needs a picture like asset:&lt;file&gt;, not &quot;%2&quot;</source>
+        <translation>%1 vuole un&apos;immagine come asset:&lt;file&gt;, non &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>%1=%2 isn&apos;t one of Vela&apos;s layouts</source>
+        <translation>%1=%2 non è uno dei layout di Vela</translation>
+    </message>
+    <message>
+        <source>%1 belongs to another surface than this style&apos;s</source>
+        <translation>%1 appartiene a un&apos;altra superficie, non a quella di questo stile</translation>
+    </message>
+    <message>
         <source>inherits=%1 is not a theme name</source>
         <translation>inherits=%1 non è il nome di un tema</translation>
     </message>
@@ -2765,12 +2777,12 @@ Specifiche sistema
         <translation>Tema</translation>
     </message>
     <message>
-        <source>Colors and corners of the shell and the apps. Original author: %1</source>
-        <translation>Colori e angoli della shell e delle app. Autore originale: %1</translation>
+        <source>A complete look of the shell and the apps. Original author: %1</source>
+        <translation>Un aspetto completo della shell e delle app. Autore originale: %1</translation>
     </message>
     <message>
-        <source>Colors and corners of the shell and the apps</source>
-        <translation>Colori e angoli della shell e delle app</translation>
+        <source>A complete look of the shell and the apps</source>
+        <translation>Un aspetto completo della shell e delle app</translation>
     </message>
     <message>
         <source>%1 is in use</source>
@@ -2817,12 +2829,68 @@ Specifiche sistema
         <translation>Vela usa quello che può e salta il resto</translation>
     </message>
     <message>
+        <source>Customize</source>
+        <translation>Personalizza</translation>
+    </message>
+    <message>
+        <source>Optional: a style of its own for the taskbar, the Start menu or quick settings, over the theme</source>
+        <translation>Facoltativo: uno stile a parte per la barra delle applicazioni, il menu Start o le impostazioni rapide, sopra il tema</translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation>Nascondi</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Start menu</source>
+        <translation>Menu Start</translation>
+    </message>
+    <message>
+        <source>Quick settings</source>
+        <translation>Impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>Styles</source>
+        <translation>Stili</translation>
+    </message>
+    <message>
+        <source>From the theme</source>
+        <translation>Dal tema</translation>
+    </message>
+    <message>
+        <source>As the theme draws it. Your own styles: ~/.config/vela/themes/%1/&lt;name&gt;.conf</source>
+        <translation>Come lo disegna il tema. I tuoi stili: ~/.config/vela/themes/%1/&lt;nome&gt;.conf</translation>
+    </message>
+    <message>
+        <source>In use</source>
+        <translation>In uso</translation>
+    </message>
+    <message>
+        <source>Use</source>
+        <translation>Usa</translation>
+    </message>
+    <message>
+        <source>Original author: %1</source>
+        <translation>Autore originale: %1</translation>
+    </message>
+    <message>
         <source>Your own themes</source>
         <translation>I tuoi temi</translation>
     </message>
     <message>
         <source>A file in ~/.config/vela/themes/&lt;name&gt;.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change</source>
         <translation>Un file in ~/.config/vela/themes/&lt;nome&gt;.conf compare qui. Inizia con inherits=vela, poi imposta solo i colori e gli angoli che vuoi cambiare</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>Reimposta</translation>
+    </message>
+    <message>
+        <source>Vela Official and no styles. Light or dark mode and the accent stay</source>
+        <translation>Vela Official e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
     </message>
 </context>
 <context>

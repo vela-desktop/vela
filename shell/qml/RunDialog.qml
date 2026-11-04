@@ -46,7 +46,7 @@ Window {
     // output's.
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
-        return Qt.point(p.x, Screen.height - Theme.taskbarHeight - root.height + p.y)
+        return Qt.point(p.x, Screen.height - Styles.taskbar.height - root.height + p.y)
     }
 
     Connections {

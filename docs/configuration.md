@@ -31,6 +31,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 |---|---|---|
 | `language` | system | Interface language: `it`, `en`, or empty to follow the system (Italian if the system is Italian, English otherwise). |
 | `theme` | `vela` | A theme's name (Settings > Personalization > Themes): `themes/<name>.conf`, see [Theme files](#theme-files). `vela` (or empty) is Vela Official, Vela's own look. |
+| `taskbar-style`, `startmenu-style`, `notifications-style` | empty | A style's name for that surface over the theme (Settings > Personalization > Themes > Customize): `themes/taskbar/<name>.conf`, `themes/startmenu/`, `themes/notifications/`. Empty: as the theme draws it. |
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
@@ -74,9 +75,9 @@ The Settings app is the preferred way to edit these values because it applies va
 
 ### Theme files
 
-A theme changes the colors and corner radii of the shell and of Vela's apps, and the blur behind the shell's panels. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own themes) and then in the data directories (`/usr/share/vela/themes/`, the installed ones). The shell and the apps reload it when it, or a theme it inherits, changes.
+A **theme** is a complete look of the shell and of Vela's apps: colors and corner radii, the blur behind the shell's panels, and the shape of any shell surface. A **style** changes one surface of the shell over the theme, like Windhawk's three stylers: the taskbar, the Start menu, or quick settings with the notification center. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own) and then in the data directories (`/usr/share/vela/themes/`, the installed ones); `taskbar-style=aero` loads `vela/themes/taskbar/aero.conf` the same way. A style's values win over the theme's. The shell and the apps reload them when they, or what they inherit, change.
 
-Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed theme is **Window Glass** (`window-glass.conf`, by lowell, after Windhawk's WindowGlass): flat gray glass over a light blur, 12 px corners, and a see-through Settings.
+Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed themes are lowell's **Window Glass** (`window-glass.conf`, after Windhawk's WindowGlass: flat gray glass over a light blur and a see-through Settings), **Aero**, **Rosé Pine** and **Everblush**, and **Vela Floating** and **Vela Seven**, Vela Official with built-in variants. The 80 installed styles are lowell's too, from Windhawk's stylers.
 
 ```ini
 # Mine: the first line names the theme in Settings
@@ -88,19 +89,21 @@ accent=#C4A7E7
 radius=6
 ```
 
-The first comment line names the theme in Settings, and a `# Original author:` line among the first comments credits it there. Each other key is a token of [`Theme.qml`](../common/controls/Theme.qml): `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token the theme leaves out keeps Vela's value. A token is a color (`#RRGGBB` or `#AARRGGBB`) or a number, as its property in Theme.qml says; the list of tokens and their types is generated from Theme.qml at build time (`common/CMakeLists.txt`), so a token added there is themable at once.
+The first comment line names the file in Settings, and a `# Original author:` line among the first comments credits it there; every installed file has one. Each other key is a token: `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token left out keeps Vela's value, so with no theme and no style nothing changes. A token is a color (`#RRGGBB` or `#AARRGGBB`), a number, `asset:<file>` (a picture in `vela/themes/assets/`; none is installed, as Aero's pictures are Windows', and without them the drawn look stays) or one of Vela's layouts, as its property in [`Theme.qml`](../common/controls/Theme.qml) or [`Styles.qml`](../shell/qml/Styles.qml) says. The list of tokens and their types is generated from both files at build time (`common/CMakeLists.txt`), so a token added there is themable at once. A theme may set any token; a style only its own surface's and the blur's.
 
-- `inherits=<name>` starts from another theme: its tokens first, then this file's over them. A theme of yours can inherit the installed one of the same name (`~/.config/vela/themes/vela.conf` with `inherits=vela`). A parent that isn't installed, or that inherits back, is left out and the theme keeps its own tokens; a chain stops after 16 themes.
+- `inherits=<name>` starts from another file of the same kind (a theme from a theme, a taskbar style from a taskbar style): its tokens first, then this file's over them. A file of yours can inherit the installed one of the same name (`~/.config/vela/themes/vela.conf` with `inherits=vela`). A parent that isn't installed, or that inherits back, is left out and the file keeps its own tokens; a chain stops after 16 files.
 - `schema-version=1` is the format, optional. A file with another version is not used, nor what it inherits.
-- `blur-saturation`, `blur-strength` and `blur-tint` are the blur the compositor draws behind Vela's acrylic surfaces (the shell's panels and menus, and the windows of Vela's apps when they are see-through), numbers for both modes. `blur-saturation` is the acrylic's saturation, 1–3 (Vela's: 1.25); `blur-strength` multiplies the blur's radius (Vela's: 1; the compositor keeps the result between half and six times its smallest blur); `blur-tint` is the opacity of the acrylic's gray wash, 0–1 (Vela's: 0.55; `0` leaves only the panels' own fills). A value outside its range is brought within it; a key the theme leaves out keeps Vela's value.
+- `blur-saturation`, `blur-strength` and `blur-tint` are the blur the compositor draws behind Vela's acrylic surfaces (the shell's panels and menus, and the windows of Vela's apps when they are see-through), numbers for both modes. `blur-saturation` is the acrylic's saturation, 1–3 (Vela's: 1.25); `blur-strength` multiplies the blur's radius (Vela's: 1; the compositor keeps the result between half and six times its smallest blur); `blur-tint` is the opacity of the acrylic's gray wash, 0–1 (Vela's: 0.55; `0` leaves only the panels' own fills). A value outside its range is brought within it. In a style they apply to that surface only.
 
-A line that isn't a token, a token with a value of the wrong type and a broken `inherits=` are skipped with a warning in the log that names the file, the line and what is wrong. Settings > Personalization > Themes lists them under the theme too.
+A line that isn't a token, a value of the wrong type, a layout Vela doesn't have, a style's key for another surface and a broken `inherits=` are skipped with a warning in the log that names the file, the line and what is wrong. Settings > Personalization > Themes lists the theme's under it too.
 
-Choosing a theme in Settings only shows it in the preview; **Apply** writes `theme=` and **Cancel** goes back to the one in use. A theme with its own `accent` replaces the accent color chosen in Settings > Colors while it is in use, and Settings says so.
+Choosing a theme in Settings only shows it in the preview; **Apply** writes `theme=` and **Cancel** goes back to the one in use. A theme with its own `accent` replaces the accent color chosen in Settings > Colors while it is in use, and Settings says so. **Customize** lists each surface's styles with their pictures (`vela/themes/screenshots/<surface>/<name>.png`, or `<name>-qs.png` and `<name>-nc.png` for quick settings and the center); choosing one writes its `*-style=` key at once. **Reset** goes back to Vela Official and no styles.
 
-The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars, opaque) and `accent` in place of Mica and the chosen accent, and its `blur-*` keys. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
+The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars) and `accent` in place of Mica and the chosen accent, and the `blur-*` keys: the theme's for every acrylic surface, then each panel's with its own style. A panel with a look of its own (a style, or the theme's keys for that surface) has its blur rounded like it, and glass from 4% alpha instead of half. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
 
 A `background` that is not opaque (`#AARRGGBB`) makes Settings see-through: it asks the compositor to blur what is behind it (`ext-background-effect-v1`), with the theme's blur, like the shell's panels. File Explorer stays opaque, in the same color: Qt draws its half-transparent toolbar washed out over a see-through window.
+
+Theme tokens ([`Theme.qml`](../common/controls/Theme.qml)):
 
 | Tokens | Kind |
 |---|---|
@@ -110,6 +113,45 @@ A `background` that is not opaque (`#AARRGGBB`) makes Settings see-through: it a
 | `text`, `textSecondary`, `textTertiary` | color |
 | `accent` (over the one chosen in Settings > Colors) | color |
 | `radius` (controls), `radiusCard`, `radiusOverlay` (menus, dialogs, panels) | pixels, 0–24 |
+| `menu-layout=1`: Windows 7's right-click menus, in the shell and in File Explorer | flag (Start menu) |
+
+Surface tokens ([`Styles.qml`](../shell/qml/Styles.qml)), for a theme or that surface's style; flags are `0` or `1`:
+
+| Tokens | Meaning |
+|---|---|
+| `taskbar-height`, `taskbar-margin`, `taskbar-radius`, `taskbar-side-margin` | The bar's height; a margin or a radius makes it a floating pill, that far from the screen's sides at most. |
+| `taskbar-fit`, `taskbar-split-gap`, `taskbar-split-radius`, `taskbar-edge` (1 apps centered, 2 at the left), `taskbar-flush` | A pill that shrinks to the apps and the tray; the tray a pill of its own; the tray at the screen's edge; the apps' pill on the bottom edge. |
+| `taskbar-align-left`, `taskbar-task-view`, `taskbar-spacing` | Apps at the left (Start opens at the corner); the Task view button; the gap between buttons. |
+| `taskbar-button-width`, `taskbar-button-height`, `taskbar-button-radius`, `taskbar-icon-size`, `taskbar-bounce` | The buttons, and whether icons shrink while pressed. |
+| `taskbar-button-fill`, `taskbar-button-fill-active`, `taskbar-button-stroke`, `taskbar-button-gloss` | A tile under each open app (Windows 7's glass buttons). |
+| `taskbar-stroke`, `taskbar-start-glyph` (1: Windows 7's orb) | The bar's hairline; the Start button. |
+| `taskbar-orb`, `taskbar-orb-pressed`, `taskbar-tile-image`, `taskbar-tile-image-active`, `taskbar-tile-image-hover`, `taskbar-tile-image-idle-hover`, `taskbar-reflection`, `taskbar-reflection-opacity`, `taskbar-desktop-image`, `taskbar-desktop-image-hover` | Pictures (`asset:`) for the orb, the tiles, the streaks of light and the show desktop strip. |
+| `startmenu-width`, `startmenu-height` (with the margins: 660 × 732 is Vela's), `startmenu-radius`, `startmenu-surface`, `startmenu-cell-height` | The Start menu's size, corners, tint and rows. |
+| `startmenu-layout=1` | Windows 7's Start menu, on the taskbar at the corner. |
+| `quicksettings-radius`, `quicksettings-tile-radius`, `quicksettings-surface` | Quick settings' corners and tint. |
+| `quicksettings-borderless`, `quicksettings-inline-arrow`, `quicksettings-flat-footer`, `quicksettings-thick-slider` | WindowGlass's: no borders, the arrow beside the icon, no footer band, a thick slider. |
+| `notifications-radius`, `notifications-card-radius`, `notifications-surface`, `notifications-today-radius`, `notifications-focus` | The notification center's corners, tint and today's mark; the focus timer. |
+| `notifications-glass`, `notifications-reflection`, `notifications-reflection-opacity` | Windows 7's glass over quick settings and the center. |
+
+Variants name layouts Vela implements, never code from the file; the numeric tokens above can tune them further:
+
+| Token | Layouts |
+|---|---|
+| `taskbar-variant` | `default`, `floating`, `floating-split`, `dock` |
+| `startmenu-variant` | `default`, `seven` |
+| `quicksettings-variant` | `default`, `glass`, `classic` |
+| `notifications-variant` | `default`, `aero` |
+
+```ini
+# Vela Floating: floating taskbar and glass quick settings
+# Original author: Brando Giuffrida
+schema-version=1
+inherits=vela
+taskbar-variant=floating
+quicksettings-variant=glass
+```
+
+The design and what is still planned are in [theme-system.md](theme-system.md).
 
 ## Display configuration
 

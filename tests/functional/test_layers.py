@@ -160,24 +160,34 @@ class BlurPolicy(unittest.TestCase):
                 # own shadow.
                 box = (window["x"] + 48, window["y"] + 48, window["w"] - 96, window["h"] - 96)
                 self.check(vela, app_id, self.expected(acrylic), box)
-                vela.command("blur-look 2 -1 0")
+                vela.command("blur-look * 2 -1 0 0")
                 time.sleep(0.4)
-                self.check(vela, f"{app_id}, blur-look 2 -1 0",
+                self.check(vela, f"{app_id}, blur-look * 2 -1 0 0",
                            self.expected(acrylic, saturation=2, amount=0) if acrylic else self.expected(False), box)
 
     def test_theme_blur_look(self):
         """A theme's blur-saturation and blur-tint (the shell's blur-look)
         change Vela's acrylic, not a client's blur, and -1 is Vela's own
-        again (docs/configuration.md, "Theme files")."""
+        again; a panel's own look changes only the panel of that layer
+        namespace (docs/configuration.md, "Theme files")."""
         for namespace, acrylic in (("vela-test", True), ("test", False)):
             with self.subTest(namespace=namespace), Session() as vela:
                 self.start(vela, namespace)
-                vela.command("blur-look 2 -1 0")
+                vela.command("blur-look * 2 -1 0 0")
                 time.sleep(0.4)
-                self.check(vela, f"{namespace}, blur-look 2 -1 0", self.expected(acrylic, saturation=2, amount=0))
-                vela.command("blur-look 1.5 -1 0.2")
+                self.check(vela, f"{namespace}, blur-look * 2 -1 0 0", self.expected(acrylic, saturation=2, amount=0))
+                vela.command("blur-look * 1.5 -1 0.2 0")
                 time.sleep(0.4)
-                self.check(vela, f"{namespace}, blur-look 1.5 -1 0.2", self.expected(acrylic, saturation=1.5, amount=0.2))
-                vela.command("blur-look -1 -1 -1")
+                self.check(vela, f"{namespace}, blur-look * 1.5 -1 0.2 0", self.expected(acrylic, saturation=1.5, amount=0.2))
+                vela.command("blur-look * -1 -1 -1 0")
                 time.sleep(0.4)
-                self.check(vela, f"{namespace}, blur-look -1 -1 -1", self.expected(acrylic))
+                self.check(vela, f"{namespace}, blur-look * -1 -1 -1 0", self.expected(acrylic))
+                # A panel's own look (its style's): only the panel with that
+                # layer namespace, over the general one.
+                vela.command("blur-look vela-other 2 -1 0 0")
+                time.sleep(0.4)
+                self.check(vela, f"{namespace}, blur-look vela-other", self.expected(acrylic))
+                vela.command(f"blur-look {namespace} 2 -1 0 0")
+                time.sleep(0.4)
+                self.check(vela, f"{namespace}, blur-look {namespace}",
+                           self.expected(acrylic, saturation=2, amount=0) if acrylic else self.expected(False))

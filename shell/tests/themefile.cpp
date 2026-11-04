@@ -27,12 +27,12 @@ void write(const QString& path, const QByteArray& text)
     file.write(text);
 }
 
-vela::themes::File read(const QByteArray& text)
+vela::themes::File read(const QByteArray& text, vela::themes::Layer layer = vela::themes::Theme)
 {
     QBuffer buffer;
     buffer.setData(text);
     buffer.open(QIODevice::ReadOnly | QIODevice::Text);
-    return vela::themes::read(buffer, QStringLiteral("test"));
+    return vela::themes::read(buffer, QStringLiteral("test"), layer);
 }
 
 QStringList kinds(const QList<vela::themes::Problem>& problems)
@@ -59,25 +59,135 @@ private slots:
         QDir(qEnvironmentVariable("XDG_DATA_DIRS").section(u':', 0, 0)).removeRecursively();
     }
 
-    // The list comes from Theme.qml: every themed("...") token, typed as its
-    // property, and nothing else.
-    void tokensAreTheOnesOfThemeQml()
+    // The list comes from Theme.qml and Styles.qml: every key they read, typed
+    // as its property or its reader says, and nothing else; every variant
+    // key has its layouts.
+    void tokensAreTheOnesOfThemeAndStylesQml()
     {
-        QFile qml(QStringLiteral(THEME_QML));
-        QVERIFY(qml.open(QIODevice::ReadOnly | QIODevice::Text));
-        QSet<QString> inQml;
-        const QRegularExpression themed(QStringLiteral("themed\\(\"([^\"]+)\""));
-        for (auto it = themed.globalMatch(QString::fromUtf8(qml.readAll())); it.hasNext();) {
-            inQml.insert(it.next().captured(1));
+        QSet<QString> read;
+        const QRegularExpression key(QStringLiteral("(?:themed|styles\\.(?:size|flag|picture))\\(\"([^\"]+)\""));
+        for (const char* path : { THEME_QML, STYLES_QML }) {
+            QFile qml(QString::fromUtf8(path));
+            QVERIFY(qml.open(QIODevice::ReadOnly | QIODevice::Text));
+            for (auto it = key.globalMatch(QString::fromUtf8(qml.readAll())); it.hasNext();) {
+                read.insert(it.next().captured(1));
+            }
         }
         QSet<QString> listed;
+        QSet<QString> variantKeys;
         for (const vela::themes::Token& token : vela::themes::tokens) {
             listed.insert(QLatin1String(token.name));
+            if (token.kind == vela::themes::TokenKind::Variant) {
+                variantKeys.insert(QLatin1String(token.name));
+            }
         }
-        QCOMPARE(listed, inQml);
-        QCOMPARE(vela::themes::token(QStringLiteral("accent"))->kind, vela::themes::TokenKind::Color);
-        QCOMPARE(vela::themes::token(QStringLiteral("radius"))->kind, vela::themes::TokenKind::Number);
+        QCOMPARE(listed, read);
+        const QStringList withLayouts = vela::themes::variants().keys();
+        QCOMPARE(variantKeys, QSet<QString>(withLayouts.begin(), withLayouts.end()));
+        using vela::themes::TokenKind;
+        QCOMPARE(vela::themes::token(QStringLiteral("accent"))->kind, TokenKind::Color);
+        QCOMPARE(vela::themes::token(QStringLiteral("radius"))->kind, TokenKind::Number);
+        QCOMPARE(vela::themes::token(QStringLiteral("menu-layout"))->kind, TokenKind::Number); // a bool property
+        QCOMPARE(vela::themes::token(QStringLiteral("taskbar-height"))->kind, TokenKind::Number);
+        QCOMPARE(vela::themes::token(QStringLiteral("taskbar-fit"))->kind, TokenKind::Number); // a flag
+        QCOMPARE(vela::themes::token(QStringLiteral("taskbar-stroke"))->kind, TokenKind::Color);
+        QCOMPARE(vela::themes::token(QStringLiteral("taskbar-reflection-opacity"))->kind, TokenKind::Number);
+        QCOMPARE(vela::themes::token(QStringLiteral("taskbar-orb"))->kind, TokenKind::Asset);
+        QCOMPARE(vela::themes::token(QStringLiteral("startmenu-variant"))->kind, TokenKind::Variant);
         QVERIFY(!vela::themes::token(QStringLiteral("subtleHover"))); // not themed (Theme.qml says why)
+    }
+
+    // A theme sets any surface's keys: numbers, layouts among Vela's own, and
+    // pictures (asset:), an empty URL while not installed.
+    void surfaceKeysVariantsAndPictures()
+    {
+        QTest::ignoreMessage(QtWarningMsg, "theme test:3: startmenu-variant=classic is not one of Vela's layouts (default, seven): skipped");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:5: taskbar-tile-image is a picture, asset:<file>, not \"tile.png\": skipped");
+        QDir().mkpath(config() + QStringLiteral("assets"));
+        write(config() + QStringLiteral("assets/orb.png"), "png");
+        const vela::themes::File file = read("taskbar-height=52\ntaskbar-variant=floating\nstartmenu-variant=classic\n"
+                                             "taskbar-orb=asset:orb.png\ntaskbar-tile-image=tile.png\n"
+                                             "taskbar-reflection=asset:missing.png\ntaskbar-orb-pressed=asset:../orb.png\n");
+        QCOMPARE(kinds(file.problems), (QStringList { "unknown-variant", "expects-asset" }));
+        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-height")).toDouble(), 52.0);
+        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-variant")).toString(), QStringLiteral("floating"));
+        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-orb")).toString(),
+            QUrl::fromLocalFile(config() + QStringLiteral("assets/orb.png")).toString());
+        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-reflection")).toString(), QString()); // not installed
+        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-orb-pressed")).toString(), QString()); // outside assets/
+    }
+
+    // A style only sets its own surface's keys and the blur's: anything else
+    // would change the rest of the desktop.
+    void stylesKeepToTheirSurface()
+    {
+        QTest::ignoreMessage(QtWarningMsg, "theme test:2: startmenu-width is another surface's, not this style's: skipped");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:3: dark.accent is another surface's, not this style's: skipped");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:4: quicksettings-radius is another surface's, not this style's: skipped");
+        const vela::themes::File file = read("taskbar-height=40\nstartmenu-width=500\ndark.accent=#ff0000\n"
+                                             "quicksettings-radius=8\nblur-tint=0\ndark.taskbar=#80000000\n",
+            vela::themes::Taskbar);
+        QCOMPARE(kinds(file.problems), (QStringList { "other-surface", "other-surface", "other-surface" }));
+        QCOMPARE(file.tokens.keys(), (QStringList { QStringLiteral("blur-tint"), QStringLiteral("dark.taskbar"), QStringLiteral("taskbar-height") }));
+        QVERIFY(read("menu-layout=1\nstartmenu-radius=4\n", vela::themes::StartMenu).problems.isEmpty());
+        QVERIFY(read("notifications-radius=8\nquicksettings-tile-radius=4\n", vela::themes::Notifications).problems.isEmpty());
+    }
+
+    // The theme and each chosen style, on their own and merged: a style's
+    // keys over the theme's, a panel's look from the theme and its style only.
+    void theThemeAndTheStyles()
+    {
+        write(data() + QStringLiteral("glass.conf"), "radius=6\ntaskbar-height=48\nblur-tint=0\n");
+        write(data() + QStringLiteral("taskbar/pill.conf"), "taskbar-height=52\nblur-strength=0.5\n");
+        write(config() + QStringLiteral("taskbar/pill.conf"), "inherits=pill\ntaskbar-radius=24\n");
+        const QString conf = qEnvironmentVariable("XDG_CONFIG_HOME") + QStringLiteral("/vela/vela.conf");
+        write(conf, "theme=glass\ntaskbar-style=pill\nstartmenu-style=nothing-here\n");
+        const vela::themes::Choice choice = vela::themes::configured(conf);
+        QCOMPARE(choice[vela::themes::Taskbar], QStringLiteral("pill"));
+        QCOMPARE(choice[vela::themes::Notifications], QString());
+        const vela::themes::Loaded loaded = vela::themes::loadConfigured(conf);
+        const QVariantMap merged = loaded.merged();
+        QCOMPARE(merged.value(QStringLiteral("taskbar-height")).toDouble(), 52.0);
+        QCOMPARE(merged.value(QStringLiteral("taskbar-radius")).toDouble(), 24.0); // the user's style over the installed one
+        QCOMPARE(merged.value(QStringLiteral("radius")).toDouble(), 6.0);
+        QCOMPARE(loaded.withStyle(vela::themes::StartMenu).value(QStringLiteral("taskbar-height")).toDouble(), 48.0);
+        QVERIFY(!loaded.withStyle(vela::themes::StartMenu).contains(QStringLiteral("blur-strength")));
+        QVERIFY(loaded.styled(vela::themes::Taskbar));
+        QVERIFY(!loaded.styled(vela::themes::StartMenu)); // chosen, not installed
+        QVERIFY(!loaded.styled(vela::themes::Theme));
+        // A theme's own keys for a surface style it as well; its shared colors
+        // (taskbar) and blur don't.
+        vela::themes::Choice themeOnly;
+        write(data() + QStringLiteral("pill.conf"), "startmenu-radius=35\ndark.quicksettings-radius=20\n");
+        themeOnly[vela::themes::Theme] = QStringLiteral("pill");
+        QVERIFY(vela::themes::load(themeOnly).styled(vela::themes::StartMenu));
+        QVERIFY(vela::themes::load(themeOnly).styled(vela::themes::Notifications));
+        QVERIFY(!vela::themes::load(themeOnly).styled(vela::themes::Taskbar));
+        write(data() + QStringLiteral("tinted.conf"), "dark.taskbar=#80000000\nblur-tint=0\nradius=2\n");
+        themeOnly[vela::themes::Theme] = QStringLiteral("tinted");
+        QVERIFY(!vela::themes::load(themeOnly).styled(vela::themes::Taskbar));
+        QCOMPARE(loaded.files(), (QStringList { data() + QStringLiteral("glass.conf"), config() + QStringLiteral("taskbar/pill.conf"),
+                                     data() + QStringLiteral("taskbar/pill.conf") }));
+        // A style's name can't leave its directory either.
+        QVERIFY(vela::themes::locate(QStringLiteral("../glass"), vela::themes::Taskbar).isEmpty());
+    }
+
+    // A surface's styles, with their pictures (themes/screenshots/).
+    void theGallery()
+    {
+        write(data() + QStringLiteral("taskbar/pill.conf"), "# Pill: a floating taskbar\n# Original author: lowell\ntaskbar-radius=24\n");
+        write(data() + QStringLiteral("taskbar/plain.conf"), "taskbar-height=40\n");
+        write(data() + QStringLiteral("screenshots/taskbar/pill.png"), "png");
+        const QVariantList gallery = vela::themes::gallery(QStringLiteral("taskbar"));
+        QCOMPARE(gallery.size(), 2);
+        const QVariantMap pill = gallery[0].toMap();
+        QCOMPARE(pill.value(QStringLiteral("text")).toString(), QStringLiteral("Pill"));
+        QCOMPARE(pill.value(QStringLiteral("author")).toString(), QStringLiteral("lowell"));
+        QCOMPARE(pill.value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/taskbar/pill.png")).toString() });
+        QVERIFY(gallery[1].toMap().value(QStringLiteral("images")).toStringList().isEmpty());
+        QVERIFY(vela::themes::gallery(QString()).isEmpty()); // themes have no gallery
+        QVERIFY(vela::themes::gallery(QStringLiteral("elsewhere")).isEmpty());
     }
 
     void colorsAndNumbers()
@@ -138,9 +248,10 @@ private slots:
                                              "dark.blur-tint=0.2\nblur-luminosity=0\n");
         QCOMPARE(kinds(file.problems), (QStringList { "expects-number", "unknown-token", "unknown-token" }));
         QCOMPARE(file.tokens.keys(), (QStringList { QStringLiteral("blur-saturation"), QStringLiteral("blur-tint") }));
-        QCOMPARE(vela::themes::blurLook(file.tokens), QByteArray("blur-look 1 -1 0"));
-        QCOMPARE(vela::themes::blurLook({}), QByteArray("blur-look -1 -1 -1"));
-        QCOMPARE(vela::themes::blurLook(read("blur-strength=0.25\n").tokens), QByteArray("blur-look -1 0.25 -1"));
+        QCOMPARE(vela::themes::blurLook("*", file.tokens), QByteArray("blur-look * 1 -1 0 0"));
+        QCOMPARE(vela::themes::blurLook("*", {}), QByteArray("blur-look * -1 -1 -1 0"));
+        QCOMPARE(vela::themes::blurLook("vela-taskbar", read("blur-strength=0.25\n").tokens, true),
+            QByteArray("blur-look vela-taskbar -1 0.25 -1 1"));
     }
 
     // The same lookup as Theme.qml's themed(): the mode's key, then the shared one.
@@ -331,6 +442,48 @@ private slots:
                 QVERIFY(file.parent.isEmpty());
             }
         }
+    }
+
+    // Every surface's style in themes/, installed, resolves without a problem
+    // in its own layer (its surface's keys only) and names its author; every
+    // picture in themes/screenshots/ is a style's.
+    void shippedStylesAreClean()
+    {
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("^theme ")));
+        int count = 0;
+        for (int i = vela::themes::Taskbar; i < vela::themes::LayerCount; ++i) {
+            const auto layer = vela::themes::Layer(i);
+            const QString surface = QLatin1String(vela::themes::layerInfo(layer).directory);
+            const QDir styles(QStringLiteral(THEMES_DIR) + u'/' + surface);
+            const QStringList files = styles.entryList({ QStringLiteral("*.conf") }, QDir::Files);
+            QVERIFY2(!files.isEmpty(), qPrintable(surface));
+            QDir().mkpath(data() + surface);
+            for (const QString& name : files) {
+                QVERIFY(QFile::copy(styles.filePath(name), data() + surface + u'/' + name));
+            }
+            QStringList names;
+            for (const QString& name : files) {
+                const vela::themes::Resolved resolved = vela::themes::resolve(name.chopped(5), layer);
+                QVERIFY2(resolved.problems.isEmpty(), qPrintable(surface + u'/' + name));
+                QCOMPARE(resolved.files.first(), data() + surface + u'/' + name);
+                QFile in(styles.filePath(name));
+                QVERIFY(in.open(QIODevice::ReadOnly | QIODevice::Text));
+                const QByteArray text = in.readAll();
+                QVERIFY2(text.contains("\n# Original author: ") || text.startsWith("# Original author: "),
+                    qPrintable(surface + u'/' + name));
+                names.append(name.chopped(5));
+                ++count;
+            }
+            const QDir pictures(QStringLiteral(THEMES_DIR) + QStringLiteral("/screenshots/") + surface);
+            for (const QString& picture : pictures.entryList({ QStringLiteral("*.png") }, QDir::Files)) {
+                QString name = picture.chopped(4);
+                if (name.endsWith(QLatin1String("-qs")) || name.endsWith(QLatin1String("-nc"))) {
+                    name.chop(3);
+                }
+                QVERIFY2(names.contains(name), qPrintable(surface + u'/' + picture));
+            }
+        }
+        QCOMPARE(count, 80); // lowell's: 44 taskbar, 21 Start menu, 15 quick settings styles
     }
 };
 

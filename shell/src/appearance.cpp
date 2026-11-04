@@ -64,9 +64,10 @@ void Appearance::watch()
 {
     // Whoever writes the files replaces them: the directories are watched too.
     const QString shellConfig = QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell")).fileName();
-    // The chosen theme and the themes it inherits too: editing one shows at once.
+    // The chosen theme and styles and what they inherit too: editing one shows
+    // at once.
     QStringList paths { shellConfig, wallpaperTintCachePath(), vela::language::configPath() };
-    paths += m_themeFiles;
+    paths += m_loaded.files();
     for (const QString& path : std::as_const(paths)) {
         if (path.isEmpty()) {
             continue;
@@ -79,11 +80,13 @@ void Appearance::watch()
             m_watcher.addPath(info.absolutePath());
         }
     }
-    // The themes' directories: a theme added, removed or replaced there (the
-    // chosen one may be missing yet) shows at once too.
-    for (const QString& dir : vela::themes::directories()) {
-        if (!m_watcher.directories().contains(dir)) {
-            m_watcher.addPath(dir);
+    // The themes' and styles' directories: a file added, removed or replaced
+    // there (the chosen one may be missing yet) shows at once too.
+    for (int i = 0; i < vela::themes::LayerCount; ++i) {
+        for (const QString& dir : vela::themes::directories(vela::themes::Layer(i))) {
+            if (!m_watcher.directories().contains(dir)) {
+                m_watcher.addPath(dir);
+            }
         }
     }
     if (!m_watching) {
@@ -91,6 +94,17 @@ void Appearance::watch()
         connect(&m_watcher, &QFileSystemWatcher::fileChanged, &m_debounce, qOverload<>(&QTimer::start));
         connect(&m_watcher, &QFileSystemWatcher::directoryChanged, &m_debounce, qOverload<>(&QTimer::start));
     }
+}
+
+QStringList Appearance::chosenStyles() const
+{
+    QStringList chosen;
+    for (int i = vela::themes::Taskbar; i < vela::themes::LayerCount; ++i) {
+        if (styleChosen(vela::themes::Layer(i))) {
+            chosen.append(QLatin1String(vela::themes::layerInfo(vela::themes::Layer(i)).directory));
+        }
+    }
+    return chosen;
 }
 
 void Appearance::reload()
@@ -107,21 +121,24 @@ void Appearance::reload()
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
     const Motion motion = configuredMotion();
-    const vela::themes::Resolved resolved = vela::themes::resolve(vela::themes::configuredName(vela::language::configPath()));
-    const QVariantMap& theme = resolved.tokens;
-    if (resolved.files != m_themeFiles) {
-        for (const QString& file : std::as_const(m_themeFiles)) {
-            if (!resolved.files.contains(file)) {
+    vela::themes::Loaded loaded = vela::themes::loadConfigured(vela::language::configPath());
+    const QStringList files = loaded.files();
+    const bool filesChanged = files != m_loaded.files();
+    if (filesChanged) {
+        for (const QString& file : m_loaded.files()) {
+            if (!files.contains(file)) {
                 m_watcher.removePath(file);
             }
         }
-        m_themeFiles = resolved.files;
-        if (m_watching) {
-            watch();
-        }
     }
-    const bool themeChanged = theme != m_theme;
+    const QVariantMap theme = loaded.merged();
+    // A style chosen or dropped changes the blur look even with the same keys.
+    const bool themeChanged = theme != m_theme || loaded.layers != m_loaded.layers;
+    m_loaded = std::move(loaded);
     m_theme = theme;
+    if (filesChanged && m_watching) {
+        watch();
+    }
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
         // Only the theme or the motion: the icons stay as they are.
         if (themeChanged || motion.effects != m_animationEffects || motion.duration != m_animationDuration) {
