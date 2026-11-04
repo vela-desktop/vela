@@ -649,9 +649,6 @@ Window {
             anchors.fill: parent
             radius: Styles.quickSettings.radius
             color: Styles.quickSettings.surface
-            // Windows 7's glass (notifications-glass): a dark edge.
-            border.width: Styles.notifications.glass ? 1 : 0
-            border.color: "#B3101820"
             focus: true
             clip: true
             Keys.onEscapePressed: {
@@ -1345,7 +1342,6 @@ Window {
                 }
             }
 
-            AeroGlass { z: 1; radius: panel.radius }
             GlassEdge {
                 z: 1
                 cornerRadius: panel.radius

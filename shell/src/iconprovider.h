@@ -94,9 +94,7 @@ inline void applyIconTheme(bool light)
 //
 // A prefix before the name: "l/" and "d/" say for which mode (light or dark)
 // the icon is asked, so changing mode changes the address and QML reloads
-// it; "w/" wants it white (on the accent); "k/" wants the theme's white
-// monochrome glyphs drawn dark, colored icons as they are (a surface that is
-// always light: Windows 7's menus, a style's).
+// it; "w/" wants it white (on the accent).
 class IconProvider : public QQuickImageProvider {
 public:
     explicit IconProvider(int designSize = 0)
@@ -112,10 +110,8 @@ public:
             : 64;
         QString name = QUrl::fromPercentEncoding(id.toUtf8());
         bool white = false;
-        bool dark = false;
-        if (id.size() > 2 && id[1] == u'/' && (id[0] == u'l' || id[0] == u'd' || id[0] == u'w' || id[0] == u'k')) {
+        if (id.size() > 2 && id[1] == u'/' && (id[0] == u'l' || id[0] == u'd' || id[0] == u'w')) {
             white = id[0] == u'w';
-            dark = id[0] == u'k';
             name = QUrl::fromPercentEncoding(id.mid(2).toUtf8());
         }
 
@@ -140,11 +136,6 @@ public:
             painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
             painter.fillRect(pixmap.rect(), Qt::white);
         }
-        if (dark && !pixmap.isNull() && isWhiteGlyph(pixmap.toImage())) {
-            QPainter painter(&pixmap);
-            painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
-            painter.fillRect(pixmap.rect(), QColor(0x1B, 0x1B, 0x1B));
-        }
         if (size) {
             *size = pixmap.size();
         }
@@ -152,26 +143,5 @@ public:
     }
 
 private:
-    // A white (or nearly) monochrome glyph: nine in ten of its opaque pixels
-    // are light gray. Colored icons are not.
-    static bool isWhiteGlyph(const QImage& source)
-    {
-        const QImage image = source.convertToFormat(QImage::Format_ARGB32);
-        int opaque = 0;
-        int whitish = 0;
-        for (int y = 0; y < image.height(); ++y) {
-            const QRgb* line = reinterpret_cast<const QRgb*>(image.constScanLine(y));
-            for (int x = 0; x < image.width(); ++x) {
-                if (qAlpha(line[x]) > 128) {
-                    ++opaque;
-                    const int hi = std::max({ qRed(line[x]), qGreen(line[x]), qBlue(line[x]) });
-                    const int lo = std::min({ qRed(line[x]), qGreen(line[x]), qBlue(line[x]) });
-                    whitish += lo > 200 && hi - lo < 30 ? 1 : 0;
-                }
-            }
-        }
-        return opaque > 0 && whitish * 10 >= opaque * 9;
-    }
-
     int m_designSize;
 };

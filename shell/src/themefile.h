@@ -48,10 +48,9 @@
 //
 //   <token>, dark.<token>, light.<token>   a token, for both modes or one;
 //                                          a color (#RRGGBB, #AARRGGBB), a
-//                                          number, asset:<file> (a picture
-//                                          of themes/assets/) or one of
-//                                          Vela's layouts (variants()), as
-//                                          the token's type says
+//                                          number or one of Vela's layouts
+//                                          (variants()), as the token's type
+//                                          says
 //   blur-saturation, blur-strength,        the blur behind Vela's acrylic
 //   blur-tint                              surfaces, which the compositor
 //                                          draws (blurLook()); numbers, for
@@ -166,9 +165,7 @@ inline const QMap<QString, QStringList>& variants()
     static const QMap<QString, QStringList> list {
         { QStringLiteral("taskbar-variant"),
             { QStringLiteral("default"), QStringLiteral("floating"), QStringLiteral("floating-split"), QStringLiteral("dock") } },
-        { QStringLiteral("startmenu-variant"), { QStringLiteral("default"), QStringLiteral("seven") } },
         { QStringLiteral("quicksettings-variant"), { QStringLiteral("default"), QStringLiteral("glass"), QStringLiteral("classic") } },
-        { QStringLiteral("notifications-variant"), { QStringLiteral("default"), QStringLiteral("aero") } },
     };
     return list;
 }
@@ -180,7 +177,7 @@ inline bool belongsTo(const QString& key, Layer layer)
     switch (layer) {
     case Theme: return true;
     case Taskbar: return isBlurKey(key) || key == QLatin1String("taskbar") || key.startsWith(QLatin1String("taskbar-"));
-    case StartMenu: return isBlurKey(key) || key.startsWith(QLatin1String("startmenu-")) || key == QLatin1String("menu-layout");
+    case StartMenu: return isBlurKey(key) || key.startsWith(QLatin1String("startmenu-"));
     case Notifications:
         return isBlurKey(key) || key.startsWith(QLatin1String("notifications-")) || key.startsWith(QLatin1String("quicksettings-"));
     case LayerCount: break;
@@ -264,26 +261,6 @@ inline QString locate(const QString& name, Layer layer = Theme)
     return files.isEmpty() ? QString() : files.first();
 }
 
-// asset:<file>: a picture of themes/assets/ (the user's first), as a file
-// URL; empty if it isn't installed. None is installed (Aero's pictures are
-// Windows'): without them the drawn look stays. <file> may be in a
-// subdirectory (aero/orbNormal.png), never outside assets/: every part
-// starts with a letter or a digit, so no "..", no absolute path.
-inline QString assetUrl(const QString& name)
-{
-    static const QRegularExpression safe(
-        QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}(/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}){0,3}$"));
-    if (!safe.match(name).hasMatch()) {
-        return {};
-    }
-    const QString relative = QStringLiteral("vela/themes/assets/") + name;
-    QString file = QStandardPaths::locate(QStandardPaths::GenericConfigLocation, relative);
-    if (file.isEmpty()) {
-        file = QStandardPaths::locate(QStandardPaths::GenericDataLocation, relative);
-    }
-    return file.isEmpty() ? QString() : QUrl::fromLocalFile(file).toString();
-}
-
 // What is wrong in a theme or style, where. Settings lists them
 // (Personalization > Themes) and the log has them in English (describe()).
 struct Problem {
@@ -292,7 +269,6 @@ struct Problem {
         UnknownToken, // a key no token is for
         ExpectsColor, // a color token with something else
         ExpectsNumber, // a number token with something else
-        ExpectsAsset, // a picture token without asset:
         UnknownVariant, // a variant key naming no layout of Vela's
         OtherSurface, // a style setting another surface's key
         InvalidParent, // inherits= with a name that can't be a theme
@@ -317,7 +293,6 @@ inline QString kindName(Problem::Kind kind)
     case Problem::UnknownToken: return QStringLiteral("unknown-token");
     case Problem::ExpectsColor: return QStringLiteral("expects-color");
     case Problem::ExpectsNumber: return QStringLiteral("expects-number");
-    case Problem::ExpectsAsset: return QStringLiteral("expects-asset");
     case Problem::UnknownVariant: return QStringLiteral("unknown-variant");
     case Problem::OtherSurface: return QStringLiteral("other-surface");
     case Problem::InvalidParent: return QStringLiteral("invalid-parent");
@@ -345,9 +320,6 @@ inline QString describe(const Problem& p)
         break;
     case Problem::ExpectsNumber:
         what = QStringLiteral("%1 is a number, not \"%2\": skipped").arg(p.key, p.value);
-        break;
-    case Problem::ExpectsAsset:
-        what = QStringLiteral("%1 is a picture, asset:<file>, not \"%2\": skipped").arg(p.key, p.value);
         break;
     case Problem::UnknownVariant:
         what = QStringLiteral("%1=%2 is not one of Vela's layouts (%3): skipped")
@@ -383,8 +355,8 @@ inline QVariantMap toVariant(const Problem& p)
         { QStringLiteral("line"), p.line }, { QStringLiteral("key"), p.key }, { QStringLiteral("value"), p.value } };
 }
 
-// One file: its tokens (a color as QColor, a number as double, a picture as
-// its URL, "" when not installed, a variant as its name), what it inherits
+// One file: its tokens (a color as QColor, a number as double, a variant as
+// its name), what it inherits
 // and its format, and what is wrong in it (each also logged).
 struct File {
     QVariantMap tokens;
@@ -451,12 +423,6 @@ inline File read(QIODevice& in, const QString& origin = QString(), Layer layer =
                 file.tokens.insert(key, QColor::fromString(value));
             } else {
                 problem(Problem::ExpectsColor, number, key, value);
-            }
-        } else if (t->kind == TokenKind::Asset) {
-            if (value.startsWith(QLatin1String("asset:"))) {
-                file.tokens.insert(key, assetUrl(value.mid(6).trimmed()));
-            } else {
-                problem(Problem::ExpectsAsset, number, key, value);
             }
         } else if (variants().value(name).contains(value)) {
             file.tokens.insert(key, value);

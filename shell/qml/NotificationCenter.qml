@@ -119,8 +119,7 @@ Window {
                 radius: Styles.notifications.radius
                 color: Styles.notifications.surface
                 border.width: 1
-                border.color: Styles.notifications.glass ? "#B3101820" : Theme.stroke
-                AeroGlass { z: 1; radius: parent.radius }
+                border.color: Theme.stroke
 
                 Item {
                     id: header
@@ -294,8 +293,7 @@ Window {
                 radius: Styles.notifications.radius
                 color: Styles.notifications.surface
                 border.width: 1
-                border.color: Styles.notifications.glass ? "#B3101820" : Theme.stroke
-                AeroGlass { z: 1; radius: parent.radius }
+                border.color: Theme.stroke
 
                 Column {
                     id: calendarContent

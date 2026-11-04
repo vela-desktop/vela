@@ -26,11 +26,6 @@ QtObject {
     function size(key, fallback, low, high) {
         return Math.max(low, Math.min(high, Math.round(Theme.themed(key, fallback))))
     }
-    // A picture of the theme (asset:...): its URL, "" if not installed.
-    function picture(key) {
-        const url = Theme.themed(key, "")
-        return typeof url === "string" ? url : ""
-    }
 
     // --- the taskbar (themes/taskbar/) ---
     readonly property QtObject taskbar: QtObject {
@@ -58,7 +53,6 @@ QtObject {
         readonly property int splitRadius: styles.size("taskbar-split-radius", 5, 0, 48)
         readonly property int edge: styles.size("taskbar-edge", variant === "dock" ? 1 : 0, 0, 2)
         readonly property bool flush: styles.flag("taskbar-flush", false)
-        readonly property bool alignLeft: styles.flag("taskbar-align-left", false) // Windows 7
         readonly property color stroke: Theme.themed("taskbar-stroke", Theme.stroke)
         // The buttons.
         readonly property int buttonWidth: styles.size("taskbar-button-width", 44, 24, 96)
@@ -66,32 +60,6 @@ QtObject {
         readonly property int buttonRadius: styles.size("taskbar-button-radius", Theme.radius, 0, 48)
         readonly property int iconSize: styles.size("taskbar-icon-size", 26, 12, 64)
         readonly property int spacing: styles.size("taskbar-spacing", 4, 0, 24)
-        // bounce=0: icons don't shrink while pressed (Windows 7 had no such motion).
-        readonly property bool bounce: styles.flag("taskbar-bounce", true)
-        readonly property bool taskView: styles.flag("taskbar-task-view", true)
-        // A tile under each open app (Windows 7's glass buttons): its lower
-        // color, the focused app's, a glossy gradient up to a lighter top.
-        readonly property color buttonFill: Theme.themed("taskbar-button-fill", "transparent")
-        readonly property color buttonFillActive: Theme.themed("taskbar-button-fill-active", buttonFill)
-        readonly property color buttonStroke: Theme.themed("taskbar-button-stroke", "transparent")
-        readonly property bool buttonGloss: styles.flag("taskbar-button-gloss", false)
-        // Pictures instead (asset:): the tile stretched with a 3 px border,
-        // for an open app, the focused one, under the pointer, and under the
-        // pointer when the app isn't open.
-        readonly property string tileImage: styles.picture("taskbar-tile-image")
-        readonly property string tileImageActive: styles.picture("taskbar-tile-image-active") || tileImage
-        readonly property string tileImageHover: styles.picture("taskbar-tile-image-hover") || tileImage
-        readonly property string tileImageIdleHover: styles.picture("taskbar-tile-image-idle-hover")
-        // Streaks of light over a full-width bar.
-        readonly property string reflection: styles.picture("taskbar-reflection")
-        readonly property real reflectionOpacity: Math.max(0, Math.min(1, Theme.themed("taskbar-reflection-opacity", 0.5)))
-        // start-glyph=1: Windows 7's orb (drawn, or the orb pictures).
-        readonly property int startGlyph: styles.size("taskbar-start-glyph", 0, 0, 1)
-        readonly property string orb: styles.picture("taskbar-orb")
-        readonly property string orbPressed: styles.picture("taskbar-orb-pressed") || orb
-        // The show desktop corner as a visible strip (Windows 7's picture).
-        readonly property string desktopImage: styles.picture("taskbar-desktop-image")
-        readonly property string desktopImageHover: styles.picture("taskbar-desktop-image-hover") || desktopImage
     }
 
     // --- the Start menu (themes/startmenu/) ---
@@ -106,9 +74,6 @@ QtObject {
         readonly property int radius: styles.size("startmenu-radius", Theme.radiusOverlay, 0, 48)
         readonly property color surface: Theme.themed("startmenu-surface", Theme.surface)
         readonly property int cellHeight: styles.size("startmenu-cell-height", 96, 64, 160)
-        // layout=1 is the legacy spelling of the official Seven variant.
-        readonly property string variant: Theme.themed("startmenu-variant", "default")
-        readonly property bool seven: styles.size("startmenu-layout", variant === "seven" ? 1 : 0, 0, 1) === 1
     }
 
     // --- quick settings and the notification center (themes/notifications/) ---
@@ -128,7 +93,6 @@ QtObject {
         readonly property bool thickSlider: styles.flag("quicksettings-thick-slider", variant === "glass")
     }
     readonly property QtObject notifications: QtObject {
-        readonly property string variant: Theme.themed("notifications-variant", "default")
         readonly property bool chosen: Style.chosenStyles.indexOf("notifications") >= 0
         readonly property int radius: styles.size("notifications-radius", Theme.radiusOverlay, 0, 48)
         readonly property int cardRadius: styles.size("notifications-card-radius", Theme.radius, 0, 24)
@@ -137,11 +101,6 @@ QtObject {
         readonly property int todayRadius: styles.size("notifications-today-radius", 16, 0, 24)
         // focus=0: no focus session under the calendar.
         readonly property bool focus: styles.flag("notifications-focus", true)
-        // Windows 7's glass over both panels (AeroGlass.qml): a lit upper
-        // half, a white line inside a dark edge, the streaks if installed.
-        readonly property bool glass: styles.flag("notifications-glass", variant === "aero")
-        readonly property string reflection: styles.picture("notifications-reflection")
-        readonly property real reflectionOpacity: Math.max(0, Math.min(1, Theme.themed("notifications-reflection-opacity", 0.3)))
     }
 
 }

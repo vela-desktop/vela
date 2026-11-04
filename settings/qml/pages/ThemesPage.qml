@@ -44,7 +44,6 @@ Page {
         case "unknown-token": what = qsTr("%1 is not a theme token").arg(problem.key); break
         case "expects-color": what = qsTr("%1 needs a color like #RRGGBB, not \"%2\"").arg(problem.key).arg(problem.value); break
         case "expects-number": what = qsTr("%1 needs a number, not \"%2\"").arg(problem.key).arg(problem.value); break
-        case "expects-asset": what = qsTr("%1 needs a picture like asset:<file>, not \"%2\"").arg(problem.key).arg(problem.value); break
         case "unknown-variant": what = qsTr("%1=%2 isn't one of Vela's layouts").arg(problem.key).arg(problem.value); break
         case "other-surface": what = qsTr("%1 belongs to another surface than this style's").arg(problem.key); break
         case "invalid-parent": what = qsTr("inherits=%1 is not a theme name").arg(problem.value); break

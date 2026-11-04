@@ -285,16 +285,6 @@ Window {
             border.color: root.style.stroke
         }
 
-        // Streaks of light over a full-width bar (Aero's picture).
-        Image {
-            anchors.fill: parent
-            visible: source != "" && !root.floating
-            source: root.style.reflection
-            fillMode: Image.PreserveAspectCrop
-            opacity: root.style.reflectionOpacity
-            asynchronous: true
-        }
-
         // Empty space: Task Manager and taskbar settings.
         MouseArea {
             id: emptyArea
@@ -325,7 +315,7 @@ Window {
         // the left, like earlier versions of Windows.
         x: root.edge ? (root.style.edge === 2 ? root.style.margin + 12 : Math.round((parent.width - width) / 2))
             : root.fit ? Math.round((parent.width - width - root.fitGap - root.trayGroupWidth) / 2)
-            : Config.taskbarAlignment === "left" || root.style.alignLeft ? 12 + (root.floating ? root.sideMargin : 0)
+            : Config.taskbarAlignment === "left" ? 12 + (root.floating ? root.sideMargin : 0)
             : root.floating ? Math.max(root.sideMargin + 12, Math.round((parent.width - width) / 2))
             : Math.round((parent.width - width) / 2)
         anchors.verticalCenter: parent.verticalCenter
@@ -354,7 +344,7 @@ Window {
 
         // Task View: two overlapping windows, like the Windows 11 icon.
         TaskbarButton {
-            visible: Config.taskView && root.style.taskView
+            visible: Config.taskView
             tooltip: qsTr("Task view")
             onClicked: { root.fromHere(); Shell.taskViewRequested() }
             Item {
@@ -953,16 +943,8 @@ Window {
     Item {
         id: showDesktop
         anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
-        // A style's picture (Windows 7's) makes it a visible strip.
-        width: root.style.desktopImage !== "" ? 15 : 8
-        visible: Config.showDesktopCorner || root.style.desktopImage !== ""
-
-        Image {
-            anchors.fill: parent
-            visible: source != ""
-            source: showDesktopMouse.containsMouse ? root.style.desktopImageHover : root.style.desktopImage
-            fillMode: Image.Stretch
-        }
+        width: 8
+        visible: Config.showDesktopCorner
 
         function showTooltip() {
             const p = showDesktop.mapToItem(null, showDesktop.width / 2, 0)
@@ -1001,7 +983,6 @@ Window {
             }
         }
         Rectangle {
-            visible: root.style.desktopImage === ""
             anchors { right: parent.right; rightMargin: 2; verticalCenter: parent.verticalCenter }
             width: 2
             height: 18

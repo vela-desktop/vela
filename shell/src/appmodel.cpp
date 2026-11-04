@@ -453,11 +453,6 @@ QHash<int, QByteArray> AppModel::roleNames() const
     };
 }
 
-QString AppModel::idAt(int row) const
-{
-    return data(index(row), IdRole).toString();
-}
-
 bool AppModel::launch(int row)
 {
     if (row < 0 || row >= m_visible.size()) {

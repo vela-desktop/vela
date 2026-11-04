@@ -77,7 +77,7 @@ The Settings app is the preferred way to edit these values because it applies va
 
 A **theme** is a complete look of the shell and of Vela's apps: colors and corner radii, the blur behind the shell's panels, and the shape of any shell surface. A **style** changes one surface of the shell over the theme, like Windhawk's three stylers: the taskbar, the Start menu, or quick settings with the notification center. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own) and then in the data directories (`/usr/share/vela/themes/`, the installed ones); `taskbar-style=aero` loads `vela/themes/taskbar/aero.conf` the same way. A style's values win over the theme's. The shell and the apps reload them when they, or what they inherit, change.
 
-Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed themes are lowell's **Window Glass** (`window-glass.conf`, after Windhawk's WindowGlass: flat gray glass over a light blur, a floating pill taskbar as wide as its apps, round Start and quick settings, and a see-through Settings; the surfaces of lowell's Window Glass styles come with it) and **Vela Floating**, Vela Official with a floating taskbar and glass quick settings. The 80 installed styles are lowell's, from Windhawk's stylers, under Customize.
+Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed themes are lowell's **Window Glass** (`window-glass.conf`, after Windhawk's WindowGlass: flat gray glass over a light blur, a floating pill taskbar as wide as its apps, round Start and quick settings, and a see-through Settings; the surfaces of lowell's Window Glass styles come with it) and **Vela Floating**, Vela Official with a floating taskbar and glass quick settings. The 22 installed styles are lowell's, from Windhawk's stylers, under Customize: one of each look, for the taskbar (11), the Start menu (5) and quick settings with the notification center (6).
 
 ```ini
 # Mine: the first line names the theme in Settings
@@ -89,7 +89,7 @@ accent=#C4A7E7
 radius=6
 ```
 
-The first comment line names the file in Settings, and a `# Original author:` line among the first comments credits it there; every installed file has one. Each other key is a token: `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token left out keeps Vela's value, so with no theme and no style nothing changes. A token is a color (`#RRGGBB` or `#AARRGGBB`), a number, `asset:<file>` (a picture in `vela/themes/assets/`; none is installed, as Aero's pictures are Windows', and without them the drawn look stays) or one of Vela's layouts, as its property in [`Theme.qml`](../common/controls/Theme.qml) or [`Styles.qml`](../shell/qml/Styles.qml) says. The list of tokens and their types is generated from both files at build time (`common/CMakeLists.txt`), so a token added there is themable at once. A theme may set any token; a style only its own surface's and the blur's.
+The first comment line names the file in Settings, and a `# Original author:` line among the first comments credits it there; every installed file has one. Each other key is a token: `dark.<token>` or `light.<token>` for one mode, `<token>` for both. A token left out keeps Vela's value, so with no theme and no style nothing changes. A token is a color (`#RRGGBB` or `#AARRGGBB`), a number or one of Vela's layouts, as its property in [`Theme.qml`](../common/controls/Theme.qml) or [`Styles.qml`](../shell/qml/Styles.qml) says. The list of tokens and their types is generated from both files at build time (`common/CMakeLists.txt`), so a token added there is themable at once. A theme may set any token; a style only its own surface's and the blur's.
 
 - `inherits=<name>` starts from another file of the same kind (a theme from a theme, a taskbar style from a taskbar style): its tokens first, then this file's over them. A file of yours can inherit the installed one of the same name (`~/.config/vela/themes/vela.conf` with `inherits=vela`). A parent that isn't installed, or that inherits back, is left out and the file keeps its own tokens; a chain stops after 16 files.
 - `schema-version=1` is the format, optional. A file with another version is not used, nor what it inherits.
@@ -113,7 +113,6 @@ Theme tokens ([`Theme.qml`](../common/controls/Theme.qml)):
 | `text`, `textSecondary`, `textTertiary` | color |
 | `accent` (over the one chosen in Settings > Colors) | color |
 | `radius` (controls), `radiusCard`, `radiusOverlay` (menus, dialogs, panels) | pixels, 0–24 |
-| `menu-layout=1`: Windows 7's right-click menus, in the shell and in File Explorer | flag (Start menu) |
 
 Surface tokens ([`Styles.qml`](../shell/qml/Styles.qml)), for a theme or that surface's style; flags are `0` or `1`:
 
@@ -121,26 +120,20 @@ Surface tokens ([`Styles.qml`](../shell/qml/Styles.qml)), for a theme or that su
 |---|---|
 | `taskbar-height`, `taskbar-margin`, `taskbar-radius`, `taskbar-side-margin` | The bar's height; a margin or a radius makes it a floating pill, that far from the screen's sides at most. |
 | `taskbar-fit`, `taskbar-split-gap`, `taskbar-split-radius`, `taskbar-edge` (1 apps centered, 2 at the left), `taskbar-flush` | A pill that shrinks to the apps and the tray; the tray a pill of its own; the tray at the screen's edge; the apps' pill on the bottom edge. |
-| `taskbar-align-left`, `taskbar-task-view`, `taskbar-spacing` | Apps at the left (Start opens at the corner); the Task view button; the gap between buttons. |
-| `taskbar-button-width`, `taskbar-button-height`, `taskbar-button-radius`, `taskbar-icon-size`, `taskbar-bounce` | The buttons, and whether icons shrink while pressed. |
-| `taskbar-button-fill`, `taskbar-button-fill-active`, `taskbar-button-stroke`, `taskbar-button-gloss` | A tile under each open app (Windows 7's glass buttons). |
-| `taskbar-stroke`, `taskbar-start-glyph` (1: Windows 7's orb) | The bar's hairline; the Start button. |
-| `taskbar-orb`, `taskbar-orb-pressed`, `taskbar-tile-image`, `taskbar-tile-image-active`, `taskbar-tile-image-hover`, `taskbar-tile-image-idle-hover`, `taskbar-reflection`, `taskbar-reflection-opacity`, `taskbar-desktop-image`, `taskbar-desktop-image-hover` | Pictures (`asset:`) for the orb, the tiles, the streaks of light and the show desktop strip. |
+| `taskbar-spacing` | The gap between buttons. |
+| `taskbar-button-width`, `taskbar-button-height`, `taskbar-button-radius`, `taskbar-icon-size` | The buttons. |
+| `taskbar-stroke` | The bar's hairline. |
 | `startmenu-width`, `startmenu-height` (with the margins: 660 × 732 is Vela's), `startmenu-radius`, `startmenu-surface`, `startmenu-cell-height` | The Start menu's size, corners, tint and rows. |
-| `startmenu-layout=1` | Windows 7's Start menu, on the taskbar at the corner. |
 | `quicksettings-radius`, `quicksettings-tile-radius`, `quicksettings-surface` | Quick settings' corners and tint. |
 | `quicksettings-borderless`, `quicksettings-inline-arrow`, `quicksettings-flat-footer`, `quicksettings-thick-slider` | WindowGlass's: no borders, the arrow beside the icon, no footer band, a thick slider. |
 | `notifications-radius`, `notifications-card-radius`, `notifications-surface`, `notifications-today-radius`, `notifications-focus` | The notification center's corners, tint and today's mark; the focus timer. |
-| `notifications-glass`, `notifications-reflection`, `notifications-reflection-opacity` | Windows 7's glass over quick settings and the center. |
 
 Variants name layouts Vela implements, never code from the file; the numeric tokens above can tune them further:
 
 | Token | Layouts |
 |---|---|
 | `taskbar-variant` | `default`, `floating`, `floating-split`, `dock` |
-| `startmenu-variant` | `default`, `seven` |
 | `quicksettings-variant` | `default`, `glass`, `classic` |
-| `notifications-variant` | `default`, `aero` |
 
 ```ini
 # Vela Floating: floating taskbar and glass quick settings

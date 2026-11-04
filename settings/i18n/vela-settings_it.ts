@@ -2741,10 +2741,6 @@ Specifiche sistema
         <translation>%1 vuole un numero, non &quot;%2&quot;</translation>
     </message>
     <message>
-        <source>%1 needs a picture like asset:&lt;file&gt;, not &quot;%2&quot;</source>
-        <translation>%1 vuole un&apos;immagine come asset:&lt;file&gt;, non &quot;%2&quot;</translation>
-    </message>
-    <message>
         <source>%1=%2 isn&apos;t one of Vela&apos;s layouts</source>
         <translation>%1=%2 non è uno dei layout di Vela</translation>
     </message>

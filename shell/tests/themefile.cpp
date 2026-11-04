@@ -87,39 +87,22 @@ private slots:
         using vela::themes::TokenKind;
         QCOMPARE(vela::themes::token(QStringLiteral("accent"))->kind, TokenKind::Color);
         QCOMPARE(vela::themes::token(QStringLiteral("radius"))->kind, TokenKind::Number);
-        QCOMPARE(vela::themes::token(QStringLiteral("menu-layout"))->kind, TokenKind::Number); // a bool property
         QCOMPARE(vela::themes::token(QStringLiteral("taskbar-height"))->kind, TokenKind::Number);
         QCOMPARE(vela::themes::token(QStringLiteral("taskbar-fit"))->kind, TokenKind::Number); // a flag
         QCOMPARE(vela::themes::token(QStringLiteral("taskbar-stroke"))->kind, TokenKind::Color);
-        QCOMPARE(vela::themes::token(QStringLiteral("taskbar-reflection-opacity"))->kind, TokenKind::Number);
-        QCOMPARE(vela::themes::token(QStringLiteral("taskbar-orb"))->kind, TokenKind::Asset);
-        QCOMPARE(vela::themes::token(QStringLiteral("startmenu-variant"))->kind, TokenKind::Variant);
+        QCOMPARE(vela::themes::token(QStringLiteral("quicksettings-variant"))->kind, TokenKind::Variant);
+        QVERIFY(!vela::themes::token(QStringLiteral("taskbar-orb"))); // Windows 7's, gone
         QVERIFY(!vela::themes::token(QStringLiteral("subtleHover"))); // not themed (Theme.qml says why)
     }
 
-    // A theme sets any surface's keys: numbers, layouts among Vela's own, and
-    // pictures (asset:), an empty URL while not installed.
-    void surfaceKeysVariantsAndPictures()
+    // A theme sets any surface's keys: numbers, and layouts among Vela's own.
+    void surfaceKeysAndVariants()
     {
-        QTest::ignoreMessage(QtWarningMsg, "theme test:3: startmenu-variant=classic is not one of Vela's layouts (default, seven): skipped");
-        QTest::ignoreMessage(QtWarningMsg, "theme test:5: taskbar-tile-image is a picture, asset:<file>, not \"tile.png\": skipped");
-        QDir().mkpath(config() + QStringLiteral("assets"));
-        write(config() + QStringLiteral("assets/orb.png"), "png");
-        write(data() + QStringLiteral("assets/aero/orbNormal.png"), "png");
-        const vela::themes::File file = read("taskbar-height=52\ntaskbar-variant=floating\nstartmenu-variant=classic\n"
-                                             "taskbar-orb=asset:orb.png\ntaskbar-tile-image=tile.png\n"
-                                             "taskbar-reflection=asset:missing.png\ntaskbar-orb-pressed=asset:../orb.png\n"
-                                             "taskbar-desktop-image=asset:aero/orbNormal.png\ntaskbar-desktop-image-hover=asset:/etc/passwd\n");
-        QCOMPARE(kinds(file.problems), (QStringList { "unknown-variant", "expects-asset" }));
+        QTest::ignoreMessage(QtWarningMsg, "theme test:3: quicksettings-variant=seven is not one of Vela's layouts (default, glass, classic): skipped");
+        const vela::themes::File file = read("taskbar-height=52\ntaskbar-variant=floating\nquicksettings-variant=seven\n");
+        QCOMPARE(kinds(file.problems), QStringList { "unknown-variant" });
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-height")).toDouble(), 52.0);
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-variant")).toString(), QStringLiteral("floating"));
-        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-orb")).toString(),
-            QUrl::fromLocalFile(config() + QStringLiteral("assets/orb.png")).toString());
-        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-reflection")).toString(), QString()); // not installed
-        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-orb-pressed")).toString(), QString()); // outside assets/
-        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-desktop-image")).toString(), // a subdirectory, installed
-            QUrl::fromLocalFile(data() + QStringLiteral("assets/aero/orbNormal.png")).toString());
-        QCOMPARE(file.tokens.value(QStringLiteral("taskbar-desktop-image-hover")).toString(), QString()); // absolute
     }
 
     // A style only sets its own surface's keys and the blur's: anything else
@@ -134,7 +117,7 @@ private slots:
             vela::themes::Taskbar);
         QCOMPARE(kinds(file.problems), (QStringList { "other-surface", "other-surface", "other-surface" }));
         QCOMPARE(file.tokens.keys(), (QStringList { QStringLiteral("blur-tint"), QStringLiteral("dark.taskbar"), QStringLiteral("taskbar-height") }));
-        QVERIFY(read("menu-layout=1\nstartmenu-radius=4\n", vela::themes::StartMenu).problems.isEmpty());
+        QVERIFY(read("startmenu-width=500\nstartmenu-radius=4\n", vela::themes::StartMenu).problems.isEmpty());
         QVERIFY(read("notifications-radius=8\nquicksettings-tile-radius=4\n", vela::themes::Notifications).problems.isEmpty());
     }
 
@@ -488,7 +471,7 @@ private slots:
                 QVERIFY2(names.contains(name), qPrintable(surface + u'/' + picture));
             }
         }
-        QCOMPARE(count, 80); // lowell's: 44 taskbar, 21 Start menu, 15 quick settings styles
+        QCOMPARE(count, 22); // lowell's, one of each look: 11 taskbar, 5 Start menu, 6 quick settings styles
     }
 };
 

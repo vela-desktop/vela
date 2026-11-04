@@ -23,7 +23,7 @@ or the compositor's frame scheduling.
    motion values. Typed, validated and clamped; accessibility preferences
    retain priority.
 2. **Variants:** stable identifiers selecting official Vela implementations
-   (for example `startmenu-variant=seven`). The interface contract, not the
+   (for example `taskbar-variant=floating`). The interface contract, not the
    exact QML file structure, is public.
 3. **Inheritance:** one parent per package, recursively resolved before
    local overrides, without cycles or paths outside theme roots.
@@ -45,7 +45,7 @@ or the compositor's frame scheduling.
 - Candidate preview of colors and the taskbar's shape using the existing
   `DesktopPreview`, without changing the active theme. Apply is explicit.
 - Detailed per-surface styling remains available only under Customize.
-- The 80 preset files from #205.
+- 22 of the 80 preset files from #205: one of each look.
 
 The preview is currently **schematic**, not an accurate rendering of every
 surface or a full-desktop rollback mechanism.
@@ -76,7 +76,7 @@ The legacy numeric layout switches must keep working but should not be
 documented as the public variant API.
 
 Unknown future-schema versions must not activate silently. Missing parents,
-unknown variants, missing assets and malformed numeric or color values need
+unknown variants and malformed numeric or color values need
 actionable, localized diagnostics (Settings lists the theme's; a style's are
 in the log).
 
@@ -90,18 +90,16 @@ Each official variant must define:
 - Consistent performance constraints and an automated functional test.
 - Deprecation/migration policy; do not repurpose an existing variant ID.
 
-Rendering implementation details remain private. For example, a Seven Start
-menu may have its own QML delegate tree, but it must use the same app data
-source, launch/search behavior and focus semantics as Vela Default.
+Rendering implementation details remain private. For example, another Start
+menu layout may have its own QML delegate tree, but it must use the same app
+data source, launch/search behavior and focus semantics as Vela Default.
 
 ### Current draft identifiers
 
 | Surface | IDs |
 | --- | --- |
 | Taskbar | `default`, `floating`, `floating-split`, `dock` |
-| Start menu | `default`, `seven` |
 | Quick settings | `default`, `glass`, `classic` |
-| Notifications | `default`, `aero` |
 
 These are **initial curated combinations**, not evidence that every component
 already has an independent implementation.
@@ -160,7 +158,7 @@ Never use an untrusted author's screenshot as proof of the resulting theme.
 - A compatibility matrix separates Vela-owned controls, third-party Qt, GTK,
   and portal-exposed appearance preferences. Do not promise universal theming.
 - Community themes need clear provenance, author/license metadata and a safe
-  update path. Reused Windhawk/Aero assets require a provenance review before
+  update path. Reused Windhawk material requires a provenance review before
   the draft can be merged.
 
 ## Merge gate

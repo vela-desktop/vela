@@ -33,8 +33,8 @@ set(SHELL_SRC ${PROJECT_SOURCE_DIR}/shell/src)
 # every `readonly property <color|int|real|bool> <name>: ... themed("<token>"`
 # of Theme.qml (the shell's and the apps' colors and radii), and every key the
 # shell's surface styles read in Styles.qml (styles.size()/flag(): a number,
-# styles.picture(): an asset:, Theme.themed() in a color, real or string
-# property: a color, a number or a variant). Written at configure time, and
+# Theme.themed() in a color, real or string property: a color, a number or a
+# variant). Written at configure time, and
 # again whenever either file changes, so a token added there is themable at
 # once; a line in another shape stops the configuration instead of being
 # left out.
@@ -60,12 +60,10 @@ foreach(line IN LISTS themed_lines)
         vela_theme_token(${CMAKE_MATCH_2} Number)
     endif()
 endforeach()
-file(STRINGS ${STYLES_QML} styled_lines REGEX "themed\\(\"|styles\\.(size|flag|picture)\\(\"")
+file(STRINGS ${STYLES_QML} styled_lines REGEX "themed\\(\"|styles\\.(size|flag)\\(\"")
 foreach(line IN LISTS styled_lines)
     if(line MATCHES "styles\\.(size|flag)\\(\"([a-z0-9-]+)\"")
         vela_theme_token(${CMAKE_MATCH_2} Number)
-    elseif(line MATCHES "styles\\.picture\\(\"([a-z0-9-]+)\"")
-        vela_theme_token(${CMAKE_MATCH_1} Asset)
     elseif(line MATCHES "readonly property color [A-Za-z0-9_]+: Theme\\.themed\\(\"([a-z0-9-]+)\"")
         vela_theme_token(${CMAKE_MATCH_1} Color)
     elseif(line MATCHES "readonly property real [A-Za-z0-9_]+: .*Theme\\.themed\\(\"([a-z0-9-]+)\"")
@@ -87,9 +85,9 @@ file(CONFIGURE OUTPUT ${THEME_TOKENS_DIR}/themetokens.h CONTENT
 
 namespace vela::themes {
 
-// Color: #RRGGBB or #AARRGGBB; Number; Asset: asset:<file>, a picture of
-// themes/assets/; Variant: one of Vela's own layouts (themefile.h).
-enum class TokenKind { Color, Number, Asset, Variant };
+// Color: #RRGGBB or #AARRGGBB; Number; Variant: one of Vela's own layouts
+// (themefile.h).
+enum class TokenKind { Color, Number, Variant };
 
 struct Token {
     const char* name;

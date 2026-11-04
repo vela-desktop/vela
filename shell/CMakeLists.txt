@@ -115,9 +115,7 @@ set(VELA_QML_FILES
     qml/TaskbarButton.qml
     qml/StartGlyph.qml
     qml/StartMenu.qml
-    qml/StartMenuSeven.qml
     qml/GlassEdge.qml
-    qml/AeroGlass.qml
     qml/tiles.js
     qml/AppTile.qml
     qml/Switcher.qml
@@ -163,17 +161,6 @@ qt_add_qml_module(vela-shell
     URI Vela.Shell
     VERSION 1.0
     QML_FILES ${VELA_QML_FILES})
-
-# Windows 7's Start menu frames (startmenu-layout=1, StartMenuSeven.qml), from
-# AeroThemePlasma's SevenStart, GPL-3.0 (shell/data/seven/README.md): ":/seven/*.png".
-qt_add_resources(vela-shell "seven"
-    PREFIX "/seven"
-    BASE ${CMAKE_CURRENT_SOURCE_DIR}/data/seven
-    FILES
-        data/seven/arrow.png data/seven/arrow-hover.png data/seven/arrow-pressed.png
-        data/seven/avatar-frame.png data/seven/item-hover.png data/seven/panel.png
-        data/seven/place-hover.png data/seven/search.png data/seven/search-focus.png
-        data/seven/shutdown.png data/seven/shutdown-hover.png data/seven/shutdown-pressed.png)
 
 target_compile_options(vela-shell PRIVATE -Wall -Wextra)
 target_link_libraries(vela-shell PRIVATE
