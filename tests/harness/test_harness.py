@@ -75,6 +75,21 @@ class SessionCleanup(unittest.TestCase):
         session.stop()
         self.assertIsNotNone(client.returncode)
 
+    def test_startup_uses_private_home_and_state_paths(self):
+        session = Session()
+        host_home = os.environ.get("HOME")
+        with tempfile.TemporaryDirectory() as missing_build, patch("harness.BUILD", missing_build):
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(FileNotFoundError):
+                session.start()
+        root = session.directory
+        self.assertEqual(session.env["HOME"], os.path.join(root, "home"))
+        self.assertEqual(session.env["XDG_STATE_HOME"], os.path.join(root, "state"))
+        for key in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"):
+            self.assertEqual(os.path.dirname(session.env[key]), root)
+        self.assertNotEqual(session.env["HOME"], host_home)
+        self.assertEqual(os.environ.get("HOME"), host_home)
+        self.assertFalse(os.path.exists(root))
+
     def test_failed_startup_removes_temporary_directory_and_closes_log(self):
         session = Session()
         with tempfile.TemporaryDirectory() as missing_build, patch("harness.BUILD", missing_build):
