@@ -200,7 +200,7 @@ if(VELA_BUILD_TOOLS)
         src/preferences.cpp src/preferences.h
         ${PROJECT_SOURCE_DIR}/compositor/src/color.c
         ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.c)
-    target_include_directories(vela-preferences-test PRIVATE src ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
+    target_include_directories(vela-preferences-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
     target_compile_options(vela-preferences-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-preferences-test PRIVATE vela-theme-tokens
         Qt6::DBus Qt6::Gui Qt6::Network Qt6::Quick Qt6::Test)

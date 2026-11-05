@@ -247,7 +247,7 @@ if(VELA_BUILD_TOOLS)
     # Config on a private vela-shell.conf, rewritten as Settings does.
     qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h
         src/clockformat.h src/starticon.h src/defaults.h)
-    target_include_directories(vela-config-test PRIVATE src)
+    target_include_directories(vela-config-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
     target_compile_options(vela-config-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-config-test PRIVATE Qt6::Gui Qt6::Test)
     add_test(NAME shell-config COMMAND vela-config-test)

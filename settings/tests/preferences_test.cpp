@@ -9,6 +9,7 @@
 // or talks to a compositor.
 
 #include "preferences.h"
+#include "privatehome.h"
 
 #include <QDir>
 #include <QFile>
@@ -21,42 +22,7 @@
 #include <QTest>
 #include <QUrl>
 
-namespace {
-
-// Everything the test reads and writes, made on first use, gone at exit.
-QTemporaryDir& home()
-{
-    static QTemporaryDir dir;
-    return dir;
-}
-
-QString confPath()
-{
-    return home().filePath(QStringLiteral("config/Vela/vela-shell.conf"));
-}
-
-
-// A logo only in an icon theme ("themed-logo", a PNG: whether Qt reads SVG
-// icons depends on its plugins), and an os-release naming it.
-QString themedOsRelease(const QString& root)
-{
-    QDir().mkpath(root + QStringLiteral("/themes/test/apps"));
-    QFile index(root + QStringLiteral("/themes/test/index.theme"));
-    if (index.open(QIODevice::WriteOnly)) {
-        index.write("[Icon Theme]\nName=Test\nDirectories=apps\n\n[apps]\nSize=48\nType=Fixed\n");
-    }
-    QImage logo(48, 48, QImage::Format_ARGB32);
-    logo.fill(Qt::green);
-    logo.save(root + QStringLiteral("/themes/test/apps/themed-logo.png"));
-    const QString release = root + QStringLiteral("/themed-os-release");
-    QFile file(release);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write("NAME=Themed\nLOGO=themed-logo\n");
-    }
-    return release;
-}
-
-} // namespace
+using namespace vela::test;
 
 class PreferencesTest : public QObject {
     Q_OBJECT
@@ -68,16 +34,12 @@ class PreferencesTest : public QObject {
     }
     static void write(const QByteArray& text)
     {
-        QFile file(confPath());
-        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-        file.write(text);
+        QVERIFY(writeFile(QStringLiteral("config/Vela/vela-shell.conf"), text));
     }
     static QString makeFile(const QString& name)
     {
         const QString path = home().filePath(name);
-        QImage image(16, 16, QImage::Format_ARGB32);
-        image.fill(Qt::red);
-        image.save(path, "PNG");
+        paint(path, Qt::red);
         return path;
     }
 
@@ -172,7 +134,7 @@ private slots:
         // (main.cpp): a logo only there is offered once refreshStartIcon()
         // looks again.
         const QByteArray release = qgetenv("VELA_OS_RELEASE");
-        qputenv("VELA_OS_RELEASE", themedOsRelease(home().path()).toUtf8());
+        qputenv("VELA_OS_RELEASE", themedOsRelease().toUtf8());
         QIcon::setThemeSearchPaths({});
         write("[appearance]\nappTheme=dark\n[start]\nicon=distribution\n");
         Preferences prefs;
@@ -256,30 +218,11 @@ private slots:
 
 int main(int argc, char** argv)
 {
-    QTemporaryDir& dir = home();
-    if (!dir.isValid()) {
+    // A distribution whose logo is a loose file in pixmaps/.
+    if (!isolate()
+        || !writeFile(QStringLiteral("os-release"), "NAME=Test\nPRETTY_NAME=\"Test Linux 2\"\nLOGO=test-logo\n")
+        || !writeFile(QStringLiteral("data/pixmaps/test-logo.png"), "png")) {
         return 1;
-    }
-    for (const auto& [name, leaf] : { std::pair { "HOME", "home" }, std::pair { "XDG_CONFIG_HOME", "config" },
-             std::pair { "XDG_DATA_HOME", "data" }, std::pair { "XDG_CACHE_HOME", "cache" },
-             std::pair { "XDG_STATE_HOME", "state" }, std::pair { "XDG_RUNTIME_DIR", "runtime" },
-             std::pair { "XDG_DATA_DIRS", "system" } }) {
-        const QString path = dir.filePath(QLatin1String(leaf));
-        QDir().mkpath(path);
-        qputenv(name, path.toUtf8());
-    }
-    QFile::setPermissions(dir.filePath(QStringLiteral("runtime")), QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
-    // No compositor answers here.
-    qputenv("WAYLAND_DISPLAY", "vela-preferences-test");
-    qputenv("VELA_OS_RELEASE", dir.filePath(QStringLiteral("os-release")).toUtf8());
-    QDir().mkpath(dir.filePath(QStringLiteral("data/pixmaps")));
-    for (const auto& [name, text] : { std::pair { "os-release", "NAME=Test\nPRETTY_NAME=\"Test Linux 2\"\nLOGO=test-logo\n" },
-             std::pair { "data/pixmaps/test-logo.png", "png" } }) {
-        QFile file(dir.filePath(QLatin1String(name)));
-        if (!file.open(QIODevice::WriteOnly)) {
-            return 1;
-        }
-        file.write(text);
     }
 
     QGuiApplication app(argc, argv);

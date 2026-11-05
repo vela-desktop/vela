@@ -9,6 +9,7 @@
 
 #include "clockformat.h"
 #include "config.h"
+#include "privatehome.h"
 
 #include <QDir>
 #include <QFile>
@@ -20,52 +21,11 @@
 #include <QTemporaryDir>
 #include <QTest>
 
-namespace {
-
-// Everything the test reads and writes, made on first use, gone at exit.
-QTemporaryDir& home()
-{
-    static QTemporaryDir dir;
-    return dir;
-}
-
-QString confPath()
-{
-    return home().filePath(QStringLiteral("config/Vela/vela-shell.conf"));
-}
-
-
-// A logo only in an icon theme ("themed-logo", a PNG: whether Qt reads SVG
-// icons depends on its plugins), and an os-release naming it.
-QString themedOsRelease(const QString& root)
-{
-    QDir().mkpath(root + QStringLiteral("/themes/test/apps"));
-    QFile index(root + QStringLiteral("/themes/test/index.theme"));
-    if (index.open(QIODevice::WriteOnly)) {
-        index.write("[Icon Theme]\nName=Test\nDirectories=apps\n\n[apps]\nSize=48\nType=Fixed\n");
-    }
-    QImage logo(48, 48, QImage::Format_ARGB32);
-    logo.fill(Qt::green);
-    logo.save(root + QStringLiteral("/themes/test/apps/themed-logo.png"));
-    const QString release = root + QStringLiteral("/themed-os-release");
-    QFile file(release);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write("NAME=Themed\nLOGO=themed-logo\n");
-    }
-    return release;
-}
-
-} // namespace
+using namespace vela::test;
 
 class ConfigTest : public QObject {
     Q_OBJECT
 
-    static bool paint(const QString& path, Qt::GlobalColor color)
-    {
-        QImage image(16, 16, QImage::Format_ARGB32);
-        image.fill(color);
-        return image.save(path, "PNG");
-    }
 
     // As QSettings writes it from another process: a new file in its place.
     static void write(const QByteArray& text)
@@ -183,7 +143,7 @@ private slots:
         // Vela.Controls sets the icon theme after Config starts (main.cpp):
         // a logo only there shows once refreshStartIcon() looks again.
         const QByteArray release = qgetenv("VELA_OS_RELEASE");
-        qputenv("VELA_OS_RELEASE", themedOsRelease(home().path()).toUtf8());
+        qputenv("VELA_OS_RELEASE", themedOsRelease().toUtf8());
         QIcon::setThemeSearchPaths({});
         write("[start]\nicon=distribution\n");
         Config config;
@@ -261,23 +221,10 @@ private slots:
 
 int main(int argc, char** argv)
 {
-    QTemporaryDir& dir = home();
-    if (!dir.isValid()) {
+    // A distribution whose logo is a loose file, as CachyOS's.
+    if (!isolate() || !writeFile(QStringLiteral("os-release"), "NAME=Test\nLOGO=test-logo\n")
+        || !writeFile(QStringLiteral("data/icons/test-logo.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>")) {
         return 1;
-    }
-    qputenv("XDG_CONFIG_HOME", dir.filePath(QStringLiteral("config")).toUtf8());
-    qputenv("XDG_DATA_HOME", dir.filePath(QStringLiteral("data")).toUtf8());
-    qputenv("XDG_DATA_DIRS", dir.filePath(QStringLiteral("system")).toUtf8());
-    qputenv("VELA_OS_RELEASE", dir.filePath(QStringLiteral("os-release")).toUtf8());
-    qunsetenv("VELA_WALLPAPER");
-    QDir().mkpath(dir.filePath(QStringLiteral("data/icons")));
-    for (const auto& [name, text] : { std::pair { "os-release", "NAME=Test\nLOGO=test-logo\n" },
-             std::pair { "data/icons/test-logo.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>" } }) {
-        QFile file(dir.filePath(QLatin1String(name)));
-        if (!file.open(QIODevice::WriteOnly)) {
-            return 1;
-        }
-        file.write(text);
     }
 
     QGuiApplication app(argc, argv); // QIcon, as starticon.h asks
