@@ -2186,8 +2186,12 @@ Specifiche sistema
         <translation>Temi</translation>
     </message>
     <message>
-        <source>Your own themes, problems in a theme&apos;s file, reset</source>
-        <translation>Temi personali, problemi nel file di un tema, reimpostazione</translation>
+        <source>Installed themes, your own, back to Vela&apos;s own look</source>
+        <translation>Temi installati, temi personali, ritorno all&apos;aspetto di Vela</translation>
+    </message>
+    <message>
+        <source>Taskbar items and behaviors, styles of the taskbar and quick settings</source>
+        <translation>Elementi e comportamenti, stili della barra e delle impostazioni rapide</translation>
     </message>
     <message>
         <source>Start</source>
@@ -2196,10 +2200,6 @@ Specifiche sistema
     <message>
         <source>Style of the Start menu</source>
         <translation>Stile del menu Start</translation>
-    </message>
-    <message>
-        <source>Style, quick settings, alignment, taskbar behaviors</source>
-        <translation>Stile, impostazioni rapide, allineamento, comportamenti della barra delle applicazioni</translation>
     </message>
     <message>
         <source>Taskbar</source>

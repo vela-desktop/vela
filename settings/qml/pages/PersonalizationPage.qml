@@ -30,7 +30,7 @@ Page {
         LinkCard {
             icon: "preferences-desktop-theme"
             title: qsTr("Themes")
-            description: qsTr("Your own themes, problems in a theme's file, reset")
+            description: qsTr("Installed themes, your own, back to Vela's own look")
             onClicked: root.navigate("themes")
         }
         LinkCard {
@@ -42,7 +42,7 @@ Page {
         LinkCard {
             icon: "preferences-system-windows"
             title: qsTr("Taskbar")
-            description: qsTr("Style, quick settings, alignment, taskbar behaviors")
+            description: qsTr("Taskbar items and behaviors, styles of the taskbar and quick settings")
             onClicked: root.navigate("taskbar")
         }
     }
