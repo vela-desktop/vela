@@ -57,6 +57,7 @@ sys.exit(int(os.environ.get("VELA_TEST_EXIT", "0")))
 
 class PrivateSessionTests(unittest.TestCase):
     def setUp(self):
+        """Create a fake Vela build and a sentinel-protected host environment."""
         work = tempfile.TemporaryDirectory(prefix="vela-script-test-")
         self.addCleanup(work.cleanup)
         self.root = Path(work.name)
@@ -98,15 +99,18 @@ class PrivateSessionTests(unittest.TestCase):
         return module
 
     def run_script(self, name, **variables):
+        """Run the selected launcher with per-test environment overrides."""
         return subprocess.run(["sh", str(SCRIPTS / name), str(self.build)],
                               env=dict(self.env, **variables), text=True,
                               capture_output=True, timeout=10)
 
     def assert_clean(self):
+        """Require the private directory to disappear and host cache to stay intact."""
         self.assertEqual(list(self.tmp.iterdir()), [])
         self.assertEqual(self.sentinel.read_text(), "real session must not change")
 
     def assert_isolated(self, result):
+        """Check every persistent XDG path belongs to one private session."""
         values = result["env"]
         roots = [Path(values[key]) for key in
                  ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME")]
@@ -118,6 +122,7 @@ class PrivateSessionTests(unittest.TestCase):
         self.assertEqual(result["imported"], {"vela": None, "Vela": None})
 
     def test_nested_preserves_host_wayland_and_isolates_state(self):
+        """Nested sessions must retain the host display but not its persistent state."""
         run = self.run_script("run-nested.sh")
         self.assertEqual(run.returncode, 0, run.stderr)
         result = json.loads(self.output.read_text())
@@ -127,6 +132,7 @@ class PrivateSessionTests(unittest.TestCase):
         self.assert_clean()
 
     def test_headless_drops_host_displays_and_enables_virtual_input(self):
+        """Headless sessions must drop host displays and enable virtual input."""
         run = self.run_script("run-headless.sh")
         self.assertEqual(run.returncode, 0, run.stderr)
         result = json.loads(self.output.read_text())
@@ -139,11 +145,13 @@ class PrivateSessionTests(unittest.TestCase):
         self.assert_clean()
 
     def test_nonzero_compositor_status_survives_cleanup(self):
+        """Preserve the compositor exit code after cleaning up its descendants."""
         run = self.run_script("run-nested.sh", VELA_TEST_EXIT="37")
         self.assertEqual(run.returncode, 37, run.stderr)
         self.assert_clean()
 
     def test_opt_in_config_import_is_a_copy(self):
+        """Import only safe, dereferenced Vela configuration files."""
         for name in ("vela", "Vela"):
             folder = self.host / ".config" / name
             folder.mkdir()
@@ -162,6 +170,7 @@ class PrivateSessionTests(unittest.TestCase):
         self.assert_clean()
 
     def test_invalid_config_import_rejected(self):
+        """Reject invalid configuration-import values before allocating a session."""
         run = self.run_script("run-nested.sh", VELA_TEST_COPY_CONFIG="yes")
         self.assertEqual(run.returncode, 2)
         self.assertIn("VELA_TEST_COPY_CONFIG", run.stderr)
@@ -169,6 +178,7 @@ class PrivateSessionTests(unittest.TestCase):
         self.assert_clean()
 
     def test_helper_rejects_arbitrary_executables_and_flags(self):
+        """Prevent the helper from executing arbitrary commands or shell paths."""
         for command in (["/bin/echo"], [str(self.build / "compositor" / "vela-compositor"),
                                         "-s", "/bin/sh"]):
             with self.subTest(command=command):
@@ -180,12 +190,14 @@ class PrivateSessionTests(unittest.TestCase):
                 self.assert_clean()
 
     def test_relative_tmpdir_uses_safe_fallback(self):
+        """Ignore an invalid relative TMPDIR and still clean up safely."""
         run = self.run_script("run-headless.sh", TMPDIR="relative")
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assert_isolated(json.loads(self.output.read_text()))
         self.assert_clean()
 
     def test_detached_stubborn_child_is_reaped_before_directory_cleanup(self):
+        """Terminate an orphaned setsid client before deleting its home."""
         orphan_pid = self.root / "orphan.pid"
         try:
             run = self.run_script("run-nested.sh", VELA_TEST_ORPHAN="1",
@@ -203,6 +215,7 @@ class PrivateSessionTests(unittest.TestCase):
                     pass
 
     def test_uncooperative_compositor_is_killed_after_grace_period(self):
+        """Escalate from SIGTERM to SIGKILL for an uncooperative compositor."""
         process = subprocess.Popen(
             ["sh", str(SCRIPTS / "run-headless.sh"), str(self.build)],
             env=dict(self.env, VELA_TEST_HOLD="1", VELA_TEST_IGNORE_TERM="1"),
@@ -227,6 +240,7 @@ class PrivateSessionTests(unittest.TestCase):
             process.stderr.close()
 
     def test_shell_path_is_passed_to_compositor(self):
+        """Pass a validated sibling shell executable to the compositor."""
         shell = self.build / "shell" / "vela-shell"
         shell.parent.mkdir()
         shell.write_text("#!/bin/sh\nexit 0\n")
@@ -237,6 +251,7 @@ class PrivateSessionTests(unittest.TestCase):
         self.assert_clean()
 
     def test_sigterm_is_forwarded_and_tempfiles_are_removed(self):
+        """Forward SIGTERM and remove temporary files after shutdown."""
         marker = self.root / "terminated.txt"
         process = subprocess.Popen(["sh", str(SCRIPTS / "run-headless.sh"), str(self.build)],
                                    env=dict(self.env, VELA_TEST_HOLD="1", VELA_TEST_SIGNAL_OUTPUT=str(marker)),
@@ -348,6 +363,7 @@ class PrivateSessionTests(unittest.TestCase):
         self.assert_clean()
 
     def test_concurrent_launchers_have_distinct_private_roots(self):
+        """Parallel launchers must never share persistent private paths."""
         paths = [self.root / "a.json", self.root / "b.json"]
         markers = [self.root / "a.term", self.root / "b.term"]
         processes = []
