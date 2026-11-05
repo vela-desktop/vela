@@ -119,6 +119,18 @@ Item {
             keyClick(Qt.Key_Space)
             compare(Prefs.visualTheme, "glass")
             compare(tiles().filter(t => t.focusPolicy === Qt.TabFocus).map(t => t.text), ["Glass"])
+            // Undone while Glass has the focus: once the focus leaves, Tab's
+            // stop is the theme in use again, and only it (Qt Quick ignores a
+            // focus policy taken away from the item with the focus).
+            root.offers[0].undo()
+            findChild(reset, "reset").forceActiveFocus()
+            compare(tiles().filter(t => t.focusPolicy === Qt.TabFocus).map(t => t.text), ["Vela Official"])
+        }
+
+        // A theme in vela.conf that isn't installed: Tab still enters, on the first.
+        function test_tab_enters_without_a_theme_in_use() {
+            Prefs.visualTheme = "gone"
+            compare(tiles().filter(t => t.focusPolicy === Qt.TabFocus).map(t => t.text), ["Vela Official"])
         }
 
         // An installed theme shows its picture; one without (your own), the

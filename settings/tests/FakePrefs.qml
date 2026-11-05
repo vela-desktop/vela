@@ -66,14 +66,15 @@ QtObject {
         calls = calls.concat([call])
     }
 
-    function visualThemes() {
-        return themes.map(t => ({ name: t.name, text: t.text, author: t.author }))
+    function displayName(surface, name) {
+        const entry = styleGallery(surface).find(e => e.name === name)
+        return entry ? entry.text : ""
     }
     function styleGallery(surface) {
         return surface === "" ? themes : (styles[surface] || [])
     }
     function themeSurfacePictures(theme, surface) {
-        return surfacePictures[theme + " " + surface] || { images: [], from: "" }
+        return surfacePictures[theme + " " + surface] || {}
     }
     function resolveTheme(name) {
         return { installed: themes.some(t => t.name === name), tokens: tokens[name] || {}, problems: [],
@@ -92,7 +93,6 @@ QtObject {
     }
     function openThemesFolder(surface) {
         record(["openThemesFolder", surface])
-        return "/home/alex/.config/vela/themes" + (surface ? "/" + surface : "")
     }
     function setThemeAndStyles(theme, chosen) {
         visualTheme = theme

@@ -23,6 +23,10 @@ Fill {
     property alias contentItem: extra.data // content below, full width
     property int minimumHeight: description !== "" ? 69 : 48
     signal clicked()
+    // A clickable card takes the keyboard's focus (a page shows it, asked).
+    function takeFocus() {
+        button.forceActiveFocus()
+    }
 
     width: parent ? parent.width : 0
     // The content below counts only when visible (cards that expand).

@@ -784,28 +784,35 @@ inline QVariantList gallery(const QString& surface)
 
 // A surface as a theme draws it, without styles: what "From the theme" shows.
 // A theme without pictures of its own, your own mostly, shows those of the
-// first theme it builds on (inherits=) that has them: { images: [file URLs],
-// from: the name of the theme they show }, both empty when none has.
+// first theme in its inherits= chain that has them: { images: [file URLs],
+// from: the name of the theme they show }, empty when none has.
 inline QVariantMap themeSurfacePictures(const QString& theme, const QString& surface)
 {
     const Layer layer = layerFor(surface);
     if (!validName(theme) || layer == Theme || layer >= LayerCount) {
-        return { { QStringLiteral("images"), QStringList() }, { QStringLiteral("from"), QString() } };
+        return {};
     }
-    // The theme, then the themes in its chain, each once.
-    QStringList names { theme };
     for (const QString& file : resolve(theme, Theme).files) {
-        if (const QString name = QFileInfo(file).completeBaseName(); !names.contains(name)) {
-            names.append(name);
-        }
-    }
-    for (const QString& name : std::as_const(names)) {
-        const QStringList images = pictures(QStringLiteral("themes/") + name, surface, layer == Notifications);
-        if (!images.isEmpty()) {
+        const QString name = QFileInfo(file).completeBaseName();
+        if (const QStringList images = pictures(QStringLiteral("themes/") + name, surface, layer == Notifications);
+            !images.isEmpty()) {
             return { { QStringLiteral("images"), images }, { QStringLiteral("from"), name } };
         }
     }
-    return { { QStringLiteral("images"), QStringList() }, { QStringLiteral("from"), QString() } };
+    return {};
+}
+
+// What Settings calls a theme ("") or a surface's style: the name its file's
+// first line gives (available()), "" when it isn't installed.
+inline QString displayName(const QString& surface, const QString& name)
+{
+    for (const QVariant& entry : available(surface)) {
+        const QVariantMap item = entry.toMap();
+        if (item.value(QStringLiteral("name")).toString() == name) {
+            return item.value(QStringLiteral("text")).toString();
+        }
+    }
+    return {};
 }
 
 } // namespace vela::themes

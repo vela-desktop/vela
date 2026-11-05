@@ -16,18 +16,17 @@ T.AbstractButton {
     property string subtitle
     property real pictureHeight: 120
     default property alias picture: pictureBox.data
-    // In a gallery, one tile only is a stop for Tab (the gallery says which:
-    // the chosen one, or where the arrows last went); the arrows ask the
-    // gallery to move the focus.
+    // In a gallery, Tab stops on the tile in use only (the gallery says
+    // which), and on the one the arrows took the focus to while it has it;
+    // the arrows ask the gallery to move the focus.
     property bool tabStop: true
     signal arrow(int dx, int dy)
 
     implicitWidth: 240
     implicitHeight: pictureHeight + 12 + labels.height + 12
-    // Qt Quick ignores a focus policy taken away while the tile has the
-    // focus (and drops the binding): the gallery moves its stop only once
-    // the focus has moved, from the new tile's onActiveFocusChanged.
-    focusPolicy: tabStop ? Qt.TabFocus : Qt.NoFocus
+    // With activeFocus: Qt Quick ignores a focus policy taken away while the
+    // tile has the focus, so it is only ever taken away after.
+    focusPolicy: tabStop || activeFocus ? Qt.TabFocus : Qt.NoFocus
     Keys.onLeftPressed: arrow(-1, 0)
     Keys.onRightPressed: arrow(1, 0)
     Keys.onUpPressed: arrow(0, -1)

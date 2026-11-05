@@ -12,7 +12,7 @@ import Vela.Controls
 Card {
     id: card
     readonly property var tokens: { Prefs.visualTheme; Prefs.surfaceStyles; Prefs.themesRevision; return Prefs.resolveTheme(Prefs.visualTheme).tokens }
-    readonly property string themeName: { Prefs.themesRevision; return Prefs.visualThemes().find(t => t.name === Prefs.visualTheme)?.text ?? Prefs.visualTheme }
+    readonly property string themeName: { Prefs.themesRevision; return Prefs.displayName("", Prefs.visualTheme) || Prefs.visualTheme }
     readonly property bool accentDark: "accent" in tokens || "dark.accent" in tokens
     readonly property bool accentLight: "accent" in tokens || "light.accent" in tokens
 
@@ -22,8 +22,7 @@ Card {
         if (chosen === "") {
             return qsTr("From the theme")
         }
-        const entry = Prefs.styleGallery(surface).find(s => s.name === chosen)
-        return entry ? entry.text : qsTr("\"%1\" isn't installed").arg(chosen)
+        return Prefs.displayName(surface, chosen) || qsTr("\"%1\" isn't installed").arg(chosen)
     }
 
     icon: "preferences-desktop-theme"

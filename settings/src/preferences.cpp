@@ -656,11 +656,6 @@ void Preferences::setVisualTheme(const QString& name)
     }
 }
 
-QVariantList Preferences::visualThemes() const
-{
-    return vela::themes::available();
-}
-
 QVariantMap Preferences::resolveTheme(const QString& name) const
 {
     // The same resolution as the shell's (Appearance), without applying it:
@@ -715,18 +710,22 @@ void Preferences::resetThemes()
     emit visualThemeChanged();
 }
 
-QString Preferences::openThemesFolder(const QString& surface)
+QString Preferences::displayName(const QString& surface, const QString& name) const
+{
+    return vela::themes::displayName(surface, name);
+}
+
+void Preferences::openThemesFolder(const QString& surface)
 {
     const vela::themes::Layer layer = vela::themes::layerFor(surface);
     if (layer >= vela::themes::LayerCount) {
-        return {};
+        return;
     }
     // Made, it is watched at once: the watcher keeps an eye on the directory
     // above it while it doesn't exist (watchThemes()).
     const QString dir = vela::themes::userDirectory(layer);
     QDir().mkpath(dir);
     QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
-    return dir;
 }
 
 void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& styles)

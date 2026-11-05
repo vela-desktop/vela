@@ -12,18 +12,16 @@ import Vela.Controls
 // desktop in miniature in its colors and taskbar instead.
 Grid {
     id: gallery
-    readonly property var choices: { Prefs.visualTheme; Prefs.themesRevision; return Prefs.styleGallery("") }
+    readonly property var choices: { Prefs.themesRevision; return Prefs.styleGallery("") }
+    // Tab's stop: the theme in use, the first when it isn't installed.
+    readonly property bool noneInUse: !choices.some(c => c.name === Prefs.visualTheme)
     readonly property real tileWidth: (width - spacing * (columns - 1)) / columns
 
     width: parent ? parent.width : 0
     columns: Math.max(1, Math.min(3, Math.floor((width + spacing) / (200 + spacing))))
     spacing: 8
 
-    // One stop for Tab in the gallery, on the theme in use or where the
-    // arrows last went; the arrows move between themes, Space applies one.
-    property int focusIndex: -1
-    readonly property int tabIndex: focusIndex >= 0 && focusIndex < choices.length ? focusIndex
-        : Math.max(0, choices.findIndex(c => c.name === Prefs.visualTheme))
+    // The arrows move between themes (PictureTile), Space applies one.
     function moveFocus(from, step) {
         const to = from + step
         if (to >= 0 && to < choices.length) {
@@ -47,8 +45,7 @@ Grid {
             id: tile
             required property var modelData
             required property int index
-            tabStop: index === gallery.tabIndex
-            onActiveFocusChanged: if (activeFocus) gallery.focusIndex = index
+            tabStop: selected || (index === 0 && gallery.noneInUse)
             onArrow: (dx, dy) => gallery.moveFocus(index, dx + dy * gallery.columns)
             width: gallery.tileWidth
             // 16:9, the pictures' shape (and the miniature's, unframed).

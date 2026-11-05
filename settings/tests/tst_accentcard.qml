@@ -155,6 +155,14 @@ Item {
             compare(all.filter(s => s.focusPolicy === Qt.TabFocus)[0], all[16])
         }
 
+        // An accent from outside the palette: Tab still enters, on the first color.
+        function test_tab_enters_without_a_palette_color() {
+            Prefs.accent = "#123456"
+            const stops = swatches().filter(s => s.focusPolicy === Qt.TabFocus)
+            compare(stops.length, 1)
+            compare(stops[0], swatches()[0])
+        }
+
         function test_screen_readers_hear_names_and_places() {
             const all = swatches()
             compare(all[17].Accessible.role, Accessible.RadioButton)

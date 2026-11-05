@@ -15,27 +15,25 @@ Column {
     property string title
     property bool expanded: false
     readonly property string chosen: Prefs.surfaceStyles[surface] || ""
-    readonly property var styles: { Prefs.themesRevision; return Prefs.styleGallery(surface) }
-    readonly property string themeName: Prefs.visualThemes().find(t => t.name === Prefs.visualTheme)?.text ?? Prefs.visualTheme
     // What the closed card says: the style in use.
     readonly property string summary: {
+        Prefs.themesRevision
         if (chosen === "") {
-            return qsTr("From the theme, as %1 draws it").arg(themeName)
+            return qsTr("From the theme, as %1 draws it").arg(Prefs.displayName("", Prefs.visualTheme) || Prefs.visualTheme)
         }
-        const entry = styles.find(s => s.name === chosen)
-        return entry ? entry.text : qsTr("\"%1\" isn't installed: the theme's look is in use").arg(chosen)
+        return Prefs.displayName(surface, chosen) || qsTr("\"%1\" isn't installed: the theme's look is in use").arg(chosen)
     }
 
     width: parent ? parent.width : 0
 
     // Asked for (Main.qml's reveal: a search for its style, Themes' In use):
     // open, scrolled into view, and with the focus, so Tab goes on from it.
-    readonly property string wanted: typeof root !== "undefined" && root.reveal !== undefined ? root.reveal : ""
+    readonly property string wanted: root.reveal
     onWantedChanged: if (wanted === surface) show()
     Component.onCompleted: if (wanted === surface) show()
     function show() {
         expanded = true
-        header.focusButton()
+        header.takeFocus()
         scrollLater.restart()
     }
     // Once the opened gallery is laid out, so the page is as long as it gets.
@@ -45,10 +43,12 @@ Column {
         onTriggered: chooser.scrollIntoView()
     }
     function scrollIntoView() {
+        // The page it is on: the first Flickable up the tree.
         for (let item = chooser.parent; item; item = item.parent) {
-            if (item.contentY !== undefined && item.contentHeight !== undefined && item.contentItem) {
-                const y = chooser.mapToItem(item.contentItem, 0, 0).y
-                item.contentY = Math.max(0, Math.min(y - 16, item.contentHeight - item.height))
+            const page = item as Flickable
+            if (page) {
+                const y = chooser.mapToItem(page.contentItem, 0, 0).y
+                page.contentY = Math.max(0, Math.min(y - 16, page.contentHeight - page.height))
                 return
             }
         }
@@ -57,14 +57,6 @@ Column {
     Card {
         id: header
         objectName: "styleHeader"
-        function focusButton() {
-            for (let i = 0; i < children.length; ++i) {
-                if (children[i].Accessible.role === Accessible.Button) {
-                    children[i].forceActiveFocus()
-                    return
-                }
-            }
-        }
         icon: chooser.icon
         title: chooser.title
         description: chooser.summary

@@ -186,6 +186,11 @@ private slots:
             QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/taskbar/pill.png")).toString() });
         QVERIFY(gallery[1].toMap().value(QStringLiteral("images")).toStringList().isEmpty());
         QVERIFY(vela::themes::gallery(QStringLiteral("elsewhere")).isEmpty());
+        // What Settings calls them: the first line's name, the file's without
+        // one, none when not installed.
+        QCOMPARE(vela::themes::displayName(QStringLiteral("taskbar"), QStringLiteral("pill")), QStringLiteral("Pill"));
+        QCOMPARE(vela::themes::displayName(QStringLiteral("taskbar"), QStringLiteral("plain")), QStringLiteral("plain"));
+        QVERIFY(vela::themes::displayName(QStringLiteral("taskbar"), QStringLiteral("gone")).isEmpty());
 
         // A theme's picture is the desktop in it, in screenshots/themes/.
         write(data() + QStringLiteral("glass.conf"), "# Glass: a theme\nradius=2\n");

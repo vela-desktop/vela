@@ -17,12 +17,8 @@ Card {
     // The taskbar style chosen sets the layout over the theme's.
     readonly property bool byStyle: resolved.layoutFromStyle === true
     readonly property string owner: {
-        if (byStyle) {
-            const style = Prefs.surfaceStyles["taskbar"] || ""
-            const entry = Prefs.styleGallery("taskbar").find(s => s.name === style)
-            return entry ? entry.text : style
-        }
-        return Prefs.visualThemes().find(t => t.name === Prefs.visualTheme)?.text ?? Prefs.visualTheme
+        const name = byStyle ? Prefs.surfaceStyles["taskbar"] || "" : Prefs.visualTheme
+        return Prefs.displayName(byStyle ? "taskbar" : "", name) || name
     }
 
     icon: "format-justify-center"

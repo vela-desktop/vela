@@ -10,7 +10,7 @@ import Vela.Controls
 Card {
     id: card
     // Vela Official's name, as its file gives it.
-    readonly property string velaName: Prefs.visualThemes().find(t => t.name === "vela")?.text ?? "Vela Official"
+    readonly property string velaName: Prefs.displayName("", "vela") || "Vela Official"
 
     icon: "edit-undo"
     title: qsTr("Reset")

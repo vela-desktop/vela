@@ -148,9 +148,6 @@ public:
     QString visualTheme() const { return m_visualTheme; }
     int themesRevision() const { return m_themesRevision; }
     void setVisualTheme(const QString& theme);
-    // The installed themes: { name, text, author }, the user's over the
-    // system's, Vela Official first.
-    Q_INVOKABLE QVariantList visualThemes() const;
     // A theme as the shell would use it, with the surfaces' chosen styles
     // over it, without choosing it (the preview): { installed, tokens,
     // problems: [{ kind, file, line, key, value }] (the theme's problems),
@@ -167,9 +164,11 @@ public:
     Q_INVOKABLE QVariantMap themeSurfacePictures(const QString& theme, const QString& surface) const;
     // Vela Official and no styles: Vela's own look.
     Q_INVOKABLE void resetThemes();
+    // What a theme ("") or a surface's style is called, "" if not installed.
+    Q_INVOKABLE QString displayName(const QString& surface, const QString& name) const;
     // Opens where your own themes ("") or a surface's styles go in the file
-    // manager, made first if it isn't there; returns it ("" for no surface).
-    Q_INVOKABLE QString openThemesFolder(const QString& surface);
+    // manager, made first if it isn't there.
+    Q_INVOKABLE void openThemesFolder(const QString& surface);
     // A theme and each surface's style ({ taskbar, startmenu, notifications },
     // "" for none) in one write of vela.conf: Reset's Undo.
     Q_INVOKABLE void setThemeAndStyles(const QString& theme, const QVariantMap& styles);

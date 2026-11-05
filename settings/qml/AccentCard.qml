@@ -21,7 +21,7 @@ Card {
     readonly property bool shellLight: Prefs.shellTheme === "light"
     // The one chosen here shows nowhere now: Vela and the apps both take the theme's.
     readonly property bool overridden: owns(appsLight) && owns(shellLight)
-    readonly property string themeName: Prefs.visualThemes().find(t => t.name === Prefs.visualTheme)?.text ?? Prefs.visualTheme
+    readonly property string themeName: Prefs.displayName("", Prefs.visualTheme) || Prefs.visualTheme
     // The accent the apps use now: the theme's in their mode, else the one chosen.
     readonly property color inUse: owns(appsLight) ? themeAccent(appsLight) : Prefs.accent
     readonly property var accents: [
@@ -101,19 +101,17 @@ Card {
             font.pixelSize: Theme.fontCaption
             leftPadding: 36
         }
-        // Windows 11's palette as one group of choices: a single stop for Tab,
-        // on the color chosen; the arrows move between colors, Space or Enter
-        // chooses one. Screen readers hear each color's name and place.
+        // Windows 11's palette as one group of choices: Tab stops on the color
+        // chosen (the first if it is none of these), the arrows move between
+        // colors, Space or Enter chooses one. Screen readers hear each
+        // color's name and place.
         Grid {
             id: swatches
             objectName: "accentSwatches"
             x: 36
             columns: Math.max(1, Math.floor((parent.width - 36) / 48))
             spacing: 4
-            // The color Tab reaches: the last one the arrows went to, else the chosen one.
-            property int focusIndex: -1
-            readonly property int chosenIndex: card.accents.indexOf(Prefs.accent.toString().toLowerCase())
-            readonly property int tabIndex: focusIndex >= 0 ? focusIndex : Math.max(0, chosenIndex)
+            readonly property bool noneChosen: card.accents.indexOf(Prefs.accent.toString().toLowerCase()) < 0
 
             function moveFocus(from, step) {
                 const to = from + step
@@ -133,15 +131,13 @@ Card {
                     width: 44
                     height: 44
                     hoverEnabled: true
-                    // Moved by onActiveFocusChanged, once the focus is here
-                    // (PictureTile says why).
-                    focusPolicy: index === swatches.tabIndex ? Qt.TabFocus : Qt.NoFocus
+                    // While it has the focus too, as PictureTile says.
+                    focusPolicy: chosen || activeFocus || (index === 0 && swatches.noneChosen) ? Qt.TabFocus : Qt.NoFocus
                     Accessible.role: Accessible.RadioButton
                     Accessible.name: card.colorName(modelData)
                     Accessible.description: qsTr("Color %1 of %2").arg(index + 1).arg(card.accents.length)
                     Accessible.checkable: true
                     Accessible.checked: chosen
-                    onActiveFocusChanged: if (activeFocus) swatches.focusIndex = index
                     Keys.onLeftPressed: swatches.moveFocus(index, -1)
                     Keys.onRightPressed: swatches.moveFocus(index, 1)
                     Keys.onUpPressed: swatches.moveFocus(index, -swatches.columns)
