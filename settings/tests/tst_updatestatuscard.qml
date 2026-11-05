@@ -60,6 +60,61 @@ Item {
             compare(card.description, "")
         }
 
+        function test_next_automatic_check() {
+            const next = find("nextCheck")
+            verify(next.visible)
+            verify(next.text.startsWith("Next automatic check: "))
+            Updates.nextCheck = new Date(NaN)
+            verify(!next.visible)
+            Updates.waitingForNetwork = true
+            verify(next.visible)
+            compare(next.text, "Next check: waiting for a fully connected, unmetered network")
+            Updates.autoCheck = false
+            verify(!next.visible)
+            Updates.autoCheck = true
+            Updates.waitingForNetwork = false
+            Updates.nextCheck = new Date(Date.now() + 3600000)
+            verify(next.visible)
+            Updates.activity = "checking"
+            verify(!next.visible)
+        }
+
+        function test_update_available_can_be_rechecked() {
+            const recheck = find("recheck")
+            verify(!recheck.visible)
+            Updates.status = "update-available"
+            verify(recheck.visible)
+            compare(recheck.text, "Check again")
+            verify(recheck.enabled)
+            card.width = 450
+            compare(recheck.text, "")
+            verify(recheck.subtle)
+            compare(recheck.Accessible.name, "Check again")
+            tryCompare(recheck, "width", 44)
+            card.width = 700
+            compare(recheck.text, "Check again")
+            tryVerify(() => recheck.width > 44)
+            click(recheck)
+            compare(Updates.calls, ["check"])
+
+            // No second check can start while the daemon is already busy.
+            Updates.activity = "checking"
+            verify(!recheck.enabled)
+            click(recheck)
+            compare(Updates.calls, ["check"])
+            Updates.activity = "installing"
+            verify(!recheck.enabled)
+            Updates.activity = "idle"
+
+            // When the newest commit is already installed, one action remains.
+            Updates.status = "up-to-date"
+            verify(!recheck.visible)
+            compare(button().text, "Check for updates")
+            Updates.available = false
+            Updates.status = "update-available"
+            verify(!recheck.visible)
+        }
+
         function test_update_available_installs() {
             Updates.status = "update-available"
             Updates.version = "0.1.1"

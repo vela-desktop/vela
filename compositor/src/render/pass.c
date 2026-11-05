@@ -355,7 +355,8 @@ int vela_blur_reach(float strength)
 }
 
 void vela_pass_add_blur(struct vela_pass *pass, const struct vela_texture_draw *panel,
-    const pixman_region32_t *region, float strength, const struct wlr_render_color *tint)
+    const pixman_region32_t *region, float strength, const struct wlr_render_color *tint, float saturation,
+    bool glass)
 {
     if (!pass->target->sampleable || !region || !pixman_region32_not_empty(region)) {
         return;
@@ -384,6 +385,10 @@ void vela_pass_add_blur(struct vela_pass *pass, const struct vela_texture_draw *
     draw.push.flags &= ~1u; // the panel is read only for its alpha
     if (tint) {
         draw.push.flags |= 8u; // Vela's acrylic: more saturation, and the tint
+    }
+    draw.push.shape[1] = tint ? saturation : 1.0f; // blur_mix.frag
+    if (glass) {
+        draw.push.flags |= 16u; // a styled panel: glass from 4% alpha
     }
     draw.blur_op = pass->blur_count;
     pass->blur_ops = vela_grow(pass->blur_ops, &pass->blur_capacity, pass->blur_count + 1, sizeof(*pass->blur_ops));

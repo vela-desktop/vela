@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/timerfd.h>
+#include "check-time.h"
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -30,6 +32,71 @@ static uint64_t now_us(clockid_t clock)
     struct timespec ts;
     clock_gettime(clock, &ts);
     return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
+}
+
+// Scheduling uses CLOCK_BOOTTIME (which keeps advancing during suspend).
+// NextCheck is a wall-clock estimate for Settings, so refresh the conversion
+// when the user or time-sync service makes a discontinuous real-time change.
+static void refresh_next_check(struct vela_up_daemon *d)
+{
+    if (!d->auto_timer) {
+        return;
+    }
+    uint64_t deadline;
+    if (sd_event_source_get_time(d->auto_timer, &deadline) < 0) {
+        return;
+    }
+    d->next_check_at = vela_up_wall_deadline(
+        deadline, now_us(CLOCK_BOOTTIME), now_us(CLOCK_REALTIME));
+    vela_up_changed(d);
+}
+
+static int arm_clock_change_watch(struct vela_up_daemon *d)
+{
+    struct itimerspec expiration = { 0 };
+    // An absolute far-future deadline with CANCEL_ON_SET produces ECANCELED
+    // on a clock step. Re-arm after either a step or the daily safety wakeup.
+    expiration.it_value.tv_sec = time(NULL) + 24 * 3600;
+    if (timerfd_settime(d->clock_change_fd, TFD_TIMER_ABSTIME | TFD_TIMER_CANCEL_ON_SET,
+            &expiration, NULL) < 0) {
+        return -errno;
+    }
+    return 0;
+}
+
+static int on_clock_change(sd_event_source *source, int fd, uint32_t revents, void *data)
+{
+    struct vela_up_daemon *d = data;
+    uint64_t count;
+    ssize_t n = read(fd, &count, sizeof(count));
+    if (n < 0 && errno != ECANCELED) {
+        return 0;
+    }
+    int r = arm_clock_change_watch(d);
+    if (r < 0) {
+        vela_up_log("rearming wall-clock change watch: %s", strerror(-r));
+    }
+    refresh_next_check(d);
+    return 0;
+}
+
+int vela_up_clock_start(struct vela_up_daemon *d)
+{
+    d->clock_change_fd = timerfd_create(CLOCK_REALTIME, TFD_CLOEXEC | TFD_NONBLOCK);
+    if (d->clock_change_fd < 0) {
+        return -errno;
+    }
+    int r = arm_clock_change_watch(d);
+    if (r >= 0) {
+        r = sd_event_add_io(d->event, &d->clock_change_io, d->clock_change_fd,
+            EPOLLIN, on_clock_change, d);
+    }
+    if (r < 0) {
+        d->clock_change_io = sd_event_source_disable_unref(d->clock_change_io);
+        close(d->clock_change_fd);
+        d->clock_change_fd = -1;
+    }
+    return r;
 }
 
 static void check_finish(struct vela_up_daemon *d)
@@ -179,6 +246,7 @@ int vela_up_check_start(struct vela_up_daemon *d)
         return r;
     }
     d->auto_timer = sd_event_source_disable_unref(d->auto_timer);
+    d->next_check_at = 0;
     d->waiting_for_network = false;
     d->attempt_us = now_us(CLOCK_BOOTTIME);
     vela_up_changed(d);
@@ -194,17 +262,24 @@ static int on_auto_timer(sd_event_source *source, uint64_t usec, void *data)
 {
     struct vela_up_daemon *d = data;
     d->auto_timer = sd_event_source_disable_unref(d->auto_timer);
+    d->next_check_at = 0;
     if (!d->auto_check) {
+        vela_up_changed(d);
         return 0;
     }
     if (!network_allowed(d)) {
         // Retried when NetworkManager says the connection may be used.
         d->waiting_for_network = true;
+        vela_up_changed(d);
         return 0;
     }
     if (vela_up_check_start(d) < 0) {
         // Busy (an install runs) or broken: later.
-        sd_event_add_time_relative(d->event, &d->auto_timer, CLOCK_BOOTTIME, d->timing.retry_us, 0, on_auto_timer, d);
+        if (sd_event_add_time_relative(d->event, &d->auto_timer, CLOCK_BOOTTIME,
+                d->timing.retry_us, 0, on_auto_timer, d) >= 0) {
+            refresh_next_check(d);
+        }
+        vela_up_changed(d);
     }
     return 0;
 }
@@ -212,8 +287,10 @@ static int on_auto_timer(sd_event_source *source, uint64_t usec, void *data)
 void vela_up_schedule(struct vela_up_daemon *d)
 {
     d->auto_timer = sd_event_source_disable_unref(d->auto_timer);
+    d->next_check_at = 0;
     d->waiting_for_network = false;
     if (!d->auto_check || d->check_pid > 0) {
+        vela_up_changed(d);
         return;
     }
     uint64_t wait = d->timing.interval_us;
@@ -248,7 +325,11 @@ void vela_up_schedule(struct vela_up_daemon *d)
     int r = sd_event_add_time_relative(d->event, &d->auto_timer, CLOCK_BOOTTIME, delay, 0, on_auto_timer, d);
     if (r < 0) {
         vela_up_log("automatic check timer: %s", strerror(-r));
+    } else {
+        // Expose the timer's real deadline, including restart and retry delays.
+        refresh_next_check(d);
     }
+    vela_up_changed(d);
 }
 
 void vela_up_set_auto_check(struct vela_up_daemon *d, bool on)
@@ -262,6 +343,30 @@ void vela_up_set_auto_check(struct vela_up_daemon *d, bool on)
     }
     vela_up_schedule(d);
     vela_up_changed(d);
+}
+
+bool vela_up_valid_check_interval(uint32_t hours)
+{
+    return hours == 6 || hours == 12 || hours == 24 || hours == 48 || hours == 168;
+}
+
+int vela_up_set_check_interval(struct vela_up_daemon *d, uint32_t hours)
+{
+    if (!vela_up_valid_check_interval(hours)) {
+        return -EINVAL;
+    }
+    if (hours == d->check_interval_hours) {
+        return 0;
+    }
+    char value[16];
+    snprintf(value, sizeof(value), "%u", hours);
+    if (!vela_config_write_checked("update-check-interval", value)) {
+        return -EIO;
+    }
+    d->check_interval_hours = hours;
+    d->timing.interval_us = (uint64_t)hours * 3600 * 1000000ULL;
+    vela_up_schedule(d);
+    return 0;
 }
 
 static void network_update(struct vela_up_daemon *d, sd_bus_message *m)
@@ -377,6 +482,11 @@ void vela_up_check_free(struct vela_up_daemon *d)
     d->check_timeout = sd_event_source_disable_unref(d->check_timeout);
     d->check_kill = sd_event_source_disable_unref(d->check_kill);
     d->auto_timer = sd_event_source_disable_unref(d->auto_timer);
+    d->clock_change_io = sd_event_source_disable_unref(d->clock_change_io);
+    if (d->clock_change_fd >= 0) {
+        close(d->clock_change_fd);
+        d->clock_change_fd = -1;
+    }
     d->network_match = sd_bus_slot_unref(d->network_match);
     d->network_owner = sd_bus_slot_unref(d->network_owner);
     d->network_call = sd_bus_slot_unref(d->network_call);

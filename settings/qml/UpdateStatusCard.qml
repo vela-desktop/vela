@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import QtQuick.Controls as QQC
 import Vela.Controls
 import Vela.Updates
 
 // The top of System > Updates (docs/updates.md §9.1): the state in words,
 // when it was last checked and the button: "Check for updates", or "Install
-// now" when there is an update. Below: "Sign out to finish updating", the
+// now" alongside "Check again" when there is an update. Below: "Sign out to finish updating", the
 // last check's failure beside the last completed check, the last install's
 // failure while nothing happened since, and a refusal.
 Card {
@@ -15,6 +16,8 @@ Card {
     objectName: "status"
 
     readonly property bool hasUpdate: Updates.status === "update-available"
+    // Keep both actions usable without crowding out the version on narrow cards.
+    readonly property bool compactActions: width < 560
     // A completed check is shown; a failure then goes below it.
     readonly property bool checked: Updates.status !== "unknown" && Updates.status !== "error"
     readonly property bool checkFailed: Updates.checkError.code !== undefined
@@ -26,6 +29,10 @@ Card {
     readonly property bool showRelogin: Updates.available && Updates.needsRelogin
     readonly property bool showCheckFailure: Updates.available && checked && checkFailed && !Updates.busy
     readonly property bool showInstallFailure: Updates.available && installFailed && !Updates.busy
+    readonly property bool showNextCheck: Updates.available && Updates.autoCheck && !Updates.busy
+        && !isNaN(Updates.nextCheck.getTime())
+    readonly property bool showNetworkWait: Updates.available && Updates.autoCheck && !Updates.busy
+        && Updates.waitingForNetwork
 
     function phaseText(phase) {
         switch (phase) {
@@ -76,20 +83,57 @@ Card {
         : ""
     minimumHeight: 80
 
-    trailing: Button {
-        objectName: "action"
-        visible: Updates.available
-        text: card.hasUpdate ? qsTr("Install now") : qsTr("Check for updates")
-        accent: card.hasUpdate
-        usable: !Updates.busy
-        onClicked: card.hasUpdate ? Updates.install({}) : Updates.check()
+    trailing: Row {
+        spacing: 8
+
+        // An available update can become outdated before installation.
+        // Checking again refreshes the proposed commit and release notes
+        // without installing anything. The daemon schedules the next automatic check.
+        Button {
+            objectName: "recheck"
+            visible: Updates.available && card.hasUpdate
+            icon.name: "view-refresh"
+            text: card.compactActions ? "" : qsTr("Check again")
+            subtle: card.compactActions
+            // Keep the compact hit target stable, independent of content sizing.
+            width: card.compactActions ? 44 : implicitWidth
+            Accessible.name: qsTr("Check again")
+            QQC.ToolTip.visible: card.compactActions && hovered
+            QQC.ToolTip.text: qsTr("Check again")
+            QQC.ToolTip.delay: 600
+            usable: !Updates.busy
+            onClicked: Updates.check()
+        }
+
+        Button {
+            objectName: "action"
+            visible: Updates.available
+            text: card.hasUpdate ? qsTr("Install now") : qsTr("Check for updates")
+            accent: card.hasUpdate
+            usable: !Updates.busy
+            onClicked: card.hasUpdate ? Updates.install({}) : Updates.check()
+        }
     }
 
     contentItem: Column {
         width: parent.width
-        visible: card.showRelogin || card.showCheckFailure || card.showInstallFailure || Updates.error !== ""
+        visible: card.showRelogin || card.showCheckFailure || card.showInstallFailure
+            || card.showNextCheck || card.showNetworkWait || Updates.error !== ""
         spacing: 8
 
+        Text {
+            objectName: "nextCheck"
+            visible: card.showNextCheck || card.showNetworkWait
+            width: parent.width
+            text: card.showNetworkWait
+                ? qsTr("Next check: waiting for a fully connected, unmetered network")
+                : card.showNextCheck ? qsTr("Next automatic check: %1").arg(
+                    Updates.nextCheck.toLocaleString(Qt.locale(), Locale.ShortFormat)) : ""
+            textFormat: Text.PlainText
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
+            wrapMode: Text.Wrap
+        }
         Text {
             objectName: "relogin"
             visible: card.showRelogin

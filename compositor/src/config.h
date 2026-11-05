@@ -47,6 +47,7 @@
 //   polkit-agent=yes         start Vela's polkit agent (docs/polkit-agent.md)
 //   brightness=yes           drive the monitors' brightness (docs/brightness.md)
 //   update-check=yes         check for updates in the background (docs/updates.md)
+//   update-check-interval=24  automatic check frequency in hours (6, 12, 24, 48, 168)
 //
 // The old Italian names are still read (legacy_names.h).
 

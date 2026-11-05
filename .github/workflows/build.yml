@@ -83,8 +83,14 @@ jobs:
           persist-credentials: false
       - name: Validate standalone Sigstore verifier syntax
         run: python3 -m py_compile packaging/verify-attestation.py packaging/vela-update-state
+      - name: Private session lifecycle and isolation (CPU-only)
+        run: python3 -m unittest discover -s scripts/tests -p 'test_private_session.py' -v
+      - name: Functional harness contracts (CPU-only)
+        run: PYTHONPATH=tests/functional python3 -m unittest discover -s tests/harness -p 'test_harness.py' -v
       - name: Updater and package source contracts (no network or credentials)
         run: python3 -m unittest discover -s packaging/tests -v
+      - name: Validate GPU functional test Python syntax (even without hardware)
+        run: python3 -m compileall -q tests/functional
       - name: Reporter evidence contracts (no GPU or running session)
         run: PYTHONPATH=report python3 -m unittest discover -s report/tests -v
       - name: Recording timeline and promo contracts (no GPU needed)

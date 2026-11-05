@@ -211,7 +211,7 @@ vela_client_protocol(proto-pointer-constraints
     pointer-constraints-unstable-v1)
 add_executable(vela-pattern vela-pattern.c)
 target_link_libraries(vela-pattern PRIVATE proto-xdg-shell proto-viewporter proto-fractional-scale
-    proto-xdg-decoration proto-pointer-constraints)
+    proto-xdg-decoration proto-pointer-constraints proto-background-effect)
 
 # Fake shell pieces (wallpaper, blurred taskbar) for tests without the Qt
 # shell.
