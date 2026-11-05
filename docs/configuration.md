@@ -163,6 +163,7 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 
 | Key | Default | Meaning |
 |---|---|---|
+| `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `start/showPinned` | `true` | The apps pinned to Start above all apps; off, Start opens on all apps and keeps the pins (`start/pinned`) |
 | `desktop/showIcons` | `true` | The Desktop folder's icons on the main display (Settings → Background, or the desktop's menu) |
 

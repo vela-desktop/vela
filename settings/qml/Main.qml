@@ -215,6 +215,7 @@ Window {
         { page: "colors", text: qsTr("Choose your mode"), keys: qsTr("dark light theme apps mode") },
         { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded reset") },
         { page: "taskbar", text: qsTr("Taskbar"), keys: qsTr("taskbar alignment left center end task") },
+        { page: "taskbar", text: qsTr("Show the date"), keys: qsTr("taskbar clock date day show hide") },
         { page: "taskbar", reveal: "taskbar", text: qsTr("Taskbar style"), keys: qsTr("taskbar style look pill floating dock") },
         { page: "taskbar", reveal: "notifications", text: qsTr("Quick settings style"), keys: qsTr("quick settings notification center style look") },
         { page: "start", text: qsTr("Start menu style"), keys: qsTr("start menu style look size corners") },

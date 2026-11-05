@@ -1753,6 +1753,14 @@ Specifiche sistema
         <translation>taskbar allineamento sinistra centro termina attività</translation>
     </message>
     <message>
+        <source>Show the date</source>
+        <translation>Mostra la data</translation>
+    </message>
+    <message>
+        <source>taskbar clock date day show hide</source>
+        <translation>barra applicazioni orologio data giorno mostra nascondi</translation>
+    </message>
+    <message>
         <source>Taskbar style</source>
         <translation>Stile della barra delle applicazioni</translation>
     </message>
@@ -2957,6 +2965,18 @@ Specifiche sistema
     <message>
         <source>Open windows and virtual desktops (also with Win+Tab)</source>
         <translation>Le finestre aperte e i desktop virtuali (anche con Win+Tab)</translation>
+    </message>
+    <message>
+        <source>Clock and notifications</source>
+        <translation>Orologio e notifiche</translation>
+    </message>
+    <message>
+        <source>Show the date</source>
+        <translation>Mostra la data</translation>
+    </message>
+    <message>
+        <source>Under the time in the taskbar&apos;s clock</source>
+        <translation>Sotto l&apos;ora, nell&apos;orologio della barra delle applicazioni</translation>
     </message>
     <message>
         <source>Taskbar behaviors</source>

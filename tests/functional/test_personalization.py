@@ -16,6 +16,9 @@ import test_shell
 
 
 class Personalization(test_shell.RealShell):
+    # The clock stopped (and carets that don't blink): its pixels change
+    # only with what a test chooses.
+    shell_env = {"VELA_STILL": "2026-01-14T13:45:07"}
 
     def write_shell_conf(self, text):
         """vela-shell.conf replaced as QSettings does, then the shell's
@@ -39,6 +42,47 @@ class Personalization(test_shell.RealShell):
             return condition(found)
         self.vela.wait_for(check, timeout=timeout, read_state=False, what=what)
         return found
+
+    def settled_region(self, box, still=1.0, timeout=15):
+        """The region once it stops changing for `still` seconds: at startup
+        the bar takes the wallpaper's tint and the tray fills in."""
+        deadline = time.monotonic() + timeout
+        last, since = self.region(*box), time.monotonic()
+        while time.monotonic() < deadline:
+            time.sleep(0.25)
+            now = self.region(*box)
+            if now != last:
+                last, since = now, time.monotonic()
+            elif time.monotonic() - since >= still:
+                return now
+        self.fail(f"the region {box} never settled")
+
+    def clock_box(self):
+        """The taskbar's clock and the corner after it: the bar's right end."""
+        output = self.vela.state().output
+        return (output["w"] - 220, output["h"] - 48, 220, 48)
+
+    def toggles_clock(self, key, off, on):
+        """The clock's pixels with the key at `off`, then back at `on`: they
+        change, and come back exactly."""
+        box = self.clock_box()
+        before = self.settled_region(box)
+        self.write_shell_conf(f"[{key.split('/')[0]}]\n{key.split('/')[1]}={off}\n")
+        changed = self.wait_region(box, lambda r: r != before, f"the clock with {key}={off}")
+        self.write_shell_conf(f"[{key.split('/')[0]}]\n{key.split('/')[1]}={on}\n")
+        self.wait_region(box, lambda r: r == before, f"the clock with {key}={on} again")
+        return before, changed
+
+    def test_the_clock_hides_its_date(self):
+        # Without the date the time sits alone, in the middle of the bar.
+        before, without = self.toggles_clock("taskbar/showDate", "false", "true")
+        # The date's line is gone: under the clock's middle, in its last
+        # 100 pixels (the tray's icons are before them), hardly any colors
+        # are left of the text's.
+        def colors(rows):
+            return {row[x:x + 3] for row in rows[28:42] for x in range(120 * 3, 212 * 3, 3)}
+        self.assertLess(len(colors(without)), len(colors(before)) / 3, "the date's line is still drawn")
+        self.check_desktop()
 
     def test_desktop_icons_follow_settings(self):
         # A file on the desktop; Settings > Background hides, then shows it.

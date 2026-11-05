@@ -167,6 +167,8 @@ void Preferences::reload()
     emit desktopChanged();
     m_startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
     emit startChanged();
+    m_clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
+    emit clockChanged();
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
     emit doNotDisturbChanged();
     m_clipboardHistory = settings.value(QStringLiteral("clipboard/history"), false).toBool();
@@ -540,6 +542,15 @@ void Preferences::setStartPinned(bool on)
         m_startPinned = on;
         setShell(QStringLiteral("start/showPinned"), on);
         emit startChanged();
+    }
+}
+
+void Preferences::setClockDate(bool on)
+{
+    if (on != m_clockDate) {
+        m_clockDate = on;
+        setShell(QStringLiteral("taskbar/showDate"), on);
+        emit clockChanged();
     }
 }
 

@@ -4,10 +4,10 @@
 import QtQuick
 import Vela.Controls
 
-// Personalization > Taskbar: what is on it and how it behaves first, then its
-// style and the style of the quick settings and notification center it opens
-// (taskbar-style=, notifications-style= in vela.conf, over the theme), each
-// closed under its card until opened.
+// Personalization > Taskbar: what is on it, its clock and how it behaves
+// first, then its style and the style of the quick settings and notification
+// center it opens (taskbar-style=, notifications-style= in vela.conf, over the
+// theme), each closed under its card until opened.
 Page {
     DesktopPreview {}
 
@@ -20,6 +20,20 @@ Page {
             trailing: Switch {
                 checked: Prefs.taskView
                 onToggled: Prefs.taskView = checked
+            }
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Clock and notifications")
+        Card {
+            icon: "view-calendar"
+            title: qsTr("Show the date")
+            description: qsTr("Under the time in the taskbar's clock")
+            trailing: Switch {
+                objectName: "clockDate"
+                checked: Prefs.clockDate
+                onToggled: Prefs.clockDate = checked
             }
         }
     }

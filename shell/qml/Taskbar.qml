@@ -863,7 +863,7 @@ Window {
         }
     }
 
-    // Clock: time on top, date below.
+    // Clock: time on top, date below (unless Settings hides it).
     Item {
         id: clock
         // At the right; with a floating style inside its pill, after the apps
@@ -927,6 +927,7 @@ Window {
             }
             Text {
                 anchors.right: parent.right
+                visible: Config.clockDate
                 text: Qt.formatDate(clock.now, "dd/MM/yyyy")
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption

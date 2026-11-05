@@ -73,6 +73,12 @@ void Config::reload()
         emit taskbarChanged();
     }
 
+    const bool clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
+    if (clockDate != m_clockDate) {
+        m_clockDate = clockDate;
+        emit clockChanged();
+    }
+
     const bool startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
     if (startPinned != m_startPinned) {
         m_startPinned = startPinned;
