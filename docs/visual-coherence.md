@@ -587,20 +587,33 @@ checks the buttons' hover against `Theme.subtleHover`.
 |---|---|---|
 | dual Kawase blur | the effect the protocol asks for | every blur region |
 | dither | technical: no banding when the blur is written in 8 or 10 bits | every blur region |
-| saturation 1.25 | aesthetic: acrylic's recipe | Vela's surfaces |
-| gray tint (`acrylic_tint`) | aesthetic, and must precede the dither (K3) | Vela's surfaces |
+| saturation 1.25 (or the theme's `blur-saturation`) | aesthetic: acrylic's recipe | Vela's surfaces |
+| gray tint (`acrylic_tint`, its opacity the theme's `blur-tint`) | aesthetic, and must precede the dither (K3) | Vela's surfaces |
 | translucent fill | aesthetic: the panel's own color | drawn by the client |
 | Mica | aesthetic: a solid color | the title bar (K4) |
 | shadows | elevation | the owner of the surface (K2) |
 
 "Vela's surfaces" are layer surfaces whose namespace starts with `vela-`: the
 shell's panels and the polkit prompt (`vela-polkit`, `vela-polkit-veil`)
-already use it. Keying a visual rule on the layer namespace is what other
-wlroots compositors do for blur; a third-party client that picks a `vela-`
-namespace only changes its own look. When `add_surface()` finds a blur region it
-sets `acrylic` on the element from `wlr_layer_surface_v1_try_from_wlr_surface()`;
-otherwise `vela_pass_add_blur()` passes a zero tint and a saturation of 1. The
+already use it. Windows whose app id starts with `vela-` are Vela's too: Vela's
+apps, which ask for a blur only when a theme's window background is
+see-through (Window Glass). Keying a visual rule on the layer namespace is what
+other wlroots compositors do for blur; a third-party client that picks a `vela-`
+namespace or app id only changes its own look. When `add_surface()` finds a
+blur region it sets `acrylic` on the element from
+`wlr_layer_surface_v1_try_from_wlr_surface()` or
+`wlr_xdg_toplevel_try_from_wlr_surface()`; otherwise `vela_pass_add_blur()` passes a zero tint and a saturation of 1. The
 shell's look doesn't change.
+
+A theme's `blur-*` keys reach the compositor as `blur-look <scope>
+<saturation> <strength> <tint> <glass>`, which the shell sends with `theme`
+and `mica`: `*` for every acrylic surface (the theme's), then one per shell
+panel by layer namespace (the theme with that panel's style). `-1` keeps
+Vela's own value; `glass 1`, a panel with a look of its own, is glass from 4%
+alpha instead of half (a nearly clear taskbar). Vela's apps' windows take the
+`*` look. They change Vela's surfaces only
+(`test_layers.BlurPolicy.test_theme_blur_look`,
+`test_acrylic_for_vela_windows`).
 
 **Verified by** a functional test with `vela-panel`, which gets a `--namespace`
 option (today it always uses `vela-panel`, so the existing blur tests keep the

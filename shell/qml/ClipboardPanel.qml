@@ -16,7 +16,7 @@ Window {
     // §6.9): the panel rests 12 units from both.
     readonly property real room: shadow.reach
     width: room + 360 + 12
-    height: Math.min(room + panel.height + 12, Screen.height - Theme.taskbarHeight)
+    height: Math.min(room + panel.height + 12, Screen.height - Styles.taskbar.height)
     color: "transparent"
 
     property int current: 0
@@ -59,7 +59,7 @@ Window {
     // (menus).
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
-        return Qt.point(Screen.width - root.width + p.x, Screen.height - Theme.taskbarHeight - root.height + p.y)
+        return Qt.point(Screen.width - root.width + p.x, Screen.height - Styles.taskbar.height - root.height + p.y)
     }
 
     ShadowRoom {
