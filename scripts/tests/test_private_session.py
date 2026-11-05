@@ -3,14 +3,17 @@
 
 """GPU-free regression tests for the manual Vela session launchers."""
 
+import importlib.util
 import json
 import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 COMPOSITOR = '''#!/usr/bin/env python3
@@ -30,9 +33,11 @@ elif os.environ.get("VELA_TEST_HOLD") == "1":
 result = {"env": {key: os.environ.get(key) for key in keys}, "args": sys.argv[1:]}
 result["imported"] = {}
 result["outside"] = {}
+result["linked"] = {}
 for name in ("vela", "Vela"):
     pref = pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / name / "setting.txt"
     result["imported"][name] = pref.read_text() if pref.exists() else None
+    result["linked"][name] = pref.is_symlink()
     result["outside"][name] = (pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / name / "external").exists()
 for name in ("XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "HOME"):
     (pathlib.Path(os.environ[name]) / "test-write").write_text("private")
@@ -82,6 +87,15 @@ class PrivateSessionTests(unittest.TestCase):
                         WAYLAND_DISPLAY="wayland-host", DISPLAY=":18",
                         QT_WAYLAND_RECONNECT="1", VELA_TEST_OUTPUT=str(self.output))
         self.env.pop("VELA_TEST_COPY_CONFIG", None)
+
+    @staticmethod
+    def load_helper():
+        """Import the hyphenated launcher module for focused lifecycle tests."""
+        spec = importlib.util.spec_from_file_location("vela_private_session_tests",
+                                                     SCRIPTS / "private-session.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
     def run_script(self, name, **variables):
         return subprocess.run(["sh", str(SCRIPTS / name), str(self.build)],
@@ -141,6 +155,7 @@ class PrivateSessionTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stderr)
         result = json.loads(self.output.read_text())
         self.assertEqual(result["imported"], {"vela": "copied locally", "Vela": "copied locally"})
+        self.assertEqual(result["linked"], {"vela": False, "Vela": False})
         self.assertEqual(result["outside"], {"vela": False, "Vela": False})
         self.assertIn("Skipping config symlink outside Vela", run.stderr)
         self.assertIn("Skipping recursive config symlink", run.stderr)
@@ -245,6 +260,92 @@ class PrivateSessionTests(unittest.TestCase):
                 process.wait()
             process.stdout.close()
             process.stderr.close()
+
+    def test_pidfd_rejects_stale_process_identity(self):
+        """Even if a PID is reused, the old start time cannot target it."""
+        helper = self.load_helper()
+        child = subprocess.Popen(
+            [sys.executable, "-u", "-c", "import time; print('ready', flush=True); time.sleep(60)"],
+            stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "ready")
+            fields = Path(f"/proc/{child.pid}/stat").read_text().rsplit(")", 1)[1].split()
+            started = int(fields[19])
+            helper._signal_descendant(child.pid, started + 1, signal.SIGKILL)
+            self.assertIsNone(child.poll(), "stale identity signalled a living process")
+            helper._signal_descendant(child.pid, started, signal.SIGKILL)
+            self.assertEqual(child.wait(timeout=3), -signal.SIGKILL)
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+            child.stdout.close()
+
+    def test_transient_empty_proc_snapshot_cannot_leave_a_live_child(self):
+        """An empty procfs scan is not enough while waitpid sees our child."""
+        helper = self.load_helper()
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        calls = 0
+        real_descendants = helper._descendants
+
+        def transient_gap():
+            nonlocal calls
+            calls += 1
+            return {} if calls == 1 else real_descendants()
+
+        try:
+            with patch.object(helper, "_descendants", side_effect=transient_gap):
+                self.assertTrue(helper._stop_all(child))
+            self.assertGreaterEqual(calls, 2)
+            self.assertIsNotNone(child.returncode)
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+
+    def test_stop_error_preserves_the_private_home(self):
+        """A failed descendant shutdown must never delete its writable home."""
+        helper = self.load_helper()
+        mkdtemp = tempfile.mkdtemp
+        handlers = {sig: signal.getsignal(sig) for sig in
+                    (signal.SIGHUP, signal.SIGINT, signal.SIGTERM)}
+        try:
+            with patch.object(helper.tempfile, "mkdtemp",
+                              side_effect=lambda **kw: mkdtemp(dir=self.tmp, **kw)), \
+                    patch.dict(os.environ, self.env, clear=True), \
+                    patch.object(helper, "_stop_all", side_effect=OSError("injected stop failure")):
+                with self.assertRaisesRegex(OSError, "injected stop failure"):
+                    helper.main([str(self.build / "compositor" / "vela-compositor")])
+        finally:
+            for sig, handler in handlers.items():
+                signal.signal(sig, handler)
+        preserved = list(self.tmp.iterdir())
+        self.assertEqual(len(preserved), 1)
+        self.assertTrue((preserved[0] / "home").is_dir())
+        self.assertEqual(self.sentinel.read_text(), "real session must not change")
+
+    def test_signal_received_during_cleanup_updates_exit_code(self):
+        """SIGTERM during descendant cleanup must return 143, not compositor 0."""
+        helper = self.load_helper()
+        mkdtemp = tempfile.mkdtemp
+        handlers = {sig: signal.getsignal(sig) for sig in
+                    (signal.SIGHUP, signal.SIGINT, signal.SIGTERM)}
+
+        def interrupt_cleanup(process):
+            helper._requested_signal = signal.SIGTERM
+            return not helper._reap(process)
+
+        try:
+            with patch.object(helper.tempfile, "mkdtemp",
+                              side_effect=lambda **kw: mkdtemp(dir=self.tmp, **kw)), \
+                    patch.dict(os.environ, self.env, clear=True), \
+                    patch.object(helper, "_stop_all", side_effect=interrupt_cleanup):
+                self.assertEqual(helper.main(
+                    [str(self.build / "compositor" / "vela-compositor")]), 143)
+        finally:
+            for sig, handler in handlers.items():
+                signal.signal(sig, handler)
+        self.assert_clean()
 
     def test_concurrent_launchers_have_distinct_private_roots(self):
         paths = [self.root / "a.json", self.root / "b.json"]
