@@ -452,6 +452,7 @@ Window {
 
         UndoBar {
             id: undoBar
+            maximumWidth: Math.min(560, pageLoader.width - 32)
             width: implicitWidth
             height: implicitHeight
             anchors { horizontalCenter: pageLoader.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }

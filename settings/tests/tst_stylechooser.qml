@@ -57,6 +57,26 @@ Item {
         }
     }
 
+    // A page shorter than a gallery, opened.
+    Component {
+        id: shortPage
+        Flickable {
+            width: 900
+            height: 200
+            contentHeight: shortColumn.height
+            property alias chooser: shortChooser
+            Column {
+                id: shortColumn
+                width: parent.width
+                StyleChooser {
+                    id: shortChooser
+                    surface: "taskbar"
+                    expanded: true
+                }
+            }
+        }
+    }
+
     Component {
         id: fresh
         StyleChooser {
@@ -218,6 +238,45 @@ Item {
             verify(top >= 0 && top < page.height, "out of view at " + top)
             verify(findChild(far, "styleHeader").children.some(c => c.activeFocus))
             root.reveal = ""
+        }
+
+        // The arrows take the focus to a card below the page's end: the page
+        // scrolls to show it.
+        function test_the_arrows_bring_cards_into_view() {
+            const page = createTemporaryObject(shortPage, root)
+            const gallery = page.chooser
+            tryVerify(() => findChild(gallery, "missingStyle") !== null)
+            waitForItemPolished(gallery)
+            const all = []
+            const walk = item => {
+                for (let i = 0; i < item.children.length; ++i) {
+                    if (item.children[i].Accessible.role === Accessible.RadioButton) {
+                        all.push(item.children[i])
+                    }
+                    walk(item.children[i])
+                }
+            }
+            walk(gallery)
+            compare(all.length, 3)
+            all[0].forceActiveFocus(Qt.TabFocusReason)
+            keyClick(Qt.Key_Down)
+            keyClick(Qt.Key_Down)
+            verify(all[2].activeFocus)
+            const top = all[2].mapToItem(page, 0, 0).y
+            verify(top >= 0 && top + all[2].height <= page.height, "out of view at " + top)
+        }
+
+        // Undo still works once the gallery that offered it is closed.
+        function test_undo_after_the_gallery_closes() {
+            chooser.expanded = true
+            tryVerify(() => tiles().length === 3)
+            waitForRendering(chooser)
+            mouseClick(tile("Dock"))
+            compare(Prefs.surfaceStyles.taskbar, "dock")
+            chooser.expanded = false
+            tryVerify(() => tiles().length === 0)
+            root.offers[0].undo()
+            compare(Prefs.surfaceStyles.taskbar, "")
         }
 
         function test_your_own_styles_are_named() {

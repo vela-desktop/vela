@@ -141,6 +141,17 @@ Item {
                 "the last card ends at " + bottom + " of " + page.height)
         }
 
+        // Never wider than the page: a long text elides, Close stays in view.
+        function test_a_long_text_stays_within_the_page() {
+            bar.maximumWidth = 300
+            offer("A theme with a very long name that would not fit in a narrow window is in use", () => {})
+            verify(bar.implicitWidth <= 300)
+            bar.width = bar.implicitWidth
+            const close = buttons().find(b => b.text === "")
+            verify(close.mapToItem(bar, close.width, 0).x <= bar.width)
+            bar.maximumWidth = 560
+        }
+
         function test_close_doesnt_undo() {
             offer("Pill is in use", () => { root.undone = root.undone.concat(["undone"]) })
             const close = buttons().find(b => b.text === "")

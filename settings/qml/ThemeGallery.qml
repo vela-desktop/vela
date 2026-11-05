@@ -50,25 +50,34 @@ Grid {
             width: gallery.tileWidth
             // 16:9, the pictures' shape (and the miniature's, unframed).
             pictureHeight: Math.round((width - 12) * 9 / 16)
+            // As the shell would take it, the chosen styles over it: a file
+            // the reader turns down (too large, another version) can't be
+            // applied, and says why instead.
+            readonly property var resolved: { Prefs.themesRevision; Prefs.surfaceStyles; return Prefs.resolveTheme(modelData.name) }
+            readonly property bool hasPicture: modelData.images.length > 0 && picture.status !== Image.Error
+            enabled: resolved.installed
             text: modelData.text
-            subtitle: modelData.author !== "" ? qsTr("Original author: %1").arg(modelData.author) : ""
+            subtitle: !resolved.installed ? qsTr("Vela can't use this file: too large, or for another version")
+                : modelData.author !== "" ? qsTr("Original author: %1").arg(modelData.author) : ""
             selected: modelData.name === Prefs.visualTheme
             onClicked: gallery.use(modelData)
 
+            // Its picture; the miniature without one, or when it can't be read.
             Image {
-                visible: tile.modelData.images.length > 0
+                id: picture
+                objectName: "picture"
+                visible: tile.hasPicture
                 anchors.fill: parent
-                source: visible ? tile.modelData.images[0] : ""
+                source: tile.modelData.images.length > 0 ? tile.modelData.images[0] : ""
                 sourceSize.width: width * 2
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 smooth: true
             }
             DesktopPreview {
-                visible: tile.modelData.images.length === 0
+                visible: !tile.hasPicture
                 framed: false
-                // Again when a file or a chosen style changes.
-                themeTokens: { Prefs.themesRevision; Prefs.surfaceStyles; return Prefs.resolveTheme(tile.modelData.name).tokens }
+                themeTokens: tile.resolved.tokens
                 transformOrigin: Item.TopLeft
                 scale: tile.pictureHeight / height
             }

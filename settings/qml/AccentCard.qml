@@ -21,7 +21,7 @@ Card {
     readonly property bool shellLight: Prefs.shellTheme === "light"
     // The one chosen here shows nowhere now: Vela and the apps both take the theme's.
     readonly property bool overridden: owns(appsLight) && owns(shellLight)
-    readonly property string themeName: Prefs.displayName("", Prefs.visualTheme) || Prefs.visualTheme
+    readonly property string themeName: { Prefs.themesRevision; return Prefs.displayName("", Prefs.visualTheme) || Prefs.visualTheme }
     // The accent the apps use now: the theme's in their mode, else the one chosen.
     readonly property color inUse: owns(appsLight) ? themeAccent(appsLight) : Prefs.accent
     readonly property var accents: [

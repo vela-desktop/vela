@@ -2966,6 +2966,10 @@ Specifiche sistema
         <translation>%1 è in uso</translation>
     </message>
     <message>
+        <source>Vela can&apos;t use this file: too large, or for another version</source>
+        <translation>Vela non può usare questo file: è troppo grande, o è per un&apos;altra versione</translation>
+    </message>
+    <message>
         <source>Original author: %1</source>
         <translation>Autore originale: %1</translation>
     </message>

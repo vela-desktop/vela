@@ -27,6 +27,24 @@ T.AbstractButton {
     // With activeFocus: Qt Quick ignores a focus policy taken away while the
     // tile has the focus, so it is only ever taken away after.
     focusPolicy: tabStop || activeFocus ? Qt.TabFocus : Qt.NoFocus
+    // One that can't be chosen fades, like the other controls.
+    opacity: enabled ? 1 : 0.45
+    // Where the keyboard brings it, into view on a page that scrolls.
+    onActiveFocusChanged: if (activeFocus) showInPage()
+    function showInPage() {
+        for (let item = parent; item; item = item.parent) {
+            const page = item as Flickable
+            if (page) {
+                const top = mapToItem(page.contentItem, 0, 0).y
+                if (top < page.contentY) {
+                    page.contentY = Math.max(0, top - 8)
+                } else if (top + height > page.contentY + page.height) {
+                    page.contentY = Math.min(page.contentHeight - page.height, top + height - page.height + 8)
+                }
+                return
+            }
+        }
+    }
     Keys.onLeftPressed: arrow(-1, 0)
     Keys.onRightPressed: arrow(1, 0)
     Keys.onUpPressed: arrow(0, -1)

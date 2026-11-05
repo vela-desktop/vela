@@ -86,6 +86,17 @@ Item {
                 "Vela Official keeps the apps centered in its pill: the alignment applies with another theme")
         }
 
+        // The style renamed in its file: the text follows at once.
+        function test_the_name_follows_a_renamed_file() {
+            Prefs.setSurfaceStyle("taskbar", "pill")
+            layout({ "taskbar-radius": 8, "taskbar-fit": 1 }, true)
+            const styles = Object.assign({}, Prefs.styles)
+            styles.taskbar = [{ name: "pill", text: "Round pill", author: "", images: [] }]
+            Prefs.styles = styles
+            ++Prefs.themesRevision
+            verify(card.description.startsWith("Round pill keeps"))
+        }
+
         function test_in_vela_mode() {
             // A pill in dark mode only: with Vela light, the alignment is back.
             layout({ "taskbar-radius": 8, "dark.taskbar-fit": 1, "light.taskbar-fit": 0 })

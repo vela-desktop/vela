@@ -11,12 +11,13 @@ import Vela.Controls
 // another theme, gives the choice back.
 Card {
     id: card
-    readonly property var resolved: { Prefs.visualTheme; Prefs.surfaceStyles; Prefs.themesRevision; return Prefs.resolveTheme(Prefs.visualTheme) }
+    readonly property var resolved: { Prefs.visualTheme; Prefs.surfaceStyles; Prefs.themesRevision; Prefs.shellTheme; return Prefs.resolveTheme(Prefs.visualTheme) }
     // In Vela's mode, the taskbar's.
     readonly property var layout: Style.taskbarLayout(resolved.tokens, Prefs.shellTheme === "light", Prefs.taskbarAlignment)
     // The taskbar style chosen sets the layout over the theme's.
     readonly property bool byStyle: resolved.layoutFromStyle === true
     readonly property string owner: {
+        Prefs.themesRevision
         const name = byStyle ? Prefs.surfaceStyles["taskbar"] || "" : Prefs.visualTheme
         return Prefs.displayName(byStyle ? "taskbar" : "", name) || name
     }

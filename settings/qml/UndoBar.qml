@@ -39,7 +39,10 @@ Item {
         timer.stop()
     }
 
-    implicitWidth: Math.min(560, metrics.advanceWidth + undoButton.implicitWidth + closeButton.implicitWidth + 2 * row.spacing + 28)
+    // No wider than this (Main.qml: the page's width): a long text elides.
+    property real maximumWidth: 560
+
+    implicitWidth: Math.min(maximumWidth, metrics.advanceWidth + undoButton.implicitWidth + closeButton.implicitWidth + 2 * row.spacing + 28)
     implicitHeight: 56
     visible: opacity > 0
     opacity: shown ? 1 : 0

@@ -142,9 +142,48 @@ Item {
             Prefs.themes = themes
             ++Prefs.themesRevision
             tryVerify(() => tiles().length === 3)
-            verify(visibleOf(tile("Glass"), "QQuickImage"))
+            const image = findChild(tile("Glass"), "picture")
+            tryVerify(() => image.status === Image.Ready)
+            verify(image.visible)
             verify(!visibleOf(tile("Glass"), "DesktopPreview"))
             verify(visibleOf(tile("Mine"), "DesktopPreview"))
+        }
+
+        // A picture that can't be read: the miniature, not an empty card.
+        function test_a_broken_picture_shows_the_miniature() {
+            const themes = Prefs.themes.slice()
+            themes[1] = Object.assign({}, themes[1], { images: [Qt.resolvedUrl("tst_themes.qml").toString()] })
+            Prefs.themes = themes
+            ++Prefs.themesRevision
+            tryVerify(() => tiles().length === 3)
+            const image = findChild(tile("Glass"), "picture")
+            tryVerify(() => image.status === Image.Error)
+            verify(!image.visible)
+            verify(visibleOf(tile("Glass"), "DesktopPreview"))
+        }
+
+        // A file the reader turns down: shown, faded, saying why, and not applied.
+        function test_a_theme_vela_cant_use_isnt_applied() {
+            Prefs.rejected = ["glass"]
+            ++Prefs.themesRevision
+            tryVerify(() => tiles().length === 3)
+            waitForItemPolished(gallery)
+            const glass = tile("Glass")
+            verify(!glass.enabled)
+            compare(glass.opacity, 0.45)
+            compare(glass.subtitle, "Vela can't use this file: too large, or for another version")
+            mouseClick(glass)
+            compare(Prefs.visualTheme, "vela")
+            compare(root.offers.length, 0)
+        }
+
+        // Renamed in its file: the names follow at once.
+        function test_names_follow_a_renamed_file() {
+            const themes = Prefs.themes.slice()
+            themes[0] = Object.assign({}, themes[0], { text: "Vela" })
+            Prefs.themes = themes
+            ++Prefs.themesRevision
+            compare(reset.velaName, "Vela")
         }
 
         function test_your_own_themes_folder_opens() {

@@ -24,9 +24,16 @@ QtObject {
     // What styleGallery() lists: the themes ("") and each surface's styles.
     property var themes: []
     property var styles: ({})
+    // What the calls read, kept apart: like the C++ ones, they make no
+    // binding depend on these lists; themesRevision is what refreshes.
+    readonly property var store: ({ themes: [], styles: {} })
+    onThemesChanged: store.themes = themes
+    onStylesChanged: store.styles = styles
     // Each theme's tokens, as resolveTheme() gives them (its chosen styles
     // merged): a test sets them, then bumps themesRevision as a file would.
     property var tokens: ({})
+    // Themes resolveTheme() turns down (installed: false): too large...
+    property var rejected: []
     // resolveTheme()'s layoutFromStyle: the taskbar style sets the layout.
     property bool layoutFromStyle: false
     // "From the theme"'s pictures (themeSurfacePictures()), by "<theme> <surface>":
@@ -57,6 +64,7 @@ QtObject {
         }
         tokens = {}
         layoutFromStyle = false
+        rejected = []
         surfacePictures = {}
         calls = []
         ++themesRevision
@@ -71,13 +79,13 @@ QtObject {
         return entry ? entry.text : ""
     }
     function styleGallery(surface) {
-        return surface === "" ? themes : (styles[surface] || [])
+        return surface === "" ? store.themes : (store.styles[surface] || [])
     }
     function themeSurfacePictures(theme, surface) {
         return surfacePictures[theme + " " + surface] || {}
     }
     function resolveTheme(name) {
-        return { installed: themes.some(t => t.name === name), tokens: tokens[name] || {}, problems: [],
+        return { installed: store.themes.some(t => t.name === name) && rejected.indexOf(name) < 0, tokens: tokens[name] || {}, problems: [],
             layoutFromStyle: layoutFromStyle }
     }
     function setSurfaceStyle(surface, style) {

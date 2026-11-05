@@ -163,6 +163,16 @@ Item {
             compare(stops[0], swatches()[0])
         }
 
+        // Renamed in its file: the text follows at once.
+        function test_the_theme_name_follows_a_renamed_file() {
+            themeTokens({ accent: "#e81123" })
+            const themes = Prefs.themes.slice()
+            themes[0] = Object.assign({}, themes[0], { text: "Vela" })
+            Prefs.themes = themes
+            ++Prefs.themesRevision
+            verify(card.description.startsWith("Vela, the theme in use"))
+        }
+
         function test_screen_readers_hear_names_and_places() {
             const all = swatches()
             compare(all[17].Accessible.role, Accessible.RadioButton)
