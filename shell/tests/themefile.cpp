@@ -196,16 +196,39 @@ private slots:
         QVERIFY(glass != themes.cend());
         QCOMPARE(glass->toMap().value(QStringLiteral("images")).toStringList(),
             QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass.png")).toString() });
-        // Quick settings and the notification center: two pictures, in order.
-        write(data() + QStringLiteral("screenshots/themes/glass-notifications-qs.png"), "png");
-        write(data() + QStringLiteral("screenshots/themes/glass-notifications-nc.png"), "png");
+        // A surface as the theme draws it, in the theme's own folder; quick
+        // settings and the notification center: two pictures, in order.
+        write(data() + QStringLiteral("screenshots/themes/glass/taskbar.png"), "png");
+        write(data() + QStringLiteral("screenshots/themes/glass/notifications-qs.png"), "png");
+        write(data() + QStringLiteral("screenshots/themes/glass/notifications-nc.png"), "png");
+        QCOMPARE(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("taskbar")),
+            QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/taskbar.png")).toString() });
         QCOMPARE(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("notifications")),
-            (QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass-notifications-qs.png")).toString(),
-                QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass-notifications-nc.png")).toString() }));
-        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("taskbar")).isEmpty());
+            (QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/notifications-qs.png")).toString(),
+                QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/notifications-nc.png")).toString() }));
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("startmenu")).isEmpty());
+        // No name picks another's pictures: a theme called glass-taskbar, or
+        // a taskbar style with -qs and -nc pictures lying around.
+        write(data() + QStringLiteral("glass-taskbar.conf"), "radius=3\n");
+        write(data() + QStringLiteral("screenshots/themes/glass-taskbar-qs.png"), "png");
+        const QVariantList more = vela::themes::gallery(QString());
+        const auto other = std::find_if(more.cbegin(), more.cend(),
+            [](const QVariant& t) { return t.toMap().value(QStringLiteral("name")) == QStringLiteral("glass-taskbar"); });
+        QVERIFY(other != more.cend());
+        QVERIFY(other->toMap().value(QStringLiteral("images")).toStringList().isEmpty());
+        write(data() + QStringLiteral("screenshots/taskbar/pill-qs.png"), "png");
+        QCOMPARE(vela::themes::gallery(QStringLiteral("taskbar"))[0].toMap().value(QStringLiteral("images")).toStringList().size(), 1);
+        // Your own pictures, for your own themes, win over the installed ones.
+        write(config() + QStringLiteral("screenshots/themes/glass.png"), "png");
+        const QVariantList mine = vela::themes::gallery(QString());
+        const auto glassAgain = std::find_if(mine.cbegin(), mine.cend(),
+            [](const QVariant& t) { return t.toMap().value(QStringLiteral("name")) == QStringLiteral("glass"); });
+        QCOMPARE(glassAgain->toMap().value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(config() + QStringLiteral("screenshots/themes/glass.png")).toString() });
         // Not a way out of screenshots/themes/, nor a surface that isn't one.
         QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("../glass"), QStringLiteral("taskbar")).isEmpty());
         QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QString()).isEmpty());
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("elsewhere")).isEmpty());
     }
 
     void colorsAndNumbers()

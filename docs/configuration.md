@@ -98,7 +98,17 @@ The first comment line names the file in Settings, and a `# Original author:` li
 
 A line that isn't a token, a value of the wrong type, a layout Vela doesn't have, a style's key for another surface and a broken `inherits=` are skipped with a warning in the log that names the file, the line and what is wrong. A file larger than 64 KiB is not read at all. Settings > Personalization > Themes lists the theme's under it too.
 
-A click on a theme in Settings > Personalization (or > Themes) writes `theme=` at once, and **Undo**, for a few seconds, goes back to the one before. A theme with its own `accent` replaces the accent color chosen in Settings > Colors while it is in use: Colors shows the grid disabled and says why. Each surface's styles are on its page, the taskbar's and quick settings' under Taskbar, the Start menu's under Start, after **From the theme**; a click writes the `*-style=` key at once, with Undo too. While the taskbar is a pill that places its apps itself (`taskbar-fit=1`), Taskbar says that the alignment doesn't apply. **Reset** goes back to Vela Official and no styles. The pictures are made by `scripts/theme-pictures.py` from the real shell on a headless Vela: `vela/themes/screenshots/themes/<theme>.png` (the desktop in the theme) and `<theme>-<surface>.png`, `vela/themes/screenshots/<surface>/<style>.png`, with `-qs.png` and `-nc.png` for quick settings and the notification center. Your own themes and styles have none: a theme shows the desktop in miniature in its colors instead.
+A click on a theme in Settings > Personalization (or > Themes) writes `theme=` at once, and **Undo**, for a few seconds, goes back to the one before. A theme with its own `accent` replaces the accent color chosen in Settings > Colors in the modes it sets it for: when every mode in use takes the theme's, Colors shows the grid disabled and says why, and when only one does it says in which mode the chosen color shows. Each surface's styles are on its page: the Start menu's under Start, after **From the theme**; the taskbar's and quick settings' under Taskbar, after the taskbar's own settings, each in a card that opens its gallery. A click writes the `*-style=` key at once, with Undo too. While the taskbar is a pill that places its apps itself (`taskbar-fit=1`), Taskbar shows the alignment disabled and says whether the theme or the style decides it. **Reset** goes back to Vela Official and no styles.
+
+The pictures are made by `scripts/theme-pictures.py` from the real shell on a headless Vela, with the clock stopped (`VELA_STILL`), in `vela/themes/screenshots/`:
+
+| Picture | What it shows |
+|---|---|
+| `themes/<theme>.png` | the desktop in the theme, with Settings and quick settings open |
+| `themes/<theme>/<surface>.png` | a surface as the theme draws it: `taskbar.png`, `startmenu.png`, `notifications-qs.png` and `notifications-nc.png` |
+| `<surface>/<style>.png` | a style: `taskbar/<style>.png`, `startmenu/<style>.png`, `notifications/<style>-qs.png` and `-nc.png` |
+
+Quick settings and the notification center have two pictures, `-qs.png` and `-nc.png`, the other surfaces one. Your own themes and styles can have theirs in `~/.config/vela/themes/screenshots/`, with the same names; without one, a theme shows the desktop in miniature in its colors, and a style its name.
 
 The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars) and `accent` in place of Mica and the chosen accent, and the `blur-*` keys: the theme's for every acrylic surface, then each panel's with its own style. A panel with a look of its own (a style, or the theme's keys for that surface) has its blur rounded like it, and glass from 4% alpha instead of half. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
 
@@ -270,6 +280,7 @@ These variables are for diagnosis rather than normal user configuration.
 | `VELA_DEBUG_LINEAR=1` | Force linear render buffers instead of normal tiled/modifier allocation; useful for allocator/modifier diagnosis. |
 | `VELA_DEBUG_INPUT=1` | Enable the virtual keyboard/pointer protocol used by `vela-input`. Off by default for security. |
 | `VELA_FILES_TIMING=1` | Make `vela-files` print startup timing data; used by `scripts/measure.sh`. |
+| `VELA_STILL=<date and time>` | For still pictures that don't change with when they are taken (`scripts/theme-pictures.py`): the shell's clock and calendar show this ISO date and time, such as `2026-01-14T10:30:00`, and text carets don't blink. |
 | `VELA_SCREEN_DUMP_OUTPUT` | Select which output `vela-screen-dump` captures by zero-based index. |
 
 ## Internal variables

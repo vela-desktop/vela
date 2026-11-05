@@ -726,16 +726,23 @@ inline QVariantList available(const QString& surface = QString())
     return list;
 }
 
-// The pictures of a theme or a style (themes/screenshots/<directory>/, made
-// by scripts/theme-pictures.py): <name>.png, or <name>-qs.png and
-// <name>-nc.png for quick settings and the notification center, as file
-// URLs; the user's (~/.config/vela/themes/screenshots/) before the installed
-// ones. None when there is no picture.
-inline QStringList pictures(const QString& directory, const QString& name)
+// The pictures of themes and styles, made by scripts/theme-pictures.py, in
+// themes/screenshots/:
+//   themes/<theme>.png              the desktop in a theme
+//   themes/<theme>/<surface>.png    a surface as the theme draws it
+//   <surface>/<style>.png           a style
+// with two pictures in place of the .png for quick settings and the
+// notification center, -qs.png and -nc.png. Each name has a place of its own:
+// no theme's or style's name picks another's pictures. Your own themes and
+// styles may have theirs in ~/.config/vela/themes/screenshots/, which wins
+// over the installed ones. As file URLs; none when there is no picture.
+inline QStringList pictures(const QString& directory, const QString& name, bool panels)
 {
     QStringList urls;
     const QString dir = QStringLiteral("vela/themes/screenshots/") + directory + u'/';
-    for (const QString& file : { name + QStringLiteral(".png"), name + QStringLiteral("-qs.png"), name + QStringLiteral("-nc.png") }) {
+    const QStringList files = panels ? QStringList { name + QStringLiteral("-qs.png"), name + QStringLiteral("-nc.png") }
+                                     : QStringList { name + QStringLiteral(".png") };
+    for (const QString& file : files) {
         QString path = QStandardPaths::locate(QStandardPaths::GenericConfigLocation, dir + file);
         if (path.isEmpty()) {
             path = QStandardPaths::locate(QStandardPaths::GenericDataLocation, dir + file);
@@ -749,8 +756,8 @@ inline QStringList pictures(const QString& directory, const QString& name)
 
 // The installed themes ("") or a surface's styles, with their pictures:
 // { name, text, author, images: [file URLs] }. A theme's picture is the
-// desktop in it (themes/screenshots/themes/<name>.png); a style's, its
-// surface. Those without a picture are listed too, with none.
+// desktop in it; a style's, its surface. Those without a picture are listed
+// too, with none.
 inline QVariantList gallery(const QString& surface)
 {
     QVariantList list;
@@ -761,21 +768,21 @@ inline QVariantList gallery(const QString& surface)
     const QString directory = layer == Theme ? QStringLiteral("themes") : surface;
     for (const QVariant& entry : available(surface)) {
         QVariantMap item = entry.toMap();
-        item.insert(QStringLiteral("images"), pictures(directory, item.value(QStringLiteral("name")).toString()));
+        item.insert(QStringLiteral("images"),
+            pictures(directory, item.value(QStringLiteral("name")).toString(), layer == Notifications));
         list.append(item);
     }
     return list;
 }
 
-// A surface as a theme draws it, without styles (themes/screenshots/themes/
-// <theme>-<surface>.png, -qs and -nc for "notifications"): what "From the
-// theme" shows.
+// A surface as a theme draws it, without styles: what "From the theme" shows.
 inline QStringList themeSurfacePictures(const QString& theme, const QString& surface)
 {
-    if (!validName(theme) || layerFor(surface) == Theme || layerFor(surface) >= LayerCount) {
+    const Layer layer = layerFor(surface);
+    if (!validName(theme) || layer == Theme || layer >= LayerCount) {
         return {};
     }
-    return pictures(QStringLiteral("themes"), theme + u'-' + surface);
+    return pictures(QStringLiteral("themes/") + theme, surface, layer == Notifications);
 }
 
 } // namespace vela::themes

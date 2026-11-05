@@ -538,6 +538,12 @@ void ShellController::windowAction(const QString& window, const QString& action)
     sendToCompositor("window " + window.toLatin1() + ' ' + action.toLatin1());
 }
 
+QDateTime ShellController::now() const
+{
+    static const QDateTime still = QDateTime::fromString(qEnvironmentVariable("VELA_STILL"), Qt::ISODate);
+    return still.isValid() ? still : QDateTime::currentDateTime();
+}
+
 bool ShellController::shiftHeld() const
 {
     const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);

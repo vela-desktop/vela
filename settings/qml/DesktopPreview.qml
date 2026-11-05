@@ -7,7 +7,8 @@ import Vela.Controls
 // The preview: the wallpaper with a window and the taskbar in miniature, in
 // the theme in use or in the tokens given (a theme's card, ThemeGallery's).
 // framed: in a frame like a monitor's, as the pages show it on top; the
-// cards show the picture alone, 320 x 196 to scale.
+// cards show the picture alone, 320 x 180 to scale, 16:9 like the pictures
+// of the installed themes.
 Item {
     id: preview
     property bool framed: true
@@ -30,7 +31,7 @@ Item {
     Rectangle {
         id: frame
         width: 320
-        height: 196
+        height: preview.framed ? 196 : 180
         radius: preview.framed ? 8 : 0
         color: preview.framed ? "#101010" : "transparent"
         border.width: preview.framed ? 1 : 0

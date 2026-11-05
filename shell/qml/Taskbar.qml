@@ -869,13 +869,13 @@ Window {
         anchors { top: parent.top; bottom: parent.bottom }
         width: clockColumn.implicitWidth + 16 + (Notifications.history.count > 0 || Notifications.doNotDisturb ? 22 : 0)
 
-        property date now: new Date()
+        property date now: Shell.now()
 
         Timer {
             interval: 1000
             running: true
             repeat: true
-            onTriggered: clock.now = new Date()
+            onTriggered: clock.now = Shell.now()
         }
 
         Fill {

@@ -34,7 +34,8 @@ Grid {
             id: tile
             required property var modelData
             width: gallery.tileWidth
-            pictureHeight: Math.round((width - 12) * 196 / 320)
+            // 16:9, the pictures' shape (and the miniature's, unframed).
+            pictureHeight: Math.round((width - 12) * 9 / 16)
             text: modelData.text
             subtitle: modelData.author !== "" ? qsTr("Original author: %1").arg(modelData.author) : ""
             selected: modelData.name === Prefs.visualTheme

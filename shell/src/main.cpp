@@ -52,6 +52,7 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QStyleHints>
 #include <QIcon>
 #include <QMouseEvent>
 #include <QQmlApplicationEngine>
@@ -294,6 +295,12 @@ int main(int argc, char* argv[])
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
     QGuiApplication::setQuitOnLastWindowClosed(false);
+    // VELA_STILL (an ISO date and time): still pictures that don't change
+    // with when they are taken (scripts/theme-pictures.py). The clock and the
+    // calendar show that time (ShellController::now()), carets don't blink.
+    if (QDateTime::fromString(qEnvironmentVariable("VELA_STILL"), Qt::ISODate).isValid()) {
+        QGuiApplication::styleHints()->setCursorFlashTime(0);
+    }
     // Before anything else: the C++ models are born already translated too.
     QQmlApplicationEngine* qmlEngine = nullptr;
     AppModel* appModel = nullptr;

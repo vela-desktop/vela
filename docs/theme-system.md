@@ -49,7 +49,11 @@ or the compositor's frame scheduling.
   under Taskbar, the Start menu's under Start.
 - Faithful pictures of every theme and style, made by
   `scripts/theme-pictures.py` from the real shell on a headless session with
-  neutral data; your own themes fall back to the `DesktopPreview` miniature.
+  neutral data and a stopped clock (the same pictures from every run), each
+  theme's in a folder of its own; a theme's picture shows what tells it
+  apart (Settings' glass, the taskbar, quick settings). Your own themes fall
+  back to the `DesktopPreview` miniature unless you give them pictures in
+  `~/.config/vela/themes/screenshots/`.
 - No hidden conflicts: a theme's own accent disables the grid in Colors with
   the reason, and a taskbar pill that places its apps itself disables the
   alignment with the reason.
@@ -153,7 +157,8 @@ Preview tiers:
 - **Faithful:** render real shell controls in a headless session with
   deterministic mock data, captured with Vela's own tooling
   (`scripts/theme-pictures.py`, PR #212). Installed themes and styles ship
-  these pictures; a user's own get none yet.
+  these pictures; a user's own can have theirs in their config directory,
+  none are made for them yet.
 - **In-session:** transactional temporary apply + rollback (**planned**).
 
 Never use an untrusted author's screenshot as proof of the resulting theme.
