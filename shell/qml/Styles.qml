@@ -38,8 +38,12 @@ QtObject {
         // A look of its own (a style, or the theme's keys for it): the
         // compositor makes the bar glass from 4% alpha.
         readonly property bool chosen: Style.chosenStyles.indexOf("taskbar") >= 0
-        // The bar's height; the panels it opens sit above it.
-        readonly property int height: styles.size("taskbar-height", 48, 32, 96)
+        // The bar's height; the panels it opens sit above it. A floating pill
+        // sits `margin` inside it above and below, so the bar is at least as
+        // tall as the pill's buttons with 4 units above and below, plus the
+        // margins: Vela Floating's 48 with margins of 10 left a 28-unit pill
+        // for 40-unit buttons and a two-line clock, which it cut.
+        readonly property int height: Math.max(styles.size("taskbar-height", 48, 32, 96), floating ? buttonHeight + 8 + 2 * margin : 0)
         // Floating: the bar is a pill this far from the window's edges, with
         // these corners; a margin or a radius makes it float.
         readonly property int margin: layout.margin

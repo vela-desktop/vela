@@ -1098,6 +1098,24 @@ class QtShell(RealShell):
         self.assertAlmostEqual(self.start_menu_center("window-glass"), 960, delta=40)
         self.check_desktop()
 
+    def taskbar_height(self, conf):
+        """The taskbar's height (its layer's) with this vela.conf."""
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path(), "w") as file:
+            file.write(conf)
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell reads the file
+        return self.layer(self.vela.state(), "vela-taskbar")["h"]
+
+    def test_a_floating_pill_holds_its_buttons(self):
+        # Vela Floating's pill floats 10 units off the edges: the bar grows
+        # by them, so the pill is as tall as Vela's own bar (it was 28 units,
+        # its icons and clock cut). Window Glass's 52 already holds its 36.
+        self.assertEqual(self.taskbar_height(""), 48)
+        self.assertEqual(self.taskbar_height("theme=vela-floating\n"), 48 + 2 * 10)
+        self.assertEqual(self.taskbar_height("theme=window-glass\n"), 52)
+        self.check_desktop()
+
     def test_one_input_session_keeps_the_menu_open_between_lines(self):
         """vela-input - (scripts/recording_core.py's InputSession): one
         keyboard answers OK or ERROR per line and leaves the menu open. A
