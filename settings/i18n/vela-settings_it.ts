@@ -800,6 +800,22 @@ Specifiche sistema
         <translation>Fuso orario</translation>
     </message>
     <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>In the taskbar, the notification center, the lock screen and here</source>
+        <translation>Nella barra delle applicazioni, nel centro notifiche, nella schermata di blocco e qui</translation>
+    </message>
+    <message>
+        <source>24-hour (%1)</source>
+        <translation>24 ore (%1)</translation>
+    </message>
+    <message>
+        <source>12-hour (%1)</source>
+        <translation>12 ore (%1)</translation>
+    </message>
+    <message>
         <source>Related settings</source>
         <translation>Impostazioni correlate</translation>
     </message>
@@ -2333,6 +2349,14 @@ Specifiche sistema
         <source>Notifications go straight to the notification center, without popping up</source>
         <translation>Le notifiche vanno direttamente nel centro notifiche, senza comparire</translation>
     </message>
+    <message>
+        <source>Show the number of notifications</source>
+        <translation>Mostra il numero di notifiche</translation>
+    </message>
+    <message>
+        <source>Next to the taskbar&apos;s clock. With Do not disturb on, its bell shows anyway</source>
+        <translation>Accanto all&apos;orologio della barra delle applicazioni. Con Non disturbare attivo, la sua campanella si vede comunque</translation>
+    </message>
 </context>
 <context>
     <name>OwnThemesCard</name>
@@ -3011,8 +3035,8 @@ Specifiche sistema
         <translation>Notifiche</translation>
     </message>
     <message>
-        <source>Alerts from apps and the system, do not disturb</source>
-        <translation>Avvisi da app e sistema, Non disturbare</translation>
+        <source>Alerts from apps and the system, do not disturb, their number by the clock</source>
+        <translation>Avvisi dalle app e dal sistema, non disturbare, il loro numero accanto all&apos;orologio</translation>
     </message>
     <message>
         <source>Power</source>
@@ -3097,24 +3121,8 @@ Specifiche sistema
         <translation>Le finestre aperte e i desktop virtuali (anche con Win+Tab)</translation>
     </message>
     <message>
-        <source>Clock and notifications</source>
-        <translation>Orologio e notifiche</translation>
-    </message>
-    <message>
         <source>Time format</source>
         <translation>Formato dell&apos;ora</translation>
-    </message>
-    <message>
-        <source>In the taskbar, the notification center, the lock screen and Date &amp; time</source>
-        <translation>Nella barra delle applicazioni, nel centro notifiche, nella schermata di blocco e in Data e ora</translation>
-    </message>
-    <message>
-        <source>24-hour (%1)</source>
-        <translation>24 ore (%1)</translation>
-    </message>
-    <message>
-        <source>12-hour (%1)</source>
-        <translation>12 ore (%1)</translation>
     </message>
     <message>
         <source>Show seconds</source>
@@ -3129,16 +3137,12 @@ Specifiche sistema
         <translation>Mostra la data</translation>
     </message>
     <message>
+        <source>Clock</source>
+        <translation>Orologio</translation>
+    </message>
+    <message>
         <source>Under the time in the taskbar&apos;s clock</source>
         <translation>Sotto l&apos;ora, nell&apos;orologio della barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Show the number of notifications</source>
-        <translation>Mostra il numero di notifiche</translation>
-    </message>
-    <message>
-        <source>Next to the clock. With Do not disturb on, its bell shows anyway</source>
-        <translation>Accanto all&apos;orologio. Con Non disturbare attivo, la sua campanella si vede comunque</translation>
     </message>
     <message>
         <source>Taskbar behaviors</source>
@@ -3179,6 +3183,22 @@ Specifiche sistema
     <message>
         <source>Quick settings and notification center</source>
         <translation>Impostazioni rapide e centro notifiche</translation>
+    </message>
+    <message>
+        <source>Related settings</source>
+        <translation>Impostazioni correlate</translation>
+    </message>
+    <message>
+        <source>24-hour or 12-hour, in Date &amp; time</source>
+        <translation>24 o 12 ore, in Data e ora</translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation>Notifiche</translation>
+    </message>
+    <message>
+        <source>Do not disturb, the number of notifications next to the clock</source>
+        <translation>Non disturbare, il numero di notifiche accanto all&apos;orologio</translation>
     </message>
 </context>
 <context>
@@ -3321,8 +3341,8 @@ Specifiche sistema
         <translation>Data e ora</translation>
     </message>
     <message>
-        <source>Time zone, automatic clock settings</source>
-        <translation>Fuso orario, impostazioni automatiche dell&apos;orologio</translation>
+        <source>Time zone, automatic clock settings, time format</source>
+        <translation>Fuso orario, impostazioni automatiche dell&apos;orologio, formato dell&apos;ora</translation>
     </message>
     <message>
         <source>Vela language</source>

@@ -7,7 +7,7 @@
 #include <QString>
 
 // How Vela writes the time: 24-hour ("13:45") or 12-hour ("1:45 PM"), as
-// chosen in Settings > Taskbar (clock/hours= in vela-shell.conf, 24 unless
+// chosen in Settings > Date & time (clock/hours= in vela-shell.conf, 24 unless
 // it says 12). The taskbar, the notification center, the lock screen and
 // Settings' Date & time page all follow it; only the taskbar's clock can
 // show the seconds too.

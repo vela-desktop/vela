@@ -7,7 +7,9 @@ import Vela.Controls
 // Personalization > Taskbar: what is on it, its clock and how it behaves
 // first, then its style and the style of the quick settings and notification
 // center it opens (taskbar-style=, notifications-style= in vela.conf, over the
-// theme), each closed under its card until opened.
+// theme), each closed under its card until opened. The time format (Date &
+// time) and the number of notifications (Notifications) are Vela's and the
+// notifications', not the bar's: linked at the end.
 Page {
     DesktopPreview {}
 
@@ -25,32 +27,7 @@ Page {
     }
 
     CardGroup {
-        title: qsTr("Clock and notifications")
-        Card {
-            id: hours
-            icon: "preferences-system-time"
-            title: qsTr("Time format")
-            description: qsTr("In the taskbar, the notification center, the lock screen and Date & time")
-            // Each choice shows a time as it would read: 13:45 or 1:45 PM.
-            readonly property date sample: new Date(2026, 0, 14, 13, 45)
-            trailing: Choice {
-                objectName: "clockHours"
-                model: [qsTr("24-hour (%1)").arg(Qt.formatTime(hours.sample, "HH:mm")),
-                    qsTr("12-hour (%1)").arg(Qt.formatTime(hours.sample, "h:mm AP"))]
-                currentIndex: Prefs.clock24 ? 0 : 1
-                onChosen: index => Prefs.clock24 = index === 0
-            }
-        }
-        Card {
-            icon: "chronometer"
-            title: qsTr("Show seconds")
-            description: qsTr("In the taskbar's clock")
-            trailing: Switch {
-                objectName: "clockSeconds"
-                checked: Prefs.clockSeconds
-                onToggled: Prefs.clockSeconds = checked
-            }
-        }
+        title: qsTr("Clock")
         Card {
             icon: "view-calendar"
             title: qsTr("Show the date")
@@ -62,13 +39,13 @@ Page {
             }
         }
         Card {
-            icon: "preferences-desktop-notification"
-            title: qsTr("Show the number of notifications")
-            description: qsTr("Next to the clock. With Do not disturb on, its bell shows anyway")
+            icon: "chronometer"
+            title: qsTr("Show seconds")
+            description: qsTr("In the taskbar's clock")
             trailing: Switch {
-                objectName: "notificationCount"
-                checked: Prefs.notificationCount
-                onToggled: Prefs.notificationCount = checked
+                objectName: "clockSeconds"
+                checked: Prefs.clockSeconds
+                onToggled: Prefs.clockSeconds = checked
             }
         }
     }
@@ -117,6 +94,22 @@ Page {
             surface: "notifications"
             icon: "preferences-desktop-notification"
             title: qsTr("Quick settings and notification center")
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Related settings")
+        LinkCard {
+            icon: "preferences-system-time"
+            title: qsTr("Time format")
+            description: qsTr("24-hour or 12-hour, in Date & time")
+            onClicked: root.navigate("datetime")
+        }
+        LinkCard {
+            icon: "preferences-desktop-notification"
+            title: qsTr("Notifications")
+            description: qsTr("Do not disturb, the number of notifications next to the clock")
+            onClicked: root.navigate("notifications")
         }
     }
 }

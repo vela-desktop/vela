@@ -893,7 +893,7 @@ Window {
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
         // Notifications to read: a number next to the clock, like Windows 11,
-        // unless Settings > Taskbar hides it (with "Do not disturb" a muted
+        // unless Settings > Notifications hides it (with "Do not disturb" a muted
         // bell: that one is a state, not a count, and stays).
         Rectangle {
             id: badge
