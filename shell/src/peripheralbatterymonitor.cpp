@@ -6,12 +6,16 @@
 #include "notifications.h"
 
 #include <QDBusMessage>
+#include <QDBusMetaType>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
 #include <QDBusVariant>
 
 #include <cmath>
+
+// EnumerateDevices returns an array of D-Bus object paths (ao).
+Q_DECLARE_METATYPE(QList<QDBusObjectPath>)
 
 namespace {
 
@@ -48,6 +52,7 @@ PeripheralBatteryMonitor::PeripheralBatteryMonitor(NotificationServer* notificat
     , m_notifications(notifications)
     , m_bus(bus)
 {
+    qDBusRegisterMetaType<QList<QDBusObjectPath>>();
     m_serviceWatcher = new QDBusServiceWatcher(service, m_bus,
         QDBusServiceWatcher::WatchForOwnerChange, this);
     connect(m_serviceWatcher, &QDBusServiceWatcher::serviceOwnerChanged, this,
