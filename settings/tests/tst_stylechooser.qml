@@ -15,6 +15,8 @@ Item {
     height: 900
 
     property var offers: []
+    // Main.qml's: what navigate() asks the page to show.
+    property string reveal: ""
     function offerUndo(text, undo) {
         offers = offers.concat([{ text: text, undo: undo }])
     }
@@ -29,6 +31,28 @@ Item {
                 id: chooser
                 surface: "taskbar"
                 title: "Taskbar"
+            }
+        }
+    }
+
+    // A page with the styles far down, as Taskbar has them.
+    Component {
+        id: longPage
+        Flickable {
+            width: 600
+            height: 400
+            contentHeight: content.height
+            property alias chooser: farChooser
+            Column {
+                id: content
+                width: parent.width
+                Item { width: 1; height: 1500 }
+                StyleChooser {
+                    id: farChooser
+                    surface: "notifications"
+                    title: "Quick settings"
+                }
+                Item { width: 1; height: 300 }
             }
         }
     }
@@ -157,6 +181,23 @@ Item {
             Prefs.surfacePictures = { "mine taskbar": { images: [picture], from: "mine" } }
             ++Prefs.themesRevision
             compare(tile("From the theme").subtitle, "As Mine draws it")
+        }
+
+        // A search for its style, or Themes' In use: open, in view, focused.
+        function test_asked_for_it_opens_and_comes_into_view() {
+            const page = createTemporaryObject(longPage, root)
+            const far = page.chooser
+            verify(!far.expanded)
+            root.reveal = "taskbar" // another style's
+            verify(!far.expanded)
+            root.reveal = ""
+            root.reveal = "notifications"
+            verify(far.expanded)
+            tryVerify(() => page.contentY > 1400, 2000, "not scrolled to it")
+            const top = far.mapToItem(page, 0, 0).y
+            verify(top >= 0 && top < page.height, "out of view at " + top)
+            verify(findChild(far, "styleHeader").children.some(c => c.activeFocus))
+            root.reveal = ""
         }
 
         function test_your_own_styles_are_named() {

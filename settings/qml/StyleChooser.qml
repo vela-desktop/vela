@@ -28,8 +28,43 @@ Column {
 
     width: parent ? parent.width : 0
 
+    // Asked for (Main.qml's reveal: a search for its style, Themes' In use):
+    // open, scrolled into view, and with the focus, so Tab goes on from it.
+    readonly property string wanted: typeof root !== "undefined" && root.reveal !== undefined ? root.reveal : ""
+    onWantedChanged: if (wanted === surface) show()
+    Component.onCompleted: if (wanted === surface) show()
+    function show() {
+        expanded = true
+        header.focusButton()
+        scrollLater.restart()
+    }
+    // Once the opened gallery is laid out, so the page is as long as it gets.
+    Timer {
+        id: scrollLater
+        interval: 50
+        onTriggered: chooser.scrollIntoView()
+    }
+    function scrollIntoView() {
+        for (let item = chooser.parent; item; item = item.parent) {
+            if (item.contentY !== undefined && item.contentHeight !== undefined && item.contentItem) {
+                const y = chooser.mapToItem(item.contentItem, 0, 0).y
+                item.contentY = Math.max(0, Math.min(y - 16, item.contentHeight - item.height))
+                return
+            }
+        }
+    }
+
     Card {
+        id: header
         objectName: "styleHeader"
+        function focusButton() {
+            for (let i = 0; i < children.length; ++i) {
+                if (children[i].Accessible.role === Accessible.Button) {
+                    children[i].forceActiveFocus()
+                    return
+                }
+            }
+        }
         icon: chooser.icon
         title: chooser.title
         description: chooser.summary

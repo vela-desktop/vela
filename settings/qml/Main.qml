@@ -119,11 +119,17 @@ Window {
         undoBar.offer(text, undo)
     }
 
-    function navigate(name, fromHistory) {
+    // What the page opened by navigate() should show (open, scroll to, focus):
+    // a style's card ("taskbar", "notifications"), from search or Themes. ""
+    // first, so that asking twice for the same is a change again.
+    property string reveal: ""
+
+    function navigate(name, fromHistory, what) {
         name = aliases[name] || name
         if (!pages[name]) {
             name = "home"
         }
+        reveal = ""
         if (!fromHistory && (name !== current || history.length === 0)) {
             const h = history.slice(0, historyIndex + 1)
             h.push(name)
@@ -132,6 +138,7 @@ Window {
         }
         current = name
         search.text = ""
+        reveal = what || ""
     }
 
     // The pages visited, for Back and Forward like Windows 11's Settings:
@@ -207,8 +214,8 @@ Window {
         { page: "colors", text: qsTr("Choose your mode"), keys: qsTr("dark light theme apps mode") },
         { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded reset") },
         { page: "taskbar", text: qsTr("Taskbar"), keys: qsTr("taskbar alignment left center end task") },
-        { page: "taskbar", text: qsTr("Taskbar style"), keys: qsTr("taskbar style look pill floating dock") },
-        { page: "taskbar", text: qsTr("Quick settings style"), keys: qsTr("quick settings notification center style look") },
+        { page: "taskbar", reveal: "taskbar", text: qsTr("Taskbar style"), keys: qsTr("taskbar style look pill floating dock") },
+        { page: "taskbar", reveal: "notifications", text: qsTr("Quick settings style"), keys: qsTr("quick settings notification center style look") },
         { page: "start", text: qsTr("Start menu style"), keys: qsTr("start menu style look size corners") },
         { page: "apps", text: qsTr("Apps"), keys: qsTr("programs applications") },
         { page: "installed-apps", text: qsTr("Installed apps"), keys: qsTr("uninstall remove programs") },
@@ -297,7 +304,7 @@ Window {
             rightPadding: 36
             Keys.onReturnPressed: {
                 if (root.searchResults.length > 0) {
-                    root.navigate(root.searchResults[0].page)
+                    root.navigate(root.searchResults[0].page, false, root.searchResults[0].reveal)
                 }
             }
             Keys.onEscapePressed: text = ""
@@ -406,7 +413,7 @@ Window {
                             id: resultMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: root.navigate(result.modelData.page)
+                            onClicked: root.navigate(result.modelData.page, false, result.modelData.reveal)
                         }
                     }
                 }
