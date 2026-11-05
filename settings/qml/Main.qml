@@ -212,6 +212,7 @@ Window {
         { page: "background", text: qsTr("Background"), keys: qsTr("picture desktop photo wallpaper") },
         { page: "background", text: qsTr("Show desktop icons"), keys: qsTr("desktop icons files folders show hide") },
         { page: "colors", text: qsTr("Colors"), keys: qsTr("accent color theme dark light mode") },
+        { page: "colors", text: qsTr("Custom color"), keys: qsTr("accent custom color picker hex code rgb") },
         { page: "colors", text: qsTr("Choose your mode"), keys: qsTr("dark light theme apps mode") },
         { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded reset") },
         { page: "taskbar", text: qsTr("Taskbar"), keys: qsTr("taskbar alignment left center end task") },

@@ -223,6 +223,57 @@ Specifiche sistema
         <source>Color %1 of %2</source>
         <translation>Colore %1 di %2</translation>
     </message>
+    <message>
+        <source>Custom color</source>
+        <translation>Colore personalizzato</translation>
+    </message>
+    <message>
+        <source>View colors</source>
+        <translation>Visualizza colori</translation>
+    </message>
+</context>
+<context>
+    <name>AccentPicker</name>
+    <message>
+        <source>Choose a custom accent color</source>
+        <translation>Scegli un colore principale personalizzato</translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation>Fine</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Hue and saturation</source>
+        <translation>Tonalità e saturazione</translation>
+    </message>
+    <message>
+        <source>Hue %1°, saturation %2%. Left and right change the hue, up and down the saturation</source>
+        <translation>Tonalità %1°, saturazione %2%. Sinistra e destra cambiano la tonalità, su e giù la saturazione</translation>
+    </message>
+    <message>
+        <source>Brightness</source>
+        <translation>Luminosità</translation>
+    </message>
+    <message>
+        <source>Current color</source>
+        <translation>Colore attuale</translation>
+    </message>
+    <message>
+        <source>New color</source>
+        <translation>Nuovo colore</translation>
+    </message>
+    <message>
+        <source>Hex code</source>
+        <translation>Codice esadecimale</translation>
+    </message>
+    <message>
+        <source>A hex code has six digits, 0-9 and A-F, as #1E90FF</source>
+        <translation>Un codice esadecimale ha sei cifre, 0-9 e A-F, come #1E90FF</translation>
+    </message>
 </context>
 <context>
     <name>AccessibilityPage</name>
@@ -1735,6 +1786,14 @@ Specifiche sistema
     <message>
         <source>accent color theme dark light mode</source>
         <translation>accento colore principale tema scuro chiaro modalità</translation>
+    </message>
+    <message>
+        <source>Custom color</source>
+        <translation>Colore personalizzato</translation>
+    </message>
+    <message>
+        <source>accent custom color picker hex code rgb</source>
+        <translation>colore principale accento personalizzato selettore esadecimale codice rgb</translation>
     </message>
     <message>
         <source>Choose your mode</source>
