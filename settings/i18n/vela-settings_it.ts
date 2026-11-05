@@ -140,6 +140,50 @@ Specifiche sistema
 <context>
     <name>AccentCard</name>
     <message>
+        <source>Gray</source>
+        <translation>Grigio</translation>
+    </message>
+    <message>
+        <source>Red</source>
+        <translation>Rosso</translation>
+    </message>
+    <message>
+        <source>Orange</source>
+        <translation>Arancione</translation>
+    </message>
+    <message>
+        <source>Yellow</source>
+        <translation>Giallo</translation>
+    </message>
+    <message>
+        <source>Green</source>
+        <translation>Verde</translation>
+    </message>
+    <message>
+        <source>Teal</source>
+        <translation>Verde acqua</translation>
+    </message>
+    <message>
+        <source>Blue</source>
+        <translation>Blu</translation>
+    </message>
+    <message>
+        <source>Purple</source>
+        <translation>Viola</translation>
+    </message>
+    <message>
+        <source>Pink</source>
+        <translation>Rosa</translation>
+    </message>
+    <message>
+        <source>%1, dark</source>
+        <translation>%1 scuro</translation>
+    </message>
+    <message>
+        <source>%1, light</source>
+        <translation>%1 chiaro</translation>
+    </message>
+    <message>
         <source>Accent color</source>
         <translation>Colore principale</translation>
     </message>
@@ -174,6 +218,10 @@ Specifiche sistema
     <message>
         <source>Colors</source>
         <translation>Colori</translation>
+    </message>
+    <message>
+        <source>Color %1 of %2</source>
+        <translation>Colore %1 di %2</translation>
     </message>
 </context>
 <context>

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import QtQuick.Templates as T
 import Vela.Controls
 
 // Colors' accent color: Windows 11's palette, and what the theme in use does
@@ -34,6 +35,24 @@ Card {
 
     function owns(light) {
         return light ? themeLight : themeDark
+    }
+    // A color's name for screen readers, from its hue and lightness: the
+    // palette's colors have none of their own.
+    function colorName(hex) {
+        const c = Qt.color(hex)
+        const hue = c.hslHue * 360
+        const base = c.hslSaturation < 0.12 ? qsTr("Gray")
+            : hue < 15 || hue >= 345 ? qsTr("Red")
+            : hue < 40 ? qsTr("Orange")
+            : hue < 70 ? qsTr("Yellow")
+            : hue < 165 ? qsTr("Green")
+            : hue < 195 ? qsTr("Teal")
+            : hue < 255 ? qsTr("Blue")
+            : hue < 320 ? qsTr("Purple")
+            : qsTr("Pink")
+        return c.hslLightness < 0.32 ? qsTr("%1, dark").arg(base)
+            : c.hslLightness > 0.62 ? qsTr("%1, light").arg(base)
+            : base
     }
     function themeAccent(light) {
         const modeKey = (light ? "light." : "dark.") + "accent"
@@ -82,41 +101,78 @@ Card {
             font.pixelSize: Theme.fontCaption
             leftPadding: 36
         }
+        // Windows 11's palette as one group of choices: a single stop for Tab,
+        // on the color chosen; the arrows move between colors, Space or Enter
+        // chooses one. Screen readers hear each color's name and place.
         Grid {
+            id: swatches
+            objectName: "accentSwatches"
             x: 36
             columns: Math.max(1, Math.floor((parent.width - 36) / 48))
             spacing: 4
+            // The color Tab reaches: the last one the arrows went to, else the chosen one.
+            property int focusIndex: -1
+            readonly property int chosenIndex: card.accents.indexOf(Prefs.accent.toString().toLowerCase())
+            readonly property int tabIndex: focusIndex >= 0 ? focusIndex : Math.max(0, chosenIndex)
+
+            function moveFocus(from, step) {
+                const to = from + step
+                if (to >= 0 && to < card.accents.length) {
+                    focusIndex = to
+                    swatchRepeater.itemAt(to).forceActiveFocus(Qt.TabFocusReason)
+                }
+            }
+
             Repeater {
+                id: swatchRepeater
                 model: card.accents
-                delegate: Rectangle {
+                delegate: T.AbstractButton {
                     id: swatch
                     required property string modelData
+                    required property int index
                     readonly property bool chosen: Prefs.accent.toString().toLowerCase() === modelData
                     width: 44
                     height: 44
-                    radius: Theme.radius
-                    color: "transparent"
-                    border.width: chosen ? 2 : swatchMouse.containsMouse ? 1 : 0
-                    border.color: chosen ? Theme.text : Theme.controlStrokeStrong
-                    Rectangle {
-                        anchors { fill: parent; margins: 4 }
-                        radius: 2
-                        color: swatch.modelData
-                        Text {
-                            visible: swatch.chosen
-                            anchors { right: parent.right; top: parent.top; margins: 2 }
-                            text: "✓"
-                            color: "white"
-                            font.pixelSize: 12
-                            font.weight: Font.Bold
-                        }
-                    }
-                    MouseArea {
-                        id: swatchMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
+                    hoverEnabled: true
+                    focusPolicy: index === swatches.tabIndex ? Qt.TabFocus : Qt.NoFocus
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: card.colorName(modelData)
+                    Accessible.description: qsTr("Color %1 of %2").arg(index + 1).arg(card.accents.length)
+                    Accessible.checkable: true
+                    Accessible.checked: chosen
+                    onActiveFocusChanged: if (activeFocus) swatches.focusIndex = index
+                    Keys.onLeftPressed: swatches.moveFocus(index, -1)
+                    Keys.onRightPressed: swatches.moveFocus(index, 1)
+                    Keys.onUpPressed: swatches.moveFocus(index, -swatches.columns)
+                    Keys.onDownPressed: swatches.moveFocus(index, swatches.columns)
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEnterPressed: clicked()
+                    onClicked: Prefs.accent = modelData
+                    HoverHandler {
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: Prefs.accent = swatch.modelData
+                    }
+
+                    background: Rectangle {
+                        radius: Theme.radius
+                        color: "transparent"
+                        border.width: swatch.chosen ? 2 : swatch.hovered ? 1 : 0
+                        border.color: swatch.chosen ? Theme.text : Theme.controlStrokeStrong
+                        Rectangle {
+                            anchors { fill: parent; margins: 4 }
+                            radius: 2
+                            color: swatch.modelData
+                            Text {
+                                visible: swatch.chosen
+                                anchors { right: parent.right; top: parent.top; margins: 2 }
+                                text: "✓"
+                                color: "white"
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                            }
+                        }
+                        FocusRing {
+                            visible: swatch.visualFocus
+                        }
                     }
                 }
             }

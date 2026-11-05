@@ -119,6 +119,54 @@ Item {
             verify(card.description.endsWith("In light mode Vela Official, the theme in use, brings its own"))
         }
 
+        function swatches() {
+            const grid = findChild(card, "accentSwatches")
+            const list = []
+            for (let i = 0; i < grid.children.length; ++i) {
+                if (grid.children[i].modelData !== undefined) {
+                    list.push(grid.children[i])
+                }
+            }
+            return list
+        }
+
+        // One stop for Tab, on the chosen color; arrows move, Space chooses.
+        function test_the_keyboard_moves_and_chooses() {
+            const all = swatches()
+            compare(all.length, 48)
+            const stops = all.filter(s => s.focusPolicy === Qt.TabFocus)
+            compare(stops.length, 1)
+            compare(stops[0].modelData, "#0078d4") // Prefs.reset()'s accent
+            stops[0].forceActiveFocus(Qt.TabFocusReason)
+            keyClick(Qt.Key_Right)
+            verify(all[18].activeFocus)
+            keyClick(Qt.Key_Down)
+            const columns = findChild(card, "accentSwatches").columns
+            verify(all[18 + columns].activeFocus)
+            keyClick(Qt.Key_Up)
+            keyClick(Qt.Key_Left)
+            keyClick(Qt.Key_Left)
+            verify(all[16].activeFocus)
+            compare(Prefs.accent, Qt.color("#0078d4")) // moving chooses nothing
+            keyClick(Qt.Key_Space)
+            compare(Prefs.accent, Qt.color(all[16].modelData))
+            // Tab then lands where the arrows left it.
+            compare(all.filter(s => s.focusPolicy === Qt.TabFocus)[0], all[16])
+        }
+
+        function test_screen_readers_hear_names_and_places() {
+            const all = swatches()
+            compare(all[17].Accessible.role, Accessible.RadioButton)
+            compare(all[17].Accessible.name, "Blue")
+            compare(all[17].Accessible.description, "Color 18 of 48")
+            verify(all[17].Accessible.checked)
+            compare(all[0].Accessible.name, "Blue, light")
+            compare(all[1].Accessible.name, "Yellow")
+            compare(all[10].Accessible.name, "Red")
+            compare(all[24].Accessible.name, "Purple")
+            compare(all[41].Accessible.name, "Gray")
+        }
+
         function test_choosing_a_color() {
             // The grid's third swatch is #ff8c00.
             const swatches = []
