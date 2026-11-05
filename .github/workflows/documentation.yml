@@ -26,3 +26,25 @@ jobs:
       - name: Validate local Markdown links, anchors and build dependency lists
         run: python3 scripts/check-docs.py
 
+
+      - name: Inspect remaining Sonar finding (temporary)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json
+          from urllib import request
+          url = "https://sonarcloud.io/api/issues/search?componentKeys=vela-desktop_vela&pullRequest=213&resolved=false&ps=100"
+          try:
+              with request.urlopen(url, timeout=15) as response:
+                  result = json.load(response)
+              for item in result.get("issues", []):
+                  print("SONAR_FINDING", json.dumps({
+                      "rule": item.get("rule"), "message": item.get("message"),
+                      "component": item.get("component"),
+                      "line": (item.get("textRange") or {}).get("startLine"),
+                      "severity": item.get("severity"), "type": item.get("type")
+                  }, sort_keys=True))
+              print("SONAR_TOTAL", result.get("total"))
+          except Exception as exc:
+              print("SONAR_DIAGNOSTIC_UNAVAILABLE", exc)
+          PY
