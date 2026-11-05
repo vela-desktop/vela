@@ -348,7 +348,9 @@ Window {
                         readonly property int length: new Date(root.month.getFullYear(), root.month.getMonth() + 1, 0).getDate()
 
                         Repeater {
-                            model: ["lu", "ma", "me", "gi", "ve", "sa", "do"]
+                            // Monday first, as the grid; two letters of the
+                            // language's short names ("Mo", "lu"), like Windows.
+                            model: [1, 2, 3, 4, 5, 6, 0].map(day => Qt.locale().dayName(day, Locale.ShortFormat).substring(0, 2))
                             delegate: Text {
                                 required property string modelData
                                 width: days.cell
