@@ -3161,6 +3161,38 @@ Specifiche sistema
         <source>The update runs in a terminal, where your password is asked for.</source>
         <translation>L&apos;aggiornamento si svolge in un terminale, dove ti viene chiesta la password.</translation>
     </message>
+    <message>
+        <source>Automatic check frequency</source>
+        <translation>Frequenza dei controlli automatici</translation>
+    </message>
+    <message>
+        <source>How often Vela checks for updates</source>
+        <translation>Ogni quanto Vela controlla gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Used when automatic checks are enabled</source>
+        <translation>Si applica quando i controlli automatici sono attivi</translation>
+    </message>
+    <message>
+        <source>Every 6 hours</source>
+        <translation>Ogni 6 ore</translation>
+    </message>
+    <message>
+        <source>Every 12 hours</source>
+        <translation>Ogni 12 ore</translation>
+    </message>
+    <message>
+        <source>Every 24 hours</source>
+        <translation>Ogni 24 ore</translation>
+    </message>
+    <message>
+        <source>Every 48 hours</source>
+        <translation>Ogni 48 ore</translation>
+    </message>
+    <message>
+        <source>Every 7 days</source>
+        <translation>Ogni 7 giorni</translation>
+    </message>
 </context>
 <context>
     <name>UpdateStatusCard</name>
@@ -3267,6 +3299,18 @@ Specifiche sistema
     <message>
         <source>The last update didn&apos;t finish: %1</source>
         <translation>L&apos;ultimo aggiornamento non è stato completato: %1</translation>
+    </message>
+    <message>
+        <source>Next automatic check: %1</source>
+        <translation>Prossimo controllo automatico: %1</translation>
+    </message>
+    <message>
+        <source>Next check: waiting for a fully connected, unmetered network</source>
+        <translation>Prossimo controllo: in attesa di una connessione completa e non a consumo</translation>
+    </message>
+    <message>
+        <source>Check again</source>
+        <translation>Controlla di nuovo</translation>
     </message>
 </context>
 <context>
@@ -3470,6 +3514,14 @@ Specifiche sistema
     <message>
         <source>The update service isn&apos;t responding.</source>
         <translation>Il servizio di aggiornamento non risponde.</translation>
+    </message>
+    <message>
+        <source>This automatic update check frequency isn&apos;t supported.</source>
+        <translation>Questa frequenza di controllo automatico degli aggiornamenti non è supportata.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t save the automatic update check frequency.</source>
+        <translation>Impossibile salvare la frequenza dei controlli automatici degli aggiornamenti.</translation>
     </message>
 </context>
 </TS>

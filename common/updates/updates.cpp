@@ -92,6 +92,11 @@ QDateTime Updates::lastCheck() const
     return m_lastCheck > 0 ? QDateTime::fromSecsSinceEpoch(m_lastCheck) : QDateTime();
 }
 
+QDateTime Updates::nextCheck() const
+{
+    return m_nextCheck > 0 ? QDateTime::fromSecsSinceEpoch(m_nextCheck) : QDateTime();
+}
+
 QDateTime Updates::installFinished() const
 {
     return m_installFinished > 0 ? QDateTime::fromSecsSinceEpoch(m_installFinished) : QDateTime();
@@ -182,6 +187,15 @@ void Updates::setAutoCheck(bool on)
     });
 }
 
+void Updates::setCheckInterval(uint hours)
+{
+    if (!available()) {
+        return;
+    }
+    clearError();
+    call(QStringLiteral("SetCheckInterval"), { hours }, true);
+}
+
 void Updates::announced(const QString& commit)
 {
     if (available() && !commit.isEmpty()) {
@@ -213,7 +227,7 @@ void Updates::call(const QString& name, const QVariantList& arguments, bool show
             qWarning("vela-update-daemon: %s: %s: %s", qPrintable(name), qPrintable(reply.errorName()),
                 qPrintable(reply.errorMessage()));
         } else if (reply.type() == QDBusMessage::ErrorMessage) {
-            refused(reply);
+            refused(reply, name);
         }
         if (done) {
             done(reply);
@@ -221,9 +235,21 @@ void Updates::call(const QString& name, const QVariantList& arguments, bool show
     });
 }
 
-void Updates::refused(const QDBusMessage& reply)
+void Updates::refused(const QDBusMessage& reply, const QString& method)
 {
     const QString name = reply.errorName();
+    // The configuration setter has different failure semantics from an
+    // installation; avoid telling users that vela-update failed to start.
+    if (method == QLatin1String("SetCheckInterval")) {
+        if (name == errorPrefix + QLatin1String("InvalidArgs")) {
+            setError(tr("This automatic update check frequency isn't supported."));
+            return;
+        }
+        if (name == errorPrefix + QLatin1String("Failed")) {
+            setError(tr("Couldn't save the automatic update check frequency."));
+            return;
+        }
+    }
     if (name == errorPrefix + QLatin1String("Busy")) {
         setError(tr("An update or a check is already running."));
     } else if (name == errorPrefix + QLatin1String("InvalidArgs")) {
@@ -322,6 +348,9 @@ void Updates::forget()
     m_installFinished = 0;
     m_needsRelogin = false;
     m_autoCheck = true;
+    m_checkInterval = 24;
+    m_nextCheck = 0;
+    m_waitingForNetwork = false;
     m_announce.clear();
     m_autoCheckAsked.reported(m_autoCheck);
 }
@@ -360,6 +389,10 @@ void Updates::setProperties(const QVariantMap& values)
             m_notes = pairsOf(*it, QStringLiteral("version"), QStringLiteral("text"));
         } else if (it.key() == QLatin1String("LastCheck")) {
             m_lastCheck = it->toLongLong();
+        } else if (it.key() == QLatin1String("NextCheck")) {
+            m_nextCheck = it->toLongLong();
+        } else if (it.key() == QLatin1String("CheckInterval")) {
+            m_checkInterval = it->toUInt();
         } else if (it.key() == QLatin1String("InstallFinished")) {
             m_installFinished = it->toLongLong();
         } else if (it.key() == QLatin1String("Error")) {
@@ -370,6 +403,8 @@ void Updates::setProperties(const QVariantMap& values)
             m_needsRelogin = it->toBool();
         } else if (it.key() == QLatin1String("AutoCheck")) {
             m_autoCheck = it->toBool();
+        } else if (it.key() == QLatin1String("WaitingForNetwork")) {
+            m_waitingForNetwork = it->toBool();
         }
     }
     m_autoCheckAsked.reported(m_autoCheck);

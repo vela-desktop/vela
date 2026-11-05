@@ -233,6 +233,19 @@ This gives the renderer real-hardware coverage on both Vulkan drivers. It is not
 
 `scripts/run-headless.sh` starts a real Vela session on wlroots' headless backend. No Vela window appears on the current desktop, but apps can be opened, moved, snapped and captured exactly as in a visible session.
 
+The manual headless and nested launchers (Python 3.9+ and Linux 5.3+ with
+procfs/pidfd support required) give every run a
+temporary home, configuration, data, cache, and state directory. A Linux subreaper
+terminates/reaps detached descendants before removal; unresponsive processes
+receive SIGKILL after a bounded grace period. External/cyclic configuration
+symlinks are skipped during opt-in import.
+They retain the host runtime directory (for Wayland sockets) and session D-Bus,
+so they are **not** a security boundary. By default they use fresh Vela settings;
+set `VELA_TEST_COPY_CONFIG=1` to import a private copy of Vela's existing settings.
+The automated functional harness uses the same private-home/XDG-path policy,
+but may explicitly override it for specialized fixtures.
+
+
 ```sh
 sh scripts/run-headless.sh &
 export WAYLAND_DISPLAY=wayland-1
