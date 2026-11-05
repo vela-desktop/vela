@@ -23,7 +23,7 @@ Column {
             return qsTr("From the theme, as %1 draws it").arg(themeName)
         }
         const entry = styles.find(s => s.name === chosen)
-        return entry ? entry.text : chosen
+        return entry ? entry.text : qsTr("\"%1\" isn't installed: the theme's look is in use").arg(chosen)
     }
 
     width: parent ? parent.width : 0

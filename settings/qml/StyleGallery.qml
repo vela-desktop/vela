@@ -17,6 +17,9 @@ Column {
     // Read again when a file changes.
     readonly property var styles: { Prefs.themesRevision; return Prefs.styleGallery(surface) }
     readonly property string chosen: Prefs.surfaceStyles[surface] || ""
+    // vela.conf names a style that isn't there (removed, renamed): the shell
+    // draws the theme's look, and the gallery says so.
+    readonly property bool missing: chosen !== "" && !styles.some(s => s.name === chosen)
     readonly property string themeName: Prefs.visualThemes().find(t => t.name === Prefs.visualTheme)?.text ?? Prefs.visualTheme
     // The pictures' shape (scripts/theme-pictures.py): a taskbar's is the
     // bottom of a 1280 x 720 desktop, a strip as wide as a tile in one
@@ -43,6 +46,14 @@ Column {
             () => Prefs.setSurfaceStyle(surface_, previous))
     }
 
+    Card {
+        objectName: "missingStyle"
+        visible: gallery.missing
+        icon: "dialog-warning"
+        title: qsTr("\"%1\" isn't installed").arg(gallery.chosen)
+        description: qsTr("vela.conf names a style Vela can't find, so the theme's look is in use. Choose one below")
+    }
+
     Grid {
         id: grid
         width: parent.width
@@ -56,7 +67,7 @@ Column {
             pictureHeight: gallery.pictureHeight
             text: qsTr("From the theme")
             subtitle: qsTr("As %1 draws it").arg(gallery.themeName)
-            selected: gallery.chosen === ""
+            selected: gallery.chosen === "" || gallery.missing
             onClicked: gallery.use("")
             Pictures {
                 images: themeTile.images

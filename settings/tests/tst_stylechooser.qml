@@ -127,6 +127,23 @@ Item {
             compare(Prefs.calls.length, 3)
         }
 
+        // vela.conf names a style that is gone (removed, or one of the names
+        // before the renames): the theme's look is in use, and it says so.
+        function test_a_style_that_isnt_installed_says_so() {
+            Prefs.setSurfaceStyle("taskbar", "windows-10")
+            compare(header().description, "\"windows-10\" isn't installed: the theme's look is in use")
+            chooser.expanded = true
+            tryVerify(() => tiles().length === 3)
+            verify(findChild(chooser, "missingStyle").visible)
+            verify(tile("From the theme").selected)
+            verify(!tile("Pill").selected)
+            // Choosing one puts things right.
+            waitForRendering(chooser)
+            mouseClick(tile("Pill"))
+            verify(!findChild(chooser, "missingStyle").visible)
+            verify(!tile("From the theme").selected)
+        }
+
         function test_your_own_styles_are_named() {
             chooser.expanded = true
             tryVerify(() => tiles().length === 3)

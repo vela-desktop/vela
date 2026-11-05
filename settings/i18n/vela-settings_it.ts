@@ -2666,6 +2666,10 @@ Specifiche sistema
         <source>From the theme, as %1 draws it</source>
         <translation>Dal tema, come lo disegna %1</translation>
     </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed: the theme&apos;s look is in use</source>
+        <translation>&quot;%1&quot; non è installato: è in uso l&apos;aspetto del tema</translation>
+    </message>
 </context>
 <context>
     <name>StyleGallery</name>
@@ -2676,6 +2680,14 @@ Specifiche sistema
     <message>
         <source>%1 is in use</source>
         <translation>%1 è in uso</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed</source>
+        <translation>&quot;%1&quot; non è installato</translation>
+    </message>
+    <message>
+        <source>vela.conf names a style Vela can&apos;t find, so the theme&apos;s look is in use. Choose one below</source>
+        <translation>vela.conf indica uno stile che Vela non trova, quindi è in uso l&apos;aspetto del tema. Scegline uno qui sotto</translation>
     </message>
     <message>
         <source>From the theme</source>
