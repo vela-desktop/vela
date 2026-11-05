@@ -149,6 +149,15 @@ surfaces too (Qt ≥ 6.5), with `QT_SCALE_FACTOR_ROUNDING_POLICY=PassThrough`. T
 theme's measurements are logical; borders and thin lines must be drawn aligned
 to physical pixels.
 
+The shell, Settings and Files keep Qt Quick's default scalable text rendering
+(`QtRendering` on the hardware scene graph). Do not force `NativeTextRendering`
+globally: it caches rasterized glyphs, which can become distorted when a parent
+is scaled (for example, Start's app tiles on either mouse button press) or
+placed at fractional coordinates while scrolling. This happens inside the Qt
+surface, before the compositor copies its buffer, so compositor pixel snapping
+cannot repair it. Qt documents this restriction for
+[`Text.NativeRendering`](https://doc.qt.io/qt-6/qml-qtquick-text.html#renderType-prop).
+
 ### 3.8 The default scale
 
 Like Windows, Vela chooses the scale of each output by itself the first time it
