@@ -133,6 +133,22 @@ sh scripts/run-nested.sh
 
 Vela opens as a window that behaves like a virtual monitor. If `build/shell/vela-shell` exists, the script starts it together with the compositor.
 
+Both manual launchers (`run-nested.sh` and `run-headless.sh`) use a fresh temporary
+`HOME` and `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, and
+`XDG_STATE_HOME`. These are deleted when the compositor exits, including on
+SIGTERM, so a test wallpaper or clipboard cannot overwrite your real Vela state.
+The test starts with default settings. To **copy** your existing Vela configuration
+(`vela/` and `Vela/` only) into the temporary home, without editing the originals:
+
+```sh
+VELA_TEST_COPY_CONFIG=1 sh scripts/run-nested.sh
+```
+
+These launchers are **not a security sandbox**: the host `XDG_RUNTIME_DIR`
+and D-Bus addresses remain available, and nested mode retains the host Wayland
+display connection. Do not use the manual launchers to test destructive system
+operations. Promo recording has its own private-bus environment.
+
 Files and Settings are launched from the same build tree when available, even if an
 older Vela package is installed in `/usr/bin`. This includes opening them from
 the Start menu, desktop shortcuts, and shell actions. The installed executables
