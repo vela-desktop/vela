@@ -156,7 +156,8 @@ private slots:
         QVERIFY(keys->stepTaskVolume(QStringLiteral("org.vela.Player.desktop"), -1));
         QCOMPARE(osd.size(), 1);
         QCOMPARE(osd.first().first().toString(), QStringLiteral("vela-player"));
-        QTRY_VERIFY(near(audio->core()->snapshot().stream(stream)->volume(), 0.98));
+        QTRY_VERIFY(audio->core()->snapshot().stream(stream)
+            && near(audio->core()->snapshot().stream(stream)->volume(), 0.98));
         QVERIFY(!keys->stepTaskVolume(QStringLiteral("org.other.App.desktop"), -1));
         QCOMPARE(music->close(), 0);
 

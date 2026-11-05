@@ -134,6 +134,12 @@ class ViewTest : public QObject {
         const auto* e = audio->core()->snapshot().endpoint(name);
         return e ? e->id : 0;
     }
+    QString linkedTo(quint32 stream) const { return harness::linkedTo(*audio->core(), stream); }
+    bool muted(quint32 stream) const
+    {
+        const auto* st = audio->core()->snapshot().stream(stream);
+        return st && st->muted;
+    }
     // Straight from the server, without the interface's own values.
     double serverVolume(const QString& name) const
     {
@@ -541,18 +547,18 @@ private slots:
 
         audio->setAppMuted(QStringLiteral("vela-player"), true);
         QVERIFY(app(QStringLiteral("vela-player")).value("muted").toBool());
-        QTRY_VERIFY(audio->core()->snapshot().stream(s1)->muted && audio->core()->snapshot().stream(s2)->muted);
+        QTRY_VERIFY(muted(s1) && muted(s2));
 
         audio->setAppOutput(QStringLiteral("vela-player"), headphones);
         QCOMPARE(app(QStringLiteral("vela-player")).value("output").toString(), headphones);
         QCOMPARE(app(QStringLiteral("vela-player")).value("outputDescription").toString(), QStringLiteral("Test Headphones"));
-        QTRY_VERIFY(audio->core()->snapshot().stream(s1)->endpoint == id(headphones)
-            && audio->core()->snapshot().stream(s2)->endpoint == id(headphones));
+        QTRY_COMPARE(linkedTo(s1), headphones);
+        QTRY_COMPARE(linkedTo(s2), headphones);
 
         audio->resetApps();
         QVERIFY(app(QStringLiteral("vela-player")).value("output").toString().isEmpty());
-        QTRY_VERIFY(audio->core()->snapshot().stream(s1)->endpoint == id(speakers)
-            && audio->core()->snapshot().stream(s2)->endpoint == id(speakers));
+        QTRY_COMPARE(linkedTo(s1), speakers);
+        QTRY_COMPARE(linkedTo(s2), speakers);
         QTest::qWait(700);
         QVERIFY(app(QStringLiteral("vela-player")).value("output").toString().isEmpty());
     }
@@ -565,10 +571,10 @@ private slots:
         QTRY_VERIFY(app(QStringLiteral("vela-caller")).value("recording").toBool());
         QVERIFY(!app(QStringLiteral("vela-caller")).value("playing").toBool());
         audio->setAppInput(QStringLiteral("vela-caller"), QStringLiteral("vela-test-usb-mic"));
-        QTRY_COMPARE(audio->core()->snapshot().stream(s)->endpoint, id(QStringLiteral("vela-test-usb-mic")));
+        QTRY_COMPARE(linkedTo(s), QStringLiteral("vela-test-usb-mic"));
         QCOMPARE(app(QStringLiteral("vela-caller")).value("input").toString(), QStringLiteral("vela-test-usb-mic"));
         audio->setAppInput(QStringLiteral("vela-caller"), QString());
-        QTRY_COMPARE(audio->core()->snapshot().stream(s)->endpoint, id(microphone));
+        QTRY_COMPARE(linkedTo(s), microphone);
         QCOMPARE(voice->close(), 0);
         QCOMPARE(control(QStringLiteral("remove vela-test-usb-mic")), QStringLiteral("ok"));
     }
@@ -661,8 +667,7 @@ private slots:
             });
             const quint32 node = client->waitStreaming();
             QVERIFY2(node != 0, qPrintable(spoofed[i]));
-            QTRY_VERIFY_WITH_TIMEOUT(audio->core()->snapshot().stream(node)
-                && audio->core()->snapshot().stream(node)->endpoint == id(microphone), 5000);
+            QTRY_COMPARE_WITH_TIMEOUT(linkedTo(node), microphone, 5000);
             QTRY_VERIFY_WITH_TIMEOUT(microphoneKeys().contains(key), 5000);
             QCOMPARE(client->close(), 0);
             QTRY_VERIFY_WITH_TIMEOUT(!microphoneKeys().contains(key), 2000);
@@ -678,8 +683,7 @@ private slots:
             { QStringLiteral("--prop"), QStringLiteral("target.object=vela-test-echo-cancel") });
         const quint32 s = caller->waitStreaming();
         QVERIFY(s);
-        QTRY_VERIFY(audio->core()->snapshot().stream(s)
-            && audio->core()->snapshot().stream(s)->endpoint == id(QStringLiteral("vela-test-echo-cancel")));
+        QTRY_COMPARE(linkedTo(s), QStringLiteral("vela-test-echo-cancel"));
         QTRY_COMPARE(microphoneKeys(), QStringList({ QStringLiteral("vela-caller") }));
         QCOMPARE(caller->close(), 0);
         QCOMPARE(control(QStringLiteral("remove vela-test-echo-cancel")), QStringLiteral("ok"));
