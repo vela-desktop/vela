@@ -1809,6 +1809,14 @@ Specifiche sistema
         <translation>menu start stile aspetto dimensioni angoli</translation>
     </message>
     <message>
+        <source>Start button icon</source>
+        <translation>Icona del pulsante Start</translation>
+    </message>
+    <message>
+        <source>start button icon logo distribution picture image sail</source>
+        <translation>pulsante start icona logo distribuzione immagine foto vela</translation>
+    </message>
+    <message>
         <source>Show pinned apps</source>
         <translation>Mostra le app aggiunte</translation>
     </message>
@@ -2309,10 +2317,6 @@ Specifiche sistema
         <translation>Temi installati, temi personali, ritorno all&apos;aspetto di Vela</translation>
     </message>
     <message>
-        <source>Pinned apps, style of the Start menu</source>
-        <translation>App aggiunte, stile del menu Start</translation>
-    </message>
-    <message>
         <source>Taskbar items and behaviors, styles of the taskbar and quick settings</source>
         <translation>Elementi e comportamenti, stili della barra e delle impostazioni rapide</translation>
     </message>
@@ -2323,6 +2327,10 @@ Specifiche sistema
     <message>
         <source>Desktop background picture, desktop icons</source>
         <translation>Immagine di sfondo del desktop, icone del desktop</translation>
+    </message>
+    <message>
+        <source>The Start button&apos;s icon, pinned apps, style of the Start menu</source>
+        <translation>Icona del pulsante Start, app aggiunte, stile del menu Start</translation>
     </message>
     <message>
         <source>Taskbar</source>
@@ -2777,10 +2785,49 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>StartIconCard</name>
+    <message>
+        <source>Start button icon</source>
+        <translation>Icona del pulsante Start</translation>
+    </message>
+    <message>
+        <source>The logo of %1</source>
+        <translation>Il logo di %1</translation>
+    </message>
+    <message>
+        <source>Your picture: %1</source>
+        <translation>La tua immagine: %1</translation>
+    </message>
+    <message>
+        <source>Vela&apos;s sail, in the accent color</source>
+        <translation>La vela di Vela, nel colore principale</translation>
+    </message>
+    <message>
+        <source>Browse</source>
+        <translation>Sfoglia</translation>
+    </message>
+    <message>
+        <source>Distribution</source>
+        <translation>Distribuzione</translation>
+    </message>
+    <message>
+        <source>Picture</source>
+        <translation>Immagine</translation>
+    </message>
+    <message>
+        <source>Choose a picture for the Start button</source>
+        <translation>Scegli un&apos;immagine per il pulsante Start</translation>
+    </message>
+    <message>
+        <source>Images (*.svg *.png *.jpg *.jpeg *.webp *.bmp *.gif)</source>
+        <translation>Immagini (*.svg *.png *.jpg *.jpeg *.webp *.bmp *.gif)</translation>
+    </message>
+</context>
+<context>
     <name>StartPage</name>
     <message>
-        <source>Start menu</source>
-        <translation>Menu Start</translation>
+        <source>Start</source>
+        <translation>Start</translation>
     </message>
     <message>
         <source>Show pinned apps</source>

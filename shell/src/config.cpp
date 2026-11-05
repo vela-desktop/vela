@@ -5,6 +5,7 @@
 
 #include "clockformat.h"
 #include "defaults.h"
+#include "starticon.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -98,8 +99,10 @@ void Config::reload()
     }
 
     const bool startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
-    if (startPinned != m_startPinned) {
+    const QString startIconSource = vela::start::icon(settings).source;
+    if (startPinned != m_startPinned || startIconSource != m_startIconSource) {
         m_startPinned = startPinned;
+        m_startIconSource = startIconSource;
         emit startChanged();
     }
 

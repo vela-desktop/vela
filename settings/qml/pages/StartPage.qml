@@ -4,11 +4,13 @@
 import QtQuick
 import Vela.Controls
 
-// Personalization > Start: what the Start menu shows, then its style
-// (startmenu-style= in vela.conf, over the theme), whose gallery shows at once.
+// Personalization > Start: the Start button's icon and what the Start menu
+// shows, then its style (startmenu-style= in vela.conf, over the theme),
+// whose gallery shows at once.
 Page {
     CardGroup {
-        title: qsTr("Start menu")
+        title: qsTr("Start")
+        StartIconCard {}
         Card {
             icon: "pin"
             title: qsTr("Show pinned apps")

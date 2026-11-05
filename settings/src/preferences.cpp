@@ -167,6 +167,9 @@ void Preferences::reload()
     m_desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
     emit desktopChanged();
     m_startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
+    const vela::start::Icon startIcon = vela::start::icon(settings);
+    m_startIcon = startIcon.kind;
+    m_startIconSource = startIcon.source;
     emit startChanged();
     m_clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
     m_clock24 = vela::clock::hour24(settings);
@@ -545,6 +548,29 @@ void Preferences::setStartPinned(bool on)
     if (on != m_startPinned) {
         m_startPinned = on;
         setShell(QStringLiteral("start/showPinned"), on);
+        emit startChanged();
+    }
+}
+
+void Preferences::setStartIcon(const QString& kind, const QString& picture)
+{
+    if (kind != QLatin1String("vela") && kind != QLatin1String("distribution") && kind != QLatin1String("picture")) {
+        return;
+    }
+    QSettings settings = shellSettings();
+    if (kind == QLatin1String("picture") && !picture.isEmpty()) {
+        const QString path = picture.startsWith(QLatin1String("file:")) ? QUrl(picture).toLocalFile() : picture;
+        if (!path.startsWith(u'/') || !QFileInfo(path).isFile()) {
+            return;
+        }
+        settings.setValue(QStringLiteral("start/iconPicture"), path);
+    }
+    settings.setValue(QStringLiteral("start/icon"), kind);
+    settings.sync();
+    const vela::start::Icon icon = vela::start::icon(settings);
+    if (icon.kind != m_startIcon || icon.source != m_startIconSource) {
+        m_startIcon = icon.kind;
+        m_startIconSource = icon.source;
         emit startChanged();
     }
 }

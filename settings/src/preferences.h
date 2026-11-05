@@ -4,6 +4,7 @@
 #pragma once
 
 #include "defaults.h"
+#include "starticon.h"
 
 #include <QColor>
 #include <QFileSystemWatcher>
@@ -50,6 +51,15 @@ class Preferences : public QObject {
     // The number of notifications next to the taskbar's clock
     // (taskbar/notificationCount).
     Q_PROPERTY(bool notificationCount READ notificationCount WRITE setNotificationCount NOTIFY clockChanged)
+    // The Start button's icon (shell/src/starticon.h): "vela", "distribution"
+    // or "picture" as the taskbar shows it (a choice it can't show is
+    // "vela"), and its source for StartIcon ("" for the sail). The
+    // distribution's name and logo ("" if the system has none), from
+    // os-release.
+    Q_PROPERTY(QString startIcon READ startIcon NOTIFY startChanged)
+    Q_PROPERTY(QString startIconSource READ startIconSource NOTIFY startChanged)
+    Q_PROPERTY(QString distributionName READ distributionName CONSTANT)
+    Q_PROPERTY(QString distributionLogo READ distributionLogo CONSTANT)
     // start/showPinned: the apps pinned to Start above all apps.
     Q_PROPERTY(bool startPinned READ startPinned WRITE setStartPinned NOTIFY startChanged)
     // desktop/showIcons, which the desktop's own menu sets too.
@@ -150,8 +160,6 @@ public:
     void setTaskbarAllScreens(bool on);
     bool showDesktopCorner() const { return m_showDesktopCorner; }
     void setShowDesktopCorner(bool on);
-    bool desktopIcons() const { return m_desktopIcons; }
-    bool startPinned() const { return m_startPinned; }
     bool clockDate() const { return m_clockDate; }
     void setClockDate(bool on);
     bool clock24() const { return m_clock24; }
@@ -161,7 +169,16 @@ public:
     QString timeFormat() const;
     bool notificationCount() const { return m_notificationCount; }
     void setNotificationCount(bool on);
+    QString startIcon() const { return m_startIcon; }
+    QString startIconSource() const { return m_startIconSource; }
+    QString distributionName() const { return m_distribution.name; }
+    QString distributionLogo() const { return m_distribution.logo; }
+    // kind: "vela", "distribution" or "picture"; for "picture", the file
+    // (a path or a file:// URL; without one, the picture chosen before).
+    Q_INVOKABLE void setStartIcon(const QString& kind, const QString& picture = QString());
+    bool startPinned() const { return m_startPinned; }
     void setStartPinned(bool on);
+    bool desktopIcons() const { return m_desktopIcons; }
     void setDesktopIcons(bool on);
 
     bool doNotDisturb() const { return m_doNotDisturb; }
@@ -328,6 +345,9 @@ private:
     bool m_showDesktopCorner = true;
     bool m_desktopIcons = true;
     bool m_startPinned = true;
+    QString m_startIcon = QStringLiteral("vela");
+    QString m_startIconSource;
+    vela::start::Distribution m_distribution = vela::start::distribution();
     bool m_clockDate = true;
     bool m_clock24 = true;
     bool m_clockSeconds = false;

@@ -86,6 +86,7 @@ set(SETTINGS_QML_FILES
     qml/ThemeGallery.qml
     qml/StyleGallery.qml
     qml/StyleChooser.qml
+    qml/StartIconCard.qml
     qml/TaskbarAlignmentCard.qml
     qml/ResetThemesCard.qml
     qml/ThemeInUseCard.qml

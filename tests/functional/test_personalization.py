@@ -9,6 +9,7 @@ the pixels of the surface they change against the same surface before.
 """
 
 import os
+import tempfile
 import time
 import unittest
 
@@ -16,12 +17,20 @@ from harness import BUILD, Session
 import test_shell
 
 LOCK = os.path.join(BUILD, "lock", "vela-lock")
+# A distribution whose logo is the session's own icon (test_start_icon).
+OS_RELEASE = os.path.join(tempfile.mkdtemp(prefix="vela-os-release-"), "os-release")
+with open(OS_RELEASE, "w") as release:
+    release.write('NAME="Test Linux"\nLOGO=vela-test-logo\n')
+
+
+def square(color):
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="{color}"/></svg>'
 
 
 class Personalization(test_shell.RealShell):
     # The clock stopped (and carets that don't blink): its pixels change
     # only with what a test chooses.
-    shell_env = {"VELA_STILL": "2026-01-14T13:45:07"}
+    shell_env = {"VELA_STILL": "2026-01-14T13:45:07", "VELA_OS_RELEASE": OS_RELEASE}
 
     def write_shell_conf(self, text):
         """vela-shell.conf replaced as QSettings does, then the shell's
@@ -137,6 +146,40 @@ class Personalization(test_shell.RealShell):
         self.write_shell_conf("[clock]\nhours=24\n")
         time.sleep(1.0)
         self.assertTrue(center() == hour24, "the notification's time didn't come back")
+        self.check_desktop()
+
+    def taskbar_has(self, test):
+        """Whether some pixel of the taskbar passes the test (r, g, b)."""
+        output = self.vela.state().output
+        rows = self.region(0, output["h"] - 48, output["w"], 48)
+        return any(test(row[x], row[x + 1], row[x + 2]) for row in rows for x in range(0, len(row), 3))
+
+    def test_start_icon(self):
+        # Vela's sail, then a picture (red), the distribution's logo (green,
+        # os-release's LOGO= found as a loose file), and the sail again.
+        red = lambda r, g, b: r > 200 and g < 40 and b < 40
+        green = lambda r, g, b: g > 200 and r < 40 and b < 40
+        picture = os.path.join(self.vela.directory, "Pictures", "start.svg")
+        with open(picture, "w") as file:
+            file.write(square("#ff0000"))
+        icons = os.path.join(self.vela.env["XDG_DATA_HOME"], "icons")
+        os.makedirs(icons, exist_ok=True)
+        with open(os.path.join(icons, "vela-test-logo.svg"), "w") as file:
+            file.write(square("#00ff00"))
+        output = self.vela.state().output
+        bar = (0, output["h"] - 48, output["w"], 48)
+        sail = self.settled_region(bar)
+        self.assertFalse(self.taskbar_has(red) or self.taskbar_has(green), "the bar already has the colors")
+
+        self.write_shell_conf(f"[start]\nicon=picture\niconPicture={picture}\n")
+        self.vela.wait_for(lambda _: self.taskbar_has(red), timeout=8, read_state=False, what="the picture on Start")
+        self.write_shell_conf(f"[start]\nicon=distribution\niconPicture={picture}\n")
+        self.vela.wait_for(lambda _: self.taskbar_has(green) and not self.taskbar_has(red), timeout=8,
+                           read_state=False, what="the distribution's logo on Start")
+        # A picture that is gone: the sail, not an empty button.
+        os.remove(picture)
+        self.write_shell_conf(f"[start]\nicon=picture\niconPicture={picture}\n")
+        self.wait_region(bar, lambda r: r == sail, "the sail back")
         self.check_desktop()
 
     def test_desktop_icons_follow_settings(self):

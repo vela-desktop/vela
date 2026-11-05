@@ -113,7 +113,6 @@ target_include_directories(vela-shell PRIVATE ${SHELL_GENERATED_DIR})
 set(VELA_QML_FILES
     qml/Taskbar.qml
     qml/TaskbarButton.qml
-    qml/StartGlyph.qml
     qml/StartMenu.qml
     qml/GlassEdge.qml
     qml/tiles.js
@@ -244,6 +243,13 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-controls-no-effects COMMAND vela-shell-test)
     set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
+
+    qt_add_executable(vela-start-icon-test tests/starticon.cpp src/starticon.h)
+    target_include_directories(vela-start-icon-test PRIVATE src)
+    target_compile_options(vela-start-icon-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-start-icon-test PRIVATE Qt6::Gui Qt6::Test)
+    add_test(NAME shell-start-icon COMMAND vela-start-icon-test)
+    set_tests_properties(shell-start-icon PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
     target_include_directories(vela-tool-path-test PRIVATE src)

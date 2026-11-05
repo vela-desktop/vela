@@ -352,7 +352,8 @@ Window {
             active: Shell.startMenuOpen
             onClicked: { root.fromHere(); Shell.toggleStartMenu() }
             onRightClicked: root.openWinX(false)
-            StartGlyph { anchors.centerIn: parent }
+            // Vela's sail, the distribution's logo or a picture (Settings > Start).
+            StartIcon { anchors.centerIn: parent; source: Config.startIconSource }
         }
 
         // Task View: two overlapping windows, like the Windows 11 icon.

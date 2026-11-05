@@ -36,7 +36,7 @@ Page {
         LinkCard {
             icon: "start-here"
             title: qsTr("Start")
-            description: qsTr("Pinned apps, style of the Start menu")
+            description: qsTr("The Start button's icon, pinned apps, style of the Start menu")
             onClicked: root.navigate("start")
         }
         LinkCard {

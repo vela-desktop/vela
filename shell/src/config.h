@@ -38,6 +38,9 @@ class Config : public QObject {
     // The number of notifications next to the clock
     // (taskbar/notificationCount); "Do not disturb"'s bell shows anyway.
     Q_PROPERTY(bool notificationCount READ notificationCount NOTIFY clockChanged)
+    // What the Start button draws (shell/src/starticon.h): the
+    // distribution's logo or a picture, "" for Vela's sail.
+    Q_PROPERTY(QString startIconSource READ startIconSource NOTIFY startChanged)
     // The apps pinned to Start, above all apps (start/showPinned).
     Q_PROPERTY(bool startPinned READ startPinned NOTIFY startChanged)
     // Clipboard history (Win+V).
@@ -59,6 +62,7 @@ public:
     bool showDesktopCorner() const { return m_showDesktopCorner; }
     bool clipboardHistory() const { return m_clipboardHistory; }
     bool startPinned() const { return m_startPinned; }
+    QString startIconSource() const { return m_startIconSource; }
     bool clockDate() const { return m_clockDate; }
     bool clockSeconds() const { return m_clockSeconds; }
     bool notificationCount() const { return m_notificationCount; }
@@ -99,6 +103,7 @@ private:
     bool m_showDesktopCorner = true;
     bool m_clipboardHistory = false;
     bool m_startPinned = true;
+    QString m_startIconSource;
     bool m_clockDate = true;
     bool m_clock24 = true;
     bool m_clockSeconds = false;
