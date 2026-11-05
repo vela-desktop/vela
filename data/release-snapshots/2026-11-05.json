@@ -1,0 +1,68 @@
+{
+  "assets": {
+    "696240842": {
+      "downloads": 19,
+      "name": "vela-0.1.0-1-x86_64.pkg.tar.zst",
+      "release_tag": "v0.1.0"
+    },
+    "696240843": {
+      "downloads": 4,
+      "name": "vela_0.1.0_amd64.deb",
+      "release_tag": "v0.1.0"
+    },
+    "696240844": {
+      "downloads": 1,
+      "name": "SHA256SUMS-fedora",
+      "release_tag": "v0.1.0"
+    },
+    "696240846": {
+      "downloads": 18,
+      "name": "SHA256SUMS",
+      "release_tag": "v0.1.0"
+    },
+    "696240850": {
+      "downloads": 2,
+      "name": "vela-0.1.0-1.fc44.x86_64.rpm",
+      "release_tag": "v0.1.0"
+    },
+    "696240871": {
+      "downloads": 1,
+      "name": "SHA256SUMS-ubuntu",
+      "release_tag": "v0.1.0"
+    },
+    "706673380": {
+      "downloads": 10,
+      "name": "vela-0.1.1-1-x86_64.pkg.tar.zst",
+      "release_tag": "v0.1.1"
+    },
+    "706673381": {
+      "downloads": 3,
+      "name": "vela_0.1.1_amd64.deb",
+      "release_tag": "v0.1.1"
+    },
+    "706673382": {
+      "downloads": 9,
+      "name": "SHA256SUMS",
+      "release_tag": "v0.1.1"
+    },
+    "706673384": {
+      "downloads": 2,
+      "name": "vela-0.1.1-1.fc44.x86_64.rpm",
+      "release_tag": "v0.1.1"
+    },
+    "706673386": {
+      "downloads": 2,
+      "name": "SHA256SUMS-fedora",
+      "release_tag": "v0.1.1"
+    },
+    "706673405": {
+      "downloads": 1,
+      "name": "SHA256SUMS-ubuntu",
+      "release_tag": "v0.1.1"
+    }
+  },
+  "collected_at": "2026-11-05T10:54:38+00:00",
+  "releases": 2,
+  "schema_version": 1,
+  "total_downloads_current_assets": 72
+}
