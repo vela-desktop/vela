@@ -1771,4 +1771,31 @@
         <translation>Il Bluetooth non risponde.</translation>
     </message>
 </context>
+<context>
+    <name>PeripheralBatteryMonitor</name>
+    <message>
+        <source>Wireless device</source>
+        <translation>Dispositivo wireless</translation>
+    </message>
+    <message>
+        <source>Devices</source>
+        <translation>Dispositivi</translation>
+    </message>
+    <message>
+        <source>%1 battery is low</source>
+        <translation>Batteria di %1 scarica</translation>
+    </message>
+    <message>
+        <source>%1 battery is critical</source>
+        <translation>Batteria di %1 quasi esaurita</translation>
+    </message>
+    <message>
+        <source>Recharge the device soon.</source>
+        <translation>Ricarica presto il dispositivo.</translation>
+    </message>
+    <message>
+        <source>Recharge the device now.</source>
+        <translation>Ricarica subito il dispositivo.</translation>
+    </message>
+</context>
 </TS>
