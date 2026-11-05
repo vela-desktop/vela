@@ -872,7 +872,7 @@ Window {
             : root.fit ? buttons.x + buttons.width + root.fitGap + root.trayGroupWidth - width
             : parent.width - width - 12 - (root.floating ? root.sideMargin : 0)
         anchors { top: parent.top; bottom: parent.bottom }
-        width: clockColumn.implicitWidth + 16 + (Notifications.history.count > 0 || Notifications.doNotDisturb ? 22 : 0)
+        width: clockColumn.implicitWidth + 16 + (badge.visible ? 22 : 0)
 
         property date now: Shell.now()
 
@@ -891,10 +891,12 @@ Window {
             radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
-        // Notifications to read: a number next to the clock, like Windows 11
-        // (with "Do not disturb" a muted bell).
+        // Notifications to read: a number next to the clock, like Windows 11,
+        // unless Settings > Taskbar hides it (with "Do not disturb" a muted
+        // bell: that one is a state, not a count, and stays).
         Rectangle {
-            visible: Notifications.history.count > 0 || Notifications.doNotDisturb
+            id: badge
+            visible: (Config.notificationCount && Notifications.history.count > 0) || Notifications.doNotDisturb
             anchors { right: parent.right; rightMargin: -2; verticalCenter: parent.verticalCenter }
             width: 18
             height: 18

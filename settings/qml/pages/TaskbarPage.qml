@@ -61,6 +61,16 @@ Page {
                 onToggled: Prefs.clockDate = checked
             }
         }
+        Card {
+            icon: "preferences-desktop-notification"
+            title: qsTr("Show the number of notifications")
+            description: qsTr("Next to the clock. With Do not disturb on, its bell shows anyway")
+            trailing: Switch {
+                objectName: "notificationCount"
+                checked: Prefs.notificationCount
+                onToggled: Prefs.notificationCount = checked
+            }
+        }
     }
 
     CardGroup {

@@ -217,6 +217,7 @@ Window {
         { page: "taskbar", text: qsTr("Taskbar"), keys: qsTr("taskbar alignment left center end task") },
         { page: "taskbar", text: qsTr("Time format"), keys: qsTr("clock 24-hour 12-hour am pm time format hours") },
         { page: "taskbar", text: qsTr("Show seconds"), keys: qsTr("taskbar clock seconds time") },
+        { page: "taskbar", text: qsTr("Show the number of notifications"), keys: qsTr("notifications count number badge unread taskbar clock") },
         { page: "taskbar", text: qsTr("Show the date"), keys: qsTr("taskbar clock date day show hide") },
         { page: "taskbar", reveal: "taskbar", text: qsTr("Taskbar style"), keys: qsTr("taskbar style look pill floating dock") },
         { page: "taskbar", reveal: "notifications", text: qsTr("Quick settings style"), keys: qsTr("quick settings notification center style look") },

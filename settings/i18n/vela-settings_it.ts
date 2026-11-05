@@ -1769,6 +1769,14 @@ Specifiche sistema
         <translation>barra applicazioni orologio secondi ora</translation>
     </message>
     <message>
+        <source>Show the number of notifications</source>
+        <translation>Mostra il numero di notifiche</translation>
+    </message>
+    <message>
+        <source>notifications count number badge unread taskbar clock</source>
+        <translation>notifiche conteggio numero contatore non lette barra applicazioni orologio</translation>
+    </message>
+    <message>
         <source>Show the date</source>
         <translation>Mostra la data</translation>
     </message>
@@ -3017,6 +3025,14 @@ Specifiche sistema
     <message>
         <source>Under the time in the taskbar&apos;s clock</source>
         <translation>Sotto l&apos;ora, nell&apos;orologio della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Show the number of notifications</source>
+        <translation>Mostra il numero di notifiche</translation>
+    </message>
+    <message>
+        <source>Next to the clock. With Do not disturb on, its bell shows anyway</source>
+        <translation>Accanto all&apos;orologio. Con Non disturbare attivo, la sua campanella si vede comunque</translation>
     </message>
     <message>
         <source>Taskbar behaviors</source>

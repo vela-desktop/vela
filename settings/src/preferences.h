@@ -47,6 +47,9 @@ class Preferences : public QObject {
     Q_PROPERTY(bool clock24 READ clock24 WRITE setClock24 NOTIFY clockChanged)
     Q_PROPERTY(bool clockSeconds READ clockSeconds WRITE setClockSeconds NOTIFY clockChanged)
     Q_PROPERTY(QString timeFormat READ timeFormat NOTIFY clockChanged)
+    // The number of notifications next to the taskbar's clock
+    // (taskbar/notificationCount).
+    Q_PROPERTY(bool notificationCount READ notificationCount WRITE setNotificationCount NOTIFY clockChanged)
     // start/showPinned: the apps pinned to Start above all apps.
     Q_PROPERTY(bool startPinned READ startPinned WRITE setStartPinned NOTIFY startChanged)
     // desktop/showIcons, which the desktop's own menu sets too.
@@ -156,6 +159,8 @@ public:
     bool clockSeconds() const { return m_clockSeconds; }
     void setClockSeconds(bool on);
     QString timeFormat() const;
+    bool notificationCount() const { return m_notificationCount; }
+    void setNotificationCount(bool on);
     void setStartPinned(bool on);
     void setDesktopIcons(bool on);
 
@@ -326,6 +331,7 @@ private:
     bool m_clockDate = true;
     bool m_clock24 = true;
     bool m_clockSeconds = false;
+    bool m_notificationCount = true;
     bool m_doNotDisturb = false;
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;

@@ -171,6 +171,7 @@ void Preferences::reload()
     m_clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
     m_clock24 = vela::clock::hour24(settings);
     m_clockSeconds = settings.value(QStringLiteral("taskbar/clockSeconds"), false).toBool();
+    m_notificationCount = settings.value(QStringLiteral("taskbar/notificationCount"), true).toBool();
     emit clockChanged();
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
     emit doNotDisturbChanged();
@@ -571,6 +572,15 @@ void Preferences::setClockSeconds(bool on)
     if (on != m_clockSeconds) {
         m_clockSeconds = on;
         setShell(QStringLiteral("taskbar/clockSeconds"), on);
+        emit clockChanged();
+    }
+}
+
+void Preferences::setNotificationCount(bool on)
+{
+    if (on != m_notificationCount) {
+        m_notificationCount = on;
+        setShell(QStringLiteral("taskbar/notificationCount"), on);
         emit clockChanged();
     }
 }

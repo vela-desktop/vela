@@ -35,6 +35,9 @@ class Config : public QObject {
     Q_PROPERTY(QString timeFormat READ timeFormat NOTIFY clockChanged)
     Q_PROPERTY(QString clockFormat READ clockFormat NOTIFY clockChanged)
     Q_PROPERTY(bool clockSeconds READ clockSeconds NOTIFY clockChanged)
+    // The number of notifications next to the clock
+    // (taskbar/notificationCount); "Do not disturb"'s bell shows anyway.
+    Q_PROPERTY(bool notificationCount READ notificationCount NOTIFY clockChanged)
     // The apps pinned to Start, above all apps (start/showPinned).
     Q_PROPERTY(bool startPinned READ startPinned NOTIFY startChanged)
     // Clipboard history (Win+V).
@@ -58,6 +61,7 @@ public:
     bool startPinned() const { return m_startPinned; }
     bool clockDate() const { return m_clockDate; }
     bool clockSeconds() const { return m_clockSeconds; }
+    bool notificationCount() const { return m_notificationCount; }
     QString timeFormat() const;
     QString clockFormat() const;
     bool doNotDisturb() const { return m_doNotDisturb; }
@@ -98,6 +102,7 @@ private:
     bool m_clockDate = true;
     bool m_clock24 = true;
     bool m_clockSeconds = false;
+    bool m_notificationCount = true;
     bool m_doNotDisturb = false;
     bool m_showDesktopIcons = true;
     QString m_shellTheme = QStringLiteral("dark");

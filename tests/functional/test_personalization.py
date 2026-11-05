@@ -97,6 +97,21 @@ class Personalization(test_shell.RealShell):
         self.toggles_clock("taskbar/clockSeconds", "true", "false")
         self.check_desktop()
 
+    def test_the_clock_hides_the_number_of_notifications(self):
+        # One notification: "1" by the clock, until Settings hides it.
+        test_shell.QtShell.send_notification(self, "Counted", actions="[]", expire_timeout=1500)
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-notifications"), timeout=10, what="the popup gone")
+        box = self.clock_box()
+        counted = self.settled_region(box)
+        self.write_shell_conf("[taskbar]\nnotificationCount=false\n")
+        hidden = self.wait_region(box, lambda r: r != counted, "the clock without the number")
+        # "Do not disturb"'s bell isn't a count: it shows anyway.
+        self.write_shell_conf("[taskbar]\nnotificationCount=false\n[notifications]\ndoNotDisturb=true\n")
+        self.wait_region(box, lambda r: r != hidden and r != counted, "the muted bell by the clock")
+        self.write_shell_conf("[taskbar]\nnotificationCount=true\n")
+        self.wait_region(box, lambda r: r == counted, "the number back")
+        self.check_desktop()
+
     def test_the_notification_center_follows_the_time_format(self):
         # A notification's time in the center reads as the taskbar's clock.
         test_shell.QtShell.send_notification(self, "Time format", actions="[]", expire_timeout=1500)

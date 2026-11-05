@@ -87,10 +87,13 @@ void Config::reload()
     const bool clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
     const bool clock24 = vela::clock::hour24(settings);
     const bool clockSeconds = settings.value(QStringLiteral("taskbar/clockSeconds"), false).toBool();
-    if (clockDate != m_clockDate || clock24 != m_clock24 || clockSeconds != m_clockSeconds) {
+    const bool notificationCount = settings.value(QStringLiteral("taskbar/notificationCount"), true).toBool();
+    if (clockDate != m_clockDate || clock24 != m_clock24 || clockSeconds != m_clockSeconds
+        || notificationCount != m_notificationCount) {
         m_clockDate = clockDate;
         m_clock24 = clock24;
         m_clockSeconds = clockSeconds;
+        m_notificationCount = notificationCount;
         emit clockChanged();
     }
 
