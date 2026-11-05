@@ -19,6 +19,31 @@ import tempfile
 import time
 
 PR_SET_CHILD_SUBREAPER = 36
+
+
+class InvalidSessionArguments(Exception):
+    pass
+
+
+def _validated_command(argv):
+    """The only accepted operation is our compositor, optionally with -s."""
+    if len(argv) not in (1, 3):
+        raise InvalidSessionArguments("Expected vela-compositor [-s vela-shell]")
+    compositor = Path(argv[0]).resolve(strict=True)
+    if (compositor.name != "vela-compositor" or compositor.parent.name != "compositor"
+            or not os.access(compositor, os.X_OK)):
+        raise InvalidSessionArguments("Expected an executable build/compositor/vela-compositor")
+    shell = None
+    if len(argv) == 3:
+        if argv[1] != "-s":
+            raise InvalidSessionArguments("Only -s is supported")
+        shell = Path(argv[2]).resolve(strict=True)
+        if (shell.name != "vela-shell" or shell.parent.name != "shell"
+                or shell.parent.parent != compositor.parent.parent
+                or not os.access(shell, os.X_OK)):
+            raise InvalidSessionArguments("Expected an executable sibling build/shell/vela-shell")
+    return compositor, shell
+
 GRACE_SECONDS = 2.0
 KILL_SECONDS = 2.0
 _requested_signal = None
@@ -127,21 +152,16 @@ def _stop_all(process):
 
 
 def main(argv):
-    if not argv:
-        print("Usage: private-session.py compositor [arguments ...]", file=sys.stderr)
-        return 2
+    compositor, shell = _validated_command(argv)
     if os.environ.get("VELA_TEST_COPY_CONFIG", "0") not in ("0", "1"):
-        print("VELA_TEST_COPY_CONFIG must be 0 or 1", file=sys.stderr)
-        return 2
-    temp_parent = os.environ.get("TMPDIR", "/tmp")
+        raise InvalidSessionArguments("VELA_TEST_COPY_CONFIG must be 0 or 1")
+    temp_parent = os.environ.get("TMPDIR") or os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
     if not os.path.isabs(temp_parent):
-        print("TMPDIR must be an absolute path", file=sys.stderr)
-        return 2
+        raise InvalidSessionArguments("TMPDIR must be an absolute path")
     real_config = os.environ.get("XDG_CONFIG_HOME")
     if not real_config:
         if not os.environ.get("HOME"):
-            print("HOME must be set", file=sys.stderr)
-            return 2
+            raise InvalidSessionArguments("HOME must be set")
         real_config = os.path.join(os.environ["HOME"], ".config")
 
     _subreaper()
@@ -163,7 +183,14 @@ def main(argv):
 
         if _requested_signal is not None:
             return 128 + _requested_signal
-        process = subprocess.Popen(argv, env=env)
+        env["VELA_PRIVATE_COMPOSITOR"] = str(compositor)
+        if shell is not None:
+            env["VELA_PRIVATE_SHELL"] = str(shell)
+        else:
+            env.pop("VELA_PRIVATE_SHELL", None)
+        process = subprocess.Popen(
+            ["/bin/sh", str(Path(__file__).with_name("private-session-exec.sh"))],
+            env=env)
         while process.returncode is None and _requested_signal is None:
             _reap(process)
             if process.returncode is not None:
@@ -184,6 +211,9 @@ def main(argv):
 if __name__ == "__main__":
     try:
         sys.exit(main(sys.argv[1:]))
+    except InvalidSessionArguments as error:
+        print(f"private-session: {error}", file=sys.stderr)
+        sys.exit(2)
     except (OSError, ValueError) as error:
         print(f"private-session: {error}", file=sys.stderr)
         sys.exit(1)

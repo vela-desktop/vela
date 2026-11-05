@@ -26,26 +26,3 @@ jobs:
       - name: Validate local Markdown links, anchors and build dependency lists
         run: python3 scripts/check-docs.py
 
-      - name: Diagnose SonarQube PR findings (temporary, public API)
-        continue-on-error: true
-        run: |
-          python3 - <<'PY'
-          import json
-          from urllib import request
-          url = ("https://sonarcloud.io/api/issues/search?"
-                 "componentKeys=vela-desktop_vela&pullRequest=213&resolved=false&ps=100")
-          try:
-              with request.urlopen(url, timeout=15) as response:
-                  data = json.load(response)
-              for issue in data.get("issues", []):
-                  location = issue.get("textRange") or {}
-                  print("SONAR_FINDING", json.dumps({
-                      "rule": issue.get("rule"), "message": issue.get("message"),
-                      "component": issue.get("component"), "line": location.get("startLine"),
-                      "type": issue.get("type"), "severity": issue.get("severity"),
-                      "impacts": issue.get("impacts"),
-                  }, sort_keys=True))
-              print("SONAR_TOTAL", data.get("total"))
-          except Exception as error:
-              print("SONAR_DIAGNOSTIC_UNAVAILABLE", str(error))
-          PY

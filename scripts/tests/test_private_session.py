@@ -153,6 +153,17 @@ class PrivateSessionTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assert_clean()
 
+    def test_helper_rejects_arbitrary_executables_and_flags(self):
+        for command in (["/bin/echo"], [str(self.build / "compositor" / "vela-compositor"),
+                                        "-s", "/bin/sh"]):
+            with self.subTest(command=command):
+                result = subprocess.run(
+                    ["python3", str(SCRIPTS / "private-session.py"), *command],
+                    env=self.env, capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertFalse(self.output.exists())
+                self.assert_clean()
+
     def test_relative_tmpdir_is_rejected(self):
         run = self.run_script("run-headless.sh", TMPDIR="relative")
         self.assertEqual(run.returncode, 2)
