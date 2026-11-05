@@ -270,7 +270,9 @@ void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVaria
     const bool styled = variantValue.isValid() && variantValue.toString() != QLatin1String("default");
     const bool floating = number("taskbar-margin", styled ? 10 : 0) > 0 || number("taskbar-radius", styled ? 18 : 0) > 0;
     const bool fit = floating && number("taskbar-fit", styled ? 1 : 0) != 0;
-    const bool left = alignment == QLatin1String("left") || (fit && number("taskbar-edge", 0) == 2);
+    // A fitted pill places its apps itself (Taskbar.qml): centered, or at the
+    // left with taskbar-edge=2, whatever the alignment says.
+    const bool left = fit ? number("taskbar-edge", 0) == 2 : alignment == QLatin1String("left");
     layer->setAnchors(left ? bottomLeft : bottom);
     window->setProperty("atLeft", left);
 }

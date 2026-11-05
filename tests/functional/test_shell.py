@@ -1071,6 +1071,33 @@ class QtShell(RealShell):
         self.check_desktop()
         self.assertFalse(self.mapped(self.vela.state(), "vela-start-menu"))
 
+    def start_menu_center(self, style):
+        """Where Start opens with the taskbar aligned left and this taskbar
+        style (none: ""): the horizontal center of its layer."""
+        shell_conf = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+        with open(shell_conf + ".new", "w") as file:
+            file.write("[taskbar]\nalignment=left\n")
+        os.replace(shell_conf + ".new", shell_conf)
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write(f"taskbar-style={style}\n" if style else "")
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell sees both files
+        self.vela.input("key", "super")
+        state = self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start open")
+        layer = self.layer(state, "vela-start-menu")
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        return layer["x"] + layer["w"] / 2
+
+    def test_start_follows_the_alignment_unless_the_pill_places_the_apps(self):
+        # Aligned left, Start opens at the left like the buttons; a fitted
+        # pill (Window Glass) keeps its Start button centered, so Start opens
+        # above it, in the middle.
+        self.assertLess(self.start_menu_center(""), 960 / 2)
+        self.assertAlmostEqual(self.start_menu_center("window-glass"), 960, delta=40)
+        self.check_desktop()
+
     def test_one_input_session_keeps_the_menu_open_between_lines(self):
         """vela-input - (scripts/recording_core.py's InputSession): one
         keyboard answers OK or ERROR per line and leaves the menu open. A
