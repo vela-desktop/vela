@@ -244,6 +244,15 @@ if(VELA_BUILD_TOOLS)
     set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
 
+    # Config on a private vela-shell.conf, rewritten as Settings does.
+    qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h
+        src/clockformat.h src/starticon.h src/defaults.h)
+    target_include_directories(vela-config-test PRIVATE src)
+    target_compile_options(vela-config-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-config-test PRIVATE Qt6::Gui Qt6::Test)
+    add_test(NAME shell-config COMMAND vela-config-test)
+    set_tests_properties(shell-config PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     qt_add_executable(vela-start-icon-test tests/starticon.cpp src/starticon.h)
     target_include_directories(vela-start-icon-test PRIVATE src)
     target_compile_options(vela-start-icon-test PRIVATE -Wall -Wextra)

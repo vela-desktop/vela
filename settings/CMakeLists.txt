@@ -193,6 +193,21 @@ if(VELA_BUILD_TOOLS)
     set_tests_properties(settings-controls settings-controls-no-effects PROPERTIES TIMEOUT 60)
 endif()
 
+# Preferences on a private vela-shell.conf: Personalization's choices.
+if(VELA_BUILD_TOOLS)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    qt_add_executable(vela-preferences-test tests/preferences_test.cpp
+        src/preferences.cpp src/preferences.h
+        ${PROJECT_SOURCE_DIR}/compositor/src/color.c
+        ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.c)
+    target_include_directories(vela-preferences-test PRIVATE src ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
+    target_compile_options(vela-preferences-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-preferences-test PRIVATE vela-theme-tokens
+        Qt6::DBus Qt6::Gui Qt6::Network Qt6::Quick Qt6::Test)
+    add_test(NAME settings-preferences COMMAND vela-preferences-test)
+    set_tests_properties(settings-preferences PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+
 if(VELA_BUILD_TOOLS AND VELA_BUILD_COMPOSITOR)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
     qt_add_executable(vela-displays-test tests/displays_test.cpp)

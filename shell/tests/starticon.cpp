@@ -71,6 +71,47 @@ private slots:
         QCOMPARE(vela::start::distribution().logo, QString());
     }
 
+    void readsEveryWayOfQuoting()
+    {
+        write(m_dir.filePath(QStringLiteral("os-release")),
+            "# a comment\nNAME=Plain\nPRETTY_NAME=\"Say \\\"hi\\\"\"\nLOGO=\"x\n");
+        QCOMPARE(vela::start::distribution().name, QStringLiteral("Say \"hi\""));
+        QCOMPARE(vela::start::distribution().logo, QString()); // "x: no such icon
+        // Without PRETTY_NAME, NAME; an empty value.
+        write(m_dir.filePath(QStringLiteral("os-release")), "NAME=Plain\nPRETTY_NAME=\nLOGO=\n");
+        QCOMPARE(vela::start::distribution().name, QStringLiteral("Plain"));
+        QCOMPARE(vela::start::distribution().logo, QString());
+    }
+
+    void noOsRelease()
+    {
+        qputenv("VELA_OS_RELEASE", m_dir.filePath(QStringLiteral("missing")).toUtf8());
+        const auto distribution = vela::start::distribution();
+        qputenv("VELA_OS_RELEASE", m_dir.filePath(QStringLiteral("os-release")).toUtf8());
+        QCOMPARE(distribution.name, QString());
+        QCOMPARE(distribution.logo, QString());
+    }
+
+    void logoFromTheIconTheme()
+    {
+        // No loose file: the theme's icon, by its name.
+        const QString themes = m_dir.filePath(QStringLiteral("themes"));
+        write(themes + QStringLiteral("/test/index.theme"),
+            "[Icon Theme]\nName=Test\nDirectories=apps\n\n[apps]\nSize=48\nType=Scalable\nMinSize=8\nMaxSize=512\n");
+        write(themes + QStringLiteral("/test/apps/themed-logo.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
+        QIcon::setThemeSearchPaths({ themes });
+        QIcon::setThemeName(QStringLiteral("test"));
+        write(m_dir.filePath(QStringLiteral("os-release")), "NAME=Themed\nLOGO=themed-logo\n");
+        QCOMPARE(vela::start::distribution().logo, QStringLiteral("themed-logo"));
+        QIcon::setThemeSearchPaths({});
+        // An old XPM, loose.
+        const QString xpm = m_dir.filePath(QStringLiteral("data/pixmaps/old-logo.xpm"));
+        write(xpm, "/* XPM */");
+        write(m_dir.filePath(QStringLiteral("os-release")), "NAME=Old\nLOGO=old-logo\n");
+        QCOMPARE(vela::start::distribution().logo, xpm);
+        QFile::remove(xpm);
+    }
+
     void iconFallsBackToTheSail()
     {
         write(m_dir.filePath(QStringLiteral("os-release")), "NAME=Plain\n");
