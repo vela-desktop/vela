@@ -85,6 +85,34 @@ class Personalization(test_shell.RealShell):
         self.wait_region(box, lambda r: r == before, f"the clock with {key}={on} again")
         return before, changed
 
+    def test_hiding_the_pins_moves_the_selection(self):
+        # Start open, a pinned tile selected, then Settings hides the pins:
+        # Enter launches the first of all apps, not the hidden pinned one.
+        # Each app only touches a file of its own.
+        applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
+        os.makedirs(applications, exist_ok=True)
+        pinned = os.path.join(self.vela.directory, "launched-pinned")
+        first = os.path.join(self.vela.directory, "launched-first")
+        for name, title, marker in (("vela-files.desktop", "Pinned Files", pinned),
+                                    ("aaaa-first.desktop", "AAAA First", first)):
+            with open(os.path.join(applications, name), "w") as file:
+                file.write(f"[Desktop Entry]\nType=Application\nName={title}\nExec=/usr/bin/touch {marker}\n")
+        time.sleep(1.0) # the app list sees them
+        # One keyboard throughout (a new one would close Start): Start, the
+        # first key selects the first pinned tile; the pins go; Enter.
+        process = self.background_input("key", "super", "sleep", 1500, "key", "Right", "sleep", 3000,
+                                        "key", "Return")
+        self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start open")
+        time.sleep(2.0) # past the Right key
+        self.write_shell_conf("[start]\nshowPinned=false\n")
+        process.wait(timeout=15)
+        self.vela.wait_for(lambda _: os.path.exists(first) or os.path.exists(pinned), timeout=8,
+                           read_state=False, what="an app launched")
+        time.sleep(0.5)
+        self.assertTrue(os.path.exists(first), "the first of all apps didn't launch")
+        self.assertFalse(os.path.exists(pinned), "Enter launched the hidden pinned app")
+        self.check_desktop()
+
     def test_the_clock_hides_its_date(self):
         # Without the date the time sits alone, in the middle of the bar.
         before, without = self.toggles_clock("taskbar/showDate", "false", "true")
