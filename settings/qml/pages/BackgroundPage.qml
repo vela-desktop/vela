@@ -15,7 +15,7 @@ Page {
         return path.startsWith(":") ? "qrc" + path : "file://" + path
     }
 
-    PersonalizationPage.DesktopPreview {}
+    DesktopPreview {}
 
     component Thumb: Rectangle {
         id: thumb

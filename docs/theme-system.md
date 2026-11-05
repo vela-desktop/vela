@@ -8,7 +8,8 @@
 
 A user installs or selects **one complete look** and receives a consistent,
 predictable desktop in one action. They can then override individual
-components in **Customize** without modifying the installed package. The
+components on each surface's page (Taskbar, Start) without modifying the
+installed package. The
 default view never requires understanding different toolkit styles or panel
 configuration files.
 
@@ -42,9 +43,16 @@ or the compositor's frame scheduling.
   variants and a style's keys for another surface are skipped, with the
   file, the line and the reason in the log and in Settings.
 - User-provided per-surface styles cannot override unrelated surfaces.
-- Candidate preview of colors and the taskbar's shape using the existing
-  `DesktopPreview`, without changing the active theme. Apply is explicit.
-- Detailed per-surface styling remains available only under Customize.
+- Themes as cards with a picture, applied with one click and undone with
+  **Undo** for a few seconds (PR #212); no candidate preview, no Apply.
+- Each surface's styles on its own page: the taskbar's and quick settings'
+  under Taskbar, the Start menu's under Start.
+- Faithful pictures of every theme and style, made by
+  `scripts/theme-pictures.py` from the real shell on a headless session with
+  neutral data; your own themes fall back to the `DesktopPreview` miniature.
+- No hidden conflicts: a theme's own accent disables the grid in Colors with
+  the reason, and a taskbar pill that places its apps itself disables the
+  alignment with the reason.
 - 22 of the 80 preset files from #205: one of each look.
 
 The preview is currently **schematic**, not an accurate rendering of every
@@ -124,25 +132,28 @@ migration-compatible foundations, **not yet** the final shared snapshot API.
 
 ## Preview and user interaction
 
-Required UX:
+Required UX (PR #212):
 
-1. Gallery displays a complete-theme thumbnail, title, author and
-   compatibility.
-2. Selecting a thumbnail only updates a candidate preview. No session state
-   or config files are written.
-3. Apply activates the theme; user overrides and accessibility settings
+1. Gallery displays a complete-theme picture, title and author.
+2. A click applies a theme at once; **Undo** stays for a few seconds and
+   goes back to the previous one. User overrides and accessibility settings
    remain independent.
-4. Customize permits optional changes to individual surfaces, saved separately.
+3. Each surface's styles, saved separately from the theme, are on that
+   surface's page, with "From the theme" first; a click applies one, with
+   Undo too.
+4. A setting that the theme or a style overrides is shown disabled, with the
+   reason, never silently ignored.
 5. Test on desktop offers a time-limited preview with Keep/Revert, where
-   rollback is independent of Settings staying responsive.
+   rollback is independent of Settings staying responsive (**planned**).
 
 Preview tiers:
 
 - **Fast:** reuse existing Vela Settings miniature components and token
   resolver (partly implemented).
-- **Faithful:** render real shell controls in an isolated/nested surface or
-  headless test session with deterministic mock data. Use Vela's existing
-  capture tooling to generate cached images (**planned**).
+- **Faithful:** render real shell controls in a headless session with
+  deterministic mock data, captured with Vela's own tooling
+  (`scripts/theme-pictures.py`, PR #212). Installed themes and styles ship
+  these pictures; a user's own get none yet.
 - **In-session:** transactional temporary apply + rollback (**planned**).
 
 Never use an untrusted author's screenshot as proof of the resulting theme.
@@ -172,7 +183,8 @@ Never use an untrusted author's screenshot as proof of the resulting theme.
 - [x] Build, CTest and GPU functional tests (PR #207).
 - [ ] Real desktop check of every style.
 - [ ] Finalize immutable snapshot / cross-process consistency boundaries.
-- [ ] Render faithful candidate previews and transactional rollback.
+- [x] Render faithful previews (`scripts/theme-pictures.py`).
+- [ ] Transactional rollback.
 - [x] Schema diagnostics (themefile.h's Problem, Settings > Themes).
 - [ ] Validate third-party resources and package metadata.
 - [ ] Review source licenses, assets and translations.

@@ -80,6 +80,11 @@ set(SETTINGS_QML_FILES
     qml/WhatsNew.qml
     qml/UpdateOptions.qml
     qml/PageHeader.qml
+    qml/DesktopPreview.qml
+    qml/PictureTile.qml
+    qml/ThemeGallery.qml
+    qml/StyleGallery.qml
+    qml/UndoBar.qml
     qml/Page.qml
     qml/pages/HomePage.qml
     qml/pages/SystemPage.qml
@@ -98,6 +103,7 @@ set(SETTINGS_QML_FILES
     qml/pages/ColorsPage.qml
     qml/pages/ThemesPage.qml
     qml/pages/TaskbarPage.qml
+    qml/pages/StartPage.qml
     qml/pages/AppsPage.qml
     qml/pages/InstalledAppsPage.qml
     qml/pages/DefaultAppsPage.qml

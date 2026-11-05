@@ -635,8 +635,24 @@ Specifiche sistema
         <translation>Colore principale</translation>
     </message>
     <message>
+        <source>%1, the theme in use, brings its own accent color. The one chosen here comes back with another theme</source>
+        <translation>%1, il tema in uso, ha un suo colore principale. Quello scelto qui torna con un altro tema</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus. In dark mode %1, the theme in use, brings its own</source>
+        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità scura %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus. In light mode %1, the theme in use, brings its own</source>
+        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità chiara %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
         <source>Buttons, selections, active items in the taskbar and menus</source>
         <translation>Pulsanti, selezioni, elementi attivi della barra delle applicazioni e dei menu</translation>
+    </message>
+    <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
     </message>
     <message>
         <source>Colors</source>
@@ -1414,6 +1430,10 @@ Specifiche sistema
         <translation>Barra delle applicazioni</translation>
     </message>
     <message>
+        <source>Start</source>
+        <translation>Start</translation>
+    </message>
+    <message>
         <source>Apps</source>
         <translation>App</translation>
     </message>
@@ -1646,12 +1666,36 @@ Specifiche sistema
         <translation>scuro chiaro dark light tema app</translation>
     </message>
     <message>
-        <source>theme palette colors corners radius rounded</source>
-        <translation>tema tavolozza colori angoli raggio arrotondati</translation>
+        <source>theme palette colors corners radius rounded reset</source>
+        <translation>tema tavolozza colori angoli raggio arrotondati reimposta</translation>
     </message>
     <message>
         <source>taskbar alignment left center end task</source>
         <translation>taskbar allineamento sinistra centro termina attività</translation>
+    </message>
+    <message>
+        <source>Taskbar style</source>
+        <translation>Stile della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>taskbar style look pill floating dock</source>
+        <translation>barra delle applicazioni stile aspetto pillola mobile dock</translation>
+    </message>
+    <message>
+        <source>Quick settings style</source>
+        <translation>Stile delle impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>quick settings notification center style look</source>
+        <translation>impostazioni rapide centro notifiche stile aspetto</translation>
+    </message>
+    <message>
+        <source>Start menu style</source>
+        <translation>Stile del menu Start</translation>
+    </message>
+    <message>
+        <source>start menu style look size corners</source>
+        <translation>menu start stile aspetto dimensioni angoli</translation>
     </message>
     <message>
         <source>programs applications</source>
@@ -2058,11 +2102,11 @@ Specifiche sistema
     </message>
     <message>
         <source>Experimental NVIDIA fix</source>
-        <translation type="unfinished"></translation>
+        <translation>Correzione sperimentale per NVIDIA</translation>
     </message>
     <message>
         <source>Use Vulkan instead of the monitor&apos;s gamma LUT if Night light causes broken colors. May disable direct scanout.</source>
-        <translation type="unfinished"></translation>
+        <translation>Usa Vulkan invece della LUT gamma del monitor se Luce notturna rovina i colori. Può disattivare la scansione diretta.</translation>
     </message>
     <message>
         <source>Schedule night light</source>
@@ -2107,6 +2151,10 @@ Specifiche sistema
 <context>
     <name>PersonalizationPage</name>
     <message>
+        <source>Select a theme to apply</source>
+        <translation>Seleziona un tema da applicare</translation>
+    </message>
+    <message>
         <source>Background</source>
         <translation>Sfondo</translation>
     </message>
@@ -2127,16 +2175,24 @@ Specifiche sistema
         <translation>Temi</translation>
     </message>
     <message>
-        <source>Colors and corners of the shell and the apps</source>
-        <translation>Colori e angoli della shell e delle app</translation>
+        <source>Your own themes, problems in a theme&apos;s file, reset</source>
+        <translation>Temi personali, problemi nel file di un tema, reimpostazione</translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation>Start</translation>
+    </message>
+    <message>
+        <source>Style of the Start menu</source>
+        <translation>Stile del menu Start</translation>
+    </message>
+    <message>
+        <source>Style, quick settings, alignment, taskbar behaviors</source>
+        <translation>Stile, impostazioni rapide, allineamento, comportamenti della barra delle applicazioni</translation>
     </message>
     <message>
         <source>Taskbar</source>
         <translation>Barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Alignment, taskbar behaviors</source>
-        <translation>Allineamento, comportamenti della barra delle applicazioni</translation>
     </message>
 </context>
 <context>
@@ -2572,6 +2628,21 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>StartPage</name>
+    <message>
+        <source>Style</source>
+        <translation>Stile</translation>
+    </message>
+    <message>
+        <source>Your own styles</source>
+        <translation>Stili personali</translation>
+    </message>
+    <message>
+        <source>A file in ~/.config/vela/themes/startmenu/&lt;name&gt;.conf appears here</source>
+        <translation>Un file in ~/.config/vela/themes/startmenu/&lt;nome&gt;.conf compare qui</translation>
+    </message>
+</context>
+<context>
     <name>StillVisibleCard</name>
     <message>
         <source>Your PC is still visible to nearby devices</source>
@@ -2584,6 +2655,29 @@ Specifiche sistema
     <message>
         <source>Stop being visible</source>
         <translation>Non essere più visibile</translation>
+    </message>
+</context>
+<context>
+    <name>StyleGallery</name>
+    <message>
+        <source>The theme&apos;s style is in use</source>
+        <translation>È in uso lo stile del tema</translation>
+    </message>
+    <message>
+        <source>%1 is in use</source>
+        <translation>%1 è in uso</translation>
+    </message>
+    <message>
+        <source>From the theme</source>
+        <translation>Dal tema</translation>
+    </message>
+    <message>
+        <source>As %1 draws it</source>
+        <translation>Come lo disegna %1</translation>
+    </message>
+    <message>
+        <source>Original author: %1</source>
+        <translation>Autore originale: %1</translation>
     </message>
 </context>
 <context>
@@ -2670,6 +2764,10 @@ Specifiche sistema
 <context>
     <name>TaskbarPage</name>
     <message>
+        <source>Style</source>
+        <translation>Stile</translation>
+    </message>
+    <message>
         <source>Taskbar items</source>
         <translation>Elementi della barra delle applicazioni</translation>
     </message>
@@ -2688,6 +2786,14 @@ Specifiche sistema
     <message>
         <source>Taskbar alignment</source>
         <translation>Allineamento della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps at the left: the alignment applies with another style</source>
+        <translation>%1 tiene le app a sinistra: l&apos;allineamento vale con un altro stile</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps centered in its pill: the alignment applies with another style</source>
+        <translation>%1 tiene le app al centro della sua pillola: l&apos;allineamento vale con un altro stile</translation>
     </message>
     <message>
         <source>Center</source>
@@ -2720,6 +2826,29 @@ Specifiche sistema
     <message>
         <source>In the taskbar buttons&apos; menu, to close an app that isn&apos;t responding right away</source>
         <translation>Nel menu dei pulsanti della barra delle applicazioni, per chiudere subito un&apos;app che non risponde</translation>
+    </message>
+    <message>
+        <source>Quick settings and notification center</source>
+        <translation>Impostazioni rapide e centro notifiche</translation>
+    </message>
+    <message>
+        <source>Your own styles</source>
+        <translation>Stili personali</translation>
+    </message>
+    <message>
+        <source>A file in ~/.config/vela/themes/taskbar/ or themes/notifications/, &lt;name&gt;.conf, appears here</source>
+        <translation>Un file in ~/.config/vela/themes/taskbar/ o themes/notifications/, &lt;nome&gt;.conf, compare qui</translation>
+    </message>
+</context>
+<context>
+    <name>ThemeGallery</name>
+    <message>
+        <source>%1 is in use</source>
+        <translation>%1 è in uso</translation>
+    </message>
+    <message>
+        <source>Original author: %1</source>
+        <translation>Autore originale: %1</translation>
     </message>
 </context>
 <context>
@@ -2773,52 +2902,16 @@ Specifiche sistema
         <translation>più grande di 64 KiB: il file non viene usato</translation>
     </message>
     <message>
-        <source>Theme</source>
-        <translation>Tema</translation>
+        <source>&quot;%1&quot; isn&apos;t installed</source>
+        <translation>&quot;%1&quot; non è installato</translation>
     </message>
     <message>
-        <source>A complete look of the shell and the apps. Original author: %1</source>
-        <translation>Un aspetto completo della shell e delle app. Autore originale: %1</translation>
+        <source>vela.conf names a theme Vela can&apos;t find: Vela&apos;s own look is used</source>
+        <translation>vela.conf indica un tema che Vela non trova: si usa l&apos;aspetto di Vela</translation>
     </message>
     <message>
-        <source>A complete look of the shell and the apps</source>
-        <translation>Un aspetto completo della shell e delle app</translation>
-    </message>
-    <message>
-        <source>%1 is in use</source>
-        <translation>%1 è in uso</translation>
-    </message>
-    <message>
-        <source>Previewing %1</source>
-        <translation>Anteprima di %1</translation>
-    </message>
-    <message>
-        <source>Choose another theme to see it in the preview. Nothing changes until you apply it</source>
-        <translation>Scegli un altro tema per vederlo nell&apos;anteprima. Non cambia nulla finché non lo applichi</translation>
-    </message>
-    <message>
-        <source>&quot;%1&quot; isn&apos;t installed: Vela&apos;s own look is used</source>
-        <translation>&quot;%1&quot; non è installato: viene usato l&apos;aspetto di Vela</translation>
-    </message>
-    <message>
-        <source>Only the preview shows it. Apply to use it in the shell and the apps instead of %1</source>
-        <translation>Per ora si vede solo nell&apos;anteprima. Applicalo per usarlo nella shell e nelle app al posto di %1</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Annulla</translation>
-    </message>
-    <message>
-        <source>Apply</source>
-        <translation>Applica</translation>
-    </message>
-    <message>
-        <source>This theme has its own accent color</source>
-        <translation>Questo tema ha un suo colore principale</translation>
-    </message>
-    <message>
-        <source>While it is in use, it replaces the accent color chosen in Colors</source>
-        <translation>Finché è in uso, sostituisce il colore principale scelto in Colori</translation>
+        <source>Vela Official is in use, with no styles</source>
+        <translation>È in uso Vela Official, senza stili</translation>
     </message>
     <message>
         <source>This theme has problems</source>
@@ -2827,54 +2920,6 @@ Specifiche sistema
     <message>
         <source>Vela uses what it can and skips the rest</source>
         <translation>Vela usa quello che può e salta il resto</translation>
-    </message>
-    <message>
-        <source>Customize</source>
-        <translation>Personalizza</translation>
-    </message>
-    <message>
-        <source>Optional: a style of its own for the taskbar, the Start menu or quick settings, over the theme</source>
-        <translation>Facoltativo: uno stile a parte per la barra delle applicazioni, il menu Start o le impostazioni rapide, sopra il tema</translation>
-    </message>
-    <message>
-        <source>Hide</source>
-        <translation>Nascondi</translation>
-    </message>
-    <message>
-        <source>Taskbar</source>
-        <translation>Barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Start menu</source>
-        <translation>Menu Start</translation>
-    </message>
-    <message>
-        <source>Quick settings</source>
-        <translation>Impostazioni rapide</translation>
-    </message>
-    <message>
-        <source>Styles</source>
-        <translation>Stili</translation>
-    </message>
-    <message>
-        <source>From the theme</source>
-        <translation>Dal tema</translation>
-    </message>
-    <message>
-        <source>As the theme draws it. Your own styles: ~/.config/vela/themes/%1/&lt;name&gt;.conf</source>
-        <translation>Come lo disegna il tema. I tuoi stili: ~/.config/vela/themes/%1/&lt;nome&gt;.conf</translation>
-    </message>
-    <message>
-        <source>In use</source>
-        <translation>In uso</translation>
-    </message>
-    <message>
-        <source>Use</source>
-        <translation>Usa</translation>
-    </message>
-    <message>
-        <source>Original author: %1</source>
-        <translation>Autore originale: %1</translation>
     </message>
     <message>
         <source>Your own themes</source>
@@ -3001,6 +3046,17 @@ Specifiche sistema
     <message>
         <source>Four-finger gestures</source>
         <translation>Gesti con quattro dita</translation>
+    </message>
+</context>
+<context>
+    <name>UndoBar</name>
+    <message>
+        <source>Undo</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Chiudi</translation>
     </message>
 </context>
 <context>

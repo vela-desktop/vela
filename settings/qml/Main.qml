@@ -49,6 +49,7 @@ Window {
         "colors": { title: qsTr("Colors"), parent: "personalization", file: "ColorsPage.qml", icon: "preferences-desktop-color" },
         "themes": { title: qsTr("Themes"), parent: "personalization", file: "ThemesPage.qml", icon: "preferences-desktop-theme" },
         "taskbar": { title: qsTr("Taskbar"), parent: "personalization", file: "TaskbarPage.qml", icon: "preferences-system-windows" },
+        "start": { title: qsTr("Start"), parent: "personalization", file: "StartPage.qml", icon: "start-here" },
         "apps": { title: qsTr("Apps"), parent: "", file: "AppsPage.qml", icon: "preferences-desktop-default-applications" },
         "installed-apps": { title: qsTr("Installed apps"), parent: "apps", file: "InstalledAppsPage.qml", icon: "view-list-details" },
         "default-apps": { title: qsTr("Default apps"), parent: "apps", file: "DefaultAppsPage.qml", icon: "preferences-desktop-default-applications" },
@@ -111,6 +112,11 @@ Window {
         }
         // Home isn't a parent in the path, like on Windows.
         return list
+    }
+
+    // Themes and styles apply at a click: what changed, with Undo (UndoBar).
+    function offerUndo(text, undo) {
+        undoBar.offer(text, undo)
     }
 
     function navigate(name, fromHistory) {
@@ -199,8 +205,11 @@ Window {
         { page: "background", text: qsTr("Background"), keys: qsTr("picture desktop photo wallpaper") },
         { page: "colors", text: qsTr("Colors"), keys: qsTr("accent color theme dark light mode") },
         { page: "colors", text: qsTr("Choose your mode"), keys: qsTr("dark light theme apps mode") },
-        { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded") },
+        { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded reset") },
         { page: "taskbar", text: qsTr("Taskbar"), keys: qsTr("taskbar alignment left center end task") },
+        { page: "taskbar", text: qsTr("Taskbar style"), keys: qsTr("taskbar style look pill floating dock") },
+        { page: "taskbar", text: qsTr("Quick settings style"), keys: qsTr("quick settings notification center style look") },
+        { page: "start", text: qsTr("Start menu style"), keys: qsTr("start menu style look size corners") },
         { page: "apps", text: qsTr("Apps"), keys: qsTr("programs applications") },
         { page: "installed-apps", text: qsTr("Installed apps"), keys: qsTr("uninstall remove programs") },
         { page: "default-apps", text: qsTr("Default apps"), keys: qsTr("browser mail player open with default") },
@@ -432,6 +441,13 @@ Window {
                 NumberAnimation { target: pageLoader.item; property: "opacity"; to: 1; duration: Theme.normal }
                 Eased { target: slide; property: "y"; to: 0; duration: Theme.long }
             }
+        }
+
+        UndoBar {
+            id: undoBar
+            width: implicitWidth
+            height: implicitHeight
+            anchors { horizontalCenter: pageLoader.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }
         }
     }
 }

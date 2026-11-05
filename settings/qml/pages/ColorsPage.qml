@@ -9,6 +9,14 @@ import Vela.Controls
 Page {
     id: page
     property bool custom: false // "Custom" chosen even with the two modes equal
+    // A theme may bring its own accent (accent=, or dark.accent= and
+    // light.accent= for one mode), which wins over the one chosen here: the
+    // grid says so instead of changing nothing (Theme.qml's themed()).
+    readonly property var themeTokens: { Prefs.visualTheme; Prefs.themesRevision; return Prefs.resolveTheme(Prefs.visualTheme).tokens }
+    readonly property bool themeAccentDark: "accent" in themeTokens || "dark.accent" in themeTokens
+    readonly property bool themeAccentLight: "accent" in themeTokens || "light.accent" in themeTokens
+    readonly property bool themeAccent: themeAccentDark && themeAccentLight
+    readonly property string themeName: Prefs.visualThemes().find(t => t.name === Prefs.visualTheme)?.text ?? Prefs.visualTheme
     readonly property var accents: [
         "#5b8cff", "#ffb900", "#ff8c00", "#f7630c", "#ca5010", "#da3b01", "#ef6950", "#d13438",
         "#ff4343", "#e74856", "#e81123", "#ea005e", "#c30052", "#e3008c", "#bf0077", "#c239b3",
@@ -18,7 +26,7 @@ Page {
         "#107c10", "#767676", "#4c4a48", "#69797e", "#4a5459", "#647c64", "#525e54", "#847545"
     ]
 
-    PersonalizationPage.DesktopPreview {}
+    DesktopPreview {}
 
     CardGroup {
         Card {
@@ -63,18 +71,35 @@ Page {
         Card {
             icon: "preferences-desktop-color"
             title: qsTr("Accent color")
-            description: qsTr("Buttons, selections, active items in the taskbar and menus")
-            trailing: Rectangle {
-                width: 32
-                height: 32
-                radius: Theme.radius
-                color: Prefs.accent
-                border.width: 1
-                border.color: Theme.controlStroke
-            }
+            description: page.themeAccent
+                ? qsTr("%1, the theme in use, brings its own accent color. The one chosen here comes back with another theme").arg(page.themeName)
+                : page.themeAccentDark
+                ? qsTr("Buttons, selections, active items in the taskbar and menus. In dark mode %1, the theme in use, brings its own").arg(page.themeName)
+                : page.themeAccentLight
+                ? qsTr("Buttons, selections, active items in the taskbar and menus. In light mode %1, the theme in use, brings its own").arg(page.themeName)
+                : qsTr("Buttons, selections, active items in the taskbar and menus")
+            trailing: [
+                Button {
+                    visible: page.themeAccent
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Themes")
+                    onClicked: root.navigate("personalization")
+                },
+                Rectangle {
+                    width: 32
+                    height: 32
+                    radius: Theme.radius
+                    // The accent in use: the theme's, when it has one.
+                    color: page.themeAccent ? Theme.accent : Prefs.accent
+                    border.width: 1
+                    border.color: Theme.controlStroke
+                }
+            ]
             contentItem: Column {
                 width: parent.width
                 spacing: 8
+                enabled: !page.themeAccent
+                opacity: enabled ? 1 : 0.45
                 Text {
                     text: qsTr("Colors")
                     color: Theme.textSecondary
