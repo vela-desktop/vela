@@ -49,6 +49,7 @@ Window {
         "colors": { title: qsTr("Colors"), parent: "personalization", file: "ColorsPage.qml", icon: "preferences-desktop-color" },
         "themes": { title: qsTr("Themes"), parent: "personalization", file: "ThemesPage.qml", icon: "preferences-desktop-theme" },
         "taskbar": { title: qsTr("Taskbar"), parent: "personalization", file: "TaskbarPage.qml", icon: "preferences-system-windows" },
+        "start": { title: qsTr("Start"), parent: "personalization", file: "StartPage.qml", icon: "start-here" },
         "apps": { title: qsTr("Apps"), parent: "", file: "AppsPage.qml", icon: "preferences-desktop-default-applications" },
         "installed-apps": { title: qsTr("Installed apps"), parent: "apps", file: "InstalledAppsPage.qml", icon: "view-list-details" },
         "default-apps": { title: qsTr("Default apps"), parent: "apps", file: "DefaultAppsPage.qml", icon: "preferences-desktop-default-applications" },
@@ -113,11 +114,22 @@ Window {
         return list
     }
 
-    function navigate(name, fromHistory) {
+    // Themes and styles apply at a click: what changed, with Undo (UndoBar).
+    function offerUndo(text, undo) {
+        undoBar.offer(text, undo)
+    }
+
+    // What the page opened by navigate() should show (open, scroll to, focus):
+    // a style's card ("taskbar", "notifications"), from search or Themes. ""
+    // first, so that asking twice for the same is a change again.
+    property string reveal: ""
+
+    function navigate(name, fromHistory, what) {
         name = aliases[name] || name
         if (!pages[name]) {
             name = "home"
         }
+        reveal = ""
         if (!fromHistory && (name !== current || history.length === 0)) {
             const h = history.slice(0, historyIndex + 1)
             h.push(name)
@@ -126,6 +138,7 @@ Window {
         }
         current = name
         search.text = ""
+        reveal = what || ""
     }
 
     // The pages visited, for Back and Forward like Windows 11's Settings:
@@ -199,8 +212,11 @@ Window {
         { page: "background", text: qsTr("Background"), keys: qsTr("picture desktop photo wallpaper") },
         { page: "colors", text: qsTr("Colors"), keys: qsTr("accent color theme dark light mode") },
         { page: "colors", text: qsTr("Choose your mode"), keys: qsTr("dark light theme apps mode") },
-        { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded") },
+        { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded reset") },
         { page: "taskbar", text: qsTr("Taskbar"), keys: qsTr("taskbar alignment left center end task") },
+        { page: "taskbar", reveal: "taskbar", text: qsTr("Taskbar style"), keys: qsTr("taskbar style look pill floating dock") },
+        { page: "taskbar", reveal: "notifications", text: qsTr("Quick settings style"), keys: qsTr("quick settings notification center style look") },
+        { page: "start", text: qsTr("Start menu style"), keys: qsTr("start menu style look size corners") },
         { page: "apps", text: qsTr("Apps"), keys: qsTr("programs applications") },
         { page: "installed-apps", text: qsTr("Installed apps"), keys: qsTr("uninstall remove programs") },
         { page: "default-apps", text: qsTr("Default apps"), keys: qsTr("browser mail player open with default") },
@@ -288,7 +304,7 @@ Window {
             rightPadding: 36
             Keys.onReturnPressed: {
                 if (root.searchResults.length > 0) {
-                    root.navigate(root.searchResults[0].page)
+                    root.navigate(root.searchResults[0].page, false, root.searchResults[0].reveal)
                 }
             }
             Keys.onEscapePressed: text = ""
@@ -397,7 +413,7 @@ Window {
                             id: resultMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: root.navigate(result.modelData.page)
+                            onClicked: root.navigate(result.modelData.page, false, result.modelData.reveal)
                         }
                     }
                 }
@@ -432,6 +448,14 @@ Window {
                 NumberAnimation { target: pageLoader.item; property: "opacity"; to: 1; duration: Theme.normal }
                 Eased { target: slide; property: "y"; to: 0; duration: Theme.long }
             }
+        }
+
+        UndoBar {
+            id: undoBar
+            maximumWidth: Math.min(560, pageLoader.width - 32)
+            width: implicitWidth
+            height: implicitHeight
+            anchors { horizontalCenter: pageLoader.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }
         }
     }
 }

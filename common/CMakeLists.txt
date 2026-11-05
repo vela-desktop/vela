@@ -74,6 +74,13 @@ foreach(line IN LISTS styled_lines)
         message(FATAL_ERROR "Styles.qml: a key read in a shape themetokens.h doesn't know:\n${line}")
     endif()
 endforeach()
+# The keys of the taskbar's layout: themefile.h's taskbarLayout() reads them,
+# the one rule for Styles.qml, Start's placement and Settings.
+vela_theme_token(taskbar-variant Variant)
+vela_theme_token(taskbar-margin Number)
+vela_theme_token(taskbar-radius Number)
+vela_theme_token(taskbar-fit Number)
+vela_theme_token(taskbar-edge Number)
 if(theme_tokens STREQUAL "")
     message(FATAL_ERROR "Theme.qml: no themed() token found")
 endif()

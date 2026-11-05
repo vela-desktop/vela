@@ -73,6 +73,16 @@ private slots:
                 read.insert(it.next().captured(1));
             }
         }
+        // And the taskbar's layout, read by taskbarLayout() for Styles.qml:
+        // common/CMakeLists.txt lists its keys by hand, this keeps them in step.
+        QFile header(QStringLiteral(THEMEFILE_H));
+        QVERIFY(header.open(QIODevice::ReadOnly | QIODevice::Text));
+        const QRegularExpression layoutKey(QStringLiteral("(?:size\\(|themed\\(tokens, QStringLiteral\\()\"(taskbar-[a-z-]+)\""));
+        int layoutKeys = 0;
+        for (auto it = layoutKey.globalMatch(QString::fromUtf8(header.readAll())); it.hasNext(); ++layoutKeys) {
+            read.insert(it.next().captured(1));
+        }
+        QCOMPARE(layoutKeys, 5);
         QSet<QString> listed;
         QSet<QString> variantKeys;
         for (const vela::themes::Token& token : vela::themes::tokens) {
@@ -160,7 +170,8 @@ private slots:
         QVERIFY(vela::themes::locate(QStringLiteral("../glass"), vela::themes::Taskbar).isEmpty());
     }
 
-    // A surface's styles, with their pictures (themes/screenshots/).
+    // The themes and a surface's styles, with their pictures
+    // (themes/screenshots/), and a surface as a theme draws it.
     void theGallery()
     {
         write(data() + QStringLiteral("taskbar/pill.conf"), "# Pill: a floating taskbar\n# Original author: Lowell137\ntaskbar-radius=24\n");
@@ -174,8 +185,77 @@ private slots:
         QCOMPARE(pill.value(QStringLiteral("images")).toStringList(),
             QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/taskbar/pill.png")).toString() });
         QVERIFY(gallery[1].toMap().value(QStringLiteral("images")).toStringList().isEmpty());
-        QVERIFY(vela::themes::gallery(QString()).isEmpty()); // themes have no gallery
         QVERIFY(vela::themes::gallery(QStringLiteral("elsewhere")).isEmpty());
+        // What Settings calls them: the first line's name, the file's without
+        // one, none when not installed.
+        QCOMPARE(vela::themes::displayName(QStringLiteral("taskbar"), QStringLiteral("pill")), QStringLiteral("Pill"));
+        QCOMPARE(vela::themes::displayName(QStringLiteral("taskbar"), QStringLiteral("plain")), QStringLiteral("plain"));
+        QVERIFY(vela::themes::displayName(QStringLiteral("taskbar"), QStringLiteral("gone")).isEmpty());
+
+        // A theme's picture is the desktop in it, in screenshots/themes/.
+        write(data() + QStringLiteral("glass.conf"), "# Glass: a theme\nradius=2\n");
+        write(data() + QStringLiteral("screenshots/themes/glass.png"), "png");
+        const QVariantList themes = vela::themes::gallery(QString());
+        const auto glass = std::find_if(themes.cbegin(), themes.cend(),
+            [](const QVariant& t) { return t.toMap().value(QStringLiteral("name")) == QStringLiteral("glass"); });
+        QVERIFY(glass != themes.cend());
+        QCOMPARE(glass->toMap().value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass.png")).toString() });
+        // A surface as the theme draws it, in the theme's own folder; quick
+        // settings and the notification center: two pictures, in order.
+        write(data() + QStringLiteral("screenshots/themes/glass/taskbar.png"), "png");
+        write(data() + QStringLiteral("screenshots/themes/glass/notifications-qs.png"), "png");
+        write(data() + QStringLiteral("screenshots/themes/glass/notifications-nc.png"), "png");
+        QCOMPARE(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("taskbar")).value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/taskbar.png")).toString() });
+        QCOMPARE(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("notifications")).value(QStringLiteral("images")).toStringList(),
+            (QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/notifications-qs.png")).toString(),
+                QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/notifications-nc.png")).toString() }));
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("startmenu")).value(QStringLiteral("images")).toStringList().isEmpty());
+        // No name picks another's pictures: a theme called glass-taskbar, or
+        // a taskbar style with -qs and -nc pictures lying around.
+        write(data() + QStringLiteral("glass-taskbar.conf"), "radius=3\n");
+        write(data() + QStringLiteral("screenshots/themes/glass-taskbar-qs.png"), "png");
+        const QVariantList more = vela::themes::gallery(QString());
+        const auto other = std::find_if(more.cbegin(), more.cend(),
+            [](const QVariant& t) { return t.toMap().value(QStringLiteral("name")) == QStringLiteral("glass-taskbar"); });
+        QVERIFY(other != more.cend());
+        QVERIFY(other->toMap().value(QStringLiteral("images")).toStringList().isEmpty());
+        write(data() + QStringLiteral("screenshots/taskbar/pill-qs.png"), "png");
+        QCOMPARE(vela::themes::gallery(QStringLiteral("taskbar"))[0].toMap().value(QStringLiteral("images")).toStringList().size(), 1);
+        // Your own pictures, for your own themes, win over the installed ones.
+        write(config() + QStringLiteral("screenshots/themes/glass.png"), "png");
+        const QVariantList mine = vela::themes::gallery(QString());
+        const auto glassAgain = std::find_if(mine.cbegin(), mine.cend(),
+            [](const QVariant& t) { return t.toMap().value(QStringLiteral("name")) == QStringLiteral("glass"); });
+        QCOMPARE(glassAgain->toMap().value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(config() + QStringLiteral("screenshots/themes/glass.png")).toString() });
+        // A theme of your own without pictures shows those of the theme it
+        // builds on, and says whose they are; its own win when it has them.
+        write(config() + QStringLiteral("mine.conf"), "# Mine: on Glass\ninherits=glass\naccent=#ff0000\n");
+        QVariantMap built = vela::themes::themeSurfacePictures(QStringLiteral("mine"), QStringLiteral("taskbar"));
+        QCOMPARE(built.value(QStringLiteral("from")).toString(), QStringLiteral("glass"));
+        QCOMPARE(built.value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/taskbar.png")).toString() });
+        write(config() + QStringLiteral("screenshots/themes/mine/taskbar.png"), "png");
+        built = vela::themes::themeSurfacePictures(QStringLiteral("mine"), QStringLiteral("taskbar"));
+        QCOMPARE(built.value(QStringLiteral("from")).toString(), QStringLiteral("mine"));
+        QCOMPARE(built.value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(config() + QStringLiteral("screenshots/themes/mine/taskbar.png")).toString() });
+        // None in the chain: none, from no theme.
+        built = vela::themes::themeSurfacePictures(QStringLiteral("mine"), QStringLiteral("startmenu"));
+        QVERIFY(built.value(QStringLiteral("images")).toStringList().isEmpty());
+        QVERIFY(built.value(QStringLiteral("from")).toString().isEmpty());
+        // Every folder with pictures, for Settings to watch.
+        const QStringList watched = vela::themes::pictureDirectories();
+        for (const QString& dir : { data() + QStringLiteral("screenshots"), data() + QStringLiteral("screenshots/themes/glass"),
+                 data() + QStringLiteral("screenshots/taskbar"), config() + QStringLiteral("screenshots/themes/mine") }) {
+            QVERIFY2(watched.contains(QDir::cleanPath(dir)), qPrintable(dir));
+        }
+        // Not a way out of screenshots/themes/, nor a surface that isn't one.
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("../glass"), QStringLiteral("taskbar")).value(QStringLiteral("images")).toStringList().isEmpty());
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QString()).value(QStringLiteral("images")).toStringList().isEmpty());
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("elsewhere")).value(QStringLiteral("images")).toStringList().isEmpty());
     }
 
     void colorsAndNumbers()
@@ -252,6 +332,78 @@ private slots:
         QVERIFY(!vela::themes::themed(map, QStringLiteral("background"), false).isValid());
     }
 
+    // The taskbar's layout, the one rule of Styles.qml, Start's placement and
+    // Settings: what floats, what fits, where the apps go.
+    void taskbarLayout()
+    {
+        using vela::themes::taskbarLayout;
+        const auto layout = [](const QByteArray& text, bool light = false) {
+            return taskbarLayout(read(text).tokens, light);
+        };
+        // Vela's own bar: across the screen, the apps where the alignment says.
+        vela::themes::TaskbarLayout bar = layout("");
+        QCOMPARE(bar.variant, QStringLiteral("default"));
+        QVERIFY(!bar.floating);
+        QVERIFY(!bar.fit);
+        QCOMPARE(bar.edge, 0);
+        QVERIFY(bar.appsAtLeft(QStringLiteral("left")));
+        QVERIFY(!bar.appsAtLeft(QStringLiteral("center")));
+        // taskbar-fit alone fits nothing: only a floating bar can.
+        QVERIFY(!layout("taskbar-fit=1\n").fit);
+        // A margin or a radius floats it, still following the alignment.
+        bar = layout("taskbar-margin=12\ntaskbar-radius=8\n");
+        QVERIFY(bar.floating);
+        QCOMPARE(bar.margin, 12);
+        QCOMPARE(bar.radius, 8);
+        QVERIFY(!bar.fit);
+        QVERIFY(bar.appsAtLeft(QStringLiteral("left")));
+        // Fitted, it places the apps itself: centered whatever the alignment...
+        bar = layout("taskbar-radius=8\ntaskbar-fit=1\n");
+        QVERIFY(bar.fit);
+        QVERIFY(!bar.appsAtLeft(QStringLiteral("left")));
+        // ...or at the left with the tray at the edge (Left pill).
+        bar = layout("taskbar-radius=8\ntaskbar-fit=1\ntaskbar-edge=2\n");
+        QCOMPARE(bar.edge, 2);
+        QVERIFY(bar.appsAtLeft(QStringLiteral("center")));
+        QVERIFY(bar.appsAtLeft(QStringLiteral("left")));
+        // An edge without a fitted pill is no layout of its own.
+        bar = layout("taskbar-radius=8\ntaskbar-edge=2\n");
+        QCOMPARE(bar.edge, 0);
+        QVERIFY(!bar.appsAtLeft(QStringLiteral("center")));
+        // A variant floats and fits unless its keys say no; the dock keeps the
+        // tray at the edge.
+        bar = layout("taskbar-variant=floating\n");
+        QVERIFY(bar.floating && bar.fit);
+        QCOMPARE(bar.margin, 10);
+        QCOMPARE(bar.radius, 18);
+        QCOMPARE(layout("taskbar-variant=dock\n").edge, 1);
+        QVERIFY(!layout("taskbar-variant=floating\ntaskbar-fit=0\n").fit);
+        QVERIFY(!layout("taskbar-variant=floating\ntaskbar-margin=0\ntaskbar-radius=0\n").floating);
+        // Numbers as Styles.qml takes them: rounded like Math.round(), clamped.
+        QVERIFY(!layout("taskbar-margin=0.4\n").floating);
+        QCOMPARE(layout("taskbar-margin=0.5\n").margin, 1);
+        QCOMPARE(layout("taskbar-margin=99\ntaskbar-radius=99\n").margin, 24);
+        QCOMPARE(layout("taskbar-margin=99\ntaskbar-radius=99\n").radius, 48);
+        QCOMPARE(layout("taskbar-radius=8\ntaskbar-fit=1\ntaskbar-edge=7\n").edge, 2);
+        // Too large for an int: clamped all the same, not wrapped round.
+        QCOMPARE(layout("taskbar-margin=1000000000000\n").margin, 24);
+        QCOMPARE(layout("taskbar-margin=-1000000000000\n").margin, 0);
+        // Each mode its own.
+        const QByteArray modes = "taskbar-radius=8\ndark.taskbar-fit=1\nlight.taskbar-fit=0\n";
+        QVERIFY(layout(modes, false).fit);
+        QVERIFY(!layout(modes, true).fit);
+        // Whether a taskbar style decides the layout over the theme (Taskbar's
+        // alignment names it): any of the layout's keys, in a mode or both.
+        using vela::themes::setsTaskbarLayout;
+        QVERIFY(setsTaskbarLayout(read("taskbar-fit=1\n", vela::themes::Taskbar).tokens, false));
+        QVERIFY(setsTaskbarLayout(read("taskbar-variant=dock\n", vela::themes::Taskbar).tokens, true));
+        QVERIFY(!setsTaskbarLayout(read("taskbar-height=52\ntaskbar=#26000000\n", vela::themes::Taskbar).tokens, false));
+        // A mode's keys, in that mode only.
+        const QVariantMap darkOnly = read("dark.taskbar-radius=4\n", vela::themes::Taskbar).tokens;
+        QVERIFY(setsTaskbarLayout(darkOnly, false));
+        QVERIFY(!setsTaskbarLayout(darkOnly, true));
+    }
+
     void configuredNameIsTheLastOne()
     {
         const QString conf = qEnvironmentVariable("XDG_CONFIG_HOME") + QStringLiteral("/vela/vela.conf");
@@ -323,6 +475,14 @@ private slots:
 
     // Until the user's own themes directory exists, the nearest one above it
     // is watched, so that creating it is noticed.
+    // Where your own themes and styles go (Settings' Open folder).
+    void theUsersDirectories()
+    {
+        const QString home = qEnvironmentVariable("XDG_CONFIG_HOME");
+        QCOMPARE(vela::themes::userDirectory(), home + QStringLiteral("/vela/themes"));
+        QCOMPARE(vela::themes::userDirectory(vela::themes::Notifications), home + QStringLiteral("/vela/themes/notifications"));
+    }
+
     void watchedDirectoriesIncludeTheUsersParent()
     {
         const QString config = qEnvironmentVariable("XDG_CONFIG_HOME");

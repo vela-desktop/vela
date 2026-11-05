@@ -12,6 +12,7 @@ extern "C" {
 #include "iconprovider.h"
 #include "themefile.h"
 
+#include <QDesktopServices>
 #include <QDir>
 #include <QTime>
 #include <QJsonObject>
@@ -106,6 +107,12 @@ void Preferences::watchThemes()
                     m_themesWatcher.addPath(path);
                 }
             }
+        }
+    }
+    // The pictures' folders too: one added shows in the galleries at once.
+    for (const QString& dir : vela::themes::pictureDirectories()) {
+        if (!m_themesWatcher.directories().contains(dir)) {
+            m_themesWatcher.addPath(dir);
         }
     }
 }
@@ -655,11 +662,6 @@ void Preferences::setVisualTheme(const QString& name)
     }
 }
 
-QVariantList Preferences::visualThemes() const
-{
-    return vela::themes::available();
-}
-
 QVariantMap Preferences::resolveTheme(const QString& name) const
 {
     // The same resolution as the shell's (Appearance), without applying it:
@@ -676,7 +678,9 @@ QVariantMap Preferences::resolveTheme(const QString& name) const
         problems.append(vela::themes::toVariant(problem));
     }
     return { { QStringLiteral("installed"), !theme.files.isEmpty() }, { QStringLiteral("tokens"), loaded.merged() },
-        { QStringLiteral("problems"), problems } };
+        { QStringLiteral("problems"), problems },
+        { QStringLiteral("layoutFromStyle"), vela::themes::setsTaskbarLayout(loaded.layers[vela::themes::Taskbar].tokens,
+                                          m_shellTheme == QLatin1String("light")) } };
 }
 
 void Preferences::setSurfaceStyle(const QString& surface, const QString& style)
@@ -696,12 +700,54 @@ QVariantList Preferences::styleGallery(const QString& surface) const
     return vela::themes::gallery(surface);
 }
 
+QVariantMap Preferences::themeSurfacePictures(const QString& theme, const QString& surface) const
+{
+    return vela::themes::themeSurfacePictures(theme, surface);
+}
+
 void Preferences::resetThemes()
 {
     QStringList keys { QStringLiteral("theme") };
     m_visualTheme = vela::themes::defaultTheme();
     for (auto it = m_surfaceStyles.begin(); it != m_surfaceStyles.end(); ++it) {
         it.value() = QString();
+        keys.append(it.key() + QStringLiteral("-style"));
+    }
+    saveCompositorKeys(keys);
+    emit visualThemeChanged();
+}
+
+QString Preferences::displayName(const QString& surface, const QString& name) const
+{
+    return vela::themes::displayName(surface, name);
+}
+
+void Preferences::openThemesFolder(const QString& surface)
+{
+    const vela::themes::Layer layer = vela::themes::layerFor(surface);
+    if (layer >= vela::themes::LayerCount) {
+        return;
+    }
+    // Made, it is watched at once: the watcher keeps an eye on the directory
+    // above it while it doesn't exist (watchThemes()).
+    const QString dir = vela::themes::userDirectory(layer);
+    QDir().mkpath(dir);
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+}
+
+void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& styles)
+{
+    // A theme name vela.conf had by hand and Vela can't load stays as it is;
+    // the styles come back all the same.
+    const QString name = theme.isEmpty() ? vela::themes::defaultTheme() : theme;
+    QStringList keys;
+    if (vela::themes::validName(name)) {
+        m_visualTheme = name;
+        keys.append(QStringLiteral("theme"));
+    }
+    for (auto it = m_surfaceStyles.begin(); it != m_surfaceStyles.end(); ++it) {
+        const QString style = styles.value(it.key()).toString().trimmed();
+        it.value() = style.isEmpty() || vela::themes::validName(style) ? style : QString();
         keys.append(it.key() + QStringLiteral("-style"));
     }
     saveCompositorKeys(keys);

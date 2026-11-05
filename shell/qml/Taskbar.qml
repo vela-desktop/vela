@@ -37,6 +37,9 @@ Window {
     // in it, the clock's highlight and the notifications' badge.
     readonly property int fitPadding: 10
     readonly property int edgeGap: Math.max(style.margin, 8) // the tray pill's gap to the screen's edge
+    // A floating pill sits this far inside the bar above and below: the tray's
+    // and the clock's highlights keep inside it, as tall as on Vela's bar.
+    readonly property int inset: floating ? style.margin : 0
     // The notification area, the system icons and the clock, side by side.
     readonly property real trayGroupWidth: (transferIndicator.visible ? transferIndicator.width + 4 : 0)
         + (tray.visible ? tray.width + 4 : 0) + microphone.width + caffeine.width
@@ -463,9 +466,11 @@ Window {
                 }
                 onXChanged: reportGeometry()
                 onWindowCountChanged: reportGeometry()
+                // The row moves down too, when a floating bar grows taller.
                 Connections {
                     target: buttons
                     function onXChanged() { task.reportGeometry() }
+                    function onYChanged() { task.reportGeometry() }
                 }
 
                 Image {
@@ -549,7 +554,7 @@ Window {
             root.openAbove(entries, transferIndicator, true, { minWidth: 360 })
         }
         Fill {
-            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
             radius: Theme.radius
             color: transferMouse.pressed ? Theme.subtlePressed
                 : transferMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
@@ -596,7 +601,7 @@ Window {
                 visible: icon !== ""
 
                 Fill {
-                    anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+                    anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
                     radius: Theme.radius
                     color: trayMouse.pressed ? Theme.subtlePressed : trayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 }
@@ -674,7 +679,7 @@ Window {
             onTriggered: microphone.showTooltip()
         }
         Fill {
-            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
             radius: Theme.radius
             color: microphoneMouse.pressed ? Theme.subtlePressed : microphoneMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         }
@@ -761,7 +766,7 @@ Window {
             onTriggered: caffeine.showTooltip()
         }
         Fill {
-            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
             radius: Theme.radius
             color: caffeineMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
             opacity: caffeineMouse.containsMouse ? 1 : 0
@@ -799,7 +804,7 @@ Window {
         width: visible ? iconsRow.width + 16 : 0
 
         Fill {
-            anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
+            anchors { fill: parent; topMargin: 4 + root.inset; bottomMargin: 4 + root.inset }
             radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: systemMouse.pressed ? Theme.subtlePressed : systemMouse.containsMouse || Menus.quickSettingsOpen ? Theme.subtleHover : Theme.subtleRest
         }
@@ -869,17 +874,17 @@ Window {
         anchors { top: parent.top; bottom: parent.bottom }
         width: clockColumn.implicitWidth + 16 + (Notifications.history.count > 0 || Notifications.doNotDisturb ? 22 : 0)
 
-        property date now: new Date()
+        property date now: Shell.now()
 
         Timer {
             interval: 1000
             running: true
             repeat: true
-            onTriggered: clock.now = new Date()
+            onTriggered: clock.now = Shell.now()
         }
 
         Fill {
-            anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
+            anchors { fill: parent; topMargin: 4 + root.inset; bottomMargin: 4 + root.inset }
             // A floating style's buttons' corners: its highlight is one of them.
             radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest

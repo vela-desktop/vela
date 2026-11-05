@@ -139,9 +139,10 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription(QStringLiteral("Vela Settings"));
     parser.addHelpOption();
     const QCommandLineOption pageOption(QStringLiteral("page"),
-        QStringLiteral("The page to open: system, display, sound, notifications, power, about, updates, bluetooth, "
-                       "volume-mixer, network, personalization, background, colors, taskbar, apps, installed-apps, "
-                       "default-apps, time-language, datetime, keyboard, night-light, accessibility."),
+        QStringLiteral("The page to open: home, system, display, sound, volume-mixer, notifications, power, about, "
+                       "updates, bluetooth, network, personalization, background, colors, themes, taskbar, start, "
+                       "apps, installed-apps, default-apps, time-language, datetime, keyboard, mouse, touchpad, "
+                       "clipboard, night-light, accessibility."),
         QStringLiteral("name"));
     parser.addOption(pageOption);
     parser.process(app);

@@ -80,6 +80,17 @@ set(SETTINGS_QML_FILES
     qml/WhatsNew.qml
     qml/UpdateOptions.qml
     qml/PageHeader.qml
+    qml/DesktopPreview.qml
+    qml/AccentCard.qml
+    qml/PictureTile.qml
+    qml/ThemeGallery.qml
+    qml/StyleGallery.qml
+    qml/StyleChooser.qml
+    qml/TaskbarAlignmentCard.qml
+    qml/ResetThemesCard.qml
+    qml/ThemeInUseCard.qml
+    qml/OwnThemesCard.qml
+    qml/UndoBar.qml
     qml/Page.qml
     qml/pages/HomePage.qml
     qml/pages/SystemPage.qml
@@ -98,6 +109,7 @@ set(SETTINGS_QML_FILES
     qml/pages/ColorsPage.qml
     qml/pages/ThemesPage.qml
     qml/pages/TaskbarPage.qml
+    qml/pages/StartPage.qml
     qml/pages/AppsPage.qml
     qml/pages/InstalledAppsPage.qml
     qml/pages/DefaultAppsPage.qml
@@ -168,7 +180,8 @@ if(VELA_BUILD_TOOLS)
     qt_add_executable(vela-settings-test tests/settings_test.cpp)
     target_compile_definitions(vela-settings-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
         FAKE_BLUETOOTH="${PROJECT_SOURCE_DIR}/common/bluetooth/tests/FakeBluetooth.qml"
-        FAKE_UPDATES="${PROJECT_SOURCE_DIR}/common/updates/tests/FakeUpdates.qml")
+        FAKE_UPDATES="${PROJECT_SOURCE_DIR}/common/updates/tests/FakeUpdates.qml"
+        FAKE_PREFS="${CMAKE_CURRENT_SOURCE_DIR}/tests/FakePrefs.qml")
     target_compile_options(vela-settings-test PRIVATE -Wall -Wextra)
     target_include_directories(vela-settings-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
     target_link_libraries(vela-settings-test PRIVATE vela-controls vela-controlsplugin vela-bluetooth-uiplugin Qt6::QuickTest)

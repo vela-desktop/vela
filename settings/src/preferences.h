@@ -148,20 +148,31 @@ public:
     QString visualTheme() const { return m_visualTheme; }
     int themesRevision() const { return m_themesRevision; }
     void setVisualTheme(const QString& theme);
-    // The installed themes: { name, text, author }, the user's over the
-    // system's, Vela Official first.
-    Q_INVOKABLE QVariantList visualThemes() const;
     // A theme as the shell would use it, with the surfaces' chosen styles
     // over it, without choosing it (the preview): { installed, tokens,
-    // problems: [{ kind, file, line, key, value }] } (the theme's problems).
+    // problems: [{ kind, file, line, key, value }] (the theme's problems),
+    // layoutFromStyle: the taskbar style chosen sets the bar's layout in
+    // Vela's mode }.
     Q_INVOKABLE QVariantMap resolveTheme(const QString& name) const;
     QVariantMap surfaceStyles() const { return m_surfaceStyles; }
     // surface: "taskbar", "startmenu" or "notifications"; style "" for none.
     Q_INVOKABLE void setSurfaceStyle(const QString& surface, const QString& style);
-    // A surface's styles with their pictures: { name, text, author, images }.
+    // A surface's styles with their pictures: { name, text, author, images };
+    // the themes with theirs for surface "".
     Q_INVOKABLE QVariantList styleGallery(const QString& surface) const;
+    // A surface as a theme draws it, without styles: { images: its pictures'
+    // URLs, from: the theme they show, the theme's or one it builds on }.
+    Q_INVOKABLE QVariantMap themeSurfacePictures(const QString& theme, const QString& surface) const;
     // Vela Official and no styles: Vela's own look.
     Q_INVOKABLE void resetThemes();
+    // What a theme ("") or a surface's style is called, "" if not installed.
+    Q_INVOKABLE QString displayName(const QString& surface, const QString& name) const;
+    // Opens where your own themes ("") or a surface's styles go in the file
+    // manager, made first if it isn't there.
+    Q_INVOKABLE void openThemesFolder(const QString& surface);
+    // A theme and each surface's style ({ taskbar, startmenu, notifications },
+    // "" for none) in one write of vela.conf: Reset's Undo.
+    Q_INVOKABLE void setThemeAndStyles(const QString& theme, const QVariantMap& styles);
 
     QVariantList keyboardLayouts() const { return m_layouts; }
     Q_INVOKABLE void addKeyboardLayout(const QString& layout, const QString& variant);

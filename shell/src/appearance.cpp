@@ -107,6 +107,20 @@ QStringList Appearance::chosenStyles() const
     return chosen;
 }
 
+QVariantMap Appearance::taskbarLayout(const QVariantMap& tokens, bool light, const QString& alignment) const
+{
+    const vela::themes::TaskbarLayout layout = vela::themes::taskbarLayout(tokens, light);
+    return {
+        { QStringLiteral("variant"), layout.variant },
+        { QStringLiteral("margin"), layout.margin },
+        { QStringLiteral("radius"), layout.radius },
+        { QStringLiteral("floating"), layout.floating },
+        { QStringLiteral("fit"), layout.fit },
+        { QStringLiteral("edge"), layout.edge },
+        { QStringLiteral("appsAtLeft"), layout.appsAtLeft(alignment) },
+    };
+}
+
 void Appearance::reload()
 {
     QSettings shell(QStringLiteral("Vela"), QStringLiteral("vela-shell"));

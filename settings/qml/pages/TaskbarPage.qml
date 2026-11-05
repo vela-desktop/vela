@@ -4,9 +4,12 @@
 import QtQuick
 import Vela.Controls
 
-// Personalization > Taskbar.
+// Personalization > Taskbar: what is on it and how it behaves first, then its
+// style and the style of the quick settings and notification center it opens
+// (taskbar-style=, notifications-style= in vela.conf, over the theme), each
+// closed under its card until opened.
 Page {
-    PersonalizationPage.DesktopPreview {}
+    DesktopPreview {}
 
     CardGroup {
         title: qsTr("Taskbar items")
@@ -23,15 +26,8 @@ Page {
 
     CardGroup {
         title: qsTr("Taskbar behaviors")
-        Card {
-            icon: "format-justify-center"
-            title: qsTr("Taskbar alignment")
-            trailing: Choice {
-                model: [qsTr("Center"), qsTr("Left")]
-                currentIndex: Prefs.taskbarAlignment === "left" ? 1 : 0
-                onChosen: index => Prefs.taskbarAlignment = index === 1 ? "left" : "center"
-            }
-        }
+        // Disabled, with the reason, while a pill places the apps itself.
+        TaskbarAlignmentCard {}
         Card {
             icon: "video-display"
             title: qsTr("Show the taskbar on all displays")
@@ -58,6 +54,20 @@ Page {
                 checked: Prefs.endTask
                 onToggled: Prefs.endTask = checked
             }
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Styles")
+        StyleChooser {
+            surface: "taskbar"
+            icon: "preferences-system-windows"
+            title: qsTr("Taskbar")
+        }
+        StyleChooser {
+            surface: "notifications"
+            icon: "preferences-desktop-notification"
+            title: qsTr("Quick settings and notification center")
         }
     }
 }
