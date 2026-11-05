@@ -21,11 +21,16 @@
 
 namespace {
 
-QTemporaryDir* home = nullptr;
+// Everything the test reads and writes, made on first use, gone at exit.
+QTemporaryDir& home()
+{
+    static QTemporaryDir dir;
+    return dir;
+}
 
 QString confPath()
 {
-    return home->filePath(QStringLiteral("config/Vela/vela-shell.conf"));
+    return home().filePath(QStringLiteral("config/Vela/vela-shell.conf"));
 }
 
 } // namespace
@@ -46,7 +51,7 @@ class PreferencesTest : public QObject {
     }
     static QString makeFile(const QString& name)
     {
-        const QString path = home->filePath(name);
+        const QString path = home().filePath(name);
         QFile file(path);
         if (file.open(QIODevice::WriteOnly)) {
             file.write("png");
@@ -75,7 +80,7 @@ private slots:
         QCOMPARE(prefs.startIcon(), QStringLiteral("vela"));
         QCOMPARE(prefs.startIconSource(), QString());
         QCOMPARE(prefs.distributionName(), QStringLiteral("Test Linux 2"));
-        QCOMPARE(prefs.distributionLogo(), home->filePath(QStringLiteral("data/pixmaps/test-logo.png")));
+        QCOMPARE(prefs.distributionLogo(), home().filePath(QStringLiteral("data/pixmaps/test-logo.png")));
     }
 
     void readsTheFile()
@@ -171,7 +176,7 @@ private slots:
         QCOMPARE(start.count(), 4);
 
         // One that isn't there, or isn't a path: ignored.
-        prefs.setStartIcon(QStringLiteral("picture"), home->filePath(QStringLiteral("nowhere.png")));
+        prefs.setStartIcon(QStringLiteral("picture"), home().filePath(QStringLiteral("nowhere.png")));
         prefs.setStartIcon(QStringLiteral("picture"), QStringLiteral("relative.png"));
         QCOMPARE(prefs.startIconSource(), picture);
         QCOMPARE(start.count(), 4);
@@ -194,11 +199,10 @@ private slots:
 
 int main(int argc, char** argv)
 {
-    QTemporaryDir dir;
+    QTemporaryDir& dir = home();
     if (!dir.isValid()) {
         return 1;
     }
-    home = &dir;
     for (const auto& [name, leaf] : { std::pair { "HOME", "home" }, std::pair { "XDG_CONFIG_HOME", "config" },
              std::pair { "XDG_DATA_HOME", "data" }, std::pair { "XDG_CACHE_HOME", "cache" },
              std::pair { "XDG_STATE_HOME", "state" }, std::pair { "XDG_RUNTIME_DIR", "runtime" },

@@ -20,11 +20,16 @@
 
 namespace {
 
-QTemporaryDir* home = nullptr;
+// Everything the test reads and writes, made on first use, gone at exit.
+QTemporaryDir& home()
+{
+    static QTemporaryDir dir;
+    return dir;
+}
 
 QString confPath()
 {
-    return home->filePath(QStringLiteral("config/Vela/vela-shell.conf"));
+    return home().filePath(QStringLiteral("config/Vela/vela-shell.conf"));
 }
 
 } // namespace
@@ -113,7 +118,7 @@ private slots:
         QVERIFY(!config.startPinned());
 
         // A picture there is: drawn; gone: the sail.
-        const QString picture = home->filePath(QStringLiteral("start.png"));
+        const QString picture = home().filePath(QStringLiteral("start.png"));
         QFile file(picture);
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write("png");
@@ -130,7 +135,7 @@ private slots:
         // The distribution's logo (VELA_OS_RELEASE, main()).
         write("[start]\nicon=distribution\n");
         QVERIFY(start.wait(3000));
-        QCOMPARE(config.startIconSource(), home->filePath(QStringLiteral("data/icons/test-logo.svg")));
+        QCOMPARE(config.startIconSource(), home().filePath(QStringLiteral("data/icons/test-logo.svg")));
     }
 
     void tellsTheDesktopAboutItsIcons()
@@ -153,7 +158,7 @@ private slots:
         QCOMPARE(vela::clock::timeFormat(false), QStringLiteral("h:mm AP"));
         QCOMPARE(vela::clock::timeFormat(false, true), QStringLiteral("h:mm:ss AP"));
         // Anything but 12 is 24-hour.
-        QSettings settings(home->filePath(QStringLiteral("hours.conf")), QSettings::IniFormat);
+        QSettings settings(home().filePath(QStringLiteral("hours.conf")), QSettings::IniFormat);
         QVERIFY(vela::clock::hour24(settings));
         settings.setValue(QStringLiteral("clock/hours"), 13);
         QVERIFY(vela::clock::hour24(settings));
@@ -164,12 +169,10 @@ private slots:
 
 int main(int argc, char** argv)
 {
-    // Everything this test reads and writes, in a directory of its own.
-    QTemporaryDir dir;
+    QTemporaryDir& dir = home();
     if (!dir.isValid()) {
         return 1;
     }
-    home = &dir;
     qputenv("XDG_CONFIG_HOME", dir.filePath(QStringLiteral("config")).toUtf8());
     qputenv("XDG_DATA_HOME", dir.filePath(QStringLiteral("data")).toUtf8());
     qputenv("XDG_DATA_DIRS", dir.filePath(QStringLiteral("system")).toUtf8());

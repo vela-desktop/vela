@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QImage>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -108,9 +109,13 @@ private slots:
     {
         // No loose file: the theme's icon, by its name.
         const QString themes = m_dir.filePath(QStringLiteral("themes"));
+        // A PNG: whether Qt reads SVG icons depends on its plugins.
         write(themes + QStringLiteral("/test/index.theme"),
-            "[Icon Theme]\nName=Test\nDirectories=apps\n\n[apps]\nSize=48\nType=Scalable\nMinSize=8\nMaxSize=512\n");
-        write(themes + QStringLiteral("/test/apps/themed-logo.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
+            "[Icon Theme]\nName=Test\nDirectories=apps\n\n[apps]\nSize=48\nType=Fixed\n");
+        QVERIFY(QDir().mkpath(themes + QStringLiteral("/test/apps")));
+        QImage logo(48, 48, QImage::Format_ARGB32);
+        logo.fill(Qt::green);
+        QVERIFY(logo.save(themes + QStringLiteral("/test/apps/themed-logo.png")));
         QIcon::setThemeSearchPaths({ themes });
         QIcon::setThemeName(QStringLiteral("test"));
         write(m_dir.filePath(QStringLiteral("os-release")), "NAME=Themed\nLOGO=themed-logo\n");
