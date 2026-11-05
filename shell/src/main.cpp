@@ -254,25 +254,16 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
     return window;
 }
 
-// With the taskbar aligned left, Start opens at the bottom left: its window
-// touches the output's edge, and the panel rests 12 units from it
-// (StartMenu.qml's `atLeft`). A taskbar style that puts the apps, Start
-// first, in a pill at the screen's left (taskbar-edge=2: Layer Mica UI) opens
-// it there too: Styles.qml's and Taskbar.qml's rule, floating && fit && edge.
+// Start opens above its button: at the bottom left where the apps are at the
+// screen's left, its window touching the output's edge and the panel 12 units
+// from it (StartMenu.qml's `atLeft`). That is the alignment "left", unless a
+// fitted pill places the apps itself: centered, or at the left with
+// taskbar-edge=2 (Layer Mica UI). themefile.h's taskbarLayout() is the rule,
+// the one Styles.qml and Taskbar.qml draw with.
 void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVariantMap& theme, bool light)
 {
     LayerWindow* layer = LayerWindow::get(window);
-    const auto number = [&theme, light](const char* key, double fallback) {
-        const QVariant value = vela::themes::themed(theme, QLatin1String(key), light);
-        return value.typeId() == QMetaType::Double ? value.toDouble() : fallback;
-    };
-    const QVariant variantValue = vela::themes::themed(theme, QStringLiteral("taskbar-variant"), light);
-    const bool styled = variantValue.isValid() && variantValue.toString() != QLatin1String("default");
-    const bool floating = number("taskbar-margin", styled ? 10 : 0) > 0 || number("taskbar-radius", styled ? 18 : 0) > 0;
-    const bool fit = floating && number("taskbar-fit", styled ? 1 : 0) != 0;
-    // A fitted pill places its apps itself (Taskbar.qml): centered, or at the
-    // left with taskbar-edge=2, whatever the alignment says.
-    const bool left = fit ? number("taskbar-edge", 0) == 2 : alignment == QLatin1String("left");
+    const bool left = vela::themes::taskbarLayout(theme, light).appsAtLeft(alignment);
     layer->setAnchors(left ? bottomLeft : bottom);
     window->setProperty("atLeft", left);
 }

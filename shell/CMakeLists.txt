@@ -224,7 +224,8 @@ if(VELA_BUILD_TOOLS)
     target_compile_definitions(vela-themefile-test PRIVATE
         THEMES_DIR="${PROJECT_SOURCE_DIR}/themes"
         THEME_QML="${PROJECT_SOURCE_DIR}/common/controls/Theme.qml"
-        STYLES_QML="${PROJECT_SOURCE_DIR}/shell/qml/Styles.qml")
+        STYLES_QML="${PROJECT_SOURCE_DIR}/shell/qml/Styles.qml"
+        THEMEFILE_H="${CMAKE_CURRENT_SOURCE_DIR}/src/themefile.h")
     target_compile_options(vela-themefile-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-themefile-test PRIVATE vela-theme-tokens Qt6::Core Qt6::Gui Qt6::Test)
     add_test(NAME shell-themefile COMMAND vela-themefile-test)

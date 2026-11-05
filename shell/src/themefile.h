@@ -541,6 +541,57 @@ inline QVariant themed(const QVariantMap& theme, const QString& key, bool light)
     return theme.contains(modeKey) ? theme.value(modeKey) : theme.value(key);
 }
 
+// The taskbar's layout in a theme with its styles (merged tokens), in one
+// mode: the one rule that Styles.qml and Taskbar.qml draw with, and that
+// Start's placement (main.cpp) and Settings (the alignment, the preview)
+// read. A floating bar is a pill off the screen's edges; a fitted one is as
+// wide as its apps and places them itself, whatever the alignment says:
+// centered, or with the tray in a pill of its own at the screen's right edge
+// and the apps centered (edge 1) or at the left (edge 2).
+struct TaskbarLayout {
+    QString variant = QStringLiteral("default"); // taskbar-variant
+    int margin = 0; // taskbar-margin, 0 to 24
+    int radius = 0; // taskbar-radius, 0 to 48
+    bool floating = false; // a margin or a radius
+    bool fit = false; // floating and as wide as its apps (taskbar-fit)
+    int edge = 0; // taskbar-edge while fitted, else 0
+
+    // The apps, and Start with them, at the screen's left: the alignment's
+    // choice, unless the pill places them.
+    bool appsAtLeft(const QString& alignment) const
+    {
+        return fit ? edge == 2 : alignment == QLatin1String("left");
+    }
+};
+
+// The keys it reads: common/CMakeLists.txt makes them theme tokens, as it does
+// with the keys Styles.qml reads itself.
+inline TaskbarLayout taskbarLayout(const QVariantMap& tokens, bool light)
+{
+    // Styles.qml's size(): the number rounded as JavaScript's Math.round()
+    // does, clamped; the fallback without one.
+    const auto size = [&tokens, light](const char* key, double fallback, int low, int high) {
+        const QVariant value = themed(tokens, QLatin1String(key), light);
+        const double number = value.typeId() == QMetaType::Double ? value.toDouble() : fallback;
+        return std::clamp(int(std::floor(number + 0.5)), low, high);
+    };
+    TaskbarLayout layout;
+    if (const QVariant variant = themed(tokens, QStringLiteral("taskbar-variant"), light);
+        variant.typeId() == QMetaType::QString && !variant.toString().isEmpty()) {
+        layout.variant = variant.toString();
+    }
+    // A variant other than the default floats and fits unless the keys say no.
+    const bool styled = layout.variant != QLatin1String("default");
+    layout.margin = size("taskbar-margin", styled ? 10 : 0, 0, 24);
+    layout.radius = size("taskbar-radius", styled ? 18 : 0, 0, 48);
+    layout.floating = layout.margin > 0 || layout.radius > 0;
+    // Styles.qml's flag(): any number but 0.
+    const QVariant fit = themed(tokens, QStringLiteral("taskbar-fit"), light);
+    layout.fit = layout.floating && (fit.typeId() == QMetaType::Double ? fit.toDouble() != 0 : styled);
+    layout.edge = layout.fit ? size("taskbar-edge", layout.variant == QLatin1String("dock") ? 1 : 0, 0, 2) : 0;
+    return layout;
+}
+
 // The chosen theme and styles of a vela.conf, each resolved on its own (a
 // panel's blur look comes from the theme and its own style only), and merged
 // (what Theme.qml and Styles.qml take: a style's keys over the theme's).

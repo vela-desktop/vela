@@ -9,19 +9,16 @@ import Vela.Controls
 // vela.conf), over the theme; what is on it and how it behaves.
 Page {
     id: page
-    // The taskbar's layout in the theme and style in use, as the shell takes
-    // it (Styles.qml, Taskbar.qml), in Vela's mode: a fitted pill places its
-    // apps itself, so the alignment below doesn't apply to it.
-    readonly property var tokens: { Prefs.visualTheme; Prefs.surfaceStyles; Prefs.themesRevision; return Prefs.resolveTheme(Prefs.visualTheme).tokens }
-    function token(key, fallback) {
-        const modeKey = (Prefs.shellTheme === "light" ? "light." : "dark.") + key
-        return modeKey in tokens ? tokens[modeKey] : (key in tokens ? tokens[key] : fallback)
+    // The taskbar's layout in the theme and style in use, in Vela's mode, by
+    // the shell's own rule (Style.taskbarLayout(), themefile.h): a fitted pill
+    // places its apps itself, so the alignment below doesn't apply to it.
+    readonly property var layout: {
+        Prefs.visualTheme; Prefs.surfaceStyles; Prefs.themesRevision
+        return Style.taskbarLayout(Prefs.resolveTheme(Prefs.visualTheme).tokens, Prefs.shellTheme === "light",
+            Prefs.taskbarAlignment)
     }
-    readonly property string variant: token("taskbar-variant", "default")
-    readonly property bool floating: token("taskbar-margin", variant === "default" ? 0 : 10) > 0
-        || token("taskbar-radius", variant === "default" ? 0 : 18) > 0
-    readonly property bool fit: floating && token("taskbar-fit", variant === "default" ? 0 : 1) !== 0
-    readonly property bool appsAtLeft: fit && token("taskbar-edge", variant === "dock" ? 1 : 0) === 2
+    readonly property bool fit: layout.fit
+    readonly property bool appsAtLeft: layout.appsAtLeft
     // Who decides it: the style chosen here, or the theme.
     readonly property string layoutOwner: {
         const style = Prefs.surfaceStyles["taskbar"] || ""

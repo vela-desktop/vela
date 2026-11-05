@@ -73,6 +73,16 @@ private slots:
                 read.insert(it.next().captured(1));
             }
         }
+        // And the taskbar's layout, read by taskbarLayout() for Styles.qml:
+        // common/CMakeLists.txt lists its keys by hand, this keeps them in step.
+        QFile header(QStringLiteral(THEMEFILE_H));
+        QVERIFY(header.open(QIODevice::ReadOnly | QIODevice::Text));
+        const QRegularExpression layoutKey(QStringLiteral("(?:size\\(|themed\\(tokens, QStringLiteral\\()\"(taskbar-[a-z-]+)\""));
+        int layoutKeys = 0;
+        for (auto it = layoutKey.globalMatch(QString::fromUtf8(header.readAll())); it.hasNext(); ++layoutKeys) {
+            read.insert(it.next().captured(1));
+        }
+        QCOMPARE(layoutKeys, 5);
         QSet<QString> listed;
         QSet<QString> variantKeys;
         for (const vela::themes::Token& token : vela::themes::tokens) {
@@ -270,6 +280,65 @@ private slots:
         QCOMPARE(vela::themes::themed(map, QStringLiteral("accent"), true).value<QColor>(), QColor(0x11, 0x11, 0x11));
         QCOMPARE(vela::themes::themed(map, QStringLiteral("background"), true).value<QColor>(), QColor(0x33, 0x33, 0x33));
         QVERIFY(!vela::themes::themed(map, QStringLiteral("background"), false).isValid());
+    }
+
+    // The taskbar's layout, the one rule of Styles.qml, Start's placement and
+    // Settings: what floats, what fits, where the apps go.
+    void taskbarLayout()
+    {
+        using vela::themes::taskbarLayout;
+        const auto layout = [](const QByteArray& text, bool light = false) {
+            return taskbarLayout(read(text).tokens, light);
+        };
+        // Vela's own bar: across the screen, the apps where the alignment says.
+        vela::themes::TaskbarLayout bar = layout("");
+        QCOMPARE(bar.variant, QStringLiteral("default"));
+        QVERIFY(!bar.floating);
+        QVERIFY(!bar.fit);
+        QCOMPARE(bar.edge, 0);
+        QVERIFY(bar.appsAtLeft(QStringLiteral("left")));
+        QVERIFY(!bar.appsAtLeft(QStringLiteral("center")));
+        // taskbar-fit alone fits nothing: only a floating bar can.
+        QVERIFY(!layout("taskbar-fit=1\n").fit);
+        // A margin or a radius floats it, still following the alignment.
+        bar = layout("taskbar-margin=12\ntaskbar-radius=8\n");
+        QVERIFY(bar.floating);
+        QCOMPARE(bar.margin, 12);
+        QCOMPARE(bar.radius, 8);
+        QVERIFY(!bar.fit);
+        QVERIFY(bar.appsAtLeft(QStringLiteral("left")));
+        // Fitted, it places the apps itself: centered whatever the alignment...
+        bar = layout("taskbar-radius=8\ntaskbar-fit=1\n");
+        QVERIFY(bar.fit);
+        QVERIFY(!bar.appsAtLeft(QStringLiteral("left")));
+        // ...or at the left with the tray at the edge (Layer Mica UI).
+        bar = layout("taskbar-radius=8\ntaskbar-fit=1\ntaskbar-edge=2\n");
+        QCOMPARE(bar.edge, 2);
+        QVERIFY(bar.appsAtLeft(QStringLiteral("center")));
+        QVERIFY(bar.appsAtLeft(QStringLiteral("left")));
+        // An edge without a fitted pill is no layout of its own.
+        bar = layout("taskbar-radius=8\ntaskbar-edge=2\n");
+        QCOMPARE(bar.edge, 0);
+        QVERIFY(!bar.appsAtLeft(QStringLiteral("center")));
+        // A variant floats and fits unless its keys say no; the dock keeps the
+        // tray at the edge.
+        bar = layout("taskbar-variant=floating\n");
+        QVERIFY(bar.floating && bar.fit);
+        QCOMPARE(bar.margin, 10);
+        QCOMPARE(bar.radius, 18);
+        QCOMPARE(layout("taskbar-variant=dock\n").edge, 1);
+        QVERIFY(!layout("taskbar-variant=floating\ntaskbar-fit=0\n").fit);
+        QVERIFY(!layout("taskbar-variant=floating\ntaskbar-margin=0\ntaskbar-radius=0\n").floating);
+        // Numbers as Styles.qml takes them: rounded like Math.round(), clamped.
+        QVERIFY(!layout("taskbar-margin=0.4\n").floating);
+        QCOMPARE(layout("taskbar-margin=0.5\n").margin, 1);
+        QCOMPARE(layout("taskbar-margin=99\ntaskbar-radius=99\n").margin, 24);
+        QCOMPARE(layout("taskbar-margin=99\ntaskbar-radius=99\n").radius, 48);
+        QCOMPARE(layout("taskbar-radius=8\ntaskbar-fit=1\ntaskbar-edge=7\n").edge, 2);
+        // Each mode its own.
+        const QByteArray modes = "taskbar-radius=8\ndark.taskbar-fit=1\nlight.taskbar-fit=0\n";
+        QVERIFY(layout(modes, false).fit);
+        QVERIFY(!layout(modes, true).fit);
     }
 
     void configuredNameIsTheLastOne()

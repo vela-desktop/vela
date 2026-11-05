@@ -63,30 +63,56 @@ Item {
                 Rectangle { x: 8; y: 20; width: parent.width * 0.7; height: 4; radius: 2; color: parent.line }
                 Rectangle { x: 8; y: 30; width: parent.width * 0.55; height: 4; radius: 2; color: parent.line }
             }
-            Rectangle {
-                // The taskbar, in Vela's mode, with its style's shape
-                // (Styles.qml): a floating pill, or one as wide as the
-                // apps on it (fit), as a style or a variant draws it.
-                readonly property string variant: preview.themed("taskbar-variant", preview.shellLight, "default")
-                readonly property bool floating: variant !== "default"
-                    || preview.themed("taskbar-margin", preview.shellLight, 0) > 0
-                    || preview.themed("taskbar-radius", preview.shellLight, 0) > 0
-                readonly property bool fit: preview.themed("taskbar-fit", preview.shellLight, variant !== "default" ? 1 : 0) !== 0
-                width: fit ? icons.width + 16 : floating ? parent.width - 12 : parent.width
-                x: (parent.width - width) / 2
-                y: parent.height - height - (floating ? 4 : 0)
-                height: 14
-                radius: floating ? 7 : 0
-                color: preview.themed("taskbar", preview.shellLight,
+            Item {
+                id: bar
+                // The taskbar in Vela's mode, laid out by the shell's own rule
+                // (Style.taskbarLayout(), themefile.h): a bar or a floating
+                // pill, or one as wide as its apps (fit) that places them
+                // itself, centered or at the left, with the tray in a pill of
+                // its own at the edge (edge 1 and 2).
+                readonly property var layout: Style.taskbarLayout(preview.themeTokens || {}, preview.shellLight,
+                    Prefs.taskbarAlignment)
+                readonly property color fill: preview.themed("taskbar", preview.shellLight,
                     preview.shellLight ? Qt.rgba(0.94, 0.94, 0.95, 0.88) : Qt.rgba(0.11, 0.11, 0.13, 0.85))
-                Row {
-                    id: icons
-                    x: Prefs.taskbarAlignment === "left" && !parent.fit ? 6 : (parent.width - width) / 2
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 3
-                    Repeater {
-                        model: 5
-                        Rectangle { width: 8; height: 8; radius: 2; color: index === 0 ? preview.accentFill(preview.shellLight) : preview.shellLight ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.45) }
+                readonly property color dot: preview.shellLight ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.45)
+                width: parent.width
+                height: 14
+                y: parent.height - height - (layout.floating ? 4 : 0)
+
+                Rectangle {
+                    // The apps' bar, or pill.
+                    width: bar.layout.fit ? icons.width + 16 : bar.layout.floating ? parent.width - 12 : parent.width
+                    x: bar.layout.fit && bar.layout.edge === 2 ? 6 : (parent.width - width) / 2
+                    height: parent.height
+                    radius: bar.layout.floating ? 7 : 0
+                    color: bar.fill
+                    Row {
+                        id: icons
+                        x: bar.layout.fit ? 8 : bar.layout.appsAtLeft ? 6 : (parent.width - width) / 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 3
+                        Repeater {
+                            model: 5
+                            Rectangle { width: 8; height: 8; radius: 2; color: index === 0 ? preview.accentFill(preview.shellLight) : bar.dot }
+                        }
+                    }
+                }
+                Rectangle {
+                    // The tray's own pill at the screen's edge.
+                    visible: bar.layout.fit && bar.layout.edge > 0
+                    anchors.right: parent.right
+                    anchors.rightMargin: 6
+                    width: 24
+                    height: parent.height
+                    radius: 7
+                    color: bar.fill
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 3
+                        Repeater {
+                            model: 2
+                            Rectangle { width: 4; height: 4; radius: 2; color: bar.dot }
+                        }
                     }
                 }
             }

@@ -29,8 +29,12 @@ QtObject {
 
     // --- the taskbar (themes/taskbar/) ---
     readonly property QtObject taskbar: QtObject {
+        // The layout: taskbar-variant, -margin, -radius, -fit and -edge, read
+        // by themefile.h's taskbarLayout(), the one rule that Start's placement
+        // and Settings (the alignment, the preview) read too.
+        readonly property var layout: Style.taskbarLayout(Style.theme, Theme.light)
         // Named built-in layouts; existing per-property styles remain compatible.
-        readonly property string variant: Theme.themed("taskbar-variant", "default")
+        readonly property string variant: layout.variant
         // A look of its own (a style, or the theme's keys for it): the
         // compositor makes the bar glass from 4% alpha.
         readonly property bool chosen: Style.chosenStyles.indexOf("taskbar") >= 0
@@ -38,20 +42,20 @@ QtObject {
         readonly property int height: styles.size("taskbar-height", 48, 32, 96)
         // Floating: the bar is a pill this far from the window's edges, with
         // these corners; a margin or a radius makes it float.
-        readonly property int margin: styles.size("taskbar-margin", variant === "default" ? 0 : 10, 0, 24)
-        readonly property int radius: styles.size("taskbar-radius", variant === "default" ? 0 : 18, 0, 48)
-        readonly property bool floating: margin > 0 || radius > 0
+        readonly property int margin: layout.margin
+        readonly property int radius: layout.radius
+        readonly property bool floating: layout.floating
         // A floating bar that spans the screen keeps this gap at its sides.
         readonly property int sideMargin: styles.size("taskbar-side-margin", margin, 0, 400)
-        // fit: apps and tray side by side in one centered pill (WindowGlass);
-        // split-gap: the tray a pill of its own, that far; split-radius: the
-        // corners where they part. edge: two pills, the tray at the screen's
-        // right edge, the apps centered (1) or at the left (2); flush: the
-        // apps' pill sits on the bottom edge.
-        readonly property bool fit: styles.flag("taskbar-fit", variant !== "default")
+        // fit: apps and tray side by side in one centered pill (WindowGlass),
+        // floating only; split-gap: the tray a pill of its own, that far;
+        // split-radius: the corners where they part. edge, fitted only: two
+        // pills, the tray at the screen's right edge, the apps centered (1)
+        // or at the left (2); flush: the apps' pill sits on the bottom edge.
+        readonly property bool fit: layout.fit
         readonly property int splitGap: styles.size("taskbar-split-gap", variant === "floating-split" ? 8 : 0, 0, 48)
         readonly property int splitRadius: styles.size("taskbar-split-radius", 5, 0, 48)
-        readonly property int edge: styles.size("taskbar-edge", variant === "dock" ? 1 : 0, 0, 2)
+        readonly property int edge: layout.edge
         readonly property bool flush: styles.flag("taskbar-flush", false)
         readonly property color stroke: Theme.themed("taskbar-stroke", Theme.stroke)
         // The buttons.

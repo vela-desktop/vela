@@ -60,6 +60,14 @@ public:
     bool styleChosen(vela::themes::Layer layer) const { return m_loaded.styled(layer); }
     QStringList chosenStyles() const;
 
+    // The taskbar's layout in these tokens (theme above, or a theme's that
+    // Settings resolves) and mode, as themefile.h's taskbarLayout() takes it:
+    // { variant, margin, radius, floating, fit, edge, appsAtLeft }, the last
+    // for the alignment given ("left" or "center"). Styles.qml draws with it,
+    // Settings explains and previews with it.
+    Q_INVOKABLE QVariantMap taskbarLayout(const QVariantMap& tokens, bool light,
+        const QString& alignment = QString()) const;
+
     // Starts watching the files (after the first frame: startup stays fast).
     void watch();
 
