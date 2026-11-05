@@ -5,17 +5,13 @@ import QtQuick
 import Vela.Controls
 
 // Personalization > Start: the Start menu's style (startmenu-style= in
-// vela.conf), over the theme.
+// vela.conf), over the theme. The page has no other setting, so the gallery
+// shows at once.
 Page {
     CardGroup {
         title: qsTr("Style")
-        StyleGallery { surface: "startmenu" }
-    }
-    CardGroup {
-        Card {
-            icon: "edit-entry"
-            title: qsTr("Your own styles")
-            description: qsTr("A file in ~/.config/vela/themes/startmenu/<name>.conf appears here")
+        StyleGallery {
+            surface: "startmenu"
         }
     }
 }

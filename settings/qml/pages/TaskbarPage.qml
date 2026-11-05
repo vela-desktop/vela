@@ -4,37 +4,12 @@
 import QtQuick
 import Vela.Controls
 
-// Personalization > Taskbar: its style and the style of the quick settings
-// and notification center it opens (taskbar-style=, notifications-style= in
-// vela.conf), over the theme; what is on it and how it behaves.
+// Personalization > Taskbar: what is on it and how it behaves first, then its
+// style and the style of the quick settings and notification center it opens
+// (taskbar-style=, notifications-style= in vela.conf, over the theme), each
+// closed under its card until opened.
 Page {
-    id: page
-    // The taskbar's layout in the theme and style in use, in Vela's mode, by
-    // the shell's own rule (Style.taskbarLayout(), themefile.h): a fitted pill
-    // places its apps itself, so the alignment below doesn't apply to it.
-    readonly property var layout: {
-        Prefs.visualTheme; Prefs.surfaceStyles; Prefs.themesRevision
-        return Style.taskbarLayout(Prefs.resolveTheme(Prefs.visualTheme).tokens, Prefs.shellTheme === "light",
-            Prefs.taskbarAlignment)
-    }
-    readonly property bool fit: layout.fit
-    readonly property bool appsAtLeft: layout.appsAtLeft
-    // Who decides it: the style chosen here, or the theme.
-    readonly property string layoutOwner: {
-        const style = Prefs.surfaceStyles["taskbar"] || ""
-        if (style !== "") {
-            const entry = Prefs.styleGallery("taskbar").find(s => s.name === style)
-            return entry ? entry.text : style
-        }
-        return Prefs.visualThemes().find(t => t.name === Prefs.visualTheme)?.text ?? Prefs.visualTheme
-    }
-
     DesktopPreview {}
-
-    CardGroup {
-        title: qsTr("Style")
-        StyleGallery { surface: "taskbar" }
-    }
 
     CardGroup {
         title: qsTr("Taskbar items")
@@ -51,20 +26,8 @@ Page {
 
     CardGroup {
         title: qsTr("Taskbar behaviors")
-        Card {
-            icon: "format-justify-center"
-            title: qsTr("Taskbar alignment")
-            description: !page.fit ? ""
-                : page.appsAtLeft ? qsTr("%1 keeps the apps at the left: the alignment applies with another style").arg(page.layoutOwner)
-                : qsTr("%1 keeps the apps centered in its pill: the alignment applies with another style").arg(page.layoutOwner)
-            trailing: Choice {
-                usable: !page.fit
-                model: [qsTr("Center"), qsTr("Left")]
-                // What the taskbar does: the style's, while it decides.
-                currentIndex: page.fit ? (page.appsAtLeft ? 1 : 0) : Prefs.taskbarAlignment === "left" ? 1 : 0
-                onChosen: index => Prefs.taskbarAlignment = index === 1 ? "left" : "center"
-            }
-        }
+        // Disabled, with the reason, while a pill places the apps itself.
+        TaskbarAlignmentCard {}
         Card {
             icon: "video-display"
             title: qsTr("Show the taskbar on all displays")
@@ -95,15 +58,16 @@ Page {
     }
 
     CardGroup {
-        title: qsTr("Quick settings and notification center")
-        StyleGallery { surface: "notifications" }
-    }
-
-    CardGroup {
-        Card {
-            icon: "edit-entry"
-            title: qsTr("Your own styles")
-            description: qsTr("A file in ~/.config/vela/themes/taskbar/ or themes/notifications/, <name>.conf, appears here")
+        title: qsTr("Styles")
+        StyleChooser {
+            surface: "taskbar"
+            icon: "preferences-system-windows"
+            title: qsTr("Taskbar")
+        }
+        StyleChooser {
+            surface: "notifications"
+            icon: "preferences-desktop-notification"
+            title: qsTr("Quick settings and notification center")
         }
     }
 }

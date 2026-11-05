@@ -2644,14 +2644,6 @@ Specifiche sistema
         <source>Style</source>
         <translation>Stile</translation>
     </message>
-    <message>
-        <source>Your own styles</source>
-        <translation>Stili personali</translation>
-    </message>
-    <message>
-        <source>A file in ~/.config/vela/themes/startmenu/&lt;name&gt;.conf appears here</source>
-        <translation>Un file in ~/.config/vela/themes/startmenu/&lt;nome&gt;.conf compare qui</translation>
-    </message>
 </context>
 <context>
     <name>StillVisibleCard</name>
@@ -2666,6 +2658,13 @@ Specifiche sistema
     <message>
         <source>Stop being visible</source>
         <translation>Non essere più visibile</translation>
+    </message>
+</context>
+<context>
+    <name>StyleChooser</name>
+    <message>
+        <source>From the theme, as %1 draws it</source>
+        <translation>Dal tema, come lo disegna %1</translation>
     </message>
 </context>
 <context>
@@ -2689,6 +2688,10 @@ Specifiche sistema
     <message>
         <source>Original author: %1</source>
         <translation>Autore originale: %1</translation>
+    </message>
+    <message>
+        <source>Your own styles: a file in ~/.config/vela/themes/%1/&lt;name&gt;.conf appears here</source>
+        <translation>Stili personali: un file in ~/.config/vela/themes/%1/&lt;nome&gt;.conf compare qui</translation>
     </message>
 </context>
 <context>
@@ -2773,11 +2776,38 @@ Specifiche sistema
     </message>
 </context>
 <context>
-    <name>TaskbarPage</name>
+    <name>TaskbarAlignmentCard</name>
     <message>
-        <source>Style</source>
-        <translation>Stile</translation>
+        <source>Taskbar alignment</source>
+        <translation>Allineamento della barra delle applicazioni</translation>
     </message>
+    <message>
+        <source>%1 keeps the apps at the left: the alignment applies with another style</source>
+        <translation>%1 tiene le app a sinistra: l&apos;allineamento vale con un altro stile</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps at the left: the alignment applies with another theme</source>
+        <translation>%1 tiene le app a sinistra: l&apos;allineamento vale con un altro tema</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps centered in its pill: the alignment applies with another style</source>
+        <translation>%1 tiene le app al centro della sua pillola: l&apos;allineamento vale con un altro stile</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps centered in its pill: the alignment applies with another theme</source>
+        <translation>%1 tiene le app al centro della sua pillola: l&apos;allineamento vale con un altro tema</translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation>Al centro</translation>
+    </message>
+    <message>
+        <source>Left</source>
+        <translation>A sinistra</translation>
+    </message>
+</context>
+<context>
+    <name>TaskbarPage</name>
     <message>
         <source>Taskbar items</source>
         <translation>Elementi della barra delle applicazioni</translation>
@@ -2793,26 +2823,6 @@ Specifiche sistema
     <message>
         <source>Taskbar behaviors</source>
         <translation>Comportamenti della barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Taskbar alignment</source>
-        <translation>Allineamento della barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>%1 keeps the apps at the left: the alignment applies with another style</source>
-        <translation>%1 tiene le app a sinistra: l&apos;allineamento vale con un altro stile</translation>
-    </message>
-    <message>
-        <source>%1 keeps the apps centered in its pill: the alignment applies with another style</source>
-        <translation>%1 tiene le app al centro della sua pillola: l&apos;allineamento vale con un altro stile</translation>
-    </message>
-    <message>
-        <source>Center</source>
-        <translation>Al centro</translation>
-    </message>
-    <message>
-        <source>Left</source>
-        <translation>A sinistra</translation>
     </message>
     <message>
         <source>Show the taskbar on all displays</source>
@@ -2839,16 +2849,16 @@ Specifiche sistema
         <translation>Nel menu dei pulsanti della barra delle applicazioni, per chiudere subito un&apos;app che non risponde</translation>
     </message>
     <message>
+        <source>Styles</source>
+        <translation>Stili</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
         <source>Quick settings and notification center</source>
         <translation>Impostazioni rapide e centro notifiche</translation>
-    </message>
-    <message>
-        <source>Your own styles</source>
-        <translation>Stili personali</translation>
-    </message>
-    <message>
-        <source>A file in ~/.config/vela/themes/taskbar/ or themes/notifications/, &lt;name&gt;.conf, appears here</source>
-        <translation>Un file in ~/.config/vela/themes/taskbar/ o themes/notifications/, &lt;nome&gt;.conf, compare qui</translation>
     </message>
 </context>
 <context>

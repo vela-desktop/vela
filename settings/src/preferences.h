@@ -153,7 +153,8 @@ public:
     Q_INVOKABLE QVariantList visualThemes() const;
     // A theme as the shell would use it, with the surfaces' chosen styles
     // over it, without choosing it (the preview): { installed, tokens,
-    // problems: [{ kind, file, line, key, value }] } (the theme's problems).
+    // problems: [{ kind, file, line, key, value }] (the theme's problems),
+    // layoutFromStyle: the taskbar style chosen sets the bar's layout }.
     Q_INVOKABLE QVariantMap resolveTheme(const QString& name) const;
     QVariantMap surfaceStyles() const { return m_surfaceStyles; }
     // surface: "taskbar", "startmenu" or "notifications"; style "" for none.

@@ -27,6 +27,8 @@ QtObject {
     // Each theme's tokens, as resolveTheme() gives them (its chosen styles
     // merged): a test sets them, then bumps themesRevision as a file would.
     property var tokens: ({})
+    // resolveTheme()'s layoutFromStyle: the taskbar style sets the layout.
+    property bool layoutFromStyle: false
     // "From the theme"'s pictures (themeSurfacePictures()), by "<theme> <surface>".
     property var surfacePictures: ({})
     // The changes asked for, in order: [call, arguments...].
@@ -53,6 +55,7 @@ QtObject {
             notifications: [{ name: "round", text: "Round", author: "Lowell137", images: [] }]
         }
         tokens = {}
+        layoutFromStyle = false
         surfacePictures = {}
         calls = []
         ++themesRevision
@@ -72,7 +75,8 @@ QtObject {
         return surfacePictures[theme + " " + surface] || []
     }
     function resolveTheme(name) {
-        return { installed: themes.some(t => t.name === name), tokens: tokens[name] || {}, problems: [] }
+        return { installed: themes.some(t => t.name === name), tokens: tokens[name] || {}, problems: [],
+            layoutFromStyle: layoutFromStyle }
     }
     function setSurfaceStyle(surface, style) {
         const chosen = Object.assign({}, surfaceStyles)

@@ -676,7 +676,8 @@ QVariantMap Preferences::resolveTheme(const QString& name) const
         problems.append(vela::themes::toVariant(problem));
     }
     return { { QStringLiteral("installed"), !theme.files.isEmpty() }, { QStringLiteral("tokens"), loaded.merged() },
-        { QStringLiteral("problems"), problems } };
+        { QStringLiteral("problems"), problems },
+        { QStringLiteral("layoutFromStyle"), vela::themes::setsTaskbarLayout(loaded.layers[vela::themes::Taskbar].tokens) } };
 }
 
 void Preferences::setSurfaceStyle(const QString& surface, const QString& style)

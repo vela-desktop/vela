@@ -571,9 +571,9 @@ inline TaskbarLayout taskbarLayout(const QVariantMap& tokens, bool light)
     // Styles.qml's size(): the number rounded as JavaScript's Math.round()
     // does, clamped; the fallback without one.
     const auto size = [&tokens, light](const char* key, double fallback, int low, int high) {
-        const QVariant value = themed(tokens, QLatin1String(key), light);
-        const double number = value.typeId() == QMetaType::Double ? value.toDouble() : fallback;
-        return std::clamp(int(std::floor(number + 0.5)), low, high);
+        bool ok = false;
+        const double number = themed(tokens, QLatin1String(key), light).toDouble(&ok);
+        return std::clamp(int(std::floor((ok ? number : fallback) + 0.5)), low, high);
     };
     TaskbarLayout layout;
     if (const QVariant variant = themed(tokens, QStringLiteral("taskbar-variant"), light);
@@ -586,10 +586,21 @@ inline TaskbarLayout taskbarLayout(const QVariantMap& tokens, bool light)
     layout.radius = size("taskbar-radius", styled ? 18 : 0, 0, 48);
     layout.floating = layout.margin > 0 || layout.radius > 0;
     // Styles.qml's flag(): any number but 0.
-    const QVariant fit = themed(tokens, QStringLiteral("taskbar-fit"), light);
-    layout.fit = layout.floating && (fit.typeId() == QMetaType::Double ? fit.toDouble() != 0 : styled);
+    bool ok = false;
+    const double fit = themed(tokens, QStringLiteral("taskbar-fit"), light).toDouble(&ok);
+    layout.fit = layout.floating && (ok ? fit != 0 : styled);
     layout.edge = layout.fit ? size("taskbar-edge", layout.variant == QLatin1String("dock") ? 1 : 0, 0, 2) : 0;
     return layout;
+}
+
+// Whether a file's tokens set the taskbar's layout (any of the keys above, for
+// one mode or both): a taskbar style that does decides it over the theme.
+inline bool setsTaskbarLayout(const QVariantMap& tokens)
+{
+    static const QStringList keys { QStringLiteral("taskbar-variant"), QStringLiteral("taskbar-margin"),
+        QStringLiteral("taskbar-radius"), QStringLiteral("taskbar-fit"), QStringLiteral("taskbar-edge") };
+    return std::any_of(tokens.keyBegin(), tokens.keyEnd(),
+        [](const QString& key) { return keys.contains(key.section(u'.', -1)); });
 }
 
 // The chosen theme and styles of a vela.conf, each resolved on its own (a

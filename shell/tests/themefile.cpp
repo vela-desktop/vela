@@ -339,6 +339,13 @@ private slots:
         const QByteArray modes = "taskbar-radius=8\ndark.taskbar-fit=1\nlight.taskbar-fit=0\n";
         QVERIFY(layout(modes, false).fit);
         QVERIFY(!layout(modes, true).fit);
+        // Whether a taskbar style decides the layout over the theme (Taskbar's
+        // alignment names it): any of the layout's keys, in a mode or both.
+        using vela::themes::setsTaskbarLayout;
+        QVERIFY(setsTaskbarLayout(read("taskbar-fit=1\n", vela::themes::Taskbar).tokens));
+        QVERIFY(setsTaskbarLayout(read("dark.taskbar-radius=4\n", vela::themes::Taskbar).tokens));
+        QVERIFY(setsTaskbarLayout(read("taskbar-variant=dock\n", vela::themes::Taskbar).tokens));
+        QVERIFY(!setsTaskbarLayout(read("taskbar-height=52\ntaskbar=#26000000\n", vela::themes::Taskbar).tokens));
     }
 
     void configuredNameIsTheLastOne()
