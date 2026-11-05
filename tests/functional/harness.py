@@ -90,6 +90,7 @@ class Session:
         self.directory = None
         self.shell = None
         self.log = None
+        self.log_path = None
 
     # ---------------------------------------------------------- startup --
 
@@ -114,7 +115,9 @@ class Session:
             _profile("session-start", time.perf_counter() - began)
 
     def _start(self):
+        """Start the compositor with private persistent paths and a session log."""
         self.directory = tempfile.mkdtemp(prefix="vela-functional-")
+        os.mkdir(os.path.join(self.directory, "home"))
         env = {key: value for key, value in os.environ.items()
                if key not in ("WAYLAND_DISPLAY", "DISPLAY", "QT_WAYLAND_RECONNECT", "WAYLAND_SOCKET")}
         env.update({
@@ -124,6 +127,8 @@ class Session:
             "VELA_DEBUG_INPUT": "1",
             "VELA_OUTPUT_SIZE": self.size,
             "VELA_SCALE": str(self.scale),
+            "HOME": os.path.join(self.directory, "home"),
+            "XDG_STATE_HOME": os.path.join(self.directory, "state"),
             "XDG_CONFIG_HOME": os.path.join(self.directory, "config"),
             "XDG_DATA_HOME": os.path.join(self.directory, "data"),
             "XDG_CACHE_HOME": os.path.join(self.directory, "cache"),
@@ -158,6 +163,7 @@ class Session:
         self.wait_for(lambda s: s["outputs"], what="an output")
 
     def stop(self, keep_log=False):
+        """Stop managed processes and clean up even after partial startup."""
         validation_errors = []
         if self.shell:
             self.shell.close()
@@ -195,7 +201,8 @@ class Session:
                     validation_errors.append("Requested Vulkan validation layers were not enabled")
                 validation_errors.extend(line for line in text.splitlines()
                                          if "[ERROR]" in line and "Vulkan:" in line)
-            if keep_log or status != self.expected_exit:
+            if (self.log_path and os.path.isfile(self.log_path)
+                    and (keep_log or status != self.expected_exit)):
                 print(f"\n--- Vela log ({self.log_path}) ---")
                 with open(self.log_path, errors="replace") as log:
                     print("".join(log.readlines()[-40:]))

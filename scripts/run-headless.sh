@@ -27,11 +27,13 @@ export VELA_OUTPUT_SIZE="${VELA_OUTPUT_SIZE:-1920x1080}"
 # Virtual mouse and keyboard for vela-input.
 export VELA_DEBUG_INPUT=1
 # Apps started from here must not try to reconnect elsewhere.
-unset QT_WAYLAND_RECONNECT
+unset QT_WAYLAND_RECONNECT WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY
+
+. "$(dirname "$0")/private-session.sh"
 
 if [ -x "$SHELL_BIN" ]; then
     SHELL_PATH="$(cd "$(dirname "$SHELL_BIN")" && pwd)/$(basename "$SHELL_BIN")"
-    exec "$COMPOSITOR" -s "$SHELL_PATH"
+    vela_run_private_session "$COMPOSITOR" -s "$SHELL_PATH"
 else
-    exec "$COMPOSITOR"
+    vela_run_private_session "$COMPOSITOR"
 fi
