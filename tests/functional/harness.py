@@ -115,6 +115,7 @@ class Session:
 
     def _start(self):
         self.directory = tempfile.mkdtemp(prefix="vela-functional-")
+        os.mkdir(os.path.join(self.directory, "home"))
         env = {key: value for key, value in os.environ.items()
                if key not in ("WAYLAND_DISPLAY", "DISPLAY", "QT_WAYLAND_RECONNECT", "WAYLAND_SOCKET")}
         env.update({
@@ -124,6 +125,8 @@ class Session:
             "VELA_DEBUG_INPUT": "1",
             "VELA_OUTPUT_SIZE": self.size,
             "VELA_SCALE": str(self.scale),
+            "HOME": os.path.join(self.directory, "home"),
+            "XDG_STATE_HOME": os.path.join(self.directory, "state"),
             "XDG_CONFIG_HOME": os.path.join(self.directory, "config"),
             "XDG_DATA_HOME": os.path.join(self.directory, "data"),
             "XDG_CACHE_HOME": os.path.join(self.directory, "cache"),
