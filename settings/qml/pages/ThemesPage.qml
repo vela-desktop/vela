@@ -81,11 +81,7 @@ Page {
                 }
             }
         }
-        Card {
-            icon: "edit-entry"
-            title: qsTr("Your own themes")
-            description: qsTr("A file in ~/.config/vela/themes/<name>.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change")
-        }
+        OwnThemesCard {}
         ResetThemesCard {}
     }
 }

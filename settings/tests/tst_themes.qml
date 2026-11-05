@@ -25,6 +25,9 @@ Item {
         ThemeGallery {
             id: gallery
         }
+        OwnThemesCard {
+            id: own
+        }
         ResetThemesCard {
             id: reset
         }
@@ -111,6 +114,12 @@ Item {
             verify(visibleOf(tile("Glass"), "QQuickImage"))
             verify(!visibleOf(tile("Glass"), "DesktopPreview"))
             verify(visibleOf(tile("Mine"), "DesktopPreview"))
+        }
+
+        function test_your_own_themes_folder_opens() {
+            waitForItemPolished(own)
+            mouseClick(findChild(own, "openFolder"))
+            compare(Prefs.calls, [["openThemesFolder", ""]])
         }
 
         function test_reset_and_undo_put_everything_back() {

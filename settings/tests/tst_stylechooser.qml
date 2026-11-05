@@ -173,6 +173,11 @@ Item {
             }
             walk(chooser)
             verify(texts.indexOf("Your own styles: a file in ~/.config/vela/themes/taskbar/<name>.conf appears here") >= 0)
+            // And their folder, opened.
+            waitForRendering(chooser)
+            Prefs.calls = []
+            mouseClick(findChild(chooser, "openFolder"))
+            compare(Prefs.calls, [["openThemesFolder", "taskbar"]])
         }
     }
 }

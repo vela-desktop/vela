@@ -108,13 +108,26 @@ Column {
         }
     }
 
-    Text {
+    // Where your own styles go, and the folder itself.
+    Item {
         width: parent.width
-        text: qsTr("Your own styles: a file in ~/.config/vela/themes/%1/<name>.conf appears here").arg(gallery.surface)
-        textFormat: Text.PlainText
-        color: Theme.textSecondary
-        font.pixelSize: Theme.fontCaption
-        wrapMode: Text.Wrap
+        height: Math.max(ownStyles.height, openFolder.height)
+        Text {
+            id: ownStyles
+            anchors { left: parent.left; right: openFolder.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+            text: qsTr("Your own styles: a file in ~/.config/vela/themes/%1/<name>.conf appears here").arg(gallery.surface)
+            textFormat: Text.PlainText
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
+            wrapMode: Text.Wrap
+        }
+        Button {
+            id: openFolder
+            objectName: "openFolder"
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            text: qsTr("Open folder")
+            onClicked: Prefs.openThemesFolder(gallery.surface)
+        }
     }
 
     // A tile's pictures side by side, centered and whole.

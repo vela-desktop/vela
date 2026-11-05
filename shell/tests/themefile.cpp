@@ -456,6 +456,14 @@ private slots:
 
     // Until the user's own themes directory exists, the nearest one above it
     // is watched, so that creating it is noticed.
+    // Where your own themes and styles go (Settings' Open folder).
+    void theUsersDirectories()
+    {
+        const QString home = qEnvironmentVariable("XDG_CONFIG_HOME");
+        QCOMPARE(vela::themes::userDirectory(), home + QStringLiteral("/vela/themes"));
+        QCOMPARE(vela::themes::userDirectory(vela::themes::Notifications), home + QStringLiteral("/vela/themes/notifications"));
+    }
+
     void watchedDirectoriesIncludeTheUsersParent()
     {
         const QString config = qEnvironmentVariable("XDG_CONFIG_HOME");

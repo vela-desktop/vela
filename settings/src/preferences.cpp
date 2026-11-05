@@ -12,6 +12,7 @@ extern "C" {
 #include "iconprovider.h"
 #include "themefile.h"
 
+#include <QDesktopServices>
 #include <QDir>
 #include <QTime>
 #include <QJsonObject>
@@ -712,6 +713,20 @@ void Preferences::resetThemes()
     }
     saveCompositorKeys(keys);
     emit visualThemeChanged();
+}
+
+QString Preferences::openThemesFolder(const QString& surface)
+{
+    const vela::themes::Layer layer = vela::themes::layerFor(surface);
+    if (layer >= vela::themes::LayerCount) {
+        return {};
+    }
+    // Made, it is watched at once: the watcher keeps an eye on the directory
+    // above it while it doesn't exist (watchThemes()).
+    const QString dir = vela::themes::userDirectory(layer);
+    QDir().mkpath(dir);
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    return dir;
 }
 
 void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& styles)

@@ -90,6 +90,10 @@ QtObject {
         surfaceStyles = { taskbar: "", startmenu: "", notifications: "" }
         record(["resetThemes"])
     }
+    function openThemesFolder(surface) {
+        record(["openThemesFolder", surface])
+        return "/home/alex/.config/vela/themes" + (surface ? "/" + surface : "")
+    }
     function setThemeAndStyles(theme, chosen) {
         visualTheme = theme
         surfaceStyles = Object.assign({}, chosen)

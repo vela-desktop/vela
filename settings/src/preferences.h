@@ -167,6 +167,9 @@ public:
     Q_INVOKABLE QVariantMap themeSurfacePictures(const QString& theme, const QString& surface) const;
     // Vela Official and no styles: Vela's own look.
     Q_INVOKABLE void resetThemes();
+    // Opens where your own themes ("") or a surface's styles go in the file
+    // manager, made first if it isn't there; returns it ("" for no surface).
+    Q_INVOKABLE QString openThemesFolder(const QString& surface);
     // A theme and each surface's style ({ taskbar, startmenu, notifications },
     // "" for none) in one write of vela.conf: Reset's Undo.
     Q_INVOKABLE void setThemeAndStyles(const QString& theme, const QVariantMap& styles);

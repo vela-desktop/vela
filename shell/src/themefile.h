@@ -233,6 +233,13 @@ inline QStringList candidates(const QString& name, Layer layer = Theme)
 
 // The directories a layer's files are looked up in, the user's first: those
 // that exist, for the list and the file watchers.
+// Where your own themes, or a surface's styles, go: ~/.config/vela/themes/
+// and its taskbar/, startmenu/, notifications/ (they may not exist yet).
+inline QString userDirectory(Layer layer = Theme)
+{
+    return QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + subdirectory(layer));
+}
+
 inline QStringList directories(Layer layer = Theme)
 {
     const QString sub = subdirectory(layer);
@@ -256,7 +263,7 @@ inline QStringList directories(Layer layer = Theme)
 inline QStringList watchedDirectories(Layer layer = Theme)
 {
     QStringList dirs = directories(layer);
-    QString user = QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + subdirectory(layer));
+    QString user = userDirectory(layer);
     while (!QFileInfo(user).isDir() && user.contains(u'/')) {
         user = user.section(u'/', 0, -2);
         if (user.isEmpty()) {

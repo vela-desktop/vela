@@ -2160,6 +2160,21 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>OwnThemesCard</name>
+    <message>
+        <source>Your own themes</source>
+        <translation>I tuoi temi</translation>
+    </message>
+    <message>
+        <source>A file in ~/.config/vela/themes/&lt;name&gt;.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change</source>
+        <translation>Un file in ~/.config/vela/themes/&lt;nome&gt;.conf compare qui. Inizia con inherits=vela, poi imposta solo i colori e gli angoli che vuoi cambiare</translation>
+    </message>
+    <message>
+        <source>Open folder</source>
+        <translation>Apri cartella</translation>
+    </message>
+</context>
+<context>
     <name>PersonalizationPage</name>
     <message>
         <source>Select a theme to apply</source>
@@ -2724,6 +2739,10 @@ Specifiche sistema
         <source>Your own styles: a file in ~/.config/vela/themes/%1/&lt;name&gt;.conf appears here</source>
         <translation>Stili personali: un file in ~/.config/vela/themes/%1/&lt;nome&gt;.conf compare qui</translation>
     </message>
+    <message>
+        <source>Open folder</source>
+        <translation>Apri cartella</translation>
+    </message>
 </context>
 <context>
     <name>Switch</name>
@@ -3019,14 +3038,6 @@ Specifiche sistema
     <message>
         <source>Vela uses what it can and skips the rest</source>
         <translation>Vela usa quello che può e salta il resto</translation>
-    </message>
-    <message>
-        <source>Your own themes</source>
-        <translation>I tuoi temi</translation>
-    </message>
-    <message>
-        <source>A file in ~/.config/vela/themes/&lt;name&gt;.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change</source>
-        <translation>Un file in ~/.config/vela/themes/&lt;nome&gt;.conf compare qui. Inizia con inherits=vela, poi imposta solo i colori e gli angoli che vuoi cambiare</translation>
     </message>
 </context>
 <context>
