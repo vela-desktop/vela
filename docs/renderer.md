@@ -189,6 +189,9 @@ program launches use `vela::process::startDetached()` or an
 `ExternalProcess` (both in `common/src/processlaunch.h`), not raw
 `QProcess::startDetached()`. Links use `System.openUrl()` to reach the
 same path. A user-supplied antialiasing override is retained in child processes.
+The `process-launch-environment` integration test verifies real children;
+packaging tests prohibit UI launchers that bypass the wrapper. The RHI glyph
+test requires Qt 6.6+ without increasing Vela's 6.5 production minimum.
 
 ### 3.8 The default scale
 

@@ -10,6 +10,7 @@
 
 #include <QCommandLineParser>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFont>
 #include <QGuiApplication>
 #include <QQmlComponent>
@@ -150,6 +151,77 @@ double change(const QImage& previous, const QImage& next)
     return difference / std::max(coverage(previous), 1.0);
 }
 
+// Green-only metrics cannot tell an opaque black pixel from transparent black.
+bool sameRgba(const QImage& first, const QImage& second)
+{
+    if (first.isNull() || second.size() != first.size()) {
+        return false;
+    }
+    for (int y = 0; y < first.height(); ++y) {
+        for (int x = 0; x < first.width(); ++x) {
+            const QRgb a = first.pixel(x, y), b = second.pixel(x, y);
+            if (std::abs(qRed(a) - qRed(b)) > 2 || std::abs(qGreen(a) - qGreen(b)) > 2
+                || std::abs(qBlue(a) - qBlue(b)) > 2 || std::abs(qAlpha(a) - qAlpha(b)) > 2) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// White text on transparency: premultiplied RGB must equal alpha coverage.
+// The empty background must have zero alpha and glyph edges partial alpha.
+bool transparentWhiteCoverage(const QImage& image)
+{
+    if (image.isNull() || image.pixel(0, 0) != qRgba(0, 0, 0, 0)) {
+        return false;
+    }
+    bool foundGlyph = false, foundEdge = false;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QRgb pixel = image.pixel(x, y);
+            const int a = qAlpha(pixel);
+            foundGlyph |= a > 128;
+            foundEdge |= a > 0 && a < 255;
+            if (std::abs(qRed(pixel) - a) > 2 || std::abs(qGreen(pixel) - a) > 2
+                || std::abs(qBlue(pixel) - a) > 2) {
+                return false;
+            }
+        }
+    }
+    return foundGlyph && foundEdge;
+}
+
+// Verify all premultiplied RGBA channels with a colored translucent surface.
+// Allow a small 8-bit shader/rounding tolerance, not just green-channel parity.
+bool translucentComposite(const QImage& transparent, const QImage& composite, const QColor& background)
+{
+    if (transparent.isNull() || composite.size() != transparent.size()) {
+        return false;
+    }
+    const int alpha = background.alpha();
+    constexpr int tolerance = 8;
+    bool foundGlyph = false;
+    for (int y = 0; y < transparent.height(); ++y) {
+        for (int x = 0; x < transparent.width(); ++x) {
+            const int coverage = qAlpha(transparent.pixel(x, y));
+            const QRgb pixel = composite.pixel(x, y);
+            foundGlyph |= coverage > 128;
+            const auto expectedChannel = [&](int value) {
+                return int(std::lround(value * alpha * (255 - coverage) / (255.0 * 255.0) + coverage));
+            };
+            const int expectedAlpha = int(std::lround(alpha + coverage * (255 - alpha) / 255.0));
+            if (std::abs(qRed(pixel) - expectedChannel(background.red())) > tolerance
+                || std::abs(qGreen(pixel) - expectedChannel(background.green())) > tolerance
+                || std::abs(qBlue(pixel) - expectedChannel(background.blue())) > tolerance
+                || std::abs(qAlpha(pixel) - expectedAlpha) > tolerance) {
+                return false;
+            }
+        }
+    }
+    return foundGlyph;
+}
+
 bool neutralCoverage(const QImage& image)
 {
     for (int y = 0; y < image.height(); ++y) {
@@ -256,6 +328,8 @@ int main(int argc, char** argv)
             return 1;
         }
         for (const int pixelSize : { 12, 14, 18 }) {
+            QElapsedTimer measurement;
+            measurement.start();
             scene.root->setProperty("pixelSize", pixelSize);
             const auto capture = [&](const QImage& image, const QString& name) {
                 if (captureDir.isEmpty()) {
@@ -280,14 +354,26 @@ int main(int argc, char** argv)
             const QImage returned = scene.render();
             scene.root->setProperty("color", QColor(Qt::transparent));
             const QImage transparent = scene.render();
+            if (!capture(transparent, QStringLiteral("transparent"))) {
+                return 1;
+            }
+            const QColor coloredSurface(40, 100, 180, 128);
+            scene.root->setProperty("color", coloredSurface);
+            const QImage tinted = scene.render();
+            if (!capture(tinted, QStringLiteral("tinted"))) {
+                return 1;
+            }
             scene.root->setProperty("color", QColor(Qt::black));
-            // A 1/64 pixel translation should change only edge coverage. The
-            // margins allow rasterizer rounding; the native control below
-            // verifies they still reject a whole-line bitmap snap.
-            if (scroll > 0.06 || press > 0.08 || change(rest, returned) > 0.001 || !neutralCoverage(transparent)
+            // Continuity thresholds are separate from premultiplied RGBA checks.
+            if (scroll > 0.06 || press > 0.08 || !sameRgba(rest, returned)
+                || !neutralCoverage(transparent) || !transparentWhiteCoverage(transparent)
+                || !translucentComposite(transparent, tinted, coloredSurface)
                 || change(rest, transparent) > 0.001) {
-                std::fprintf(stderr, "FAIL: dpr=%g font=%d scroll=%g press=%g return=%g neutral=%d\n", dpr, pixelSize,
-                    scroll, press, change(rest, returned), int(neutralCoverage(transparent)));
+                std::fprintf(stderr,
+                    "FAIL: dpr=%g font=%d scroll=%g press=%g stable=%d white-alpha=%d tinted=%d\n",
+                    dpr, pixelSize, scroll, press, int(sameRgba(rest, returned)),
+                    int(transparentWhiteCoverage(transparent)),
+                    int(translucentComposite(transparent, tinted, coloredSurface)));
                 return 1;
             }
             scene.root->setProperty("pressScale", 0.92);
@@ -316,8 +402,9 @@ int main(int argc, char** argv)
                 std::fprintf(stderr, "FAIL: insensitive native control at %g (%g)\n", dpr, nativeScroll);
                 return 1;
             }
-            std::printf("PASS: dpr=%g font=%d scroll=%g press=%g native-scroll=%g\n", dpr, pixelSize, scroll, press,
-                nativeScroll);
+            // Diagnostics only: elapsed time is not a CI performance threshold.
+            std::printf("PASS: dpr=%g font=%d scroll=%g press=%g native-scroll=%g elapsed-ms=%lld\n",
+                dpr, pixelSize, scroll, press, nativeScroll, static_cast<long long>(measurement.elapsed()));
         }
     }
     return 0;
