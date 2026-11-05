@@ -185,12 +185,19 @@ void draw(Screen& screen)
 
         if (!login) {
             const QDateTime now = QDateTime::currentDateTime();
+            const QString time = QLocale().toString(now.time(), timeFormat);
             font.setPixelSize(120);
             font.setWeight(QFont::DemiBold);
+            // On a narrow output (a portrait phone-sized one) the time,
+            // longer at 12 hours ("12:45 PM"), shrinks to 90% of its width.
+            const qreal wide = QFontMetricsF(font).horizontalAdvance(time);
+            if (wide > lw * 0.9) {
+                font.setPixelSize(std::max(24, int(120 * lw * 0.9 / wide)));
+            }
             p.setFont(font);
             p.setPen(QColor(255, 255, 255, 240));
             const QRectF timeBox(0, lh * 0.12, lw, 150);
-            p.drawText(timeBox, Qt::AlignHCenter | Qt::AlignTop, QLocale().toString(now.time(), timeFormat));
+            p.drawText(timeBox, Qt::AlignHCenter | Qt::AlignTop, time);
             font.setPixelSize(26);
             font.setWeight(QFont::Medium);
             p.setFont(font);

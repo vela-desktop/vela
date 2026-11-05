@@ -292,9 +292,9 @@ class LockClock(unittest.TestCase):
     """The real lock screen's clock, in the format of the taskbar's. Nothing
     is typed: PAM is never asked."""
 
-    def time_width(self, hours):
+    def time_width(self, hours, size="1920x1080@60"):
         """How wide the lock screen's time is drawn with clock/hours=."""
-        with Session(env={"VELA_LOCK": LOCK}) as vela:
+        with Session(size=size, env={"VELA_LOCK": LOCK}) as vela:
             folder = os.path.join(vela.env["XDG_CONFIG_HOME"], "Vela")
             os.makedirs(folder, exist_ok=True)
             with open(os.path.join(folder, "vela-shell.conf"), "w") as file:
@@ -322,6 +322,11 @@ class LockClock(unittest.TestCase):
     def test_the_lock_screen_follows_the_time_format(self):
         # "1:45 PM" is wider than "13:45" whatever the time: AM or PM after it.
         self.assertGreater(self.time_width(12), self.time_width(24) + 60)
+
+    def test_the_lock_screen_time_fits_a_narrow_output(self):
+        # 300 wide: a 12-hour time at 120 pixels (about 340 wide) would be
+        # cut at both sides.
+        self.assertLessEqual(self.time_width(12, size="300x700@60"), 300 * 0.9 + 2)
 
 
 if __name__ == "__main__":
