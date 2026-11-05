@@ -199,6 +199,13 @@ if(VELA_BUILD_TOOLS)
 
     # Actual glyph shader coverage. A missing RHI backend is a skip, never a
     # pass through Qt Quick's software painter. Mesa software OpenGL works too.
+    # Real-process environment tests need no GPU, display, or Qt 6.6 APIs.
+    qt_add_executable(vela-process-launch-test tests/process_launch.cpp)
+    target_compile_options(vela-process-launch-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-process-launch-test PRIVATE vela-rendering)
+    add_test(NAME process-launch-environment COMMAND vela-process-launch-test)
+    set_tests_properties(process-launch-environment PROPERTIES TIMEOUT 30)
+
     if(Qt6_VERSION VERSION_GREATER_EQUAL 6.6)
         qt_add_executable(vela-text-rendering-test tests/text_rendering.cpp)
     target_compile_definitions(vela-text-rendering-test PRIVATE
