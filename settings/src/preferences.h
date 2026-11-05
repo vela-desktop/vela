@@ -4,6 +4,7 @@
 #pragma once
 
 #include "defaults.h"
+#include "starticon.h"
 
 #include <QColor>
 #include <QFileSystemWatcher>
@@ -39,6 +40,30 @@ class Preferences : public QObject {
     Q_PROPERTY(bool taskView READ taskView WRITE setTaskView NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens WRITE setTaskbarAllScreens NOTIFY taskbarChanged)
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner WRITE setShowDesktopCorner NOTIFY taskbarChanged)
+    // The taskbar clock: its date (taskbar/showDate).
+    Q_PROPERTY(bool clockDate READ clockDate WRITE setClockDate NOTIFY clockChanged)
+    // 24-hour or 12-hour everywhere Vela shows the time (clock/hours), the
+    // seconds in the taskbar's clock (taskbar/clockSeconds); timeFormat is
+    // the Qt.formatTime() format for the first (shell/src/clockformat.h).
+    Q_PROPERTY(bool clock24 READ clock24 WRITE setClock24 NOTIFY clockChanged)
+    Q_PROPERTY(bool clockSeconds READ clockSeconds WRITE setClockSeconds NOTIFY clockChanged)
+    Q_PROPERTY(QString timeFormat READ timeFormat NOTIFY clockChanged)
+    // The number of notifications next to the taskbar's clock
+    // (taskbar/notificationCount).
+    Q_PROPERTY(bool notificationCount READ notificationCount WRITE setNotificationCount NOTIFY clockChanged)
+    // The Start button's icon (shell/src/starticon.h): "vela", "distribution"
+    // or "picture" as the taskbar shows it (a choice it can't show is
+    // "vela"), and its source for StartIcon ("" for the sail). The
+    // distribution's name and logo ("" if the system has none), from
+    // os-release.
+    Q_PROPERTY(QString startIcon READ startIcon NOTIFY startChanged)
+    Q_PROPERTY(QString startIconSource READ startIconSource NOTIFY startChanged)
+    Q_PROPERTY(QString distributionName READ distributionName NOTIFY startChanged)
+    Q_PROPERTY(QString distributionLogo READ distributionLogo NOTIFY startChanged)
+    // start/showPinned: the apps pinned to Start above all apps.
+    Q_PROPERTY(bool startPinned READ startPinned WRITE setStartPinned NOTIFY startChanged)
+    // desktop/showIcons, which the desktop's own menu sets too.
+    Q_PROPERTY(bool desktopIcons READ desktopIcons WRITE setDesktopIcons NOTIFY desktopChanged)
     // --- Notifications ---
     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
     // --- Power ---
@@ -135,6 +160,29 @@ public:
     void setTaskbarAllScreens(bool on);
     bool showDesktopCorner() const { return m_showDesktopCorner; }
     void setShowDesktopCorner(bool on);
+    bool clockDate() const { return m_clockDate; }
+    void setClockDate(bool on);
+    bool clock24() const { return m_clock24; }
+    void setClock24(bool on);
+    bool clockSeconds() const { return m_clockSeconds; }
+    void setClockSeconds(bool on);
+    QString timeFormat() const;
+    bool notificationCount() const { return m_notificationCount; }
+    void setNotificationCount(bool on);
+    QString startIcon() const { return m_startIcon; }
+    QString startIconSource() const { return m_startIconSource; }
+    QString distributionName() const { return m_distribution.name; }
+    QString distributionLogo() const { return m_distribution.logo; }
+    // kind: "vela", "distribution" or "picture"; for "picture", the file
+    // (a path or a file:// URL; without one, the picture chosen before).
+    Q_INVOKABLE void setStartIcon(const QString& kind, const QString& picture = QString());
+    // The logo and the Start icon found again: once the icon theme is set
+    // (Vela.Controls) and whenever it changes, a logo may be only there.
+    void refreshStartIcon();
+    bool startPinned() const { return m_startPinned; }
+    void setStartPinned(bool on);
+    bool desktopIcons() const { return m_desktopIcons; }
+    void setDesktopIcons(bool on);
 
     bool doNotDisturb() const { return m_doNotDisturb; }
     void setDoNotDisturb(bool on);
@@ -262,6 +310,9 @@ signals:
     void accentChanged();
     void appThemeChanged();
     void taskbarChanged();
+    void desktopChanged();
+    void startChanged();
+    void clockChanged();
     void doNotDisturbChanged();
     void idleChanged();
     void languageChanged();
@@ -295,6 +346,15 @@ private:
     bool m_taskView = true;
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
+    bool m_desktopIcons = true;
+    bool m_startPinned = true;
+    QString m_startIcon = QStringLiteral("vela");
+    QString m_startIconSource;
+    vela::start::Distribution m_distribution = vela::start::distribution();
+    bool m_clockDate = true;
+    bool m_clock24 = true;
+    bool m_clockSeconds = false;
+    bool m_notificationCount = true;
     bool m_doNotDisturb = false;
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;

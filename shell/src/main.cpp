@@ -394,6 +394,8 @@ int main(int argc, char* argv[])
     QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, &ShellController::openWithRequested);
     QObject::connect(&desktop, &DesktopModel::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     desktopModel = &desktop;
+    // Settings > Background shows or hides the icons too.
+    QObject::connect(&config, &Config::desktopIconsChanged, &desktop, &DesktopModel::setShowIcons);
     ServiceMenus serviceMenus;
     FileProperties properties;
     FileActions fileActions;
@@ -440,6 +442,10 @@ int main(int argc, char* argv[])
     // Vela.Controls, like the apps.
     Appearance* style = vela::controls::install(engine, Appearance::Mode::Shell);
     style->watch();
+    // The distribution's logo may be in the icon theme only: look again now
+    // that it is set, and when it changes with the mode.
+    config.refreshStartIcon();
+    QObject::connect(style, &Appearance::changed, &config, &Config::refreshStartIcon);
     // The look the compositor draws with, computed here (docs/visual-coherence.md
     // §6.6): both modes and the accent (acrylic tint, title bars, the snap
     // preview), and the title bars' Mica colors in the apps' mode, with the

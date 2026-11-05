@@ -21,7 +21,7 @@ Page {
         LinkCard {
             icon: "preferences-desktop-notification"
             title: qsTr("Notifications")
-            description: qsTr("Alerts from apps and the system, do not disturb")
+            description: qsTr("Alerts from apps and the system, do not disturb, their number by the clock")
             onClicked: root.navigate("notifications")
         }
         LinkCard {

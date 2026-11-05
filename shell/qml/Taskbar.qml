@@ -352,7 +352,8 @@ Window {
             active: Shell.startMenuOpen
             onClicked: { root.fromHere(); Shell.toggleStartMenu() }
             onRightClicked: root.openWinX(false)
-            StartGlyph { anchors.centerIn: parent }
+            // Vela's sail, the distribution's logo or a picture (Settings > Start).
+            StartIcon { anchors.centerIn: parent; source: Config.startIconSource; revision: Config.startIconRevision }
         }
 
         // Task View: two overlapping windows, like the Windows 11 icon.
@@ -863,7 +864,7 @@ Window {
         }
     }
 
-    // Clock: time on top, date below.
+    // Clock: time on top, date below (unless Settings hides it).
     Item {
         id: clock
         // At the right; with a floating style inside its pill, after the apps
@@ -872,12 +873,14 @@ Window {
             : root.fit ? buttons.x + buttons.width + root.fitGap + root.trayGroupWidth - width
             : parent.width - width - 12 - (root.floating ? root.sideMargin : 0)
         anchors { top: parent.top; bottom: parent.bottom }
-        width: clockColumn.implicitWidth + 16 + (Notifications.history.count > 0 || Notifications.doNotDisturb ? 22 : 0)
+        width: clockColumn.implicitWidth + 16 + (badge.visible ? 22 : 0)
 
         property date now: Shell.now()
 
+        // Just after each second begins, so the seconds (when shown) and the
+        // minutes turn when they do.
         Timer {
-            interval: 1000
+            interval: 1000 - clock.now.getMilliseconds() + 5
             running: true
             repeat: true
             onTriggered: clock.now = Shell.now()
@@ -889,10 +892,12 @@ Window {
             radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
-        // Notifications to read: a number next to the clock, like Windows 11
-        // (with "Do not disturb" a muted bell).
+        // Notifications to read: a number next to the clock, like Windows 11,
+        // unless Settings > Notifications hides it (with "Do not disturb" a muted
+        // bell: that one is a state, not a count, and stays).
         Rectangle {
-            visible: Notifications.history.count > 0 || Notifications.doNotDisturb
+            id: badge
+            visible: (Config.notificationCount && Notifications.history.count > 0) || Notifications.doNotDisturb
             anchors { right: parent.right; rightMargin: -2; verticalCenter: parent.verticalCenter }
             width: 18
             height: 18
@@ -902,7 +907,7 @@ Window {
                 anchors.centerIn: parent
                 visible: !Notifications.doNotDisturb
                 text: Math.min(Notifications.history.count, 9)
-                color: "white"
+                color: Theme.readableOn(Theme.accent, "white") // a light custom accent: black
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
             }
@@ -921,12 +926,17 @@ Window {
 
             Text {
                 anchors.right: parent.right
-                text: Qt.formatTime(clock.now, "HH:mm")
+                // 24-hour or 12-hour, with or without the seconds (Settings >
+                // Taskbar). Digits all as wide, so the clock doesn't twitch
+                // every second.
+                text: Qt.formatTime(clock.now, Config.clockFormat)
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption
+                font.features: { "tnum": 1 }
             }
             Text {
                 anchors.right: parent.right
+                visible: Config.clockDate
                 text: Qt.formatDate(clock.now, "dd/MM/yyyy")
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption

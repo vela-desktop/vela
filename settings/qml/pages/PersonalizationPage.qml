@@ -18,7 +18,7 @@ Page {
         LinkCard {
             icon: "preferences-desktop-wallpaper"
             title: qsTr("Background")
-            description: qsTr("Desktop background picture")
+            description: qsTr("Desktop background picture, desktop icons")
             onClicked: root.navigate("background")
         }
         LinkCard {
@@ -36,7 +36,7 @@ Page {
         LinkCard {
             icon: "start-here"
             title: qsTr("Start")
-            description: qsTr("Style of the Start menu")
+            description: qsTr("The Start button's icon, pinned apps, style of the Start menu")
             onClicked: root.navigate("start")
         }
         LinkCard {

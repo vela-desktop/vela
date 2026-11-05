@@ -4,7 +4,8 @@
 import QtQuick
 import Vela.Controls
 
-// System > Notifications.
+// System > Notifications: Do not disturb, and the number of notifications
+// next to the taskbar's clock.
 Page {
     CardGroup {
         Card {
@@ -19,6 +20,16 @@ Page {
             trailing: Switch {
                 checked: Prefs.doNotDisturb
                 onToggled: Prefs.doNotDisturb = checked
+            }
+        }
+        Card {
+            icon: "preferences-desktop-notification"
+            title: qsTr("Show the number of notifications")
+            description: qsTr("Next to the taskbar's clock. With Do not disturb on, its bell shows anyway")
+            trailing: Switch {
+                objectName: "notificationCount"
+                checked: Prefs.notificationCount
+                onToggled: Prefs.notificationCount = checked
             }
         }
     }

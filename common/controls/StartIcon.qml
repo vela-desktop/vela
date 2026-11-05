@@ -3,18 +3,38 @@
 
 import QtQuick
 import QtQuick.Shapes
-import Vela.Controls
 
-// Vela's symbol: a small stylized sail. It's the Start button.
+// The Start button's icon: Vela's symbol, a small stylized sail in the
+// accent's colors; or, as chosen in Settings > Start, the distribution's
+// logo or a picture (`source`: an icon theme's name or a file's path,
+// shell/src/starticon.h). The taskbar draws it, Settings shows it.
 Item {
     id: root
+    property string source
+    // Goes up when the picture changed under the same name: loaded again.
+    property int revision: 0
     width: 22
     height: 22
 
+    Icon {
+        id: picture
+        visible: root.source !== ""
+        anchors.centerIn: parent
+        name: root.source
+        size: 22
+        // A picture of the user's may change under the same name.
+        cache: false
+    }
+    onRevisionChanged: {
+        picture.name = ""
+        picture.name = Qt.binding(() => root.source)
+    }
+
     Shape {
+        visible: root.source === ""
         anchors.fill: parent
         // Soft antialiasing on the slanted edges too.
-        layer.enabled: true
+        layer.enabled: visible
         layer.samples: 4
 
         // Big sail

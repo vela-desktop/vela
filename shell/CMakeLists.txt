@@ -113,7 +113,6 @@ target_include_directories(vela-shell PRIVATE ${SHELL_GENERATED_DIR})
 set(VELA_QML_FILES
     qml/Taskbar.qml
     qml/TaskbarButton.qml
-    qml/StartGlyph.qml
     qml/StartMenu.qml
     qml/GlassEdge.qml
     qml/tiles.js
@@ -244,6 +243,22 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-controls-no-effects COMMAND vela-shell-test)
     set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
+
+    # Config on a private vela-shell.conf, rewritten as Settings does.
+    qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h
+        src/clockformat.h src/starticon.h src/defaults.h)
+    target_include_directories(vela-config-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
+    target_compile_options(vela-config-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-config-test PRIVATE Qt6::Gui Qt6::Test)
+    add_test(NAME shell-config COMMAND vela-config-test)
+    set_tests_properties(shell-config PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    qt_add_executable(vela-start-icon-test tests/starticon.cpp src/starticon.h)
+    target_include_directories(vela-start-icon-test PRIVATE src)
+    target_compile_options(vela-start-icon-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-start-icon-test PRIVATE Qt6::Gui Qt6::Test)
+    add_test(NAME shell-start-icon COMMAND vela-start-icon-test)
+    set_tests_properties(shell-start-icon PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
     target_include_directories(vela-tool-path-test PRIVATE src)
