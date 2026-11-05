@@ -25,6 +25,3 @@ jobs:
           persist-credentials: false
       - name: Validate local Markdown links, anchors and build dependency lists
         run: python3 scripts/check-docs.py
-
-
-
