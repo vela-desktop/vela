@@ -1406,6 +1406,10 @@ Specifiche sistema
         <translation>Colori</translation>
     </message>
     <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
         <source>Taskbar</source>
         <translation>Barra delle applicazioni</translation>
     </message>
@@ -1640,6 +1644,10 @@ Specifiche sistema
     <message>
         <source>dark light theme apps mode</source>
         <translation>scuro chiaro dark light tema app</translation>
+    </message>
+    <message>
+        <source>theme palette colors corners radius rounded</source>
+        <translation>tema tavolozza colori angoli raggio arrotondati</translation>
     </message>
     <message>
         <source>taskbar alignment left center end task</source>
@@ -2113,6 +2121,14 @@ Specifiche sistema
     <message>
         <source>Accent color, light or dark mode for apps</source>
         <translation>Colore principale, modalità chiara o scura delle app</translation>
+    </message>
+    <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
+        <source>Colors and corners of the shell and the apps</source>
+        <translation>Colori e angoli della shell e delle app</translation>
     </message>
     <message>
         <source>Taskbar</source>
@@ -2707,6 +2723,177 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>ThemesPage</name>
+    <message>
+        <source>not a key=value line</source>
+        <translation>non è una riga chiave=valore</translation>
+    </message>
+    <message>
+        <source>%1 is not a theme token</source>
+        <translation>%1 non è un token dei temi</translation>
+    </message>
+    <message>
+        <source>%1 needs a color like #RRGGBB, not &quot;%2&quot;</source>
+        <translation>%1 vuole un colore come #RRGGBB, non &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>%1 needs a number, not &quot;%2&quot;</source>
+        <translation>%1 vuole un numero, non &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>%1=%2 isn&apos;t one of Vela&apos;s layouts</source>
+        <translation>%1=%2 non è uno dei layout di Vela</translation>
+    </message>
+    <message>
+        <source>%1 belongs to another surface than this style&apos;s</source>
+        <translation>%1 appartiene a un&apos;altra superficie, non a quella di questo stile</translation>
+    </message>
+    <message>
+        <source>inherits=%1 is not a theme name</source>
+        <translation>inherits=%1 non è il nome di un tema</translation>
+    </message>
+    <message>
+        <source>inherits=%1, which isn&apos;t installed</source>
+        <translation>inherits=%1, che non è installato</translation>
+    </message>
+    <message>
+        <source>inherits=%1, which inherits back from this theme</source>
+        <translation>inherits=%1, che a sua volta eredita da questo tema</translation>
+    </message>
+    <message>
+        <source>inherits=%1 makes too long a chain of themes</source>
+        <translation>inherits=%1 crea una catena di temi troppo lunga</translation>
+    </message>
+    <message>
+        <source>schema-version=%1 isn&apos;t a format this Vela reads: the file isn&apos;t used</source>
+        <translation>schema-version=%1 non è un formato che questo Vela sa leggere: il file non viene usato</translation>
+    </message>
+    <message>
+        <source>larger than 64 KiB: the file isn&apos;t used</source>
+        <translation>più grande di 64 KiB: il file non viene usato</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>Tema</translation>
+    </message>
+    <message>
+        <source>A complete look of the shell and the apps. Original author: %1</source>
+        <translation>Un aspetto completo della shell e delle app. Autore originale: %1</translation>
+    </message>
+    <message>
+        <source>A complete look of the shell and the apps</source>
+        <translation>Un aspetto completo della shell e delle app</translation>
+    </message>
+    <message>
+        <source>%1 is in use</source>
+        <translation>%1 è in uso</translation>
+    </message>
+    <message>
+        <source>Previewing %1</source>
+        <translation>Anteprima di %1</translation>
+    </message>
+    <message>
+        <source>Choose another theme to see it in the preview. Nothing changes until you apply it</source>
+        <translation>Scegli un altro tema per vederlo nell&apos;anteprima. Non cambia nulla finché non lo applichi</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed: Vela&apos;s own look is used</source>
+        <translation>&quot;%1&quot; non è installato: viene usato l&apos;aspetto di Vela</translation>
+    </message>
+    <message>
+        <source>Only the preview shows it. Apply to use it in the shell and the apps instead of %1</source>
+        <translation>Per ora si vede solo nell&apos;anteprima. Applicalo per usarlo nella shell e nelle app al posto di %1</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Applica</translation>
+    </message>
+    <message>
+        <source>This theme has its own accent color</source>
+        <translation>Questo tema ha un suo colore principale</translation>
+    </message>
+    <message>
+        <source>While it is in use, it replaces the accent color chosen in Colors</source>
+        <translation>Finché è in uso, sostituisce il colore principale scelto in Colori</translation>
+    </message>
+    <message>
+        <source>This theme has problems</source>
+        <translation>Questo tema ha dei problemi</translation>
+    </message>
+    <message>
+        <source>Vela uses what it can and skips the rest</source>
+        <translation>Vela usa quello che può e salta il resto</translation>
+    </message>
+    <message>
+        <source>Customize</source>
+        <translation>Personalizza</translation>
+    </message>
+    <message>
+        <source>Optional: a style of its own for the taskbar, the Start menu or quick settings, over the theme</source>
+        <translation>Facoltativo: uno stile a parte per la barra delle applicazioni, il menu Start o le impostazioni rapide, sopra il tema</translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation>Nascondi</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Start menu</source>
+        <translation>Menu Start</translation>
+    </message>
+    <message>
+        <source>Quick settings</source>
+        <translation>Impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>Styles</source>
+        <translation>Stili</translation>
+    </message>
+    <message>
+        <source>From the theme</source>
+        <translation>Dal tema</translation>
+    </message>
+    <message>
+        <source>As the theme draws it. Your own styles: ~/.config/vela/themes/%1/&lt;name&gt;.conf</source>
+        <translation>Come lo disegna il tema. I tuoi stili: ~/.config/vela/themes/%1/&lt;nome&gt;.conf</translation>
+    </message>
+    <message>
+        <source>In use</source>
+        <translation>In uso</translation>
+    </message>
+    <message>
+        <source>Use</source>
+        <translation>Usa</translation>
+    </message>
+    <message>
+        <source>Original author: %1</source>
+        <translation>Autore originale: %1</translation>
+    </message>
+    <message>
+        <source>Your own themes</source>
+        <translation>I tuoi temi</translation>
+    </message>
+    <message>
+        <source>A file in ~/.config/vela/themes/&lt;name&gt;.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change</source>
+        <translation>Un file in ~/.config/vela/themes/&lt;nome&gt;.conf compare qui. Inizia con inherits=vela, poi imposta solo i colori e gli angoli che vuoi cambiare</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>Reimposta</translation>
+    </message>
+    <message>
+        <source>Vela Official and no styles. Light or dark mode and the accent stay</source>
+        <translation>Vela Official e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
+    </message>
+</context>
+<context>
     <name>TimeLanguagePage</name>
     <message>
         <source>Date &amp; time</source>
@@ -2839,38 +3026,6 @@ Specifiche sistema
         <translation>Non sulle connessioni a consumo</translation>
     </message>
     <message>
-        <source>Automatic check frequency</source>
-        <translation>Frequenza dei controlli automatici</translation>
-    </message>
-    <message>
-        <source>How often Vela checks for updates</source>
-        <translation>Ogni quanto Vela controlla gli aggiornamenti</translation>
-    </message>
-    <message>
-        <source>Used when automatic checks are enabled</source>
-        <translation>Si applica quando i controlli automatici sono attivi</translation>
-    </message>
-    <message>
-        <source>Every 6 hours</source>
-        <translation>Ogni 6 ore</translation>
-    </message>
-    <message>
-        <source>Every 12 hours</source>
-        <translation>Ogni 12 ore</translation>
-    </message>
-    <message>
-        <source>Every 24 hours</source>
-        <translation>Ogni 24 ore</translation>
-    </message>
-    <message>
-        <source>Every 48 hours</source>
-        <translation>Ogni 48 ore</translation>
-    </message>
-    <message>
-        <source>Every 7 days</source>
-        <translation>Ogni 7 giorni</translation>
-    </message>
-    <message>
         <source>Update channel</source>
         <translation>Canale di aggiornamento</translation>
     </message>
@@ -2950,6 +3105,38 @@ Specifiche sistema
         <source>The update runs in a terminal, where your password is asked for.</source>
         <translation>L&apos;aggiornamento si svolge in un terminale, dove ti viene chiesta la password.</translation>
     </message>
+    <message>
+        <source>Automatic check frequency</source>
+        <translation>Frequenza dei controlli automatici</translation>
+    </message>
+    <message>
+        <source>How often Vela checks for updates</source>
+        <translation>Ogni quanto Vela controlla gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Used when automatic checks are enabled</source>
+        <translation>Si applica quando i controlli automatici sono attivi</translation>
+    </message>
+    <message>
+        <source>Every 6 hours</source>
+        <translation>Ogni 6 ore</translation>
+    </message>
+    <message>
+        <source>Every 12 hours</source>
+        <translation>Ogni 12 ore</translation>
+    </message>
+    <message>
+        <source>Every 24 hours</source>
+        <translation>Ogni 24 ore</translation>
+    </message>
+    <message>
+        <source>Every 48 hours</source>
+        <translation>Ogni 48 ore</translation>
+    </message>
+    <message>
+        <source>Every 7 days</source>
+        <translation>Ogni 7 giorni</translation>
+    </message>
 </context>
 <context>
     <name>UpdateStatusCard</name>
@@ -2984,14 +3171,6 @@ Specifiche sistema
     <message>
         <source>Last checked: %1, %2</source>
         <translation>Ultimo controllo: %1, %2</translation>
-    </message>
-    <message>
-        <source>Next automatic check: %1</source>
-        <translation>Prossimo controllo automatico: %1</translation>
-    </message>
-    <message>
-        <source>Next check: waiting for a fully connected, unmetered network</source>
-        <translation>Prossimo controllo: in attesa di una connessione completa e non a consumo</translation>
     </message>
     <message>
         <source>The update service isn&apos;t running</source>
@@ -3050,10 +3229,6 @@ Specifiche sistema
         <translation>Installa ora</translation>
     </message>
     <message>
-        <source>Check again</source>
-        <translation>Controlla di nuovo</translation>
-    </message>
-    <message>
         <source>Check for updates</source>
         <translation>Controlla aggiornamenti</translation>
     </message>
@@ -3068,6 +3243,18 @@ Specifiche sistema
     <message>
         <source>The last update didn&apos;t finish: %1</source>
         <translation>L&apos;ultimo aggiornamento non è stato completato: %1</translation>
+    </message>
+    <message>
+        <source>Next automatic check: %1</source>
+        <translation>Prossimo controllo automatico: %1</translation>
+    </message>
+    <message>
+        <source>Next check: waiting for a fully connected, unmetered network</source>
+        <translation>Prossimo controllo: in attesa di una connessione completa e non a consumo</translation>
+    </message>
+    <message>
+        <source>Check again</source>
+        <translation>Controlla di nuovo</translation>
     </message>
 </context>
 <context>
@@ -3271,6 +3458,14 @@ Specifiche sistema
     <message>
         <source>The update service isn&apos;t responding.</source>
         <translation>Il servizio di aggiornamento non risponde.</translation>
+    </message>
+    <message>
+        <source>This automatic update check frequency isn&apos;t supported.</source>
+        <translation>Questa frequenza di controllo automatico degli aggiornamenti non è supportata.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t save the automatic update check frequency.</source>
+        <translation>Impossibile salvare la frequenza dei controlli automatici degli aggiornamenti.</translation>
     </message>
 </context>
 </TS>

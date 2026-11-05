@@ -144,6 +144,7 @@ install -Dm755 packaging/vela-update-state %{buildroot}%{_libexecdir}/vela/vela-
 %{_datadir}/applications/vela-*.desktop
 %{_datadir}/wayland-sessions/vela.desktop
 %{_datadir}/xdg-desktop-portal/vela-portals.conf
+%{_datadir}/vela/
 %{_prefix}/lib/systemd/user/vela-session.target
 %{_prefix}/lib/udev/rules.d/70-vela-i2c.rules
 %{_prefix}/lib/modules-load.d/vela-i2c.conf

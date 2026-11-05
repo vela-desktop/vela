@@ -167,8 +167,11 @@ void vela_pass_add_shadow(struct vela_pass *pass, const struct wlr_box *box, con
 // pixels; `tint`: Vela's acrylic recipe with this tint (premultiplied sRGB),
 // or NULL for the plain blur a client asked for. Nothing happens if the target
 // can't be read.
+// With a tint, `saturation` is the acrylic's (Vela's: 1.25). glass: the
+// panel is glass wherever it is at least 4% opaque, not from half.
 void vela_pass_add_blur(struct vela_pass *pass, const struct vela_texture_draw *panel,
-    const pixman_region32_t *region, float strength, const struct wlr_render_color *tint);
+    const pixman_region32_t *region, float strength, const struct wlr_render_color *tint, float saturation,
+    bool glass);
 
 // How far around a zone the blur reads, in pixels.
 int vela_blur_reach(float strength);

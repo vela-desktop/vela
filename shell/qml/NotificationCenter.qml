@@ -17,7 +17,7 @@ Window {
     // units from both.
     readonly property real room: notificationsShadow.reach
     width: room + 360 + 12
-    height: Math.min(room + motion.height + 12, Screen.height - Theme.taskbarHeight)
+    height: Math.min(room + motion.height + 12, Screen.height - Styles.taskbar.height)
     color: "transparent"
 
     readonly property var history: Notifications.history
@@ -29,7 +29,7 @@ Window {
         if (!motion.closing) {
             Notifications.collectPopups()
             month = new Date()
-            Menus.placeOnTargetScreen(root)
+            Menus.placeTrayPanel(root, "clock", motion.x, motion.width)
         }
         visible = true
         Menus.notificationCenterOpen = true
@@ -61,7 +61,9 @@ Window {
     // at rest: not the shadows between them.
     function updateBlur() {
         Effects.setBlur(root, motion.moving ? [motion.visibleArea]
-            : [notifications, calendar].map(p => Qt.rect(motion.x + p.x, motion.y + p.y, p.width, p.height)))
+            : [notifications, calendar].map(p => Qt.rect(motion.x + p.x, motion.y + p.y, p.width, p.height)),
+            Styles.notifications.chosen ? Styles.notifications.radius : 0) // with a style, rounded like them
+
     }
 
     // The panels' small buttons: subtle, or the accent while on.
@@ -113,9 +115,9 @@ Window {
             Rectangle {
                 id: notifications
                 width: parent.width
-                height: Math.min(Screen.height - Theme.taskbarHeight - calendar.height - 60, header.height + Math.max(list.contentHeight, 64) + 24)
-                radius: Theme.radiusOverlay
-                color: Theme.surface
+                height: Math.min(Screen.height - Styles.taskbar.height - calendar.height - 60, header.height + Math.max(list.contentHeight, 64) + 24)
+                radius: Styles.notifications.radius
+                color: Styles.notifications.surface
                 border.width: 1
                 border.color: Theme.stroke
 
@@ -178,10 +180,16 @@ Window {
                         required property date time
                         width: list.width
                         height: itemContent.height + 20
-                        radius: Theme.radius
+                        radius: Styles.notifications.cardRadius
                         color: itemHover.hovered ? Theme.subtleHover : Theme.control
 
                         HoverHandler { id: itemHover }
+                        // Passive right-click handling works across child
+                        // controls without changing their left-button actions.
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: Notifications.dismissFromHistory(item.notificationId)
+                        }
                         MouseArea {
                             id: itemMouse
                             anchors.fill: parent
@@ -282,8 +290,8 @@ Window {
                 y: notifications.height + 12
                 width: parent.width
                 height: calendarContent.height + 32
-                radius: Theme.radiusOverlay
-                color: Theme.surface
+                radius: Styles.notifications.radius
+                color: Styles.notifications.surface
                 border.width: 1
                 border.color: Theme.stroke
 
@@ -369,7 +377,7 @@ Window {
                                     anchors.centerIn: parent
                                     width: 32
                                     height: 32
-                                    radius: 16
+                                    radius: Styles.notifications.todayRadius
                                     color: parent.today ? Theme.accent : dayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                                 }
                                 Text {

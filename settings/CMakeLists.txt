@@ -96,6 +96,7 @@ set(SETTINGS_QML_FILES
     qml/pages/PersonalizationPage.qml
     qml/pages/BackgroundPage.qml
     qml/pages/ColorsPage.qml
+    qml/pages/ThemesPage.qml
     qml/pages/TaskbarPage.qml
     qml/pages/AppsPage.qml
     qml/pages/InstalledAppsPage.qml

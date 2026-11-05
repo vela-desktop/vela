@@ -17,6 +17,12 @@ Window {
     title: qsTr("Settings")
     color: Theme.background
 
+    // A theme's see-through background (Window Glass) is glass: the
+    // compositor blurs what is behind the window. Vela's own is opaque and
+    // asks for nothing.
+    readonly property var glass: Theme.background.a < 1 ? [Qt.rect(0, 0, width, height)] : []
+    onGlassChanged: Effects.setBlur(root, glass)
+
     onActiveChanged: {
         Theme.windowActive = active
         if (active) {
@@ -41,6 +47,7 @@ Window {
         "personalization": { title: qsTr("Personalization"), parent: "", file: "PersonalizationPage.qml", icon: "preferences-desktop-theme" },
         "background": { title: qsTr("Background"), parent: "personalization", file: "BackgroundPage.qml", icon: "preferences-desktop-wallpaper" },
         "colors": { title: qsTr("Colors"), parent: "personalization", file: "ColorsPage.qml", icon: "preferences-desktop-color" },
+        "themes": { title: qsTr("Themes"), parent: "personalization", file: "ThemesPage.qml", icon: "preferences-desktop-theme" },
         "taskbar": { title: qsTr("Taskbar"), parent: "personalization", file: "TaskbarPage.qml", icon: "preferences-system-windows" },
         "apps": { title: qsTr("Apps"), parent: "", file: "AppsPage.qml", icon: "preferences-desktop-default-applications" },
         "installed-apps": { title: qsTr("Installed apps"), parent: "apps", file: "InstalledAppsPage.qml", icon: "view-list-details" },
@@ -141,7 +148,12 @@ Window {
     Shortcut { sequences: [StandardKey.Back]; onActivated: root.back() }
     Shortcut { sequences: [StandardKey.Forward]; onActivated: root.forward() }
 
-    Component.onCompleted: navigate(Router.initialPage)
+    Component.onCompleted: {
+        if (glass.length) {
+            Effects.setBlur(root, glass)
+        }
+        navigate(Router.initialPage)
+    }
 
     Connections {
         target: Router
@@ -187,6 +199,7 @@ Window {
         { page: "background", text: qsTr("Background"), keys: qsTr("picture desktop photo wallpaper") },
         { page: "colors", text: qsTr("Colors"), keys: qsTr("accent color theme dark light mode") },
         { page: "colors", text: qsTr("Choose your mode"), keys: qsTr("dark light theme apps mode") },
+        { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded") },
         { page: "taskbar", text: qsTr("Taskbar"), keys: qsTr("taskbar alignment left center end task") },
         { page: "apps", text: qsTr("Apps"), keys: qsTr("programs applications") },
         { page: "installed-apps", text: qsTr("Installed apps"), keys: qsTr("uninstall remove programs") },
