@@ -21,10 +21,12 @@ fi
 # Keyboard layout: Italian unless you chose another one.
 export XKB_DEFAULT_LAYOUT="${XKB_DEFAULT_LAYOUT:-it}"
 
+. "$(dirname "$0")/private-session.sh"
+
 if [ -x "$SHELL_BIN" ]; then
     SHELL_PATH="$(cd "$(dirname "$SHELL_BIN")" && pwd)/$(basename "$SHELL_BIN")"
-    exec "$COMPOSITOR" -s "$SHELL_PATH"
+    vela_run_private_session "$COMPOSITOR" -s "$SHELL_PATH"
 else
     echo "Shell not built: starting only the compositor." >&2
-    exec "$COMPOSITOR"
+    vela_run_private_session "$COMPOSITOR"
 fi
