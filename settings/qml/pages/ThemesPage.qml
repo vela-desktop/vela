@@ -81,25 +81,6 @@ Page {
             title: qsTr("Your own themes")
             description: qsTr("A file in ~/.config/vela/themes/<name>.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change")
         }
-        Card {
-            icon: "edit-undo"
-            title: qsTr("Reset")
-            description: qsTr("Vela Official and no styles. Light or dark mode and the accent stay")
-            trailing: Button {
-                text: qsTr("Reset")
-                usable: Prefs.visualTheme !== "vela" || Object.values(Prefs.surfaceStyles).some(s => s !== "")
-                onClicked: {
-                    const theme = Prefs.visualTheme
-                    const styles = Object.assign({}, Prefs.surfaceStyles)
-                    Prefs.resetThemes()
-                    root.offerUndo(qsTr("Vela Official is in use, with no styles"), () => {
-                        Prefs.visualTheme = theme
-                        for (const surface in styles) {
-                            Prefs.setSurfaceStyle(surface, styles[surface])
-                        }
-                    })
-                }
-            }
-        }
+        ResetThemesCard {}
     }
 }

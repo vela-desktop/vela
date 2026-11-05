@@ -714,6 +714,23 @@ void Preferences::resetThemes()
     emit visualThemeChanged();
 }
 
+void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& styles)
+{
+    const QString name = theme.isEmpty() ? vela::themes::defaultTheme() : theme;
+    if (!vela::themes::validName(name)) {
+        return;
+    }
+    QStringList keys { QStringLiteral("theme") };
+    m_visualTheme = name;
+    for (auto it = m_surfaceStyles.begin(); it != m_surfaceStyles.end(); ++it) {
+        const QString style = styles.value(it.key()).toString().trimmed();
+        it.value() = style.isEmpty() || vela::themes::validName(style) ? style : QString();
+        keys.append(it.key() + QStringLiteral("-style"));
+    }
+    saveCompositorKeys(keys);
+    emit visualThemeChanged();
+}
+
 void Preferences::saveLayouts()
 {
     saveCompositorKeys(QStringList { QStringLiteral("keyboard-layout"), QStringLiteral("keyboard-variant") });

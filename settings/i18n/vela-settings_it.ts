@@ -2278,6 +2278,21 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>ResetThemesCard</name>
+    <message>
+        <source>Reset</source>
+        <translation>Reimposta</translation>
+    </message>
+    <message>
+        <source>%1 and no styles. Light or dark mode and the accent stay</source>
+        <translation>%1 e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
+    </message>
+    <message>
+        <source>%1 is in use, with no styles</source>
+        <translation>È in uso %1, senza stili</translation>
+    </message>
+</context>
+<context>
     <name>Settings</name>
     <message>
         <source>Settings</source>
@@ -2943,10 +2958,6 @@ Specifiche sistema
         <translation>vela.conf indica un tema che Vela non trova: si usa l&apos;aspetto di Vela</translation>
     </message>
     <message>
-        <source>Vela Official is in use, with no styles</source>
-        <translation>È in uso Vela Official, senza stili</translation>
-    </message>
-    <message>
         <source>This theme has problems</source>
         <translation>Questo tema ha dei problemi</translation>
     </message>
@@ -2961,14 +2972,6 @@ Specifiche sistema
     <message>
         <source>A file in ~/.config/vela/themes/&lt;name&gt;.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change</source>
         <translation>Un file in ~/.config/vela/themes/&lt;nome&gt;.conf compare qui. Inizia con inherits=vela, poi imposta solo i colori e gli angoli che vuoi cambiare</translation>
-    </message>
-    <message>
-        <source>Reset</source>
-        <translation>Reimposta</translation>
-    </message>
-    <message>
-        <source>Vela Official and no styles. Light or dark mode and the accent stay</source>
-        <translation>Vela Official e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
     </message>
 </context>
 <context>

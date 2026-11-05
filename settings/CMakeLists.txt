@@ -87,6 +87,7 @@ set(SETTINGS_QML_FILES
     qml/StyleGallery.qml
     qml/StyleChooser.qml
     qml/TaskbarAlignmentCard.qml
+    qml/ResetThemesCard.qml
     qml/UndoBar.qml
     qml/Page.qml
     qml/pages/HomePage.qml

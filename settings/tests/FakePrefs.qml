@@ -89,6 +89,11 @@ QtObject {
         surfaceStyles = { taskbar: "", startmenu: "", notifications: "" }
         record(["resetThemes"])
     }
+    function setThemeAndStyles(theme, chosen) {
+        visualTheme = theme
+        surfaceStyles = Object.assign({}, chosen)
+        record(["setThemeAndStyles", theme, Object.assign({}, chosen)])
+    }
 
     Component.onCompleted: reset()
 }
