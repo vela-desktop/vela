@@ -29,20 +29,21 @@ Item {
     z: mouse.dragging ? 10 : 0
     transform: Translate { x: mouse.dragging ? mouse.dragX : 0 }
 
-    width: 44
-    height: 40
+    readonly property QtObject style: Styles.taskbar
+    width: style.buttonWidth
+    height: style.buttonHeight
 
     Fill {
         anchors.fill: parent
-        radius: Theme.radius
+        radius: root.style.buttonRadius
         color: mouse.pressed ? Theme.subtlePressed : mouse.containsMouse || root.active ? Theme.subtleHover : Theme.subtleRest
     }
 
     Item {
         id: holder
         anchors.centerIn: parent
-        width: 26
-        height: 26
+        width: root.style.iconSize
+        height: root.style.iconSize
         scale: mouse.pressed ? 1 - 0.16 * Theme.motion : 1
 
         Behavior on scale { Eased {} }
