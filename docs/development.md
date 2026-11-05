@@ -138,7 +138,8 @@ Both manual launchers (`run-nested.sh` and `run-headless.sh`) use a fresh tempor
 `XDG_STATE_HOME`. These are deleted after the compositor and its detached child processes exit,
 including on SIGTERM. A Linux subreaper supervises all session descendants;
 unresponsive processes are SIGKILLed after a bounded grace period. The manual
-launchers require Python 3. This keeps test wallpaper/cache writes away from
+launchers require Python 3.9+ and Linux kernel 5.3+ with procfs and pidfd
+support for identity-safe descendant signalling. This keeps test wallpaper/cache writes away from
 your real Vela state.
 The test starts with default settings. To **copy** your existing Vela configuration
 (`vela/` and `Vela/` only) into the temporary home, without editing the originals.
