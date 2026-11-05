@@ -158,8 +158,11 @@ public:
     QVariantMap surfaceStyles() const { return m_surfaceStyles; }
     // surface: "taskbar", "startmenu" or "notifications"; style "" for none.
     Q_INVOKABLE void setSurfaceStyle(const QString& surface, const QString& style);
-    // A surface's styles with their pictures: { name, text, author, images }.
+    // A surface's styles with their pictures: { name, text, author, images };
+    // the themes with theirs for surface "".
     Q_INVOKABLE QVariantList styleGallery(const QString& surface) const;
+    // A surface as a theme draws it, without styles: its pictures' URLs.
+    Q_INVOKABLE QStringList themeSurfacePictures(const QString& theme, const QString& surface) const;
     // Vela Official and no styles: Vela's own look.
     Q_INVOKABLE void resetThemes();
 

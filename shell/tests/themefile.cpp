@@ -160,7 +160,8 @@ private slots:
         QVERIFY(vela::themes::locate(QStringLiteral("../glass"), vela::themes::Taskbar).isEmpty());
     }
 
-    // A surface's styles, with their pictures (themes/screenshots/).
+    // The themes and a surface's styles, with their pictures
+    // (themes/screenshots/), and a surface as a theme draws it.
     void theGallery()
     {
         write(data() + QStringLiteral("taskbar/pill.conf"), "# Pill: a floating taskbar\n# Original author: Lowell137\ntaskbar-radius=24\n");
@@ -174,8 +175,27 @@ private slots:
         QCOMPARE(pill.value(QStringLiteral("images")).toStringList(),
             QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/taskbar/pill.png")).toString() });
         QVERIFY(gallery[1].toMap().value(QStringLiteral("images")).toStringList().isEmpty());
-        QVERIFY(vela::themes::gallery(QString()).isEmpty()); // themes have no gallery
         QVERIFY(vela::themes::gallery(QStringLiteral("elsewhere")).isEmpty());
+
+        // A theme's picture is the desktop in it, in screenshots/themes/.
+        write(data() + QStringLiteral("glass.conf"), "# Glass: a theme\nradius=2\n");
+        write(data() + QStringLiteral("screenshots/themes/glass.png"), "png");
+        const QVariantList themes = vela::themes::gallery(QString());
+        const auto glass = std::find_if(themes.cbegin(), themes.cend(),
+            [](const QVariant& t) { return t.toMap().value(QStringLiteral("name")) == QStringLiteral("glass"); });
+        QVERIFY(glass != themes.cend());
+        QCOMPARE(glass->toMap().value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass.png")).toString() });
+        // Quick settings and the notification center: two pictures, in order.
+        write(data() + QStringLiteral("screenshots/themes/glass-notifications-qs.png"), "png");
+        write(data() + QStringLiteral("screenshots/themes/glass-notifications-nc.png"), "png");
+        QCOMPARE(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("notifications")),
+            (QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass-notifications-qs.png")).toString(),
+                QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass-notifications-nc.png")).toString() }));
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("taskbar")).isEmpty());
+        // Not a way out of screenshots/themes/, nor a surface that isn't one.
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("../glass"), QStringLiteral("taskbar")).isEmpty());
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QString()).isEmpty());
     }
 
     void colorsAndNumbers()
