@@ -18,8 +18,33 @@ Window {
     // panel. The compositor decides the width (anchored to the sides).
     visible: false
     width: 1280
-    height: Theme.taskbarHeight
+    height: Styles.taskbar.height
     color: "transparent"
+
+    // A taskbar style's layout (Styles.taskbar): floating, it is a pill (or
+    // two) inside the window; the window keeps the bar's height, so windows
+    // and panels stay where they are.
+    readonly property QtObject style: Styles.taskbar
+    readonly property bool floating: style.floating
+    // fit: apps and tray in one pill that shrinks to them; edge: the tray in
+    // a pill of its own at the screen's right edge.
+    readonly property bool fit: floating && style.fit
+    readonly property bool edge: fit && style.edge > 0
+    readonly property bool split: fit && !edge && style.splitGap > 0
+    readonly property real fitGap: 8 + style.splitGap
+    // Inside a fitted pill, the room before the Start button and after the
+    // clock: a round end (radius up to half the height) would cut what sits
+    // in it, the clock's highlight and the notifications' badge.
+    readonly property int fitPadding: 10
+    readonly property int edgeGap: Math.max(style.margin, 8) // the tray pill's gap to the screen's edge
+    // The notification area, the system icons and the clock, side by side.
+    readonly property real trayGroupWidth: (transferIndicator.visible ? transferIndicator.width + 4 : 0)
+        + (tray.visible ? tray.width + 4 : 0) + microphone.width + caffeine.width
+        + (systemIcons.visible ? systemIcons.width + 2 : 0) + clock.width
+    // A floating bar that spans the screen: its side margin, shrunk when the
+    // screen is too narrow for it (the tray must still fit beside the apps).
+    readonly property int sideMargin: Math.min(style.sideMargin, Math.max(style.margin,
+        Math.floor((width - buttons.width) / 2 - (trayGroupWidth + 20))))
 
     // The apps pinned at first start (.desktop ids; those not installed are
     // skipped). Afterwards the user's choices apply: pinned and unpinned from
@@ -40,11 +65,19 @@ Window {
             Tasks.pinnedIds = pinnedIds
         }
         updateBlur()
+        Menus.setTrayAnchors(root.screenName, trayAnchors)
     }
 
-    // The whole taskbar above the blurred background (acrylic).
+    // The whole taskbar above the blurred background (acrylic). A single
+    // floating pill: only it, rounded. Two pills: the whole window, the
+    // panel's alpha gives their shape.
     function updateBlur() {
-        Effects.setBlur(root, [Qt.rect(0, 0, width, height)])
+        if (floating && !split && !edge) {
+            Effects.setBlur(root, [Qt.rect(floatingSurface.x, floatingSurface.y, floatingSurface.width, floatingSurface.height)],
+                style.radius)
+        } else {
+            Effects.setBlur(root, [Qt.rect(0, 0, width, height)])
+        }
     }
     onWidthChanged: updateBlur()
     onHeightChanged: updateBlur()
@@ -83,6 +116,15 @@ Window {
         Menus.open(entries, x, y, Object.assign({ screen: root.screenName }, options || {}))
     }
     function fromHere() { Menus.panelScreen = root.screenName }
+
+    // In a centered pill (fit, not at the edge) the clock and the system
+    // icons are near the middle: their panels open above them (Menus).
+    readonly property var trayAnchors: fit && !edge
+        ? { clock: clock.x + clock.width / 2, icons: systemIcons.visible ? systemIcons.x + systemIcons.width / 2 : undefined }
+        : null
+    onTrayAnchorsChanged: Menus.setTrayAnchors(root.screenName, trayAnchors)
+    onScreenNameChanged: Menus.setTrayAnchors(root.screenName, trayAnchors)
+    Component.onDestruction: Menus.setTrayAnchors(root.screenName, null)
 
     // A button's jump list: pinned and recent files, the app's tasks, then the
     // app, pin/unpin, close.
@@ -210,7 +252,48 @@ Window {
 
     Rectangle {
         anchors.fill: parent
-        color: Theme.taskbar
+        color: root.floating ? "transparent" : Theme.taskbar
+
+        // A floating style's pill (the apps', with fit or edge).
+        Rectangle {
+            id: floatingSurface
+            visible: root.floating
+            readonly property bool flush: root.edge && root.style.flush
+            x: root.fit ? buttons.x - root.fitPadding : root.sideMargin
+            y: root.style.margin
+            width: root.split ? buttons.width + 14
+                : root.edge ? buttons.width + 20
+                : root.fit ? buttons.width + root.fitGap + root.trayGroupWidth + 2 * root.fitPadding
+                : parent.width - 2 * root.sideMargin
+            height: parent.height - (flush ? 1 : 2) * root.style.margin
+            radius: root.style.radius
+            topRightRadius: root.split ? root.style.splitRadius : radius
+            bottomRightRadius: flush ? 0 : topRightRadius
+            bottomLeftRadius: flush ? 0 : radius
+            color: Theme.taskbar
+            border.width: 1
+            border.color: root.style.stroke
+            onXChanged: root.updateBlur()
+            onYChanged: root.updateBlur()
+            onWidthChanged: root.updateBlur()
+            onHeightChanged: root.updateBlur()
+        }
+        // The tray's own pill (split-gap, or edge at the screen's edge).
+        Rectangle {
+            visible: root.split || root.edge
+            x: root.edge ? parent.width - root.edgeGap - 12 - root.trayGroupWidth - 10
+                : floatingSurface.x + floatingSurface.width + root.style.splitGap
+            y: floatingSurface.flush ? 3 : floatingSurface.y
+            width: root.edge ? root.trayGroupWidth + 22
+                : buttons.x + buttons.width + root.fitGap + root.trayGroupWidth + root.fitPadding - x
+            height: floatingSurface.flush ? parent.height - 6 : floatingSurface.height
+            radius: root.style.radius
+            topLeftRadius: root.edge ? radius : root.style.splitRadius
+            bottomLeftRadius: topLeftRadius
+            color: Theme.taskbar
+            border.width: 1
+            border.color: root.style.stroke
+        }
 
         // Empty space: Task Manager and taskbar settings.
         MouseArea {
@@ -228,9 +311,10 @@ Window {
 
         // A thin line of light on the top edge, like glass.
         Rectangle {
+            visible: !root.floating
             anchors { left: parent.left; right: parent.right; top: parent.top }
             height: 1
-            color: Theme.stroke
+            color: root.style.stroke
         }
     }
 
@@ -239,9 +323,13 @@ Window {
         // Centered by hand instead of with anchors: so when an app opens or
         // closes, the row slides to the new center instead of jumping. Or on
         // the left, like earlier versions of Windows.
-        x: Config.taskbarAlignment === "left" ? 12 : Math.round((parent.width - width) / 2)
+        x: root.edge ? (root.style.edge === 2 ? root.style.margin + 12 : Math.round((parent.width - width) / 2))
+            : root.fit ? Math.round((parent.width - width - root.fitGap - root.trayGroupWidth) / 2)
+            : Config.taskbarAlignment === "left" ? 12 + (root.floating ? root.sideMargin : 0)
+            : root.floating ? Math.max(root.sideMargin + 12, Math.round((parent.width - width) / 2))
+            : Math.round((parent.width - width) / 2)
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 4
+        spacing: root.style.spacing
 
         Behavior on x {
             enabled: Theme.motion > 0
@@ -712,7 +800,7 @@ Window {
 
         Fill {
             anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
-            radius: Theme.radius
+            radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: systemMouse.pressed ? Theme.subtlePressed : systemMouse.containsMouse || Menus.quickSettingsOpen ? Theme.subtleHover : Theme.subtleRest
         }
         Row {
@@ -773,7 +861,12 @@ Window {
     // Clock: time on top, date below.
     Item {
         id: clock
-        anchors { right: parent.right; top: parent.top; bottom: parent.bottom; rightMargin: 12 }
+        // At the right; with a floating style inside its pill, after the apps
+        // (fit) or at the screen's edge (edge).
+        x: root.edge ? parent.width - width - root.edgeGap - 12
+            : root.fit ? buttons.x + buttons.width + root.fitGap + root.trayGroupWidth - width
+            : parent.width - width - 12 - (root.floating ? root.sideMargin : 0)
+        anchors { top: parent.top; bottom: parent.bottom }
         width: clockColumn.implicitWidth + 16 + (Notifications.history.count > 0 || Notifications.doNotDisturb ? 22 : 0)
 
         property date now: new Date()
@@ -787,6 +880,8 @@ Window {
 
         Fill {
             anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
+            // A floating style's buttons' corners: its highlight is one of them.
+            radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
         // Notifications to read: a number next to the clock, like Windows 11

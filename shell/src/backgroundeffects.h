@@ -33,8 +33,11 @@ public:
     ~BackgroundEffects() override;
 
     bool blurAvailable() const { return m_blurAvailable; }
-    // Rectangles in window coordinates; empty list: no blur.
-    Q_INVOKABLE void setBlur(QWindow* window, const QVariantList& rects);
+    // Rectangles in window coordinates; empty list: no blur. radius: their
+    // corners are rounded (a floating taskbar's pills): the pixels the curve
+    // crosses stay unblurred, so there the panel's own antialiased edge meets
+    // the background.
+    Q_INVOKABLE void setBlur(QWindow* window, const QVariantList& rects, qreal radius = 0);
 
 signals:
     void blurAvailableChanged();

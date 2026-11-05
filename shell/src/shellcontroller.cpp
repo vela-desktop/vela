@@ -392,6 +392,24 @@ void ShellController::placeAtLeft(QWindow* window, int left)
     }
 }
 
+void ShellController::placeAbove(QWindow* window, int left)
+{
+    auto* layer = window ? LayerShellQt::Window::get(window) : nullptr;
+    if (!layer) {
+        return;
+    }
+    const auto side = left < 0 ? LayerShellQt::Window::AnchorRight : LayerShellQt::Window::AnchorLeft;
+    const LayerShellQt::Window::Anchors anchors = LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorBottom) | side;
+    const QMargins margins = layer->margins();
+    const QMargins wanted(left < 0 ? 0 : left, margins.top(), 0, margins.bottom());
+    if (layer->anchors() != anchors) {
+        layer->setAnchors(anchors);
+    }
+    if (margins != wanted) {
+        layer->setMargins(wanted);
+    }
+}
+
 void ShellController::placeOnScreen(QWindow* window, const QString& name)
 {
     if (!window) {
