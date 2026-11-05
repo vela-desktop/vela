@@ -37,6 +37,7 @@ import recording_core as core  # noqa: E402
 THEMES = ROOT / "themes"
 PICTURES = THEMES / "screenshots"
 SURFACES = ("taskbar", "startmenu", "notifications")
+JOBS = (*SURFACES, "themes")
 # (key, layer namespace, picture suffix) of each surface's panels.
 PANELS = {"startmenu": (("super", "vela-start-menu", ""),),
           "notifications": (("super+a", "vela-quick-settings", "-qs"),
@@ -199,7 +200,7 @@ def remove_gone_themes():
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--build", default=str(ROOT / "build"))
-    parser.add_argument("--only", choices=(*SURFACES, "themes"))
+    parser.add_argument("--only", choices=JOBS)
     args = parser.parse_args()
     # A build of this checkout: the pictures are this checkout's, and a path
     # given here leads nowhere else.
@@ -210,7 +211,9 @@ def main():
         parser.error(f"--build: {build} has no compositor/vela-compositor; build Vela first")
     core.check_user_namespaces()
     remove_gone_themes()
-    jobs = [args.only] if args.only else [*SURFACES, "themes"]
+    # The jobs by their own names, never the argument's text: what reaches
+    # vela.conf and the paths comes from this script alone.
+    jobs = [job for job in JOBS if args.only in (None, job)]
     for job in jobs:
         size = TASKBAR_SIZE if job == "taskbar" else "1920x1080@60"
         with core.Desktop(Path(build), Still(size)) as desktop:
