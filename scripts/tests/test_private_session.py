@@ -3,6 +3,7 @@
 
 """GPU-free regression tests for the manual Vela session launchers."""
 
+import ctypes
 import importlib.util
 import json
 import os
@@ -334,6 +335,9 @@ class PrivateSessionTests(unittest.TestCase):
         finally:
             for sig, handler in handlers.items():
                 signal.signal(sig, handler)
+            # Direct helper.main() calls alter this unittest process's prctl
+            # subreaper setting; leave no inherited supervision behind.
+            ctypes.CDLL(None).prctl(helper.PR_SET_CHILD_SUBREAPER, 0, 0, 0, 0)
         preserved = list(self.tmp.iterdir())
         self.assertEqual(len(preserved), 1)
         self.assertTrue((preserved[0] / "home").is_dir())
@@ -360,6 +364,9 @@ class PrivateSessionTests(unittest.TestCase):
         finally:
             for sig, handler in handlers.items():
                 signal.signal(sig, handler)
+            # Direct helper.main() calls alter this unittest process's prctl
+            # subreaper setting; leave no inherited supervision behind.
+            ctypes.CDLL(None).prctl(helper.PR_SET_CHILD_SUBREAPER, 0, 0, 0, 0)
         self.assert_clean()
 
     def test_concurrent_launchers_have_distinct_private_roots(self):
