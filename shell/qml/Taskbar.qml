@@ -907,7 +907,7 @@ Window {
                 anchors.centerIn: parent
                 visible: !Notifications.doNotDisturb
                 text: Math.min(Notifications.history.count, 9)
-                color: "white"
+                color: Theme.readableOn(Theme.accent, "white") // a light custom accent: black
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
             }

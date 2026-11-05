@@ -398,7 +398,7 @@ Window {
                                 Text {
                                     anchors.centerIn: parent
                                     text: parent.day.getDate()
-                                    color: parent.today ? "white" : parent.inMonth ? Theme.text : Theme.textSecondary
+                                    color: parent.today ? Theme.readableOn(Theme.accent, "white") : parent.inMonth ? Theme.text : Theme.textSecondary
                                     opacity: parent.inMonth || parent.today ? 1 : 0.5
                                     font.pixelSize: Theme.fontCaption
                                 }
