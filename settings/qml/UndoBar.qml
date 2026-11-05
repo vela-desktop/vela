@@ -8,7 +8,8 @@ import Vela.Controls
 // apply at once (Personalization), so going back is one click too. offer()
 // replaces what was offered before; Undo, the close button or the time
 // running out take it away. It stays across pages: what it undoes doesn't
-// depend on the page.
+// depend on the page. Pages keep room at their end for it (Page.qml), and
+// screen readers read it out when it comes.
 Item {
     id: bar
     property string text
@@ -17,11 +18,21 @@ Item {
     // Long enough to read it and find the button, not so long it stays in
     // the way: what Windows gives its notifications.
     property int timeout: 8000
+    // Whoever is reaching for Undo gets it: the time doesn't run out under
+    // the pointer, nor while the keyboard is on its buttons.
+    readonly property bool held: hover.hovered || undoButton.activeFocus || closeButton.activeFocus
+
+    Accessible.role: Accessible.AlertMessage
+    Accessible.name: bar.text
 
     function offer(text, undo) {
         bar.text = text
         bar.undo = undo
         timer.restart()
+        // Said, not only shown (Qt 6.8 and later).
+        if (typeof bar.Accessible.announce === "function") {
+            bar.Accessible.announce(text)
+        }
     }
     function dismiss() {
         bar.undo = null
@@ -33,25 +44,25 @@ Item {
     visible: opacity > 0
     opacity: shown ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: Theme.normal } }
-    // Doesn't go away under the pointer: whoever is reaching for Undo gets it.
     HoverHandler { id: hover }
 
     Timer {
         id: timer
         interval: bar.timeout
         running: false
-        onTriggered: hover.hovered ? restart() : bar.dismiss()
+        onTriggered: bar.held ? restart() : bar.dismiss()
     }
 
     TextMetrics { id: metrics; text: bar.text; font.pixelSize: Theme.fontBody }
     Shadow { target: panel; radius: panel.radius }
     Fill {
         id: panel
+        objectName: "undoPanel"
         anchors.fill: parent
         radius: Theme.radiusOverlay
-        // Opaque: inside the window nothing blurs what is under it, and the
-        // page's cards would show through.
-        color: Theme.light ? "#f9f9f9" : "#2c2c2c"
+        // A flyout's, opaque and themed: inside the window nothing blurs what
+        // is under it, and the page's cards would show through.
+        color: Theme.flyout
         border.width: 1
         border.color: Theme.cardStroke
     }

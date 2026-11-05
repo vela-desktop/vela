@@ -23,6 +23,24 @@ Item {
         timeout: 3000
     }
 
+    // A page with more cards than fit, scrolled to its end under the bar.
+    Page {
+        id: page
+        x: 300
+        y: 300
+        width: 500
+        height: 300
+        Repeater {
+            model: 10
+            Rectangle {
+                required property int index
+                objectName: index === 9 ? "lastCard" : ""
+                width: 400
+                height: 60
+            }
+        }
+    }
+
     PictureTile {
         id: tile
         y: 100
@@ -94,6 +112,33 @@ Item {
             mouseMove(root, root.width - 1, root.height - 1)
             tryCompare(bar, "shown", false, bar.timeout * 4)
             compare(root.undone, [])
+        }
+
+        function test_it_stays_while_the_keyboard_is_on_it() {
+            offer("Pill is in use", () => {})
+            bar.timeout = 300
+            const undo = buttons().find(b => b.text === "Undo")
+            undo.forceActiveFocus(Qt.TabFocusReason)
+            wait(bar.timeout * 2)
+            verify(bar.shown, "it went away with the keyboard on Undo")
+            page.forceActiveFocus()
+            tryCompare(bar, "shown", false, bar.timeout * 4)
+        }
+
+        function test_screen_readers_get_it() {
+            offer("Glass is in use", () => {})
+            compare(bar.Accessible.role, Accessible.AlertMessage)
+            compare(bar.Accessible.name, "Glass is in use")
+        }
+
+        // Main.qml puts it 24 above the window's bottom, over the page.
+        function test_scrolled_to_the_end_the_last_card_is_above_it() {
+            page.contentY = page.contentHeight - page.height
+            const last = findChild(page, "lastCard")
+            verify(last)
+            const bottom = last.mapToItem(page, 0, last.height).y
+            verify(bottom <= page.height - bar.implicitHeight - 24,
+                "the last card ends at " + bottom + " of " + page.height)
         }
 
         function test_close_doesnt_undo() {
