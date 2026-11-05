@@ -233,7 +233,8 @@ This gives the renderer real-hardware coverage on both Vulkan drivers. It is not
 
 `scripts/run-headless.sh` starts a real Vela session on wlroots' headless backend. No Vela window appears on the current desktop, but apps can be opened, moved, snapped and captured exactly as in a visible session.
 
-The manual headless and nested launchers (Python 3 required) give every run a
+The manual headless and nested launchers (Python 3.9+ and Linux 5.3+ with
+procfs/pidfd support required) give every run a
 temporary home, configuration, data, cache, and state directory. A Linux subreaper
 terminates/reaps detached descendants before removal; unresponsive processes
 receive SIGKILL after a bounded grace period. External/cyclic configuration
