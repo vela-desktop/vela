@@ -31,6 +31,22 @@ Column {
     width: parent ? parent.width : 0
     spacing: 12
 
+    // One stop for Tab in the gallery, on the style in use (From the theme
+    // first) or where the arrows last went; the arrows move, Space applies.
+    property int focusIndex: -1
+    readonly property int count: styles.length + 1
+    readonly property int tabIndex: focusIndex >= 0 && focusIndex < count ? focusIndex
+        : chosen === "" || missing ? 0 : styles.findIndex(s => s.name === chosen) + 1
+    function tileAt(i) {
+        return i === 0 ? themeTile : styleTiles.itemAt(i - 1)
+    }
+    function moveFocus(from, step) {
+        const to = from + step
+        if (to >= 0 && to < count) {
+            tileAt(to).forceActiveFocus(Qt.TabFocusReason)
+        }
+    }
+
     function nameOf(style) {
         const entry = styles.find(s => s.name === style)
         return entry ? entry.text : style
@@ -68,6 +84,9 @@ Column {
             readonly property string from: pictures.from || ""
             width: gallery.tileWidth
             pictureHeight: gallery.pictureHeight
+            tabStop: gallery.tabIndex === 0
+            onActiveFocusChanged: if (activeFocus) gallery.focusIndex = 0
+            onArrow: (dx, dy) => gallery.moveFocus(0, dx + dy * grid.columns)
             text: qsTr("From the theme")
             subtitle: from !== "" && from !== Prefs.visualTheme
                 ? qsTr("As %1 draws it, based on %2").arg(gallery.themeName)
@@ -89,10 +108,15 @@ Column {
         }
 
         Repeater {
+            id: styleTiles
             model: gallery.styles
             PictureTile {
                 id: tile
                 required property var modelData
+                required property int index
+                tabStop: gallery.tabIndex === index + 1
+                onActiveFocusChanged: if (activeFocus) gallery.focusIndex = index + 1
+                onArrow: (dx, dy) => gallery.moveFocus(index + 1, dx + dy * grid.columns)
                 width: gallery.tileWidth
                 pictureHeight: gallery.pictureHeight
                 text: modelData.text

@@ -151,6 +151,26 @@ Item {
             compare(Prefs.calls.length, 3)
         }
 
+        // The gallery is one stop for Tab, on the style in use; the arrows
+        // move (one column for the taskbar's strips), Space applies.
+        function test_one_tab_stop_and_the_arrows() {
+            Prefs.setSurfaceStyle("taskbar", "pill")
+            chooser.expanded = true
+            tryVerify(() => tiles().length === 3)
+            const stops = tiles().filter(t => t.focusPolicy === Qt.TabFocus)
+            compare(stops.map(t => t.text), ["Pill"])
+            stops[0].forceActiveFocus(Qt.TabFocusReason)
+            keyClick(Qt.Key_Up)
+            verify(tile("From the theme").activeFocus)
+            keyClick(Qt.Key_Down)
+            keyClick(Qt.Key_Down)
+            verify(tile("Dock").activeFocus)
+            compare(Prefs.surfaceStyles.taskbar, "pill")
+            keyClick(Qt.Key_Return)
+            compare(Prefs.surfaceStyles.taskbar, "dock")
+            compare(tiles().filter(t => t.focusPolicy === Qt.TabFocus).map(t => t.text), ["Dock"])
+        }
+
         // vela.conf names a style that is gone (removed, or one of the names
         // before the renames): the theme's look is in use, and it says so.
         function test_a_style_that_isnt_installed_says_so() {

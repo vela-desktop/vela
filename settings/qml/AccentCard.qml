@@ -118,7 +118,6 @@ Card {
             function moveFocus(from, step) {
                 const to = from + step
                 if (to >= 0 && to < card.accents.length) {
-                    focusIndex = to
                     swatchRepeater.itemAt(to).forceActiveFocus(Qt.TabFocusReason)
                 }
             }
@@ -134,6 +133,8 @@ Card {
                     width: 44
                     height: 44
                     hoverEnabled: true
+                    // Moved by onActiveFocusChanged, once the focus is here
+                    // (PictureTile says why).
                     focusPolicy: index === swatches.tabIndex ? Qt.TabFocus : Qt.NoFocus
                     Accessible.role: Accessible.RadioButton
                     Accessible.name: card.colorName(modelData)

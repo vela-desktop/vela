@@ -19,6 +19,18 @@ Grid {
     columns: Math.max(1, Math.min(3, Math.floor((width + spacing) / (200 + spacing))))
     spacing: 8
 
+    // One stop for Tab in the gallery, on the theme in use or where the
+    // arrows last went; the arrows move between themes, Space applies one.
+    property int focusIndex: -1
+    readonly property int tabIndex: focusIndex >= 0 && focusIndex < choices.length ? focusIndex
+        : Math.max(0, choices.findIndex(c => c.name === Prefs.visualTheme))
+    function moveFocus(from, step) {
+        const to = from + step
+        if (to >= 0 && to < choices.length) {
+            tiles.itemAt(to).forceActiveFocus(Qt.TabFocusReason)
+        }
+    }
+
     function use(entry) {
         const previous = Prefs.visualTheme
         if (entry.name === previous) {
@@ -29,10 +41,15 @@ Grid {
     }
 
     Repeater {
+        id: tiles
         model: gallery.choices
         PictureTile {
             id: tile
             required property var modelData
+            required property int index
+            tabStop: index === gallery.tabIndex
+            onActiveFocusChanged: if (activeFocus) gallery.focusIndex = index
+            onArrow: (dx, dy) => gallery.moveFocus(index, dx + dy * gallery.columns)
             width: gallery.tileWidth
             // 16:9, the pictures' shape (and the miniature's, unframed).
             pictureHeight: Math.round((width - 12) * 9 / 16)

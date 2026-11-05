@@ -151,6 +151,7 @@ Item {
             keyClick(Qt.Key_Space)
             compare(Prefs.accent, Qt.color(all[16].modelData))
             // Tab then lands where the arrows left it.
+            compare(all.filter(s => s.focusPolicy === Qt.TabFocus).length, 1)
             compare(all.filter(s => s.focusPolicy === Qt.TabFocus)[0], all[16])
         }
 

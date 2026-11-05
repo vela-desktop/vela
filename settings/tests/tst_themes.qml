@@ -102,6 +102,25 @@ Item {
             compare(tile("Mine").Accessible.checked, true)
         }
 
+        // One stop for Tab, on the theme in use; the arrows move, Space applies.
+        function test_one_tab_stop_and_the_arrows() {
+            const stops = tiles().filter(t => t.focusPolicy === Qt.TabFocus)
+            compare(stops.length, 1)
+            compare(stops[0].text, "Vela Official")
+            stops[0].forceActiveFocus(Qt.TabFocusReason)
+            keyClick(Qt.Key_Right)
+            verify(tile("Glass").activeFocus)
+            keyClick(Qt.Key_Right)
+            verify(tile("Mine").activeFocus)
+            keyClick(Qt.Key_Right) // the last: stays
+            verify(tile("Mine").activeFocus)
+            keyClick(Qt.Key_Left)
+            compare(Prefs.visualTheme, "vela") // moving applies nothing
+            keyClick(Qt.Key_Space)
+            compare(Prefs.visualTheme, "glass")
+            compare(tiles().filter(t => t.focusPolicy === Qt.TabFocus).map(t => t.text), ["Glass"])
+        }
+
         // An installed theme shows its picture; one without (your own), the
         // desktop in miniature in its colors.
         function test_pictures_or_the_miniature() {

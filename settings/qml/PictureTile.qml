@@ -7,7 +7,8 @@ import Vela.Controls
 
 // A choice shown by its picture, like Windows 11's themes: the picture on
 // top, the name and a line under it; the one in use has the accent's border
-// and a check. A click or Space chooses it (the gallery applies it at once).
+// and a check. A click, Space or Enter chooses it (the gallery applies it
+// at once).
 // The picture goes in `picture`, filling pictureHeight.
 T.AbstractButton {
     id: tile
@@ -15,10 +16,22 @@ T.AbstractButton {
     property string subtitle
     property real pictureHeight: 120
     default property alias picture: pictureBox.data
+    // In a gallery, one tile only is a stop for Tab (the gallery says which:
+    // the chosen one, or where the arrows last went); the arrows ask the
+    // gallery to move the focus.
+    property bool tabStop: true
+    signal arrow(int dx, int dy)
 
     implicitWidth: 240
     implicitHeight: pictureHeight + 12 + labels.height + 12
-    focusPolicy: Qt.TabFocus
+    // Qt Quick ignores a focus policy taken away while the tile has the
+    // focus (and drops the binding): the gallery moves its stop only once
+    // the focus has moved, from the new tile's onActiveFocusChanged.
+    focusPolicy: tabStop ? Qt.TabFocus : Qt.NoFocus
+    Keys.onLeftPressed: arrow(-1, 0)
+    Keys.onRightPressed: arrow(1, 0)
+    Keys.onUpPressed: arrow(0, -1)
+    Keys.onDownPressed: arrow(0, 1)
     hoverEnabled: true
     Accessible.role: Accessible.RadioButton
     Accessible.checkable: true
