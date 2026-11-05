@@ -227,7 +227,7 @@ void Updates::call(const QString& name, const QVariantList& arguments, bool show
             qWarning("vela-update-daemon: %s: %s: %s", qPrintable(name), qPrintable(reply.errorName()),
                 qPrintable(reply.errorMessage()));
         } else if (reply.type() == QDBusMessage::ErrorMessage) {
-            refused(reply);
+            refused(reply, name);
         }
         if (done) {
             done(reply);
@@ -235,9 +235,21 @@ void Updates::call(const QString& name, const QVariantList& arguments, bool show
     });
 }
 
-void Updates::refused(const QDBusMessage& reply)
+void Updates::refused(const QDBusMessage& reply, const QString& method)
 {
     const QString name = reply.errorName();
+    // The configuration setter has different failure semantics from an
+    // installation; avoid telling users that vela-update failed to start.
+    if (method == QLatin1String("SetCheckInterval")) {
+        if (name == errorPrefix + QLatin1String("InvalidArgs")) {
+            setError(tr("This automatic update check frequency isn't supported."));
+            return;
+        }
+        if (name == errorPrefix + QLatin1String("Failed")) {
+            setError(tr("Couldn't save the automatic update check frequency."));
+            return;
+        }
+    }
     if (name == errorPrefix + QLatin1String("Busy")) {
         setError(tr("An update or a check is already running."));
     } else if (name == errorPrefix + QLatin1String("InvalidArgs")) {

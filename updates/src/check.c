@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/timerfd.h>
+#include "check-time.h"
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -45,9 +46,8 @@ static void refresh_next_check(struct vela_up_daemon *d)
     if (sd_event_source_get_time(d->auto_timer, &deadline) < 0) {
         return;
     }
-    uint64_t now = now_us(CLOCK_BOOTTIME);
-    uint64_t remaining = deadline > now ? deadline - now : 0;
-    d->next_check_at = (int64_t)((now_us(CLOCK_REALTIME) + remaining + 999999) / 1000000);
+    d->next_check_at = vela_up_wall_deadline(
+        deadline, now_us(CLOCK_BOOTTIME), now_us(CLOCK_REALTIME));
     vela_up_changed(d);
 }
 

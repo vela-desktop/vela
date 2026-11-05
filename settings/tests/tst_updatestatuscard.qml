@@ -90,9 +90,10 @@ Item {
             compare(recheck.text, "")
             verify(recheck.subtle)
             compare(recheck.Accessible.name, "Check again")
-            verify(recheck.width <= 48)
+            tryCompare(recheck, "width", 44)
             card.width = 700
             compare(recheck.text, "Check again")
+            tryVerify(() => recheck.width > 44)
             click(recheck)
             compare(Updates.calls, ["check"])
 

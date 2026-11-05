@@ -150,7 +150,7 @@ private:
     void forget();
     void setProperties(const QVariantMap& values);
     QVariantMap failure(const QString& code, const QString& message) const;
-    void refused(const QDBusMessage& reply);
+    void refused(const QDBusMessage& reply, const QString& method);
     void setError(const QString& error);
 
     QDBusConnection m_bus;

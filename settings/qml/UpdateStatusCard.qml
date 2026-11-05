@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import QtQuick.Controls as QQC
 import Vela.Controls
 import Vela.Updates
 
@@ -94,7 +95,12 @@ Card {
             icon.name: "view-refresh"
             text: card.compactActions ? "" : qsTr("Check again")
             subtle: card.compactActions
+            // Keep the compact hit target stable, independent of content sizing.
+            width: card.compactActions ? 44 : implicitWidth
             Accessible.name: qsTr("Check again")
+            QQC.ToolTip.visible: card.compactActions && hovered
+            QQC.ToolTip.text: qsTr("Check again")
+            QQC.ToolTip.delay: 600
             usable: !Updates.busy
             onClicked: Updates.check()
         }

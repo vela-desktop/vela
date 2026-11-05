@@ -8,6 +8,7 @@
 // files with the real vela-update-state.
 
 #include "harness.h"
+#include "../../updates/src/check-time.h"
 
 #include <QDBusArgument>
 #include <QDBusReply>
@@ -95,6 +96,25 @@ private Q_SLOTS:
     void init() { reset(); }
     void cleanup() { release(); }
     void cleanupTestCase() { tearDown(); }
+
+    // Simulate discontinuous CLOCK_REALTIME changes without changing the
+    // host clock. The CLOCK_BOOTTIME deadline must stay fixed while the
+    // displayed wall-clock time follows the jump.
+    void wallClockDeadlineConversion()
+    {
+        constexpr uint64_t us = 1000000ULL;
+        constexpr uint64_t boot = 5000ULL * us;
+        constexpr uint64_t deadline = boot + 12ULL * 3600 * us;
+        constexpr uint64_t wall = 1700000000ULL * us;
+        QCOMPARE(vela_up_wall_deadline(deadline, boot, wall), int64_t(1700000000 + 12 * 3600));
+        QCOMPARE(vela_up_wall_deadline(deadline, boot, wall + 2ULL * 3600 * us),
+            int64_t(1700000000 + 14 * 3600));
+        QCOMPARE(vela_up_wall_deadline(deadline, boot, wall - 3ULL * 3600 * us),
+            int64_t(1700000000 + 9 * 3600));
+        // Expired deadlines are reported as now, and fractional seconds round up.
+        QCOMPARE(vela_up_wall_deadline(deadline, deadline + us, wall), int64_t(1700000000));
+        QCOMPARE(vela_up_wall_deadline(deadline, deadline + us, wall + 1), int64_t(1700000001));
+    }
 
     void startsEmpty()
     {

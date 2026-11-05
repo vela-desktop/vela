@@ -104,6 +104,14 @@ private Q_SLOTS:
             QVERIFY2(updates.error().contains(words), qPrintable(updates.error()));
             seen << updates.error();
         }
+        // SetCheckInterval refuses must describe configuration, not installation.
+        refusing.errorName = QStringLiteral("org.vela.Updates.Error.InvalidArgs");
+        updates.setCheckInterval(7u);
+        QTRY_COMPARE(updates.error(), QStringLiteral("This automatic update check frequency isn't supported."));
+        refusing.errorName = QStringLiteral("org.vela.Updates.Error.Failed");
+        updates.setCheckInterval(12u);
+        QTRY_COMPARE(updates.error(), QStringLiteral("Couldn't save the automatic update check frequency."));
+
         refusing.errorName = QStringLiteral("org.freedesktop.DBus.Error.NoReply");
         updates.check();
         QTRY_VERIFY(!updates.error().isEmpty() && !seen.contains(updates.error()));
