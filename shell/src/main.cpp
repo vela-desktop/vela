@@ -33,6 +33,7 @@
 #include "themefile.h"
 #include "network.h"
 #include "notifications.h"
+#include "peripheralbatterymonitor.h"
 #include "servicemenus.h"
 #include "shellcontroller.h"
 #include "snip.h"
@@ -376,6 +377,8 @@ int main(int argc, char* argv[])
         });
     notifications.setDoNotDisturb(config.doNotDisturb());
     QObject::connect(&config, &Config::doNotDisturbChanged, &notifications, &NotificationServer::setDoNotDisturb);
+    // UPower peripherals: low/critical battery alerts without a polling loop.
+    PeripheralBatteryMonitor peripheralBatteries(&notifications);
     TrayModel tray;
     tray.start();
     SystemActions system;
