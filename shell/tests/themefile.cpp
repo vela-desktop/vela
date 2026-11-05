@@ -240,10 +240,18 @@ private slots:
         write(config() + QStringLiteral("screenshots/themes/mine/taskbar.png"), "png");
         built = vela::themes::themeSurfacePictures(QStringLiteral("mine"), QStringLiteral("taskbar"));
         QCOMPARE(built.value(QStringLiteral("from")).toString(), QStringLiteral("mine"));
+        QCOMPARE(built.value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(config() + QStringLiteral("screenshots/themes/mine/taskbar.png")).toString() });
         // None in the chain: none, from no theme.
         built = vela::themes::themeSurfacePictures(QStringLiteral("mine"), QStringLiteral("startmenu"));
         QVERIFY(built.value(QStringLiteral("images")).toStringList().isEmpty());
         QVERIFY(built.value(QStringLiteral("from")).toString().isEmpty());
+        // Every folder with pictures, for Settings to watch.
+        const QStringList watched = vela::themes::pictureDirectories();
+        for (const QString& dir : { data() + QStringLiteral("screenshots"), data() + QStringLiteral("screenshots/themes/glass"),
+                 data() + QStringLiteral("screenshots/taskbar"), config() + QStringLiteral("screenshots/themes/mine") }) {
+            QVERIFY2(watched.contains(QDir::cleanPath(dir)), qPrintable(dir));
+        }
         // Not a way out of screenshots/themes/, nor a surface that isn't one.
         QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("../glass"), QStringLiteral("taskbar")).value(QStringLiteral("images")).toStringList().isEmpty());
         QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QString()).value(QStringLiteral("images")).toStringList().isEmpty());
@@ -377,6 +385,9 @@ private slots:
         QCOMPARE(layout("taskbar-margin=99\ntaskbar-radius=99\n").margin, 24);
         QCOMPARE(layout("taskbar-margin=99\ntaskbar-radius=99\n").radius, 48);
         QCOMPARE(layout("taskbar-radius=8\ntaskbar-fit=1\ntaskbar-edge=7\n").edge, 2);
+        // Too large for an int: clamped all the same, not wrapped round.
+        QCOMPARE(layout("taskbar-margin=1000000000000\n").margin, 24);
+        QCOMPARE(layout("taskbar-margin=-1000000000000\n").margin, 0);
         // Each mode its own.
         const QByteArray modes = "taskbar-radius=8\ndark.taskbar-fit=1\nlight.taskbar-fit=0\n";
         QVERIFY(layout(modes, false).fit);
@@ -384,10 +395,13 @@ private slots:
         // Whether a taskbar style decides the layout over the theme (Taskbar's
         // alignment names it): any of the layout's keys, in a mode or both.
         using vela::themes::setsTaskbarLayout;
-        QVERIFY(setsTaskbarLayout(read("taskbar-fit=1\n", vela::themes::Taskbar).tokens));
-        QVERIFY(setsTaskbarLayout(read("dark.taskbar-radius=4\n", vela::themes::Taskbar).tokens));
-        QVERIFY(setsTaskbarLayout(read("taskbar-variant=dock\n", vela::themes::Taskbar).tokens));
-        QVERIFY(!setsTaskbarLayout(read("taskbar-height=52\ntaskbar=#26000000\n", vela::themes::Taskbar).tokens));
+        QVERIFY(setsTaskbarLayout(read("taskbar-fit=1\n", vela::themes::Taskbar).tokens, false));
+        QVERIFY(setsTaskbarLayout(read("taskbar-variant=dock\n", vela::themes::Taskbar).tokens, true));
+        QVERIFY(!setsTaskbarLayout(read("taskbar-height=52\ntaskbar=#26000000\n", vela::themes::Taskbar).tokens, false));
+        // A mode's keys, in that mode only.
+        const QVariantMap darkOnly = read("dark.taskbar-radius=4\n", vela::themes::Taskbar).tokens;
+        QVERIFY(setsTaskbarLayout(darkOnly, false));
+        QVERIFY(!setsTaskbarLayout(darkOnly, true));
     }
 
     void configuredNameIsTheLastOne()

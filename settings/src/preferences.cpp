@@ -109,6 +109,12 @@ void Preferences::watchThemes()
             }
         }
     }
+    // The pictures' folders too: one added shows in the galleries at once.
+    for (const QString& dir : vela::themes::pictureDirectories()) {
+        if (!m_themesWatcher.directories().contains(dir)) {
+            m_themesWatcher.addPath(dir);
+        }
+    }
 }
 
 void Preferences::watchConfig()
@@ -673,7 +679,8 @@ QVariantMap Preferences::resolveTheme(const QString& name) const
     }
     return { { QStringLiteral("installed"), !theme.files.isEmpty() }, { QStringLiteral("tokens"), loaded.merged() },
         { QStringLiteral("problems"), problems },
-        { QStringLiteral("layoutFromStyle"), vela::themes::setsTaskbarLayout(loaded.layers[vela::themes::Taskbar].tokens) } };
+        { QStringLiteral("layoutFromStyle"), vela::themes::setsTaskbarLayout(loaded.layers[vela::themes::Taskbar].tokens,
+                                          m_shellTheme == QLatin1String("light")) } };
 }
 
 void Preferences::setSurfaceStyle(const QString& surface, const QString& style)
@@ -730,12 +737,14 @@ void Preferences::openThemesFolder(const QString& surface)
 
 void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& styles)
 {
+    // A theme name vela.conf had by hand and Vela can't load stays as it is;
+    // the styles come back all the same.
     const QString name = theme.isEmpty() ? vela::themes::defaultTheme() : theme;
-    if (!vela::themes::validName(name)) {
-        return;
+    QStringList keys;
+    if (vela::themes::validName(name)) {
+        m_visualTheme = name;
+        keys.append(QStringLiteral("theme"));
     }
-    QStringList keys { QStringLiteral("theme") };
-    m_visualTheme = name;
     for (auto it = m_surfaceStyles.begin(); it != m_surfaceStyles.end(); ++it) {
         const QString style = styles.value(it.key()).toString().trimmed();
         it.value() = style.isEmpty() || vela::themes::validName(style) ? style : QString();

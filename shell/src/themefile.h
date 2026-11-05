@@ -9,6 +9,7 @@
 #include <QByteArray>
 #include <QColor>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QIODevice>
@@ -577,10 +578,12 @@ inline TaskbarLayout taskbarLayout(const QVariantMap& tokens, bool light)
 {
     // Styles.qml's size(): the number rounded as JavaScript's Math.round()
     // does, clamped; the fallback without one.
+    // Clamped before it becomes an int: a huge number would not fit in one.
     const auto size = [&tokens, light](const char* key, double fallback, int low, int high) {
         bool ok = false;
         const double number = themed(tokens, QLatin1String(key), light).toDouble(&ok);
-        return std::clamp(int(std::floor((ok ? number : fallback) + 0.5)), low, high);
+        const double value = ok && std::isfinite(number) ? number : fallback;
+        return int(std::clamp(std::floor(value + 0.5), double(low), double(high)));
     };
     TaskbarLayout layout;
     if (const QVariant variant = themed(tokens, QStringLiteral("taskbar-variant"), light);
@@ -600,14 +603,18 @@ inline TaskbarLayout taskbarLayout(const QVariantMap& tokens, bool light)
     return layout;
 }
 
-// Whether a file's tokens set the taskbar's layout (any of the keys above, for
-// one mode or both): a taskbar style that does decides it over the theme.
-inline bool setsTaskbarLayout(const QVariantMap& tokens)
+// Whether a file's tokens set the taskbar's layout in a mode (any of the keys
+// above, for both modes or that one): a taskbar style that does decides it
+// over the theme.
+inline bool setsTaskbarLayout(const QVariantMap& tokens, bool light)
 {
     static const QStringList keys { QStringLiteral("taskbar-variant"), QStringLiteral("taskbar-margin"),
         QStringLiteral("taskbar-radius"), QStringLiteral("taskbar-fit"), QStringLiteral("taskbar-edge") };
-    return std::any_of(tokens.keyBegin(), tokens.keyEnd(),
-        [](const QString& key) { return keys.contains(key.section(u'.', -1)); });
+    const QString mode = light ? QStringLiteral("light") : QStringLiteral("dark");
+    return std::any_of(tokens.keyBegin(), tokens.keyEnd(), [&mode](const QString& key) {
+        const QString prefix = key.section(u'.', 0, -2);
+        return (prefix.isEmpty() || prefix == mode) && keys.contains(key.section(u'.', -1));
+    });
 }
 
 // The chosen theme and styles of a vela.conf, each resolved on its own (a
@@ -759,6 +766,25 @@ inline QStringList pictures(const QString& directory, const QString& name, bool 
         }
     }
     return urls;
+}
+
+// The folders the pictures are in, those there are: each themes directory's
+// screenshots/ and every folder under it (a theme's own too), for Settings to
+// watch, so that a picture added shows at once.
+inline QStringList pictureDirectories()
+{
+    QStringList dirs;
+    for (const QString& root : directories(Theme)) {
+        const QString shots = root + QStringLiteral("/screenshots");
+        if (!QFileInfo(shots).isDir()) {
+            continue;
+        }
+        dirs.append(shots);
+        for (QDirIterator it(shots, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories); it.hasNext();) {
+            dirs.append(it.next());
+        }
+    }
+    return dirs;
 }
 
 // The installed themes ("") or a surface's styles, with their pictures:
