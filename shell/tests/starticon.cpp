@@ -92,6 +92,18 @@ private slots:
         QCOMPARE(distribution.logo, QString());
     }
 
+    void theSystemsOsRelease()
+    {
+        // Without the tests' file: /etc/os-release, else /usr/lib's, read as
+        // they are (every Linux the CI runs on has one).
+        qunsetenv("VELA_OS_RELEASE");
+        const auto distribution = vela::start::distribution();
+        qputenv("VELA_OS_RELEASE", m_dir.filePath(QStringLiteral("os-release")).toUtf8());
+        if (QFileInfo::exists(QStringLiteral("/etc/os-release")) || QFileInfo::exists(QStringLiteral("/usr/lib/os-release"))) {
+            QVERIFY(!distribution.name.isEmpty());
+        }
+    }
+
     void logoFromTheIconTheme()
     {
         // No loose file: the theme's icon, by its name.
@@ -123,6 +135,9 @@ private slots:
         // A picture that is gone.
         icon = vela::start::icon(settings("[start]\nicon=picture\niconPicture=/nowhere/sail.png\n"));
         QCOMPARE(icon.kind, QStringLiteral("vela"));
+        // A picture by a relative path: not one the shell can find.
+        write(m_dir.filePath(QStringLiteral("relative.png")), "png");
+        QCOMPARE(vela::start::icon(settings("[start]\nicon=picture\niconPicture=relative.png\n")).kind, QStringLiteral("vela"));
         // Something unknown.
         QCOMPARE(vela::start::icon(settings("[start]\nicon=orb\n")).kind, QStringLiteral("vela"));
     }

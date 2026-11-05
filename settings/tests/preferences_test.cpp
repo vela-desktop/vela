@@ -146,6 +146,7 @@ private slots:
 
         prefs.setStartIcon(QStringLiteral("orb")); // not a kind
         QCOMPARE(saved(QStringLiteral("start/icon")), QVariant());
+        prefs.setStartIcon(QStringLiteral("vela")); // what it shows already
         QCOMPARE(start.count(), 0);
 
         prefs.setStartIcon(QStringLiteral("distribution"));
@@ -161,11 +162,19 @@ private slots:
         QCOMPARE(saved(QStringLiteral("start/iconPicture")).toString(), picture);
         QCOMPARE(start.count(), 2);
 
+        // Another picture: the same kind, a new source.
+        const QString other = makeFile(QStringLiteral("other.png"));
+        prefs.setStartIcon(QStringLiteral("picture"), other);
+        QCOMPARE(prefs.startIconSource(), other);
+        QCOMPARE(start.count(), 3);
+        prefs.setStartIcon(QStringLiteral("picture"), picture);
+        QCOMPARE(start.count(), 4);
+
         // One that isn't there, or isn't a path: ignored.
         prefs.setStartIcon(QStringLiteral("picture"), home->filePath(QStringLiteral("nowhere.png")));
         prefs.setStartIcon(QStringLiteral("picture"), QStringLiteral("relative.png"));
         QCOMPARE(prefs.startIconSource(), picture);
-        QCOMPARE(start.count(), 2);
+        QCOMPARE(start.count(), 4);
 
         // Back to the sail, then "Picture" without a file: the one before.
         prefs.setStartIcon(QStringLiteral("vela"));
@@ -173,7 +182,7 @@ private slots:
         QCOMPARE(saved(QStringLiteral("start/iconPicture")).toString(), picture);
         prefs.setStartIcon(QStringLiteral("picture"));
         QCOMPARE(prefs.startIconSource(), picture);
-        QCOMPARE(start.count(), 4);
+        QCOMPARE(start.count(), 6);
 
         // The picture gone: what the taskbar shows, the sail.
         QFile::remove(picture);

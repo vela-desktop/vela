@@ -78,6 +78,15 @@ private slots:
         QCOMPARE(config.clockFormat(), QStringLiteral("HH:mm:ss"));
         QVERIFY(config.clockDate());
         QVERIFY(config.notificationCount());
+        // Only the count.
+        write("[clock]\nhours=24\n[taskbar]\nclockSeconds=true\nnotificationCount=false\n");
+        QVERIFY(clock.wait(3000));
+        QVERIFY(!config.notificationCount());
+        QCOMPARE(config.clockFormat(), QStringLiteral("HH:mm:ss"));
+        // Only the seconds.
+        write("[clock]\nhours=24\n[taskbar]\nclockSeconds=false\nnotificationCount=false\n");
+        QVERIFY(clock.wait(3000));
+        QCOMPARE(config.clockFormat(), QStringLiteral("HH:mm"));
     }
 
     void unrelatedChangesStayQuiet()
