@@ -19,6 +19,7 @@
 #include "viewporter-client-protocol.h"
 
 #include "wallpaperblur.h"
+#include "clockformat.h"
 #include "defaults.h"
 #include "language.h"
 
@@ -33,6 +34,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
+#include <QSettings>
 #include <QSocketNotifier>
 #include <QSvgRenderer>
 #include <QTimer>
@@ -98,6 +100,8 @@ bool unlocked = false;
 
 QString userName;
 QString displayName;
+// 24-hour or 12-hour, as the taskbar shows it (shell/src/clockformat.h).
+QString timeFormat = vela::clock::timeFormat(true);
 
 void redrawAll();
 
@@ -186,7 +190,7 @@ void draw(Screen& screen)
             p.setFont(font);
             p.setPen(QColor(255, 255, 255, 240));
             const QRectF timeBox(0, lh * 0.12, lw, 150);
-            p.drawText(timeBox, Qt::AlignHCenter | Qt::AlignTop, QLocale().toString(now.time(), QStringLiteral("HH:mm")));
+            p.drawText(timeBox, Qt::AlignHCenter | Qt::AlignTop, QLocale().toString(now.time(), timeFormat));
             font.setPixelSize(26);
             font.setWeight(QFont::Medium);
             p.setFont(font);
@@ -582,6 +586,7 @@ int main(int argc, char* argv[])
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
     vela::language::install(QStringLiteral("vela-lock")); // draws every frame: nothing to retranslate
+    timeFormat = vela::clock::timeFormat(vela::clock::hour24(QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))));
 
     if (const passwd* pw = getpwuid(getuid())) {
         userName = QString::fromLocal8Bit(pw->pw_name);

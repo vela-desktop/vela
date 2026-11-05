@@ -163,6 +163,8 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 
 | Key | Default | Meaning |
 |---|---|---|
+| `clock/hours` | `24` | `24` or `12`: how the taskbar, the notification center, the lock screen and Settings' Date & time write the time (`13:45` or `1:45 PM`) |
+| `taskbar/clockSeconds` | `false` | The seconds in the taskbar's clock |
 | `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `start/showPinned` | `true` | The apps pinned to Start above all apps; off, Start opens on all apps and keeps the pins (`start/pinned`) |
 | `desktop/showIcons` | `true` | The Desktop folder's icons on the main display (Settings → Background, or the desktop's menu) |

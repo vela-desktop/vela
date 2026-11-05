@@ -234,7 +234,7 @@ Window {
                                         id: timeText
                                         anchors.right: parent.right
                                         anchors.rightMargin: 24
-                                        text: Qt.formatTime(item.time, "HH:mm")
+                                        text: Qt.formatTime(item.time, Config.timeFormat)
                                         color: Theme.textSecondary
                                         font.pixelSize: Theme.fontCaption
                                     }

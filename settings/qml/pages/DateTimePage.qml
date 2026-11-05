@@ -23,7 +23,7 @@ Page {
         Column {
             anchors.verticalCenter: parent.verticalCenter
             Text {
-                text: Qt.formatTime(page.now, "HH:mm")
+                text: Qt.formatTime(page.now, Prefs.timeFormat) // 24-hour or 12-hour (Taskbar)
                 color: Theme.text
                 font.pixelSize: 40
                 font.weight: Font.DemiBold

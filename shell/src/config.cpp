@@ -3,6 +3,7 @@
 
 #include "config.h"
 
+#include "clockformat.h"
 #include "defaults.h"
 
 #include <QDir>
@@ -36,6 +37,16 @@ void Config::watch()
     if (info.dir().exists() && !m_watcher.directories().contains(info.absolutePath())) {
         m_watcher.addPath(info.absolutePath());
     }
+}
+
+QString Config::timeFormat() const
+{
+    return vela::clock::timeFormat(m_clock24);
+}
+
+QString Config::clockFormat() const
+{
+    return vela::clock::timeFormat(m_clock24, m_clockSeconds);
 }
 
 void Config::reload()
@@ -74,8 +85,12 @@ void Config::reload()
     }
 
     const bool clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
-    if (clockDate != m_clockDate) {
+    const bool clock24 = vela::clock::hour24(settings);
+    const bool clockSeconds = settings.value(QStringLiteral("taskbar/clockSeconds"), false).toBool();
+    if (clockDate != m_clockDate || clock24 != m_clock24 || clockSeconds != m_clockSeconds) {
         m_clockDate = clockDate;
+        m_clock24 = clock24;
+        m_clockSeconds = clockSeconds;
         emit clockChanged();
     }
 

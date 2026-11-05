@@ -1753,6 +1753,22 @@ Specifiche sistema
         <translation>taskbar allineamento sinistra centro termina attività</translation>
     </message>
     <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>clock 24-hour 12-hour am pm time format hours</source>
+        <translation>orologio 24 ore 12 ore am pm formato ora ore</translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation>Mostra i secondi</translation>
+    </message>
+    <message>
+        <source>taskbar clock seconds time</source>
+        <translation>barra applicazioni orologio secondi ora</translation>
+    </message>
+    <message>
         <source>Show the date</source>
         <translation>Mostra la data</translation>
     </message>
@@ -2969,6 +2985,30 @@ Specifiche sistema
     <message>
         <source>Clock and notifications</source>
         <translation>Orologio e notifiche</translation>
+    </message>
+    <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>In the taskbar, the notification center, the lock screen and Date &amp; time</source>
+        <translation>Nella barra delle applicazioni, nel centro notifiche, nella schermata di blocco e in Data e ora</translation>
+    </message>
+    <message>
+        <source>24-hour (%1)</source>
+        <translation>24 ore (%1)</translation>
+    </message>
+    <message>
+        <source>12-hour (%1)</source>
+        <translation>12 ore (%1)</translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation>Mostra i secondi</translation>
+    </message>
+    <message>
+        <source>In the taskbar&apos;s clock</source>
+        <translation>Nell&apos;orologio della barra delle applicazioni</translation>
     </message>
     <message>
         <source>Show the date</source>

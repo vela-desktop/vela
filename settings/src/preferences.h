@@ -41,6 +41,12 @@ class Preferences : public QObject {
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner WRITE setShowDesktopCorner NOTIFY taskbarChanged)
     // The taskbar clock: its date (taskbar/showDate).
     Q_PROPERTY(bool clockDate READ clockDate WRITE setClockDate NOTIFY clockChanged)
+    // 24-hour or 12-hour everywhere Vela shows the time (clock/hours), the
+    // seconds in the taskbar's clock (taskbar/clockSeconds); timeFormat is
+    // the Qt.formatTime() format for the first (shell/src/clockformat.h).
+    Q_PROPERTY(bool clock24 READ clock24 WRITE setClock24 NOTIFY clockChanged)
+    Q_PROPERTY(bool clockSeconds READ clockSeconds WRITE setClockSeconds NOTIFY clockChanged)
+    Q_PROPERTY(QString timeFormat READ timeFormat NOTIFY clockChanged)
     // start/showPinned: the apps pinned to Start above all apps.
     Q_PROPERTY(bool startPinned READ startPinned WRITE setStartPinned NOTIFY startChanged)
     // desktop/showIcons, which the desktop's own menu sets too.
@@ -145,6 +151,11 @@ public:
     bool startPinned() const { return m_startPinned; }
     bool clockDate() const { return m_clockDate; }
     void setClockDate(bool on);
+    bool clock24() const { return m_clock24; }
+    void setClock24(bool on);
+    bool clockSeconds() const { return m_clockSeconds; }
+    void setClockSeconds(bool on);
+    QString timeFormat() const;
     void setStartPinned(bool on);
     void setDesktopIcons(bool on);
 
@@ -313,6 +324,8 @@ private:
     bool m_desktopIcons = true;
     bool m_startPinned = true;
     bool m_clockDate = true;
+    bool m_clock24 = true;
+    bool m_clockSeconds = false;
     bool m_doNotDisturb = false;
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;

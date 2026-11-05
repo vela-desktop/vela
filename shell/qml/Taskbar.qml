@@ -876,8 +876,10 @@ Window {
 
         property date now: Shell.now()
 
+        // Just after each second begins, so the seconds (when shown) and the
+        // minutes turn when they do.
         Timer {
-            interval: 1000
+            interval: 1000 - clock.now.getMilliseconds() + 5
             running: true
             repeat: true
             onTriggered: clock.now = Shell.now()
@@ -921,9 +923,13 @@ Window {
 
             Text {
                 anchors.right: parent.right
-                text: Qt.formatTime(clock.now, "HH:mm")
+                // 24-hour or 12-hour, with or without the seconds (Settings >
+                // Taskbar). Digits all as wide, so the clock doesn't twitch
+                // every second.
+                text: Qt.formatTime(clock.now, Config.clockFormat)
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption
+                font.features: { "tnum": 1 }
             }
             Text {
                 anchors.right: parent.right

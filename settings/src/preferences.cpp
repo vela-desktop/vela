@@ -9,6 +9,7 @@ extern "C" {
 #include "legacy_names.h"
 }
 
+#include "clockformat.h"
 #include "iconprovider.h"
 #include "themefile.h"
 
@@ -168,6 +169,8 @@ void Preferences::reload()
     m_startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
     emit startChanged();
     m_clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
+    m_clock24 = vela::clock::hour24(settings);
+    m_clockSeconds = settings.value(QStringLiteral("taskbar/clockSeconds"), false).toBool();
     emit clockChanged();
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
     emit doNotDisturbChanged();
@@ -552,6 +555,29 @@ void Preferences::setClockDate(bool on)
         setShell(QStringLiteral("taskbar/showDate"), on);
         emit clockChanged();
     }
+}
+
+void Preferences::setClock24(bool on)
+{
+    if (on != m_clock24) {
+        m_clock24 = on;
+        setShell(QStringLiteral("clock/hours"), on ? 24 : 12);
+        emit clockChanged();
+    }
+}
+
+void Preferences::setClockSeconds(bool on)
+{
+    if (on != m_clockSeconds) {
+        m_clockSeconds = on;
+        setShell(QStringLiteral("taskbar/clockSeconds"), on);
+        emit clockChanged();
+    }
+}
+
+QString Preferences::timeFormat() const
+{
+    return vela::clock::timeFormat(m_clock24);
 }
 
 void Preferences::setTaskView(bool on)

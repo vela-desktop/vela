@@ -29,6 +29,12 @@ class Config : public QObject {
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner NOTIFY taskbarChanged)
     // The taskbar clock's second line, the date (taskbar/showDate).
     Q_PROPERTY(bool clockDate READ clockDate NOTIFY clockChanged)
+    // 24-hour or 12-hour (clock/hours), and the seconds in the taskbar's
+    // clock (taskbar/clockSeconds): Qt.formatTime() formats for the times
+    // Vela shows (timeFormat) and for the taskbar's clock (clockFormat).
+    Q_PROPERTY(QString timeFormat READ timeFormat NOTIFY clockChanged)
+    Q_PROPERTY(QString clockFormat READ clockFormat NOTIFY clockChanged)
+    Q_PROPERTY(bool clockSeconds READ clockSeconds NOTIFY clockChanged)
     // The apps pinned to Start, above all apps (start/showPinned).
     Q_PROPERTY(bool startPinned READ startPinned NOTIFY startChanged)
     // Clipboard history (Win+V).
@@ -51,6 +57,9 @@ public:
     bool clipboardHistory() const { return m_clipboardHistory; }
     bool startPinned() const { return m_startPinned; }
     bool clockDate() const { return m_clockDate; }
+    bool clockSeconds() const { return m_clockSeconds; }
+    QString timeFormat() const;
+    QString clockFormat() const;
     bool doNotDisturb() const { return m_doNotDisturb; }
     QString shellTheme() const { return m_shellTheme; }
     QString appTheme() const { return m_appTheme; }
@@ -87,6 +96,8 @@ private:
     bool m_clipboardHistory = false;
     bool m_startPinned = true;
     bool m_clockDate = true;
+    bool m_clock24 = true;
+    bool m_clockSeconds = false;
     bool m_doNotDisturb = false;
     bool m_showDesktopIcons = true;
     QString m_shellTheme = QStringLiteral("dark");

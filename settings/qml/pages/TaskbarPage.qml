@@ -27,6 +27,31 @@ Page {
     CardGroup {
         title: qsTr("Clock and notifications")
         Card {
+            id: hours
+            icon: "preferences-system-time"
+            title: qsTr("Time format")
+            description: qsTr("In the taskbar, the notification center, the lock screen and Date & time")
+            // Each choice shows a time as it would read: 13:45 or 1:45 PM.
+            readonly property date sample: new Date(2026, 0, 14, 13, 45)
+            trailing: Choice {
+                objectName: "clockHours"
+                model: [qsTr("24-hour (%1)").arg(Qt.formatTime(hours.sample, "HH:mm")),
+                    qsTr("12-hour (%1)").arg(Qt.formatTime(hours.sample, "h:mm AP"))]
+                currentIndex: Prefs.clock24 ? 0 : 1
+                onChosen: index => Prefs.clock24 = index === 0
+            }
+        }
+        Card {
+            icon: "chronometer"
+            title: qsTr("Show seconds")
+            description: qsTr("In the taskbar's clock")
+            trailing: Switch {
+                objectName: "clockSeconds"
+                checked: Prefs.clockSeconds
+                onToggled: Prefs.clockSeconds = checked
+            }
+        }
+        Card {
             icon: "view-calendar"
             title: qsTr("Show the date")
             description: qsTr("Under the time in the taskbar's clock")

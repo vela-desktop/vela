@@ -12,7 +12,10 @@ import os
 import time
 import unittest
 
+from harness import BUILD, Session
 import test_shell
+
+LOCK = os.path.join(BUILD, "lock", "vela-lock")
 
 
 class Personalization(test_shell.RealShell):
@@ -84,6 +87,43 @@ class Personalization(test_shell.RealShell):
         self.assertLess(len(colors(without)), len(colors(before)) / 3, "the date's line is still drawn")
         self.check_desktop()
 
+    def test_the_clock_turns_12_hour(self):
+        # 13:45 reads 1:45 PM.
+        self.toggles_clock("clock/hours", "12", "24")
+        self.check_desktop()
+
+    def test_the_clock_shows_seconds(self):
+        # 13:45 reads 13:45:07, the clock wider.
+        self.toggles_clock("taskbar/clockSeconds", "true", "false")
+        self.check_desktop()
+
+    def test_the_notification_center_follows_the_time_format(self):
+        # A notification's time in the center reads as the taskbar's clock.
+        test_shell.QtShell.send_notification(self, "Time format", actions="[]", expire_timeout=1500)
+        self.vela.wait_for(lambda s: self.layer(s, "vela-notifications"), timeout=8, what="the popup shown")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-notifications"), timeout=10, what="the popup gone")
+
+        def center():
+            self.vela.input("key", "super+n")
+            state = self.vela.wait_for(lambda s: self.layer(s, "vela-notification-center"), what="the center open")
+            time.sleep(1.0) # its entrance over
+            layer = self.layer(state, "vela-notification-center")
+            # Its first notification's row, under the header.
+            shot = self.region(layer["x"], layer["y"], layer["w"], min(layer["h"], 200))
+            self.vela.input("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-notification-center"), timeout=5,
+                               what="the center closed")
+            return shot
+
+        hour24 = center()
+        self.write_shell_conf("[clock]\nhours=12\n")
+        time.sleep(1.0)
+        self.assertTrue(center() != hour24, "the notification's time didn't change")
+        self.write_shell_conf("[clock]\nhours=24\n")
+        time.sleep(1.0)
+        self.assertTrue(center() == hour24, "the notification's time didn't come back")
+        self.check_desktop()
+
     def test_desktop_icons_follow_settings(self):
         # A file on the desktop; Settings > Background hides, then shows it.
         # The shell read desktop/showIcons only at startup before, and the
@@ -138,6 +178,43 @@ class Personalization(test_shell.RealShell):
         time.sleep(1.0)
         self.assertTrue(middle() == shown, "the pinned apps didn't come back")
         self.check_desktop()
+
+
+@unittest.skipUnless(os.path.exists(LOCK), "vela-lock not built")
+class LockClock(unittest.TestCase):
+    """The real lock screen's clock, in the format of the taskbar's. Nothing
+    is typed: PAM is never asked."""
+
+    def time_width(self, hours):
+        """How wide the lock screen's time is drawn with clock/hours=."""
+        with Session(env={"VELA_LOCK": LOCK}) as vela:
+            folder = os.path.join(vela.env["XDG_CONFIG_HOME"], "Vela")
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, "vela-shell.conf"), "w") as file:
+                file.write(f"[clock]\nhours={hours}\n")
+            vela.command("lock")
+            output = vela.wait_for(lambda s: s["locked"], what="locked").output
+
+            width = 0
+
+            def drawn(_):
+                nonlocal width
+                image = vela.pixels()
+                # The time's box (lock/main.cpp): from 12% of the height, 150
+                # tall; its text is near white over the dimmed wallpaper.
+                top = int(output["h"] * 0.12)
+                columns = [x for x in range(image.width)
+                           if any(min(image.at(x, y)) > 200 for y in range(top + 20, top + 130, 3))]
+                width = columns[-1] - columns[0] if columns else 0
+                return width > 0
+            vela.wait_for(drawn, timeout=10, read_state=False, what="the lock screen's time")
+            time.sleep(0.5) # its first frames over
+            drawn(None)
+            return width
+
+    def test_the_lock_screen_follows_the_time_format(self):
+        # "1:45 PM" is wider than "13:45" whatever the time: AM or PM after it.
+        self.assertGreater(self.time_width(12), self.time_width(24) + 60)
 
 
 if __name__ == "__main__":
