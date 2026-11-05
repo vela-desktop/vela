@@ -164,11 +164,10 @@ class PrivateSessionTests(unittest.TestCase):
                 self.assertFalse(self.output.exists())
                 self.assert_clean()
 
-    def test_relative_tmpdir_is_rejected(self):
+    def test_relative_tmpdir_uses_safe_fallback(self):
         run = self.run_script("run-headless.sh", TMPDIR="relative")
-        self.assertEqual(run.returncode, 2)
-        self.assertIn("TMPDIR must be an absolute path", run.stderr)
-        self.assertFalse(self.output.exists())
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assert_isolated(json.loads(self.output.read_text()))
         self.assert_clean()
 
     def test_detached_stubborn_child_is_reaped_before_directory_cleanup(self):

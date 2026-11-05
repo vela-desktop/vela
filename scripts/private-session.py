@@ -155,9 +155,6 @@ def main(argv):
     compositor, shell = _validated_command(argv)
     if os.environ.get("VELA_TEST_COPY_CONFIG", "0") not in ("0", "1"):
         raise InvalidSessionArguments("VELA_TEST_COPY_CONFIG must be 0 or 1")
-    temp_parent = os.environ.get("TMPDIR") or os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    if not os.path.isabs(temp_parent):
-        raise InvalidSessionArguments("TMPDIR must be an absolute path")
     real_config = os.environ.get("XDG_CONFIG_HOME")
     if not real_config:
         if not os.environ.get("HOME"):
@@ -168,7 +165,9 @@ def main(argv):
     for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, _on_signal)
 
-    root = Path(tempfile.mkdtemp(prefix="vela-session.", dir=temp_parent))
+    # tempfile chooses valid TMPDIR automatically, creating a private (0700)
+    # directory atomically even when its parent is publicly writable.
+    root = Path(tempfile.mkdtemp(prefix="vela-session."))
     safe_to_remove = True
     try:
         env = os.environ.copy()
