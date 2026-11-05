@@ -107,8 +107,11 @@ def shoot(desktop, path, region=None, height=None):
 
 
 def shoot_taskbar(desktop, path):
-    output = desktop.vela.state()["outputs"][0]
-    shoot(desktop, path, (0, output["h"] - TASKBAR_STRIP, output["w"], TASKBAR_STRIP))
+    """The strip Settings shows, taller only for a bar that doesn't fit in it."""
+    state = desktop.vela.state()
+    output = state["outputs"][0]
+    strip = max(TASKBAR_STRIP, desktop.layer(state, "vela-taskbar")["h"])
+    shoot(desktop, path, (0, output["h"] - strip, output["w"], strip))
 
 
 def open_panel(desktop, key, namespace):
