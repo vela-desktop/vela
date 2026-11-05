@@ -76,6 +76,19 @@ private slots:
         QVERIFY(QDir().mkpath(QFileInfo(confPath()).absolutePath()));
     }
 
+    void aNewProfileStillFollowsSettings()
+    {
+        // No ~/.config/Vela when the shell starts: Settings makes it with
+        // its first write, which the shell must see.
+        QDir(QFileInfo(confPath()).absolutePath()).removeRecursively();
+        Config config;
+        QSignalSpy clock(&config, &Config::clockChanged);
+        QDir().mkpath(QFileInfo(confPath()).absolutePath());
+        write("[clock]\nhours=12\n");
+        QVERIFY(clock.wait(3000));
+        QCOMPARE(config.timeFormat(), QStringLiteral("h:mm AP"));
+    }
+
     void defaultsBeforeAnyChoice()
     {
         Config config;

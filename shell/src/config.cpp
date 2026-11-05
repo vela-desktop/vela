@@ -32,6 +32,9 @@ Config::Config(QObject* parent)
 void Config::watch()
 {
     const QFileInfo info(m_path);
+    // On a new profile the directory isn't there yet: made here, so that
+    // Settings' first write is seen (QSettings would make it anyway).
+    QDir().mkpath(info.absolutePath());
     if (info.exists() && !m_watcher.files().contains(m_path)) {
         m_watcher.addPath(m_path);
     }
