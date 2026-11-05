@@ -175,6 +175,40 @@ python3 tests/functional/run.py --sharpness
 
 The sharpness check additionally needs NumPy and Pillow available to `python3`.
 
+### Qt Quick text rendering
+
+```sh
+ctest --test-dir build -R '^text-rendering-rhi$' --output-on-failure
+build/common/vela-text-rendering-test --capture-dir /tmp/vela-text-frames
+```
+
+This test runs the production text policy through the OpenGL RHI glyph shaders
+using `QQuickRenderControl`, an explicit render target and synchronous readback.
+It does not use Qt Quick's software painter, which cannot reproduce the native
+glyph shader's snapping. Mesa software OpenGL is supported; if an OpenGL RHI
+context cannot be initialized, the test returns 77 (skipped).
+
+At 100%, 125%, 150%, 175% and 200%, for 12, 14 and 18 px text, it checks neutral
+white glyph coverage on opaque and transparent backgrounds, gradual coverage
+changes during 1/64 physical pixel scroll steps and a 1.00 to 0.92 press scale,
+and the original pixels returning after motion. The native bitmap renderer is
+also rendered as a negative control: it must exhibit the discontinuous scroll
+step that this test is designed to catch. These are coverage-continuity checks,
+not a general font legibility or sharpness score.
+
+The optional captures contain resting, pressed and scrolled text and the native
+pressed control at each size and output scale. Inspect the PNGs at their native
+size; hardware-specific results and subjective resting font preference still
+need observation in a real session. `shell-controls` also presses the actual
+Start tile with both mouse buttons, checks that its text metrics and renderer
+stay constant, and verifies activation versus context-menu signals. Both suites
+use private configuration and cache directories.
+
+The Arch build job runs the pixel test under Xvfb with Mesa software OpenGL and
+DejaVu fonts, and uploads the comparison frames as `text-rendering-frames`.
+That job invokes the binary directly, so a missing context (exit 77) fails the
+job instead of letting this regression check remain silently skipped in CI.
+
 ## GPU requirements
 
 `tests/functional/test_output_rotation.py` exercises mixed landscape/portrait

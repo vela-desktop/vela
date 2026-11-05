@@ -69,8 +69,6 @@ int main(int argc, char* argv[])
     sinceMain.start();
     const bool timing = qEnvironmentVariableIntValue("VELA_FILES_TIMING") > 0;
 
-    // Keep Qt Quick's scalable text default: native glyph bitmaps distort
-    // under scale animations and fractional scroll offsets.
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-files"));
     QQmlApplicationEngine* qmlEngine = nullptr;

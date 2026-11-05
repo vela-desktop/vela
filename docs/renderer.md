@@ -149,14 +149,27 @@ surfaces too (Qt ≥ 6.5), with `QT_SCALE_FACTOR_ROUNDING_POLICY=PassThrough`. T
 theme's measurements are logical; borders and thin lines must be drawn aligned
 to physical pixels.
 
-The shell, Settings and Files keep Qt Quick's default scalable text rendering
-(`QtRendering` on the hardware scene graph). Do not force `NativeTextRendering`
-globally: it caches rasterized glyphs, which can become distorted when a parent
-is scaled (for example, Start's app tiles on either mouse button press) or
-placed at fractional coordinates while scrolling. This happens inside the Qt
-surface, before the compositor copies its buffer, so compositor pixel snapping
-cannot repair it. Qt documents this restriction for
+`Vela.Controls` configures `QtRendering` and grayscale distance-field antialiasing
+at application startup, before any window creates its scene graph. Shell,
+Settings, Files, the polkit prompt and their tests share this policy. Grayscale
+coverage avoids RGB fringes on translucent backgrounds and makes no assumption
+about an output's subpixel order or rotation. An explicit
+`QSG_DISTANCEFIELD_ANTIALIASING` override is respected.
+
+The same renderer and font metrics apply at rest and during motion. Do not switch
+to `NativeTextRendering` when motion stops: that changes font metrics, and the
+native renderer caches rasterized glyphs which snap and stretch when a parent
+is scaled (for example, Start's app tiles on either mouse button press) or placed
+at fractional coordinates while scrolling. This happens inside the Qt surface,
+before the compositor copies its buffer, so compositor pixel snapping cannot
+repair it. Qt documents this restriction for
 [`Text.NativeRendering`](https://doc.qt.io/qt-6/qml-qtquick-text.html#renderType-prop).
+
+The normal distance-field quality is retained: increasing it consumes more glyph
+cache memory without addressing bitmap snapping or RGB fringes. Curve rendering
+is an alternative for very large text, with a higher GPU cost, rather than the
+default for desktop labels. The pixel regression test is described in
+[testing](testing.md#qt-quick-text-rendering).
 
 ### 3.8 The default scale
 

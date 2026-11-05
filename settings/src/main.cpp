@@ -115,8 +115,6 @@ private:
 
 int main(int argc, char* argv[])
 {
-    // Keep Qt Quick's scalable text default: native glyph bitmaps distort
-    // under scale animations and fractional scroll offsets.
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-settings"));
     QQmlApplicationEngine* qmlEngine = nullptr;

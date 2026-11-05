@@ -6,6 +6,29 @@
 #include "iconprovider.h"
 
 #include <QCoreApplication>
+#include <QQuickWindow>
+
+namespace {
+
+void configureTextRendering()
+{
+    // Keep one scalable layout during motion and at rest. Native glyph
+    // bitmaps snap and stretch under transforms; switching renderers during
+    // motion would also change font metrics and make labels jump.
+    QQuickWindow::setTextRenderType(QQuickWindow::QtTextRendering);
+    // RGB antialiasing assumes a particular display's subpixel order. Our
+    // translucent surfaces can move between outputs and over any background.
+    // Gray coverage composes correctly there, and respects an explicit override.
+    if (qEnvironmentVariableIsEmpty("QSG_DISTANCEFIELD_ANTIALIASING")) {
+        qputenv("QSG_DISTANCEFIELD_ANTIALIASING", "gray");
+    }
+}
+
+} // namespace
+
+// Before any QQuickWindow creates its scene graph, including Quick Test's
+// window, which exists before Setup::qmlEngineAvailable().
+Q_COREAPP_STARTUP_FUNCTION(configureTextRendering)
 
 namespace vela::controls {
 

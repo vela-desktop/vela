@@ -286,8 +286,6 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // Keep Qt Quick's scalable text default: native glyph bitmaps distort
-    // under scale animations and fractional scroll offsets.
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
