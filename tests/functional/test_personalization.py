@@ -27,10 +27,8 @@ def square(color):
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="{color}"/></svg>'
 
 
-class Personalization(test_shell.RealShell):
-    # The clock stopped (and carets that don't blink): its pixels change
-    # only with what a test chooses.
-    shell_env = {"VELA_STILL": "2026-01-14T13:45:07", "VELA_OS_RELEASE": OS_RELEASE}
+class ShellChoices(test_shell.RealShell):
+    """The real shell and what the tests below share: no tests of its own."""
 
     def write_shell_conf(self, text):
         """vela-shell.conf replaced as QSettings does, then the shell's
@@ -85,6 +83,12 @@ class Personalization(test_shell.RealShell):
         self.wait_region(box, lambda r: r == before, f"the clock with {key}={on} again")
         return before, changed
 
+
+class Personalization(ShellChoices):
+    # The clock stopped (and carets that don't blink): its pixels change
+    # only with what a test chooses.
+    shell_env = {"VELA_STILL": "2026-01-14T13:45:07", "VELA_OS_RELEASE": OS_RELEASE}
+
     def test_hiding_the_pins_moves_the_selection(self):
         # Start open, a pinned tile selected, then Settings hides the pins:
         # Enter launches the first of all apps, not the hidden pinned one.
@@ -137,6 +141,8 @@ class Personalization(test_shell.RealShell):
     def test_the_clock_hides_the_number_of_notifications(self):
         # One notification: "1" by the clock, until Settings hides it.
         test_shell.QtShell.send_notification(self, "Counted", actions="[]", expire_timeout=1500)
+        # Shown first, then gone: only then is it counted in the history.
+        self.vela.wait_for(lambda s: self.layer(s, "vela-notifications"), timeout=8, what="the popup shown")
         self.vela.wait_for(lambda s: not self.mapped(s, "vela-notifications"), timeout=10, what="the popup gone")
         box = self.clock_box()
         counted = self.settled_region(box)
@@ -284,6 +290,29 @@ class Personalization(test_shell.RealShell):
         self.write_shell_conf("[start]\nshowPinned=true\n")
         time.sleep(1.0)
         self.assertTrue(middle() == shown, "the pinned apps didn't come back")
+        self.check_desktop()
+
+
+class LiveClock(ShellChoices):
+    """The clock running, as in a session: no VELA_STILL."""
+
+    def test_the_seconds_go_on(self):
+        # With the seconds on, the clock changes every second by itself, not
+        # only when the settings do: three different readings in 2.5 s.
+        output = self.vela.state().output
+        clock = (output["w"] - 110, output["h"] - 48, 100, 48) # the time, not the tray
+        self.write_shell_conf("[taskbar]\nshowDate=false\n")
+        self.settled_region(self.clock_box()) # the bar's tint and tray in place
+        self.write_shell_conf("[taskbar]\nclockSeconds=true\nshowDate=false\n")
+        time.sleep(1.0) # the shell sees it
+        seen = []
+        deadline = time.monotonic() + 2.5 * test_shell.TIME_SCALE
+        while time.monotonic() < deadline:
+            shot = self.region(*clock)
+            if not seen or shot != seen[-1]:
+                seen.append(shot)
+            time.sleep(0.2)
+        self.assertGreaterEqual(len(seen), 3, "the seconds didn't advance")
         self.check_desktop()
 
 

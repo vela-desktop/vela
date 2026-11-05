@@ -159,7 +159,7 @@ The design and what is still planned are in [theme-system.md](theme-system.md).
 
 ## Shell settings
 
-The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization:
+The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization, except the time format (Settings → Time & language → Date & time) and the number of notifications (Settings → System → Notifications):
 
 | Key | Default | Meaning |
 |---|---|---|
