@@ -23,6 +23,9 @@ Config::Config(QObject* parent)
         watch();
         reload();
     });
+    connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, [this](const QString& path) {
+        m_pictureTouched |= path == m_watchedPicture;
+    });
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, &m_debounce, qOverload<>(&QTimer::start));
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, &m_debounce, qOverload<>(&QTimer::start));
     watch();
@@ -60,6 +63,21 @@ void Config::refreshStartIcon()
     if (source != m_startIconSource) {
         m_startIconSource = source;
         emit startChanged();
+    }
+    watchPicture();
+}
+
+void Config::watchPicture()
+{
+    // Only a picture's file (a logo may be an icon theme's name); watched
+    // again after an editor replaced it, which drops it from the watcher.
+    const QString picture = m_startIconSource.startsWith(u'/') ? m_startIconSource : QString();
+    if (!m_watchedPicture.isEmpty() && m_watchedPicture != picture) {
+        m_watcher.removePath(m_watchedPicture);
+    }
+    m_watchedPicture = picture;
+    if (!picture.isEmpty() && !m_watcher.files().contains(picture)) {
+        m_watcher.addPath(picture);
     }
 }
 
@@ -113,11 +131,16 @@ void Config::reload()
 
     const bool startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
     const QString startIconSource = vela::start::icon(settings).source;
-    if (startPinned != m_startPinned || startIconSource != m_startIconSource) {
+    // The same picture, changed in place: a new image under the same name.
+    const bool repainted = m_pictureTouched && !startIconSource.isEmpty() && startIconSource == m_startIconSource;
+    m_pictureTouched = false;
+    if (startPinned != m_startPinned || startIconSource != m_startIconSource || repainted) {
         m_startPinned = startPinned;
         m_startIconSource = startIconSource;
+        m_startIconRevision += repainted ? 1 : 0;
         emit startChanged();
     }
+    watchPicture();
 
     const QString primaryOutput = settings.value(QStringLiteral("display/primaryOutput")).toString();
     if (primaryOutput != m_primaryOutput) {

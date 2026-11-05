@@ -75,10 +75,9 @@ class PreferencesTest : public QObject {
     static QString makeFile(const QString& name)
     {
         const QString path = home().filePath(name);
-        QFile file(path);
-        if (file.open(QIODevice::WriteOnly)) {
-            file.write("png");
-        }
+        QImage image(16, 16, QImage::Format_ARGB32);
+        image.fill(Qt::red);
+        image.save(path, "PNG");
         return path;
     }
 
@@ -225,7 +224,15 @@ private slots:
         prefs.setStartIcon(QStringLiteral("picture"), picture);
         QCOMPARE(start.count(), 4);
 
-        // One that isn't there, or isn't a path: ignored.
+        // One that isn't there, isn't a path or isn't a picture: ignored.
+        const QString text = home().filePath(QStringLiteral("notes.png"));
+        QFile notes(text);
+        QVERIFY(notes.open(QIODevice::WriteOnly));
+        notes.write("not a picture");
+        notes.close();
+        prefs.setStartIcon(QStringLiteral("picture"), text);
+        QCOMPARE(prefs.startIconSource(), picture);
+        QCOMPARE(saved(QStringLiteral("start/iconPicture")).toString(), picture);
         prefs.setStartIcon(QStringLiteral("picture"), home().filePath(QStringLiteral("nowhere.png")));
         prefs.setStartIcon(QStringLiteral("picture"), QStringLiteral("relative.png"));
         QCOMPARE(prefs.startIconSource(), picture);

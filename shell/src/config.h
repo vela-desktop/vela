@@ -41,6 +41,9 @@ class Config : public QObject {
     // What the Start button draws (shell/src/starticon.h): the
     // distribution's logo or a picture, "" for Vela's sail.
     Q_PROPERTY(QString startIconSource READ startIconSource NOTIFY startChanged)
+    // Goes up when the picture chosen changes in place (edited, replaced):
+    // the same source, a new image to load.
+    Q_PROPERTY(int startIconRevision READ startIconRevision NOTIFY startChanged)
     // The apps pinned to Start, above all apps (start/showPinned).
     Q_PROPERTY(bool startPinned READ startPinned NOTIFY startChanged)
     // Clipboard history (Win+V).
@@ -63,6 +66,7 @@ public:
     bool clipboardHistory() const { return m_clipboardHistory; }
     bool startPinned() const { return m_startPinned; }
     QString startIconSource() const { return m_startIconSource; }
+    int startIconRevision() const { return m_startIconRevision; }
     bool clockDate() const { return m_clockDate; }
     bool clockSeconds() const { return m_clockSeconds; }
     bool notificationCount() const { return m_notificationCount; }
@@ -107,6 +111,11 @@ private:
     bool m_clipboardHistory = false;
     bool m_startPinned = true;
     QString m_startIconSource;
+    int m_startIconRevision = 0;
+    // The picture chosen for Start, watched: deleted, the sail; changed, reloaded.
+    QString m_watchedPicture;
+    bool m_pictureTouched = false;
+    void watchPicture();
     bool m_clockDate = true;
     bool m_clock24 = true;
     bool m_clockSeconds = false;

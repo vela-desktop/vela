@@ -11,14 +11,23 @@ import QtQuick.Shapes
 Item {
     id: root
     property string source
+    // Goes up when the picture changed under the same name: loaded again.
+    property int revision: 0
     width: 22
     height: 22
 
     Icon {
+        id: picture
         visible: root.source !== ""
         anchors.centerIn: parent
         name: root.source
         size: 22
+        // A picture of the user's may change under the same name.
+        cache: false
+    }
+    onRevisionChanged: {
+        picture.name = ""
+        picture.name = Qt.binding(() => root.source)
     }
 
     Shape {

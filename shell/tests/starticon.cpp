@@ -156,10 +156,17 @@ private slots:
         QCOMPARE(icon.kind, QStringLiteral("distribution"));
         QCOMPARE(icon.source, logo);
         const QString picture = m_dir.filePath(QStringLiteral("sail.png"));
-        write(picture, "png");
+        QImage image(16, 16, QImage::Format_ARGB32);
+        image.fill(Qt::red);
+        QVERIFY(image.save(picture));
         icon = vela::start::icon(settings(QByteArray("[start]\nicon=picture\niconPicture=") + picture.toUtf8() + "\n"));
         QCOMPARE(icon.kind, QStringLiteral("picture"));
         QCOMPARE(icon.source, picture);
+        // A file there that isn't a picture: the sail, not an empty button.
+        write(picture, "not a picture");
+        icon = vela::start::icon(settings(QByteArray("[start]\nicon=picture\niconPicture=") + picture.toUtf8() + "\n"));
+        QCOMPARE(icon.kind, QStringLiteral("vela"));
+        QCOMPARE(icon.source, QString());
     }
 };
 

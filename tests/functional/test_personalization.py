@@ -182,6 +182,27 @@ class Personalization(test_shell.RealShell):
         self.wait_region(bar, lambda r: r == sail, "the sail back")
         self.check_desktop()
 
+    def test_start_picture_follows_its_file(self):
+        # The picture chosen is edited or deleted, Settings writes nothing:
+        # the button shows the new image, then the sail.
+        red = lambda r, g, b: r > 200 and g < 40 and b < 40
+        blue = lambda r, g, b: b > 200 and r < 40 and g < 40
+        picture = os.path.join(self.vela.directory, "Pictures", "start.svg")
+        with open(picture, "w") as file:
+            file.write(square("#ff0000"))
+        output = self.vela.state().output
+        bar = (0, output["h"] - 48, output["w"], 48)
+        sail = self.settled_region(bar)
+        self.write_shell_conf(f"[start]\nicon=picture\niconPicture={picture}\n")
+        self.vela.wait_for(lambda _: self.taskbar_has(red), timeout=8, read_state=False, what="the picture on Start")
+        with open(picture, "w") as file: # painted over in place
+            file.write(square("#0000ff"))
+        self.vela.wait_for(lambda _: self.taskbar_has(blue) and not self.taskbar_has(red), timeout=8,
+                           read_state=False, what="the new image on Start")
+        os.remove(picture)
+        self.wait_region(bar, lambda r: r == sail, "the sail once the picture is gone")
+        self.check_desktop()
+
     def test_desktop_icons_follow_settings(self):
         # A file on the desktop; Settings > Background hides, then shows it.
         # The shell read desktop/showIcons only at startup before, and the

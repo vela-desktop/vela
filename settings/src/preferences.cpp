@@ -19,6 +19,7 @@ extern "C" {
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QIcon>
+#include <QImageReader>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
@@ -560,7 +561,7 @@ void Preferences::setStartIcon(const QString& kind, const QString& picture)
     QSettings settings = shellSettings();
     if (kind == QLatin1String("picture") && !picture.isEmpty()) {
         const QString path = picture.startsWith(QLatin1String("file:")) ? QUrl(picture).toLocalFile() : picture;
-        if (!path.startsWith(u'/') || !QFileInfo(path).isFile()) {
+        if (!path.startsWith(u'/') || !QFileInfo(path).isFile() || !QImageReader(path).canRead()) {
             return;
         }
         settings.setValue(QStringLiteral("start/iconPicture"), path);

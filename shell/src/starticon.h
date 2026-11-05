@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
+#include <QImageReader>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QString>
@@ -88,7 +89,8 @@ inline Distribution distribution()
 }
 
 // What the button draws: its kind and, but for Vela's sail, its source.
-// A choice that can't be shown (no logo, the picture gone) is Vela's sail.
+// A choice that can't be shown (no logo, the picture gone or not a picture)
+// is Vela's sail.
 struct Icon {
     QString kind = QStringLiteral("vela");
     QString source;
@@ -104,7 +106,9 @@ inline Icon icon(const QSettings& settings)
         }
     } else if (kind == QLatin1String("picture")) {
         const QString picture = settings.value(QStringLiteral("start/iconPicture")).toString();
-        if (picture.startsWith(u'/') && QFileInfo(picture).isFile()) {
+        // A file Qt can read as a picture: anything else would leave the
+        // button without its sail.
+        if (picture.startsWith(u'/') && QFileInfo(picture).isFile() && QImageReader(picture).canRead()) {
             return { kind, picture };
         }
     }

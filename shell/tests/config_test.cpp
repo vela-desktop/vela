@@ -60,6 +60,13 @@ QString themedOsRelease(const QString& root)
 class ConfigTest : public QObject {
     Q_OBJECT
 
+    static bool paint(const QString& path, Qt::GlobalColor color)
+    {
+        QImage image(16, 16, QImage::Format_ARGB32);
+        image.fill(color);
+        return image.save(path, "PNG");
+    }
+
     // As QSettings writes it from another process: a new file in its place.
     static void write(const QByteArray& text)
     {
@@ -155,10 +162,7 @@ private slots:
 
         // A picture there is: drawn; gone: the sail.
         const QString picture = home().filePath(QStringLiteral("start.png"));
-        QFile file(picture);
-        QVERIFY(file.open(QIODevice::WriteOnly));
-        file.write("png");
-        file.close();
+        QVERIFY(paint(picture, Qt::red));
         write("[start]\nicon=picture\niconPicture=" + picture.toUtf8() + "\n");
         QVERIFY(start.wait(3000));
         QCOMPARE(config.startIconSource(), picture);
@@ -194,6 +198,36 @@ private slots:
         QCOMPARE(start.count(), 1);
         QIcon::setThemeSearchPaths({});
         qputenv("VELA_OS_RELEASE", release);
+    }
+
+    void watchesThePictureChosen()
+    {
+        // The picture changes or goes without Settings writing a thing.
+        const QString picture = home().filePath(QStringLiteral("watched.png"));
+        QVERIFY(paint(picture, Qt::red));
+        write("[start]\nicon=picture\niconPicture=" + picture.toUtf8() + "\n");
+        Config config;
+        QCOMPARE(config.startIconSource(), picture);
+        QSignalSpy start(&config, &Config::startChanged);
+
+        // Painted over in place (an editor): the same name, a new image.
+        const int revision = config.startIconRevision();
+        QTest::qWait(50); // a later modification time
+        QVERIFY(paint(picture, Qt::blue));
+        QVERIFY(start.wait(3000));
+        QCOMPARE(config.startIconSource(), picture);
+        QVERIFY(config.startIconRevision() > revision);
+
+        // Replaced by an editor's new file: still watched.
+        QVERIFY(paint(picture + QStringLiteral(".new"), Qt::green));
+        QVERIFY(QFile::remove(picture));
+        QVERIFY(QFile::rename(picture + QStringLiteral(".new"), picture));
+        QVERIFY(start.wait(3000));
+        QCOMPARE(config.startIconSource(), picture);
+
+        // Deleted: the sail.
+        QVERIFY(QFile::remove(picture));
+        QTRY_COMPARE_WITH_TIMEOUT(config.startIconSource(), QString(), 3000);
     }
 
     void tellsTheDesktopAboutItsIcons()

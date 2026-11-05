@@ -167,8 +167,8 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | `taskbar/clockSeconds` | `false` | The seconds in the taskbar's clock |
 | `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `taskbar/notificationCount` | `true` | The number of notifications next to the clock (Do not disturb's bell shows anyway) |
-| `start/icon` | `vela` | The Start button's icon: `vela` (the sail), `distribution` (os-release's `LOGO=`, from the icon theme or a loose file in `icons/` or `pixmaps/`) or `picture`; one that can't be shown is the sail |
-| `start/iconPicture` | | The picture's file for `start/icon=picture` |
+| `start/icon` | `vela` | The Start button's icon: `vela` (the sail), `distribution` (os-release's `LOGO=`, from the icon theme or a loose file in `icons/` or `pixmaps/`) or `picture`; one that can't be shown (no logo, a picture gone or not a picture) is the sail |
+| `start/iconPicture` | | The picture's file for `start/icon=picture`; the shell watches it, so an edited or deleted picture shows at once |
 | `start/showPinned` | `true` | The apps pinned to Start above all apps; off, Start opens on all apps and keeps the pins (`start/pinned`) |
 | `desktop/showIcons` | `true` | The Desktop folder's icons on the main display (Settings → Background, or the desktop's menu) |
 
