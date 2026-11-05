@@ -138,6 +138,45 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>AccentCard</name>
+    <message>
+        <source>Accent color</source>
+        <translation>Colore principale</translation>
+    </message>
+    <message>
+        <source>%1, the theme in use, brings its own accent color. The one chosen here comes back with another theme</source>
+        <translation>%1, il tema in uso, ha un suo colore principale. Quello scelto qui torna con un altro tema</translation>
+    </message>
+    <message>
+        <source>In dark mode %1, the theme in use, brings its own accent color. The one chosen here shows in light mode</source>
+        <translation>In modalità scura %1, il tema in uso, ha un suo colore principale. Quello scelto qui si vede in modalità chiara</translation>
+    </message>
+    <message>
+        <source>In light mode %1, the theme in use, brings its own accent color. The one chosen here shows in dark mode</source>
+        <translation>In modalità chiara %1, il tema in uso, ha un suo colore principale. Quello scelto qui si vede in modalità scura</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus. In dark mode %1, the theme in use, brings its own</source>
+        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità scura %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus. In light mode %1, the theme in use, brings its own</source>
+        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità chiara %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus</source>
+        <translation>Pulsanti, selezioni, elementi attivi della barra delle applicazioni e dei menu</translation>
+    </message>
+    <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
+        <source>Colors</source>
+        <translation>Colori</translation>
+    </message>
+</context>
+<context>
     <name>AccessibilityPage</name>
     <message>
         <source>Grayscale</source>
@@ -629,34 +668,6 @@ Specifiche sistema
     <message>
         <source>App windows, File Explorer and Settings</source>
         <translation>Le finestre delle app, Esplora e le Impostazioni</translation>
-    </message>
-    <message>
-        <source>Accent color</source>
-        <translation>Colore principale</translation>
-    </message>
-    <message>
-        <source>%1, the theme in use, brings its own accent color. The one chosen here comes back with another theme</source>
-        <translation>%1, il tema in uso, ha un suo colore principale. Quello scelto qui torna con un altro tema</translation>
-    </message>
-    <message>
-        <source>Buttons, selections, active items in the taskbar and menus. In dark mode %1, the theme in use, brings its own</source>
-        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità scura %1, il tema in uso, ha il suo</translation>
-    </message>
-    <message>
-        <source>Buttons, selections, active items in the taskbar and menus. In light mode %1, the theme in use, brings its own</source>
-        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità chiara %1, il tema in uso, ha il suo</translation>
-    </message>
-    <message>
-        <source>Buttons, selections, active items in the taskbar and menus</source>
-        <translation>Pulsanti, selezioni, elementi attivi della barra delle applicazioni e dei menu</translation>
-    </message>
-    <message>
-        <source>Themes</source>
-        <translation>Temi</translation>
-    </message>
-    <message>
-        <source>Colors</source>
-        <translation>Colori</translation>
     </message>
 </context>
 <context>
