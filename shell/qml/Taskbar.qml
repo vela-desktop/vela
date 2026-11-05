@@ -466,9 +466,11 @@ Window {
                 }
                 onXChanged: reportGeometry()
                 onWindowCountChanged: reportGeometry()
+                // The row moves down too, when a floating bar grows taller.
                 Connections {
                     target: buttons
                     function onXChanged() { task.reportGeometry() }
+                    function onYChanged() { task.reportGeometry() }
                 }
 
                 Image {
