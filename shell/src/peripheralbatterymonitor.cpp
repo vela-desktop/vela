@@ -34,8 +34,7 @@ QString stableId(const QString& path, const QVariantMap& properties)
     const QString serial = value(properties, "Serial").toString();
     if (!serial.isEmpty()) {
         // A UPower object path can change on reconnect (mouse_... vs battery_...).
-        return QStringLiteral("serial:%1:%2:%3")
-            .arg(value(properties, "Vendor").toString(), value(properties, "Model").toString(), serial);
+        return QStringLiteral("serial:%1:%2").arg(value(properties, "Vendor").toString(), serial);
     }
     const QString native = value(properties, "NativePath").toString();
     return native.isEmpty() ? QStringLiteral("path:") + path : QStringLiteral("native:") + native;
@@ -83,13 +82,14 @@ PeripheralBatteryMonitor::~PeripheralBatteryMonitor()
 
 PeripheralBatteryMonitor::Level PeripheralBatteryMonitor::classify(const QVariantMap& properties)
 {
-    if (value(properties, "PowerSupply").toBool()
-        || (value(properties, "IsPresent").isValid() && !value(properties, "IsPresent").toBool())) {
-        return Level::Unknown;
-    }
-
     const uint type = value(properties, "Type").toUInt();
-    if (type == 0 || type == 1 || type == 3) { // unknown, line power, UPS
+    if (type == 0 || type == 1 || type == 3 || value(properties, "PowerSupply").toBool()) {
+        return Level::Unknown; // unknown, line power, UPS, laptop battery
+    }
+    // IsPresent only has meaning for Type=Battery. Bluetooth peripherals can
+    // leave it false even when their charge level is available.
+    if (type == 2 && value(properties, "IsPresent").isValid()
+        && !value(properties, "IsPresent").toBool()) {
         return Level::Unknown;
     }
 
