@@ -105,7 +105,11 @@ private Q_SLOTS:
         QVERIFY(PeripheralBatteryMonitor::classify(p) == Level::Normal);
         p[QStringLiteral("State")] = 2u;
         p[QStringLiteral("IsPresent")] = false;
+        p[QStringLiteral("Type")] = 2u; // battery bay, not a mouse/headset
         QVERIFY(PeripheralBatteryMonitor::classify(p) == Level::Unknown);
+        // On wireless headsets IsPresent is not meaningful, and often false.
+        p[QStringLiteral("Type")] = 17u;
+        QVERIFY(PeripheralBatteryMonitor::classify(p) == Level::Critical);
     }
 
     void desktopBatteryAndUnknownDevicesAreIgnored()
