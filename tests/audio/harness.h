@@ -38,13 +38,20 @@ inline QString linkedTo(const vela::audio::Core& core, quint32 stream)
     if (!s) {
         return QStringLiteral("(stream %1 is not in the snapshot)").arg(stream);
     }
+    if (s->endpoint == 0) {
+        return QStringLiteral("(stream %1 is not linked)").arg(stream);
+    }
     const vela::audio::Endpoint* e = core.snapshot().endpoint(s->endpoint);
-    return e ? e->name : QStringLiteral("(stream %1 is not linked)").arg(stream);
+    return e ? e->name
+             : QStringLiteral("(endpoint %1 for stream %2 is not in the snapshot)").arg(s->endpoint).arg(stream);
 }
 
 // A stream's target.object, or why there is none, as linkedTo().
 inline QString targetOf(const vela::audio::Core& core, quint32 stream)
 {
+    if (!core.connected()) {
+        return QStringLiteral("(Core is not connected)");
+    }
     const vela::audio::Stream* s = core.snapshot().stream(stream);
     return s ? s->target : QStringLiteral("(stream %1 is not in the snapshot)").arg(stream);
 }
