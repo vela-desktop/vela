@@ -90,6 +90,43 @@ class SessionCleanup(unittest.TestCase):
         self.assertEqual(os.environ.get("HOME"), host_home)
         self.assertFalse(os.path.exists(root))
 
+    def test_compositor_launch_receives_private_environment(self):
+        """Verify the compositor receives private XDG paths, not just Session.env."""
+        session = Session()
+        launched = {}
+
+        def record_popen(*args, **kwargs):
+            launched.update(kwargs)
+            raise FileNotFoundError("compositor launch intercepted")
+
+        with patch("harness.subprocess.Popen", side_effect=record_popen), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(FileNotFoundError):
+            session.start()
+        env = launched["env"]
+        root = session.directory
+        self.assertEqual(env["HOME"], os.path.join(root, "home"))
+        self.assertEqual(env["XDG_STATE_HOME"], os.path.join(root, "state"))
+        for key in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"):
+            self.assertEqual(os.path.dirname(env[key]), root)
+        self.assertFalse(os.path.exists(root))
+
+    def test_home_creation_failure_does_not_mask_error_or_leak_directory(self):
+        """An early mkdir error must not try to dump a non-existent log."""
+        session = Session()
+        real_mkdir = os.mkdir
+
+        def deny_private_home(path, *args, **kwargs):
+            if os.fspath(path).endswith("/home"):
+                raise PermissionError("injected home failure")
+            return real_mkdir(path, *args, **kwargs)
+
+        with patch("harness.os.mkdir", side_effect=deny_private_home), \
+                contextlib.redirect_stdout(io.StringIO()), \
+                self.assertRaisesRegex(PermissionError, "injected home failure"):
+            session.start()
+        self.assertIsNone(session.log_path)
+        self.assertFalse(os.path.exists(session.directory))
+
     def test_failed_startup_removes_temporary_directory_and_closes_log(self):
         session = Session()
         with tempfile.TemporaryDirectory() as missing_build, patch("harness.BUILD", missing_build):
