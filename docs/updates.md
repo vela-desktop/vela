@@ -224,9 +224,13 @@ when not already set), which ends as a `network` error.
 
 Automatic checks:
 
-- the first 10 minutes after the daemon starts, or 24 hours after the
-  last check if that is later;
-- then every 24 hours;
+- the first 10 minutes after the daemon starts, or the configured interval
+  after the last check if that is later;
+- then every 6, 12, 24 (default), 48 or 168 hours, as selected in Settings;
+  stored as `update-check-interval` in `vela.conf` and rescheduled immediately
+  when changed, including across restarts. The timer uses the suspend-aware
+  monotonic clock; the displayed wall-clock deadline is refreshed after
+  discontinuous system-clock changes;
 - skipped while NetworkManager says the connection is metered (`Metered`
   is yes or guess-yes) or not fully connected (`Connectivity` below
   full, including the unknown state `0`); retried as soon as that changes.
@@ -293,6 +297,9 @@ bus. Properties change with `PropertiesChanged`.
 | `Notes` | a(ss) | version, text |
 | `Source` | s | Experimental's source (`updates.conf`), or the default |
 | `LastCheck` | x | Unix time, 0 if never |
+| `CheckInterval` | u | Configured interval in hours (`6`, `12`, `24`, `48`, `168`) |
+| `NextCheck` | x | Unix time of the daemon's scheduled next automatic check, or 0 when none |
+| `WaitingForNetwork` | b | An automatic check is due but blocked by network policy |
 | `Error` | (ss) | the last check's code and message, or empty |
 | `InstallResult` | s | the last install's `result`, or empty |
 | `InstallError` | (ss) | |
@@ -306,6 +313,7 @@ bus. Properties change with `PropertiesChanged`.
 | `Check()` | starts a check; `Busy` if one or an install is running |
 | `Install(a{sv} options)` | §6.3; `Busy`, `InvalidArgs`, `NoTerminal` |
 | `SetAutoCheck(b)` | writes `vela.conf` |
+| `SetCheckInterval(u hours)` | validates and stores the interval in `vela.conf`, reschedules the timer; invalid values return `InvalidArgs` |
 | `Announced(s commit)` | §6.4 |
 
 Errors are `org.vela.Updates.Error.*`: `NotAllowed`, `Busy`, `InvalidArgs`,
@@ -344,7 +352,10 @@ Top card, after Windows Update:
   installed from a package";
 - "Last checked: today, 10:24";
 - the button: "Check for updates", or "Install now" (accent) when there is
-  an update; disabled while busy;
+  an update. When an update is already available, "Check again" remains
+  beside "Install now" so users can refresh the offered commit and changes
+  without installing the older result or waiting for the automatic timer.
+  Both actions are disabled while busy;
 - "Sign out to finish updating" when `NeedsRelogin`;
 - the last check's failure, below the last completed check;
 - the last install's failure, if it was the last thing that happened: no
@@ -357,6 +368,10 @@ Options:
 
 - **Check for updates automatically**, a switch: "Not on metered
   connections".
+- **Automatic check frequency**: 6h, 12h, 24h, 48h, or 7 days.
+- **Next automatic check**: the actual deadline reported by the daemon, or
+  an explanation when NetworkManager blocks an already due check.
+  Hidden while checking, installing, or when automatic checks are off.
 - **Update channel**: Beta or Experimental. Changing it asks first: what
   the other channel is, that the package is replaced, that the version may
   go back, and that the update runs in a terminal. Confirming calls
