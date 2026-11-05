@@ -162,8 +162,9 @@ public:
     // A surface's styles with their pictures: { name, text, author, images };
     // the themes with theirs for surface "".
     Q_INVOKABLE QVariantList styleGallery(const QString& surface) const;
-    // A surface as a theme draws it, without styles: its pictures' URLs.
-    Q_INVOKABLE QStringList themeSurfacePictures(const QString& theme, const QString& surface) const;
+    // A surface as a theme draws it, without styles: { images: its pictures'
+    // URLs, from: the theme they show, the theme's or one it builds on }.
+    Q_INVOKABLE QVariantMap themeSurfacePictures(const QString& theme, const QString& surface) const;
     // Vela Official and no styles: Vela's own look.
     Q_INVOKABLE void resetThemes();
     // A theme and each surface's style ({ taskbar, startmenu, notifications },

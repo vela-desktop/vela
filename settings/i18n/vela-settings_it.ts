@@ -2709,6 +2709,10 @@ Specifiche sistema
         <translation>Dal tema</translation>
     </message>
     <message>
+        <source>As %1 draws it, based on %2</source>
+        <translation>Come lo disegna %1, basato su %2</translation>
+    </message>
+    <message>
         <source>As %1 draws it</source>
         <translation>Come lo disegna %1</translation>
     </message>

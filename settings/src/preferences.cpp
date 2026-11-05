@@ -697,7 +697,7 @@ QVariantList Preferences::styleGallery(const QString& surface) const
     return vela::themes::gallery(surface);
 }
 
-QStringList Preferences::themeSurfacePictures(const QString& theme, const QString& surface) const
+QVariantMap Preferences::themeSurfacePictures(const QString& theme, const QString& surface) const
 {
     return vela::themes::themeSurfacePictures(theme, surface);
 }

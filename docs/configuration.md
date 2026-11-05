@@ -108,7 +108,7 @@ The pictures are made by `scripts/theme-pictures.py` from the real shell on a he
 | `themes/<theme>/<surface>.png` | a surface as the theme draws it: `taskbar.png`, `startmenu.png`, `notifications-qs.png` and `notifications-nc.png` |
 | `<surface>/<style>.png` | a style: `taskbar/<style>.png`, `startmenu/<style>.png`, `notifications/<style>-qs.png` and `-nc.png` |
 
-Quick settings and the notification center have two pictures, `-qs.png` and `-nc.png`, the other surfaces one. Your own themes and styles can have theirs in `~/.config/vela/themes/screenshots/`, with the same names; without one, a theme shows the desktop in miniature in its colors, and a style its name.
+Quick settings and the notification center have two pictures, `-qs.png` and `-nc.png`, the other surfaces one. Your own themes and styles can have theirs in `~/.config/vela/themes/screenshots/`, with the same names; without one, a theme shows the desktop in miniature in its colors, and a style its name. **From the theme** shows a surface as the theme draws it: with a theme of your own that has no picture of it, the picture of the theme it builds on (`inherits=`), and the card says which.
 
 The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars) and `accent` in place of Mica and the chosen accent, and the `blur-*` keys: the theme's for every acrylic surface, then each panel's with its own style. A panel with a look of its own (a style, or the theme's keys for that surface) has its blur rounded like it, and glass from 4% alpha instead of half. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
 

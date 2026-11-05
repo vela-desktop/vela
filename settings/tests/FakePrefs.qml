@@ -29,7 +29,8 @@ QtObject {
     property var tokens: ({})
     // resolveTheme()'s layoutFromStyle: the taskbar style sets the layout.
     property bool layoutFromStyle: false
-    // "From the theme"'s pictures (themeSurfacePictures()), by "<theme> <surface>".
+    // "From the theme"'s pictures (themeSurfacePictures()), by "<theme> <surface>":
+    // { images, from }.
     property var surfacePictures: ({})
     // The changes asked for, in order: [call, arguments...].
     property var calls: []
@@ -72,7 +73,7 @@ QtObject {
         return surface === "" ? themes : (styles[surface] || [])
     }
     function themeSurfacePictures(theme, surface) {
-        return surfacePictures[theme + " " + surface] || []
+        return surfacePictures[theme + " " + surface] || { images: [], from: "" }
     }
     function resolveTheme(name) {
         return { installed: themes.some(t => t.name === name), tokens: tokens[name] || {}, problems: [],

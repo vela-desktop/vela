@@ -144,6 +144,21 @@ Item {
             verify(!tile("From the theme").selected)
         }
 
+        // From the theme: the theme's pictures, or those of the theme it
+        // builds on, and then the card says whose.
+        function test_from_the_theme_names_the_theme_it_builds_on() {
+            const picture = Qt.resolvedUrl("../../themes/screenshots/themes/vela/taskbar.png").toString()
+            Prefs.visualTheme = "mine"
+            Prefs.surfacePictures = { "mine taskbar": { images: [picture], from: "glass" } }
+            ++Prefs.themesRevision
+            chooser.expanded = true
+            tryVerify(() => tiles().length === 3)
+            compare(tile("From the theme").subtitle, "As Mine draws it, based on Glass")
+            Prefs.surfacePictures = { "mine taskbar": { images: [picture], from: "mine" } }
+            ++Prefs.themesRevision
+            compare(tile("From the theme").subtitle, "As Mine draws it")
+        }
+
         function test_your_own_styles_are_named() {
             chooser.expanded = true
             tryVerify(() => tiles().length === 3)

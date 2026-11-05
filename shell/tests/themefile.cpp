@@ -201,12 +201,12 @@ private slots:
         write(data() + QStringLiteral("screenshots/themes/glass/taskbar.png"), "png");
         write(data() + QStringLiteral("screenshots/themes/glass/notifications-qs.png"), "png");
         write(data() + QStringLiteral("screenshots/themes/glass/notifications-nc.png"), "png");
-        QCOMPARE(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("taskbar")),
+        QCOMPARE(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("taskbar")).value(QStringLiteral("images")).toStringList(),
             QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/taskbar.png")).toString() });
-        QCOMPARE(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("notifications")),
+        QCOMPARE(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("notifications")).value(QStringLiteral("images")).toStringList(),
             (QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/notifications-qs.png")).toString(),
                 QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/notifications-nc.png")).toString() }));
-        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("startmenu")).isEmpty());
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("startmenu")).value(QStringLiteral("images")).toStringList().isEmpty());
         // No name picks another's pictures: a theme called glass-taskbar, or
         // a taskbar style with -qs and -nc pictures lying around.
         write(data() + QStringLiteral("glass-taskbar.conf"), "radius=3\n");
@@ -225,10 +225,24 @@ private slots:
             [](const QVariant& t) { return t.toMap().value(QStringLiteral("name")) == QStringLiteral("glass"); });
         QCOMPARE(glassAgain->toMap().value(QStringLiteral("images")).toStringList(),
             QStringList { QUrl::fromLocalFile(config() + QStringLiteral("screenshots/themes/glass.png")).toString() });
+        // A theme of your own without pictures shows those of the theme it
+        // builds on, and says whose they are; its own win when it has them.
+        write(config() + QStringLiteral("mine.conf"), "# Mine: on Glass\ninherits=glass\naccent=#ff0000\n");
+        QVariantMap built = vela::themes::themeSurfacePictures(QStringLiteral("mine"), QStringLiteral("taskbar"));
+        QCOMPARE(built.value(QStringLiteral("from")).toString(), QStringLiteral("glass"));
+        QCOMPARE(built.value(QStringLiteral("images")).toStringList(),
+            QStringList { QUrl::fromLocalFile(data() + QStringLiteral("screenshots/themes/glass/taskbar.png")).toString() });
+        write(config() + QStringLiteral("screenshots/themes/mine/taskbar.png"), "png");
+        built = vela::themes::themeSurfacePictures(QStringLiteral("mine"), QStringLiteral("taskbar"));
+        QCOMPARE(built.value(QStringLiteral("from")).toString(), QStringLiteral("mine"));
+        // None in the chain: none, from no theme.
+        built = vela::themes::themeSurfacePictures(QStringLiteral("mine"), QStringLiteral("startmenu"));
+        QVERIFY(built.value(QStringLiteral("images")).toStringList().isEmpty());
+        QVERIFY(built.value(QStringLiteral("from")).toString().isEmpty());
         // Not a way out of screenshots/themes/, nor a surface that isn't one.
-        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("../glass"), QStringLiteral("taskbar")).isEmpty());
-        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QString()).isEmpty());
-        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("elsewhere")).isEmpty());
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("../glass"), QStringLiteral("taskbar")).value(QStringLiteral("images")).toStringList().isEmpty());
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QString()).value(QStringLiteral("images")).toStringList().isEmpty());
+        QVERIFY(vela::themes::themeSurfacePictures(QStringLiteral("glass"), QStringLiteral("elsewhere")).value(QStringLiteral("images")).toStringList().isEmpty());
     }
 
     void colorsAndNumbers()

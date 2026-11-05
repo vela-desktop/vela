@@ -62,17 +62,23 @@ Column {
 
         PictureTile {
             id: themeTile
-            readonly property var images: { Prefs.themesRevision; return Prefs.themeSurfacePictures(Prefs.visualTheme, gallery.surface) }
+            // The theme's pictures, or those of a theme it builds on.
+            readonly property var pictures: { Prefs.themesRevision; return Prefs.themeSurfacePictures(Prefs.visualTheme, gallery.surface) }
+            readonly property var images: pictures.images || []
+            readonly property string from: pictures.from || ""
             width: gallery.tileWidth
             pictureHeight: gallery.pictureHeight
             text: qsTr("From the theme")
-            subtitle: qsTr("As %1 draws it").arg(gallery.themeName)
+            subtitle: from !== "" && from !== Prefs.visualTheme
+                ? qsTr("As %1 draws it, based on %2").arg(gallery.themeName)
+                    .arg(Prefs.visualThemes().find(t => t.name === from)?.text ?? from)
+                : qsTr("As %1 draws it").arg(gallery.themeName)
             selected: gallery.chosen === "" || gallery.missing
             onClicked: gallery.use("")
             Pictures {
                 images: themeTile.images
             }
-            // A theme without pictures (your own): its icon.
+            // No picture in the theme's chain: its icon.
             Icon {
                 visible: themeTile.images.length === 0
                 anchors.centerIn: parent
