@@ -209,6 +209,11 @@ private slots:
 
         QCOMPARE(music->close(), 0);
         QTRY_VERIFY(!stream(musicId));
+        QVERIFY(core->connected());
+        // Missing streams must produce actionable failures, never null dereferences.
+        const QString missing = QStringLiteral("(stream %1 is not in the snapshot)").arg(musicId);
+        QCOMPARE(linkedTo(musicId), missing);
+        QCOMPARE(targetOf(musicId), missing);
     }
 
     void outputChosenForAStream()
@@ -296,6 +301,8 @@ private slots:
         QSignalSpy connection(core.get(), &Core::connectedChanged);
         QCOMPARE(control(QStringLiteral("stop-pipewire")), QStringLiteral("ok"));
         QTRY_VERIFY(!core->connected());
+        QCOMPARE(linkedTo(1), QStringLiteral("(Core is not connected)"));
+        QCOMPARE(targetOf(1), QStringLiteral("(Core is not connected)"));
         QVERIFY(core->snapshot().endpoints.isEmpty());
         QVERIFY(!core->setVolume(1, 0.5));
         QCOMPARE(control(QStringLiteral("start-pipewire")), QStringLiteral("ok"));
