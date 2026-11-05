@@ -2904,6 +2904,57 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>ThemeInUseCard</name>
+    <message>
+        <source>From the theme</source>
+        <translation>Dal tema</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed</source>
+        <translation>&quot;%1&quot; non è installato</translation>
+    </message>
+    <message>
+        <source>In use: %1</source>
+        <translation>In uso: %1</translation>
+    </message>
+    <message>
+        <source>The theme, and the styles and accent color over it</source>
+        <translation>Il tema, con gli stili e il colore principale sopra di esso</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Start menu</source>
+        <translation>Menu Start</translation>
+    </message>
+    <message>
+        <source>Quick settings and notification center</source>
+        <translation>Impostazioni rapide e centro notifiche</translation>
+    </message>
+    <message>
+        <source>Accent color</source>
+        <translation>Colore principale</translation>
+    </message>
+    <message>
+        <source>The theme&apos;s</source>
+        <translation>Quello del tema</translation>
+    </message>
+    <message>
+        <source>The theme&apos;s in dark mode, yours in light mode</source>
+        <translation>Quello del tema in modalità scura, il tuo in modalità chiara</translation>
+    </message>
+    <message>
+        <source>The theme&apos;s in light mode, yours in dark mode</source>
+        <translation>Quello del tema in modalità chiara, il tuo in modalità scura</translation>
+    </message>
+    <message>
+        <source>Yours</source>
+        <translation>Il tuo</translation>
+    </message>
+</context>
+<context>
     <name>ThemesPage</name>
     <message>
         <source>not a key=value line</source>

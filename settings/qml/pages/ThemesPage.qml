@@ -6,8 +6,9 @@ import QtQuick
 import Vela.Controls
 
 // Personalization > Themes: a theme file (theme= in vela.conf), a complete
-// look of the shell and the apps (docs/configuration.md, "Theme files"). A
-// click on a theme applies it, with Undo for a few seconds; what is wrong in
+// look of the shell and the apps (docs/configuration.md, "Theme files").
+// What is in use, layer by layer; a click on a theme applies it, with Undo
+// for a few seconds; what is wrong in
 // the theme in use; your own themes in ~/.config/vela/themes/; Reset. Each
 // surface's own style over the theme is on that surface's page (Taskbar,
 // Start).
@@ -39,7 +40,11 @@ Page {
         return (problem.line > 0 ? file + ":" + problem.line : file) + ": " + what
     }
 
-    DesktopPreview {}
+    // What is in use, layer by layer, in place of a schematic picture: the
+    // gallery below shows the theme itself.
+    CardGroup {
+        ThemeInUseCard {}
+    }
 
     CardGroup {
         ThemeGallery {}
