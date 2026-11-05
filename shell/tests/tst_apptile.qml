@@ -28,8 +28,13 @@ Item {
         name: "AppTile"
         when: windowShown
         property int heldButton: Qt.NoButton
-        readonly property var column: tile.children[1]
-        readonly property var label: column.children[1]
+        readonly property var column: findChild(tile, "appTileContent")
+        readonly property var label: findChild(tile, "appTileLabel")
+
+        function initTestCase() {
+            verify(column !== null)
+            verify(label !== null)
+        }
 
         function init() {
             activated.clear()

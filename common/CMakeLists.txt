@@ -199,7 +199,8 @@ if(VELA_BUILD_TOOLS)
 
     # Actual glyph shader coverage. A missing RHI backend is a skip, never a
     # pass through Qt Quick's software painter. Mesa software OpenGL works too.
-    qt_add_executable(vela-text-rendering-test tests/text_rendering.cpp)
+    if(Qt6_VERSION VERSION_GREATER_EQUAL 6.6)
+        qt_add_executable(vela-text-rendering-test tests/text_rendering.cpp)
     target_compile_definitions(vela-text-rendering-test PRIVATE
         TEXT_SCENE="${CMAKE_CURRENT_SOURCE_DIR}/tests/TextRenderingScene.qml")
     target_compile_options(vela-text-rendering-test PRIVATE -Wall -Wextra)
@@ -207,8 +208,11 @@ if(VELA_BUILD_TOOLS)
         vela-controls vela-controlsplugin Qt6::GuiPrivate)
     add_test(NAME text-rendering-rhi COMMAND vela-text-rendering-test)
     set_tests_properties(text-rendering-rhi PROPERTIES
-        TIMEOUT 60 SKIP_RETURN_CODE 77 LABELS rhi
+        TIMEOUT 60 SKIP_RETURN_CODE 77 LABELS "gpu;rhi"
         ENVIRONMENT "QT_QPA_PLATFORMTHEME=generic")
+    else()
+        message(STATUS "Qt ${Qt6_VERSION}: RHI glyph test requires Qt >= 6.6")
+    endif()
 endif()
 
 # vela-audio: the audio backend of the shell and Settings (docs/audio.md).
