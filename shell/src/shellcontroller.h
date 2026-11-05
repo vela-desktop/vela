@@ -53,6 +53,11 @@ public:
     // A shell window anchored at the bottom left (the taskbar previews):
     // `left` pixels from the output's left edge.
     Q_INVOKABLE void placeAtLeft(QWindow* window, int left);
+    // A shell panel at the bottom right of its output (left < 0), or anchored
+    // at the bottom left, `left` pixels from the output's left edge: quick
+    // settings and the notification center above a centered taskbar's
+    // buttons.
+    Q_INVOKABLE void placeAbove(QWindow* window, int left);
     // A (hidden) shell panel on output `name`: it appears there the next time
     // it opens.
     Q_INVOKABLE void placeOnScreen(QWindow* window, const QString& name);

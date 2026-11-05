@@ -15,13 +15,16 @@
 // finds it and compares everything bit for bit. Alternating rows and columns
 // and close values are the worst case for any filter.
 //
-// Usage: vela-pattern [--scale1] [--app-id ID] [--decorated] [--popup X,Y]
+// Usage: vela-pattern [--scale1] [--app-id ID] [--decorated] [--glass] [--popup X,Y]
 //                     [WIDTH HEIGHT]   (logical; default 401x301)
 //
 // --scale1: like an old app, always draws at scale 1 (the compositor must
 // magnify): one-pixel lines and a checkerboard, to judge the filter.
 // --decorated: asks for Vela's title bar (xdg-decoration), like Qt and KDE
 // apps.
+// --glass: instead of the pattern, a 50% black fill (ARGB) with the blur
+// behind all of it (ext-background-effect-v1), like Vela's apps with a theme's
+// see-through background: for the blur tests of windows.
 // --popup X,Y: also opens a 200x150 magenta menu (xdg-popup), anchored at
 // point (X, Y) of the window; it may slide to stay on screen.
 // --transient-delay MS: after the parent maps, opens another xdg_toplevel
@@ -47,6 +50,7 @@
 #include <unistd.h>
 #include <wayland-client.h>
 
+#include "ext-background-effect-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
@@ -59,6 +63,9 @@ static struct xdg_wm_base* wmBase;
 static struct wp_viewporter* viewporter;
 static struct wp_fractional_scale_manager_v1* fractionalManager;
 static struct zxdg_decoration_manager_v1* decorationManager;
+static struct ext_background_effect_manager_v1* effectsManager;
+static struct ext_background_effect_surface_v1* effect; // with --glass
+static int glass;
 
 static struct wl_surface* surface;
 static struct wp_viewport* viewport;
@@ -174,6 +181,8 @@ static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, co
         pointerConstraints = wl_registry_bind(registry, name, &zwp_pointer_constraints_v1_interface, 1);
     } else if (!strcmp(interface, wl_compositor_interface.name)) {
         compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
+    } else if (glass && !strcmp(interface, ext_background_effect_manager_v1_interface.name)) {
+        effectsManager = wl_registry_bind(registry, name, &ext_background_effect_manager_v1_interface, 1);
     } else if (!strcmp(interface, zxdg_decoration_manager_v1_interface.name)) {
         decorationManager = wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1);
     } else if (!strcmp(interface, wl_shm_interface.name)) {
@@ -221,7 +230,9 @@ static void draw(void)
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             uint32_t color;
-            if (legacy) {
+            if (glass) {
+                color = 0x80000000u; // black at 50%, premultiplied
+            } else if (legacy) {
                 // Four quadrants: one-pixel horizontal and vertical lines, a
                 // checkerboard, and a black border on white.
                 const int left = x < width / 2;
@@ -240,11 +251,19 @@ static void draw(void)
     munmap(pixels, size);
 
     struct wl_shm_pool* pool = wl_shm_create_pool(shm, fd, (int32_t)size);
-    struct wl_buffer* buffer = wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_XRGB8888);
+    struct wl_buffer* buffer = wl_shm_pool_create_buffer(
+        pool, 0, width, height, stride, glass ? WL_SHM_FORMAT_ARGB8888 : WL_SHM_FORMAT_XRGB8888);
     wl_buffer_add_listener(buffer, &bufferListener, NULL);
     wl_shm_pool_destroy(pool);
     close(fd);
 
+    if (effect) {
+        // "Everything", the way toolkits ask for the whole surface.
+        struct wl_region* region = wl_compositor_create_region(compositor);
+        wl_region_add(region, 0, 0, INT32_MAX, INT32_MAX);
+        ext_background_effect_surface_v1_set_blur_region(effect, region);
+        wl_region_destroy(region);
+    }
     wp_viewport_set_destination(viewport, logicalWidth, logicalHeight);
     wl_surface_attach(surface, buffer, 0, 0);
     wl_surface_damage_buffer(surface, 0, 0, width, height);
@@ -460,6 +479,8 @@ int main(int argc, char** argv)
             legacy = 1;
         } else if (!strcmp(argv[arg], "--decorated")) {
             decorated = 1;
+        } else if (!strcmp(argv[arg], "--glass")) {
+            glass = 1;
         } else if (!strcmp(argv[arg], "--popup") && arg + 1 < argc
             && sscanf(argv[arg + 1], "%d,%d", &popupX, &popupY) == 2) {
             popupWanted = 1;
@@ -502,6 +523,10 @@ int main(int argc, char** argv)
         return 1;
     }
     xdg_wm_base_add_listener(wmBase, &wmBaseListener, NULL);
+    if (glass && !effectsManager) {
+        fprintf(stderr, "vela-pattern: no ext-background-effect-v1\n");
+        return 1;
+    }
 
     surface = wl_compositor_create_surface(compositor);
     viewport = wp_viewporter_get_viewport(viewporter, surface);
@@ -510,6 +535,9 @@ int main(int argc, char** argv)
     wp_fractional_scale_v1_add_listener(fractional, &fractionalListener, NULL);
     xdgSurface = xdg_wm_base_get_xdg_surface(wmBase, surface);
     xdg_surface_add_listener(xdgSurface, &surfaceListener, NULL);
+    if (glass) {
+        effect = ext_background_effect_manager_v1_get_background_effect(effectsManager, surface);
+    }
     toplevel = xdg_surface_get_toplevel(xdgSurface);
     xdg_toplevel_add_listener(toplevel, &toplevelListener, NULL);
     xdg_toplevel_set_title(toplevel, "vela-pattern");
