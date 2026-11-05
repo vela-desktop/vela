@@ -53,7 +53,8 @@ Window {
         }
         return out
     }
-    readonly property bool showPinned: search.text.length === 0 && pinned.length > 0
+    // Unless Settings > Start hides them: then all apps come first.
+    readonly property bool showPinned: Config.startPinned && search.text.length === 0 && pinned.length > 0
 
     // The keyboard's tile: a pinned one (`pinnedSelection`, its index) or the
     // grid's current app (-1). Shown once a key moves it, or at once among

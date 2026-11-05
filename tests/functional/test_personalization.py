@@ -57,6 +57,44 @@ class Personalization(test_shell.RealShell):
         self.wait_region(box, lambda r: r == hidden, "the desktop icon hidden again")
         self.check_desktop()
 
+    def open_start(self):
+        self.vela.input("key", "super")
+        state = self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start open")
+        time.sleep(0.8) # its entrance over
+        return self.layer(state, "vela-start-menu")
+
+    def close_start(self):
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+
+    def test_start_hides_its_pinned_apps(self):
+        # Vela Files is pinned to Start by default: a .desktop of that name
+        # in this session's data puts a tile there. With start/showPinned
+        # off, Start opens on all apps: the tiles under the search differ.
+        applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
+        os.makedirs(applications, exist_ok=True)
+        with open(os.path.join(applications, "vela-files.desktop"), "w") as file:
+            file.write("[Desktop Entry]\nType=Application\nName=Pinned Files\nExec=true\nIcon=system-file-manager\n")
+        time.sleep(1.0) # the app list sees it
+
+        def middle():
+            layer = self.open_start()
+            # Between the search box (its caret blinks) and the footer.
+            box = (layer["x"], layer["y"] + layer["h"] // 4, layer["w"], layer["h"] // 2)
+            shot = self.region(*box)
+            self.close_start()
+            return shot
+
+        shown = middle()
+        self.write_shell_conf("[start]\nshowPinned=false\n")
+        time.sleep(1.0)
+        hidden = middle()
+        self.assertTrue(shown != hidden, "Start looks the same with its pinned apps hidden")
+        self.write_shell_conf("[start]\nshowPinned=true\n")
+        time.sleep(1.0)
+        self.assertTrue(middle() == shown, "the pinned apps didn't come back")
+        self.check_desktop()
+
 
 if __name__ == "__main__":
     unittest.main()

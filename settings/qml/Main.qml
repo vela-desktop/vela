@@ -218,6 +218,7 @@ Window {
         { page: "taskbar", reveal: "taskbar", text: qsTr("Taskbar style"), keys: qsTr("taskbar style look pill floating dock") },
         { page: "taskbar", reveal: "notifications", text: qsTr("Quick settings style"), keys: qsTr("quick settings notification center style look") },
         { page: "start", text: qsTr("Start menu style"), keys: qsTr("start menu style look size corners") },
+        { page: "start", text: qsTr("Show pinned apps"), keys: qsTr("start menu pinned apps pins show hide") },
         { page: "apps", text: qsTr("Apps"), keys: qsTr("programs applications") },
         { page: "installed-apps", text: qsTr("Installed apps"), keys: qsTr("uninstall remove programs") },
         { page: "default-apps", text: qsTr("Default apps"), keys: qsTr("browser mail player open with default") },

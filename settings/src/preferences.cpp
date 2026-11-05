@@ -165,6 +165,8 @@ void Preferences::reload()
     emit taskbarChanged();
     m_desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
     emit desktopChanged();
+    m_startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
+    emit startChanged();
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
     emit doNotDisturbChanged();
     m_clipboardHistory = settings.value(QStringLiteral("clipboard/history"), false).toBool();
@@ -529,6 +531,15 @@ void Preferences::setDesktopIcons(bool on)
         m_desktopIcons = on;
         setShell(QStringLiteral("desktop/showIcons"), on);
         emit desktopChanged();
+    }
+}
+
+void Preferences::setStartPinned(bool on)
+{
+    if (on != m_startPinned) {
+        m_startPinned = on;
+        setShell(QStringLiteral("start/showPinned"), on);
+        emit startChanged();
     }
 }
 

@@ -39,6 +39,8 @@ class Preferences : public QObject {
     Q_PROPERTY(bool taskView READ taskView WRITE setTaskView NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens WRITE setTaskbarAllScreens NOTIFY taskbarChanged)
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner WRITE setShowDesktopCorner NOTIFY taskbarChanged)
+    // start/showPinned: the apps pinned to Start above all apps.
+    Q_PROPERTY(bool startPinned READ startPinned WRITE setStartPinned NOTIFY startChanged)
     // desktop/showIcons, which the desktop's own menu sets too.
     Q_PROPERTY(bool desktopIcons READ desktopIcons WRITE setDesktopIcons NOTIFY desktopChanged)
     // --- Notifications ---
@@ -138,6 +140,8 @@ public:
     bool showDesktopCorner() const { return m_showDesktopCorner; }
     void setShowDesktopCorner(bool on);
     bool desktopIcons() const { return m_desktopIcons; }
+    bool startPinned() const { return m_startPinned; }
+    void setStartPinned(bool on);
     void setDesktopIcons(bool on);
 
     bool doNotDisturb() const { return m_doNotDisturb; }
@@ -267,6 +271,7 @@ signals:
     void appThemeChanged();
     void taskbarChanged();
     void desktopChanged();
+    void startChanged();
     void doNotDisturbChanged();
     void idleChanged();
     void languageChanged();
@@ -301,6 +306,7 @@ private:
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
     bool m_desktopIcons = true;
+    bool m_startPinned = true;
     bool m_doNotDisturb = false;
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;

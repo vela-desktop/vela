@@ -1777,6 +1777,14 @@ Specifiche sistema
         <translation>menu start stile aspetto dimensioni angoli</translation>
     </message>
     <message>
+        <source>Show pinned apps</source>
+        <translation>Mostra le app aggiunte</translation>
+    </message>
+    <message>
+        <source>start menu pinned apps pins show hide</source>
+        <translation>start menu app aggiunte fissate mostra nascondi</translation>
+    </message>
+    <message>
         <source>programs applications</source>
         <translation>programmi applicazioni</translation>
     </message>
@@ -2269,6 +2277,10 @@ Specifiche sistema
         <translation>Temi installati, temi personali, ritorno all&apos;aspetto di Vela</translation>
     </message>
     <message>
+        <source>Pinned apps, style of the Start menu</source>
+        <translation>App aggiunte, stile del menu Start</translation>
+    </message>
+    <message>
         <source>Taskbar items and behaviors, styles of the taskbar and quick settings</source>
         <translation>Elementi e comportamenti, stili della barra e delle impostazioni rapide</translation>
     </message>
@@ -2279,10 +2291,6 @@ Specifiche sistema
     <message>
         <source>Desktop background picture, desktop icons</source>
         <translation>Immagine di sfondo del desktop, icone del desktop</translation>
-    </message>
-    <message>
-        <source>Style of the Start menu</source>
-        <translation>Stile del menu Start</translation>
     </message>
     <message>
         <source>Taskbar</source>
@@ -2738,6 +2746,18 @@ Specifiche sistema
 </context>
 <context>
     <name>StartPage</name>
+    <message>
+        <source>Start menu</source>
+        <translation>Menu Start</translation>
+    </message>
+    <message>
+        <source>Show pinned apps</source>
+        <translation>Mostra le app aggiunte</translation>
+    </message>
+    <message>
+        <source>Above all apps. Turned off, Start opens on all apps and keeps your pins</source>
+        <translation>Sopra tutte le app. Se disattivato, Start si apre su tutte le app e conserva quelle aggiunte</translation>
+    </message>
     <message>
         <source>Style</source>
         <translation>Stile</translation>

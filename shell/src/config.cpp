@@ -73,6 +73,12 @@ void Config::reload()
         emit taskbarChanged();
     }
 
+    const bool startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
+    if (startPinned != m_startPinned) {
+        m_startPinned = startPinned;
+        emit startChanged();
+    }
+
     const QString primaryOutput = settings.value(QStringLiteral("display/primaryOutput")).toString();
     if (primaryOutput != m_primaryOutput) {
         m_primaryOutput = primaryOutput;

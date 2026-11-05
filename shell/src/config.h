@@ -27,6 +27,8 @@ class Config : public QObject {
     Q_PROPERTY(QString primaryOutput READ primaryOutput NOTIFY primaryOutputChanged)
     // Clickable right-hand taskbar corner that toggles the desktop.
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner NOTIFY taskbarChanged)
+    // The apps pinned to Start, above all apps (start/showPinned).
+    Q_PROPERTY(bool startPinned READ startPinned NOTIFY startChanged)
     // Clipboard history (Win+V).
     Q_PROPERTY(bool clipboardHistory READ clipboardHistory NOTIFY clipboardChanged)
     // "Choose your mode": "dark" or "light", for the shell (taskbar, menus,
@@ -45,6 +47,7 @@ public:
     QString primaryOutput() const { return m_primaryOutput; }
     bool showDesktopCorner() const { return m_showDesktopCorner; }
     bool clipboardHistory() const { return m_clipboardHistory; }
+    bool startPinned() const { return m_startPinned; }
     bool doNotDisturb() const { return m_doNotDisturb; }
     QString shellTheme() const { return m_shellTheme; }
     QString appTheme() const { return m_appTheme; }
@@ -60,6 +63,7 @@ signals:
     void doNotDisturbChanged(bool on);
     void themeChanged();
     void clipboardChanged();
+    void startChanged();
     void desktopIconsChanged(bool shown);
 
 private:
@@ -77,6 +81,7 @@ private:
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
     bool m_clipboardHistory = false;
+    bool m_startPinned = true;
     bool m_doNotDisturb = false;
     bool m_showDesktopIcons = true;
     QString m_shellTheme = QStringLiteral("dark");
