@@ -13,6 +13,8 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QIcon>
+#include <QImage>
 #include <QSaveFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -30,6 +32,27 @@ QTemporaryDir& home()
 QString confPath()
 {
     return home().filePath(QStringLiteral("config/Vela/vela-shell.conf"));
+}
+
+
+// A logo only in an icon theme ("themed-logo", a PNG: whether Qt reads SVG
+// icons depends on its plugins), and an os-release naming it.
+QString themedOsRelease(const QString& root)
+{
+    QDir().mkpath(root + QStringLiteral("/themes/test/apps"));
+    QFile index(root + QStringLiteral("/themes/test/index.theme"));
+    if (index.open(QIODevice::WriteOnly)) {
+        index.write("[Icon Theme]\nName=Test\nDirectories=apps\n\n[apps]\nSize=48\nType=Fixed\n");
+    }
+    QImage logo(48, 48, QImage::Format_ARGB32);
+    logo.fill(Qt::green);
+    logo.save(root + QStringLiteral("/themes/test/apps/themed-logo.png"));
+    const QString release = root + QStringLiteral("/themed-os-release");
+    QFile file(release);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write("NAME=Themed\nLOGO=themed-logo\n");
+    }
+    return release;
 }
 
 } // namespace
@@ -136,6 +159,28 @@ private slots:
         write("[start]\nicon=distribution\n");
         QVERIFY(start.wait(3000));
         QCOMPARE(config.startIconSource(), home().filePath(QStringLiteral("data/icons/test-logo.svg")));
+    }
+
+    void findsTheLogoOnceTheIconThemeIsSet()
+    {
+        // Vela.Controls sets the icon theme after Config starts (main.cpp):
+        // a logo only there shows once refreshStartIcon() looks again.
+        const QByteArray release = qgetenv("VELA_OS_RELEASE");
+        qputenv("VELA_OS_RELEASE", themedOsRelease(home().path()).toUtf8());
+        QIcon::setThemeSearchPaths({});
+        write("[start]\nicon=distribution\n");
+        Config config;
+        QCOMPARE(config.startIconSource(), QString());
+        QSignalSpy start(&config, &Config::startChanged);
+        QIcon::setThemeSearchPaths({ home().filePath(QStringLiteral("themes")) });
+        QIcon::setThemeName(QStringLiteral("test"));
+        config.refreshStartIcon();
+        QCOMPARE(start.count(), 1);
+        QCOMPARE(config.startIconSource(), QStringLiteral("themed-logo"));
+        config.refreshStartIcon(); // nothing new: quiet
+        QCOMPARE(start.count(), 1);
+        QIcon::setThemeSearchPaths({});
+        qputenv("VELA_OS_RELEASE", release);
     }
 
     void tellsTheDesktopAboutItsIcons()

@@ -50,6 +50,16 @@ QString Config::clockFormat() const
     return vela::clock::timeFormat(m_clock24, m_clockSeconds);
 }
 
+void Config::refreshStartIcon()
+{
+    QSettings settings;
+    const QString source = vela::start::icon(settings).source;
+    if (source != m_startIconSource) {
+        m_startIconSource = source;
+        emit startChanged();
+    }
+}
+
 void Config::reload()
 {
     QSettings settings;

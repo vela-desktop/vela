@@ -575,6 +575,19 @@ void Preferences::setStartIcon(const QString& kind, const QString& picture)
     }
 }
 
+void Preferences::refreshStartIcon()
+{
+    const vela::start::Distribution distribution = vela::start::distribution();
+    const vela::start::Icon icon = vela::start::icon(shellSettings());
+    if (distribution.name != m_distribution.name || distribution.logo != m_distribution.logo
+        || icon.kind != m_startIcon || icon.source != m_startIconSource) {
+        m_distribution = distribution;
+        m_startIcon = icon.kind;
+        m_startIconSource = icon.source;
+        emit startChanged();
+    }
+}
+
 void Preferences::setClockDate(bool on)
 {
     if (on != m_clockDate) {

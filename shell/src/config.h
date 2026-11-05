@@ -75,6 +75,9 @@ public:
     // it too (DesktopModel), Settings > Background here. Only for C++:
     // QML asks Desktop.showIcons.
     bool showDesktopIcons() const { return m_showDesktopIcons; }
+    // The Start icon found again (starticon.h): call once the icon theme is
+    // set (Vela.Controls) and whenever it changes, a logo may be only there.
+    void refreshStartIcon();
 
 signals:
     void wallpaperChanged();

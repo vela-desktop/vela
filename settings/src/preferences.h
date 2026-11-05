@@ -58,8 +58,8 @@ class Preferences : public QObject {
     // os-release.
     Q_PROPERTY(QString startIcon READ startIcon NOTIFY startChanged)
     Q_PROPERTY(QString startIconSource READ startIconSource NOTIFY startChanged)
-    Q_PROPERTY(QString distributionName READ distributionName CONSTANT)
-    Q_PROPERTY(QString distributionLogo READ distributionLogo CONSTANT)
+    Q_PROPERTY(QString distributionName READ distributionName NOTIFY startChanged)
+    Q_PROPERTY(QString distributionLogo READ distributionLogo NOTIFY startChanged)
     // start/showPinned: the apps pinned to Start above all apps.
     Q_PROPERTY(bool startPinned READ startPinned WRITE setStartPinned NOTIFY startChanged)
     // desktop/showIcons, which the desktop's own menu sets too.
@@ -176,6 +176,9 @@ public:
     // kind: "vela", "distribution" or "picture"; for "picture", the file
     // (a path or a file:// URL; without one, the picture chosen before).
     Q_INVOKABLE void setStartIcon(const QString& kind, const QString& picture = QString());
+    // The logo and the Start icon found again: once the icon theme is set
+    // (Vela.Controls) and whenever it changes, a logo may be only there.
+    void refreshStartIcon();
     bool startPinned() const { return m_startPinned; }
     void setStartPinned(bool on);
     bool desktopIcons() const { return m_desktopIcons; }
