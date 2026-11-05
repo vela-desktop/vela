@@ -135,10 +135,15 @@ Vela opens as a window that behaves like a virtual monitor. If `build/shell/vela
 
 Both manual launchers (`run-nested.sh` and `run-headless.sh`) use a fresh temporary
 `HOME` and `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, and
-`XDG_STATE_HOME`. These are deleted when the compositor exits, including on
-SIGTERM, so a test wallpaper or clipboard cannot overwrite your real Vela state.
+`XDG_STATE_HOME`. These are deleted after the compositor and its detached child processes exit,
+including on SIGTERM. A Linux subreaper supervises all session descendants;
+unresponsive processes are SIGKILLed after a bounded grace period. The manual
+launchers require Python 3. This keeps test wallpaper/cache writes away from
+your real Vela state.
 The test starts with default settings. To **copy** your existing Vela configuration
-(`vela/` and `Vela/` only) into the temporary home, without editing the originals:
+(`vela/` and `Vela/` only) into the temporary home, without editing the originals.
+Symlinks inside the same Vela configuration tree are copied as private files;
+symlinks escaping that tree or forming cycles are skipped with a warning:
 
 ```sh
 VELA_TEST_COPY_CONFIG=1 sh scripts/run-nested.sh

@@ -14,25 +14,35 @@ import unittest
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 COMPOSITOR = '''#!/usr/bin/env python3
-import json, os, pathlib, signal, sys, time
+import json, os, pathlib, signal, subprocess, sys, time
 path = pathlib.Path(os.environ["VELA_TEST_OUTPUT"])
 keys = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
         "XDG_STATE_HOME", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
         "WAYLAND_DISPLAY", "DISPLAY", "QT_WAYLAND_RECONNECT",
         "WLR_BACKENDS", "WLR_LIBINPUT_NO_DEVICES", "VELA_DEBUG_INPUT")
-if os.environ.get("VELA_TEST_HOLD") == "1":
+if os.environ.get("VELA_TEST_IGNORE_TERM") == "1":
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+elif os.environ.get("VELA_TEST_HOLD") == "1":
     def stop(*args):
         pathlib.Path(os.environ["VELA_TEST_SIGNAL_OUTPUT"]).write_text("terminated")
         sys.exit(0)
     signal.signal(signal.SIGTERM, stop)
 result = {"env": {key: os.environ.get(key) for key in keys}, "args": sys.argv[1:]}
 result["imported"] = {}
+result["outside"] = {}
 for name in ("vela", "Vela"):
     pref = pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / name / "setting.txt"
     result["imported"][name] = pref.read_text() if pref.exists() else None
+    result["outside"][name] = (pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / name / "external").exists()
 for name in ("XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "HOME"):
     (pathlib.Path(os.environ[name]) / "test-write").write_text("private")
 path.write_text(json.dumps(result))
+if os.environ.get("VELA_TEST_ORPHAN") == "1":
+    orphan = subprocess.Popen(
+        [sys.executable, "-c",
+         "import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);time.sleep(120)"],
+        start_new_session=True)
+    pathlib.Path(os.environ["VELA_TEST_ORPHAN_PID"]).write_text(str(orphan.pid))
 if os.environ.get("VELA_TEST_HOLD") == "1":
     while True:
         time.sleep(0.1)
@@ -123,12 +133,17 @@ class PrivateSessionTests(unittest.TestCase):
         for name in ("vela", "Vela"):
             folder = self.host / ".config" / name
             folder.mkdir()
-            (folder / "setting.txt").symlink_to(self.sentinel)
+            (folder / "original.txt").write_text("copied locally")
+            (folder / "setting.txt").symlink_to("original.txt")
+            (folder / "external").symlink_to(self.sentinel)
+            (folder / "cycle").symlink_to(".")
         run = self.run_script("run-nested.sh", VELA_TEST_COPY_CONFIG="1")
         self.assertEqual(run.returncode, 0, run.stderr)
         result = json.loads(self.output.read_text())
-        self.assertEqual(result["imported"], {"vela": "real session must not change",
-                                              "Vela": "real session must not change"})
+        self.assertEqual(result["imported"], {"vela": "copied locally", "Vela": "copied locally"})
+        self.assertEqual(result["outside"], {"vela": False, "Vela": False})
+        self.assertIn("Skipping config symlink outside Vela", run.stderr)
+        self.assertIn("Skipping recursive config symlink", run.stderr)
         self.assert_clean()
 
     def test_invalid_config_import_rejected(self):
@@ -137,6 +152,54 @@ class PrivateSessionTests(unittest.TestCase):
         self.assertIn("VELA_TEST_COPY_CONFIG", run.stderr)
         self.assertFalse(self.output.exists())
         self.assert_clean()
+
+    def test_relative_tmpdir_is_rejected(self):
+        run = self.run_script("run-headless.sh", TMPDIR="relative")
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("TMPDIR must be an absolute path", run.stderr)
+        self.assertFalse(self.output.exists())
+        self.assert_clean()
+
+    def test_detached_stubborn_child_is_reaped_before_directory_cleanup(self):
+        orphan_pid = self.root / "orphan.pid"
+        try:
+            run = self.run_script("run-nested.sh", VELA_TEST_ORPHAN="1",
+                                  VELA_TEST_ORPHAN_PID=str(orphan_pid))
+            self.assertEqual(run.returncode, 0, run.stderr)
+            pid = int(orphan_pid.read_text())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pid, 0)
+            self.assert_clean()
+        finally:
+            if orphan_pid.exists():
+                try:
+                    os.kill(int(orphan_pid.read_text()), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+    def test_uncooperative_compositor_is_killed_after_grace_period(self):
+        process = subprocess.Popen(
+            ["sh", str(SCRIPTS / "run-headless.sh"), str(self.build)],
+            env=dict(self.env, VELA_TEST_HOLD="1", VELA_TEST_IGNORE_TERM="1"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            for _ in range(200):
+                if self.output.exists():
+                    break
+                self.assertIsNone(process.poll())
+                time.sleep(0.02)
+            else:
+                self.fail("fake compositor never started")
+            process.terminate()
+            _, error = process.communicate(timeout=8)
+            self.assertEqual(process.returncode, 143, error.decode())
+            self.assert_clean()
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            process.stdout.close()
+            process.stderr.close()
 
     def test_shell_path_is_passed_to_compositor(self):
         shell = self.build / "shell" / "vela-shell"
