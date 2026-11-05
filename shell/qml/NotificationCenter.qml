@@ -302,9 +302,13 @@ Window {
                     width: parent.width - 32
                     spacing: 12
 
-                    // Today, in full ("Saturday, October 4"), like Windows.
+                    // Today, in full ("Saturday, October 4"), like Windows:
+                    // again at each opening (root.month), after midnight
+                    // too, and when the language changes (Qt.uiLanguage).
                     Text {
                         text: {
+                            root.month
+                            Qt.uiLanguage
                             const s = Qt.locale().toString(Shell.now(), "dddd d MMMM")
                             return s.charAt(0).toUpperCase() + s.slice(1)
                         }
@@ -319,6 +323,7 @@ Window {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: {
+                                Qt.uiLanguage
                                 const s = Qt.locale().toString(root.month, "MMMM yyyy")
                                 return s.charAt(0).toUpperCase() + s.slice(1)
                             }
@@ -349,8 +354,16 @@ Window {
 
                         Repeater {
                             // Monday first, as the grid; two letters of the
-                            // language's short names ("Mo", "lu"), like Windows.
-                            model: [1, 2, 3, 4, 5, 6, 0].map(day => Qt.locale().dayName(day, Locale.ShortFormat).substring(0, 2))
+                            // language's short names ("Mo", "lu"), like
+                            // Windows, unless two days would read the same
+                            // (Portuguese "seg." and "sex."): then the short
+                            // names whole. Again when the language changes.
+                            model: {
+                                Qt.uiLanguage
+                                const names = [1, 2, 3, 4, 5, 6, 0].map(day => Qt.locale().dayName(day, Locale.ShortFormat))
+                                const two = names.map(name => name.substring(0, 2))
+                                return new Set(two).size === 7 ? two : names
+                            }
                             delegate: Text {
                                 required property string modelData
                                 width: days.cell

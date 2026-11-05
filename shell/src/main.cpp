@@ -52,8 +52,8 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
-#include <QStyleHints>
 #include <QIcon>
+#include <QLocale>
 #include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -61,6 +61,7 @@
 #include <QQuickWindow>
 #include <QPointer>
 #include <QScreen>
+#include <QStyleHints>
 #include <QTimer>
 #include <QtDebug>
 #include <QtQml/QQmlExtensionPlugin>
@@ -313,6 +314,9 @@ int main(int argc, char* argv[])
             desktopModel->refresh(); // the Recycle Bin
         }
         if (qmlEngine) {
+            // Dates follow too: bindings that read Qt.uiLanguage (the
+            // calendar's day and month names) are evaluated again.
+            qmlEngine->setUiLanguage(QLocale().bcp47Name());
             qmlEngine->retranslate();
         }
     });
