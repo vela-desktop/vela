@@ -48,6 +48,10 @@ public:
     bool doNotDisturb() const { return m_doNotDisturb; }
     QString shellTheme() const { return m_shellTheme; }
     QString appTheme() const { return m_appTheme; }
+    // Desktop icons shown (desktop/showIcons): the desktop's own menu writes
+    // it too (DesktopModel), Settings > Background here. Only for C++:
+    // QML asks Desktop.showIcons.
+    bool showDesktopIcons() const { return m_showDesktopIcons; }
 
 signals:
     void wallpaperChanged();
@@ -56,6 +60,7 @@ signals:
     void doNotDisturbChanged(bool on);
     void themeChanged();
     void clipboardChanged();
+    void desktopIconsChanged(bool shown);
 
 private:
     void reload();
@@ -73,6 +78,7 @@ private:
     bool m_showDesktopCorner = true;
     bool m_clipboardHistory = false;
     bool m_doNotDisturb = false;
+    bool m_showDesktopIcons = true;
     QString m_shellTheme = QStringLiteral("dark");
     QString m_appTheme = QStringLiteral("dark");
 };

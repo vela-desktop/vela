@@ -408,6 +408,18 @@ Specifiche sistema
         <translation>Sfoglia foto</translation>
     </message>
     <message>
+        <source>Desktop</source>
+        <translation>Desktop</translation>
+    </message>
+    <message>
+        <source>Show desktop icons</source>
+        <translation>Mostra le icone del desktop</translation>
+    </message>
+    <message>
+        <source>The files and folders of your Desktop folder, on the main display (also from the desktop&apos;s menu)</source>
+        <translation>I file e le cartelle della cartella Desktop, sullo schermo principale (anche dal menu del desktop)</translation>
+    </message>
+    <message>
         <source>System backgrounds</source>
         <translation>Sfondi del sistema</translation>
     </message>
@@ -1713,6 +1725,14 @@ Specifiche sistema
         <translation>immagine desktop foto wallpaper</translation>
     </message>
     <message>
+        <source>Show desktop icons</source>
+        <translation>Mostra le icone del desktop</translation>
+    </message>
+    <message>
+        <source>desktop icons files folders show hide</source>
+        <translation>desktop icone file cartelle mostra nascondi</translation>
+    </message>
+    <message>
         <source>accent color theme dark light mode</source>
         <translation>accento colore principale tema scuro chiaro modalità</translation>
     </message>
@@ -2233,10 +2253,6 @@ Specifiche sistema
         <translation>Sfondo</translation>
     </message>
     <message>
-        <source>Desktop background picture</source>
-        <translation>Immagine di sfondo del desktop</translation>
-    </message>
-    <message>
         <source>Colors</source>
         <translation>Colori</translation>
     </message>
@@ -2259,6 +2275,10 @@ Specifiche sistema
     <message>
         <source>Start</source>
         <translation>Start</translation>
+    </message>
+    <message>
+        <source>Desktop background picture, desktop icons</source>
+        <translation>Immagine di sfondo del desktop, icone del desktop</translation>
     </message>
     <message>
         <source>Style of the Start menu</source>

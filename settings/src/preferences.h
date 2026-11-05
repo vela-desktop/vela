@@ -39,6 +39,8 @@ class Preferences : public QObject {
     Q_PROPERTY(bool taskView READ taskView WRITE setTaskView NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens WRITE setTaskbarAllScreens NOTIFY taskbarChanged)
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner WRITE setShowDesktopCorner NOTIFY taskbarChanged)
+    // desktop/showIcons, which the desktop's own menu sets too.
+    Q_PROPERTY(bool desktopIcons READ desktopIcons WRITE setDesktopIcons NOTIFY desktopChanged)
     // --- Notifications ---
     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
     // --- Power ---
@@ -135,6 +137,8 @@ public:
     void setTaskbarAllScreens(bool on);
     bool showDesktopCorner() const { return m_showDesktopCorner; }
     void setShowDesktopCorner(bool on);
+    bool desktopIcons() const { return m_desktopIcons; }
+    void setDesktopIcons(bool on);
 
     bool doNotDisturb() const { return m_doNotDisturb; }
     void setDoNotDisturb(bool on);
@@ -262,6 +266,7 @@ signals:
     void accentChanged();
     void appThemeChanged();
     void taskbarChanged();
+    void desktopChanged();
     void doNotDisturbChanged();
     void idleChanged();
     void languageChanged();
@@ -295,6 +300,7 @@ private:
     bool m_taskView = true;
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
+    bool m_desktopIcons = true;
     bool m_doNotDisturb = false;
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;

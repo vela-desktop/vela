@@ -163,6 +163,8 @@ void Preferences::reload()
     m_taskbarAllScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
     m_showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
     emit taskbarChanged();
+    m_desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
+    emit desktopChanged();
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
     emit doNotDisturbChanged();
     m_clipboardHistory = settings.value(QStringLiteral("clipboard/history"), false).toBool();
@@ -518,6 +520,15 @@ void Preferences::setShowDesktopCorner(bool on)
         m_showDesktopCorner = on;
         setShell(QStringLiteral("taskbar/showDesktopCorner"), on);
         emit taskbarChanged();
+    }
+}
+
+void Preferences::setDesktopIcons(bool on)
+{
+    if (on != m_desktopIcons) {
+        m_desktopIcons = on;
+        setShell(QStringLiteral("desktop/showIcons"), on);
+        emit desktopChanged();
     }
 }
 

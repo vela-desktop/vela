@@ -157,6 +157,14 @@ quicksettings-variant=glass
 
 The design and what is still planned are in [theme-system.md](theme-system.md).
 
+## Shell settings
+
+The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `desktop/showIcons` | `true` | The Desktop folder's icons on the main display (Settings → Background, or the desktop's menu) |
+
 ## Display configuration
 
 Persistent display layout is stored separately in:

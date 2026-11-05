@@ -394,6 +394,8 @@ int main(int argc, char* argv[])
     QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, &ShellController::openWithRequested);
     QObject::connect(&desktop, &DesktopModel::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     desktopModel = &desktop;
+    // Settings > Background shows or hides the icons too.
+    QObject::connect(&config, &Config::desktopIconsChanged, &desktop, &DesktopModel::setShowIcons);
     ServiceMenus serviceMenus;
     FileProperties properties;
     FileActions fileActions;

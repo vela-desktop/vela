@@ -97,6 +97,12 @@ void Config::reload()
         emit clipboardChanged();
     }
 
+    const bool desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
+    if (desktopIcons != m_showDesktopIcons) {
+        m_showDesktopIcons = desktopIcons;
+        emit desktopIconsChanged(desktopIcons);
+    }
+
     const bool dnd = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
     if (dnd != m_doNotDisturb) {
         m_doNotDisturb = dnd;

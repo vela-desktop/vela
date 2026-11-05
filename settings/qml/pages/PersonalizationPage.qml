@@ -18,7 +18,7 @@ Page {
         LinkCard {
             icon: "preferences-desktop-wallpaper"
             title: qsTr("Background")
-            description: qsTr("Desktop background picture")
+            description: qsTr("Desktop background picture, desktop icons")
             onClicked: root.navigate("background")
         }
         LinkCard {
