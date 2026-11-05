@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "preferences.h"
 #include "../../common/privatefile.h"
 
@@ -12,7 +13,6 @@ extern "C" {
 #include "iconprovider.h"
 #include "themefile.h"
 
-#include <QDesktopServices>
 #include <QDir>
 #include <QTime>
 #include <QJsonObject>
@@ -172,7 +172,7 @@ void Preferences::reload()
     // yet, the one GTK and the portal already know.
     QString appTheme = settings.value(QStringLiteral("appearance/appTheme")).toString();
     if (appTheme.isEmpty()) {
-        QProcess gsettings;
+        vela::process::ExternalProcess gsettings;
         gsettings.start(QStringLiteral("gsettings"),
             { QStringLiteral("get"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("color-scheme") });
         appTheme = gsettings.waitForFinished(1000) && gsettings.readAllStandardOutput().contains("light")
@@ -449,13 +449,13 @@ void Preferences::setAppTheme(const QString& theme)
     // The shell and the compositor (title bars), Explorer.
     setShell(QStringLiteral("appearance/appTheme"), theme);
     // GTK, the portal and whoever follows org.freedesktop.appearance.
-    QProcess::startDetached(QStringLiteral("gsettings"),
+    vela::process::startDetached(QStringLiteral("gsettings"),
         { QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("color-scheme"),
             light ? QStringLiteral("prefer-light") : QStringLiteral("prefer-dark") });
     // KDE and Qt apps: the light or dark Breeze color scheme, and matching
     // icons.
     if (!QStandardPaths::findExecutable(QStringLiteral("plasma-apply-colorscheme")).isEmpty()) {
-        QProcess::startDetached(QStringLiteral("plasma-apply-colorscheme"),
+        vela::process::startDetached(QStringLiteral("plasma-apply-colorscheme"),
             { light ? QStringLiteral("BreezeLight") : QStringLiteral("BreezeDark") });
     }
     const QString icons = QIcon::themeName();
@@ -463,9 +463,9 @@ void Preferences::setAppTheme(const QString& theme)
     if (QIcon::themeName() != icons) {
         const QString changer = QStringLiteral("/usr/lib/plasma-changeicons");
         if (QFileInfo(changer).isExecutable()) {
-            QProcess::startDetached(changer, { QIcon::themeName() });
+            vela::process::startDetached(changer, { QIcon::themeName() });
         } else if (!QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6")).isEmpty()) {
-            QProcess::startDetached(QStringLiteral("kwriteconfig6"),
+            vela::process::startDetached(QStringLiteral("kwriteconfig6"),
                 { QStringLiteral("--file"), QStringLiteral("kdeglobals"), QStringLiteral("--group"), QStringLiteral("Icons"),
                     QStringLiteral("--key"), QStringLiteral("Theme"), QIcon::themeName() });
         }
@@ -732,7 +732,7 @@ void Preferences::openThemesFolder(const QString& surface)
     // above it while it doesn't exist (watchThemes()).
     const QString dir = vela::themes::userDirectory(layer);
     QDir().mkpath(dir);
-    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    vela::process::startDetached(QStringLiteral("xdg-open"), { dir });
 }
 
 void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& styles)

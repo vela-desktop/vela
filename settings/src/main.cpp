@@ -9,6 +9,7 @@
 // the page and come to the front (that's how the shell opens "Display
 // settings", "Personalize" and the other menu entries).
 
+#include "renderingpolicy.h"
 #include "about.h"
 #include "appmodel.h"
 #include "audio.h"
@@ -115,6 +116,7 @@ private:
 
 int main(int argc, char* argv[])
 {
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-settings"));
     QQmlApplicationEngine* qmlEngine = nullptr;

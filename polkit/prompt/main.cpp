@@ -11,6 +11,7 @@
 // outputs. All of them take the pointer: nothing underneath can be touched
 // until the user answers.
 
+#include "renderingpolicy.h"
 #include "controls.h"
 #include "language.h"
 #include "request.h"
@@ -144,6 +145,7 @@ int main(int argc, char* argv[])
     }
     // Always Wayland: the overlay layer exists only there.
     qputenv("QT_QPA_PLATFORM", "wayland");
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("vela-polkit-prompt"));
     app.setDesktopFileName(QStringLiteral("vela-polkit-prompt"));

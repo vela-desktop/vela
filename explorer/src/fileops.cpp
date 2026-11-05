@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "fileops.h"
 #include "../../common/executablefile.h"
 
@@ -69,7 +70,7 @@ bool sameDevice(const QString& a, const QString& b)
 
 bool runDetached(const QString& program, const QStringList& arguments, const QString& directory)
 {
-    return QProcess::startDetached(program, arguments, directory);
+    return vela::process::startDetached(program, arguments, directory);
 }
 
 // "photo.jpg" -> "photo - Copy.jpg", like Windows when pasting into the same
@@ -1543,6 +1544,6 @@ QString FileOps::resolve(const QString& text, const QString& base) const
 
 void FileOps::newWindow(const QString& location) const
 {
-    QProcess::startDetached(QCoreApplication::applicationFilePath(),
+    vela::process::startDetached(QCoreApplication::applicationFilePath(),
         location.startsWith(u'/') ? QStringList { location } : QStringList {});
 }

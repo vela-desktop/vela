@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "systemactions.h"
 #include "appmodel.h"
 #include "mimeapps.h"
@@ -44,7 +45,7 @@ QString quote(QString text)
 bool spawn(const QString& command, const QString& directory = QDir::homePath())
 {
     qInfo("vela-shell: starting %s", qPrintable(command));
-    return QProcess::startDetached(QStringLiteral("/bin/sh"), { QStringLiteral("-c"), command }, directory);
+    return vela::process::startDetached(QStringLiteral("/bin/sh"), { QStringLiteral("-c"), command }, directory);
 }
 
 // Use the apps built alongside this executable before installed versions.
@@ -279,7 +280,7 @@ bool SystemActions::runOnScreen(const QString& input, const QString& screen)
     bool ok = false;
     if (info.isDir()) {
         const QString files = velaFilesExecutable();
-        ok = !files.isEmpty() && QProcess::startDetached(files, { info.absoluteFilePath() });
+        ok = !files.isEmpty() && vela::process::startDetached(files, { info.absoluteFilePath() });
     } else if (info.isFile()) {
         const QString mime = QMimeDatabase().mimeTypeForFile(info).name();
         const QString id = MimeApps::defaultFor(mime);
@@ -293,12 +294,12 @@ bool SystemActions::runOnScreen(const QString& input, const QString& screen)
     } else if (text.contains(QLatin1String("://"))) {
         const QUrl url(text);
         if (url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https"))
-            ok = QProcess::startDetached(QStringLiteral("xdg-open"), { text });
+            ok = vela::process::startDetached(QStringLiteral("xdg-open"), { text });
         else if (url.isLocalFile()) {
             const QFileInfo local(url.toLocalFile());
             if (local.isDir()) {
                 const QString files = velaFilesExecutable();
-                ok = !files.isEmpty() && QProcess::startDetached(files, { local.absoluteFilePath() });
+                ok = !files.isEmpty() && vela::process::startDetached(files, { local.absoluteFilePath() });
             }
         }
     } else {
@@ -324,7 +325,7 @@ void SystemActions::showInFolder(const QString& pathOrUrl) const
     const QUrl url = pathOrUrl.contains(QLatin1String("://")) ? QUrl(pathOrUrl) : QUrl::fromLocalFile(pathOrUrl);
     // Vela's Explorer opens the folder with the file selected.
     if (const QString files = velaFilesExecutable(); !files.isEmpty() && url.isLocalFile()) {
-        QProcess::startDetached(files, { url.toLocalFile() });
+        vela::process::startDetached(files, { url.toLocalFile() });
         return;
     }
     // The file manager standard (Dolphin, Nautilus...): opens the folder and
@@ -340,7 +341,7 @@ void SystemActions::showInFolder(const QString& pathOrUrl) const
 
 void SystemActions::openUrl(const QString& url) const
 {
-    QProcess::startDetached(QStringLiteral("xdg-open"), { url });
+    vela::process::startDetached(QStringLiteral("xdg-open"), { url });
 }
 
 void SystemActions::openTerminal(const QString& directory) const

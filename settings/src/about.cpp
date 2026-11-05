@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "about.h"
 
 #include <QCoreApplication>
@@ -64,7 +65,7 @@ QStringList graphics()
 {
     // lspci: "03:00.0 VGA compatible controller: Advanced Micro Devices, Inc.
     // [AMD/ATI] Navi 48 [Radeon RX 9070...]"
-    QProcess lspci;
+    vela::process::ExternalProcess lspci;
     lspci.start(QStringLiteral("lspci"), QStringList {});
     lspci.waitForFinished(2000);
     QStringList out;

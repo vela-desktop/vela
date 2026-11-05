@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "desktopmodel.h"
 
 #include "appmodel.h"
@@ -108,7 +109,7 @@ bool hasThumbnail(const QFileInfo& info, const QMimeType& mime)
 bool runDetached(const QString& program, const QStringList& arguments, const QString& directory)
 {
     qInfo("vela-shell: %s %s", qPrintable(program), qPrintable(arguments.join(u' ')));
-    return QProcess::startDetached(program, arguments, directory);
+    return vela::process::startDetached(program, arguments, directory);
 }
 
 // Both desktop Ctrl+V and drag/drop must go through FileOps in vela-files.
@@ -124,7 +125,7 @@ bool launchFileTransfer(const QStringList& sources, const QString& directory,
     if (!QFileInfo(executable).isExecutable()) {
         executable = QStringLiteral("vela-files"); // development / separate install prefix
     }
-    const bool launched = QProcess::startDetached(
+    const bool launched = vela::process::startDetached(
         executable, vela::files::transferArguments(action, directory, sources), directory, pid);
     if (!launched) {
         qWarning("vela-shell: unable to start the tracked file transfer in vela-files");

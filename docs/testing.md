@@ -182,7 +182,7 @@ ctest --test-dir build -R '^text-rendering-rhi$' --output-on-failure
 build/common/vela-text-rendering-test --capture-dir /tmp/vela-text-frames
 ```
 
-This test runs the production text policy through the OpenGL RHI glyph shaders
+This test runs the explicitly initialized production text policy through the OpenGL RHI glyph shaders
 using `QQuickRenderControl`, an explicit render target and synchronous readback.
 It does not use Qt Quick's software painter, which cannot reproduce the native
 glyph shader's snapping. Mesa software OpenGL is supported; if an OpenGL RHI

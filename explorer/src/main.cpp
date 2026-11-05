@@ -10,6 +10,7 @@
 // for "Open with", service menus) is prepared afterwards. With
 // VELA_FILES_TIMING=1 it prints how long it took.
 
+#include "renderingpolicy.h"
 #include "appmodel.h"
 #include "../../common/filetransferrequest.h"
 #include "controls.h"
@@ -69,6 +70,7 @@ int main(int argc, char* argv[])
     sinceMain.start();
     const bool timing = qEnvironmentVariableIntValue("VELA_FILES_TIMING") > 0;
 
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-files"));
     QQmlApplicationEngine* qmlEngine = nullptr;

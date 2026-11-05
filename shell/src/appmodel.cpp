@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "appmodel.h"
 #include "desktopexec.h"
 #include "mimeapps.h"
@@ -685,7 +686,7 @@ bool AppModel::launchEntry(const Entry& entry, const QList<QUrl>& files) const
             return false;
         }
         qInfo("vela-shell: starting %s", qPrintable(arguments.join(u' ')));
-        ok = QProcess::startDetached(arguments.first(), arguments.mid(1), directory) && ok;
+        ok = vela::process::startDetached(arguments.first(), arguments.mid(1), directory) && ok;
     }
     return ok;
 }

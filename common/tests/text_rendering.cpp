@@ -5,6 +5,7 @@
 // smoothly through a physical pixel and must stay neutral over transparency.
 // Read an explicit render target, avoiding swapchain age and window damage.
 
+#include "renderingpolicy.h"
 #include "controls.h"
 
 #include <QCommandLineParser>
@@ -213,6 +214,15 @@ int main(int argc, char** argv)
     qputenv("QT_QUICK_BACKEND", "rhi");
     // Exercise the production default, independently of the caller's desktop.
     qunsetenv("QSG_DISTANCEFIELD_ANTIALIASING");
+    vela::rendering::configureApplication();
+    // The policy belongs to the current renderer, not to child applications.
+    if (qgetenv("QSG_DISTANCEFIELD_ANTIALIASING") != "gray"
+        || vela::rendering::externalProcessEnvironment().contains(
+            QStringLiteral("QSG_DISTANCEFIELD_ANTIALIASING"))) {
+        std::fprintf(stderr, "FAIL: private text antialiasing leaked to child environment\n");
+        return 1;
+    }
+    vela::rendering::configureApplication(); // Idempotent setup.
     QGuiApplication app(argc, argv);
     QCommandLineParser parser;
     parser.addHelpOption();

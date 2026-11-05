@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "processlaunch.h"
 #include <QCoreApplication>
 #include <QMap>
 #include <QPointer>
@@ -28,7 +29,7 @@ struct ProcessResult {
 inline QProcess* runProcess(QObject* owner, const QString& program, const QStringList& arguments,
     int timeout, std::function<void(ProcessResult)> done)
 {
-    auto* process = new QProcess(QCoreApplication::instance());
+    auto* process = new vela::process::ExternalProcess(QCoreApplication::instance());
     auto* timer = new QTimer(process);
     timer->setSingleShot(true);
     const QPointer<QObject> guard(owner);

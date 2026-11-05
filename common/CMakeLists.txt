@@ -20,6 +20,12 @@ target_link_libraries(vela-app PUBLIC Qt6::Gui PRIVATE Qt6::GuiPrivate)
 # Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin) and, before loading QML,
 # vela::controls::install(engine, mode).
 find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Gui GuiPrivate Qml Quick QuickControls2 Svg)
+
+# Explicit Qt Quick text policy, independent from the Vela.Controls module.
+add_library(vela-rendering STATIC src/renderingpolicy.cpp)
+target_include_directories(vela-rendering PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(vela-rendering PRIVATE -Wall -Wextra)
+target_link_libraries(vela-rendering PUBLIC Qt6::Quick)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CONTROLS_WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_get_variable(CONTROLS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
@@ -165,6 +171,7 @@ qt_add_qml_module(vela-controls
 target_include_directories(vela-controls PUBLIC src ${SHELL_SRC} PRIVATE ${CONTROLS_GENERATED_DIR})
 target_compile_options(vela-controls PRIVATE -Wall -Wextra)
 target_link_libraries(vela-controls PUBLIC
+    vela-rendering
     vela-theme-tokens
     Qt6::DBus
     Qt6::Gui

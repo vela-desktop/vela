@@ -149,12 +149,20 @@ surfaces too (Qt ≥ 6.5), with `QT_SCALE_FACTOR_ROUNDING_POLICY=PassThrough`. T
 theme's measurements are logical; borders and thin lines must be drawn aligned
 to physical pixels.
 
-`Vela.Controls` configures `QtRendering` and grayscale distance-field antialiasing
-at application startup, before any window creates its scene graph. Shell,
-Settings, Files, the polkit prompt and their tests share this policy. Grayscale
-coverage avoids RGB fringes on translucent backgrounds and makes no assumption
-about an output's subpixel order or rotation. An explicit
-`QSG_DISTANCEFIELD_ANTIALIASING` override is respected.
+Vela's Qt Quick applications explicitly call
+`vela::rendering::configureApplication()` (in `common/src/renderingpolicy.cpp`)
+before constructing `QGuiApplication` or any Quick window. This is *not*
+a side effect of importing/linking `Vela.Controls`. Shell, Settings, Files,
+the polkit prompt and their Quick Test runners use the same policy.
+
+There are two **independent** decisions: `configureTextRenderer()` selects
+scalable `QtRendering`, while `configureGrayscaleAntialiasing()` requests
+grayscale distance-field coverage for translucent surfaces. The latter is a
+Qt process setting (`QSG_DISTANCEFIELD_ANTIALIASING=gray`): it avoids RGB
+fringes without assuming a display's subpixel order or rotation, but respects
+any explicitly supplied value. Vela's external process launch helper restores
+the original environment, so this setting cannot leak into apps opened from
+the taskbar, Files, Settings or notification links.
 
 The same renderer and font metrics apply at rest and during motion. Do not switch
 to `NativeTextRendering` when motion stops: that changes font metrics, and the
@@ -166,10 +174,21 @@ repair it. Qt documents this restriction for
 [`Text.NativeRendering`](https://doc.qt.io/qt-6/qml-qtquick-text.html#renderType-prop).
 
 The normal distance-field quality is retained: increasing it consumes more glyph
-cache memory without addressing bitmap snapping or RGB fringes. Curve rendering
-is an alternative for very large text, with a higher GPU cost, rather than the
-default for desktop labels. The pixel regression test is described in
+cache memory without addressing bitmap snapping or RGB fringes. **Exceptions
+are per component**, using `Text.renderType` when a measured, documented case
+requires it. A small stationary label could use `NativeRendering` only if
+it never scrolls on fractional coordinates or inherits a scale transform.
+Very large headings may use `CurveRendering` after a GPU benchmark; it is
+not the default for desktop labels. Do not dynamically switch renderers
+when motion starts or ends, and do not add a custom compositor text pipeline.
+The pixel regression test is described in
 [testing](testing.md#qt-quick-text-rendering).
+
+Qt Quick text configuration must stay inside the Vela process. C++ external
+program launches use `vela::process::startDetached()` or an
+`ExternalProcess` (both in `common/src/processlaunch.h`), not raw
+`QProcess::startDetached()`. Links use `System.openUrl()` to reach the
+same path. A user-supplied antialiasing override is retained in child processes.
 
 ### 3.8 The default scale
 

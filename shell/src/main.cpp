@@ -7,6 +7,7 @@
 // of the desktop (not an app), keeps it above or below the windows and
 // reserves space for it on the output.
 
+#include "renderingpolicy.h"
 #include "accessibility.h"
 #include "appmodel.h"
 #include "audio.h"
@@ -286,6 +287,7 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));

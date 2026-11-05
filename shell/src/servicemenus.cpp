@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "servicemenus.h"
 #include "desktopexec.h"
 
@@ -213,7 +214,7 @@ void ServiceMenus::run(int id, const QStringList& paths) const
         for (const QList<QUrl>& run : std::as_const(runs)) {
             const QStringList arguments = DesktopExec::expand(parsed.arguments, run, context);
             qInfo("vela-shell: service menu: %s", qPrintable(arguments.join(u' ')));
-            QProcess::startDetached(arguments.first(), arguments.mid(1), directory);
+            vela::process::startDetached(arguments.first(), arguments.mid(1), directory);
         }
         return;
     }
@@ -246,5 +247,5 @@ void ServiceMenus::run(int id, const QStringList& paths) const
         }
     }
     qInfo("vela-shell: service menu (shell): %s", qPrintable(command));
-    QProcess::startDetached(QStringLiteral("/bin/sh"), { QStringLiteral("-c"), command }, directory);
+    vela::process::startDetached(QStringLiteral("/bin/sh"), { QStringLiteral("-c"), command }, directory);
 }

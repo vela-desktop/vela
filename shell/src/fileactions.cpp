@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "fileactions.h"
 #include "mimeapps.h"
 
@@ -47,7 +48,7 @@ void FileActions::findDevices()
     m_searching = true;
     emit devicesChanged();
     // kdeconnect-cli -a --id-name-only: "<id> <name>", one per line.
-    auto* process = new QProcess(this);
+    auto* process = new vela::process::ExternalProcess(this);
     connect(process, &QProcess::finished, this, [this, process] {
         QVariantList devices;
         for (const QString& line : QString::fromUtf8(process->readAllStandardOutput()).split(u'\n', Qt::SkipEmptyParts)) {
@@ -68,7 +69,7 @@ void FileActions::findDevices()
 void FileActions::sendToDevice(const QString& id, const QStringList& paths)
 {
     for (const QString& path : paths) {
-        QProcess::startDetached(QStringLiteral("kdeconnect-cli"), { QStringLiteral("-d"), id, QStringLiteral("--share"), path });
+        vela::process::startDetached(QStringLiteral("kdeconnect-cli"), { QStringLiteral("-d"), id, QStringLiteral("--share"), path });
     }
 }
 
@@ -78,7 +79,7 @@ void FileActions::sendByEmail(const QStringList& paths)
     for (const QString& path : paths) {
         arguments << QStringLiteral("--attach") << path;
     }
-    QProcess::startDetached(QStringLiteral("xdg-email"), arguments);
+    vela::process::startDetached(QStringLiteral("xdg-email"), arguments);
 }
 
 QString FileActions::typeName(const QString& path) const
