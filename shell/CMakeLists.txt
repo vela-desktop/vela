@@ -50,6 +50,8 @@ qt_add_executable(vela-shell
     src/network.cpp
     src/network.h
     src/notifications.cpp
+    src/peripheralbatterymonitor.cpp
+    src/peripheralbatterymonitor.h
     src/shellcontroller.cpp
     src/shellcontroller.h
     src/servicemenus.cpp
@@ -200,6 +202,17 @@ if(VELA_BUILD_TOOLS)
     else()
         add_test(NAME shell-transfers COMMAND vela-transfer-monitor-test)
     endif()
+
+    # UPower policy: authoritative coarse levels, safe percentage fallback,
+    # and no false battery warnings for unknown/charging devices.
+    qt_add_executable(vela-peripheral-battery-test
+        tests/peripheralbatteries.cpp
+        src/peripheralbatterymonitor.cpp src/peripheralbatterymonitor.h
+        src/notifications.cpp src/notifications.h)
+    target_include_directories(vela-peripheral-battery-test PRIVATE src)
+    target_compile_options(vela-peripheral-battery-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-peripheral-battery-test PRIVATE Qt6::Core Qt6::DBus Qt6::Quick Qt6::Test)
+    add_test(NAME shell-peripheral-batteries COMMAND vela-peripheral-battery-test)
 
     # Run the same ELF/AppImage classification used by desktop and Vela Files.
     qt_add_executable(vela-executable-file-test tests/executablefile.cpp ${PROJECT_SOURCE_DIR}/common/executablefile.h)
