@@ -28,19 +28,3 @@ jobs:
 
 
 
-      - name: Sonar issue diagnostic (temporary)
-        continue-on-error: true
-        run: |
-          python3 - <<'PY'
-          import json
-          from urllib import request
-          url = 'https://sonarcloud.io/api/issues/search?componentKeys=vela-desktop_vela&pullRequest=213&resolved=false&ps=100'
-          try:
-              with request.urlopen(url, timeout=15) as response:
-                  data = json.load(response)
-              for item in data.get('issues', []):
-                  print('SONAR_FINDING', json.dumps({'rule': item.get('rule'), 'message': item.get('message'), 'path': item.get('component'), 'line': (item.get('textRange') or {}).get('startLine')}, sort_keys=True))
-              print('SONAR_TOTAL', data.get('total'))
-          except Exception as exc:
-              print('SONAR_ERROR', exc)
-          PY
