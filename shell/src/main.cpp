@@ -260,7 +260,7 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
 // screen's left, its window touching the output's edge and the panel 12 units
 // from it (StartMenu.qml's `atLeft`). That is the alignment "left", unless a
 // fitted pill places the apps itself: centered, or at the left with
-// taskbar-edge=2 (Layer Mica UI). themefile.h's taskbarLayout() is the rule,
+// taskbar-edge=2 (Left pill). themefile.h's taskbarLayout() is the rule,
 // the one Styles.qml and Taskbar.qml draw with.
 void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVariantMap& theme, bool light)
 {

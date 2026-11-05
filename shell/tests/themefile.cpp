@@ -348,7 +348,7 @@ private slots:
         bar = layout("taskbar-radius=8\ntaskbar-fit=1\n");
         QVERIFY(bar.fit);
         QVERIFY(!bar.appsAtLeft(QStringLiteral("left")));
-        // ...or at the left with the tray at the edge (Layer Mica UI).
+        // ...or at the left with the tray at the edge (Left pill).
         bar = layout("taskbar-radius=8\ntaskbar-fit=1\ntaskbar-edge=2\n");
         QCOMPARE(bar.edge, 2);
         QVERIFY(bar.appsAtLeft(QStringLiteral("center")));
