@@ -228,7 +228,7 @@ private slots:
         QSignalSpy error(&prefs, &Preferences::saveErrorChanged);
         prefs.setScreenOffMinutes(3);
         QCOMPARE(prefs.screenOffMinutes(), 10);
-        QVERIFY(!prefs.saveError().isEmpty());
+        QVERIFY(prefs.saveError().contains(home().filePath(QStringLiteral("config/vela/vela.conf"))));
         QCOMPARE(idle.count(), 1);
         QCOMPARE(error.count(), 1);
 

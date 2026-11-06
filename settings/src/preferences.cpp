@@ -652,7 +652,7 @@ void Preferences::setDoNotDisturb(bool on)
 
 void Preferences::noteSaveFailure()
 {
-    const QString message = QStringLiteral("Check that you can write ~/.config/vela/vela.conf.");
+    const QString message = tr("Check that you can write %1.").arg(compositorConfigPath());
     if (m_saveError == message) {
         return;
     }
