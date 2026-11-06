@@ -8,4 +8,4 @@ Comment[it]=Un desktop moderno, fluido e nitido
 Exec=@CMAKE_INSTALL_FULL_BINDIR@/vela-session
 TryExec=@CMAKE_INSTALL_FULL_BINDIR@/vela-compositor
 Type=Application
-DesktopNames=Vela;KDE;
+DesktopNames=Vela;

@@ -94,3 +94,11 @@ bool vela_desktop_names(const char *current, char *out, size_t size)
     }
     return true;
 }
+
+const char *vela_secret_backend(long gnome_keyring_bytes, long kwallet_bytes)
+{
+    if (gnome_keyring_bytes > 0 && gnome_keyring_bytes >= kwallet_bytes) {
+        return "GNOME";
+    }
+    return "KDE";
+}

@@ -68,4 +68,13 @@ TEST(DesktopNames, SeparatedByColons)
     EXPECT_FALSE(vela_desktop_names("Vela;KDE", out, 5));
 }
 
+TEST(SecretBackend, KeepsTheStoreThatAlreadyHasSecrets)
+{
+    EXPECT_STREQ(vela_secret_backend(56000, 826), "GNOME");
+    EXPECT_STREQ(vela_secret_backend(56000, 0), "GNOME");
+    EXPECT_STREQ(vela_secret_backend(0, 40000), "KDE");
+    EXPECT_STREQ(vela_secret_backend(0, 0), "KDE");
+    EXPECT_STREQ(vela_secret_backend(200, 40000), "KDE");
+}
+
 } // namespace

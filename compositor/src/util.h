@@ -44,6 +44,11 @@ void *vela_grow(void *items, int *capacity, int needed, size_t size);
 // .desktop file as it is). false if it doesn't fit in `size`.
 bool vela_desktop_names(const char *current, char *out, size_t size);
 
+// "GNOME" when that login keyring is at least as large as KWallet, so
+// browsers keep the secrets they already saved there. "KDE" otherwise,
+// including when neither store exists yet.
+const char *vela_secret_backend(long gnome_keyring_bytes, long kwallet_bytes);
+
 static inline int vela_min(int a, int b) { return a < b ? a : b; }
 static inline int vela_max(int a, int b) { return a > b ? a : b; }
 static inline int vela_clamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }

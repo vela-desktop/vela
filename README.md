@@ -412,8 +412,10 @@ flowchart TB
   example, Super opens Start). A shell crash never takes your windows down.
 - **Motion design lives in one place**: `compositor/src/motion.h` and
   `common/controls/Theme.qml` share the same cubic-bezier(0, 0, 0.2, 1) curve.
-- **The session** declares itself `XDG_CURRENT_DESKTOP=Vela:KDE`. Qt/KDE apps use KDE's
-  theme, and browsers and Electron apps use KDE's wallet, exactly as inside Plasma. It
+- **The session** declares itself `XDG_CURRENT_DESKTOP=Vela:GNOME` or `Vela:KDE`.
+  Qt can still use KDE's theme. Browsers and Electron follow the secret store that
+  already holds logins: the GNOME login keyring when it is at least as large as
+  KWallet, and KWallet otherwise (including a first login). It
   connects to systemd (`vela-session.target`), starts the portals and its own polkit
   agent, and keeps the last two session logs in `~/.local/state/vela/`.
 
