@@ -6,7 +6,7 @@ that says who is capturing what, and notifications held back meanwhile. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** design proposed; S1 and S2 done (§10), S3 to S5 in progress
+> **Status:** design proposed; S1 to S3 done (§10), S4 and S5 in progress
 > on the same branch.
 
 ## 1. Goals
@@ -257,7 +257,7 @@ primary taskbar only, like the microphone:
 | … a client that dies while capturing | its report goes with it |
 | `shell-screen-sharing` (unit) | JSON to entries: names from app ids and binaries, portal entries from PipeWire's apps, targets' wording, the second of grace |
 | `shell-notification-silence` (unit) | the rule holds popups back, ORed with Do not disturb, which it never changes; the setting turns it off live |
-| `audio` (private PipeWire) | a fake `xdpw-stream-` source and a fake app's video stream linked to it: `screenUsers` names the app; paused still counts; unlinked doesn't |
+| `audio-view` (private PipeWire) | a fake `xdpw-stream-` source and a fake app's video stream linked to it: `screenUsers` names the app; paused still counts; an app watching a camera doesn't |
 | `tst_notificationspage` (Settings) | the switch writes `notifications/silenceWhileSharing` |
 
 Each test is checked by mutation: it must fail with the feature taken out.
@@ -270,6 +270,6 @@ and window), OBS through the portal, wf-recorder, a Spectacle screenshot.
 |---|---|---|
 | S1 | Compositor: `capture_watch.c`, `watch capture`, `state`, `VELA_CAPTURE_UNREPORTED`; `vela-share`; functional tests | done |
 | S2 | Shell: `ScreenSharing`, the icon, its tooltip and menu; `test-shell`; unit and functional tests | done |
-| S3 | PipeWire: `screenConsumers`, `Audio::screenUsers`, portal entries named; audio tests | to do |
+| S3 | PipeWire: `screenConsumers`, `Audio::screenUsers`, portal entries named; audio tests | done |
 | S4 | Notifications: the automatic rule, its switch in Settings, the center's header; tests | to do |
 | S5 | `docs/configuration.md`, translations, a real-session test by hand | to do |

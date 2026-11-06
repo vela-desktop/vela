@@ -442,6 +442,9 @@ int main(int argc, char* argv[])
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
     audio.setBluetooth(&bluetooth); // headsets' batteries
+    // The apps behind a portal share (docs/screen-sharing.md §5.2).
+    QObject::connect(&audio, &vela::audio::Audio::changed, &sharing,
+        [&audio, &sharing] { sharing.setPortalApps(audio.screenUsers()); });
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);

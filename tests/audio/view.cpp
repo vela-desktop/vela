@@ -610,6 +610,56 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(audio->microphoneUsers().isEmpty(), 2000);
     }
 
+    // The apps receiving a portal share (docs/screen-sharing.md §5.2): their
+    // video stream linked to one of xdg-desktop-portal-wlr's nodes.
+    void screenSharingThroughThePortal()
+    {
+        audio->setAppResolver([](const AppIdentity& id) {
+            return id.binary == QLatin1String("firefox")
+                ? AppInfo { QStringLiteral("firefox.desktop"), QStringLiteral("Firefox"), QStringLiteral("firefox") }
+                : AppInfo {};
+        });
+        auto keys = [this] {
+            QStringList out;
+            for (const QVariant& user : audio->screenUsers()) {
+                out.append(user.toMap().value(QStringLiteral("key")).toString());
+            }
+            return out;
+        };
+        QVERIFY(audio->screenUsers().isEmpty());
+        auto portal = std::make_unique<FakeStream>(
+            QStringList { "--video", "--prop", "node.name=xdpw-stream-TEST01" });
+        QVERIFY(portal->waitReady());
+        auto camera = std::make_unique<FakeStream>(
+            QStringList { "--video", "--prop", "node.name=v4l2_input.pci-0000_00_14.0-usb-0_1_1.0" });
+        QVERIFY(camera->waitReady());
+
+        // An app watching the camera isn't sharing the screen.
+        auto call = std::make_unique<FakeStream>(QStringList { "--video", "--record", "--prop",
+            "application.process.binary=vela-caller", "--prop", "target.object=v4l2_input.pci-0000_00_14.0-usb-0_1_1.0" });
+        QVERIFY(call->waitStreaming());
+
+        auto browser = std::make_unique<FakeStream>(QStringList { "--video", "--record", "--prop",
+            "application.process.binary=firefox", "--prop", "application.name=Firefox", "--prop",
+            "target.object=xdpw-stream-TEST01" });
+        QVERIFY(browser->waitStreaming());
+        QTRY_COMPARE(keys(), QStringList({ QStringLiteral("firefox") }));
+        const QVariantMap user = audio->screenUsers().first().toMap();
+        QCOMPARE(user.value("name").toString(), QStringLiteral("Firefox"));
+        QCOMPARE(user.value("icon").toString(), QStringLiteral("firefox"));
+        QCOMPARE(user.value("desktopId").toString(), QStringLiteral("firefox.desktop"));
+
+        // Paused, the share is still open.
+        browser->send(QStringLiteral("pause"));
+        QTest::qWait(300);
+        QCOMPARE(keys(), QStringList({ QStringLiteral("firefox") }));
+        QCOMPARE(browser->close(), 0);
+        QTRY_VERIFY(audio->screenUsers().isEmpty());
+        QCOMPARE(call->close(), 0);
+        QCOMPARE(camera->close(), 0);
+        QCOMPARE(portal->close(), 0);
+    }
+
     void whatIsNotTheMicrophone()
     {
         // A screen recorder taking the desktop's sound, and meters on
