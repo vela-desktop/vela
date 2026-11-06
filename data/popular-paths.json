@@ -1,12 +1,12 @@
 {
-  "collected_at": "2026-11-05T10:54:38+00:00",
+  "collected_at": "2026-11-06T10:51:20+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 598,
+      "count": 624,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 292
+      "uniques": 302
     },
     {
       "count": 263,
@@ -21,16 +21,16 @@
       "uniques": 1
     },
     {
+      "count": 47,
+      "path": "/vela-desktop/vela/issues",
+      "title": "/issues",
+      "uniques": 17
+    },
+    {
       "count": 43,
       "path": "/vela-desktop/vela/actions/workflows/gpu-amd.yml",
       "title": "/actions/workflows/gpu-amd.yml",
       "uniques": 1
-    },
-    {
-      "count": 34,
-      "path": "/vela-desktop/vela/issues",
-      "title": "/issues",
-      "uniques": 15
     },
     {
       "count": 34,
@@ -39,16 +39,16 @@
       "uniques": 2
     },
     {
-      "count": 28,
+      "count": 30,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
       "uniques": 11
     },
     {
-      "count": 26,
+      "count": 28,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
       "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 24
+      "uniques": 26
     },
     {
       "count": 24,
@@ -57,10 +57,10 @@
       "uniques": 4
     },
     {
-      "count": 16,
+      "count": 17,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/snap.webp",
       "title": "/blob/main/docs/screenshots/snap.webp",
-      "uniques": 13
+      "uniques": 14
     }
   ],
   "schema_version": 1,
