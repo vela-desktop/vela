@@ -497,6 +497,10 @@
         <translation>Notifiche</translation>
     </message>
     <message>
+        <source>Silenced while your screen is shared</source>
+        <translation>Silenziate mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
         <source>Clear all</source>
         <translation>Cancella tutto</translation>
     </message>
@@ -1452,6 +1456,10 @@
     <message>
         <source>Screen sharing</source>
         <translation>Condivisione dello schermo</translation>
+    </message>
+    <message>
+        <source>Notifications are silenced meanwhile</source>
+        <translation>Nel frattempo le notifiche sono silenziate</translation>
     </message>
     <message>
         <source>%1 is using your microphone</source>

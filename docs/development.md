@@ -264,6 +264,8 @@ It accepts one command per line. Headless tests use commands such as:
 
 ```text
 state
+watch capture
+test-shell <pid>
 test-output add 2560x1440
 test-output remove HEADLESS-2
 test-power off
@@ -275,7 +277,7 @@ caffeine toggle
 caffeine status
 ```
 
-`state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
+`state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness. `watch capture` keeps the connection open and sends who captures the screen after every change, and `test-shell <pid>` names the real shell a test started itself (headless only); see [screen sharing](screen-sharing.md) §4.
 
 ### Release promo recordings
 

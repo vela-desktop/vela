@@ -73,6 +73,9 @@ public:
     QString timeFormat() const;
     QString clockFormat() const;
     bool doNotDisturb() const { return m_doNotDisturb; }
+    // Do not disturb by itself while the screen is shared
+    // (notifications/silenceWhileSharing, docs/screen-sharing.md §7).
+    bool silenceWhileSharing() const { return m_silenceWhileSharing; }
     QString shellTheme() const { return m_shellTheme; }
     QString appTheme() const { return m_appTheme; }
     // Desktop icons shown (desktop/showIcons): the desktop's own menu writes
@@ -88,6 +91,7 @@ signals:
     void taskbarChanged();
     void primaryOutputChanged();
     void doNotDisturbChanged(bool on);
+    void silenceWhileSharingChanged(bool on);
     void themeChanged();
     void clipboardChanged();
     void startChanged();
@@ -121,6 +125,7 @@ private:
     bool m_clockSeconds = false;
     bool m_notificationCount = true;
     bool m_doNotDisturb = false;
+    bool m_silenceWhileSharing = true;
     bool m_showDesktopIcons = true;
     QString m_shellTheme = QStringLiteral("dark");
     QString m_appTheme = QStringLiteral("dark");

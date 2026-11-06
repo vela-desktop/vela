@@ -445,6 +445,13 @@ int main(int argc, char* argv[])
     // The apps behind a portal share (docs/screen-sharing.md §5.2).
     QObject::connect(&audio, &vela::audio::Audio::changed, &sharing,
         [&audio, &sharing] { sharing.setPortalApps(audio.screenUsers()); });
+    // Do not disturb by itself while the screen is shared, unless turned off
+    // (docs/screen-sharing.md §7).
+    auto silenceForSharing
+        = [&] { notifications.setAutomaticDoNotDisturb(sharing.active() && config.silenceWhileSharing()); };
+    QObject::connect(&sharing, &ScreenSharing::changed, &notifications, silenceForSharing);
+    QObject::connect(&config, &Config::silenceWhileSharingChanged, &notifications, silenceForSharing);
+    silenceForSharing();
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);

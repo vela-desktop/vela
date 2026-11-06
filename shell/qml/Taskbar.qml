@@ -677,6 +677,13 @@ Window {
                 entries.push({ text: user.name.replace(/&/g, "&&"), icon: user.icon, shortcut: user.what,
                                action: () => screenSharing.show(user) })
             }
+            // Held back meanwhile (§7), unless the user's own switch is on.
+            if (Notifications.automaticDoNotDisturb && !Notifications.doNotDisturb) {
+                entries.push({ separator: true },
+                             { header: qsTr("Notifications are silenced meanwhile") },
+                             { text: qsTr("&Notification settings"), icon: "preferences-desktop-notification",
+                               action: () => System.trigger("notification-settings") })
+            }
             root.openAbove(entries, screenSharing, true, { minWidth: 260 })
         }
         Connections {
@@ -974,19 +981,20 @@ Window {
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
         // Notifications to read: a number next to the clock, like Windows 11,
-        // unless Settings > Notifications hides it (with "Do not disturb" a muted
-        // bell: that one is a state, not a count, and stays).
+        // unless Settings > Notifications hides it (with "Do not disturb",
+        // the user's or while sharing the screen, a muted bell: that one is a
+        // state, not a count, and stays).
         Rectangle {
             id: badge
-            visible: (Config.notificationCount && Notifications.history.count > 0) || Notifications.doNotDisturb
+            visible: (Config.notificationCount && Notifications.history.count > 0) || Notifications.silenced
             anchors { right: parent.right; rightMargin: -2; verticalCenter: parent.verticalCenter }
             width: 18
             height: 18
             radius: 9
-            color: Notifications.doNotDisturb ? "transparent" : Theme.accent
+            color: Notifications.silenced ? "transparent" : Theme.accent
             Text {
                 anchors.centerIn: parent
-                visible: !Notifications.doNotDisturb
+                visible: !Notifications.silenced
                 text: Math.min(Notifications.history.count, 9)
                 color: Theme.readableOn(Theme.accent, "white") // a light custom accent: black
                 font.pixelSize: 10
@@ -994,7 +1002,7 @@ Window {
             }
             Icon {
                 anchors.centerIn: parent
-                visible: Notifications.doNotDisturb
+                visible: Notifications.silenced
                 name: "notifications-disabled"
                 size: 14
             }

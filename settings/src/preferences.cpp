@@ -178,6 +178,7 @@ void Preferences::reload()
     m_notificationCount = settings.value(QStringLiteral("taskbar/notificationCount"), true).toBool();
     emit clockChanged();
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
+    m_silenceWhileSharing = settings.value(QStringLiteral("notifications/silenceWhileSharing"), true).toBool();
     emit doNotDisturbChanged();
     m_clipboardHistory = settings.value(QStringLiteral("clipboard/history"), false).toBool();
     emit clipboardChanged();
@@ -644,6 +645,15 @@ void Preferences::setDoNotDisturb(bool on)
     if (on != m_doNotDisturb) {
         m_doNotDisturb = on;
         setShell(QStringLiteral("notifications/doNotDisturb"), on);
+        emit doNotDisturbChanged();
+    }
+}
+
+void Preferences::setSilenceWhileSharing(bool on)
+{
+    if (on != m_silenceWhileSharing) {
+        m_silenceWhileSharing = on;
+        setShell(QStringLiteral("notifications/silenceWhileSharing"), on);
         emit doNotDisturbChanged();
     }
 }

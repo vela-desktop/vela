@@ -127,12 +127,23 @@ Window {
                     y: 10
                     width: parent.width - 32
                     height: 36
-                    Text {
+                    Column {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("Notifications")
-                        color: Theme.text
-                        font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
+                        Text {
+                            text: qsTr("Notifications")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontBody
+                            font.weight: Font.DemiBold
+                        }
+                        // Held back by the rule, not by the user's switch
+                        // (docs/screen-sharing.md §7).
+                        Text {
+                            objectName: "silencedWhileSharing"
+                            visible: Notifications.automaticDoNotDisturb && !Notifications.doNotDisturb
+                            text: qsTr("Silenced while your screen is shared")
+                            color: Theme.textSecondary
+                            font.pixelSize: Theme.fontCaption
+                        }
                     }
                     Row {
                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }

@@ -16,7 +16,7 @@ import time
 import unittest
 
 from harness import TIME_SCALE, Image, Session, tool
-from test_shell import RealShell
+import test_shell # its classes not imported by name: unittest would run them here too
 
 
 class Watcher:
@@ -201,6 +201,7 @@ class ScreenSharing(unittest.TestCase):
             vela.wait_for_log("VELA_CAPTURE_UNREPORTED=1")
             watcher = Watcher(vela)
             share = self.share(vela, "ext-output", "0")
+            vela.command(f"test-shell {share.pid}") # as recording_core.py does: no crash
             time.sleep(1.5 * TIME_SCALE)
             self.assertFalse([s for _, s in watcher.states() if sharing(s)])
             self.assertEqual(vela.state()["capture"], {"clients": []})
@@ -270,8 +271,10 @@ def red_pixels(image, output_width, output_height):
             if (lambda p: p[0] > 200 and p[1] < 60 and p[2] < 70)(image.at(x, y))]
 
 
-class TheIndicator(RealShell):
+class TheIndicator(test_shell.RealShell):
     """The taskbar's icon, tooltip and menu (§6), with the real shell."""
+
+    send_notification = test_shell.QtShell.send_notification
 
     def red(self):
         path = os.path.join(self.vela.directory, "taskbar.png")
@@ -300,6 +303,27 @@ class TheIndicator(RealShell):
         time.sleep(0.5)
         self.assertTrue(self.red(), "still shown half a second after")
         self.vela.wait_for(lambda _: not self.red(), timeout=5, what="the red dot to go", read_state=False)
+
+    def test_notifications_wait_while_sharing(self):
+        share = subprocess.Popen([tool("vela-share"), "ext-output", "0"], env=self.vela.client_env,
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.vela.clients.append(share)
+        self.assertEqual(share.stdout.readline().strip(), "sharing")
+        self.vela.wait_for(lambda _: self.red(), timeout=5, what="the red dot", read_state=False)
+        # Held back: no popup, it waits in the notification center (§7).
+        self.send_notification("While sharing")
+        time.sleep(1.5 * TIME_SCALE)
+        self.assertFalse(self.mapped(self.vela.state(), "vela-notifications"))
+        # Settings > Notifications turns the rule off: popups again.
+        conf = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+        with open(conf + ".new", "w") as file:
+            file.write("[notifications]\nsilenceWhileSharing=false\n")
+        os.replace(conf + ".new", conf)
+        time.sleep(0.5 * TIME_SCALE)
+        self.send_notification("Rule off")
+        self.vela.wait_for(lambda s: self.mapped(s, "vela-notifications"), timeout=5, what="a popup")
+        share.stdin.close()
+        share.wait(5)
 
     def test_the_shells_own_previews_are_not_sharing(self):
         # One short session per preview update, never held for a second.

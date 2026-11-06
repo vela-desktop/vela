@@ -60,6 +60,12 @@ class NotificationServer : public QAbstractListModel, protected QDBusContext {
     // "Do not disturb": no popups (except critical ones), everything in the
     // center.
     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
+    // The same, turned on by a rule rather than by the user: while the
+    // screen is shared (docs/screen-sharing.md §7). Never written into
+    // doNotDisturb, never remembered.
+    Q_PROPERTY(bool automaticDoNotDisturb READ automaticDoNotDisturb NOTIFY silencedChanged)
+    // doNotDisturb or automaticDoNotDisturb: what popups and the bell follow.
+    Q_PROPERTY(bool silenced READ silenced NOTIFY silencedChanged)
 
 public:
     enum Role {
@@ -98,6 +104,9 @@ public:
     QObject* history() { return &m_history; }
     bool doNotDisturb() const { return m_doNotDisturb; }
     void setDoNotDisturb(bool on);
+    bool automaticDoNotDisturb() const { return m_automaticDoNotDisturb; }
+    void setAutomaticDoNotDisturb(bool on);
+    bool silenced() const { return m_doNotDisturb || m_automaticDoNotDisturb; }
     Q_INVOKABLE void invokeFromHistory(uint id, const QString& action);
     Q_INVOKABLE void dismissFromHistory(uint id);
     Q_INVOKABLE void clearHistory();
@@ -116,6 +125,7 @@ public Q_SLOTS:
 Q_SIGNALS:
     void countChanged();
     void doNotDisturbChanged();
+    void silencedChanged();
     Q_SCRIPTABLE void NotificationClosed(uint id, uint reason);
     Q_SCRIPTABLE void ActionInvoked(uint id, const QString& action_key);
 
@@ -145,6 +155,7 @@ private:
     uint m_nextId = 1;
     bool m_hovered = false;
     bool m_doNotDisturb = false;
+    bool m_automaticDoNotDisturb = false;
     NotificationHistory m_history;
 };
 

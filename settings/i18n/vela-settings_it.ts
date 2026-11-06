@@ -1704,6 +1704,14 @@ Specifiche sistema
         <translation>silenzioso notifiche</translation>
     </message>
     <message>
+        <source>Do not disturb while my screen is shared</source>
+        <translation>Non disturbare mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
+        <source>screen sharing share record recording presentation call meeting notifications silent do not disturb automatic</source>
+        <translation>condivisione schermo condividere registrare registrazione presentazione chiamata riunione notifiche silenzioso non disturbare automatico</translation>
+    </message>
+    <message>
         <source>screen off sleep idle battery energy saver lock</source>
         <translation>schermo spento sospensione inattività batteria risparmio energia blocco</translation>
     </message>
@@ -2348,6 +2356,14 @@ Specifiche sistema
     <message>
         <source>Notifications go straight to the notification center, without popping up</source>
         <translation>Le notifiche vanno direttamente nel centro notifiche, senza comparire</translation>
+    </message>
+    <message>
+        <source>Turn on do not disturb automatically while my screen is shared</source>
+        <translation>Attiva Non disturbare automaticamente mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
+        <source>While an app shares or records the screen, notifications wait in the notification center</source>
+        <translation>Mentre un&apos;app condivide o registra lo schermo, le notifiche aspettano nel centro notifiche</translation>
     </message>
     <message>
         <source>Show the number of notifications</source>

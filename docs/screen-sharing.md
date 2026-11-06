@@ -6,8 +6,8 @@ that says who is capturing what, and notifications held back meanwhile. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** design proposed; S1 to S3 done (§10), S4 and S5 in progress
-> on the same branch.
+> **Status:** design proposed; S1 to S4 done (§10); S5 (a real session
+> by hand) remains.
 
 ## 1. Goals
 
@@ -216,9 +216,13 @@ primary taskbar only, like the microphone:
   automatically while my screen is shared", under Do not disturb.
 - `NotificationServer` gets `automaticDoNotDisturb` (set by the shell while
   `ScreenSharing` reports something and the setting is on) and `silenced`
-  = `doNotDisturb || automaticDoNotDisturb`. Popups, the bell next to the
-  clock and the notification center's switch follow `silenced`;
-  `doNotDisturb`, the user's own, is never written by the rule.
+  = `doNotDisturb || automaticDoNotDisturb`. Popups and the bell next to the
+  clock follow `silenced`; the notification center's switch stays the
+  user's own `doNotDisturb`, which the rule never writes nor remembers.
+- What was held back stays in the notification center when sharing ends,
+  as with Do not disturb.
+- The indicator's menu (§6) says "Notifications are silenced meanwhile",
+  with Settings > System > Notifications.
 - The notification center's header says "Silenced while your screen is
   shared" while the rule holds them back and the user's Do not disturb is
   off.
@@ -256,9 +260,10 @@ primary taskbar only, like the microphone:
 | `TheIndicator` (real shell) | the red dot appears, the tooltip and the menu open, the dot stays half a second after the end and then goes; Task View's previews never light it |
 | … a client that dies while capturing | its report goes with it |
 | `shell-screen-sharing` (unit) | JSON to entries: names from app ids and binaries, portal entries from PipeWire's apps, targets' wording, the second of grace |
-| `shell-notification-silence` (unit) | the rule holds popups back, ORed with Do not disturb, which it never changes; the setting turns it off live |
+| `shell-notification-silence` (unit) | the rule holds popups back (critical ones pass), ORed with Do not disturb, which it never changes nor remembers |
 | `audio-view` (private PipeWire) | a fake `xdpw-stream-` source and a fake app's video stream linked to it: `screenUsers` names the app; paused still counts; an app watching a camera doesn't |
-| `tst_notificationspage` (Settings) | the switch writes `notifications/silenceWhileSharing` |
+| `settings-preferences`, `shell-config` (unit) | the switch writes `notifications/silenceWhileSharing`; the shell follows it live, on by default |
+| `TheIndicator` (real shell) | while sharing, a notification doesn't pop up; with the rule turned off in the file Settings writes, it does |
 
 Each test is checked by mutation: it must fail with the feature taken out.
 By hand, in a real session: a share from Firefox and from Chromium (screen
@@ -271,5 +276,5 @@ and window), OBS through the portal, wf-recorder, a Spectacle screenshot.
 | S1 | Compositor: `capture_watch.c`, `watch capture`, `state`, `VELA_CAPTURE_UNREPORTED`; `vela-share`; functional tests | done |
 | S2 | Shell: `ScreenSharing`, the icon, its tooltip and menu; `test-shell`; unit and functional tests | done |
 | S3 | PipeWire: `screenConsumers`, `Audio::screenUsers`, portal entries named; audio tests | done |
-| S4 | Notifications: the automatic rule, its switch in Settings, the center's header; tests | to do |
+| S4 | Notifications: the automatic rule, its switch in Settings, the center's header, the bell, the menu's part; tests | done |
 | S5 | `docs/configuration.md`, translations, a real-session test by hand | to do |

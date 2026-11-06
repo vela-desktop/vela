@@ -230,8 +230,9 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
         Q_EMIT m_history.dataChanged(m_history.index(old), m_history.index(old));
         return id;
     }
-    // Do not disturb: straight into the center, no popup (critical ones pass).
-    if (m_doNotDisturb && !n.critical) {
+    // Do not disturb, the user's or a rule's: straight into the center, no
+    // popup (critical ones pass).
+    if (silenced() && !n.critical) {
         if (n.transient) {
             Q_EMIT NotificationClosed(id, uint(Reason::Expired));
         } else {
@@ -332,6 +333,15 @@ void NotificationServer::setDoNotDisturb(bool on)
             QSettings().setValue(QStringLiteral("notifications/doNotDisturb"), on);
         }
         Q_EMIT doNotDisturbChanged();
+        Q_EMIT silencedChanged();
+    }
+}
+
+void NotificationServer::setAutomaticDoNotDisturb(bool on)
+{
+    if (on != m_automaticDoNotDisturb) {
+        m_automaticDoNotDisturb = on;
+        Q_EMIT silencedChanged();
     }
 }
 
