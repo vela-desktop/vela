@@ -49,6 +49,13 @@ add_executable(vela-capture-probe vela-capture-probe.c)
 target_link_libraries(vela-capture-probe PRIVATE vela-capture)
 target_compile_options(vela-capture-probe PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
+# Shares the screen like the portal, wf-recorder and grim
+# (tests/functional/test_screen_sharing.py).
+vela_client_protocol(proto-screencopy ${PROTOCOLS}/wlr-screencopy-unstable-v1.xml wlr-screencopy-unstable-v1)
+add_executable(vela-share vela-share.c)
+target_link_libraries(vela-share PRIVATE vela-capture proto-screencopy)
+target_compile_options(vela-share PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
 vela_client_protocol(proto-foreign-toplevel ${PROTOCOLS}/wlr-foreign-toplevel-management-unstable-v1.xml
     wlr-foreign-toplevel-management-unstable-v1)
 vela_client_protocol(proto-virtual-pointer ${PROTOCOLS}/wlr-virtual-pointer-unstable-v1.xml

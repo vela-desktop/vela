@@ -3,6 +3,7 @@
 
 #include "view.h"
 
+#include "capture_watch.h"
 #include "interact.h"
 #include "focus.h"
 #include "bindings.h"
@@ -527,6 +528,7 @@ void vela_view_title_changed(struct vela_view *view)
         wlr_foreign_toplevel_handle_v1_set_title(view->handle, vela_view_title(view));
     }
     update_ext_handle(view);
+    vela_capture_watch_refresh(view->server->capture_watch); // a shared window's title
 }
 
 void vela_view_app_id_changed(struct vela_view *view)
@@ -535,6 +537,7 @@ void vela_view_app_id_changed(struct vela_view *view)
         wlr_foreign_toplevel_handle_v1_set_app_id(view->handle, vela_view_app_id(view));
     }
     update_ext_handle(view);
+    vela_capture_watch_refresh(view->server->capture_watch);
 }
 
 // Keep a transient above its fullscreen ancestor, but do not globally
@@ -1558,7 +1561,7 @@ void vela_views_init(struct vela_server *server)
     // Output and window capture (Alt+Tab previews, and later screen sharing):
     // the standard ext-* protocols.
     server->ext_toplevels = wlr_ext_foreign_toplevel_list_v1_create(display, 1);
-    wlr_ext_image_copy_capture_manager_v1_create(display, 1);
+    server->copy_capture = wlr_ext_image_copy_capture_manager_v1_create(display, 1);
     if (!vela_output_capture_manager_create(server)) {
         wlr_log(WLR_ERROR, "Cannot create output capture manager");
     }

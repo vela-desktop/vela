@@ -222,6 +222,10 @@ class Desktop:
         """Use the private bus for *both* D-Bus types: real network/BT/device
         names must not appear in a video, and tiles must not change host state."""
         return {"VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"),
+                # The recorder is a capture: without this the taskbar would
+                # show it (docs/screen-sharing.md §4.3). A scene showing the
+                # indicator sets it to "0".
+                "VELA_CAPTURE_UNREPORTED": "1",
                 **ENGLISH, **scene.env,
                 "DBUS_SESSION_BUS_ADDRESS": address,
                 "DBUS_SYSTEM_BUS_ADDRESS": address}

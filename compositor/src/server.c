@@ -4,6 +4,7 @@
 #include "server.h"
 
 #include "a11y.h"
+#include "capture_watch.h"
 #include "bluetooth.h"
 #include "updates.h"
 #include "brightness.h"
@@ -240,7 +241,7 @@ static bool init(struct vela_server *server)
     wlr_viewporter_create(display);
     wlr_single_pixel_buffer_manager_v1_create(display);
     wlr_fractional_scale_manager_v1_create(display, 1);
-    wlr_screencopy_manager_v1_create(display);
+    struct wlr_screencopy_manager_v1 *screencopy = wlr_screencopy_manager_v1_create(display);
     wlr_presentation_create(display, server->backend, 2);
 
     server->output_layout = wlr_output_layout_create(display);
@@ -280,6 +281,8 @@ static bool init(struct vela_server *server)
     // Windows: xdg-shell, xdg-decoration, foreign-toplevel, capture,
     // activation (view.c).
     vela_views_init(server);
+    // Before any client connects: it sees every one (docs/screen-sharing.md).
+    server->capture_watch = vela_capture_watch_create(server, server->copy_capture, screencopy);
     // The blur behind panels and apps that ask for it (§8.3).
     vela_background_effects_init(display, server->scene);
     vela_layers_init(server); // the shell pieces (layer.c)
@@ -482,6 +485,8 @@ void vela_server_destroy(struct vela_server *server)
     wl_list_remove(&server->layout_change.link);
     wl_list_remove(&server->new_output.link);
     wl_list_remove(&server->new_layer_surface.link);
+    vela_capture_watch_destroy(server->capture_watch);
+    server->capture_watch = NULL;
     vela_views_finish(server);
     vela_workspaces_destroy(server->workspaces);
     server->workspaces = NULL;
