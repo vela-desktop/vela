@@ -335,7 +335,16 @@ private:
     bool saveCompositor(const QList<QPair<QString, QString>>& changes);
     bool saveCompositorKeys(const QStringList& keys); // the current values of these keys
     void noteSaveFailure();
+    void publishSaveError();
     void clearSaveError();
+    template<typename T>
+    void keepOrRestore(bool saved, T& slot, const T& previous)
+    {
+        if (!saved && !m_restoredFromFile) {
+            slot = previous;
+        }
+        m_restoredFromFile = false;
+    }
     QString compositorValue(const QString& key) const;
     void reloadCompositor(); // vela.conf and the compositor's state
     void queryCompositor(); // night light, magnifier...: the current state
@@ -343,6 +352,8 @@ private:
     void watchThemes();
     bool saveLayouts();
     QString m_saveError;
+    bool m_restoredFromFile = false;
+    bool m_reportingSaveFailure = false;
 
     QString m_wallpaper;
     QStringList m_recentWallpapers;
