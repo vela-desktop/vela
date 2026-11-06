@@ -254,8 +254,8 @@ static void schedule(struct vela_capture_watch *watch, int64_t next, int64_t now
 
 static void update(struct vela_capture_watch *watch)
 {
-    if (watch->finishing) {
-        return;
+    if (watch->finishing || watch->unreported) {
+        return; // unreported: no timer, and nothing to say
     }
     const int64_t now = vela_now_ns();
     schedule(watch, evaluate(watch, now), now);
