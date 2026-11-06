@@ -6,8 +6,8 @@ that says who is capturing what, and notifications held back meanwhile. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** design proposed; S1 done (§10), S2 to S5 in progress on the
-> same branch.
+> **Status:** design proposed; S1 and S2 done (§10), S3 to S5 in progress
+> on the same branch.
 
 ## 1. Goals
 
@@ -120,6 +120,13 @@ when its parent is the child and its binary is `vela-shell` (a shell that
 didn't `exec`). Apps the shell launches are detached (`startDetached`): their
 parent is not the shell, and they are reported like any other app.
 
+The functional tests and Vela's recordings start the real shell as a client
+of their own, not as the startup command: they name it with `test-shell
+<pid>` on the command socket, which the compositor accepts only when every
+backend is headless (like `test-output`). Today the shell's previews (Alt+Tab,
+Task View, the source chooser) open one short session per image and would
+never count anyway; this keeps the tests' shell the shell if that changes.
+
 ### 4.3 Recordings of Vela
 
 Vela's own videos record a headless session with `vela-screen-record`, a
@@ -143,9 +150,11 @@ has nothing to offer for it.
 
 ## 5. Shell model
 
-`shell/src/screencapture.{h,cpp}`: `ScreenCapture`, a client of `watch
-capture` like `Brightness`, reconnecting every second when the compositor
-isn't there.
+`shell/src/screensharing.{h,cpp}`: `ScreenSharing` (`Sharing` in QML), a
+client of `watch capture` like `Brightness`, reconnecting every second when
+the compositor isn't there. `active`, `users` (name, icon, desktopId,
+window, what) and `summary` (the tooltip); `active` stays true for a second
+after the last capture ends.
 
 ### 5.1 Names
 
@@ -182,21 +191,23 @@ identity properties as its audio streams (`application.process.binary`,
 
 ## 6. The indicator
 
-`Taskbar.qml`, between the system icons and the microphone, on the primary
-taskbar only, like the microphone:
+`Taskbar.qml`, between the notification area and the microphone, on the
+primary taskbar only, like the microphone:
 
-- A screen with a small red dot (`video-display` from the icon theme, the
-  dot drawn by Vela). It appears as soon as a client is reported and stays
-  about a second after the last one ends.
+- A screen with a small red dot (`monitor` from the icon theme, monochrome
+  like the other system icons; the dot drawn by Vela). It appears as soon
+  as a client is reported and stays about a second after the last one
+  ends (`ScreenSharing`'s grace, §5).
 - **Tooltip** after half a second (`TaskbarTooltip.qml`): "Firefox is
-  sharing your screen"; with more apps, "These apps are sharing your
-  screen:" and their names.
-- **Click**: `ScreenSharingPanel.qml`, a small flyout above the icon, like
-  the other taskbar flyouts. One row per app: its icon, its name, and what
-  it captures ("Your screen", "Dell U2720Q", "A window of Konsole"). When
-  notifications are being held back (§7), a last line says so, with a link
-  to Settings > System > Notifications. Esc, a click outside or the icon
-  going away close it.
+  sharing your screen", "… is sharing a window"; with more apps, "These
+  apps are sharing your screen:" and their names.
+- **Click**: a menu above the icon, like Caffeine's: "Screen sharing", then
+  one row per app with its icon, its name, and on the right what it
+  captures ("Your screen", "Dell U2720Q", "A window of Konsole"). Picking a
+  row brings the app's window forward (`Tasks.showApp`, else the client's
+  own window), where its "Stop sharing" is. When notifications are being
+  held back (§7), a last part says so, with Settings > System >
+  Notifications.
 
 ## 7. Notifications
 
@@ -204,7 +215,7 @@ taskbar only, like the microphone:
   default. Settings > System > Notifications: "Turn on do not disturb
   automatically while my screen is shared", under Do not disturb.
 - `NotificationServer` gets `automaticDoNotDisturb` (set by the shell while
-  `ScreenCapture` reports something and the setting is on) and `silenced`
+  `ScreenSharing` reports something and the setting is on) and `silenced`
   = `doNotDisturb || automaticDoNotDisturb`. Popups, the bell next to the
   clock and the notification center's switch follow `silenced`;
   `doNotDisturb`, the user's own, is never written by the rule.
@@ -241,8 +252,10 @@ taskbar only, like the microphone:
 | … one screencopy frame per output, at once (like grim) | never reported |
 | … the shell's own captures (a fake shell that is the compositor's child) | never reported |
 | … `VELA_CAPTURE_UNREPORTED=1` | never reported |
+| … `test-shell <pid>` | that client's captures, even ongoing ones, stop being reported; a bad pid is ignored |
+| `TheIndicator` (real shell) | the red dot appears, the tooltip and the menu open, the dot stays half a second after the end and then goes; Task View's previews never light it |
 | … a client that dies while capturing | its report goes with it |
-| `shell-screen-capture` (unit) | JSON to entries: names from app ids and binaries, portal entries from PipeWire's apps, targets' wording, the second of grace |
+| `shell-screen-sharing` (unit) | JSON to entries: names from app ids and binaries, portal entries from PipeWire's apps, targets' wording, the second of grace |
 | `shell-notification-silence` (unit) | the rule holds popups back, ORed with Do not disturb, which it never changes; the setting turns it off live |
 | `audio` (private PipeWire) | a fake `xdpw-stream-` source and a fake app's video stream linked to it: `screenUsers` names the app; paused still counts; unlinked doesn't |
 | `tst_notificationspage` (Settings) | the switch writes `notifications/silenceWhileSharing` |
@@ -256,7 +269,7 @@ and window), OBS through the portal, wf-recorder, a Spectacle screenshot.
 | Stage | Content | Status |
 |---|---|---|
 | S1 | Compositor: `capture_watch.c`, `watch capture`, `state`, `VELA_CAPTURE_UNREPORTED`; `vela-share`; functional tests | done |
-| S2 | Shell: `ScreenCapture`, the icon, its tooltip and panel; unit tests | to do |
+| S2 | Shell: `ScreenSharing`, the icon, its tooltip and menu; `test-shell`; unit and functional tests | done |
 | S3 | PipeWire: `screenConsumers`, `Audio::screenUsers`, portal entries named; audio tests | to do |
 | S4 | Notifications: the automatic rule, its switch in Settings, the center's header; tests | to do |
 | S5 | `docs/configuration.md`, translations, a real-session test by hand | to do |

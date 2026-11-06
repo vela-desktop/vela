@@ -25,6 +25,11 @@ void vela_capture_watch_destroy(struct vela_capture_watch *watch);
 // Something a report names changed: a window's title or app id, an output.
 void vela_capture_watch_refresh(struct vela_capture_watch *watch);
 
+// "test-shell <pid>": the functional tests start the real shell as a client
+// of their own, not as the startup command; this process is the shell all
+// the same. Only when every backend is headless.
+void vela_capture_watch_test_shell(struct vela_capture_watch *watch, const char *pid);
+
 // The topic's line: {"clients":[...]} (§4.1).
 void vela_capture_json(struct vela_server *server, struct vela_buffer *json);
 

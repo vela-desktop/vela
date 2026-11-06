@@ -43,6 +43,7 @@
 #include "transfermonitor.h"
 #include "tray.h"
 #include "wallpaperprovider.h"
+#include "screensharing.h"
 #include "screenwindows.h"
 #include "../../common/primaryoutput.h"
 #include "workspaces.h"
@@ -425,6 +426,18 @@ int main(int argc, char* argv[])
         [&shell] { shell.logout(); });
     SystemStatus status(&bluetooth);
     Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
+    // Who shares the screen (docs/screen-sharing.md §5): apps named as in Start.
+    ScreenSharing sharing([&apps](const QStringList& candidates) {
+        for (const QString& candidate : candidates) {
+            const QString desktopId = apps.findDesktopId(candidate);
+            if (!desktopId.isEmpty()) {
+                const QVariantMap entry = apps.entry(desktopId);
+                return ScreenSharing::App { desktopId, entry.value(QStringLiteral("name")).toString(),
+                    entry.value(QStringLiteral("iconName")).toString() };
+            }
+        }
+        return ScreenSharing::App {};
+    });
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
@@ -522,6 +535,7 @@ int main(int argc, char* argv[])
     qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
     engine.rootContext()->setContextProperty(QStringLiteral("BluetoothPrompts"), &bluetoothPrompts);
     engine.rootContext()->setContextProperty(QStringLiteral("Brightness"), &brightness);
+    engine.rootContext()->setContextProperty(QStringLiteral("Sharing"), &sharing);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Sound"), &sound);
     // The apps' level bars in the quick settings mixer (docs/audio.md §7.1).

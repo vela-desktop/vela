@@ -67,6 +67,8 @@ qt_add_executable(vela-shell
     src/tray.cpp
     src/taskbarmodel.h
     src/wallpaperprovider.h
+    src/screensharing.cpp
+    src/screensharing.h
     src/screenwindows.cpp
     src/screenwindows.h
     src/windowcapture.cpp
@@ -312,6 +314,13 @@ if(VELA_BUILD_TOOLS)
 
     # The brightness model against a fake compositor socket (docs/brightness.md §9).
     find_package(Qt6 6.5 REQUIRED COMPONENTS Network)
+    # Who shares the screen, named, against a fake compositor (docs/screen-sharing.md §5).
+    qt_add_executable(vela-screen-sharing-test tests/screensharing.cpp src/screensharing.cpp src/screensharing.h)
+    target_include_directories(vela-screen-sharing-test PRIVATE src)
+    target_compile_options(vela-screen-sharing-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-screen-sharing-test PRIVATE Qt6::Gui Qt6::Network Qt6::Test)
+    add_test(NAME shell-screen-sharing COMMAND vela-screen-sharing-test)
+
     qt_add_executable(vela-brightness-model-test tests/brightness_model.cpp src/brightness.cpp src/brightness.h)
     target_include_directories(vela-brightness-model-test PRIVATE src)
     target_compile_options(vela-brightness-model-test PRIVATE -Wall -Wextra)

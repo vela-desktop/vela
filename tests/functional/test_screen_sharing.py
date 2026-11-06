@@ -15,7 +15,8 @@ import threading
 import time
 import unittest
 
-from harness import TIME_SCALE, Session, tool
+from harness import TIME_SCALE, Image, Session, tool
+from test_shell import RealShell
 
 
 class Watcher:
@@ -207,6 +208,25 @@ class ScreenSharing(unittest.TestCase):
             watcher.close()
 
 
+    def test_test_shell(self):
+        """test-shell <pid>: the tests' real shell is the shell (§4.2)."""
+        with Session() as vela:
+            watcher = Watcher(vela)
+            shell = self.share(vela, "ext-output", "0")
+            other = self.share(vela, "ext-output", "0")
+            watcher.wait_for(lambda s: len(s["clients"]) == 2, what="both clients reported")
+            # Already capturing: its report goes at once.
+            vela.command(f"test-shell {shell.pid}")
+            _, state = watcher.wait_for(lambda s: [c["pid"] for c in s["clients"]] == [other.pid],
+                                        what="only the other client")
+            vela.command("test-shell nonsense") # ignored
+            time.sleep(1.2 * TIME_SCALE)
+            self.assertEqual([c["pid"] for c in vela.state()["capture"]["clients"]], [other.pid])
+            self.stop(shell)
+            self.stop(other)
+            watcher.close()
+
+
 class TheShell(unittest.TestCase):
     """The startup command is the shell: its captures stay its own (§4.2)."""
 
@@ -242,6 +262,55 @@ class TheShell(unittest.TestCase):
         reported = self.held("@BINARY@ --forever ext-output 0; true")
         self.assertTrue(reported)
         self.assertEqual(reported[-1]["clients"][0]["binary"], "vela-share")
+
+
+def red_pixels(image, output_width, output_height):
+    """The indicator's red pixels, near the taskbar's clock: (x, y) each."""
+    return [(x, y) for y in range(output_height - 48, output_height) for x in range(output_width - 500, output_width)
+            if (lambda p: p[0] > 200 and p[1] < 60 and p[2] < 70)(image.at(x, y))]
+
+
+class TheIndicator(RealShell):
+    """The taskbar's icon, tooltip and menu (§6), with the real shell."""
+
+    def red(self):
+        path = os.path.join(self.vela.directory, "taskbar.png")
+        self.vela.screenshot(path)
+        return red_pixels(Image.read(path), 1920, 1080)
+
+    def test_shows_who_shares(self):
+        self.assertEqual(self.red(), [])
+        share = subprocess.Popen([tool("vela-share"), "ext-output", "0"], env=self.vela.client_env,
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.vela.clients.append(share)
+        self.assertEqual(share.stdout.readline().strip(), "sharing")
+        self.vela.wait_for(lambda _: self.red(), timeout=5, what="the red dot", read_state=False)
+        # The icon: just left of and above its dot.
+        dot = self.red()
+        x, y = str(min(p[0] for p in dot) - 6), str(min(p[1] for p in dot) - 4)
+        self.vela.input("move", x, y, "sleep", "300", "move", str(int(x) + 1), y, "sleep", "900")
+        self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-tooltip"), what="the tooltip")
+        self.vela.input("click", "left")
+        self.vela.wait_for(lambda s: self.mapped(s, "vela-context-menu"), what="the menu")
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-context-menu"), what="the menu to close")
+        share.stdin.close()
+        share.wait(5)
+        # A second of grace, then gone.
+        time.sleep(0.5)
+        self.assertTrue(self.red(), "still shown half a second after")
+        self.vela.wait_for(lambda _: not self.red(), timeout=5, what="the red dot to go", read_state=False)
+
+    def test_the_shells_own_previews_are_not_sharing(self):
+        # One short session per preview update, never held for a second.
+        self.vela.open_window()
+        self.vela.input("key", "super+Tab") # Task View: live previews of the windows
+        self.vela.wait_for(lambda s: self.mapped(s, "vela-task-view"), what="Task View")
+        time.sleep(2.0 * TIME_SCALE)
+        self.assertEqual(self.vela.state()["capture"], {"clients": []})
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-task-view"), what="Task View to close")
+        self.assertEqual(self.red(), [])
 
 
 if __name__ == "__main__":

@@ -17,6 +17,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
+#include <wlr/backend/headless.h>
+#include <wlr/backend/multi.h>
 #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -81,6 +83,7 @@ struct screencopy_frame {
 
 struct vela_capture_watch {
     struct vela_server *server;
+    pid_t test_shell; // test-shell
     bool unreported; // VELA_CAPTURE_UNREPORTED=1
     bool finishing;
     struct wl_list capturers;
@@ -144,6 +147,9 @@ static pid_t parent_of(pid_t pid)
 // exec. Apps the shell launches are detached: their parent isn't the shell.
 static bool is_shell(const struct vela_server *server, const struct capturer *capturer)
 {
+    if (capturer->watch->test_shell > 0 && capturer->pid == capturer->watch->test_shell) {
+        return true;
+    }
     const pid_t shell = server->shell.pid;
     if (shell <= 0 || capturer->pid <= 0) {
         return false;
@@ -596,6 +602,46 @@ void vela_capture_watch_refresh(struct vela_capture_watch *watch)
     if (watch && !watch->finishing) {
         publish(watch);
     }
+}
+
+static void any_real_backend(struct wlr_backend *backend, void *data)
+{
+    if (!wlr_backend_is_headless(backend)) {
+        *(bool *)data = true;
+    }
+}
+
+void vela_capture_watch_test_shell(struct vela_capture_watch *watch, const char *text)
+{
+    if (!watch) {
+        return;
+    }
+    bool real = false;
+    wlr_multi_for_each_backend(watch->server->backend, any_real_backend, &real);
+    char *end = NULL;
+    const long pid = strtol(text, &end, 10);
+    if (real || end == text || *end != '\0' || pid <= 0) {
+        wlr_log(WLR_ERROR, "test-shell: only a pid, and only with the headless backend");
+        return;
+    }
+    watch->test_shell = (pid_t)pid;
+    // It may have connected, and captured, already.
+    struct capturer *capturer;
+    wl_list_for_each (capturer, &watch->capturers, link) {
+        if (capturer->pid == watch->test_shell) {
+            capturer->identified = true;
+            capturer->shell = true;
+            struct session *session, *next_session;
+            wl_list_for_each_safe (session, next_session, &capturer->sessions, link) {
+                free_session(session);
+            }
+            struct screencopy_stream *stream, *next_stream;
+            wl_list_for_each_safe (stream, next_stream, &capturer->streams, link) {
+                free_stream(stream);
+            }
+        }
+    }
+    update(watch);
 }
 
 // ------------------------------------------------------------- lifetime --

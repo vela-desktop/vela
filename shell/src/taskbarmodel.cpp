@@ -335,6 +335,19 @@ void TaskbarModel::activate(int row)
     (*recent)->requestActivate();
 }
 
+bool TaskbarModel::showApp(const QString& desktopId)
+{
+    for (const Item& item : std::as_const(m_items)) {
+        if (!desktopId.isEmpty() && item.desktopId == desktopId && !item.windows.isEmpty()) {
+            const auto recent = std::max_element(item.windows.cbegin(), item.windows.cend(),
+                [](const ForeignToplevel* a, const ForeignToplevel* b) { return a->lastActivated < b->lastActivated; });
+            (*recent)->requestActivate();
+            return true;
+        }
+    }
+    return false;
+}
+
 void TaskbarModel::launchNew(int row)
 {
     if (row >= 0 && row < m_items.size() && !m_items.at(row).desktopId.isEmpty()) {

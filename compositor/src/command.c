@@ -574,6 +574,8 @@ static void run_command(struct vela_server *server, const char *line)
     } else if (starts_with(line, "switcher-pick ")) {
         // A click on an Alt+Tab preview: switch to that window.
         vela_switcher_pick(server, atoi(line + 14));
+    } else if (starts_with(line, "test-shell ")) {
+        vela_capture_watch_test_shell(server->capture_watch, line + 11);
     } else if (starts_with(line, "test-output ")) {
         vela_test_output_command(server, line + 12);
     } else if (strcmp(line, "test-power off") == 0 || strcmp(line, "test-power on") == 0) {

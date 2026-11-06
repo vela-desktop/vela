@@ -301,6 +301,9 @@ class Desktop:
                                      env=self.qt_env,
                                      stdout=self.vela.log, stderr=self.vela.log)
             self.vela.clients.append(shell)
+            # The shell, though not the compositor's child (as_user execs all
+            # the way: the same pid), for scenes that show screen sharing.
+            self.vela.command(f"test-shell {shell.pid}")
             self.vela.wait_for(lambda s: self.layer(s, "vela-taskbar") and self.layer(s, "vela-wallpaper"),
                                timeout=20, what="the real Qt desktop")
             time.sleep(1.5) # the wallpaper drawn, the colors sent to the compositor
