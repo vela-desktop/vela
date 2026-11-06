@@ -214,6 +214,33 @@ private slots:
         QCOMPARE(prefs.startIcon(), QStringLiteral("vela"));
         QCOMPARE(prefs.startIconSource(), QString());
     }
+
+    void compositorSaveFailureRestoresTheValue()
+    {
+        // A file where the config directory should be: the write cannot commit.
+        const QString blocker = home().filePath(QStringLiteral("config/vela"));
+        QDir(blocker).removeRecursively();
+        QVERIFY(writeFile(QStringLiteral("config/vela"), "not a directory\n"));
+        Preferences prefs;
+        QCOMPARE(prefs.screenOffMinutes(), 10);
+        QCOMPARE(prefs.saveError(), QString());
+        QSignalSpy idle(&prefs, &Preferences::idleChanged);
+        QSignalSpy error(&prefs, &Preferences::saveErrorChanged);
+        prefs.setScreenOffMinutes(3);
+        QCOMPARE(prefs.screenOffMinutes(), 10);
+        QVERIFY(!prefs.saveError().isEmpty());
+        QCOMPARE(idle.count(), 1);
+        QCOMPARE(error.count(), 1);
+
+        QVERIFY(QFile::remove(blocker));
+        QVERIFY(QDir().mkpath(home().filePath(QStringLiteral("config/vela"))));
+        prefs.setScreenOffMinutes(3);
+        QCOMPARE(prefs.screenOffMinutes(), 3);
+        QCOMPARE(prefs.saveError(), QString());
+        QFile file(home().filePath(QStringLiteral("config/vela/vela.conf")));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(QString::fromUtf8(file.readAll()).contains(QStringLiteral("screen-off=3")));
+    }
 };
 
 int main(int argc, char** argv)

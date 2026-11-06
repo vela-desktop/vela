@@ -441,9 +441,18 @@ Window {
             onNavigate: name => root.navigate(name)
         }
 
+        Card {
+            id: saveErrorCard
+            visible: Prefs.saveError !== ""
+            anchors { top: header.bottom; topMargin: 16; left: parent.left; right: parent.right; rightMargin: 24 }
+            icon: "dialog-warning"
+            title: qsTr("Could not save settings")
+            description: Prefs.saveError
+        }
+
         Loader {
             id: pageLoader
-            anchors { top: header.bottom; topMargin: 20; left: parent.left; right: parent.right; bottom: parent.bottom }
+            anchors { top: saveErrorCard.visible ? saveErrorCard.bottom : header.bottom; topMargin: 20; left: parent.left; right: parent.right; bottom: parent.bottom }
             source: Qt.resolvedUrl(root.pages[root.current].file)
             onLoaded: {
                 item.opacity = 0
