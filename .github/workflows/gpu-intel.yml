@@ -114,8 +114,8 @@ jobs:
           for device in devices:
               vendor = re.search(r"(?m)^\s*vendorID\s*=\s*0x8086\b", device)
               version = re.search(r"(?m)^\s*apiVersion\s*=\s*(\d+)\.(\d+)", device)
-              radv = re.search(r"(?m)^\s*driverID\s*=\s*DRIVER_ID_INTEL_OPEN_SOURCE_MESA\b", device)
-              if vendor and radv and version and tuple(map(int, version.groups())) >= (1, 4):
+              anv = re.search(r"(?m)^\s*driverID\s*=\s*DRIVER_ID_INTEL_OPEN_SOURCE_MESA\b", device)
+              if vendor and anv and version and tuple(map(int, version.groups())) >= (1, 4):
                   print("Hardware Intel ANV with Vulkan >= 1.4 confirmed.")
                   break
           else:
