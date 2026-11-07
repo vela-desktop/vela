@@ -90,6 +90,23 @@ Page {
         }
     }
 
+    // Not only Bluetooth: receivers like Logitech's too (UPower,
+    // docs/battery-notifications.md §6).
+    CardGroup {
+        objectName: "deviceSettings"
+        title: qsTr("Device settings")
+        Card {
+            icon: "battery-caution"
+            title: qsTr("Low battery notifications")
+            description: qsTr("When a mouse, keyboard, headset or another wireless device is running out of battery")
+            trailing: Switch {
+                objectName: "deviceBatteryNotify"
+                checked: Prefs.deviceBatteryNotify
+                onToggled: Prefs.deviceBatteryNotify = checked
+            }
+        }
+    }
+
     CardGroup {
         objectName: "advanced"
         title: qsTr("Advanced")

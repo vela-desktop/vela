@@ -5,7 +5,8 @@ import QtQuick
 import Vela.Controls
 
 // System > Power: when to turn off the screen, locking, the power saving mode
-// (power-profiles-daemon), the battery.
+// (power-profiles-daemon), the battery and its notifications
+// (docs/battery-notifications.md §6).
 Page {
     id: page
     readonly property var minutes: [1, 2, 3, 5, 10, 15, 20, 25, 30, 45, 60, 120, 180, 240, 300, 0]
@@ -55,6 +56,34 @@ Page {
                 model: page.profiles.map(p => page.profileNames[p])
                 currentIndex: page.profiles.indexOf(Status.powerProfile)
                 onChosen: index => Status.powerProfile = page.profiles[index]
+            }
+        }
+    }
+
+    CardGroup {
+        objectName: "battery"
+        visible: Status.batteryPresent
+        title: qsTr("Battery")
+        Card {
+            icon: "battery-caution"
+            title: qsTr("Battery notifications")
+            description: qsTr("Tell me when the battery is low, and when it's about to run out")
+            trailing: Switch {
+                objectName: "batteryNotify"
+                checked: Prefs.batteryNotify
+                onToggled: Prefs.batteryNotify = checked
+            }
+        }
+        Card {
+            icon: "battery-low"
+            title: qsTr("Low battery level")
+            description: qsTr("The charge at which the low battery notification comes")
+            trailing: Choice {
+                objectName: "batteryLowLevel"
+                usable: Prefs.batteryNotify
+                model: Prefs.batteryLowLevels.map(level => level + "%")
+                currentIndex: Prefs.batteryLowLevels.indexOf(Prefs.batteryLowLevel)
+                onChosen: index => Prefs.batteryLowLevel = Prefs.batteryLowLevels[index]
             }
         }
     }

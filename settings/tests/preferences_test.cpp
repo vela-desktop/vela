@@ -93,6 +93,45 @@ private slots:
         QVERIFY(prefs.clock24());
     }
 
+    // docs/battery-notifications.md §6.
+    void batterySettings()
+    {
+        {
+            Preferences prefs;
+            QVERIFY(prefs.batteryNotify());
+            QCOMPARE(prefs.batteryLowLevel(), 20);
+            QVERIFY(prefs.deviceBatteryNotify());
+            QCOMPARE(prefs.batteryLowLevels(), (QVariantList { 10, 15, 20, 25, 30, 40, 50 }));
+            QSignalSpy battery(&prefs, &Preferences::batteryChanged);
+            prefs.setBatteryNotify(false);
+            QCOMPARE(saved(QStringLiteral("battery/notify")).toBool(), false);
+            prefs.setBatteryLowLevel(30);
+            QCOMPARE(saved(QStringLiteral("battery/lowLevel")).toInt(), 30);
+            prefs.setBatteryLowLevel(2); // out of range: refused
+            QCOMPARE(prefs.batteryLowLevel(), 30);
+            prefs.setDeviceBatteryNotify(false);
+            QCOMPARE(saved(QStringLiteral("battery/devices")).toBool(), false);
+            QCOMPARE(battery.count(), 3);
+            prefs.setDeviceBatteryNotify(false);
+            QCOMPARE(battery.count(), 3);
+        }
+        // A level set by hand is offered among the others, in its place.
+        // (Each file a different size: QSettings rereads by size and time.)
+        write("[appearance]\nappTheme=dark\n[battery]\nlowLevel=12\n");
+        Preferences prefs;
+        QCOMPARE(prefs.batteryLowLevel(), 12);
+        QCOMPARE(prefs.batteryLowLevels(), (QVariantList { 10, 12, 15, 20, 25, 30, 40, 50 }));
+        write("[appearance]\nappTheme=dark\n[battery]\nlowLevel=8\n");
+        prefs.reload();
+        QCOMPARE(prefs.batteryLowLevels(), (QVariantList { 8, 10, 15, 20, 25, 30, 40, 50 }));
+        write("[appearance]\nappTheme=dark\n[battery]\nlowLevel=80\nnotify=true\n");
+        prefs.reload();
+        QCOMPARE(prefs.batteryLowLevels().last().toInt(), 80);
+        write("[appearance]\nappTheme=dark\n[battery]\nlowLevel=100\n\n");
+        prefs.reload();
+        QCOMPARE(prefs.batteryLowLevel(), 20);
+    }
+
     void switchesWriteTheirKeys()
     {
         Preferences prefs;
