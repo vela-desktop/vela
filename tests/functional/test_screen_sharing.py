@@ -6,6 +6,7 @@ and screencopy streams are reported on `watch capture` and in `state`;
 screenshots, the shell's own captures and VELA_CAPTURE_UNREPORTED never are."""
 
 import json
+import select
 import os
 import shutil
 import signal
@@ -68,6 +69,18 @@ def sharing(state):
     return bool(state["clients"])
 
 
+def first_frame_of(test, process, timeout=10.0):
+    """vela-share's "sharing" line, within `timeout` (scaled): a client that
+    never gets a frame fails the test, instead of blocking it until ctest
+    gives up."""
+    ready, _, _ = select.select([process.stdout], [], [], timeout * TIME_SCALE)
+    if not ready:
+        process.kill()
+        test.fail(f"vela-share got no frame in {timeout * TIME_SCALE:g} s")
+    line = process.stdout.readline().strip()
+    test.assertEqual(line, "sharing", process.stderr.read() if process.poll() is not None and process.stderr else "")
+
+
 class ScreenSharing(unittest.TestCase):
     def share(self, vela, *arguments, env=None, first_frame=True):
         """vela-share with a pipe on stdin: closing it ends the share."""
@@ -75,8 +88,7 @@ class ScreenSharing(unittest.TestCase):
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         vela.clients.append(process)
         if first_frame:
-            self.assertEqual(process.stdout.readline().strip(), "sharing",
-                             process.stderr.read() if process.poll() else "")
+            first_frame_of(self, process)
         return process
 
     @staticmethod
@@ -305,7 +317,7 @@ class TheIndicator(test_shell.RealShell):
         share = subprocess.Popen([tool("vela-share"), "ext-output", "0"], env=self.vela.client_env,
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
         self.vela.clients.append(share)
-        self.assertEqual(share.stdout.readline().strip(), "sharing")
+        first_frame_of(self, share)
         self.vela.wait_for(lambda _: self.red(), timeout=5, what="the red dot", read_state=False)
         # The icon: just left of and above its dot.
         dot = self.red()
@@ -327,7 +339,7 @@ class TheIndicator(test_shell.RealShell):
         share = subprocess.Popen([tool("vela-share"), "ext-output", "0"], env=self.vela.client_env,
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
         self.vela.clients.append(share)
-        self.assertEqual(share.stdout.readline().strip(), "sharing")
+        first_frame_of(self, share)
         self.vela.wait_for(lambda _: self.red(), timeout=5, what="the red dot", read_state=False)
         # Held back: no popup, it waits in the notification center (§7).
         self.send_notification("While sharing")

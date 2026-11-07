@@ -212,8 +212,12 @@ static const struct ext_image_copy_capture_session_v1_listener session_listener 
 
 static void ext_capture(void)
 {
-    if (ext_width == 0 || ext_format == UINT32_MAX
-        || !make_buffer(&ext_buffer, ext_format, ext_width, ext_height, ext_width * 4)) {
+    if (ext_width == 0 || ext_format == UINT32_MAX) {
+        return; // the constraints aren't all in yet
+    }
+    if (!make_buffer(&ext_buffer, ext_format, ext_width, ext_height, ext_width * 4)) {
+        fprintf(stderr, "vela-share: no buffer for the frame\n");
+        failed = true; // exit rather than wait for a frame never asked for
         return;
     }
     frame = ext_image_copy_capture_session_v1_create_frame(session);
@@ -329,6 +333,9 @@ static void sc_ready(void *data, struct zwlr_screencopy_frame_v1 *f, uint32_t hi
 static void sc_failed(void *data, struct zwlr_screencopy_frame_v1 *f)
 {
     fprintf(stderr, "vela-share: a screencopy frame failed\n");
+    if (screencopy_output < 0) {
+        failed = true; // screencopy-once: a screenshot that failed isn't one
+    }
     sc_finish(data);
 }
 
@@ -443,7 +450,12 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
         wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
         xdg_wm_base_add_listener(wm_base, &wm_listener, NULL);
     } else if (strcmp(interface, zwlr_screencopy_manager_v1_interface.name) == 0) {
-        screencopy = wl_registry_bind(registry, name, &zwlr_screencopy_manager_v1_interface, version < 3 ? version : 3);
+        // Version 3: buffer_done says when to copy, copy_with_damage is there.
+        if (version >= 3) {
+            screencopy = wl_registry_bind(registry, name, &zwlr_screencopy_manager_v1_interface, 3);
+        } else {
+            fprintf(stderr, "vela-share: wlr-screencopy version %u, 3 needed\n", version);
+        }
     }
 }
 
