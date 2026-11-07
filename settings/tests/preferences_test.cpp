@@ -17,6 +17,7 @@
 #include <QIcon>
 #include <QImage>
 #include <QSettings>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -44,6 +45,65 @@ class PreferencesTest : public QObject {
     }
 
 private slots:
+    /** Missing desktop helpers must produce a diagnostic without opening another app. */
+    void missingFolderOpener()
+    {
+        const QByteArray originalPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] { qputenv("PATH", originalPath); });
+        const QString bin = home().filePath(QStringLiteral("empty-bin"));
+        QVERIFY(QDir().mkpath(bin));
+        qputenv("PATH", bin.toUtf8());
+        Preferences prefs;
+        QTest::ignoreMessage(QtWarningMsg,
+            "vela-settings: cannot open themes folder: xdg-open is unavailable (install xdg-utils)");
+        prefs.openThemesFolder(QString());
+        QVERIFY(QDir(home().filePath(QStringLiteral("config/vela/themes"))).exists());
+    }
+
+    /** An executable whose interpreter is unavailable must report its launch failure. */
+    void brokenFolderOpener()
+    {
+        const QByteArray originalPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] { qputenv("PATH", originalPath); });
+        const QString bin = home().filePath(QStringLiteral("broken-bin"));
+        const QString opener = bin + QStringLiteral("/xdg-open");
+        QVERIFY(writeFile(QStringLiteral("broken-bin/xdg-open"),
+            "#!" + home().filePath(QStringLiteral("missing-interpreter")).toUtf8() + '\n'));
+        QVERIFY(QFile::setPermissions(opener, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        qputenv("PATH", bin.toUtf8());
+        Preferences prefs;
+        const QString directory = home().filePath(QStringLiteral("config/vela/themes"));
+        const QByteArray warning = QStringLiteral("vela-settings: failed to start xdg-open for %1").arg(directory).toUtf8();
+        QTest::ignoreMessage(QtWarningMsg, warning.constData());
+        prefs.openThemesFolder(QString());
+    }
+
+    /** The external opener receives the requested surface directory as one argument. */
+    void folderOpenerGetsRequestedDirectory()
+    {
+        const QByteArray originalPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] {
+            qputenv("PATH", originalPath);
+            qunsetenv("VELA_TEST_FOLDER_PROBE");
+        });
+        const QString bin = home().filePath(QStringLiteral("working-bin"));
+        const QString opener = bin + QStringLiteral("/xdg-open");
+        QVERIFY(writeFile(QStringLiteral("working-bin/xdg-open"),
+            "#!/bin/sh\nprintf '%s' \"$1\" > \"$VELA_TEST_FOLDER_PROBE\"\n"));
+        QVERIFY(QFile::setPermissions(opener, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        qputenv("PATH", bin.toUtf8());
+        const QString probe = home().filePath(QStringLiteral("folder-probe"));
+        qputenv("VELA_TEST_FOLDER_PROBE", probe.toUtf8());
+        Preferences prefs;
+        prefs.openThemesFolder(QStringLiteral("taskbar"));
+        const auto contents = [&] {
+            QFile file(probe);
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        QTRY_COMPARE_WITH_TIMEOUT(contents(),
+            home().filePath(QStringLiteral("config/vela/themes/taskbar")).toUtf8(), 5000);
+    }
+
     void init()
     {
         QDir().mkpath(QFileInfo(confPath()).absolutePath());

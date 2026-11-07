@@ -135,7 +135,7 @@ Window {
                         maximumLineCount: 4
                         elide: Text.ElideRight
                         linkColor: Theme.accentFill
-                        onLinkActivated: link => Qt.openUrlExternally(link)
+                        onLinkActivated: link => System.openUrl(link)
                     }
 
                     // The app's actions ("Reply", "Mark as read"...).

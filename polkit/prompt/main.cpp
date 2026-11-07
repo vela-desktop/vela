@@ -11,6 +11,7 @@
 // outputs. All of them take the pointer: nothing underneath can be touched
 // until the user answers.
 
+#include "renderingpolicy.h"
 #include "controls.h"
 #include "language.h"
 #include "request.h"
@@ -133,6 +134,7 @@ private:
 
 } // namespace
 
+/** Validate the authentication request and run its Wayland prompt with shared text rendering. */
 int main(int argc, char* argv[])
 {
     if (argc > 1 && (!std::strcmp(argv[1], "--help") || !std::strcmp(argv[1], "-h"))) {
@@ -144,6 +146,7 @@ int main(int argc, char* argv[])
     }
     // Always Wayland: the overlay layer exists only there.
     qputenv("QT_QPA_PLATFORM", "wayland");
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("vela-polkit-prompt"));
     app.setDesktopFileName(QStringLiteral("vela-polkit-prompt"));
