@@ -165,9 +165,12 @@ def row_metrics(row,directory,profile,target,item,uid):
     if case not in CASES or type(scale) is not float or scale not in SCALES or state not in STATES:
         raise BenchError('Unknown corpus condition')
     stem=f'{target}-corpus-{case}-{round(scale*100)}-{state}'
+    paths={}
     for key,suffix in (('image','.png'),('crop','-crop.png')):
         name=stem+suffix
-        if row.get(key+'_file')!=name or hashlib.sha256((directory/name).read_bytes()).hexdigest()!=row.get(key+'_sha256'):
+        paths[key]=directory/name
+        if (row.get(key+'_file')!=name or paths[key].is_symlink()
+                or hashlib.sha256(paths[key].read_bytes()).hexdigest()!=row.get(key+'_sha256')):
             raise BenchError('Corpus original/crop evidence changed')
     meta=source_audit(row['source_events'],case,item,uid)
     if row.get('source')!=meta:raise BenchError('Corpus summary differs from source events')
@@ -204,8 +207,8 @@ def row_metrics(row,directory,profile,target,item,uid):
         raise BenchError('Corpus maximized geometry incomplete')
     if state.startswith('snap-') and not .35<=meta['canvas_width']*sx/profile['mode']['width']<=.65:
         raise BenchError('Corpus half-output geometry incomplete')
-    metrics,crop=image_metrics(directory/row['image_file'],meta,case,profile['mode'],scale)
-    if png_rgb(directory/row['crop_file'])!=(crop[0],crop[1],bytearray(crop[2])):
+    metrics,crop=image_metrics(paths['image'],meta,case,profile['mode'],scale)
+    if png_rgb(paths['crop'])!=(crop[0],crop[1],bytearray(crop[2])):
         raise BenchError('Corpus crop resampled or differs from original pixels')
     if state.startswith('snap-'):
         center=(metrics['canvas_bounds'][0]+metrics['canvas_bounds'][2])/2

@@ -27,8 +27,10 @@ def atomic_json(path, value):
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        # This local CLI deliberately writes to the operator's chosen archive.
+        # S8707 assumes an LLM/server boundary, which this program does not expose.
+        os.replace(temporary, path)  # NOSONAR S8707: explicit local output path.
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)  # NOSONAR S8707: fsync that output's parent.
         try:
             os.fsync(directory)
         finally:
@@ -57,7 +59,9 @@ def decode_json(raw):
 
 def read_json(path):
     try:
-        return decode_json(Path(path).read_text(encoding="utf-8"))
+        # Local input is either operator-selected evidence or trusted root state;
+        # privileged consumers validate identities and reconstruct owned paths.
+        return decode_json(Path(path).read_text(encoding="utf-8"))  # NOSONAR S8707: no agentic entry point.
     except (OSError, ValueError) as exc:
         raise BenchError(f"Cannot read {path}: {exc}") from exc
 
@@ -73,7 +77,7 @@ def append_event(path, event):
 def read_events(path):
     """A truncated final line is evidence of interruption, never completion."""
     try:
-        raw = Path(path).read_bytes()
+        raw = Path(path).read_bytes()  # NOSONAR S8707: operator-selected local evidence, not LLM input.
     except OSError as exc:
         raise BenchError(f"Cannot read event journal: {exc}") from exc
     if raw and not raw.endswith(b"\n"):
@@ -100,7 +104,7 @@ def create_check_archive(output, plan, discovery):
     parent.mkdir(parents=True, exist_ok=True)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
     directory = parent / run_id
-    directory.mkdir(mode=0o700)
+    directory.mkdir(mode=0o700)  # NOSONAR S8707: new exclusive archive under the operator-selected parent.
     for name in ("blocks", "samples", "calibration", "captures", "logs"):
         (directory / name).mkdir(mode=0o700)
     manifest = {"schema": SCHEMA, "kind": "preflight", "run_id": run_id,

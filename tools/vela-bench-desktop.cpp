@@ -367,12 +367,12 @@ static void workspace(const QString &target,const QString &operation)
             if(QDBusConnection::sessionBus().call(request,QDBus::Block,3000).type()==QDBusMessage::ErrorMessage)fail("workspace fixture removal failed");
         }
     } else if(operation!="state" && operation!="create")fail("unknown workspace operation");
-    QJsonObject final;
+    QJsonObject settled;
     for(int attempt=0;attempt<30;++attempt) {
-        final=workspaceState(target);
-        if((operation=="create" && count==1 && final["count"].toInt()!=2)
-           || (operation=="remove" && final["count"].toInt()!=1)) {QThread::msleep(50);continue;}
-        final["begin_monotonic_ns"]=QString::number(monotonicNs());print(final);return;
+        settled=workspaceState(target);
+        if((operation=="create" && count==1 && settled["count"].toInt()!=2)
+           || (operation=="remove" && settled["count"].toInt()!=1)) {QThread::msleep(50);continue;}
+        settled["begin_monotonic_ns"]=QString::number(monotonicNs());print(settled);return;
     }
     fail("workspace fixture state did not settle");
 }

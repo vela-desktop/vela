@@ -13,8 +13,9 @@ static char *font_file,*font_hash,*font_family,*content_hash,*previous;
 static unsigned sequence;
 static char *quoted(const char *value)
 {
+    if(!value)return g_strdup("\"\"");
     GString *s=g_string_new("\"");
-    for(const unsigned char *p=(const unsigned char *)(value?value:"");*p;++p) {
+    for(const unsigned char *p=(const unsigned char *)value;*p;++p) {
         if(*p=='"' || *p=='\\')g_string_append_c(s,'\\');
         if(*p<32)g_string_append_printf(s,"\\u%04x",*p);else g_string_append_c(s,*p);
     }

@@ -471,7 +471,7 @@ static void onToplevelConfigure(void* data, struct xdg_toplevel* t, int32_t widt
     pendingWidth = width;
     pendingHeight = height;
     maximized = 0;
-    uint32_t* state;
+    uint32_t* state = NULL;
     wl_array_for_each(state, states) if (*state == XDG_TOPLEVEL_STATE_MAXIMIZED) maximized = 1;
 }
 

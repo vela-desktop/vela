@@ -13,6 +13,14 @@ from vela_bench.pilot import reserve_vt,launch_session
 
 
 class VTReservation(unittest.TestCase):
+    def test_persisted_vt_cannot_inject_unit_arguments_or_address_non_console_devices(self):
+        from unittest.mock import Mock
+        host=Mock()
+        for vt in (None, True, '8 --runtime', '../../other', 0, -1, 64, 8.0):
+            with self.subTest(vt=vt), self.assertRaisesRegex(BenchError, 'Invalid reserved virtual terminal'):
+                reserve_vt(host, Path('/unused'), {'target_vt':vt}, Layout())
+        host.run.assert_not_called()
+
     def test_alias_canonical_mask_state_does_not_skip_the_second_name(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);layout=Layout(root)

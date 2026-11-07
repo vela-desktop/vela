@@ -144,6 +144,15 @@ class Corpus(unittest.TestCase):
                 'crop_file':stem+'-crop.png','crop_sha256':hashlib.sha256(crop_bytes).hexdigest()}
             profile={'outputs':[],'mode':{'width':w,'height':h}}
             self.assertEqual(corpus.row_metrics(row,directory,profile,'vela',item,1001),metrics)
+            for key in ('image_file','crop_file'):
+                for name in ('../outside.png','/tmp/outside.png'):
+                    with self.subTest(key=key,name=name), self.assertRaisesRegex(BenchError,'evidence changed'):
+                        corpus.row_metrics(dict(row,**{key:name}),directory,profile,'vela',item,1001)
+            original=directory/(stem+'.png');original.unlink()
+            outside=directory/'outside.png';outside.write_bytes(encoded);original.symlink_to(outside)
+            with self.assertRaisesRegex(BenchError,'evidence changed'):
+                corpus.row_metrics(row,directory,profile,'vela',item,1001)
+            original.unlink();original.write_bytes(encoded)
             row['initial_canvas']=[99,80]
             with self.assertRaisesRegex(BenchError,'initial size'):corpus.row_metrics(row,directory,profile,'vela',item,1001)
             row['initial_canvas']=[100,80]

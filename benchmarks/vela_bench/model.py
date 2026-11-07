@@ -46,7 +46,7 @@ def fingerprint(value):
 
 
 def load_campaign(path=None):
-    data = {} if path is None else tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    data = {} if path is None else tomllib.loads(Path(path).read_text(encoding="utf-8"))  # NOSONAR S8707: operator-selected TOML, no agent/server.
     unknown = data.keys() - {"schema", "targets", "phases", "seed", "display"}
     if unknown:
         raise BenchError(f"Unknown campaign keys: {', '.join(sorted(unknown))}")

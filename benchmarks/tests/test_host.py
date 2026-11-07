@@ -45,6 +45,9 @@ class FakeHost:
         self.restore_vt = "2\n"
         self.fail_useradd = False
 
+    def which(self, command):
+        return "/usr/bin/" + command
+
     def run(self, argv, **kwargs):
         self.calls.append(argv)
         stdout, code = "", 0
@@ -111,6 +114,58 @@ class HostOperations(unittest.TestCase):
 
     def setup_account(self):
         return install(self.host, self.layout, pam_dir=self.pam, private_homes=["/home/operator", "/srv/person"])
+
+    def test_missing_setup_command_is_rejected_before_any_host_mutation(self):
+        with patch.object(self.host, "which", side_effect=lambda name: None if name == "chvt" else "/usr/bin/" + name):
+            with self.assertRaisesRegex(BenchError, "Missing setup prerequisite: chvt"):
+                self.setup_account()
+        self.assertEqual(self.host.calls, [])
+        self.assertFalse(self.layout.record.exists())
+
+    def test_ownership_record_cannot_add_files_or_cleanup_parents_outside_the_installation(self):
+        import copy
+        import hashlib
+        record = self.setup_account()
+        foreign = self.layout.path("keep.txt")
+        foreign.write_text("not owned by the benchmark")
+        for field, value in (("files", {**record["files"], str(foreign): hashlib.sha256(foreign.read_bytes()).hexdigest()}),
+                             ("created_code_parents", [str(foreign.parent / "not-owned")])):
+            changed = copy.deepcopy(record)
+            changed[field] = value
+            atomic_json(self.layout.record, changed)
+            self.host.calls.clear()
+            with self.subTest(field=field), self.assertRaisesRegex(BenchError, "Unexpected owned installation"):
+                uninstall(self.host, self.layout)
+            self.assertEqual(self.host.calls, [])
+            self.assertIsNotNone(self.host.user())
+            self.assertEqual(foreign.read_text(), "not owned by the benchmark")
+
+    def test_fixture_identity_is_validated_before_filesystem_creation(self):
+        from vela_bench.pilot import create_fixture, fixture_path
+        state = {"run_id": "a" * 32, "fixture": "/home/.vela-benchmark-" + "a" * 32}
+        self.assertEqual(fixture_path(state), Path(state["fixture"]))
+        for changed in ({**state, "run_id": "../escape"}, {**state, "run_id": None},
+                        {**state, "fixture": state["fixture"] + "/../other"},
+                        {**state, "fixture": "/tmp/unowned"}):
+            with self.subTest(state=changed), patch.object(Path, "mkdir") as mkdir:
+                with self.assertRaisesRegex(BenchError, "Invalid fixture"):
+                    create_fixture(changed)
+                mkdir.assert_not_called()
+
+    def test_recovery_refuses_a_fixture_symlink_without_unlinking_its_target(self):
+        self.setup_account()
+        directory = self.pilot_state()
+        target = self.layout.path("foreign-home")
+        target.mkdir()
+        sentinel = target / "sentinel"
+        sentinel.write_text("keep this file")
+        link = self.layout.path("fixture-link")
+        link.symlink_to(target, target_is_directory=True)
+        with patch("vela_bench.pilot.fixture_path", return_value=link):
+            with self.assertRaisesRegex(BenchError, "symlink fixture cleanup"):
+                recover(self.host, self.layout)
+        self.assertEqual(sentinel.read_text(), "keep this file")
+        self.assertEqual(read_json(directory / "state.json")["stage"], "cleanup-failed")
 
     def pilot_state(self, result="passed", active_manager=True):
         run_id = "a" * 32
@@ -961,6 +1016,7 @@ class HostOperations(unittest.TestCase):
              patch("vela_bench.pilot.stop_user", side_effect=lambda *args: calls.append("stop")), \
              patch("vela_bench.pilot.reset_profile", side_effect=lambda *args: calls.append("reset")), \
              patch("vela_bench.pilot.run_probe", side_effect=probe), \
+             patch("vela_bench.pilot.observe_session"), \
              patch("vela_bench.pilot.verify_session", side_effect=lambda *args: calls.append("verify") or {"verified": True}):
             worker(self.host, self.layout)
         self.assertEqual(probes, [("vela", "baseline"), ("vela", "client-delay"),

@@ -205,6 +205,7 @@ class Execution(unittest.TestCase):
             'stop_user': {'return_value': None}, 'reset_profile': {}, 'wait_session': {'return_value': {}},
             'verify_session': {}, 'apply_conditions': {'return_value': {'status': 'passed'}},
             'verify_conditions': {}, 'run_probe': {'return_value': {'status': 'complete'}},
+            'observe_session': {},
             'preserve_session_log': {}, 'os.chown': {}, 'trusted': {},
         }
         with contextlib.ExitStack() as stack:

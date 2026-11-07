@@ -225,7 +225,7 @@ def export_report(parent, result):
     parent = Path(parent)
     parent.mkdir(parents=True, exist_ok=True)
     directory = parent / ("pilot-" + run_id)
-    directory.mkdir(mode=0o755)
+    directory.mkdir(mode=0o755)  # NOSONAR S8707: exclusive export under the operator-selected local parent.
     atomic_json(directory / "summary.json", result)
     (directory / "summary.json").chmod(0o644)
     escape = lambda value: html.escape(str(value), quote=True)

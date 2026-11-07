@@ -997,6 +997,17 @@ tests verify protocol handling only.
 
 ## Tests
 
+Static-analysis checks retain the full benchmark sources. Narrow `NOSONAR`
+annotations identify false positives from the agentic-workflow rules S8705 and
+S8707: this is an operator-invoked local CLI, with deliberately chosen input and
+output paths, not an LLM tool or server endpoint. Other annotations identify
+the password-lock status label and temporary-directory constants used only for
+namespace containment comparisons. Privileged state is still validated: owned
+installation files come from a fixed allowlist, fixture paths are reconstructed
+from bounded run IDs, VT numbers and dwell times are bounded, and corpus images
+use reconstructed filenames with symlinks refused. CPU regressions exercise
+those boundaries without accounts, host services, devices or TTY takeover.
+
 The coordinator tests use temporary directories and mocked host inventory:
 
 ```sh

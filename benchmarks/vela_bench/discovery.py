@@ -29,7 +29,7 @@ def read(path):
 
 def file_hash(path):
     try:
-        with open(path, "rb") as stream:
+        with open(path, "rb") as stream:  # NOSONAR S8707: hashes local operator inputs/validated installation paths.
             return hashlib.file_digest(stream, "sha256").hexdigest()
     except OSError:
         return None

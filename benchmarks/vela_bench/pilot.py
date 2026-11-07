@@ -172,10 +172,19 @@ def update(directory, state, stage, **fields):
     append_event(directory / "events.jsonl", {"event": stage, **fields})
 
 
+def fixture_path(state):
+    """Reconstruct the sole owned fixture from a bounded pilot identity."""
+    run_id = state.get("run_id")
+    if not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id):
+        raise BenchError("Invalid fixture pilot identity")
+    fixture = Path("/home") / (".vela-benchmark-" + run_id)
+    if state.get("fixture") != str(fixture):
+        raise BenchError("Invalid fixture path")
+    return fixture
+
+
 def create_fixture(state):
-    fixture = Path(state["fixture"])
-    if fixture.parent != Path("/home") or fixture.name != ".vela-benchmark-" + state["run_id"]:
-        raise BenchError("Invalid fixture creation path")
+    fixture = fixture_path(state)
     fixture.mkdir(mode=0o755)
     fixture.chmod(0o755)
     sentinel = fixture / "sentinel"
@@ -386,8 +395,11 @@ def launch_session(host, target, vt, record, layout, directory):
 def reserve_vt(host, directory, state, layout=Layout()):
     # logind may automatically start a getty when a free VT becomes active.
     # Never vhangup a login prompt or remove a pre-existing administrator mask.
+    vt = state.get("target_vt")
+    if type(vt) is not int or not 1 <= vt <= 63:
+        raise BenchError("Invalid reserved virtual terminal")
     for name in ("getty", "autovt"):
-        unit = f"{name}@tty{state['target_vt']}.service"
+        unit = f"{name}@tty{vt}.service"
         info = properties(host.run(["systemctl", "show", unit, "--property=ActiveState", "--property=UnitFileState"], check=False).stdout)
         if info.get("ActiveState") not in ("inactive", "failed"):
             raise BenchError(f"Target VT is occupied by {unit}")
@@ -406,7 +418,7 @@ def reserve_vt(host, directory, state, layout=Layout()):
             if not masked(paths[1]):
                 raise BenchError(f'Target VT runtime mask was not created for {unit}')
     for name in ('getty','autovt'):
-        unit=f"{name}@tty{state['target_vt']}.service"
+        unit=f"{name}@tty{vt}.service"
         info=properties(host.run(['systemctl','show',unit,'--property=LoadState','--property=ActiveState'],check=False).stdout)
         if info.get('LoadState')!='masked' or info.get('ActiveState') not in ('inactive','failed'):
             raise BenchError(f'Target VT reservation did not hold for {unit}; refusing takeover')
@@ -556,6 +568,16 @@ def wait_session(host, record, state, directory, layout):
     raise BenchError(f"Session readiness timed out: {last_error}")
 
 
+def observe_session(host, record, state, layout):
+    seconds = state["plan"]["seconds_per_target"]
+    if type(seconds) is not int or not 5 <= seconds <= 120:
+        raise BenchError("Pilot dwell time must be 5–120 seconds per desktop")
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        verify_session(host, record, state, layout)
+        time.sleep(1)
+
+
 def worker(host, layout=Layout()):
     record = load_setup(host, layout)
     with control_lock(layout, wait=True):
@@ -633,10 +655,7 @@ def worker(host, layout=Layout()):
                     while True:
                         signal.pause()  # PID 1's fixed 90-second worker deadline must recover it.
                 update(directory, state, "observe", target=target)
-                deadline = time.monotonic() + state["plan"]["seconds_per_target"]
-                while time.monotonic() < deadline:
-                    verify_session(host, record, state, layout)
-                    time.sleep(1)
+                observe_session(host, record, state, layout)
                 if state["plan"].get("presentation_probe"):
                     for scenario in SCENARIOS:
                         verify_session(host, record, state, layout)
@@ -834,16 +853,15 @@ def recover(host, layout=Layout()):
                 state["fault_uinput_cleanup"] = "failed" if Path(sysname).exists() else "passed"
                 if state["fault_uinput_cleanup"] != "passed":
                     errors.append("Fault recovery left its virtual input device registered")
-        fixture = Path(state["fixture"])
-        if fixture.parent != Path("/home") or fixture.name != ".vela-benchmark-" + state["run_id"]:
-            errors.append("Invalid fixture cleanup path")
-        else:
-            try:
-                (fixture / "sentinel").unlink(missing_ok=True)
-                if fixture.exists():
-                    fixture.rmdir()
-            except OSError as exc:
-                errors.append(str(exc))
+        try:
+            fixture = fixture_path(state)
+            if fixture.is_symlink():
+                raise BenchError("Invalid symlink fixture cleanup path")
+            (fixture / "sentinel").unlink(missing_ok=True)
+            if fixture.exists():
+                fixture.rmdir()
+        except (BenchError, OSError) as exc:
+            errors.append(str(exc))
         if state.get("restore_required"):
             if state["display_manager_was_active"]:
                 if stopped:

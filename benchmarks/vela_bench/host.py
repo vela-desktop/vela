@@ -35,6 +35,9 @@ RECOVERY_SECONDS = 300
 SAFE_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C", "LANG": "C"}
 BASE_MODULES = ("__init__.py", "archive.py", "model.py", "discovery.py", "host.py", "pilot.py")
 MODULES = BASE_MODULES + ("diagnostics.py", "conditions.py", "calibration.py", "qualification.py", "campaign.py", "measurements.py", "desktop.py", "workloads.py", "platform_workloads.py", "pixels.py", "resources.py", "interactions.py", "corpus.py", "contention.py", "desktop_legacy.py", "desktop_pixels.py")
+INSTRUMENTS = ("vela-bench-probe", "vela-bench-desktop", "vela-screen-dump", "vela-bench-input", "vela-slowgpu",
+               "vela-bench-scene", "vela-pattern", "vela-bench-corpus-qt", "vela-bench-corpus-gtk",
+               "vela-bench-corpus-web", "vela-bench-cpuload")
 
 
 @dataclass(frozen=True)
@@ -82,6 +85,9 @@ class HostOperationError(BenchError):
 
 class Host:
     """Bounded shell-free operations; replace this interface in CPU tests."""
+
+    def which(self, command):
+        return shutil.which(command, path=SAFE_ENV["PATH"])
 
     def run(self, argv, *, check=True, timeout=20):
         try:
@@ -178,7 +184,9 @@ def isolation_properties(uid, layout, private_homes=()):
     paths = ["/home", "/root"]
     for value in private_homes:
         path = Path(value)
-        protected = (base, layout.helper, Path("/usr/bin"), Path("/etc"), Path("/run"), Path("/tmp"), Path("/var/tmp"))
+        # These constants protect namespace mounts; no file is opened in them.
+        protected = (base, layout.helper, Path("/usr/bin"), Path("/etc"), Path("/run"),
+                     Path("/tmp"), Path("/var/tmp"))  # NOSONAR S5443: containment comparisons only, not temporary files.
         if not path.is_absolute() or any(path == item or path in item.parents for item in protected):
             raise BenchError(f"Cannot isolate this nonstandard home layout: {path}")
         if str(path) not in paths and not str(path).startswith(("/home/", "/root/")):
@@ -199,7 +207,7 @@ def pam_policy(pam_dir=Path("/etc/pam.d")):
 
 
 def setup_preview(layout=Layout()):
-    return {"account": ACCOUNT, "home": str(layout.home), "password": "locked", "supplementary_groups": [],
+    return {"account": ACCOUNT, "home": str(layout.home), "password": "locked", "supplementary_groups": [],  # NOSONAR S2068: status label, never a credential.
             "launcher": str(layout.helper), "pam_service": "vela-benchmark", "linger": False,
             "persistent_resources": [str(layout.base), str(layout.helper.parent), "/etc/pam.d/vela-benchmark",
                                      "/etc/systemd/system/vela-benchmark-pilot.service",
@@ -238,11 +246,35 @@ def load_setup(host, layout=Layout()):
     if not isinstance(record, dict) or record.get("schema") != 1 or record.get("status") != "ready":
         raise BenchError("Incomplete/unsupported benchmark setup; rerun setup to inspect it")
     check_account(record, host, layout)
+    owned_installation_files(record, layout)
     for path, digest in record["files"].items():
         trusted(path)
         if file_hash(path) != digest:
             raise BenchError(f"Installed benchmark resource changed: {path}")
     return record
+
+
+def owned_installation_files(record, layout):
+    """Never turn a persisted ownership list into arbitrary root file access."""
+    uid = record.get("uid")
+    if type(uid) is not int or uid <= 0:
+        raise BenchError("Invalid owned installation UID")
+    allowed = [layout.helper,
+               *(layout.helper.parent / "vela_bench" / name for name in MODULES),
+               *(layout.helper.parent / name for name in INSTRUMENTS),
+               layout.path("etc/pam.d/vela-benchmark"),
+               layout.path("etc/systemd/system") / PILOT_UNIT,
+               layout.path("etc/systemd/system") / FAULT_UNIT,
+               layout.path(f"etc/systemd/system/user@{uid}.service.d/70-vela-benchmark.conf")]
+    files = record.get("files")
+    if not isinstance(files, dict) or files.keys() - {str(path) for path in allowed}:
+        raise BenchError("Unexpected owned installation path")
+    parents = record.get("created_code_parents", [])
+    allowed_parents = {str(path) for path in layout.helper.parent.parents}
+    if (not isinstance(parents, list)
+            or any(not isinstance(name, str) or name not in allowed_parents for name in parents)):
+        raise BenchError("Unexpected owned installation parent")
+    return [path for path in allowed if str(path) in files]
 
 
 def pending_account_creation(record, host, layout):
@@ -284,7 +316,7 @@ def install(host, layout=Layout(), source=None, pam_dir=Path("/etc/pam.d"), priv
     source = Path(source or Path(__file__).parent)
     policy = pam_policy(pam_dir)
     for command in ("useradd", "usermod", "userdel", "groupdel", "loginctl", "systemctl", "systemd-run", "chvt", "fgconsole", "setpriv", "busctl"):
-        if shutil.which(command, path=SAFE_ENV["PATH"]) is None:
+        if host.which(command) is None:
             raise BenchError(f"Missing setup prerequisite: {command}")
     previous = None
     retry_account = False
@@ -502,7 +534,7 @@ def probe_bytes(path):
     path = Path(path)
     if not path.is_file() or path.stat().st_size > 8 * 1024 * 1024:
         raise BenchError("Probe must be an ELF executable of at most 8 MiB")
-    with path.open("rb") as stream:
+    with path.open("rb") as stream:  # NOSONAR S8707: administrator-selected build input, never executed as root.
         data = stream.read(8 * 1024 * 1024 + 1)
     if len(data) > 8 * 1024 * 1024 or not data.startswith(b"\x7fELF"):
         raise BenchError("Probe must be an ELF executable; build the vela-bench-probe target first")
@@ -513,14 +545,8 @@ def instrument_payload(layout, directory):
     if directory is None:
         return {}
     payload = {str(layout.helper.parent / name): probe_bytes(Path(directory) / name)
-            for name in ("vela-bench-probe", "vela-bench-desktop", "vela-screen-dump", "vela-bench-input")}
-    if (Path(directory) / "vela-slowgpu").exists():
-        payload[str(layout.helper.parent / "vela-slowgpu")] = probe_bytes(Path(directory) / "vela-slowgpu")
-    if (Path(directory) / "vela-pattern").exists():
-        payload[str(layout.helper.parent / "vela-pattern")] = probe_bytes(Path(directory) / "vela-pattern")
-    if (Path(directory) / "vela-bench-scene").exists():
-        payload[str(layout.helper.parent / "vela-bench-scene")] = probe_bytes(Path(directory) / "vela-bench-scene")
-    for name in ("vela-bench-corpus-qt", "vela-bench-corpus-gtk", "vela-bench-corpus-web", "vela-bench-cpuload"):
+            for name in INSTRUMENTS[:4]}
+    for name in INSTRUMENTS[4:]:
         if (Path(directory) / name).exists():
             payload[str(layout.helper.parent / name)] = probe_bytes(Path(directory) / name)
     return payload
@@ -557,6 +583,7 @@ def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=No
         if not isinstance(record, dict) or record.get("schema") != 1 or record.get("status") not in ("ready", "updating"):
             raise BenchError("Code update requires a completed owned setup")
         check_account(record, host, layout)
+        owned_installation_files(record, layout)
         require_workers_stopped(host)
         if host.pids(record["uid"]) or layout.path(f"run/user/{record['uid']}").exists():
             raise BenchError("Stop and restore the pilot before updating installed code")
@@ -572,7 +599,7 @@ def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=No
         # Original core resources must still be present in the ownership record;
         # existing unowned paths remain rejected by the checks below.
         additions = {str(layout.helper.parent / "vela_bench" / name) for name in MODULES if name not in BASE_MODULES}
-        additions |= {str(layout.helper.parent / name) for name in ("vela-bench-probe", "vela-bench-desktop", "vela-screen-dump", "vela-bench-input", "vela-slowgpu", "vela-bench-scene", "vela-pattern", "vela-bench-corpus-qt", "vela-bench-corpus-gtk", "vela-bench-corpus-web", "vela-bench-cpuload")}
+        additions |= {str(layout.helper.parent / name) for name in INSTRUMENTS}
         additions.add(str(layout.path("etc/systemd/system") / FAULT_UNIT))
         if not isinstance(record.get("files"), dict) or payload.keys() - record["files"].keys() - additions:
             raise BenchError("Installed code layout differs; code-only update refused")
@@ -631,6 +658,7 @@ def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=No
 
 def uninstall(host, layout=Layout()):
     record = load_setup(host, layout)
+    owned_files = owned_installation_files(record, layout)
     with control_lock(layout):
         require_workers_stopped(host)
         if (layout.base / "active.json").exists():
@@ -669,8 +697,8 @@ def uninstall(host, layout=Layout()):
         if record.get("mail_directory"):
             (mail / ACCOUNT).unlink(missing_ok=True)
             mail.rmdir()
-        for name in record["files"]:
-            Path(name).unlink()
+        for path in owned_files:
+            path.unlink()
         dropin_dir = layout.path(f"etc/systemd/system/user@{record['uid']}.service.d")
         if record.get("created_dropin_directory") and dropin_dir.exists() and not any(dropin_dir.iterdir()):
             dropin_dir.rmdir()

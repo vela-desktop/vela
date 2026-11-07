@@ -120,7 +120,7 @@ def export_latest_pilot(helper, output):
     uid, gid = os.environ.get("SUDO_UID", ""), os.environ.get("SUDO_GID", "")
     if uid.isdigit() and gid.isdigit() and int(uid) > 0:
         for path in (directory, *directory.iterdir()):
-            os.chown(path, int(uid), int(gid))
+            os.chown(path, int(uid), int(gid))  # NOSONAR S8707: only newly created exclusive export contents.
     diagnostics = ("not requested" if not data.get("diagnostics_requested") else
                    "complete" if data["diagnostics_complete"] else "incomplete")
     print(f"Pilot: {data['result']}; presentation diagnostics: {diagnostics}")
@@ -137,7 +137,7 @@ def export_latest_campaign(helper, output):
     uid, gid = os.environ.get("SUDO_UID", ""), os.environ.get("SUDO_GID", "")
     if uid.isdigit() and gid.isdigit() and int(uid) > 0:
         for path in (directory, *directory.rglob("*")):
-            os.chown(path, int(uid), int(gid))
+            os.chown(path, int(uid), int(gid))  # NOSONAR S8707: only newly created exclusive export contents.
     print(f"Report: {directory / 'report.html'}")
 
 
@@ -161,7 +161,8 @@ def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exerci
         command.append("--exercise")
     for phase in phases or []:
         command += ["--phase", phase]
-    status = subprocess.call(command, env=SAFE_ENV)
+    # The installed parser revalidates fixed selections; no shell or agent RPC.
+    status = subprocess.call(command, env=SAFE_ENV)  # NOSONAR S8705: explicit local administrator invocation.
     if status in (0, 1):
         export_latest_campaign(helper, args.output)
     return status
@@ -252,7 +253,7 @@ def main(argv=None):
                     command.append("--conditions")
                 if args.calibrate:
                     command.append("--calibrate")
-            status = subprocess.call(command, env=SAFE_ENV)
+            status = subprocess.call(command, env=SAFE_ENV)  # NOSONAR S8705: fixed launcher/parser, shell-free local CLI.
             if args.command == "session-test" and status in (0, 1):
                 export_latest_pilot(helper, args.output)
             return status

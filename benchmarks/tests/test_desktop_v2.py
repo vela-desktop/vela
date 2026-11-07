@@ -54,6 +54,19 @@ def resize(directory):
 
 
 class DesktopV2(unittest.TestCase):
+    def test_binary_marker_tolerance_includes_low_green_bytes_and_excludes_outside_values(self):
+        from vela_bench.pixels import png_rgb
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'image.png';path.write_bytes(picture([80,80,640,360]))
+            width,height,rgb=png_rgb(path)
+            at=(96*width+96)*3
+            for color,accepted in (((188,12,188),True),((228,52,228),True),
+                                   ((187,32,208),False),((229,32,208),False),
+                                   ((208,11,208),False),((208,53,208),False)):
+                rgb[at:at+3]=bytes(color)
+                with self.subTest(color=color), patch('vela_bench.desktop_pixels.png_rgb',return_value=(width,height,rgb)):
+                    self.assertEqual(bool(evidence(path)['markers']),accepted)
+
     def test_detector_reads_encoded_identity_footer_geometry_and_rgb_grid(self):
         with tempfile.TemporaryDirectory() as temporary:
             path=Path(temporary)/'image.png';path.write_bytes(picture([80,80,640,360]))

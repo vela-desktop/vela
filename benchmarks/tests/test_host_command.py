@@ -12,10 +12,24 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from vela_bench import BenchError
 from vela_bench.host import Host, HostOperationError
+from vela_bench.pilot import observe_session
 
 
 class CommandDiagnostics(unittest.TestCase):
+    def test_observation_dwell_rejects_unbounded_persisted_values(self):
+        for seconds in (None, True, "30", -1, 0, 4, 121, 10**100, float("nan"), float("inf")):
+            with self.subTest(seconds=seconds), patch("vela_bench.pilot.verify_session") as verify:
+                with self.assertRaisesRegex(BenchError, "5–120 seconds"):
+                    observe_session(None, None, {"plan": {"seconds_per_target": seconds}}, None)
+                verify.assert_not_called()
+        with patch("vela_bench.pilot.time.monotonic", side_effect=[10, 10, 14, 15]), \
+                patch("vela_bench.pilot.time.sleep") as sleep, patch("vela_bench.pilot.verify_session") as verify:
+            observe_session(None, None, {"plan": {"seconds_per_target": 5}}, None)
+        self.assertEqual(verify.call_count, 2)
+        self.assertEqual(sleep.call_count, 2)
+
     def test_session_dispatch_really_executes_and_keeps_the_payload_exit_code(self):
         if os.getuid() == 0:
             self.skipTest("the actual exec fixture must run unprivileged")

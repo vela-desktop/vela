@@ -5,6 +5,12 @@ import re
 from . import BenchError
 from .pixels import png_rgb
 
+# These are binary RGB samples, including control-byte values in the green
+# channel. List each accepted byte explicitly rather than using text ranges.
+_MAGENTA_CANDIDATE = re.compile(b''.join(
+    b'[' + re.escape(bytes(range(channel - 20, channel + 21))) + b']'
+    for channel in (208, 32, 208)))
+
 
 def evidence(path):
     width,height,rgb=png_rgb(path)
@@ -13,7 +19,7 @@ def evidence(path):
         at=(y*width+x)*3;return tuple(rgb[at:at+3])
     def close(value,color):return all(abs(a-b)<=20 for a,b in zip(value,color))
     found=[]
-    for match in re.finditer(b'[\xbc-\xe4][\x0c-\x34][\xbc-\xe4]',rgb):
+    for match in _MAGENTA_CANDIDATE.finditer(rgb):
         if match.start()%3:continue
         p=match.start()//3;x,y=p%width,p//width
         if x+608>width or y+32>height:continue
