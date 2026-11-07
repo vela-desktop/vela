@@ -51,7 +51,7 @@ if(FILES_HAVE_MEDIA)
     target_compile_definitions(vela-files-core PUBLIC VELA_FILES_MEDIA)
 endif()
 target_link_libraries(vela-files-core PUBLIC
-    vela-rendering
+    vela-process
     Qt6::DBus
     Qt6::Gui
     Qt6::Network

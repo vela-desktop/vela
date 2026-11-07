@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "renderingpolicy.h"
+#include "processenvironment.h"
 
 #include <QQuickWindow>
 
@@ -9,10 +10,8 @@
 
 namespace {
 
-constexpr auto aaVariable = "QSG_DISTANCEFIELD_ANTIALIASING";
 std::once_flag textOnce;
 std::once_flag antialiasingOnce;
-bool injectedGrayscale = false;
 
 } // namespace
 
@@ -32,9 +31,7 @@ void configureGrayscaleAntialiasing()
     std::call_once(antialiasingOnce, [] {
         // Qt exposes SDF AA through the environment, not QQuickWindow.
         // Respect explicit overrides, including an empty value.
-        if (!qEnvironmentVariableIsSet(aaVariable)) {
-            injectedGrayscale = qputenv(aaVariable, "gray");
-        }
+        process::setPrivateEnvironmentDefault("QSG_DISTANCEFIELD_ANTIALIASING", "gray");
     });
 }
 
@@ -42,15 +39,6 @@ void configureApplication()
 {
     configureTextRenderer();
     configureGrayscaleAntialiasing();
-}
-
-QProcessEnvironment externalProcessEnvironment()
-{
-    auto environment = QProcessEnvironment::systemEnvironment();
-    if (injectedGrayscale && qgetenv(aaVariable) == "gray") {
-        environment.remove(QString::fromLatin1(aaVariable));
-    }
-    return environment;
 }
 
 } // namespace vela::rendering

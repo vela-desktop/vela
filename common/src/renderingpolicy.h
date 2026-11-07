@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <QProcessEnvironment>
-
 namespace vela::rendering {
 
 // Configure before constructing Qt Quick text. Individual QML Text elements
@@ -17,9 +15,5 @@ void configureGrayscaleAntialiasing();
 
 // Explicit and idempotent: call before QGuiApplication / Qt Quick startup.
 void configureApplication();
-
-// Remove only the antialiasing setting Vela injected. Preserve the user's
-// original environment and all unrelated variables for launched programs.
-QProcessEnvironment externalProcessEnvironment();
 
 } // namespace vela::rendering

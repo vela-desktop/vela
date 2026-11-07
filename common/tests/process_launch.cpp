@@ -21,7 +21,7 @@ bool childIsCorrect(const QString& expected)
 {
     const bool aa = expected == QLatin1String("unset")
         ? !qEnvironmentVariableIsSet(setting)
-        : qEnvironmentVariable(setting) == expected;
+        : qEnvironmentVariableIsSet(setting) && qEnvironmentVariable(setting) == expected;
     return aa && qgetenv(retained) == "retained";
 }
 
@@ -47,7 +47,10 @@ bool launchChildren(const QString& expected)
     while (elapsed.elapsed() < 5000) {
         QFile output(path);
         if (output.open(QIODevice::ReadOnly)) {
-            return output.readAll() == "ok";
+            const QByteArray result = output.readAll();
+            if (!result.isEmpty()) {
+                return result == "ok";
+            }
         }
         QThread::msleep(10);
     }
@@ -56,8 +59,11 @@ bool launchChildren(const QString& expected)
 
 bool checkCase(const QString& expected)
 {
-    vela::rendering::configureApplication();
-    vela::rendering::configureApplication(); // idempotence
+    qunsetenv(retained);
+    vela::process::setPrivateEnvironmentDefault(setting, "gray");
+    vela::process::setPrivateEnvironmentDefault(setting, "gray"); // idempotence
+    // Variables set after policy initialization must reach new children too.
+    qputenv(retained, "retained");
     const QString parentValue = QString::fromUtf8(qgetenv(setting));
     const bool correctParent = expected == QLatin1String("unset")
         ? parentValue == QLatin1String("gray")
@@ -86,9 +92,8 @@ int main(int argc, char** argv)
         output.write(good ? "ok" : "bad");
         return good ? 0 : 1;
     }
-    qputenv(retained, "retained");
-    if (args.contains(QStringLiteral("--override-parent"))) {
-        return checkCase(QStringLiteral("subpixel")) ? 0 : 1;
+    if (args.size() >= 3 && args[1] == QLatin1String("--override-parent")) {
+        return checkCase(args[2]) ? 0 : 1;
     }
 
     qunsetenv(setting);
@@ -96,17 +101,27 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // A fresh process is needed because configureApplication() runs once.
-    QProcess overridden;
-    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-    environment.insert(QString::fromLatin1(setting), QStringLiteral("subpixel"));
-    environment.insert(QString::fromLatin1(retained), QStringLiteral("retained"));
-    overridden.setProcessEnvironment(environment);
-    overridden.start(QCoreApplication::applicationFilePath(), { QStringLiteral("--override-parent") });
-    if (!overridden.waitForStarted(5000) || !overridden.waitForFinished(15000)
-        || overridden.exitStatus() != QProcess::NormalExit || overridden.exitCode() != 0) {
-        std::fprintf(stderr, "FAIL: user override did not survive external launch\n");
+    // Later environment changes must survive: launchers cannot use a startup
+    // snapshot, which would discard updated Wayland activation tokens too.
+    qputenv(setting, "subpixel");
+    if (!launchChildren(QStringLiteral("subpixel"))) {
+        std::fprintf(stderr, "FAIL: later environment change was discarded\n");
         return 1;
+    }
+
+    // Fresh parents distinguish user-supplied values from injected defaults.
+    for (const auto& value : { QStringLiteral("subpixel"), QString() }) {
+        QProcess overridden;
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(QString::fromLatin1(setting), value);
+        environment.insert(QString::fromLatin1(retained), QStringLiteral("retained"));
+        overridden.setProcessEnvironment(environment);
+        overridden.start(QCoreApplication::applicationFilePath(), { QStringLiteral("--override-parent"), value });
+        if (!overridden.waitForStarted(5000) || !overridden.waitForFinished(15000)
+            || overridden.exitStatus() != QProcess::NormalExit || overridden.exitCode() != 0) {
+            std::fprintf(stderr, "FAIL: user override did not survive external launch\n");
+            return 1;
+        }
     }
     return 0;
 }

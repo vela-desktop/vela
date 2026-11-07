@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "renderingpolicy.h"
+#include "processenvironment.h"
 
 #include <QProcess>
 
@@ -17,7 +17,7 @@ public:
     explicit ExternalProcess(QObject* parent = nullptr)
         : QProcess(parent)
     {
-        setProcessEnvironment(rendering::externalProcessEnvironment());
+        setProcessEnvironment(externalProcessEnvironment());
     }
 };
 
