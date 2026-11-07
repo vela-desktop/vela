@@ -130,6 +130,17 @@ class HostOperations(unittest.TestCase):
             with self.subTest(tag=value), self.assertRaisesRegex(BenchError, "Invalid benchmark account tag"):
                 useradd_command(self.layout, value)
 
+    def test_serialized_account_ids_must_be_integers_even_when_numerically_equal(self):
+        from vela_bench.host import load_setup
+        record = self.setup_account()
+        for key in ("uid", "gid"):
+            for value in (1240.0, "1240", True, None):
+                atomic_json(self.layout.record, dict(record, **{key: value}))
+                self.host.calls.clear()
+                with self.subTest(key=key,value=value), self.assertRaisesRegex(BenchError, "account identity"):
+                    load_setup(self.host, self.layout)
+                self.assertEqual(self.host.calls, [])
+
     def test_ownership_record_cannot_add_files_or_cleanup_parents_outside_the_installation(self):
         import copy
         import hashlib

@@ -84,15 +84,23 @@ class HostOperationError(BenchError):
 
 
 class Host:
-    """Bounded shell-free operations; replace this interface in CPU tests."""
+    """Transport for fixed launcher operations; replace it in CPU tests.
+
+    Mutating entry points require root. Builders constrain operations and
+    identities; persisted privileged state passes trusted() ancestor/ownership
+    checks before use. This transport is never exposed as a command RPC.
+    """
 
     def which(self, command):
         return shutil.which(command, path=SAFE_ENV["PATH"])
 
     def run(self, argv, *, check=True, timeout=20):
         try:
-            result = subprocess.run(argv, env=SAFE_ENV, stdin=subprocess.DEVNULL,
-                                    capture_output=True, text=True, timeout=timeout, check=False)
+            # S6350 does not model the root-owned state/NSS checks at callers.
+            # Keep the exception on this fixed-operation transport only; builders
+            # still validate options, account tags and numeric console identities.
+            result = subprocess.run(argv, env=SAFE_ENV, stdin=subprocess.DEVNULL,  # NOSONAR S6350: validated fixed operations, no untrusted command API.
+                                    capture_output=True, text=True, timeout=timeout, check=False, shell=False)
         except subprocess.TimeoutExpired as exc:
             raise HostOperationError(argv, stdout=exc.stdout, stderr=exc.stderr, timeout=timeout) from exc
         except OSError as exc:
@@ -231,7 +239,8 @@ def personal_homes():
 def check_account(record, host, layout=Layout()):
     user = host.user()
     group = host.group()
-    if (not user or not group or user.pw_uid == 0 or user.pw_uid != record.get("uid")
+    if (type(record.get("uid")) is not int or type(record.get("gid")) is not int
+            or not user or not group or user.pw_uid == 0 or user.pw_uid != record.get("uid")
             or user.pw_gid != record.get("gid") or group.gr_gid != record["gid"]
             or user.pw_dir != str(layout.home) or user.pw_shell != "/bin/sh"
             or user.pw_gecos != record.get("account_tag") or set(host.groups(user)) != {user.pw_gid}
@@ -245,7 +254,10 @@ def load_setup(host, layout=Layout()):
     record = read_json(layout.record)
     if not isinstance(record, dict) or record.get("schema") != 1 or record.get("status") != "ready":
         raise BenchError("Incomplete/unsupported benchmark setup; rerun setup to inspect it")
-    check_account(record, host, layout)
+    user = check_account(record, host, layout)
+    # Bind command identities to the freshly verified NSS entry, rather than
+    # forwarding even equal-looking serialized values (e.g. a float UID).
+    record.update(uid=user.pw_uid, gid=user.pw_gid, account_tag=user.pw_gecos)
     owned_installation_files(record, layout)
     for path, digest in record["files"].items():
         trusted(path)

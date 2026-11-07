@@ -18,6 +18,11 @@ from vela_bench.pilot import observe_session
 
 
 class CommandDiagnostics(unittest.TestCase):
+    def test_host_transport_passes_metacharacters_as_literal_argv_without_a_shell(self):
+        arguments = ["--fixture-option", "; exit 91", "$(printf unexpected)", "`id`", "two words"]
+        result = Host().run([sys.executable, "-I", "-c", "import json,sys; print(json.dumps(sys.argv[1:]))", *arguments])
+        self.assertEqual(json.loads(result.stdout), arguments)
+
     def test_observation_dwell_rejects_unbounded_persisted_values(self):
         for seconds in (None, True, "30", -1, 0, 4, 121, 10**100, float("nan"), float("inf")):
             with self.subTest(seconds=seconds), patch("vela_bench.pilot.verify_session") as verify:

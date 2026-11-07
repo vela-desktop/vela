@@ -1002,7 +1002,10 @@ annotations identify false positives from the agentic-workflow rules S8705 and
 S8707: this is an operator-invoked local CLI, with deliberately chosen input and
 output paths, not an LLM tool or server endpoint. Other annotations identify
 the password-lock status label and temporary-directory constants used only for
-namespace containment comparisons. Privileged state is still validated: owned
+namespace containment comparisons. The S6350 annotation on the fixed-operation
+executor documents its root-owned state and freshly verified NSS identity
+boundary; it is not a command RPC. A real harmless child-process fixture verifies
+that metacharacters remain literal arguments without a shell. Privileged state is still validated: owned
 installation files come from a fixed allowlist, fixture paths are reconstructed
 from bounded run IDs, VT numbers and dwell times are bounded, and corpus images
 use reconstructed filenames with symlinks refused. CPU regressions exercise
