@@ -259,7 +259,8 @@ primary taskbar only, like the microphone:
 | … `test-shell <pid>` | that client's captures, even ongoing ones, stop being reported; a bad pid is ignored |
 | `TheIndicator` (real shell) | the red dot appears, the tooltip and the menu open, the dot stays half a second after the end and then goes; Task View's previews never light it |
 | … a client that dies while capturing | its report goes with it |
-| `shell-screen-sharing` (unit) | JSON to entries: names from app ids and binaries, portal entries from PipeWire's apps, targets' wording, the second of grace |
+| `compositor.capture-watch` (no GPU) | the same rules on wlroots' own managers, a headless output drawn by pixman, fake sources and a clock the test moves: the 1 s and 2 s thresholds, pending frames, the timer, the shell, test-shell and VELA_CAPTURE_UNREPORTED, a client connected before the watch, clients that die mid-capture, copies of the test running as `xdg-desktop-portal-wlr` and `vela-shell`; it runs on CI, which has no GPU |
+| `shell-screen-sharing` (unit) | JSON to entries: names from app ids and binaries, portal entries from PipeWire's apps, targets' wording, the second of grace, broken lines, a compositor that restarts or starts after the shell |
 | `shell-notification-silence` (unit) | the rule holds popups back (critical ones pass), ORed with Do not disturb, which it never changes nor remembers |
 | `audio-view` (private PipeWire) | a fake `xdpw-stream-` source and a fake app's video stream linked to it: `screenUsers` names the app; paused still counts; an app watching a camera doesn't |
 | `settings-preferences`, `shell-config` (unit) | the switch writes `notifications/silenceWhileSharing`; the shell follows it live, on by default |
