@@ -138,6 +138,23 @@ private slots:
         server.setAutomaticDoNotDisturb(false);
         QVERIFY(!server.silenced());
     }
+
+    // x-vela-expires: critical, so it passes Do not disturb, but it expires
+    // into the notification center like others (a peripheral's battery,
+    // docs/battery-notifications.md §5). Critical alone stays.
+    void criticalThatExpires()
+    {
+        NotificationServer server;
+        server.setDoNotDisturb(true);
+        const QVariantMap expires { { QStringLiteral("urgency"), 2 }, { QStringLiteral("x-vela-expires"), true } };
+        server.Notify(QStringLiteral("Devices"), 0, QString(), QStringLiteral("expires"), QString(), {}, expires, 200);
+        notify(server, QStringLiteral("stays"), true);
+        QCOMPARE(server.count(), 2);
+        QTRY_COMPARE(server.count(), 1);
+        QCOMPARE(historyCount(server), 1);
+        QTest::qWait(300);
+        QCOMPARE(server.count(), 1); // 5000 ms asked, critical: stays
+    }
 };
 
 int main(int argc, char** argv)
