@@ -215,6 +215,15 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-peripheral-battery-test PRIVATE Qt6::Core Qt6::DBus Qt6::Quick Qt6::Test)
     add_test(NAME shell-peripheral-batteries COMMAND vela-peripheral-battery-test)
 
+    # Battery notifications (docs/battery-notifications.md §9): the policy
+    # and UPower's properties read into it, with no D-Bus...
+    qt_add_executable(vela-battery-alerts-test tests/batteryalerts.cpp
+        src/batteryalerts.cpp src/batteryalerts.h src/upowerbatteries.cpp src/upowerbatteries.h)
+    target_include_directories(vela-battery-alerts-test PRIVATE src)
+    target_compile_options(vela-battery-alerts-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-battery-alerts-test PRIVATE Qt6::DBus Qt6::Test)
+    add_test(NAME shell-battery-alerts COMMAND vela-battery-alerts-test)
+
     # Run the same ELF/AppImage classification used by desktop and Vela Files.
     qt_add_executable(vela-executable-file-test tests/executablefile.cpp ${PROJECT_SOURCE_DIR}/common/executablefile.h)
     target_compile_options(vela-executable-file-test PRIVATE -Wall -Wextra)
