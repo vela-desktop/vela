@@ -115,7 +115,14 @@ void BatteryNotices::show(const BatteryReading& reading, BatteryAlerts::Level le
         app = tr("Devices");
         icon = QString::fromLatin1(device.icon);
         title = critical ? tr("%1 battery is critical").arg(name) : tr("%1 battery is low").arg(name);
-        body = critical ? tr("Recharge the device now.") : tr("Recharge the device soon.");
+        // Only a real percentage: HID++ mice report just a level.
+        if (reading.percentage >= 0) {
+            const int left = int(std::lround(reading.percentage));
+            body = critical ? tr("%1% remaining. Recharge the device now.").arg(left)
+                            : tr("%1% remaining. Recharge the device soon.").arg(left);
+        } else {
+            body = critical ? tr("Recharge the device now.") : tr("Recharge the device soon.");
+        }
         // A mouse at its last charge needs a popup through Do not disturb,
         // not one stuck on screen until dismissed.
         if (critical) {

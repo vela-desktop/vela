@@ -92,6 +92,14 @@
         <translation>%1: batteria scarica</translation>
     </message>
     <message>
+        <source>%1% remaining. Recharge the device now.</source>
+        <translation>Rimane il %1%. Ricarica subito il dispositivo.</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Recharge the device soon.</source>
+        <translation>Rimane il %1%. Ricarica presto il dispositivo.</translation>
+    </message>
+    <message>
         <source>Recharge the device now.</source>
         <translation>Ricarica subito il dispositivo.</translation>
     </message>

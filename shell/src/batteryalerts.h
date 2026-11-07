@@ -30,7 +30,7 @@ struct BatteryReading {
     bool charging = false; // charging, fully charged, waiting to charge
     bool discharging = false; // discharging, empty, waiting to discharge
     Warning warning = Warning::Unknown;
-    double percentage = -1; // 0-100, -1 if not a valid reading
+    double percentage = -1; // 0-100, -1 if not a valid reading or only a guess
 };
 
 class BatteryAlerts {

@@ -131,8 +131,14 @@ notification server.
 |---|---|---|---|---|---|
 | PC, low | Power | Battery low | "18% remaining. Plug in your PC." | normal | like others |
 | PC, critical | Power | Battery critically low | "4% remaining. Plug in your PC now." | critical | **no**, until dismissed or plugged in |
-| Peripheral, low | Devices | "Logitech MX Vertical battery is low" | "Recharge the device soon." | normal | like others |
-| Peripheral, critical | Devices | "... battery is critical" | "Recharge the device now." | critical | **yes**, into the notification center |
+| Peripheral, low | Devices | "Logitech MX Vertical battery is low" | "Recharge the device soon.", or "15% remaining. Recharge the device soon." | normal | like others |
+| Peripheral, critical | Devices | "... battery is critical" | "Recharge the device now.", or "3% remaining. ..." | critical | **yes**, into the notification center |
+
+The percentage is there only when it is real. A device with a coarse
+`BatteryLevel` (HID++ mice: the kernel's `capacity_level`, no `capacity`)
+has none: UPower makes one up from the level (low is 10%, "should be
+ignored") and Vela leaves it out rather than show a number the device
+never gave. Headsets and keyboards over Bluetooth report a real one.
 
 A peripheral without a model is named by its kind ("Mouse battery is low",
 "Headset", "Game controller"...), "Wireless device" when the kind isn't

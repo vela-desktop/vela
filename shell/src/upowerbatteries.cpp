@@ -138,10 +138,16 @@ BatteryReading UPowerBatteries::read(const QString& path, const QVariantMap& pro
         default: reading.warning = BatteryReading::Warning::Unknown; break;
         }
     }
-    // A peripheral just connected can say 0% before its first real reading.
+    // A device with a coarse level has no percentage at all: UPower's is
+    // made up from the level ("should be ignored") and never shown.
     const bool coarse = batteryLevel.isValid() && batteryLevel.toUInt() != LevelNone;
+    if (!reading.system && coarse) {
+        reading.percentage = -1;
+    }
+    // A peripheral just connected can say 0% before its first real reading.
     if (!reading.system && !coarse && reading.percentage == 0.0 && !reading.discharging) {
         reading.warning = BatteryReading::Warning::Unknown;
+        reading.percentage = -1;
     }
     return reading;
 }

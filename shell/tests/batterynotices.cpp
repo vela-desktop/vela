@@ -390,6 +390,28 @@ private Q_SLOTS:
         QCOMPARE(summaries(qobject_cast<QAbstractItemModel*>(server.history())), QStringList { mouseCritical });
     }
 
+    // A real percentage is told, a coarse level's made-up one isn't.
+    void peripheralPercentage()
+    {
+        NotificationServer server;
+        BatteryNotices notices(&server, client());
+        notices.start();
+        QTRY_COMPARE(notices.readings(), 3);
+        m_fake->set(headsetPath, { { QStringLiteral("Percentage"), 14.6 }, { QStringLiteral("WarningLevel"), 3u },
+                                     { QStringLiteral("State"), 2u } });
+        const QString headsetLow = QStringLiteral("Headset battery is low");
+        QTRY_COMPARE(summaries(&server), QStringList { headsetLow });
+        QCOMPARE(body(&server, headsetLow), QStringLiteral("15% remaining. Recharge the device soon."));
+        m_fake->set(headsetPath, { { QStringLiteral("Percentage"), 3.0 }, { QStringLiteral("WarningLevel"), 4u } });
+        const QString headsetCritical = QStringLiteral("Headset battery is critical");
+        QTRY_COMPARE(summaries(&server), QStringList { headsetCritical });
+        QCOMPARE(body(&server, headsetCritical), QStringLiteral("3% remaining. Recharge the device now."));
+
+        m_fake->set(mousePath, { { QStringLiteral("WarningLevel"), 4u }, { QStringLiteral("BatteryLevel"), 4u } });
+        QTRY_COMPARE(summaries(&server).size(), 2);
+        QCOMPARE(body(&server, mouseCritical), QStringLiteral("Recharge the device now."));
+    }
+
     // Dismissed: not told again until it rearms.
     void dismissed()
     {

@@ -148,6 +148,24 @@ private Q_SLOTS:
         QCOMPARE(UPowerBatteries::read(mousePath, p).warning, Warning::Critical);
     }
 
+    void percentageOnlyWhenReal()
+    {
+        // A coarse level: UPower's 10% is made up from "low".
+        QCOMPARE(UPowerBatteries::read(mousePath, mx()).percentage, -1.0);
+        QVariantMap p = mx();
+        p[QStringLiteral("BatteryLevel")] = 1u; // None: a real percentage
+        QCOMPARE(UPowerBatteries::read(mousePath, p).percentage, 10.0);
+        p.remove(QStringLiteral("BatteryLevel")); // an older UPower
+        QCOMPARE(UPowerBatteries::read(mousePath, p).percentage, 10.0);
+        p[QStringLiteral("Percentage")] = 0.0;
+        p[QStringLiteral("State")] = 0u; // before the first reading
+        QCOMPARE(UPowerBatteries::read(mousePath, p).percentage, -1.0);
+        // The PC's DisplayDevice keeps its own, whatever it says.
+        QVariantMap pc = laptop(42.0);
+        pc[QStringLiteral("BatteryLevel")] = 3u;
+        QCOMPARE(UPowerBatteries::read(UPowerBatteries::displayDevice, pc).percentage, 42.0);
+    }
+
     void badPercentages()
     {
         for (const double bad : { -1.0, 120.0, std::numeric_limits<double>::quiet_NaN() }) {
