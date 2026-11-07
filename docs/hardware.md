@@ -4,9 +4,10 @@ Vela needs a GPU and driver exposing **Vulkan 1.4** with the dmabuf/DRM capabili
 
 ## Evidence, not a compatibility guarantee
 
-Two machines run the GPU-labeled suites (functional, sharpness and
-sharpness-cpu): an **AMD Radeon RX 9070 XT** and an
-**NVIDIA GeForce RTX 4070 Laptop GPU**. See the
+Two machines provide mandatory GPU-labeled test coverage (functional,
+sharpness and sharpness-cpu): an **AMD Radeon RX 9070 XT** and an
+**NVIDIA GeForce RTX 4070 Laptop GPU**. A third, experimental manual Intel
+ANV runner has been added, but has no confirmed passing full-suite baseline. See the
 [GPU CI policy](ci-quality.md#gpu-ci-policy) for mandatory coverage,
 candidate revision checks and release rules.
 
@@ -14,7 +15,7 @@ candidate revision checks and release rules.
 |---|---|---|
 | AMD Radeon RX 9070 XT + Mesa/RADV, CachyOS | Primary development machine and the AMD GPU CI runner: the GPU suites run on it for relevant GPU changes and releases, and it is used daily as a DRM session | Not representative of every AMD generation or every multi-display setup |
 | NVIDIA GeForce RTX 4070 Laptop GPU + proprietary driver, Arch/CachyOS | The NVIDIA GPU CI runner: the same GPU suites for relevant GPU changes and releases; driver-specific synchronization handling; manual tester reports | The runner's suites are headless, so DRM/KMS, screen sharing and suspend/resume rely on manual reports; known failures are tracked as issues (such as [#132](https://github.com/vela-desktop/vela/issues/132)) |
-| Intel + Mesa/ANV | Vulkan support is an intended path | No repeated automated real-hardware matrix is documented |
+| Intel Alder Lake-UP3 UHD Graphics (8086:46b3) + Mesa/ANV 26.2.5, CachyOS | Hardware Vulkan 1.4 and required DRM/dma-buf extensions confirmed; experimental manual Intel GPU CI workflow added | Full-suite baseline not yet established; timing-sensitive synchronization on a shared GPU engine and physical KMS need further testing |
 | NVK | Listed as an intended Vulkan driver option | Compatibility is not demonstrated by the AMD test runs |
 | VMs and virtio/Venus | Useful experimental debugging environment | Vulkan version, modifiers, dmabuf import and compositor behavior depend on the VM stack |
 | Hybrid and multi-GPU systems | Supported configurations are an architectural goal | Correct operation across GPU boundaries needs dedicated tests |
