@@ -497,6 +497,10 @@
         <translation>Notifiche</translation>
     </message>
     <message>
+        <source>Silenced while your screen is shared</source>
+        <translation>Silenziate mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
         <source>Clear all</source>
         <translation>Cancella tutto</translation>
     </message>
@@ -902,6 +906,37 @@
     <message>
         <source>Cancel</source>
         <translation>Annulla</translation>
+    </message>
+</context>
+<context>
+    <name>ScreenSharing</name>
+    <message>
+        <source>Your screen</source>
+        <translation>Il tuo schermo</translation>
+    </message>
+    <message>
+        <source>A window</source>
+        <translation>Una finestra</translation>
+    </message>
+    <message>
+        <source>A window of %1</source>
+        <translation>Una finestra di %1</translation>
+    </message>
+    <message>
+        <source>An app</source>
+        <translation>Un&apos;app</translation>
+    </message>
+    <message>
+        <source>%1 is sharing your screen</source>
+        <translation>%1 sta condividendo lo schermo</translation>
+    </message>
+    <message>
+        <source>%1 is sharing a window</source>
+        <translation>%1 sta condividendo una finestra</translation>
+    </message>
+    <message>
+        <source>These apps are sharing your screen:</source>
+        <translation>Queste app stanno condividendo lo schermo:</translation>
     </message>
 </context>
 <context>
@@ -1417,6 +1452,14 @@
     <message>
         <source>Cancel transfer</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen sharing</source>
+        <translation>Condivisione dello schermo</translation>
+    </message>
+    <message>
+        <source>Notifications are silenced meanwhile</source>
+        <translation>Nel frattempo le notifiche sono silenziate</translation>
     </message>
     <message>
         <source>%1 is using your microphone</source>

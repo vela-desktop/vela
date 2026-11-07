@@ -9,6 +9,7 @@ extern "C" {
 #include "legacy_names.h"
 }
 
+#include "clockformat.h"
 #include "iconprovider.h"
 #include "themefile.h"
 
@@ -18,6 +19,7 @@ extern "C" {
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QIcon>
+#include <QImageReader>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
@@ -163,7 +165,20 @@ void Preferences::reload()
     m_taskbarAllScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
     m_showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
     emit taskbarChanged();
+    m_desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
+    emit desktopChanged();
+    m_startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
+    const vela::start::Icon startIcon = vela::start::icon(settings);
+    m_startIcon = startIcon.kind;
+    m_startIconSource = startIcon.source;
+    emit startChanged();
+    m_clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
+    m_clock24 = vela::clock::hour24(settings);
+    m_clockSeconds = settings.value(QStringLiteral("taskbar/clockSeconds"), false).toBool();
+    m_notificationCount = settings.value(QStringLiteral("taskbar/notificationCount"), true).toBool();
+    emit clockChanged();
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
+    m_silenceWhileSharing = settings.value(QStringLiteral("notifications/silenceWhileSharing"), true).toBool();
     emit doNotDisturbChanged();
     m_clipboardHistory = settings.value(QStringLiteral("clipboard/history"), false).toBool();
     emit clipboardChanged();
@@ -521,6 +536,101 @@ void Preferences::setShowDesktopCorner(bool on)
     }
 }
 
+void Preferences::setDesktopIcons(bool on)
+{
+    if (on != m_desktopIcons) {
+        m_desktopIcons = on;
+        setShell(QStringLiteral("desktop/showIcons"), on);
+        emit desktopChanged();
+    }
+}
+
+void Preferences::setStartPinned(bool on)
+{
+    if (on != m_startPinned) {
+        m_startPinned = on;
+        setShell(QStringLiteral("start/showPinned"), on);
+        emit startChanged();
+    }
+}
+
+void Preferences::setStartIcon(const QString& kind, const QString& picture)
+{
+    if (kind != QLatin1String("vela") && kind != QLatin1String("distribution") && kind != QLatin1String("picture")) {
+        return;
+    }
+    QSettings settings = shellSettings();
+    if (kind == QLatin1String("picture") && !picture.isEmpty()) {
+        const QString path = picture.startsWith(QLatin1String("file:")) ? QUrl(picture).toLocalFile() : picture;
+        if (!path.startsWith(u'/') || !QFileInfo(path).isFile() || !QImageReader(path).canRead()) {
+            return;
+        }
+        settings.setValue(QStringLiteral("start/iconPicture"), path);
+    }
+    settings.setValue(QStringLiteral("start/icon"), kind);
+    settings.sync();
+    const vela::start::Icon icon = vela::start::icon(settings);
+    if (icon.kind != m_startIcon || icon.source != m_startIconSource) {
+        m_startIcon = icon.kind;
+        m_startIconSource = icon.source;
+        emit startChanged();
+    }
+}
+
+void Preferences::refreshStartIcon()
+{
+    const vela::start::Distribution distribution = vela::start::distribution();
+    const vela::start::Icon icon = vela::start::icon(shellSettings());
+    if (distribution.name != m_distribution.name || distribution.logo != m_distribution.logo
+        || icon.kind != m_startIcon || icon.source != m_startIconSource) {
+        m_distribution = distribution;
+        m_startIcon = icon.kind;
+        m_startIconSource = icon.source;
+        emit startChanged();
+    }
+}
+
+void Preferences::setClockDate(bool on)
+{
+    if (on != m_clockDate) {
+        m_clockDate = on;
+        setShell(QStringLiteral("taskbar/showDate"), on);
+        emit clockChanged();
+    }
+}
+
+void Preferences::setClock24(bool on)
+{
+    if (on != m_clock24) {
+        m_clock24 = on;
+        setShell(QStringLiteral("clock/hours"), on ? 24 : 12);
+        emit clockChanged();
+    }
+}
+
+void Preferences::setClockSeconds(bool on)
+{
+    if (on != m_clockSeconds) {
+        m_clockSeconds = on;
+        setShell(QStringLiteral("taskbar/clockSeconds"), on);
+        emit clockChanged();
+    }
+}
+
+void Preferences::setNotificationCount(bool on)
+{
+    if (on != m_notificationCount) {
+        m_notificationCount = on;
+        setShell(QStringLiteral("taskbar/notificationCount"), on);
+        emit clockChanged();
+    }
+}
+
+QString Preferences::timeFormat() const
+{
+    return vela::clock::timeFormat(m_clock24);
+}
+
 void Preferences::setTaskView(bool on)
 {
     if (on != m_taskView) {
@@ -535,6 +645,15 @@ void Preferences::setDoNotDisturb(bool on)
     if (on != m_doNotDisturb) {
         m_doNotDisturb = on;
         setShell(QStringLiteral("notifications/doNotDisturb"), on);
+        emit doNotDisturbChanged();
+    }
+}
+
+void Preferences::setSilenceWhileSharing(bool on)
+{
+    if (on != m_silenceWhileSharing) {
+        m_silenceWhileSharing = on;
+        setShell(QStringLiteral("notifications/silenceWhileSharing"), on);
         emit doNotDisturbChanged();
     }
 }

@@ -23,6 +23,7 @@ struct vela_view;
 struct vela_window_capture;
 struct wlr_allocator;
 struct wlr_ext_image_capture_source_v1;
+struct wlr_output;
 
 // `source`: the window's tree; `view` gives its frame.
 struct vela_window_capture *vela_window_capture_create(struct vela_scene *scene, struct vela_node *source,
@@ -31,10 +32,15 @@ void vela_window_capture_destroy(struct vela_window_capture *capture);
 
 // The source, with sizes and formats kept up to date with the window.
 struct wlr_ext_image_capture_source_v1 *vela_window_capture_source(struct vela_window_capture *capture);
+// Whether `source` is this window's (no update, unlike the above).
+bool vela_window_capture_has_source(const struct vela_window_capture *capture,
+    const struct wlr_ext_image_capture_source_v1 *source);
 
 // Vela owns the output source so SHM completion can be deferred. Protocol
 // session/frame objects, DMA-BUF copies, and cursor metadata remain wlroots'.
 bool vela_output_capture_manager_create(struct vela_server *server);
+// The output of one of those sources; NULL for any other source.
+struct wlr_output *vela_output_capture_source_output(struct wlr_ext_image_capture_source_v1 *source);
 void vela_capture_copy_frame(struct wlr_ext_image_capture_source_v1 *source,
     struct wlr_ext_image_copy_capture_frame_v1 *frame, struct wlr_buffer *buffer,
     struct vela_renderer *renderer, struct wl_event_loop *loop,

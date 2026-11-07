@@ -16,6 +16,12 @@ QtObject {
     // A picture in the tree, so that the previews have a wallpaper to load.
     property string wallpaper: Qt.resolvedUrl("../../themes/screenshots/themes/vela.png").toString().replace("file://", "")
 
+    // Start's button: what the taskbar draws, and the distribution.
+    property string startIcon: "vela"
+    property string startIconSource: ""
+    property string distributionName: "Test Linux"
+    property string distributionLogo: "test-logo"
+
     // Personalization.
     property string visualTheme: "vela"
     property var surfaceStyles: ({})
@@ -49,6 +55,10 @@ QtObject {
         visualTheme = "vela"
         surfaceStyles = { taskbar: "", startmenu: "", notifications: "" }
         taskbarAlignment = "center"
+        startIcon = "vela"
+        startIconSource = ""
+        distributionName = "Test Linux"
+        distributionLogo = "test-logo"
         themes = [
             { name: "vela", text: "Vela Official", author: "Brando Giuffrida", images: [] },
             { name: "glass", text: "Glass", author: "Lowell137", images: [] },
@@ -101,6 +111,14 @@ QtObject {
     }
     function openThemesFolder(surface) {
         record(["openThemesFolder", surface])
+    }
+    // As Preferences: "picture" without a file keeps the one chosen before.
+    function setStartIcon(kind, picture) {
+        record(["setStartIcon", kind, picture === undefined ? "" : picture])
+        startIcon = kind
+        startIconSource = kind === "distribution" ? distributionLogo
+            : kind === "picture" ? (picture ? picture.replace("file://", "") : startIconSource)
+            : ""
     }
     function setThemeAndStyles(theme, chosen) {
         visualTheme = theme

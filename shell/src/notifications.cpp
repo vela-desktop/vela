@@ -199,7 +199,10 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
     int expire_timeout)
 {
     const int existing = replaces_id ? rowOf(replaces_id) : -1;
-    const uint id = existing >= 0 ? replaces_id : m_nextId++;
+    // A replacement keeps its id, whether it is a popup or in the center:
+    // the app closes or replaces it again by that id.
+    const bool known = existing >= 0 || (replaces_id && historyRow(replaces_id) >= 0);
+    const uint id = known ? replaces_id : m_nextId++;
 
     Notification n;
     n.id = id;
@@ -230,8 +233,17 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
         Q_EMIT m_history.dataChanged(m_history.index(old), m_history.index(old));
         return id;
     }
-    // Do not disturb: straight into the center, no popup (critical ones pass).
-    if (m_doNotDisturb && !n.critical) {
+    // Do not disturb, the user's or a rule's: straight into the center, no
+    // popup (critical ones pass).
+    if (silenced() && !n.critical) {
+        // Replacing a popup still shown: it goes, not into the center (the
+        // replacement does), and nothing tells the app it closed.
+        if (existing >= 0) {
+            beginRemoveRows({}, existing, existing);
+            m_items.erase(m_items.begin() + existing);
+            endRemoveRows();
+            Q_EMIT countChanged();
+        }
         if (n.transient) {
             Q_EMIT NotificationClosed(id, uint(Reason::Expired));
         } else {
@@ -332,7 +344,31 @@ void NotificationServer::setDoNotDisturb(bool on)
             QSettings().setValue(QStringLiteral("notifications/doNotDisturb"), on);
         }
         Q_EMIT doNotDisturbChanged();
+        Q_EMIT silencedChanged();
     }
+}
+
+void NotificationServer::setAutomaticDoNotDisturb(bool on)
+{
+    if (on == m_automaticDoNotDisturb) {
+        return;
+    }
+    m_automaticDoNotDisturb = on;
+    // The screen is shared from now on: what is on screen would be shared
+    // too. Popups go into the center (transient ones close); critical ones
+    // stay, as they would pop up anyway.
+    if (on) {
+        std::vector<uint> ids;
+        for (const Notification& n : m_items) {
+            if (!n.critical) {
+                ids.push_back(n.id);
+            }
+        }
+        for (uint id : ids) {
+            close(id, Reason::Expired);
+        }
+    }
+    Q_EMIT silencedChanged();
 }
 
 void NotificationServer::invokeFromHistory(uint id, const QString& action)

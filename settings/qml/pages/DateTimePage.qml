@@ -4,8 +4,9 @@
 import QtQuick
 import Vela.Controls
 
-// Time & language > Date & time: the time as it is now, automatic sync and the
-// time zone (systemd-timedated).
+// Time & language > Date & time: the time as it is now, automatic sync, the
+// time zone (systemd-timedated) and how Vela writes the time (24-hour or
+// 12-hour: the taskbar, the notification center, the lock screen and here).
 Page {
     id: page
     property date now: new Date()
@@ -23,7 +24,7 @@ Page {
         Column {
             anchors.verticalCenter: parent.verticalCenter
             Text {
-                text: Qt.formatTime(page.now, "HH:mm")
+                text: Qt.formatTime(page.now, Prefs.timeFormat) // 24-hour or 12-hour, as chosen below
                 color: Theme.text
                 font.pixelSize: 40
                 font.weight: Font.DemiBold
@@ -58,6 +59,21 @@ Page {
                 model: page.zones.map(z => ({ text: DateTime.describe(z) }))
                 currentIndex: page.zones.indexOf(DateTime.timezone)
                 onChosen: index => DateTime.setTimezone(page.zones[index])
+            }
+        }
+        Card {
+            id: hours
+            icon: "preferences-system-time"
+            title: qsTr("Time format")
+            description: qsTr("In the taskbar, the notification center, the lock screen and here")
+            // Each choice shows a time as it would read: 13:45 or 1:45 PM.
+            readonly property date sample: new Date(2026, 0, 14, 13, 45)
+            trailing: Choice {
+                objectName: "clockHours"
+                model: [qsTr("24-hour (%1)").arg(Qt.formatTime(hours.sample, "HH:mm")),
+                    qsTr("12-hour (%1)").arg(Qt.formatTime(hours.sample, "h:mm AP"))]
+                currentIndex: Prefs.clock24 ? 0 : 1
+                onChosen: index => Prefs.clock24 = index === 0
             }
         }
     }

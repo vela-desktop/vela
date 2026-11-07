@@ -44,6 +44,7 @@
 #include "transfermonitor.h"
 #include "tray.h"
 #include "wallpaperprovider.h"
+#include "screensharing.h"
 #include "screenwindows.h"
 #include "../../common/primaryoutput.h"
 #include "workspaces.h"
@@ -307,9 +308,18 @@ int main(int argc, char* argv[])
     QQmlApplicationEngine* qmlEngine = nullptr;
     AppModel* appModel = nullptr;
     DesktopModel* desktopModel = nullptr;
-    vela::language::install(QStringLiteral("vela-shell"), [&qmlEngine, &appModel, &desktopModel] {
+    vela::audio::Audio* audioModel = nullptr;
+    ScreenSharing* sharingModel = nullptr;
+    vela::language::install(QStringLiteral("vela-shell"),
+        [&qmlEngine, &appModel, &desktopModel, &audioModel, &sharingModel] {
         if (appModel) {
             appModel->reload(); // app names in the new language (Name[en], Name[it])
+        }
+        if (audioModel && appModel) {
+            audioModel->setAppResolver(audioAppResolver(*appModel)); // the mixers' and screen sharing's apps
+        }
+        if (sharingModel) {
+            sharingModel->refresh(); // who shares what, in the new language
         }
         if (desktopModel) {
             desktopModel->refresh(); // the Recycle Bin
@@ -397,6 +407,8 @@ int main(int argc, char* argv[])
     QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, &ShellController::openWithRequested);
     QObject::connect(&desktop, &DesktopModel::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     desktopModel = &desktop;
+    // Settings > Background shows or hides the icons too.
+    QObject::connect(&config, &Config::desktopIconsChanged, &desktop, &DesktopModel::setShowIcons);
     ServiceMenus serviceMenus;
     FileProperties properties;
     FileActions fileActions;
@@ -426,10 +438,34 @@ int main(int argc, char* argv[])
         [&shell] { shell.logout(); });
     SystemStatus status(&bluetooth);
     Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
+    // Who shares the screen (docs/screen-sharing.md §5): apps named as in Start.
+    ScreenSharing sharing([&apps](const QStringList& candidates) {
+        for (const QString& candidate : candidates) {
+            const QString desktopId = apps.findDesktopId(candidate);
+            if (!desktopId.isEmpty()) {
+                const QVariantMap entry = apps.entry(desktopId);
+                return ScreenSharing::App { desktopId, entry.value(QStringLiteral("name")).toString(),
+                    entry.value(QStringLiteral("iconName")).toString() };
+            }
+        }
+        return ScreenSharing::App {};
+    });
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
+    audioModel = &audio;
+    sharingModel = &sharing;
     audio.setBluetooth(&bluetooth); // headsets' batteries
+    // The apps behind a portal share (docs/screen-sharing.md §5.2).
+    QObject::connect(&audio, &vela::audio::Audio::changed, &sharing,
+        [&audio, &sharing] { sharing.setPortalApps(audio.screenUsers()); });
+    // Do not disturb by itself while the screen is shared, unless turned off
+    // (docs/screen-sharing.md §7).
+    auto silenceForSharing
+        = [&] { notifications.setAutomaticDoNotDisturb(sharing.active() && config.silenceWhileSharing()); };
+    QObject::connect(&sharing, &ScreenSharing::changed, &notifications, silenceForSharing);
+    QObject::connect(&config, &Config::silenceWhileSharingChanged, &notifications, silenceForSharing);
+    silenceForSharing();
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);
@@ -443,6 +479,10 @@ int main(int argc, char* argv[])
     // Vela.Controls, like the apps.
     Appearance* style = vela::controls::install(engine, Appearance::Mode::Shell);
     style->watch();
+    // The distribution's logo may be in the icon theme only: look again now
+    // that it is set, and when it changes with the mode.
+    config.refreshStartIcon();
+    QObject::connect(style, &Appearance::changed, &config, &Config::refreshStartIcon);
     // The look the compositor draws with, computed here (docs/visual-coherence.md
     // §6.6): both modes and the accent (acrylic tint, title bars, the snap
     // preview), and the title bars' Mica colors in the apps' mode, with the
@@ -519,6 +559,7 @@ int main(int argc, char* argv[])
     qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
     engine.rootContext()->setContextProperty(QStringLiteral("BluetoothPrompts"), &bluetoothPrompts);
     engine.rootContext()->setContextProperty(QStringLiteral("Brightness"), &brightness);
+    engine.rootContext()->setContextProperty(QStringLiteral("Sharing"), &sharing);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Sound"), &sound);
     // The apps' level bars in the quick settings mixer (docs/audio.md §7.1).

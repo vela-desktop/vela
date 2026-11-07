@@ -38,6 +38,7 @@ class RealShell(unittest.TestCase):
 
     wallpaper = GRADIENT
     compositor_env = {} # more for the compositor (fake monitors, test_brightness.py)
+    shell_env = {} # more for the shell (a stopped clock, test_personalization.py)
 
     def setUp(self):
         self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
@@ -67,9 +68,12 @@ class RealShell(unittest.TestCase):
                    QT_WAYLAND_SHELL_INTEGRATION="layer-shell", QT_WAYLAND_RECONNECT="0",
                    QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
                    WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
-                   VELA_DEBUG_SELECTION="1")
+                   VELA_DEBUG_SELECTION="1", **self.shell_env)
         self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
+        # In a session the shell is the compositor's child; here, this one is
+        # (its previews are not screen sharing, docs/screen-sharing.md §4.2).
+        self.vela.command(f"test-shell {self.shell.pid}")
         self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar") and self.mapped(s, "vela-wallpaper"),
                            timeout=20, what="the real Qt desktop")
 

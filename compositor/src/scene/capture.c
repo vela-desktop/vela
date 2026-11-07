@@ -260,3 +260,9 @@ struct wlr_ext_image_capture_source_v1 *vela_window_capture_source(struct vela_w
     update_constraints(capture);
     return &capture->base;
 }
+
+bool vela_window_capture_has_source(const struct vela_window_capture *capture,
+    const struct wlr_ext_image_capture_source_v1 *source)
+{
+    return &capture->base == source;
+}

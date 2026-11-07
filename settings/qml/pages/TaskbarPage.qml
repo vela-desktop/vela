@@ -4,10 +4,12 @@
 import QtQuick
 import Vela.Controls
 
-// Personalization > Taskbar: what is on it and how it behaves first, then its
-// style and the style of the quick settings and notification center it opens
-// (taskbar-style=, notifications-style= in vela.conf, over the theme), each
-// closed under its card until opened.
+// Personalization > Taskbar: what is on it, its clock and how it behaves
+// first, then its style and the style of the quick settings and notification
+// center it opens (taskbar-style=, notifications-style= in vela.conf, over the
+// theme), each closed under its card until opened. The time format (Date &
+// time) and the number of notifications (Notifications) are Vela's and the
+// notifications', not the bar's: linked at the end.
 Page {
     DesktopPreview {}
 
@@ -20,6 +22,30 @@ Page {
             trailing: Switch {
                 checked: Prefs.taskView
                 onToggled: Prefs.taskView = checked
+            }
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Clock")
+        Card {
+            icon: "view-calendar"
+            title: qsTr("Show the date")
+            description: qsTr("Under the time in the taskbar's clock")
+            trailing: Switch {
+                objectName: "clockDate"
+                checked: Prefs.clockDate
+                onToggled: Prefs.clockDate = checked
+            }
+        }
+        Card {
+            icon: "chronometer"
+            title: qsTr("Show seconds")
+            description: qsTr("In the taskbar's clock")
+            trailing: Switch {
+                objectName: "clockSeconds"
+                checked: Prefs.clockSeconds
+                onToggled: Prefs.clockSeconds = checked
             }
         }
     }
@@ -68,6 +94,22 @@ Page {
             surface: "notifications"
             icon: "preferences-desktop-notification"
             title: qsTr("Quick settings and notification center")
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Related settings")
+        LinkCard {
+            icon: "preferences-system-time"
+            title: qsTr("Time format")
+            description: qsTr("24-hour or 12-hour, in Date & time")
+            onClicked: root.navigate("datetime")
+        }
+        LinkCard {
+            icon: "preferences-desktop-notification"
+            title: qsTr("Notifications")
+            description: qsTr("Do not disturb, the number of notifications next to the clock")
+            onClicked: root.navigate("notifications")
         }
     }
 }
