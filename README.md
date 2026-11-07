@@ -121,7 +121,7 @@ For a low-risk first look, [build from source](#build-from-source) and
 Nested mode is convenient for exploration, but cannot validate physical DRM,
 direct scanout or every driver-specific path.
 
-For a full session, [install the Beta](#install) on Arch, Fedora 44 or
+For a full session, [install the Beta](#install) on Arch, Fedora 44/45 or
 Ubuntu 26.10, or [build from source](#other-distributions), then select Vela
 at the login screen. If something fails, [report it](#reporting-a-problem) using
 `vela-report`, reviewing any diagnostics before sharing them.
@@ -310,11 +310,11 @@ git clone https://github.com/vela-desktop/vela.git
 sh vela/packaging/vela-update --channel beta
 ```
 
-### Fedora 44
+### Fedora 44 and 45
 
-Only Fedora 44 x86_64 is supported; other Fedora versions and immutable variants are
-not. Fedora does not ship Cosign: install the official upstream RPM first, as the
-[installation guide](docs/installation.md#fedora-44) shows.
+Fedora 44 and 45 (x86_64) are supported with native RPMs; other Fedora versions
+and immutable variants are not. Install the official upstream Cosign RPM first,
+as the [installation guide](docs/installation.md#fedora-44-and-45) shows.
 
 ```sh
 sudo dnf install git curl rpm-build dnf5-plugins
