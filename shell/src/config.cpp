@@ -3,6 +3,7 @@
 
 #include "config.h"
 
+#include "batterysettings.h"
 #include "clockformat.h"
 #include "defaults.h"
 #include "starticon.h"
@@ -182,5 +183,16 @@ void Config::reload()
     if (silence != m_silenceWhileSharing) {
         m_silenceWhileSharing = silence;
         emit silenceWhileSharingChanged(silence);
+    }
+
+    const bool batteryNotify = vela::battery::notify(settings);
+    const int batteryLowLevel = vela::battery::lowLevel(settings);
+    const bool deviceBatteryNotify = vela::battery::devices(settings);
+    if (batteryNotify != m_batteryNotify || batteryLowLevel != m_batteryLowLevel
+        || deviceBatteryNotify != m_deviceBatteryNotify) {
+        m_batteryNotify = batteryNotify;
+        m_batteryLowLevel = batteryLowLevel;
+        m_deviceBatteryNotify = deviceBatteryNotify;
+        emit batteryChanged();
     }
 }

@@ -76,6 +76,12 @@ public:
     // Do not disturb by itself while the screen is shared
     // (notifications/silenceWhileSharing, docs/screen-sharing.md §7).
     bool silenceWhileSharing() const { return m_silenceWhileSharing; }
+    // The battery notifications (batterysettings.h,
+    // docs/battery-notifications.md §6): the PC's battery and its low
+    // level in percent, the peripherals'.
+    bool batteryNotify() const { return m_batteryNotify; }
+    int batteryLowLevel() const { return m_batteryLowLevel; }
+    bool deviceBatteryNotify() const { return m_deviceBatteryNotify; }
     QString shellTheme() const { return m_shellTheme; }
     QString appTheme() const { return m_appTheme; }
     // Desktop icons shown (desktop/showIcons): the desktop's own menu writes
@@ -92,6 +98,7 @@ signals:
     void primaryOutputChanged();
     void doNotDisturbChanged(bool on);
     void silenceWhileSharingChanged(bool on);
+    void batteryChanged();
     void themeChanged();
     void clipboardChanged();
     void startChanged();
@@ -126,6 +133,9 @@ private:
     bool m_notificationCount = true;
     bool m_doNotDisturb = false;
     bool m_silenceWhileSharing = true;
+    bool m_batteryNotify = true;
+    int m_batteryLowLevel = 20;
+    bool m_deviceBatteryNotify = true;
     bool m_showDesktopIcons = true;
     QString m_shellTheme = QStringLiteral("dark");
     QString m_appTheme = QStringLiteral("dark");
