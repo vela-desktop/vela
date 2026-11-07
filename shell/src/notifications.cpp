@@ -339,10 +339,25 @@ void NotificationServer::setDoNotDisturb(bool on)
 
 void NotificationServer::setAutomaticDoNotDisturb(bool on)
 {
-    if (on != m_automaticDoNotDisturb) {
-        m_automaticDoNotDisturb = on;
-        Q_EMIT silencedChanged();
+    if (on == m_automaticDoNotDisturb) {
+        return;
     }
+    m_automaticDoNotDisturb = on;
+    // The screen is shared from now on: what is on screen would be shared
+    // too. Popups go into the center (transient ones close); critical ones
+    // stay, as they would pop up anyway.
+    if (on) {
+        std::vector<uint> ids;
+        for (const Notification& n : m_items) {
+            if (!n.critical) {
+                ids.push_back(n.id);
+            }
+        }
+        for (uint id : ids) {
+            close(id, Reason::Expired);
+        }
+    }
+    Q_EMIT silencedChanged();
 }
 
 void NotificationServer::invokeFromHistory(uint id, const QString& action)

@@ -48,18 +48,39 @@ private slots:
         QCOMPARE(silenced.count(), 1);
         QVERIFY(server.silenced());
         QVERIFY(!server.doNotDisturb());
+        QCOMPARE(server.count(), 0); // the one shown moved to the center
         notify(server, QStringLiteral("during"));
-        QCOMPARE(server.count(), 1); // no new popup...
-        QCOMPARE(historyCount(server), 1); // ...it waits in the center
+        QCOMPARE(server.count(), 0); // no new popup...
+        QCOMPARE(historyCount(server), 2); // ...it waits in the center
         // A critical one still pops up, as with Do not disturb.
         notify(server, QStringLiteral("critical"), true);
-        QCOMPARE(server.count(), 2);
+        QCOMPARE(server.count(), 1);
 
         server.setAutomaticDoNotDisturb(false);
         QCOMPARE(silenced.count(), 2);
         QVERIFY(!server.silenced());
         notify(server, QStringLiteral("after"));
-        QCOMPARE(server.count(), 3);
+        QCOMPARE(server.count(), 2);
+    }
+
+    // What is on screen when sharing starts would be shared too.
+    void popupsShownWhenSharingStartsLeave()
+    {
+        NotificationServer server;
+        QSignalSpy closed(&server, &NotificationServer::NotificationClosed);
+        const uint normal = notify(server, QStringLiteral("normal"));
+        server.Notify(QStringLiteral("Mail"), 0, QString(), QStringLiteral("never expires"), QString(), {}, {}, 0);
+        const uint transient = server.Notify(QStringLiteral("Mail"), 0, QString(), QStringLiteral("transient"),
+            QString(), {}, { { QStringLiteral("transient"), true } }, 5000);
+        notify(server, QStringLiteral("critical"), true);
+        QCOMPARE(server.count(), 4);
+
+        server.setAutomaticDoNotDisturb(true);
+        QCOMPARE(server.count(), 1); // the critical one stays
+        QCOMPARE(historyCount(server), 2); // the others wait in the center...
+        QCOMPARE(closed.count(), 1); // ...but the transient one, closed
+        QCOMPARE(closed.first().first().toUInt(), transient);
+        QVERIFY(normal != transient);
     }
 
     void theUsersChoiceIsTheirs()

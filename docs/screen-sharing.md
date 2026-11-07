@@ -219,6 +219,9 @@ primary taskbar only, like the microphone:
   = `doNotDisturb || automaticDoNotDisturb`. Popups and the bell next to the
   clock follow `silenced`; the notification center's switch stays the
   user's own `doNotDisturb`, which the rule never writes nor remembers.
+- Popups already on screen when sharing starts would be shared too: they
+  move into the notification center (transient ones close), critical ones
+  stay.
 - What was held back stays in the notification center when sharing ends,
   as with Do not disturb.
 - The indicator's menu (§6) says "Notifications are silenced meanwhile",
