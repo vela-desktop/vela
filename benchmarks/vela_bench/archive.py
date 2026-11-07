@@ -101,10 +101,10 @@ def create_check_archive(output, plan, discovery):
     if plan["phases"] != ["check"] or plan["blocks"]:
         raise BenchError("Only host-side check archives can currently be executed")
     parent = Path(output)
-    parent.mkdir(parents=True, exist_ok=True)
+    parent.mkdir(parents=True, exist_ok=True)  # NOSONAR S8707: operator-selected local output parent, no agent/server.
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
     directory = parent / run_id
-    directory.mkdir(mode=0o700)  # NOSONAR S8707: new exclusive archive under the operator-selected parent.
+    directory.mkdir(mode=0o700)
     for name in ("blocks", "samples", "calibration", "captures", "logs"):
         (directory / name).mkdir(mode=0o700)
     manifest = {"schema": SCHEMA, "kind": "preflight", "run_id": run_id,

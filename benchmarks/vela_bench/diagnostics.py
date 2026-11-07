@@ -223,9 +223,9 @@ def export_report(parent, result):
     if not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id):
         raise BenchError("Invalid diagnostic run identity")
     parent = Path(parent)
-    parent.mkdir(parents=True, exist_ok=True)
+    parent.mkdir(parents=True, exist_ok=True)  # NOSONAR S8707: operator-selected local export parent, no agent/server.
     directory = parent / ("pilot-" + run_id)
-    directory.mkdir(mode=0o755)  # NOSONAR S8707: exclusive export under the operator-selected local parent.
+    directory.mkdir(mode=0o755)
     atomic_json(directory / "summary.json", result)
     (directory / "summary.json").chmod(0o644)
     escape = lambda value: html.escape(str(value), quote=True)

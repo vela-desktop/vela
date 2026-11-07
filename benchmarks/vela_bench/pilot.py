@@ -879,19 +879,32 @@ def recover(host, layout=Layout()):
                 expected = "active" if state["display_manager_was_active"] else "inactive"
                 if observed != expected and not (expected == "inactive" and observed == "failed"):
                     errors.append(f"Display manager restoration mismatch: {observed}")
-                host.run(["chvt", str(state["origin_vt"])], timeout=5)
-                if host.run(["fgconsole"], timeout=5).stdout.strip() != str(state["origin_vt"]):
+                origin_vt = state.get("origin_vt")
+                if type(origin_vt) is not int or not 1 <= origin_vt <= 63:
+                    raise BenchError("Invalid originating virtual terminal")
+                host.run(["chvt", str(origin_vt)], timeout=5)
+                if host.run(["fgconsole"], timeout=5).stdout.strip() != str(origin_vt):
                     errors.append("Originating TTY was not restored")
             except BenchError as exc:
                 errors.append(str(exc))
-        for unit in state.get("masked_units", []):
-            if unit not in (f"getty@tty{state['target_vt']}.service", f"autovt@tty{state['target_vt']}.service"):
-                errors.append("Invalid owned VT mask")
-                continue
-            try:
-                host.run(["systemctl", "unmask", "--runtime", unit], timeout=5)
-            except BenchError as exc:
-                errors.append(str(exc))
+        masks = state.get("masked_units", [])
+        if not isinstance(masks, list):
+            errors.append("Invalid owned VT mask list")
+        elif masks:
+            target_vt = state.get("target_vt")
+            if type(target_vt) is not int or not 1 <= target_vt <= 63:
+                errors.append("Invalid owned VT mask terminal")
+            else:
+                owned_units = (f"getty@tty{target_vt}.service", f"autovt@tty{target_vt}.service")
+                if any(unit not in owned_units for unit in masks):
+                    errors.append("Invalid owned VT mask")
+                # Execute only reconstructed unit names, never strings from JSON.
+                for unit in owned_units:
+                    if unit in masks:
+                        try:
+                            host.run(["systemctl", "unmask", "--runtime", unit], timeout=5)
+                        except BenchError as exc:
+                            errors.append(str(exc))
         stage = "cleanup-failed" if errors else "done" if state.get("result") == "passed" else "failed"
         update(directory, state, stage, cleanup_errors=errors)
         if errors:

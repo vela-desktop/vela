@@ -167,6 +167,29 @@ class HostOperations(unittest.TestCase):
         self.assertEqual(sentinel.read_text(), "keep this file")
         self.assertEqual(read_json(directory / "state.json")["stage"], "cleanup-failed")
 
+    def test_recovery_never_passes_unvalidated_vt_values_to_host_commands(self):
+        self.setup_account()
+        directory = self.pilot_state()
+        original = read_json(directory / "state.json")
+        for field, message in (("origin_vt", "Invalid originating virtual terminal"),
+                               ("target_vt", "Invalid owned VT mask terminal")):
+            for value in ("--help", "8 --runtime", True, 0, 64):
+                state = dict(original, masked_units=["getty@tty8.service"], **{field: value})
+                atomic_json(directory / "state.json", state)
+                self.host.calls.clear()
+                with self.subTest(field=field,value=value), self.assertRaisesRegex(BenchError, message):
+                    self.recover_without_fixture_io()
+                if field == "origin_vt":
+                    self.assertFalse(any(command[0] == "chvt" for command in self.host.calls))
+                else:
+                    self.assertFalse(any(command[:2] == ["systemctl", "unmask"] for command in self.host.calls))
+        for masks in (None, 7, "getty@tty8.service", {"getty@tty8.service": True}):
+            atomic_json(directory / "state.json", dict(original, masked_units=masks))
+            self.host.calls.clear()
+            with self.subTest(masks=masks), self.assertRaisesRegex(BenchError, "Invalid owned VT mask list"):
+                self.recover_without_fixture_io()
+            self.assertFalse(any(command[:2] == ["systemctl", "unmask"] for command in self.host.calls))
+
     def pilot_state(self, result="passed", active_manager=True):
         run_id = "a" * 32
         directory = self.layout.base / "pilots" / run_id
