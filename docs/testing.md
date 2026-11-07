@@ -301,18 +301,24 @@ If the harness cannot find a usable GPU, it exits with status 77. CTest marks th
 
 ### GPU CI hardware
 
-The complete GPU-dependent suite runs on two machines using the
+The mandatory GPU-dependent suite runs on two machines, with an optional
+experimental Intel runner, using the
 [GPU CI workflows](ci-quality.md#gpu-ci-policy):
 
 | GPU | Driver | OS |
 |---|---|---|
 | AMD Radeon RX 9070 XT | Mesa/RADV | CachyOS |
 | NVIDIA GeForce RTX 4070 Laptop GPU | NVIDIA proprietary | Arch/CachyOS |
+| Intel Alder Lake-UP3 UHD Graphics (experimental) | Mesa/ANV | CachyOS |
 
 The [GPU CI policy](ci-quality.md#gpu-ci-policy) is the single source for
 when these manually triggered runs are required and what counts as a pass.
 
-This gives the renderer real-hardware coverage on both Vulkan drivers. It is not the same as a broad hardware matrix: Intel paths currently receive no repeated real-hardware testing, and both runners use the headless backend, not DRM/KMS ([hardware coverage](hardware.md)).
+AMD and NVIDIA provide the required real-hardware coverage; Intel ANV now
+has an experimental manual workflow but no confirmed passing full-suite
+baseline yet. All three workflows run headlessly rather than on physical
+DRM/KMS, and this matrix cannot represent every GPU generation or setup
+([hardware coverage](hardware.md)).
 
 ## Headless functional harness
 
