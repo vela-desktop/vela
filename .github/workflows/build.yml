@@ -112,7 +112,7 @@ jobs:
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     steps:
       - name: Dependencies
-        run: pacman -Syu --noconfirm --needed $DEPENDENCIES
+        run: pacman -Syu --noconfirm --needed $DEPENDENCIES xorg-server-xvfb xorg-xauth ttf-dejavu
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -144,6 +144,25 @@ jobs:
 
       - name: Tests
         run: ctest --test-dir build --output-on-failure --parallel 2 -E '^packaging-update$'
+
+      # Run the actual glyph shaders on CPU-only runners. Direct invocation
+      # makes unavailable graphics (exit 77) fail here instead of silently skip.
+      - name: Text rendering through Mesa RHI
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          QT_QPA_PLATFORMTHEME: generic
+        run: |
+          xvfb-run -a build/common/vela-text-rendering-test --capture-dir build/text-rendering-frames
+          xvfb-run -a python3 scripts/compare-text-rendering.py build/common/vela-text-rendering-test --output build/text-rendering-frames/comparison
+
+      - name: Text rendering frames
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: text-rendering-frames
+          path: build/text-rendering-frames/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Scripts
         run: |

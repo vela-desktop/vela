@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "about.h"
 
 #include <QCoreApplication>
@@ -60,11 +61,12 @@ QString memory()
     return QLocale().toString(gib, 'f', 1) + QCoreApplication::translate("About", " GB (usable)");
 }
 
+/** Query PCI graphics devices through an external process with the user's environment. */
 QStringList graphics()
 {
     // lspci: "03:00.0 VGA compatible controller: Advanced Micro Devices, Inc.
     // [AMD/ATI] Navi 48 [Radeon RX 9070...]"
-    QProcess lspci;
+    vela::process::ExternalProcess lspci;
     lspci.start(QStringLiteral("lspci"), QStringList {});
     lspci.waitForFinished(2000);
     QStringList out;
