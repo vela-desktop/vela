@@ -223,6 +223,123 @@ private slots:
         QCOMPARE(prefs.startIcon(), QStringLiteral("vela"));
         QCOMPARE(prefs.startIconSource(), QString());
     }
+
+    void compositorSaveFailureRestoresTheValue()
+    {
+        // A file where the config directory should be: the write cannot commit.
+        const QString blocker = home().filePath(QStringLiteral("config/vela"));
+        QDir(blocker).removeRecursively();
+        QVERIFY(writeFile(QStringLiteral("config/vela"), "not a directory\n"));
+        Preferences prefs;
+        QCOMPARE(prefs.screenOffMinutes(), 10);
+        QCOMPARE(prefs.saveError(), QString());
+        QSignalSpy idle(&prefs, &Preferences::idleChanged);
+        QSignalSpy error(&prefs, &Preferences::saveErrorChanged);
+        prefs.setScreenOffMinutes(3);
+        QCOMPARE(prefs.screenOffMinutes(), 10);
+        QVERIFY(prefs.saveError().contains(home().filePath(QStringLiteral("config/vela/vela.conf"))));
+        QCOMPARE(idle.count(), 1);
+        QCOMPARE(error.count(), 1);
+
+        QVERIFY(QFile::remove(blocker));
+        QVERIFY(QDir().mkpath(home().filePath(QStringLiteral("config/vela"))));
+        prefs.setScreenOffMinutes(3);
+        QCOMPARE(prefs.screenOffMinutes(), 3);
+        QCOMPARE(prefs.saveError(), QString());
+        QFile file(home().filePath(QStringLiteral("config/vela/vela.conf")));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(QString::fromUtf8(file.readAll()).contains(QStringLiteral("screen-off=3")));
+    }
+
+    void compositorSettingsRoundTrip()
+    {
+        const QString dir = home().filePath(QStringLiteral("config/vela"));
+        QDir(dir).removeRecursively();
+        QVERIFY(QDir().mkpath(dir));
+        Preferences prefs;
+        prefs.setScreenOffMinutes(4);
+        prefs.setLockOnIdle(false);
+        prefs.setLanguage(QStringLiteral("it"));
+        prefs.setVisualTheme(QStringLiteral("Pill"));
+        prefs.setSurfaceStyle(QStringLiteral("taskbar"), QStringLiteral("Dock"));
+        prefs.resetThemes();
+        prefs.setThemeAndStyles(QStringLiteral("Pill"), { { QStringLiteral("taskbar"), QStringLiteral("Dock") } });
+        prefs.addKeyboardLayout(QStringLiteral("us"), QString());
+        prefs.addKeyboardLayout(QStringLiteral("it"), QStringLiteral("nodeadkeys"));
+        prefs.moveKeyboardLayoutUp(1);
+        prefs.removeKeyboardLayout(0);
+        prefs.setRepeatDelay(500);
+        prefs.setRepeatRate(40);
+        prefs.setNightLight(true);
+        prefs.setNightTemperature(4500);
+        prefs.setNightNvidiaFix(true);
+        prefs.setNightSchedule(QStringLiteral("yes"));
+        prefs.setNightFrom(QStringLiteral("20:15"));
+        prefs.setNightTo(QStringLiteral("06:45"));
+        prefs.setTearing(false);
+        prefs.setVrr(QStringLiteral("never"));
+        prefs.setDirectScanout(QStringLiteral("no"));
+        prefs.setMagnifierStep(150);
+        prefs.setColorFilter(true);
+        prefs.setColorFilterKind(QStringLiteral("inverted"));
+        prefs.setColorFilterShortcut(true);
+        prefs.setStickyKeys(true);
+        prefs.setAnimationEffects(false);
+        prefs.setAnimationDuration(80);
+        prefs.setMouseSpeed(12);
+        prefs.setMousePrecision(false);
+        prefs.setMouseLeftHanded(true);
+        prefs.setWheelLines(5);
+        prefs.setTouchpad(false);
+        prefs.setTouchpadWithMouse(false);
+        prefs.setTouchpadSpeed(12);
+        prefs.setTouchpadTap(false);
+        prefs.setTouchpadNatural(false);
+        prefs.setThreeFingers(QStringLiteral("desktop"));
+        prefs.setFourFingers(QStringLiteral("none"));
+        QCOMPARE(prefs.saveError(), QString());
+        QCOMPARE(prefs.screenOffMinutes(), 4);
+        QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
+        QCOMPARE(prefs.surfaceStyles().value(QStringLiteral("taskbar")).toString(), QStringLiteral("Dock"));
+        QCOMPARE(prefs.keyboardLayouts().size(), 1);
+        QCOMPARE(prefs.nightLight(), true);
+        QCOMPARE(prefs.directScanout(), QStringLiteral("no"));
+        QFile conf(dir + QStringLiteral("/vela.conf"));
+        QVERIFY(conf.open(QIODevice::ReadOnly));
+        const QString text = QString::fromUtf8(conf.readAll());
+        conf.close();
+        QVERIFY(text.contains(QStringLiteral("language=it")));
+        QVERIFY(text.contains(QStringLiteral("keyboard-layout=us")));
+        QVERIFY(text.contains(QStringLiteral("night-light=yes")));
+        QVERIFY(text.contains(QStringLiteral("mouse-primary-button=right")));
+
+        // A file where the config directory should be. Root can still write
+        // into a mode-0555 directory, which is what the CI runners are, so
+        // the block has to be the path itself.
+        const QString saved = text;
+        QVERIFY(QDir(dir).removeRecursively());
+        QVERIFY(writeFile(QStringLiteral("config/vela"), "not a directory\n"));
+        prefs.setScreenOffMinutes(9);
+        QCOMPARE(prefs.screenOffMinutes(), 4);
+        QVERIFY(!prefs.saveError().isEmpty());
+        prefs.setNightLight(false);
+        QVERIFY(prefs.nightLight());
+        prefs.setLanguage(QStringLiteral("en"));
+        QCOMPARE(prefs.language(), QStringLiteral("it"));
+        prefs.addKeyboardLayout(QStringLiteral("de"), QString());
+        QCOMPARE(prefs.keyboardLayouts().size(), 1);
+        prefs.setVisualTheme(QStringLiteral("Fluent"));
+        QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
+        prefs.resetThemes();
+        QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
+
+        QVERIFY(QFile::remove(dir));
+        QVERIFY(QDir().mkpath(dir));
+        QVERIFY(writeFile(QStringLiteral("config/vela/vela.conf"), saved.toUtf8()));
+        prefs.setLanguage(QStringLiteral("en"));
+        QCOMPARE(prefs.language(), QStringLiteral("en"));
+        QCOMPARE(prefs.saveError(), QString());
+    }
 };
 
 int main(int argc, char** argv)

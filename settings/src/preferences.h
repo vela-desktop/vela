@@ -305,6 +305,9 @@ public:
     // "Clear clipboard data": the history (except pinned items), in the shell.
     Q_INVOKABLE void clearClipboard();
 
+    // Set when a vela.conf write fails. The shown value stays what was saved.
+    Q_PROPERTY(QString saveError READ saveError NOTIFY saveErrorChanged)
+    QString saveError() const { return m_saveError; }
 
     // Rereads everything (the shell or another program may have changed
     // something).
@@ -328,18 +331,34 @@ signals:
     void inputChanged();
     void clipboardChanged();
     void accessibilityChanged();
+    void saveErrorChanged();
 
 private:
     void setShell(const QString& key, const QVariant& value);
     // vela.conf: reread, only these keys changed, then "reload-config".
-    void saveCompositor(const QList<QPair<QString, QString>>& changes);
-    void saveCompositorKeys(const QStringList& keys); // the current values of these keys
+    // False when the file could not be opened, written or committed.
+    bool saveCompositor(const QList<QPair<QString, QString>>& changes);
+    bool saveCompositorKeys(const QStringList& keys); // the current values of these keys
+    void noteSaveFailure();
+    void publishSaveError();
+    void clearSaveError();
+    template<typename T>
+    void keepOrRestore(bool saved, T& slot, const T& previous)
+    {
+        if (!saved && !m_restoredFromFile) {
+            slot = previous;
+        }
+        m_restoredFromFile = false;
+    }
     QString compositorValue(const QString& key) const;
     void reloadCompositor(); // vela.conf and the compositor's state
     void queryCompositor(); // night light, magnifier...: the current state
     void watchConfig();
     void watchThemes();
-    void saveLayouts();
+    bool saveLayouts();
+    QString m_saveError;
+    bool m_restoredFromFile = false;
+    bool m_reportingSaveFailure = false;
 
     QString m_wallpaper;
     QStringList m_recentWallpapers;

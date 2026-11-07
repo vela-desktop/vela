@@ -1488,6 +1488,10 @@ Specifiche sistema
 <context>
     <name>Main</name>
     <message>
+        <source>Could not save settings</source>
+        <translation>Impossibile salvare le impostazioni</translation>
+    </message>
+    <message>
         <source>Direct scanout</source>
         <translation>Scanout diretto</translation>
     </message>
@@ -3934,6 +3938,13 @@ Specifiche sistema
     <message>
         <source>Couldn&apos;t save the automatic update check frequency.</source>
         <translation>Impossibile salvare la frequenza dei controlli automatici degli aggiornamenti.</translation>
+    </message>
+</context>
+<context>
+    <name>Preferences</name>
+    <message>
+        <source>Check that you can write %1.</source>
+        <translation>Controlla di poter scrivere %1.</translation>
     </message>
 </context>
 </TS>

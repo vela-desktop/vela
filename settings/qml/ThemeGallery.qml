@@ -35,7 +35,9 @@ Grid {
             return
         }
         Prefs.visualTheme = entry.name
-        root.offerUndo(qsTr("%1 is in use").arg(entry.text), () => { Prefs.visualTheme = previous })
+        if (Prefs.saveError === "") {
+            root.offerUndo(qsTr("%1 is in use").arg(entry.text), () => { Prefs.visualTheme = previous })
+        }
     }
 
     Repeater {
