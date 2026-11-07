@@ -61,11 +61,9 @@ ScreenSharing::ScreenSharing(Resolver resolver, QObject* parent, const QString& 
         update();
         m_retry.start();
     });
-    connect(&m_socket, &QLocalSocket::errorOccurred, this, [this] {
-        if (m_socket.state() == QLocalSocket::UnconnectedState) {
-            m_retry.start();
-        }
-    });
+    // Not connected (yet): try again in a second. The error comes while the
+    // socket still says "connecting", so connectToCompositor() checks.
+    connect(&m_socket, &QLocalSocket::errorOccurred, this, [this] { m_retry.start(); });
     if (auto* app = qobject_cast<QGuiApplication*>(QCoreApplication::instance())) {
         connect(app, &QGuiApplication::screenAdded, this, &ScreenSharing::update);
         connect(app, &QGuiApplication::screenRemoved, this, &ScreenSharing::update);

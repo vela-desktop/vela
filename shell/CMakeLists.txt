@@ -329,6 +329,7 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-screen-sharing-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-screen-sharing-test PRIVATE Qt6::Gui Qt6::Network Qt6::Test)
     add_test(NAME shell-screen-sharing COMMAND vela-screen-sharing-test)
+    set_tests_properties(shell-screen-sharing PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     qt_add_executable(vela-brightness-model-test tests/brightness_model.cpp src/brightness.cpp src/brightness.h)
     target_include_directories(vela-brightness-model-test PRIVATE src)

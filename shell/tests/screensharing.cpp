@@ -8,6 +8,7 @@
 
 #include "screensharing.h"
 
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -165,6 +166,25 @@ private Q_SLOTS:
         QCOMPARE(user(users, 0).value("window").toString(), QStringLiteral("w9"));
     }
 
+    void namesWhatTheCompositorLeavesOpen()
+    {
+        // Nothing to name it by: "An app". Two unknown clients with the same
+        // binary: one entry, the window of the second kept. No targets: none.
+        const QVariantList users = ScreenSharing::describe(
+            state({ client(QString(), { output(QStringLiteral("DP-3")) }),
+                client(QStringLiteral("recorder"), { output(QStringLiteral("DP-3")) }),
+                client(QStringLiteral("recorder"), { window(QStringLiteral("org.kde.konsole")) }, {},
+                    QStringLiteral("w2")),
+                client(QStringLiteral("idle"), {}) }),
+            resolve, {}, 1);
+        QCOMPARE(users.size(), 2);
+        QCOMPARE(user(users, 0).value("name").toString(), QStringLiteral("An app"));
+        QCOMPARE(user(users, 1).value("name").toString(), QStringLiteral("recorder"));
+        QCOMPARE(user(users, 1).value("what").toString(), QStringLiteral("Your screen, A window of Konsole"));
+        QCOMPARE(user(users, 1).value("window").toString(), QStringLiteral("w2"));
+        QVERIFY(user(users, 1).value("screen").toBool());
+    }
+
     void summary()
     {
         QCOMPARE(ScreenSharing::summarize({}), QString());
@@ -196,6 +216,16 @@ private Q_SLOTS:
         compositor->write(line(state({})));
         QTest::qWait(50);
         QVERIFY(!sharing.active());
+        // Not a state: ignored. A line in two pieces: read once whole.
+        compositor->write("not json\n{\"outputs\":[]}\n");
+        const QByteArray whole = line(state({ client(QStringLiteral("obs"), { output(QStringLiteral("DP-3")) }) }));
+        compositor->write(whole.left(10));
+        QTest::qWait(50);
+        QVERIFY(!sharing.active());
+        compositor->write(whole.mid(10));
+        QTRY_VERIFY(sharing.active());
+        compositor->write(line(state({})));
+        QTRY_VERIFY_WITH_TIMEOUT(!sharing.active(), 1000);
 
         compositor->write(line(state({ client(QStringLiteral("obs"), { output(QStringLiteral("DP-3")) }) })));
         QTRY_VERIFY(sharing.active());
@@ -241,8 +271,35 @@ private Q_SLOTS:
         QCOMPARE(sharing.summary(), QStringLiteral("An app is sharing your screen"));
         sharing.setPortalApps({ firefox() });
         QCOMPARE(sharing.summary(), QStringLiteral("Firefox is sharing your screen"));
+        QSignalSpy changed(&sharing, &ScreenSharing::changed);
+        sharing.setPortalApps({ firefox() }); // the same: nothing new
+        QCOMPARE(changed.count(), 0);
+    }
+
+    // The session's socket ($XDG_RUNTIME_DIR/vela-$WAYLAND_DISPLAY.sock),
+    // tried again until the compositor is there.
+    void findsTheSessionsCompositor()
+    {
+        QTemporaryDir runtime;
+        qputenv("XDG_RUNTIME_DIR", runtime.path().toUtf8());
+        qputenv("WAYLAND_DISPLAY", "wayland-test");
+        auto* sharing = new ScreenSharing(resolve, nullptr, {}, 300);
+        QTest::qWait(200); // refused: nobody listens yet
+        QLocalServer server;
+        QVERIFY(server.listen(runtime.filePath(QStringLiteral("vela-wayland-test.sock"))));
+        QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 3000);
+        QLocalSocket* compositor = server.nextPendingConnection();
+        QTRY_VERIFY(compositor->bytesAvailable() || compositor->waitForReadyRead(100));
+        QCOMPARE(compositor->readAll(), QByteArray("watch capture\n"));
+        // One output on the offscreen platform: "Your screen".
+        compositor->write(line(state({ client(QStringLiteral("obs"), { output(QStringLiteral("DP-3"),
+            QStringLiteral("Dell"), QStringLiteral("U2720Q")) }) })));
+        QTRY_VERIFY(sharing->active());
+        QCOMPARE(sharing->users().first().toMap().value("what").toString(), QStringLiteral("Your screen"));
+        delete sharing;
     }
 };
 
-QTEST_GUILESS_MAIN(ScreenSharingTest)
+// A real QGuiApplication (offscreen): the screens are counted.
+QTEST_MAIN(ScreenSharingTest)
 #include "screensharing.moc"
