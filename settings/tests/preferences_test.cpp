@@ -241,6 +241,91 @@ private slots:
         QVERIFY(file.open(QIODevice::ReadOnly));
         QVERIFY(QString::fromUtf8(file.readAll()).contains(QStringLiteral("screen-off=3")));
     }
+
+    void compositorSettingsRoundTrip()
+    {
+        const QString dir = home().filePath(QStringLiteral("config/vela"));
+        QDir(dir).removeRecursively();
+        QVERIFY(QDir().mkpath(dir));
+        Preferences prefs;
+        prefs.setScreenOffMinutes(4);
+        prefs.setLockOnIdle(false);
+        prefs.setLanguage(QStringLiteral("it"));
+        prefs.setVisualTheme(QStringLiteral("Pill"));
+        prefs.setSurfaceStyle(QStringLiteral("taskbar"), QStringLiteral("Dock"));
+        prefs.resetThemes();
+        prefs.setThemeAndStyles(QStringLiteral("Pill"), { { QStringLiteral("taskbar"), QStringLiteral("Dock") } });
+        prefs.addKeyboardLayout(QStringLiteral("us"), QString());
+        prefs.addKeyboardLayout(QStringLiteral("it"), QStringLiteral("nodeadkeys"));
+        prefs.moveKeyboardLayoutUp(1);
+        prefs.removeKeyboardLayout(0);
+        prefs.setRepeatDelay(500);
+        prefs.setRepeatRate(40);
+        prefs.setNightLight(true);
+        prefs.setNightTemperature(4500);
+        prefs.setNightNvidiaFix(true);
+        prefs.setNightSchedule(QStringLiteral("yes"));
+        prefs.setNightFrom(QStringLiteral("20:15"));
+        prefs.setNightTo(QStringLiteral("06:45"));
+        prefs.setTearing(false);
+        prefs.setVrr(QStringLiteral("never"));
+        prefs.setDirectScanout(QStringLiteral("no"));
+        prefs.setMagnifierStep(150);
+        prefs.setColorFilter(true);
+        prefs.setColorFilterKind(QStringLiteral("inverted"));
+        prefs.setColorFilterShortcut(true);
+        prefs.setStickyKeys(true);
+        prefs.setAnimationEffects(false);
+        prefs.setAnimationDuration(80);
+        prefs.setMouseSpeed(12);
+        prefs.setMousePrecision(false);
+        prefs.setMouseLeftHanded(true);
+        prefs.setWheelLines(5);
+        prefs.setTouchpad(false);
+        prefs.setTouchpadWithMouse(false);
+        prefs.setTouchpadSpeed(12);
+        prefs.setTouchpadTap(false);
+        prefs.setTouchpadNatural(false);
+        prefs.setThreeFingers(QStringLiteral("desktop"));
+        prefs.setFourFingers(QStringLiteral("none"));
+        QCOMPARE(prefs.saveError(), QString());
+        QCOMPARE(prefs.screenOffMinutes(), 4);
+        QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
+        QCOMPARE(prefs.surfaceStyles().value(QStringLiteral("taskbar")).toString(), QStringLiteral("Dock"));
+        QCOMPARE(prefs.keyboardLayouts().size(), 1);
+        QCOMPARE(prefs.nightLight(), true);
+        QCOMPARE(prefs.directScanout(), QStringLiteral("no"));
+        QFile conf(dir + QStringLiteral("/vela.conf"));
+        QVERIFY(conf.open(QIODevice::ReadOnly));
+        const QString text = QString::fromUtf8(conf.readAll());
+        conf.close();
+        QVERIFY(text.contains(QStringLiteral("language=it")));
+        QVERIFY(text.contains(QStringLiteral("keyboard-layout=us")));
+        QVERIFY(text.contains(QStringLiteral("night-light=yes")));
+        QVERIFY(text.contains(QStringLiteral("mouse-primary-button=right")));
+
+        // The file stays readable, the directory does not: the failed write
+        // rereads vela.conf instead of keeping the attempted value.
+        QVERIFY(QFile::setPermissions(dir, QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+        prefs.setScreenOffMinutes(9);
+        QCOMPARE(prefs.screenOffMinutes(), 4);
+        QVERIFY(prefs.saveError().contains(conf.fileName()));
+        prefs.setNightLight(false);
+        QVERIFY(prefs.nightLight());
+        prefs.setLanguage(QStringLiteral("en"));
+        QCOMPARE(prefs.language(), QStringLiteral("it"));
+        prefs.addKeyboardLayout(QStringLiteral("de"), QString());
+        QCOMPARE(prefs.keyboardLayouts().size(), 1);
+        prefs.setVisualTheme(QStringLiteral("Fluent"));
+        QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
+        prefs.resetThemes();
+        QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
+
+        QVERIFY(QFile::setPermissions(dir, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        prefs.setLanguage(QStringLiteral("en"));
+        QCOMPARE(prefs.language(), QStringLiteral("en"));
+        QCOMPARE(prefs.saveError(), QString());
+    }
 };
 
 int main(int argc, char** argv)
