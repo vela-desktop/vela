@@ -641,6 +641,13 @@ void vela_capture_watch_test_shell(struct vela_capture_watch *watch, const char 
             }
         }
     }
+    // Frames asked for but not yet looked at would make a stream again.
+    struct screencopy_frame *frame, *next_frame;
+    wl_list_for_each_safe (frame, next_frame, &watch->unresolved, link) {
+        if (frame->capturer->shell) {
+            free_frame(frame);
+        }
+    }
     update(watch);
 }
 

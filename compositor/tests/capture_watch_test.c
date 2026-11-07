@@ -361,6 +361,16 @@ static void later(struct vela_capture_watch *watch, int64_t ms)
     vela_capture_watch_refresh(watch);
 }
 
+// A line on the command socket, as the compositor reads it: test-shell.
+static int test_shell_command(int fd, uint32_t mask, void *data)
+{
+    char pid[16] = { 0 };
+    if (read(fd, pid, sizeof(pid) - 1) > 0) {
+        vela_capture_watch_test_shell(data, pid);
+    }
+    return 0;
+}
+
 // ------------------------------------------------------- other processes --
 
 // This test as a client of its own, under another name (`--client`), on the
@@ -736,8 +746,27 @@ int main(int argc, char **argv)
     later(watch, 0);
     assert(!nobody());
     (void)one;
-    vela_capture_watch_test_shell(watch, pid);
+    // test-shell arrives in the same turn as two more frame requests, before
+    // they are looked at (the command socket is another fd of the loop):
+    // they mustn't make a stream again.
+    int command[2];
+    assert(pipe2(command, O_CLOEXEC) == 0);
+    struct wl_event_source *command_source
+        = wl_event_loop_add_fd(loop, command[0], WL_EVENT_READABLE, test_shell_command, watch);
+    keep(&b, zwlr_screencopy_manager_v1_capture_output(b.screencopy, 0, b.outputs[0]));
+    keep(&b, zwlr_screencopy_manager_v1_capture_output(b.screencopy, 0, b.outputs[0]));
+    wl_display_flush(b.wl);
+    assert(write(command[1], pid, strlen(pid)) == (ssize_t)strlen(pid));
+    poll(&(struct pollfd) { wl_display_get_fd(b.wl), POLLOUT, 0 }, 1, 10);
+    usleep(20000); // both ready for the same epoll_wait
+    wl_event_loop_dispatch(loop, 0);
+    later(watch, 0);
     assert(nobody());
+    later(watch, 3000);
+    assert(nobody());
+    wl_event_source_remove(command_source);
+    close(command[0]);
+    close(command[1]);
     struct client later_shell;
     connect_client(&later_shell);
     open_session(&later_shell, 0);
