@@ -15,11 +15,15 @@ std::optional<BatteryAlerts::Level> BatteryAlerts::classify(const BatteryReading
     }
     if (reading.system) {
         // Critical is UPower's (just before its critical action: hibernate,
-        // power off); low is the user's threshold (§4.2).
+        // power off); low is the user's threshold. Neither charging nor
+        // discharging (a charge limit, unknown): nothing (§4.2).
+        if (!reading.discharging) {
+            return std::nullopt;
+        }
         if (reading.warning == BatteryReading::Warning::Critical) {
             return Level::Critical;
         }
-        if (!reading.discharging || reading.percentage < 0) {
+        if (reading.percentage < 0) {
             return std::nullopt;
         }
         return reading.percentage <= settings.systemLow ? Level::Low : Level::Normal;
@@ -46,18 +50,18 @@ std::vector<BatteryAlerts::Action> BatteryAlerts::evaluate(Device& device)
 {
     // Charging (or charged) rearms: the next discharge is told again.
     if (device.last.charging && device.last.present) {
-        device.rejoined = false;
+        device.rearmIfNormal = false;
         return rearm(device);
     }
     const std::optional<Level> level = classify(device.last, m_settings);
     if (!level) {
         return {};
     }
-    const bool rejoined = std::exchange(device.rejoined, false);
+    const bool rearmIfNormal = std::exchange(device.rearmIfNormal, false);
     if (*level == Level::Normal) {
         // A normal charge while connected doesn't rearm: voltage-based
         // readings bounce between low and normal (§4.4).
-        return rejoined ? rearm(device) : std::vector<Action> {};
+        return rearmIfNormal ? rearm(device) : std::vector<Action> {};
     }
     if (*level <= device.told) {
         return {};
@@ -70,7 +74,7 @@ std::vector<BatteryAlerts::Action> BatteryAlerts::update(const BatteryReading& r
 {
     Device& device = m_devices[reading.id];
     if (std::exchange(device.away, false)) {
-        device.rejoined = true;
+        device.rearmIfNormal = true;
     }
     device.last = reading;
     return evaluate(device);
@@ -104,6 +108,9 @@ std::vector<BatteryAlerts::Action> BatteryAlerts::configure(const Settings& sett
             for (Action& action : rearm(device)) {
                 actions.push_back(std::move(action));
             }
+        } else if (thresholdMoved && device.told == Level::Low && !level) {
+            // Not known now: the first known reading decides.
+            device.rearmIfNormal = true;
         }
         if (!device.away) {
             for (Action& action : evaluate(device)) {

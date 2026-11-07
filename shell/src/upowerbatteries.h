@@ -55,9 +55,10 @@ private Q_SLOTS:
 
 private:
     struct Device {
-        quint64 request = 0;
+        quint64 request = 0; // the last read asked, unique across devices
         QString id; // fixed at the first reading, for as long as it stays
         bool followed = false; // its PropertiesChanged connected
+        int failures = 0; // reads failed in a row
     };
 
     void enumerate();
@@ -71,4 +72,5 @@ private:
     QDBusServiceWatcher* m_serviceWatcher = nullptr;
     QHash<QString, Device> m_devices;
     quint64 m_generation = 0;
+    quint64 m_requests = 0;
 };

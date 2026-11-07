@@ -42,6 +42,8 @@ public:
     // The next GetAll of a device answered this late (ms), with the
     // properties it had when asked.
     QHash<QString, int> delayNext;
+    // The next GetAll calls of a device that fail, this many.
+    QHash<QString, int> failNext;
 
     QString introspect(const QString&) const override { return {}; }
 
@@ -63,6 +65,11 @@ public:
         if (message.interface() == propertiesInterface && message.member() == QLatin1String("GetAll")
             && devices.contains(message.path())) {
             ++reads[message.path()];
+            if (int& failing = failNext[message.path()]; failing > 0) {
+                --failing;
+                connection.send(message.createErrorReply(QDBusError::NoReply, QStringLiteral("busy")));
+                return true;
+            }
             const QDBusMessage reply = message.createReply(QVariant(devices.value(message.path())));
             if (const int delay = delayNext.take(message.path())) {
                 message.setDelayedReply(true);
@@ -420,6 +427,47 @@ private Q_SLOTS:
         QTest::qWait(800); // the critical reading arrives, and is dropped
         QCOMPARE(summaries(&server), QStringList { mouseLow });
         QCOMPARE(notices.readings(), 4);
+    }
+
+    // Removed and added again at the same path: a reply still owed to the
+    // device it was is dropped, whatever its number.
+    void readdedAtTheSamePath()
+    {
+        NotificationServer server;
+        BatteryNotices notices(&server, client());
+        notices.start();
+        QTRY_COMPARE(notices.readings(), 3);
+        const QString keyboardPath = QStringLiteral("/org/freedesktop/UPower/devices/keyboard_dev_1");
+        QVariantMap keyboard { { QStringLiteral("Type"), 6u }, { QStringLiteral("State"), 2u },
+            { QStringLiteral("WarningLevel"), 4u }, { QStringLiteral("Percentage"), 3.0 } };
+        m_fake->delayNext[keyboardPath] = 500;
+        m_fake->add(keyboardPath, keyboard);
+        QTRY_COMPARE(m_fake->reads.value(keyboardPath), 1);
+        m_fake->remove(keyboardPath);
+        keyboard[QStringLiteral("WarningLevel")] = 1u;
+        keyboard[QStringLiteral("Percentage")] = 80.0;
+        m_fake->add(keyboardPath, keyboard);
+        QTRY_COMPARE(notices.readings(), 4);
+        QTest::qWait(800); // the critical reading arrives, and is dropped
+        QCOMPARE(summaries(&server), QStringList());
+        QCOMPARE(notices.readings(), 4);
+    }
+
+    // A read that fails is asked again, a few times.
+    void failedReadsAreRetried()
+    {
+        m_fake->set(mousePath, { { QStringLiteral("WarningLevel"), 3u }, { QStringLiteral("BatteryLevel"), 3u } });
+        m_fake->failNext[mousePath] = 1;
+        m_fake->failNext[headsetPath] = 100;
+        NotificationServer server;
+        BatteryNotices notices(&server, client());
+        notices.start();
+        QTRY_COMPARE_WITH_TIMEOUT(summaries(&server), QStringList { mouseLow }, 3000);
+        QCOMPARE(m_fake->reads.value(mousePath), 2);
+        // Never answering: asked four times in all, then left.
+        QTRY_COMPARE_WITH_TIMEOUT(m_fake->reads.value(headsetPath), 4, 8000);
+        QTest::qWait(4500);
+        QCOMPARE(m_fake->reads.value(headsetPath), 4);
     }
 
     // A serial seen only later doesn't make it another device.

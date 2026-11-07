@@ -319,6 +319,9 @@ private Q_SLOTS:
         BatteryReading unknownState = pc(5);
         unknownState.discharging = false; // e.g. plugged in at a charge limit
         QCOMPARE(said(alerts.update(unknownState)), QStringList());
+        // Neither charging nor discharging: not even UPower's critical.
+        unknownState.warning = Warning::Critical;
+        QCOMPARE(said(alerts.update(unknownState)), QStringList());
         QCOMPARE(said(alerts.update(pc(-1))), QStringList());
         BatteryReading gone = pc(5);
         gone.present = false;
@@ -361,6 +364,25 @@ private Q_SLOTS:
         alerts.update(pc(4, Warning::Critical));
         QCOMPARE(said(alerts.configure({ true, 50, true })), QStringList());
         QCOMPARE(said(alerts.configure({ true, 5, true })), QStringList());
+    }
+
+    // The level lowered while the charge isn't known: the first known
+    // reading decides, as if the level had moved then.
+    void thresholdMovesWhileUnknown()
+    {
+        BatteryAlerts alerts;
+        QCOMPARE(said(alerts.update(pc(18))), QStringList { QStringLiteral("show:system:low") });
+        QCOMPARE(said(alerts.update(pc(-1))), QStringList());
+        QCOMPARE(said(alerts.configure({ true, 10, true })), QStringList());
+        QCOMPARE(said(alerts.update(pc(-1))), QStringList());
+        QCOMPARE(said(alerts.update(pc(15))), QStringList { QStringLiteral("close:system") });
+        QCOMPARE(said(alerts.update(pc(10))), QStringList { QStringLiteral("show:system:low") });
+        // Still low at the new level when known: the warning stays.
+        QCOMPARE(said(alerts.update(pc(-1))), QStringList());
+        QCOMPARE(said(alerts.configure({ true, 5, true })), QStringList());
+        QCOMPARE(said(alerts.configure({ true, 15, true })), QStringList());
+        QCOMPARE(said(alerts.update(pc(9))), QStringList());
+        QCOMPARE(said(alerts.update(pc(12))), QStringList());
     }
 
     void awayDevicesAreNotToldOnSettings()

@@ -8,6 +8,7 @@
 #include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
 #include <QDBusVariant>
+#include <QTimer>
 
 #include <cmath>
 
@@ -17,6 +18,11 @@ const QString service = QStringLiteral("org.freedesktop.UPower");
 const QString root = QStringLiteral("/org/freedesktop/UPower");
 const QString deviceInterface = QStringLiteral("org.freedesktop.UPower.Device");
 const QString propertiesInterface = QStringLiteral("org.freedesktop.DBus.Properties");
+
+// A read that fails (UPower busy, a timeout) is asked again, a little later
+// each time, a few times at most.
+constexpr int retries = 3;
+constexpr int retryDelayMs = 1000;
 
 // UPower's Type, State, BatteryLevel and WarningLevel values.
 enum Type : uint { Unknown = 0, LinePower = 1, Battery = 2, Ups = 3 };
@@ -225,7 +231,9 @@ void UPowerBatteries::refresh(const QString& path)
     if (it == m_devices.end()) {
         return;
     }
-    const quint64 request = ++it->request;
+    // Numbered across devices: a device removed and added again at the same
+    // path doesn't take a number its previous self is still waiting on.
+    const quint64 request = it->request = ++m_requests;
     const quint64 generation = m_generation;
     QDBusMessage call = QDBusMessage::createMethodCall(service, path, propertiesInterface, QStringLiteral("GetAll"));
     call << deviceInterface;
@@ -234,9 +242,21 @@ void UPowerBatteries::refresh(const QString& path)
         const QDBusPendingReply<QVariantMap> reply = *watcher;
         watcher->deleteLater();
         auto it = m_devices.find(path);
-        if (generation != m_generation || it == m_devices.end() || it->request != request || reply.isError()) {
+        if (generation != m_generation || it == m_devices.end() || it->request != request) {
             return;
         }
+        if (reply.isError()) {
+            if (++it->failures <= retries) {
+                QTimer::singleShot(retryDelayMs * it->failures, this, [this, path, request] {
+                    // Unless it went, or was read again meanwhile.
+                    if (auto it = m_devices.find(path); it != m_devices.end() && it->request == request) {
+                        refresh(path);
+                    }
+                });
+            }
+            return;
+        }
+        it->failures = 0;
         const QVariantMap properties = reply.value();
         if (ignored(path, properties)) {
             unfollow(path, *it); // kept, so DeviceAdded doesn't add it again

@@ -73,7 +73,9 @@ private:
         BatteryReading last;
         Level told = Level::Normal; // Normal: armed
         bool away = false;
-        bool rejoined = false; // back after away, until a level is known
+        // A normal charge at the next known level rearms: back after away,
+        // or the low level moved while the charge wasn't known.
+        bool rearmIfNormal = false;
     };
     std::vector<Action> evaluate(Device& device);
     static std::vector<Action> rearm(Device& device);

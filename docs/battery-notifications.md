@@ -48,7 +48,11 @@ system bus:
 - Each device's `PropertiesChanged`, which refreshes **that device only**:
   the signal's own path (QDBusContext), not every device.
 - Each reading is a `GetAll`, async. A reply older than the last request
-  for the device, or from a previous UPower, is dropped.
+  for the device, or from a previous UPower, is dropped. Requests are
+  numbered across devices, so a device removed and added again at the same
+  path never takes a reply owed to its previous self.
+- A read that fails (UPower busy, a timeout) is asked again after 1, 2 and
+  3 seconds, then left until the device's next signal.
 
 Never followed after their first reading: line power, UPSs and the power
 supply batteries (BAT0, BAT1), which are in the DisplayDevice already. A
@@ -85,7 +89,7 @@ discharges, low is **at or under the user's level** (`battery/lowLevel`,
 §6), not UPower's low warning: the user's choice wins. Critical is UPower's
 `WarningLevel` Critical or Action, just before UPower's critical action
 (hibernate, power off). With a state other than charging or discharging
-(a charge limit reached, unknown), nothing is told.
+(a charge limit reached, unknown), nothing is told, critical included.
 
 ### 4.3 Who a device is
 
@@ -111,6 +115,8 @@ For each device, what was told: nothing, low or critical.
   Back with a normal charge (the batteries were replaced) at its first
   known reading: rearmed.
 - **Unknown:** changes nothing.
+- **The PC's level moved while its charge isn't known:** the first known
+  reading decides, as if it had moved then (§6).
 - **Dismissed** by the user: still told, until it rearms.
 
 The state lives only in the shell: after the shell restarts, a battery
@@ -135,7 +141,8 @@ known; its icon is its kind's (`input-mouse`, `audio-headset`...).
 Critical notifications pass Do not disturb, the user's and the one while
 the screen is shared ([screen sharing](screen-sharing.md) §7); low ones
 wait in the notification center. A critical notification normally stays
-until dismissed; `x-vela-expires` (a boolean hint, Vela's own) makes it
+until dismissed, even when more than four popups crowd it (the oldest
+others go into the notification center first); `x-vela-expires` (a boolean hint, Vela's own) makes it
 expire like any other: a mouse at its last charge needs to be seen, not to
 stay on screen.
 
@@ -182,13 +189,16 @@ level. A critical one is never closed by the level.
 | Test | What it covers |
 |---|---|
 | `shell-battery-alerts` (unit) | reading UPower's properties (warning level, unknown coarse level, 0% before the first reading, presence, states, identity, what isn't followed); the policy: once, escalation, bouncing, charging, reconnecting, devices apart, the PC's level, the switches and the level moving |
-| `shell-battery-notices` | a fake UPower on a private bus, end to end: the notifications at start, only the sender read, BAT0 not followed, bouncing and reconnecting under another path, UPower restarting, a late reply dropped, the PC's battery and plugging in, settings live, Do not disturb and expiry, dismissed, an identity that stays, no UPower |
-| `shell-notification-silence` | `x-vela-expires` |
+| `shell-battery-notices` | a fake UPower on a private bus, end to end: the notifications at start, only the sender read, BAT0 not followed, bouncing and reconnecting under another path, UPower restarting, a late reply dropped (also for a device added again at the same path), failed reads retried, the PC's battery and plugging in, settings live, Do not disturb and expiry, dismissed, an identity that stays, no UPower |
+| `shell-notification-silence` | `x-vela-expires`; a critical notification that stays kept on screen when the popups are full |
 | `shell-config`, `settings-preferences` | the `[battery]` keys, read and written, a bad level ignored |
 
 Each of these was checked by mutation: every rule above removed or
 inverted in turn (only the sender read, BAT0 unfollowed, the rearming
 rules, `x-vela-expires` sent and honored, the user's level, UPower's
 critical, the identity kept, the low one closed on critical, the two
-guesses, the switches and the level, stale replies, the DisplayDevice
-added, the level's range) makes at least one of them fail.
+guesses, the switches and the level, stale replies and requests numbered
+across devices, failed reads retried and their bound, the DisplayDevice
+added, the level's range, no critical for the PC outside discharging, the
+level moved while unknown, a critical one that stays kept on screen) makes
+at least one of them fail.
