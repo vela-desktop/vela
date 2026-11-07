@@ -337,14 +337,24 @@ jobs:
     permissions:
       contents: read
 
-  # Build the SAME revision as the Arch package, in Fedora 44.
+  # Build native RPMs from the SAME revision as Arch for both supported Fedora releases.
   fedora-package:
     needs: packaging-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fedora: 44
+            image: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+            artifact: vela-fedora-rpm
+          - fedora: 45
+            image: fedora@sha256:aacbc26b38361ba0cb3d10f268da40b61b36aed6ed6fe5831a35871636bedb06
+            artifact: vela-fedora-45-rpm
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-fedora-rpm
       CCACHE_MAXSIZE: 500M
     runs-on: ubuntu-latest
-    container: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 # official Fedora 44 image index
+    container: ${{ matrix.image }}
     permissions:
       contents: read
       id-token: write
@@ -371,8 +381,8 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache-fedora-rpm
-          key: ccache-fedora44-rpm-v1-${{ github.sha }}
-          restore-keys: ccache-fedora44-rpm-v1-
+          key: ccache-fedora${{ matrix.fedora }}-rpm-v1-${{ github.sha }}
+          restore-keys: ccache-fedora${{ matrix.fedora }}-rpm-v1-
       - name: Create exact-commit source archive
         shell: bash
         run: |
@@ -416,6 +426,9 @@ jobs:
             test "${#rpm_files[@]}" -eq 1
             [[ "${rpm_files[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
           fi
+          [[ "${rpm_files[0]}" == *".fc${{ matrix.fedora }}.x86_64.rpm" ]] || {
+            echo "::error::RPM was not built for Fedora ${{ matrix.fedora }}"; exit 1;
+          }
       - name: Fedora RPM ccache statistics
         if: always()
         run: ccache --show-stats || true
@@ -428,7 +441,7 @@ jobs:
             rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: vela-fedora-rpm
+          name: ${{ matrix.artifact }}
           path: |
             rpmbuild/RPMS/x86_64/vela-git-[0-9]*.x86_64.rpm
             rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm
@@ -438,15 +451,25 @@ jobs:
   # Install exactly the signed binary, not a second independently built RPM.
   fedora-package-smoke:
     needs: fedora-package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fedora: 44
+            image: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+            artifact: vela-fedora-rpm
+          - fedora: 45
+            image: fedora@sha256:aacbc26b38361ba0cb3d10f268da40b61b36aed6ed6fe5831a35871636bedb06
+            artifact: vela-fedora-45-rpm
     runs-on: ubuntu-latest
-    container: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 # official Fedora 44 image index
+    container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: vela-fedora-rpm
+          name: ${{ matrix.artifact }}
           path: dist
       - name: Fresh Fedora install and file/linkage smoke test
         shell: bash
@@ -455,6 +478,7 @@ jobs:
           shopt -s nullglob
           rpms=(dist/vela-*.x86_64.rpm)
           test "${#rpms[@]}" -eq 1
+          [[ "${rpms[0]}" == *".fc${{ matrix.fedora }}.x86_64.rpm" ]]
           if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
             [[ "${rpms[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
           else
@@ -559,6 +583,10 @@ jobs:
           path: dist
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          name: vela-fedora-45-rpm
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
           name: vela-ubuntu-26.10-deb
           path: dist
       - name: Publish signed Beta release
@@ -573,12 +601,14 @@ jobs:
           cd dist
           shopt -s nullglob
           packages=(vela-[0-9]*.pkg.tar.zst)
-          fedora_packages=(vela-[0-9]*.x86_64.rpm)
+          fedora44_packages=(vela-[0-9]*.fc44.x86_64.rpm)
+          fedora45_packages=(vela-[0-9]*.fc45.x86_64.rpm)
           ubuntu_packages=(vela_[0-9]*_amd64.deb)
           test "${#packages[@]}" -eq 1
-          test "${#fedora_packages[@]}" -eq 1
+          test "${#fedora44_packages[@]}" -eq 1
+          test "${#fedora45_packages[@]}" -eq 1
           test "${#ubuntu_packages[@]}" -eq 1
-          for p in "${packages[0]}" "${fedora_packages[0]}"; do
+          for p in "${packages[0]}" "${fedora44_packages[0]}" "${fedora45_packages[0]}"; do
             gh attestation verify "$p" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
@@ -594,26 +624,29 @@ jobs:
             --deny-self-hosted-runners
           sha256sum "${ubuntu_packages[0]}" > SHA256SUMS-ubuntu
           sha256sum "${packages[0]}" > SHA256SUMS
-          sha256sum "${fedora_packages[0]}" > SHA256SUMS-fedora
+          # Preserve the Fedora 44 manifest name for backward compatibility.
+          sha256sum "${fedora44_packages[0]}" > SHA256SUMS-fedora
+          sha256sum "${fedora45_packages[0]}" > SHA256SUMS-fedora-45
           # Reruns must never overwrite already-published release bytes.
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
               --json isPrerelease --jq '.isPrerelease' | grep -Fxq true
-            for asset in "${packages[0]}" "${fedora_packages[0]}" "${ubuntu_packages[0]}" \
-                         SHA256SUMS SHA256SUMS-fedora SHA256SUMS-ubuntu; do
+            for asset in "${packages[0]}" "${fedora44_packages[0]}" "${fedora45_packages[0]}" "${ubuntu_packages[0]}" \
+                         SHA256SUMS SHA256SUMS-fedora SHA256SUMS-fedora-45 SHA256SUMS-ubuntu; do
               gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
                 --json assets --jq '.assets[].name' | grep -Fxq "$asset"
             done
             mkdir -p previous
             gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
               --pattern 'SHA256SUMS*' --dir previous
-            for manifest in SHA256SUMS SHA256SUMS-fedora SHA256SUMS-ubuntu; do
+            for manifest in SHA256SUMS SHA256SUMS-fedora SHA256SUMS-fedora-45 SHA256SUMS-ubuntu; do
               cmp "$manifest" "previous/$manifest"
             done
             echo ":: Existing release matches verified packages; keeping it unchanged"
           else
             gh release create "$GITHUB_REF_NAME" "${packages[0]}" SHA256SUMS \
-              "${fedora_packages[0]}" SHA256SUMS-fedora \
+              "${fedora44_packages[0]}" SHA256SUMS-fedora \
+              "${fedora45_packages[0]}" SHA256SUMS-fedora-45 \
               "${ubuntu_packages[0]}" SHA256SUMS-ubuntu \
               --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
               --title "Vela ${GITHUB_REF_NAME#v} Beta" --generate-notes

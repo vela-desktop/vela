@@ -146,10 +146,37 @@ class FedoraUpdates(FedoraFixture):
         self.assertEqual(self.calls("rpmbuild"), [])
         self.assertEqual(self.calls("sudo"), [])
 
-    def test_reject_unsupported_fedora_release(self):
+    def test_fedora_45_is_supported(self):
         self.env["TEST_FEDORA_RELEASE"] = "45"
+        self.run_update("--check")
+        self.assertEqual(self.calls("rpmbuild"), [])
+        self.assertEqual(self.calls("sudo"), [])
+
+    def test_fedora_45_uses_own_signed_ci_artifact(self):
+        self.env.update(TEST_FEDORA_RELEASE="45", TEST_CI_RUN="123",
+                        TEST_DOWNLOAD_SHA=self.main[:7])
+        self.run_update("--download")
+        download = next(c for c in self.calls("gh") if c["args"][:2] == ["run", "download"])
+        self.assertEqual(download["args"][download["args"].index("-n") + 1],
+                         "vela-fedora-45-rpm")
+        self.assertIn(".fc45.x86_64.rpm", self.calls("sudo")[0]["args"][-1])
+
+    def test_fedora_45_public_release_uses_own_manifest(self):
+        self.env.update(TEST_FEDORA_RELEASE="45", TEST_RELEASE_SHA=self.main)
+        self.run_update("--download")
+        self.assertTrue(any(c["args"][-1].endswith("SHA256SUMS-fedora-45")
+                            for c in self.calls("curl")))
+        self.assertEqual(self.calls("rpmbuild"), [])
+
+    def test_fedora_45_local_build(self):
+        self.env["TEST_FEDORA_RELEASE"] = "45"
+        self.run_update("--build")
+        self.assertIn(".fc45.x86_64.rpm", self.calls("sudo")[-1]["args"][-1])
+
+    def test_reject_unsupported_fedora_release(self):
+        self.env["TEST_FEDORA_RELEASE"] = "46"
         result = self.run_update("--check", status=1)
-        self.assertIn("Fedora 44", result.stderr)
+        self.assertIn("Fedora 44/45", result.stderr)
         self.assertEqual(self.calls("rpmbuild"), [])
         self.assertEqual(self.calls("sudo"), [])
 

@@ -13,6 +13,18 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class CIUpdaterTestOwnership(unittest.TestCase):
+    def test_fedora_44_and_45_are_both_release_gates(self):
+        build = (ROOT / ".github/workflows/build.yml").read_text()
+        fedora = (ROOT / ".github/workflows/fedora.yml").read_text()
+        for workflow in (build, fedora):
+            self.assertIn("fedora: 44", workflow)
+            self.assertIn("fedora: 45", workflow)
+        self.assertIn("artifact: vela-fedora-rpm", build)
+        self.assertIn("artifact: vela-fedora-45-rpm", build)
+        self.assertIn("SHA256SUMS-fedora-45", build)
+        self.assertIn("fedora-package-smoke", build)
+        self.assertIn("fedora-tests, fedora-package, fedora-package-smoke", build)
+
     def test_updater_suite_runs_once_in_shared_packaging_job(self):
         build = (ROOT / ".github/workflows/build.yml").read_text()
         fedora = (ROOT / ".github/workflows/fedora.yml").read_text()

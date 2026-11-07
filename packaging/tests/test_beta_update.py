@@ -202,8 +202,8 @@ class BetaUpdateTests(unittest.TestCase):
         self.os_release.write_text("ID=" + distro + "\n" +
                                    ('VERSION_ID="' + version + '"\n' if version else ""))
         if distro == "fedora":
-            self.env["TEST_PACKAGE"] = "vela-0.1.11-1.fc44.x86_64.rpm"
-            self.env["TEST_MANIFEST"] = "SHA256SUMS-fedora"
+            self.env["TEST_PACKAGE"] = f"vela-0.1.11-1.fc{version}.x86_64.rpm"
+            self.env["TEST_MANIFEST"] = "SHA256SUMS-fedora-45" if version == "45" else "SHA256SUMS-fedora"
         elif distro == "ubuntu":
             self.env["TEST_PACKAGE"] = "vela_0.1.11_amd64.deb"
             self.env["TEST_MANIFEST"] = "SHA256SUMS-ubuntu"
@@ -245,6 +245,24 @@ class BetaUpdateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.calls.read_text())[:4],
                          ["dnf", "install", "-y", "--allowerasing"])
+
+    def test_fedora_45_selects_native_signed_rpm(self):
+        self.configure_os("fedora", "45")
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(".fc45.x86_64.rpm", json.loads(self.calls.read_text())[-1])
+
+    def test_fedora_distro_upgrade_reinstalls_same_version_for_new_release(self):
+        self.configure_os("fedora", "45")
+        self.env["TEST_INSTALLED"] = "0.1.11-1.fc44"
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        check = self.run_update("--check", "--json")
+        self.assertEqual(check.returncode, 0, check.stderr)
+        self.assertEqual(json.loads(check.stdout)["status"], "update-available")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(".fc45.x86_64.rpm", json.loads(self.calls.read_text())[-1])
 
     def test_ubuntu_uses_apt_even_if_pacman_exists(self):
         self.configure_os("ubuntu", "26.10")
