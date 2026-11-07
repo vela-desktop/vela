@@ -93,7 +93,7 @@ jobs:
             compositor/src/config.c compositor/src/frame_clock.c \
             compositor/src/geometry.c compositor/src/legacy_names.c \
             compositor/src/motion.c compositor/src/output_config.c \
-            compositor/src/sun.c compositor/src/util.c \
+            compositor/src/sun.c compositor/src/util.c compositor/src/x11_space.c \
             brightness/src/ddc.c brightness/src/fake.c brightness/src/lines.c \
             brightness/src/scheduler.c brightness/src/transfer.c
 
@@ -105,7 +105,7 @@ jobs:
             compositor/src/buffer.c compositor/src/color.c \
             compositor/src/config.c compositor/src/frame_clock.c \
             compositor/src/geometry.c compositor/src/output_config.c \
-            compositor/src/sun.c compositor/src/util.c \
+            compositor/src/sun.c compositor/src/util.c compositor/src/x11_space.c \
             brightness/src/ddc.c brightness/src/fake.c brightness/src/lines.c \
             brightness/src/scheduler.c brightness/src/transfer.c
 

@@ -129,6 +129,9 @@ TEST_F(Settings, WritesPrivateModeEvenWithPermissiveUmask)
     struct stat info {};
     ASSERT_EQ(stat(file().c_str(), &info), 0);
     EXPECT_EQ(info.st_mode & 0777, 0600);
+    // The XDG directory it creates is private too.
+    ASSERT_EQ(stat((m_dir + "/vela").c_str(), &info), 0);
+    EXPECT_EQ(info.st_mode & 0777, 0700);
 }
 
 TEST_F(Settings, DoesNotFollowPredictableTemporarySymlink)

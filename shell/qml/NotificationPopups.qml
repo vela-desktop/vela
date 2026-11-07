@@ -68,12 +68,20 @@ Window {
                     Eased { target: toast; property: "opacity"; to: 1 }
                 }
 
+                // A passive right-button handler on the entire tile also works
+                // over nested action buttons and links, without stealing their
+                // existing left clicks or hover handling.
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: Notifications.dismiss(toast.notificationId)
+                }
+
                 MouseArea {
                     id: toastMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    // Click: opens the app (the "default" action), otherwise
-                    // closes.
+                    // Left click: invoke the app's default action, if any;
+                    // otherwise dismiss as before.
                     onClicked: toast.hasDefaultAction ? Notifications.invoke(toast.notificationId, "default")
                                                       : Notifications.dismiss(toast.notificationId)
                 }
@@ -107,6 +115,7 @@ Window {
                     Text {
                         width: parent.width - 20
                         text: toast.summary
+                        textFormat: Text.PlainText // the spec's summary has no markup
                         visible: text !== ""
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
@@ -126,7 +135,7 @@ Window {
                         maximumLineCount: 4
                         elide: Text.ElideRight
                         linkColor: Theme.accentFill
-                        onLinkActivated: link => Qt.openUrlExternally(link)
+                        onLinkActivated: link => System.openUrl(link)
                     }
 
                     // The app's actions ("Reply", "Mark as read"...).

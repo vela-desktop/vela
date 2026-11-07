@@ -47,9 +47,9 @@ class FedoraUpdates(FedoraFixture):
             line.split(":", 1)[1].strip()
             for line in spec.splitlines() if line.startswith("Recommends:")
         }
-        for name in ("git", "util-linux", "rpm", "dnf5"):
+        for name in ("git", "curl", "util-linux", "rpm", "dnf5"):
             self.assertIn(name, required)
-        for name in ("curl", "rpm-build", "dnf5-plugins"):
+        for name in ("rpm-build", "dnf5-plugins"):
             self.assertIn(name, recommended)
 
     def test_multiple_runs_select_the_fedora_artifact(self):
@@ -155,6 +155,7 @@ class FedoraUpdates(FedoraFixture):
 
     def test_reject_dnf_based_fedora_derivative(self):
         # DNF/RPM and a Fedora macro are not enough to allow the RPM backend.
+        self.skip_if_host_pacman()
         self.os_release.write_text("ID=nobara\nID_LIKE=fedora\n")
         self.env["TEST_FEDORA_RELEASE"] = "44"
         result = self.run_update("--check", status=1)
@@ -172,8 +173,9 @@ class FedoraUpdates(FedoraFixture):
 
     def test_project_version_controls_rpm_version(self):
         import re
+        # The selected commit's version, not this checkout's.
         version = re.search(r"(?m)^\s*VERSION\s+([0-9]+(?:\.[0-9]+)+)\s*$",
-                            (ROOT / "CMakeLists.txt").read_text()).group(1)
+                            (self.source / "CMakeLists.txt").read_text()).group(1)
         self.assertIn("Version:        %{vela_version}", self.spec.read_text())
         self.run_update("--build")
         self.assertIn("vela_version " + version, self.calls("rpmbuild")[0]["args"])

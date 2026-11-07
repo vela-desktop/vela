@@ -13,6 +13,10 @@ C.ComboBox {
     signal chosen(int index)
 
     enabled: usable
+    // Disabled, the whole control fades, text and chevron too, like Button,
+    // Switch and Slider: a drop-down that only lost its background read as
+    // one that works.
+    opacity: enabled ? 1 : 0.45
     implicitWidth: Math.max(160, Math.min(320, contentWidth + 56))
     implicitHeight: 32
     textRole: model && model.length > 0 && typeof model[0] === "object" ? "text" : ""
@@ -33,12 +37,12 @@ C.ComboBox {
         color: combo.pressed ? Theme.controlPressed : combo.hovered ? Theme.controlHover : Theme.control
         border.width: 1
         border.color: Theme.controlStroke
-        opacity: combo.enabled ? 1 : 0.45
     }
     contentItem: Text {
         leftPadding: 11
         rightPadding: 32
         text: combo.displayText
+        textFormat: Text.PlainText
         color: Theme.text
         font.pixelSize: Theme.fontBody
         verticalAlignment: Text.AlignVCenter
@@ -72,6 +76,7 @@ C.ComboBox {
         contentItem: Text {
             leftPadding: 8
             text: typeof entry.modelData === "object" ? entry.modelData.text : entry.modelData
+            textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: Theme.fontBody
             verticalAlignment: Text.AlignVCenter

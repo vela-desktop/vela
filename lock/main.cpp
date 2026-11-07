@@ -18,6 +18,8 @@
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 
+#include "wallpaperblur.h"
+#include "clockformat.h"
 #include "defaults.h"
 #include "language.h"
 
@@ -32,6 +34,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
+#include <QSettings>
 #include <QSocketNotifier>
 #include <QSvgRenderer>
 #include <QTimer>
@@ -68,6 +71,7 @@ struct Screen {
     bool configured = false;
     QImage background; // wallpaper already scaled and darkened, for this size
     QImage backgroundBlurred;
+    uint32_t blurredScale120 = 0; // blur radius depends on output scale, not only pixel dimensions
 };
 
 enum class Mode { Clock, Login, Checking };
@@ -96,6 +100,8 @@ bool unlocked = false;
 
 QString userName;
 QString displayName;
+// 24-hour or 12-hour, as the taskbar shows it (shell/src/clockformat.h).
+QString timeFormat = vela::clock::timeFormat(true);
 
 void redrawAll();
 
@@ -123,39 +129,6 @@ QImage wallpaperFor(int width, int height)
         }
     }
     return image;
-}
-
-// The blurred wallpaper behind the password, like the compositor's dual
-// Kawase: halved several times and doubled several times, always filtered. A
-// single jump (1/24 and back) left clearly visible blocks and steps. At the
-// end a light veil of noise, which under the darkening avoids banding.
-QImage blurred(const QImage& image)
-{
-    QList<QSize> sizes;
-    QImage current = image;
-    while (sizes.size() < 5 && current.width() > 32 && current.height() > 32) {
-        sizes.append(current.size());
-        current = current.scaled(current.width() / 2, current.height() / 2, Qt::IgnoreAspectRatio,
-            Qt::SmoothTransformation);
-    }
-    while (!sizes.isEmpty()) {
-        current = current.scaled(sizes.takeLast(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    }
-    current = current.convertToFormat(QImage::Format_RGB32);
-    uint32_t seed = 0x9e3779b9u;
-    for (int y = 0; y < current.height(); ++y) {
-        auto* line = reinterpret_cast<QRgb*>(current.scanLine(y));
-        for (int x = 0; x < current.width(); ++x) {
-            seed ^= seed << 13;
-            seed ^= seed >> 17;
-            seed ^= seed << 5;
-            const int n = int(seed % 5) - 2; // from -2 to +2
-            const QRgb c = line[x];
-            line[x] = qRgb(std::clamp(qRed(c) + n, 0, 255), std::clamp(qGreen(c) + n, 0, 255),
-                std::clamp(qBlue(c) + n, 0, 255));
-        }
-    }
-    return current;
 }
 
 // ------------------------------------------------------------ drawing --
@@ -187,7 +160,13 @@ void draw(Screen& screen)
 
     if (screen.background.size() != QSize(w, h)) {
         screen.background = wallpaperFor(w, h);
-        screen.backgroundBlurred = blurred(screen.background);
+        screen.backgroundBlurred = {};
+    }
+    // A scale change can preserve the physical buffer size while changing
+    // logical dimensions. In that case the blur must still be regenerated.
+    if (screen.backgroundBlurred.isNull() || screen.blurredScale120 != screen.scale120) {
+        screen.backgroundBlurred = vela::lock::blurWallpaper(screen.background, screen.scale120);
+        screen.blurredScale120 = screen.scale120;
     }
     {
         QImage image(static_cast<uchar*>(data), w, h, stride, QImage::Format_RGB32);
@@ -206,12 +185,19 @@ void draw(Screen& screen)
 
         if (!login) {
             const QDateTime now = QDateTime::currentDateTime();
+            const QString time = QLocale().toString(now.time(), timeFormat);
             font.setPixelSize(120);
             font.setWeight(QFont::DemiBold);
+            // On a narrow output (a portrait phone-sized one) the time,
+            // longer at 12 hours ("12:45 PM"), shrinks to 90% of its width.
+            const qreal wide = QFontMetricsF(font).horizontalAdvance(time);
+            if (wide > lw * 0.9) {
+                font.setPixelSize(std::max(24, int(120 * lw * 0.9 / wide)));
+            }
             p.setFont(font);
             p.setPen(QColor(255, 255, 255, 240));
             const QRectF timeBox(0, lh * 0.12, lw, 150);
-            p.drawText(timeBox, Qt::AlignHCenter | Qt::AlignTop, QLocale().toString(now.time(), QStringLiteral("HH:mm")));
+            p.drawText(timeBox, Qt::AlignHCenter | Qt::AlignTop, time);
             font.setPixelSize(26);
             font.setWeight(QFont::Medium);
             p.setFont(font);
@@ -607,6 +593,7 @@ int main(int argc, char* argv[])
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
     vela::language::install(QStringLiteral("vela-lock")); // draws every frame: nothing to retranslate
+    timeFormat = vela::clock::timeFormat(vela::clock::hour24(QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))));
 
     if (const passwd* pw = getpwuid(getuid())) {
         userName = QString::fromLocal8Bit(pw->pw_name);

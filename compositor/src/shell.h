@@ -9,6 +9,8 @@
 
 struct vela_server;
 
+#include <stdbool.h>
+
 // Launches `command` and relaunches it when it fails (not when it exits
 // cleanly, nor when it keeps failing right after starting). The shell lives
 // in vela_server.shell (a vela_child, process.h).
@@ -19,7 +21,7 @@ void vela_shell_stop(struct vela_server *server);
 // One line of text on the shell's Unix socket
 // ($XDG_RUNTIME_DIR/vela-shell-<WAYLAND_DISPLAY>.sock), such as "toggle-start"
 // or "accessibility {...}". Never blocks: without a shell the message is
-// simply lost.
-void vela_shell_send(struct vela_server *server, const char *line);
+// simply lost. Returns true only when the message reached the socket.
+bool vela_shell_send(struct vela_server *server, const char *line);
 
 #endif

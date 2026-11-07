@@ -3,7 +3,10 @@
 
 #include "config.h"
 
+#include "batterysettings.h"
+#include "clockformat.h"
 #include "defaults.h"
+#include "starticon.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -21,6 +24,9 @@ Config::Config(QObject* parent)
         watch();
         reload();
     });
+    connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, [this](const QString& path) {
+        m_pictureTouched |= path == m_watchedPicture;
+    });
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, &m_debounce, qOverload<>(&QTimer::start));
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, &m_debounce, qOverload<>(&QTimer::start));
     watch();
@@ -30,11 +36,49 @@ Config::Config(QObject* parent)
 void Config::watch()
 {
     const QFileInfo info(m_path);
+    // On a new profile the directory isn't there yet: made here, so that
+    // Settings' first write is seen (QSettings would make it anyway).
+    QDir().mkpath(info.absolutePath());
     if (info.exists() && !m_watcher.files().contains(m_path)) {
         m_watcher.addPath(m_path);
     }
     if (info.dir().exists() && !m_watcher.directories().contains(info.absolutePath())) {
         m_watcher.addPath(info.absolutePath());
+    }
+}
+
+QString Config::timeFormat() const
+{
+    return vela::clock::timeFormat(m_clock24);
+}
+
+QString Config::clockFormat() const
+{
+    return vela::clock::timeFormat(m_clock24, m_clockSeconds);
+}
+
+void Config::refreshStartIcon()
+{
+    QSettings settings;
+    const QString source = vela::start::icon(settings).source;
+    if (source != m_startIconSource) {
+        m_startIconSource = source;
+        emit startChanged();
+    }
+    watchPicture();
+}
+
+void Config::watchPicture()
+{
+    // Only a picture's file (a logo may be an icon theme's name); watched
+    // again after an editor replaced it, which drops it from the watcher.
+    const QString picture = m_startIconSource.startsWith(u'/') ? m_startIconSource : QString();
+    if (!m_watchedPicture.isEmpty() && m_watchedPicture != picture) {
+        m_watcher.removePath(m_watchedPicture);
+    }
+    m_watchedPicture = picture;
+    if (!picture.isEmpty() && !m_watcher.files().contains(picture)) {
+        m_watcher.addPath(picture);
     }
 }
 
@@ -73,6 +117,32 @@ void Config::reload()
         emit taskbarChanged();
     }
 
+    const bool clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
+    const bool clock24 = vela::clock::hour24(settings);
+    const bool clockSeconds = settings.value(QStringLiteral("taskbar/clockSeconds"), false).toBool();
+    const bool notificationCount = settings.value(QStringLiteral("taskbar/notificationCount"), true).toBool();
+    if (clockDate != m_clockDate || clock24 != m_clock24 || clockSeconds != m_clockSeconds
+        || notificationCount != m_notificationCount) {
+        m_clockDate = clockDate;
+        m_clock24 = clock24;
+        m_clockSeconds = clockSeconds;
+        m_notificationCount = notificationCount;
+        emit clockChanged();
+    }
+
+    const bool startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
+    const QString startIconSource = vela::start::icon(settings).source;
+    // The same picture, changed in place: a new image under the same name.
+    const bool repainted = m_pictureTouched && !startIconSource.isEmpty() && startIconSource == m_startIconSource;
+    m_pictureTouched = false;
+    if (startPinned != m_startPinned || startIconSource != m_startIconSource || repainted) {
+        m_startPinned = startPinned;
+        m_startIconSource = startIconSource;
+        m_startIconRevision += repainted ? 1 : 0;
+        emit startChanged();
+    }
+    watchPicture();
+
     const QString primaryOutput = settings.value(QStringLiteral("display/primaryOutput")).toString();
     if (primaryOutput != m_primaryOutput) {
         m_primaryOutput = primaryOutput;
@@ -97,9 +167,32 @@ void Config::reload()
         emit clipboardChanged();
     }
 
+    const bool desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
+    if (desktopIcons != m_showDesktopIcons) {
+        m_showDesktopIcons = desktopIcons;
+        emit desktopIconsChanged(desktopIcons);
+    }
+
     const bool dnd = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
     if (dnd != m_doNotDisturb) {
         m_doNotDisturb = dnd;
         emit doNotDisturbChanged(dnd);
+    }
+
+    const bool silence = settings.value(QStringLiteral("notifications/silenceWhileSharing"), true).toBool();
+    if (silence != m_silenceWhileSharing) {
+        m_silenceWhileSharing = silence;
+        emit silenceWhileSharingChanged(silence);
+    }
+
+    const bool batteryNotify = vela::battery::notify(settings);
+    const int batteryLowLevel = vela::battery::lowLevel(settings);
+    const bool deviceBatteryNotify = vela::battery::devices(settings);
+    if (batteryNotify != m_batteryNotify || batteryLowLevel != m_batteryLowLevel
+        || deviceBatteryNotify != m_deviceBatteryNotify) {
+        m_batteryNotify = batteryNotify;
+        m_batteryLowLevel = batteryLowLevel;
+        m_deviceBatteryNotify = deviceBatteryNotify;
+        emit batteryChanged();
     }
 }

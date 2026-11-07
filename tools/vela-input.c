@@ -19,6 +19,12 @@
 //
 // Example, dragging a window against the left edge:
 //   vela-input move 640 100 down move 300 100 move 0 300 sleep 200 up
+//
+// vela-input - reads the actions from stdin instead, one line at a time
+// with the words separated by tabs, and answers OK (or ERROR) after each
+// line. A whole recorded scene then uses one keyboard: every new virtual
+// keyboard brings its keymap to the seat, and the focused panel (Start,
+// Snap Assist) loses the keyboard and closes.
 
 #define _GNU_SOURCE
 #include <linux/input-event-codes.h>
@@ -324,56 +330,19 @@ static void usage(const char* program)
         "Usage: %s ACTION [ACTION...]\n"
         "  move X Y | down [left|right|middle|back|forward] | up [...] | click [...]\n"
         "  key COMBO (e.g. super+Left) | keydown|keyup KEY | type TEXT | scroll N | sleep MS\n"
-        "  checkpoint: wait for stdin acknowledgement before continuing (functional tests)\n",
-        program);
+        "  checkpoint: wait for stdin acknowledgement before continuing (functional tests)\n"
+        "       %s -: tab-separated action lines from stdin, OK or ERROR after each\n",
+        program, program);
 }
 
-int main(int argc, char** argv)
+// Runs count words of actions in order; 0 at the first one that fails.
+static int runActions(int count, char** words)
 {
-    if (argc < 2) {
-        usage(argv[0]);
-        return 2;
-    }
-    display = wl_display_connect(NULL);
-    if (!display) {
-        fprintf(stderr, "vela-input: no Wayland session (WAYLAND_DISPLAY)\n");
-        return 1;
-    }
-    wl_registry_add_listener(wl_display_get_registry(display), &registryListener, NULL);
-    wl_display_roundtrip(display);
-    if (!pointerManager || !keyboardManager || !seat) {
-        fprintf(stderr, "vela-input: virtual pointer and keyboard not available "
-                        "(start Vela with VELA_DEBUG_INPUT=1)\n");
-        return 1;
-    }
-    if (!outputManager || outputCount == 0) {
-        fprintf(stderr, "vela-input: no outputs\n");
-        return 1;
-    }
-    for (int i = 0; i < outputCount; ++i) {
-        struct zxdg_output_v1* xdg = zxdg_output_manager_v1_get_xdg_output(outputManager, outputs[i]);
-        zxdg_output_v1_add_listener(xdg, &xdgOutputListener, (void*)(intptr_t)i);
-    }
-    wl_display_roundtrip(display);
-    for (int i = 0; i < outputCount; ++i) {
-        if (outputBoxes[i].x < layoutX1) layoutX1 = outputBoxes[i].x;
-        if (outputBoxes[i].y < layoutY1) layoutY1 = outputBoxes[i].y;
-        if (outputBoxes[i].x + outputBoxes[i].w > layoutX2) layoutX2 = outputBoxes[i].x + outputBoxes[i].w;
-        if (outputBoxes[i].y + outputBoxes[i].h > layoutY2) layoutY2 = outputBoxes[i].y + outputBoxes[i].h;
-    }
-
-    pointer = zwlr_virtual_pointer_manager_v1_create_virtual_pointer(pointerManager, seat);
-    keyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(keyboardManager, seat);
-    if (!setupKeyboard()) {
-        return 1;
-    }
-    wl_display_roundtrip(display);
-
     int ok = 1;
-    for (int i = 1; i < argc && ok; ++i) {
-        const char* action = argv[i];
-        const char* arg1 = i + 1 < argc ? argv[i + 1] : NULL;
-        const char* arg2 = i + 2 < argc ? argv[i + 2] : NULL;
+    for (int i = 0; i < count && ok; ++i) {
+        const char* action = words[i];
+        const char* arg1 = i + 1 < count ? words[i + 1] : NULL;
+        const char* arg2 = i + 2 < count ? words[i + 2] : NULL;
 
         if (!strcmp(action, "move") && arg1 && arg2) {
             pointerMove(atoi(arg1), atoi(arg2));
@@ -422,10 +391,86 @@ int main(int argc, char** argv)
             }
         } else {
             fprintf(stderr, "vela-input: invalid action '%s'\n", action);
-            usage(argv[0]);
+            usage("vela-input");
             ok = 0;
         }
         wl_display_roundtrip(display);
+    }
+    return ok;
+}
+
+int main(int argc, char** argv)
+{
+    if (argc < 2) {
+        usage(argv[0]);
+        return 2;
+    }
+    display = wl_display_connect(NULL);
+    if (!display) {
+        fprintf(stderr, "vela-input: no Wayland session (WAYLAND_DISPLAY)\n");
+        return 1;
+    }
+    wl_registry_add_listener(wl_display_get_registry(display), &registryListener, NULL);
+    wl_display_roundtrip(display);
+    if (!pointerManager || !keyboardManager || !seat) {
+        fprintf(stderr, "vela-input: virtual pointer and keyboard not available "
+                        "(start Vela with VELA_DEBUG_INPUT=1)\n");
+        return 1;
+    }
+    if (!outputManager || outputCount == 0) {
+        fprintf(stderr, "vela-input: no outputs\n");
+        return 1;
+    }
+    for (int i = 0; i < outputCount; ++i) {
+        struct zxdg_output_v1* xdg = zxdg_output_manager_v1_get_xdg_output(outputManager, outputs[i]);
+        zxdg_output_v1_add_listener(xdg, &xdgOutputListener, (void*)(intptr_t)i);
+    }
+    wl_display_roundtrip(display);
+    for (int i = 0; i < outputCount; ++i) {
+        if (outputBoxes[i].x < layoutX1) layoutX1 = outputBoxes[i].x;
+        if (outputBoxes[i].y < layoutY1) layoutY1 = outputBoxes[i].y;
+        if (outputBoxes[i].x + outputBoxes[i].w > layoutX2) layoutX2 = outputBoxes[i].x + outputBoxes[i].w;
+        if (outputBoxes[i].y + outputBoxes[i].h > layoutY2) layoutY2 = outputBoxes[i].y + outputBoxes[i].h;
+    }
+
+    pointer = zwlr_virtual_pointer_manager_v1_create_virtual_pointer(pointerManager, seat);
+    keyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(keyboardManager, seat);
+    if (!setupKeyboard()) {
+        return 1;
+    }
+    wl_display_roundtrip(display);
+
+    int ok = 1;
+    if (argc == 2 && !strcmp(argv[1], "-")) {
+        char* line = NULL;
+        size_t capacity = 0;
+        ssize_t length;
+        while ((length = getline(&line, &capacity, stdin)) > 0) {
+            if (line[length - 1] == '\n') {
+                line[length - 1] = '\0';
+            }
+            char* words[256];
+            int count = 0;
+            int fits = 1;
+            char* rest = NULL;
+            for (char* word = strtok_r(line, "\t", &rest); word; word = strtok_r(NULL, "\t", &rest)) {
+                if (count == 256) {
+                    fprintf(stderr, "vela-input: more than 256 words on one line\n");
+                    fits = 0;
+                    break;
+                }
+                words[count++] = word;
+            }
+            const int done = fits && runActions(count, words);
+            ok = ok && done;
+            if (puts(done ? "OK" : "ERROR") == EOF || fflush(stdout) == EOF) {
+                ok = 0;
+                break;
+            }
+        }
+        free(line);
+    } else {
+        ok = runActions(argc - 1, argv + 1);
     }
 
     zwlr_virtual_pointer_v1_destroy(pointer);

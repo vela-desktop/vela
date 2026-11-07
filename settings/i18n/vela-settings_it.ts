@@ -138,6 +138,144 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>AccentCard</name>
+    <message>
+        <source>Gray</source>
+        <translation>Grigio</translation>
+    </message>
+    <message>
+        <source>Red</source>
+        <translation>Rosso</translation>
+    </message>
+    <message>
+        <source>Orange</source>
+        <translation>Arancione</translation>
+    </message>
+    <message>
+        <source>Yellow</source>
+        <translation>Giallo</translation>
+    </message>
+    <message>
+        <source>Green</source>
+        <translation>Verde</translation>
+    </message>
+    <message>
+        <source>Teal</source>
+        <translation>Verde acqua</translation>
+    </message>
+    <message>
+        <source>Blue</source>
+        <translation>Blu</translation>
+    </message>
+    <message>
+        <source>Purple</source>
+        <translation>Viola</translation>
+    </message>
+    <message>
+        <source>Pink</source>
+        <translation>Rosa</translation>
+    </message>
+    <message>
+        <source>%1, dark</source>
+        <translation>%1 scuro</translation>
+    </message>
+    <message>
+        <source>%1, light</source>
+        <translation>%1 chiaro</translation>
+    </message>
+    <message>
+        <source>Accent color</source>
+        <translation>Colore principale</translation>
+    </message>
+    <message>
+        <source>%1, the theme in use, brings its own accent color. The one chosen here comes back with another theme</source>
+        <translation>%1, il tema in uso, ha un suo colore principale. Quello scelto qui torna con un altro tema</translation>
+    </message>
+    <message>
+        <source>In dark mode %1, the theme in use, brings its own accent color. The one chosen here shows in light mode</source>
+        <translation>In modalità scura %1, il tema in uso, ha un suo colore principale. Quello scelto qui si vede in modalità chiara</translation>
+    </message>
+    <message>
+        <source>In light mode %1, the theme in use, brings its own accent color. The one chosen here shows in dark mode</source>
+        <translation>In modalità chiara %1, il tema in uso, ha un suo colore principale. Quello scelto qui si vede in modalità scura</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus. In dark mode %1, the theme in use, brings its own</source>
+        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità scura %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus. In light mode %1, the theme in use, brings its own</source>
+        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità chiara %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus</source>
+        <translation>Pulsanti, selezioni, elementi attivi della barra delle applicazioni e dei menu</translation>
+    </message>
+    <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
+        <source>Colors</source>
+        <translation>Colori</translation>
+    </message>
+    <message>
+        <source>Color %1 of %2</source>
+        <translation>Colore %1 di %2</translation>
+    </message>
+    <message>
+        <source>Custom color</source>
+        <translation>Colore personalizzato</translation>
+    </message>
+    <message>
+        <source>View colors</source>
+        <translation>Visualizza colori</translation>
+    </message>
+</context>
+<context>
+    <name>AccentPicker</name>
+    <message>
+        <source>Choose a custom accent color</source>
+        <translation>Scegli un colore principale personalizzato</translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation>Fine</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Hue and saturation</source>
+        <translation>Tonalità e saturazione</translation>
+    </message>
+    <message>
+        <source>Hue %1°, saturation %2%. Left and right change the hue, up and down the saturation</source>
+        <translation>Tonalità %1°, saturazione %2%. Sinistra e destra cambiano la tonalità, su e giù la saturazione</translation>
+    </message>
+    <message>
+        <source>Brightness</source>
+        <translation>Luminosità</translation>
+    </message>
+    <message>
+        <source>Current color</source>
+        <translation>Colore attuale</translation>
+    </message>
+    <message>
+        <source>New color</source>
+        <translation>Nuovo colore</translation>
+    </message>
+    <message>
+        <source>Hex code</source>
+        <translation>Codice esadecimale</translation>
+    </message>
+    <message>
+        <source>A hex code has six digits, 0-9 and A-F, as #1E90FF</source>
+        <translation>Un codice esadecimale ha sei cifre, 0-9 e A-F, come #1E90FF</translation>
+    </message>
+</context>
+<context>
     <name>AccessibilityPage</name>
     <message>
         <source>Grayscale</source>
@@ -237,6 +375,45 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>AddDeviceDialog</name>
+    <message>
+        <source>Add a device</source>
+        <translation>Aggiungi un dispositivo</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Make sure your device is turned on and discoverable. Select it below to add it.</source>
+        <translation>Assicurati che il dispositivo sia acceso e individuabile. Selezionalo qui sotto per aggiungerlo.</translation>
+    </message>
+    <message>
+        <source>Discoverable as &quot;%1&quot;</source>
+        <translation>Individuabile come &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Another app is searching for devices, so this PC isn&apos;t made visible. Pairing from this PC still works.</source>
+        <translation>Un&apos;altra app sta cercando dispositivi, quindi questo PC non viene reso visibile. L&apos;associazione da questo PC funziona comunque.</translation>
+    </message>
+    <message>
+        <source>Wait for %1 to finish pairing.</source>
+        <translation>Attendi che %1 finisca l&apos;associazione.</translation>
+    </message>
+    <message>
+        <source>Looking for devices...</source>
+        <translation>Ricerca dei dispositivi...</translation>
+    </message>
+    <message>
+        <source>No devices found</source>
+        <translation>Nessun dispositivo trovato</translation>
+    </message>
+    <message>
+        <source>Search again</source>
+        <translation>Cerca di nuovo</translation>
+    </message>
+</context>
+<context>
     <name>AppsPage</name>
     <message>
         <source>Installed apps</source>
@@ -282,6 +459,18 @@ Specifiche sistema
         <translation>Sfoglia foto</translation>
     </message>
     <message>
+        <source>Desktop</source>
+        <translation>Desktop</translation>
+    </message>
+    <message>
+        <source>Show desktop icons</source>
+        <translation>Mostra le icone del desktop</translation>
+    </message>
+    <message>
+        <source>The files and folders of your Desktop folder, on the main display (also from the desktop&apos;s menu)</source>
+        <translation>I file e le cartelle della cartella Desktop, sullo schermo principale (anche dal menu del desktop)</translation>
+    </message>
+    <message>
         <source>System backgrounds</source>
         <translation>Sfondi del sistema</translation>
     </message>
@@ -291,46 +480,34 @@ Specifiche sistema
     </message>
 </context>
 <context>
-    <name>Bluetooth</name>
+    <name>BluetoothDevice</name>
     <message>
-        <source>Pairing failed: the device rejected it.</source>
-        <translation>Associazione non riuscita: il dispositivo l&apos;ha rifiutata.</translation>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
     </message>
     <message>
-        <source>The device isn&apos;t responding. Make sure it&apos;s on and nearby.</source>
-        <translation>Il dispositivo non risponde. Controlla che sia acceso e vicino.</translation>
+        <source>Disconnect</source>
+        <translation>Disconnetti</translation>
     </message>
     <message>
-        <source>Bluetooth is turned off.</source>
-        <translation>Il Bluetooth è spento.</translation>
+        <source>Connect</source>
+        <translation>Connetti</translation>
     </message>
     <message>
-        <source>The operation failed.</source>
-        <translation>Operazione non riuscita.</translation>
+        <source>Rename</source>
+        <translation>Rinomina</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Rimuovi</translation>
+    </message>
+    <message>
+        <source>Sound settings</source>
+        <translation>Impostazioni audio</translation>
     </message>
 </context>
 <context>
     <name>BluetoothPage</name>
-    <message>
-        <source>Connecting...</source>
-        <translation>Connessione in corso...</translation>
-    </message>
-    <message>
-        <source>Connected</source>
-        <translation>Connesso</translation>
-    </message>
-    <message>
-        <source>Paired</source>
-        <translation>Associato</translation>
-    </message>
-    <message>
-        <source> · Battery </source>
-        <translation> · Batteria </translation>
-    </message>
-    <message>
-        <source>Bluetooth isn&apos;t available</source>
-        <translation>Bluetooth non disponibile</translation>
-    </message>
     <message>
         <source>There&apos;s no Bluetooth adapter, or the bluetooth service isn&apos;t running.</source>
         <translation>Non c&apos;è un adattatore Bluetooth, o il servizio bluetooth non è attivo.</translation>
@@ -338,10 +515,6 @@ Specifiche sistema
     <message>
         <source>Bluetooth</source>
         <translation>Bluetooth</translation>
-    </message>
-    <message>
-        <source>Discoverable as &quot;</source>
-        <translation>Individuabile come &quot;</translation>
     </message>
     <message>
         <source>Off</source>
@@ -360,20 +533,48 @@ Specifiche sistema
         <translation>Aggiungi dispositivo</translation>
     </message>
     <message>
-        <source>Disconnect</source>
-        <translation>Disconnetti</translation>
-    </message>
-    <message>
-        <source>Connect</source>
-        <translation>Connetti</translation>
-    </message>
-    <message>
         <source>Remove</source>
         <translation>Rimuovi</translation>
     </message>
     <message>
         <source>Related settings</source>
         <translation>Impostazioni correlate</translation>
+    </message>
+    <message>
+        <source>Bluetooth isn&apos;t available on this PC</source>
+        <translation>Il Bluetooth non è disponibile su questo PC</translation>
+    </message>
+    <message>
+        <source>Discoverable as &quot;%1&quot;</source>
+        <translation>Individuabile come &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>Attivato</translation>
+    </message>
+    <message>
+        <source>Device settings</source>
+        <translation>Impostazioni dei dispositivi</translation>
+    </message>
+    <message>
+        <source>Low battery notifications</source>
+        <translation>Notifiche di batteria scarica</translation>
+    </message>
+    <message>
+        <source>When a mouse, keyboard, headset or another wireless device is running out of battery</source>
+        <translation>Quando la batteria di un mouse, di una tastiera, delle cuffie o di un altro dispositivo wireless si sta esaurendo</translation>
+    </message>
+    <message>
+        <source>Advanced</source>
+        <translation>Avanzate</translation>
+    </message>
+    <message>
+        <source>Bluetooth adapter</source>
+        <translation>Adattatore Bluetooth</translation>
+    </message>
+    <message>
+        <source>The one this PC uses</source>
+        <translation>Quello che usa questo PC</translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -404,44 +605,87 @@ Specifiche sistema
         <translation>Rimuovere il dispositivo?</translation>
     </message>
     <message>
-        <source>Yes</source>
-        <translation>Sì</translation>
+        <source>To use %1 again, you&apos;ll need to pair it once more.</source>
+        <translation>Per usare di nuovo %1 dovrai associarlo un&apos;altra volta.</translation>
     </message>
     <message>
-        <source>No</source>
-        <translation>No</translation>
+        <source>Rename this device</source>
+        <translation>Rinomina questo dispositivo</translation>
     </message>
     <message>
-        <source>To use </source>
-        <translation>Per usare di nuovo </translation>
+        <source>Rename</source>
+        <translation>Rinomina</translation>
     </message>
     <message>
-        <source> again, you&apos;ll need to pair it once more.</source>
-        <translation> dovrai associarlo un&apos;altra volta.</translation>
-    </message>
-    <message>
-        <source>Add a device</source>
-        <translation>Aggiungi un dispositivo</translation>
+        <source>Name</source>
+        <translation>Nome</translation>
     </message>
     <message>
         <source>Cancel</source>
         <translation>Annulla</translation>
     </message>
+</context>
+<context>
+    <name>BluetoothQuestion</name>
     <message>
-        <source>Make sure your device is turned on and discoverable. Select it below to connect.</source>
-        <translation>Assicurati che il dispositivo sia acceso e individuabile. Selezionalo qui sotto per connetterlo.</translation>
+        <source>Does %1 show this code?</source>
+        <translation>%1 mostra questo codice?</translation>
     </message>
     <message>
-        <source>Pairing...</source>
-        <translation>Associazione in corso...</translation>
+        <source>%1 wants to pair with this PC.</source>
+        <translation>%1 vuole associarsi a questo PC.</translation>
     </message>
     <message>
-        <source>Looking for devices...</source>
-        <translation>Ricerca dei dispositivi...</translation>
+        <source>Allow %1 to use %2?</source>
+        <translation>Consentire a %1 di usare %2?</translation>
     </message>
     <message>
-        <source>No devices found</source>
-        <translation>Nessun dispositivo trovato</translation>
+        <source>Type the 6-digit code shown on %1.</source>
+        <translation>Digita il codice di 6 cifre mostrato su %1.</translation>
+    </message>
+    <message>
+        <source>Type the PIN for %1.</source>
+        <translation>Digita il PIN di %1.</translation>
+    </message>
+    <message>
+        <source>Type this code on %1, then press Enter on it.</source>
+        <translation>Digita questo codice su %1, poi premi Invio sul dispositivo.</translation>
+    </message>
+    <message>
+        <source>Code %1</source>
+        <translation>Codice %1</translation>
+    </message>
+    <message>
+        <source>%1 of 6 digits typed</source>
+        <translation>%1 cifre su 6 digitate</translation>
+    </message>
+    <message>
+        <source>Code</source>
+        <translation>Codice</translation>
+    </message>
+    <message>
+        <source>PIN</source>
+        <translation>PIN</translation>
+    </message>
+    <message>
+        <source>Time left: %1 s</source>
+        <translation>Tempo rimasto: %1 s</translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation>Consenti</translation>
+    </message>
+    <message>
+        <source>Pair</source>
+        <translation>Associa</translation>
+    </message>
+    <message>
+        <source>Deny</source>
+        <translation>Nega</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
     </message>
 </context>
 <context>
@@ -548,18 +792,6 @@ Specifiche sistema
         <source>App windows, File Explorer and Settings</source>
         <translation>Le finestre delle app, Esplora e le Impostazioni</translation>
     </message>
-    <message>
-        <source>Accent color</source>
-        <translation>Colore principale</translation>
-    </message>
-    <message>
-        <source>Buttons, selections, active items in the taskbar and menus</source>
-        <translation>Pulsanti, selezioni, elementi attivi della barra delle applicazioni e dei menu</translation>
-    </message>
-    <message>
-        <source>Colors</source>
-        <translation>Colori</translation>
-    </message>
 </context>
 <context>
     <name>DateTimePage</name>
@@ -578,6 +810,22 @@ Specifiche sistema
     <message>
         <source>Time zone</source>
         <translation>Fuso orario</translation>
+    </message>
+    <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>In the taskbar, the notification center, the lock screen and here</source>
+        <translation>Nella barra delle applicazioni, nel centro notifiche, nella schermata di blocco e qui</translation>
+    </message>
+    <message>
+        <source>24-hour (%1)</source>
+        <translation>24 ore (%1)</translation>
+    </message>
+    <message>
+        <source>12-hour (%1)</source>
+        <translation>12 ore (%1)</translation>
     </message>
     <message>
         <source>Related settings</source>
@@ -763,6 +1011,45 @@ Specifiche sistema
     <message>
         <source> file and link types</source>
         <translation> tipi di file e collegamenti</translation>
+    </message>
+</context>
+<context>
+    <name>DeviceState</name>
+    <message>
+        <source>Waiting for you...</source>
+        <translation>In attesa di una tua risposta...</translation>
+    </message>
+    <message>
+        <source>Pairing...</source>
+        <translation>Associazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connecting...</source>
+        <translation>Connessione in corso...</translation>
+    </message>
+    <message>
+        <source>Disconnecting...</source>
+        <translation>Disconnessione in corso...</translation>
+    </message>
+    <message>
+        <source>Removing...</source>
+        <translation>Rimozione in corso...</translation>
+    </message>
+    <message>
+        <source>Renaming...</source>
+        <translation>Ridenominazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>Connesso</translation>
+    </message>
+    <message>
+        <source>Paired</source>
+        <translation>Associato</translation>
+    </message>
+    <message>
+        <source>Battery %1%</source>
+        <translation>Batteria %1%</translation>
     </message>
 </context>
 <context>
@@ -962,10 +1249,6 @@ Specifiche sistema
         <translation>Un gioco a schermo intero va sullo schermo senza essere ridisegnato. Se un gioco mostra schermo nero o immagini corrotte, disattivalo</translation>
     </message>
     <message>
-        <source>direct scanout black screen glitch game full screen flicker</source>
-        <translation>scanout diretto schermo nero glitch gioco schermo intero</translation>
-    </message>
-    <message>
         <source>Related settings</source>
         <translation>Impostazioni correlate</translation>
     </message>
@@ -1068,12 +1351,16 @@ Specifiche sistema
         <translation>Bluetooth</translation>
     </message>
     <message>
-        <source>Discoverable as &quot;</source>
-        <translation>Individuabile come &quot;</translation>
-    </message>
-    <message>
         <source>Off</source>
         <translation>Disattivato</translation>
+    </message>
+    <message>
+        <source>Discoverable as &quot;%1&quot;</source>
+        <translation>Individuabile come &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>Attivato</translation>
     </message>
     <message>
         <source>View all devices</source>
@@ -1261,6 +1548,10 @@ Specifiche sistema
         <translation>Informazioni</translation>
     </message>
     <message>
+        <source>Updates</source>
+        <translation>Aggiornamenti</translation>
+    </message>
+    <message>
         <source>Bluetooth &amp; devices</source>
         <translation>Bluetooth e dispositivi</translation>
     </message>
@@ -1281,8 +1572,16 @@ Specifiche sistema
         <translation>Colori</translation>
     </message>
     <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
         <source>Taskbar</source>
         <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation>Start</translation>
     </message>
     <message>
         <source>Apps</source>
@@ -1417,6 +1716,14 @@ Specifiche sistema
         <translation>silenzioso notifiche</translation>
     </message>
     <message>
+        <source>Do not disturb while my screen is shared</source>
+        <translation>Non disturbare mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
+        <source>screen sharing share record recording presentation call meeting notifications silent do not disturb automatic</source>
+        <translation>condivisione schermo condividere registrare registrazione presentazione chiamata riunione notifiche silenzioso non disturbare automatico</translation>
+    </message>
+    <message>
         <source>screen off sleep idle battery energy saver lock</source>
         <translation>schermo spento sospensione inattività batteria risparmio energia blocco</translation>
     </message>
@@ -1447,6 +1754,26 @@ Specifiche sistema
     <message>
         <source>device name hostname</source>
         <translation>nome dispositivo hostname</translation>
+    </message>
+    <message>
+        <source>update upgrade new version install check release channel beta experimental</source>
+        <translation>aggiornamento aggiornare aggiorna nuova versione installa controlla release canale beta sperimentale update</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>Controlla aggiornamenti</translation>
+    </message>
+    <message>
+        <source>update check new version</source>
+        <translation>aggiornamento controlla verifica nuova versione update</translation>
+    </message>
+    <message>
+        <source>Update channel</source>
+        <translation>Canale di aggiornamento</translation>
+    </message>
+    <message>
+        <source>beta experimental channel branch commit development</source>
+        <translation>beta sperimentale canale branch commit sviluppo</translation>
     </message>
     <message>
         <source>Bluetooth</source>
@@ -1485,8 +1812,24 @@ Specifiche sistema
         <translation>immagine desktop foto wallpaper</translation>
     </message>
     <message>
+        <source>Show desktop icons</source>
+        <translation>Mostra le icone del desktop</translation>
+    </message>
+    <message>
+        <source>desktop icons files folders show hide</source>
+        <translation>desktop icone file cartelle mostra nascondi</translation>
+    </message>
+    <message>
         <source>accent color theme dark light mode</source>
         <translation>accento colore principale tema scuro chiaro modalità</translation>
+    </message>
+    <message>
+        <source>Custom color</source>
+        <translation>Colore personalizzato</translation>
+    </message>
+    <message>
+        <source>accent custom color picker hex code rgb</source>
+        <translation>colore principale accento personalizzato selettore esadecimale codice rgb</translation>
     </message>
     <message>
         <source>Choose your mode</source>
@@ -1497,8 +1840,84 @@ Specifiche sistema
         <translation>scuro chiaro dark light tema app</translation>
     </message>
     <message>
+        <source>theme palette colors corners radius rounded reset</source>
+        <translation>tema tavolozza colori angoli raggio arrotondati reimposta</translation>
+    </message>
+    <message>
         <source>taskbar alignment left center end task</source>
         <translation>taskbar allineamento sinistra centro termina attività</translation>
+    </message>
+    <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>clock 24-hour 12-hour am pm time format hours</source>
+        <translation>orologio 24 ore 12 ore am pm formato ora ore</translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation>Mostra i secondi</translation>
+    </message>
+    <message>
+        <source>taskbar clock seconds time</source>
+        <translation>barra applicazioni orologio secondi ora</translation>
+    </message>
+    <message>
+        <source>Show the number of notifications</source>
+        <translation>Mostra il numero di notifiche</translation>
+    </message>
+    <message>
+        <source>notifications count number badge unread taskbar clock</source>
+        <translation>notifiche conteggio numero contatore non lette barra applicazioni orologio</translation>
+    </message>
+    <message>
+        <source>Show the date</source>
+        <translation>Mostra la data</translation>
+    </message>
+    <message>
+        <source>taskbar clock date day show hide</source>
+        <translation>barra applicazioni orologio data giorno mostra nascondi</translation>
+    </message>
+    <message>
+        <source>Taskbar style</source>
+        <translation>Stile della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>taskbar style look pill floating dock</source>
+        <translation>barra delle applicazioni stile aspetto pillola mobile dock</translation>
+    </message>
+    <message>
+        <source>Quick settings style</source>
+        <translation>Stile delle impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>quick settings notification center style look</source>
+        <translation>impostazioni rapide centro notifiche stile aspetto</translation>
+    </message>
+    <message>
+        <source>Start menu style</source>
+        <translation>Stile del menu Start</translation>
+    </message>
+    <message>
+        <source>start menu style look size corners</source>
+        <translation>menu start stile aspetto dimensioni angoli</translation>
+    </message>
+    <message>
+        <source>Start button icon</source>
+        <translation>Icona del pulsante Start</translation>
+    </message>
+    <message>
+        <source>start button icon logo distribution picture image sail</source>
+        <translation>pulsante start icona logo distribuzione immagine foto vela</translation>
+    </message>
+    <message>
+        <source>Show pinned apps</source>
+        <translation>Mostra le app aggiunte</translation>
+    </message>
+    <message>
+        <source>start menu pinned apps pins show hide</source>
+        <translation>start menu app aggiunte fissate mostra nascondi</translation>
     </message>
     <message>
         <source>programs applications</source>
@@ -1635,6 +2054,13 @@ Specifiche sistema
     <message>
         <source>Find a setting</source>
         <translation>Trova un&apos;impostazione</translation>
+    </message>
+</context>
+<context>
+    <name>MoreMenu</name>
+    <message>
+        <source>More options</source>
+        <translation>Altre opzioni</translation>
     </message>
 </context>
 <context>
@@ -1898,11 +2324,11 @@ Specifiche sistema
     </message>
     <message>
         <source>Experimental NVIDIA fix</source>
-        <translation type="unfinished"></translation>
+        <translation>Correzione sperimentale per NVIDIA</translation>
     </message>
     <message>
         <source>Use Vulkan instead of the monitor&apos;s gamma LUT if Night light causes broken colors. May disable direct scanout.</source>
-        <translation type="unfinished"></translation>
+        <translation>Usa Vulkan invece della LUT gamma del monitor se Luce notturna rovina i colori. Può disattivare la scansione diretta.</translation>
     </message>
     <message>
         <source>Schedule night light</source>
@@ -1943,16 +2369,47 @@ Specifiche sistema
         <source>Notifications go straight to the notification center, without popping up</source>
         <translation>Le notifiche vanno direttamente nel centro notifiche, senza comparire</translation>
     </message>
+    <message>
+        <source>Turn on do not disturb automatically while my screen is shared</source>
+        <translation>Attiva Non disturbare automaticamente mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
+        <source>While an app shares or records the screen, notifications wait in the notification center</source>
+        <translation>Mentre un&apos;app condivide o registra lo schermo, le notifiche aspettano nel centro notifiche</translation>
+    </message>
+    <message>
+        <source>Show the number of notifications</source>
+        <translation>Mostra il numero di notifiche</translation>
+    </message>
+    <message>
+        <source>Next to the taskbar&apos;s clock. With Do not disturb on, its bell shows anyway</source>
+        <translation>Accanto all&apos;orologio della barra delle applicazioni. Con Non disturbare attivo, la sua campanella si vede comunque</translation>
+    </message>
+</context>
+<context>
+    <name>OwnThemesCard</name>
+    <message>
+        <source>Your own themes</source>
+        <translation>I tuoi temi</translation>
+    </message>
+    <message>
+        <source>A file in ~/.config/vela/themes/&lt;name&gt;.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change</source>
+        <translation>Un file in ~/.config/vela/themes/&lt;nome&gt;.conf compare qui. Inizia con inherits=vela, poi imposta solo i colori e gli angoli che vuoi cambiare</translation>
+    </message>
+    <message>
+        <source>Open folder</source>
+        <translation>Apri cartella</translation>
+    </message>
 </context>
 <context>
     <name>PersonalizationPage</name>
     <message>
-        <source>Background</source>
-        <translation>Sfondo</translation>
+        <source>Select a theme to apply</source>
+        <translation>Seleziona un tema da applicare</translation>
     </message>
     <message>
-        <source>Desktop background picture</source>
-        <translation>Immagine di sfondo del desktop</translation>
+        <source>Background</source>
+        <translation>Sfondo</translation>
     </message>
     <message>
         <source>Colors</source>
@@ -1963,12 +2420,32 @@ Specifiche sistema
         <translation>Colore principale, modalità chiara o scura delle app</translation>
     </message>
     <message>
-        <source>Taskbar</source>
-        <translation>Barra delle applicazioni</translation>
+        <source>Themes</source>
+        <translation>Temi</translation>
     </message>
     <message>
-        <source>Alignment, taskbar behaviors</source>
-        <translation>Allineamento, comportamenti della barra delle applicazioni</translation>
+        <source>Installed themes, your own, back to Vela&apos;s own look</source>
+        <translation>Temi installati, temi personali, ritorno all&apos;aspetto di Vela</translation>
+    </message>
+    <message>
+        <source>Taskbar items and behaviors, styles of the taskbar and quick settings</source>
+        <translation>Elementi e comportamenti, stili della barra e delle impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation>Start</translation>
+    </message>
+    <message>
+        <source>Desktop background picture, desktop icons</source>
+        <translation>Immagine di sfondo del desktop, icone del desktop</translation>
+    </message>
+    <message>
+        <source>The Start button&apos;s icon, pinned apps, style of the Start menu</source>
+        <translation>Icona del pulsante Start, app aggiunte, stile del menu Start</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
     </message>
 </context>
 <context>
@@ -2014,6 +2491,26 @@ Specifiche sistema
         <translation>A batteria</translation>
     </message>
     <message>
+        <source>Battery</source>
+        <translation>Batteria</translation>
+    </message>
+    <message>
+        <source>Battery notifications</source>
+        <translation>Notifiche della batteria</translation>
+    </message>
+    <message>
+        <source>Tell me when the battery is low, and when it&apos;s about to run out</source>
+        <translation>Avvisami quando la batteria è scarica e quando sta per esaurirsi</translation>
+    </message>
+    <message>
+        <source>Low battery level</source>
+        <translation>Livello di batteria scarica</translation>
+    </message>
+    <message>
+        <source>The charge at which the low battery notification comes</source>
+        <translation>La carica a cui arriva la notifica di batteria scarica</translation>
+    </message>
+    <message>
         <source>Power</source>
         <translation>Alimentazione</translation>
     </message>
@@ -2040,6 +2537,21 @@ Specifiche sistema
     <message>
         <source>Optimize your device based on power use and performance</source>
         <translation>Ottimizza il dispositivo in base al consumo di energia e alle prestazioni</translation>
+    </message>
+</context>
+<context>
+    <name>ResetThemesCard</name>
+    <message>
+        <source>Reset</source>
+        <translation>Reimposta</translation>
+    </message>
+    <message>
+        <source>%1 and no styles. Light or dark mode and the accent stay</source>
+        <translation>%1 e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
+    </message>
+    <message>
+        <source>%1 is in use, with no styles</source>
+        <translation>È in uso %1, senza stili</translation>
     </message>
 </context>
 <context>
@@ -2404,6 +2916,133 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>StartIconCard</name>
+    <message>
+        <source>Start button icon</source>
+        <translation>Icona del pulsante Start</translation>
+    </message>
+    <message>
+        <source>The logo of %1</source>
+        <translation>Il logo di %1</translation>
+    </message>
+    <message>
+        <source>Your picture: %1</source>
+        <translation>La tua immagine: %1</translation>
+    </message>
+    <message>
+        <source>Vela&apos;s sail, in the accent color</source>
+        <translation>La vela di Vela, nel colore principale</translation>
+    </message>
+    <message>
+        <source>Browse</source>
+        <translation>Sfoglia</translation>
+    </message>
+    <message>
+        <source>Distribution</source>
+        <translation>Distribuzione</translation>
+    </message>
+    <message>
+        <source>Picture</source>
+        <translation>Immagine</translation>
+    </message>
+    <message>
+        <source>Choose a picture for the Start button</source>
+        <translation>Scegli un&apos;immagine per il pulsante Start</translation>
+    </message>
+    <message>
+        <source>Images (*.svg *.png *.jpg *.jpeg *.webp *.bmp *.gif)</source>
+        <translation>Immagini (*.svg *.png *.jpg *.jpeg *.webp *.bmp *.gif)</translation>
+    </message>
+</context>
+<context>
+    <name>StartPage</name>
+    <message>
+        <source>Start</source>
+        <translation>Start</translation>
+    </message>
+    <message>
+        <source>Show pinned apps</source>
+        <translation>Mostra le app aggiunte</translation>
+    </message>
+    <message>
+        <source>Above all apps. Turned off, Start opens on all apps and keeps your pins</source>
+        <translation>Sopra tutte le app. Se disattivato, Start si apre su tutte le app e conserva quelle aggiunte</translation>
+    </message>
+    <message>
+        <source>Style</source>
+        <translation>Stile</translation>
+    </message>
+</context>
+<context>
+    <name>StillVisibleCard</name>
+    <message>
+        <source>Your PC is still visible to nearby devices</source>
+        <translation>Il PC è ancora visibile ai dispositivi vicini</translation>
+    </message>
+    <message>
+        <source>Another app is searching for devices.</source>
+        <translation>Un&apos;altra app sta cercando dispositivi.</translation>
+    </message>
+    <message>
+        <source>Stop being visible</source>
+        <translation>Non essere più visibile</translation>
+    </message>
+</context>
+<context>
+    <name>StyleChooser</name>
+    <message>
+        <source>From the theme, as %1 draws it</source>
+        <translation>Dal tema, come lo disegna %1</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed: the theme&apos;s look is in use</source>
+        <translation>&quot;%1&quot; non è installato: è in uso l&apos;aspetto del tema</translation>
+    </message>
+</context>
+<context>
+    <name>StyleGallery</name>
+    <message>
+        <source>The theme&apos;s style is in use</source>
+        <translation>È in uso lo stile del tema</translation>
+    </message>
+    <message>
+        <source>%1 is in use</source>
+        <translation>%1 è in uso</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed</source>
+        <translation>&quot;%1&quot; non è installato</translation>
+    </message>
+    <message>
+        <source>vela.conf names a style Vela can&apos;t find, so the theme&apos;s look is in use. Choose one below</source>
+        <translation>vela.conf indica uno stile che Vela non trova, quindi è in uso l&apos;aspetto del tema. Scegline uno qui sotto</translation>
+    </message>
+    <message>
+        <source>From the theme</source>
+        <translation>Dal tema</translation>
+    </message>
+    <message>
+        <source>As %1 draws it, based on %2</source>
+        <translation>Come lo disegna %1, basato su %2</translation>
+    </message>
+    <message>
+        <source>As %1 draws it</source>
+        <translation>Come lo disegna %1</translation>
+    </message>
+    <message>
+        <source>Original author: %1</source>
+        <translation>Autore originale: %1</translation>
+    </message>
+    <message>
+        <source>Your own styles: a file in ~/.config/vela/themes/%1/&lt;name&gt;.conf appears here</source>
+        <translation>Stili personali: un file in ~/.config/vela/themes/%1/&lt;nome&gt;.conf compare qui</translation>
+    </message>
+    <message>
+        <source>Open folder</source>
+        <translation>Apri cartella</translation>
+    </message>
+</context>
+<context>
     <name>Switch</name>
     <message>
         <source>On</source>
@@ -2444,8 +3083,8 @@ Specifiche sistema
         <translation>Notifiche</translation>
     </message>
     <message>
-        <source>Alerts from apps and the system, do not disturb</source>
-        <translation>Avvisi da app e sistema, Non disturbare</translation>
+        <source>Alerts from apps and the system, do not disturb, their number by the clock</source>
+        <translation>Avvisi dalle app e dal sistema, non disturbare, il loro numero accanto all&apos;orologio</translation>
     </message>
     <message>
         <source>Power</source>
@@ -2468,12 +3107,51 @@ Specifiche sistema
         <translation>Cronologia degli Appunti (Win+V), cancella</translation>
     </message>
     <message>
+        <source>Updates</source>
+        <translation>Aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Check for updates, what&apos;s new, update channel</source>
+        <translation>Controlla aggiornamenti, novità, canale di aggiornamento</translation>
+    </message>
+    <message>
         <source>About</source>
         <translation>Informazioni</translation>
     </message>
     <message>
         <source>Device specifications, rename your PC, operating system specifications</source>
         <translation>Specifiche del dispositivo, rinomina il PC, specifiche del sistema operativo</translation>
+    </message>
+</context>
+<context>
+    <name>TaskbarAlignmentCard</name>
+    <message>
+        <source>Taskbar alignment</source>
+        <translation>Allineamento della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps at the left: the alignment applies with another style</source>
+        <translation>%1 tiene le app a sinistra: l&apos;allineamento vale con un altro stile</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps at the left: the alignment applies with another theme</source>
+        <translation>%1 tiene le app a sinistra: l&apos;allineamento vale con un altro tema</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps centered in its pill: the alignment applies with another style</source>
+        <translation>%1 tiene le app al centro della sua pillola: l&apos;allineamento vale con un altro stile</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps centered in its pill: the alignment applies with another theme</source>
+        <translation>%1 tiene le app al centro della sua pillola: l&apos;allineamento vale con un altro tema</translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation>Al centro</translation>
+    </message>
+    <message>
+        <source>Left</source>
+        <translation>A sinistra</translation>
     </message>
 </context>
 <context>
@@ -2491,20 +3169,32 @@ Specifiche sistema
         <translation>Le finestre aperte e i desktop virtuali (anche con Win+Tab)</translation>
     </message>
     <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation>Mostra i secondi</translation>
+    </message>
+    <message>
+        <source>In the taskbar&apos;s clock</source>
+        <translation>Nell&apos;orologio della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Show the date</source>
+        <translation>Mostra la data</translation>
+    </message>
+    <message>
+        <source>Clock</source>
+        <translation>Orologio</translation>
+    </message>
+    <message>
+        <source>Under the time in the taskbar&apos;s clock</source>
+        <translation>Sotto l&apos;ora, nell&apos;orologio della barra delle applicazioni</translation>
+    </message>
+    <message>
         <source>Taskbar behaviors</source>
         <translation>Comportamenti della barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Taskbar alignment</source>
-        <translation>Allineamento della barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Center</source>
-        <translation>Al centro</translation>
-    </message>
-    <message>
-        <source>Left</source>
-        <translation>A sinistra</translation>
     </message>
     <message>
         <source>Show the taskbar on all displays</source>
@@ -2530,6 +3220,167 @@ Specifiche sistema
         <source>In the taskbar buttons&apos; menu, to close an app that isn&apos;t responding right away</source>
         <translation>Nel menu dei pulsanti della barra delle applicazioni, per chiudere subito un&apos;app che non risponde</translation>
     </message>
+    <message>
+        <source>Styles</source>
+        <translation>Stili</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Quick settings and notification center</source>
+        <translation>Impostazioni rapide e centro notifiche</translation>
+    </message>
+    <message>
+        <source>Related settings</source>
+        <translation>Impostazioni correlate</translation>
+    </message>
+    <message>
+        <source>24-hour or 12-hour, in Date &amp; time</source>
+        <translation>24 o 12 ore, in Data e ora</translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation>Notifiche</translation>
+    </message>
+    <message>
+        <source>Do not disturb, the number of notifications next to the clock</source>
+        <translation>Non disturbare, il numero di notifiche accanto all&apos;orologio</translation>
+    </message>
+</context>
+<context>
+    <name>ThemeGallery</name>
+    <message>
+        <source>%1 is in use</source>
+        <translation>%1 è in uso</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t use this file: too large, or for another version</source>
+        <translation>Vela non può usare questo file: è troppo grande, o è per un&apos;altra versione</translation>
+    </message>
+    <message>
+        <source>Original author: %1</source>
+        <translation>Autore originale: %1</translation>
+    </message>
+</context>
+<context>
+    <name>ThemeInUseCard</name>
+    <message>
+        <source>From the theme</source>
+        <translation>Dal tema</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed</source>
+        <translation>&quot;%1&quot; non è installato</translation>
+    </message>
+    <message>
+        <source>In use: %1</source>
+        <translation>In uso: %1</translation>
+    </message>
+    <message>
+        <source>The theme, and the styles and accent color over it</source>
+        <translation>Il tema, con gli stili e il colore principale sopra di esso</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Start menu</source>
+        <translation>Menu Start</translation>
+    </message>
+    <message>
+        <source>Quick settings and notification center</source>
+        <translation>Impostazioni rapide e centro notifiche</translation>
+    </message>
+    <message>
+        <source>Accent color</source>
+        <translation>Colore principale</translation>
+    </message>
+    <message>
+        <source>The theme&apos;s</source>
+        <translation>Quello del tema</translation>
+    </message>
+    <message>
+        <source>The theme&apos;s in dark mode, yours in light mode</source>
+        <translation>Quello del tema in modalità scura, il tuo in modalità chiara</translation>
+    </message>
+    <message>
+        <source>The theme&apos;s in light mode, yours in dark mode</source>
+        <translation>Quello del tema in modalità chiara, il tuo in modalità scura</translation>
+    </message>
+    <message>
+        <source>Yours</source>
+        <translation>Il tuo</translation>
+    </message>
+</context>
+<context>
+    <name>ThemesPage</name>
+    <message>
+        <source>not a key=value line</source>
+        <translation>non è una riga chiave=valore</translation>
+    </message>
+    <message>
+        <source>%1 is not a theme token</source>
+        <translation>%1 non è un token dei temi</translation>
+    </message>
+    <message>
+        <source>%1 needs a color like #RRGGBB, not &quot;%2&quot;</source>
+        <translation>%1 vuole un colore come #RRGGBB, non &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>%1 needs a number, not &quot;%2&quot;</source>
+        <translation>%1 vuole un numero, non &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>%1=%2 isn&apos;t one of Vela&apos;s layouts</source>
+        <translation>%1=%2 non è uno dei layout di Vela</translation>
+    </message>
+    <message>
+        <source>%1 belongs to another surface than this style&apos;s</source>
+        <translation>%1 appartiene a un&apos;altra superficie, non a quella di questo stile</translation>
+    </message>
+    <message>
+        <source>inherits=%1 is not a theme name</source>
+        <translation>inherits=%1 non è il nome di un tema</translation>
+    </message>
+    <message>
+        <source>inherits=%1, which isn&apos;t installed</source>
+        <translation>inherits=%1, che non è installato</translation>
+    </message>
+    <message>
+        <source>inherits=%1, which inherits back from this theme</source>
+        <translation>inherits=%1, che a sua volta eredita da questo tema</translation>
+    </message>
+    <message>
+        <source>inherits=%1 makes too long a chain of themes</source>
+        <translation>inherits=%1 crea una catena di temi troppo lunga</translation>
+    </message>
+    <message>
+        <source>schema-version=%1 isn&apos;t a format this Vela reads: the file isn&apos;t used</source>
+        <translation>schema-version=%1 non è un formato che questo Vela sa leggere: il file non viene usato</translation>
+    </message>
+    <message>
+        <source>larger than 64 KiB: the file isn&apos;t used</source>
+        <translation>più grande di 64 KiB: il file non viene usato</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed</source>
+        <translation>&quot;%1&quot; non è installato</translation>
+    </message>
+    <message>
+        <source>vela.conf names a theme Vela can&apos;t find: Vela&apos;s own look is used</source>
+        <translation>vela.conf indica un tema che Vela non trova: si usa l&apos;aspetto di Vela</translation>
+    </message>
+    <message>
+        <source>This theme has problems</source>
+        <translation>Questo tema ha dei problemi</translation>
+    </message>
+    <message>
+        <source>Vela uses what it can and skips the rest</source>
+        <translation>Vela usa quello che può e salta il resto</translation>
+    </message>
 </context>
 <context>
     <name>TimeLanguagePage</name>
@@ -2538,8 +3389,8 @@ Specifiche sistema
         <translation>Data e ora</translation>
     </message>
     <message>
-        <source>Time zone, automatic clock settings</source>
-        <translation>Fuso orario, impostazioni automatiche dell&apos;orologio</translation>
+        <source>Time zone, automatic clock settings, time format</source>
+        <translation>Fuso orario, impostazioni automatiche dell&apos;orologio, formato dell&apos;ora</translation>
     </message>
     <message>
         <source>Vela language</source>
@@ -2642,6 +3493,271 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>UndoBar</name>
+    <message>
+        <source>Undo</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Chiudi</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateOptions</name>
+    <message>
+        <source>Beta</source>
+        <translation>Beta</translation>
+    </message>
+    <message>
+        <source>Experimental</source>
+        <translation>Sperimentale</translation>
+    </message>
+    <message>
+        <source>More options</source>
+        <translation>Altre opzioni</translation>
+    </message>
+    <message>
+        <source>Check for updates automatically</source>
+        <translation>Controlla automaticamente gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Not on metered connections</source>
+        <translation>Non sulle connessioni a consumo</translation>
+    </message>
+    <message>
+        <source>Update channel</source>
+        <translation>Canale di aggiornamento</translation>
+    </message>
+    <message>
+        <source>Tested, signed releases</source>
+        <translation>Versioni testate e firmate</translation>
+    </message>
+    <message>
+        <source>The latest development version, as it&apos;s made</source>
+        <translation>L&apos;ultima versione di sviluppo, man mano che cambia</translation>
+    </message>
+    <message>
+        <source>Advanced options</source>
+        <translation>Opzioni avanzate</translation>
+    </message>
+    <message>
+        <source>Install from another repository, branch or commit</source>
+        <translation>Installa da un altro repository, branch o commit</translation>
+    </message>
+    <message>
+        <source>Source: a repository URL or a folder</source>
+        <translation>Origine: l&apos;URL di un repository o una cartella</translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation>Origine</translation>
+    </message>
+    <message>
+        <source>Branch or commit</source>
+        <translation>Branch o commit</translation>
+    </message>
+    <message>
+        <source>The default branch</source>
+        <translation>Il branch predefinito</translation>
+    </message>
+    <message>
+        <source>Install this revision</source>
+        <translation>Installa questa revisione</translation>
+    </message>
+    <message>
+        <source>Installed version</source>
+        <translation>Versione installata</translation>
+    </message>
+    <message>
+        <source>%1, %2 channel</source>
+        <translation>%1, canale %2</translation>
+    </message>
+    <message>
+        <source>Not installed from a package</source>
+        <translation>Non installato da un pacchetto</translation>
+    </message>
+    <message>
+        <source>Switch to Beta?</source>
+        <translation>Passare al canale Beta?</translation>
+    </message>
+    <message>
+        <source>Switch to Experimental?</source>
+        <translation>Passare al canale Sperimentale?</translation>
+    </message>
+    <message>
+        <source>Switch</source>
+        <translation>Cambia</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Beta installs tested, signed releases. The vela-git package is replaced by vela, and Vela may go back to an older version than the one you have.</source>
+        <translation>Beta installa versioni testate e firmate. Il pacchetto vela-git viene sostituito da vela, e Vela potrebbe tornare a una versione più vecchia di quella che hai.</translation>
+    </message>
+    <message>
+        <source>Experimental installs the latest development version, downloaded or built on this PC. It changes often and may be less stable. The vela package is replaced by vela-git.</source>
+        <translation>Sperimentale installa l&apos;ultima versione di sviluppo, scaricata o compilata su questo PC. Cambia spesso e può essere meno stabile. Il pacchetto vela viene sostituito da vela-git.</translation>
+    </message>
+    <message>
+        <source>The update runs in a terminal, where your password is asked for.</source>
+        <translation>L&apos;aggiornamento si svolge in un terminale, dove ti viene chiesta la password.</translation>
+    </message>
+    <message>
+        <source>Automatic check frequency</source>
+        <translation>Frequenza dei controlli automatici</translation>
+    </message>
+    <message>
+        <source>How often Vela checks for updates</source>
+        <translation>Ogni quanto Vela controlla gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Used when automatic checks are enabled</source>
+        <translation>Si applica quando i controlli automatici sono attivi</translation>
+    </message>
+    <message>
+        <source>Every 6 hours</source>
+        <translation>Ogni 6 ore</translation>
+    </message>
+    <message>
+        <source>Every 12 hours</source>
+        <translation>Ogni 12 ore</translation>
+    </message>
+    <message>
+        <source>Every 24 hours</source>
+        <translation>Ogni 24 ore</translation>
+    </message>
+    <message>
+        <source>Every 48 hours</source>
+        <translation>Ogni 48 ore</translation>
+    </message>
+    <message>
+        <source>Every 7 days</source>
+        <translation>Ogni 7 giorni</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateStatusCard</name>
+    <message>
+        <source>getting ready</source>
+        <translation>preparazione</translation>
+    </message>
+    <message>
+        <source>downloading</source>
+        <translation>download</translation>
+    </message>
+    <message>
+        <source>verifying</source>
+        <translation>verifica</translation>
+    </message>
+    <message>
+        <source>building</source>
+        <translation>compilazione</translation>
+    </message>
+    <message>
+        <source>installing</source>
+        <translation>installazione</translation>
+    </message>
+    <message>
+        <source>Last checked: today, %1</source>
+        <translation>Ultimo controllo: oggi, %1</translation>
+    </message>
+    <message>
+        <source>Last checked: yesterday, %1</source>
+        <translation>Ultimo controllo: ieri, %1</translation>
+    </message>
+    <message>
+        <source>Last checked: %1, %2</source>
+        <translation>Ultimo controllo: %1, %2</translation>
+    </message>
+    <message>
+        <source>The update service isn&apos;t running</source>
+        <translation>Il servizio di aggiornamento non è attivo</translation>
+    </message>
+    <message>
+        <source>Checking for updates...</source>
+        <translation>Controllo degli aggiornamenti in corso...</translation>
+    </message>
+    <message>
+        <source>Opening the terminal...</source>
+        <translation>Apertura del terminale...</translation>
+    </message>
+    <message>
+        <source>Updating in the terminal: %1</source>
+        <translation>Aggiornamento nel terminale: %1</translation>
+    </message>
+    <message>
+        <source>Updating in the terminal</source>
+        <translation>Aggiornamento nel terminale</translation>
+    </message>
+    <message>
+        <source>Vela %1 is available</source>
+        <translation>È disponibile Vela %1</translation>
+    </message>
+    <message>
+        <source>You&apos;re up to date</source>
+        <translation>Vela è aggiornato</translation>
+    </message>
+    <message>
+        <source>You have a newer version than the latest release</source>
+        <translation>Hai una versione più recente dell&apos;ultima release</translation>
+    </message>
+    <message>
+        <source>Development build: not installed from a package</source>
+        <translation>Build di sviluppo: non installata da un pacchetto</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t check for updates</source>
+        <translation>Impossibile controllare gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Updates haven&apos;t been checked yet</source>
+        <translation>Gli aggiornamenti non sono ancora stati controllati</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t check for updates or install them until it starts again.</source>
+        <translation>Vela non può controllare né installare aggiornamenti finché il servizio non riparte.</translation>
+    </message>
+    <message>
+        <source>Follow the update in the terminal window. Your password is asked for there.</source>
+        <translation>Segui l&apos;aggiornamento nella finestra del terminale: la password ti viene chiesta lì.</translation>
+    </message>
+    <message>
+        <source>Install now</source>
+        <translation>Installa ora</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>Controlla aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Sign out to finish updating. Until then, the version you signed in with keeps running.</source>
+        <translation>Esci per completare l&apos;aggiornamento. Fino ad allora resta in uso la versione con cui hai effettuato l&apos;accesso.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t check for updates: %1</source>
+        <translation>Impossibile controllare gli aggiornamenti: %1</translation>
+    </message>
+    <message>
+        <source>The last update didn&apos;t finish: %1</source>
+        <translation>L&apos;ultimo aggiornamento non è stato completato: %1</translation>
+    </message>
+    <message>
+        <source>Next automatic check: %1</source>
+        <translation>Prossimo controllo automatico: %1</translation>
+    </message>
+    <message>
+        <source>Next check: waiting for a fully connected, unmetered network</source>
+        <translation>Prossimo controllo: in attesa di una connessione completa e non a consumo</translation>
+    </message>
+    <message>
+        <source>Check again</source>
+        <translation>Controlla di nuovo</translation>
+    </message>
+</context>
+<context>
     <name>VolumeMixerPage</name>
     <message>
         <source>Default</source>
@@ -2702,6 +3818,154 @@ Specifiche sistema
     <message>
         <source>Every app uses the default output and input again</source>
         <translation>Ogni app torna a usare l&apos;output e l&apos;input predefiniti</translation>
+    </message>
+</context>
+<context>
+    <name>WhatsNew</name>
+    <message>
+        <source>What&apos;s new</source>
+        <translation>Novità</translation>
+    </message>
+    <message>
+        <source>Vela %1</source>
+        <translation>Vela %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>and %n more</source>
+        <translation>
+            <numerusform>e un altro</numerusform>
+            <numerusform>e altri %n</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
+    <name>vela::bluetooth::Bluetooth</name>
+    <message>
+        <source>Bluetooth is busy. Try again in a moment.</source>
+        <translation>Il Bluetooth è occupato. Riprova tra un momento.</translation>
+    </message>
+    <message>
+        <source>Wait for %1 to finish pairing.</source>
+        <translation>Attendi che %1 finisca l&apos;associazione.</translation>
+    </message>
+    <message>
+        <source>Bluetooth can&apos;t be changed while the screen is locked or another session is in use.</source>
+        <translation>Il Bluetooth non si può modificare mentre lo schermo è bloccato o è in uso un&apos;altra sessione.</translation>
+    </message>
+    <message>
+        <source>This app isn&apos;t allowed to change Bluetooth.</source>
+        <translation>Questa app non può modificare il Bluetooth.</translation>
+    </message>
+    <message>
+        <source>There&apos;s no Bluetooth adapter.</source>
+        <translation>Non c&apos;è nessun adattatore Bluetooth.</translation>
+    </message>
+    <message>
+        <source>The device isn&apos;t there anymore.</source>
+        <translation>Il dispositivo non c&apos;è più.</translation>
+    </message>
+    <message>
+        <source>That code isn&apos;t valid.</source>
+        <translation>Il codice non è valido.</translation>
+    </message>
+    <message>
+        <source>That name can&apos;t be used. Use up to 248 characters, without control characters.</source>
+        <translation>Questo nome non si può usare. Usa al massimo 248 caratteri, senza caratteri di controllo.</translation>
+    </message>
+    <message>
+        <source>Bluetooth isn&apos;t responding.</source>
+        <translation>Il Bluetooth non risponde.</translation>
+    </message>
+</context>
+<context>
+    <name>vela::updates::Updates</name>
+    <message>
+        <source>Another update is already running.</source>
+        <translation>È già in corso un altro aggiornamento.</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t update itself on this system.</source>
+        <translation>Vela non può aggiornarsi su questo sistema.</translation>
+    </message>
+    <message>
+        <source>A program needed to update Vela isn&apos;t installed.</source>
+        <translation>Manca un programma necessario per aggiornare Vela.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t connect. Check your internet connection.</source>
+        <translation>Impossibile connettersi. Controlla la connessione a Internet.</translation>
+    </message>
+    <message>
+        <source>GitHub is limiting requests. Try again later.</source>
+        <translation>GitHub sta limitando le richieste. Riprova più tardi.</translation>
+    </message>
+    <message>
+        <source>No Beta release has been published yet.</source>
+        <translation>Non è ancora stata pubblicata nessuna versione Beta.</translation>
+    </message>
+    <message>
+        <source>The update wasn&apos;t found.</source>
+        <translation>Aggiornamento non trovato.</translation>
+    </message>
+    <message>
+        <source>The installed version is newer than the update.</source>
+        <translation>La versione installata è più recente dell&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>The update couldn&apos;t be verified, so it wasn&apos;t installed.</source>
+        <translation>Non è stato possibile verificare l&apos;aggiornamento, quindi non è stato installato.</translation>
+    </message>
+    <message>
+        <source>Building the update failed.</source>
+        <translation>La compilazione dell&apos;aggiornamento non è riuscita.</translation>
+    </message>
+    <message>
+        <source>The package manager didn&apos;t install the update.</source>
+        <translation>Il gestore dei pacchetti non ha installato l&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>The update was interrupted.</source>
+        <translation>L&apos;aggiornamento è stato interrotto.</translation>
+    </message>
+    <message>
+        <source>The terminal didn&apos;t start the update.</source>
+        <translation>Il terminale non ha avviato l&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>Something went wrong.</source>
+        <translation>Qualcosa è andato storto.</translation>
+    </message>
+    <message>
+        <source>An update or a check is already running.</source>
+        <translation>È già in corso un aggiornamento o un controllo.</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t update to that: %1</source>
+        <translation>Vela non può aggiornarsi a questa revisione: %1</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t open a terminal to run the update.</source>
+        <translation>Impossibile aprire un terminale per l&apos;aggiornamento.</translation>
+    </message>
+    <message>
+        <source>This app isn&apos;t allowed to update Vela.</source>
+        <translation>Questa app non è autorizzata ad aggiornare Vela.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t start vela-update.</source>
+        <translation>Impossibile avviare vela-update.</translation>
+    </message>
+    <message>
+        <source>The update service isn&apos;t responding.</source>
+        <translation>Il servizio di aggiornamento non risponde.</translation>
+    </message>
+    <message>
+        <source>This automatic update check frequency isn&apos;t supported.</source>
+        <translation>Questa frequenza di controllo automatico degli aggiornamenti non è supportata.</translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t save the automatic update check frequency.</source>
+        <translation>Impossibile salvare la frequenza dei controlli automatici degli aggiornamenti.</translation>
     </message>
 </context>
 </TS>

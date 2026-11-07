@@ -16,6 +16,11 @@ qt_add_executable(vela-shell
     src/appmodel.cpp
     src/appmodel.h
     src/audioapps.h
+    src/batteryalerts.cpp
+    src/batteryalerts.h
+    src/batterynotices.cpp
+    src/batterynotices.h
+    src/batterysettings.h
     src/desktopexec.h
     src/mimeapps.h
     src/clipboard.cpp
@@ -43,9 +48,15 @@ qt_add_executable(vela-shell
     src/mediakeys.cpp
     src/mediakeys.h
     src/asyncprocess.h
+    src/bluetoothprompts.cpp
+    src/bluetoothprompts.h
+    src/updatenotices.cpp
+    src/updatenotices.h
     src/network.cpp
     src/network.h
     src/notifications.cpp
+    src/upowerbatteries.cpp
+    src/upowerbatteries.h
     src/shellcontroller.cpp
     src/shellcontroller.h
     src/servicemenus.cpp
@@ -63,6 +74,8 @@ qt_add_executable(vela-shell
     src/tray.cpp
     src/taskbarmodel.h
     src/wallpaperprovider.h
+    src/screensharing.cpp
+    src/screensharing.h
     src/screenwindows.cpp
     src/screenwindows.h
     src/windowcapture.cpp
@@ -109,14 +122,15 @@ target_include_directories(vela-shell PRIVATE ${SHELL_GENERATED_DIR})
 set(VELA_QML_FILES
     qml/Taskbar.qml
     qml/TaskbarButton.qml
-    qml/StartGlyph.qml
     qml/StartMenu.qml
+    qml/GlassEdge.qml
     qml/tiles.js
     qml/AppTile.qml
     qml/Switcher.qml
     qml/Wallpaper.qml
     qml/NotificationPopups.qml
     qml/Menus.qml
+    qml/Styles.qml
     qml/ContextMenu.qml
     qml/MenuPanel.qml
     qml/MenuTextField.qml
@@ -124,6 +138,8 @@ set(VELA_QML_FILES
     qml/TextMenu.qml
     qml/RunDialog.qml
     qml/ConfirmDialog.qml
+    qml/BluetoothDialog.qml
+    qml/BluetoothDevices.qml
     qml/SourceChooser.qml
     qml/PropertiesDialog.qml
     qml/CheckBox.qml
@@ -147,7 +163,7 @@ foreach(file IN LISTS VELA_QML_FILES)
     get_filename_component(name ${file} NAME)
     set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name})
 endforeach()
-set_source_files_properties(qml/Menus.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Menus.qml qml/Styles.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(vela-shell
     URI Vela.Shell
@@ -169,7 +185,10 @@ target_link_libraries(vela-shell PRIVATE
     vela-controlsplugin
     vela-capture
     vela-app # the mouse's Back and Forward buttons (common/)
-    vela-audio) # the sound (common/audio, docs/audio.md)
+    vela-audio # the sound (common/audio, docs/audio.md)
+    vela-bluetooth-client # Bluetooth (common/bluetooth, docs/bluetooth.md)
+    vela-bluetooth-uiplugin
+    vela-updates-client) # update notifications (common/updates, docs/updates.md)
 
 install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -190,6 +209,25 @@ if(VELA_BUILD_TOOLS)
         add_test(NAME shell-transfers COMMAND vela-transfer-monitor-test)
     endif()
 
+    # Battery notifications (docs/battery-notifications.md §9): the policy
+    # and UPower's properties read into it, with no D-Bus...
+    qt_add_executable(vela-battery-alerts-test tests/batteryalerts.cpp
+        src/batteryalerts.cpp src/batteryalerts.h src/upowerbatteries.cpp src/upowerbatteries.h)
+    target_include_directories(vela-battery-alerts-test PRIVATE src)
+    target_compile_options(vela-battery-alerts-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-battery-alerts-test PRIVATE Qt6::DBus Qt6::Test)
+    add_test(NAME shell-battery-alerts COMMAND vela-battery-alerts-test)
+    # ...and all of it against a fake UPower on a private bus, down to the
+    # notifications shown.
+    qt_add_executable(vela-battery-notices-test tests/batterynotices.cpp
+        src/batteryalerts.cpp src/batteryalerts.h src/batterynotices.cpp src/batterynotices.h
+        src/upowerbatteries.cpp src/upowerbatteries.h src/notifications.cpp src/notifications.h)
+    target_include_directories(vela-battery-notices-test PRIVATE src)
+    target_compile_options(vela-battery-notices-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-battery-notices-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
+    add_test(NAME shell-battery-notices COMMAND vela-battery-notices-test)
+    set_tests_properties(shell-battery-notices PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     # Run the same ELF/AppImage classification used by desktop and Vela Files.
     qt_add_executable(vela-executable-file-test tests/executablefile.cpp ${PROJECT_SOURCE_DIR}/common/executablefile.h)
     target_compile_options(vela-executable-file-test PRIVATE -Wall -Wextra)
@@ -202,20 +240,60 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-desktopexec-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-exec-desktop COMMAND vela-desktopexec-test)
 
+    qt_add_executable(vela-servicemenus-test tests/servicemenus.cpp src/servicemenus.cpp src/servicemenus.h)
+    target_include_directories(vela-servicemenus-test PRIVATE src)
+    target_compile_options(vela-servicemenus-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-servicemenus-test PRIVATE vela-process Qt6::Core Qt6::Test)
+    add_test(NAME shell-service-menus COMMAND vela-servicemenus-test)
+    set_tests_properties(shell-service-menus PROPERTIES TIMEOUT 15)
+
     qt_add_executable(vela-mimeapps-test tests/mimeapps.cpp src/mimeapps.h)
     target_include_directories(vela-mimeapps-test PRIVATE src)
     target_compile_options(vela-mimeapps-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-mimeapps-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-mimeapps COMMAND vela-mimeapps-test)
 
-    # The shell's own controls (tests/tst_*.qml) under Vela.Controls' Qt Quick
-    # Test runner, with animation effects on and off.
-    if(TARGET vela-controls-test)
-        add_test(NAME shell-controls COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-        add_test(NAME shell-controls-no-effects COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-        set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
-        set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
-    endif()
+    qt_add_executable(vela-themefile-test tests/themefile.cpp src/themefile.h)
+    target_include_directories(vela-themefile-test PRIVATE src)
+    target_compile_definitions(vela-themefile-test PRIVATE
+        THEMES_DIR="${PROJECT_SOURCE_DIR}/themes"
+        THEME_QML="${PROJECT_SOURCE_DIR}/common/controls/Theme.qml"
+        STYLES_QML="${PROJECT_SOURCE_DIR}/shell/qml/Styles.qml"
+        THEMEFILE_H="${CMAKE_CURRENT_SOURCE_DIR}/src/themefile.h")
+    target_compile_options(vela-themefile-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-themefile-test PRIVATE vela-theme-tokens Qt6::Core Qt6::Gui Qt6::Test)
+    add_test(NAME shell-themefile COMMAND vela-themefile-test)
+
+    # The shell's own pieces (tests/tst_*.qml) under Qt Quick Test, with fakes
+    # of what its windows find in their context (Vela.Bluetooth, Shell,
+    # BluetoothPrompts), with animation effects on and off.
+    find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
+    qt_add_executable(vela-shell-test tests/shell_test.cpp)
+    target_compile_definitions(vela-shell-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        FAKE_BLUETOOTH="${PROJECT_SOURCE_DIR}/common/bluetooth/tests/FakeBluetooth.qml")
+    target_compile_options(vela-shell-test PRIVATE -Wall -Wextra)
+    target_include_directories(vela-shell-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
+    target_link_libraries(vela-shell-test PRIVATE vela-controls vela-controlsplugin vela-bluetooth-uiplugin Qt6::QuickTest)
+    add_test(NAME shell-controls COMMAND vela-shell-test)
+    add_test(NAME shell-controls-no-effects COMMAND vela-shell-test)
+    set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
+
+    # Config on a private vela-shell.conf, rewritten as Settings does.
+    qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h
+        src/batterysettings.h src/clockformat.h src/starticon.h src/defaults.h)
+    target_include_directories(vela-config-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
+    target_compile_options(vela-config-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-config-test PRIVATE Qt6::Gui Qt6::Test)
+    add_test(NAME shell-config COMMAND vela-config-test)
+    set_tests_properties(shell-config PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    qt_add_executable(vela-start-icon-test tests/starticon.cpp src/starticon.h)
+    target_include_directories(vela-start-icon-test PRIVATE src)
+    target_compile_options(vela-start-icon-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-start-icon-test PRIVATE Qt6::Gui Qt6::Test)
+    add_test(NAME shell-start-icon COMMAND vela-start-icon-test)
+    set_tests_properties(shell-start-icon PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
     target_include_directories(vela-tool-path-test PRIVATE src)
@@ -227,7 +305,7 @@ if(VELA_BUILD_TOOLS)
         tests/appmodel_watch.cpp src/appmodel.cpp src/appmodel.h src/desktopexec.h src/mimeapps.h)
     target_include_directories(vela-appmodel-watch-test PRIVATE src)
     target_compile_options(vela-appmodel-watch-test PRIVATE -Wall -Wextra)
-    target_link_libraries(vela-appmodel-watch-test PRIVATE Qt6::Core Qt6::Test)
+    target_link_libraries(vela-appmodel-watch-test PRIVATE vela-process Qt6::Core Qt6::Test)
     add_test(NAME shell-appmodel-watch COMMAND vela-appmodel-watch-test)
 
     qt_add_executable(vela-private-files-test tests/privatefiles.cpp)
@@ -252,24 +330,40 @@ if(VELA_BUILD_TOOLS)
         src/asyncprocess.h src/network.cpp src/network.h)
     target_include_directories(vela-service-models-test PRIVATE src)
     target_compile_options(vela-service-models-test PRIVATE -Wall -Wextra)
-    target_link_libraries(vela-service-models-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
+    target_link_libraries(vela-service-models-test PRIVATE vela-process Qt6::Core Qt6::DBus Qt6::Test)
     add_test(NAME shell-service-models COMMAND vela-service-models-test)
     set_tests_properties(shell-service-models PROPERTIES TIMEOUT 90)
 
-    # Switches backed by BlueZ and NetworkManager move at once and come back
-    # if the service fails (src/requested.h), against fakes on a private bus.
+    # Switches backed by NetworkManager move at once and come back if the
+    # service fails (src/requested.h), against a fake on a private bus.
     qt_add_executable(vela-requested-switches-test
         tests/requested_switches.cpp
-        src/requested.h src/bluetoothpower.h src/systemstatus.cpp src/systemstatus.h
-        ${PROJECT_SOURCE_DIR}/settings/src/bluetooth.cpp ${PROJECT_SOURCE_DIR}/settings/src/bluetooth.h)
-    target_include_directories(vela-requested-switches-test PRIVATE src ${PROJECT_SOURCE_DIR}/settings/src)
+        src/requested.h src/systemstatus.cpp src/systemstatus.h)
+    target_include_directories(vela-requested-switches-test PRIVATE src)
     target_compile_options(vela-requested-switches-test PRIVATE -Wall -Wextra)
-    target_link_libraries(vela-requested-switches-test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
+    target_link_libraries(vela-requested-switches-test PRIVATE vela-bluetooth-client Qt6::Core Qt6::DBus Qt6::Test)
     add_test(NAME shell-requested-switches COMMAND vela-requested-switches-test)
     set_tests_properties(shell-requested-switches PROPERTIES TIMEOUT 60)
 
     # The brightness model against a fake compositor socket (docs/brightness.md §9).
     find_package(Qt6 6.5 REQUIRED COMPONENTS Network)
+    # Do not disturb by itself while the screen is shared (docs/screen-sharing.md §7).
+    qt_add_executable(vela-notification-silence-test tests/notification_silence.cpp src/notifications.cpp
+        src/notifications.h)
+    target_include_directories(vela-notification-silence-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
+    target_compile_options(vela-notification-silence-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-notification-silence-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
+    add_test(NAME shell-notification-silence COMMAND vela-notification-silence-test)
+    set_tests_properties(shell-notification-silence PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Who shares the screen, named, against a fake compositor (docs/screen-sharing.md §5).
+    qt_add_executable(vela-screen-sharing-test tests/screensharing.cpp src/screensharing.cpp src/screensharing.h)
+    target_include_directories(vela-screen-sharing-test PRIVATE src)
+    target_compile_options(vela-screen-sharing-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-screen-sharing-test PRIVATE Qt6::Gui Qt6::Network Qt6::Test)
+    add_test(NAME shell-screen-sharing COMMAND vela-screen-sharing-test)
+    set_tests_properties(shell-screen-sharing PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     qt_add_executable(vela-brightness-model-test tests/brightness_model.cpp src/brightness.cpp src/brightness.h)
     target_include_directories(vela-brightness-model-test PRIVATE src)
     target_compile_options(vela-brightness-model-test PRIVATE -Wall -Wextra)
@@ -292,7 +386,7 @@ endif()
 # shell/src/language.h). After changing texts:
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
-qt_add_translations(TARGETS vela-shell SOURCE_TARGETS vela-shell
+qt_add_translations(TARGETS vela-shell SOURCE_TARGETS vela-shell vela-bluetooth-client vela-bluetooth-ui
     TS_FILES i18n/vela-shell_it.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-shell_lupdate

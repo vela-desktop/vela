@@ -21,7 +21,7 @@ Page {
         LinkCard {
             icon: "preferences-desktop-notification"
             title: qsTr("Notifications")
-            description: qsTr("Alerts from apps and the system, do not disturb")
+            description: qsTr("Alerts from apps and the system, do not disturb, their number by the clock")
             onClicked: root.navigate("notifications")
         }
         LinkCard {
@@ -35,6 +35,12 @@ Page {
             title: qsTr("Clipboard")
             description: qsTr("Clipboard history (Win+V), clear")
             onClicked: root.navigate("clipboard")
+        }
+        LinkCard {
+            icon: "system-software-update"
+            title: qsTr("Updates")
+            description: qsTr("Check for updates, what's new, update channel")
+            onClicked: root.navigate("updates")
         }
         LinkCard {
             icon: "help-about"

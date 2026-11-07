@@ -48,7 +48,7 @@ renderer this means, in order of importance:
 | Towards wlroots | our renderer also presents itself as a **`wlr_renderer`** | what wlroots draws by itself (hardware cursor, screencopy, output captures, uploading app buffers) uses our device and our shaders; no second renderer (§7.2) |
 | Blur | **always live** | whatever is behind gets blurred on every frame in which it changes; it must be cheap by construction (§8) |
 | Default scale | **chosen by Vela from the monitor's DPI**, in 25% steps | like Windows; the user can change it (§3.8) |
-| X11 apps at fractional scale | **upscaled by the compositor** (right size, slightly blurry) | later, a setting to let them scale by themselves, as in Plasma (§3.9) |
+| X11 apps at fractional scale | **drawn 1:1 in the pixels of their output**, scaling themselves with Xft.dpi (October 2026; before, upscaled by the compositor) | games find the native resolution; an app that ignores Xft.dpi looks smaller (§3.9) |
 | Battery | **no reduction of effects** | modern laptops handle everything; no automatic "power saving" mode (§8.3) |
 | VRR | **postponed**, but the design must not rule it out | §4.4 |
 | Vela's title bar | **designed here**, drawn by the compositor | §9 |
@@ -149,6 +149,57 @@ surfaces too (Qt ≥ 6.5), with `QT_SCALE_FACTOR_ROUNDING_POLICY=PassThrough`. T
 theme's measurements are logical; borders and thin lines must be drawn aligned
 to physical pixels.
 
+Vela's Qt Quick applications explicitly call
+`vela::rendering::configureApplication()` (in `common/src/renderingpolicy.cpp`)
+before constructing `QGuiApplication` or any Quick window. This is *not*
+a side effect of importing/linking `Vela.Controls`. Shell, Settings, Files,
+the polkit prompt and their Quick Test runners use the same policy.
+
+There are two **independent** decisions: `configureTextRenderer()` selects
+scalable `QtRendering`, while `configureGrayscaleAntialiasing()` requests
+grayscale distance-field coverage for translucent surfaces. The latter is a
+Qt process setting (`QSG_DISTANCEFIELD_ANTIALIASING=gray`): it avoids RGB
+fringes without assuming a display's subpixel order or rotation, but respects
+any explicitly supplied value. Vela's external process launch helper restores
+the original environment, so this setting cannot leak into apps opened from
+the taskbar, Files, Settings or notification links.
+
+The same renderer and font metrics apply at rest and during motion. Do not switch
+to `NativeTextRendering` when motion stops: that changes font metrics, and the
+native renderer caches rasterized glyphs which snap and stretch when a parent
+is scaled (for example, Start's app tiles on either mouse button press) or placed
+at fractional coordinates while scrolling. This happens inside the Qt surface,
+before the compositor copies its buffer, so compositor pixel snapping cannot
+repair it. Qt documents this restriction for
+[`Text.NativeRendering`](https://doc.qt.io/qt-6/qml-qtquick-text.html#renderType-prop).
+
+The normal distance-field quality is retained: increasing it consumes more glyph
+cache memory without addressing bitmap snapping or RGB fringes. **Exceptions
+are per component**, using `Text.renderType` when a measured, documented case
+requires it. A small stationary label could use `NativeRendering` only if
+it never scrolls on fractional coordinates or inherits a scale transform.
+Very large headings may use `CurveRendering` after a GPU benchmark; it is
+not the default for desktop labels. Do not dynamically switch renderers
+when motion starts or ends, and do not add a custom compositor text pipeline.
+The pixel regression test is described in
+[testing](testing.md#qt-quick-text-rendering).
+
+Qt Quick text configuration must stay inside the Vela process. C++ external
+program launches use `vela::process::startDetached()` or an
+`ExternalProcess` (both in `common/src/processlaunch.h`), not raw
+`QProcess::startDetached()`. Links use `System.openUrl()` to reach the
+same path. A user-supplied antialiasing override is retained in child processes.
+The `vela-process` library owns private environment defaults and external launch
+environments using Qt Core only (`common/src/processenvironment.cpp`). Rendering
+registers its default with that library; launchers and non-UI models do not
+depend on the Qt Quick rendering policy. Environment changes made after startup,
+including activation tokens, are retained when launching a child.
+Each managed or detached launch refreshes that environment, including when an
+`ExternalProcess` instance is reused after a token change.
+The `process-launch-environment` integration test verifies real children;
+packaging tests prohibit UI launchers that bypass the wrapper. The RHI glyph
+test requires Qt 6.6+ without increasing Vela's 6.5 production minimum.
+
 ### 3.8 The default scale
 
 Like Windows, Vela chooses the scale of each output by itself the first time it
@@ -178,12 +229,41 @@ real monitors):
 
 ### 3.9 X11 apps
 
-X11-only apps (Xwayland) don't know about fractional scaling. Decision: **they
-draw at 1× and the compositor upscales them**, with the quality filter of §3.3:
-they have the right size and are slightly blurry, as on Windows. Later a
-setting, as in Plasma, will let them scale by themselves (Xwayland at scale 1
-and DPI communicated via Xft/XSETTINGS): sharp, but it depends on how well each
-X11 app supports scaling.
+X11-only apps (Xwayland) don't know about fractional scaling. The first
+decision was to let them draw at 1× in logical units and upscale them: right
+size, slightly blurry. But Xwayland builds its RandR modes from the output's
+logical size, adding only smaller ones: on a 2560×1440 monitor at 125% a game
+could choose 2048×1152 at most, never the native resolution. Decision (October
+2026): **the X11 root is in the outputs' pixels**, as with Plasma's "apply
+scaling themselves".
+
+- **Xwayland's own xdg-output** (`x11_root.c`): wlroots' one, with logical
+  sizes, is hidden from Xwayland by the global filter, which sees one of ours
+  instead; every other client is unchanged. Each output is as large as its
+  pixels (after rotation): RandR offers 2560×1440, and the root is 2560×1440.
+- **Placement in the root** (`x11_space.c`): each output's origin is its
+  logical one, from the layout's top-left corner, multiplied by the largest
+  pixel density. Outputs never overlap; next to one with a smaller scale there
+  can be a gap, which nothing can be put in. With 1080p at 100% above 1440p at
+  125% the root is 2560×2790, with the 1440p at (0, 1350).
+- **Each X11 window is in pixels of its output** (the one holding the center of
+  its frame, or of its rectangle in the root for menus): one X11 pixel is
+  1/scale logical units. The surface has that *density* (`scene/surface.h`),
+  which the drawing (§3.3: a fullscreen game is a 1:1 copy, and goes to direct
+  scanout), hit testing, the implicit grab, pointer constraints and relative
+  motion all apply. Sizes Vela chooses (maximized, snapped, fullscreen) are
+  logical and become pixels; a window moved onto an output with another scale
+  keeps its logical size and gets as many pixels as it takes there.
+- **Xft.dpi** = 96 × the largest scale, appended on a line of its own to the
+  root's resources (`RESOURCE_MANAGER`) when the window manager starts, before
+  Xwayland accepts other clients, and when that scale changes. A client that
+  replaces the resources without Xft.dpi (xrdb -load) gets it back; one the
+  user sets stays. Toolkits (Qt, GTK, Xft) scale by
+  it; an app that ignores it looks smaller at scales above 100%. With mixed
+  scales one value can't be right everywhere: on outputs with a smaller scale
+  X11 apps look larger.
+
+The X11 cursor is still the size of the logical one, upscaled like before.
 
 ### 3.10 How we prove it
 
@@ -802,7 +882,8 @@ debug overlay (§10) and for other compositor UI.
 
 - **Measurements** like Windows 11: a 32-logical-unit bar, 46×32 buttons,
   corners with radius 8, invisible 8-logical-unit resize borders outside the
-  window.
+  window. Only where they can be seen: a fullscreen game, a menu (another
+  window's, the window's own, X11's) or a panel drawn above covers them.
 - **Background**: live blur of what's behind, with a **tint derived from the
   desktop wallpaper** (like Mica on Windows): see §9.4.
 - **Minimize/maximize/close buttons**: glyphs drawn as SDFs (lines), sharp at
@@ -963,7 +1044,7 @@ matched it; then `wlr_scene` went away. Each stage closes only with its tests.
 ## 13. Resolved questions
 
 - Default scale from DPI → §3.8
-- X11 apps upscaled → §3.9
+- X11 apps in the outputs' pixels, with Xft.dpi → §3.9
 - VRR postponed → §4.4
 - No reduction on battery → §8.3
 - Title bar in this document → §9

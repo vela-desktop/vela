@@ -5,6 +5,7 @@
 
 #include "a11y.h"
 #include "bindings.h"
+#include "capture_watch.h"
 #include "brightness.h"
 #include "buffer.h"
 #include "decoration.h"
@@ -13,6 +14,7 @@
 #include "lock.h"
 #include "output.h"
 #include "output_manager.h"
+#include "render/renderer.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "server.h"
@@ -51,6 +53,7 @@ struct topic {
 
 static const struct topic topics[] = {
     { "brightness", vela_brightness_json },
+    { "capture", vela_capture_json }, // docs/screen-sharing.md §4.1
 };
 #define TOPICS ((int)(sizeof(topics) / sizeof(topics[0])))
 
@@ -121,11 +124,18 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     struct vela_view *focused = vela_views_focused(server);
     vela_buffer_appendf(json, "{\"locked\":%s,\"workspace\":%d,\"workspaces\":%d,\"focused\":",
         server->locked ? t : f, server->workspaces->current, server->workspaces->count);
+    struct vela_readback_stats readbacks = vela_renderer_readback_stats(server->renderer);
+    // The private state socket exposes retention and terminal counts so GPU
+    // lifecycle tests can prove they cancelled real in-flight work.
     if (focused && focused->ext_handle && focused->ext_handle->identifier) {
         vela_buffer_append_json(json, focused->ext_handle->identifier);
     } else {
         vela_buffer_append(json, "null");
     }
+    vela_buffer_appendf(json, ",\"readback\":{\"pending\":%zu,\"bytes\":%zu,\"completed\":%llu,\"cancelled\":%llu,\"failed\":%llu,\"rejected\":%llu,\"submitted\":%llu}",
+        readbacks.pending, readbacks.bytes, (unsigned long long)readbacks.completed,
+        (unsigned long long)readbacks.cancelled, (unsigned long long)readbacks.failed,
+        (unsigned long long)readbacks.rejected, (unsigned long long)readbacks.submitted);
     vela_buffer_appendf(json, ",\"held\":%llu,\"outputs\":[", (unsigned long long)server->ready.held_total);
     bool first = true;
     struct vela_output *output;
@@ -213,6 +223,9 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     } else {
         vela_buffer_append(json, "null");
     }
+    // Who captures the screen (docs/screen-sharing.md §4.1).
+    vela_buffer_append(json, ",\"capture\":");
+    vela_capture_json(server, json);
     vela_buffer_append(json, "}");
 }
 
@@ -343,6 +356,35 @@ static void mica(struct vela_server *server, const char *arguments)
     server->mica_inactive = inactive;
     ++server->look_version;
     refresh_decorations(server);
+}
+
+// blur-look <scope> <saturation> <strength> <tint> <glass>: a theme's blur-*
+// keys (struct vela_blur_look), for every acrylic surface ("*") or for the
+// shell panel with that layer namespace (the theme and its style's). -1:
+// Vela's own; glass 1: the panel has a style.
+static void blur_look(struct vela_server *server, const char *arguments)
+{
+    char scope[48] = "";
+    struct vela_blur_look look = VELA_BLUR_LOOK_DEFAULT;
+    int glass = 0;
+    if (sscanf(arguments, "%47s %f %f %f %d", scope, &look.saturation, &look.strength, &look.tint, &glass) != 5
+        || !isfinite(look.saturation) || !isfinite(look.strength) || !isfinite(look.tint)) {
+        return;
+    }
+    look.glass = glass != 0;
+    const struct vela_blur_look now = vela_scene_blur_look(server->scene, strcmp(scope, "*") == 0 ? NULL : scope);
+    if (look.saturation == now.saturation && look.strength == now.strength && look.tint == now.tint
+        && look.glass == now.glass && vela_scene_has_blur_look(server->scene, scope)) {
+        return; // the shell sends the whole look again on every change
+    }
+    if (!vela_scene_set_blur_look(server->scene, scope, look)) {
+        wlr_log(WLR_ERROR, "blur-look: no room for %s", scope);
+        return;
+    }
+    struct vela_output *output;
+    wl_list_for_each (output, &server->outputs, link) {
+        vela_output_frame_damage_whole(output->frame);
+    }
 }
 
 // theme <shell> <apps> [<accent>]: "light" or "dark", Vela's mode and the
@@ -492,6 +534,8 @@ static void run_command(struct vela_server *server, const char *line)
         mica(server, line + 5);
     } else if (starts_with(line, "theme ")) {
         theme(server, line + 6);
+    } else if (starts_with(line, "blur-look ")) {
+        blur_look(server, line + 10);
     } else if (strcmp(line, "paste") == 0) {
         vela_input_paste(server->input); // Win+V: the shell has put the item on the clipboard
     } else if (strcmp(line, "modifiers") == 0 || strcmp(line, "workspaces") == 0
@@ -530,6 +574,8 @@ static void run_command(struct vela_server *server, const char *line)
     } else if (starts_with(line, "switcher-pick ")) {
         // A click on an Alt+Tab preview: switch to that window.
         vela_switcher_pick(server, atoi(line + 14));
+    } else if (starts_with(line, "test-shell ")) {
+        vela_capture_watch_test_shell(server->capture_watch, line + 11);
     } else if (starts_with(line, "test-output ")) {
         vela_test_output_command(server, line + 12);
     } else if (strcmp(line, "test-power off") == 0 || strcmp(line, "test-power on") == 0) {

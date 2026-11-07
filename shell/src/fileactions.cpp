@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "fileactions.h"
 #include "mimeapps.h"
 
@@ -39,11 +40,7 @@ bool FileActions::canEmail() const
     return has("xdg-email");
 }
 
-bool FileActions::canBluetooth() const
-{
-    return has("bluedevil-sendfile");
-}
-
+/** Discover available KDE Connect recipients asynchronously and publish their names. */
 void FileActions::findDevices()
 {
     if (!canKdeConnect() || m_searching) {
@@ -52,7 +49,7 @@ void FileActions::findDevices()
     m_searching = true;
     emit devicesChanged();
     // kdeconnect-cli -a --id-name-only: "<id> <name>", one per line.
-    auto* process = new QProcess(this);
+    auto* process = new vela::process::ExternalProcess(this);
     connect(process, &QProcess::finished, this, [this, process] {
         QVariantList devices;
         for (const QString& line : QString::fromUtf8(process->readAllStandardOutput()).split(u'\n', Qt::SkipEmptyParts)) {
@@ -70,29 +67,22 @@ void FileActions::findDevices()
     process->start(QStringLiteral("kdeconnect-cli"), { QStringLiteral("-a"), QStringLiteral("--id-name-only") });
 }
 
+/** Share each selected path with the requested KDE Connect device. */
 void FileActions::sendToDevice(const QString& id, const QStringList& paths)
 {
     for (const QString& path : paths) {
-        QProcess::startDetached(QStringLiteral("kdeconnect-cli"), { QStringLiteral("-d"), id, QStringLiteral("--share"), path });
+        vela::process::startDetached(QStringLiteral("kdeconnect-cli"), { QStringLiteral("-d"), id, QStringLiteral("--share"), path });
     }
 }
 
+/** Open the user's mail client with each selected path as a separate attachment. */
 void FileActions::sendByEmail(const QStringList& paths)
 {
     QStringList arguments;
     for (const QString& path : paths) {
         arguments << QStringLiteral("--attach") << path;
     }
-    QProcess::startDetached(QStringLiteral("xdg-email"), arguments);
-}
-
-void FileActions::sendByBluetooth(const QStringList& paths)
-{
-    QStringList arguments;
-    for (const QString& path : paths) {
-        arguments << QStringLiteral("-f") << path;
-    }
-    QProcess::startDetached(QStringLiteral("bluedevil-sendfile"), arguments);
+    vela::process::startDetached(QStringLiteral("xdg-email"), arguments);
 }
 
 QString FileActions::typeName(const QString& path) const

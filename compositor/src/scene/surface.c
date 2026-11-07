@@ -67,6 +67,7 @@ void vela_surface_state_create(struct vela_scene *scene, struct wlr_surface *sur
     struct vela_surface_state *state = calloc(1, sizeof(*state));
     state->surface = surface;
     state->scene = scene;
+    state->density = 1.0;
     vela_listen(&surface->events.commit, &state->commit, handle_commit);
     wlr_addon_init(&state->addon, &surface->addons, NULL, &state_addon);
 }
@@ -165,4 +166,21 @@ void vela_surface_forget(struct wlr_surface *surface, struct wlr_output *output)
         state->output_count = kept;
         refresh(state);
     }
+}
+
+double vela_surface_density(struct wlr_surface *surface)
+{
+    struct vela_surface_state *state = vela_surface_state_get(wlr_surface_get_root_surface(surface));
+    return state ? state->density : 1.0;
+}
+
+bool vela_surface_set_density(struct wlr_surface *surface, double density)
+{
+    struct vela_surface_state *state = vela_surface_state_get(surface);
+    if (!state || !(density > 0.0) || state->density == density) {
+        return false;
+    }
+    state->density = density;
+    vela_scene_changed(state->scene);
+    return true;
 }

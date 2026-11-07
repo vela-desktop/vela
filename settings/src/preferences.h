@@ -4,6 +4,7 @@
 #pragma once
 
 #include "defaults.h"
+#include "starticon.h"
 
 #include <QColor>
 #include <QFileSystemWatcher>
@@ -39,14 +40,61 @@ class Preferences : public QObject {
     Q_PROPERTY(bool taskView READ taskView WRITE setTaskView NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens WRITE setTaskbarAllScreens NOTIFY taskbarChanged)
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner WRITE setShowDesktopCorner NOTIFY taskbarChanged)
+    // The taskbar clock: its date (taskbar/showDate).
+    Q_PROPERTY(bool clockDate READ clockDate WRITE setClockDate NOTIFY clockChanged)
+    // 24-hour or 12-hour everywhere Vela shows the time (clock/hours), the
+    // seconds in the taskbar's clock (taskbar/clockSeconds); timeFormat is
+    // the Qt.formatTime() format for the first (shell/src/clockformat.h).
+    Q_PROPERTY(bool clock24 READ clock24 WRITE setClock24 NOTIFY clockChanged)
+    Q_PROPERTY(bool clockSeconds READ clockSeconds WRITE setClockSeconds NOTIFY clockChanged)
+    Q_PROPERTY(QString timeFormat READ timeFormat NOTIFY clockChanged)
+    // The number of notifications next to the taskbar's clock
+    // (taskbar/notificationCount).
+    Q_PROPERTY(bool notificationCount READ notificationCount WRITE setNotificationCount NOTIFY clockChanged)
+    // The Start button's icon (shell/src/starticon.h): "vela", "distribution"
+    // or "picture" as the taskbar shows it (a choice it can't show is
+    // "vela"), and its source for StartIcon ("" for the sail). The
+    // distribution's name and logo ("" if the system has none), from
+    // os-release.
+    Q_PROPERTY(QString startIcon READ startIcon NOTIFY startChanged)
+    Q_PROPERTY(QString startIconSource READ startIconSource NOTIFY startChanged)
+    Q_PROPERTY(QString distributionName READ distributionName NOTIFY startChanged)
+    Q_PROPERTY(QString distributionLogo READ distributionLogo NOTIFY startChanged)
+    // start/showPinned: the apps pinned to Start above all apps.
+    Q_PROPERTY(bool startPinned READ startPinned WRITE setStartPinned NOTIFY startChanged)
+    // desktop/showIcons, which the desktop's own menu sets too.
+    Q_PROPERTY(bool desktopIcons READ desktopIcons WRITE setDesktopIcons NOTIFY desktopChanged)
     // --- Notifications ---
     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
+    // notifications/silenceWhileSharing: Do not disturb by itself while the
+    // screen is shared (docs/screen-sharing.md §7).
+    Q_PROPERTY(bool silenceWhileSharing READ silenceWhileSharing WRITE setSilenceWhileSharing NOTIFY doNotDisturbChanged)
+    // --- Battery notifications (vela-shell.conf [battery],
+    // shell/src/batterysettings.h) ---
+    // The PC's battery (battery/notify) and its low level in percent
+    // (battery/lowLevel); lowLevels are the choices offered, the current
+    // one among them even if the file holds another.
+    Q_PROPERTY(bool batteryNotify READ batteryNotify WRITE setBatteryNotify NOTIFY batteryChanged)
+    Q_PROPERTY(int batteryLowLevel READ batteryLowLevel WRITE setBatteryLowLevel NOTIFY batteryChanged)
+    Q_PROPERTY(QVariantList batteryLowLevels READ batteryLowLevels NOTIFY batteryChanged)
+    // The peripherals' (battery/devices).
+    Q_PROPERTY(bool deviceBatteryNotify READ deviceBatteryNotify WRITE setDeviceBatteryNotify NOTIFY batteryChanged)
     // --- Power ---
     Q_PROPERTY(int screenOffMinutes READ screenOffMinutes WRITE setScreenOffMinutes NOTIFY idleChanged)
     Q_PROPERTY(bool lockOnIdle READ lockOnIdle WRITE setLockOnIdle NOTIFY idleChanged)
     // Vela's language (language= in vela.conf): "", "it" or "en". Empty: like
     // the system. The apps apply it themselves (shell/src/language.h).
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    // theme= in vela.conf: a theme's file name without .conf (themes/,
+    // shell/src/themefile.h); "vela", Vela Official, when it names none.
+    Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
+    // taskbar-style=, startmenu-style=, notifications-style= in vela.conf: each
+    // surface's own style over the theme (themes/<surface>/), by surface
+    // ("taskbar", "startmenu", "notifications"); "" for none.
+    Q_PROPERTY(QVariantMap surfaceStyles READ surfaceStyles NOTIFY visualThemeChanged)
+    // Goes up when a theme or style file is added, removed or edited: what
+    // lists or resolves them depends on it.
+    Q_PROPERTY(int themesRevision READ themesRevision NOTIFY themesChanged)
     // --- Keyboard ---
     // [{layout, variant}] in the chosen order; the first is the starting one.
     Q_PROPERTY(QVariantList keyboardLayouts READ keyboardLayouts NOTIFY keyboardChanged)
@@ -125,9 +173,41 @@ public:
     void setTaskbarAllScreens(bool on);
     bool showDesktopCorner() const { return m_showDesktopCorner; }
     void setShowDesktopCorner(bool on);
+    bool clockDate() const { return m_clockDate; }
+    void setClockDate(bool on);
+    bool clock24() const { return m_clock24; }
+    void setClock24(bool on);
+    bool clockSeconds() const { return m_clockSeconds; }
+    void setClockSeconds(bool on);
+    QString timeFormat() const;
+    bool notificationCount() const { return m_notificationCount; }
+    void setNotificationCount(bool on);
+    QString startIcon() const { return m_startIcon; }
+    QString startIconSource() const { return m_startIconSource; }
+    QString distributionName() const { return m_distribution.name; }
+    QString distributionLogo() const { return m_distribution.logo; }
+    // kind: "vela", "distribution" or "picture"; for "picture", the file
+    // (a path or a file:// URL; without one, the picture chosen before).
+    Q_INVOKABLE void setStartIcon(const QString& kind, const QString& picture = QString());
+    // The logo and the Start icon found again: once the icon theme is set
+    // (Vela.Controls) and whenever it changes, a logo may be only there.
+    void refreshStartIcon();
+    bool startPinned() const { return m_startPinned; }
+    void setStartPinned(bool on);
+    bool desktopIcons() const { return m_desktopIcons; }
+    void setDesktopIcons(bool on);
 
     bool doNotDisturb() const { return m_doNotDisturb; }
     void setDoNotDisturb(bool on);
+    bool silenceWhileSharing() const { return m_silenceWhileSharing; }
+    void setSilenceWhileSharing(bool on);
+    bool batteryNotify() const { return m_batteryNotify; }
+    void setBatteryNotify(bool on);
+    int batteryLowLevel() const { return m_batteryLowLevel; }
+    void setBatteryLowLevel(int percent);
+    QVariantList batteryLowLevels() const;
+    bool deviceBatteryNotify() const { return m_deviceBatteryNotify; }
+    void setDeviceBatteryNotify(bool on);
 
     int screenOffMinutes() const { return m_screenOffMinutes; }
     void setScreenOffMinutes(int minutes);
@@ -135,6 +215,34 @@ public:
     void setLockOnIdle(bool on);
     QString language() const { return m_language; }
     void setLanguage(const QString& language);
+    QString visualTheme() const { return m_visualTheme; }
+    int themesRevision() const { return m_themesRevision; }
+    void setVisualTheme(const QString& theme);
+    // A theme as the shell would use it, with the surfaces' chosen styles
+    // over it, without choosing it (the preview): { installed, tokens,
+    // problems: [{ kind, file, line, key, value }] (the theme's problems),
+    // layoutFromStyle: the taskbar style chosen sets the bar's layout in
+    // Vela's mode }.
+    Q_INVOKABLE QVariantMap resolveTheme(const QString& name) const;
+    QVariantMap surfaceStyles() const { return m_surfaceStyles; }
+    // surface: "taskbar", "startmenu" or "notifications"; style "" for none.
+    Q_INVOKABLE void setSurfaceStyle(const QString& surface, const QString& style);
+    // A surface's styles with their pictures: { name, text, author, images };
+    // the themes with theirs for surface "".
+    Q_INVOKABLE QVariantList styleGallery(const QString& surface) const;
+    // A surface as a theme draws it, without styles: { images: its pictures'
+    // URLs, from: the theme they show, the theme's or one it builds on }.
+    Q_INVOKABLE QVariantMap themeSurfacePictures(const QString& theme, const QString& surface) const;
+    // Vela Official and no styles: Vela's own look.
+    Q_INVOKABLE void resetThemes();
+    // What a theme ("") or a surface's style is called, "" if not installed.
+    Q_INVOKABLE QString displayName(const QString& surface, const QString& name) const;
+    // Opens where your own themes ("") or a surface's styles go in the file
+    // manager, made first if it isn't there.
+    Q_INVOKABLE void openThemesFolder(const QString& surface);
+    // A theme and each surface's style ({ taskbar, startmenu, notifications },
+    // "" for none) in one write of vela.conf: Reset's Undo.
+    Q_INVOKABLE void setThemeAndStyles(const QString& theme, const QVariantMap& styles);
 
     QVariantList keyboardLayouts() const { return m_layouts; }
     Q_INVOKABLE void addKeyboardLayout(const QString& layout, const QString& variant);
@@ -224,9 +332,15 @@ signals:
     void accentChanged();
     void appThemeChanged();
     void taskbarChanged();
+    void desktopChanged();
+    void startChanged();
+    void clockChanged();
     void doNotDisturbChanged();
+    void batteryChanged();
     void idleChanged();
     void languageChanged();
+    void visualThemeChanged();
+    void themesChanged();
     void keyboardChanged();
     void nightLightChanged();
     void inputChanged();
@@ -242,6 +356,7 @@ private:
     void reloadCompositor(); // vela.conf and the compositor's state
     void queryCompositor(); // night light, magnifier...: the current state
     void watchConfig();
+    void watchThemes();
     void saveLayouts();
 
     QString m_wallpaper;
@@ -254,10 +369,25 @@ private:
     bool m_taskView = true;
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
+    bool m_desktopIcons = true;
+    bool m_startPinned = true;
+    QString m_startIcon = QStringLiteral("vela");
+    QString m_startIconSource;
+    vela::start::Distribution m_distribution = vela::start::distribution();
+    bool m_clockDate = true;
+    bool m_clock24 = true;
+    bool m_clockSeconds = false;
+    bool m_notificationCount = true;
     bool m_doNotDisturb = false;
+    bool m_silenceWhileSharing = true;
+    bool m_batteryNotify = true;
+    int m_batteryLowLevel = 20;
+    bool m_deviceBatteryNotify = true;
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;
     QString m_language;
+    QString m_visualTheme;
+    QVariantMap m_surfaceStyles;
     QVariantList m_layouts;
     int m_repeatDelay = 400;
     int m_repeatRate = 30;
@@ -296,6 +426,9 @@ private:
     bool m_clipboardHistory = false;
     QList<QPair<QString, QString>> m_compositor; // vela.conf, in file order
     QFileSystemWatcher m_watcher;
+    QFileSystemWatcher m_themesWatcher; // themes/ (watchThemes())
+    QTimer m_themesDebounce;
+    int m_themesRevision = 0;
     QTimer m_debounce;
 };
 

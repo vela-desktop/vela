@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# vela-shell links Qt6::GuiPrivate, which is not ABI-stable across Qt upgrades.
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = qt6-base
+
+[Action]
+Description = Vela: notify of possible Qt private API rebuild
+When = PostTransaction
+Exec = /usr/lib/vela/vela-qt-rebuild-notice

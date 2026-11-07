@@ -4,10 +4,12 @@
 # Run only after installing vela-git in a fresh Arch container.
 set -euo pipefail
 fail() { printf '::error::%s\n' "$*" >&2; exit 1; }
-pacman -Q vela-git
-pacman -Qk vela-git
+package="${VELA_PACKAGE_NAME:-vela-git}"
+case "$package" in vela|vela-git) ;; *) echo "Invalid package identity" >&2; exit 1 ;; esac
+pacman -Q "$package"
+pacman -Qk "$package"
 pacman -Q xorg-xwayland >/dev/null || fail "Missing Xwayland package"
-test -x /usr/bin/Xwayland || fail "Missing Xwayland binary"
+[[ -x /usr/bin/Xwayland ]] || fail "Missing Xwayland binary"
 for program in vela-compositor vela-shell vela-files vela-settings vela-lock vela-session vela-update vela-report; do
     command -v "$program" >/dev/null || fail "Missing executable: $program"
 done
@@ -16,6 +18,7 @@ for path in \
     /usr/share/applications/vela-report.desktop \
     /usr/lib/vela/report/vela_report/cli.py \
     /usr/share/xdg-desktop-portal/vela-portals.conf \
+    /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
     /usr/lib/systemd/user/vela-session.target \
     /usr/lib/udev/rules.d/70-vela-i2c.rules \
     /usr/lib/modules-load.d/vela-i2c.conf \
@@ -26,24 +29,57 @@ done
 grep -Fq 'Exec=/usr/bin/vela-session' /usr/share/wayland-sessions/vela.desktop \
     || fail "Session entry does not launch /usr/bin/vela-session"
 vela-report --help >/dev/null || fail "The reporting CLI cannot load its Python modules"
-for helper in vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui; do
+for helper in vela-bluetooth vela-brightness vela-polkit-agent vela-polkit-prompt vela-report-gui \
+    vela-update-daemon vela-update-state; do
     test -x "/usr/lib/vela/$helper" || fail "Missing helper: /usr/lib/vela/$helper"
 done
 # Without sd-bus the helper builds, but can't change a laptop's backlight.
 ldd /usr/lib/vela/vela-brightness | grep -Fq libsystemd.so \
     || fail "vela-brightness was built without sd-bus (libsystemd)"
+# vela-bluetooth is built only with libsystemd (sd-bus, sd-event).
+ldd /usr/lib/vela/vela-bluetooth | grep -Fq libsystemd.so \
+    || fail "vela-bluetooth doesn't link libsystemd"
+# So is vela-update-daemon (sd-json too); without it Settings > Updates
+# says the update service isn't running.
+ldd /usr/lib/vela/vela-update-daemon | grep -Fq libsystemd.so \
+    || fail "vela-update-daemon doesn't link libsystemd"
 for program in vela-compositor vela-shell vela-files vela-settings vela-lock \
-    /usr/lib/vela/vela-brightness /usr/lib/vela/vela-polkit-agent /usr/lib/vela/vela-polkit-prompt \
-    /usr/lib/vela/vela-report-gui; do
+    /usr/lib/vela/vela-bluetooth /usr/lib/vela/vela-brightness /usr/lib/vela/vela-polkit-agent /usr/lib/vela/vela-polkit-prompt \
+    /usr/lib/vela/vela-report-gui /usr/lib/vela/vela-update-daemon; do
     path=$(command -v "$program")
     if ldd "$path" | grep -q 'not found'; then
         ldd "$path" >&2
         fail "$program has an unresolved runtime library"
     fi
 done
-for foreign_de in plasma-workspace gnome-shell; do
+# GTK supplies the default generic portals; wlr supplies screen capture.
+# xdg-terminal-exec: the terminal Settings > Updates runs vela-update in.
+for required in konsole breeze-icons xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr xdg-utils \
+    xdg-terminal-exec; do
+    pacman -Q "$required" >/dev/null || fail "Missing desktop integration: $required"
+done
+for foreign_de in xdg-desktop-portal-kde plasma-workspace gnome-shell; do
     if pacman -Q "$foreign_de" >/dev/null 2>&1; then
         fail "Standalone install unexpectedly pulled in $foreign_de"
+    fi
+done
+if pacman -Q base-devel >/dev/null 2>&1; then
+    fail "base-devel should only be installed when a local build is requested"
+fi
+[[ -x /usr/lib/vela/vela-qt-rebuild-notice ]] || fail 'Missing Qt rebuild notification helper'
+grep -Fxq 'Target = qt6-base' /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
+    || fail 'Qt upgrade hook must match qt6-base'
+grep -Fxq 'Exec = /usr/lib/vela/vela-qt-rebuild-notice' /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
+    || fail 'Qt upgrade hook must run the installed notification helper'
+for executable in git curl sudo flock setsid xdg-open xdg-email; do
+    command -v "$executable" >/dev/null || fail "Missing vela-update prerequisite: $executable"
+done
+if ! grep -Fxq 'default=gtk;kde' /usr/share/xdg-desktop-portal/vela-portals.conf; then
+    fail "Vela portal preferences must prefer GTK with an optional KDE fallback"
+fi
+for interface in ScreenCast Screenshot; do
+    if ! grep -Fxq "org.freedesktop.impl.portal.${interface}=wlr" /usr/share/xdg-desktop-portal/vela-portals.conf; then
+        fail "Vela portal preferences must keep ${interface} on wlr"
     fi
 done
 echo "Standalone package smoke check passed; graphical login was not tested."

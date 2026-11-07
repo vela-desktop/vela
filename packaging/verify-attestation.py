@@ -23,7 +23,8 @@ ISSUER = "https://token.actions.githubusercontent.com"
 
 
 def curl(url: str) -> bytes:
-    """Fetch attestation data without following redirects outside allowed hosts."""
+    """Fetch attestation data. Redirects are never followed (no -L), so only
+    the hosts bundle_candidates allows are ever contacted."""
     return subprocess.check_output(
         ["curl", "-fsS", "--retry", "1", "--connect-timeout", "5",
          "--max-time", "30", url], stderr=subprocess.PIPE
@@ -87,7 +88,8 @@ def validate_signed_provenance(bundle: dict, digest: str) -> None:
         raise ValueError("refusing attestation from non-GitHub-hosted runner")
 
 
-def verify(package: Path, repository: str, commit: str, kind: str) -> None:
+def verify(package: Path, repository: str, commit: str, kind: str, release_tag: str | None = None) -> None:
+    """Verify a package against GitHub-hosted Sigstore provenance and source identity."""
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("invalid GitHub repository")
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
@@ -99,15 +101,25 @@ def verify(package: Path, repository: str, commit: str, kind: str) -> None:
     with package.open("rb") as binary:
         for chunk in iter(lambda: binary.read(1024 * 1024), b""):
             h.update(chunk)
-    identity = f"https://github.com/{repository}/.github/workflows/build.yml"
+    workflow = "ubuntu.yml" if package.name.endswith(".deb") else "build.yml"
+    identity = f"https://github.com/{repository}/.github/workflows/{workflow}"
     shared = [
         "--certificate-oidc-issuer", ISSUER,
         "--certificate-github-workflow-repository", repository,
         "--certificate-github-workflow-sha", commit,
     ]
     if kind == "release":
-        shared.extend(["--certificate-identity", identity + "@refs/heads/main",
-                       "--certificate-github-workflow-ref", "refs/heads/main",
+        if release_tag is None:
+            # Legacy alpha builds were signed from main. Keep verification
+            # compatible for already-published packages during migration;
+            # no new alpha releases are published by the Beta pipeline.
+            ref = "refs/heads/main"
+        elif re.fullmatch(r"v0\.[0-9]+\.[0-9]+", release_tag):
+            ref = "refs/tags/" + release_tag
+        else:
+            raise ValueError("invalid Beta release tag")
+        shared.extend(["--certificate-identity", identity + "@" + ref,
+                       "--certificate-github-workflow-ref", ref,
                        "--certificate-github-workflow-trigger", "push"])
     else:
         shared.extend(["--certificate-identity-regexp",
@@ -122,8 +134,11 @@ def verify(package: Path, repository: str, commit: str, kind: str) -> None:
                 else:
                     evidence = json.loads(curl(candidate))
                 bundle.write_text(json.dumps(evidence), encoding="utf-8")
+                # The build's SLSA provenance: cosign 3 checks the predicate
+                # type, and its default ("custom") matches no attestation.
                 command = ["cosign", "verify-blob-attestation",
-                           "--bundle", str(bundle), *shared, str(package)]
+                           "--bundle", str(bundle), "--type", "slsaprovenance1",
+                           *shared, str(package)]
                 subprocess.run(command, check=True, stdout=subprocess.DEVNULL,
                                stderr=subprocess.PIPE, timeout=90)
                 validate_signed_provenance(evidence, h.hexdigest())
@@ -138,14 +153,16 @@ def verify(package: Path, repository: str, commit: str, kind: str) -> None:
 
 
 def main() -> int:
+    """Validate CLI parameters and fail closed when any attestation check fails."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--kind", required=True, choices=("release", "workflow"))
+    parser.add_argument("--release-tag", default=None)
     parser.add_argument("package", type=Path)
     args = parser.parse_args()
     try:
-        verify(args.package, args.repository, args.commit, args.kind)
+        verify(args.package, args.repository, args.commit, args.kind, args.release_tag)
     except (ValueError, OSError, subprocess.CalledProcessError,
             subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
         print(f"vela-update: attestation verification failed: {exc}", file=sys.stderr)

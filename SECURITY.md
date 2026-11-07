@@ -1,22 +1,24 @@
 # Security policy
 
-Vela is alpha software and includes security-sensitive components such as the compositor,
+Vela is beta software and includes security-sensitive components such as the compositor,
 screen locker, authentication and polkit integration, session supervisor, updater, and
 diagnostic tooling. Passing the current test suite does not establish that every hardware
 and software configuration is secure.
 
 ## Supported versions
 
-Vela does not currently maintain parallel stable release branches.
+Vela does not maintain parallel stable release branches. Security fixes land on `main`
+and ship in the next Beta release.
 
 | Version | Security support |
 |---|---|
-| Current `main` | Yes |
-| Public alpha builds from `main` | Update to a fixed `main` build; fixes are not backported to old alpha tags |
-| Older alpha builds and experimental/test branches | No guaranteed security backports |
+| Latest Beta release (`vela` package) | Yes: fixes ship in a new Beta release |
+| Older Beta releases | No backports: update to the latest Beta |
+| Current `main` (Experimental, `vela-git`) | Yes |
+| Older development commits, historical alpha builds and test branches | No guaranteed security backports |
 
-If a security fix lands on `main`, users should update to a build containing that fix
-rather than expect an older alpha snapshot to be patched in place.
+When a fix is released, update with `vela-update` (or Settings → System → Updates) rather
+than expect an older release or snapshot to be patched in place.
 
 ## Reporting a vulnerability
 
@@ -33,7 +35,7 @@ a finding has security impact, report it privately and let the maintainers triag
 
 A useful report includes, when relevant:
 
-- the affected Vela commit or alpha tag;
+- the affected Vela release or commit;
 - distribution, kernel, GPU and driver versions;
 - the security boundary or assumption that is being violated;
 - attack prerequisites and expected impact;
@@ -66,7 +68,7 @@ without a security impact should use the normal
 ## Coordinated disclosure
 
 Vela does not promise a fixed response or remediation timeframe while the project is in
-alpha. Maintainers will evaluate private reports, reproduce them where possible, prepare
+beta. Maintainers will evaluate private reports, reproduce them where possible, prepare
 a fix, and coordinate disclosure based on the severity and practical exploitability of
 the issue.
 

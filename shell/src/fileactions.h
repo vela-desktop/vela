@@ -9,7 +9,7 @@
 
 // The shell's file dialogs, for the desktop and Explorer:
 // - Share, like Windows 11: to nearby devices (phones and computers paired
-//   with KDE Connect), by mail (xdg-email), via Bluetooth;
+//   with KDE Connect) and by mail (xdg-email);
 // - "Choose another app": open with any app, and make it the default for
 //   that file type (mimeapps.h);
 // - New > Shortcut (links.h).
@@ -27,11 +27,9 @@ public:
 
     Q_INVOKABLE bool canKdeConnect() const;
     Q_INVOKABLE bool canEmail() const;
-    Q_INVOKABLE bool canBluetooth() const;
     Q_INVOKABLE void findDevices();
     Q_INVOKABLE void sendToDevice(const QString& id, const QStringList& paths);
     Q_INVOKABLE void sendByEmail(const QStringList& paths);
-    Q_INVOKABLE void sendByBluetooth(const QStringList& paths);
 
     // The file type ("PNG image") and its extension (".png").
     Q_INVOKABLE QString typeName(const QString& path) const;

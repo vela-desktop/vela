@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "preferences.h"
 #include "../../common/privatefile.h"
 
@@ -9,13 +10,17 @@ extern "C" {
 #include "legacy_names.h"
 }
 
+#include "batterysettings.h"
+#include "clockformat.h"
 #include "iconprovider.h"
+#include "themefile.h"
 
 #include <QDir>
 #include <QTime>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QIcon>
+#include <QImageReader>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
@@ -71,6 +76,48 @@ Preferences::Preferences(QObject* parent)
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, &m_debounce, qOverload<>(&QTimer::start));
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, &m_debounce, qOverload<>(&QTimer::start));
     watchConfig();
+    // The theme files: a theme added, removed or edited shows in Themes
+    // (themesRevision) without touching the theme in use or a preview.
+    m_themesDebounce.setSingleShot(true);
+    m_themesDebounce.setInterval(150);
+    connect(&m_themesDebounce, &QTimer::timeout, this, [this] {
+        watchThemes();
+        ++m_themesRevision;
+        emit themesChanged();
+    });
+    connect(&m_themesWatcher, &QFileSystemWatcher::fileChanged, &m_themesDebounce, qOverload<>(&QTimer::start));
+    connect(&m_themesWatcher, &QFileSystemWatcher::directoryChanged, &m_themesDebounce, qOverload<>(&QTimer::start));
+    watchThemes();
+}
+
+void Preferences::watchThemes()
+{
+    // The directories for files added and removed, the files for edits; an
+    // editor that replaces a file drops it from the watcher, so add it again.
+    // The themes' and every surface's styles'; while the user's own don't
+    // exist yet, the directory above them, so that creating them is noticed.
+    for (int i = 0; i < vela::themes::LayerCount; ++i) {
+        const auto layer = vela::themes::Layer(i);
+        for (const QString& dir : vela::themes::watchedDirectories(layer)) {
+            if (!m_themesWatcher.directories().contains(dir)) {
+                m_themesWatcher.addPath(dir);
+            }
+        }
+        for (const QString& dir : vela::themes::directories(layer)) {
+            for (const QString& file : QDir(dir).entryList({ QStringLiteral("*.conf") }, QDir::Files)) {
+                const QString path = dir + u'/' + file;
+                if (!m_themesWatcher.files().contains(path)) {
+                    m_themesWatcher.addPath(path);
+                }
+            }
+        }
+    }
+    // The pictures' folders too: one added shows in the galleries at once.
+    for (const QString& dir : vela::themes::pictureDirectories()) {
+        if (!m_themesWatcher.directories().contains(dir)) {
+            m_themesWatcher.addPath(dir);
+        }
+    }
 }
 
 void Preferences::watchConfig()
@@ -86,6 +133,7 @@ void Preferences::watchConfig()
     }
 }
 
+/** Reload persisted appearance and shell choices, normalizing absent or invalid settings. */
 void Preferences::reload()
 {
     QSettings settings = shellSettings();
@@ -119,8 +167,25 @@ void Preferences::reload()
     m_taskbarAllScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
     m_showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
     emit taskbarChanged();
+    m_desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
+    emit desktopChanged();
+    m_startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
+    const vela::start::Icon startIcon = vela::start::icon(settings);
+    m_startIcon = startIcon.kind;
+    m_startIconSource = startIcon.source;
+    emit startChanged();
+    m_clockDate = settings.value(QStringLiteral("taskbar/showDate"), true).toBool();
+    m_clock24 = vela::clock::hour24(settings);
+    m_clockSeconds = settings.value(QStringLiteral("taskbar/clockSeconds"), false).toBool();
+    m_notificationCount = settings.value(QStringLiteral("taskbar/notificationCount"), true).toBool();
+    emit clockChanged();
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
+    m_silenceWhileSharing = settings.value(QStringLiteral("notifications/silenceWhileSharing"), true).toBool();
     emit doNotDisturbChanged();
+    m_batteryNotify = vela::battery::notify(settings);
+    m_batteryLowLevel = vela::battery::lowLevel(settings);
+    m_deviceBatteryNotify = vela::battery::devices(settings);
+    emit batteryChanged();
     m_clipboardHistory = settings.value(QStringLiteral("clipboard/history"), false).toBool();
     emit clipboardChanged();
 
@@ -128,7 +193,7 @@ void Preferences::reload()
     // yet, the one GTK and the portal already know.
     QString appTheme = settings.value(QStringLiteral("appearance/appTheme")).toString();
     if (appTheme.isEmpty()) {
-        QProcess gsettings;
+        vela::process::ExternalProcess gsettings;
         gsettings.start(QStringLiteral("gsettings"),
             { QStringLiteral("get"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("color-scheme") });
         appTheme = gsettings.waitForFinished(1000) && gsettings.readAllStandardOutput().contains("light")
@@ -196,6 +261,23 @@ void Preferences::reloadCompositor()
     emit idleChanged();
     m_language = value(QStringLiteral("language"), {});
     emit languageChanged();
+    // As the shell reads it (themefile.h's configuredName()). Only a change
+    // is announced: the Themes page keeps a preview until then.
+    QString theme = value(QStringLiteral("theme"), {}).trimmed();
+    if (theme.isEmpty()) {
+        theme = vela::themes::defaultTheme();
+    }
+    // Each surface's own style: "" for none.
+    QVariantMap styles;
+    for (int i = vela::themes::Taskbar; i < vela::themes::LayerCount; ++i) {
+        const auto& info = vela::themes::layerInfo(vela::themes::Layer(i));
+        styles.insert(QLatin1String(info.directory), value(QLatin1String(info.key), {}).trimmed());
+    }
+    if (theme != m_visualTheme || styles != m_surfaceStyles) {
+        m_visualTheme = theme;
+        m_surfaceStyles = styles;
+        emit visualThemeChanged();
+    }
 
     m_layouts.clear();
     const QStringList layouts = value(QStringLiteral("keyboard-layout"), {}).split(u',', Qt::SkipEmptyParts);
@@ -249,9 +331,10 @@ void Preferences::reloadCompositor()
 
 QString Preferences::compositorValue(const QString& key) const
 {
-    for (const auto& [k, v] : std::as_const(m_compositor)) {
-        if (k == key) {
-            return v;
+    // The last line of a key, as the compositor and the shell read it.
+    for (auto it = m_compositor.crbegin(); it != m_compositor.crend(); ++it) {
+        if (it->first == key) {
+            return it->second;
         }
     }
     return {};
@@ -377,6 +460,7 @@ void Preferences::setAccent(const QColor& color)
     emit accentChanged();
 }
 
+/** Persist the app mode and update GTK and KDE appearance tools with isolated launches. */
 void Preferences::setAppTheme(const QString& theme)
 {
     if (theme == m_appTheme || (theme != QLatin1String("light") && theme != QLatin1String("dark"))) {
@@ -387,13 +471,13 @@ void Preferences::setAppTheme(const QString& theme)
     // The shell and the compositor (title bars), Explorer.
     setShell(QStringLiteral("appearance/appTheme"), theme);
     // GTK, the portal and whoever follows org.freedesktop.appearance.
-    QProcess::startDetached(QStringLiteral("gsettings"),
+    vela::process::startDetached(QStringLiteral("gsettings"),
         { QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("color-scheme"),
             light ? QStringLiteral("prefer-light") : QStringLiteral("prefer-dark") });
     // KDE and Qt apps: the light or dark Breeze color scheme, and matching
     // icons.
     if (!QStandardPaths::findExecutable(QStringLiteral("plasma-apply-colorscheme")).isEmpty()) {
-        QProcess::startDetached(QStringLiteral("plasma-apply-colorscheme"),
+        vela::process::startDetached(QStringLiteral("plasma-apply-colorscheme"),
             { light ? QStringLiteral("BreezeLight") : QStringLiteral("BreezeDark") });
     }
     const QString icons = QIcon::themeName();
@@ -401,9 +485,9 @@ void Preferences::setAppTheme(const QString& theme)
     if (QIcon::themeName() != icons) {
         const QString changer = QStringLiteral("/usr/lib/plasma-changeicons");
         if (QFileInfo(changer).isExecutable()) {
-            QProcess::startDetached(changer, { QIcon::themeName() });
+            vela::process::startDetached(changer, { QIcon::themeName() });
         } else if (!QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6")).isEmpty()) {
-            QProcess::startDetached(QStringLiteral("kwriteconfig6"),
+            vela::process::startDetached(QStringLiteral("kwriteconfig6"),
                 { QStringLiteral("--file"), QStringLiteral("kdeglobals"), QStringLiteral("--group"), QStringLiteral("Icons"),
                     QStringLiteral("--key"), QStringLiteral("Theme"), QIcon::themeName() });
         }
@@ -459,6 +543,101 @@ void Preferences::setShowDesktopCorner(bool on)
     }
 }
 
+void Preferences::setDesktopIcons(bool on)
+{
+    if (on != m_desktopIcons) {
+        m_desktopIcons = on;
+        setShell(QStringLiteral("desktop/showIcons"), on);
+        emit desktopChanged();
+    }
+}
+
+void Preferences::setStartPinned(bool on)
+{
+    if (on != m_startPinned) {
+        m_startPinned = on;
+        setShell(QStringLiteral("start/showPinned"), on);
+        emit startChanged();
+    }
+}
+
+void Preferences::setStartIcon(const QString& kind, const QString& picture)
+{
+    if (kind != QLatin1String("vela") && kind != QLatin1String("distribution") && kind != QLatin1String("picture")) {
+        return;
+    }
+    QSettings settings = shellSettings();
+    if (kind == QLatin1String("picture") && !picture.isEmpty()) {
+        const QString path = picture.startsWith(QLatin1String("file:")) ? QUrl(picture).toLocalFile() : picture;
+        if (!path.startsWith(u'/') || !QFileInfo(path).isFile() || !QImageReader(path).canRead()) {
+            return;
+        }
+        settings.setValue(QStringLiteral("start/iconPicture"), path);
+    }
+    settings.setValue(QStringLiteral("start/icon"), kind);
+    settings.sync();
+    const vela::start::Icon icon = vela::start::icon(settings);
+    if (icon.kind != m_startIcon || icon.source != m_startIconSource) {
+        m_startIcon = icon.kind;
+        m_startIconSource = icon.source;
+        emit startChanged();
+    }
+}
+
+void Preferences::refreshStartIcon()
+{
+    const vela::start::Distribution distribution = vela::start::distribution();
+    const vela::start::Icon icon = vela::start::icon(shellSettings());
+    if (distribution.name != m_distribution.name || distribution.logo != m_distribution.logo
+        || icon.kind != m_startIcon || icon.source != m_startIconSource) {
+        m_distribution = distribution;
+        m_startIcon = icon.kind;
+        m_startIconSource = icon.source;
+        emit startChanged();
+    }
+}
+
+void Preferences::setClockDate(bool on)
+{
+    if (on != m_clockDate) {
+        m_clockDate = on;
+        setShell(QStringLiteral("taskbar/showDate"), on);
+        emit clockChanged();
+    }
+}
+
+void Preferences::setClock24(bool on)
+{
+    if (on != m_clock24) {
+        m_clock24 = on;
+        setShell(QStringLiteral("clock/hours"), on ? 24 : 12);
+        emit clockChanged();
+    }
+}
+
+void Preferences::setClockSeconds(bool on)
+{
+    if (on != m_clockSeconds) {
+        m_clockSeconds = on;
+        setShell(QStringLiteral("taskbar/clockSeconds"), on);
+        emit clockChanged();
+    }
+}
+
+void Preferences::setNotificationCount(bool on)
+{
+    if (on != m_notificationCount) {
+        m_notificationCount = on;
+        setShell(QStringLiteral("taskbar/notificationCount"), on);
+        emit clockChanged();
+    }
+}
+
+QString Preferences::timeFormat() const
+{
+    return vela::clock::timeFormat(m_clock24);
+}
+
 void Preferences::setTaskView(bool on)
 {
     if (on != m_taskView) {
@@ -477,6 +656,62 @@ void Preferences::setDoNotDisturb(bool on)
     }
 }
 
+void Preferences::setSilenceWhileSharing(bool on)
+{
+    if (on != m_silenceWhileSharing) {
+        m_silenceWhileSharing = on;
+        setShell(QStringLiteral("notifications/silenceWhileSharing"), on);
+        emit doNotDisturbChanged();
+    }
+}
+
+void Preferences::setBatteryNotify(bool on)
+{
+    if (on != m_batteryNotify) {
+        m_batteryNotify = on;
+        setShell(QStringLiteral("battery/notify"), on);
+        emit batteryChanged();
+    }
+}
+
+void Preferences::setBatteryLowLevel(int percent)
+{
+    if (percent < vela::battery::minimumLowLevel || percent > vela::battery::maximumLowLevel) {
+        return;
+    }
+    if (percent != m_batteryLowLevel) {
+        m_batteryLowLevel = percent;
+        setShell(QStringLiteral("battery/lowLevel"), percent);
+        emit batteryChanged();
+    }
+}
+
+QVariantList Preferences::batteryLowLevels() const
+{
+    QVariantList levels;
+    bool current = false;
+    for (const int level : vela::battery::lowLevels) {
+        if (!current && m_batteryLowLevel < level) {
+            levels.append(m_batteryLowLevel); // set by hand in the file
+        }
+        current |= m_batteryLowLevel <= level;
+        levels.append(level);
+    }
+    if (!current) {
+        levels.append(m_batteryLowLevel);
+    }
+    return levels;
+}
+
+void Preferences::setDeviceBatteryNotify(bool on)
+{
+    if (on != m_deviceBatteryNotify) {
+        m_deviceBatteryNotify = on;
+        setShell(QStringLiteral("battery/devices"), on);
+        emit batteryChanged();
+    }
+}
+
 // ------------------------------------------------------- compositor --
 
 void Preferences::saveCompositorKeys(const QStringList& keys)
@@ -489,6 +724,10 @@ void Preferences::saveCompositorKeys(const QStringList& keys)
             changes.append({ key, m_lockOnIdle ? QStringLiteral("yes") : QStringLiteral("no") });
         } else if (key == QLatin1String("language")) {
             changes.append({ key, m_language });
+        } else if (key == QLatin1String("theme")) {
+            changes.append({ key, m_visualTheme });
+        } else if (key.endsWith(QLatin1String("-style")) && m_surfaceStyles.contains(key.chopped(6))) {
+            changes.append({ key, m_surfaceStyles.value(key.chopped(6)).toString() });
         } else if (key == QLatin1String("keyboard-layout") || key == QLatin1String("keyboard-variant")) {
             QStringList values;
             for (const QVariant& value : std::as_const(m_layouts)) {
@@ -526,10 +765,11 @@ void Preferences::saveCompositor(const QList<QPair<QString, QString>>& changes)
         lines << QStringLiteral("# Vela settings (written by the Settings app)");
     }
     for (const auto& [key, value] : changes) {
+        // The last line of the key: the one the compositor and the shell read.
         bool found = false;
-        for (QString& line : lines) {
-            if (line.startsWith(key + u'=')) {
-                line = key + u'=' + value;
+        for (auto line = lines.rbegin(); line != lines.rend(); ++line) {
+            if (line->startsWith(key + u'=')) {
+                *line = key + u'=' + value;
                 found = true;
                 break;
             }
@@ -581,6 +821,121 @@ void Preferences::setLanguage(const QString& language)
         saveCompositorKeys(QStringList { QStringLiteral("language") });
         emit languageChanged();
     }
+}
+
+void Preferences::setVisualTheme(const QString& name)
+{
+    // Only a name themefile.h would load: a path stays out of vela.conf.
+    const QString theme = name.isEmpty() ? vela::themes::defaultTheme() : name;
+    if (theme != m_visualTheme && vela::themes::validName(theme)) {
+        m_visualTheme = theme;
+        // The shell and the apps follow (Appearance watches vela.conf).
+        saveCompositorKeys(QStringList { QStringLiteral("theme") });
+        emit visualThemeChanged();
+    }
+}
+
+QVariantMap Preferences::resolveTheme(const QString& name) const
+{
+    // The same resolution as the shell's (Appearance), without applying it:
+    // the theme with the styles chosen for each surface over it.
+    vela::themes::Choice choice;
+    choice[vela::themes::Theme] = name;
+    for (int i = vela::themes::Taskbar; i < vela::themes::LayerCount; ++i) {
+        choice[i] = m_surfaceStyles.value(QLatin1String(vela::themes::layerInfo(vela::themes::Layer(i)).directory)).toString();
+    }
+    const vela::themes::Loaded loaded = vela::themes::load(choice);
+    const vela::themes::Resolved& theme = loaded.layers[vela::themes::Theme];
+    QVariantList problems;
+    for (const vela::themes::Problem& problem : theme.problems) {
+        problems.append(vela::themes::toVariant(problem));
+    }
+    return { { QStringLiteral("installed"), !theme.files.isEmpty() }, { QStringLiteral("tokens"), loaded.merged() },
+        { QStringLiteral("problems"), problems },
+        { QStringLiteral("layoutFromStyle"), vela::themes::setsTaskbarLayout(loaded.layers[vela::themes::Taskbar].tokens,
+                                          m_shellTheme == QLatin1String("light")) } };
+}
+
+void Preferences::setSurfaceStyle(const QString& surface, const QString& style)
+{
+    const QString name = style.trimmed();
+    if (!m_surfaceStyles.contains(surface) || m_surfaceStyles.value(surface).toString() == name
+        || (!name.isEmpty() && !vela::themes::validName(name))) {
+        return;
+    }
+    m_surfaceStyles.insert(surface, name);
+    saveCompositorKeys(QStringList { surface + QStringLiteral("-style") });
+    emit visualThemeChanged();
+}
+
+QVariantList Preferences::styleGallery(const QString& surface) const
+{
+    return vela::themes::gallery(surface);
+}
+
+QVariantMap Preferences::themeSurfacePictures(const QString& theme, const QString& surface) const
+{
+    return vela::themes::themeSurfacePictures(theme, surface);
+}
+
+void Preferences::resetThemes()
+{
+    QStringList keys { QStringLiteral("theme") };
+    m_visualTheme = vela::themes::defaultTheme();
+    for (auto it = m_surfaceStyles.begin(); it != m_surfaceStyles.end(); ++it) {
+        it.value() = QString();
+        keys.append(it.key() + QStringLiteral("-style"));
+    }
+    saveCompositorKeys(keys);
+    emit visualThemeChanged();
+}
+
+QString Preferences::displayName(const QString& surface, const QString& name) const
+{
+    return vela::themes::displayName(surface, name);
+}
+
+/** Create the user's theme/style directory and diagnose unavailable or failed openers. */
+void Preferences::openThemesFolder(const QString& surface)
+{
+    const vela::themes::Layer layer = vela::themes::layerFor(surface);
+    if (layer >= vela::themes::LayerCount) {
+        return;
+    }
+    // Made, it is watched at once: the watcher keeps an eye on the directory
+    // above it while it doesn't exist (watchThemes()).
+    const QString dir = vela::themes::userDirectory(layer);
+    if (!QDir().mkpath(dir)) {
+        qWarning("vela-settings: cannot create themes folder: %s", qPrintable(dir));
+        return;
+    }
+    const QString opener = QStandardPaths::findExecutable(QStringLiteral("xdg-open"));
+    if (opener.isEmpty()) {
+        qWarning("vela-settings: cannot open themes folder: xdg-open is unavailable (install xdg-utils)");
+        return;
+    }
+    if (!vela::process::startDetached(opener, { dir })) {
+        qWarning("vela-settings: failed to start xdg-open for %s", qPrintable(dir));
+    }
+}
+
+void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& styles)
+{
+    // A theme name vela.conf had by hand and Vela can't load stays as it is;
+    // the styles come back all the same.
+    const QString name = theme.isEmpty() ? vela::themes::defaultTheme() : theme;
+    QStringList keys;
+    if (vela::themes::validName(name)) {
+        m_visualTheme = name;
+        keys.append(QStringLiteral("theme"));
+    }
+    for (auto it = m_surfaceStyles.begin(); it != m_surfaceStyles.end(); ++it) {
+        const QString style = styles.value(it.key()).toString().trimmed();
+        it.value() = style.isEmpty() || vela::themes::validName(style) ? style : QString();
+        keys.append(it.key() + QStringLiteral("-style"));
+    }
+    saveCompositorKeys(keys);
+    emit visualThemeChanged();
 }
 
 void Preferences::saveLayouts()

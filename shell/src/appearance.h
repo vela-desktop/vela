@@ -6,7 +6,11 @@
 #include <QColor>
 #include <QFileSystemWatcher>
 #include <QObject>
+#include <QStringList>
 #include <QTimer>
+#include <QVariantMap>
+
+#include "themefile.h"
 
 // The look of Vela's interfaces (Vela.Controls' Style): the apps' light or
 // dark mode ("Choose your mode"), accent color and Mica (see mica.h). System
@@ -21,6 +25,16 @@ class Appearance : public QObject {
     Q_PROPERTY(QColor accent READ accent NOTIFY changed)
     Q_PROPERTY(QColor mica READ mica NOTIFY changed)
     Q_PROPERTY(QColor micaInactive READ micaInactive NOTIFY changed)
+    // The chosen theme's and styles' values, merged (theme=, taskbar-style=,
+    // startmenu-style=, notifications-style= of vela.conf; themefile.h):
+    // colors as QColor, numbers as double, pictures as URLs, layouts as
+    // names. Theme.qml and Styles.qml fall back to their own for what they
+    // leave out.
+    Q_PROPERTY(QVariantMap theme READ theme NOTIFY changed)
+    // The surfaces with a look of their own, a style or the theme's keys for
+    // them: "taskbar", "startmenu", "notifications" (Styles.qml: their blur
+    // is rounded, glass from 4%).
+    Q_PROPERTY(QStringList chosenStyles READ chosenStyles NOTIFY changed)
     Q_PROPERTY(bool animationEffects READ animationEffects NOTIFY changed)
     // animation-duration in vela.conf as a factor: 1 is Vela's durations.
     Q_PROPERTY(qreal animationDuration READ animationDuration NOTIFY changed)
@@ -39,6 +53,20 @@ public:
     bool animationEffects() const { return m_animationEffects; }
     qreal animationDuration() const { return m_animationDuration; }
     QString iconMode() const { return m_iconMode; }
+    QVariantMap theme() const { return m_theme; }
+    // The theme with only one surface's style (its blur look, main.cpp).
+    QVariantMap themeFor(vela::themes::Layer layer) const { return m_loaded.withStyle(layer); }
+    // Whether a surface has a look of its own (themefile.h's Loaded::styled()).
+    bool styleChosen(vela::themes::Layer layer) const { return m_loaded.styled(layer); }
+    QStringList chosenStyles() const;
+
+    // The taskbar's layout in these tokens (theme above, or a theme's that
+    // Settings resolves) and mode, as themefile.h's taskbarLayout() takes it:
+    // { variant, margin, radius, floating, fit, edge, appsAtLeft }, the last
+    // for the alignment given ("left" or "center"). Styles.qml draws with it,
+    // Settings explains and previews with it.
+    Q_INVOKABLE QVariantMap taskbarLayout(const QVariantMap& tokens, bool light,
+        const QString& alignment = QString()) const;
 
     // Starts watching the files (after the first frame: startup stays fast).
     void watch();
@@ -58,6 +86,8 @@ private:
     QColor m_accent;
     QColor m_mica;
     QColor m_micaInactive;
+    QVariantMap m_theme;
+    vela::themes::Loaded m_loaded; // the chosen theme and styles; their files are watched
     bool m_animationEffects = true;
     qreal m_animationDuration = 1.0;
     QString m_iconMode = QStringLiteral("d/");

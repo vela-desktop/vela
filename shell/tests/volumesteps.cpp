@@ -65,6 +65,63 @@ private slots:
         QCOMPARE(percent(VolumeSteps::snap(0.329, 65535)), 32);
     }
 
+    void hardwareReadbackCloseToGridStillMoves()
+    {
+        // A requested 60% may read back as 59.6% (or 60.4%) after a
+        // hardware mixer quantizes it. Both directions must leave the 60%
+        // position, rather than re-requesting it.
+        QCOMPARE(percent(VolumeSteps::step(0.596, 1, 65535)), 62);
+        QCOMPARE(percent(VolumeSteps::step(0.596, -1, 65535)), 58);
+        QCOMPARE(percent(VolumeSteps::step(0.604, 1, 65535)), 62);
+        QCOMPARE(percent(VolumeSteps::step(0.604, -1, 65535)), 58);
+        // Values genuinely between grid positions still move to the next
+        // position in the chosen direction.
+        QCOMPARE(percent(VolumeSteps::step(0.59, 1, 65535)), 60);
+        QCOMPARE(percent(VolumeSteps::step(0.59, -1, 65535)), 58);
+    }
+
+    void quantizedHardwareReadbackNeverStalls()
+    {
+        // A device with 128 hardware positions, but a 2% UI grid.
+        // Recalculate from the hardware feedback after every notch,
+        // including notches that cross a direction change.
+        for (int i = 0; i < 50; ++i) {
+            const double reported = std::round((double(i) / 50.0) * 127.0) / 127.0;
+            QCOMPARE(percent(VolumeSteps::step(reported, 1, 127)), (i + 1) * 2);
+        }
+        for (int i = 50; i > 0; --i) {
+            const double reported = std::round((double(i) / 50.0) * 127.0) / 127.0;
+            QCOMPARE(percent(VolumeSteps::step(reported, -1, 127)), (i - 1) * 2);
+        }
+    }
+
+    void finerDevicesMoveOneNotchAtATime()
+    {
+        // The device sets the position nearest to the one asked for, up to
+        // half of its own step away: 60% on 64 intervals reads back as
+        // 59.375%. Every notch must still reach the next grid position.
+        for (const int device : { 51, 64, 75, 83, 100, 127, 255, 65535 }) {
+            const auto readback = [device](double volume) { return std::round(volume * device) / device; };
+            double volume = 0.0;
+            for (int notch = 1; notch <= 50; ++notch) {
+                volume = readback(VolumeSteps::step(volume, 1, device));
+                QVERIFY2(std::lround(volume * 50) == notch,
+                    qPrintable(QStringLiteral("%1 intervals, up to notch %2: %3").arg(device).arg(notch).arg(volume)));
+            }
+            for (int notch = 49; notch >= 0; --notch) {
+                volume = readback(VolumeSteps::step(volume, -1, device));
+                QVERIFY2(std::lround(volume * 50) == notch,
+                    qPrintable(QStringLiteral("%1 intervals, down to notch %2: %3").arg(device).arg(notch).arg(volume)));
+            }
+        }
+        // A position no request reads back as is off the grid: set by
+        // another program, its first step lands on the next grid position.
+        QCOMPARE(percent(VolumeSteps::step(0.51, 1, 100)), 52);
+        QCOMPARE(percent(VolumeSteps::step(0.51, -1, 100)), 50);
+        QCOMPARE(percent(VolumeSteps::step(25.0 / 64, 1, 64)), 40);
+        QCOMPARE(percent(VolumeSteps::step(25.0 / 64, -1, 64)), 38);
+    }
+
     void fewPositionsOneAtATime()
     {
         // A headset in call mode: 15 intervals, 6.67 points each.

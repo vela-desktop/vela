@@ -18,7 +18,7 @@ import subprocess
 import time
 import unittest
 
-from harness import BUILD, Image, Session, tool
+from harness import BUILD, ROOT, TIME_SCALE, Image, Session, tool
 
 SHELL = os.path.join(BUILD, "shell", "vela-shell")
 OUTPUT_CASES = (("normal", 1, "above"), ("90", 1, "above"), ("180", 1.25, "right"),
@@ -38,6 +38,7 @@ class RealShell(unittest.TestCase):
 
     wallpaper = GRADIENT
     compositor_env = {} # more for the compositor (fake monitors, test_brightness.py)
+    shell_env = {} # more for the shell (a stopped clock, test_personalization.py)
 
     def setUp(self):
         self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
@@ -67,9 +68,12 @@ class RealShell(unittest.TestCase):
                    QT_WAYLAND_SHELL_INTEGRATION="layer-shell", QT_WAYLAND_RECONNECT="0",
                    QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
                    WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
-                   VELA_DEBUG_SELECTION="1")
+                   VELA_DEBUG_SELECTION="1", **self.shell_env)
         self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
+        # In a session the shell is the compositor's child; here, this one is
+        # (its previews are not screen sharing, docs/screen-sharing.md §4.2).
+        self.vela.command(f"test-shell {self.shell.pid}")
         self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar") and self.mapped(s, "vela-wallpaper"),
                            timeout=20, what="the real Qt desktop")
 
@@ -167,6 +171,400 @@ class QtShell(RealShell):
         return last
 
 
+    def send_notification(self, summary, actions="['default', 'Open']", body="Notification body", expire_timeout=120000):
+        """Send an isolated D-Bus notification and return the exact ID assigned by Vela."""
+        if not shutil.which("gdbus"):
+            self.skipTest("gdbus required for desktop notification")
+        result = subprocess.run([
+            "gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
+            "--object-path", "/org/freedesktop/Notifications",
+            "--method", "org.freedesktop.Notifications.Notify",
+            "Vela functional test", "0", "", summary, body, actions, "{}", str(expire_timeout),
+        ], env=self.vela.client_env, check=True, capture_output=True, text=True, timeout=8)
+        match = re.search(r"\buint32\s+(\d+)", result.stdout)
+        self.assertIsNotNone(match, f"Notify did not return an ID: {result.stdout!r}")
+        return int(match.group(1))
+
+    @contextmanager
+    def notification_signal_monitor(self):
+        """Monitor the private D-Bus server; drain the log after stopping gdbus."""
+        if not shutil.which("gdbus"):
+            self.skipTest("gdbus required for desktop notification")
+        path = os.path.join(self.vela.directory, f"notification-signals-{time.monotonic_ns()}.log")
+        with open(path, "w+") as log:
+            monitor = subprocess.Popen([
+                "gdbus", "monitor", "--session", "--dest", "org.freedesktop.Notifications",
+                "--object-path", "/org/freedesktop/Notifications",
+            ], env=self.vela.client_env, stdout=log, stderr=subprocess.STDOUT)
+
+            def stop():
+                if monitor.poll() is None:
+                    monitor.terminate()
+                try:
+                    monitor.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    monitor.kill()
+                    monitor.wait(timeout=3)
+
+            def finish():
+                stop()
+                log.seek(0)
+                return log.read()
+            try:
+                time.sleep(0.3)  # Subscribe before Notify() can emit a signal.
+                yield finish
+            finally:
+                stop()
+
+    @staticmethod
+    def notification_closed_events(signals):
+        """Extract notification IDs and freedesktop close reasons, not just signal counts."""
+        return [(int(notification_id), int(reason)) for notification_id, reason in re.findall(
+            r"NotificationClosed[^\n]*?\(\s*(?:uint32\s+)?(\d+)\s*,\s*(?:uint32\s+)?(\d+)\s*\)",
+            signals)]
+
+    @staticmethod
+    def notification_action_events(signals):
+        """Extract (notification ID, action key) from each ActionInvoked signal."""
+        return [(int(notification_id), action) for notification_id, action in re.findall(
+            r"ActionInvoked[^\n]*?\(\s*(?:uint32\s+)?(\d+)\s*,\s*['\"]([^'\"]+)['\"]", signals)]
+
+    @contextmanager
+    def input_session(self):
+        """One vela-input (and so one virtual keyboard) for a whole scene.
+
+        A new vela-input per action brings its keymap to the seat: the
+        notification center loses the keyboard and closes, like Start."""
+        session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+
+        def send(*actions):
+            session.stdin.write("\t".join(map(str, actions)) + "\n")
+            session.stdin.flush()
+            self.assertEqual(session.stdout.readline().strip(), "OK", f"vela-input refused {actions!r}")
+        try:
+            yield send
+        finally:
+            session.stdin.close()
+            try:
+                session.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                session.kill()
+                session.wait()
+            session.stdout.close()
+
+    def open_notification_center(self, send):
+        """Open the center with the session's keyboard; return its layer and panel origin.
+
+        NotificationCenter.qml: the window is room + 360 + 12 wide, and while
+        it is not cut by the output's height the panels start room units from
+        its top and left edges."""
+        send("key", "super+n", "sleep", 900)
+        state = self.vela.wait_for(lambda s: self.layer(s, "vela-notification-center"),
+                                   timeout=8, what="notification center open")
+        center = self.layer(state, "vela-notification-center")
+        room = center["w"] - 372
+        self.assertGreaterEqual(room, 0)
+        return center, center["x"] + room, center["y"] + room
+
+    def notification_center_after_removal(self, previous):
+        """The bottom-anchored center gets shorter as cards go: its top moves down."""
+        state = self.vela.wait_for(
+            lambda s: (c := self.layer(s, "vela-notification-center")) and c["h"] < previous["h"],
+            timeout=8, what="notification center shrank after removing a card")
+        center = self.layer(state, "vela-notification-center")
+        room = center["w"] - 372
+        return center, center["x"] + room, center["y"] + room
+
+    def assert_center_stays_open(self, send):
+        # Closing animates before the layer unmaps: give it time to finish.
+        send("sleep", 500)
+        self.assertTrue(self.mapped(self.vela.state(), "vela-notification-center"),
+                        "the notification center closed")
+
+    # The first history card, from the panel's origin: one app section header
+    # ("Vela functional test") above it, then the summary, body and actions.
+    CARD_BODY = (145, 100)
+    # The card's first action button: the list's 8 + the card's 12 + the 28
+    # icon + 12 spacing = 60 to its left edge, then at least "Reply" + 20
+    # padding wide.
+    CARD_FIRST_ACTION = (80, 145)
+
+    def test_right_click_dismisses_the_hovered_notification(self):
+        """Only the clicked toast closes, with reason 2 and no default action."""
+        with self.notification_signal_monitor() as capture:
+            first = self.send_notification("First toast")
+            second = self.send_notification("Second toast")
+            state = self.vela.wait_for(
+                lambda s: (p := self.layer(s, "vela-notifications")) and p["h"] > 160,
+                timeout=8, what="two notification popups")
+            popup = self.layer(state, "vela-notifications")
+            initial_height = popup["h"]
+            time.sleep(0.3)  # Allow the toast entrance animation to finish.
+
+            # The first toast is at the top of the bottom-anchored stack.
+            self.vela.input("move", popup["x"] + 75, popup["y"] + 55,
+                            "sleep", 100, "click", "right")
+            remaining_state = self.vela.wait_for(
+                lambda s: (p := self.layer(s, "vela-notifications"))
+                and p["h"] < initial_height - 20,
+                timeout=8, what="only the selected toast dismissed")
+
+            # Recompute coordinates: the bottom-anchored window moved downward.
+            remaining = self.layer(remaining_state, "vela-notifications")
+            self.vela.input("move", remaining["x"] + 75, remaining["y"] + 55,
+                            "sleep", 100, "click", "right")
+            self.vela.wait_for(
+                lambda s: not self.mapped(s, "vela-notifications"),
+                timeout=8, what="remaining toast dismissed")
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals),
+                         [(first, 2), (second, 2)], signals)
+        self.assertEqual(self.notification_action_events(signals), [], signals)
+
+    def test_right_click_notification_keeps_hovered_timeout_paused(self):
+        """Hover prevents expiry; right-click then closes with reason 2, not reason 1."""
+        with self.notification_signal_monitor() as capture:
+            # Hover the popups before the short notification exists: Notify()
+            # then never starts its timer, however slow the runner is.
+            anchor = self.send_notification("Hover anchor")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-notifications"),
+                timeout=8, what="anchor notification appeared")
+            popup = self.layer(state, "vela-notifications")
+            one_toast = popup["h"]
+            self.vela.input("move", popup["x"] + 100, popup["y"] + popup["h"] - 40, "sleep", 200)
+
+            short = self.send_notification("Hover timeout", expire_timeout=1500)
+            state = self.vela.wait_for(
+                lambda s: (p := self.layer(s, "vela-notifications")) and p["h"] > one_toast + 40,
+                timeout=8, what="short-timeout notification appeared under the pointer")
+            # Longer than its timeout: it must still be there, as the pointer
+            # never left the popups (the stack grows upward around it).
+            time.sleep(2.5)
+            popup = self.layer(self.vela.state(), "vela-notifications")
+            self.assertIsNotNone(popup, "both toasts expired while the pointer was hovering")
+            self.assertGreater(popup["h"], one_toast + 40, "a toast expired while the pointer was hovering")
+
+            # The newest toast is the bottom one: right-click it, then the anchor.
+            self.vela.input("move", popup["x"] + 100, popup["y"] + popup["h"] - 40,
+                            "sleep", 100, "click", "right")
+            state = self.vela.wait_for(
+                lambda s: (p := self.layer(s, "vela-notifications")) and p["h"] < one_toast + 20,
+                timeout=8, what="hovered short-timeout toast dismissed by right click")
+            remaining = self.layer(state, "vela-notifications")
+            self.vela.input("move", remaining["x"] + 100, remaining["y"] + remaining["h"] - 40,
+                            "sleep", 100, "click", "right")
+            self.vela.wait_for(
+                lambda s: not self.mapped(s, "vela-notifications"),
+                timeout=8, what="anchor toast dismissed by right click")
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals), [(short, 2), (anchor, 2)], signals)
+        self.assertEqual(self.notification_action_events(signals), [], signals)
+
+    def test_notifications_expire_after_the_hovered_last_toast_is_dismissed(self):
+        """The popups unmap under the pointer: later notifications must still expire."""
+        with self.notification_signal_monitor() as capture:
+            dismissed = self.send_notification("Dismissed while hovered")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-notifications"),
+                timeout=8, what="notification appeared")
+            popup = self.layer(state, "vela-notifications")
+            self.vela.input("move", popup["x"] + 100, popup["y"] + popup["h"] - 40,
+                            "sleep", 200, "click", "right")
+            self.vela.wait_for(
+                lambda s: not self.mapped(s, "vela-notifications"),
+                timeout=8, what="hovered toast dismissed")
+            # Away from where the next popup appears.
+            self.vela.input("move", 400, 300, "sleep", 200)
+
+            # Long enough to be seen before it expires, even on slow runners.
+            self.send_notification("Expires normally", expire_timeout=int(2000 * TIME_SCALE))
+            self.vela.wait_for(
+                lambda s: self.mapped(s, "vela-notifications"),
+                timeout=8, what="next notification appeared")
+            self.vela.wait_for(
+                lambda s: not self.mapped(s, "vela-notifications"),
+                timeout=8, what="next notification expired (hover state was released)")
+            self.check_desktop()
+            signals = capture()
+
+        # Expiry moves it to the center without a NotificationClosed signal.
+        self.assertEqual(self.notification_closed_events(signals), [(dismissed, 2)], signals)
+
+    def test_right_click_notification_nested_controls(self):
+        """Right-click on a link, action button, or close button still dismisses the toast."""
+        with self.notification_signal_monitor() as capture:
+            ids = []
+            for target in ("link", "action", "close"):
+                notification_id = self.send_notification(
+                    f"Nested {target}", "['default', 'Open', 'reply', 'Reply']",
+                    "<a href='https://example.invalid/'>Visit link</a>")
+                ids.append(notification_id)
+                state = self.vela.wait_for(
+                    lambda s: self.layer(s, "vela-notifications"),
+                    timeout=8, what=f"{target} popup appeared")
+                popup = self.layer(state, "vela-notifications")
+                time.sleep(0.3)
+                if target == "link":
+                    x, y = popup["x"] + 80, popup["y"] + 82
+                elif target == "action":
+                    # First secondary action button, 41 px above the popup bottom.
+                    x, y = popup["x"] + 68, popup["y"] + popup["h"] - 41
+                else:
+                    # Close button at the top-right of the toast.
+                    x, y = popup["x"] + popup["w"] - 32, popup["y"] + 32
+                self.vela.input("move", x, y, "sleep", 130, "click", "right")
+                self.vela.wait_for(
+                    lambda s: not self.mapped(s, "vela-notifications"),
+                    timeout=8, what=f"right-click on {target} dismissed toast")
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals),
+                         [(notification_id, 2) for notification_id in ids], signals)
+        self.assertEqual(self.notification_action_events(signals), [], signals)
+
+    def test_right_click_notification_center_history_and_action_button(self):
+        """Dismiss precise history IDs without invoking actions or closing the center."""
+        with self.notification_signal_monitor() as capture, self.input_session() as send:
+            first = self.send_notification(
+                "Older history entry", "['default', 'Open', 'reply', 'Reply']")
+            second = self.send_notification(
+                "Newer history entry", "['default', 'Open', 'reply', 'Reply']")
+            center, left, top = self.open_notification_center(send)
+            # The newest history card comes first.
+            send("move", left + self.CARD_BODY[0], top + self.CARD_BODY[1],
+                 "sleep", 130, "click", "right")
+            center, left, top = self.notification_center_after_removal(center)
+            self.assert_center_stays_open(send)
+            # The older card is now first: right-click its nested Reply button.
+            send("move", left + self.CARD_FIRST_ACTION[0], top + self.CARD_FIRST_ACTION[1],
+                 "sleep", 130, "click", "right")
+            self.notification_center_after_removal(center)
+            self.assert_center_stays_open(send)
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals),
+                         [(second, 2), (first, 2)], signals)
+        self.assertEqual(self.notification_action_events(signals), [], signals)
+
+    def test_notification_center_scrolled_history_right_click(self):
+        """A long history still scrolls; right-click dismisses a card scrolled into view."""
+        with self.notification_signal_monitor() as capture, self.input_session() as send:
+            ids = [self.send_notification(f"History #{n}", "['default', 'Open', 'reply', 'Reply']")
+                   for n in range(12)]
+            center, left, _ = self.open_notification_center(send)
+            # Twelve cards exceed the panel: the window is cut to the output's
+            # height, so the panels no longer start `room` below its top.
+            # Stay in the list's middle third.
+            x = left + self.CARD_BODY[0]
+            y = center["y"] + center["h"] // 3
+            send("move", x, y, "sleep", 300)
+            before = self.vela.pixels()
+            send("scroll", 6, "sleep", 450)
+            # The pointer has not moved: only the list's content can differ.
+            self.assertNotEqual(before.rows, self.vela.pixels().rows, "History did not scroll")
+
+            # The scroll offset is unknown, and right-clicking a 6-unit gap
+            # between cards dismisses nothing. Find a card by its hover close
+            # button: compared with the pointer outside the center (moving
+            # there does not close it), nothing changes over a gap.
+            send("move", center["x"] - 60, y, "sleep", 200)
+            neutral = self.vela.pixels()
+            for target_y in range(y, y + 48, 4):
+                send("move", x, target_y, "sleep", 150)
+                if self.vela.pixels().changed_bounds(neutral):
+                    break
+            else:
+                self.fail("no history card under the pointer after scrolling")
+            # Still cut to the output's height with eleven cards: the D-Bus
+            # signal below, not the window's size, proves the removal.
+            send("click", "right")
+            self.assert_center_stays_open(send)
+            self.check_desktop()
+            signals = capture()
+
+        closed = self.notification_closed_events(signals)
+        self.assertEqual(len(closed), 1, signals)
+        self.assertIn(closed[0][0], ids, signals)
+        self.assertEqual(closed[0][1], 2, signals)
+        self.assertEqual(self.notification_action_events(signals), [], signals)
+
+    def test_left_click_notification_center_secondary_action_preserved(self):
+        """The secondary action button still invokes its action on a left click."""
+        with self.notification_signal_monitor() as capture, self.input_session() as send:
+            notification_id = self.send_notification(
+                "History action", "['default', 'Open', 'reply', 'Reply']")
+            center, left, top = self.open_notification_center(send)
+            send("move", left + self.CARD_FIRST_ACTION[0], top + self.CARD_FIRST_ACTION[1],
+                 "sleep", 130, "click", "left")
+            self.notification_center_after_removal(center)
+            self.assert_center_stays_open(send)
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals), [(notification_id, 2)], signals)
+        self.assertEqual(self.notification_action_events(signals), [(notification_id, "reply")], signals)
+
+    def test_left_click_notification_center_default_and_plain_cards(self):
+        """Default action closes the center; a plain card ignores left clicks."""
+        with self.notification_signal_monitor() as capture, self.input_session() as send:
+            actionable = self.send_notification("Default history action")
+            _, left, top = self.open_notification_center(send)
+            send("move", left + self.CARD_BODY[0], top + self.CARD_BODY[1],
+                 "sleep", 130, "click", "left")
+            self.vela.wait_for(
+                lambda s: not self.mapped(s, "vela-notification-center"),
+                timeout=8, what="default action closes notification center")
+
+            plain = self.send_notification("Plain history entry", actions="[]")
+            center, left, top = self.open_notification_center(send)
+            send("move", left + self.CARD_BODY[0], top + self.CARD_BODY[1],
+                 "sleep", 130, "click", "left")
+            self.assert_center_stays_open(send)
+            self.assertEqual(self.layer(self.vela.state(), "vela-notification-center")["h"], center["h"],
+                             "a left click removed the plain history entry")
+            send("click", "right")
+            self.notification_center_after_removal(center)
+            self.assert_center_stays_open(send)
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals),
+                         [(actionable, 2), (plain, 2)], signals)
+        self.assertEqual(self.notification_action_events(signals), [(actionable, "default")], signals)
+
+    def test_left_click_notifications_preserve_default_action_semantics(self):
+        """Left-click default actions still invoke once; plain toasts only dismiss."""
+        with self.notification_signal_monitor() as capture:
+            ids = []
+            for summary, actions in (("Actionable toast", "['default', 'Open']"),
+                                     ("Plain toast", "[]")):
+                notification_id = self.send_notification(
+                    summary, actions, "Clicking must preserve the original behavior")
+                ids.append(notification_id)
+                state = self.vela.wait_for(
+                    lambda s: self.layer(s, "vela-notifications"),
+                    timeout=8, what=f"{summary} appeared")
+                popup = self.layer(state, "vela-notifications")
+                self.vela.input("move", popup["x"] + 75, popup["y"] + 55,
+                                "sleep", 150, "click", "left")
+                self.vela.wait_for(
+                    lambda s: not self.mapped(s, "vela-notifications"),
+                    timeout=8, what=f"{summary} closed")
+            self.check_desktop()
+            signals = capture()
+
+        self.assertEqual(self.notification_closed_events(signals),
+                         [(notification_id, 2) for notification_id in ids], signals)
+        self.assertEqual(self.notification_action_events(signals), [(ids[0], "default")], signals)
+
     def test_selected_primary_controls_run_dialog_and_notification_remap(self):
         """The real Qt layers follow the selected output across off/on."""
         if not shutil.which("gdbus"):
@@ -186,13 +584,7 @@ class QtShell(RealShell):
         self.vela.keys("Escape")
         self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
 
-        subprocess.run([
-            "gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
-            "--object-path", "/org/freedesktop/Notifications",
-            "--method", "org.freedesktop.Notifications.Notify",
-            "Vela functional test", "0", "", "Hotplug notification",
-            "Must remain actionable after remapping", "['default', 'Open']", "{}", "120000",
-        ], env=self.vela.client_env, check=True, capture_output=True, text=True, timeout=8)
+        self.send_notification("Hotplug notification", body="Must remain actionable after remapping")
         self.vela.wait_for(
             lambda s: (layer := self.layer(s, "vela-notifications")) and layer["output"] == "HEADLESS-2",
             timeout=8, what="popup on explicitly selected output")
@@ -258,7 +650,7 @@ class QtShell(RealShell):
                     def edge_y(y):
                         return int(y * py)
                     for ex, ey in ends:
-                        ready, _, _ = select.select([pointer.stdout], [], [], 5)
+                        ready, _, _ = select.select([pointer.stdout], [], [], 5 * TIME_SCALE)
                         self.assertTrue(ready, f"virtual pointer did not reach {ex, ey} checkpoint")
                         self.assertEqual(pointer.stdout.readline(), b"READY\n",
                                          "virtual pointer checkpoint failed")
@@ -388,8 +780,16 @@ class QtShell(RealShell):
                         "sleep", 200, "up")
         self.vela.wait_for(lambda s: not any(layer["namespace"] == "vela-snip" and layer["mapped"]
                                            for layer in s["layers"]), what="snipping completed")
-        paths = [os.path.join(pictures, name) for name in os.listdir(pictures)
-                 if name.endswith(".png") and previous.get(name) != os.stat(os.path.join(pictures, name)).st_ino]
+
+        def saved():
+            return [os.path.join(pictures, name) for name in os.listdir(pictures)
+                    if name.endswith(".png") and previous.get(name) != os.stat(os.path.join(pictures, name)).st_ino
+                    ] if os.path.isdir(pictures) else []
+
+        # The shell saves the PNG after closing its overlays: on a slow host,
+        # a moment after they're gone.
+        self.vela.wait_for(lambda _: saved(), read_state=False, what="the snip saved to the isolated Pictures directory")
+        paths = saved()
         self.assertEqual(len(paths), 1, "one snip saved to the isolated Pictures directory")
         cut = Image.read(paths[0])
         # Qt maps screen logical coordinates to physical image pixels using
@@ -674,6 +1074,119 @@ class QtShell(RealShell):
         self.vela.input(*actions)
         self.check_desktop()
         self.assertFalse(self.mapped(self.vela.state(), "vela-start-menu"))
+
+    def use_checkout_themes(self):
+        """This checkout's themes and styles in the session's own
+        ~/.config/vela/themes/, which wins over the data directories: a build
+        tree with no Vela installed has them only there."""
+        target = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "vela", "themes")
+        os.makedirs(target, exist_ok=True)
+        source = os.path.join(ROOT, "themes")
+        for name in os.listdir(source):
+            if (name.endswith(".conf") or name in ("taskbar", "startmenu", "notifications")) \
+                    and not os.path.exists(os.path.join(target, name)):
+                os.symlink(os.path.join(source, name), os.path.join(target, name))
+
+    def start_menu_center(self, style):
+        """Where Start opens with the taskbar aligned left and this taskbar
+        style (none: ""): the horizontal center of its layer."""
+        self.use_checkout_themes()
+        shell_conf = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+        with open(shell_conf + ".new", "w") as file:
+            file.write("[taskbar]\nalignment=left\n")
+        os.replace(shell_conf + ".new", shell_conf)
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write(f"taskbar-style={style}\n" if style else "")
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell sees both files
+        self.vela.input("key", "super")
+        state = self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start open")
+        layer = self.layer(state, "vela-start-menu")
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        return layer["x"] + layer["w"] / 2
+
+    def test_start_follows_the_alignment_unless_the_pill_places_the_apps(self):
+        # Aligned left, Start opens at the left like the buttons; a fitted
+        # pill (Window Glass) keeps its Start button centered, so Start opens
+        # above it, in the middle.
+        self.assertLess(self.start_menu_center(""), 960 / 2)
+        self.assertAlmostEqual(self.start_menu_center("window-glass"), 960, delta=40)
+        self.check_desktop()
+
+    def taskbar_height(self, conf):
+        """The taskbar's height (its layer's) with this vela.conf."""
+        self.use_checkout_themes()
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path(), "w") as file:
+            file.write(conf)
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell reads the file
+        return self.layer(self.vela.state(), "vela-taskbar")["h"]
+
+    def test_a_floating_pill_holds_its_buttons(self):
+        # Vela Floating's pill floats 10 units off the edges: the bar grows
+        # by them, so the pill is as tall as Vela's own bar (it was 28 units,
+        # its icons and clock cut). Window Glass's 52 already holds its 36.
+        self.assertEqual(self.taskbar_height(""), 48)
+        self.assertEqual(self.taskbar_height("theme=vela-floating\n"), 48 + 2 * 10)
+        self.assertEqual(self.taskbar_height("theme=window-glass\n"), 52)
+        self.check_desktop()
+
+    def test_a_floating_pill_keeps_its_highlights_inside(self):
+        # Quick settings and the notification center open light the system
+        # icons' and the clock's highlights: they stay inside the pill, so the
+        # bar's margin under it doesn't change by a pixel. Before, they took
+        # the bar's whole height and crossed the pill's edges.
+        self.taskbar_height("theme=vela-floating\n")
+        output = self.vela.state().output
+
+        def margin():
+            path = os.path.join(self.vela.directory, "margin.png")
+            self.vela.screenshot(path, region=(0, output["h"] - 10, output["w"], 10))
+            with open(path, "rb") as file:
+                return file.read()
+
+        rest = margin()
+        for key, namespace in (("super+a", "vela-quick-settings"), ("super+n", "vela-notification-center")):
+            self.vela.input("key", key)
+            self.vela.wait_for(lambda s: self.layer(s, namespace), what=f"{namespace} open")
+            time.sleep(1.0) # its entrance and the highlight's fade over
+            self.assertTrue(margin() == rest, f"a highlight crossed the pill with {namespace} open")
+            self.vela.input("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+        self.check_desktop()
+
+    def test_one_input_session_keeps_the_menu_open_between_lines(self):
+        """vela-input - (scripts/recording_core.py's InputSession): one
+        keyboard answers OK or ERROR per line and leaves the menu open. A
+        new vela-input per action closes Start in the recorder's isolated
+        session, though not in this one."""
+        session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+
+        def send(*actions):
+            session.stdin.write("\t".join(actions) + "\n")
+            session.stdin.flush()
+            return session.stdout.readline().strip()
+
+        try:
+            self.assertEqual(send("key", "super"), "OK")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-start-menu"), what="Start open")
+            time.sleep(0.5)
+            self.assertEqual(send("type", "Files"), "OK")
+            self.assertEqual(send("nonsense"), "ERROR")
+            time.sleep(0.5)
+            self.assertTrue(self.mapped(self.vela.state(), "vela-start-menu"),
+                            "a later line of the same session closed Start")
+            self.assertEqual(send("key", "Escape"), "OK")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        finally:
+            session.stdin.close()
+            status = session.wait(timeout=5)
+            session.stdout.close()
+        self.assertEqual(status, 1, "a refused line must fail the session")
 
     def test_reopening_during_close_animation_keeps_the_menu_open(self):
         self.vela.input("key", "super", "sleep", "450", "key", "super", "sleep", "40",

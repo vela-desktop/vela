@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QColor>
+#include <QDateTime>
 #include <QDBusUnixFileDescriptor>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -50,9 +51,18 @@ public:
     // Shift held right now (the compositor knows: the keyboard may belong to
     // another app while the taskbar is clicked).
     Q_INVOKABLE bool shiftHeld() const;
+    // The time the clock and the calendar show: now, or VELA_STILL's (an ISO
+    // date and time) in still pictures that mustn't change with the day they
+    // are taken (scripts/theme-pictures.py).
+    Q_INVOKABLE QDateTime now() const;
     // A shell window anchored at the bottom left (the taskbar previews):
     // `left` pixels from the output's left edge.
     Q_INVOKABLE void placeAtLeft(QWindow* window, int left);
+    // A shell panel at the bottom right of its output (left < 0), or anchored
+    // at the bottom left, `left` pixels from the output's left edge: quick
+    // settings and the notification center above a centered taskbar's
+    // buttons.
+    Q_INVOKABLE void placeAbove(QWindow* window, int left);
     // A (hidden) shell panel on output `name`: it appears there the next time
     // it opens.
     Q_INVOKABLE void placeOnScreen(QWindow* window, const QString& name);

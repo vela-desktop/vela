@@ -2,6 +2,265 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="it_IT" sourcelanguage="en">
 <context>
+    <name>BatteryNotices</name>
+    <message>
+        <source>Mouse</source>
+        <translation>Mouse</translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation>Tastiera</translation>
+    </message>
+    <message>
+        <source>Phone</source>
+        <translation>Telefono</translation>
+    </message>
+    <message>
+        <source>Tablet</source>
+        <translation>Tablet</translation>
+    </message>
+    <message>
+        <source>Game controller</source>
+        <translation>Controller di gioco</translation>
+    </message>
+    <message>
+        <source>Pen</source>
+        <translation>Penna</translation>
+    </message>
+    <message>
+        <source>Touchpad</source>
+        <translation>Touchpad</translation>
+    </message>
+    <message>
+        <source>Headset</source>
+        <translation>Cuffie con microfono</translation>
+    </message>
+    <message>
+        <source>Speakers</source>
+        <translation>Altoparlanti</translation>
+    </message>
+    <message>
+        <source>Headphones</source>
+        <translation>Cuffie</translation>
+    </message>
+    <message>
+        <source>Remote control</source>
+        <translation>Telecomando</translation>
+    </message>
+    <message>
+        <source>Wireless device</source>
+        <translation>Dispositivo wireless</translation>
+    </message>
+    <message>
+        <source>Power</source>
+        <translation>Alimentazione</translation>
+    </message>
+    <message>
+        <source>Battery critically low</source>
+        <translation>Batteria quasi esaurita</translation>
+    </message>
+    <message>
+        <source>Battery low</source>
+        <translation>Batteria scarica</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Plug in your PC now.</source>
+        <translation>Rimane il %1%. Collega subito il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Plug in your PC.</source>
+        <translation>Rimane il %1%. Collega il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>Plug in your PC now.</source>
+        <translation>Collega subito il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>Plug in your PC.</source>
+        <translation>Collega il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>Devices</source>
+        <translation>Dispositivi</translation>
+    </message>
+    <message>
+        <source>%1 battery is critical</source>
+        <translation>%1: batteria quasi esaurita</translation>
+    </message>
+    <message>
+        <source>%1 battery is low</source>
+        <translation>%1: batteria scarica</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Recharge the device now.</source>
+        <translation>Rimane il %1%. Ricarica subito il dispositivo.</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Recharge the device soon.</source>
+        <translation>Rimane il %1%. Ricarica presto il dispositivo.</translation>
+    </message>
+    <message>
+        <source>Recharge the device now.</source>
+        <translation>Ricarica subito il dispositivo.</translation>
+    </message>
+    <message>
+        <source>Recharge the device soon.</source>
+        <translation>Ricarica presto il dispositivo.</translation>
+    </message>
+</context>
+<context>
+    <name>BluetoothDevices</name>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation>Disconnetti</translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation>Connetti</translation>
+    </message>
+</context>
+<context>
+    <name>BluetoothDialog</name>
+    <message>
+        <source>Bluetooth</source>
+        <translation>Bluetooth</translation>
+    </message>
+</context>
+<context>
+    <name>BluetoothPrompts</name>
+    <message>
+        <source>Pair with %1?</source>
+        <translation>Associare %1?</translation>
+    </message>
+    <message>
+        <source>Check that %1 shows %2.</source>
+        <translation>Verifica che %1 mostri %2.</translation>
+    </message>
+    <message>
+        <source>Pair</source>
+        <translation>Associa</translation>
+    </message>
+    <message>
+        <source>Deny</source>
+        <translation>Nega</translation>
+    </message>
+    <message>
+        <source>%1 wants to pair with this PC.</source>
+        <translation>%1 vuole associarsi a questo PC.</translation>
+    </message>
+    <message>
+        <source>Allow %1 to use %2?</source>
+        <translation>Consentire a %1 di usare %2?</translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation>Consenti</translation>
+    </message>
+    <message>
+        <source>Type the 6-digit code shown on %1.</source>
+        <translation>Digita il codice di 6 cifre mostrato su %1.</translation>
+    </message>
+    <message>
+        <source>Type the PIN for %1.</source>
+        <translation>Digita il PIN di %1.</translation>
+    </message>
+    <message>
+        <source>Enter code</source>
+        <translation>Inserisci codice</translation>
+    </message>
+    <message>
+        <source>Type %1 on %2, then press Enter on it.</source>
+        <translation>Digita %1 su %2, poi premi Invio sul dispositivo.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Bluetooth</source>
+        <translation>Bluetooth</translation>
+    </message>
+    <message>
+        <source>Your PC is still visible to nearby devices</source>
+        <translation>Il PC è ancora visibile ai dispositivi vicini</translation>
+    </message>
+    <message>
+        <source>Another app is searching for devices.</source>
+        <translation>Un&apos;altra app sta cercando dispositivi.</translation>
+    </message>
+    <message>
+        <source>Stop being visible</source>
+        <translation>Non essere più visibile</translation>
+    </message>
+</context>
+<context>
+    <name>BluetoothQuestion</name>
+    <message>
+        <source>Does %1 show this code?</source>
+        <translation>%1 mostra questo codice?</translation>
+    </message>
+    <message>
+        <source>%1 wants to pair with this PC.</source>
+        <translation>%1 vuole associarsi a questo PC.</translation>
+    </message>
+    <message>
+        <source>Allow %1 to use %2?</source>
+        <translation>Consentire a %1 di usare %2?</translation>
+    </message>
+    <message>
+        <source>Type the 6-digit code shown on %1.</source>
+        <translation>Digita il codice di 6 cifre mostrato su %1.</translation>
+    </message>
+    <message>
+        <source>Type the PIN for %1.</source>
+        <translation>Digita il PIN di %1.</translation>
+    </message>
+    <message>
+        <source>Type this code on %1, then press Enter on it.</source>
+        <translation>Digita questo codice su %1, poi premi Invio sul dispositivo.</translation>
+    </message>
+    <message>
+        <source>Code %1</source>
+        <translation>Codice %1</translation>
+    </message>
+    <message>
+        <source>%1 of 6 digits typed</source>
+        <translation>%1 cifre su 6 digitate</translation>
+    </message>
+    <message>
+        <source>Code</source>
+        <translation>Codice</translation>
+    </message>
+    <message>
+        <source>PIN</source>
+        <translation>PIN</translation>
+    </message>
+    <message>
+        <source>Time left: %1 s</source>
+        <translation>Tempo rimasto: %1 s</translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation>Consenti</translation>
+    </message>
+    <message>
+        <source>Pair</source>
+        <translation>Associa</translation>
+    </message>
+    <message>
+        <source>Deny</source>
+        <translation>Nega</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+</context>
+<context>
     <name>ClipboardPanel</name>
     <message>
         <source>Clipboard</source>
@@ -131,6 +390,45 @@
     </message>
 </context>
 <context>
+    <name>DeviceState</name>
+    <message>
+        <source>Waiting for you...</source>
+        <translation>In attesa di una tua risposta...</translation>
+    </message>
+    <message>
+        <source>Pairing...</source>
+        <translation>Associazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connecting...</source>
+        <translation>Connessione in corso...</translation>
+    </message>
+    <message>
+        <source>Disconnecting...</source>
+        <translation>Disconnessione in corso...</translation>
+    </message>
+    <message>
+        <source>Removing...</source>
+        <translation>Rimozione in corso...</translation>
+    </message>
+    <message>
+        <source>Renaming...</source>
+        <translation>Ridenominazione in corso...</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>Connesso</translation>
+    </message>
+    <message>
+        <source>Paired</source>
+        <translation>Associato</translation>
+    </message>
+    <message>
+        <source>Battery %1%</source>
+        <translation>Batteria %1%</translation>
+    </message>
+</context>
+<context>
     <name>FileDialogs</name>
     <message>
         <source>Share</source>
@@ -163,10 +461,6 @@
     <message>
         <source>Email</source>
         <translation>Posta elettronica</translation>
-    </message>
-    <message>
-        <source>Bluetooth</source>
-        <translation>Bluetooth</translation>
     </message>
     <message>
         <source>No apps to share with.</source>
@@ -308,6 +602,10 @@
     <message>
         <source>Notifications</source>
         <translation>Notifiche</translation>
+    </message>
+    <message>
+        <source>Silenced while your screen is shared</source>
+        <translation>Silenziate mentre lo schermo è condiviso</translation>
     </message>
     <message>
         <source>Clear all</source>
@@ -638,6 +936,18 @@
         <translation>Altre impostazioni Wi-Fi</translation>
     </message>
     <message>
+        <source>Bluetooth is turned off.</source>
+        <translation>Il Bluetooth è disattivato.</translation>
+    </message>
+    <message>
+        <source>No paired devices.</source>
+        <translation>Nessun dispositivo associato.</translation>
+    </message>
+    <message>
+        <source>More Bluetooth settings</source>
+        <translation>Altre impostazioni Bluetooth</translation>
+    </message>
+    <message>
         <source>More display settings</source>
         <translation>Altre impostazioni dello schermo</translation>
     </message>
@@ -703,6 +1013,37 @@
     <message>
         <source>Cancel</source>
         <translation>Annulla</translation>
+    </message>
+</context>
+<context>
+    <name>ScreenSharing</name>
+    <message>
+        <source>Your screen</source>
+        <translation>Il tuo schermo</translation>
+    </message>
+    <message>
+        <source>A window</source>
+        <translation>Una finestra</translation>
+    </message>
+    <message>
+        <source>A window of %1</source>
+        <translation>Una finestra di %1</translation>
+    </message>
+    <message>
+        <source>An app</source>
+        <translation>Un&apos;app</translation>
+    </message>
+    <message>
+        <source>%1 is sharing your screen</source>
+        <translation>%1 sta condividendo lo schermo</translation>
+    </message>
+    <message>
+        <source>%1 is sharing a window</source>
+        <translation>%1 sta condividendo una finestra</translation>
+    </message>
+    <message>
+        <source>These apps are sharing your screen:</source>
+        <translation>Queste app stanno condividendo lo schermo:</translation>
     </message>
 </context>
 <context>
@@ -1220,6 +1561,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Screen sharing</source>
+        <translation>Condivisione dello schermo</translation>
+    </message>
+    <message>
+        <source>Notifications are silenced meanwhile</source>
+        <translation>Nel frattempo le notifiche sono silenziate</translation>
+    </message>
+    <message>
         <source>%1 is using your microphone</source>
         <translation>%1 sta usando il microfono</translation>
     </message>
@@ -1254,6 +1603,37 @@
     <message>
         <source>Show desktop</source>
         <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UpdateNotices</name>
+    <message>
+        <source>Updates</source>
+        <translation>Aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Vela %1 is available</source>
+        <translation>È disponibile Vela %1</translation>
+    </message>
+    <message>
+        <source>Open Updates to see what&apos;s new and install it.</source>
+        <translation>Apri Aggiornamenti per vedere le novità e installarlo.</translation>
+    </message>
+    <message>
+        <source>Open Updates</source>
+        <translation>Apri Aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Sign out to finish updating</source>
+        <translation>Esci per completare l&apos;aggiornamento</translation>
+    </message>
+    <message>
+        <source>Vela was updated. Sign out and sign in again to use the new version.</source>
+        <translation>Vela è stato aggiornato. Esci e accedi di nuovo per usare la nuova versione.</translation>
+    </message>
+    <message>
+        <source>Sign out</source>
+        <translation>Esci</translation>
     </message>
 </context>
 <context>
@@ -1500,6 +1880,45 @@
     <message>
         <source>Yes</source>
         <translation>Sì</translation>
+    </message>
+</context>
+<context>
+    <name>vela::bluetooth::Bluetooth</name>
+    <message>
+        <source>Bluetooth is busy. Try again in a moment.</source>
+        <translation>Il Bluetooth è occupato. Riprova tra un momento.</translation>
+    </message>
+    <message>
+        <source>Wait for %1 to finish pairing.</source>
+        <translation>Attendi che %1 finisca l&apos;associazione.</translation>
+    </message>
+    <message>
+        <source>Bluetooth can&apos;t be changed while the screen is locked or another session is in use.</source>
+        <translation>Il Bluetooth non si può modificare mentre lo schermo è bloccato o è in uso un&apos;altra sessione.</translation>
+    </message>
+    <message>
+        <source>This app isn&apos;t allowed to change Bluetooth.</source>
+        <translation>Questa app non può modificare il Bluetooth.</translation>
+    </message>
+    <message>
+        <source>There&apos;s no Bluetooth adapter.</source>
+        <translation>Non c&apos;è nessun adattatore Bluetooth.</translation>
+    </message>
+    <message>
+        <source>The device isn&apos;t there anymore.</source>
+        <translation>Il dispositivo non c&apos;è più.</translation>
+    </message>
+    <message>
+        <source>That code isn&apos;t valid.</source>
+        <translation>Il codice non è valido.</translation>
+    </message>
+    <message>
+        <source>That name can&apos;t be used. Use up to 248 characters, without control characters.</source>
+        <translation>Questo nome non si può usare. Usa al massimo 248 caratteri, senza caratteri di controllo.</translation>
+    </message>
+    <message>
+        <source>Bluetooth isn&apos;t responding.</source>
+        <translation>Il Bluetooth non risponde.</translation>
     </message>
 </context>
 </TS>

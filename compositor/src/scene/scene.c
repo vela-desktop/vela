@@ -8,7 +8,9 @@
 #include "scene/frame.h"
 #include "scene/surface.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_subcompositor.h>
@@ -193,6 +195,45 @@ void vela_node_reparent(struct vela_node *node, struct vela_tree *parent)
     vela_scene_changed(node->scene);
 }
 
+static int depth(const struct vela_node *node)
+{
+    int depth = 0;
+    for (; node->parent; node = &node->parent->node) {
+        ++depth;
+    }
+    return depth;
+}
+
+int vela_node_order(const struct vela_node *node, const struct vela_node *other)
+{
+    int a = depth(node);
+    int b = depth(other);
+    for (; a > b; --a) {
+        node = &node->parent->node;
+    }
+    for (; b > a; --b) {
+        other = &other->parent->node;
+    }
+    if (node == other) {
+        return 0; // one inside the other
+    }
+    // Up to the children of the closest common ancestor: their order decides.
+    while (node->parent != other->parent) {
+        node = &node->parent->node;
+        other = &other->parent->node;
+    }
+    if (!node->parent) {
+        return 0; // different trees
+    }
+    // Children are bottom to top: `node` is above if it follows `other`.
+    for (const struct wl_list *link = other->link.next; link != &other->parent->children; link = link->next) {
+        if (link == &node->link) {
+            return 1;
+        }
+    }
+    return -1;
+}
+
 static bool same_shape(const struct vela_shape *a, const struct vela_shape *b)
 {
     return a->enabled == b->enabled && a->x == b->x && a->y == b->y && a->width == b->width
@@ -294,6 +335,7 @@ struct vela_scene *vela_scene_create(void)
     wl_list_init(&scene->frames);
     wl_list_init(&scene->new_surface.link);
     scene->acrylic_tint = (struct wlr_render_color) { 0.11f * 0.55f, 0.11f * 0.55f, 0.12f * 0.55f, 0.55f };
+    scene->blur_look = VELA_BLUR_LOOK_DEFAULT;
     scene->night_gains[0] = scene->night_gains[1] = scene->night_gains[2] = 1.0f;
     scene->allow_tearing = true;
     scene->allow_scanout = true;
@@ -303,9 +345,69 @@ struct vela_scene *vela_scene_create(void)
 
 void vela_scene_destroy(struct vela_scene *scene)
 {
+    if (scene->rearranged_idle) {
+        wl_event_source_remove(scene->rearranged_idle);
+    }
     wl_list_remove(&scene->new_surface.link);
     vela_node_destroy(&scene->root->node);
     free(scene);
+}
+
+bool vela_scene_set_blur_look(struct vela_scene *scene, const char *scope, struct vela_blur_look look)
+{
+    if (!scope || strcmp(scope, "*") == 0) {
+        scene->blur_look = look;
+        return true;
+    }
+    if (strlen(scope) >= sizeof(scene->panel_looks[0].scope)) {
+        return false;
+    }
+    for (int i = 0; i < scene->panel_look_count; ++i) {
+        if (strcmp(scene->panel_looks[i].scope, scope) == 0) {
+            scene->panel_looks[i].look = look;
+            return true;
+        }
+    }
+    const int capacity = (int)(sizeof(scene->panel_looks) / sizeof(scene->panel_looks[0]));
+    if (scene->panel_look_count >= capacity) {
+        return false;
+    }
+    struct vela_panel_blur_look *entry = &scene->panel_looks[scene->panel_look_count++];
+    snprintf(entry->scope, sizeof(entry->scope), "%s", scope);
+    entry->look = look;
+    return true;
+}
+
+bool vela_scene_has_blur_look(const struct vela_scene *scene, const char *scope)
+{
+    if (!scope || strcmp(scope, "*") == 0) {
+        return true;
+    }
+    for (int i = 0; i < scene->panel_look_count; ++i) {
+        if (strcmp(scene->panel_looks[i].scope, scope) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+struct vela_blur_look vela_scene_blur_look(const struct vela_scene *scene, const char *scope)
+{
+    for (int i = 0; scope && i < scene->panel_look_count; ++i) {
+        if (strcmp(scene->panel_looks[i].scope, scope) == 0) {
+            return scene->panel_looks[i].look;
+        }
+    }
+    return scene->blur_look;
+}
+
+static void rearranged(void *data)
+{
+    struct vela_scene *scene = data;
+    scene->rearranged_idle = NULL;
+    if (scene->rearranged) {
+        scene->rearranged(scene->rearranged_data);
+    }
 }
 
 void vela_scene_changed(struct vela_scene *scene)
@@ -313,6 +415,9 @@ void vela_scene_changed(struct vela_scene *scene)
     struct vela_output_frame *frame;
     wl_list_for_each (frame, &scene->frames, link) {
         vela_output_schedule_frame(frame->owner);
+    }
+    if (scene->rearranged && !scene->rearranged_idle && scene->event_loop) {
+        scene->rearranged_idle = wl_event_loop_add_idle(scene->event_loop, rearranged, scene);
     }
 }
 
@@ -344,7 +449,9 @@ static bool hit_node(struct vela_node *node, double lx, double ly, struct vela_h
     case VELA_NODE_SURFACE: {
         struct wlr_surface *surface = ((struct vela_surface_node *)node)->surface;
         if (surface->mapped) {
-            struct wlr_surface *sub = wlr_surface_surface_at(surface, nx, ny, &hit->sx, &hit->sy);
+            double density = vela_surface_density(surface);
+            struct wlr_surface *sub
+                = wlr_surface_surface_at(surface, nx * density, ny * density, &hit->sx, &hit->sy);
             if (sub) {
                 hit->surface = sub;
                 found = true;
@@ -369,6 +476,9 @@ static bool hit_node(struct vela_node *node, double lx, double ly, struct vela_h
         }
         break;
     }
+    }
+    if (found && !hit->node) {
+        hit->node = node; // the first found is the deepest
     }
     if (found && !hit->owner && node->data) {
         hit->owner = node->data;

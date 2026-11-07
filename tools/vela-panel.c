@@ -10,6 +10,7 @@
 //                                     gradient (something to blur), or one
 //                                     flat color
 //        vela-panel taskbar [--blur] [--clear] [--namespace NAME]
+//        vela-panel menu          TOP/ON_DEMAND layer surface simulating Start
 //                                     48-high translucent bottom bar,
 //                                     reserving 48 units; --blur asks to
 //                                     blur what lies behind; --clear: black
@@ -133,12 +134,13 @@ static const struct zwlr_layer_surface_v1_listener layerListener = { onConfigure
 
 int main(int argc, char** argv)
 {
-    if (argc < 2 || (strcmp(argv[1], "wallpaper") && strcmp(argv[1], "taskbar"))) {
+    if (argc < 2 || (strcmp(argv[1], "wallpaper") && strcmp(argv[1], "taskbar") && strcmp(argv[1], "menu"))) {
         fprintf(stderr, "usage: vela-panel wallpaper [--color RRGGBB] | taskbar [--blur] [--clear] "
-                        "[--namespace NAME]\n");
+                        "[--namespace NAME] | menu\n");
         return 2;
     }
     wallpaper = !strcmp(argv[1], "wallpaper");
+    const int menu = !strcmp(argv[1], "menu");
     int blur = 0;
     const char* name = "vela-panel";
     for (int i = 2; i < argc; ++i) {
@@ -176,6 +178,12 @@ int main(int argc, char** argv)
         zwlr_layer_surface_v1_set_anchor(layerSurface, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM
                 | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
         zwlr_layer_surface_v1_set_exclusive_zone(layerSurface, -1);
+    } else if (menu) {
+        zwlr_layer_surface_v1_set_anchor(layerSurface, ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
+        zwlr_layer_surface_v1_set_size(layerSurface, 360, 280);
+        zwlr_layer_surface_v1_set_exclusive_zone(layerSurface, 0);
+        zwlr_layer_surface_v1_set_keyboard_interactivity(layerSurface,
+            ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND);
     } else {
         zwlr_layer_surface_v1_set_anchor(layerSurface, ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM
                 | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);

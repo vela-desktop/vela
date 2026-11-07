@@ -9,11 +9,13 @@
 // the page and come to the front (that's how the shell opens "Display
 // settings", "Personalize" and the other menu entries).
 
+#include "renderingpolicy.h"
 #include "about.h"
 #include "appmodel.h"
 #include "audio.h"
 #include "audioapps.h"
-#include "bluetooth.h"
+#include "bluetooth/bluetooth.h"
+#include "updates/updates.h"
 #include "brightness.h"
 #include "controls.h"
 #include "datetime.h"
@@ -42,6 +44,7 @@
 #include <QtQml/QQmlExtensionPlugin>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
+Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
 
 namespace {
 
@@ -111,14 +114,10 @@ private:
 
 } // namespace
 
+/** Configure text before Qt startup and run Settings with its single-instance request handler. */
 int main(int argc, char* argv[])
 {
-    // Text with FreeType and font hinting, like Plasma and Windows: crisper
-    // than Qt Quick's default text (distance fields, no hinting), on the
-    // output's real pixels even at fractional scales.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_DEFAULT_TEXT_RENDER_TYPE")) {
-        QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
-    }
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-settings"));
     QQmlApplicationEngine* qmlEngine = nullptr;
@@ -137,9 +136,10 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription(QStringLiteral("Vela Settings"));
     parser.addHelpOption();
     const QCommandLineOption pageOption(QStringLiteral("page"),
-        QStringLiteral("The page to open: system, display, sound, notifications, power, about, bluetooth, "
-                       "volume-mixer, network, personalization, background, colors, taskbar, apps, installed-apps, "
-                       "default-apps, time-language, datetime, keyboard, night-light, accessibility."),
+        QStringLiteral("The page to open: home, system, display, sound, volume-mixer, notifications, power, about, "
+                       "updates, bluetooth, network, personalization, background, colors, themes, taskbar, start, "
+                       "apps, installed-apps, default-apps, time-language, datetime, keyboard, mouse, touchpad, "
+                       "clipboard, night-light, accessibility."),
         QStringLiteral("name"));
     parser.addOption(pageOption);
     parser.process(app);
@@ -160,23 +160,33 @@ int main(int argc, char* argv[])
     SystemActions system;
     Preferences preferences;
     Displays displays;
+    // Bluetooth (docs/bluetooth.md §9.1): Settings is Vela's UI, and draws
+    // the questions of its own Adds.
+    vela::bluetooth::Bluetooth bluetooth(true);
     // The sound (docs/audio.md): the same library as the shell's.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
+    audio.setBluetooth(&bluetooth); // headsets' batteries
+    // Updates (docs/updates.md §9.1).
+    vela::updates::Updates updates;
     Network network;
-    Bluetooth bluetooth;
     About about;
     DateTime dateTime;
     DefaultApps defaultApps(&apps);
     KeyboardLayouts layouts;
-    SystemStatus status;
+    SystemStatus status(&bluetooth);
     Brightness brightness;
 
     QQmlApplicationEngine engine;
     qmlEngine = &engine;
     // Theme, Button, TextBox and Style (the apps' mode, accent, Mica, icons):
     // Vela.Controls.
-    vela::controls::install(engine, Appearance::Mode::Apps)->watch();
+    Appearance* style = vela::controls::install(engine, Appearance::Mode::Apps);
+    style->watch();
+    // The distribution's logo may be in the icon theme only: look again now
+    // that it is set, and when it changes with the mode.
+    preferences.refreshStartIcon();
+    QObject::connect(style, &Appearance::changed, &preferences, &Preferences::refreshStartIcon);
     engine.addImageProvider(QStringLiteral("fileicon"), new IconProvider(32));
     QQmlContext* context = engine.rootContext();
     context->setContextProperty(QStringLiteral("Router"), &router);
@@ -187,7 +197,8 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("Audio"), &audio);
     qmlRegisterType<vela::audio::LevelMeter>("Vela.Audio", 1, 0, "LevelMeter");
     context->setContextProperty(QStringLiteral("Network"), &network);
-    context->setContextProperty(QStringLiteral("Bluetooth"), &bluetooth);
+    qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
+    qmlRegisterSingletonInstance("Vela.Updates", 1, 0, "Updates", &updates);
     context->setContextProperty(QStringLiteral("About"), &about);
     context->setContextProperty(QStringLiteral("DateTime"), &dateTime);
     context->setContextProperty(QStringLiteral("DefaultApps"), &defaultApps);

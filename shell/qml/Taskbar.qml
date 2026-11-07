@@ -18,8 +18,36 @@ Window {
     // panel. The compositor decides the width (anchored to the sides).
     visible: false
     width: 1280
-    height: Theme.taskbarHeight
+    height: Styles.taskbar.height
     color: "transparent"
+
+    // A taskbar style's layout (Styles.taskbar): floating, it is a pill (or
+    // two) inside the window; the window keeps the bar's height, so windows
+    // and panels stay where they are.
+    readonly property QtObject style: Styles.taskbar
+    readonly property bool floating: style.floating
+    // fit: apps and tray in one pill that shrinks to them; edge: the tray in
+    // a pill of its own at the screen's right edge.
+    readonly property bool fit: floating && style.fit
+    readonly property bool edge: fit && style.edge > 0
+    readonly property bool split: fit && !edge && style.splitGap > 0
+    readonly property real fitGap: 8 + style.splitGap
+    // Inside a fitted pill, the room before the Start button and after the
+    // clock: a round end (radius up to half the height) would cut what sits
+    // in it, the clock's highlight and the notifications' badge.
+    readonly property int fitPadding: 10
+    readonly property int edgeGap: Math.max(style.margin, 8) // the tray pill's gap to the screen's edge
+    // A floating pill sits this far inside the bar above and below: the tray's
+    // and the clock's highlights keep inside it, as tall as on Vela's bar.
+    readonly property int inset: floating ? style.margin : 0
+    // The notification area, the system icons and the clock, side by side.
+    readonly property real trayGroupWidth: (transferIndicator.visible ? transferIndicator.width + 4 : 0)
+        + (tray.visible ? tray.width + 4 : 0) + screenSharing.width + microphone.width + caffeine.width
+        + (systemIcons.visible ? systemIcons.width + 2 : 0) + clock.width
+    // A floating bar that spans the screen: its side margin, shrunk when the
+    // screen is too narrow for it (the tray must still fit beside the apps).
+    readonly property int sideMargin: Math.min(style.sideMargin, Math.max(style.margin,
+        Math.floor((width - buttons.width) / 2 - (trayGroupWidth + 20))))
 
     // The apps pinned at first start (.desktop ids; those not installed are
     // skipped). Afterwards the user's choices apply: pinned and unpinned from
@@ -40,11 +68,19 @@ Window {
             Tasks.pinnedIds = pinnedIds
         }
         updateBlur()
+        Menus.setTrayAnchors(root.screenName, trayAnchors)
     }
 
-    // The whole taskbar above the blurred background (acrylic).
+    // The whole taskbar above the blurred background (acrylic). A single
+    // floating pill: only it, rounded. Two pills: the whole window, the
+    // panel's alpha gives their shape.
     function updateBlur() {
-        Effects.setBlur(root, [Qt.rect(0, 0, width, height)])
+        if (floating && !split && !edge) {
+            Effects.setBlur(root, [Qt.rect(floatingSurface.x, floatingSurface.y, floatingSurface.width, floatingSurface.height)],
+                style.radius)
+        } else {
+            Effects.setBlur(root, [Qt.rect(0, 0, width, height)])
+        }
     }
     onWidthChanged: updateBlur()
     onHeightChanged: updateBlur()
@@ -83,6 +119,15 @@ Window {
         Menus.open(entries, x, y, Object.assign({ screen: root.screenName }, options || {}))
     }
     function fromHere() { Menus.panelScreen = root.screenName }
+
+    // In a centered pill (fit, not at the edge) the clock and the system
+    // icons are near the middle: their panels open above them (Menus).
+    readonly property var trayAnchors: fit && !edge
+        ? { clock: clock.x + clock.width / 2, icons: systemIcons.visible ? systemIcons.x + systemIcons.width / 2 : undefined }
+        : null
+    onTrayAnchorsChanged: Menus.setTrayAnchors(root.screenName, trayAnchors)
+    onScreenNameChanged: Menus.setTrayAnchors(root.screenName, trayAnchors)
+    Component.onDestruction: Menus.setTrayAnchors(root.screenName, null)
 
     // A button's jump list: pinned and recent files, the app's tasks, then the
     // app, pin/unpin, close.
@@ -210,7 +255,48 @@ Window {
 
     Rectangle {
         anchors.fill: parent
-        color: Theme.taskbar
+        color: root.floating ? "transparent" : Theme.taskbar
+
+        // A floating style's pill (the apps', with fit or edge).
+        Rectangle {
+            id: floatingSurface
+            visible: root.floating
+            readonly property bool flush: root.edge && root.style.flush
+            x: root.fit ? buttons.x - root.fitPadding : root.sideMargin
+            y: root.style.margin
+            width: root.split ? buttons.width + 14
+                : root.edge ? buttons.width + 20
+                : root.fit ? buttons.width + root.fitGap + root.trayGroupWidth + 2 * root.fitPadding
+                : parent.width - 2 * root.sideMargin
+            height: parent.height - (flush ? 1 : 2) * root.style.margin
+            radius: root.style.radius
+            topRightRadius: root.split ? root.style.splitRadius : radius
+            bottomRightRadius: flush ? 0 : topRightRadius
+            bottomLeftRadius: flush ? 0 : radius
+            color: Theme.taskbar
+            border.width: 1
+            border.color: root.style.stroke
+            onXChanged: root.updateBlur()
+            onYChanged: root.updateBlur()
+            onWidthChanged: root.updateBlur()
+            onHeightChanged: root.updateBlur()
+        }
+        // The tray's own pill (split-gap, or edge at the screen's edge).
+        Rectangle {
+            visible: root.split || root.edge
+            x: root.edge ? parent.width - root.edgeGap - 12 - root.trayGroupWidth - 10
+                : floatingSurface.x + floatingSurface.width + root.style.splitGap
+            y: floatingSurface.flush ? 3 : floatingSurface.y
+            width: root.edge ? root.trayGroupWidth + 22
+                : buttons.x + buttons.width + root.fitGap + root.trayGroupWidth + root.fitPadding - x
+            height: floatingSurface.flush ? parent.height - 6 : floatingSurface.height
+            radius: root.style.radius
+            topLeftRadius: root.edge ? radius : root.style.splitRadius
+            bottomLeftRadius: topLeftRadius
+            color: Theme.taskbar
+            border.width: 1
+            border.color: root.style.stroke
+        }
 
         // Empty space: Task Manager and taskbar settings.
         MouseArea {
@@ -228,9 +314,10 @@ Window {
 
         // A thin line of light on the top edge, like glass.
         Rectangle {
+            visible: !root.floating
             anchors { left: parent.left; right: parent.right; top: parent.top }
             height: 1
-            color: Theme.stroke
+            color: root.style.stroke
         }
     }
 
@@ -239,9 +326,13 @@ Window {
         // Centered by hand instead of with anchors: so when an app opens or
         // closes, the row slides to the new center instead of jumping. Or on
         // the left, like earlier versions of Windows.
-        x: Config.taskbarAlignment === "left" ? 12 : Math.round((parent.width - width) / 2)
+        x: root.edge ? (root.style.edge === 2 ? root.style.margin + 12 : Math.round((parent.width - width) / 2))
+            : root.fit ? Math.round((parent.width - width - root.fitGap - root.trayGroupWidth) / 2)
+            : Config.taskbarAlignment === "left" ? 12 + (root.floating ? root.sideMargin : 0)
+            : root.floating ? Math.max(root.sideMargin + 12, Math.round((parent.width - width) / 2))
+            : Math.round((parent.width - width) / 2)
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 4
+        spacing: root.style.spacing
 
         Behavior on x {
             enabled: Theme.motion > 0
@@ -261,7 +352,8 @@ Window {
             active: Shell.startMenuOpen
             onClicked: { root.fromHere(); Shell.toggleStartMenu() }
             onRightClicked: root.openWinX(false)
-            StartGlyph { anchors.centerIn: parent }
+            // Vela's sail, the distribution's logo or a picture (Settings > Start).
+            StartIcon { anchors.centerIn: parent; source: Config.startIconSource; revision: Config.startIconRevision }
         }
 
         // Task View: two overlapping windows, like the Windows 11 icon.
@@ -375,9 +467,11 @@ Window {
                 }
                 onXChanged: reportGeometry()
                 onWindowCountChanged: reportGeometry()
+                // The row moves down too, when a floating bar grows taller.
                 Connections {
                     target: buttons
                     function onXChanged() { task.reportGeometry() }
+                    function onYChanged() { task.reportGeometry() }
                 }
 
                 Image {
@@ -461,7 +555,7 @@ Window {
             root.openAbove(entries, transferIndicator, true, { minWidth: 360 })
         }
         Fill {
-            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
             radius: Theme.radius
             color: transferMouse.pressed ? Theme.subtlePressed
                 : transferMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
@@ -492,7 +586,7 @@ Window {
     Row {
         id: tray
         visible: root.primary
-        anchors { right: microphone.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
+        anchors { right: screenSharing.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
 
         Repeater {
             model: Tray
@@ -508,7 +602,7 @@ Window {
                 visible: icon !== ""
 
                 Fill {
-                    anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+                    anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
                     radius: Theme.radius
                     color: trayMouse.pressed ? Theme.subtlePressed : trayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 }
@@ -552,6 +646,94 @@ Window {
         }
     }
 
+    // The screen being shared or recorded (docs/screen-sharing.md §6): a
+    // screen with a red dot, who and what in the tooltip, and a menu listing
+    // each app; picking one brings it forward, where its own "Stop sharing" is.
+    Item {
+        id: screenSharing
+        objectName: "screenSharing"
+        visible: root.primary && Sharing.active
+        anchors { right: microphone.left; top: parent.top; bottom: parent.bottom }
+        width: visible ? 32 : 0
+
+        function showTooltip() {
+            const p = screenSharing.mapToItem(null, screenSharing.width / 2, 0)
+            Menus.tooltip = { text: Sharing.summary, center: p.x, screen: root.screenName, owner: "screenSharing" }
+        }
+        function hideTooltip() {
+            sharingTooltipDelay.stop()
+            if (Menus.tooltip && Menus.tooltip.owner === "screenSharing") {
+                Menus.tooltip = null
+            }
+        }
+        function show(user) {
+            if (!(user.desktopId && Tasks.showApp(user.desktopId)) && user.window) {
+                Shell.windowAction(user.window, "activate")
+            }
+        }
+        function openMenu() {
+            const entries = [{ header: qsTr("Screen sharing") }]
+            for (const user of Sharing.users) {
+                entries.push({ text: user.name.replace(/&/g, "&&"), icon: user.icon, shortcut: user.what,
+                               action: () => screenSharing.show(user) })
+            }
+            // Held back meanwhile (§7), unless the user's own switch is on.
+            if (Notifications.automaticDoNotDisturb && !Notifications.doNotDisturb) {
+                entries.push({ separator: true },
+                             { header: qsTr("Notifications are silenced meanwhile") },
+                             { text: qsTr("&Notification settings"), icon: "preferences-desktop-notification",
+                               action: () => System.trigger("notification-settings") })
+            }
+            root.openAbove(entries, screenSharing, true, { minWidth: 260 })
+        }
+        Connections {
+            target: Sharing
+            function onSummaryChanged() {
+                if (Menus.tooltip && Menus.tooltip.owner === "screenSharing") {
+                    screenSharing.showTooltip()
+                }
+            }
+        }
+        onVisibleChanged: if (!visible) hideTooltip()
+
+        Timer {
+            id: sharingTooltipDelay
+            interval: 500
+            onTriggered: screenSharing.showTooltip()
+        }
+        Fill {
+            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
+            radius: Theme.radius
+            color: sharingMouse.pressed ? Theme.subtlePressed : sharingMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+        }
+        Icon {
+            id: sharingIcon
+            anchors.centerIn: parent
+            name: "monitor"
+        }
+        // The red dot of "recording", at the screen's lower right.
+        Rectangle {
+            width: 7
+            height: 7
+            radius: 3.5
+            color: "#e81123"
+            border.width: 1
+            border.color: Theme.taskbar
+            x: sharingIcon.x + sharingIcon.width - 5
+            y: sharingIcon.y + sharingIcon.height - 6
+        }
+        MouseArea {
+            id: sharingMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onContainsMouseChanged: containsMouse ? sharingTooltipDelay.restart() : screenSharing.hideTooltip()
+            onClicked: {
+                screenSharing.hideTooltip()
+                screenSharing.openMenu()
+            }
+        }
+    }
+
     // The microphone in use (docs/audio.md §7.2), like Windows: who listens
     // in the tooltip, a click opens Settings > Sound.
     Item {
@@ -586,7 +768,7 @@ Window {
             onTriggered: microphone.showTooltip()
         }
         Fill {
-            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
             radius: Theme.radius
             color: microphoneMouse.pressed ? Theme.subtlePressed : microphoneMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         }
@@ -673,7 +855,7 @@ Window {
             onTriggered: caffeine.showTooltip()
         }
         Fill {
-            anchors { fill: parent; topMargin: 8; bottomMargin: 8 }
+            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
             radius: Theme.radius
             color: caffeineMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
             opacity: caffeineMouse.containsMouse ? 1 : 0
@@ -711,8 +893,8 @@ Window {
         width: visible ? iconsRow.width + 16 : 0
 
         Fill {
-            anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
-            radius: Theme.radius
+            anchors { fill: parent; topMargin: 4 + root.inset; bottomMargin: 4 + root.inset }
+            radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: systemMouse.pressed ? Theme.subtlePressed : systemMouse.containsMouse || Menus.quickSettingsOpen ? Theme.subtleHover : Theme.subtleRest
         }
         Row {
@@ -770,45 +952,57 @@ Window {
         }
     }
 
-    // Clock: time on top, date below.
+    // Clock: time on top, date below (unless Settings hides it).
     Item {
         id: clock
-        anchors { right: parent.right; top: parent.top; bottom: parent.bottom; rightMargin: 12 }
-        width: clockColumn.implicitWidth + 16 + (Notifications.history.count > 0 || Notifications.doNotDisturb ? 22 : 0)
+        // At the right; with a floating style inside its pill, after the apps
+        // (fit) or at the screen's edge (edge).
+        x: root.edge ? parent.width - width - root.edgeGap - 12
+            : root.fit ? buttons.x + buttons.width + root.fitGap + root.trayGroupWidth - width
+            : parent.width - width - 12 - (root.floating ? root.sideMargin : 0)
+        anchors { top: parent.top; bottom: parent.bottom }
+        width: clockColumn.implicitWidth + 16 + (badge.visible ? 22 : 0)
 
-        property date now: new Date()
+        property date now: Shell.now()
 
+        // Just after each second begins, so the seconds (when shown) and the
+        // minutes turn when they do.
         Timer {
-            interval: 1000
+            interval: 1000 - clock.now.getMilliseconds() + 5
             running: true
             repeat: true
-            onTriggered: clock.now = new Date()
+            onTriggered: clock.now = Shell.now()
         }
 
         Fill {
-            anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
+            anchors { fill: parent; topMargin: 4 + root.inset; bottomMargin: 4 + root.inset }
+            // A floating style's buttons' corners: its highlight is one of them.
+            radius: root.floating ? root.style.buttonRadius : Theme.radius
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
-        // Notifications to read: a number next to the clock, like Windows 11
-        // (with "Do not disturb" a muted bell).
+        // Notifications to read: a number next to the clock, like Windows 11,
+        // unless Settings > Notifications hides it (with "Do not disturb",
+        // the user's or while sharing the screen, a muted bell: that one is a
+        // state, not a count, and stays).
         Rectangle {
-            visible: Notifications.history.count > 0 || Notifications.doNotDisturb
+            id: badge
+            visible: (Config.notificationCount && Notifications.history.count > 0) || Notifications.silenced
             anchors { right: parent.right; rightMargin: -2; verticalCenter: parent.verticalCenter }
             width: 18
             height: 18
             radius: 9
-            color: Notifications.doNotDisturb ? "transparent" : Theme.accent
+            color: Notifications.silenced ? "transparent" : Theme.accent
             Text {
                 anchors.centerIn: parent
-                visible: !Notifications.doNotDisturb
+                visible: !Notifications.silenced
                 text: Math.min(Notifications.history.count, 9)
-                color: "white"
+                color: Theme.readableOn(Theme.accent, "white") // a light custom accent: black
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
             }
             Icon {
                 anchors.centerIn: parent
-                visible: Notifications.doNotDisturb
+                visible: Notifications.silenced
                 name: "notifications-disabled"
                 size: 14
             }
@@ -821,12 +1015,17 @@ Window {
 
             Text {
                 anchors.right: parent.right
-                text: Qt.formatTime(clock.now, "HH:mm")
+                // 24-hour or 12-hour, with or without the seconds (Settings >
+                // Taskbar). Digits all as wide, so the clock doesn't twitch
+                // every second.
+                text: Qt.formatTime(clock.now, Config.clockFormat)
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption
+                font.features: { "tnum": 1 }
             }
             Text {
                 anchors.right: parent.right
+                visible: Config.clockDate
                 text: Qt.formatDate(clock.now, "dd/MM/yyyy")
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption

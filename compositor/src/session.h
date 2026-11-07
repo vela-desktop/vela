@@ -9,6 +9,16 @@
 // (session/vela-session-env). Nested or headless, Vela stays a guest of the
 // environment it finds.
 
+#include <stdbool.h>
+
+// A supervised compositor leaves systemd session teardown to its supervisor
+// when restarting after a terminal renderer failure. Direct sessions cannot
+// delegate that final stop to anyone else.
+static inline bool vela_session_should_stop(bool has_session, bool supervised, bool terminal_failure)
+{
+    return has_session && (!supervised || !terminal_failure);
+}
+
 // Only the values nobody (SDDM, the user) has chosen already.
 void vela_session_set_environment(void);
 // "start" or "stop": waits for vela-session-env to finish.

@@ -64,6 +64,43 @@ check fails if the requested layer is missing. These are GPU-backed **headless**
 tests: passing them does not certify direct KMS, real display power cycling or
 Intel ANV. See [the physical hardware matrix](hardware.md#gpu-resource-cleanup-and-driver-regression-checks).
 
+## GPU CI policy
+
+This is the **normative source** for when self-hosted GPU CI must run.
+Other documents link here instead of restating the requirements.
+
+- **Required before merging GPU-affecting changes:** obtain successful full
+  GPU-labeled CTest suites from **both** manually dispatched workflows, AMD
+  and NVIDIA, on the **exact candidate commit SHA**. This covers compositor,
+  renderer, Vulkan/DRM, synchronization, and GPU-dependent tests, including
+  changes that could alter GPU behavior indirectly. Do not treat a passing
+  run on an older commit or a merely similarly named branch as evidence.
+- **Exempt from GPU dispatch:** documentation-only, translation-only, and
+  other changes confirmed to have no GPU impact. Ordinary hosted CI still
+  applies. An ambiguous change is treated as GPU-affecting until reviewed.
+- **Required before every release:** both GPU suites must pass on the
+  exact release candidate revision, even if its last changes were only
+  documentation or packaging. Known reproducible failures are release
+  blockers until fixed, explicitly retested and reclassified.
+- **Pass means:** the workflows actually build the selected revision on
+  the expected hardware, run the full `gpu`-labeled CTest suite, and reject
+  missing, failed or skipped test cases. `vulkaninfo` by itself is not
+  a pass; a headless GPU pass does not certify physical DRM/KMS, VT
+  switching, screen sharing, or suspend/resume.
+- **Runner safety:** only manually dispatch trusted, reviewed code to
+  personal self-hosted machines; use unprivileged runner accounts with no
+  personal credentials, privileged sudo, or writable secrets.
+
+The two runners are AMD Radeon RX 9070 XT (Mesa/RADV, CachyOS) and NVIDIA
+GeForce RTX 4070 Laptop GPU (proprietary driver, Arch/CachyOS).
+
+**Enforcement today:** this is a maintainer/release policy, **not yet an
+automatic GitHub branch-protection gate**. Both workflows currently use
+`workflow_dispatch` only. A future automated PR status check could
+validate completed run conclusions, their exact commit SHAs, coverage and
+exemptions, and report a required pass/fail result. Do not label the current
+manual policy as an automatically enforced merge requirement.
+
 ## Manual real-GPU CI (self-hosted AMD)
 
 [GPU CI - AMD (manual)](../.github/workflows/gpu-amd.yml) is **only**
@@ -74,7 +111,9 @@ not supply this label). Register it under Settings → Actions → Runners.
 
 The CachyOS/Arch runner must have the normal
 [build dependencies](development.md#distribution-dependencies), plus
-`vulkan-tools`, `vulkan-radeon`, `vulkan-validation-layers`, `python-numpy` and `python-pillow`.
+`vulkan-tools`, `vulkan-radeon`, `vulkan-validation-layers`, `python-numpy`, `python-pillow`,
+`python-dbus` and the X11 tools of the native-resolution tests (`xorg-xwayland`,
+`xorg-xrandr`, `xorg-xrdb`, `xorg-xprop`).
 It must be able to access an AMD DRM render node and the RADV Vulkan 1.4
 driver. Install dependencies **on the host**, not inside the workflow;
 the workflow deliberately runs without `sudo` or host package upgrades.
@@ -103,8 +142,9 @@ The runner group must allow the public Vela repository to use it.
 The Arch/CachyOS runner needs the
 [normal build dependencies](development.md#distribution-dependencies),
 `vulkan-tools`, `vulkan-validation-layers`, the proprietary NVIDIA Vulkan
-driver (including `nvidia-utils` and `nvidia-smi`), `python-numpy` and
-`python-pillow`.
+driver (including `nvidia-utils` and `nvidia-smi`), `python-numpy`,
+`python-pillow` and the same X11 tools (`xorg-xwayland`, `xorg-xrandr`,
+`xorg-xrdb`, `xorg-xprop`). Both workflows check these before building.
 Check with `nvidia-smi` and `vulkaninfo --summary` before dispatching;
 the NVIDIA driver and Vulkan device must support Vulkan 1.4 or newer.
 The workflow looks up the NVIDIA ICD manifest, restricts Vulkan device
@@ -123,6 +163,37 @@ branch. As with AMD, do not dispatch unreviewed pull request code to a
 persistent personal machine: the build and tests execute locally. Use
 a restricted unprivileged runner account without personal credentials,
 and keep the laptop awake during a run.
+
+### Running only some tests
+
+The whole GPU suite takes about 17 minutes on the NVIDIA laptop; checking
+one failure again doesn't need it. Both workflows take two optional inputs:
+
+- **tests**: a CTest regex, such as `functional-shell` or
+  `functional-(capture|x11-native)`.
+- **test_filter**: with **tests**, only the Python test methods whose
+  names contain this, like `unittest -k` (`snipping`). Locally:
+  `VELA_TEST_FILTER=snipping ctest --test-dir build -R functional-shell`.
+
+A partial run still fails on skipped tests or on a filter that selects
+nothing (locally only with `VELA_GPU_CI_STRICT=1`, as in the workflows),
+and on a **test_filter** whose **tests** pick no `functional-*` entry, but
+doesn't require the full set of suites. With
+**Collect coverage** it builds and tests instrumented, as for a coverage
+failure, without generating or publishing a (partial) report.
+
+## First-party CPU/GPU code coverage
+
+The [coverage guide](code-quality-integrations.md#codecov-first-party-cc-coverage-cpu-and-optional-gpus)
+describes GCC line coverage filtered to production C/C++ sources and
+subsystem summaries. The existing GPU test workflows have an optional
+**Collect coverage** dispatch input (off by default). When enabled, their
+instrumented builds collect real AMD/NVIDIA execution hits only if the
+full GPU suite passes with no skips. The report is transferred as a GitHub
+artifact to a separate GitHub-hosted Codecov uploader, never uploaded
+with extra privileges from a self-hosted runner. Install `gcovr` and GCC
+on the runners before opting in; ordinary manual GPU tests are unchanged.
+Codecov GPU flags are tied to the sampled commit SHA and not carried forward.
 
 ## Prerequisites
 

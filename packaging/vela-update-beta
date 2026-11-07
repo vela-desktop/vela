@@ -1,0 +1,418 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Vela contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Official Beta channel: select a numbered v0.x.y release, verify its exact
+# tagged commit and signed binary provenance, then install the native package.
+# This deliberately does not fall back to an experimental source build.
+set -eu
+
+# A stalled transfer fails as a network error instead of hanging (see
+# vela-update). The caller's values win.
+GIT_HTTP_LOW_SPEED_LIMIT="${GIT_HTTP_LOW_SPEED_LIMIT:-1000}"
+GIT_HTTP_LOW_SPEED_TIME="${GIT_HTTP_LOW_SPEED_TIME:-60}"
+export GIT_HTTP_LOW_SPEED_LIMIT GIT_HTTP_LOW_SPEED_TIME
+
+REPO=vela-desktop/vela
+BASE=https://github.com/$REPO
+API=https://api.github.com/repos/$REPO/releases
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/vela-update"
+# Verified packages stay here for rollback, as Experimental's do (its own
+# vela-git files share the folder; the globs below never match them).
+PACKAGES="$CACHE/packages"
+KEEP=3
+check=0
+json=0
+force=0
+requested_tag=""
+for arg in "$@"; do
+    case "$arg" in
+        --channel=beta|--channel|beta) ;;
+        --help|-h)
+            echo "Usage: vela-update --channel beta [--check [--json]] [--force] [--tag=v0.x.y]"
+            exit 0 ;;
+        --check) check=1 ;;
+        --json) json=1 ;;
+        --force) force=1 ;;
+        --tag=v0.*) requested_tag="${arg#--tag=}" ;;
+        *) echo "vela-update: unsupported Beta option: $arg" >&2; exit 2 ;;
+    esac
+done
+if [ "$json" = 1 ] && [ "$check" != 1 ]; then
+    echo "vela-update: --json is only supported with --check" >&2; exit 2
+fi
+
+# With --json, stdout carries only the JSON (fd 3); the rest goes to stderr.
+exec 3>&1
+if [ "$json" = 1 ]; then
+    exec 1>&2
+fi
+
+# What this run reports (docs/updates.md §5), written by vela-update-state
+# as the Experimental script does.
+STATE_HELPER=""
+for candidate in "$(dirname "$0")/vela-update-state" \
+    /usr/lib/vela/vela-update-state /usr/libexec/vela/vela-update-state; do
+    if [ -f "$candidate" ]; then
+        STATE_HELPER="$candidate"
+        break
+    fi
+done
+if [ -z "$STATE_HELPER" ] || ! command -v python3 >/dev/null 2>&1; then
+    echo "vela-update: vela-update-state or Python 3 is missing" >&2
+    exit 1
+fi
+state() {
+    python3 -I "$STATE_HELPER" "$@"
+}
+action=install
+[ "$check" = 0 ] || action=check
+locked=0 # the lock is ours, and so are the state files
+error_code=""
+error_message=""
+check_reported=0
+backend=""
+work=""
+# fail CODE MESSAGE: ends the run with a stable code (§5.4) and a message.
+fail() {
+    error_code="$1"
+    error_message="$2"
+    echo "vela-update: $2" >&2
+    exit 1
+}
+phase() {
+    if [ "$locked" = 1 ] && [ "$action" = install ]; then
+        state phase --pid $$ "$1" || true
+    fi
+}
+# The check's outcome: check.json, and the JSON on fd 3 with --json.
+report_check() {
+    check_reported=1
+    [ "$locked" = 1 ] || set -- --no-record "$@"
+    if [ "$json" = 1 ]; then
+        state check --channel beta --source "$BASE" "$@" >&3
+    else
+        state check --channel beta --source "$BASE" "$@" > /dev/null
+    fi
+}
+# The installed Beta package's version: by name only, since pacman -Q also
+# answers for vela-git, which provides vela.
+betaVersion() {
+    case "$backend" in
+    arch) pacman -Q vela 2>/dev/null | awk '$1 == "vela" {print $2}' ;;
+    # rpm -q prints "package ... is not installed" on stdout.
+    fedora) rpm -q vela >/dev/null 2>&1 && rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela 2>/dev/null ;;
+    ubuntu) dpkg-query -W -f='${Status}\t${Version}\n' vela 2>/dev/null |
+            awk -F '\t' '$1 == "install ok installed" {print $2}' ;;
+    esac
+}
+# vela-git's version, when this run switches channel.
+experimentalVersion() {
+    case "$backend" in
+    arch) pacman -Q vela-git 2>/dev/null | awk '$1 == "vela-git" {print $2}' ;;
+    fedora) rpm -q vela-git >/dev/null 2>&1 && rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git 2>/dev/null ;;
+    ubuntu) dpkg-query -W -f='${Status}\t${Version}\n' vela-git 2>/dev/null |
+            awk -F '\t' '$1 == "install ok installed" {print $2}' ;;
+    esac
+}
+report_end() {
+    if [ "$1" != 0 ] && [ -z "$error_code" ]; then
+        case "$1" in
+        129 | 130 | 143) error_code=cancelled ;;
+        *) error_code=failed ;;
+        esac
+    fi
+    if [ -z "$error_message" ]; then
+        case "$error_code" in
+        cancelled) error_message="The update was interrupted." ;;
+        failed) error_message="The update failed (see the messages above)." ;;
+        esac
+    fi
+    if [ "$action" = check ]; then
+        if [ "$check_reported" = 0 ]; then
+            report_check --error-code "${error_code:-failed}" --error-message "$error_message" || true
+        fi
+        [ "$locked" = 0 ] || state end --pid $$ --action check --channel beta --result success || true
+    elif [ "$locked" = 1 ]; then
+        result=success
+        if [ "$1" != 0 ]; then
+            result=failed
+            [ "$error_code" != cancelled ] || result=cancelled
+        fi
+        state end --pid $$ --action install --channel beta --result "$result" \
+            --error-code "$error_code" --error-message "$error_message" \
+            --installed-version "$(betaVersion || true)" || true
+    fi
+}
+trap 'status=$?; [ -z "$work" ] || rm -rf -- "$work"; report_end "$status"; exit "$status"' 0
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+if ! command -v git >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 ||
+   ! command -v flock >/dev/null 2>&1; then
+    fail missing-tool "Beta updates require Python 3, git, curl and flock"
+fi
+
+# A tool's presence is not evidence of the running distribution. Never
+# install an Arch artifact on a Debian or Fedora system with pacman in PATH.
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+else
+    ID=""
+fi
+case "${ID:-}" in
+    arch|cachyos|endeavouros)
+        backend=arch
+        command -v pacman >/dev/null 2>&1 || fail missing-tool "pacman is required on Arch" ;;
+    fedora)
+        backend=fedora
+        if [ "${VERSION_ID:-}" != 44 ] ||
+           ! command -v rpm >/dev/null 2>&1 ||
+           ! command -v dnf >/dev/null 2>&1; then
+            fail unsupported "Fedora Beta supports Fedora 44 with rpm and dnf only"
+        fi ;;
+    ubuntu)
+        backend=ubuntu
+        if [ "${VERSION_ID:-}" != 26.10 ] ||
+           ! command -v dpkg-query >/dev/null 2>&1 ||
+           ! command -v apt-get >/dev/null 2>&1; then
+            fail unsupported "Ubuntu Beta supports Ubuntu 26.10 with dpkg and apt only"
+        fi ;;
+    *)
+        fail unsupported "unsupported Beta distribution: ${ID:-unknown}" ;;
+esac
+installed=$(betaVersion || true)
+# What the check reports as installed: vela, or vela-git when this run
+# switches channel.
+report_package=""
+report_version="$installed"
+if [ -n "$installed" ]; then
+    report_package=vela
+else
+    report_version=$(experimentalVersion || true)
+    [ -z "$report_version" ] || report_package=vela-git
+fi
+
+mkdir -p "$CACHE"
+exec 9>"$CACHE/update.lock"
+if ! flock -n 9; then
+    fail busy "another update is already running"
+fi
+locked=1
+state begin --pid $$ --action "$action" --channel beta || true
+work=$(mktemp -d "$CACHE/beta.XXXXXXXX")
+
+# download URL FILE SECONDS: a GitHub download, failing with the code that
+# says why (§5.4).
+download() {
+    if code=$(curl -fsSL --retry 2 --connect-timeout 5 --max-time "$3" \
+        -H 'Accept: application/vnd.github+json' -w '%{http_code}' -o "$2" "$1"); then
+        return 0
+    fi
+    case "${code:-}" in
+    403 | 429) fail rate-limited "GitHub refused the request (HTTP $code); try again later" ;;
+    404) fail not-found "not found on GitHub: $1" ;;
+    *) fail network "can't download $1 (HTTP ${code:-none})" ;;
+    esac
+}
+
+# Selecting a release by numeric SemVer tuple, never by API order or timestamp.
+# GitHub lists at most 100 releases per page. Inspect every page rather than
+# silently selecting an older release when the repository has many releases.
+printf '[]\n' > "$work/releases.json"
+page=1
+while :; do
+    download "$API?per_page=100&page=$page" "$work/page.json" 30
+    if ! count=$(python3 - "$work/releases.json" "$work/page.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    previous = json.load(f)
+with open(sys.argv[2], encoding="utf-8") as f:
+    page = json.load(f)
+if not isinstance(previous, list) or not isinstance(page, list) or len(page) > 100:
+    raise SystemExit("vela-update: invalid releases response")
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(previous + page, f)
+print(len(page))
+PY
+    ); then
+        fail failed "invalid releases response from GitHub"
+    fi
+    [ "$count" -eq 100 ] || break
+    page=$((page + 1))
+    if [ "$page" -gt 100 ]; then
+        fail failed "release discovery exceeded supported pages"
+    fi
+done
+# The target release, and the texts of every release it brings (§5.1).
+if ! tag=$(python3 - "$work/releases.json" "$requested_tag" "$installed" "$work/notes.json" <<'PY'
+import json, re, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    releases = json.load(f)
+if not isinstance(releases, list):
+    raise SystemExit("vela-update: invalid releases response")
+found = []
+for rel in releases:
+    if not isinstance(rel, dict) or rel.get("draft") or not rel.get("prerelease"):
+        continue
+    tag = rel.get("tag_name", "")
+    if not isinstance(tag, str) or not re.fullmatch(r"v0\.[0-9]+\.[0-9]+", tag):
+        continue
+    body = rel.get("body")
+    found.append((tuple(map(int, tag[1:].split("."))), tag, body if isinstance(body, str) else ""))
+selected = [r for r in found if not sys.argv[2] or r[1] == sys.argv[2]]
+if not selected:
+    raise SystemExit(0)  # nothing printed: not found
+target = max(selected)
+match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:$|[-+])", sys.argv[3])
+current = tuple(map(int, match.groups())) if match else None
+if current is None or target[0] <= current:
+    brought = [target]
+else:
+    brought = sorted((r for r in found if current < r[0] <= target[0]), reverse=True)
+with open(sys.argv[4], "w", encoding="utf-8") as f:
+    json.dump([{"version": r[1][1:], "text": r[2]} for r in brought], f)
+print(target[1])
+PY
+); then
+    fail failed "invalid releases response from GitHub"
+fi
+if [ -z "$tag" ]; then
+    if [ -n "$requested_tag" ]; then
+        fail not-found "Beta release $requested_tag not found"
+    fi
+    fail not-found "no official Beta release found"
+fi
+version="${tag#v}"
+# Dereference annotated tags when present. The signed provenance must bind
+# the exact commit currently targeted by this immutable release tag.
+if ! refs=$(git ls-remote "$BASE.git" "refs/tags/$tag" "refs/tags/$tag^{}"); then
+    fail network "can't reach $BASE.git"
+fi
+latestFull=$(printf '%s\n' "$refs" |
+    awk '/\^\{\}$/ {print $1; found=1; exit} !found {candidate=$1} END {if (!found) print candidate}')
+if ! printf '%s\n' "$latestFull" | grep -Eq '^[0-9a-f]{40}$'; then
+    fail not-found "cannot resolve the Beta release tag $tag"
+fi
+
+comparison=$(python3 - "$installed" "$version" <<'PY'
+import re, sys
+match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:$|[-+])", sys.argv[1])
+if not match:
+    print("unknown")
+else:
+    current = tuple(map(int, match.groups()))
+    target = tuple(map(int, sys.argv[2].split(".")))
+    print("same" if current == target else "newer" if current > target else "older")
+PY
+)
+current=0
+[ "$comparison" != same ] || current=1
+status=update-available
+[ "$comparison" != newer ] || status=downgrade-available
+[ "$comparison" != same ] || status=up-to-date
+[ -n "$report_package" ] || status=not-installed
+if [ "$check" = 1 ]; then
+    report_check --status "$status" --installed-package "$report_package" \
+        --installed-version "$report_version" --version "$version" --tag "$tag" \
+        --commit "$latestFull" --notes "$work/notes.json"
+    [ "$json" = 0 ] || exit 0
+fi
+if [ "$comparison" = newer ] && [ -z "$requested_tag" ]; then
+    # The check itself completed (check.json says downgrade-available).
+    if [ "$check" = 1 ]; then
+        echo "vela-update: installed Beta is newer than the latest published release; refusing implicit downgrade" >&2
+        exit 1
+    fi
+    fail downgrade-refused "installed Beta is newer than the latest published release; refusing implicit downgrade"
+fi
+if [ "$current" = 1 ] && [ "$force" = 0 ]; then
+    echo ":: Vela Beta is up to date ($version)."
+    [ "$check" != 1 ] || exit 1
+    exit 0
+fi
+echo ":: Vela Beta ${status}: $tag ($latestFull)"
+if [ "$check" = 1 ]; then exit 0; fi
+# Installation requires signed provenance. Fail before transferring the binary.
+if ! command -v cosign >/dev/null 2>&1; then
+    fail missing-tool "cosign is required to install signed Beta packages"
+fi
+
+escaped_version=$(printf '%s' "$version" | sed 's/[.]/\\./g')
+case "$backend" in
+arch) manifest=SHA256SUMS
+      regex="^vela-$escaped_version-[0-9]+-x86_64[.]pkg[.]tar[.]zst$" ;;
+fedora) manifest=SHA256SUMS-fedora
+        regex="^vela-$escaped_version-[0-9]+([.]fc[0-9]+)?[.]x86_64[.]rpm$" ;;
+ubuntu) manifest=SHA256SUMS-ubuntu
+        regex="^vela_$escaped_version"_"amd64[.]deb$" ;;
+esac
+release="$BASE/releases/download/$tag"
+phase downloading
+download "$release/$manifest" "$work/$manifest" 30
+if [ "$(wc -l < "$work/$manifest")" -ne 1 ]; then
+    fail verification-failed "expected one package checksum in $manifest"
+fi
+digest=$(awk 'NR==1 {print $1}' "$work/$manifest")
+package=$(awk 'NR==1 {print $2}' "$work/$manifest")
+if ! printf '%s\n' "$digest" | grep -Eq '^[0-9a-f]{64}$' ||
+   ! printf '%s\n' "$package" | grep -Eq "$regex"; then
+    fail verification-failed "invalid or mismatched Beta package manifest"
+fi
+download "$release/$package" "$work/$package" 240
+phase verifying
+printf '%s  %s\n' "$digest" "$package" > "$work/SHA256SUMS"
+if ! (cd "$work" && sha256sum -c --status SHA256SUMS); then
+    fail verification-failed "the package doesn't match its checksum"
+fi
+verifier=""
+for candidate in "$(dirname "$0")/verify-attestation.py" \
+    /usr/lib/vela/verify-attestation.py /usr/libexec/vela/verify-attestation.py; do
+    if [ -f "$candidate" ]; then verifier="$candidate"; break; fi
+done
+[ -n "$verifier" ] || fail missing-tool "missing Sigstore verifier"
+if ! python3 -I "$verifier" --repository "$REPO" --commit "$latestFull" \
+    --kind release --release-tag "$tag" "$work/$package"; then
+    fail verification-failed "the package's signed provenance was rejected"
+fi
+echo ":: Verified official Beta package $package"
+# Only a verified package is kept: for rollback, and to retry an install
+# that failed without downloading it again.
+mkdir -p "$PACKAGES"
+mv -f -- "$work/$package" "$PACKAGES/$package"
+cached="$PACKAGES/$package"
+prune() {
+    case "$backend" in
+    arch) pattern='vela-[0-9]*.pkg.tar.zst' ;;
+    fedora) pattern='vela-[0-9]*.x86_64.rpm' ;;
+    ubuntu) pattern='vela_[0-9]*_amd64.deb' ;;
+    esac
+    # shellcheck disable=SC2086 # the pattern is a glob
+    ls -t "$PACKAGES"/$pattern 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+        rm -f -- "$old"
+    done
+}
+install_failed() {
+    echo "   To install it: $1 $cached" >&2
+    fail install-failed "$2"
+}
+phase installing
+case "$backend" in
+arch)
+    if pacman -Q vela-git >/dev/null 2>&1; then
+        # In the explicit channel transition, accept only pacman's conflict
+        # removal prompt within the SAME installation transaction. Plain
+        # --noconfirm answers no to the vela-git / vela conflict.
+        sudo pacman --noconfirm --ask=4 -U "$cached" ||
+            install_failed "sudo pacman -U" "pacman did not install the package"
+    else
+        sudo pacman -U "$cached" || install_failed "sudo pacman -U" "pacman did not install the package"
+    fi ;;
+fedora) sudo dnf install -y --allowerasing "$cached" ||
+        install_failed "sudo dnf install --allowerasing" "dnf did not install the package" ;;
+ubuntu) sudo apt-get install -y --allow-downgrades "$cached" ||
+        install_failed "sudo apt-get install --allow-downgrades" "apt did not install the package" ;;
+esac
+prune
+echo ":: Vela Beta $tag installed. Sign out and back in to start the new version."

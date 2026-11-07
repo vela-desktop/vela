@@ -45,6 +45,17 @@ target_compile_options(vela-screen-record PRIVATE -Wall -Wextra -Wno-unused-para
 
 if(VELA_BUILD_TOOLS)
 
+add_executable(vela-capture-probe vela-capture-probe.c)
+target_link_libraries(vela-capture-probe PRIVATE vela-capture)
+target_compile_options(vela-capture-probe PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
+# Shares the screen like the portal, wf-recorder and grim
+# (tests/functional/test_screen_sharing.py).
+vela_client_protocol(proto-screencopy ${PROTOCOLS}/wlr-screencopy-unstable-v1.xml wlr-screencopy-unstable-v1)
+add_executable(vela-share vela-share.c)
+target_link_libraries(vela-share PRIVATE vela-capture proto-screencopy proto-xdg-shell)
+target_compile_options(vela-share PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
 vela_client_protocol(proto-foreign-toplevel ${PROTOCOLS}/wlr-foreign-toplevel-management-unstable-v1.xml
     wlr-foreign-toplevel-management-unstable-v1)
 vela_client_protocol(proto-virtual-pointer ${PROTOCOLS}/wlr-virtual-pointer-unstable-v1.xml
@@ -78,9 +89,12 @@ add_executable(vela-testlock vela-testlock.c)
 target_link_libraries(vela-testlock PRIVATE proto-session-lock)
 
 # Sharpness test client (scripts/test-sharpness.sh).
+vela_client_protocol(proto-pointer-constraints
+    ${TOOLS_WAYLAND_PROTOCOLS_DIR}/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml
+    pointer-constraints-unstable-v1)
 add_executable(vela-pattern vela-pattern.c)
 target_link_libraries(vela-pattern PRIVATE proto-xdg-shell proto-viewporter proto-fractional-scale
-    proto-xdg-decoration)
+    proto-xdg-decoration proto-pointer-constraints proto-background-effect)
 
 # Fake shell pieces (wallpaper, blurred taskbar) for tests without the Qt
 # shell.

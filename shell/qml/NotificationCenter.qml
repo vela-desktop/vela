@@ -17,19 +17,19 @@ Window {
     // units from both.
     readonly property real room: notificationsShadow.reach
     width: room + 360 + 12
-    height: Math.min(room + motion.height + 12, Screen.height - Theme.taskbarHeight)
+    height: Math.min(room + motion.height + 12, Screen.height - Styles.taskbar.height)
     color: "transparent"
 
     readonly property var history: Notifications.history
-    property date month: new Date() // the month the calendar shows
+    property date month: Shell.now() // the month the calendar shows
 
     function open() {
         Menus.quickSettingsOpen = false
         // Reopened while leaving: it turns back from where it is, as it was.
         if (!motion.closing) {
             Notifications.collectPopups()
-            month = new Date()
-            Menus.placeOnTargetScreen(root)
+            month = Shell.now()
+            Menus.placeTrayPanel(root, "clock", motion.x, motion.width)
         }
         visible = true
         Menus.notificationCenterOpen = true
@@ -61,7 +61,9 @@ Window {
     // at rest: not the shadows between them.
     function updateBlur() {
         Effects.setBlur(root, motion.moving ? [motion.visibleArea]
-            : [notifications, calendar].map(p => Qt.rect(motion.x + p.x, motion.y + p.y, p.width, p.height)))
+            : [notifications, calendar].map(p => Qt.rect(motion.x + p.x, motion.y + p.y, p.width, p.height)),
+            Styles.notifications.chosen ? Styles.notifications.radius : 0) // with a style, rounded like them
+
     }
 
     // The panels' small buttons: subtle, or the accent while on.
@@ -113,9 +115,9 @@ Window {
             Rectangle {
                 id: notifications
                 width: parent.width
-                height: Math.min(Screen.height - Theme.taskbarHeight - calendar.height - 60, header.height + Math.max(list.contentHeight, 64) + 24)
-                radius: Theme.radiusOverlay
-                color: Theme.surface
+                height: Math.min(Screen.height - Styles.taskbar.height - calendar.height - 60, header.height + Math.max(list.contentHeight, 64) + 24)
+                radius: Styles.notifications.radius
+                color: Styles.notifications.surface
                 border.width: 1
                 border.color: Theme.stroke
 
@@ -124,23 +126,42 @@ Window {
                     x: 16
                     y: 10
                     width: parent.width - 32
-                    height: 36
+                    height: 36 + (silencedWhileSharing.visible ? silencedWhileSharing.height + 2 : 0)
                     Text {
-                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.verticalCenter: headerButtons.verticalCenter
                         text: qsTr("Notifications")
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
                         font.weight: Font.DemiBold
                     }
+                    // Held back by the rule, not by the user's switch
+                    // (docs/screen-sharing.md §7): under the title and the
+                    // buttons, all the width, so a long translation never
+                    // runs under them.
+                    Text {
+                        id: silencedWhileSharing
+                        objectName: "silencedWhileSharing"
+                        y: 32
+                        width: parent.width
+                        visible: Notifications.automaticDoNotDisturb && !Notifications.doNotDisturb
+                        text: qsTr("Silenced while your screen is shared")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
                     Row {
-                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                        id: headerButtons
+                        anchors { right: parent.right; top: parent.top }
+                        height: 36
                         spacing: 4
                         SmallButton {
+                            anchors.verticalCenter: parent.verticalCenter
                             icon.name: Notifications.doNotDisturb ? "notifications-disabled" : "notifications"
                             accent: Notifications.doNotDisturb
                             onClicked: Notifications.doNotDisturb = !Notifications.doNotDisturb
                         }
                         SmallButton {
+                            anchors.verticalCenter: parent.verticalCenter
                             visible: root.history.count > 0
                             text: qsTr("Clear all")
                             onClicked: Notifications.clearHistory()
@@ -178,10 +199,16 @@ Window {
                         required property date time
                         width: list.width
                         height: itemContent.height + 20
-                        radius: Theme.radius
+                        radius: Styles.notifications.cardRadius
                         color: itemHover.hovered ? Theme.subtleHover : Theme.control
 
                         HoverHandler { id: itemHover }
+                        // Passive right-click handling works across child
+                        // controls without changing their left-button actions.
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: Notifications.dismissFromHistory(item.notificationId)
+                        }
                         MouseArea {
                             id: itemMouse
                             anchors.fill: parent
@@ -216,6 +243,7 @@ Window {
                                         id: summaryText
                                         width: parent.width - timeText.width - 30
                                         text: item.summary
+                                        textFormat: Text.PlainText // the spec's summary has no markup
                                         color: Theme.text
                                         font.pixelSize: Theme.fontBody
                                         font.weight: Font.DemiBold
@@ -225,7 +253,7 @@ Window {
                                         id: timeText
                                         anchors.right: parent.right
                                         anchors.rightMargin: 24
-                                        text: Qt.formatTime(item.time, "HH:mm")
+                                        text: Qt.formatTime(item.time, Config.timeFormat)
                                         color: Theme.textSecondary
                                         font.pixelSize: Theme.fontCaption
                                     }
@@ -281,8 +309,8 @@ Window {
                 y: notifications.height + 12
                 width: parent.width
                 height: calendarContent.height + 32
-                radius: Theme.radiusOverlay
-                color: Theme.surface
+                radius: Styles.notifications.radius
+                color: Styles.notifications.surface
                 border.width: 1
                 border.color: Theme.stroke
 
@@ -293,10 +321,14 @@ Window {
                     width: parent.width - 32
                     spacing: 12
 
-                    // Today, in full ("Saturday, October 4"), like Windows.
+                    // Today, in full ("Saturday, October 4"), like Windows:
+                    // again at each opening (root.month), after midnight
+                    // too, and when the language changes (Qt.uiLanguage).
                     Text {
                         text: {
-                            const s = Qt.locale().toString(new Date(), "dddd d MMMM")
+                            root.month
+                            Qt.uiLanguage
+                            const s = Qt.locale().toString(Shell.now(), "dddd d MMMM")
                             return s.charAt(0).toUpperCase() + s.slice(1)
                         }
                         color: Theme.text
@@ -310,6 +342,7 @@ Window {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: {
+                                Qt.uiLanguage
                                 const s = Qt.locale().toString(root.month, "MMMM yyyy")
                                 return s.charAt(0).toUpperCase() + s.slice(1)
                             }
@@ -339,7 +372,17 @@ Window {
                         readonly property int length: new Date(root.month.getFullYear(), root.month.getMonth() + 1, 0).getDate()
 
                         Repeater {
-                            model: ["lu", "ma", "me", "gi", "ve", "sa", "do"]
+                            // Monday first, as the grid; two letters of the
+                            // language's short names ("Mo", "lu"), like
+                            // Windows, unless two days would read the same
+                            // (Portuguese "seg." and "sex."): then the short
+                            // names whole. Again when the language changes.
+                            model: {
+                                Qt.uiLanguage
+                                const names = [1, 2, 3, 4, 5, 6, 0].map(day => Qt.locale().dayName(day, Locale.ShortFormat))
+                                const two = names.map(name => name.substring(0, 2))
+                                return new Set(two).size === 7 ? two : names
+                            }
                             delegate: Text {
                                 required property string modelData
                                 width: days.cell
@@ -358,7 +401,7 @@ Window {
                                 readonly property date day: new Date(root.month.getFullYear(), root.month.getMonth(), index - days.offset + 1)
                                 readonly property bool inMonth: day.getMonth() === root.month.getMonth()
                                 readonly property bool today: {
-                                    const now = new Date()
+                                    const now = Shell.now()
                                     return day.getFullYear() === now.getFullYear() && day.getMonth() === now.getMonth()
                                         && day.getDate() === now.getDate()
                                 }
@@ -368,13 +411,13 @@ Window {
                                     anchors.centerIn: parent
                                     width: 32
                                     height: 32
-                                    radius: 16
+                                    radius: Styles.notifications.todayRadius
                                     color: parent.today ? Theme.accent : dayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                                 }
                                 Text {
                                     anchors.centerIn: parent
                                     text: parent.day.getDate()
-                                    color: parent.today ? "white" : parent.inMonth ? Theme.text : Theme.textSecondary
+                                    color: parent.today ? Theme.readableOn(Theme.accent, "white") : parent.inMonth ? Theme.text : Theme.textSecondary
                                     opacity: parent.inMonth || parent.today ? 1 : 0.5
                                     font.pixelSize: Theme.fontCaption
                                 }

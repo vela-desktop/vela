@@ -10,7 +10,7 @@ Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20
 
 ## Distribution dependencies
 
-These packages are for **building Vela from source**, not the much smaller requirements of the [user installer](installation.md). Keep them synchronized with the CI's build dependencies.
+These packages are for **building Vela from source**, not the runtime requirements of the [user installer](installation.md). Arch `vela-git` deliberately installs Core and Desktop together: Konsole, Breeze icons, `xdg-desktop-portal` and the wlr screen-capture backend are default dependencies. `xdg-desktop-portal-gtk` is installed for generic application portals, while `xdg-desktop-portal-kde` and Plasma Workspace are not required; an already installed KDE portal remains an optional fallback if GTK is missing. Optional extras include KDE Connect, BlueZ for native Bluetooth management, and Bluedevil plus BlueZ OBEX for file sending from Files. `vela-update --build` installs `base-devel` through pacman only when a local build is required; makepkg installs the selected PKGBUILD's other build dependencies. `git`, `curl`, `sudo` and `util-linux` are runtime dependencies of the updater. On unattended local builds pacman and makepkg use `--noconfirm` (sudo must already allow authentication without interaction); an installed pacman hook warns after `qt6-base` upgrades because `vela-shell` links `Qt6::GuiPrivate`, and `vela-update --force --build` rebuilds the current revision when Qt's private ABI changes. Keep them synchronized with the CI's build dependencies.
 
 <details>
 <summary><b>Arch / CachyOS / EndeavourOS</b></summary>
@@ -20,7 +20,7 @@ sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland w
     libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt \
     vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
     pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
-    pipewire wireplumber systemd-libs
+    pipewire wireplumber systemd-libs xdg-utils
 ```
 </details>
 
@@ -36,12 +36,12 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
     vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
     fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
     zlib-devel gtest-devel python3 python3-numpy python3-pillow shared-mime-info \
-    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber systemd-devel
+    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber systemd-devel xdg-utils
 ```
 </details>
 
 <details>
-<summary><b>Ubuntu 26.10 (experimental native DEB updater and CI validation)</b></summary>
+<summary><b>Ubuntu 26.10 (native DEB updater and CI validation)</b></summary>
 
 Use Ubuntu 26.10 (Stonking Stingray) with the `universe` repository enabled.
 The CI uses the official `ubuntu:26.10` container and compiles the compositor,
@@ -53,7 +53,7 @@ GPU/DRM functionality.
 ```sh
 sudo apt update
 sudo apt install --no-install-recommends \
-    ca-certificates git build-essential cmake ninja-build pkgconf \
+    ca-certificates git build-essential cmake ninja-build pkgconf xdg-utils \
     libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
     libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
     libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
@@ -73,7 +73,7 @@ ctest --test-dir build -N -LE 'gpu|distro-packaging'
 ctest --test-dir build --output-on-failure -LE 'gpu|distro-packaging'
 ```
 
-Ubuntu 26.10 also has an [experimental DEB updater](installation.md#ubuntu-2610-experimental-native-deb-updater).
+Ubuntu 26.10 also has a [native DEB updater](installation.md#ubuntu-2610).
 Build success alone does not prove Ubuntu graphical session functionality:
 validate Wayland, portals, audio, polkit and GPU-specific behavior on real hardware.
 
@@ -132,6 +132,28 @@ sh scripts/run-nested.sh
 ```
 
 Vela opens as a window that behaves like a virtual monitor. If `build/shell/vela-shell` exists, the script starts it together with the compositor.
+
+Both manual launchers (`run-nested.sh` and `run-headless.sh`) use a fresh temporary
+`HOME` and `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, and
+`XDG_STATE_HOME`. These are deleted after the compositor and its detached child processes exit,
+including on SIGTERM. A Linux subreaper supervises all session descendants;
+unresponsive processes are SIGKILLed after a bounded grace period. The manual
+launchers require Python 3.9+ and Linux kernel 5.3+ with procfs and pidfd
+support for identity-safe descendant signalling. This keeps test wallpaper/cache writes away from
+your real Vela state.
+The test starts with default settings. To **copy** your existing Vela configuration
+(`vela/` and `Vela/` only) into the temporary home, without editing the originals.
+Symlinks inside the same Vela configuration tree are copied as private files;
+symlinks escaping that tree or forming cycles are skipped with a warning:
+
+```sh
+VELA_TEST_COPY_CONFIG=1 sh scripts/run-nested.sh
+```
+
+These launchers are **not a security sandbox**: the host `XDG_RUNTIME_DIR`
+and D-Bus addresses remain available, and nested mode retains the host Wayland
+display connection. Do not use the manual launchers to test destructive system
+operations. Promo recording has its own private-bus environment.
 
 Files and Settings are launched from the same build tree when available, even if an
 older Vela package is installed in `/usr/bin`. This includes opening them from
@@ -219,10 +241,11 @@ The tools under `build/tools/` are small clients intended for development and fu
 
 | Tool | Purpose |
 |---|---|
-| `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`. |
+| `vela-input` | Inject keys, clicks, drags and typed text when `VELA_DEBUG_INPUT=1`; `vela-input -` reads tab-separated action lines from stdin on one virtual keyboard. |
 | `vela-windows` | Inspect windows and compositor-visible state. |
 | `vela-screen-dump` | Capture an output or region to PNG. |
 | `vela-screen-record` | Record an output or region frame by frame, each with its presentation time, until SIGINT (`frames.raw` and `frames.txt` in a directory; `VELA_SCREEN_RECORD_DOWNSCALE=2` for full outputs at high refresh rates). |
+| `vela-share` | Capture like the apps that share the screen, for [screen sharing](screen-sharing.md): `ext-output [N]` and `ext-window ID` hold an ext-image-copy-capture session frame after frame (like the portal), `screencopy [N]` asks for wlr-screencopy frames one after the other (like wf-recorder), `screencopy-once` takes one frame of every output (like grim). Runs until stdin closes, or SIGTERM after `--forever`; the lines `window` and `close` on stdin open and close a window of its own (app id `org.vela.Share`). |
 | `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window). |
 | `vela-panel` | Fake shell pieces on wlr-layer-shell: `wallpaper`, and `taskbar [--blur]` with a reserved area and background blur. |
 | `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu; `--wine-backdrop` adds Wine's black fullscreen backdrop (override-redirect, then managed with fullscreen, skip-taskbar and below). |
@@ -241,6 +264,8 @@ It accepts one command per line. Headless tests use commands such as:
 
 ```text
 state
+watch capture
+test-shell <pid>
 test-output add 2560x1440
 test-output remove HEADLESS-2
 test-power off
@@ -252,7 +277,107 @@ caffeine toggle
 caffeine status
 ```
 
-`state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
+`state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness. `watch capture` keeps the connection open and sends who captures the screen after every change, and `test-shell <pid>` names the real shell a test started itself (headless only); see [screen sharing](screen-sharing.md) §4.
+
+### Release promo recordings
+
+`scripts/record-promo.py` produces authentic release footage from a **single
+built Vela** with the real Vulkan compositor, Qt shell and Vela applications.
+It shares `scripts/recording_core.py` with the unchanged before/after CLI.
+
+```sh
+cmake --build build --target vela-compositor vela-shell vela-screen-record vela-input vela-settings vela-files
+python3 scripts/record-promo.py --list
+python3 scripts/record-promo.py --list-profiles
+python3 scripts/record-promo.py --profile beta-trailer --out ~/videos/vela-beta
+python3 scripts/record-promo.py --profile window-management --no-reel --out ~/videos/windows
+python3 scripts/record-promo.py files snap-assist --resolution 2560x1440 --fps 30 --out ~/videos/highres
+python3 scripts/record-promo.py --resume --out ~/videos/vela-beta
+python3 scripts/verify-promo.py --out ~/videos/vela-beta desktop start-menu snap-assist
+```
+
+The `beta-trailer` profile records Desktop, Start search and real Files launch, Snap Assist, Task
+View, Vela Files, virtual desktop switching, Quick Settings (including the
+private PipeWire sound page) and Colors. The promo cursor is animated through
+real compositor input events with smooth, time-bounded trajectories, rather
+than drawn or interpolated into the final video. All of a scene's input goes
+through one `vela-input -` session: a new virtual keyboard per action brings
+its keymap to the seat, and Start or Snap Assist lose the keyboard and close.
+An additional `alt-tab` scene records the actual app switcher, and
+`window-motion` includes maximize, restore and minimize animations.
+`ui-overview` and `window-management` provide focused selections, or pass
+scene names explicitly. `window-motion` and `settings` remain available.
+Scenes are isolated from one another and run on a headless Vela output. By
+default the output is 1920×1080@60, exported at 60 fps. Optional
+`--resolution WIDTHxHEIGHT`, `--scale FLOAT` and `--fps 30|60` configure
+the capture; `--speed` sets playback speed and `--hold-scale` sets how
+long scripted editorial holds last. State predicates and action checkpoints
+are separate from these holds.
+
+Each scene produces an MP4, WebM, PNG poster and JSON manifest. Manifests
+include capture settings, SHA-256 fingerprints of the **executed binary
+files** and of the recording scripts (neither asserts a verified source Git
+commit), SHA-256 and sizes of each export, actual presentation/frame counts,
+and a timeline of actions and ready-state checkpoints. A hard-cut
+`vela-promo.mp4` and its separate `vela-promo-manifest.json` are assembled
+when multiple scenes are selected. The reel manifest binds the exact ordered
+scene names and MP4 hashes: `--resume` rebuilds a missing, corrupted or stale
+reel even when every single-scene output can be reused. Use `--no-reel` to
+keep only separate clips. `--resume` reuses complete, hash-verified scene
+sets only when the binaries, recording recipe and capture settings match.
+Editing either recording script invalidates the previous takes by design.
+Incomplete/legacy output sets or different settings require a clean
+destination or explicit `--force` without `--resume`.
+
+The promo recorder enables the **real compositor-rendered cursor** by default
+with `VELA_SCREEN_RECORD_CURSOR=1`; disable it with `--no-cursor`.
+The before/after comparison recorder remains cursor-free to keep its
+frame-alignment comparisons unchanged. The capture path uses true presentation
+timestamps rather than generated in-between frames. Promo clips sample them
+halfway between the output's vblanks: sampled on the vblanks, a frame
+presented a millisecond late would show one tick late and repeat, a stutter
+the screen never had. Manifests record the vblanks the compositor presented
+late during the capture (`frames_missed`) and the moments a frame is shown
+twice between two new ones (`repeated_frames`).
+
+The shell, private D-Bus daemon, Settings and Files run under a synthetic
+demo identity (`Alex`), private HOME/XDG paths and private PipeWire sinks and
+Music stream. Start sees fixed made-up applications, while Vela Files opens a
+temporary public demo directory with synthetic documents and SVG artwork.
+The private D-Bus and PipeWire intentionally cannot use the host's
+Bluetooth/network/audio devices, so those Quick Settings tiles may show
+unavailable services. These measures **do not provide a complete network or
+filesystem sandbox**. Review footage for privacy and framing before
+publication. Device/configuration details on arbitrary Settings pages may
+still be sensitive. User and mount namespaces are probed before capture.
+
+`--keep` retains the very large raw source captures. Every export is written
+inside a private staging directory and installed by rename, never by writing
+through a destination symlink; `--force` replaces previous exports. Note
+that individual exports are installed sequentially, not as a single atomic
+transaction. A missing manifest after interruption is therefore considered
+incomplete and not eligible for `--resume`.
+
+This remains a footage recorder, not a video editor: voiceover, soundtrack,
+titles and transitions are separate. Expect about 500 MB/s of temporary raw
+frames at 1080p60, significantly more at higher resolutions. Validate all
+new scenes on real AMD/NVIDIA GPU hardware, especially Snap Assist pointer
+placement, cursor composition and fractional scale. Both manual GPU workflows
+have an opt-in `record_promo_smoke` input: it records Desktop, Start and Snap
+Assist at 1280×720 with scales 1.0 and 1.25, then runs
+`scripts/verify-promo.py` to check checksums, frames, dimensions, encoded
+frame rate, action checkpoints and consecutive nearly-black frames, and
+reports late vblanks and frames shown twice mid-motion for the reviewer (the
+first frame after a still moment can be late once, and typing repeats frames
+at its own pace, so neither fails the check). The smoke
+test requires `ffprobe` and `ffmpeg` on the runner. It is not run for normal
+pushes, and does not replace a human review of the release footage.
+
+Run the offline recorder regression tests with:
+
+```sh
+python3 -m unittest discover -s scripts/tests -p 'test_record*.py' -v
+```
 
 ### Before/after videos
 
@@ -279,13 +404,14 @@ hardly showed (see D3 in [visual-coherence.md](visual-coherence.md)). Scenes
 about frame pacing (`maximize`) also give a strip of consecutive refreshes,
 before above and after below (`maximize-frames.png`), and say how many repeat
 the previous image. It needs
-a GPU, `dbus-daemon`, `ffmpeg`, PipeWire with WirePlumber and unprivileged
-user namespaces. Both the session and system D-Bus addresses point to the
+a GPU, `dbus-daemon`, `ffmpeg`, PipeWire (with `pw-cat` and `pw-dump`) with
+WirePlumber and unprivileged user namespaces, which it checks before building.
+Both the session and system D-Bus addresses point to the
 take's private bus; NetworkManager, BlueZ and other host services are not
 available to the shell, so real network names and device identities cannot
 appear in Quick Settings (those devices will show as unavailable). The text
-is in English, sound devices are made up on a private PipeWire, and Settings
-sees a user named Alex.
+is in English, sound devices are made up on a private PipeWire, and the shell
+and Settings see a user named Alex and made-up apps.
 
 For each take it prints the frames captured and the frames presented. Frames
 where only the pointer moved are presented but not captured, since captures
@@ -449,6 +575,7 @@ Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`)
 | `Shadow` | What floats casts it outside itself; `depth` is one of `Theme.shadow`'s, `above` and `below` cut it next to another panel |
 | `PanelMotion` | A panel's entrance, exit and turning back, and its blur `area` (`visibleArea`: cut to its window) ([§6.9](visual-coherence.md#69-panels-panelmotion-shadow-dialog-d14d18)) |
 | `Dialog` | A window's dialog: title, text, content, `buttons` and `chosen(value)` |
+| `StartIcon` | The Start button's icon: Vela's sail in the accent's colors, or the distribution's logo or a picture (`source`, as `shell/src/starticon.h` resolves Settings → Start's choice) |
 
 A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`: Files' `ToolButton`, the shell's `CheckBox` and `MenuTextBox` (a `TextBox` with the right-click menu of `TextMenu`), Settings' `RadioButton`. Every shell panel is a `PanelMotion` holding its `Shadow` and its panel, in a window that leaves the shadow's `reach` around it; the shell's `ShadowRoom` makes a press in that room a press outside. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) fails on what doesn't, and a line that differs on purpose says why with a `// motion:` comment. A recycled delegate (`reuseItems`) sets its `Fill`'s `animated` to false when pooled and back to true when reused. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`); the programs' own controls with the same runner (`shell/tests`, `settings/tests`) and Files' views with their own (`explorer/tests`, ctest `files-views`).
 
@@ -483,7 +610,10 @@ Run the complete suite with:
 ctest --test-dir build --output-on-failure
 ```
 
-The GPU-dependent functional and sharpness suites are part of CTest as well. They are run regularly on Vela's primary development machine with an AMD Radeon RX 9070 XT and Mesa/RADV, where they currently pass in full. GitHub-hosted CI skips those suites because it does not expose a usable DRM/Vulkan device.
+The GPU-dependent functional and sharpness suites are part of CTest.
+Hosted runners skip them for lack of a usable DRM/Vulkan device; the
+[GPU CI policy](ci-quality.md#gpu-ci-policy) defines required real-hardware
+testing and per-release verification.
 
 See [testing.md](testing.md) for individual suites, GPU requirements and the headless harness.
 

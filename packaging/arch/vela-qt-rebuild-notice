@@ -1,0 +1,9 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Never rebuild Vela inside a pacman transaction: notify after upgrading Qt.
+
+printf '%s\n' \
+    ':: Vela: qt6-base was upgraded. vela-shell uses Qt private APIs.' \
+    ':: If Vela does not start after this update, rebuild it outside pacman:' \
+    '::   vela-update --force --build' >&2

@@ -11,6 +11,8 @@
 // Qt private API (as in foreigntoplevels.cpp): a window's wl_surface.
 #include <QtGui/qpa/qplatformwindow_p.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include <wayland-client.h>
@@ -71,14 +73,31 @@ BackgroundEffects::~BackgroundEffects()
     }
 }
 
-void BackgroundEffects::setBlur(QWindow* window, const QVariantList& rects)
+// A rounded rectangle as rows of pixels: only those entirely inside.
+static QRegion roundedRegion(const QRect& rect, int radius)
+{
+    radius = std::min({ radius, rect.width() / 2, rect.height() / 2 });
+    if (radius <= 0) {
+        return QRegion(rect);
+    }
+    QRegion region(rect.adjusted(0, radius, 0, -radius));
+    for (int i = 0; i < radius; ++i) {
+        const double dy = radius - i; // the row's narrowest point, at its top edge
+        const int inset = static_cast<int>(std::ceil(radius - std::sqrt(radius * radius - dy * dy)));
+        region += QRect(rect.x() + inset, rect.y() + i, rect.width() - 2 * inset, 1);
+        region += QRect(rect.x() + inset, rect.bottom() - i, rect.width() - 2 * inset, 1);
+    }
+    return region;
+}
+
+void BackgroundEffects::setBlur(QWindow* window, const QVariantList& rects, qreal radius)
 {
     if (!window) {
         return;
     }
     QRegion region;
     for (const QVariant& value : rects) {
-        region += value.toRectF().toAlignedRect();
+        region += roundedRegion(value.toRectF().toAlignedRect(), radius > 0 ? qRound(radius) : 0);
     }
     Entry& entry = m_entries[window];
     entry.window = window;

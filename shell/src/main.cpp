@@ -7,10 +7,16 @@
 // of the desktop (not an app), keeps it above or below the windows and
 // reserves space for it on the output.
 
+#include "renderingpolicy.h"
 #include "accessibility.h"
 #include "appmodel.h"
 #include "audio.h"
 #include "audioapps.h"
+#include "batterynotices.h"
+#include "bluetooth/bluetooth.h"
+#include "bluetoothprompts.h"
+#include "updatenotices.h"
+#include "updates/updates.h"
 #include "brightness.h"
 #include "clipboard.h"
 #include "config.h"
@@ -26,6 +32,7 @@
 #include "levelmeter.h"
 #include "mediakeys.h"
 #include "mica.h"
+#include "themefile.h"
 #include "network.h"
 #include "notifications.h"
 #include "servicemenus.h"
@@ -38,6 +45,7 @@
 #include "transfermonitor.h"
 #include "tray.h"
 #include "wallpaperprovider.h"
+#include "screensharing.h"
 #include "screenwindows.h"
 #include "../../common/primaryoutput.h"
 #include "workspaces.h"
@@ -48,6 +56,7 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QLocale>
 #include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -55,6 +64,7 @@
 #include <QQuickWindow>
 #include <QPointer>
 #include <QScreen>
+#include <QStyleHints>
 #include <QTimer>
 #include <QtDebug>
 #include <QtQml/QQmlExtensionPlugin>
@@ -63,6 +73,7 @@
 #include <memory>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
+Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
 
 namespace {
 
@@ -124,6 +135,10 @@ void setupTaskbar(QQuickWindow* window, QScreen* screen)
         | LayerWindow::AnchorRight);
     layer->setExclusiveZone(window->height()); // maximized windows don't cover it
     layer->setKeyboardInteractivity(LayerWindow::KeyboardInteractivityNone);
+    // A taskbar style's height (taskbar-height): the reserved space follows.
+    QObject::connect(window, &QWindow::heightChanged, window, [window, layer] {
+        layer->setExclusiveZone(window->height());
+    });
 }
 
 void setupWallpaper(QQuickWindow* window, QScreen* screen)
@@ -187,6 +202,8 @@ const Panel panels[] = {
     // Questions such as "Empty Recycle Bin", and what to share on screen.
     { "ConfirmDialog", "vela-confirm", layerOverlay, centered, 0, keysOnDemand },
     { "SourceChooser", "vela-share", layerOverlay, centered, 0, keysOnDemand },
+    // The Bluetooth agent's questions (docs/bluetooth.md §9.3).
+    { "BluetoothDialog", "vela-bluetooth-question", layerOverlay, centered, 0, keysOnDemand },
     { "PropertiesDialog", "vela-properties", layerTop, centered, 0, keysOnDemand },
     { "QuickSettings", "vela-quick-settings", layerTop, bottomRight, 0, keysOnDemand },
     { "NotificationCenter", "vela-notification-center", layerTop, bottomRight, 0, keysOnDemand },
@@ -242,19 +259,23 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
     return window;
 }
 
-// With the taskbar aligned left, Start opens at the bottom left: its window
-// touches the output's edge, and the panel rests 12 units from it
-// (StartMenu.qml's `atLeft`).
-void placeStartMenu(QQuickWindow* window, const QString& alignment)
+// Start opens above its button: at the bottom left where the apps are at the
+// screen's left, its window touching the output's edge and the panel 12 units
+// from it (StartMenu.qml's `atLeft`). That is the alignment "left", unless a
+// fitted pill places the apps itself: centered, or at the left with
+// taskbar-edge=2 (Left pill). themefile.h's taskbarLayout() is the rule,
+// the one Styles.qml and Taskbar.qml draw with.
+void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVariantMap& theme, bool light)
 {
     LayerWindow* layer = LayerWindow::get(window);
-    const bool left = alignment == QLatin1String("left");
+    const bool left = vela::themes::taskbarLayout(theme, light).appsAtLeft(alignment);
     layer->setAnchors(left ? bottomLeft : bottom);
     window->setProperty("atLeft", left);
 }
 
 } // namespace
 
+/** Configure text before Qt startup and run the shell's desktop surfaces and services. */
 int main(int argc, char* argv[])
 {
     // "vela-shell --choose-source": the chooser xdg-desktop-portal-wlr
@@ -269,28 +290,41 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // Text with FreeType and font hinting, like Plasma and Windows: crisper
-    // than Qt Quick's default text (distance fields, no hinting), on the
-    // output's real pixels even at fractional scales.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_DEFAULT_TEXT_RENDER_TYPE")) {
-        QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
-    }
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
     QGuiApplication::setQuitOnLastWindowClosed(false);
+    // VELA_STILL (an ISO date and time): still pictures that don't change
+    // with when they are taken (scripts/theme-pictures.py). The clock and the
+    // calendar show that time (ShellController::now()), carets don't blink.
+    if (QDateTime::fromString(qEnvironmentVariable("VELA_STILL"), Qt::ISODate).isValid()) {
+        QGuiApplication::styleHints()->setCursorFlashTime(0);
+    }
     // Before anything else: the C++ models are born already translated too.
     QQmlApplicationEngine* qmlEngine = nullptr;
     AppModel* appModel = nullptr;
     DesktopModel* desktopModel = nullptr;
-    vela::language::install(QStringLiteral("vela-shell"), [&qmlEngine, &appModel, &desktopModel] {
+    vela::audio::Audio* audioModel = nullptr;
+    ScreenSharing* sharingModel = nullptr;
+    vela::language::install(QStringLiteral("vela-shell"),
+        [&qmlEngine, &appModel, &desktopModel, &audioModel, &sharingModel] {
         if (appModel) {
             appModel->reload(); // app names in the new language (Name[en], Name[it])
+        }
+        if (audioModel && appModel) {
+            audioModel->setAppResolver(audioAppResolver(*appModel)); // the mixers' and screen sharing's apps
+        }
+        if (sharingModel) {
+            sharingModel->refresh(); // who shares what, in the new language
         }
         if (desktopModel) {
             desktopModel->refresh(); // the Recycle Bin
         }
         if (qmlEngine) {
+            // Dates follow too: bindings that read Qt.uiLanguage (the
+            // calendar's day and month names) are evaluated again.
+            qmlEngine->setUiLanguage(QLocale().bcp47Name());
             qmlEngine->retranslate();
         }
     });
@@ -350,6 +384,15 @@ int main(int argc, char* argv[])
         });
     notifications.setDoNotDisturb(config.doNotDisturb());
     QObject::connect(&config, &Config::doNotDisturbChanged, &notifications, &NotificationServer::setDoNotDisturb);
+    // Low and critical batteries, the PC's and the peripherals' (UPower,
+    // docs/battery-notifications.md), as chosen in Settings.
+    BatteryNotices batteries(&notifications);
+    const auto batterySettings = [&] {
+        batteries.configure({ config.batteryNotify(), config.batteryLowLevel(), config.deviceBatteryNotify() });
+    };
+    QObject::connect(&config, &Config::batteryChanged, &batteries, batterySettings);
+    batterySettings();
+    batteries.start();
     TrayModel tray;
     tray.start();
     SystemActions system;
@@ -368,6 +411,8 @@ int main(int argc, char* argv[])
     QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, &ShellController::openWithRequested);
     QObject::connect(&desktop, &DesktopModel::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     desktopModel = &desktop;
+    // Settings > Background shows or hides the icons too.
+    QObject::connect(&config, &Config::desktopIconsChanged, &desktop, &DesktopModel::setShowIcons);
     ServiceMenus serviceMenus;
     FileProperties properties;
     FileActions fileActions;
@@ -376,11 +421,55 @@ int main(int argc, char* argv[])
     // History turned on or off from Settings (vela-shell.conf).
     QObject::connect(&config, &Config::clipboardChanged, &clipboard,
         [&config, &clipboard] { clipboard.setEnabled(config.clipboardHistory()); });
-    SystemStatus status;
+    // Bluetooth (docs/bluetooth.md §9.2, §9.3): the shell is Vela's UI, and
+    // draws the questions Settings doesn't.
+    vela::bluetooth::Bluetooth bluetooth(true);
+    // Settings says itself that the PC is still visible, while it is open.
+    BluetoothPrompts bluetoothPrompts(&bluetooth, &notifications, [&windows] {
+        for (const ForeignToplevel* window : windows.windows()) {
+            if (window->appId == QLatin1String("vela-settings")) {
+                return true;
+            }
+        }
+        return false;
+    });
+    QObject::connect(&windows, &ForeignToplevelManager::windowsChanged,
+        &bluetoothPrompts, &BluetoothPrompts::settingsWindowsChanged);
+    // Updates (docs/updates.md §9.2): a new one, and "Sign out to finish".
+    vela::updates::Updates updates;
+    UpdateNotices updateNotices(
+        &updates, &notifications, [&system] { system.trigger(QStringLiteral("updates-settings")); },
+        [&shell] { shell.logout(); });
+    SystemStatus status(&bluetooth);
     Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
+    // Who shares the screen (docs/screen-sharing.md §5): apps named as in Start.
+    ScreenSharing sharing([&apps](const QStringList& candidates) {
+        for (const QString& candidate : candidates) {
+            const QString desktopId = apps.findDesktopId(candidate);
+            if (!desktopId.isEmpty()) {
+                const QVariantMap entry = apps.entry(desktopId);
+                return ScreenSharing::App { desktopId, entry.value(QStringLiteral("name")).toString(),
+                    entry.value(QStringLiteral("iconName")).toString() };
+            }
+        }
+        return ScreenSharing::App {};
+    });
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
+    audioModel = &audio;
+    sharingModel = &sharing;
+    audio.setBluetooth(&bluetooth); // headsets' batteries
+    // The apps behind a portal share (docs/screen-sharing.md §5.2).
+    QObject::connect(&audio, &vela::audio::Audio::changed, &sharing,
+        [&audio, &sharing] { sharing.setPortalApps(audio.screenUsers()); });
+    // Do not disturb by itself while the screen is shared, unless turned off
+    // (docs/screen-sharing.md §7).
+    auto silenceForSharing
+        = [&] { notifications.setAutomaticDoNotDisturb(sharing.active() && config.silenceWhileSharing()); };
+    QObject::connect(&sharing, &ScreenSharing::changed, &notifications, silenceForSharing);
+    QObject::connect(&config, &Config::silenceWhileSharingChanged, &notifications, silenceForSharing);
+    silenceForSharing();
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);
@@ -394,17 +483,47 @@ int main(int argc, char* argv[])
     // Vela.Controls, like the apps.
     Appearance* style = vela::controls::install(engine, Appearance::Mode::Shell);
     style->watch();
+    // The distribution's logo may be in the icon theme only: look again now
+    // that it is set, and when it changes with the mode.
+    config.refreshStartIcon();
+    QObject::connect(style, &Appearance::changed, &config, &Config::refreshStartIcon);
     // The look the compositor draws with, computed here (docs/visual-coherence.md
     // §6.6): both modes and the accent (acrylic tint, title bars, the snap
     // preview), and the title bars' Mica colors in the apps' mode, with the
     // formula Vela's apps use for their content (mica.h).
     QColor tint = shell.wallpaperTint(config.wallpaper());
+    // A theme's accent and window background (themes/<name>.conf) win, as in
+    // Theme.qml: the title bars match the apps' content. A see-through
+    // background (Window Glass) keeps Mica on the title bars, as in Lowell137's
+    // fork: an opaque bar over glass content.
     auto sendLook = [&config, style, &tint] {
+        const QVariant themeAccent = vela::themes::themed(style->theme(), QStringLiteral("accent"), style->light());
+        const QColor accent = themeAccent.typeId() == QMetaType::QColor ? themeAccent.value<QColor>() : style->accent();
         ShellController::sendToCompositor("theme " + config.shellTheme().toLatin1() + ' '
-            + config.appTheme().toLatin1() + ' ' + style->accent().name().toLatin1());
+            + config.appTheme().toLatin1() + ' ' + accent.name().toLatin1());
         const bool appsLight = config.appTheme() == QLatin1String("light");
-        ShellController::sendToCompositor("mica " + micaFromTint(tint, true, appsLight).name().toLatin1() + ' '
-            + micaFromTint(tint, false, appsLight).name().toLatin1());
+        const QVariant background = vela::themes::themed(style->theme(), QStringLiteral("background"), appsLight);
+        const bool themed = background.typeId() == QMetaType::QColor && background.value<QColor>().alpha() == 255;
+        const QColor active = themed ? background.value<QColor>() : micaFromTint(tint, true, appsLight);
+        const QColor inactive = themed ? active : micaFromTint(tint, false, appsLight);
+        ShellController::sendToCompositor("mica " + active.name().toLatin1() + ' ' + inactive.name().toLatin1());
+        // The blur's look (the blur-* keys): the theme's for every acrylic
+        // surface, then each panel's from the theme and its own style only, so
+        // that choosing a taskbar style leaves the Start menu as it was. A
+        // panel with a style of its own is glass from 4% alpha (a nearly clear
+        // taskbar); without one it stays as Vela draws it.
+        using vela::themes::Layer;
+        ShellController::sendToCompositor(vela::themes::blurLook("*", style->themeFor(Layer::Theme)));
+        static const std::pair<Layer, const char*> panels[] = {
+            { Layer::Taskbar, "vela-taskbar" },
+            { Layer::StartMenu, "vela-start-menu" },
+            { Layer::Notifications, "vela-quick-settings" },
+            { Layer::Notifications, "vela-notification-center" },
+        };
+        for (const auto& [layer, scope] : panels) {
+            ShellController::sendToCompositor(
+                vela::themes::blurLook(scope, style->themeFor(layer), style->styleChosen(layer)));
+        }
     };
     sendLook();
     QObject::connect(&config, &Config::wallpaperChanged, &shell, [&] {
@@ -441,7 +560,10 @@ int main(int argc, char* argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Clip"), &clipboard);
     engine.rootContext()->setContextProperty(QStringLiteral("Snip"), &snip);
     engine.rootContext()->setContextProperty(QStringLiteral("Status"), &status);
+    qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
+    engine.rootContext()->setContextProperty(QStringLiteral("BluetoothPrompts"), &bluetoothPrompts);
     engine.rootContext()->setContextProperty(QStringLiteral("Brightness"), &brightness);
+    engine.rootContext()->setContextProperty(QStringLiteral("Sharing"), &sharing);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Sound"), &sound);
     // The apps' level bars in the quick settings mixer (docs/audio.md §7.1).
@@ -463,10 +585,12 @@ int main(int argc, char* argv[])
             notificationPopups = window;
         }
     }
-    placeStartMenu(startMenu, config.taskbarAlignment());
-    QObject::connect(&config, &Config::taskbarChanged, startMenu, [&config, startMenu] {
-        placeStartMenu(startMenu, config.taskbarAlignment());
-    });
+    placeStartMenu(startMenu, config.taskbarAlignment(), style->theme(), style->light());
+    const auto replaceStartMenu = [&config, startMenu, style] {
+        placeStartMenu(startMenu, config.taskbarAlignment(), style->theme(), style->light());
+    };
+    QObject::connect(&config, &Config::taskbarChanged, startMenu, replaceStartMenu);
+    QObject::connect(style, &Appearance::changed, startMenu, replaceStartMenu);
     // Wallpapers on every output; the taskbar too, like in Windows (or only on
     // the main one, if the user wants that).
     ScreenWindows wallpapers(&engine, "Wallpaper", setupWallpaper);

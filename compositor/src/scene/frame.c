@@ -32,6 +32,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_tearing_control_v1.h>
+#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
@@ -72,6 +73,11 @@ static bool same_fbox(const struct wlr_fbox *a, const struct wlr_fbox *b)
 static bool same_color(const struct wlr_render_color *a, const struct wlr_render_color *b)
 {
     return a->r == b->r && a->g == b->g && a->b == b->b && a->a == b->a;
+}
+
+static bool same_blur_look(const struct vela_blur_look *a, const struct vela_blur_look *b)
+{
+    return a->saturation == b->saturation && a->strength == b->strength && a->tint == b->tint && a->glass == b->glass;
 }
 
 static int64_t region_area(const pixman_region32_t *region)
@@ -122,10 +128,11 @@ static bool is_one_to_one(const struct wlr_fbox *src, const struct wlr_box *box,
 }
 
 // The blur width in output pixels: the radius is in logical units, so the same
-// blur at every scale (§8.3).
-static float blur_strength(double scale)
+// blur at every scale (§8.3). A theme's blur-strength scales it.
+static float blur_strength(const struct vela_element *e)
 {
-    return vela_clampf((float)(1.25 * scale), 1.0f, 3.0f);
+    const float strength = vela_clampf((float)(1.25 * e->scale_x), 1.0f, 3.0f);
+    return e->acrylic && e->look.strength >= 0.0f ? vela_clampf(strength * e->look.strength, 0.5f, 6.0f) : strength;
 }
 
 // A region of the surface (in its coordinates) in pixels, within the
@@ -218,6 +225,7 @@ struct visit {
     double lx, ly;
     float opacity;
     struct clip clip;
+    double density; // surface coordinates per logical unit (surface.h)
 };
 
 // Sharpness (§3.3, §3.4): an image drawn at the output's scale (a buffer as
@@ -245,10 +253,10 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
     if (!texture) {
         return; // no buffer: nothing to show
     }
-    double lx = v->lx + sx;
-    double ly = v->ly + sy;
-    double width = surface->current.width;
-    double height = surface->current.height;
+    double lx = v->lx + sx / v->density;
+    double ly = v->ly + sy / v->density;
+    double width = surface->current.width / v->density;
+    double height = surface->current.height / v->density;
     struct wlr_fbox src;
     wlr_surface_get_buffer_source_box(surface, &src);
     enum wl_output_transform transform = wlr_output_transform_invert(surface->current.transform);
@@ -269,8 +277,10 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
     e->linear = !is_one_to_one(&e->src, &box, e->transform);
     e->origin_x = (lx - p->origin_x) * p->scale;
     e->origin_y = (ly - p->origin_y) * p->scale;
-    e->scale_x = width > 0 ? box.width / width : p->scale;
-    e->scale_y = height > 0 ? box.height / height : p->scale;
+    // Pixels per surface coordinate: the regions (damage, opaque, blur) are
+    // in those.
+    e->scale_x = width > 0 ? box.width / (double)surface->current.width : p->scale / v->density;
+    e->scale_y = height > 0 ? box.height / (double)surface->current.height : p->scale / v->density;
     apply_clip(e, &v->clip);
     const pixman_region32_t *blur = vela_blur_region(surface);
     if (blur) {
@@ -282,11 +292,17 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
             e->blur_box = (struct wlr_box) { ext->x1, ext->y1, ext->x2 - ext->x1, ext->y2 - ext->y1 };
             // Mechanism for clients, policy for ourselves: Vela's surfaces
             // are layer surfaces named vela-... (the shell's panels, the
-            // polkit prompt); a client that picks such a name only changes its
-            // own look.
-            struct wlr_layer_surface_v1 *layer
-                = wlr_layer_surface_v1_try_from_wlr_surface(wlr_surface_get_root_surface(surface));
-            e->acrylic = layer && layer->namespace && strncmp(layer->namespace, "vela-", 5) == 0;
+            // polkit prompt) and windows whose app id is vela-... (Vela's
+            // apps, blurred behind with a theme's see-through background); a
+            // client that picks such a name only changes its own look. A
+            // panel has its style's look, a window the theme's.
+            struct wlr_surface *root = wlr_surface_get_root_surface(surface);
+            struct wlr_layer_surface_v1 *layer = wlr_layer_surface_v1_try_from_wlr_surface(root);
+            struct wlr_xdg_toplevel *toplevel = layer ? NULL : wlr_xdg_toplevel_try_from_wlr_surface(root);
+            const char *name = layer ? layer->namespace : toplevel ? toplevel->app_id : NULL;
+            e->acrylic = name && strncmp(name, "vela-", 5) == 0;
+            e->look = !e->acrylic ? VELA_BLUR_LOOK_DEFAULT
+                : vela_scene_blur_look(v->scene, layer ? layer->namespace : NULL);
         }
         pixman_region32_fini(&pixels);
     }
@@ -335,7 +351,7 @@ static void visit(struct vela_scene *scene, struct vela_node *node, double lx, d
         if (!root->mapped) {
             break;
         }
-        struct visit context = { scene, p, out, lx, ly, opacity, clip };
+        struct visit context = { scene, p, out, lx, ly, opacity, clip, vela_surface_density(root) };
         vela_for_each_surface(root, add_surface, &context);
         break;
     }
@@ -472,7 +488,7 @@ static void expand_damage_for_blur(const struct vela_elements *elements, pixman_
             if (!e->visible || wlr_box_empty(&e->blur_box)) {
                 continue;
             }
-            int reach = vela_blur_reach(blur_strength(e->scale_x));
+            int reach = vela_blur_reach(blur_strength(e));
             const pixman_box32_t zone = { e->blur_box.x - reach, e->blur_box.y - reach,
                 e->blur_box.x + e->blur_box.width + reach, e->blur_box.y + e->blur_box.height + reach };
             pixman_region32_t inside;
@@ -502,7 +518,8 @@ static bool same_look(const struct vela_element *a, const struct vela_element *b
         && a->transform == b->transform && a->opacity == b->opacity && a->linear == b->linear
         && same_color(&a->color, &b->color) && same_box(&a->shape_rect, &b->shape_rect)
         && a->shape_radius == b->shape_radius && same_box(&a->shadow_window, &b->shadow_window)
-        && a->shadow_sigma == b->shadow_sigma && same_box(&a->blur_box, &b->blur_box) && a->acrylic == b->acrylic;
+        && a->shadow_sigma == b->shadow_sigma && same_box(&a->blur_box, &b->blur_box) && a->acrylic == b->acrylic
+        && same_blur_look(&a->look, &b->look);
 }
 
 // ---------------------------------------------------------------- drawing --
@@ -589,8 +606,17 @@ void vela_draw_elements(struct vela_scene *scene, struct vela_pass *pass, const 
             if (pixman_region32_not_empty(&region)) {
                 struct vela_texture_draw panel = draw;
                 panel.clip = NULL;
-                vela_pass_add_blur(
-                    pass, &panel, &region, blur_strength(e->scale_x), e->acrylic ? &scene->acrylic_tint : NULL);
+                // A theme's blur-tint replaces the acrylic tint's opacity
+                // (the color stays; premultiplied) and its blur-saturation
+                // Vela's 1.25.
+                struct wlr_render_color tint = scene->acrylic_tint;
+                if (e->look.tint >= 0.0f && tint.a > 0.0f) {
+                    const float k = vela_clampf(e->look.tint, 0.0f, 1.0f) / tint.a;
+                    tint = (struct wlr_render_color) { tint.r * k, tint.g * k, tint.b * k, tint.a * k };
+                }
+                const float saturation = e->look.saturation >= 0.0f ? vela_clampf(e->look.saturation, 1.0f, 3.0f) : 1.25f;
+                vela_pass_add_blur(pass, &panel, &region, blur_strength(e), e->acrylic ? &tint : NULL, saturation,
+                    e->acrylic && e->look.glass);
             }
             pixman_region32_fini(&region);
         }

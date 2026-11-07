@@ -14,7 +14,9 @@ has no software fallback): without one, run.py skips the tests."""
 
 import atexit
 import json
+import math
 import os
+import re
 import shutil
 import struct
 import signal
@@ -27,7 +29,13 @@ import zlib
 
 # Opt-in only: keep the functional test harness standard-library-only.
 _PROFILE = os.environ.get("VELA_FUNCTIONAL_PROFILE") == "1"
+_WAYLAND_TRACE = re.compile(r"\[\d{2}:\d{2}:\d{2}\.\d{6}\] ")
 _METRICS = {}
+# Hosts with slow CPUs (the rented GPU CI's) wait this many times longer for
+# what the tests expect to happen; what they check stays the same.
+TIME_SCALE = float(os.environ.get("VELA_TEST_TIME_SCALE") or 1)
+if not math.isfinite(TIME_SCALE) or TIME_SCALE <= 0:
+    raise ValueError(f"VELA_TEST_TIME_SCALE must be a positive number, not {TIME_SCALE}")
 
 
 def _profile(metric, duration):
@@ -82,6 +90,7 @@ class Session:
         self.directory = None
         self.shell = None
         self.log = None
+        self.log_path = None
 
     # ---------------------------------------------------------- startup --
 
@@ -106,7 +115,9 @@ class Session:
             _profile("session-start", time.perf_counter() - began)
 
     def _start(self):
+        """Start the compositor with private persistent paths and a session log."""
         self.directory = tempfile.mkdtemp(prefix="vela-functional-")
+        os.mkdir(os.path.join(self.directory, "home"))
         env = {key: value for key, value in os.environ.items()
                if key not in ("WAYLAND_DISPLAY", "DISPLAY", "QT_WAYLAND_RECONNECT", "WAYLAND_SOCKET")}
         env.update({
@@ -116,6 +127,8 @@ class Session:
             "VELA_DEBUG_INPUT": "1",
             "VELA_OUTPUT_SIZE": self.size,
             "VELA_SCALE": str(self.scale),
+            "HOME": os.path.join(self.directory, "home"),
+            "XDG_STATE_HOME": os.path.join(self.directory, "state"),
             "XDG_CONFIG_HOME": os.path.join(self.directory, "config"),
             "XDG_DATA_HOME": os.path.join(self.directory, "data"),
             "XDG_CACHE_HOME": os.path.join(self.directory, "cache"),
@@ -142,7 +155,7 @@ class Session:
         if expected_vendor := os.environ.get("VELA_GPU_EXPECT_VENDOR"):
             nodes = verify_renderer_vendor(self.log_text(), expected_vendor)
             print(f"Vela renderer PCI {expected_vendor} confirmed: {', '.join(nodes)}", flush=True)
-        runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+        runtime = self.env.get("XDG_RUNTIME_DIR", "/tmp")
         self.socket_path = os.path.join(runtime, f"vela-{self.display}.sock")
         self.wait_for(lambda _: os.path.exists(self.socket_path), what="the command socket", read_state=False)
         self.client_env = dict(env, WAYLAND_DISPLAY=self.display)
@@ -150,6 +163,7 @@ class Session:
         self.wait_for(lambda s: s["outputs"], what="an output")
 
     def stop(self, keep_log=False):
+        """Stop managed processes and clean up even after partial startup."""
         validation_errors = []
         if self.shell:
             self.shell.close()
@@ -187,7 +201,8 @@ class Session:
                     validation_errors.append("Requested Vulkan validation layers were not enabled")
                 validation_errors.extend(line for line in text.splitlines()
                                          if "[ERROR]" in line and "Vulkan:" in line)
-            if keep_log or status != self.expected_exit:
+            if (self.log_path and os.path.isfile(self.log_path)
+                    and (keep_log or status != self.expected_exit)):
                 print(f"\n--- Vela log ({self.log_path}) ---")
                 with open(self.log_path, errors="replace") as log:
                     print("".join(log.readlines()[-40:]))
@@ -205,7 +220,7 @@ class Session:
             return log.read()
 
     def wait_for_log(self, needle, extract=lambda line: line, timeout=15):
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         while time.monotonic() < deadline:
             for line in self.log_text().splitlines():
                 if needle in line:
@@ -237,9 +252,9 @@ class Session:
     def state(self):
         return State(self.query("state"))
 
-    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True):
+    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05):
         """Waits until condition(state) is true; returns the state."""
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         last = None
         while time.monotonic() < deadline:
             last = self.state() if read_state else None
@@ -248,16 +263,21 @@ class Session:
                     return last
             except (KeyError, IndexError, TypeError):
                 pass
-            time.sleep(0.05)
-        raise TimeoutError(f"after {timeout} s this still isn't true: {what}\nlast state: {last}\n"
-                           f"--- end of the Vela log ---\n{self.log_text()[-2500:]}")
+            time.sleep(interval)
+        # Leave out WAYLAND_DEBUG's protocol trace: it buries Vela's own lines.
+        # Errors come first, wherever they are: the tail can be all animation.
+        lines = [line for line in self.log_text().splitlines(keepends=True) if not _WAYLAND_TRACE.match(line)]
+        errors = "".join(line for line in lines if "[ERROR]" in line)
+        raise TimeoutError(f"after {timeout * TIME_SCALE:g} s this still isn't true: {what}\nlast state: {last}\n"
+                           f"--- Vela's errors ---\n{errors[-2500:]}"
+                           f"--- end of the Vela log ---\n{''.join(lines)[-2500:]}")
 
     def config_path(self, name="vela.conf"):
         return os.path.join(self.env["XDG_CONFIG_HOME"], "vela", name)
 
     def fake_shell(self):
         """From here on Vela's messages to the shell reach a FakeShell."""
-        self.shell = FakeShell(self.display)
+        self.shell = FakeShell(self.display, self.env.get("XDG_RUNTIME_DIR"))
         return self.shell
 
     # ------------------------------------------------ keyboard and mouse --
@@ -283,18 +303,22 @@ class Session:
 
     # -------------------------------------------------------- windows --
 
-    def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False):
+    def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False,
+                    env=None, glass=False):
         """Opens a window (vela-pattern, or `command`); returns its identifier.
 
-        decorated: with Vela's title bar (xdg-decoration)."""
+        decorated: with Vela's title bar (xdg-decoration).
+        glass: a 50% black window with the blur behind it (vela-pattern --glass).
+        env: optional environment for protocol-specific clients (e.g. Xwayland DISPLAY)."""
         before = {w["id"] for w in self.state().windows}
         pattern = ([tool("vela-pattern")] + (["--app-id", app_id] if app_id else [])
-                   + (["--decorated"] if decorated else []) + [str(width), str(height)])
+                   + (["--decorated"] if decorated else []) + (["--glass"] if glass else [])
+                   + [str(width), str(height)])
         # Preserve per-client output: GPU test tools can fail before their
         # first Wayland surface is mapped, and DEVNULL hides the actual cause.
         client_log_path = os.path.join(self.directory, f"client-{len(self.clients) + 1}.log")
         with open(client_log_path, "w") as client_log:
-            client = subprocess.Popen(command or pattern, env=self.client_env,
+            client = subprocess.Popen(command or pattern, env=self.client_env if env is None else env,
                                       stdout=client_log, stderr=subprocess.STDOUT)
         self.clients.append(client)
 
@@ -328,7 +352,7 @@ class Session:
         def geometry():
             window = self.state().window(identifier)
             return (window["x"], window["y"], window["w"], window["h"])
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         last = geometry()
         still_since = time.monotonic()
         while time.monotonic() < deadline:
@@ -365,8 +389,9 @@ class FakeShell:
     """The fake Qt shell: listens on its socket and collects the lines
     Vela sends it ("toggle-start", "accessibility {...}", ...)."""
 
-    def __init__(self, display):
-        runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+    def __init__(self, display, runtime=None):
+        # The session's runtime directory, where Vela looks for the shell.
+        runtime = runtime or os.environ.get("XDG_RUNTIME_DIR", "/tmp")
         self.path = os.path.join(runtime, f"vela-shell-{display}.sock")
         if os.path.exists(self.path):
             os.unlink(self.path)
@@ -398,13 +423,26 @@ class FakeShell:
     def wait_for(self, prefix, timeout=5.0, containing=""):
         """The last line starting with `prefix` (and `containing` that), as
         soon as it arrives."""
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         while time.monotonic() < deadline:
             lines = [line for line in self.received(prefix) if containing in line]
             if lines:
                 return lines[-1]
             time.sleep(0.05)
         raise TimeoutError(f"the shell never received «{prefix}…{containing}»; it got: {self.received()[-10:]}")
+
+    def barrier(self):
+        """Wait until the socket reader processed every earlier connection.
+
+        Use after an input/compositor checkpoint before asserting that a
+        forbidden shell message was NOT sent; a fixed sleep cannot prove that.
+        """
+        marker = f"__test_barrier__:{time.monotonic_ns()}"
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.connect(self.path)
+            connection.sendall((marker + "\n").encode())
+        self.wait_for(marker)
+        return marker
 
     def clear(self):
         with self.lock:

@@ -85,6 +85,22 @@ struct vela_tree {
     struct vela_shape shape;
 };
 
+// How an acrylic blur looks (docs/configuration.md, "Theme files"): a theme
+// can make the glass more vivid (saturation, Vela's 1.25; 1 to 3), blurrier or
+// clearer (strength, a factor of the radius; the radius stays within 0.5 and
+// 6) and lighten or drop the gray wash (tint, the acrylic tint's opacity,
+// Vela's 0.55; 0 to 1). A negative value keeps Vela's own. glass: a styled
+// panel, glass wherever it is at least 4% opaque (a nearly clear taskbar),
+// not from half as Vela's other surfaces.
+struct vela_blur_look {
+    float saturation;
+    float strength;
+    float tint;
+    bool glass;
+};
+
+#define VELA_BLUR_LOOK_DEFAULT ((struct vela_blur_look) { -1.0f, -1.0f, -1.0f, false })
+
 // An app surface with its subsurfaces, read live.
 struct vela_surface_node {
     struct vela_node node;
@@ -119,9 +135,24 @@ struct vela_scene {
     struct wlr_linux_dmabuf_v1 *linux_dmabuf;
     // For the explicit sync release points.
     struct wl_event_loop *event_loop;
+    // Called once the dispatch in progress is over, after a change: what is
+    // under the cursor may be something else (a window opened, closed, went
+    // fullscreen, a menu appeared). Once for all the changes of a dispatch.
+    void (*rearranged)(void *data);
+    void *rearranged_data;
+    struct wl_event_source *rearranged_idle;
     // The acrylic tint of blurs (premultiplied sRGB): Windows 11's dark theme
     // one, or the light one when the shell is light.
     struct wlr_render_color acrylic_tint;
+    // The look of acrylic blurs (the shell's "blur-look", from a theme's
+    // blur-* keys): the theme's for all of them, then each shell panel's own
+    // by layer namespace, from its style. vela_scene_blur_look() resolves it.
+    struct vela_blur_look blur_look;
+    struct vela_panel_blur_look {
+        char scope[48];
+        struct vela_blur_look look;
+    } panel_looks[8];
+    int panel_look_count;
     // The color filters of all outputs: a 3x3 matrix by rows in linear space,
     // if color_filtered. Applied while drawing.
     bool color_filtered;
@@ -148,6 +179,14 @@ struct vela_scene {
 struct vela_scene *vela_scene_create(void);
 // The outputs (their frames) and the owners' nodes go first.
 void vela_scene_destroy(struct vela_scene *scene);
+// The blur look of every acrylic surface (scope NULL or "*") or of the shell
+// panel with that layer namespace. False if there is no room for another.
+bool vela_scene_set_blur_look(struct vela_scene *scene, const char *scope, struct vela_blur_look look);
+// Whether that scope has a look of its own ("*" always does).
+bool vela_scene_has_blur_look(const struct vela_scene *scene, const char *scope);
+// The look of an acrylic surface with this layer namespace: its panel's own
+// if the shell sent one, else the general one; negative fields: Vela's own.
+struct vela_blur_look vela_scene_blur_look(const struct vela_scene *scene, const char *scope);
 
 // To call on every change: asks all outputs for a frame.
 void vela_scene_changed(struct vela_scene *scene);
@@ -161,6 +200,7 @@ struct vela_hit {
     struct wlr_surface *surface; // NULL: one of our nodes (the title bar)
     double sx, sy;
     void *owner; // the nearest `data` going up the tree
+    struct vela_node *node; // the surface or rectangle hit
 };
 struct vela_hit vela_scene_at(struct vela_scene *scene, double lx, double ly);
 
@@ -183,6 +223,9 @@ void vela_node_raise_to_top(struct vela_node *node);
 void vela_node_place_above(struct vela_node *node, struct vela_node *sibling);
 void vela_node_place_below(struct vela_node *node, struct vela_node *sibling);
 void vela_node_reparent(struct vela_node *node, struct vela_tree *parent);
+// Which is drawn on top: > 0 `node`, < 0 `other`, 0 when one contains the
+// other (or they are in different trees).
+int vela_node_order(const struct vela_node *node, const struct vela_node *other);
 
 void vela_tree_set_shape(struct vela_tree *tree, const struct vela_shape *shape);
 void vela_rect_node_set_size(struct vela_rect_node *rect, double width, double height);

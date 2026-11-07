@@ -1,0 +1,179 @@
+// SPDX-FileCopyrightText: 2026 Brando Giuffrida
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import QtQuick
+import QtTest
+import Vela.Controls
+import "../qml"
+
+// Personalization's Undo (UndoBar.qml): what a click on a theme or a style
+// just changed, with Undo for a few seconds; and the cards those clicks are
+// on (PictureTile.qml).
+Item {
+    id: root
+    width: 900
+    height: 700
+
+    property var undone: []
+
+    UndoBar {
+        id: bar
+        width: implicitWidth
+        height: implicitHeight
+        timeout: 3000
+    }
+
+    // A page with more cards than fit, scrolled to its end under the bar.
+    Page {
+        id: page
+        x: 300
+        y: 300
+        width: 500
+        height: 300
+        Repeater {
+            model: 10
+            Rectangle {
+                required property int index
+                objectName: index === 9 ? "lastCard" : ""
+                width: 400
+                height: 60
+            }
+        }
+    }
+
+    PictureTile {
+        id: tile
+        y: 100
+        width: 240
+        text: "Window Glass"
+        subtitle: "Original author: Lowell137"
+    }
+    SignalSpy { id: clicks; target: tile; signalName: "clicked" }
+
+    TestCase {
+        name: "UndoBar"
+        when: windowShown
+
+        function buttons() {
+            const found = []
+            const walk = item => {
+                for (let i = 0; i < item.children.length; ++i) {
+                    const child = item.children[i]
+                    if (child.text !== undefined && child.clicked !== undefined && child.hasOwnProperty("accent")) {
+                        found.push(child)
+                    }
+                    walk(child)
+                }
+            }
+            walk(bar)
+            return found
+        }
+
+        // Offered, and in sight: before its fade-in ends a click may miss it.
+        function offer(text, undo) {
+            bar.offer(text, undo)
+            tryCompare(bar, "opacity", 1)
+        }
+
+        function init() {
+            bar.timeout = 3000
+            bar.dismiss()
+            root.undone = []
+            clicks.clear()
+            tryCompare(bar, "visible", false)
+        }
+
+        function test_undo_runs_once_and_goes_away() {
+            offer("Window Glass is in use", () => { root.undone = root.undone.concat(["theme"]) })
+            verify(bar.shown)
+            const undo = buttons().find(b => b.text === "Undo")
+            verify(undo)
+            mouseClick(undo)
+            compare(root.undone, ["theme"])
+            verify(!bar.shown)
+            // Gone: a second click can't undo twice.
+            tryCompare(bar, "visible", false)
+        }
+
+        function test_a_new_offer_replaces_the_old_one() {
+            offer("Pill is in use", () => { root.undone = root.undone.concat(["first"]) })
+            offer("Dock is in use", () => { root.undone = root.undone.concat(["second"]) })
+            compare(bar.text, "Dock is in use")
+            mouseClick(buttons().find(b => b.text === "Undo"))
+            compare(root.undone, ["second"])
+        }
+
+        function test_it_goes_away_by_itself_unless_hovered() {
+            offer("Pill is in use", () => {})
+            bar.timeout = 300
+            mouseMove(bar, bar.width / 2, bar.height / 2)
+            wait(bar.timeout * 2)
+            verify(bar.shown, "it went away under the pointer")
+            mouseMove(root, root.width - 1, root.height - 1)
+            tryCompare(bar, "shown", false, bar.timeout * 4)
+            compare(root.undone, [])
+        }
+
+        function test_it_stays_while_the_keyboard_is_on_it() {
+            offer("Pill is in use", () => {})
+            bar.timeout = 300
+            const undo = buttons().find(b => b.text === "Undo")
+            undo.forceActiveFocus(Qt.TabFocusReason)
+            wait(bar.timeout * 2)
+            verify(bar.shown, "it went away with the keyboard on Undo")
+            page.forceActiveFocus()
+            tryCompare(bar, "shown", false, bar.timeout * 4)
+        }
+
+        function test_screen_readers_get_it() {
+            offer("Glass is in use", () => {})
+            compare(bar.Accessible.role, Accessible.AlertMessage)
+            compare(bar.Accessible.name, "Glass is in use")
+        }
+
+        // Main.qml puts it 24 above the window's bottom, over the page.
+        function test_scrolled_to_the_end_the_last_card_is_above_it() {
+            page.contentY = page.contentHeight - page.height
+            const last = findChild(page, "lastCard")
+            verify(last)
+            const bottom = last.mapToItem(page, 0, last.height).y
+            verify(bottom <= page.height - bar.implicitHeight - 24,
+                "the last card ends at " + bottom + " of " + page.height)
+        }
+
+        // Never wider than the page: a long text elides, Close stays in view.
+        function test_a_long_text_stays_within_the_page() {
+            bar.maximumWidth = 300
+            offer("A theme with a very long name that would not fit in a narrow window is in use", () => {})
+            verify(bar.implicitWidth <= 300)
+            bar.width = bar.implicitWidth
+            const close = buttons().find(b => b.text === "")
+            verify(close.mapToItem(bar, close.width, 0).x <= bar.width)
+            bar.maximumWidth = 560
+        }
+
+        function test_close_doesnt_undo() {
+            offer("Pill is in use", () => { root.undone = root.undone.concat(["undone"]) })
+            const close = buttons().find(b => b.text === "")
+            verify(close)
+            mouseClick(close)
+            verify(!bar.shown)
+            compare(root.undone, [])
+        }
+
+        function test_tile_is_a_checkable_choice() {
+            compare(tile.Accessible.role, Accessible.RadioButton)
+            verify(!tile.Accessible.checked)
+            tile.selected = true
+            verify(tile.Accessible.checked)
+            mouseClick(tile)
+            compare(clicks.count, 1)
+            // Keyboard: Tab gives it the focus, Space and Enter choose it.
+            tile.forceActiveFocus(Qt.TabFocusReason)
+            keyClick(Qt.Key_Space)
+            keyClick(Qt.Key_Return)
+            compare(clicks.count, 3)
+            tile.selected = false
+        }
+    }
+}

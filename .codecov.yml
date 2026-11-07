@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# CPU and manually sampled AMD/NVIDIA coverage must never be conflated.
+ignore:
+  - "tests/**"
+  - "**/tests/**"
+  - "build-coverage/**"
+  - "vela-gpu-build/**"
+
+flags:
+  cpu-tests:
+    carryforward: false
+  gpu-amd:
+    carryforward: false
+  gpu-nvidia:
+    carryforward: false
+
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: false

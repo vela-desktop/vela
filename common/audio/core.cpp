@@ -18,6 +18,7 @@
 #include <QLoggingCategory>
 #include <QThread>
 
+#include <algorithm>
 #include <mutex>
 
 Q_LOGGING_CATEGORY(lcAudio, "vela.audio")
@@ -401,6 +402,12 @@ struct Core::Private {
         om = wp_object_manager_new();
         wp_object_manager_add_interest(om, WP_TYPE_NODE, WP_CONSTRAINT_TYPE_PW_GLOBAL_PROPERTY, PW_KEY_MEDIA_CLASS,
             "#s", "*Audio*", nullptr);
+        // Screen sharing through the portal, and the apps receiving it
+        // (docs/screen-sharing.md §5.2).
+        wp_object_manager_add_interest(om, WP_TYPE_NODE, WP_CONSTRAINT_TYPE_PW_GLOBAL_PROPERTY, PW_KEY_MEDIA_CLASS,
+            "=s", "Video/Source", nullptr);
+        wp_object_manager_add_interest(om, WP_TYPE_NODE, WP_CONSTRAINT_TYPE_PW_GLOBAL_PROPERTY, PW_KEY_MEDIA_CLASS,
+            "=s", "Stream/Input/Video", nullptr);
         wp_object_manager_add_interest(om, WP_TYPE_DEVICE, WP_CONSTRAINT_TYPE_PW_GLOBAL_PROPERTY, PW_KEY_MEDIA_CLASS,
             "=s", "Audio/Device", nullptr);
         wp_object_manager_add_interest(om, WP_TYPE_LINK, nullptr);
@@ -601,6 +608,20 @@ void Core::rebuild()
         wp_iterator_unref(it);
     }
 
+    // Who a stream belongs to, as it says.
+    auto identityOf = [](gpointer node) {
+        AppIdentity app;
+        app.binary = prop(node, PW_KEY_APP_PROCESS_BINARY);
+        app.name = prop(node, PW_KEY_APP_NAME);
+        app.id = prop(node, PW_KEY_APP_ID);
+        app.portalAppId = prop(node, "pipewire.access.portal.app_id");
+        app.iconName = prop(node, PW_KEY_APP_ICON_NAME);
+        app.key = !app.binary.isEmpty() ? app.binary : !app.name.isEmpty() ? app.name : prop(node, PW_KEY_NODE_NAME);
+        return app;
+    };
+    QHash<quint32, QString> videoSources; // node.name
+    QList<QPair<quint32, AppIdentity>> videoStreams;
+
     QHash<quint32, QString> nodeClasses;
     WpIterator* it = wp_object_manager_new_filtered_iterator(d->om, WP_TYPE_NODE, nullptr);
     GValue value = G_VALUE_INIT;
@@ -609,6 +630,16 @@ void Core::rebuild()
         const quint32 id = boundId(node);
         const QString mediaClass = prop(node, PW_KEY_MEDIA_CLASS);
         nodeClasses.insert(id, mediaClass);
+        if (mediaClass == QLatin1String("Video/Source")) {
+            videoSources.insert(id, prop(node, PW_KEY_NODE_NAME));
+            g_value_unset(&value);
+            continue;
+        }
+        if (mediaClass == QLatin1String("Stream/Input/Video")) {
+            videoStreams.append({ id, identityOf(node) });
+            g_value_unset(&value);
+            continue;
+        }
 
         QList<double> channels;
         QStringList positions = parsePositions(prop(node, "audio.position"));
@@ -717,12 +748,7 @@ void Core::rebuild()
             st.serial = prop(node, PW_KEY_OBJECT_SERIAL).toULongLong();
             st.direction = mediaClass.startsWith(QLatin1String("Stream/Output")) ? Direction::Output : Direction::Input;
             st.nodeName = prop(node, PW_KEY_NODE_NAME);
-            st.app.binary = prop(node, PW_KEY_APP_PROCESS_BINARY);
-            st.app.name = prop(node, PW_KEY_APP_NAME);
-            st.app.id = prop(node, PW_KEY_APP_ID);
-            st.app.portalAppId = prop(node, "pipewire.access.portal.app_id");
-            st.app.iconName = prop(node, PW_KEY_APP_ICON_NAME);
-            st.app.key = !st.app.binary.isEmpty() ? st.app.binary : !st.app.name.isEmpty() ? st.app.name : st.nodeName;
+            st.app = identityOf(node);
             st.mediaRole = prop(node, PW_KEY_MEDIA_ROLE);
             st.channelVolumes = channels;
             st.muted = muted;
@@ -736,6 +762,24 @@ void Core::rebuild()
         g_value_unset(&value);
     }
     wp_iterator_unref(it);
+
+    // The apps receiving a portal share: their video stream linked to one of
+    // xdg-desktop-portal-wlr's nodes. Paused still counts: the share is open.
+    for (const auto& [id, app] : std::as_const(videoStreams)) {
+        bool fromPortal = false;
+        for (quint32 peer : receivesFrom.values(id)) {
+            fromPortal = fromPortal || videoSources.value(peer).startsWith(QLatin1String(portalStreamPrefix));
+        }
+        // The same app twice (two streams): once. Two apps sharing a binary
+        // (Flatpaks, Electron) but not their ids: both.
+        const bool known = std::any_of(s.screenConsumers.cbegin(), s.screenConsumers.cend(),
+            [&app](const AppIdentity& other) {
+                return other.key == app.key && other.portalAppId == app.portalAppId && other.id == app.id;
+            });
+        if (fromPortal && !known) {
+            s.screenConsumers.append(app);
+        }
+    }
 
     // What each stream is linked to, and where it was sent.
     for (Stream& st : s.streams) {

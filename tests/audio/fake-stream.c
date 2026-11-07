@@ -16,6 +16,11 @@
 //
 // Usage: vela-audio-fake-stream [--record] [--channels N] [--amplitude A]
 //                               [--frequency HZ] [--rate HZ] [--prop key=value]...
+//        vela-audio-fake-stream --video [--record] [--prop key=value]...
+//   --video      a video stream instead (docs/screen-sharing.md §5.2): a
+//                source driving the graph like the portal's (media.class
+//                Video/Source), or with --record an app receiving one
+//                (Stream/Input/Video, target.object chooses which)
 //   --amplitude  playback only: 0 (default) plays silence
 //   --rate       the stream's sample rate (48000), asked of the graph
 //                (node.rate) like pw-cat does
@@ -33,6 +38,7 @@
 
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
+#include <spa/param/video/format-utils.h>
 #include <spa/utils/result.h>
 
 #define DEFAULT_RATE 48000
@@ -42,6 +48,7 @@ struct fake {
     struct pw_main_loop* loop;
     struct pw_stream* stream;
     bool record;
+    bool video;
     unsigned channels;
     unsigned rate;
     float amplitude;
@@ -136,7 +143,14 @@ static void on_process(void* data)
     if (!b) {
         return;
     }
-    if (fake->record) {
+    if (fake->video) {
+        struct spa_data* d = &b->buffer->datas[0];
+        if (!fake->record && d->chunk) {
+            d->chunk->offset = 0;
+            d->chunk->stride = 64 * 4;
+            d->chunk->size = d->maxsize;
+        }
+    } else if (fake->record) {
         measure(fake, b->buffer);
     } else {
         play(fake, b->buffer);
@@ -202,19 +216,25 @@ static void usage(void)
 {
     fprintf(stderr,
         "usage: vela-audio-fake-stream [--record] [--channels N] [--amplitude A]\n"
-        "                              [--frequency HZ] [--rate HZ] [--prop key=value]...\n");
+        "                              [--frequency HZ] [--rate HZ] [--prop key=value]...\n"
+        "       vela-audio-fake-stream --video [--record] [--prop key=value]...\n");
 }
 
 int main(int argc, char** argv)
 {
     struct fake fake = { .channels = 2, .rate = DEFAULT_RATE, .frequency = 440.0f };
     pw_init(&argc, &argv);
-    struct pw_properties* props = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", NULL);
+    for (int i = 1; i < argc; i++) {
+        fake.video = fake.video || strcmp(argv[i], "--video") == 0;
+    }
+    struct pw_properties* props = pw_properties_new(PW_KEY_MEDIA_TYPE, fake.video ? "Video" : "Audio", NULL);
 
     for (int i = 1; i < argc; i++) {
         const char* arg = argv[i];
         const char* value = i + 1 < argc ? argv[i + 1] : NULL;
-        if (strcmp(arg, "--record") == 0) {
+        if (strcmp(arg, "--video") == 0) {
+            continue;
+        } else if (strcmp(arg, "--record") == 0) {
             fake.record = true;
         } else if (strcmp(arg, "--channels") == 0 && value) {
             fake.channels = (unsigned)atoi(value);
@@ -246,6 +266,9 @@ int main(int argc, char** argv)
         usage();
         pw_properties_free(props);
         return 2;
+    }
+    if (fake.video && !fake.record && !pw_properties_get(props, PW_KEY_MEDIA_CLASS)) {
+        pw_properties_set(props, PW_KEY_MEDIA_CLASS, "Video/Source"); // like xdg-desktop-portal-wlr's
     }
     if (!pw_properties_get(props, PW_KEY_MEDIA_CATEGORY)) {
         pw_properties_set(props, PW_KEY_MEDIA_CATEGORY, fake.record ? "Capture" : "Playback");
@@ -295,8 +318,22 @@ int main(int argc, char** argv)
                                               : SPA_AUDIO_CHANNEL_AUX0 + c;
     }
     const struct spa_pod* params[1] = { spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &info) };
+    enum pw_stream_flags flags = PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS;
+    if (fake.video) {
+        // 64×64 BGRx at 30 frames a second; the source drives, as the portal's does.
+        struct spa_pod_builder video = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
+        struct spa_video_info_raw raw = {
+            .format = SPA_VIDEO_FORMAT_BGRx,
+            .size = SPA_RECTANGLE(64, 64),
+            .framerate = SPA_FRACTION(30, 1),
+        };
+        params[0] = spa_format_video_raw_build(&video, SPA_PARAM_EnumFormat, &raw);
+        if (!fake.record) {
+            flags = PW_STREAM_FLAG_DRIVER | PW_STREAM_FLAG_MAP_BUFFERS;
+        }
+    }
     const int result = pw_stream_connect(fake.stream, fake.record ? PW_DIRECTION_INPUT : PW_DIRECTION_OUTPUT,
-        PW_ID_ANY, PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS, params, 1);
+        PW_ID_ANY, flags, params, 1);
     if (result < 0) {
         fprintf(stderr, "vela-audio-fake-stream: can't connect: %s\n", spa_strerror(result));
     } else {

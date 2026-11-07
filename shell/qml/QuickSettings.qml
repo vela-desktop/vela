@@ -4,13 +4,15 @@
 import QtQuick
 import QtQuick.Templates as T
 import Vela.Audio
+import Vela.Bluetooth
 import Vela.Controls
 
 // Quick settings (Win+A, or a click on the taskbar's system icons), like
 // Windows 11: tiles to turn on and off (Wi-Fi, Bluetooth, airplane mode, power
 // saving, night light...), brightness and volume, battery and Settings at the
 // bottom. An acrylic panel at the bottom right. Some tiles have a page of
-// their own: the Wi-Fi arrow lists the networks to choose one, Accessibility
+// their own: the Wi-Fi arrow lists the networks to choose one, the
+// Bluetooth arrow the paired devices to connect or disconnect, Accessibility
 // turns on the magnifier, color filters and sticky keys; the arrow next to
 // the volume opens the sound page (outputs and the mixer, Win+Ctrl+V). The
 // brightness is the display the panel opens on (docs/brightness.md §8); with
@@ -22,12 +24,14 @@ Window {
     // meets the taskbar and the output's edge (docs/visual-coherence.md
     // §6.9): the panel rests 12 units from both.
     readonly property real room: shadow.reach
+    // With a style, the blur is rounded like the panel (Styles.qml).
+    readonly property real blurRadius: Styles.quickSettings.chosen ? Styles.quickSettings.radius : 0
     width: room + 360 + 12
     height: room + d.roomHeight + 12
     color: "transparent"
 
-    // "" the quick settings; "wifi", "sound", "brightness" and "accessibility"
-    // their pages.
+    // "" the quick settings; "wifi", "bluetooth", "sound", "brightness" and
+    // "accessibility" their pages.
     property string page: ""
 
     // The brightness of the display the panel is on, and of every display
@@ -46,13 +50,13 @@ Window {
         if (!motion.closing) {
             page = ""
             d.settle()
-            Menus.placeOnTargetScreen(root)
+            root.screenLeft = Menus.placeTrayPanel(root, "icons", motion.x, motion.width)
         }
         visible = true
         Menus.quickSettingsOpen = true
         motion.open()
         panel.forceActiveFocus()
-        Effects.setBlur(root, [motion.visibleArea])
+        Effects.setBlur(root, [motion.visibleArea], root.blurRadius)
     }
     function close() {
         if (!motion.opened) {
@@ -92,13 +96,21 @@ Window {
             wifiPage.password = ""
             Network.scan() // cached networks appear immediately, rescan in background
         }
+        if (name === "bluetooth") {
+            devicesView.expanded = ""
+            Bluetooth.clearError()
+        }
         panel.forceActiveFocus()
     }
     // At the bottom right, above the taskbar: from panel to output
     // coordinates.
+    // The window's left edge on the output, -1 at the output's right edge
+    // (Menus.placeTrayPanel(): above a centered taskbar's icons, or not).
+    property int screenLeft: -1
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
-        return Qt.point(Screen.width - root.width + p.x, Screen.height - Theme.taskbarHeight - root.height + p.y)
+        return Qt.point((root.screenLeft >= 0 ? root.screenLeft : Screen.width - root.width) + p.x,
+                        Screen.height - Styles.taskbar.height - root.height + p.y)
     }
     // The outputs (or inputs) for one app (the mixer), in a menu under its
     // button.
@@ -153,7 +165,8 @@ Window {
     // configures per change, none per frame, and at rest the window is just
     // the panel and its shadow, so clicks above it reach what is below.
     readonly property real targetHeight: page === "" ? content.height + 24 + footer.height
-        : (page === "wifi" ? wifiPage.finalHeight : page === "sound" ? soundPage.height
+        : (page === "wifi" ? wifiPage.finalHeight : page === "bluetooth" ? bluetoothPage.finalHeight
+           : page === "sound" ? soundPage.height
            : page === "brightness" ? brightnessPage.height : accessPage.height) + 32
     onTargetHeightChanged: d.fit()
 
@@ -200,20 +213,30 @@ Window {
         property bool on
         property bool roundLeft: true
         property bool roundRight: true
+        // An inline arrow's half lights the whole tile: its hover and press
+        // show on the other half, and it draws nothing itself.
+        property bool lit: false
+        property bool litDown: false
+        property bool bare: false
         height: parent.height
         z: visualFocus ? 1 : 0 // the ring above the other half
         hoverEnabled: true
         focusPolicy: Qt.TabFocus
         Keys.onReturnPressed: clicked()
         Keys.onEnterPressed: clicked()
+        readonly property bool shownDown: down || litDown
+        readonly property bool shownHovered: hovered || lit
+        // bare: no fill of its own, but the focus ring still shows.
         background: Fill {
-            topLeftRadius: half.roundLeft ? Theme.radius : 0
-            bottomLeftRadius: half.roundLeft ? Theme.radius : 0
-            topRightRadius: half.roundRight ? Theme.radius : 0
-            bottomRightRadius: half.roundRight ? Theme.radius : 0
-            color: half.on ? (half.down ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.06))
-                              : half.hovered ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.08)) : Theme.accent)
-                 : (half.down ? Theme.controlPressed : half.hovered ? Theme.controlHover : Theme.control)
+            readonly property int corner: Styles.quickSettings.tileRadius
+            topLeftRadius: half.roundLeft ? corner : 0
+            bottomLeftRadius: half.roundLeft ? corner : 0
+            topRightRadius: half.roundRight ? corner : 0
+            bottomRightRadius: half.roundRight ? corner : 0
+            color: half.bare ? "transparent"
+                 : half.on ? (half.shownDown ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.06))
+                              : half.shownHovered ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.08)) : Theme.accent)
+                 : (half.shownDown ? Theme.controlPressed : half.shownHovered ? Theme.controlHover : Theme.control)
             FocusRing { visible: half.visualFocus }
         }
     }
@@ -241,12 +264,18 @@ Window {
             id: face
             width: parent.width
             height: 48
+            // A style's arrow beside the icon (quicksettings-inline-arrow): the
+            // tile is one button, its right half opens the page.
+            readonly property bool inline: Styles.quickSettings.inlineArrow
+            readonly property real detailsWidth: inline ? width / 2 : 36
 
             TileButton {
                 id: mainButton
-                width: tile.split ? parent.width - 36 : parent.width
+                width: tile.split && !face.inline ? parent.width - 36 : parent.width
                 on: tile.checked
-                roundRight: !tile.split
+                roundRight: !tile.split || face.inline
+                lit: detailsButton.hovered
+                litDown: detailsButton.down
                 enabled: tile.usable
                 Accessible.name: tile.label
                 Accessible.checkable: !tile.menu
@@ -254,26 +283,35 @@ Window {
                 onClicked: tile.menu ? tile.details() : tile.toggled()
             }
             TileButton {
+                id: detailsButton
                 visible: tile.split
-                x: parent.width - 36
-                width: 36
+                x: parent.width - face.detailsWidth
+                width: face.detailsWidth
                 on: tile.checked
                 roundLeft: false
+                bare: face.inline
                 enabled: tile.usable
                 Accessible.name: qsTr("%1 settings").arg(tile.label)
                 onClicked: tile.details()
             }
-            // Off: a thin border, which fades away as the tile turns on.
+            // Off: a thin border, which fades away as the tile turns on. A
+            // style without borders keeps only a line along the bottom edge.
             Rectangle {
+                visible: !Styles.quickSettings.borderless
                 anchors.fill: parent
-                radius: Theme.radius
+                radius: Styles.quickSettings.tileRadius
                 color: "transparent"
                 border.width: 1
                 border.color: tile.checked ? Qt.rgba(Theme.stroke.r, Theme.stroke.g, Theme.stroke.b, 0) : Theme.stroke
                 Behavior on border.color { ColorFade {} }
             }
+            GlassEdge {
+                atBottom: true
+                cornerRadius: Styles.quickSettings.tileRadius
+                visible: Styles.quickSettings.borderless && !tile.checked
+            }
             Fill {
-                visible: tile.split
+                visible: tile.split && !face.inline
                 x: parent.width - 36
                 y: 10
                 width: 1
@@ -282,7 +320,8 @@ Window {
                 color: tile.checked ? Qt.rgba(1, 1, 1, 0.35) : Theme.stroke
             }
             Icon {
-                x: (tile.split ? parent.width - 36 : parent.width) / 2 - width / 2
+                x: (tile.split || tile.menu) && face.inline ? parent.width / 2 - width - 2
+                    : (tile.split ? parent.width - 36 : parent.width) / 2 - width / 2
                 anchors.verticalCenter: parent.verticalCenter
                 name: tile.icon
                 size: 18
@@ -290,7 +329,7 @@ Window {
             }
             Chevron {
                 visible: tile.split || tile.menu
-                x: tile.split ? parent.width - 21 : parent.width - 18
+                x: face.inline ? parent.width / 2 + 6 : tile.split ? parent.width - 21 : parent.width - 18
                 anchors.verticalCenter: parent.verticalCenter
                 color: tile.checked ? "white" : Theme.text
             }
@@ -377,6 +416,8 @@ Window {
         Slider {
             id: slider
             anchors { left: iconButton.right; leftMargin: 2; right: detailsButton.left; rightMargin: -2; verticalCenter: parent.verticalCenter }
+            thick: Styles.quickSettings.thickSlider
+            knobBorder: !Styles.quickSettings.borderless
             value: row.value
             enabled: !row.locked
             wheelEnabled: false
@@ -415,16 +456,28 @@ Window {
                 }
             }
         }
+        // A style without the footer band (quicksettings-flat-footer): the
+        // mixer's icon before the arrow.
         Button {
             id: detailsButton
             anchors.right: parent.right
             visible: row.details
             subtle: true
-            width: row.details ? 36 : 0
+            width: row.details ? (Styles.quickSettings.flatFooter ? 52 : 36) : 0
             height: 36
             Accessible.name: row.detailsName
             onClicked: row.detailsClicked()
-            Chevron { anchors.centerIn: parent }
+            Icon {
+                visible: Styles.quickSettings.flatFooter
+                x: 6
+                anchors.verticalCenter: parent.verticalCenter
+                name: "volume-mixer"
+                size: 20
+            }
+            Chevron {
+                x: Styles.quickSettings.flatFooter ? 34 : (parent.width - width) / 2
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
     }
 
@@ -589,7 +642,7 @@ Window {
             root.visible = false
             d.settle()
         }
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the panel at rest
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], root.blurRadius) // the travel while it moves, the panel at rest
 
         Shadow {
             id: shadow
@@ -599,8 +652,8 @@ Window {
         Rectangle {
             id: panel
             anchors.fill: parent
-            radius: Theme.radiusOverlay
-            color: Theme.surface
+            radius: Styles.quickSettings.radius
+            color: Styles.quickSettings.surface
             focus: true
             clip: true
             Keys.onEscapePressed: {
@@ -650,18 +703,22 @@ Window {
                             onToggled: root.openSettings("network")
                             onContextMenu: root.openSettings("network")
                         }
+                        // vela-bluetooth's (docs/bluetooth.md §9.2). A blocked
+                        // platform switch shows it off: turning it on
+                        // unblocks it.
                         Tile {
-                            visible: Status.bluetoothAvailable
-                            icon: Status.bluetoothEnabled ? "network-bluetooth" : "network-bluetooth-inactive"
+                            objectName: "bluetoothTile"
+                            visible: Bluetooth.available || Bluetooth.platformBlocked
+                            icon: Bluetooth.powered ? "network-bluetooth" : "network-bluetooth-inactive"
                             label: qsTr("Bluetooth")
-                            checked: Status.bluetoothEnabled
-                            split: true
-                            onToggled: Status.setBluetoothEnabled(!Status.bluetoothEnabled)
-                            onDetails: root.openSettings("bluetooth-settings")
+                            checked: Bluetooth.powered
+                            split: Bluetooth.available
+                            onToggled: Bluetooth.setPowered(!Bluetooth.powered)
+                            onDetails: root.showPage("bluetooth")
                             onContextMenu: root.openSettings("bluetooth-settings")
                         }
                         Tile {
-                            visible: Status.wifiAvailable || Status.bluetoothAvailable
+                            visible: Status.wifiAvailable || Bluetooth.available || Bluetooth.platformBlocked
                             icon: "network-flightmode-on"
                             label: qsTr("Airplane mode")
                             checked: Status.airplane
@@ -692,6 +749,14 @@ Window {
                         }
                     }
 
+                    // A style without the footer band: a line above the sliders.
+                    Rectangle {
+                        visible: Styles.quickSettings.flatFooter
+                        x: -16
+                        width: parent.width + 32
+                        height: 1
+                        color: Theme.stroke
+                    }
                     // This display's; the arrow opens every display's.
                     BrightnessRow {
                         visible: root.brightnessHere !== undefined && root.brightnessHere.available
@@ -903,6 +968,67 @@ Window {
                     Link {
                         text: qsTr("More Wi-Fi settings")
                         target: "network"
+                    }
+                }
+
+                // -------------------------------------------------- Bluetooth --
+                // The paired devices (BluetoothDevices, docs/bluetooth.md
+                // §9.2), the switch and the refusals. Adding a device is
+                // Settings' job.
+                Column {
+                    id: bluetoothPage
+                    objectName: "bluetoothPage"
+                    visible: root.page === "bluetooth"
+                    x: 16
+                    y: 16
+                    width: parent.width - 32
+                    spacing: 8
+                    readonly property bool listed: Bluetooth.powered && Bluetooth.paired.length > 0
+                    // Its height once the devices have finished opening or
+                    // closing, as the Wi-Fi page's.
+                    readonly property real finalHeight: height
+                        + (devicesView.visible ? devicesView.finalHeight - devicesView.height : 0)
+
+                    PageHeader {
+                        title: qsTr("Bluetooth")
+                        Switch {
+                            showLabel: false
+                            checked: Bluetooth.powered
+                            Accessible.name: qsTr("Bluetooth")
+                            onToggled: Bluetooth.setPowered(checked)
+                        }
+                    }
+                    Text {
+                        visible: !bluetoothPage.listed
+                        width: parent.width
+                        topPadding: 8
+                        bottomPadding: 8
+                        text: !Bluetooth.powered ? qsTr("Bluetooth is turned off.") : qsTr("No paired devices.")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontBody
+                        wrapMode: Text.WordWrap
+                    }
+                    BluetoothDevices {
+                        id: devicesView
+                        visible: bluetoothPage.listed
+                        width: parent.width
+                    }
+                    // A refusal that isn't a device's own (the screen locked,
+                    // another session in front...).
+                    Text {
+                        objectName: "bluetoothError"
+                        visible: text !== ""
+                        width: parent.width
+                        text: Bluetooth.error
+                        textFormat: Text.PlainText
+                        color: Theme.critical
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.WordWrap
+                    }
+                    Item { width: 1; height: 4 }
+                    Link {
+                        text: qsTr("More Bluetooth settings")
+                        target: "bluetooth-settings"
                     }
                 }
 
@@ -1189,9 +1315,9 @@ Window {
                 opacity: pages.opacity // it comes back with its page
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                 height: 48
-                color: Theme.footer
-                bottomLeftRadius: Theme.radiusOverlay
-                bottomRightRadius: Theme.radiusOverlay
+                color: Styles.quickSettings.flatFooter ? "transparent" : Theme.footer
+                bottomLeftRadius: panel.radius
+                bottomRightRadius: panel.radius
 
                 Row {
                     visible: Status.batteryPresent
@@ -1219,6 +1345,12 @@ Window {
                     Accessible.name: qsTr("Settings")
                     onClicked: root.openSettings("settings")
                 }
+            }
+
+            GlassEdge {
+                z: 1
+                cornerRadius: panel.radius
+                visible: Styles.quickSettings.borderless
             }
         }
     }

@@ -53,6 +53,9 @@ public:
     // Click on the button: starts the app, or brings its window to the front,
     // or (if it's already the active one) minimizes it.
     Q_INVOKABLE void activate(int row);
+    // The app's most recently used window to the front, never minimized nor
+    // launched: false when it has none (the screen sharing menu).
+    Q_INVOKABLE bool showApp(const QString& desktopId);
     // The button dragged elsewhere: pinned apps stay before the ones only
     // open, and their order is remembered.
     Q_INVOKABLE void move(int from, int to);

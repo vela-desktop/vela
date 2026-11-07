@@ -8,14 +8,11 @@
 // tests that need them on skip themselves (two ctest entries).
 
 #include "controls.h"
+#include "quicktest.h"
 
 #include <QAccessible>
-#include <QDir>
-#include <QFile>
 #include <QQmlEngine>
-#include <QTemporaryDir>
 #include <QtQml/qqmlextensionplugin.h>
-#include <QtQuickTest/quicktest.h>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
 
@@ -34,27 +31,8 @@ public slots:
 
 int main(int argc, char** argv)
 {
-    QTemporaryDir home;
-    qputenv("XDG_CONFIG_HOME", home.filePath(QStringLiteral("config")).toUtf8());
-    qputenv("XDG_CACHE_HOME", home.filePath(QStringLiteral("cache")).toUtf8());
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    // No GPU in CI: Qt Quick's software renderer draws the same items.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND")) {
-        qputenv("QT_QUICK_BACKEND", "software");
-    }
-    QDir().mkpath(home.filePath(QStringLiteral("config/vela")));
-    QFile conf(home.filePath(QStringLiteral("config/vela/vela.conf")));
-    if (!conf.open(QIODevice::WriteOnly)) {
-        return 1;
-    }
-    conf.write("animation-duration=300\n");
-    if (qEnvironmentVariable("VELA_TEST_ANIMATION_EFFECTS") == QLatin1String("no")) {
-        conf.write("animation-effects=no\n");
-    }
-    conf.close();
-
     Setup setup;
-    return quick_test_main_with_setup(argc, argv, "controls", QUICK_TEST_SOURCE_DIR, &setup);
+    return vela::test::quickTestMain(argc, argv, "controls", QUICK_TEST_SOURCE_DIR, &setup);
 }
 
 #include "controls_test.moc"

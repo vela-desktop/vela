@@ -8,13 +8,15 @@
 // and the balance math.
 
 #include "audio.h"
+#include "bluetooth/bluetooth.h"
 #include "core.h"
 #include "harness.h"
 #include "levelmeter.h"
 
 #include <QDBusConnection>
 #include <QDBusMessage>
-#include <QDBusVariant>
+#include <QDBusMetaType>
+#include <QDBusObjectPath>
 #include <QDBusVirtualObject>
 #include <QSignalSpy>
 #include <QTimer>
@@ -55,30 +57,47 @@ QVariantMap find(const QVariantList& list, const QString& field, const QString& 
     return {};
 }
 
-// BlueZ, as far as a headset's battery goes (org.bluez.Battery1).
-class FakeBlueZ : public QDBusVirtualObject {
+using Devices = QMap<QDBusObjectPath, QVariantMap>;
+
+// vela-bluetooth, as far as a headset's battery goes: one adapter, and
+// headsets whose `battery` it reports (docs/bluetooth.md §7.1).
+class FakeVelaBluetooth : public QDBusVirtualObject {
 public:
-    int percent = 73;
-    int delayMs = 0;
-    int getRequests = 0;
+    Devices devices;
+    QString bus;
+
     QString introspect(const QString&) const override { return {}; }
     bool handleMessage(const QDBusMessage& message, const QDBusConnection& connection) override
     {
-        if (message.interface() != QLatin1String("org.freedesktop.DBus.Properties") || message.member() != QLatin1String("Get")
-            || message.arguments().value(0).toString() != QLatin1String("org.bluez.Battery1")) {
-            return false;
+        if (message.member() == QLatin1String("GetAll")) {
+            const QVariantMap adapter { { QStringLiteral("path"), QVariant::fromValue(QDBusObjectPath(QStringLiteral("/org/bluez/hci1"))) },
+                { QStringLiteral("powered"), true } };
+            connection.send(message.createReply(QVariant::fromValue(
+                QVariantMap { { QStringLiteral("Available"), true }, { QStringLiteral("Adapter"), adapter } })));
+            return true;
         }
-        ++getRequests;
-        const int value = percent; // snapshot the older response
-        if (delayMs > 0) {
-            message.setDelayedReply(true);
-            QTimer::singleShot(delayMs, this, [message, connection, value] {
-                connection.send(message.createReply(QVariant::fromValue(QDBusVariant(QVariant::fromValue(uchar(value))))));
-            });
-        } else {
-            connection.send(message.createReply(QVariant::fromValue(QDBusVariant(QVariant::fromValue(uchar(value))))));
+        if (message.member() == QLatin1String("Devices")) {
+            connection.send(message.createReply(QVariant::fromValue(devices)));
+            return true;
         }
-        return true;
+        return false;
+    }
+
+    // A headset on hci1 (not the first adapter): only its address ties it
+    // to PipeWire's node.
+    void setHeadset(const QString& address, int battery)
+    {
+        const QDBusObjectPath path(QStringLiteral("/org/bluez/hci1/dev_") + QString(address).replace(u':', u'_'));
+        QVariantMap entry { { QStringLiteral("address"), address }, { QStringLiteral("name"), QStringLiteral("Headset") },
+            { QStringLiteral("paired"), true }, { QStringLiteral("connected"), true } };
+        if (battery >= 0) {
+            entry.insert(QStringLiteral("battery"), QVariant::fromValue(uchar(battery)));
+        }
+        devices[path] = entry;
+        QDBusMessage changed = QDBusMessage::createSignal(QStringLiteral("/org/vela/Bluetooth"), QStringLiteral("org.vela.Bluetooth"),
+            QStringLiteral("DevicesChanged"));
+        changed << QVariant::fromValue(Devices { { path, entry } }) << QVariant::fromValue(QList<QDBusObjectPath>());
+        QDBusConnection(bus).send(changed);
     }
 };
 
@@ -88,9 +107,10 @@ class ViewTest : public QObject {
     Q_OBJECT
 
     std::unique_ptr<Audio> audio;
-    // A private bus as the system bus, never the real one: BlueZ lives there.
+    // A private bus, never the real one: vela-bluetooth lives there.
     QProcess bus;
-    FakeBlueZ bluez;
+    FakeVelaBluetooth daemon;
+    std::unique_ptr<vela::bluetooth::Bluetooth> bluetooth;
 
     QVariantMap output(const QString& name) const { return find(audio->outputs(), QStringLiteral("name"), name); }
     QVariantMap input(const QString& name) const { return find(audio->inputs(), QStringLiteral("name"), name); }
@@ -113,6 +133,12 @@ class ViewTest : public QObject {
     {
         const auto* e = audio->core()->snapshot().endpoint(name);
         return e ? e->id : 0;
+    }
+    QString linkedTo(quint32 stream) const { return harness::linkedTo(*audio->core(), stream); }
+    bool muted(quint32 stream) const
+    {
+        const auto* st = audio->core()->snapshot().stream(stream);
+        return st && st->muted;
     }
     // Straight from the server, without the interface's own values.
     double serverVolume(const QString& name) const
@@ -137,29 +163,34 @@ private slots:
         QVERIFY2(bus.waitForStarted() && bus.waitForReadyRead(), "dbus-daemon is needed");
         const QString address = QString::fromUtf8(bus.readAllStandardOutput().trimmed());
         qputenv("DBUS_SYSTEM_BUS_ADDRESS", address.toUtf8());
-        QDBusConnection fake = QDBusConnection::connectToBus(address, QStringLiteral("fake-bluez"));
-        QVERIFY(fake.registerService(QStringLiteral("org.bluez")));
-        QVERIFY(fake.registerVirtualObject(QStringLiteral("/org/bluez"), &bluez, QDBusConnection::SubPath));
+        qDBusRegisterMetaType<Devices>();
+        daemon.bus = QStringLiteral("fake-bluetooth");
+        QDBusConnection fake = QDBusConnection::connectToBus(address, daemon.bus);
+        QVERIFY(fake.registerService(QStringLiteral("org.vela.Bluetooth")));
+        QVERIFY(fake.registerVirtualObject(QStringLiteral("/org/vela/Bluetooth"), &daemon));
+        QVERIFY(QDBusConnection::connectToBus(address, QStringLiteral("client")).isConnected());
     }
 
     void cleanupTestCase()
     {
-        QDBusConnection::disconnectFromBus(QStringLiteral("fake-bluez"));
+        QDBusConnection::disconnectFromBus(QStringLiteral("client"));
+        QDBusConnection::disconnectFromBus(daemon.bus);
         bus.kill();
         bus.waitForFinished();
     }
 
     void init()
     {
+        daemon.devices.clear();
+        bluetooth = std::make_unique<vela::bluetooth::Bluetooth>(QDBusConnection(QStringLiteral("client")), false);
         audio = std::make_unique<Audio>();
+        audio->setBluetooth(bluetooth.get());
         QTRY_VERIFY_WITH_TIMEOUT(audio->available() && !output(speakers).isEmpty() && !input(microphone).isEmpty(), 5000);
         QTRY_COMPARE(audio->defaultOutput(), speakers);
     }
 
     void cleanup()
     {
-        bluez.percent = 73;
-        bluez.delayMs = 0;
         QTRY_VERIFY_WITH_TIMEOUT(audio->available() && id(speakers) && id(microphone), 10000);
         for (const QString& name : { speakers, headphones, surround, microphone }) {
             const QString node = QString::number(id(name));
@@ -169,6 +200,7 @@ private slots:
         run(QStringLiteral("wpctl"), { QStringLiteral("set-default"), QString::number(id(speakers)) });
         run(QStringLiteral("wpctl"), { QStringLiteral("set-default"), QString::number(id(microphone)) });
         audio.reset();
+        bluetooth.reset();
     }
 
     void balanceMath()
@@ -515,18 +547,18 @@ private slots:
 
         audio->setAppMuted(QStringLiteral("vela-player"), true);
         QVERIFY(app(QStringLiteral("vela-player")).value("muted").toBool());
-        QTRY_VERIFY(audio->core()->snapshot().stream(s1)->muted && audio->core()->snapshot().stream(s2)->muted);
+        QTRY_VERIFY(muted(s1) && muted(s2));
 
         audio->setAppOutput(QStringLiteral("vela-player"), headphones);
         QCOMPARE(app(QStringLiteral("vela-player")).value("output").toString(), headphones);
         QCOMPARE(app(QStringLiteral("vela-player")).value("outputDescription").toString(), QStringLiteral("Test Headphones"));
-        QTRY_VERIFY(audio->core()->snapshot().stream(s1)->endpoint == id(headphones)
-            && audio->core()->snapshot().stream(s2)->endpoint == id(headphones));
+        QTRY_COMPARE(linkedTo(s1), headphones);
+        QTRY_COMPARE(linkedTo(s2), headphones);
 
         audio->resetApps();
         QVERIFY(app(QStringLiteral("vela-player")).value("output").toString().isEmpty());
-        QTRY_VERIFY(audio->core()->snapshot().stream(s1)->endpoint == id(speakers)
-            && audio->core()->snapshot().stream(s2)->endpoint == id(speakers));
+        QTRY_COMPARE(linkedTo(s1), speakers);
+        QTRY_COMPARE(linkedTo(s2), speakers);
         QTest::qWait(700);
         QVERIFY(app(QStringLiteral("vela-player")).value("output").toString().isEmpty());
     }
@@ -539,10 +571,10 @@ private slots:
         QTRY_VERIFY(app(QStringLiteral("vela-caller")).value("recording").toBool());
         QVERIFY(!app(QStringLiteral("vela-caller")).value("playing").toBool());
         audio->setAppInput(QStringLiteral("vela-caller"), QStringLiteral("vela-test-usb-mic"));
-        QTRY_COMPARE(audio->core()->snapshot().stream(s)->endpoint, id(QStringLiteral("vela-test-usb-mic")));
+        QTRY_COMPARE(linkedTo(s), QStringLiteral("vela-test-usb-mic"));
         QCOMPARE(app(QStringLiteral("vela-caller")).value("input").toString(), QStringLiteral("vela-test-usb-mic"));
         audio->setAppInput(QStringLiteral("vela-caller"), QString());
-        QTRY_COMPARE(audio->core()->snapshot().stream(s)->endpoint, id(microphone));
+        QTRY_COMPARE(linkedTo(s), microphone);
         QCOMPARE(voice->close(), 0);
         QCOMPARE(control(QStringLiteral("remove vela-test-usb-mic")), QStringLiteral("ok"));
     }
@@ -576,6 +608,72 @@ private slots:
         QTest::qWait(200);
         QCOMPARE(microphoneKeys(), QStringList({ QStringLiteral("vela-caller") }));
         QTRY_VERIFY_WITH_TIMEOUT(audio->microphoneUsers().isEmpty(), 2000);
+    }
+
+    // The apps receiving a portal share (docs/screen-sharing.md §5.2): their
+    // video stream linked to one of xdg-desktop-portal-wlr's nodes.
+    void screenSharingThroughThePortal()
+    {
+        audio->setAppResolver([](const AppIdentity& id) {
+            return id.binary == QLatin1String("firefox")
+                ? AppInfo { QStringLiteral("firefox.desktop"), QStringLiteral("Firefox"), QStringLiteral("firefox") }
+                : AppInfo {};
+        });
+        auto keys = [this] {
+            QStringList out;
+            for (const QVariant& user : audio->screenUsers()) {
+                out.append(user.toMap().value(QStringLiteral("key")).toString());
+            }
+            return out;
+        };
+        QVERIFY(audio->screenUsers().isEmpty());
+        auto portal = std::make_unique<FakeStream>(
+            QStringList { "--video", "--prop", "node.name=xdpw-stream-TEST01" });
+        QVERIFY(portal->waitReady());
+        auto camera = std::make_unique<FakeStream>(
+            QStringList { "--video", "--prop", "node.name=v4l2_input.pci-0000_00_14.0-usb-0_1_1.0" });
+        QVERIFY(camera->waitReady());
+
+        // An app watching the camera isn't sharing the screen.
+        auto call = std::make_unique<FakeStream>(QStringList { "--video", "--record", "--prop",
+            "application.process.binary=vela-caller", "--prop", "target.object=v4l2_input.pci-0000_00_14.0-usb-0_1_1.0" });
+        QVERIFY(call->waitStreaming());
+
+        auto browser = std::make_unique<FakeStream>(QStringList { "--video", "--record", "--prop",
+            "application.process.binary=firefox", "--prop", "application.name=Firefox", "--prop",
+            "target.object=xdpw-stream-TEST01" });
+        QVERIFY(browser->waitStreaming());
+        QTRY_COMPARE(keys(), QStringList({ QStringLiteral("firefox") }));
+        const QVariantMap user = audio->screenUsers().first().toMap();
+        QCOMPARE(user.value("name").toString(), QStringLiteral("Firefox"));
+        QCOMPARE(user.value("icon").toString(), QStringLiteral("firefox"));
+        QCOMPARE(user.value("desktopId").toString(), QStringLiteral("firefox.desktop"));
+
+        // Paused, the share is still open: once the pause is seen by the
+        // stream and the model has been rebuilt since, it still counts.
+        QSignalSpy rebuilt(audio->core(), &vela::audio::Core::changed);
+        browser->send(QStringLiteral("pause"));
+        QVERIFY(browser->waitState(QStringLiteral("paused")));
+        QTRY_VERIFY(rebuilt.count() > 0);
+        QCOMPARE(keys(), QStringList({ QStringLiteral("firefox") }));
+
+        // Two apps with the same binary but their own ids (two Flatpaks):
+        // both are named.
+        auto first = std::make_unique<FakeStream>(QStringList { "--video", "--record", "--prop",
+            "application.process.binary=bwrap-app", "--prop", "pipewire.access.portal.app_id=org.example.One",
+            "--prop", "target.object=xdpw-stream-TEST01" });
+        auto second = std::make_unique<FakeStream>(QStringList { "--video", "--record", "--prop",
+            "application.process.binary=bwrap-app", "--prop", "pipewire.access.portal.app_id=org.example.Two",
+            "--prop", "target.object=xdpw-stream-TEST01" });
+        QVERIFY(first->waitStreaming() && second->waitStreaming());
+        QTRY_COMPARE(audio->screenUsers().size(), 3);
+        QCOMPARE(first->close(), 0);
+        QCOMPARE(second->close(), 0);
+        QCOMPARE(browser->close(), 0);
+        QTRY_VERIFY(audio->screenUsers().isEmpty());
+        QCOMPARE(call->close(), 0);
+        QCOMPARE(camera->close(), 0);
+        QCOMPARE(portal->close(), 0);
     }
 
     void whatIsNotTheMicrophone()
@@ -635,8 +733,7 @@ private slots:
             });
             const quint32 node = client->waitStreaming();
             QVERIFY2(node != 0, qPrintable(spoofed[i]));
-            QTRY_VERIFY_WITH_TIMEOUT(audio->core()->snapshot().stream(node)
-                && audio->core()->snapshot().stream(node)->endpoint == id(microphone), 5000);
+            QTRY_COMPARE_WITH_TIMEOUT(linkedTo(node), microphone, 5000);
             QTRY_VERIFY_WITH_TIMEOUT(microphoneKeys().contains(key), 5000);
             QCOMPARE(client->close(), 0);
             QTRY_VERIFY_WITH_TIMEOUT(!microphoneKeys().contains(key), 2000);
@@ -652,65 +749,66 @@ private slots:
             { QStringLiteral("--prop"), QStringLiteral("target.object=vela-test-echo-cancel") });
         const quint32 s = caller->waitStreaming();
         QVERIFY(s);
-        QTRY_VERIFY(audio->core()->snapshot().stream(s)
-            && audio->core()->snapshot().stream(s)->endpoint == id(QStringLiteral("vela-test-echo-cancel")));
+        QTRY_COMPARE(linkedTo(s), QStringLiteral("vela-test-echo-cancel"));
         QTRY_COMPARE(microphoneKeys(), QStringList({ QStringLiteral("vela-caller") }));
         QCOMPARE(caller->close(), 0);
         QCOMPARE(control(QStringLiteral("remove vela-test-echo-cancel")), QStringLiteral("ok"));
     }
 
+    // A headset's battery is vela-bluetooth's, matched by its address, and
+    // followed as it changes.
     void bluetoothBattery()
     {
-        bluez.percent = 73;
+        daemon.setHeadset(QStringLiteral("AA:BB:CC:DD:EE:FF"), 73);
         QVERIFY(control(QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF")).startsWith(QLatin1String("ok")));
         QTRY_VERIFY(!output(QStringLiteral("vela-test-headset")).isEmpty());
         QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 73);
         QCOMPARE(output(speakers).value("battery").toInt(), -1);
 
-        // BlueZ says it changed: followed without asking again.
-        QDBusMessage changed = QDBusMessage::createSignal(QStringLiteral("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("PropertiesChanged"));
-        changed << QStringLiteral("org.bluez.Battery1") << QVariantMap { { QStringLiteral("Percentage"), QVariant::fromValue(uchar(40)) } }
-                << QStringList();
-        QVERIFY(QDBusConnection(QStringLiteral("fake-bluez")).send(changed));
+        daemon.setHeadset(QStringLiteral("AA:BB:CC:DD:EE:FF"), 40);
         QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 40);
+        // It stops reporting it.
+        daemon.setHeadset(QStringLiteral("AA:BB:CC:DD:EE:FF"), -1);
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), -1);
         QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
     }
 
-    void bluetoothLateGetCannotOverwriteChangedValue()
+    // A headset already there when the sound starts, and one vela-bluetooth
+    // doesn't know: none.
+    void bluetoothBatteryAtStartAndUnknown()
     {
-        bluez.percent = 73;
-        bluez.delayMs = 300;
-        const int before = bluez.getRequests;
+        daemon.setHeadset(QStringLiteral("AA:BB:CC:DD:EE:FF"), 29);
+        audio->setBluetooth(nullptr);
+        bluetooth = std::make_unique<vela::bluetooth::Bluetooth>(QDBusConnection(QStringLiteral("client")), false);
+        audio->setBluetooth(bluetooth.get());
+        QVERIFY(control(QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF")).startsWith(QLatin1String("ok")));
+        QVERIFY(control(QStringLiteral("add-sink vela-test-other FL FR api.bluez5.address=11:22:33:44:55:66")).startsWith(QLatin1String("ok")));
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 29);
+        QTRY_VERIFY(!output(QStringLiteral("vela-test-other")).isEmpty());
+        QCOMPARE(output(QStringLiteral("vela-test-other")).value("battery").toInt(), -1);
+        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
+        QCOMPARE(control(QStringLiteral("remove vela-test-other")), QStringLiteral("ok"));
+    }
+
+    void destroyedBluetoothClientClearsBattery()
+    {
+        daemon.setHeadset(QStringLiteral("AA:BB:CC:DD:EE:FF"), 73);
+        QVERIFY(control(QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF")).startsWith(QLatin1String("ok")));
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 73);
+        bluetooth.reset(); // Audio outlives its Bluetooth client.
+        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), -1);
+        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
+    }
+
+    // Without vela-bluetooth's client, no battery.
+    void bluetoothBatteryNeedsTheDaemon()
+    {
+        daemon.setHeadset(QStringLiteral("AA:BB:CC:DD:EE:FF"), 73);
+        audio->setBluetooth(nullptr);
         QVERIFY(control(QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF")).startsWith(QLatin1String("ok")));
         QTRY_VERIFY(!output(QStringLiteral("vela-test-headset")).isEmpty());
-        QTRY_VERIFY(bluez.getRequests > before); // the initial Get is in flight
-
-        QDBusMessage changed = QDBusMessage::createSignal(QStringLiteral("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("PropertiesChanged"));
-        changed << QStringLiteral("org.bluez.Battery1")
-                << QVariantMap { { QStringLiteral("Percentage"), QVariant::fromValue(uchar(40)) } } << QStringList();
-        QVERIFY(QDBusConnection(QStringLiteral("fake-bluez")).send(changed));
-        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 40);
-        QTest::qWait(400); // the late Get returning 73 must not roll back 40
-        QCOMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 40);
-        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
-    }
-
-    void bluetoothReconnectQueriesBatteryAgain()
-    {
-        bluez.percent = 73;
-        const int before = bluez.getRequests;
-        const QString add = QStringLiteral("add-sink vela-test-headset FL FR api.bluez5.address=AA:BB:CC:DD:EE:FF");
-        QVERIFY(control(add).startsWith(QLatin1String("ok")));
-        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 73);
-        QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
-        QTRY_VERIFY(output(QStringLiteral("vela-test-headset")).isEmpty());
-
-        bluez.percent = 29;
-        QVERIFY(control(add).startsWith(QLatin1String("ok")));
-        QTRY_COMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), 29);
-        QVERIFY(bluez.getRequests >= before + 2);
+        QTest::qWait(200);
+        QCOMPARE(output(QStringLiteral("vela-test-headset")).value("battery").toInt(), -1);
         QCOMPARE(control(QStringLiteral("remove vela-test-headset")), QStringLiteral("ok"));
     }
 

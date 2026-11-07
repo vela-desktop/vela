@@ -1,0 +1,83 @@
+# Vulkan device-loss and fatal-render policy — beta 0.1
+
+> **Status:** merged in PR #147 (30 October 2026). Real GPU resets are not
+> tested on the daily-use machine (see below).
+
+## Failure classification
+
+- `VK_ERROR_DEVICE_LOST` latches `vk->loss.lost` on the first error and
+  records the originating operation. It is terminal, distinct from
+  `VK_ERROR_OUT_OF_HOST_MEMORY`, `VK_ERROR_OUT_OF_DEVICE_MEMORY` and other
+  recoverable errors.
+- An unrecoverable render/synchronization failure (for example a failed GPU
+  timeline wait after a successful queue submission) sets
+  `vk->terminal_error`, **not** `vk->loss.lost`. The compositor must never
+  signal a client-facing completion point when GPU completion is unknown.
+- Both terminal states terminate the Wayland event loop and prevent additional
+  GPU work, pool reuse, timeline polling and blocking waits.
+- `VELA_EXIT_DEVICE_LOST = 79` is reserved for true device loss, including
+  a `VK_ERROR_DEVICE_LOST` from `vkCreateDevice`, whose status survives the
+  destruction of a partially initialized Vulkan context. Other terminal failures exit with
+  code 1. The existing supervisor uses its bounded crash budget (three failures
+  within one minute); a clean logout still exits with 0.
+- In supervised sessions, terminal failures skip the compositor's systemd
+  `stop` hook: the supervisor keeps the session and Wayland socket across a
+  restart and invokes the stop hook if it finally ends the session. **Direct
+  launches** have no supervisor, so their compositor always runs the stop hook
+  when a real session was established.
+
+## Resource and synchronization ownership
+
+The renderer checks Vulkan results for queue submission, command buffer
+allocation/reset/begin/end, timeline wait/query, semaphore creation/import/
+export, DMA-BUF image import and staging allocation/bind/map. A failure while
+ending a command buffer frees command-slot reservations and unsubmitted staging
+claims, then takes the fatal-restart path: already recorded SHM uploads must
+not be silently marked as rendered.
+
+A device loss discovered while lazily creating a drawing or blur pipeline stops
+command recording immediately; commands are **not submitted**. Staging uploads
+must not record commands into a null command buffer.
+
+For a healthy shutdown, wait for the device and discard pending command
+recordings before freeing resources. For device loss, do not wait on the device
+or recycle GPU resources using stale timeline values; spec-allowed Vulkan
+destroy/free calls are used. For other terminal errors GPU completion may be
+unknown while work is still in flight: skip manual Vulkan cleanup and let the
+exiting process release resources instead.
+Capture never copies unready pixels; asynchronous readbacks fail.
+
+A failed kernel sync-file import may fall back to a CPU GPU-timeline wait.
+When that wait fails, do not claim that the buffer has been released. Trigger
+the terminal-error restart path instead. When a synchronization point can be
+safely completed by waiting, signal it only **after** successful completion.
+If a debug-sync CPU wait fails after exporting a sync-file descriptor, close
+that descriptor and clear the caller's output (a failed submission transfers
+no FD ownership). Failed semaphore imports after device loss destroy rather
+than recycle the partially used semaphore.
+
+## Testing and merge gates
+
+- CPU-only device-loss policy: first failing operation is sticky; ordinary
+  allocation errors are not classified as device loss.
+- Production-entry-point fault injection: staging bind/map, semaphore
+  creation, queue submission, timeline wait, non-device-loss wait error and
+  failed command-buffer end. Assert no GPU work after a terminal state.
+- Production-entry-point tests additionally cover Vulkan semaphore FD
+  import/export, lazy pipeline creation and closure of an exported sync-file
+  descriptor when a CPU wait fails in debug-sync mode.
+- Hosted Build, Ubuntu 26.10, Fedora, sanitizer, coverage and static-analysis
+  checks must pass on the candidate head; investigate SonarQube reliability
+  findings rather than treating the aggregate rating as sufficient.
+- Run AMD and NVIDIA full GPU-labeled suites at the **exact merge-candidate
+  SHA**. Test a supervised locked-session compositor restart in a disposable
+  environment; verify the secure lock marker and session environment survive
+  until the supervisor decides to end the session.
+- Never trigger a real GPU reset on the daily-use workstation. Real driver
+  reset tests require disposable hardware and an explicit controlled plan.
+
+## Scope
+
+Beta 0.1 does **not** reconstruct the Vulkan logical device in-place. A future
+design may consider it independently; session-level supervised restart is the
+intended recovery boundary.

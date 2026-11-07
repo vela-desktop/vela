@@ -28,27 +28,28 @@ depends=(
     'freetype2' 'harfbuzz' 'fontconfig' 'librsvg' 'cairo'
     'qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'layer-shell-qt'
     'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland'
+    # Desktop defaults: GTK for generic portals and wlr for screen capture.
+    'konsole' 'breeze-icons' 'xdg-desktop-portal' 'xdg-desktop-portal-gtk' 'xdg-desktop-portal-wlr' 'xdg-utils'
+    # Runtime requirements of vela-update; build toolchain is installed on demand.
+    'git' 'curl' 'sudo' 'util-linux'
+    'xdg-terminal-exec' # Settings > Updates runs vela-update in the user's terminal (docs/updates.md §6.3)
     'pipewire' 'wireplumber'
-    'systemd-libs' # sd-bus: the laptop backlight through logind (docs/brightness.md §5.3)
+    'systemd-libs' # sd-bus: laptop backlight (docs/brightness.md §5.3), vela-bluetooth (docs/bluetooth.md), vela-update-daemon (docs/updates.md)
 )
-makedepends=('git' 'cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols' 'qt6-tools' 'qt6-multimedia')
+makedepends=('cmake' 'shaderc' 'vulkan-headers' 'wayland-protocols>=1.37' 'qt6-tools' 'qt6-multimedia')
 optdepends=(
     'cosign: verify downloaded prebuilt package attestations without gh'
-    'xdg-desktop-portal-wlr: screen sharing'
-    'xdg-desktop-portal-kde: file chooser and other portals for apps'
-    'breeze-icons: Vela icons (breeze and breeze-dark)'
-    'plasma-workspace: light or dark colors for KDE apps'
     'networkmanager: network and Wi-Fi (quick settings and Settings)'
-    'bluez: Bluetooth'
+    'bluez: Bluetooth, all it needs (docs/bluetooth.md)'
     'pipewire-pulse: sound for apps that still use PulseAudio'
     'power-profiles-daemon: energy saver'
     'udisks2: unmounted drives in File Explorer'
     'kimageformats: AVIF, HEIF, JPEG XL and other pictures in File Explorer (thumbnails, quick preview)'
     'qt6-multimedia: videos and sounds in the File Explorer quick preview'
-    'xdg-utils: share by email, default apps'
     'kdeconnect: share with your phone'
-    'bluedevil: share via Bluetooth'
-    'konsole: the terminal (Super+Enter)'
+    'bluedevil: send files over Bluetooth from Files (requires bluez-obex)'
+    'bluez-obex: OBEX file transfers (optional Bluedevil backend)'
+    'github-cli: optional authenticated GitHub Actions artifact retrieval'
 )
 provides=('vela')
 conflicts=('vela')
@@ -57,13 +58,23 @@ source=("$_name::git+${VELA_GIT_URL:-https://github.com/vela-desktop/vela.git}")
 sha256sums=('SKIP')
 
 pkgver() {
-    cd "$_name"
-    local version
-    version=$(sed -n 's/^ *VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -n 1)
-    printf "%s.r%s.g%s" "$version" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+    cd "$_name" || return 1
+    local version count revision
+    # Accept normal CMake whitespace and trailing comments; reject empty output.
+    version=$(sed -nE 's/^[[:space:]]*VERSION[[:space:]]+([0-9]+(\.[0-9]+)+)([[:space:]]*(#.*|\))?)?$/\1/p' CMakeLists.txt | head -n 1)
+    if [[ ! $version =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+        printf 'vela-git: unable to parse project VERSION from CMakeLists.txt\n' >&2
+        return 1
+    fi
+    count=$(git rev-list --count HEAD) || return 1
+    revision=$(git rev-parse --short=7 HEAD) || return 1
+    printf '%s.r%s.g%s' "$version" "$count" "$revision"
 }
 
 build() {
+    # vela-shell uses Qt6::GuiPrivate; rebuild the package after Qt upgrades.
+    # Do not pin qt6-base to an exact version on rolling Arch derivatives.
+
     # makepkg.conf gives the build options (CMAKE_BUILD_TYPE=None).
     cmake -B build -S "$_name" \
         -DCMAKE_BUILD_TYPE=None \
@@ -74,8 +85,24 @@ build() {
     cmake --build build
 }
 
+check() {
+    # Lightweight build/packaging checks; GPU-intensive tests remain in CI.
+    test -x build/compositor/vela-compositor
+    test -x build/shell/vela-shell
+    bash -n "$_name/packaging/vela-update"
+    sh -n "$_name/packaging/arch/vela-qt-rebuild-notice"
+    PYTHONPYCACHEPREFIX="$srcdir/.vela-pycache" python -m py_compile "$_name/packaging/verify-attestation.py"
+    PYTHONPYCACHEPREFIX="$srcdir/.vela-pycache" python -m py_compile "$_name/packaging/vela-update-state"
+}
+
 package() {
     DESTDIR="$pkgdir" cmake --install build
     install -Dm755 "$_name/packaging/vela-update" "$pkgdir/usr/bin/vela-update"
+    install -Dm755 "$_name/packaging/vela-update-beta" "$pkgdir/usr/lib/vela/vela-update-beta"
     install -Dm644 "$_name/packaging/verify-attestation.py" "$pkgdir/usr/lib/vela/verify-attestation.py"
+    install -Dm755 "$_name/packaging/vela-update-state" "$pkgdir/usr/lib/vela/vela-update-state"
+    install -Dm644 "$_name/packaging/arch/vela-qt-private-rebuild.hook" \
+        "$pkgdir/usr/share/libalpm/hooks/vela-qt-private-rebuild.hook"
+    install -Dm755 "$_name/packaging/arch/vela-qt-rebuild-notice" \
+        "$pkgdir/usr/lib/vela/vela-qt-rebuild-notice"
 }

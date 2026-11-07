@@ -19,13 +19,20 @@ Window {
     // when the taskbar is aligned left (placeStartMenu sets `atLeft`): the
     // panel rests 12 units from both.
     property bool atLeft: false
+    // A Start menu style (Styles.startMenu): its size, corners and tint.
+    readonly property QtObject style: Styles.startMenu
+    readonly property real gap: 12 // above the taskbar
+    // With a style, the blur is rounded like the panel (the compositor makes
+    // it glass from 4% alpha: the shadow in the corners must stay out).
+    readonly property real blurRadius: style.chosen ? style.radius : 0
     readonly property real room: shadow.reach
     readonly property real roomLeft: atLeft ? 12 : room
-    width: roomLeft + 640 + room
+    readonly property real panelWidth: style.width - 20
+    width: roomLeft + panelWidth + room
     // On short outputs it gets shorter: the search at the top must stay
     // visible, the shadow above it is cut.
-    readonly property real panelHeight: Math.min(700, Screen.height - Theme.taskbarHeight - 44)
-    height: Math.min(room + panelHeight + 12, Screen.height - Theme.taskbarHeight)
+    readonly property real panelHeight: Math.min(style.height - 32, Screen.height - Styles.taskbar.height - 44)
+    height: Math.min(room + panelHeight + gap, Screen.height - Styles.taskbar.height)
     color: "transparent"
     // Asked of logind only once: can the computer suspend?
     readonly property bool canSuspend: Shell.canSuspend()
@@ -46,7 +53,8 @@ Window {
         }
         return out
     }
-    readonly property bool showPinned: search.text.length === 0 && pinned.length > 0
+    // Unless Settings > Start hides them: then all apps come first.
+    readonly property bool showPinned: Config.startPinned && search.text.length === 0 && pinned.length > 0
 
     // The keyboard's tile: a pinned one (`pinnedSelection`, its index) or the
     // grid's current app (-1). Shown once a key moves it, or at once among
@@ -55,13 +63,24 @@ Window {
     property bool selecting: false
     readonly property bool selectionShown: selecting || search.text.length > 0
     onPinnedChanged: pinnedSelection = Math.min(pinnedSelection, pinned.length - 1)
+    // Pins hidden while one is selected (Settings > Start, Start open): the
+    // selection moves to the first of all apps, so Enter never launches a
+    // tile that isn't there.
+    onShowPinnedChanged: {
+        if (!showPinned && pinnedSelection >= 0) {
+            if (grid.count > 0)
+                select(0, 0)
+            else
+                pinnedSelection = -1
+        }
+    }
 
     // The Start menu is above the taskbar, centered or at the left: from its
     // coordinates to the output's, for right-click menus.
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
         return Qt.point((atLeft ? 0 : (Screen.width - root.width) / 2) + p.x,
-                        Screen.height - Theme.taskbarHeight - root.height + p.y)
+                        Screen.height - Styles.taskbar.height - root.height + p.y)
     }
 
     // An app's menu (docs/renderer.md §14.7): recent files and tasks at the
@@ -167,7 +186,7 @@ Window {
         Shell.startMenuOpen = true
         motion.open()
         search.forceActiveFocus()
-        Effects.setBlur(root, [motion.visibleArea])
+        Effects.setBlur(root, [motion.visibleArea], root.blurRadius)
     }
 
     function close() {
@@ -299,12 +318,12 @@ Window {
     PanelMotion {
         id: motion
         x: root.roomLeft
-        y: root.height - 12 - height
-        width: 640
+        y: root.height - root.gap - height
+        width: root.panelWidth
         height: root.panelHeight
         offset: Qt.point(0, 140)
         onClosed: root.visible = false
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the panel at rest
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], root.blurRadius) // the travel while it moves, the panel at rest
 
         Shadow {
             id: shadow
@@ -315,8 +334,8 @@ Window {
             id: panel
 
             anchors.fill: parent
-            radius: Theme.radiusOverlay
-            color: Theme.surface
+            radius: root.style.radius
+            color: root.style.surface
             border.width: 1
             border.color: Theme.stroke
 
@@ -383,7 +402,7 @@ Window {
                 clip: true
                 model: Apps
                 cellWidth: Math.floor(width / 6)
-                cellHeight: 96
+                cellHeight: root.style.cellHeight
                 keyNavigationWraps: true
                 boundsBehavior: Flickable.StopAtBounds
                 highlightFollowsCurrentItem: false
