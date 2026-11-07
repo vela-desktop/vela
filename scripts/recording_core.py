@@ -222,6 +222,10 @@ class Desktop:
         """Use the private bus for *both* D-Bus types: real network/BT/device
         names must not appear in a video, and tiles must not change host state."""
         return {"VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"),
+                # The recorder is a capture: without this the taskbar would
+                # show it (docs/screen-sharing.md §4.3). A scene showing the
+                # indicator sets it to "0".
+                "VELA_CAPTURE_UNREPORTED": "1",
                 **ENGLISH, **scene.env,
                 "DBUS_SESSION_BUS_ADDRESS": address,
                 "DBUS_SYSTEM_BUS_ADDRESS": address}
@@ -297,6 +301,9 @@ class Desktop:
                                      env=self.qt_env,
                                      stdout=self.vela.log, stderr=self.vela.log)
             self.vela.clients.append(shell)
+            # The shell, though not the compositor's child (as_user execs all
+            # the way: the same pid), for scenes that show screen sharing.
+            self.vela.command(f"test-shell {shell.pid}")
             self.vela.wait_for(lambda s: self.layer(s, "vela-taskbar") and self.layer(s, "vela-wallpaper"),
                                timeout=20, what="the real Qt desktop")
             time.sleep(1.5) # the wallpaper drawn, the colors sent to the compositor

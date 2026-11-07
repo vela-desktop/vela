@@ -22,7 +22,8 @@ void vela_commands_stop(struct vela_server *server);
 
 // "watch <topic>" keeps a connection open and sends it the topic's whole
 // state as one line, now and after every change: the owner of the topic calls
-// this when it changed. Topics: "brightness" (brightness.h).
+// this when it changed. Topics: "brightness" (brightness.h), "capture"
+// (capture_watch.h).
 void vela_commands_notify(struct vela_server *server, const char *topic);
 
 

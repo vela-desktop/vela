@@ -148,6 +148,7 @@ endif()
 
 add_executable(vela-compositor
     src/a11y.c
+    src/capture_watch.c
     src/error_screen.c
     src/bindings.c
     src/bluetooth.c
@@ -403,6 +404,51 @@ if(VELA_BUILD_TOOLS)
         PkgConfig::WAYLAND_CLIENT PkgConfig::PIXMAN)
     set_target_properties(vela-x11-root-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.x11-root COMMAND vela-x11-root-test)
+
+    # Who captures the screen (capture_watch.c, docs/screen-sharing.md): wlroots'
+    # capture managers, a headless output drawn by pixman, clients in this
+    # process and a clock the test moves; no GPU.
+    set(capture_watch_clients)
+    foreach(protocol
+            staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1
+            staging/ext-image-capture-source/ext-image-capture-source-v1
+            staging/ext-image-copy-capture/ext-image-copy-capture-v1)
+        get_filename_component(name ${protocol} NAME)
+        set(header ${VELA_GENERATED_DIR}/${name}-client-protocol.h)
+        add_custom_command(OUTPUT ${header}
+            COMMAND ${WAYLAND_SCANNER} client-header ${WAYLAND_PROTOCOLS_DIR}/${protocol}.xml ${header}
+            DEPENDS ${WAYLAND_PROTOCOLS_DIR}/${protocol}.xml
+            COMMENT "Generating ${name}-client-protocol.h")
+        list(APPEND capture_watch_clients ${header})
+    endforeach()
+    # Not among Vela's own protocols: their interface code too.
+    foreach(protocol
+            ${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml
+            ${PROJECT_SOURCE_DIR}/protocols/wlr-screencopy-unstable-v1.xml)
+        get_filename_component(name ${protocol} NAME_WE)
+        set(code ${VELA_GENERATED_DIR}/${name}-client-protocol.c)
+        add_custom_command(OUTPUT ${code}
+            COMMAND ${WAYLAND_SCANNER} private-code ${protocol} ${code}
+            DEPENDS ${protocol}
+            COMMENT "Generating ${name}-client-protocol.c")
+        list(APPEND capture_watch_clients ${code})
+    endforeach()
+    set(screencopy_client ${VELA_GENERATED_DIR}/wlr-screencopy-unstable-v1-client-protocol.h)
+    add_custom_command(OUTPUT ${screencopy_client}
+        COMMAND ${WAYLAND_SCANNER} client-header ${PROJECT_SOURCE_DIR}/protocols/wlr-screencopy-unstable-v1.xml
+            ${screencopy_client}
+        DEPENDS ${PROJECT_SOURCE_DIR}/protocols/wlr-screencopy-unstable-v1.xml
+        COMMENT "Generating wlr-screencopy-unstable-v1-client-protocol.h")
+    add_executable(vela-capture-watch-test tests/capture_watch_test.c src/capture_watch.c src/buffer.c
+        ${VELA_OWN_PROTOCOL_SOURCES} ${VELA_PROTOCOL_HEADERS} ${capture_watch_clients} ${screencopy_client})
+    target_include_directories(vela-capture-watch-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-capture-watch-test PRIVATE WLR_USE_UNSTABLE _GNU_SOURCE)
+    target_compile_options(vela-capture-watch-test PRIVATE -Wall -Wextra -Wno-unused-parameter
+        -Wno-missing-field-initializers)
+    target_link_libraries(vela-capture-watch-test PRIVATE PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER
+        PkgConfig::WAYLAND_CLIENT PkgConfig::PIXMAN)
+    set_target_properties(vela-capture-watch-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.capture-watch COMMAND vela-capture-watch-test)
 
     # Which vela-update-daemon the compositor starts, if any.
     add_executable(vela-updates-start-test tests/updates_start_test.c src/updates.c)

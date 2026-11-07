@@ -196,6 +196,7 @@ Window {
         { page: "sound", text: qsTr("Restart audio"), keys: qsTr("restart audio sound stuck pipewire wireplumber reset") },
         { page: "notifications", text: qsTr("Notifications"), keys: qsTr("do not disturb alerts") },
         { page: "notifications", text: qsTr("Do not disturb"), keys: qsTr("silent notifications") },
+        { page: "notifications", text: qsTr("Do not disturb while my screen is shared"), keys: qsTr("screen sharing share record recording presentation call meeting notifications silent do not disturb automatic") },
         { page: "notifications", text: qsTr("Show the number of notifications"), keys: qsTr("notifications count number badge unread taskbar clock") },
         { page: "power", text: qsTr("Power"), keys: qsTr("screen off sleep idle battery energy saver lock") },
         { page: "power", text: qsTr("Turn off the screen after"), keys: qsTr("idle timeout") },

@@ -71,6 +71,9 @@ class RealShell(unittest.TestCase):
                    VELA_DEBUG_SELECTION="1", **self.shell_env)
         self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
+        # In a session the shell is the compositor's child; here, this one is
+        # (its previews are not screen sharing, docs/screen-sharing.md §4.2).
+        self.vela.command(f"test-shell {self.shell.pid}")
         self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar") and self.mapped(s, "vela-wallpaper"),
                            timeout=20, what="the real Qt desktop")
 

@@ -177,4 +177,10 @@ void Config::reload()
         m_doNotDisturb = dnd;
         emit doNotDisturbChanged(dnd);
     }
+
+    const bool silence = settings.value(QStringLiteral("notifications/silenceWhileSharing"), true).toBool();
+    if (silence != m_silenceWhileSharing) {
+        m_silenceWhileSharing = silence;
+        emit silenceWhileSharingChanged(silence);
+    }
 }

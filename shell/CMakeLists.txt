@@ -67,6 +67,8 @@ qt_add_executable(vela-shell
     src/tray.cpp
     src/taskbarmodel.h
     src/wallpaperprovider.h
+    src/screensharing.cpp
+    src/screensharing.h
     src/screenwindows.cpp
     src/screenwindows.h
     src/windowcapture.cpp
@@ -312,6 +314,23 @@ if(VELA_BUILD_TOOLS)
 
     # The brightness model against a fake compositor socket (docs/brightness.md §9).
     find_package(Qt6 6.5 REQUIRED COMPONENTS Network)
+    # Do not disturb by itself while the screen is shared (docs/screen-sharing.md §7).
+    qt_add_executable(vela-notification-silence-test tests/notification_silence.cpp src/notifications.cpp
+        src/notifications.h)
+    target_include_directories(vela-notification-silence-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
+    target_compile_options(vela-notification-silence-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-notification-silence-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
+    add_test(NAME shell-notification-silence COMMAND vela-notification-silence-test)
+    set_tests_properties(shell-notification-silence PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Who shares the screen, named, against a fake compositor (docs/screen-sharing.md §5).
+    qt_add_executable(vela-screen-sharing-test tests/screensharing.cpp src/screensharing.cpp src/screensharing.h)
+    target_include_directories(vela-screen-sharing-test PRIVATE src)
+    target_compile_options(vela-screen-sharing-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-screen-sharing-test PRIVATE Qt6::Gui Qt6::Network Qt6::Test)
+    add_test(NAME shell-screen-sharing COMMAND vela-screen-sharing-test)
+    set_tests_properties(shell-screen-sharing PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     qt_add_executable(vela-brightness-model-test tests/brightness_model.cpp src/brightness.cpp src/brightness.h)
     target_include_directories(vela-brightness-model-test PRIVATE src)
     target_compile_options(vela-brightness-model-test PRIVATE -Wall -Wextra)

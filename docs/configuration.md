@@ -159,7 +159,7 @@ The design and what is still planned are in [theme-system.md](theme-system.md).
 
 ## Shell settings
 
-The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization, except the time format (Settings → Time & language → Date & time) and the number of notifications (Settings → System → Notifications):
+The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization, except the time format (Settings → Time & language → Date & time) and the notification ones (Settings → System → Notifications):
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -167,6 +167,7 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | `taskbar/clockSeconds` | `false` | The seconds in the taskbar's clock |
 | `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `taskbar/notificationCount` | `true` | The number of notifications next to the clock (Do not disturb's bell shows anyway) |
+| `notifications/silenceWhileSharing` | `true` | Do not disturb by itself while an app shares or records the screen: popups wait in the notification center; the user's own Do not disturb (`notifications/doNotDisturb`) is never changed ([screen sharing](screen-sharing.md) §7) |
 | `start/icon` | `vela` | The Start button's icon: `vela` (the sail), `distribution` (os-release's `LOGO=`, from the icon theme or a loose file in `icons/` or `pixmaps/`) or `picture`; one that can't be shown (no logo, a picture gone or not a picture) is the sail |
 | `start/iconPicture` | | The picture's file for `start/icon=picture`; the shell watches it, so an edited or deleted picture shows at once |
 | `start/showPinned` | `true` | The apps pinned to Start above all apps; off, Start opens on all apps and keeps the pins (`start/pinned`) |
@@ -260,6 +261,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_LATCH=0` | Disable late latching and render when the backend frame event arrives. |
 | `VELA_LATCH_MARGIN` | Minimum late-latching safety margin in milliseconds. Default: `1`; the frame clock can grow the effective margin after late frames. |
 | `VELA_REALTIME=0` | Disable realtime scheduling for the compositor main thread. |
+| `VELA_CAPTURE_UNREPORTED=1` | Don't report screen captures: no taskbar indicator, no automatic Do not disturb. For recordings of Vela itself (`scripts/recording_core.py` sets it); see [screen sharing](screen-sharing.md) §4.3. |
 | `VELA_SCREEN_OFF` | Override idle timeout in minutes (fractions allowed). Default is 10 if no stored setting exists; `0` disables idle screen-off. Set, it also enables the idle timeout nested and headless (tests). |
 | `VELA_LOCK_ON_IDLE=0` | Turn displays off on idle without locking first. |
 | `VELA_LOCK` | Use another locker instead of `vela-lock`, for example `swaylock`. |

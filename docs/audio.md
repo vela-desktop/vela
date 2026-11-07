@@ -341,6 +341,11 @@ and `node.dont-move`, so they never end up somewhere else. Done in A3.
   (`Menus.tooltip`), placed above the taskbar like the window previews; the
   mouse goes through it.
 - Done in A4.
+- The same snapshot carries the apps receiving a screen share through the
+  portal (`Snapshot::screenConsumers`, `Audio::screenUsers`): their
+  `Stream/Input/Video` linked to one of xdg-desktop-portal-wlr's
+  `Video/Source` nodes ([screen sharing](screen-sharing.md) §5.2). The core
+  watches those two video classes for that alone.
 
 ### 7.3 Test sound
 

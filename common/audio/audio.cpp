@@ -934,6 +934,16 @@ void Audio::update()
     }
 
     const QVariantList microphone = microphoneUsers(s);
+    QVariantList screen;
+    for (const AppIdentity& app : s.screenConsumers) {
+        const AppInfo info = appInfo(app);
+        screen.append(QVariantMap {
+            { QStringLiteral("key"), app.key },
+            { QStringLiteral("name"), info.name },
+            { QStringLiteral("icon"), info.icon },
+            { QStringLiteral("desktopId"), info.desktopId },
+        });
+    }
 
     const int sampleRate = s.settingsKnown ? shown(QStringLiteral("samplerate"), sampleRateOf(s)).toInt() : 0;
     const QString sampleRateMode = s.settingsKnown ? sampleRateModeOf(sampleRate) : QString();
@@ -951,7 +961,7 @@ void Audio::update()
     }
 
     if (outputs != m_outputs || inputs != m_inputs || apps != m_apps || devices != m_devices
-        || microphone != m_microphoneUsers || sampleRateMode != m_sampleRateMode || sampleRate != m_sampleRate
+        || microphone != m_microphoneUsers || screen != m_screenUsers || sampleRateMode != m_sampleRateMode || sampleRate != m_sampleRate
         || sampleRateError != m_sampleRateError || allowedRates != m_allowedRates
         || defaultOutput != m_defaultOutput
         || defaultInput != m_defaultInput || volume != m_volume || muted != m_muted || inputMuted != m_inputMuted) {
@@ -960,6 +970,7 @@ void Audio::update()
         m_apps = apps;
         m_devices = devices;
         m_microphoneUsers = microphone;
+        m_screenUsers = screen;
         m_sampleRateMode = sampleRateMode;
         m_sampleRate = sampleRate;
         m_sampleRateError = sampleRateError;

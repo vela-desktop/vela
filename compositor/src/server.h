@@ -23,6 +23,7 @@
 #include "shell.h"
 
 struct vela_a11y;
+struct vela_capture_watch;
 struct vela_brightness;
 struct vela_commands;
 struct vela_icons;
@@ -45,6 +46,7 @@ struct vela_x11_root;
 struct wlr_allocator;
 struct wlr_compositor;
 struct wlr_ext_foreign_toplevel_list_v1;
+struct wlr_ext_image_copy_capture_manager_v1;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_xdg_output_manager_v1;
 struct wlr_xdg_shell;
@@ -167,6 +169,9 @@ struct vela_server {
     struct wlr_xdg_shell *xdg_shell;
     struct wlr_foreign_toplevel_manager_v1 *foreign_toplevels;
     struct wlr_ext_foreign_toplevel_list_v1 *ext_toplevels;
+    struct wlr_ext_image_copy_capture_manager_v1 *copy_capture; // (view.c)
+    // Who captures the screen or a window (capture_watch.h).
+    struct vela_capture_watch *capture_watch;
     struct wl_listener new_toplevel;
     struct wl_listener new_capture_request;
     struct wl_listener new_decoration;

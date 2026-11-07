@@ -60,6 +60,7 @@ private slots:
         QVERIFY(prefs.clock24());
         QVERIFY(!prefs.clockSeconds());
         QVERIFY(prefs.notificationCount());
+        QVERIFY(prefs.silenceWhileSharing());
         QCOMPARE(prefs.timeFormat(), QStringLiteral("HH:mm"));
         QCOMPARE(prefs.startIcon(), QStringLiteral("vela"));
         QCOMPARE(prefs.startIconSource(), QString());
@@ -70,8 +71,10 @@ private slots:
     void readsTheFile()
     {
         write("[appearance]\nappTheme=dark\n[desktop]\nshowIcons=false\n[start]\nshowPinned=false\nicon=distribution\n"
-              "[clock]\nhours=12\n[taskbar]\nshowDate=false\nclockSeconds=true\nnotificationCount=false\n");
+              "[clock]\nhours=12\n[taskbar]\nshowDate=false\nclockSeconds=true\nnotificationCount=false\n"
+              "[notifications]\nsilenceWhileSharing=false\n");
         Preferences prefs;
+        QVERIFY(!prefs.silenceWhileSharing());
         QVERIFY(!prefs.desktopIcons());
         QVERIFY(!prefs.startPinned());
         QVERIFY(!prefs.clockDate());
@@ -115,6 +118,12 @@ private slots:
         prefs.setDesktopIcons(false);
         QCOMPARE(saved(QStringLiteral("desktop/showIcons")).toBool(), false);
         QCOMPARE(desktop.count(), 1);
+        QSignalSpy dnd(&prefs, &Preferences::doNotDisturbChanged);
+        prefs.setSilenceWhileSharing(false);
+        QCOMPARE(saved(QStringLiteral("notifications/silenceWhileSharing")).toBool(), false);
+        QCOMPARE(dnd.count(), 1);
+        prefs.setSilenceWhileSharing(false);
+        QCOMPARE(dnd.count(), 1);
 
         // The same value again: nothing written, nothing said.
         prefs.setClock24(true);

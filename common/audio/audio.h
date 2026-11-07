@@ -81,6 +81,10 @@ class Audio : public QObject {
     //   that stops stays about a second, so that a pause doesn't make the
     //   tray icon blink.
     Q_PROPERTY(QVariantList microphoneUsers READ microphoneUsers NOTIFY changed)
+    // The apps receiving a screen share through the portal
+    // (docs/screen-sharing.md §5.2): key, name, icon, desktopId, named like
+    // the mixers'. The shell's ScreenSharing says who shares with them.
+    Q_PROPERTY(QVariantList screenUsers READ screenUsers NOTIFY changed)
     // The graph's sample rate (docs/audio.md §8.1): "automatic" (it follows
     // what plays), "fixed" (sampleRate), "custom" (set elsewhere); empty
     // while unknown.
@@ -131,6 +135,7 @@ public:
     QVariantList apps() const { return m_apps; }
     QVariantList devices() const { return m_devices; }
     QVariantList microphoneUsers() const { return m_microphoneUsers; }
+    QVariantList screenUsers() const { return m_screenUsers; }
     QString sampleRateMode() const { return m_sampleRateMode; }
     int sampleRate() const { return m_sampleRate; }
     bool sampleRateError() const { return m_sampleRateError; }
@@ -253,6 +258,7 @@ private:
     QVariantList m_apps;
     QVariantList m_devices;
     QVariantList m_microphoneUsers;
+    QVariantList m_screenUsers;
     QString m_sampleRateMode;
     QHash<QString, QString> m_names; // node.name -> the name Vela's rule gives
     int m_sampleRate = 0;
