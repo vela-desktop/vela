@@ -649,10 +649,26 @@ private slots:
         QCOMPARE(user.value("icon").toString(), QStringLiteral("firefox"));
         QCOMPARE(user.value("desktopId").toString(), QStringLiteral("firefox.desktop"));
 
-        // Paused, the share is still open.
+        // Paused, the share is still open: once the pause is seen by the
+        // stream and the model has been rebuilt since, it still counts.
+        QSignalSpy rebuilt(audio->core(), &vela::audio::Core::changed);
         browser->send(QStringLiteral("pause"));
-        QTest::qWait(300);
+        QVERIFY(browser->waitState(QStringLiteral("paused")));
+        QTRY_VERIFY(rebuilt.count() > 0);
         QCOMPARE(keys(), QStringList({ QStringLiteral("firefox") }));
+
+        // Two apps with the same binary but their own ids (two Flatpaks):
+        // both are named.
+        auto first = std::make_unique<FakeStream>(QStringList { "--video", "--record", "--prop",
+            "application.process.binary=bwrap-app", "--prop", "pipewire.access.portal.app_id=org.example.One",
+            "--prop", "target.object=xdpw-stream-TEST01" });
+        auto second = std::make_unique<FakeStream>(QStringList { "--video", "--record", "--prop",
+            "application.process.binary=bwrap-app", "--prop", "pipewire.access.portal.app_id=org.example.Two",
+            "--prop", "target.object=xdpw-stream-TEST01" });
+        QVERIFY(first->waitStreaming() && second->waitStreaming());
+        QTRY_COMPARE(audio->screenUsers().size(), 3);
+        QCOMPARE(first->close(), 0);
+        QCOMPARE(second->close(), 0);
         QCOMPARE(browser->close(), 0);
         QTRY_VERIFY(audio->screenUsers().isEmpty());
         QCOMPARE(call->close(), 0);

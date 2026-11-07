@@ -137,6 +137,11 @@ public:
             5000));
         return m_node;
     }
+    // It reported this state (paused, streaming...); false after 5 s.
+    bool waitState(const QString& state)
+    {
+        return QTest::qWaitFor([this, &state] { return m_state == state; }, 5000);
+    }
     quint32 node() const { return m_node; }
     // A command: pause, resume, quit.
     void send(const QString& line) { m_process.write(line.toUtf8() + '\n'); }

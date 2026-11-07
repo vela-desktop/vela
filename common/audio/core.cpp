@@ -770,8 +770,12 @@ void Core::rebuild()
         for (quint32 peer : receivesFrom.values(id)) {
             fromPortal = fromPortal || videoSources.value(peer).startsWith(QLatin1String(portalStreamPrefix));
         }
+        // The same app twice (two streams): once. Two apps sharing a binary
+        // (Flatpaks, Electron) but not their ids: both.
         const bool known = std::any_of(s.screenConsumers.cbegin(), s.screenConsumers.cend(),
-            [&app](const AppIdentity& other) { return other.key == app.key; });
+            [&app](const AppIdentity& other) {
+                return other.key == app.key && other.portalAppId == app.portalAppId && other.id == app.id;
+            });
         if (fromPortal && !known) {
             s.screenConsumers.append(app);
         }
