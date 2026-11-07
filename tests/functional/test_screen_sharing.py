@@ -11,6 +11,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import tempfile
 import threading
 import time
 import unittest
@@ -235,8 +236,7 @@ class TheShell(unittest.TestCase):
         directory = None
         if copy_as:
             # A copy, not a link: /proc/<pid>/exe names the file it runs.
-            directory = os.path.join(os.environ.get("TMPDIR", "/tmp"), f"vela-share-{os.getpid()}")
-            os.makedirs(directory, exist_ok=True)
+            directory = tempfile.mkdtemp(prefix="vela-share-")
             shutil.copy(tool("vela-share"), os.path.join(directory, copy_as))
             startup = startup.replace("@BINARY@", os.path.join(directory, copy_as))
         else:

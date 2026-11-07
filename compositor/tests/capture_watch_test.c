@@ -128,7 +128,58 @@ struct client {
     int output_count;
     struct ext_foreign_toplevel_handle_v1 *toplevels[2]; // the screen's, the window's
     int toplevel_count;
+    // Sessions and frames still alive, destroyed with the connection.
+    struct wl_proxy *made[32];
+    int made_count;
 };
+
+static void *keep(struct client *c, void *proxy)
+{
+    assert(c->made_count < (int)(sizeof(c->made) / sizeof(c->made[0])));
+    c->made[c->made_count++] = proxy;
+    return proxy;
+}
+
+// The test is done with it: forgotten here, `destroy` (its request) sent.
+static void drop(struct client *c, void *proxy, void (*destroy)(void *))
+{
+    for (int i = 0; i < c->made_count; ++i) {
+        if (c->made[i] == proxy) {
+            c->made[i] = c->made[--c->made_count];
+            destroy(proxy);
+            return;
+        }
+    }
+    abort();
+}
+
+static void destroy_session(void *session)
+{
+    ext_image_copy_capture_session_v1_destroy(session);
+}
+
+static void destroy_frame(void *frame)
+{
+    zwlr_screencopy_frame_v1_destroy(frame);
+}
+
+// Every proxy it still has, on this side only, then the connection.
+static void hang_up(struct client *c)
+{
+    for (int i = 0; i < c->made_count; ++i) {
+        wl_proxy_destroy(c->made[i]);
+    }
+    struct wl_proxy *globals[] = { (struct wl_proxy *)c->copy, (struct wl_proxy *)c->list,
+        (struct wl_proxy *)c->sources, (struct wl_proxy *)c->screencopy, (struct wl_proxy *)c->outputs[0],
+        (struct wl_proxy *)c->outputs[1], (struct wl_proxy *)c->toplevels[0], (struct wl_proxy *)c->toplevels[1],
+        (struct wl_proxy *)c->registry };
+    for (size_t i = 0; i < sizeof(globals) / sizeof(globals[0]); ++i) {
+        if (globals[i]) {
+            wl_proxy_destroy(globals[i]);
+        }
+    }
+    wl_display_disconnect(c->wl);
+}
 
 static void toplevel_closed(void *data, struct ext_foreign_toplevel_handle_v1 *handle) {}
 static void toplevel_done(void *data, struct ext_foreign_toplevel_handle_v1 *handle) {}
@@ -218,7 +269,7 @@ static void connect_client(struct client *c)
 
 static void disconnect_client(struct client *c)
 {
-    wl_display_disconnect(c->wl);
+    hang_up(c);
     pump(NULL);
 }
 
@@ -243,7 +294,7 @@ static struct ext_image_copy_capture_session_v1 *open_session(struct client *c, 
     ext_image_copy_capture_session_v1_add_listener(session, &session_listener, NULL);
     ext_image_capture_source_v1_destroy(source);
     pump(c);
-    return session;
+    return keep(c, session);
 }
 
 static void frame_buffer(void *data, struct zwlr_screencopy_frame_v1 *f, uint32_t format, uint32_t w, uint32_t h,
@@ -273,7 +324,7 @@ static struct zwlr_screencopy_frame_v1 *ask_frame(struct client *c, int output)
         c->outputs[output]);
     zwlr_screencopy_frame_v1_add_listener(frame, &frame_listener, &failed_frames);
     pump(c);
-    return frame;
+    return keep(c, frame);
 }
 
 // ---------------------------------------------------------------- checks --
@@ -315,6 +366,10 @@ static void later(struct vela_capture_watch *watch, int64_t ms)
 // This test as a client of its own, under another name (`--client`), on the
 // display's socket (a socketpair would carry this process's credentials): a
 // session on the screen's source, held until its stdin closes.
+// The test's own directory (mkdtemp: private to us), in the working
+// directory: the build tree under ctest.
+static char scratch[512];
+
 static int run_client(void)
 {
     struct client c = { 0 };
@@ -326,19 +381,20 @@ static int run_client(void)
     wl_display_roundtrip(c.wl);
     struct ext_image_capture_source_v1 *source
         = ext_foreign_toplevel_image_capture_source_manager_v1_create_source(c.sources, c.toplevels[0]);
-    ext_image_copy_capture_manager_v1_create_session(c.copy, source, 0);
+    keep(&c, ext_image_copy_capture_manager_v1_create_session(c.copy, source, 0));
+    ext_image_capture_source_v1_destroy(source);
     wl_display_roundtrip(c.wl);
     char byte;
     while (read(STDIN_FILENO, &byte, 1) > 0) {
     }
-    wl_display_disconnect(c.wl);
+    hang_up(&c);
     return 0;
 }
 
 struct process {
     pid_t pid;
     int stdin_fd;
-    char path[256];
+    char path[600];
 };
 
 // Runs this test as `name` (a copy: /proc/<pid>/exe names the file) and
@@ -346,9 +402,7 @@ struct process {
 static struct process spawn_as(const char *name)
 {
     struct process p = { 0 };
-    char dir[] = "/tmp/vela-capture-watch-XXXXXX";
-    assert(mkdtemp(dir));
-    snprintf(p.path, sizeof(p.path), "%s/%s", dir, name);
+    snprintf(p.path, sizeof(p.path), "%s/%s", scratch, name);
     int in = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
     int out = open(p.path, O_WRONLY | O_CREAT | O_CLOEXEC, 0700);
     assert(in >= 0 && out >= 0);
@@ -399,8 +453,6 @@ static void stop(struct process *p)
     }
     wl_event_loop_dispatch(loop, 0);
     unlink(p->path);
-    *strrchr(p->path, '/') = '\0';
-    rmdir(p->path);
 }
 
 // ------------------------------------------------------------------ main --
@@ -424,10 +476,12 @@ int main(int argc, char **argv)
     unsetenv("VELA_CAPTURE_UNREPORTED");
     display = wl_display_create();
     loop = wl_display_get_event_loop(display);
-    // A socket of its own, for the clients in other processes.
-    char runtime[] = "/tmp/vela-capture-watch-runtime-XXXXXX";
-    assert(mkdtemp(runtime));
-    setenv("XDG_RUNTIME_DIR", runtime, 1);
+    // A socket of its own, for the clients in other processes, and the
+    // copies of this test they run.
+    assert(getcwd(scratch, sizeof(scratch) - 32));
+    strcat(scratch, "/capture-watch-XXXXXX");
+    assert(mkdtemp(scratch));
+    setenv("XDG_RUNTIME_DIR", scratch, 1);
     const char *socket_name = wl_display_add_socket_auto(display);
     assert(socket_name);
     setenv("WAYLAND_DISPLAY", socket_name, 1);
@@ -556,10 +610,10 @@ int main(int argc, char **argv)
     window.xdg = NULL;
 
     // Closed: gone at once.
-    ext_image_copy_capture_session_v1_destroy(screen);
-    ext_image_copy_capture_session_v1_destroy(window_session);
-    ext_image_copy_capture_session_v1_destroy(again);
-    ext_image_copy_capture_session_v1_destroy(window_again);
+    drop(&a, screen, destroy_session);
+    drop(&a, window_session, destroy_session);
+    drop(&a, again, destroy_session);
+    drop(&a, window_again, destroy_session);
     pump(&a);
     assert(nobody());
 
@@ -572,8 +626,8 @@ int main(int argc, char **argv)
     later(watch, 5000);
     assert(nobody());
     // The same output again within 2 s: a stream.
-    zwlr_screencopy_frame_v1_destroy(first);
-    zwlr_screencopy_frame_v1_destroy(disabled);
+    drop(&b, first, destroy_frame);
+    drop(&b, disabled, destroy_frame);
     first = ask_frame(&b, 0);
     later(watch, 1500);
     struct zwlr_screencopy_frame_v1 *second = ask_frame(&b, 0);
@@ -591,11 +645,11 @@ int main(int argc, char **argv)
     struct ext_image_copy_capture_session_v1 *both = open_session(&a, 0);
     later(watch, 1000);
     assert(count(report(), "\"pid\":") == 2 && strstr(state, "]},{\"pid\":"));
-    ext_image_copy_capture_session_v1_destroy(both);
+    drop(&a, both, destroy_session);
     pump(&a);
     // Done (destroyed): gone 2 s after the last frame.
-    zwlr_screencopy_frame_v1_destroy(first);
-    zwlr_screencopy_frame_v1_destroy(second);
+    drop(&b, first, destroy_frame);
+    drop(&b, second, destroy_frame);
     pump(&b);
     later(watch, 0);
     assert(nobody());
@@ -605,7 +659,7 @@ int main(int argc, char **argv)
     connect_client(&e);
     ask_frame(&e, 0);
     ask_frame(&e, 0);
-    zwlr_screencopy_manager_v1_capture_output(e.screencopy, 0, e.outputs[0]);
+    keep(&e, zwlr_screencopy_manager_v1_capture_output(e.screencopy, 0, e.outputs[0]));
     wl_display_flush(e.wl);
     later(watch, 0);
     disconnect_client(&e);
@@ -630,7 +684,7 @@ int main(int argc, char **argv)
         wl_event_loop_dispatch(loop, 10);
     }
     assert(!nobody());
-    ext_image_copy_capture_session_v1_destroy(timed);
+    drop(&d, timed, destroy_session);
     pump(&d);
     assert(nobody());
 
@@ -692,7 +746,7 @@ int main(int argc, char **argv)
 
     // Gone with clients still connected (as at shutdown), a frame not yet
     // looked at.
-    zwlr_screencopy_manager_v1_capture_output(later_shell.screencopy, 0, later_shell.outputs[0]);
+    keep(&later_shell, zwlr_screencopy_manager_v1_capture_output(later_shell.screencopy, 0, later_shell.outputs[0]));
     wl_display_flush(later_shell.wl);
     wl_event_loop_dispatch(loop, 0);
     vela_capture_watch_destroy(watch);
@@ -701,7 +755,7 @@ int main(int argc, char **argv)
 
     struct client *all[] = { &a, &b, &d, &shell, &child, &later_shell, &early };
     for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); ++i) {
-        wl_display_disconnect(all[i]->wl);
+        hang_up(all[i]);
     }
     wl_display_destroy_clients(display);
     wl_list_remove(&capture_request.link);
@@ -713,7 +767,7 @@ int main(int argc, char **argv)
     wlr_allocator_destroy(allocator);
     wlr_renderer_destroy(renderer);
     wl_display_destroy(display);
-    rmdir(runtime);
+    assert(rmdir(scratch) == 0); // nothing left behind
     puts("capture watch: ok");
     return 0;
 }
