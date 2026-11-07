@@ -146,6 +146,8 @@ install -Dm755 packaging/vela-update-state %{buildroot}%{_libexecdir}/vela/vela-
 %{_datadir}/xdg-desktop-portal/vela-portals.conf
 %{_datadir}/vela/
 %{_prefix}/lib/systemd/user/vela-session.target
+%{_prefix}/lib/systemd/user/vela-gnome-keyring.service
+%{_prefix}/lib/systemd/user/vela-kwallet.service
 %{_prefix}/lib/udev/rules.d/70-vela-i2c.rules
 %{_prefix}/lib/modules-load.d/vela-i2c.conf
 %config(noreplace) /etc/pam.d/vela-lock

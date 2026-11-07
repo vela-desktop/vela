@@ -46,10 +46,18 @@ start)
     if systemctl --user cat vela-session.target > /dev/null 2>&1; then
         systemctl --user --no-block start vela-session.target
     fi
+    # The wallet is part of this session. PartOf=vela-session.target stops it
+    # on logout, so it does not keep org.freedesktop.secrets afterwards.
+    # systemd starts the process with a clear signal mask.
+    case ":${XDG_CURRENT_DESKTOP:-}:" in
+    *:GNOME:*) systemctl --user start vela-gnome-keyring.service ;;
+    *:KDE:*) systemctl --user start vela-kwallet.service ;;
+    esac
     ;;
 stop)
     [ -e "$STATE" ] || exit 0
     rm -f "$STATE"
+    systemctl --user stop vela-gnome-keyring.service vela-kwallet.service 2> /dev/null
     if systemctl --user cat vela-session.target > /dev/null 2>&1; then
         systemctl --user --no-block stop vela-session.target
     fi

@@ -20,6 +20,8 @@ for path in \
     /usr/share/xdg-desktop-portal/vela-portals.conf \
     /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
     /usr/lib/systemd/user/vela-session.target \
+    /usr/lib/systemd/user/vela-gnome-keyring.service \
+    /usr/lib/systemd/user/vela-kwallet.service \
     /usr/lib/udev/rules.d/70-vela-i2c.rules \
     /usr/lib/modules-load.d/vela-i2c.conf \
     /etc/xdg/xdg-desktop-portal-wlr/Vela \

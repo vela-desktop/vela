@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[Unit]
+Description=Vela GNOME keyring
+Documentation=https://github.com/vela-desktop/vela
+PartOf=vela-session.target
+ConditionFileIsExecutable=/usr/bin/gnome-keyring-daemon
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/gnome-keyring-daemon --foreground --components=pkcs11,secrets,ssh
+Restart=on-failure
+Slice=session.slice

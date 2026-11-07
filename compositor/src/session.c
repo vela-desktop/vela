@@ -66,41 +66,6 @@ static long gnome_keyring_bytes(void)
     return regular_size(path);
 }
 
-// Prints KEY=VALUE lines. The compositor keeps them so the shell and apps
-// inherit SSH_AUTH_SOCK and the daemon stays the Secret Service.
-static void start_gnome_keyring(void)
-{
-    FILE *pipe = popen("gnome-keyring-daemon --start --components=pkcs11,secrets,ssh", "r");
-    if (!pipe) {
-        return;
-    }
-    char line[512];
-    while (fgets(line, sizeof(line), pipe)) {
-        char *newline = strchr(line, '\n');
-        if (newline) {
-            *newline = '\0';
-        }
-        char *equals = strchr(line, '=');
-        if (!equals || equals == line) {
-            continue;
-        }
-        *equals = '\0';
-        setenv(line, equals + 1, 1);
-    }
-    pclose(pipe);
-}
-
-static void start_kwallet(void)
-{
-    pid_t pid = fork();
-    if (pid != 0) {
-        return;
-    }
-    setsid();
-    execlp("kwalletd6", "kwalletd6", (char *)NULL);
-    _exit(127);
-}
-
 void vela_session_set_environment(void)
 {
     // Browsers pick a wallet from the first desktop name they know. "KDE"
@@ -116,10 +81,18 @@ void vela_session_set_environment(void)
     setenv("XDG_CURRENT_DESKTOP", desktops, 1);
     if (strcmp(backend, "KDE") == 0) {
         setenv("KDE_SESSION_VERSION", "6", 0);
-        start_kwallet();
     } else {
         unsetenv("KDE_SESSION_VERSION");
-        start_gnome_keyring();
+        // vela-session-env starts gnome-keyring-daemon under vela-session.target.
+        // The sockets it creates are these paths.
+        const char *runtime = getenv("XDG_RUNTIME_DIR");
+        char path[PATH_MAX];
+        if (runtime && runtime[0] && vela_format(path, sizeof(path), "%s/keyring", runtime)) {
+            setenv("GNOME_KEYRING_CONTROL", path, 0);
+            if (vela_format(path, sizeof(path), "%s/keyring/ssh", runtime)) {
+                setenv("SSH_AUTH_SOCK", path, 0);
+            }
+        }
     }
     setenv("XDG_SESSION_DESKTOP", "vela", 0);
     setenv("XDG_SESSION_TYPE", "wayland", 1); // from a console it's "tty"
