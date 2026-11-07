@@ -6,6 +6,7 @@
 #include "session.h"
 #include "supervisor.h"
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,15 +36,26 @@ static void expect(const char *name, const char *want)
 
 static void write_file(const char *path, size_t bytes)
 {
-    FILE *file = fopen(path, "w");
-    if (!file) {
+    // 0600: these stand in for keyring files, which are not world-writable.
+    const int fd = open(path, O_CLOEXEC | O_CREAT | O_TRUNC | O_WRONLY, 0600);
+    if (fd < 0) {
         perror(path);
         exit(1);
     }
-    for (size_t i = 0; i < bytes; ++i) {
-        fputc('x', file);
+    const char block[4096] = { 0 };
+    while (bytes > 0) {
+        const size_t chunk = bytes < sizeof(block) ? bytes : sizeof(block);
+        if (write(fd, block, chunk) != (ssize_t)chunk) {
+            perror(path);
+            close(fd);
+            exit(1);
+        }
+        bytes -= chunk;
     }
-    fclose(file);
+    if (close(fd) != 0) {
+        perror(path);
+        exit(1);
+    }
 }
 
 int main(void)
