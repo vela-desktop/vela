@@ -113,7 +113,7 @@ jobs:
           devices = re.split(r"(?m)^\s*GPU\d+:\s*$", report)[1:]
           for device in devices:
               vendor = re.search(r"(?m)^\s*vendorID\s*=\s*0x8086\b", device)
-              version = re.search(r"(?m)^\s*apiVersion\s*=\s*(\d+)\.(\d+)", device)
+              version = re.search(r"(?m)^\s*apiVersion\s*=\s*(?:\d+[ \t]+\()?(\d+)\.(\d+)", device)
               anv = re.search(r"(?m)^\s*driverID\s*=\s*DRIVER_ID_INTEL_OPEN_SOURCE_MESA\b", device)
               if vendor and anv and version and tuple(map(int, version.groups())) >= (1, 4):
                   print("Hardware Intel ANV with Vulkan >= 1.4 confirmed.")
@@ -155,6 +155,26 @@ jobs:
           jobs="$(nproc)"
           if (( jobs > 2 )); then jobs=2; fi
           cmake --build "$RUNNER_TEMP/vela-gpu-build" --parallel "$jobs"
+
+      # Even a partial GPU-labelled suite such as text-rendering-rhi may not
+      # start Vela. Always prove that its actual Vulkan renderer opens the
+      # Intel render node before reporting success on any selected test set.
+      - name: Verify Vela renderer on Intel hardware
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VELA_BUILD="$RUNNER_TEMP/vela-gpu-build"
+          /usr/bin/python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "tests/functional")
+          from harness import Session
+
+          # Session starts and stops a private headless compositor. With
+          # VELA_GPU_EXPECT_VENDOR set, its startup verifies the PCI vendor
+          # of the actual render node selected by Vela (not vulkaninfo).
+          with Session() as vela:
+              print(f"Intel ANV compositor smoke passed ({vela.display}).")
+          PY
 
       - name: Real GPU functional and sharpness suites
         shell: bash
