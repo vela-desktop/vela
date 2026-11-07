@@ -148,12 +148,36 @@ private slots:
         server.setDoNotDisturb(true);
         const QVariantMap expires { { QStringLiteral("urgency"), 2 }, { QStringLiteral("x-vela-expires"), true } };
         server.Notify(QStringLiteral("Devices"), 0, QString(), QStringLiteral("expires"), QString(), {}, expires, 200);
-        notify(server, QStringLiteral("stays"), true);
+        server.Notify(QStringLiteral("Mail"), 0, QString(), QStringLiteral("stays"), QString(), {},
+            { { QStringLiteral("urgency"), 2 } }, 100);
         QCOMPARE(server.count(), 2);
         QTRY_COMPARE(server.count(), 1);
         QCOMPARE(historyCount(server), 1);
         QTest::qWait(300);
-        QCOMPARE(server.count(), 1); // 5000 ms asked, critical: stays
+        QCOMPARE(server.count(), 1); // 100 ms asked, critical: stays
+    }
+
+    // Too many popups: the oldest goes into the notification center, but
+    // not a critical one that stays (the PC's battery,
+    // docs/battery-notifications.md §5); it goes only when they all are.
+    void criticalStaysWhenFull()
+    {
+        NotificationServer server;
+        const uint battery = notify(server, QStringLiteral("battery"), true);
+        const QVariantMap expires { { QStringLiteral("urgency"), 2 }, { QStringLiteral("x-vela-expires"), true } };
+        server.Notify(QStringLiteral("Devices"), 0, QString(), QStringLiteral("mouse"), QString(), {}, expires, 5000);
+        for (int i = 0; i < 4; ++i) {
+            notify(server, QStringLiteral("mail %1").arg(i));
+        }
+        QCOMPARE(server.count(), 4);
+        QCOMPARE(historyCount(server), 2);
+        QCOMPARE(server.index(0).data(NotificationServer::IdRole).toUInt(), battery);
+        QCOMPARE(server.index(1).data(NotificationServer::SummaryRole).toString(), QStringLiteral("mail 1"));
+        for (int i = 0; i < 4; ++i) {
+            notify(server, QStringLiteral("critical %1").arg(i), true);
+        }
+        QCOMPARE(server.count(), 4);
+        QCOMPARE(server.index(0).data(NotificationServer::SummaryRole).toString(), QStringLiteral("critical 0"));
     }
 };
 
