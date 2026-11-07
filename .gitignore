@@ -14,3 +14,4 @@ compile_commands.json
 /packaging/arch/vela/
 /packaging/arch/*.pkg.tar.*
 __pycache__/
+/benchmark-results/
