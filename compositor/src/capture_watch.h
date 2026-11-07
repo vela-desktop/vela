@@ -22,7 +22,8 @@ struct vela_capture_watch *vela_capture_watch_create(struct vela_server *server,
 // After the clients are gone: wlroots wants no listener left on its globals.
 void vela_capture_watch_destroy(struct vela_capture_watch *watch);
 
-// Something a report names changed: a window's title or app id, an output.
+// Something a report names changed (a window's title or app id, an output):
+// everything is looked at again now.
 void vela_capture_watch_refresh(struct vela_capture_watch *watch);
 
 // "test-shell <pid>": the functional tests start the real shell as a client

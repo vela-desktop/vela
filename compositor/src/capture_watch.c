@@ -599,8 +599,8 @@ static void publish(struct vela_capture_watch *watch)
 
 void vela_capture_watch_refresh(struct vela_capture_watch *watch)
 {
-    if (watch && !watch->finishing) {
-        publish(watch);
+    if (watch) {
+        update(watch);
     }
 }
 
