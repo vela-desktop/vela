@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFont>
+#include <QFontInfo>
 #include <QGuiApplication>
 #include <QQmlComponent>
 #include <QQuickItem>
@@ -280,29 +281,59 @@ double pressSteps(Scene& scene)
 
 int main(int argc, char** argv)
 {
+    QCommandLineParser parser;
+    parser.addHelpOption();
+    parser.addOption(
+        { QStringLiteral("capture-dir"), QStringLiteral("Save comparison frames"), QStringLiteral("directory") });
+    parser.addOption({ QStringLiteral("comparison-mode"),
+        QStringLiteral("Capture only: native, qt-default or qt-gray (run each in a fresh process)"),
+        QStringLiteral("mode") });
+    parser.addOption({ QStringLiteral("font-family"), QStringLiteral("Use this font for visual review"),
+        QStringLiteral("family") });
+    QStringList arguments;
+    for (int i = 0; i < argc; ++i) {
+        arguments.append(QString::fromLocal8Bit(argv[i]));
+    }
+    // Read the mode before constructing QGuiApplication or a scene graph.
+    if (!parser.parse(arguments)) {
+        std::fprintf(stderr, "%s\n", qPrintable(parser.errorText()));
+        return 1;
+    }
+    const QString comparisonMode = parser.value(QStringLiteral("comparison-mode"));
+    const QString captureDir = parser.value(QStringLiteral("capture-dir"));
+    const QStringList comparisonModes {
+        QStringLiteral("native"), QStringLiteral("qt-default"), QStringLiteral("qt-gray")
+    };
+    if (!comparisonMode.isEmpty()
+        && (!comparisonModes.contains(comparisonMode) || captureDir.isEmpty())) {
+        std::fprintf(stderr, "Comparison requires --capture-dir and mode native, qt-default or qt-gray\n");
+        return 1;
+    }
     QTemporaryDir home;
     qputenv("XDG_CONFIG_HOME", home.filePath(QStringLiteral("config")).toUtf8());
     qputenv("XDG_CACHE_HOME", home.filePath(QStringLiteral("cache")).toUtf8());
     qputenv("QT_QPA_PLATFORM", "offscreen");
     qputenv("QT_QUICK_BACKEND", "rhi");
-    // Exercise the production default, independently of the caller's desktop.
+    // Each comparison process must start with a fresh AA selection. The
+    // default invocation still exercises and asserts the production policy.
     qunsetenv("QSG_DISTANCEFIELD_ANTIALIASING");
-    vela::rendering::configureApplication();
-    // The policy belongs to the current renderer, not to child applications.
-    if (qgetenv("QSG_DISTANCEFIELD_ANTIALIASING") != "gray"
-        || vela::process::externalProcessEnvironment().contains(
-            QStringLiteral("QSG_DISTANCEFIELD_ANTIALIASING"))) {
-        std::fprintf(stderr, "FAIL: private text antialiasing leaked to child environment\n");
-        return 1;
+    if (comparisonMode == QLatin1String("native")) {
+        QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
+    } else if (comparisonMode == QLatin1String("qt-default")) {
+        vela::rendering::configureTextRenderer();
+    } else {
+        vela::rendering::configureApplication();
+        // The policy belongs to the current renderer, not to child applications.
+        if (qgetenv("QSG_DISTANCEFIELD_ANTIALIASING") != "gray"
+            || vela::process::externalProcessEnvironment().contains(
+                QStringLiteral("QSG_DISTANCEFIELD_ANTIALIASING"))) {
+            std::fprintf(stderr, "FAIL: private text antialiasing leaked to child environment\n");
+            return 1;
+        }
+        vela::rendering::configureApplication(); // Idempotent setup.
     }
-    vela::rendering::configureApplication(); // Idempotent setup.
     QGuiApplication app(argc, argv);
-    QCommandLineParser parser;
-    parser.addHelpOption();
-    parser.addOption(
-        { QStringLiteral("capture-dir"), QStringLiteral("Save comparison frames"), QStringLiteral("directory") });
     parser.process(app);
-    const QString captureDir = parser.value(QStringLiteral("capture-dir"));
     if (!captureDir.isEmpty() && !QDir().mkpath(captureDir)) {
         std::fprintf(stderr, "FAIL: cannot create capture directory\n");
         return 1;
@@ -320,9 +351,14 @@ int main(int argc, char** argv)
     if (!label) {
         return 1;
     }
-    const QFont font = label->property("font").value<QFont>();
-    std::printf("OpenGL RHI device: %s; font: %s\n", scene.control.rhi()->driverInfo().deviceName.constData(),
-        qPrintable(font.family()));
+    const QString family = parser.value(QStringLiteral("font-family"));
+    if (!family.isEmpty()) {
+        scene.root->setProperty("fontFamily", family);
+    }
+    const QFontInfo font(label->property("font").value<QFont>());
+    std::printf("Qt %s; OpenGL RHI device: %s; resolved font: %s; mode: %s\n", qVersion(),
+        scene.control.rhi()->driverInfo().deviceName.constData(), qPrintable(font.family()),
+        comparisonMode.isEmpty() ? "production regression" : qPrintable(comparisonMode));
     for (const qreal dpr : { 1.0, 1.25, 1.5, 1.75, 2.0 }) {
         if (!scene.resize(dpr)) {
             std::fprintf(stderr, "FAIL: cannot create the render target at %g\n", dpr);
@@ -342,6 +378,43 @@ int main(int argc, char** argv)
                 return oriented.save(
                     QDir(captureDir).filePath(QStringLiteral("%1-%2-%3.png").arg(dpr).arg(pixelSize).arg(name)));
             };
+            if (!comparisonMode.isEmpty()) {
+                // Diagnostic images have no sharpness/legibility pass score.
+                if (!capture(scene.render(), QStringLiteral("rest"))) {
+                    return 1;
+                }
+                scene.root->setProperty("pressScale", 0.92);
+                if (!capture(scene.render(), QStringLiteral("pressed"))) {
+                    return 1;
+                }
+                scene.root->setProperty("pressScale", 1);
+                scene.root->setProperty("scrollOffset", 0.4 / dpr);
+                if (!capture(scene.render(), QStringLiteral("scrolled"))) {
+                    return 1;
+                }
+                scene.root->setProperty("scrollOffset", 0);
+                scene.root->setProperty("color", QColor(Qt::transparent));
+                if (!capture(scene.render(), QStringLiteral("transparent"))) {
+                    return 1;
+                }
+                scene.root->setProperty("color", QColor(40, 100, 180, 128));
+                if (!capture(scene.render(), QStringLiteral("tinted"))) {
+                    return 1;
+                }
+                scene.root->setProperty("color", QColor(Qt::white));
+                scene.root->setProperty("textColor", QColor(Qt::black));
+                if (!capture(scene.render(), QStringLiteral("light-rest"))) {
+                    return 1;
+                }
+                scene.root->setProperty("pressScale", 0.92);
+                if (!capture(scene.render(), QStringLiteral("light-pressed"))) {
+                    return 1;
+                }
+                scene.root->setProperty("pressScale", 1);
+                scene.root->setProperty("color", QColor(Qt::black));
+                scene.root->setProperty("textColor", QColor(Qt::white));
+                continue;
+            }
             const QImage rest = scene.render();
             if (!capture(rest, QStringLiteral("rest"))) {
                 return 1;

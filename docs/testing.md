@@ -186,6 +186,8 @@ The RHI readback test requires Qt >= 6.6; Vela production still supports Qt
 6.5. CMake omits only this test on older Qt versions. The independent
 `process-launch-environment` test exercises actual synchronous and detached
 child processes, preserving user overrides and unrelated environment variables.
+It links Qt Core only and also covers empty overrides and environment changes
+after initialization.
 Packaging tests reject UI launch sites that bypass the environment policy.
 
 This test runs the explicitly initialized production text policy through the OpenGL RHI glyph shaders
@@ -213,9 +215,30 @@ stay constant, and verifies activation versus context-menu signals. Both suites
 use private configuration and cache directories.
 
 The Arch build job runs the pixel test under Xvfb with Mesa software OpenGL and
-DejaVu fonts, and uploads the comparison frames as `text-rendering-frames`.
+DejaVu fonts, and uploads frames and a comparison report as `text-rendering-frames`.
 It invokes the binary directly, so a missing context (exit 77) fails CI rather
 than silently skipping. CPU-only sanitizer tests exclude its `gpu` label.
+
+To separate the renderer decision from the antialiasing decision, capture all
+three policies in fresh processes with the same scene and font:
+
+```sh
+python3 scripts/compare-text-rendering.py build/common/vela-text-rendering-test \
+    --output /tmp/vela-text-comparison --font-family 'Noto Sans'
+```
+
+Use the font configured in the Vela session; omit `--font-family` to use Qt's
+default font. Each run logs its resolved font, Qt version and OpenGL device.
+Open `/tmp/vela-text-comparison/index.html` for side-by-side native, Qt with
+default AA, and Qt with grayscale AA captures at rest, pressed and scrolled,
+over dark, light, transparent and colored-translucent backgrounds. The script
+propagates capture failures and unavailable graphics instead of reporting a
+successful comparison. On CPU-only systems run under `xvfb-run -a` with
+`LIBGL_ALWAYS_SOFTWARE=1`. The default Qt AA may already be grayscale on OpenGL ES.
+For a one-to-one pixel comparison, view at 100% browser zoom on a 100%-scale
+output, or inspect the original PNGs with a viewer that maps image pixels to
+physical pixels. The report supports visual review; it does not replace the
+real-session hardware checks below.
 
 Before merging text-rendering changes, visually inspect native-resolution
 captured frames in a real Vela session at 100%, 125%, and 150%: text at rest,

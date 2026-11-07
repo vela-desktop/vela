@@ -12,6 +12,8 @@ Rectangle {
     property real pressScale: 1
     property real scrollOffset: 0
     property int pixelSize: 14
+    property string fontFamily: Qt.application.font.family
+    property color textColor: "white"
 
     Item {
         x: 24
@@ -23,7 +25,8 @@ Rectangle {
             objectName: "label"
             text: "Bitwarden — Dal tema"
             font.pixelSize: scene.pixelSize
-            color: "white"
+            font.family: scene.fontFamily
+            color: scene.textColor
             // Deliberately inherit the same process policy as real labels.
         }
     }
