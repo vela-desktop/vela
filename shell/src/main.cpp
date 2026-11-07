@@ -7,6 +7,7 @@
 // of the desktop (not an app), keeps it above or below the windows and
 // reserves space for it on the output.
 
+#include "renderingpolicy.h"
 #include "accessibility.h"
 #include "appmodel.h"
 #include "audio.h"
@@ -273,6 +274,7 @@ void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVaria
 
 } // namespace
 
+/** Configure text before Qt startup and run the shell's desktop surfaces and services. */
 int main(int argc, char* argv[])
 {
     // "vela-shell --choose-source": the chooser xdg-desktop-portal-wlr
@@ -287,12 +289,7 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // Text with FreeType and font hinting, like Plasma and Windows: crisper
-    // than Qt Quick's default text (distance fields, no hinting), on the
-    // output's real pixels even at fractional scales.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_DEFAULT_TEXT_RENDER_TYPE")) {
-        QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
-    }
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));

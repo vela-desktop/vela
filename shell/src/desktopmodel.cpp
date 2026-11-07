@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "desktopmodel.h"
 
 #include "appmodel.h"
@@ -105,15 +106,17 @@ bool hasThumbnail(const QFileInfo& info, const QMimeType& mime)
     return false;
 }
 
+/** Log and launch a desktop command using the current filtered environment. */
 bool runDetached(const QString& program, const QStringList& arguments, const QString& directory)
 {
     qInfo("vela-shell: %s %s", qPrintable(program), qPrintable(arguments.join(u' ')));
-    return QProcess::startDetached(program, arguments, directory);
+    return vela::process::startDetached(program, arguments, directory);
 }
 
 // Both desktop Ctrl+V and drag/drop must go through FileOps in vela-files.
 // A tracked Explorer window owns the transfer and stays open until completion;
 // launching detached cp/mv loses progress, cancellation and error reporting.
+/** Start a tracked Files transfer so its window owns progress, cancellation and errors. */
 bool launchFileTransfer(const QStringList& sources, const QString& directory,
     vela::files::TransferAction action, qint64* pid)
 {
@@ -124,7 +127,7 @@ bool launchFileTransfer(const QStringList& sources, const QString& directory,
     if (!QFileInfo(executable).isExecutable()) {
         executable = QStringLiteral("vela-files"); // development / separate install prefix
     }
-    const bool launched = QProcess::startDetached(
+    const bool launched = vela::process::startDetached(
         executable, vela::files::transferArguments(action, directory, sources), directory, pid);
     if (!launched) {
         qWarning("vela-shell: unable to start the tracked file transfer in vela-files");
