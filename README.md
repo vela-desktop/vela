@@ -116,10 +116,12 @@ responsive without heavyweight runtimes for simple desktop UI. The compositor id
 > Hardware-dependent paths need verification on your GPU and driver. Read the
 > [hardware coverage and known limitations](docs/hardware.md) before installing.
 
-For a low-risk first look, [build from source](#build-from-source) and
-[run nested inside your existing Wayland desktop](#try-it-without-logging-out).
-Nested mode is convenient for exploration, but cannot validate physical DRM,
-direct scanout or every driver-specific path.
+For a low-risk first look on **any Wayland-based Linux host** (including
+immutable systems), [try the signed Beta in a Distrobox](docs/distrobox.md):
+no Vela packages or wlroots/Qt dependencies are installed on the host.
+Developers can instead [build from source](#build-from-source) and
+[run nested](#try-it-without-logging-out). Nested mode cannot validate
+physical DRM, direct scanout or every driver-specific path.
 
 For a full session, [install the Beta](#install) on Arch, Fedora 44 or
 Ubuntu 26.10, or [build from source](#other-distributions), then select Vela
@@ -363,7 +365,15 @@ cmake --build build
 To install system-wide or run a nested session, follow the [installation guide](docs/installation.md#other-distributions) or the instructions below.
 ### Try it without logging out
 
-From a running Wayland session (Plasma, for example), Vela opens in a window like a
+To try the verified Beta **without compiling or installing Vela on the host**,
+use the [Distrobox nested preview](docs/distrobox.md):
+
+```sh
+sh scripts/vela-distrobox.sh setup
+~/.local/bin/vela-distrobox run
+```
+
+For a development build, from a running Wayland session (Plasma, for example), Vela opens in a window like a
 virtual monitor:
 
 ```sh
@@ -474,6 +484,7 @@ see the documentation below.
 | Document | Contents |
 |---|---|
 | **[Install and update](docs/installation.md)** | Installation, verified updates, test branches and rollback. |
+| **[Distrobox nested preview](docs/distrobox.md)** | Try the signed Beta on an existing Wayland host, including immutable distros. |
 | **[Release channels](docs/release-channels.md)** | Beta and Experimental, how a Beta is released, and how the updater moves between them. |
 | **[Updates](docs/updates.md)** | The Updates page, `vela-update-daemon`, background checks and notifications. |
 | **[Hardware coverage](docs/hardware.md)** | Driver validation scope, optional services and manual smoke tests. |
