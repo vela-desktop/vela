@@ -245,6 +245,7 @@ The tools under `build/tools/` are small clients intended for development and fu
 | `vela-windows` | Inspect windows and compositor-visible state. |
 | `vela-screen-dump` | Capture an output or region to PNG. |
 | `vela-screen-record` | Record an output or region frame by frame, each with its presentation time, until SIGINT (`frames.raw` and `frames.txt` in a directory; `VELA_SCREEN_RECORD_DOWNSCALE=2` for full outputs at high refresh rates). |
+| `vela-share` | Capture like the apps that share the screen, for [screen sharing](screen-sharing.md): `ext-output [N]` and `ext-window ID` hold an ext-image-copy-capture session frame after frame (like the portal), `screencopy [N]` asks for wlr-screencopy frames one after the other (like wf-recorder), `screencopy-once` takes one frame of every output (like grim). Runs until stdin closes, or SIGTERM after `--forever`; the lines `window` and `close` on stdin open and close a window of its own (app id `org.vela.Share`). |
 | `vela-pattern` | Produce deterministic visual test content (`--decorated` asks for Vela's title bar, `--popup X,Y` opens a 200×150 magenta menu anchored at that point of the window). |
 | `vela-panel` | Fake shell pieces on wlr-layer-shell: `wallpaper`, and `taskbar [--blur]` with a reserved area and background blur. |
 | `vela-x11` | An X11 app (through Xwayland) for the X11 tests: an orange 300×200 window with class `vela.x11` that draws only on Expose, like most apps; `--menu X,Y` adds an override-redirect menu; `--wine-backdrop` adds Wine's black fullscreen backdrop (override-redirect, then managed with fullscreen, skip-taskbar and below). |
@@ -263,6 +264,8 @@ It accepts one command per line. Headless tests use commands such as:
 
 ```text
 state
+watch capture
+test-shell <pid>
 test-output add 2560x1440
 test-output remove HEADLESS-2
 test-power off
@@ -274,7 +277,7 @@ caffeine toggle
 caffeine status
 ```
 
-`state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
+`state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness. `watch capture` keeps the connection open and sends who captures the screen after every change, and `test-shell <pid>` names the real shell a test started itself (headless only); see [screen sharing](screen-sharing.md) §4.
 
 ### Release promo recordings
 
@@ -572,6 +575,7 @@ Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`)
 | `Shadow` | What floats casts it outside itself; `depth` is one of `Theme.shadow`'s, `above` and `below` cut it next to another panel |
 | `PanelMotion` | A panel's entrance, exit and turning back, and its blur `area` (`visibleArea`: cut to its window) ([§6.9](visual-coherence.md#69-panels-panelmotion-shadow-dialog-d14d18)) |
 | `Dialog` | A window's dialog: title, text, content, `buttons` and `chosen(value)` |
+| `StartIcon` | The Start button's icon: Vela's sail in the accent's colors, or the distribution's logo or a picture (`source`, as `shell/src/starticon.h` resolves Settings → Start's choice) |
 
 A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`: Files' `ToolButton`, the shell's `CheckBox` and `MenuTextBox` (a `TextBox` with the right-click menu of `TextMenu`), Settings' `RadioButton`. Every shell panel is a `PanelMotion` holding its `Shadow` and its panel, in a window that leaves the shadow's `reach` around it; the shell's `ShadowRoom` makes a press in that room a press outside. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) fails on what doesn't, and a line that differs on purpose says why with a `// motion:` comment. A recycled delegate (`reuseItems`) sets its `Fill`'s `animated` to false when pooled and back to true when reused. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`); the programs' own controls with the same runner (`shell/tests`, `settings/tests`) and Files' views with their own (`explorer/tests`, ctest `files-views`).
 

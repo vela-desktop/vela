@@ -180,7 +180,12 @@ int main(int argc, char* argv[])
     qmlEngine = &engine;
     // Theme, Button, TextBox and Style (the apps' mode, accent, Mica, icons):
     // Vela.Controls.
-    vela::controls::install(engine, Appearance::Mode::Apps)->watch();
+    Appearance* style = vela::controls::install(engine, Appearance::Mode::Apps);
+    style->watch();
+    // The distribution's logo may be in the icon theme only: look again now
+    // that it is set, and when it changes with the mode.
+    preferences.refreshStartIcon();
+    QObject::connect(style, &Appearance::changed, &preferences, &Preferences::refreshStartIcon);
     engine.addImageProvider(QStringLiteral("fileicon"), new IconProvider(32));
     QQmlContext* context = engine.rootContext();
     context->setContextProperty(QStringLiteral("Router"), &router);

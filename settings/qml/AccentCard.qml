@@ -11,7 +11,8 @@ import Vela.Controls
 // themed()). Nothing is silently ignored: when every mode in use (Vela's and
 // the apps') takes the theme's, the grid is disabled and says why; when only
 // one does, the card says in which mode the theme's shows. The swatch is the
-// accent the apps use now.
+// accent the apps use now. Under the palette, any other color: the spectrum
+// or its hex code (AccentPicker.qml).
 Card {
     id: card
     readonly property var themeTokens: { Prefs.visualTheme; Prefs.themesRevision; return Prefs.resolveTheme(Prefs.visualTheme).tokens }
@@ -174,5 +175,59 @@ Card {
                 }
             }
         }
+        // A color of your own: chosen, it shows here with its code.
+        Item {
+            x: 36
+            width: parent.width - 36
+            height: 40
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
+                Rectangle {
+                    objectName: "accentCustom"
+                    visible: swatches.noneChosen
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 36
+                    height: 36
+                    radius: Theme.radius
+                    color: "transparent"
+                    border.width: 2
+                    border.color: Theme.text
+                    Rectangle {
+                        anchors { fill: parent; margins: 4 }
+                        radius: 2
+                        color: Prefs.accent
+                    }
+                }
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: qsTr("Custom color")
+                        color: Theme.text
+                        font.pixelSize: Theme.fontBody
+                    }
+                    Text {
+                        visible: swatches.noneChosen
+                        text: Prefs.accent.toString().toUpperCase()
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                    }
+                }
+            }
+            Button {
+                objectName: "accentViewColors"
+                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                text: qsTr("View colors")
+                onClicked: picker.start(Prefs.accent)
+            }
+        }
+    }
+
+    // Over the whole window, as Settings' other dialogs.
+    AccentPicker {
+        id: picker
+        objectName: "accentPicker"
+        parent: root.contentItem !== undefined ? root.contentItem : root
+        onAccepted: color => Prefs.accent = color
     }
 }

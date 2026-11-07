@@ -144,7 +144,8 @@ set(CONTROLS_QML_FILES
     controls/ListItem.qml
     controls/Shadow.qml
     controls/PanelMotion.qml
-    controls/Dialog.qml)
+    controls/Dialog.qml
+    controls/StartIcon.qml)
 foreach(file IN LISTS CONTROLS_QML_FILES)
     get_filename_component(name ${file} NAME)
     set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name})

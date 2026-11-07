@@ -27,6 +27,25 @@ class Config : public QObject {
     Q_PROPERTY(QString primaryOutput READ primaryOutput NOTIFY primaryOutputChanged)
     // Clickable right-hand taskbar corner that toggles the desktop.
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner NOTIFY taskbarChanged)
+    // The taskbar clock's second line, the date (taskbar/showDate).
+    Q_PROPERTY(bool clockDate READ clockDate NOTIFY clockChanged)
+    // 24-hour or 12-hour (clock/hours), and the seconds in the taskbar's
+    // clock (taskbar/clockSeconds): Qt.formatTime() formats for the times
+    // Vela shows (timeFormat) and for the taskbar's clock (clockFormat).
+    Q_PROPERTY(QString timeFormat READ timeFormat NOTIFY clockChanged)
+    Q_PROPERTY(QString clockFormat READ clockFormat NOTIFY clockChanged)
+    Q_PROPERTY(bool clockSeconds READ clockSeconds NOTIFY clockChanged)
+    // The number of notifications next to the clock
+    // (taskbar/notificationCount); "Do not disturb"'s bell shows anyway.
+    Q_PROPERTY(bool notificationCount READ notificationCount NOTIFY clockChanged)
+    // What the Start button draws (shell/src/starticon.h): the
+    // distribution's logo or a picture, "" for Vela's sail.
+    Q_PROPERTY(QString startIconSource READ startIconSource NOTIFY startChanged)
+    // Goes up when the picture chosen changes in place (edited, replaced):
+    // the same source, a new image to load.
+    Q_PROPERTY(int startIconRevision READ startIconRevision NOTIFY startChanged)
+    // The apps pinned to Start, above all apps (start/showPinned).
+    Q_PROPERTY(bool startPinned READ startPinned NOTIFY startChanged)
     // Clipboard history (Win+V).
     Q_PROPERTY(bool clipboardHistory READ clipboardHistory NOTIFY clipboardChanged)
     // "Choose your mode": "dark" or "light", for the shell (taskbar, menus,
@@ -45,17 +64,39 @@ public:
     QString primaryOutput() const { return m_primaryOutput; }
     bool showDesktopCorner() const { return m_showDesktopCorner; }
     bool clipboardHistory() const { return m_clipboardHistory; }
+    bool startPinned() const { return m_startPinned; }
+    QString startIconSource() const { return m_startIconSource; }
+    int startIconRevision() const { return m_startIconRevision; }
+    bool clockDate() const { return m_clockDate; }
+    bool clockSeconds() const { return m_clockSeconds; }
+    bool notificationCount() const { return m_notificationCount; }
+    QString timeFormat() const;
+    QString clockFormat() const;
     bool doNotDisturb() const { return m_doNotDisturb; }
+    // Do not disturb by itself while the screen is shared
+    // (notifications/silenceWhileSharing, docs/screen-sharing.md §7).
+    bool silenceWhileSharing() const { return m_silenceWhileSharing; }
     QString shellTheme() const { return m_shellTheme; }
     QString appTheme() const { return m_appTheme; }
+    // Desktop icons shown (desktop/showIcons): the desktop's own menu writes
+    // it too (DesktopModel), Settings > Background here. Only for C++:
+    // QML asks Desktop.showIcons.
+    bool showDesktopIcons() const { return m_showDesktopIcons; }
+    // The Start icon found again (starticon.h): call once the icon theme is
+    // set (Vela.Controls) and whenever it changes, a logo may be only there.
+    void refreshStartIcon();
 
 signals:
     void wallpaperChanged();
     void taskbarChanged();
     void primaryOutputChanged();
     void doNotDisturbChanged(bool on);
+    void silenceWhileSharingChanged(bool on);
     void themeChanged();
     void clipboardChanged();
+    void startChanged();
+    void clockChanged();
+    void desktopIconsChanged(bool shown);
 
 private:
     void reload();
@@ -72,7 +113,20 @@ private:
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
     bool m_clipboardHistory = false;
+    bool m_startPinned = true;
+    QString m_startIconSource;
+    int m_startIconRevision = 0;
+    // The picture chosen for Start, watched: deleted, the sail; changed, reloaded.
+    QString m_watchedPicture;
+    bool m_pictureTouched = false;
+    void watchPicture();
+    bool m_clockDate = true;
+    bool m_clock24 = true;
+    bool m_clockSeconds = false;
+    bool m_notificationCount = true;
     bool m_doNotDisturb = false;
+    bool m_silenceWhileSharing = true;
+    bool m_showDesktopIcons = true;
     QString m_shellTheme = QStringLiteral("dark");
     QString m_appTheme = QStringLiteral("dark");
 };

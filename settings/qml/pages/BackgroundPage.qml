@@ -6,8 +6,8 @@ import QtQuick.Dialogs
 import QtCore
 import Vela.Controls
 
-// Personalization > Background: recent images, "Browse photos" and the
-// wallpapers installed on the system.
+// Personalization > Background: recent images, "Browse photos", the desktop
+// icons over the picture and the wallpapers installed on the system.
 Page {
     id: page
 
@@ -81,6 +81,20 @@ Page {
             trailing: Button {
                 text: qsTr("Browse photos")
                 onClicked: fileDialog.open()
+            }
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Desktop")
+        Card {
+            icon: "user-desktop"
+            title: qsTr("Show desktop icons")
+            description: qsTr("The files and folders of your Desktop folder, on the main display (also from the desktop's menu)")
+            trailing: Switch {
+                objectName: "desktopIcons"
+                checked: Prefs.desktopIcons
+                onToggled: Prefs.desktopIcons = checked
             }
         }
     }

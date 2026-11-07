@@ -223,6 +223,57 @@ Specifiche sistema
         <source>Color %1 of %2</source>
         <translation>Colore %1 di %2</translation>
     </message>
+    <message>
+        <source>Custom color</source>
+        <translation>Colore personalizzato</translation>
+    </message>
+    <message>
+        <source>View colors</source>
+        <translation>Visualizza colori</translation>
+    </message>
+</context>
+<context>
+    <name>AccentPicker</name>
+    <message>
+        <source>Choose a custom accent color</source>
+        <translation>Scegli un colore principale personalizzato</translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation>Fine</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Hue and saturation</source>
+        <translation>Tonalità e saturazione</translation>
+    </message>
+    <message>
+        <source>Hue %1°, saturation %2%. Left and right change the hue, up and down the saturation</source>
+        <translation>Tonalità %1°, saturazione %2%. Sinistra e destra cambiano la tonalità, su e giù la saturazione</translation>
+    </message>
+    <message>
+        <source>Brightness</source>
+        <translation>Luminosità</translation>
+    </message>
+    <message>
+        <source>Current color</source>
+        <translation>Colore attuale</translation>
+    </message>
+    <message>
+        <source>New color</source>
+        <translation>Nuovo colore</translation>
+    </message>
+    <message>
+        <source>Hex code</source>
+        <translation>Codice esadecimale</translation>
+    </message>
+    <message>
+        <source>A hex code has six digits, 0-9 and A-F, as #1E90FF</source>
+        <translation>Un codice esadecimale ha sei cifre, 0-9 e A-F, come #1E90FF</translation>
+    </message>
 </context>
 <context>
     <name>AccessibilityPage</name>
@@ -406,6 +457,18 @@ Specifiche sistema
     <message>
         <source>Browse photos</source>
         <translation>Sfoglia foto</translation>
+    </message>
+    <message>
+        <source>Desktop</source>
+        <translation>Desktop</translation>
+    </message>
+    <message>
+        <source>Show desktop icons</source>
+        <translation>Mostra le icone del desktop</translation>
+    </message>
+    <message>
+        <source>The files and folders of your Desktop folder, on the main display (also from the desktop&apos;s menu)</source>
+        <translation>I file e le cartelle della cartella Desktop, sullo schermo principale (anche dal menu del desktop)</translation>
     </message>
     <message>
         <source>System backgrounds</source>
@@ -735,6 +798,22 @@ Specifiche sistema
     <message>
         <source>Time zone</source>
         <translation>Fuso orario</translation>
+    </message>
+    <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>In the taskbar, the notification center, the lock screen and here</source>
+        <translation>Nella barra delle applicazioni, nel centro notifiche, nella schermata di blocco e qui</translation>
+    </message>
+    <message>
+        <source>24-hour (%1)</source>
+        <translation>24 ore (%1)</translation>
+    </message>
+    <message>
+        <source>12-hour (%1)</source>
+        <translation>12 ore (%1)</translation>
     </message>
     <message>
         <source>Related settings</source>
@@ -1625,6 +1704,14 @@ Specifiche sistema
         <translation>silenzioso notifiche</translation>
     </message>
     <message>
+        <source>Do not disturb while my screen is shared</source>
+        <translation>Non disturbare mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
+        <source>screen sharing share record recording presentation call meeting notifications silent do not disturb automatic</source>
+        <translation>condivisione schermo condividere registrare registrazione presentazione chiamata riunione notifiche silenzioso non disturbare automatico</translation>
+    </message>
+    <message>
         <source>screen off sleep idle battery energy saver lock</source>
         <translation>schermo spento sospensione inattività batteria risparmio energia blocco</translation>
     </message>
@@ -1713,8 +1800,24 @@ Specifiche sistema
         <translation>immagine desktop foto wallpaper</translation>
     </message>
     <message>
+        <source>Show desktop icons</source>
+        <translation>Mostra le icone del desktop</translation>
+    </message>
+    <message>
+        <source>desktop icons files folders show hide</source>
+        <translation>desktop icone file cartelle mostra nascondi</translation>
+    </message>
+    <message>
         <source>accent color theme dark light mode</source>
         <translation>accento colore principale tema scuro chiaro modalità</translation>
+    </message>
+    <message>
+        <source>Custom color</source>
+        <translation>Colore personalizzato</translation>
+    </message>
+    <message>
+        <source>accent custom color picker hex code rgb</source>
+        <translation>colore principale accento personalizzato selettore esadecimale codice rgb</translation>
     </message>
     <message>
         <source>Choose your mode</source>
@@ -1731,6 +1834,38 @@ Specifiche sistema
     <message>
         <source>taskbar alignment left center end task</source>
         <translation>taskbar allineamento sinistra centro termina attività</translation>
+    </message>
+    <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>clock 24-hour 12-hour am pm time format hours</source>
+        <translation>orologio 24 ore 12 ore am pm formato ora ore</translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation>Mostra i secondi</translation>
+    </message>
+    <message>
+        <source>taskbar clock seconds time</source>
+        <translation>barra applicazioni orologio secondi ora</translation>
+    </message>
+    <message>
+        <source>Show the number of notifications</source>
+        <translation>Mostra il numero di notifiche</translation>
+    </message>
+    <message>
+        <source>notifications count number badge unread taskbar clock</source>
+        <translation>notifiche conteggio numero contatore non lette barra applicazioni orologio</translation>
+    </message>
+    <message>
+        <source>Show the date</source>
+        <translation>Mostra la data</translation>
+    </message>
+    <message>
+        <source>taskbar clock date day show hide</source>
+        <translation>barra applicazioni orologio data giorno mostra nascondi</translation>
     </message>
     <message>
         <source>Taskbar style</source>
@@ -1755,6 +1890,22 @@ Specifiche sistema
     <message>
         <source>start menu style look size corners</source>
         <translation>menu start stile aspetto dimensioni angoli</translation>
+    </message>
+    <message>
+        <source>Start button icon</source>
+        <translation>Icona del pulsante Start</translation>
+    </message>
+    <message>
+        <source>start button icon logo distribution picture image sail</source>
+        <translation>pulsante start icona logo distribuzione immagine foto vela</translation>
+    </message>
+    <message>
+        <source>Show pinned apps</source>
+        <translation>Mostra le app aggiunte</translation>
+    </message>
+    <message>
+        <source>start menu pinned apps pins show hide</source>
+        <translation>start menu app aggiunte fissate mostra nascondi</translation>
     </message>
     <message>
         <source>programs applications</source>
@@ -2206,6 +2357,22 @@ Specifiche sistema
         <source>Notifications go straight to the notification center, without popping up</source>
         <translation>Le notifiche vanno direttamente nel centro notifiche, senza comparire</translation>
     </message>
+    <message>
+        <source>Turn on do not disturb automatically while my screen is shared</source>
+        <translation>Attiva Non disturbare automaticamente mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
+        <source>While an app shares or records the screen, notifications wait in the notification center</source>
+        <translation>Mentre un&apos;app condivide o registra lo schermo, le notifiche aspettano nel centro notifiche</translation>
+    </message>
+    <message>
+        <source>Show the number of notifications</source>
+        <translation>Mostra il numero di notifiche</translation>
+    </message>
+    <message>
+        <source>Next to the taskbar&apos;s clock. With Do not disturb on, its bell shows anyway</source>
+        <translation>Accanto all&apos;orologio della barra delle applicazioni. Con Non disturbare attivo, la sua campanella si vede comunque</translation>
+    </message>
 </context>
 <context>
     <name>OwnThemesCard</name>
@@ -2233,10 +2400,6 @@ Specifiche sistema
         <translation>Sfondo</translation>
     </message>
     <message>
-        <source>Desktop background picture</source>
-        <translation>Immagine di sfondo del desktop</translation>
-    </message>
-    <message>
         <source>Colors</source>
         <translation>Colori</translation>
     </message>
@@ -2261,8 +2424,12 @@ Specifiche sistema
         <translation>Start</translation>
     </message>
     <message>
-        <source>Style of the Start menu</source>
-        <translation>Stile del menu Start</translation>
+        <source>Desktop background picture, desktop icons</source>
+        <translation>Immagine di sfondo del desktop, icone del desktop</translation>
+    </message>
+    <message>
+        <source>The Start button&apos;s icon, pinned apps, style of the Start menu</source>
+        <translation>Icona del pulsante Start, app aggiunte, stile del menu Start</translation>
     </message>
     <message>
         <source>Taskbar</source>
@@ -2717,7 +2884,58 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>StartIconCard</name>
+    <message>
+        <source>Start button icon</source>
+        <translation>Icona del pulsante Start</translation>
+    </message>
+    <message>
+        <source>The logo of %1</source>
+        <translation>Il logo di %1</translation>
+    </message>
+    <message>
+        <source>Your picture: %1</source>
+        <translation>La tua immagine: %1</translation>
+    </message>
+    <message>
+        <source>Vela&apos;s sail, in the accent color</source>
+        <translation>La vela di Vela, nel colore principale</translation>
+    </message>
+    <message>
+        <source>Browse</source>
+        <translation>Sfoglia</translation>
+    </message>
+    <message>
+        <source>Distribution</source>
+        <translation>Distribuzione</translation>
+    </message>
+    <message>
+        <source>Picture</source>
+        <translation>Immagine</translation>
+    </message>
+    <message>
+        <source>Choose a picture for the Start button</source>
+        <translation>Scegli un&apos;immagine per il pulsante Start</translation>
+    </message>
+    <message>
+        <source>Images (*.svg *.png *.jpg *.jpeg *.webp *.bmp *.gif)</source>
+        <translation>Immagini (*.svg *.png *.jpg *.jpeg *.webp *.bmp *.gif)</translation>
+    </message>
+</context>
+<context>
     <name>StartPage</name>
+    <message>
+        <source>Start</source>
+        <translation>Start</translation>
+    </message>
+    <message>
+        <source>Show pinned apps</source>
+        <translation>Mostra le app aggiunte</translation>
+    </message>
+    <message>
+        <source>Above all apps. Turned off, Start opens on all apps and keeps your pins</source>
+        <translation>Sopra tutte le app. Se disattivato, Start si apre su tutte le app e conserva quelle aggiunte</translation>
+    </message>
     <message>
         <source>Style</source>
         <translation>Stile</translation>
@@ -2833,8 +3051,8 @@ Specifiche sistema
         <translation>Notifiche</translation>
     </message>
     <message>
-        <source>Alerts from apps and the system, do not disturb</source>
-        <translation>Avvisi da app e sistema, Non disturbare</translation>
+        <source>Alerts from apps and the system, do not disturb, their number by the clock</source>
+        <translation>Avvisi dalle app e dal sistema, non disturbare, il loro numero accanto all&apos;orologio</translation>
     </message>
     <message>
         <source>Power</source>
@@ -2919,6 +3137,30 @@ Specifiche sistema
         <translation>Le finestre aperte e i desktop virtuali (anche con Win+Tab)</translation>
     </message>
     <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation>Mostra i secondi</translation>
+    </message>
+    <message>
+        <source>In the taskbar&apos;s clock</source>
+        <translation>Nell&apos;orologio della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Show the date</source>
+        <translation>Mostra la data</translation>
+    </message>
+    <message>
+        <source>Clock</source>
+        <translation>Orologio</translation>
+    </message>
+    <message>
+        <source>Under the time in the taskbar&apos;s clock</source>
+        <translation>Sotto l&apos;ora, nell&apos;orologio della barra delle applicazioni</translation>
+    </message>
+    <message>
         <source>Taskbar behaviors</source>
         <translation>Comportamenti della barra delle applicazioni</translation>
     </message>
@@ -2957,6 +3199,22 @@ Specifiche sistema
     <message>
         <source>Quick settings and notification center</source>
         <translation>Impostazioni rapide e centro notifiche</translation>
+    </message>
+    <message>
+        <source>Related settings</source>
+        <translation>Impostazioni correlate</translation>
+    </message>
+    <message>
+        <source>24-hour or 12-hour, in Date &amp; time</source>
+        <translation>24 o 12 ore, in Data e ora</translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation>Notifiche</translation>
+    </message>
+    <message>
+        <source>Do not disturb, the number of notifications next to the clock</source>
+        <translation>Non disturbare, il numero di notifiche accanto all&apos;orologio</translation>
     </message>
 </context>
 <context>
@@ -3099,8 +3357,8 @@ Specifiche sistema
         <translation>Data e ora</translation>
     </message>
     <message>
-        <source>Time zone, automatic clock settings</source>
-        <translation>Fuso orario, impostazioni automatiche dell&apos;orologio</translation>
+        <source>Time zone, automatic clock settings, time format</source>
+        <translation>Fuso orario, impostazioni automatiche dell&apos;orologio, formato dell&apos;ora</translation>
     </message>
     <message>
         <source>Vela language</source>

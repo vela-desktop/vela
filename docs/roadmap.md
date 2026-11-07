@@ -112,12 +112,21 @@ native on-screen keyboard, including their Wayland input foundations.
   decision that input-method support is delivered in 0.2.
 - **Resolve older open feature PRs:** expanded Snipping Tool
   [#118](https://github.com/vela-desktop/vela/pull/118) (OCR, timer,
-  color picker and recording), screen-sharing indicator/privacy behavior
-  [#72](https://github.com/vela-desktop/vela/pull/72), and always-on-top
+  color picker and recording) and always-on-top
   [#108](https://github.com/vela-desktop/vela/pull/108). Each requires
   review, compatibility work and tests; **merge when ready or close with
   a documented reason if superseded/rejected**. "Resolve" does not mean
-  blindly merging every draft.
+  blindly merging every draft. The screen-sharing indicator of #72 was
+  closed and started over in
+  [#220](https://github.com/vela-desktop/vela/pull/220).
+- **Screen-sharing indicator** ([design](screen-sharing.md),
+  [#220](https://github.com/vela-desktop/vela/pull/220)): a taskbar icon
+  whenever an app outside the shell captures the screen or a window,
+  through the portal or directly; who and what in its tooltip and menu,
+  the app behind the portal named from PipeWire; Do Not Disturb turned
+  on by itself meanwhile, never touching the user's own, with a switch
+  in Settings. Remaining: tests by hand in a real session (browsers,
+  OBS, wf-recorder, a screenshot that must not count).
 - Finish or explicitly supersede the related touch/keyboard design PRs
   once their accepted design is integrated into the implementation.
 
@@ -146,7 +155,8 @@ large redesign or renderer overhaul. Candidates:
   outside the initial touch design.
 - Shell and Settings: Start search extended beyond existing app search
   to files/settings, a global emoji picker, taskbar auto-hide,
-  grouped notifications, fullscreen-aware Do Not Disturb, brightness
+  grouped notifications, fullscreen-aware Do Not Disturb (joining the
+  screen-sharing rule of [#220](https://github.com/vela-desktop/vela/pull/220)), brightness
   key OSD and keyboard backlight controls, and a shortcut editor.
 - Incremental tools: screenshot annotations, batch rename in Files,
   and a post-crash
@@ -219,7 +229,7 @@ own design, cost/maintenance analysis and definition of done.
 | **Touch, pressure-sensitive pen and tablet mode**: full agreed #94 stages T0–T5, P1–P2 and M1 | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design under discussion; implementation pending | 0.2 |
 | **On-screen keyboard**: full #95 K0–K5, including touch-only unlocking | [#95](https://github.com/vela-desktop/vela/pull/95) | #95 (design) | design under discussion; implementation pending | 0.2 |
 | **Snipping Tool extensions**: OCR, delay, color picker and recording | in the PR | [#118](https://github.com/vela-desktop/vela/pull/118) | draft; requires review and tests | 0.2 |
-| **Screen-sharing indicator and notification protection** | in the PR | [#72](https://github.com/vela-desktop/vela/pull/72) | draft; requires review and tests | 0.2 |
+| **Screen-sharing indicator and notification protection** (supersedes #72) | [screen-sharing.md](screen-sharing.md) | [#220](https://github.com/vela-desktop/vela/pull/220) | draft; implemented and tested headless, real-session tests by hand pending | 0.2 |
 | **Always-on-top** | in the PR | [#108](https://github.com/vela-desktop/vela/pull/108) | draft; requires review and tests | 0.2 |
 
 ## Next — Not yet assigned to a release

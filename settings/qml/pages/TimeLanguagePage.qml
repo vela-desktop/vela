@@ -9,7 +9,7 @@ Page {
         LinkCard {
             icon: "preferences-system-time"
             title: qsTr("Date & time")
-            description: qsTr("Time zone, automatic clock settings")
+            description: qsTr("Time zone, automatic clock settings, time format")
             onClicked: root.navigate("datetime")
         }
         Card {

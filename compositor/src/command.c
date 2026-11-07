@@ -5,6 +5,7 @@
 
 #include "a11y.h"
 #include "bindings.h"
+#include "capture_watch.h"
 #include "brightness.h"
 #include "buffer.h"
 #include "decoration.h"
@@ -52,6 +53,7 @@ struct topic {
 
 static const struct topic topics[] = {
     { "brightness", vela_brightness_json },
+    { "capture", vela_capture_json }, // docs/screen-sharing.md §4.1
 };
 #define TOPICS ((int)(sizeof(topics) / sizeof(topics[0])))
 
@@ -221,6 +223,9 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     } else {
         vela_buffer_append(json, "null");
     }
+    // Who captures the screen (docs/screen-sharing.md §4.1).
+    vela_buffer_append(json, ",\"capture\":");
+    vela_capture_json(server, json);
     vela_buffer_append(json, "}");
 }
 
@@ -569,6 +574,8 @@ static void run_command(struct vela_server *server, const char *line)
     } else if (starts_with(line, "switcher-pick ")) {
         // A click on an Alt+Tab preview: switch to that window.
         vela_switcher_pick(server, atoi(line + 14));
+    } else if (starts_with(line, "test-shell ")) {
+        vela_capture_watch_test_shell(server->capture_watch, line + 11);
     } else if (starts_with(line, "test-output ")) {
         vela_test_output_command(server, line + 12);
     } else if (strcmp(line, "test-power off") == 0 || strcmp(line, "test-power on") == 0) {

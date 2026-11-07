@@ -112,7 +112,23 @@ QtObject {
         return isLight ? Qt.darker(color, 1.15) : Qt.lighter(color, 1.35)
     }
     readonly property color accentFillHover: light ? Qt.darker(accent, 1.05) : Qt.lighter(accent, 1.25)
-    readonly property color accentText: light ? "#ffffff" : "#000000"
+    // Windows' text on the accent, unless the accent is too light or too dark
+    // for it (a custom color, Settings > Colors): then the other one.
+    readonly property color accentText: readableOn(accentFill, light ? "#ffffff" : "#000000")
+    // Text over a color: `preferred` (white or black) if it reads there
+    // (contrast at least 3:1, WCAG's for large text and controls), else the
+    // other one.
+    function readableOn(background, preferred) {
+        const luminance = c => {
+            const channel = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+            const color = Qt.color(c)
+            return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b)
+        }
+        const back = luminance(background)
+        const text = luminance(preferred)
+        const contrast = (Math.max(back, text) + 0.05) / (Math.min(back, text) + 0.05)
+        return contrast >= 3 ? Qt.color(preferred) : Qt.color(text > 0.5 ? "#000000" : "#ffffff")
+    }
     readonly property color link: light ? Qt.darker(accent, 1.3) : Qt.lighter(accent, 1.5)
     // Icons of the theme matching the mode ("image://icon/l/<name>"; the
     // prefix reloads them when the mode changes). Always white on the accent.
