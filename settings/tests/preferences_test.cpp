@@ -304,12 +304,15 @@ private slots:
         QVERIFY(text.contains(QStringLiteral("night-light=yes")));
         QVERIFY(text.contains(QStringLiteral("mouse-primary-button=right")));
 
-        // The file stays readable, the directory does not: the failed write
-        // rereads vela.conf instead of keeping the attempted value.
-        QVERIFY(QFile::setPermissions(dir, QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+        // A file where the config directory should be. Root can still write
+        // into a mode-0555 directory, which is what the CI runners are, so
+        // the block has to be the path itself.
+        const QString saved = text;
+        QVERIFY(QDir(dir).removeRecursively());
+        QVERIFY(writeFile(QStringLiteral("config/vela"), "not a directory\n"));
         prefs.setScreenOffMinutes(9);
         QCOMPARE(prefs.screenOffMinutes(), 4);
-        QVERIFY(prefs.saveError().contains(conf.fileName()));
+        QVERIFY(!prefs.saveError().isEmpty());
         prefs.setNightLight(false);
         QVERIFY(prefs.nightLight());
         prefs.setLanguage(QStringLiteral("en"));
@@ -321,7 +324,9 @@ private slots:
         prefs.resetThemes();
         QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
 
-        QVERIFY(QFile::setPermissions(dir, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        QVERIFY(QFile::remove(dir));
+        QVERIFY(QDir().mkpath(dir));
+        QVERIFY(writeFile(QStringLiteral("config/vela/vela.conf"), saved.toUtf8()));
         prefs.setLanguage(QStringLiteral("en"));
         QCOMPARE(prefs.language(), QStringLiteral("en"));
         QCOMPARE(prefs.saveError(), QString());
