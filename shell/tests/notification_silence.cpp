@@ -83,6 +83,45 @@ private slots:
         QVERIFY(normal != transient);
     }
 
+    // A replacement while silenced: one entry, the same id, no popup left.
+    void replacementsWhileSilenced()
+    {
+        NotificationServer server;
+        QSignalSpy closed(&server, &NotificationServer::NotificationClosed);
+        const uint shown = notify(server, QStringLiteral("download 10%"));
+        server.setAutomaticDoNotDisturb(true);
+        QCOMPARE(server.count(), 0);
+        QCOMPARE(historyCount(server), 1);
+        // In the center: replaced there, by the same id, again and again.
+        const QVariantMap hints;
+        QCOMPARE(server.Notify(QStringLiteral("Mail"), shown, QString(), QStringLiteral("download 50%"), QString(), {},
+                     hints, 5000),
+            shown);
+        QCOMPARE(server.Notify(QStringLiteral("Mail"), shown, QString(), QStringLiteral("download 90%"), QString(), {},
+                     hints, 5000),
+            shown);
+        QCOMPARE(historyCount(server), 1);
+        auto* history = qobject_cast<QAbstractItemModel*>(server.history());
+        QCOMPARE(history->data(history->index(0, 0), NotificationServer::SummaryRole).toString(),
+            QStringLiteral("download 90%"));
+        server.CloseNotification(shown);
+        QCOMPARE(historyCount(server), 0);
+
+        // A critical popup on screen, replaced by a normal one while silenced:
+        // the old popup goes, the replacement waits in the center.
+        server.setAutomaticDoNotDisturb(false);
+        const uint critical = notify(server, QStringLiteral("battery 5%"), true);
+        server.setAutomaticDoNotDisturb(true);
+        QCOMPARE(server.count(), 1);
+        closed.clear();
+        QCOMPARE(server.Notify(QStringLiteral("Power"), critical, QString(), QStringLiteral("charging"), QString(), {},
+                     hints, 5000),
+            critical);
+        QCOMPARE(server.count(), 0);
+        QCOMPARE(historyCount(server), 1);
+        QCOMPARE(closed.count(), 0); // replaced, not closed
+    }
+
     void theUsersChoiceIsTheirs()
     {
         NotificationServer server;

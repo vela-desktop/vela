@@ -224,6 +224,9 @@ primary taskbar only, like the microphone:
   stay.
 - What was held back stays in the notification center when sharing ends,
   as with Do not disturb.
+- A replacement while silenced keeps its id and takes the old popup's
+  place in the center, without leaving that popup on screen or a second
+  entry; one already in the center is updated there, by the same id.
 - The indicator's menu (§6) says "Notifications are silenced meanwhile",
   with Settings > System > Notifications.
 - The notification center's header says "Silenced while your screen is

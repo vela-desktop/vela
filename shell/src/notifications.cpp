@@ -199,7 +199,10 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
     int expire_timeout)
 {
     const int existing = replaces_id ? rowOf(replaces_id) : -1;
-    const uint id = existing >= 0 ? replaces_id : m_nextId++;
+    // A replacement keeps its id, whether it is a popup or in the center:
+    // the app closes or replaces it again by that id.
+    const bool known = existing >= 0 || (replaces_id && historyRow(replaces_id) >= 0);
+    const uint id = known ? replaces_id : m_nextId++;
 
     Notification n;
     n.id = id;
@@ -233,6 +236,14 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
     // Do not disturb, the user's or a rule's: straight into the center, no
     // popup (critical ones pass).
     if (silenced() && !n.critical) {
+        // Replacing a popup still shown: it goes, not into the center (the
+        // replacement does), and nothing tells the app it closed.
+        if (existing >= 0) {
+            beginRemoveRows({}, existing, existing);
+            m_items.erase(m_items.begin() + existing);
+            endRemoveRows();
+            Q_EMIT countChanged();
+        }
         if (n.transient) {
             Q_EMIT NotificationClosed(id, uint(Reason::Expired));
         } else {
