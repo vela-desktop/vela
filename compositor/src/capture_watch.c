@@ -673,6 +673,13 @@ struct vela_capture_watch *vela_capture_watch_create(struct vela_server *server,
         return watch;
     }
     watch->timer = wl_event_loop_add_timer(server->loop, handle_timer, watch);
+    if (!watch->timer) {
+        // Without it nothing would ever count: say so, and report nothing
+        // rather than crash on the first capture.
+        wlr_log_errno(WLR_ERROR, "Screen captures can't be followed (no timer): none will be reported");
+        watch->unreported = true;
+        return watch;
+    }
     watch->client_created.notify = handle_client_created;
     wl_display_add_client_created_listener(server->display, &watch->client_created);
     if (copy_capture) {
