@@ -1247,6 +1247,8 @@ void vela_view_mapped(struct vela_view *view)
         vela_focus_new_view(server, view);
     }
     start_open_animation(view);
+    // A capturing client's window names it (docs/screen-sharing.md §4.1).
+    vela_capture_watch_refresh(server->capture_watch);
     // The scene node now has its final output coordinates. Decorations were
     // created before placement, and must be rerasterized at the actual scale.
     if (view->xdg) {
@@ -1280,6 +1282,7 @@ void vela_view_unmapped(struct vela_view *view)
     forget(view);
     vela_views_sync_transient_layers(view->server);
     vela_workspaces_announce(view->server);
+    vela_capture_watch_refresh(view->server->capture_watch); // its client loses the name it gave
 }
 
 void vela_view_committed(struct vela_view *view)

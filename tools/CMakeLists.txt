@@ -53,7 +53,7 @@ target_compile_options(vela-capture-probe PRIVATE -Wall -Wextra -Wno-unused-para
 # (tests/functional/test_screen_sharing.py).
 vela_client_protocol(proto-screencopy ${PROTOCOLS}/wlr-screencopy-unstable-v1.xml wlr-screencopy-unstable-v1)
 add_executable(vela-share vela-share.c)
-target_link_libraries(vela-share PRIVATE vela-capture proto-screencopy)
+target_link_libraries(vela-share PRIVATE vela-capture proto-screencopy proto-xdg-shell)
 target_compile_options(vela-share PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
 vela_client_protocol(proto-foreign-toplevel ${PROTOCOLS}/wlr-foreign-toplevel-management-unstable-v1.xml

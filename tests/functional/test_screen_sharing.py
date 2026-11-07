@@ -122,6 +122,25 @@ class ScreenSharing(unittest.TestCase):
             watcher.wait_for(lambda s: not sharing(s) and watcher.states()[-1][1] is s, what="the end of the share")
             watcher.close()
 
+    def test_its_window_names_it(self):
+        with Session() as vela:
+            watcher = Watcher(vela)
+            share = self.share(vela, "ext-output", "0")
+            watcher.wait_for(lambda s: sharing(s) and s["clients"][0]["app_id"] == "", what="the share, nameless")
+            # Its window opens while it shares (nothing else happens to the
+            # capture): the report names it at once...
+            share.stdin.write("window\n")
+            share.stdin.flush()
+            _, state = watcher.wait_for(lambda s: sharing(s) and s["clients"][0]["app_id"] == "org.vela.Share",
+                                        what="the report to name its window")
+            self.assertTrue(state["clients"][0]["window"])
+            # ...and forgets it when it closes.
+            share.stdin.write("close\n")
+            share.stdin.flush()
+            watcher.wait_for(lambda s: sharing(s) and s["clients"][0]["window"] == "", what="the window to be forgotten")
+            self.stop(share)
+            watcher.close()
+
     def test_a_screenshot_is_never_reported(self):
         with Session() as vela:
             vela.command("test-output add 1280x720")

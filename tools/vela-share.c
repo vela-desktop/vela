@@ -21,7 +21,8 @@
 // staying connected. VELA_SHARE_DAMAGE=1 asks screencopy for frames with
 // damage (copy_with_damage): each waits until the output changes.
 // VELA_SHARE_KEEP=1 never destroys a finished screencopy frame, like a lazy
-// client.
+// client. Lines on stdin: "window" opens a window of its own (app id
+// org.vela.Share), "close" closes it, as an app that shares does.
 
 #define _GNU_SOURCE
 #include <errno.h>
@@ -41,6 +42,7 @@
 #include "ext-image-capture-source-v1-client-protocol.h"
 #include "ext-image-copy-capture-v1-client-protocol.h"
 #include "wlr-screencopy-unstable-v1-client-protocol.h"
+#include "xdg-shell-client-protocol.h"
 
 #define MAX_OUTPUTS 8
 
@@ -53,6 +55,8 @@ static struct ext_foreign_toplevel_image_capture_source_manager_v1 *toplevel_sou
 static struct ext_image_copy_capture_manager_v1 *copy_manager;
 static struct ext_foreign_toplevel_list_v1 *toplevel_list;
 static struct zwlr_screencopy_manager_v1 *screencopy;
+static struct wl_compositor *compositor;
+static struct xdg_wm_base *wm_base;
 
 static const char *wanted_identifier;
 static struct ext_foreign_toplevel_handle_v1 *wanted_toplevel;
@@ -345,6 +349,75 @@ static void sc_capture(int index)
     zwlr_screencopy_frame_v1_add_listener(frame->wl, &sc_listener, frame);
 }
 
+// ----------------------------------------------------------- its window --
+
+static struct wl_surface *surface;
+static struct xdg_surface *xdg_surface;
+static struct xdg_toplevel *toplevel;
+static struct buffer window_buffer;
+
+static void wm_ping(void *data, struct xdg_wm_base *base, uint32_t serial)
+{
+    xdg_wm_base_pong(base, serial);
+}
+
+static const struct xdg_wm_base_listener wm_listener = { .ping = wm_ping };
+
+static void surface_configure(void *data, struct xdg_surface *xdg, uint32_t serial)
+{
+    xdg_surface_ack_configure(xdg, serial);
+    if (make_buffer(&window_buffer, WL_SHM_FORMAT_XRGB8888, 64, 64, 64 * 4)) {
+        wl_surface_attach(surface, window_buffer.wl, 0, 0);
+        wl_surface_damage_buffer(surface, 0, 0, 64, 64);
+    }
+    wl_surface_commit(surface);
+}
+
+static const struct xdg_surface_listener surface_listener = { .configure = surface_configure };
+
+static void toplevel_configure(void *data, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *states) {}
+static void toplevel_close(void *data, struct xdg_toplevel *t) {}
+
+static const struct xdg_toplevel_listener window_listener = {
+    .configure = toplevel_configure,
+    .close = toplevel_close,
+};
+
+static void open_window(void)
+{
+    if (surface || !compositor || !wm_base) {
+        return;
+    }
+    surface = wl_compositor_create_surface(compositor);
+    xdg_surface = xdg_wm_base_get_xdg_surface(wm_base, surface);
+    xdg_surface_add_listener(xdg_surface, &surface_listener, NULL);
+    toplevel = xdg_surface_get_toplevel(xdg_surface);
+    xdg_toplevel_add_listener(toplevel, &window_listener, NULL);
+    xdg_toplevel_set_app_id(toplevel, "org.vela.Share");
+    xdg_toplevel_set_title(toplevel, "vela-share");
+    wl_surface_commit(surface);
+}
+
+static void close_window(void)
+{
+    if (surface) {
+        xdg_toplevel_destroy(toplevel);
+        xdg_surface_destroy(xdg_surface);
+        wl_surface_destroy(surface);
+        surface = NULL;
+    }
+}
+
+// A line on stdin.
+static void command(const char *line)
+{
+    if (strcmp(line, "window") == 0) {
+        open_window();
+    } else if (strcmp(line, "close") == 0) {
+        close_window();
+    }
+}
+
 // --------------------------------------------------------------- registry --
 
 static void registry_global(void *data, struct wl_registry *registry, uint32_t name, const char *interface,
@@ -364,6 +437,11 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
     } else if (strcmp(interface, ext_foreign_toplevel_list_v1_interface.name) == 0) {
         toplevel_list = wl_registry_bind(registry, name, &ext_foreign_toplevel_list_v1_interface, 1);
         ext_foreign_toplevel_list_v1_add_listener(toplevel_list, &list_listener, NULL);
+    } else if (strcmp(interface, wl_compositor_interface.name) == 0) {
+        compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
+    } else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
+        wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
+        xdg_wm_base_add_listener(wm_base, &wm_listener, NULL);
     } else if (strcmp(interface, zwlr_screencopy_manager_v1_interface.name) == 0) {
         screencopy = wl_registry_bind(registry, name, &zwlr_screencopy_manager_v1_interface, version < 3 ? version : 3);
     }
@@ -472,9 +550,18 @@ int main(int argc, char **argv)
             break;
         }
         if (fds[1].revents) {
+            static char line[64];
+            static size_t length;
             char byte;
             if (read(STDIN_FILENO, &byte, 1) <= 0) {
                 break; // stdin closed: the test is done with us
+            }
+            if (byte == '\n') {
+                line[length] = '\0';
+                command(line);
+                length = 0;
+            } else if (length < sizeof(line) - 1) {
+                line[length++] = byte;
             }
         }
         if (fds[0].revents & POLLIN) {
