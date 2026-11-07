@@ -73,8 +73,10 @@ In beta 0.1:
 
 Decided out:
 
-- **Battery notifications.** Battery levels are shown, but low battery is
-  never notified.
+- **Battery notifications**, to keep 0.1's Bluetooth work smaller: battery
+  levels were shown, low battery not notified. They came later, for every
+  device UPower knows, Bluetooth or not: see
+  [battery notifications](battery-notifications.md).
 - **File transfer (OBEX)**, in either direction. "Send via Bluetooth" goes
   away with BlueDevil (§10).
 

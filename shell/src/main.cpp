@@ -11,6 +11,7 @@
 #include "appmodel.h"
 #include "audio.h"
 #include "audioapps.h"
+#include "batterynotices.h"
 #include "bluetooth/bluetooth.h"
 #include "bluetoothprompts.h"
 #include "updatenotices.h"
@@ -386,6 +387,15 @@ int main(int argc, char* argv[])
         });
     notifications.setDoNotDisturb(config.doNotDisturb());
     QObject::connect(&config, &Config::doNotDisturbChanged, &notifications, &NotificationServer::setDoNotDisturb);
+    // Low and critical batteries, the PC's and the peripherals' (UPower,
+    // docs/battery-notifications.md), as chosen in Settings.
+    BatteryNotices batteries(&notifications);
+    const auto batterySettings = [&] {
+        batteries.configure({ config.batteryNotify(), config.batteryLowLevel(), config.deviceBatteryNotify() });
+    };
+    QObject::connect(&config, &Config::batteryChanged, &batteries, batterySettings);
+    batterySettings();
+    batteries.start();
     TrayModel tray;
     tray.start();
     SystemActions system;

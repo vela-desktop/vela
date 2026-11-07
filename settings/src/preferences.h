@@ -69,6 +69,16 @@ class Preferences : public QObject {
     // notifications/silenceWhileSharing: Do not disturb by itself while the
     // screen is shared (docs/screen-sharing.md §7).
     Q_PROPERTY(bool silenceWhileSharing READ silenceWhileSharing WRITE setSilenceWhileSharing NOTIFY doNotDisturbChanged)
+    // --- Battery notifications (vela-shell.conf [battery],
+    // shell/src/batterysettings.h) ---
+    // The PC's battery (battery/notify) and its low level in percent
+    // (battery/lowLevel); lowLevels are the choices offered, the current
+    // one among them even if the file holds another.
+    Q_PROPERTY(bool batteryNotify READ batteryNotify WRITE setBatteryNotify NOTIFY batteryChanged)
+    Q_PROPERTY(int batteryLowLevel READ batteryLowLevel WRITE setBatteryLowLevel NOTIFY batteryChanged)
+    Q_PROPERTY(QVariantList batteryLowLevels READ batteryLowLevels NOTIFY batteryChanged)
+    // The peripherals' (battery/devices).
+    Q_PROPERTY(bool deviceBatteryNotify READ deviceBatteryNotify WRITE setDeviceBatteryNotify NOTIFY batteryChanged)
     // --- Power ---
     Q_PROPERTY(int screenOffMinutes READ screenOffMinutes WRITE setScreenOffMinutes NOTIFY idleChanged)
     Q_PROPERTY(bool lockOnIdle READ lockOnIdle WRITE setLockOnIdle NOTIFY idleChanged)
@@ -191,6 +201,13 @@ public:
     void setDoNotDisturb(bool on);
     bool silenceWhileSharing() const { return m_silenceWhileSharing; }
     void setSilenceWhileSharing(bool on);
+    bool batteryNotify() const { return m_batteryNotify; }
+    void setBatteryNotify(bool on);
+    int batteryLowLevel() const { return m_batteryLowLevel; }
+    void setBatteryLowLevel(int percent);
+    QVariantList batteryLowLevels() const;
+    bool deviceBatteryNotify() const { return m_deviceBatteryNotify; }
+    void setDeviceBatteryNotify(bool on);
 
     int screenOffMinutes() const { return m_screenOffMinutes; }
     void setScreenOffMinutes(int minutes);
@@ -319,6 +336,7 @@ signals:
     void startChanged();
     void clockChanged();
     void doNotDisturbChanged();
+    void batteryChanged();
     void idleChanged();
     void languageChanged();
     void visualThemeChanged();
@@ -362,6 +380,9 @@ private:
     bool m_notificationCount = true;
     bool m_doNotDisturb = false;
     bool m_silenceWhileSharing = true;
+    bool m_batteryNotify = true;
+    int m_batteryLowLevel = 20;
+    bool m_deviceBatteryNotify = true;
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;
     QString m_language;
