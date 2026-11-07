@@ -10,6 +10,7 @@ extern "C" {
 #include "legacy_names.h"
 }
 
+#include "batterysettings.h"
 #include "clockformat.h"
 #include "iconprovider.h"
 #include "themefile.h"
@@ -181,6 +182,10 @@ void Preferences::reload()
     m_doNotDisturb = settings.value(QStringLiteral("notifications/doNotDisturb"), false).toBool();
     m_silenceWhileSharing = settings.value(QStringLiteral("notifications/silenceWhileSharing"), true).toBool();
     emit doNotDisturbChanged();
+    m_batteryNotify = vela::battery::notify(settings);
+    m_batteryLowLevel = vela::battery::lowLevel(settings);
+    m_deviceBatteryNotify = vela::battery::devices(settings);
+    emit batteryChanged();
     m_clipboardHistory = settings.value(QStringLiteral("clipboard/history"), false).toBool();
     emit clipboardChanged();
 
@@ -657,6 +662,53 @@ void Preferences::setSilenceWhileSharing(bool on)
         m_silenceWhileSharing = on;
         setShell(QStringLiteral("notifications/silenceWhileSharing"), on);
         emit doNotDisturbChanged();
+    }
+}
+
+void Preferences::setBatteryNotify(bool on)
+{
+    if (on != m_batteryNotify) {
+        m_batteryNotify = on;
+        setShell(QStringLiteral("battery/notify"), on);
+        emit batteryChanged();
+    }
+}
+
+void Preferences::setBatteryLowLevel(int percent)
+{
+    if (percent < vela::battery::minimumLowLevel || percent > vela::battery::maximumLowLevel) {
+        return;
+    }
+    if (percent != m_batteryLowLevel) {
+        m_batteryLowLevel = percent;
+        setShell(QStringLiteral("battery/lowLevel"), percent);
+        emit batteryChanged();
+    }
+}
+
+QVariantList Preferences::batteryLowLevels() const
+{
+    QVariantList levels;
+    bool current = false;
+    for (const int level : vela::battery::lowLevels) {
+        if (!current && m_batteryLowLevel < level) {
+            levels.append(m_batteryLowLevel); // set by hand in the file
+        }
+        current |= m_batteryLowLevel <= level;
+        levels.append(level);
+    }
+    if (!current) {
+        levels.append(m_batteryLowLevel);
+    }
+    return levels;
+}
+
+void Preferences::setDeviceBatteryNotify(bool on)
+{
+    if (on != m_deviceBatteryNotify) {
+        m_deviceBatteryNotify = on;
+        setShell(QStringLiteral("battery/devices"), on);
+        emit batteryChanged();
     }
 }
 

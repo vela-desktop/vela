@@ -16,6 +16,11 @@ qt_add_executable(vela-shell
     src/appmodel.cpp
     src/appmodel.h
     src/audioapps.h
+    src/batteryalerts.cpp
+    src/batteryalerts.h
+    src/batterynotices.cpp
+    src/batterynotices.h
+    src/batterysettings.h
     src/desktopexec.h
     src/mimeapps.h
     src/clipboard.cpp
@@ -50,6 +55,8 @@ qt_add_executable(vela-shell
     src/network.cpp
     src/network.h
     src/notifications.cpp
+    src/upowerbatteries.cpp
+    src/upowerbatteries.h
     src/shellcontroller.cpp
     src/shellcontroller.h
     src/servicemenus.cpp
@@ -202,6 +209,25 @@ if(VELA_BUILD_TOOLS)
         add_test(NAME shell-transfers COMMAND vela-transfer-monitor-test)
     endif()
 
+    # Battery notifications (docs/battery-notifications.md §9): the policy
+    # and UPower's properties read into it, with no D-Bus...
+    qt_add_executable(vela-battery-alerts-test tests/batteryalerts.cpp
+        src/batteryalerts.cpp src/batteryalerts.h src/upowerbatteries.cpp src/upowerbatteries.h)
+    target_include_directories(vela-battery-alerts-test PRIVATE src)
+    target_compile_options(vela-battery-alerts-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-battery-alerts-test PRIVATE Qt6::DBus Qt6::Test)
+    add_test(NAME shell-battery-alerts COMMAND vela-battery-alerts-test)
+    # ...and all of it against a fake UPower on a private bus, down to the
+    # notifications shown.
+    qt_add_executable(vela-battery-notices-test tests/batterynotices.cpp
+        src/batteryalerts.cpp src/batteryalerts.h src/batterynotices.cpp src/batterynotices.h
+        src/upowerbatteries.cpp src/upowerbatteries.h src/notifications.cpp src/notifications.h)
+    target_include_directories(vela-battery-notices-test PRIVATE src)
+    target_compile_options(vela-battery-notices-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-battery-notices-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
+    add_test(NAME shell-battery-notices COMMAND vela-battery-notices-test)
+    set_tests_properties(shell-battery-notices PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     # Run the same ELF/AppImage classification used by desktop and Vela Files.
     qt_add_executable(vela-executable-file-test tests/executablefile.cpp ${PROJECT_SOURCE_DIR}/common/executablefile.h)
     target_compile_options(vela-executable-file-test PRIVATE -Wall -Wextra)
@@ -255,7 +281,7 @@ if(VELA_BUILD_TOOLS)
 
     # Config on a private vela-shell.conf, rewritten as Settings does.
     qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h
-        src/clockformat.h src/starticon.h src/defaults.h)
+        src/batterysettings.h src/clockformat.h src/starticon.h src/defaults.h)
     target_include_directories(vela-config-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
     target_compile_options(vela-config-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-config-test PRIVATE Qt6::Gui Qt6::Test)

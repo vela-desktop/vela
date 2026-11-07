@@ -84,6 +84,29 @@ private slots:
         QVERIFY(config.silenceWhileSharing());
     }
 
+    // The battery notifications' settings, live, and a bad level ignored
+    // (docs/battery-notifications.md §6).
+    void followsTheBatterySettings()
+    {
+        Config config;
+        QVERIFY(config.batteryNotify());
+        QCOMPARE(config.batteryLowLevel(), 20);
+        QVERIFY(config.deviceBatteryNotify());
+        QSignalSpy battery(&config, &Config::batteryChanged);
+        write("[battery]\nnotify=false\nlowLevel=35\ndevices=false\n");
+        QVERIFY(battery.wait(3000));
+        QVERIFY(!config.batteryNotify());
+        QCOMPARE(config.batteryLowLevel(), 35);
+        QVERIFY(!config.deviceBatteryNotify());
+        write("[battery]\nlowLevel=200\n");
+        QVERIFY(battery.wait(3000));
+        QCOMPARE(config.batteryLowLevel(), 20);
+        QVERIFY(config.batteryNotify());
+        write("[battery]\nlowLevel=lots\n");
+        QTest::qWait(500);
+        QCOMPARE(config.batteryLowLevel(), 20);
+    }
+
     void followsTheClocksChoices()
     {
         Config config;

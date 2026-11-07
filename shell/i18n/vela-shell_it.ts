@@ -2,6 +2,113 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="it_IT" sourcelanguage="en">
 <context>
+    <name>BatteryNotices</name>
+    <message>
+        <source>Mouse</source>
+        <translation>Mouse</translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation>Tastiera</translation>
+    </message>
+    <message>
+        <source>Phone</source>
+        <translation>Telefono</translation>
+    </message>
+    <message>
+        <source>Tablet</source>
+        <translation>Tablet</translation>
+    </message>
+    <message>
+        <source>Game controller</source>
+        <translation>Controller di gioco</translation>
+    </message>
+    <message>
+        <source>Pen</source>
+        <translation>Penna</translation>
+    </message>
+    <message>
+        <source>Touchpad</source>
+        <translation>Touchpad</translation>
+    </message>
+    <message>
+        <source>Headset</source>
+        <translation>Cuffie con microfono</translation>
+    </message>
+    <message>
+        <source>Speakers</source>
+        <translation>Altoparlanti</translation>
+    </message>
+    <message>
+        <source>Headphones</source>
+        <translation>Cuffie</translation>
+    </message>
+    <message>
+        <source>Remote control</source>
+        <translation>Telecomando</translation>
+    </message>
+    <message>
+        <source>Wireless device</source>
+        <translation>Dispositivo wireless</translation>
+    </message>
+    <message>
+        <source>Power</source>
+        <translation>Alimentazione</translation>
+    </message>
+    <message>
+        <source>Battery critically low</source>
+        <translation>Batteria quasi esaurita</translation>
+    </message>
+    <message>
+        <source>Battery low</source>
+        <translation>Batteria scarica</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Plug in your PC now.</source>
+        <translation>Rimane il %1%. Collega subito il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Plug in your PC.</source>
+        <translation>Rimane il %1%. Collega il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>Plug in your PC now.</source>
+        <translation>Collega subito il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>Plug in your PC.</source>
+        <translation>Collega il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>Devices</source>
+        <translation>Dispositivi</translation>
+    </message>
+    <message>
+        <source>%1 battery is critical</source>
+        <translation>%1: batteria quasi esaurita</translation>
+    </message>
+    <message>
+        <source>%1 battery is low</source>
+        <translation>%1: batteria scarica</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Recharge the device now.</source>
+        <translation>Rimane il %1%. Ricarica subito il dispositivo.</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Recharge the device soon.</source>
+        <translation>Rimane il %1%. Ricarica presto il dispositivo.</translation>
+    </message>
+    <message>
+        <source>Recharge the device now.</source>
+        <translation>Ricarica subito il dispositivo.</translation>
+    </message>
+    <message>
+        <source>Recharge the device soon.</source>
+        <translation>Ricarica presto il dispositivo.</translation>
+    </message>
+</context>
+<context>
     <name>BluetoothDevices</name>
     <message>
         <source>Cancel</source>

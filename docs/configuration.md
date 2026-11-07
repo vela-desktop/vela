@@ -159,7 +159,7 @@ The design and what is still planned are in [theme-system.md](theme-system.md).
 
 ## Shell settings
 
-The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization, except the time format (Settings → Time & language → Date & time) and the notification ones (Settings → System → Notifications):
+The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization, except the time format (Settings → Time & language → Date & time), the notification ones (Settings → System → Notifications) and the battery ones (Settings → System → Power, Settings → Bluetooth & devices):
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -168,6 +168,9 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `taskbar/notificationCount` | `true` | The number of notifications next to the clock (Do not disturb's bell shows anyway) |
 | `notifications/silenceWhileSharing` | `true` | Do not disturb by itself while an app shares or records the screen: popups wait in the notification center; the user's own Do not disturb (`notifications/doNotDisturb`) is never changed ([screen sharing](screen-sharing.md) §7) |
+| `battery/notify` | `true` | Notifications about the PC's battery, low and critical (Settings → System → Power, [battery notifications](battery-notifications.md#6-settings)) |
+| `battery/lowLevel` | `20` | The PC's low battery level in percent: 5–95 (Settings offers 10, 15, 20, 25, 30, 40, 50); anything else is 20 |
+| `battery/devices` | `true` | Notifications about the peripherals' batteries: mice, keyboards, headsets (Settings → Bluetooth & devices) |
 | `start/icon` | `vela` | The Start button's icon: `vela` (the sail), `distribution` (os-release's `LOGO=`, from the icon theme or a loose file in `icons/` or `pixmaps/`) or `picture`; one that can't be shown (no logo, a picture gone or not a picture) is the sail |
 | `start/iconPicture` | | The picture's file for `start/icon=picture`; the shell watches it, so an edited or deleted picture shows at once |
 | `start/showPinned` | `true` | The apps pinned to Start above all apps; off, Start opens on all apps and keeps the pins (`start/pinned`) |
