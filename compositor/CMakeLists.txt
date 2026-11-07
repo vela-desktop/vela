@@ -414,6 +414,15 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-updates-start-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.updates-start COMMAND vela-updates-start-test)
 
+    # Secret-store choice (GNOME login keyring or KWallet) with a private HOME.
+    add_executable(vela-session-env-test tests/session_env_test.c src/session.c src/util.c)
+    target_include_directories(vela-session-env-test PRIVATE src)
+    target_compile_definitions(vela-session-env-test PRIVATE WLR_USE_UNSTABLE _POSIX_C_SOURCE=200809L)
+    target_compile_options(vela-session-env-test PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(vela-session-env-test PRIVATE PkgConfig::WLROOTS)
+    set_target_properties(vela-session-env-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.session-env COMMAND vela-session-env-test)
+
     find_package(GTest)
     if(GTest_FOUND)
         add_executable(vela-compositor-tests
