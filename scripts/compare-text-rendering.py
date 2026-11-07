@@ -9,6 +9,7 @@ import html
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 
 MODES = {"native": "Previous native renderer", "qt-default": "Qt rendering, default AA",
@@ -18,14 +19,19 @@ SIZES = (12, 14, 18)
 STATES = ("rest", "pressed", "scrolled", "transparent", "tinted", "light-rest", "light-pressed")
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path, help="path to vela-text-rendering-test")
-    parser.add_argument("--output", type=Path, default=Path("/tmp/vela-text-comparison"))
+    parser.add_argument("--output", type=Path,
+                        help="report directory (default: a new private temporary directory)")
     parser.add_argument("--font-family", help="font used in the Vela session; resolved family is logged")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     binary = args.binary.resolve()
-    output = args.output.resolve()
+    # Keep reports after exit, in an atomically created private directory.
+    output = args.output
+    if output is None:
+        output = Path(tempfile.mkdtemp(prefix="vela-text-comparison-"))
+    output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # Never leave an old successful report after a failed recapture.
     report = output / "index.html"

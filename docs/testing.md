@@ -224,12 +224,14 @@ three policies in fresh processes with the same scene and font:
 
 ```sh
 python3 scripts/compare-text-rendering.py build/common/vela-text-rendering-test \
-    --output /tmp/vela-text-comparison --font-family 'Noto Sans'
+    --output build/text-rendering-comparison --font-family 'Noto Sans'
 ```
 
 Use the font configured in the Vela session; omit `--font-family` to use Qt's
 default font. Each run logs its resolved font, Qt version and OpenGL device.
-Open `/tmp/vela-text-comparison/index.html` for side-by-side native, Qt with
+Without `--output`, the script creates a unique private temporary directory,
+keeps the report after exit, and prints its path.
+Open `build/text-rendering-comparison/index.html` for side-by-side native, Qt with
 default AA, and Qt with grayscale AA captures at rest, pressed and scrolled,
 over dark, light, transparent and colored-translucent backgrounds. The script
 propagates capture failures and unavailable graphics instead of reporting a
