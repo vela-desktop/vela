@@ -7,6 +7,7 @@
 // private vela.conf sets the durations three times Vela's, so a fade still
 // running would be caught.
 
+#include "renderingpolicy.h"
 #include "controls.h"
 #include "foldermodel.h"
 #include "iconprovider.h"
@@ -137,6 +138,7 @@ private:
     TestTransferOps m_ops;
 };
 
+/** Run view regressions over private fixtures with the application's rendering policy. */
 int main(int argc, char** argv)
 {
     QTemporaryDir home;
@@ -184,6 +186,7 @@ int main(int argc, char** argv)
 
     qmlRegisterType<FolderModel>("Vela.Files.Backend", 1, 0, "FolderModel");
     Setup setup;
+    vela::rendering::configureApplication();
     return quick_test_main_with_setup(argc, argv, "files-views", QUICK_TEST_SOURCE_DIR, &setup);
 }
 

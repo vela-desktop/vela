@@ -175,6 +175,91 @@ python3 tests/functional/run.py --sharpness
 
 The sharpness check additionally needs NumPy and Pillow available to `python3`.
 
+### Qt Quick text rendering
+
+```sh
+ctest --test-dir build -R '^text-rendering-rhi$' --output-on-failure
+build/common/vela-text-rendering-test --capture-dir /tmp/vela-text-frames
+```
+
+The RHI readback test requires Qt >= 6.6; Vela production still supports Qt
+6.5. CMake omits only this test on older Qt versions. The independent
+`process-launch-environment` test exercises actual synchronous and detached
+child processes, preserving user overrides and unrelated environment variables.
+It links Qt Core only and also covers empty overrides and environment changes
+after initialization.
+The same process object is also reused across all supported start forms to check
+that new activation tokens reach every child. The CPU-only `shell-service-menus`
+suite rejects empty service-menu commands and checks real launches preserve the
+selected paths and working directory. `settings-preferences` covers missing and
+broken folder openers with private helpers instead of opening a real file manager.
+Packaging tests reject UI launch sites that bypass the environment policy.
+
+This test runs the explicitly initialized production text policy through the OpenGL RHI glyph shaders
+using `QQuickRenderControl`, an explicit render target and synchronous readback.
+It does not use Qt Quick's software painter, which cannot reproduce the native
+glyph shader's snapping. Mesa software OpenGL is supported; if an OpenGL RHI
+context cannot be initialized, the test returns 77 (skipped).
+
+At 100%, 125%, 150%, 175% and 200%, for 12, 14 and 18 px text, it
+checks neutral white coverage with transparent alpha/premultiplication,
+correct compositing over a colored 50%-transparent background, gradual
+coverage during 1/64 physical pixel scroll steps and 1.00-to-0.92 press
+scales, and all RGBA channels returning after motion. Per-combination elapsed
+times are diagnostics, not hardware-independent CI performance thresholds. The native bitmap renderer is
+also rendered as a negative control: it must exhibit the discontinuous scroll
+step that this test is designed to catch. These are coverage-continuity checks,
+not a general font legibility or sharpness score.
+The pressed endpoint must differ from rest, so a broken scale binding cannot
+pass as perfectly smooth motion.
+
+The optional captures contain resting, pressed, scrolled, transparent,
+colored-translucent and native pressed text at each size and scale. Inspect the PNGs at their native
+size; hardware-specific results and subjective resting font preference still
+need observation in a real session. `shell-controls` also presses the actual
+Start tile with both mouse buttons, checks that its text metrics and renderer
+stay constant, and verifies activation versus context-menu signals. Both suites
+use private configuration and cache directories.
+
+The Arch build job runs the pixel test under Xvfb with Mesa software OpenGL and
+DejaVu fonts, and uploads frames and a comparison report as `text-rendering-frames`.
+It invokes the binary directly, so a missing context (exit 77) fails CI rather
+than silently skipping. CPU-only sanitizer tests exclude its `gpu` label.
+
+To separate the renderer decision from the antialiasing decision, capture all
+three policies in fresh processes with the same scene and font:
+
+```sh
+python3 scripts/compare-text-rendering.py build/common/vela-text-rendering-test \
+    --output build/text-rendering-comparison --font-family 'Noto Sans'
+```
+
+Use the font configured in the Vela session; omit `--font-family` to use Qt's
+default font. Each run logs its resolved font, Qt version and OpenGL device.
+Without `--output`, the script creates a unique private temporary directory,
+keeps the report after exit, and prints its path.
+Open `build/text-rendering-comparison/index.html` for side-by-side native, Qt with
+default AA, and Qt with grayscale AA captures at rest, pressed and scrolled,
+over dark, light, transparent and colored-translucent backgrounds. The script
+propagates capture failures and unavailable graphics instead of reporting a
+successful comparison.
+Before reusing an output directory, the script removes only its expected PNG
+frames so old captures cannot hide missing new frames; unrelated files remain.
+On CPU-only systems run under `xvfb-run -a` with
+`LIBGL_ALWAYS_SOFTWARE=1`. The default Qt AA may already be grayscale on OpenGL ES.
+For a one-to-one pixel comparison, view at 100% browser zoom on a 100%-scale
+output, or inspect the original PNGs with a viewer that maps image pixels to
+physical pixels. The report supports visual review; it does not replace the
+real-session hardware checks below.
+
+Before merging text-rendering changes, visually inspect native-resolution
+captured frames in a real Vela session at 100%, 125%, and 150%: text at rest,
+Start tile presses, fractional Settings scrolling, translucent panels, and
+animations enabled and disabled. On available AMD, Intel, and NVIDIA hardware,
+compare frame pacing and glyph-cache/GPU memory use to the previous revision.
+Record monitor, scale, driver, Qt version, and measurement method. This manual
+hardware check is distinct from the automated Mesa regression.
+
 ## GPU requirements
 
 `tests/functional/test_output_rotation.py` exercises mixed landscape/portrait

@@ -20,6 +20,18 @@ target_link_libraries(vela-app PUBLIC Qt6::Gui PRIVATE Qt6::GuiPrivate)
 # Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin) and, before loading QML,
 # vela::controls::install(engine, mode).
 find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Gui GuiPrivate Qml Quick QuickControls2 Svg)
+
+# Process-local environment defaults and external launches need only Qt Core.
+add_library(vela-process STATIC src/processenvironment.cpp)
+target_include_directories(vela-process PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(vela-process PRIVATE -Wall -Wextra)
+target_link_libraries(vela-process PUBLIC Qt6::Core)
+
+# Explicit Qt Quick text policy, independent from the Vela.Controls module.
+add_library(vela-rendering STATIC src/renderingpolicy.cpp)
+target_include_directories(vela-rendering PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(vela-rendering PRIVATE -Wall -Wextra)
+target_link_libraries(vela-rendering PUBLIC Qt6::Quick PRIVATE vela-process)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CONTROLS_WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_get_variable(CONTROLS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
@@ -85,36 +97,5 @@ qt_add_qml_module(vela-controls
 target_include_directories(vela-controls PUBLIC src ${SHELL_SRC} PRIVATE ${CONTROLS_GENERATED_DIR})
 target_compile_options(vela-controls PRIVATE -Wall -Wextra)
 target_link_libraries(vela-controls PUBLIC
-    Qt6::DBus
-    Qt6::Gui
-    Qt6::Qml
-    Qt6::Quick
-    Qt6::QuickControls2
-    Qt6::Svg
-    PRIVATE
-    Qt6::GuiPrivate # the windows' wl_surface (backgroundeffects.cpp)
-    PkgConfig::CONTROLS_WAYLAND_CLIENT)
-
-# The shared pieces under Qt Quick Test (tests/tst_*.qml): their states,
-# fades, keyboard and accessibility, with animation effects on and off.
-if(VELA_BUILD_TOOLS)
-    find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
-    qt_add_executable(vela-controls-test tests/controls_test.cpp)
-    target_compile_definitions(vela-controls-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
-    target_compile_options(vela-controls-test PRIVATE -Wall -Wextra)
-    target_include_directories(vela-controls-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
-    target_link_libraries(vela-controls-test PRIVATE vela-controls vela-controlsplugin Qt6::QuickTest)
-    add_test(NAME controls COMMAND vela-controls-test)
-    add_test(NAME controls-no-effects COMMAND vela-controls-test)
-    set_tests_properties(controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
-    set_tests_properties(controls controls-no-effects PROPERTIES TIMEOUT 120)
-endif()
-
-# vela-audio: the audio backend of the shell and Settings (docs/audio.md).
-add_subdirectory(audio)
-# vela-bluetooth-client: Bluetooth for the shell and Settings
-# (docs/bluetooth.md §8).
-add_subdirectory(bluetooth)
-# vela-updates-client: updates for the shell and Settings
-# (docs/updates.md §8).
-add_subdirectory(updates)
+    vela-rendering
+    vela-process

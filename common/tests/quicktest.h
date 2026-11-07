@@ -9,6 +9,7 @@
 // can be caught halfway; with VELA_TEST_ANIMATION_EFFECTS=no animation
 // effects are off (two ctest entries per runner).
 
+#include "renderingpolicy.h"
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
@@ -16,6 +17,7 @@
 
 namespace vela::test {
 
+/** Run QML tests with private configuration, controlled motion and the production text policy. */
 inline int quickTestMain(int argc, char** argv, const char* name, const char* sourceDir, QObject* setup)
 {
     QTemporaryDir home;
@@ -35,6 +37,7 @@ inline int quickTestMain(int argc, char** argv, const char* name, const char* so
         conf.write("animation-effects=no\n");
     }
     conf.close();
+    vela::rendering::configureApplication();
     return quick_test_main_with_setup(argc, argv, name, sourceDir, setup);
 }
 

@@ -27,6 +27,7 @@ Item {
     }
 
     Column {
+        objectName: "appTileContent"
         anchors.centerIn: parent
         width: parent.width - 12
         spacing: 8
@@ -43,6 +44,7 @@ Item {
         }
 
         Text {
+            objectName: "appTileLabel"
             width: parent.width
             text: root.name
             color: Theme.text

@@ -79,6 +79,7 @@ Requires:       util-linux
 # Settings > Updates runs vela-update in the user's terminal (docs/updates.md
 # §6.3): xdg-terminal-exec picks it, Konsole when there is none.
 Requires:       xdg-terminal-exec
+Requires:       xdg-utils
 Requires:       rpm
 Requires:       dnf5
 Requires:       qt6-qtbase

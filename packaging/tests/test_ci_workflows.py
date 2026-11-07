@@ -2,9 +2,11 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Guard CI's distro-specific ownership of the updater contract suite."""
+"""Guard build job structure and ownership of the updater contract suite."""
 
+from collections import Counter
 from pathlib import Path
+import re
 import shlex
 import unittest
 
@@ -13,7 +15,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class CIUpdaterTestOwnership(unittest.TestCase):
+    def test_build_job_names_are_unique(self):
+        """Reject duplicated job keys instead of accepting a silently overwritten workflow."""
+        jobs = (ROOT / ".github/workflows/build.yml").read_text().split("\njobs:\n", 1)[1]
+        names = re.findall(r"^  ([\w-]+):\s*$", jobs, re.M)
+        duplicates = [name for name, count in Counter(names).items() if count > 1]
+        self.assertFalse(duplicates, f"Duplicate build jobs: {duplicates}")
+
     def test_updater_suite_runs_once_in_shared_packaging_job(self):
+        """Keep distro-oriented updater contracts in their single shared packaging job."""
         build = (ROOT / ".github/workflows/build.yml").read_text()
         fedora = (ROOT / ".github/workflows/fedora.yml").read_text()
 
