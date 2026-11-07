@@ -126,23 +126,42 @@ Window {
                     x: 16
                     y: 10
                     width: parent.width - 32
-                    height: 36
+                    height: 36 + (silencedWhileSharing.visible ? silencedWhileSharing.height + 2 : 0)
                     Text {
-                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.verticalCenter: headerButtons.verticalCenter
                         text: qsTr("Notifications")
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
                         font.weight: Font.DemiBold
                     }
+                    // Held back by the rule, not by the user's switch
+                    // (docs/screen-sharing.md §7): under the title and the
+                    // buttons, all the width, so a long translation never
+                    // runs under them.
+                    Text {
+                        id: silencedWhileSharing
+                        objectName: "silencedWhileSharing"
+                        y: 32
+                        width: parent.width
+                        visible: Notifications.automaticDoNotDisturb && !Notifications.doNotDisturb
+                        text: qsTr("Silenced while your screen is shared")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
                     Row {
-                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                        id: headerButtons
+                        anchors { right: parent.right; top: parent.top }
+                        height: 36
                         spacing: 4
                         SmallButton {
+                            anchors.verticalCenter: parent.verticalCenter
                             icon.name: Notifications.doNotDisturb ? "notifications-disabled" : "notifications"
                             accent: Notifications.doNotDisturb
                             onClicked: Notifications.doNotDisturb = !Notifications.doNotDisturb
                         }
                         SmallButton {
+                            anchors.verticalCenter: parent.verticalCenter
                             visible: root.history.count > 0
                             text: qsTr("Clear all")
                             onClicked: Notifications.clearHistory()

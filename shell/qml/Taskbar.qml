@@ -42,7 +42,7 @@ Window {
     readonly property int inset: floating ? style.margin : 0
     // The notification area, the system icons and the clock, side by side.
     readonly property real trayGroupWidth: (transferIndicator.visible ? transferIndicator.width + 4 : 0)
-        + (tray.visible ? tray.width + 4 : 0) + microphone.width + caffeine.width
+        + (tray.visible ? tray.width + 4 : 0) + screenSharing.width + microphone.width + caffeine.width
         + (systemIcons.visible ? systemIcons.width + 2 : 0) + clock.width
     // A floating bar that spans the screen: its side margin, shrunk when the
     // screen is too narrow for it (the tray must still fit beside the apps).
@@ -586,7 +586,7 @@ Window {
     Row {
         id: tray
         visible: root.primary
-        anchors { right: microphone.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
+        anchors { right: screenSharing.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
 
         Repeater {
             model: Tray
@@ -642,6 +642,94 @@ Window {
                     }
                     onWheel: wheel => Tray.scroll(trayItem.index, wheel.angleDelta.y)
                 }
+            }
+        }
+    }
+
+    // The screen being shared or recorded (docs/screen-sharing.md §6): a
+    // screen with a red dot, who and what in the tooltip, and a menu listing
+    // each app; picking one brings it forward, where its own "Stop sharing" is.
+    Item {
+        id: screenSharing
+        objectName: "screenSharing"
+        visible: root.primary && Sharing.active
+        anchors { right: microphone.left; top: parent.top; bottom: parent.bottom }
+        width: visible ? 32 : 0
+
+        function showTooltip() {
+            const p = screenSharing.mapToItem(null, screenSharing.width / 2, 0)
+            Menus.tooltip = { text: Sharing.summary, center: p.x, screen: root.screenName, owner: "screenSharing" }
+        }
+        function hideTooltip() {
+            sharingTooltipDelay.stop()
+            if (Menus.tooltip && Menus.tooltip.owner === "screenSharing") {
+                Menus.tooltip = null
+            }
+        }
+        function show(user) {
+            if (!(user.desktopId && Tasks.showApp(user.desktopId)) && user.window) {
+                Shell.windowAction(user.window, "activate")
+            }
+        }
+        function openMenu() {
+            const entries = [{ header: qsTr("Screen sharing") }]
+            for (const user of Sharing.users) {
+                entries.push({ text: user.name.replace(/&/g, "&&"), icon: user.icon, shortcut: user.what,
+                               action: () => screenSharing.show(user) })
+            }
+            // Held back meanwhile (§7), unless the user's own switch is on.
+            if (Notifications.automaticDoNotDisturb && !Notifications.doNotDisturb) {
+                entries.push({ separator: true },
+                             { header: qsTr("Notifications are silenced meanwhile") },
+                             { text: qsTr("&Notification settings"), icon: "preferences-desktop-notification",
+                               action: () => System.trigger("notification-settings") })
+            }
+            root.openAbove(entries, screenSharing, true, { minWidth: 260 })
+        }
+        Connections {
+            target: Sharing
+            function onSummaryChanged() {
+                if (Menus.tooltip && Menus.tooltip.owner === "screenSharing") {
+                    screenSharing.showTooltip()
+                }
+            }
+        }
+        onVisibleChanged: if (!visible) hideTooltip()
+
+        Timer {
+            id: sharingTooltipDelay
+            interval: 500
+            onTriggered: screenSharing.showTooltip()
+        }
+        Fill {
+            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
+            radius: Theme.radius
+            color: sharingMouse.pressed ? Theme.subtlePressed : sharingMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+        }
+        Icon {
+            id: sharingIcon
+            anchors.centerIn: parent
+            name: "monitor"
+        }
+        // The red dot of "recording", at the screen's lower right.
+        Rectangle {
+            width: 7
+            height: 7
+            radius: 3.5
+            color: "#e81123"
+            border.width: 1
+            border.color: Theme.taskbar
+            x: sharingIcon.x + sharingIcon.width - 5
+            y: sharingIcon.y + sharingIcon.height - 6
+        }
+        MouseArea {
+            id: sharingMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onContainsMouseChanged: containsMouse ? sharingTooltipDelay.restart() : screenSharing.hideTooltip()
+            onClicked: {
+                screenSharing.hideTooltip()
+                screenSharing.openMenu()
             }
         }
     }
@@ -893,19 +981,20 @@ Window {
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
         // Notifications to read: a number next to the clock, like Windows 11,
-        // unless Settings > Notifications hides it (with "Do not disturb" a muted
-        // bell: that one is a state, not a count, and stays).
+        // unless Settings > Notifications hides it (with "Do not disturb",
+        // the user's or while sharing the screen, a muted bell: that one is a
+        // state, not a count, and stays).
         Rectangle {
             id: badge
-            visible: (Config.notificationCount && Notifications.history.count > 0) || Notifications.doNotDisturb
+            visible: (Config.notificationCount && Notifications.history.count > 0) || Notifications.silenced
             anchors { right: parent.right; rightMargin: -2; verticalCenter: parent.verticalCenter }
             width: 18
             height: 18
             radius: 9
-            color: Notifications.doNotDisturb ? "transparent" : Theme.accent
+            color: Notifications.silenced ? "transparent" : Theme.accent
             Text {
                 anchors.centerIn: parent
-                visible: !Notifications.doNotDisturb
+                visible: !Notifications.silenced
                 text: Math.min(Notifications.history.count, 9)
                 color: Theme.readableOn(Theme.accent, "white") // a light custom accent: black
                 font.pixelSize: 10
@@ -913,7 +1002,7 @@ Window {
             }
             Icon {
                 anchors.centerIn: parent
-                visible: Notifications.doNotDisturb
+                visible: Notifications.silenced
                 name: "notifications-disabled"
                 size: 14
             }

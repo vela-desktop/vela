@@ -67,6 +67,21 @@ private slots:
         QVERIFY(config.startPinned());
         QCOMPARE(config.startIconSource(), QString());
         QVERIFY(config.showDesktopIcons());
+        QVERIFY(config.silenceWhileSharing()); // on unless turned off
+    }
+
+    // Settings' switch, live (docs/screen-sharing.md §7).
+    void followsSilenceWhileSharing()
+    {
+        Config config;
+        QSignalSpy silence(&config, &Config::silenceWhileSharingChanged);
+        write("[notifications]\nsilenceWhileSharing=false\n");
+        QVERIFY(silence.wait(3000));
+        QVERIFY(!config.silenceWhileSharing());
+        QCOMPARE(silence.last().first().toBool(), false);
+        write("[notifications]\nsilenceWhileSharing=true\n");
+        QVERIFY(silence.wait(3000));
+        QVERIFY(config.silenceWhileSharing());
     }
 
     void followsTheClocksChoices()

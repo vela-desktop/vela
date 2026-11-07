@@ -66,6 +66,9 @@ class Preferences : public QObject {
     Q_PROPERTY(bool desktopIcons READ desktopIcons WRITE setDesktopIcons NOTIFY desktopChanged)
     // --- Notifications ---
     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
+    // notifications/silenceWhileSharing: Do not disturb by itself while the
+    // screen is shared (docs/screen-sharing.md §7).
+    Q_PROPERTY(bool silenceWhileSharing READ silenceWhileSharing WRITE setSilenceWhileSharing NOTIFY doNotDisturbChanged)
     // --- Power ---
     Q_PROPERTY(int screenOffMinutes READ screenOffMinutes WRITE setScreenOffMinutes NOTIFY idleChanged)
     Q_PROPERTY(bool lockOnIdle READ lockOnIdle WRITE setLockOnIdle NOTIFY idleChanged)
@@ -186,6 +189,8 @@ public:
 
     bool doNotDisturb() const { return m_doNotDisturb; }
     void setDoNotDisturb(bool on);
+    bool silenceWhileSharing() const { return m_silenceWhileSharing; }
+    void setSilenceWhileSharing(bool on);
 
     int screenOffMinutes() const { return m_screenOffMinutes; }
     void setScreenOffMinutes(int minutes);
@@ -375,6 +380,7 @@ private:
     bool m_clockSeconds = false;
     bool m_notificationCount = true;
     bool m_doNotDisturb = false;
+    bool m_silenceWhileSharing = true;
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;
     QString m_language;
