@@ -188,7 +188,11 @@ on the host. The workflow never installs packages or uses sudo.
 It isolates Intel's Mesa ANV ICD (not `intel_hasvk` or Lavapipe),
 requires `DRIVER_ID_INTEL_OPEN_SOURCE_MESA`, Vulkan >= 1.4 and
 PCI vendor `0x8086`, and verifies the DRM render node actually
-selected by Vela.
+selected by Vela. After building, a separate headless compositor smoke
+check verifies Vela's actual Intel renderer **even for partial runs**
+that only select non-compositor GPU-labeled tests (e.g.
+`text-rendering-rhi`). A qualifying `vulkaninfo` result alone is never
+reported as an Intel compositor pass.
 
 The Intel build is limited to **two concurrent compiler jobs** for the
 8 GB machine, with a 180-minute job timeout. It executes the same
