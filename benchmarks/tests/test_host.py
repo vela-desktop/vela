@@ -190,6 +190,22 @@ class HostOperations(unittest.TestCase):
                 self.recover_without_fixture_io()
             self.assertFalse(any(command[:2] == ["systemctl", "unmask"] for command in self.host.calls))
 
+    def test_worker_rejects_a_corrupt_launch_vt_before_takeover(self):
+        self.setup_account()
+        directory = self.pilot_state(result="pending")
+        original = read_json(directory / "state.json")
+        for value in (None, "--help", "8 --runtime", True, 0, 64):
+            state = dict(original, stage="queued", restore_required=False, target_vt=value)
+            atomic_json(directory / "state.json", state)
+            self.host.calls.clear()
+            with self.subTest(vt=value), patch("vela_bench.pilot.create_fixture") as fixture:
+                with self.assertRaisesRegex(BenchError, "Invalid launch virtual terminal"):
+                    worker(self.host, self.layout)
+                fixture.assert_not_called()
+                self.assertFalse(read_json(directory / "state.json")["restore_required"])
+            self.assertFalse(any(command[0] == "chvt" or command[:2] == ["systemctl", "stop"]
+                                 for command in self.host.calls))
+
     def pilot_state(self, result="passed", active_manager=True):
         run_id = "a" * 32
         directory = self.layout.base / "pilots" / run_id

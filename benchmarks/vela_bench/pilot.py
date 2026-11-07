@@ -586,6 +586,9 @@ def worker(host, layout=Layout()):
         if state.get("stage") != "queued":
             raise BenchError("Pilot is not queued")
         try:
+            target_vt = state.get("target_vt")
+            if type(target_vt) is not int or not 1 <= target_vt <= 63:
+                raise BenchError("Invalid launch virtual terminal")
             request = state.get("campaign_block")
             if request:
                 from .campaign import block_request
@@ -637,8 +640,8 @@ def worker(host, layout=Layout()):
                 update(directory, state, "launch", target=target)
                 descriptor = os.open(directory / f"{target}-launch.stderr", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                 os.close(descriptor)
-                host.run(["chvt", str(state["target_vt"])])
-                launch_session(host,target,state['target_vt'],record,layout,directory)
+                host.run(["chvt", str(target_vt)])
+                launch_session(host,target,target_vt,record,layout,directory)
                 evidence = wait_session(host, record, state, directory, layout)
                 atomic_json(directory / f"{target}-session.json", evidence)
                 if state.get("conditions_snapshot"):
@@ -668,7 +671,7 @@ def worker(host, layout=Layout()):
                     verify_conditions(host, record, layout, target, state["conditions_snapshot"])
                 def health():
                     verify_session(host, record, state, layout)
-                    if host.run(["fgconsole"], timeout=5).stdout.strip() != str(state["target_vt"]):
+                    if host.run(["fgconsole"], timeout=5).stdout.strip() != str(target_vt):
                         raise BenchError("Measurement lost the active benchmark VT")
                 if state["plan"].get("instrument_calibration"):
                     calibration = []
