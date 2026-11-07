@@ -17,6 +17,7 @@
 
 namespace vela::test {
 
+/** Run QML tests with private configuration, controlled motion and the production text policy. */
 inline int quickTestMain(int argc, char** argv, const char* name, const char* sourceDir, QObject* setup)
 {
     QTemporaryDir home;

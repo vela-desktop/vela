@@ -50,6 +50,7 @@ QVariantList queryWindows()
 
 } // namespace
 
+/** Connect screenshot capture, save notifications and opening the saved image. */
 Snip::Snip(QQmlEngine* engine, WindowCapture* capture, Clipboard* clipboard, NotificationServer* notifications,
     QObject* parent)
     : QObject(parent)

@@ -37,6 +37,7 @@ namespace {
 
 class Scene {
 public:
+    /** Attach the shared text fixture to an offscreen Qt Quick scene. */
     Scene()
         : window(&control)
     {
@@ -53,6 +54,7 @@ public:
         root->setParentItem(window.contentItem());
     }
 
+    /** Invalidate the scene graph before its backing render resources are destroyed. */
     ~Scene()
     {
         root.reset();
@@ -60,8 +62,10 @@ public:
         window.setRenderTarget({ });
     }
 
+    /** Require a real RHI context rather than silently using the software painter. */
     bool initialize() { return root && control.initialize() && control.rhi(); }
 
+    /** Rebuild the RGBA target at the requested physical output density. */
     bool resize(qreal dpr)
     {
         window.setRenderTarget({ });
@@ -91,6 +95,7 @@ public:
         return true;
     }
 
+    /** Render and synchronously read the actual premultiplied glyph shader output. */
     QImage render()
     {
         QCoreApplication::processEvents();
@@ -125,6 +130,7 @@ private:
     std::unique_ptr<QRhiTextureRenderTarget> target;
 };
 
+/** Sum green-channel glyph coverage for white text over a black background. */
 double coverage(const QImage& image)
 {
     double total = 0;
@@ -137,6 +143,7 @@ double coverage(const QImage& image)
     return total;
 }
 
+/** Normalize frame-to-frame coverage changes against the previous glyph coverage. */
 double change(const QImage& previous, const QImage& next)
 {
     if (previous.isNull() || next.size() != previous.size()) {
@@ -153,7 +160,7 @@ double change(const QImage& previous, const QImage& next)
     return difference / std::max(coverage(previous), 1.0);
 }
 
-// Green-only metrics cannot tell an opaque black pixel from transparent black.
+/** Compare all RGBA channels, distinguishing opaque black from transparent black. */
 bool sameRgba(const QImage& first, const QImage& second)
 {
     if (first.isNull() || second.size() != first.size()) {
@@ -171,8 +178,7 @@ bool sameRgba(const QImage& first, const QImage& second)
     return true;
 }
 
-// White text on transparency: premultiplied RGB must equal alpha coverage.
-// The empty background must have zero alpha and glyph edges partial alpha.
+/** Require white premultiplied glyphs, partial-alpha edges and a transparent background. */
 bool transparentWhiteCoverage(const QImage& image)
 {
     if (image.isNull() || image.pixel(0, 0) != qRgba(0, 0, 0, 0)) {
@@ -194,8 +200,7 @@ bool transparentWhiteCoverage(const QImage& image)
     return foundGlyph && foundEdge;
 }
 
-// Verify all premultiplied RGBA channels with a colored translucent surface.
-// Allow a small 8-bit shader/rounding tolerance, not just green-channel parity.
+/** Check premultiplied RGBA compositing with an 8-bit shader rounding tolerance. */
 bool translucentComposite(const QImage& transparent, const QImage& composite, const QColor& background)
 {
     if (transparent.isNull() || composite.size() != transparent.size()) {
@@ -224,6 +229,7 @@ bool translucentComposite(const QImage& transparent, const QImage& composite, co
     return foundGlyph;
 }
 
+/** Reject RGB fringes and color coverage exceeding premultiplied alpha. */
 bool neutralCoverage(const QImage& image)
 {
     for (int y = 0; y < image.height(); ++y) {
@@ -241,6 +247,7 @@ bool neutralCoverage(const QImage& image)
     return true;
 }
 
+/** Measure the largest coverage jump across 1/64 physical-pixel scroll increments. */
 double scrollSteps(Scene& scene, qreal dpr)
 {
     scene.root->setProperty("scrollOffset", 0);
@@ -262,10 +269,12 @@ double scrollSteps(Scene& scene, qreal dpr)
     return largest;
 }
 
+/** Measure scaling continuity and reject a press that never changes the glyph output. */
 double pressSteps(Scene& scene)
 {
     scene.root->setProperty("pressScale", 1);
-    QImage previous = scene.render();
+    const QImage rest = scene.render();
+    QImage previous = rest;
     double largest = 0;
     for (int step = 1; step <= 256; ++step) {
         scene.root->setProperty("pressScale", 1 - 0.08 * step / 256);
@@ -274,11 +283,13 @@ double pressSteps(Scene& scene)
         previous = next;
     }
     scene.root->setProperty("pressScale", 1);
-    return largest;
+    // A broken scale binding would otherwise report perfect continuity (zero).
+    return sameRgba(rest, previous) ? std::numeric_limits<double>::infinity() : largest;
 }
 
 } // namespace
 
+/** Run production pixel regressions or capture one requested diagnostic text policy. */
 int main(int argc, char** argv)
 {
     QCommandLineParser parser;

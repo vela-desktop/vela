@@ -183,6 +183,7 @@ QVariantList ServiceMenus::actionsFor(const QStringList& paths)
     return out;
 }
 
+/** Expand a selected service menu, reject empty programs and launch valid file actions. */
 void ServiceMenus::run(int id, const QStringList& paths) const
 {
     if (id < 0 || id >= m_actions.size() || paths.isEmpty()) {
@@ -213,6 +214,10 @@ void ServiceMenus::run(int id, const QStringList& paths) const
         }
         for (const QList<QUrl>& run : std::as_const(runs)) {
             const QStringList arguments = DesktopExec::expand(parsed.arguments, run, context);
+            if (arguments.isEmpty() || arguments.first().isEmpty()) {
+                qWarning("vela-shell: service menu Exec expanded to an empty command");
+                continue;
+            }
             qInfo("vela-shell: service menu: %s", qPrintable(arguments.join(u' ')));
             vela::process::startDetached(arguments.first(), arguments.mid(1), directory);
         }

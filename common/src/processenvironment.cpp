@@ -14,6 +14,7 @@ std::mutex environmentMutex;
 
 namespace vela::process {
 
+/** Register an injected default while preserving inherited values, including empty ones. */
 void setPrivateEnvironmentDefault(const char* name, const QByteArray& value)
 {
     const std::lock_guard lock(environmentMutex);
@@ -22,6 +23,7 @@ void setPrivateEnvironmentDefault(const char* name, const QByteArray& value)
     }
 }
 
+/** Copy the current environment and remove only unchanged defaults owned by Vela. */
 QProcessEnvironment externalProcessEnvironment()
 {
     const std::lock_guard lock(environmentMutex);

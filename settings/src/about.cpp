@@ -61,6 +61,7 @@ QString memory()
     return QLocale().toString(gib, 'f', 1) + QCoreApplication::translate("About", " GB (usable)");
 }
 
+/** Query PCI graphics devices through an external process with the user's environment. */
 QStringList graphics()
 {
     // lspci: "03:00.0 VGA compatible controller: Advanced Micro Devices, Inc.

@@ -214,6 +214,13 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-desktopexec-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME shell-exec-desktop COMMAND vela-desktopexec-test)
 
+    qt_add_executable(vela-servicemenus-test tests/servicemenus.cpp src/servicemenus.cpp src/servicemenus.h)
+    target_include_directories(vela-servicemenus-test PRIVATE src)
+    target_compile_options(vela-servicemenus-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-servicemenus-test PRIVATE vela-process Qt6::Core Qt6::Test)
+    add_test(NAME shell-service-menus COMMAND vela-servicemenus-test)
+    set_tests_properties(shell-service-menus PROPERTIES TIMEOUT 15)
+
     qt_add_executable(vela-mimeapps-test tests/mimeapps.cpp src/mimeapps.h)
     target_include_directories(vela-mimeapps-test PRIVATE src)
     target_compile_options(vela-mimeapps-test PRIVATE -Wall -Wextra)

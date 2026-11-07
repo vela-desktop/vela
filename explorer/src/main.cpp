@@ -64,6 +64,7 @@ double sinceProcessStart()
 
 } // namespace
 
+/** Initialize Files and its text policy, then serve file requests and the Qt event loop. */
 int main(int argc, char* argv[])
 {
     QElapsedTimer sinceMain;

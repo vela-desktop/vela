@@ -114,6 +114,7 @@ private:
 
 } // namespace
 
+/** Configure text before Qt startup and run Settings with its single-instance request handler. */
 int main(int argc, char* argv[])
 {
     vela::rendering::configureApplication();

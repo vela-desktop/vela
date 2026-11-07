@@ -138,6 +138,7 @@ private:
     TestTransferOps m_ops;
 };
 
+/** Run view regressions over private fixtures with the application's rendering policy. */
 int main(int argc, char** argv)
 {
     QTemporaryDir home;

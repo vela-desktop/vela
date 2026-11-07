@@ -6,6 +6,7 @@
 #include "iconprovider.h"
 
 #include <QCoreApplication>
+
 namespace vela::controls {
 
 Appearance* install(QQmlEngine& engine, Appearance::Mode mode)

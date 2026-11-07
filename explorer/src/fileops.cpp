@@ -68,6 +68,7 @@ bool sameDevice(const QString& a, const QString& b)
         && sa.st_dev == sb.st_dev;
 }
 
+/** Launch a file action in its working directory with Vela's private defaults removed. */
 bool runDetached(const QString& program, const QStringList& arguments, const QString& directory)
 {
     return vela::process::startDetached(program, arguments, directory);
@@ -1542,6 +1543,7 @@ QString FileOps::resolve(const QString& text, const QString& base) const
     return info.isDir() ? info.absoluteFilePath() : QString();
 }
 
+/** Open another Files window, forwarding an absolute initial location when supplied. */
 void FileOps::newWindow(const QString& location) const
 {
     vela::process::startDetached(QCoreApplication::applicationFilePath(),

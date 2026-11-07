@@ -106,6 +106,7 @@ bool hasThumbnail(const QFileInfo& info, const QMimeType& mime)
     return false;
 }
 
+/** Log and launch a desktop command using the current filtered environment. */
 bool runDetached(const QString& program, const QStringList& arguments, const QString& directory)
 {
     qInfo("vela-shell: %s %s", qPrintable(program), qPrintable(arguments.join(u' ')));
@@ -115,6 +116,7 @@ bool runDetached(const QString& program, const QStringList& arguments, const QSt
 // Both desktop Ctrl+V and drag/drop must go through FileOps in vela-files.
 // A tracked Explorer window owns the transfer and stays open until completion;
 // launching detached cp/mv loses progress, cancellation and error reporting.
+/** Start a tracked Files transfer so its window owns progress, cancellation and errors. */
 bool launchFileTransfer(const QStringList& sources, const QString& directory,
     vela::files::TransferAction action, qint64* pid)
 {

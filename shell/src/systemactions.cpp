@@ -42,6 +42,7 @@ QString quote(QString text)
     return u'\'' + text + u'\'';
 }
 
+/** Run an explicit shell command from the chosen directory with a filtered child environment. */
 bool spawn(const QString& command, const QString& directory = QDir::homePath())
 {
     qInfo("vela-shell: starting %s", qPrintable(command));
@@ -268,6 +269,7 @@ bool SystemActions::run(const QString& input)
     return runOnScreen(input, {});
 }
 
+/** Dispatch a file, URL or command and associate its launch with the requested output. */
 bool SystemActions::runOnScreen(const QString& input, const QString& screen)
 {
     const QString text = input.trimmed();
@@ -320,6 +322,7 @@ QStringList SystemActions::runHistory() const
     return QSettings().value(QStringLiteral("run/history")).toStringList();
 }
 
+/** Reveal a local item in Files or delegate selection to the standard file-manager API. */
 void SystemActions::showInFolder(const QString& pathOrUrl) const
 {
     const QUrl url = pathOrUrl.contains(QLatin1String("://")) ? QUrl(pathOrUrl) : QUrl::fromLocalFile(pathOrUrl);
@@ -339,6 +342,7 @@ void SystemActions::showInFolder(const QString& pathOrUrl) const
     }
 }
 
+/** Open a URL through xdg-open without leaking Vela's private rendering settings. */
 void SystemActions::openUrl(const QString& url) const
 {
     vela::process::startDetached(QStringLiteral("xdg-open"), { url });

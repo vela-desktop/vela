@@ -26,7 +26,8 @@ struct ProcessResult {
 // Completion (including failed startup and timeout) is delivered on the
 // owner's event loop. A dying owner kills the process without waiting for it:
 // QProcess is deleted only after exit, since its destructor otherwise waits.
-inline QProcess* runProcess(QObject* owner, const QString& program, const QStringList& arguments,
+/** Launch an owned asynchronous query with bounded lifetime and one completion callback. */
+inline process::ExternalProcess* runProcess(QObject* owner, const QString& program, const QStringList& arguments,
     int timeout, std::function<void(ProcessResult)> done)
 {
     auto* process = new vela::process::ExternalProcess(QCoreApplication::instance());

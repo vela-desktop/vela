@@ -194,6 +194,8 @@ environments using Qt Core only (`common/src/processenvironment.cpp`). Rendering
 registers its default with that library; launchers and non-UI models do not
 depend on the Qt Quick rendering policy. Environment changes made after startup,
 including activation tokens, are retained when launching a child.
+Each managed or detached launch refreshes that environment, including when an
+`ExternalProcess` instance is reused after a token change.
 The `process-launch-environment` integration test verifies real children;
 packaging tests prohibit UI launchers that bypass the wrapper. The RHI glyph
 test requires Qt 6.6+ without increasing Vela's 6.5 production minimum.

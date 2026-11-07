@@ -132,6 +132,7 @@ void Preferences::watchConfig()
     }
 }
 
+/** Reload persisted appearance and shell choices, normalizing absent or invalid settings. */
 void Preferences::reload()
 {
     QSettings settings = shellSettings();
@@ -454,6 +455,7 @@ void Preferences::setAccent(const QColor& color)
     emit accentChanged();
 }
 
+/** Persist the app mode and update GTK and KDE appearance tools with isolated launches. */
 void Preferences::setAppTheme(const QString& theme)
 {
     if (theme == m_appTheme || (theme != QLatin1String("light") && theme != QLatin1String("dark"))) {
@@ -841,6 +843,7 @@ QString Preferences::displayName(const QString& surface, const QString& name) co
     return vela::themes::displayName(surface, name);
 }
 
+/** Create the user's theme/style directory and diagnose unavailable or failed openers. */
 void Preferences::openThemesFolder(const QString& surface)
 {
     const vela::themes::Layer layer = vela::themes::layerFor(surface);
@@ -850,8 +853,18 @@ void Preferences::openThemesFolder(const QString& surface)
     // Made, it is watched at once: the watcher keeps an eye on the directory
     // above it while it doesn't exist (watchThemes()).
     const QString dir = vela::themes::userDirectory(layer);
-    QDir().mkpath(dir);
-    vela::process::startDetached(QStringLiteral("xdg-open"), { dir });
+    if (!QDir().mkpath(dir)) {
+        qWarning("vela-settings: cannot create themes folder: %s", qPrintable(dir));
+        return;
+    }
+    const QString opener = QStandardPaths::findExecutable(QStringLiteral("xdg-open"));
+    if (opener.isEmpty()) {
+        qWarning("vela-settings: cannot open themes folder: xdg-open is unavailable (install xdg-utils)");
+        return;
+    }
+    if (!vela::process::startDetached(opener, { dir })) {
+        qWarning("vela-settings: failed to start xdg-open for %s", qPrintable(dir));
+    }
 }
 
 void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& styles)

@@ -274,6 +274,7 @@ void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVaria
 
 } // namespace
 
+/** Configure text before Qt startup and run the shell's desktop surfaces and services. */
 int main(int argc, char* argv[])
 {
     // "vela-shell --choose-source": the chooser xdg-desktop-portal-wlr

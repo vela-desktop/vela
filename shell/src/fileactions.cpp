@@ -40,6 +40,7 @@ bool FileActions::canEmail() const
     return has("xdg-email");
 }
 
+/** Discover available KDE Connect recipients asynchronously and publish their names. */
 void FileActions::findDevices()
 {
     if (!canKdeConnect() || m_searching) {
@@ -66,6 +67,7 @@ void FileActions::findDevices()
     process->start(QStringLiteral("kdeconnect-cli"), { QStringLiteral("-a"), QStringLiteral("--id-name-only") });
 }
 
+/** Share each selected path with the requested KDE Connect device. */
 void FileActions::sendToDevice(const QString& id, const QStringList& paths)
 {
     for (const QString& path : paths) {
@@ -73,6 +75,7 @@ void FileActions::sendToDevice(const QString& id, const QStringList& paths)
     }
 }
 
+/** Open the user's mail client with each selected path as a separate attachment. */
 void FileActions::sendByEmail(const QStringList& paths)
 {
     QStringList arguments;

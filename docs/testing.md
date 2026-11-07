@@ -188,6 +188,11 @@ The RHI readback test requires Qt >= 6.6; Vela production still supports Qt
 child processes, preserving user overrides and unrelated environment variables.
 It links Qt Core only and also covers empty overrides and environment changes
 after initialization.
+The same process object is also reused across all supported start forms to check
+that new activation tokens reach every child. The CPU-only `shell-service-menus`
+suite rejects empty service-menu commands and checks real launches preserve the
+selected paths and working directory. `settings-preferences` covers missing and
+broken folder openers with private helpers instead of opening a real file manager.
 Packaging tests reject UI launch sites that bypass the environment policy.
 
 This test runs the explicitly initialized production text policy through the OpenGL RHI glyph shaders
@@ -205,6 +210,8 @@ times are diagnostics, not hardware-independent CI performance thresholds. The n
 also rendered as a negative control: it must exhibit the discontinuous scroll
 step that this test is designed to catch. These are coverage-continuity checks,
 not a general font legibility or sharpness score.
+The pressed endpoint must differ from rest, so a broken scale binding cannot
+pass as perfectly smooth motion.
 
 The optional captures contain resting, pressed, scrolled, transparent,
 colored-translucent and native pressed text at each size and scale. Inspect the PNGs at their native
@@ -235,7 +242,10 @@ Open `build/text-rendering-comparison/index.html` for side-by-side native, Qt wi
 default AA, and Qt with grayscale AA captures at rest, pressed and scrolled,
 over dark, light, transparent and colored-translucent backgrounds. The script
 propagates capture failures and unavailable graphics instead of reporting a
-successful comparison. On CPU-only systems run under `xvfb-run -a` with
+successful comparison.
+Before reusing an output directory, the script removes only its expected PNG
+frames so old captures cannot hide missing new frames; unrelated files remain.
+On CPU-only systems run under `xvfb-run -a` with
 `LIBGL_ALWAYS_SOFTWARE=1`. The default Qt AA may already be grayscale on OpenGL ES.
 For a one-to-one pixel comparison, view at 100% browser zoom on a 100%-scale
 output, or inspect the original PNGs with a viewer that maps image pixels to

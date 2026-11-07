@@ -20,6 +20,7 @@ STATES = ("rest", "pressed", "scrolled", "transparent", "tinted", "light-rest", 
 
 
 def main(argv=None):
+    """Capture fresh frames for each policy and publish a complete comparison report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path, help="path to vela-text-rendering-test")
     parser.add_argument("--output", type=Path,
@@ -42,6 +43,11 @@ def main(argv=None):
     for mode in MODES:
         target = output / mode
         target.mkdir(exist_ok=True)
+        expected = [target / f"{scale:g}-{size}-{state}.png"
+                    for scale in SCALES for size in SIZES for state in STATES]
+        # Only our known frames are owned by this run; keep unrelated files.
+        for frame in expected:
+            frame.unlink(missing_ok=True)
         command = [str(binary), "--comparison-mode", mode, "--capture-dir", str(target)]
         if args.font_family:
             command.extend(["--font-family", args.font_family])
@@ -51,8 +57,6 @@ def main(argv=None):
         if result.returncode:
             parser.exit(result.returncode if result.returncode > 0 else 1,
                         f"{mode}: capture failed (exit {result.returncode}); see {target / 'run.log'}\n")
-        expected = [target / f"{scale:g}-{size}-{state}.png"
-                    for scale in SCALES for size in SIZES for state in STATES]
         if any(not path.is_file() for path in expected):
             parser.exit(1, f"{mode}: incomplete capture; see {target / 'run.log'}\n")
         diagnostics.append(log.splitlines()[0] if log else mode)

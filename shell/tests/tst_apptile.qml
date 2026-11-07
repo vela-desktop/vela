@@ -31,16 +31,19 @@ Item {
         readonly property var column: findChild(tile, "appTileContent")
         readonly property var label: findChild(tile, "appTileLabel")
 
+        /** Locate the real tile's content and label before exercising its press motion. */
         function initTestCase() {
             verify(column !== null)
             verify(label !== null)
         }
 
+        /** Reset signal observations and wait for the preceding scale transition to end. */
         function init() {
             activated.clear()
             context.clear()
             tryCompare(column, "scale", 1, 3000)
         }
+        /** Release a held mouse button even when an assertion aborts the test. */
         function cleanup() {
             if (heldButton !== Qt.NoButton) {
                 mouseRelease(tile, -10, -10, heldButton)
@@ -48,12 +51,14 @@ Item {
             }
         }
 
+        /** Exercise both activation and context-menu presses on the same tile. */
         function test_press_keeps_text_layout_data() {
             return [
                 { tag: "left", button: Qt.LeftButton },
                 { tag: "right", button: Qt.RightButton }
             ]
         }
+        /** Require stable text metrics and correct signals throughout a complete press. */
         function test_press_keeps_text_layout(data) {
             const width = label.implicitWidth
             const height = label.implicitHeight

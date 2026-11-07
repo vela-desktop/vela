@@ -645,6 +645,7 @@ QString AppModel::program(const QString& id) const
     return e ? e->program : QString();
 }
 
+/** Expand a desktop entry for the selected files and launch each command in its directory. */
 bool AppModel::launchEntry(const Entry& entry, const QList<QUrl>& files) const
 {
     const DesktopExec::Parsed parsed = DesktopExec::split(entry.rawExec);

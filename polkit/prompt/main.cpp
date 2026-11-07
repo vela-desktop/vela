@@ -134,6 +134,7 @@ private:
 
 } // namespace
 
+/** Validate the authentication request and run its Wayland prompt with shared text rendering. */
 int main(int argc, char* argv[])
 {
     if (argc > 1 && (!std::strcmp(argv[1], "--help") || !std::strcmp(argv[1], "-h"))) {

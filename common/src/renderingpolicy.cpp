@@ -17,6 +17,7 @@ std::once_flag antialiasingOnce;
 
 namespace vela::rendering {
 
+/** Select stable scalable glyph rendering before any Qt Quick text is constructed. */
 void configureTextRenderer()
 {
     std::call_once(textOnce, [] {
@@ -26,6 +27,7 @@ void configureTextRenderer()
     });
 }
 
+/** Request neutral distance-field coverage without overriding the user's AA choice. */
 void configureGrayscaleAntialiasing()
 {
     std::call_once(antialiasingOnce, [] {
@@ -35,6 +37,7 @@ void configureGrayscaleAntialiasing()
     });
 }
 
+/** Configure the two text policies once, before QGuiApplication starts its scene graph. */
 void configureApplication()
 {
     configureTextRenderer();
