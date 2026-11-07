@@ -122,6 +122,14 @@ class HostOperations(unittest.TestCase):
         self.assertEqual(self.host.calls, [])
         self.assertFalse(self.layout.record.exists())
 
+    def test_useradd_rejects_corrupt_tags_at_the_command_boundary(self):
+        tag = "Vela benchmark " + "a" * 32
+        command = useradd_command(self.layout, tag)
+        self.assertEqual(command[command.index("--comment") + 1], tag)
+        for value in (None, True, "--root", tag + "\n", tag + " --root=/tmp", "Vela benchmark ../other"):
+            with self.subTest(tag=value), self.assertRaisesRegex(BenchError, "Invalid benchmark account tag"):
+                useradd_command(self.layout, value)
+
     def test_ownership_record_cannot_add_files_or_cleanup_parents_outside_the_installation(self):
         import copy
         import hashlib

@@ -304,6 +304,8 @@ def pending_account_creation(record, host, layout):
 
 
 def useradd_command(layout, account_tag):
+    if not isinstance(account_tag, str) or not re.fullmatch(r"Vela benchmark [0-9a-f]{32}", account_tag):
+        raise BenchError("Invalid benchmark account tag")
     # --key overrides login.defs, not /etc/default/useradd. CREATE_MAIL_SPOOL
     # is not a login.defs key. Keep any optional mailbox in the owned area
     # using the documented MAIL_DIR key, without changing host defaults.
