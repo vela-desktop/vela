@@ -30,8 +30,9 @@ Python and QML need different coverage tools and are not counted here.
 
 ### GPU coverage (opt-in)
 
-Existing [AMD](../.github/workflows/gpu-amd.yml) and
-[NVIDIA](../.github/workflows/gpu-nvidia.yml) workflows remain **manual**:
+Existing [AMD](../.github/workflows/gpu-amd.yml),
+[NVIDIA](../.github/workflows/gpu-nvidia.yml) and experimental
+[Intel](../.github/workflows/gpu-intel.yml) workflows remain **manual**:
 the standard RelWithDebInfo GPU suites run unchanged by default. Their
 `collect_coverage` workflow-dispatch input (default **false**) selects a
 fresh GCC Debug `--coverage` build instead and runs the same functional,
@@ -41,23 +42,25 @@ and only for a full run (no **tests** or **test_filter**). The instrumented
 build exports `VELA_GPU_COVERAGE=1`: tests skip their throughput floors there,
 which would measure gcov rather than Vela.
 
-**Runner prerequisites:** install GCC/G++, `gcov` and `gcovr` on the AMD and
-NVIDIA host systems in addition to their existing build/test dependencies.
+**Runner prerequisites:** install GCC/G++, `gcov` and `gcovr` on the AMD,
+NVIDIA and Intel host systems in addition to their existing build/test dependencies.
 On Arch/CachyOS the host administrator can use
 `sudo pacman -S --needed gcc gcovr` before dispatching. Workflows do not
 invoke sudo, upgrade system packages or change runner credentials.
 
-**To use:** Actions → GPU CI - AMD (manual) or GPU CI - NVIDIA (manual)
+**To use:** Actions → GPU CI - AMD (manual), GPU CI - NVIDIA (manual)
+or GPU CI - Intel (manual)
 → Run workflow → select a **trusted, reviewed** branch/SHA (prefer main)
 → check **Collect coverage**. The hardware workflow exports
-`vela-amd-coverage` / `vela-nvidia-coverage` as downloadable artifacts.
+`vela-amd-coverage`, `vela-nvidia-coverage` or `vela-intel-coverage`
+as downloadable artifacts.
 A separate **GitHub-hosted job** downloads the XML and uploads it to
 Codecov with OIDC, so `id-token: write` does not grant privileges to the
-self-hosted GPU runner. Both workflows retain their original strict GPU
+self-hosted GPU runner. All workflows retain their original strict GPU
 hardware qualification, tests, and diagnostic artifacts.
 
-Codecov [flags](../.codecov.yml) are `cpu-tests`, `gpu-amd` and
-`gpu-nvidia`; they can be compared separately, and uploads for the
+Codecov [flags](../.codecov.yml) are `cpu-tests`, `gpu-amd`,
+`gpu-nvidia` and `gpu-intel`; they can be compared separately, and uploads for the
 **same exact Git SHA** can contribute to combined coverage. **No GPU
 result is carried forward** to later commits (all `carryforward: false`).
 An ordinary PR without GPU instrumentation therefore represents CPU-only

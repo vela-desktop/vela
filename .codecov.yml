@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# CPU and manually sampled AMD/NVIDIA coverage must never be conflated.
+# CPU and manually sampled AMD/NVIDIA/Intel coverage must never be conflated.
 ignore:
   - "tests/**"
   - "**/tests/**"
@@ -12,6 +12,8 @@ flags:
   gpu-amd:
     carryforward: false
   gpu-nvidia:
+    carryforward: false
+  gpu-intel:
     carryforward: false
 
 coverage:
