@@ -114,6 +114,30 @@ class RealShell(unittest.TestCase):
         self.addCleanup(process.wait)
         return process
 
+    @contextmanager
+    def input_session(self):
+        """One vela-input (and so one virtual keyboard) for a whole scene.
+
+        A new vela-input per action brings its keymap to the seat: the
+        notification center loses the keyboard and closes, like Start."""
+        session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+
+        def send(*actions):
+            session.stdin.write("\t".join(map(str, actions)) + "\n")
+            session.stdin.flush()
+            self.assertEqual(session.stdout.readline().strip(), "OK", f"vela-input refused {actions!r}")
+        try:
+            yield send
+        finally:
+            session.stdin.close()
+            try:
+                session.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                session.kill()
+                session.wait()
+            session.stdout.close()
+
     @staticmethod
     def layer(state, namespace):
         return next((layer for layer in state["layers"] if layer["namespace"] == namespace and layer["mapped"]), None)
@@ -228,30 +252,6 @@ class QtShell(RealShell):
         """Extract (notification ID, action key) from each ActionInvoked signal."""
         return [(int(notification_id), action) for notification_id, action in re.findall(
             r"ActionInvoked[^\n]*?\(\s*(?:uint32\s+)?(\d+)\s*,\s*['\"]([^'\"]+)['\"]", signals)]
-
-    @contextmanager
-    def input_session(self):
-        """One vela-input (and so one virtual keyboard) for a whole scene.
-
-        A new vela-input per action brings its keymap to the seat: the
-        notification center loses the keyboard and closes, like Start."""
-        session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-
-        def send(*actions):
-            session.stdin.write("\t".join(map(str, actions)) + "\n")
-            session.stdin.flush()
-            self.assertEqual(session.stdout.readline().strip(), "OK", f"vela-input refused {actions!r}")
-        try:
-            yield send
-        finally:
-            session.stdin.close()
-            try:
-                session.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                session.kill()
-                session.wait()
-            session.stdout.close()
 
     def open_notification_center(self, send):
         """Open the center with the session's keyboard; return its layer and panel origin.
@@ -471,18 +471,21 @@ class QtShell(RealShell):
             # The pointer has not moved: only the list's content can differ.
             self.assertNotEqual(before.rows, self.vela.pixels().rows, "History did not scroll")
 
-            # The scroll offset is unknown, and right-clicking a 6-unit gap
-            # between cards dismisses nothing. Find a card by its hover close
-            # button: compared with the pointer outside the center (moving
-            # there does not close it), nothing changes over a gap.
-            send("move", center["x"] - 60, y, "sleep", 200)
-            neutral = self.vela.pixels()
-            for target_y in range(y, y + 48, 4):
-                send("move", x, target_y, "sleep", 150)
-                if self.vela.pixels().changed_bounds(neutral):
+            # A HoverHandler is not a reliable click oracle across Qt RHI
+            # backends: a card may be clickable without changing its hover
+            # pixels. Instead, find the card's actual filled background. The
+            # 8px ListView inset leaves a strip of the panel surface at x+3;
+            # the card begins at x+8, with empty padding at x+14. Require a
+            # continuous run so a section label or 6px gap cannot qualify.
+            image = self.vela.pixels()
+            for target_y in range(y - 70, y + 71, 4):
+                if all(image.at(left + 14, target_y + offset) !=
+                       image.at(left + 3, target_y + offset)
+                       for offset in (-12, -8, -4, 0, 4, 8, 12)):
                     break
             else:
-                self.fail("no history card under the pointer after scrolling")
+                self.fail("no filled history card in the scrolled list")
+            send("move", x, target_y, "sleep", 150)
             # Still cut to the output's height with eleven cards: the D-Bus
             # signal below, not the window's size, proves the removal.
             send("click", "right")
