@@ -49,6 +49,7 @@ Window {
         "colors": { title: qsTr("Colors"), parent: "personalization", file: "ColorsPage.qml", icon: "preferences-desktop-color" },
         "themes": { title: qsTr("Themes"), parent: "personalization", file: "ThemesPage.qml", icon: "preferences-desktop-theme" },
         "taskbar": { title: qsTr("Taskbar"), parent: "personalization", file: "TaskbarPage.qml", icon: "preferences-system-windows" },
+        "start": { title: qsTr("Start"), parent: "personalization", file: "StartPage.qml", icon: "start-here" },
         "apps": { title: qsTr("Apps"), parent: "", file: "AppsPage.qml", icon: "preferences-desktop-default-applications" },
         "installed-apps": { title: qsTr("Installed apps"), parent: "apps", file: "InstalledAppsPage.qml", icon: "view-list-details" },
         "default-apps": { title: qsTr("Default apps"), parent: "apps", file: "DefaultAppsPage.qml", icon: "preferences-desktop-default-applications" },
@@ -113,11 +114,22 @@ Window {
         return list
     }
 
-    function navigate(name, fromHistory) {
+    // Themes and styles apply at a click: what changed, with Undo (UndoBar).
+    function offerUndo(text, undo) {
+        undoBar.offer(text, undo)
+    }
+
+    // What the page opened by navigate() should show (open, scroll to, focus):
+    // a style's card ("taskbar", "notifications"), from search or Themes. ""
+    // first, so that asking twice for the same is a change again.
+    property string reveal: ""
+
+    function navigate(name, fromHistory, what) {
         name = aliases[name] || name
         if (!pages[name]) {
             name = "home"
         }
+        reveal = ""
         if (!fromHistory && (name !== current || history.length === 0)) {
             const h = history.slice(0, historyIndex + 1)
             h.push(name)
@@ -126,6 +138,7 @@ Window {
         }
         current = name
         search.text = ""
+        reveal = what || ""
     }
 
     // The pages visited, for Back and Forward like Windows 11's Settings:
@@ -183,6 +196,8 @@ Window {
         { page: "sound", text: qsTr("Restart audio"), keys: qsTr("restart audio sound stuck pipewire wireplumber reset") },
         { page: "notifications", text: qsTr("Notifications"), keys: qsTr("do not disturb alerts") },
         { page: "notifications", text: qsTr("Do not disturb"), keys: qsTr("silent notifications") },
+        { page: "notifications", text: qsTr("Do not disturb while my screen is shared"), keys: qsTr("screen sharing share record recording presentation call meeting notifications silent do not disturb automatic") },
+        { page: "notifications", text: qsTr("Show the number of notifications"), keys: qsTr("notifications count number badge unread taskbar clock") },
         { page: "power", text: qsTr("Power"), keys: qsTr("screen off sleep idle battery energy saver lock") },
         { page: "power", text: qsTr("Turn off the screen after"), keys: qsTr("idle timeout") },
         { page: "power", text: qsTr("Power mode"), keys: qsTr("profile performance balanced") },
@@ -197,16 +212,26 @@ Window {
         { page: "network", text: qsTr("Wi-Fi"), keys: qsTr("wireless network password") },
         { page: "personalization", text: qsTr("Personalization"), keys: qsTr("theme appearance") },
         { page: "background", text: qsTr("Background"), keys: qsTr("picture desktop photo wallpaper") },
+        { page: "background", text: qsTr("Show desktop icons"), keys: qsTr("desktop icons files folders show hide") },
         { page: "colors", text: qsTr("Colors"), keys: qsTr("accent color theme dark light mode") },
+        { page: "colors", text: qsTr("Custom color"), keys: qsTr("accent custom color picker hex code rgb") },
         { page: "colors", text: qsTr("Choose your mode"), keys: qsTr("dark light theme apps mode") },
-        { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded") },
+        { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded reset") },
         { page: "taskbar", text: qsTr("Taskbar"), keys: qsTr("taskbar alignment left center end task") },
+        { page: "taskbar", text: qsTr("Show seconds"), keys: qsTr("taskbar clock seconds time") },
+        { page: "taskbar", text: qsTr("Show the date"), keys: qsTr("taskbar clock date day show hide") },
+        { page: "taskbar", reveal: "taskbar", text: qsTr("Taskbar style"), keys: qsTr("taskbar style look pill floating dock") },
+        { page: "taskbar", reveal: "notifications", text: qsTr("Quick settings style"), keys: qsTr("quick settings notification center style look") },
+        { page: "start", text: qsTr("Start menu style"), keys: qsTr("start menu style look size corners") },
+        { page: "start", text: qsTr("Start button icon"), keys: qsTr("start button icon logo distribution picture image sail") },
+        { page: "start", text: qsTr("Show pinned apps"), keys: qsTr("start menu pinned apps pins show hide") },
         { page: "apps", text: qsTr("Apps"), keys: qsTr("programs applications") },
         { page: "installed-apps", text: qsTr("Installed apps"), keys: qsTr("uninstall remove programs") },
         { page: "default-apps", text: qsTr("Default apps"), keys: qsTr("browser mail player open with default") },
         { page: "default-apps", text: qsTr("Choose the app for a file type"), keys: qsTr("pdf mp3 video music photos images extension file type link mailto archives zip documents") },
         { page: "default-apps", text: qsTr("Default browser"), keys: qsTr("web browser firefox chrome brave internet") },
         { page: "datetime", text: qsTr("Date & time"), keys: qsTr("clock time zone sync ntp") },
+        { page: "datetime", text: qsTr("Time format"), keys: qsTr("clock 24-hour 12-hour am pm time format hours") },
         { page: "time-language", text: qsTr("Language"), keys: qsTr("language english italian italiano inglese translation") },
             { page: "keyboard", text: qsTr("Keyboard"), keys: qsTr("layout language input typing key repeat") },
         { page: "mouse", text: qsTr("Mouse"), keys: qsTr("pointer speed primary button left-handed wheel scrolling lines acceleration precision") },
@@ -288,7 +313,7 @@ Window {
             rightPadding: 36
             Keys.onReturnPressed: {
                 if (root.searchResults.length > 0) {
-                    root.navigate(root.searchResults[0].page)
+                    root.navigate(root.searchResults[0].page, false, root.searchResults[0].reveal)
                 }
             }
             Keys.onEscapePressed: text = ""
@@ -397,7 +422,7 @@ Window {
                             id: resultMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: root.navigate(result.modelData.page)
+                            onClicked: root.navigate(result.modelData.page, false, result.modelData.reveal)
                         }
                     }
                 }
@@ -432,6 +457,14 @@ Window {
                 NumberAnimation { target: pageLoader.item; property: "opacity"; to: 1; duration: Theme.normal }
                 Eased { target: slide; property: "y"; to: 0; duration: Theme.long }
             }
+        }
+
+        UndoBar {
+            id: undoBar
+            maximumWidth: Math.min(560, pageLoader.width - 32)
+            width: implicitWidth
+            height: implicitHeight
+            anchors { horizontalCenter: pageLoader.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }
         }
     }
 }

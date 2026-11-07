@@ -3,6 +3,7 @@
 
 #include "view.h"
 
+#include "capture_watch.h"
 #include "interact.h"
 #include "focus.h"
 #include "bindings.h"
@@ -527,6 +528,7 @@ void vela_view_title_changed(struct vela_view *view)
         wlr_foreign_toplevel_handle_v1_set_title(view->handle, vela_view_title(view));
     }
     update_ext_handle(view);
+    vela_capture_watch_refresh(view->server->capture_watch); // a shared window's title
 }
 
 void vela_view_app_id_changed(struct vela_view *view)
@@ -535,6 +537,7 @@ void vela_view_app_id_changed(struct vela_view *view)
         wlr_foreign_toplevel_handle_v1_set_app_id(view->handle, vela_view_app_id(view));
     }
     update_ext_handle(view);
+    vela_capture_watch_refresh(view->server->capture_watch);
 }
 
 // Keep a transient above its fullscreen ancestor, but do not globally
@@ -1244,6 +1247,8 @@ void vela_view_mapped(struct vela_view *view)
         vela_focus_new_view(server, view);
     }
     start_open_animation(view);
+    // A capturing client's window names it (docs/screen-sharing.md §4.1).
+    vela_capture_watch_refresh(server->capture_watch);
     // The scene node now has its final output coordinates. Decorations were
     // created before placement, and must be rerasterized at the actual scale.
     if (view->xdg) {
@@ -1277,6 +1282,7 @@ void vela_view_unmapped(struct vela_view *view)
     forget(view);
     vela_views_sync_transient_layers(view->server);
     vela_workspaces_announce(view->server);
+    vela_capture_watch_refresh(view->server->capture_watch); // its client loses the name it gave
 }
 
 void vela_view_committed(struct vela_view *view)
@@ -1558,7 +1564,7 @@ void vela_views_init(struct vela_server *server)
     // Output and window capture (Alt+Tab previews, and later screen sharing):
     // the standard ext-* protocols.
     server->ext_toplevels = wlr_ext_foreign_toplevel_list_v1_create(display, 1);
-    wlr_ext_image_copy_capture_manager_v1_create(display, 1);
+    server->copy_capture = wlr_ext_image_copy_capture_manager_v1_create(display, 1);
     if (!vela_output_capture_manager_create(server)) {
         wlr_log(WLR_ERROR, "Cannot create output capture manager");
     }

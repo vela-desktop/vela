@@ -210,6 +210,10 @@ struct Stream {
     bool isApp() const { return !monitor && !capturesOutput && !internal; }
 };
 
+// The nodes xdg-desktop-portal-wlr makes for each screen share
+// (Video/Source, "xdpw-stream-XXXXXX"; docs/screen-sharing.md §5.2).
+inline constexpr char portalStreamPrefix[] = "xdpw-stream-";
+
 struct Snapshot {
     bool connected = false;
     // The "default" metadata is there (WirePlumber is running). Without it
@@ -224,6 +228,8 @@ struct Snapshot {
     QList<Device> devices;
     QList<Endpoint> endpoints;
     QList<Stream> streams;
+    // The apps whose video streams are linked to a portal share, once each.
+    QList<AppIdentity> screenConsumers;
 
     const Endpoint* endpoint(const QString& name) const
     {

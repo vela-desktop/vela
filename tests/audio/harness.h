@@ -130,6 +130,18 @@ public:
         }
         return m_state == QLatin1String("streaming") ? m_node : 0;
     }
+    // Its node id, once it exists (a source nobody reads stays paused).
+    quint32 waitReady()
+    {
+        static_cast<void>(QTest::qWaitFor([this] { return m_node != 0 || m_process.state() == QProcess::NotRunning; },
+            5000));
+        return m_node;
+    }
+    // It reported this state (paused, streaming...); false after 5 s.
+    bool waitState(const QString& state)
+    {
+        return QTest::qWaitFor([this, &state] { return m_state == state; }, 5000);
+    }
     quint32 node() const { return m_node; }
     // A command: pause, resume, quit.
     void send(const QString& line) { m_process.write(line.toUtf8() + '\n'); }

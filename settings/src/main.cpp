@@ -9,6 +9,7 @@
 // the page and come to the front (that's how the shell opens "Display
 // settings", "Personalize" and the other menu entries).
 
+#include "renderingpolicy.h"
 #include "about.h"
 #include "appmodel.h"
 #include "audio.h"
@@ -113,14 +114,10 @@ private:
 
 } // namespace
 
+/** Configure text before Qt startup and run Settings with its single-instance request handler. */
 int main(int argc, char* argv[])
 {
-    // Text with FreeType and font hinting, like Plasma and Windows: crisper
-    // than Qt Quick's default text (distance fields, no hinting), on the
-    // output's real pixels even at fractional scales.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_DEFAULT_TEXT_RENDER_TYPE")) {
-        QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
-    }
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-settings"));
     QQmlApplicationEngine* qmlEngine = nullptr;
@@ -139,9 +136,10 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription(QStringLiteral("Vela Settings"));
     parser.addHelpOption();
     const QCommandLineOption pageOption(QStringLiteral("page"),
-        QStringLiteral("The page to open: system, display, sound, notifications, power, about, updates, bluetooth, "
-                       "volume-mixer, network, personalization, background, colors, taskbar, apps, installed-apps, "
-                       "default-apps, time-language, datetime, keyboard, night-light, accessibility."),
+        QStringLiteral("The page to open: home, system, display, sound, volume-mixer, notifications, power, about, "
+                       "updates, bluetooth, network, personalization, background, colors, themes, taskbar, start, "
+                       "apps, installed-apps, default-apps, time-language, datetime, keyboard, mouse, touchpad, "
+                       "clipboard, night-light, accessibility."),
         QStringLiteral("name"));
     parser.addOption(pageOption);
     parser.process(app);
@@ -183,7 +181,12 @@ int main(int argc, char* argv[])
     qmlEngine = &engine;
     // Theme, Button, TextBox and Style (the apps' mode, accent, Mica, icons):
     // Vela.Controls.
-    vela::controls::install(engine, Appearance::Mode::Apps)->watch();
+    Appearance* style = vela::controls::install(engine, Appearance::Mode::Apps);
+    style->watch();
+    // The distribution's logo may be in the icon theme only: look again now
+    // that it is set, and when it changes with the mode.
+    preferences.refreshStartIcon();
+    QObject::connect(style, &Appearance::changed, &preferences, &Preferences::refreshStartIcon);
     engine.addImageProvider(QStringLiteral("fileicon"), new IconProvider(32));
     QQmlContext* context = engine.rootContext();
     context->setContextProperty(QStringLiteral("Router"), &router);

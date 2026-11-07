@@ -4,9 +4,14 @@
 import QtQuick
 import Vela.Controls
 
-// Personalization > Taskbar.
+// Personalization > Taskbar: what is on it, its clock and how it behaves
+// first, then its style and the style of the quick settings and notification
+// center it opens (taskbar-style=, notifications-style= in vela.conf, over the
+// theme), each closed under its card until opened. The time format (Date &
+// time) and the number of notifications (Notifications) are Vela's and the
+// notifications', not the bar's: linked at the end.
 Page {
-    PersonalizationPage.DesktopPreview {}
+    DesktopPreview {}
 
     CardGroup {
         title: qsTr("Taskbar items")
@@ -22,16 +27,33 @@ Page {
     }
 
     CardGroup {
-        title: qsTr("Taskbar behaviors")
+        title: qsTr("Clock")
         Card {
-            icon: "format-justify-center"
-            title: qsTr("Taskbar alignment")
-            trailing: Choice {
-                model: [qsTr("Center"), qsTr("Left")]
-                currentIndex: Prefs.taskbarAlignment === "left" ? 1 : 0
-                onChosen: index => Prefs.taskbarAlignment = index === 1 ? "left" : "center"
+            icon: "view-calendar"
+            title: qsTr("Show the date")
+            description: qsTr("Under the time in the taskbar's clock")
+            trailing: Switch {
+                objectName: "clockDate"
+                checked: Prefs.clockDate
+                onToggled: Prefs.clockDate = checked
             }
         }
+        Card {
+            icon: "chronometer"
+            title: qsTr("Show seconds")
+            description: qsTr("In the taskbar's clock")
+            trailing: Switch {
+                objectName: "clockSeconds"
+                checked: Prefs.clockSeconds
+                onToggled: Prefs.clockSeconds = checked
+            }
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Taskbar behaviors")
+        // Disabled, with the reason, while a pill places the apps itself.
+        TaskbarAlignmentCard {}
         Card {
             icon: "video-display"
             title: qsTr("Show the taskbar on all displays")
@@ -58,6 +80,36 @@ Page {
                 checked: Prefs.endTask
                 onToggled: Prefs.endTask = checked
             }
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Styles")
+        StyleChooser {
+            surface: "taskbar"
+            icon: "preferences-system-windows"
+            title: qsTr("Taskbar")
+        }
+        StyleChooser {
+            surface: "notifications"
+            icon: "preferences-desktop-notification"
+            title: qsTr("Quick settings and notification center")
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Related settings")
+        LinkCard {
+            icon: "preferences-system-time"
+            title: qsTr("Time format")
+            description: qsTr("24-hour or 12-hour, in Date & time")
+            onClicked: root.navigate("datetime")
+        }
+        LinkCard {
+            icon: "preferences-desktop-notification"
+            title: qsTr("Notifications")
+            description: qsTr("Do not disturb, the number of notifications next to the clock")
+            onClicked: root.navigate("notifications")
         }
     }
 }

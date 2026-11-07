@@ -7,10 +7,12 @@
 // of the desktop (not an app), keeps it above or below the windows and
 // reserves space for it on the output.
 
+#include "renderingpolicy.h"
 #include "accessibility.h"
 #include "appmodel.h"
 #include "audio.h"
 #include "audioapps.h"
+#include "batterynotices.h"
 #include "bluetooth/bluetooth.h"
 #include "bluetoothprompts.h"
 #include "updatenotices.h"
@@ -43,6 +45,7 @@
 #include "transfermonitor.h"
 #include "tray.h"
 #include "wallpaperprovider.h"
+#include "screensharing.h"
 #include "screenwindows.h"
 #include "../../common/primaryoutput.h"
 #include "workspaces.h"
@@ -53,6 +56,7 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QLocale>
 #include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -60,6 +64,7 @@
 #include <QQuickWindow>
 #include <QPointer>
 #include <QScreen>
+#include <QStyleHints>
 #include <QTimer>
 #include <QtDebug>
 #include <QtQml/QQmlExtensionPlugin>
@@ -254,29 +259,23 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
     return window;
 }
 
-// With the taskbar aligned left, Start opens at the bottom left: its window
-// touches the output's edge, and the panel rests 12 units from it
-// (StartMenu.qml's `atLeft`). A taskbar style that puts the apps, Start
-// first, in a pill at the screen's left (taskbar-edge=2: Layer Mica UI) opens
-// it there too: Styles.qml's and Taskbar.qml's rule, floating && fit && edge.
+// Start opens above its button: at the bottom left where the apps are at the
+// screen's left, its window touching the output's edge and the panel 12 units
+// from it (StartMenu.qml's `atLeft`). That is the alignment "left", unless a
+// fitted pill places the apps itself: centered, or at the left with
+// taskbar-edge=2 (Left pill). themefile.h's taskbarLayout() is the rule,
+// the one Styles.qml and Taskbar.qml draw with.
 void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVariantMap& theme, bool light)
 {
     LayerWindow* layer = LayerWindow::get(window);
-    const auto number = [&theme, light](const char* key, double fallback) {
-        const QVariant value = vela::themes::themed(theme, QLatin1String(key), light);
-        return value.typeId() == QMetaType::Double ? value.toDouble() : fallback;
-    };
-    const QVariant variantValue = vela::themes::themed(theme, QStringLiteral("taskbar-variant"), light);
-    const bool styled = variantValue.isValid() && variantValue.toString() != QLatin1String("default");
-    const bool floating = number("taskbar-margin", styled ? 10 : 0) > 0 || number("taskbar-radius", styled ? 18 : 0) > 0;
-    const bool fit = floating && number("taskbar-fit", styled ? 1 : 0) != 0;
-    const bool left = alignment == QLatin1String("left") || (fit && number("taskbar-edge", 0) == 2);
+    const bool left = vela::themes::taskbarLayout(theme, light).appsAtLeft(alignment);
     layer->setAnchors(left ? bottomLeft : bottom);
     window->setProperty("atLeft", left);
 }
 
 } // namespace
 
+/** Configure text before Qt startup and run the shell's desktop surfaces and services. */
 int main(int argc, char* argv[])
 {
     // "vela-shell --choose-source": the chooser xdg-desktop-portal-wlr
@@ -291,28 +290,41 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // Text with FreeType and font hinting, like Plasma and Windows: crisper
-    // than Qt Quick's default text (distance fields, no hinting), on the
-    // output's real pixels even at fractional scales.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_DEFAULT_TEXT_RENDER_TYPE")) {
-        QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
-    }
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
     QGuiApplication::setQuitOnLastWindowClosed(false);
+    // VELA_STILL (an ISO date and time): still pictures that don't change
+    // with when they are taken (scripts/theme-pictures.py). The clock and the
+    // calendar show that time (ShellController::now()), carets don't blink.
+    if (QDateTime::fromString(qEnvironmentVariable("VELA_STILL"), Qt::ISODate).isValid()) {
+        QGuiApplication::styleHints()->setCursorFlashTime(0);
+    }
     // Before anything else: the C++ models are born already translated too.
     QQmlApplicationEngine* qmlEngine = nullptr;
     AppModel* appModel = nullptr;
     DesktopModel* desktopModel = nullptr;
-    vela::language::install(QStringLiteral("vela-shell"), [&qmlEngine, &appModel, &desktopModel] {
+    vela::audio::Audio* audioModel = nullptr;
+    ScreenSharing* sharingModel = nullptr;
+    vela::language::install(QStringLiteral("vela-shell"),
+        [&qmlEngine, &appModel, &desktopModel, &audioModel, &sharingModel] {
         if (appModel) {
             appModel->reload(); // app names in the new language (Name[en], Name[it])
+        }
+        if (audioModel && appModel) {
+            audioModel->setAppResolver(audioAppResolver(*appModel)); // the mixers' and screen sharing's apps
+        }
+        if (sharingModel) {
+            sharingModel->refresh(); // who shares what, in the new language
         }
         if (desktopModel) {
             desktopModel->refresh(); // the Recycle Bin
         }
         if (qmlEngine) {
+            // Dates follow too: bindings that read Qt.uiLanguage (the
+            // calendar's day and month names) are evaluated again.
+            qmlEngine->setUiLanguage(QLocale().bcp47Name());
             qmlEngine->retranslate();
         }
     });
@@ -372,6 +384,15 @@ int main(int argc, char* argv[])
         });
     notifications.setDoNotDisturb(config.doNotDisturb());
     QObject::connect(&config, &Config::doNotDisturbChanged, &notifications, &NotificationServer::setDoNotDisturb);
+    // Low and critical batteries, the PC's and the peripherals' (UPower,
+    // docs/battery-notifications.md), as chosen in Settings.
+    BatteryNotices batteries(&notifications);
+    const auto batterySettings = [&] {
+        batteries.configure({ config.batteryNotify(), config.batteryLowLevel(), config.deviceBatteryNotify() });
+    };
+    QObject::connect(&config, &Config::batteryChanged, &batteries, batterySettings);
+    batterySettings();
+    batteries.start();
     TrayModel tray;
     tray.start();
     SystemActions system;
@@ -390,6 +411,8 @@ int main(int argc, char* argv[])
     QObject::connect(&desktop, &DesktopModel::chooseAppRequested, &shell, &ShellController::openWithRequested);
     QObject::connect(&desktop, &DesktopModel::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     desktopModel = &desktop;
+    // Settings > Background shows or hides the icons too.
+    QObject::connect(&config, &Config::desktopIconsChanged, &desktop, &DesktopModel::setShowIcons);
     ServiceMenus serviceMenus;
     FileProperties properties;
     FileActions fileActions;
@@ -419,10 +442,34 @@ int main(int argc, char* argv[])
         [&shell] { shell.logout(); });
     SystemStatus status(&bluetooth);
     Brightness brightness; // every output's, the compositor's (docs/brightness.md §9)
+    // Who shares the screen (docs/screen-sharing.md §5): apps named as in Start.
+    ScreenSharing sharing([&apps](const QStringList& candidates) {
+        for (const QString& candidate : candidates) {
+            const QString desktopId = apps.findDesktopId(candidate);
+            if (!desktopId.isEmpty()) {
+                const QVariantMap entry = apps.entry(desktopId);
+                return ScreenSharing::App { desktopId, entry.value(QStringLiteral("name")).toString(),
+                    entry.value(QStringLiteral("iconName")).toString() };
+            }
+        }
+        return ScreenSharing::App {};
+    });
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
+    audioModel = &audio;
+    sharingModel = &sharing;
     audio.setBluetooth(&bluetooth); // headsets' batteries
+    // The apps behind a portal share (docs/screen-sharing.md §5.2).
+    QObject::connect(&audio, &vela::audio::Audio::changed, &sharing,
+        [&audio, &sharing] { sharing.setPortalApps(audio.screenUsers()); });
+    // Do not disturb by itself while the screen is shared, unless turned off
+    // (docs/screen-sharing.md §7).
+    auto silenceForSharing
+        = [&] { notifications.setAutomaticDoNotDisturb(sharing.active() && config.silenceWhileSharing()); };
+    QObject::connect(&sharing, &ScreenSharing::changed, &notifications, silenceForSharing);
+    QObject::connect(&config, &Config::silenceWhileSharingChanged, &notifications, silenceForSharing);
+    silenceForSharing();
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);
@@ -436,6 +483,10 @@ int main(int argc, char* argv[])
     // Vela.Controls, like the apps.
     Appearance* style = vela::controls::install(engine, Appearance::Mode::Shell);
     style->watch();
+    // The distribution's logo may be in the icon theme only: look again now
+    // that it is set, and when it changes with the mode.
+    config.refreshStartIcon();
+    QObject::connect(style, &Appearance::changed, &config, &Config::refreshStartIcon);
     // The look the compositor draws with, computed here (docs/visual-coherence.md
     // §6.6): both modes and the accent (acrylic tint, title bars, the snap
     // preview), and the title bars' Mica colors in the apps' mode, with the
@@ -512,6 +563,7 @@ int main(int argc, char* argv[])
     qmlRegisterSingletonInstance("Vela.Bluetooth", 1, 0, "Bluetooth", &bluetooth);
     engine.rootContext()->setContextProperty(QStringLiteral("BluetoothPrompts"), &bluetoothPrompts);
     engine.rootContext()->setContextProperty(QStringLiteral("Brightness"), &brightness);
+    engine.rootContext()->setContextProperty(QStringLiteral("Sharing"), &sharing);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Sound"), &sound);
     // The apps' level bars in the quick settings mixer (docs/audio.md §7.1).

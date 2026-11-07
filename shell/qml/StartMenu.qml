@@ -53,7 +53,8 @@ Window {
         }
         return out
     }
-    readonly property bool showPinned: search.text.length === 0 && pinned.length > 0
+    // Unless Settings > Start hides them: then all apps come first.
+    readonly property bool showPinned: Config.startPinned && search.text.length === 0 && pinned.length > 0
 
     // The keyboard's tile: a pinned one (`pinnedSelection`, its index) or the
     // grid's current app (-1). Shown once a key moves it, or at once among
@@ -62,6 +63,17 @@ Window {
     property bool selecting: false
     readonly property bool selectionShown: selecting || search.text.length > 0
     onPinnedChanged: pinnedSelection = Math.min(pinnedSelection, pinned.length - 1)
+    // Pins hidden while one is selected (Settings > Start, Start open): the
+    // selection moves to the first of all apps, so Enter never launches a
+    // tile that isn't there.
+    onShowPinnedChanged: {
+        if (!showPinned && pinnedSelection >= 0) {
+            if (grid.count > 0)
+                select(0, 0)
+            else
+                pinnedSelection = -1
+        }
+    }
 
     // The Start menu is above the taskbar, centered or at the left: from its
     // coordinates to the output's, for right-click menus.

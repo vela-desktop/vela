@@ -138,6 +138,144 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>AccentCard</name>
+    <message>
+        <source>Gray</source>
+        <translation>Grigio</translation>
+    </message>
+    <message>
+        <source>Red</source>
+        <translation>Rosso</translation>
+    </message>
+    <message>
+        <source>Orange</source>
+        <translation>Arancione</translation>
+    </message>
+    <message>
+        <source>Yellow</source>
+        <translation>Giallo</translation>
+    </message>
+    <message>
+        <source>Green</source>
+        <translation>Verde</translation>
+    </message>
+    <message>
+        <source>Teal</source>
+        <translation>Verde acqua</translation>
+    </message>
+    <message>
+        <source>Blue</source>
+        <translation>Blu</translation>
+    </message>
+    <message>
+        <source>Purple</source>
+        <translation>Viola</translation>
+    </message>
+    <message>
+        <source>Pink</source>
+        <translation>Rosa</translation>
+    </message>
+    <message>
+        <source>%1, dark</source>
+        <translation>%1 scuro</translation>
+    </message>
+    <message>
+        <source>%1, light</source>
+        <translation>%1 chiaro</translation>
+    </message>
+    <message>
+        <source>Accent color</source>
+        <translation>Colore principale</translation>
+    </message>
+    <message>
+        <source>%1, the theme in use, brings its own accent color. The one chosen here comes back with another theme</source>
+        <translation>%1, il tema in uso, ha un suo colore principale. Quello scelto qui torna con un altro tema</translation>
+    </message>
+    <message>
+        <source>In dark mode %1, the theme in use, brings its own accent color. The one chosen here shows in light mode</source>
+        <translation>In modalità scura %1, il tema in uso, ha un suo colore principale. Quello scelto qui si vede in modalità chiara</translation>
+    </message>
+    <message>
+        <source>In light mode %1, the theme in use, brings its own accent color. The one chosen here shows in dark mode</source>
+        <translation>In modalità chiara %1, il tema in uso, ha un suo colore principale. Quello scelto qui si vede in modalità scura</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus. In dark mode %1, the theme in use, brings its own</source>
+        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità scura %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus. In light mode %1, the theme in use, brings its own</source>
+        <translation>Pulsanti, selezioni, elementi attivi nella barra delle applicazioni e nei menu. In modalità chiara %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
+        <source>Buttons, selections, active items in the taskbar and menus</source>
+        <translation>Pulsanti, selezioni, elementi attivi della barra delle applicazioni e dei menu</translation>
+    </message>
+    <message>
+        <source>Themes</source>
+        <translation>Temi</translation>
+    </message>
+    <message>
+        <source>Colors</source>
+        <translation>Colori</translation>
+    </message>
+    <message>
+        <source>Color %1 of %2</source>
+        <translation>Colore %1 di %2</translation>
+    </message>
+    <message>
+        <source>Custom color</source>
+        <translation>Colore personalizzato</translation>
+    </message>
+    <message>
+        <source>View colors</source>
+        <translation>Visualizza colori</translation>
+    </message>
+</context>
+<context>
+    <name>AccentPicker</name>
+    <message>
+        <source>Choose a custom accent color</source>
+        <translation>Scegli un colore principale personalizzato</translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation>Fine</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Hue and saturation</source>
+        <translation>Tonalità e saturazione</translation>
+    </message>
+    <message>
+        <source>Hue %1°, saturation %2%. Left and right change the hue, up and down the saturation</source>
+        <translation>Tonalità %1°, saturazione %2%. Sinistra e destra cambiano la tonalità, su e giù la saturazione</translation>
+    </message>
+    <message>
+        <source>Brightness</source>
+        <translation>Luminosità</translation>
+    </message>
+    <message>
+        <source>Current color</source>
+        <translation>Colore attuale</translation>
+    </message>
+    <message>
+        <source>New color</source>
+        <translation>Nuovo colore</translation>
+    </message>
+    <message>
+        <source>Hex code</source>
+        <translation>Codice esadecimale</translation>
+    </message>
+    <message>
+        <source>A hex code has six digits, 0-9 and A-F, as #1E90FF</source>
+        <translation>Un codice esadecimale ha sei cifre, 0-9 e A-F, come #1E90FF</translation>
+    </message>
+</context>
+<context>
     <name>AccessibilityPage</name>
     <message>
         <source>Grayscale</source>
@@ -321,6 +459,18 @@ Specifiche sistema
         <translation>Sfoglia foto</translation>
     </message>
     <message>
+        <source>Desktop</source>
+        <translation>Desktop</translation>
+    </message>
+    <message>
+        <source>Show desktop icons</source>
+        <translation>Mostra le icone del desktop</translation>
+    </message>
+    <message>
+        <source>The files and folders of your Desktop folder, on the main display (also from the desktop&apos;s menu)</source>
+        <translation>I file e le cartelle della cartella Desktop, sullo schermo principale (anche dal menu del desktop)</translation>
+    </message>
+    <message>
         <source>System backgrounds</source>
         <translation>Sfondi del sistema</translation>
     </message>
@@ -401,6 +551,18 @@ Specifiche sistema
     <message>
         <source>On</source>
         <translation>Attivato</translation>
+    </message>
+    <message>
+        <source>Device settings</source>
+        <translation>Impostazioni dei dispositivi</translation>
+    </message>
+    <message>
+        <source>Low battery notifications</source>
+        <translation>Notifiche di batteria scarica</translation>
+    </message>
+    <message>
+        <source>When a mouse, keyboard, headset or another wireless device is running out of battery</source>
+        <translation>Quando la batteria di un mouse, di una tastiera, delle cuffie o di un altro dispositivo wireless si sta esaurendo</translation>
     </message>
     <message>
         <source>Advanced</source>
@@ -630,18 +792,6 @@ Specifiche sistema
         <source>App windows, File Explorer and Settings</source>
         <translation>Le finestre delle app, Esplora e le Impostazioni</translation>
     </message>
-    <message>
-        <source>Accent color</source>
-        <translation>Colore principale</translation>
-    </message>
-    <message>
-        <source>Buttons, selections, active items in the taskbar and menus</source>
-        <translation>Pulsanti, selezioni, elementi attivi della barra delle applicazioni e dei menu</translation>
-    </message>
-    <message>
-        <source>Colors</source>
-        <translation>Colori</translation>
-    </message>
 </context>
 <context>
     <name>DateTimePage</name>
@@ -660,6 +810,22 @@ Specifiche sistema
     <message>
         <source>Time zone</source>
         <translation>Fuso orario</translation>
+    </message>
+    <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>In the taskbar, the notification center, the lock screen and here</source>
+        <translation>Nella barra delle applicazioni, nel centro notifiche, nella schermata di blocco e qui</translation>
+    </message>
+    <message>
+        <source>24-hour (%1)</source>
+        <translation>24 ore (%1)</translation>
+    </message>
+    <message>
+        <source>12-hour (%1)</source>
+        <translation>12 ore (%1)</translation>
     </message>
     <message>
         <source>Related settings</source>
@@ -1414,6 +1580,10 @@ Specifiche sistema
         <translation>Barra delle applicazioni</translation>
     </message>
     <message>
+        <source>Start</source>
+        <translation>Start</translation>
+    </message>
+    <message>
         <source>Apps</source>
         <translation>App</translation>
     </message>
@@ -1546,6 +1716,14 @@ Specifiche sistema
         <translation>silenzioso notifiche</translation>
     </message>
     <message>
+        <source>Do not disturb while my screen is shared</source>
+        <translation>Non disturbare mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
+        <source>screen sharing share record recording presentation call meeting notifications silent do not disturb automatic</source>
+        <translation>condivisione schermo condividere registrare registrazione presentazione chiamata riunione notifiche silenzioso non disturbare automatico</translation>
+    </message>
+    <message>
         <source>screen off sleep idle battery energy saver lock</source>
         <translation>schermo spento sospensione inattività batteria risparmio energia blocco</translation>
     </message>
@@ -1634,8 +1812,24 @@ Specifiche sistema
         <translation>immagine desktop foto wallpaper</translation>
     </message>
     <message>
+        <source>Show desktop icons</source>
+        <translation>Mostra le icone del desktop</translation>
+    </message>
+    <message>
+        <source>desktop icons files folders show hide</source>
+        <translation>desktop icone file cartelle mostra nascondi</translation>
+    </message>
+    <message>
         <source>accent color theme dark light mode</source>
         <translation>accento colore principale tema scuro chiaro modalità</translation>
+    </message>
+    <message>
+        <source>Custom color</source>
+        <translation>Colore personalizzato</translation>
+    </message>
+    <message>
+        <source>accent custom color picker hex code rgb</source>
+        <translation>colore principale accento personalizzato selettore esadecimale codice rgb</translation>
     </message>
     <message>
         <source>Choose your mode</source>
@@ -1646,12 +1840,84 @@ Specifiche sistema
         <translation>scuro chiaro dark light tema app</translation>
     </message>
     <message>
-        <source>theme palette colors corners radius rounded</source>
-        <translation>tema tavolozza colori angoli raggio arrotondati</translation>
+        <source>theme palette colors corners radius rounded reset</source>
+        <translation>tema tavolozza colori angoli raggio arrotondati reimposta</translation>
     </message>
     <message>
         <source>taskbar alignment left center end task</source>
         <translation>taskbar allineamento sinistra centro termina attività</translation>
+    </message>
+    <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>clock 24-hour 12-hour am pm time format hours</source>
+        <translation>orologio 24 ore 12 ore am pm formato ora ore</translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation>Mostra i secondi</translation>
+    </message>
+    <message>
+        <source>taskbar clock seconds time</source>
+        <translation>barra applicazioni orologio secondi ora</translation>
+    </message>
+    <message>
+        <source>Show the number of notifications</source>
+        <translation>Mostra il numero di notifiche</translation>
+    </message>
+    <message>
+        <source>notifications count number badge unread taskbar clock</source>
+        <translation>notifiche conteggio numero contatore non lette barra applicazioni orologio</translation>
+    </message>
+    <message>
+        <source>Show the date</source>
+        <translation>Mostra la data</translation>
+    </message>
+    <message>
+        <source>taskbar clock date day show hide</source>
+        <translation>barra applicazioni orologio data giorno mostra nascondi</translation>
+    </message>
+    <message>
+        <source>Taskbar style</source>
+        <translation>Stile della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>taskbar style look pill floating dock</source>
+        <translation>barra delle applicazioni stile aspetto pillola mobile dock</translation>
+    </message>
+    <message>
+        <source>Quick settings style</source>
+        <translation>Stile delle impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>quick settings notification center style look</source>
+        <translation>impostazioni rapide centro notifiche stile aspetto</translation>
+    </message>
+    <message>
+        <source>Start menu style</source>
+        <translation>Stile del menu Start</translation>
+    </message>
+    <message>
+        <source>start menu style look size corners</source>
+        <translation>menu start stile aspetto dimensioni angoli</translation>
+    </message>
+    <message>
+        <source>Start button icon</source>
+        <translation>Icona del pulsante Start</translation>
+    </message>
+    <message>
+        <source>start button icon logo distribution picture image sail</source>
+        <translation>pulsante start icona logo distribuzione immagine foto vela</translation>
+    </message>
+    <message>
+        <source>Show pinned apps</source>
+        <translation>Mostra le app aggiunte</translation>
+    </message>
+    <message>
+        <source>start menu pinned apps pins show hide</source>
+        <translation>start menu app aggiunte fissate mostra nascondi</translation>
     </message>
     <message>
         <source>programs applications</source>
@@ -2058,11 +2324,11 @@ Specifiche sistema
     </message>
     <message>
         <source>Experimental NVIDIA fix</source>
-        <translation type="unfinished"></translation>
+        <translation>Correzione sperimentale per NVIDIA</translation>
     </message>
     <message>
         <source>Use Vulkan instead of the monitor&apos;s gamma LUT if Night light causes broken colors. May disable direct scanout.</source>
-        <translation type="unfinished"></translation>
+        <translation>Usa Vulkan invece della LUT gamma del monitor se Luce notturna rovina i colori. Può disattivare la scansione diretta.</translation>
     </message>
     <message>
         <source>Schedule night light</source>
@@ -2103,16 +2369,47 @@ Specifiche sistema
         <source>Notifications go straight to the notification center, without popping up</source>
         <translation>Le notifiche vanno direttamente nel centro notifiche, senza comparire</translation>
     </message>
+    <message>
+        <source>Turn on do not disturb automatically while my screen is shared</source>
+        <translation>Attiva Non disturbare automaticamente mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
+        <source>While an app shares or records the screen, notifications wait in the notification center</source>
+        <translation>Mentre un&apos;app condivide o registra lo schermo, le notifiche aspettano nel centro notifiche</translation>
+    </message>
+    <message>
+        <source>Show the number of notifications</source>
+        <translation>Mostra il numero di notifiche</translation>
+    </message>
+    <message>
+        <source>Next to the taskbar&apos;s clock. With Do not disturb on, its bell shows anyway</source>
+        <translation>Accanto all&apos;orologio della barra delle applicazioni. Con Non disturbare attivo, la sua campanella si vede comunque</translation>
+    </message>
+</context>
+<context>
+    <name>OwnThemesCard</name>
+    <message>
+        <source>Your own themes</source>
+        <translation>I tuoi temi</translation>
+    </message>
+    <message>
+        <source>A file in ~/.config/vela/themes/&lt;name&gt;.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change</source>
+        <translation>Un file in ~/.config/vela/themes/&lt;nome&gt;.conf compare qui. Inizia con inherits=vela, poi imposta solo i colori e gli angoli che vuoi cambiare</translation>
+    </message>
+    <message>
+        <source>Open folder</source>
+        <translation>Apri cartella</translation>
+    </message>
 </context>
 <context>
     <name>PersonalizationPage</name>
     <message>
-        <source>Background</source>
-        <translation>Sfondo</translation>
+        <source>Select a theme to apply</source>
+        <translation>Seleziona un tema da applicare</translation>
     </message>
     <message>
-        <source>Desktop background picture</source>
-        <translation>Immagine di sfondo del desktop</translation>
+        <source>Background</source>
+        <translation>Sfondo</translation>
     </message>
     <message>
         <source>Colors</source>
@@ -2127,16 +2424,28 @@ Specifiche sistema
         <translation>Temi</translation>
     </message>
     <message>
-        <source>Colors and corners of the shell and the apps</source>
-        <translation>Colori e angoli della shell e delle app</translation>
+        <source>Installed themes, your own, back to Vela&apos;s own look</source>
+        <translation>Temi installati, temi personali, ritorno all&apos;aspetto di Vela</translation>
+    </message>
+    <message>
+        <source>Taskbar items and behaviors, styles of the taskbar and quick settings</source>
+        <translation>Elementi e comportamenti, stili della barra e delle impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation>Start</translation>
+    </message>
+    <message>
+        <source>Desktop background picture, desktop icons</source>
+        <translation>Immagine di sfondo del desktop, icone del desktop</translation>
+    </message>
+    <message>
+        <source>The Start button&apos;s icon, pinned apps, style of the Start menu</source>
+        <translation>Icona del pulsante Start, app aggiunte, stile del menu Start</translation>
     </message>
     <message>
         <source>Taskbar</source>
         <translation>Barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Alignment, taskbar behaviors</source>
-        <translation>Allineamento, comportamenti della barra delle applicazioni</translation>
     </message>
 </context>
 <context>
@@ -2182,6 +2491,26 @@ Specifiche sistema
         <translation>A batteria</translation>
     </message>
     <message>
+        <source>Battery</source>
+        <translation>Batteria</translation>
+    </message>
+    <message>
+        <source>Battery notifications</source>
+        <translation>Notifiche della batteria</translation>
+    </message>
+    <message>
+        <source>Tell me when the battery is low, and when it&apos;s about to run out</source>
+        <translation>Avvisami quando la batteria è scarica e quando sta per esaurirsi</translation>
+    </message>
+    <message>
+        <source>Low battery level</source>
+        <translation>Livello di batteria scarica</translation>
+    </message>
+    <message>
+        <source>The charge at which the low battery notification comes</source>
+        <translation>La carica a cui arriva la notifica di batteria scarica</translation>
+    </message>
+    <message>
         <source>Power</source>
         <translation>Alimentazione</translation>
     </message>
@@ -2208,6 +2537,21 @@ Specifiche sistema
     <message>
         <source>Optimize your device based on power use and performance</source>
         <translation>Ottimizza il dispositivo in base al consumo di energia e alle prestazioni</translation>
+    </message>
+</context>
+<context>
+    <name>ResetThemesCard</name>
+    <message>
+        <source>Reset</source>
+        <translation>Reimposta</translation>
+    </message>
+    <message>
+        <source>%1 and no styles. Light or dark mode and the accent stay</source>
+        <translation>%1 e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
+    </message>
+    <message>
+        <source>%1 is in use, with no styles</source>
+        <translation>È in uso %1, senza stili</translation>
     </message>
 </context>
 <context>
@@ -2572,6 +2916,64 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>StartIconCard</name>
+    <message>
+        <source>Start button icon</source>
+        <translation>Icona del pulsante Start</translation>
+    </message>
+    <message>
+        <source>The logo of %1</source>
+        <translation>Il logo di %1</translation>
+    </message>
+    <message>
+        <source>Your picture: %1</source>
+        <translation>La tua immagine: %1</translation>
+    </message>
+    <message>
+        <source>Vela&apos;s sail, in the accent color</source>
+        <translation>La vela di Vela, nel colore principale</translation>
+    </message>
+    <message>
+        <source>Browse</source>
+        <translation>Sfoglia</translation>
+    </message>
+    <message>
+        <source>Distribution</source>
+        <translation>Distribuzione</translation>
+    </message>
+    <message>
+        <source>Picture</source>
+        <translation>Immagine</translation>
+    </message>
+    <message>
+        <source>Choose a picture for the Start button</source>
+        <translation>Scegli un&apos;immagine per il pulsante Start</translation>
+    </message>
+    <message>
+        <source>Images (*.svg *.png *.jpg *.jpeg *.webp *.bmp *.gif)</source>
+        <translation>Immagini (*.svg *.png *.jpg *.jpeg *.webp *.bmp *.gif)</translation>
+    </message>
+</context>
+<context>
+    <name>StartPage</name>
+    <message>
+        <source>Start</source>
+        <translation>Start</translation>
+    </message>
+    <message>
+        <source>Show pinned apps</source>
+        <translation>Mostra le app aggiunte</translation>
+    </message>
+    <message>
+        <source>Above all apps. Turned off, Start opens on all apps and keeps your pins</source>
+        <translation>Sopra tutte le app. Se disattivato, Start si apre su tutte le app e conserva quelle aggiunte</translation>
+    </message>
+    <message>
+        <source>Style</source>
+        <translation>Stile</translation>
+    </message>
+</context>
+<context>
     <name>StillVisibleCard</name>
     <message>
         <source>Your PC is still visible to nearby devices</source>
@@ -2584,6 +2986,60 @@ Specifiche sistema
     <message>
         <source>Stop being visible</source>
         <translation>Non essere più visibile</translation>
+    </message>
+</context>
+<context>
+    <name>StyleChooser</name>
+    <message>
+        <source>From the theme, as %1 draws it</source>
+        <translation>Dal tema, come lo disegna %1</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed: the theme&apos;s look is in use</source>
+        <translation>&quot;%1&quot; non è installato: è in uso l&apos;aspetto del tema</translation>
+    </message>
+</context>
+<context>
+    <name>StyleGallery</name>
+    <message>
+        <source>The theme&apos;s style is in use</source>
+        <translation>È in uso lo stile del tema</translation>
+    </message>
+    <message>
+        <source>%1 is in use</source>
+        <translation>%1 è in uso</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed</source>
+        <translation>&quot;%1&quot; non è installato</translation>
+    </message>
+    <message>
+        <source>vela.conf names a style Vela can&apos;t find, so the theme&apos;s look is in use. Choose one below</source>
+        <translation>vela.conf indica uno stile che Vela non trova, quindi è in uso l&apos;aspetto del tema. Scegline uno qui sotto</translation>
+    </message>
+    <message>
+        <source>From the theme</source>
+        <translation>Dal tema</translation>
+    </message>
+    <message>
+        <source>As %1 draws it, based on %2</source>
+        <translation>Come lo disegna %1, basato su %2</translation>
+    </message>
+    <message>
+        <source>As %1 draws it</source>
+        <translation>Come lo disegna %1</translation>
+    </message>
+    <message>
+        <source>Original author: %1</source>
+        <translation>Autore originale: %1</translation>
+    </message>
+    <message>
+        <source>Your own styles: a file in ~/.config/vela/themes/%1/&lt;name&gt;.conf appears here</source>
+        <translation>Stili personali: un file in ~/.config/vela/themes/%1/&lt;nome&gt;.conf compare qui</translation>
+    </message>
+    <message>
+        <source>Open folder</source>
+        <translation>Apri cartella</translation>
     </message>
 </context>
 <context>
@@ -2627,8 +3083,8 @@ Specifiche sistema
         <translation>Notifiche</translation>
     </message>
     <message>
-        <source>Alerts from apps and the system, do not disturb</source>
-        <translation>Avvisi da app e sistema, Non disturbare</translation>
+        <source>Alerts from apps and the system, do not disturb, their number by the clock</source>
+        <translation>Avvisi dalle app e dal sistema, non disturbare, il loro numero accanto all&apos;orologio</translation>
     </message>
     <message>
         <source>Power</source>
@@ -2668,6 +3124,37 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>TaskbarAlignmentCard</name>
+    <message>
+        <source>Taskbar alignment</source>
+        <translation>Allineamento della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps at the left: the alignment applies with another style</source>
+        <translation>%1 tiene le app a sinistra: l&apos;allineamento vale con un altro stile</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps at the left: the alignment applies with another theme</source>
+        <translation>%1 tiene le app a sinistra: l&apos;allineamento vale con un altro tema</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps centered in its pill: the alignment applies with another style</source>
+        <translation>%1 tiene le app al centro della sua pillola: l&apos;allineamento vale con un altro stile</translation>
+    </message>
+    <message>
+        <source>%1 keeps the apps centered in its pill: the alignment applies with another theme</source>
+        <translation>%1 tiene le app al centro della sua pillola: l&apos;allineamento vale con un altro tema</translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation>Al centro</translation>
+    </message>
+    <message>
+        <source>Left</source>
+        <translation>A sinistra</translation>
+    </message>
+</context>
+<context>
     <name>TaskbarPage</name>
     <message>
         <source>Taskbar items</source>
@@ -2682,20 +3169,32 @@ Specifiche sistema
         <translation>Le finestre aperte e i desktop virtuali (anche con Win+Tab)</translation>
     </message>
     <message>
+        <source>Time format</source>
+        <translation>Formato dell&apos;ora</translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation>Mostra i secondi</translation>
+    </message>
+    <message>
+        <source>In the taskbar&apos;s clock</source>
+        <translation>Nell&apos;orologio della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Show the date</source>
+        <translation>Mostra la data</translation>
+    </message>
+    <message>
+        <source>Clock</source>
+        <translation>Orologio</translation>
+    </message>
+    <message>
+        <source>Under the time in the taskbar&apos;s clock</source>
+        <translation>Sotto l&apos;ora, nell&apos;orologio della barra delle applicazioni</translation>
+    </message>
+    <message>
         <source>Taskbar behaviors</source>
         <translation>Comportamenti della barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Taskbar alignment</source>
-        <translation>Allineamento della barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Center</source>
-        <translation>Al centro</translation>
-    </message>
-    <message>
-        <source>Left</source>
-        <translation>A sinistra</translation>
     </message>
     <message>
         <source>Show the taskbar on all displays</source>
@@ -2720,6 +3219,100 @@ Specifiche sistema
     <message>
         <source>In the taskbar buttons&apos; menu, to close an app that isn&apos;t responding right away</source>
         <translation>Nel menu dei pulsanti della barra delle applicazioni, per chiudere subito un&apos;app che non risponde</translation>
+    </message>
+    <message>
+        <source>Styles</source>
+        <translation>Stili</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Quick settings and notification center</source>
+        <translation>Impostazioni rapide e centro notifiche</translation>
+    </message>
+    <message>
+        <source>Related settings</source>
+        <translation>Impostazioni correlate</translation>
+    </message>
+    <message>
+        <source>24-hour or 12-hour, in Date &amp; time</source>
+        <translation>24 o 12 ore, in Data e ora</translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation>Notifiche</translation>
+    </message>
+    <message>
+        <source>Do not disturb, the number of notifications next to the clock</source>
+        <translation>Non disturbare, il numero di notifiche accanto all&apos;orologio</translation>
+    </message>
+</context>
+<context>
+    <name>ThemeGallery</name>
+    <message>
+        <source>%1 is in use</source>
+        <translation>%1 è in uso</translation>
+    </message>
+    <message>
+        <source>Vela can&apos;t use this file: too large, or for another version</source>
+        <translation>Vela non può usare questo file: è troppo grande, o è per un&apos;altra versione</translation>
+    </message>
+    <message>
+        <source>Original author: %1</source>
+        <translation>Autore originale: %1</translation>
+    </message>
+</context>
+<context>
+    <name>ThemeInUseCard</name>
+    <message>
+        <source>From the theme</source>
+        <translation>Dal tema</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; isn&apos;t installed</source>
+        <translation>&quot;%1&quot; non è installato</translation>
+    </message>
+    <message>
+        <source>In use: %1</source>
+        <translation>In uso: %1</translation>
+    </message>
+    <message>
+        <source>The theme, and the styles and accent color over it</source>
+        <translation>Il tema, con gli stili e il colore principale sopra di esso</translation>
+    </message>
+    <message>
+        <source>Taskbar</source>
+        <translation>Barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Start menu</source>
+        <translation>Menu Start</translation>
+    </message>
+    <message>
+        <source>Quick settings and notification center</source>
+        <translation>Impostazioni rapide e centro notifiche</translation>
+    </message>
+    <message>
+        <source>Accent color</source>
+        <translation>Colore principale</translation>
+    </message>
+    <message>
+        <source>The theme&apos;s</source>
+        <translation>Quello del tema</translation>
+    </message>
+    <message>
+        <source>The theme&apos;s in dark mode, yours in light mode</source>
+        <translation>Quello del tema in modalità scura, il tuo in modalità chiara</translation>
+    </message>
+    <message>
+        <source>The theme&apos;s in light mode, yours in dark mode</source>
+        <translation>Quello del tema in modalità chiara, il tuo in modalità scura</translation>
+    </message>
+    <message>
+        <source>Yours</source>
+        <translation>Il tuo</translation>
     </message>
 </context>
 <context>
@@ -2773,52 +3366,12 @@ Specifiche sistema
         <translation>più grande di 64 KiB: il file non viene usato</translation>
     </message>
     <message>
-        <source>Theme</source>
-        <translation>Tema</translation>
+        <source>&quot;%1&quot; isn&apos;t installed</source>
+        <translation>&quot;%1&quot; non è installato</translation>
     </message>
     <message>
-        <source>A complete look of the shell and the apps. Original author: %1</source>
-        <translation>Un aspetto completo della shell e delle app. Autore originale: %1</translation>
-    </message>
-    <message>
-        <source>A complete look of the shell and the apps</source>
-        <translation>Un aspetto completo della shell e delle app</translation>
-    </message>
-    <message>
-        <source>%1 is in use</source>
-        <translation>%1 è in uso</translation>
-    </message>
-    <message>
-        <source>Previewing %1</source>
-        <translation>Anteprima di %1</translation>
-    </message>
-    <message>
-        <source>Choose another theme to see it in the preview. Nothing changes until you apply it</source>
-        <translation>Scegli un altro tema per vederlo nell&apos;anteprima. Non cambia nulla finché non lo applichi</translation>
-    </message>
-    <message>
-        <source>&quot;%1&quot; isn&apos;t installed: Vela&apos;s own look is used</source>
-        <translation>&quot;%1&quot; non è installato: viene usato l&apos;aspetto di Vela</translation>
-    </message>
-    <message>
-        <source>Only the preview shows it. Apply to use it in the shell and the apps instead of %1</source>
-        <translation>Per ora si vede solo nell&apos;anteprima. Applicalo per usarlo nella shell e nelle app al posto di %1</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Annulla</translation>
-    </message>
-    <message>
-        <source>Apply</source>
-        <translation>Applica</translation>
-    </message>
-    <message>
-        <source>This theme has its own accent color</source>
-        <translation>Questo tema ha un suo colore principale</translation>
-    </message>
-    <message>
-        <source>While it is in use, it replaces the accent color chosen in Colors</source>
-        <translation>Finché è in uso, sostituisce il colore principale scelto in Colori</translation>
+        <source>vela.conf names a theme Vela can&apos;t find: Vela&apos;s own look is used</source>
+        <translation>vela.conf indica un tema che Vela non trova: si usa l&apos;aspetto di Vela</translation>
     </message>
     <message>
         <source>This theme has problems</source>
@@ -2828,70 +3381,6 @@ Specifiche sistema
         <source>Vela uses what it can and skips the rest</source>
         <translation>Vela usa quello che può e salta il resto</translation>
     </message>
-    <message>
-        <source>Customize</source>
-        <translation>Personalizza</translation>
-    </message>
-    <message>
-        <source>Optional: a style of its own for the taskbar, the Start menu or quick settings, over the theme</source>
-        <translation>Facoltativo: uno stile a parte per la barra delle applicazioni, il menu Start o le impostazioni rapide, sopra il tema</translation>
-    </message>
-    <message>
-        <source>Hide</source>
-        <translation>Nascondi</translation>
-    </message>
-    <message>
-        <source>Taskbar</source>
-        <translation>Barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>Start menu</source>
-        <translation>Menu Start</translation>
-    </message>
-    <message>
-        <source>Quick settings</source>
-        <translation>Impostazioni rapide</translation>
-    </message>
-    <message>
-        <source>Styles</source>
-        <translation>Stili</translation>
-    </message>
-    <message>
-        <source>From the theme</source>
-        <translation>Dal tema</translation>
-    </message>
-    <message>
-        <source>As the theme draws it. Your own styles: ~/.config/vela/themes/%1/&lt;name&gt;.conf</source>
-        <translation>Come lo disegna il tema. I tuoi stili: ~/.config/vela/themes/%1/&lt;nome&gt;.conf</translation>
-    </message>
-    <message>
-        <source>In use</source>
-        <translation>In uso</translation>
-    </message>
-    <message>
-        <source>Use</source>
-        <translation>Usa</translation>
-    </message>
-    <message>
-        <source>Original author: %1</source>
-        <translation>Autore originale: %1</translation>
-    </message>
-    <message>
-        <source>Your own themes</source>
-        <translation>I tuoi temi</translation>
-    </message>
-    <message>
-        <source>A file in ~/.config/vela/themes/&lt;name&gt;.conf appears here. Start it with inherits=vela, then set only the colors and corners you want to change</source>
-        <translation>Un file in ~/.config/vela/themes/&lt;nome&gt;.conf compare qui. Inizia con inherits=vela, poi imposta solo i colori e gli angoli che vuoi cambiare</translation>
-    </message>
-    <message>
-        <source>Reset</source>
-        <translation>Reimposta</translation>
-    </message>
-    <message>
-        <source>Vela Official and no styles. Light or dark mode and the accent stay</source>
-        <translation>Vela Official e nessuno stile. Modalità chiara o scura e colore principale restano</translation>
-    </message>
 </context>
 <context>
     <name>TimeLanguagePage</name>
@@ -2900,8 +3389,8 @@ Specifiche sistema
         <translation>Data e ora</translation>
     </message>
     <message>
-        <source>Time zone, automatic clock settings</source>
-        <translation>Fuso orario, impostazioni automatiche dell&apos;orologio</translation>
+        <source>Time zone, automatic clock settings, time format</source>
+        <translation>Fuso orario, impostazioni automatiche dell&apos;orologio, formato dell&apos;ora</translation>
     </message>
     <message>
         <source>Vela language</source>
@@ -3001,6 +3490,17 @@ Specifiche sistema
     <message>
         <source>Four-finger gestures</source>
         <translation>Gesti con quattro dita</translation>
+    </message>
+</context>
+<context>
+    <name>UndoBar</name>
+    <message>
+        <source>Undo</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Chiudi</translation>
     </message>
 </context>
 <context>

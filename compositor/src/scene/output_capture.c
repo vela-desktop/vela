@@ -184,6 +184,15 @@ static const struct wlr_ext_image_capture_source_v1_interface output_source_impl
 	.get_pointer_cursor = output_source_get_pointer_cursor,
 };
 
+struct wlr_output *vela_output_capture_source_output(struct wlr_ext_image_capture_source_v1 *base)
+{
+    if (base->impl != &output_source_impl) {
+        return NULL;
+    }
+    struct vela_output_capture_source *source = wl_container_of(base, source, base);
+    return source->output;
+}
+
 static void source_update_buffer_constraints(struct vela_output_capture_source *source) {
 	struct wlr_output *output = source->output;
 

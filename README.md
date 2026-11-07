@@ -172,7 +172,8 @@ The whole design is written down in [docs/renderer.md](docs/renderer.md).
 > day: compositor, shell, file manager, settings, lock screen. The GPU-dependent
 > functional and sharpness suites run on self-hosted AMD and NVIDIA runners
 > (RX 9070 XT and RTX 4070 Laptop) for GPU-affecting changes and for every release;
-> GitHub-hosted CI cannot run them. Physical DRM, suspend and multi-monitor paths
+> An experimental Intel ANV runner adds optional coverage; GitHub-hosted CI
+> cannot run these suites. Physical DRM, suspend and multi-monitor paths
 > still rely on manual verification. The interface speaks **English and Italian**
 > (Settings → Time & language), switched live.
 

@@ -31,7 +31,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 |---|---|---|
 | `language` | system | Interface language: `it`, `en`, or empty to follow the system (Italian if the system is Italian, English otherwise). |
 | `theme` | `vela` | A theme's name (Settings > Personalization > Themes): `themes/<name>.conf`, see [Theme files](#theme-files). `vela` (or empty) is Vela Official, Vela's own look. |
-| `taskbar-style`, `startmenu-style`, `notifications-style` | empty | A style's name for that surface over the theme (Settings > Personalization > Themes > Customize): `themes/taskbar/<name>.conf`, `themes/startmenu/`, `themes/notifications/`. Empty: as the theme draws it. |
+| `taskbar-style`, `startmenu-style`, `notifications-style` | empty | A style's name for that surface over the theme (Settings > Personalization > Taskbar for the taskbar and quick settings, > Start for the Start menu): `themes/taskbar/<name>.conf`, `themes/startmenu/`, `themes/notifications/`. Empty: as the theme draws it. |
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
@@ -78,7 +78,7 @@ The Settings app is the preferred way to edit these values because it applies va
 
 A **theme** is a complete look of the shell and of Vela's apps: colors and corner radii, the blur behind the shell's panels, and the shape of any shell surface. A **style** changes one surface of the shell over the theme, like Windhawk's three stylers: the taskbar, the Start menu, or quick settings with the notification center. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own) and then in the data directories (`/usr/share/vela/themes/`, the installed ones); `taskbar-style=aero` loads `vela/themes/taskbar/aero.conf` the same way. A style's values win over the theme's. The shell and the apps reload them when they, or what they inherit, change.
 
-Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed themes are Lowell137's **Window Glass** (`window-glass.conf`, after Windhawk's WindowGlass: flat gray glass over a light blur, a floating pill taskbar as wide as its apps, round Start and quick settings, and a see-through Settings; the surfaces of Lowell137's Window Glass styles come with it) and **Vela Floating**, Vela Official with a floating taskbar and glass quick settings. The 22 installed styles are Lowell137's, from Windhawk's stylers, under Customize: one of each look, for the taskbar (11), the Start menu (5) and quick settings with the notification center (6).
+Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed themes are Lowell137's **Window Glass** (`window-glass.conf`, after Windhawk's WindowGlass: flat gray glass over a light blur, a floating pill taskbar as wide as its apps, round Start and quick settings, and a see-through Settings; the surfaces of Lowell137's Window Glass styles come with it) and **Vela Floating**, Vela Official with a floating taskbar and glass quick settings. The 22 installed styles are Lowell137's, from Windhawk's stylers, each on its surface's page in Settings: one of each look, for the taskbar (11), the Start menu (5) and quick settings with the notification center (6). Their names say what they look like, never another product's name; each file's comments name the Windhawk theme it comes from.
 
 ```ini
 # Mine: the first line names the theme in Settings
@@ -98,7 +98,17 @@ The first comment line names the file in Settings, and a `# Original author:` li
 
 A line that isn't a token, a value of the wrong type, a layout Vela doesn't have, a style's key for another surface and a broken `inherits=` are skipped with a warning in the log that names the file, the line and what is wrong. A file larger than 64 KiB is not read at all. Settings > Personalization > Themes lists the theme's under it too.
 
-Choosing a theme in Settings only shows it in the preview; **Apply** writes `theme=` and **Cancel** goes back to the one in use. A theme with its own `accent` replaces the accent color chosen in Settings > Colors while it is in use, and Settings says so. **Customize** lists each surface's styles with their pictures (`vela/themes/screenshots/<surface>/<name>.png`, or `<name>-qs.png` and `<name>-nc.png` for quick settings and the center); choosing one writes its `*-style=` key at once. **Reset** goes back to Vela Official and no styles.
+A click on a theme in Settings > Personalization (or > Themes) writes `theme=` at once, and **Undo**, for a few seconds, goes back to the one before. A theme with its own `accent` replaces the accent color chosen in Settings > Colors in the modes it sets it for: when every mode in use takes the theme's, Colors shows the grid disabled and says why, and when only one does it says in which mode the chosen color shows. Each surface's styles are on its page: the Start menu's under Start, after **From the theme**; the taskbar's and quick settings' under Taskbar, after the taskbar's own settings, each in a card that opens its gallery. A click writes the `*-style=` key at once, with Undo too. While the taskbar is a pill that places its apps itself (`taskbar-fit=1`), Taskbar shows the alignment disabled and says whether the theme or the style decides it. **Reset** goes back to Vela Official and no styles. **Open folder**, by your own themes in Themes and under each gallery of styles, opens the folder they go in (`~/.config/vela/themes/` and its `taskbar/`, `startmenu/`, `notifications/`), made first if it isn't there.
+
+The pictures are made by `scripts/theme-pictures.py` from the real shell on a headless Vela, with the clock stopped (`VELA_STILL`), in `vela/themes/screenshots/`:
+
+| Picture | What it shows |
+|---|---|
+| `themes/<theme>.png` | the desktop in the theme, with Settings and quick settings open |
+| `themes/<theme>/<surface>.png` | a surface as the theme draws it: `taskbar.png`, `startmenu.png`, `notifications-qs.png` and `notifications-nc.png` |
+| `<surface>/<style>.png` | a style: `taskbar/<style>.png`, `startmenu/<style>.png`, `notifications/<style>-qs.png` and `-nc.png` |
+
+Quick settings and the notification center have two pictures, `-qs.png` and `-nc.png`, the other surfaces one. Your own themes and styles can have theirs in `~/.config/vela/themes/screenshots/`, with the same names; without one, a theme shows the desktop in miniature in its colors, and a style its name. **From the theme** shows a surface as the theme draws it: with a theme of your own that has no picture of it, the picture of the theme it builds on (`inherits=`), and the card says which.
 
 The compositor draws title bars and the snap preview, so the shell sends it the theme's `background` (the title bars) and `accent` in place of Mica and the chosen accent, and the `blur-*` keys: the theme's for every acrylic surface, then each panel's with its own style. A panel with a look of its own (a style, or the theme's keys for that surface) has its blur rounded like it, and glass from 4% alpha instead of half. The subtle hover of buttons is not themed: it is also the title bar buttons' hover.
 
@@ -146,6 +156,25 @@ quicksettings-variant=glass
 ```
 
 The design and what is still planned are in [theme-system.md](theme-system.md).
+
+## Shell settings
+
+The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization, except the time format (Settings → Time & language → Date & time), the notification ones (Settings → System → Notifications) and the battery ones (Settings → System → Power, Settings → Bluetooth & devices):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `clock/hours` | `24` | `24` or `12`: how the taskbar, the notification center, the lock screen and Settings' Date & time write the time (`13:45` or `1:45 PM`) |
+| `taskbar/clockSeconds` | `false` | The seconds in the taskbar's clock |
+| `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
+| `taskbar/notificationCount` | `true` | The number of notifications next to the clock (Do not disturb's bell shows anyway) |
+| `notifications/silenceWhileSharing` | `true` | Do not disturb by itself while an app shares or records the screen: popups wait in the notification center; the user's own Do not disturb (`notifications/doNotDisturb`) is never changed ([screen sharing](screen-sharing.md) §7) |
+| `battery/notify` | `true` | Notifications about the PC's battery, low and critical (Settings → System → Power, [battery notifications](battery-notifications.md#6-settings)) |
+| `battery/lowLevel` | `20` | The PC's low battery level in percent: 5–95 (Settings offers 10, 15, 20, 25, 30, 40, 50); anything else is 20 |
+| `battery/devices` | `true` | Notifications about the peripherals' batteries: mice, keyboards, headsets (Settings → Bluetooth & devices) |
+| `start/icon` | `vela` | The Start button's icon: `vela` (the sail), `distribution` (os-release's `LOGO=`, from the icon theme or a loose file in `icons/` or `pixmaps/`) or `picture`; one that can't be shown (no logo, a picture gone or not a picture) is the sail |
+| `start/iconPicture` | | The picture's file for `start/icon=picture`; the shell watches it, so an edited or deleted picture shows at once |
+| `start/showPinned` | `true` | The apps pinned to Start above all apps; off, Start opens on all apps and keeps the pins (`start/pinned`) |
+| `desktop/showIcons` | `true` | The Desktop folder's icons on the main display (Settings → Background, or the desktop's menu) |
 
 ## Display configuration
 
@@ -235,6 +264,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_LATCH=0` | Disable late latching and render when the backend frame event arrives. |
 | `VELA_LATCH_MARGIN` | Minimum late-latching safety margin in milliseconds. Default: `1`; the frame clock can grow the effective margin after late frames. |
 | `VELA_REALTIME=0` | Disable realtime scheduling for the compositor main thread. |
+| `VELA_CAPTURE_UNREPORTED=1` | Don't report screen captures: no taskbar indicator, no automatic Do not disturb. For recordings of Vela itself (`scripts/recording_core.py` sets it); see [screen sharing](screen-sharing.md) §4.3. |
 | `VELA_SCREEN_OFF` | Override idle timeout in minutes (fractions allowed). Default is 10 if no stored setting exists; `0` disables idle screen-off. Set, it also enables the idle timeout nested and headless (tests). |
 | `VELA_LOCK_ON_IDLE=0` | Turn displays off on idle without locking first. |
 | `VELA_LOCK` | Use another locker instead of `vela-lock`, for example `swaylock`. |
@@ -270,6 +300,7 @@ These variables are for diagnosis rather than normal user configuration.
 | `VELA_DEBUG_LINEAR=1` | Force linear render buffers instead of normal tiled/modifier allocation; useful for allocator/modifier diagnosis. |
 | `VELA_DEBUG_INPUT=1` | Enable the virtual keyboard/pointer protocol used by `vela-input`. Off by default for security. |
 | `VELA_FILES_TIMING=1` | Make `vela-files` print startup timing data; used by `scripts/measure.sh`. |
+| `VELA_STILL=<date and time>` | For still pictures that don't change with when they are taken (`scripts/theme-pictures.py`): the shell's clock and calendar show this ISO date and time, such as `2026-01-14T10:30:00`, and text carets don't blink. |
 | `VELA_SCREEN_DUMP_OUTPUT` | Select which output `vela-screen-dump` captures by zero-based index. |
 
 ## Internal variables

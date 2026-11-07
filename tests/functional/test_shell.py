@@ -18,7 +18,7 @@ import subprocess
 import time
 import unittest
 
-from harness import BUILD, TIME_SCALE, Image, Session, tool
+from harness import BUILD, ROOT, TIME_SCALE, Image, Session, tool
 
 SHELL = os.path.join(BUILD, "shell", "vela-shell")
 OUTPUT_CASES = (("normal", 1, "above"), ("90", 1, "above"), ("180", 1.25, "right"),
@@ -38,6 +38,7 @@ class RealShell(unittest.TestCase):
 
     wallpaper = GRADIENT
     compositor_env = {} # more for the compositor (fake monitors, test_brightness.py)
+    shell_env = {} # more for the shell (a stopped clock, test_personalization.py)
 
     def setUp(self):
         self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
@@ -67,9 +68,12 @@ class RealShell(unittest.TestCase):
                    QT_WAYLAND_SHELL_INTEGRATION="layer-shell", QT_WAYLAND_RECONNECT="0",
                    QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
                    WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
-                   VELA_DEBUG_SELECTION="1")
+                   VELA_DEBUG_SELECTION="1", **self.shell_env)
         self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
+        # In a session the shell is the compositor's child; here, this one is
+        # (its previews are not screen sharing, docs/screen-sharing.md §4.2).
+        self.vela.command(f"test-shell {self.shell.pid}")
         self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar") and self.mapped(s, "vela-wallpaper"),
                            timeout=20, what="the real Qt desktop")
 
@@ -1070,6 +1074,89 @@ class QtShell(RealShell):
         self.vela.input(*actions)
         self.check_desktop()
         self.assertFalse(self.mapped(self.vela.state(), "vela-start-menu"))
+
+    def use_checkout_themes(self):
+        """This checkout's themes and styles in the session's own
+        ~/.config/vela/themes/, which wins over the data directories: a build
+        tree with no Vela installed has them only there."""
+        target = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "vela", "themes")
+        os.makedirs(target, exist_ok=True)
+        source = os.path.join(ROOT, "themes")
+        for name in os.listdir(source):
+            if (name.endswith(".conf") or name in ("taskbar", "startmenu", "notifications")) \
+                    and not os.path.exists(os.path.join(target, name)):
+                os.symlink(os.path.join(source, name), os.path.join(target, name))
+
+    def start_menu_center(self, style):
+        """Where Start opens with the taskbar aligned left and this taskbar
+        style (none: ""): the horizontal center of its layer."""
+        self.use_checkout_themes()
+        shell_conf = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+        with open(shell_conf + ".new", "w") as file:
+            file.write("[taskbar]\nalignment=left\n")
+        os.replace(shell_conf + ".new", shell_conf)
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write(f"taskbar-style={style}\n" if style else "")
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell sees both files
+        self.vela.input("key", "super")
+        state = self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start open")
+        layer = self.layer(state, "vela-start-menu")
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        return layer["x"] + layer["w"] / 2
+
+    def test_start_follows_the_alignment_unless_the_pill_places_the_apps(self):
+        # Aligned left, Start opens at the left like the buttons; a fitted
+        # pill (Window Glass) keeps its Start button centered, so Start opens
+        # above it, in the middle.
+        self.assertLess(self.start_menu_center(""), 960 / 2)
+        self.assertAlmostEqual(self.start_menu_center("window-glass"), 960, delta=40)
+        self.check_desktop()
+
+    def taskbar_height(self, conf):
+        """The taskbar's height (its layer's) with this vela.conf."""
+        self.use_checkout_themes()
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path(), "w") as file:
+            file.write(conf)
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell reads the file
+        return self.layer(self.vela.state(), "vela-taskbar")["h"]
+
+    def test_a_floating_pill_holds_its_buttons(self):
+        # Vela Floating's pill floats 10 units off the edges: the bar grows
+        # by them, so the pill is as tall as Vela's own bar (it was 28 units,
+        # its icons and clock cut). Window Glass's 52 already holds its 36.
+        self.assertEqual(self.taskbar_height(""), 48)
+        self.assertEqual(self.taskbar_height("theme=vela-floating\n"), 48 + 2 * 10)
+        self.assertEqual(self.taskbar_height("theme=window-glass\n"), 52)
+        self.check_desktop()
+
+    def test_a_floating_pill_keeps_its_highlights_inside(self):
+        # Quick settings and the notification center open light the system
+        # icons' and the clock's highlights: they stay inside the pill, so the
+        # bar's margin under it doesn't change by a pixel. Before, they took
+        # the bar's whole height and crossed the pill's edges.
+        self.taskbar_height("theme=vela-floating\n")
+        output = self.vela.state().output
+
+        def margin():
+            path = os.path.join(self.vela.directory, "margin.png")
+            self.vela.screenshot(path, region=(0, output["h"] - 10, output["w"], 10))
+            with open(path, "rb") as file:
+                return file.read()
+
+        rest = margin()
+        for key, namespace in (("super+a", "vela-quick-settings"), ("super+n", "vela-notification-center")):
+            self.vela.input("key", key)
+            self.vela.wait_for(lambda s: self.layer(s, namespace), what=f"{namespace} open")
+            time.sleep(1.0) # its entrance and the highlight's fade over
+            self.assertTrue(margin() == rest, f"a highlight crossed the pill with {namespace} open")
+            self.vela.input("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+        self.check_desktop()
 
     def test_one_input_session_keeps_the_menu_open_between_lines(self):
         """vela-input - (scripts/recording_core.py's InputSession): one

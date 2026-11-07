@@ -2,6 +2,113 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="it_IT" sourcelanguage="en">
 <context>
+    <name>BatteryNotices</name>
+    <message>
+        <source>Mouse</source>
+        <translation>Mouse</translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation>Tastiera</translation>
+    </message>
+    <message>
+        <source>Phone</source>
+        <translation>Telefono</translation>
+    </message>
+    <message>
+        <source>Tablet</source>
+        <translation>Tablet</translation>
+    </message>
+    <message>
+        <source>Game controller</source>
+        <translation>Controller di gioco</translation>
+    </message>
+    <message>
+        <source>Pen</source>
+        <translation>Penna</translation>
+    </message>
+    <message>
+        <source>Touchpad</source>
+        <translation>Touchpad</translation>
+    </message>
+    <message>
+        <source>Headset</source>
+        <translation>Cuffie con microfono</translation>
+    </message>
+    <message>
+        <source>Speakers</source>
+        <translation>Altoparlanti</translation>
+    </message>
+    <message>
+        <source>Headphones</source>
+        <translation>Cuffie</translation>
+    </message>
+    <message>
+        <source>Remote control</source>
+        <translation>Telecomando</translation>
+    </message>
+    <message>
+        <source>Wireless device</source>
+        <translation>Dispositivo wireless</translation>
+    </message>
+    <message>
+        <source>Power</source>
+        <translation>Alimentazione</translation>
+    </message>
+    <message>
+        <source>Battery critically low</source>
+        <translation>Batteria quasi esaurita</translation>
+    </message>
+    <message>
+        <source>Battery low</source>
+        <translation>Batteria scarica</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Plug in your PC now.</source>
+        <translation>Rimane il %1%. Collega subito il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Plug in your PC.</source>
+        <translation>Rimane il %1%. Collega il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>Plug in your PC now.</source>
+        <translation>Collega subito il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>Plug in your PC.</source>
+        <translation>Collega il PC all&apos;alimentazione.</translation>
+    </message>
+    <message>
+        <source>Devices</source>
+        <translation>Dispositivi</translation>
+    </message>
+    <message>
+        <source>%1 battery is critical</source>
+        <translation>%1: batteria quasi esaurita</translation>
+    </message>
+    <message>
+        <source>%1 battery is low</source>
+        <translation>%1: batteria scarica</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Recharge the device now.</source>
+        <translation>Rimane il %1%. Ricarica subito il dispositivo.</translation>
+    </message>
+    <message>
+        <source>%1% remaining. Recharge the device soon.</source>
+        <translation>Rimane il %1%. Ricarica presto il dispositivo.</translation>
+    </message>
+    <message>
+        <source>Recharge the device now.</source>
+        <translation>Ricarica subito il dispositivo.</translation>
+    </message>
+    <message>
+        <source>Recharge the device soon.</source>
+        <translation>Ricarica presto il dispositivo.</translation>
+    </message>
+</context>
+<context>
     <name>BluetoothDevices</name>
     <message>
         <source>Cancel</source>
@@ -497,6 +604,10 @@
         <translation>Notifiche</translation>
     </message>
     <message>
+        <source>Silenced while your screen is shared</source>
+        <translation>Silenziate mentre lo schermo è condiviso</translation>
+    </message>
+    <message>
         <source>Clear all</source>
         <translation>Cancella tutto</translation>
     </message>
@@ -902,6 +1013,37 @@
     <message>
         <source>Cancel</source>
         <translation>Annulla</translation>
+    </message>
+</context>
+<context>
+    <name>ScreenSharing</name>
+    <message>
+        <source>Your screen</source>
+        <translation>Il tuo schermo</translation>
+    </message>
+    <message>
+        <source>A window</source>
+        <translation>Una finestra</translation>
+    </message>
+    <message>
+        <source>A window of %1</source>
+        <translation>Una finestra di %1</translation>
+    </message>
+    <message>
+        <source>An app</source>
+        <translation>Un&apos;app</translation>
+    </message>
+    <message>
+        <source>%1 is sharing your screen</source>
+        <translation>%1 sta condividendo lo schermo</translation>
+    </message>
+    <message>
+        <source>%1 is sharing a window</source>
+        <translation>%1 sta condividendo una finestra</translation>
+    </message>
+    <message>
+        <source>These apps are sharing your screen:</source>
+        <translation>Queste app stanno condividendo lo schermo:</translation>
     </message>
 </context>
 <context>
@@ -1417,6 +1559,14 @@
     <message>
         <source>Cancel transfer</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen sharing</source>
+        <translation>Condivisione dello schermo</translation>
+    </message>
+    <message>
+        <source>Notifications are silenced meanwhile</source>
+        <translation>Nel frattempo le notifiche sono silenziate</translation>
     </message>
     <message>
         <source>%1 is using your microphone</source>

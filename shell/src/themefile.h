@@ -9,6 +9,7 @@
 #include <QByteArray>
 #include <QColor>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QIODevice>
@@ -233,6 +234,13 @@ inline QStringList candidates(const QString& name, Layer layer = Theme)
 
 // The directories a layer's files are looked up in, the user's first: those
 // that exist, for the list and the file watchers.
+// Where your own themes, or a surface's styles, go: ~/.config/vela/themes/
+// and its taskbar/, startmenu/, notifications/ (they may not exist yet).
+inline QString userDirectory(Layer layer = Theme)
+{
+    return QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + subdirectory(layer));
+}
+
 inline QStringList directories(Layer layer = Theme)
 {
     const QString sub = subdirectory(layer);
@@ -256,7 +264,7 @@ inline QStringList directories(Layer layer = Theme)
 inline QStringList watchedDirectories(Layer layer = Theme)
 {
     QStringList dirs = directories(layer);
-    QString user = QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + subdirectory(layer));
+    QString user = userDirectory(layer);
     while (!QFileInfo(user).isDir() && user.contains(u'/')) {
         user = user.section(u'/', 0, -2);
         if (user.isEmpty()) {
@@ -541,6 +549,74 @@ inline QVariant themed(const QVariantMap& theme, const QString& key, bool light)
     return theme.contains(modeKey) ? theme.value(modeKey) : theme.value(key);
 }
 
+// The taskbar's layout in a theme with its styles (merged tokens), in one
+// mode: the one rule that Styles.qml and Taskbar.qml draw with, and that
+// Start's placement (main.cpp) and Settings (the alignment, the preview)
+// read. A floating bar is a pill off the screen's edges; a fitted one is as
+// wide as its apps and places them itself, whatever the alignment says:
+// centered, or with the tray in a pill of its own at the screen's right edge
+// and the apps centered (edge 1) or at the left (edge 2).
+struct TaskbarLayout {
+    QString variant = QStringLiteral("default"); // taskbar-variant
+    int margin = 0; // taskbar-margin, 0 to 24
+    int radius = 0; // taskbar-radius, 0 to 48
+    bool floating = false; // a margin or a radius
+    bool fit = false; // floating and as wide as its apps (taskbar-fit)
+    int edge = 0; // taskbar-edge while fitted, else 0
+
+    // The apps, and Start with them, at the screen's left: the alignment's
+    // choice, unless the pill places them.
+    bool appsAtLeft(const QString& alignment) const
+    {
+        return fit ? edge == 2 : alignment == QLatin1String("left");
+    }
+};
+
+// The keys it reads: common/CMakeLists.txt makes them theme tokens, as it does
+// with the keys Styles.qml reads itself.
+inline TaskbarLayout taskbarLayout(const QVariantMap& tokens, bool light)
+{
+    // Styles.qml's size(): the number rounded as JavaScript's Math.round()
+    // does, clamped; the fallback without one.
+    // Clamped before it becomes an int: a huge number would not fit in one.
+    const auto size = [&tokens, light](const char* key, double fallback, int low, int high) {
+        bool ok = false;
+        const double number = themed(tokens, QLatin1String(key), light).toDouble(&ok);
+        const double value = ok && std::isfinite(number) ? number : fallback;
+        return int(std::clamp(std::floor(value + 0.5), double(low), double(high)));
+    };
+    TaskbarLayout layout;
+    if (const QVariant variant = themed(tokens, QStringLiteral("taskbar-variant"), light);
+        variant.typeId() == QMetaType::QString && !variant.toString().isEmpty()) {
+        layout.variant = variant.toString();
+    }
+    // A variant other than the default floats and fits unless the keys say no.
+    const bool styled = layout.variant != QLatin1String("default");
+    layout.margin = size("taskbar-margin", styled ? 10 : 0, 0, 24);
+    layout.radius = size("taskbar-radius", styled ? 18 : 0, 0, 48);
+    layout.floating = layout.margin > 0 || layout.radius > 0;
+    // Styles.qml's flag(): any number but 0.
+    bool ok = false;
+    const double fit = themed(tokens, QStringLiteral("taskbar-fit"), light).toDouble(&ok);
+    layout.fit = layout.floating && (ok ? fit != 0 : styled);
+    layout.edge = layout.fit ? size("taskbar-edge", layout.variant == QLatin1String("dock") ? 1 : 0, 0, 2) : 0;
+    return layout;
+}
+
+// Whether a file's tokens set the taskbar's layout in a mode (any of the keys
+// above, for both modes or that one): a taskbar style that does decides it
+// over the theme.
+inline bool setsTaskbarLayout(const QVariantMap& tokens, bool light)
+{
+    static const QStringList keys { QStringLiteral("taskbar-variant"), QStringLiteral("taskbar-margin"),
+        QStringLiteral("taskbar-radius"), QStringLiteral("taskbar-fit"), QStringLiteral("taskbar-edge") };
+    const QString mode = light ? QStringLiteral("light") : QStringLiteral("dark");
+    return std::any_of(tokens.keyBegin(), tokens.keyEnd(), [&mode](const QString& key) {
+        const QString prefix = key.section(u'.', 0, -2);
+        return (prefix.isEmpty() || prefix == mode) && keys.contains(key.section(u'.', -1));
+    });
+}
+
 // The chosen theme and styles of a vela.conf, each resolved on its own (a
 // panel's blur look comes from the theme and its own style only), and merged
 // (what Theme.qml and Styles.qml take: a style's keys over the theme's).
@@ -664,38 +740,105 @@ inline QVariantList available(const QString& surface = QString())
     return list;
 }
 
-// A surface's styles with their pictures (themes/screenshots/<surface>/
-// <name>.png, or <name>-qs.png and <name>-nc.png for quick settings and the
-// notification center): { name, text, author, images: [file URLs] }. Styles
-// without a picture are listed too, with none.
-inline QVariantList gallery(const QString& surface)
+// The pictures of themes and styles, made by scripts/theme-pictures.py, in
+// themes/screenshots/:
+//   themes/<theme>.png              the desktop in a theme
+//   themes/<theme>/<surface>.png    a surface as the theme draws it
+//   <surface>/<style>.png           a style
+// with two pictures in place of the .png for quick settings and the
+// notification center, -qs.png and -nc.png. Each name has a place of its own:
+// no theme's or style's name picks another's pictures. Your own themes and
+// styles may have theirs in ~/.config/vela/themes/screenshots/, which wins
+// over the installed ones. As file URLs; none when there is no picture.
+inline QStringList pictures(const QString& directory, const QString& name, bool panels)
 {
-    QVariantList list;
-    const Layer layer = layerFor(surface);
-    if (layer == Theme || layer >= LayerCount) {
-        return list;
-    }
-    const QString dir = QStringLiteral("vela/themes/screenshots/") + surface + u'/';
-    const auto picture = [&dir](const QString& file) {
+    QStringList urls;
+    const QString dir = QStringLiteral("vela/themes/screenshots/") + directory + u'/';
+    const QStringList files = panels ? QStringList { name + QStringLiteral("-qs.png"), name + QStringLiteral("-nc.png") }
+                                     : QStringList { name + QStringLiteral(".png") };
+    for (const QString& file : files) {
         QString path = QStandardPaths::locate(QStandardPaths::GenericConfigLocation, dir + file);
         if (path.isEmpty()) {
             path = QStandardPaths::locate(QStandardPaths::GenericDataLocation, dir + file);
         }
-        return path.isEmpty() ? QString() : QUrl::fromLocalFile(path).toString();
-    };
-    for (const QVariant& entry : available(surface)) {
-        QVariantMap style = entry.toMap();
-        const QString name = style.value(QStringLiteral("name")).toString();
-        QStringList images;
-        for (const QString& file : { name + QStringLiteral(".png"), name + QStringLiteral("-qs.png"), name + QStringLiteral("-nc.png") }) {
-            if (const QString url = picture(file); !url.isEmpty()) {
-                images.append(url);
-            }
+        if (!path.isEmpty()) {
+            urls.append(QUrl::fromLocalFile(path).toString());
         }
-        style.insert(QStringLiteral("images"), images);
-        list.append(style);
+    }
+    return urls;
+}
+
+// The folders the pictures are in, those there are: each themes directory's
+// screenshots/ and every folder under it (a theme's own too), for Settings to
+// watch, so that a picture added shows at once.
+inline QStringList pictureDirectories()
+{
+    QStringList dirs;
+    for (const QString& root : directories(Theme)) {
+        const QString shots = root + QStringLiteral("/screenshots");
+        if (!QFileInfo(shots).isDir()) {
+            continue;
+        }
+        dirs.append(shots);
+        for (QDirIterator it(shots, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories); it.hasNext();) {
+            dirs.append(it.next());
+        }
+    }
+    return dirs;
+}
+
+// The installed themes ("") or a surface's styles, with their pictures:
+// { name, text, author, images: [file URLs] }. A theme's picture is the
+// desktop in it; a style's, its surface. Those without a picture are listed
+// too, with none.
+inline QVariantList gallery(const QString& surface)
+{
+    QVariantList list;
+    const Layer layer = layerFor(surface);
+    if (layer >= LayerCount) {
+        return list;
+    }
+    const QString directory = layer == Theme ? QStringLiteral("themes") : surface;
+    for (const QVariant& entry : available(surface)) {
+        QVariantMap item = entry.toMap();
+        item.insert(QStringLiteral("images"),
+            pictures(directory, item.value(QStringLiteral("name")).toString(), layer == Notifications));
+        list.append(item);
     }
     return list;
+}
+
+// A surface as a theme draws it, without styles: what "From the theme" shows.
+// A theme without pictures of its own, your own mostly, shows those of the
+// first theme in its inherits= chain that has them: { images: [file URLs],
+// from: the name of the theme they show }, empty when none has.
+inline QVariantMap themeSurfacePictures(const QString& theme, const QString& surface)
+{
+    const Layer layer = layerFor(surface);
+    if (!validName(theme) || layer == Theme || layer >= LayerCount) {
+        return {};
+    }
+    for (const QString& file : resolve(theme, Theme).files) {
+        const QString name = QFileInfo(file).completeBaseName();
+        if (const QStringList images = pictures(QStringLiteral("themes/") + name, surface, layer == Notifications);
+            !images.isEmpty()) {
+            return { { QStringLiteral("images"), images }, { QStringLiteral("from"), name } };
+        }
+    }
+    return {};
+}
+
+// What Settings calls a theme ("") or a surface's style: the name its file's
+// first line gives (available()), "" when it isn't installed.
+inline QString displayName(const QString& surface, const QString& name)
+{
+    for (const QVariant& entry : available(surface)) {
+        const QVariantMap item = entry.toMap();
+        if (item.value(QStringLiteral("name")).toString() == name) {
+            return item.value(QStringLiteral("text")).toString();
+        }
+    }
+    return {};
 }
 
 } // namespace vela::themes
