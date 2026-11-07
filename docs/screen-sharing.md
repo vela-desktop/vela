@@ -166,6 +166,8 @@ targets:
   binary itself.
 - **Portal**: the apps of §5.2, each with the portal's targets. None known
   yet (PipeWire not there, or the app not linked yet): "An app".
+- **Language**: when it changes, the names and texts are made again
+  (`ScreenSharing::refresh`), after Start's names and the mixers'.
 - **Targets**: "your screen" with one output, else the output's
   description; "a window of <app>" (the window's app, named the same way),
   "a window" when it has none.

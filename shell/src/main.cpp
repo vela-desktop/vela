@@ -307,9 +307,18 @@ int main(int argc, char* argv[])
     QQmlApplicationEngine* qmlEngine = nullptr;
     AppModel* appModel = nullptr;
     DesktopModel* desktopModel = nullptr;
-    vela::language::install(QStringLiteral("vela-shell"), [&qmlEngine, &appModel, &desktopModel] {
+    vela::audio::Audio* audioModel = nullptr;
+    ScreenSharing* sharingModel = nullptr;
+    vela::language::install(QStringLiteral("vela-shell"),
+        [&qmlEngine, &appModel, &desktopModel, &audioModel, &sharingModel] {
         if (appModel) {
             appModel->reload(); // app names in the new language (Name[en], Name[it])
+        }
+        if (audioModel && appModel) {
+            audioModel->setAppResolver(audioAppResolver(*appModel)); // the mixers' and screen sharing's apps
+        }
+        if (sharingModel) {
+            sharingModel->refresh(); // who shares what, in the new language
         }
         if (desktopModel) {
             desktopModel->refresh(); // the Recycle Bin
@@ -441,6 +450,8 @@ int main(int argc, char* argv[])
     // The sound (docs/audio.md): apps named after their .desktop file.
     vela::audio::Audio audio;
     audio.setAppResolver(audioAppResolver(apps));
+    audioModel = &audio;
+    sharingModel = &sharing;
     audio.setBluetooth(&bluetooth); // headsets' batteries
     // The apps behind a portal share (docs/screen-sharing.md §5.2).
     QObject::connect(&audio, &vela::audio::Audio::changed, &sharing,

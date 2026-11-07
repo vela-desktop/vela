@@ -276,6 +276,25 @@ private Q_SLOTS:
         QCOMPARE(changed.count(), 0);
     }
 
+    // The language changes during a share: names and texts again, the share
+    // itself untouched.
+    void namedAgainAfterALanguageChange()
+    {
+        QTemporaryDir dir;
+        QString name = QStringLiteral("Registratore");
+        ScreenSharing sharing([&name](const QStringList&) { return ScreenSharing::App { {}, name, {} }; }, nullptr,
+            dir.filePath(QStringLiteral("none.sock")), 300);
+        sharing.apply(line(state({ client(QStringLiteral("recorder"), { output(QStringLiteral("DP-3")) }) })));
+        QCOMPARE(sharing.summary(), QStringLiteral("Registratore is sharing your screen"));
+        name = QStringLiteral("Recorder");
+        QSignalSpy changed(&sharing, &ScreenSharing::changed);
+        sharing.refresh();
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(sharing.summary(), QStringLiteral("Recorder is sharing your screen"));
+        sharing.refresh(); // nothing new: nothing said
+        QCOMPARE(changed.count(), 1);
+    }
+
     // The session's socket ($XDG_RUNTIME_DIR/vela-$WAYLAND_DISPLAY.sock),
     // tried again until the compositor is there.
     void findsTheSessionsCompositor()

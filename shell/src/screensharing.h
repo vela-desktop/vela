@@ -54,6 +54,9 @@ public:
     // A line of `watch capture`.
     void apply(const QByteArray& line);
 
+    // The language changed (or Start's names): everything named again.
+    void refresh();
+
     // The compositor's state, named (§5.1). `outputs`: how many the session
     // has (one: "Your screen").
     static QVariantList describe(const QJsonObject& state, const Resolver& resolver, const QVariantList& portalApps,

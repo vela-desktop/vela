@@ -117,6 +117,11 @@ void ScreenSharing::setPortalApps(const QVariantList& apps)
     }
 }
 
+void ScreenSharing::refresh()
+{
+    update();
+}
+
 void ScreenSharing::update()
 {
     const auto* app = qobject_cast<QGuiApplication*>(QCoreApplication::instance());
