@@ -215,9 +215,12 @@ def verify_failed_block_restoration(host, layout, source, plan):
             != resolved_conditions(source.parent.parent / 'campaigns' / plan['run_id'], plan)):
         raise BenchError('Failed block differs from the immutable hardware conditions')
     if state.get('plan', {}).get('input_policy'):
-        trusted(source / 'input-isolation.json')
-        guard = read_json(source / 'input-isolation.json')
-        if guard.get('release_verified_after_worker_exit') is not True:
+        path = source / 'input-isolation.json'
+        if not path.is_file():
+            raise BenchError('Failed block has no verified physical-input release evidence')
+        trusted(path)
+        guard = read_json(path)
+        if not isinstance(guard, dict) or guard.get('release_verified_after_worker_exit') is not True:
             raise BenchError('Physical input release was not verified')
     # The terminal state is written at the end of ExecStopPost, just before
     # systemd retires the unit. Allow that short deactivation race to settle.

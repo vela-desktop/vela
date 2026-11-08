@@ -300,6 +300,7 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
                  "conditions_restore_required": False,
                  "campaign_run_id": campaign_run_id,
                  "campaign_block": request,
+                 "input_isolation_acquisition": "not-started",
                  "fault": fault, "unit": unit,
                  "display_manager_was_active": manager_state == "active", "restore_required": False,
                  "cleanup_errors": [], "result": "pending", "fixture": f"/home/.vela-benchmark-{run_id}",
@@ -601,6 +602,7 @@ def worker(host, layout=Layout()):
         state = read_json(directory / "state.json")
         if state.get("stage") != "queued":
             raise BenchError("Pilot is not queued")
+        state['input_isolation_acquisition'] = 'not-started'
         input_guard = None
         try:
             require_current_home_isolation(record)
@@ -641,10 +643,12 @@ def worker(host, layout=Layout()):
             if state["display_manager_was_active"]:
                 quiesce_display_manager(host, directory, state, layout)
             reserve_vt(host, directory, state, layout)
+            update(directory, state, 'takeover', input_isolation_acquisition='acquiring')
             input_guard = InputIsolation(layout, on_failure=lambda evidence:
                                          atomic_json(directory / 'input-isolation.json', evidence))
             input_guard.start()
             atomic_json(directory / "input-isolation.json", input_guard.evidence())
+            update(directory, state, 'takeover', input_isolation_acquisition='active')
             # JSON object key sorting must never reorder the planned targets.
             order = state["plan"].get("target_order", list(state["plan"]["targets"]))
             diagnostic_failures = []
@@ -773,6 +777,29 @@ def worker(host, layout=Layout()):
     # ExecStopPost owns cleanup, including when this process is killed.
 
 
+def display_manager_start_condition(host, unit, path):
+    if unit not in ('sddm.service', 'plasmalogin.service'):
+        raise BenchError('Invalid display-manager condition unit')
+    # systemctl show prints Conditions=[unprintable] for this compound type.
+    # Read the D-Bus tuple instead of relying on its human-facing formatter.
+    object_path = '/org/freedesktop/systemd1/unit/' + unit.replace('.', '_2e')
+    result = host.run(['busctl', '--system', '--json=short', 'get-property',
+        'org.freedesktop.systemd1', object_path, 'org.freedesktop.systemd1.Unit', 'Conditions'])
+    try:
+        value = json.loads(result.stdout)
+    except (ValueError, TypeError) as exc:
+        raise BenchError('Invalid display-manager Conditions response') from exc
+    if (not isinstance(value, dict) or value.get('type') != 'a(sbbsi)'
+            or not isinstance(value.get('data'), list)):
+        raise BenchError('Invalid display-manager Conditions signature')
+    for row in value['data']:
+        if (isinstance(row, list) and len(row) == 5 and row[0] == 'ConditionPathExists'
+                and row[1] is False and row[2] is False and row[3] == str(path)
+                and type(row[4]) is int and row[4] in (-1, 0, 1)):
+            return value
+    raise BenchError('Display-manager start-inhibition condition was not loaded')
+
+
 def quiesce_display_manager(host, directory, state, layout):
     """Freeze authentication before the final session check and DM teardown.
 
@@ -809,9 +836,8 @@ def quiesce_display_manager(host, directory, state, layout):
     host.run(['systemctl', 'daemon-reload'])
     if host.run(['systemctl','show',unit,'--property=Restart','--value']).stdout.strip() != 'no':
         raise BenchError('Display-manager automatic restart could not be inhibited')
-    conditions = host.run(['systemctl','show',unit,'--property=Conditions','--value']).stdout
-    if 'ConditionPathExists' not in conditions or str(start_condition) not in conditions:
-        raise BenchError('Display-manager start-inhibition condition was not loaded')
+    guard['conditions'] = display_manager_start_condition(host, unit, start_condition)
+    update(directory, state, 'takeover')
     host.run(['systemctl', 'freeze', unit], timeout=15)
     if host.run(['systemctl', 'show', unit, '--property=FreezerState', '--value']).stdout.strip() != 'frozen':
         raise BenchError('Display-manager authentication did not freeze')
@@ -968,6 +994,29 @@ def restore_hardware_conditions(host, layout, directory, state, record):
         atomic_json(path, evidence)
 
 
+def preserve_input_release(directory, state):
+    if not state.get('plan', {}).get('input_policy'):
+        return
+    path = directory / 'input-isolation.json'
+    if path.exists():
+        guard = read_json(path)
+        if not isinstance(guard, dict):
+            raise BenchError('Invalid physical-input recovery evidence')
+    elif state.get('input_isolation_acquisition') == 'not-started':
+        # The acquiring marker is persisted before opening any evdev node.
+        # Early takeover failures therefore have a positive no-acquisition
+        # receipt, rather than being confused with lost release evidence.
+        guard = {'policy': state['plan']['input_policy'], 'devices': {}, 'error': None,
+                 'status': 'released', 'acquisition_attempted': False,
+                 'release_method': 'not-acquired-before-worker-exit'}
+    else:
+        return  # Missing evidence after a possible acquisition still blocks continuation.
+    guard['release_verified_after_worker_exit'] = True
+    if guard.get('status') == 'active':
+        guard.update(status='released', release_method='worker-process-exit')
+    atomic_json(path, guard)
+
+
 def recover(host, layout=Layout()):
     record = load_setup(host, layout)
     with control_lock(layout):
@@ -988,16 +1037,11 @@ def recover(host, layout=Layout()):
             state.update(restore_required=False, masked_units=[], result="failed", error="Host rebooted during pilot")
             state.pop('display_manager_quiescence', None)
         update(directory, state, "restoring")
-        if state.get("plan", {}).get("input_policy"):
-            guard_path = directory / "input-isolation.json"
-            if guard_path.exists():
-                guard = read_json(guard_path)
-                # ExecStopPost starts after the worker process has exited; all
-                # its evdev descriptors are already closed, even after SIGKILL.
-                guard['release_verified_after_worker_exit'] = True
-                if guard.get('status') == 'active':
-                    guard.update(status='released', release_method='worker-process-exit')
-                atomic_json(guard_path, guard)
+        # ExecStopPost runs after the worker and its children have exited.
+        try:
+            preserve_input_release(directory, state)
+        except (BenchError, OSError, ValueError) as exc:
+            errors.append(str(exc))
         stopped = False
         try:
             released = stop_user(host, record, layout)

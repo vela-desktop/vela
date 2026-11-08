@@ -323,9 +323,10 @@ class ReviewAuthentication(unittest.TestCase):
             def run(command,**kwargs):
                 nonlocal frozen
                 calls.append(command);output=''
-                if '--property=Id' in command:output='sddm.service'
+                if command[0]=='busctl':output=json.dumps({'type':'a(sbbsi)','data':[['ConditionPathExists',False,False,str(directory/'display-manager-start-blocked'),0]]})
+                elif '--property=Id' in command:output='sddm.service'
                 elif '--property=Restart' in command:output='no'
-                elif '--property=Conditions' in command:output='ConditionPathExists=' + str(directory/'display-manager-start-blocked')
+                elif '--property=Conditions' in command:raise AssertionError('systemctl prints Conditions=[unprintable]')
                 elif '--property=FreezerState' in command:output='frozen' if frozen else 'running'
                 elif '--property=ActiveState' in command:output='active'
                 elif command[1]=='freeze':frozen=True
@@ -354,9 +355,10 @@ class ReviewAuthentication(unittest.TestCase):
             def run(command,**kwargs):
                 nonlocal frozen,active
                 calls.append(command);output=''
-                if '--property=Id' in command:output='plasmalogin.service'
+                if command[0]=='busctl':output=json.dumps({'type':'a(sbbsi)','data':[['ConditionPathExists',False,False,str(directory/'display-manager-start-blocked'),0]]})
+                elif '--property=Id' in command:output='plasmalogin.service'
                 elif '--property=Restart' in command:output='no'
-                elif '--property=Conditions' in command:output='ConditionPathExists=' + str(directory/'display-manager-start-blocked')
+                elif '--property=Conditions' in command:raise AssertionError('systemctl prints Conditions=[unprintable]')
                 elif '--property=FreezerState' in command:output='frozen' if frozen else 'running'
                 elif '--property=ActiveState' in command:output='active' if active else 'inactive'
                 elif '--property=LoadState' in command:output='masked' if mask.is_symlink() else 'loaded'
@@ -396,3 +398,24 @@ class ReviewAuthentication(unittest.TestCase):
                 with self.assertRaisesRegex(BenchError,'start-inhibition marker'):
                     pilot.quiesce_display_manager(SimpleNamespace(run=run),directory,{'stage':'takeover'},layout)
             self.assertFalse(any(command[1]=='daemon-reload' for command in commands))
+
+    def test_conditions_use_typed_dbus_and_reject_negation_triggers_and_wrong_paths(self):
+        path=Path('/var/lib/vela-benchmark/pilots/fixture/display-manager-start-blocked')
+        valid={'type':'a(sbbsi)','data':[['ConditionPathExists',False,False,str(path),0]]}
+        transport=Mock()
+        transport.run.return_value=SimpleNamespace(stdout=json.dumps(valid))
+        self.assertEqual(pilot.display_manager_start_condition(transport,'plasmalogin.service',path),valid)
+        self.assertEqual(transport.run.call_args.args[0],['busctl','--system','--json=short','get-property',
+            'org.freedesktop.systemd1','/org/freedesktop/systemd1/unit/plasmalogin_2eservice',
+            'org.freedesktop.systemd1.Unit','Conditions'])
+        for case in ('unprintable','signature','path','trigger','negated','result-type','empty'):
+            value=copy.deepcopy(valid)
+            if case=='signature':value['type']='s'
+            elif case=='path':value['data'][0][3]='/other'
+            elif case=='trigger':value['data'][0][1]=True
+            elif case=='negated':value['data'][0][2]=True
+            elif case=='result-type':value['data'][0][4]=False
+            elif case=='empty':value['data']=[]
+            transport.run.return_value.stdout='Conditions=[unprintable]\n' if case=='unprintable' else json.dumps(value)
+            with self.subTest(case=case),self.assertRaises(BenchError):
+                pilot.display_manager_start_condition(transport,'plasmalogin.service',path)

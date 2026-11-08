@@ -9,6 +9,7 @@ They are not evidence that PAM/logind works on a real seat.
 
 import contextlib
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -71,6 +72,11 @@ class FakeHost:
             if self.fail_start:
                 raise BenchError("synthetic display-manager start failure")
             self.manager_active = True
+        elif argv[0] == 'busctl' and argv[-1] == 'Conditions':
+            root=Path(self.account.pw_dir).parents[3]
+            override=root/'run/systemd/system/sddm.service.d/99-vela-benchmark-quiescence.conf'
+            condition=next(line.split('=',1)[1] for line in override.read_text().splitlines() if line.startswith('ConditionPathExists='))
+            stdout=json.dumps({'type':'a(sbbsi)','data':[['ConditionPathExists',False,False,condition,0]]})
         elif argv[:2] == ["systemctl", "show"]:
             if '--property=Id' in argv:
                 stdout='sddm.service\n'
@@ -79,7 +85,8 @@ class FakeHost:
             elif '--property=FreezerState' in argv:
                 stdout='frozen\n' if self.manager_frozen else 'running\n'
             elif "--property=LoadState" in argv:
-                stdout = "not-found\n" if "--value" in argv else "LoadState=not-found\n"
+                mask=Path(self.account.pw_dir).parents[3]/'run/systemd/system/sddm.service' if self.account else None
+                stdout = ('masked\n' if argv[2]=='sddm.service' and mask and mask.is_symlink() else 'not-found\n') if '--value' in argv else 'LoadState=not-found\n'
             else:
                 stdout = "active\n" if self.manager_active and argv[2] == "display-manager.service" else "inactive\n"
         elif argv[:2] == ['systemctl','freeze']:
@@ -1092,6 +1099,22 @@ class HostOperations(unittest.TestCase):
         self.assertEqual(read_json(directory / 'state.json')['result'], 'failed')
         self.input_guard.start.assert_not_called()
 
+    def test_supervised_recovery_records_a_failure_before_input_acquisition(self):
+        from vela_bench.input_isolation import POLICY
+        self.setup_account()
+        directory=self.pilot_state(result='pending')
+        state=read_json(directory/'state.json')
+        state.update(plan={'input_policy':POLICY},input_isolation_acquisition='not-started')
+        atomic_json(directory/'state.json',state)
+        self.assertFalse((directory/'input-isolation.json').exists())
+        self.recover_without_fixture_io()
+        receipt=read_json(directory/'input-isolation.json')
+        self.assertEqual(receipt['status'],'released')
+        self.assertFalse(receipt['acquisition_attempted'])
+        self.assertTrue(receipt['release_verified_after_worker_exit'])
+        self.assertEqual(read_json(directory/'state.json')['cleanup_errors'],[])
+        self.input_guard.start.assert_not_called()
+
     def test_uninstall_keeps_evidence_and_removes_only_recorded_files(self):
         record = self.setup_account()
         evidence = self.layout.base / "pilots" / "keep.json"
@@ -1206,6 +1229,8 @@ class HostOperations(unittest.TestCase):
         self.assertEqual(diagnostic["stdout"], "monitor not ready on stdout")
         self.assertNotIn(["systemctl", "stop", "display-manager.service"], self.host.calls)
         self.assertTrue(read_json(directory / "state.json")["restore_required"])
+        self.assertEqual(read_json(directory / 'state.json')['input_isolation_acquisition'],'not-started')
+        self.input_guard.start.assert_not_called()
         self.recover_without_fixture_io()
         self.assertIn(["chvt", "2"], self.host.calls)
         self.assertEqual(read_json(directory / "state.json")["stage"], "failed")

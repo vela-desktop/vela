@@ -46,10 +46,11 @@ class QualificationAcceptance(unittest.TestCase):
                 'plan': {'input_policy': POLICY}, 'fault_injected': 'crash', 'unit': FAULT_UNIT,
                 'supervision': {'SERVICE_RESULT': 'signal'}, 'fault_uinput_cleanup': 'passed'})
             guard = {'policy': POLICY, 'status': 'released', 'error': None, 'release_verified_after_worker_exit': True}
-            for case in ('good', 'no-release', 'guard-error', 'wrong-cursor'):
+            for case in ('good', 'no-release', 'guard-error', 'wrong-cursor', 'never-acquired'):
                 changed = copy.deepcopy(guard)
                 if case == 'no-release': changed['release_verified_after_worker_exit'] = False
                 if case == 'guard-error': changed['error'] = 'hotplug'
+                if case == 'never-acquired': changed['acquisition_attempted'] = False
                 atomic_json(directory / 'input-isolation.json', changed)
                 atomic_json(directory / 'vela-cursor-profile.json', {} if case == 'wrong-cursor' else POLICY)
                 with self.subTest(case=case):

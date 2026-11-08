@@ -129,6 +129,41 @@ class Execution(unittest.TestCase):
         self.assertTrue(latest(self.layout)['selection_complete'])
         self.assertEqual(latest(self.layout)['failed_blocks'], 0)
 
+    def test_failure_before_input_acquisition_keeps_the_rest_of_the_schedule_running(self):
+        from vela_bench.input_isolation import POLICY
+        from vela_bench.pilot import preserve_input_release
+        self.use_recovered_failure()
+        def early_failure(state, source):
+            state.update(input_isolation_acquisition='not-started',plan={'input_policy':POLICY})
+            self.assertFalse((source/'input-isolation.json').exists())
+            preserve_input_release(source,state)
+        self.alter_failed_state=early_failure
+        self.assertEqual(self.campaign(phases=['motion','overhead'],fast=True),1)
+        data=latest(self.layout)
+        self.assertEqual(self.calls,['vela','plasma','vela','plasma'])
+        self.assertEqual(data['stage'],'completed-with-failures')
+        source=self.layout.base/'pilots'/data['blocks'][0]['pilot_run_id']
+        receipt=read_json(source/'input-isolation.json')
+        self.assertFalse(receipt['acquisition_attempted'])
+        self.assertTrue(receipt['release_verified_after_worker_exit'])
+        self.assertEqual(receipt['devices'],{})
+
+    def test_missing_release_after_possible_acquisition_is_not_treated_as_never_started(self):
+        from vela_bench.input_isolation import POLICY
+        from vela_bench.pilot import preserve_input_release
+        self.use_recovered_failure()
+        for acquisition in ('acquiring','active',None):
+            self.calls.clear()
+            def unknown_release(state,source):
+                state.update(input_isolation_acquisition=acquisition,plan={'input_policy':POLICY})
+                preserve_input_release(source,state)
+                self.assertFalse((source/'input-isolation.json').exists())
+            self.alter_failed_state=unknown_release
+            with self.subTest(acquisition=acquisition):
+                self.assertEqual(self.campaign(phases=['motion','overhead'],fast=True),1)
+                self.assertEqual(self.calls,['vela'])
+                self.assertEqual(latest(self.layout)['stage'],'interrupted')
+
     def test_unverified_restoration_or_live_account_stops_before_another_block(self):
         self.use_recovered_failure()
         for case in ('cleanup-error', 'hardware-restore', 'changed-hardware', 'reboot', 'live-pid', 'input-release'):

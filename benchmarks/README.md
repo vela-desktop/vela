@@ -944,14 +944,24 @@ has no fixed 30-second deadline. The desktop session's runtime limit matches the
 at 30 Hz its probe allows 80 seconds inside the 120-second instrument budget.
 
 Before stopping the display manager, the worker temporarily disables its
-automatic restart, freezes authentication, installs an owned runtime mask and
-checks logind again, including sessions still opening. It queues SIGSTOP before
-thawing systemd, then kills only that verified greeter cgroup and stops its unit.
+automatic restart and adds a required missing-path condition to inhibit fresh
+start jobs. It verifies the typed D-Bus `Conditions` property: `systemctl show`
+can print `Conditions=[unprintable]` even when the condition is loaded. It then
+freezes authentication and checks logind again, including sessions still opening.
+It queues SIGSTOP before thawing systemd, kills only that verified greeter cgroup
+and stops its unit. The owned runtime mask is loaded after the unit is stopped,
+keeping the active unit resolvable throughout thaw and teardown.
 Recovery removes the owned mask/restart override and resumes authentication if
 takeover was interrupted. A physical-input monitor failure persists its error
 and immediately terminates the worker through PID 1 recovery, even if a client
 subprocess is blocked. Successful block receipts are published after teardown
 and input-guard release.
+
+Input acquisition is journaled before any evdev node can be opened. Recovery
+writes an explicit no-acquisition receipt when takeover fails before that point,
+so an early setup failure can yield to the next independent block after verified
+restoration. Missing release evidence after possible acquisition still blocks
+continuation. A no-acquisition receipt never qualifies a measured or fault block.
 
 New disposable profiles select Do Not Disturb for both Vela and Plasma and use
 per-user XDG `Hidden=true` overrides for system autostart applications outside
@@ -1184,6 +1194,18 @@ PyGObject and a running user manager:
 
 ```sh
 python3 benchmarks/tests/manager_integration.py benchmark-results/manager-recovery-selftest/evidence.json
+```
+
+The quiescence regression runs the production control path against disposable
+user-manager `sleep` services. It verifies actual D-Bus condition data, failed
+activation before masking, thaw/stop ordering, and recovery both for an opening
+login and an interruption after SIGSTOP. Only unit identity, unit-file publication
+and the system/user bus boundary are substituted. It needs a running user manager
+and runs unprivileged, without accessing the real display manager, PAM, a TTY or
+physical input:
+
+```sh
+python3 benchmarks/tests/quiescence_integration.py
 ```
 
 The alias reservation regression uses private randomized user templates running

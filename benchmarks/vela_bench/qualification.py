@@ -84,6 +84,7 @@ def audit_pilot(directory, target, fault=None, *, instruments=True):
             cursor = read_json(directory / f'{target}-cursor-profile.json')
             checks['physical_input_released'] = (guard.get('policy') == POLICY
                 and guard.get('status') == 'released' and guard.get('error') is None
+                and guard.get('acquisition_attempted') is not False
                 and guard.get('release_verified_after_worker_exit') is True)
             checks['transparent_cursor_profile'] = all(cursor.get(k) == v for k, v in POLICY.items())
         conditions = read_json(directory / f"{target}-conditions.json")
