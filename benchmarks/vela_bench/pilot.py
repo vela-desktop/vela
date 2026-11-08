@@ -791,37 +791,55 @@ def quiesce_display_manager(host, directory, state, layout):
         raise BenchError('Unowned display-manager runtime override exists')
     if override.exists() or override.is_symlink():
         raise BenchError('Unowned display-manager restart override exists')
+    # Keep the active unit loadable until it has been thawed and stopped.
+    # A missing, root-owned pilot marker inhibits new start jobs (including
+    # dependency-triggered starts) throughout the stop-to-mask transition.
+    start_condition = directory / 'display-manager-start-blocked'
+    if start_condition.exists() or start_condition.is_symlink():
+        raise BenchError('Display-manager start-inhibition marker unexpectedly exists')
     created_override_directory = not override.parent.exists()
     override.parent.mkdir(exist_ok=True)
     trusted(override.parent, directory=True)
     guard = {'unit': unit, 'mask_requested': False, 'status': 'freezing',
+             'start_condition': str(start_condition),
              'restart_override_requested': True, 'created_override_directory': created_override_directory}
     update(directory, state, 'takeover', display_manager_quiescence=guard)
     with override.open('x') as stream:
-        stream.write('[Service]\nRestart=no\n')
+        stream.write(f'[Unit]\nConditionPathExists={start_condition}\n[Service]\nRestart=no\n')
     host.run(['systemctl', 'daemon-reload'])
     if host.run(['systemctl','show',unit,'--property=Restart','--value']).stdout.strip() != 'no':
         raise BenchError('Display-manager automatic restart could not be inhibited')
+    conditions = host.run(['systemctl','show',unit,'--property=Conditions','--value']).stdout
+    if 'ConditionPathExists' not in conditions or str(start_condition) not in conditions:
+        raise BenchError('Display-manager start-inhibition condition was not loaded')
     host.run(['systemctl', 'freeze', unit], timeout=15)
     if host.run(['systemctl', 'show', unit, '--property=FreezerState', '--value']).stdout.strip() != 'frozen':
         raise BenchError('Display-manager authentication did not freeze')
-    guard['mask_requested'] = True
-    update(directory, state, 'takeover')
-    mask.symlink_to('/dev/null')
-    host.run(['systemctl', 'daemon-reload'])
-    if host.run(['systemctl', 'show', unit, '--property=FreezerState', '--value']).stdout.strip() != 'frozen':
-        raise BenchError('Display-manager authentication resumed before the final login check')
+    # Do not mask/reload the frozen unit: on plasmalogin systemd can lose
+    # its unit reference, making both thaw and kill/stop fail.
     require_no_graphical_sessions(logind_sessions(host), after_authorization=True)
     guard['stop_requested'] = True
     update(directory, state, 'takeover')
     host.run(['systemctl', 'kill', '--kill-whom=all', '--signal=SIGSTOP', unit], timeout=10)
-    # A pending SIGSTOP prevents authentication from executing after thaw.
-    # Thaw before SIGKILL avoids stale freezer state on an inactive service.
+    # SIGSTOP is already pending on every greeter process. Unfreeze while
+    # the unit remains resolvable, then kill and stop it. The missing-path
+    # condition prevents fresh activations even if the service exits before
+    # the runtime mask becomes effective.
     host.run(['systemctl', 'thaw', unit], timeout=15)
+    if host.run(['systemctl', 'show', unit, '--property=FreezerState', '--value']).stdout.strip() != 'running':
+        raise BenchError('Display-manager authentication did not thaw')
     host.run(['systemctl', 'kill', '--kill-whom=all', '--signal=SIGKILL', unit], timeout=10)
     host.run(['systemctl', 'stop', 'display-manager.service'], timeout=45)
     if host.run(['systemctl', 'show', unit, '--property=ActiveState', '--value']).stdout.strip() not in ('inactive','failed'):
         raise BenchError('Quiesced display manager did not stop')
+    # Mask only after the service is stopped; reloading a frozen unit is the
+    # plasmalogin.service failure that originally aborted the campaign.
+    guard['mask_requested'] = True
+    update(directory, state, 'takeover')
+    mask.symlink_to('/dev/null')
+    host.run(['systemctl', 'daemon-reload'])
+    if host.run(['systemctl', 'show', unit, '--property=LoadState', '--value']).stdout.strip() != 'masked':
+        raise BenchError('Display-manager runtime mask was not loaded')
     guard['status'] = 'stopped'
     update(directory, state, 'takeover')
 
@@ -841,7 +859,11 @@ def release_display_manager_quiescence(host, directory, state, layout):
         mask.unlink()
     if guard.get('restart_override_requested') and (override.exists() or override.is_symlink()):
         trusted(override)
-        if override.read_text() != '[Service]\nRestart=no\n':
+        condition = guard.get('start_condition')
+        if condition is not None and condition != str(directory / 'display-manager-start-blocked'):
+            raise BenchError('Owned display-manager start condition changed; refusing removal')
+        expected = (f'[Unit]\nConditionPathExists={condition}\n' if condition else '') + '[Service]\nRestart=no\n'
+        if override.read_text() != expected:
             raise BenchError('Owned display-manager restart override changed; refusing removal')
         override.unlink()
         if guard.get('created_override_directory') and not any(override.parent.iterdir()):
