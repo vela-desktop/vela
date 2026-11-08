@@ -502,8 +502,11 @@ The versioned `p2-neutral-client-v3` workload fixes these samples for both modes
   native desktop/window motion. The gap count is not a kernel vblank counter.
   V3 ends the coverage window at the latest measured feedback receipt, including
   trailing discards. Historical v1/v2 metric formulas remain available for audit.
-  Contradictory same-clock presentation/receipt ordering is rejected in every
-  version; historical acceptance does not override raw-evidence validation.
+  Same-clock presentation feedback is bounded in every version. DRM may report
+  the upcoming start of scanout during vblank, so vsynced feedback may lead its
+  receipt by up to the reported refresh interval. Larger leads and future
+  non-vsynced feedback are rejected. See the kernel's
+  [KMS timestamp contract](https://docs.kernel.org/gpu/drm-kms.html#c.drm_crtc_funcs.get_vblank_timestamp).
 - Slow producer: explicit and implicit GPU acquire-fence cases, each with its
   own new no-load input/animation control in the same block. Report absolute
   results and paired differences. The producer exposes device/queue identity,

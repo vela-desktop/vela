@@ -147,11 +147,16 @@ class ReviewEvidence(unittest.TestCase):
             guard.monitor()
         kill.assert_called_once()
 
-    def test_future_presentation_is_rejected_when_clocks_are_identical(self):
+    def test_same_clock_presentation_lead_is_bounded_by_reported_vblank_refresh(self):
         from test_diagnostics import stream,encode
-        rows=stream();rows[3]['presentation_ns']=rows[3]['received_monotonic_ns']+1
-        with self.assertRaisesRegex(BenchError,'receipt'):
+        rows=stream();last=rows[-2]
+        for lead in (300_000,last['refresh_ns']):
+            last['presentation_ns']=last['received_monotonic_ns']+lead
             parse_probe(encode(rows),frames=3)
+        last['presentation_ns']=last['received_monotonic_ns']+last['refresh_ns']+1
+        with self.assertRaisesRegex(BenchError,'refresh bound'):parse_probe(encode(rows),frames=3)
+        last.update(flags=0,presentation_ns=last['received_monotonic_ns']+1)
+        with self.assertRaisesRegex(BenchError,'refresh bound'):parse_probe(encode(rows),frames=3)
 
     def test_trailing_discard_extends_new_motion_window_and_preserves_v2(self):
         from test_measurements import motion_rows

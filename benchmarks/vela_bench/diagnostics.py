@@ -82,10 +82,16 @@ def parse_probe(raw, *, frames=FRAMES, delay=0, method="wayland-presentation-v1"
                     raise BenchError("Feedback refers to a different submission clock")
                 if integer(row, "presentation_ns") < row["commit_clock_ns"]:
                     raise BenchError("Presentation predates submission")
-                if clocks[0]['presentation_clock_id'] == clocks[0]['monotonic_clock_id'] and row['presentation_ns'] > row['received_monotonic_ns']:
-                    raise BenchError('Presentation timestamp is after its feedback receipt')
                 for key in ("refresh_ns", "sequence", "flags"):
                     integer(row, key)
+                # DRM timestamps the end of vblank/start of active scanout;
+                # an interrupt delivered inside vblank can precede that time.
+                # Bound this lead by one reported refresh for vsynced feedback.
+                # https://docs.kernel.org/gpu/drm-kms.html#c.drm_crtc_funcs.get_vblank_timestamp
+                allowance = row['refresh_ns'] if row['flags'] & 1 else 0
+                if (clocks[0]['presentation_clock_id'] == clocks[0]['monotonic_clock_id']
+                        and row['presentation_ns'] > row['received_monotonic_ns'] + allowance):
+                    raise BenchError('Presentation timestamp exceeds the refresh bound after its feedback receipt')
             feedback[frame] = row
         elif event == "summary":
             if index != len(rows) - 1 or row.get("complete") is not True:
