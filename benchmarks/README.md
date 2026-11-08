@@ -973,11 +973,24 @@ freezes authentication and checks logind again, including sessions still opening
 It queues SIGSTOP before thawing systemd, kills only that verified greeter cgroup
 and stops its unit. The owned runtime mask is loaded after the unit is stopped,
 keeping the active unit resolvable throughout thaw and teardown.
+The snapshotted Plasma Login/SDDM account is checked before stopping the login
+manager. Its `systemd-user` sessions of class `manager` or `manager-early` are
+service sessions, and are accepted only with the expected noninteractive
+logind metadata. Other sessions of that UID block takeover. After the manager
+stops, the runner also stops that account's verified greeter session scopes,
+then its user manager/runtime, and checks for surviving processes. Both PAM
+helpers in logind scopes and KWin services can outlive the display-manager cgroup.
+The account identity and released session scopes are recorded in
+`greeter-user-release.json`.
 Recovery removes the owned mask/restart override and resumes authentication if
 takeover was interrupted. A physical-input monitor failure persists its error
 and immediately terminates the worker through PID 1 recovery, even if a client
 subprocess is blocked. Successful block receipts are published after teardown
 and input-guard release.
+If output recovery has stopped the login manager and greeter release then fails,
+it still attempts to start the initially active login manager. Hardware recovery
+remains failed and the campaign stops; a working login service alone never
+qualifies restoration or permits the next block.
 
 Input acquisition is journaled before any evdev node can be opened. Recovery
 writes an explicit no-acquisition receipt when takeover fails before that point,
@@ -1118,8 +1131,11 @@ scripts/vela-bench-selftest --case controls-vela
 The default `quick` selection builds the native instruments, runs CPU tests,
 then exercises actual systemd transient completion/cleanup, authentication
 quiescence, interrupted recovery and timeout cleanup using unique disposable user services.
-It also verifies that a greeter service outside the display-manager cgroup is
-released before a fresh desktop starts. It runs both fixed presentation probes and all three input/capture controls
+It also verifies `manager`/`manager-early` handling, refusal of interactive
+sessions before takeover, and release of both a PAM session and a compositor
+service outside the display-manager cgroup. Logind identity is an explicit
+fixture; service liveness and stop results come from actual systemd units.
+It runs both fixed presentation probes and all three input/capture controls
 on private Vela and KWin, followed by P3 motion on both. P0 and P3 use the
 production controllers, native capture workers and real user-manager services;
 their unit-stop and state replies are not simulated. Input uses explicit

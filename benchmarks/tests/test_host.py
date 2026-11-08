@@ -8,6 +8,7 @@ They are not evidence that PAM/logind works on a real seat.
 """
 
 import contextlib
+import copy
 import io
 import json
 import os
@@ -1053,6 +1054,31 @@ class HostOperations(unittest.TestCase):
                                  case in ("second-rejection", "restart-error"))
         self.host.running = []
 
+    def test_refused_greeter_release_restarts_login_but_keeps_restoration_failed(self):
+        record = self.setup_account()
+        directory = self.pilot_state(result='pending')
+        baseline = dict(read_json(directory / 'state.json'), conditions_snapshot={})
+        rejected = {'status': 'failed', 'errors': ['no greeter outputs'], 'output_restart_eligible': True}
+        for fallback_fails in (False, True):
+            with self.subTest(fallback_fails=fallback_fails):
+                state = dict(baseline)
+                self.host.calls.clear()
+                with patch('vela_bench.pilot.restore_conditions', return_value=copy.deepcopy(rejected)) as restore, \
+                     patch('vela_bench.pilot.logind_sessions', return_value=[]), \
+                     patch('vela_bench.pilot.stop_greeter_manager', side_effect=BenchError('release refused')), \
+                     patch('vela_bench.pilot.restore_display_manager',
+                           side_effect=BenchError('start failed') if fallback_fails else None) as manager:
+                    result = restore_hardware_conditions(self.host, self.layout, directory, state, record)
+                restore.assert_called_once()
+                manager.assert_called_once()
+                self.assertEqual(result['status'], 'failed')
+                self.assertIn('Output greeter recovery: release refused', result['errors'])
+                evidence = read_json(directory / 'conditions-recovery.json')
+                self.assertEqual(evidence['display_manager_fallback'], 'failed' if fallback_fails else 'started')
+                self.assertTrue(state['output_greeter_restart'])
+                if fallback_fails:
+                    self.assertIn('Display manager fallback: start failed', result['errors'])
+
     def test_recovery_does_not_reset_existing_failures_or_unrelated_errors_or_loop_on_failure(self):
         self.setup_account()
         directory = self.pilot_state()
@@ -1107,7 +1133,7 @@ class HostOperations(unittest.TestCase):
                             self.recover_without_fixture_io()
                     else:
                         self.recover_without_fixture_io()
-                self.assertEqual(order, ['release'] if fails else ['release','start'])
+                self.assertEqual(order, ['release','start'])
                 result = read_json(directory / 'state.json')
                 self.assertEqual(result['stage'], 'cleanup-failed' if fails else 'failed')
 
@@ -1280,6 +1306,33 @@ class HostOperations(unittest.TestCase):
             self.recover_without_fixture_io()
         restore.assert_not_called()
         self.assertIn(["chvt", "2"], self.host.calls)
+
+    def test_unexpected_greeter_session_refuses_before_stop_or_hardware_replay(self):
+        self.setup_account()
+        directory = self.pilot_state(result='pending')
+        state = read_json(directory / 'state.json')
+        state.update(stage='queued', conditions_restore_required=False, plan={'controlled_conditions': True})
+        atomic_json(directory / 'state.json', state)
+        user = SimpleNamespace(pw_name='plasmalogin', pw_uid=957, pw_gid=957)
+        snapshot = {'greeter': {'account': 'plasmalogin', 'uid': 957, 'gid': 957}}
+        session = {'Id': '4', 'User': '957', 'Class': 'background', 'Type': 'unspecified', 'Service': 'cron'}
+        with patch('vela_bench.pilot.load_setup', return_value=read_json(self.layout.record)), \
+             patch('vela_bench.pilot.create_fixture'), \
+             patch('vela_bench.pilot.logind_sessions', return_value=[session]), \
+             patch('vela_bench.pilot.snapshot_conditions', return_value=snapshot), \
+             patch('vela_bench.pilot.pwd.getpwnam', return_value=user), \
+             patch('vela_bench.pilot.pwd.getpwuid', return_value=user):
+            with self.assertRaisesRegex(BenchError, 'unexpected session'):
+                worker(self.host, self.layout)
+        self.assertNotIn(['systemctl', 'stop', 'display-manager.service'], self.host.calls)
+        self.assertNotIn('display_manager_quiescence', read_json(directory / 'state.json'))
+        self.assertFalse(read_json(directory / 'state.json')['conditions_restore_required'])
+        self.input_guard.start.assert_not_called()
+        with patch('vela_bench.pilot.restore_conditions') as restore:
+            self.recover_without_fixture_io()
+        restore.assert_not_called()
+        self.assertEqual(read_json(directory / 'state.json')['stage'], 'failed')
+        self.assertIn(['chvt', '2'], self.host.calls)
 
     def test_crash_fixture_targets_its_worker_and_persists_intent_before_the_signal(self):
         self.setup_account()

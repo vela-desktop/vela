@@ -84,6 +84,10 @@ def main():
                     self.blocked_start = False
                     self.formatted_conditions = None
 
+                def pids(self, uid):
+                    assert uid == os.getuid()
+                    return []  # Reserved UID is a fixture, never our real UID.
+
                 def run(self, command, **kwargs):
                     if command[0] == 'busctl':
                         assert command[1:] == ['--system', '--json=short', 'get-property',
@@ -108,7 +112,7 @@ def main():
                     if '--property=Id' in command:
                         assert result.stdout.strip() == name
                         result.stdout = 'plasmalogin.service\n'
-                    if command[1] == 'stop':
+                    if command[1] == 'stop' and fake_override.exists():
                         assert not fake_mask.is_symlink()
                         assert value('FreezerState') == 'running'
                         ctl('start', name)
@@ -117,7 +121,7 @@ def main():
                         self.blocked_start = True
                     return result
 
-            for mode in ('normal', 'login-opening', 'after-sigstop'):
+            for mode in ('normal', 'login-opening', 'after-sigstop', 'output-release-error'):
                 directory = Path(temporary) / uuid.uuid4().hex
                 directory.mkdir()
                 state = {'stage': 'takeover', 'run_id': directory.name}
@@ -126,7 +130,7 @@ def main():
                 assert value('ActiveState') == 'active'
                 sessions = [{'Type': 'unspecified', 'State': 'opening', 'Class': 'user'}] if mode == 'login-opening' else []
                 with patch.object(pilot, 'trusted'), patch.object(pilot, 'logind_sessions', return_value=sessions):
-                    if mode != 'normal':
+                    if mode in ('login-opening', 'after-sigstop'):
                         try:
                             pilot.quiesce_display_manager(host, directory, state, layout)
                         except BenchError as error:
@@ -141,13 +145,24 @@ def main():
                         assert host.blocked_start
                     pilot.release_display_manager_quiescence(host, directory, state, layout)
                     pilot.restore_display_manager(host, directory, state)
+                    if mode == 'output-release-error':
+                        state.update(display_manager_was_active=True, conditions_snapshot={})
+                        rejected = {'status': 'failed', 'errors': ['no outputs'], 'output_restart_eligible': True}
+                        with patch.object(pilot, 'restore_conditions', return_value=rejected), \
+                             patch.object(pilot, 'stop_greeter_manager', side_effect=BenchError('injected release refusal')):
+                            outcome = pilot.restore_hardware_conditions(host, layout, directory, state, {'uid': os.getuid()})
+                        assert outcome['status'] == 'failed'
+                        assert 'injected release refusal' in outcome['errors'][-1]
+                        assert read_json(directory / 'conditions-recovery.json')['display_manager_fallback'] == 'started'
+                        assert state['output_greeter_restart'] is True
                 assert value('ActiveState') == 'active'
                 assert value('FreezerState') == 'running'
                 assert value('Restart') == 'always'
                 assert read_json(directory / 'state.json')['display_manager_quiescence']['status'] == 'released'
                 results.append({'case': mode, 'recovered': True,
                     'systemctl_conditions': host.formatted_conditions,
-                    'start_inhibition_verified': host.blocked_start})
+                    'start_inhibition_verified': host.blocked_start,
+                    'login_restarted_after_release_refusal': mode == 'output-release-error'})
                 ctl('stop', name)
                 ctl('reset-failed', name, check=False)
         print(json.dumps({'private_user_units_only': True, 'physical_acceptance': False, 'cases': results}, indent=2))
