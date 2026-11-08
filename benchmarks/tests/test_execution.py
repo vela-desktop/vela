@@ -31,6 +31,7 @@ class Execution(unittest.TestCase):
         self.interrupt = False
         self.corrupt_receipt = False
         self.change_context = False
+        self.live_pids = []
 
     def fake_begin(self, host, targets, **options):
         from test_campaign import CalibrationCampaign
@@ -55,8 +56,118 @@ class Execution(unittest.TestCase):
 
     def campaign(self, **options):
         with contextlib.redirect_stdout(io.StringIO()):
-            return execute(SimpleNamespace(), assume_yes=True, layout=self.layout, exercise=True,
+            return execute(SimpleNamespace(pids=lambda uid: self.live_pids), assume_yes=True, layout=self.layout, exercise=True,
                            **dict({'phases': ['motion']}, **options))
+
+    def recoverable_failure(self, host, targets, **options):
+        """A real failed pilot state; other blocks use the normal fake runner."""
+        if options.get('campaign_block_id') != 'motion-vela-r1':
+            return self.fake_begin(host, targets, **options)
+        from vela_bench.campaign import freeze_conditions
+        self.calls.append(targets[0]); self.options.append(copy.deepcopy(options))
+        source = self.layout.base / 'pilots' / options['run_id']
+        source.mkdir()
+        freeze_conditions(self.layout, options['campaign_run_id'], self.snapshot)
+        state = {'stage': 'failed', 'result': 'failed', 'cleanup_errors': [],
+                 'conditions_snapshot': copy.deepcopy(self.snapshot), 'conditions_restore': {'status': 'passed'},
+                 'error': 'synthetic covered corpus marker',
+                 'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
+        if hasattr(self, 'alter_failed_state'):
+            self.alter_failed_state(state, source)
+        atomic_json(source / 'state.json', state)
+        (source / 'failed-capture.png').write_bytes(b'original diagnostic fixture')
+        return 1
+
+    def use_recovered_failure(self):
+        self.fail_plasma = False
+        self.begin.side_effect = self.recoverable_failure
+        def audit(source, *args, **kwargs):
+            state = read_json(source / 'state.json')
+            return ({'status': 'failed', 'error': state['error'], 'checks': {'restored': True}}
+                    if state.get('result') == 'failed' else {'status': 'passed', 'checks': {'restored': True}})
+        self.audit.side_effect = audit
+
+    def test_recovered_failure_continues_other_desktop_and_later_phase_with_failed_report(self):
+        self.use_recovered_failure()
+        self.assertEqual(self.campaign(phases=['motion', 'overhead'], fast=True), 1)
+        data = latest(self.layout)
+        self.assertEqual(self.calls, ['vela', 'plasma', 'vela', 'plasma'])
+        self.assertEqual([row['status'] for row in data['blocks']], ['failed', 'complete', 'complete', 'complete'])
+        self.assertEqual(data['stage'], 'completed-with-failures')
+        self.assertTrue(data['execution_complete'])
+        self.assertFalse(data['selection_complete'])
+        self.assertEqual(data['failed_blocks'], 1)
+        root = self.layout.base / 'campaigns' / data['run_id']
+        attempt = read_json(root / 'blocks/motion-vela-r1/attempt-0001.json')
+        self.assertEqual(attempt['continuation']['restoration'], 'verified')
+        self.assertTrue(any(row['event'] == 'continue-after-failure' for row in read_events(root / 'events.jsonl')))
+        output = export_campaign(self.layout.path('exports'), data, self.layout)
+        self.assertEqual(read_export(output), data)
+        self.assertEqual((output / 'motion-vela-r1/failed-capture.png').read_bytes(), b'original diagnostic fixture')
+        self.assertIn('synthetic covered corpus marker', (output / 'report.html').read_text())
+        from vela_bench.discovery import file_hash
+        changed = copy.deepcopy(data); changed['failed_blocks'] = 0
+        atomic_json(output / 'summary.json', changed)
+        manifest = read_json(output / 'manifest.json')
+        manifest['files']['summary.json'] = file_hash(output / 'summary.json')
+        atomic_json(output / 'manifest.json', manifest)
+        with self.assertRaisesRegex(BenchError, 'failed-block count'):
+            read_export(output)
+
+    def test_resume_after_recovered_failure_retries_only_failed_block(self):
+        self.use_recovered_failure()
+        phases = ['motion', 'overhead']
+        self.assertEqual(self.campaign(phases=phases, fast=True), 1)
+        data = latest(self.layout)
+        root = self.layout.base / 'campaigns' / data['run_id']
+        paths = list(root.glob('blocks/*/complete.json'))
+        before = {path: path.read_bytes() for path in paths}
+        self.begin.side_effect = self.fake_begin
+        self.assertEqual(self.campaign(phases=phases, fast=True, resume=data['run_id']), 0)
+        self.assertEqual(self.calls, ['vela', 'plasma', 'vela', 'plasma', 'vela'])
+        self.assertEqual(before, {path: path.read_bytes() for path in paths})
+        self.assertTrue(latest(self.layout)['selection_complete'])
+        self.assertEqual(latest(self.layout)['failed_blocks'], 0)
+
+    def test_unverified_restoration_or_live_account_stops_before_another_block(self):
+        self.use_recovered_failure()
+        for case in ('cleanup-error', 'hardware-restore', 'changed-hardware', 'reboot', 'live-pid', 'input-release'):
+            self.calls.clear(); self.live_pids = []
+            def alter(state, source):
+                if case == 'cleanup-error': state['cleanup_errors'] = ['restore failed']
+                elif case == 'hardware-restore': state['conditions_restore']['status'] = 'failed'
+                elif case == 'changed-hardware': state['conditions_snapshot']['profile']['mode']['refresh_mhz'] = 144000
+                elif case == 'reboot': state['boot_id'] = 'previous boot'
+                elif case == 'live-pid': self.live_pids = [42]
+                elif case == 'input-release':
+                    state['plan'] = {'input_policy': {'version': 'fixture'}}
+                    atomic_json(source / 'input-isolation.json', {'release_verified_after_worker_exit': False})
+            self.alter_failed_state = alter
+            with self.subTest(case=case):
+                self.assertEqual(self.campaign(phases=['motion', 'overhead'], fast=True), 1)
+                data = latest(self.layout)
+                self.assertEqual(self.calls, ['vela'])
+                self.assertEqual(data['stage'], 'interrupted')
+                self.assertEqual(data['blocks'][1]['status'], 'not-run')
+
+    def test_emergency_abort_is_campaign_cancellation_after_successful_recovery(self):
+        self.use_recovered_failure()
+        self.alter_failed_state = lambda state, source: state.update(operator_cancelled=True)
+        self.assertEqual(self.campaign(phases=['motion', 'overhead'], fast=True), 130)
+        self.assertEqual(self.calls, ['vela'])
+        data = latest(self.layout)
+        self.assertEqual(data['stage'], 'interrupted')
+        self.assertEqual(data['blocks'][0]['status'], 'interrupted')
+        self.assertEqual(data['blocks'][1]['status'], 'not-run')
+
+    def test_recovered_state_waits_for_systemd_worker_deactivation_before_continuing(self):
+        self.use_recovered_failure()
+        with patch('vela_bench.campaign.require_workers_stopped', side_effect=[None, BenchError('deactivating'), None]) as idle, \
+                patch('vela_bench.campaign.time.sleep') as sleep:
+            self.assertEqual(self.campaign(phases=['motion', 'overhead'], fast=True), 1)
+        self.assertEqual(idle.call_count, 3)
+        sleep.assert_called_once_with(.1)
+        self.assertEqual(self.calls, ['vela', 'plasma', 'vela', 'plasma'])
 
     def test_multiple_phases_follow_planned_order_and_run_three_complete_repetitions(self):
         self.fail_plasma = False
@@ -200,7 +311,7 @@ class Execution(unittest.TestCase):
         controls = {
             'load_setup': {'return_value': record}, 'create_fixture': {},
             'logind_sessions': {'return_value': []}, 'snapshot_conditions': {'return_value': self.snapshot},
-            'reserve_vt': {}, 'session_command': {'return_value': ['fixed-fixture-session']},
+            'reserve_vt': {}, 'quiesce_display_manager': {}, 'session_command': {'return_value': ['fixed-fixture-session']},
             'resolve_targets': {'return_value': {'vela': {}}},
             'stop_user': {'return_value': None}, 'reset_profile': {}, 'wait_session': {'return_value': {}},
             'verify_session': {}, 'apply_conditions': {'return_value': {'status': 'passed'}},
@@ -213,6 +324,7 @@ class Execution(unittest.TestCase):
             guard = stack.enter_context(patch('vela_bench.pilot.InputIsolation')).return_value
             guard.error = None
             guard.evidence.return_value = {'status': 'released'}
+            guard.close.side_effect=lambda:self.assertEqual(read_json(source/'block-workload.json')['status'],'pending')
             for name, opts in controls.items():
                 stack.enter_context(patch('vela_bench.pilot.' + name, **opts))
             stack.enter_context(patch('vela_bench.pilot.run_input', input_call))
@@ -240,7 +352,7 @@ class Execution(unittest.TestCase):
                 worker(SimpleNamespace(), self.layout)
         snapshot.assert_not_called()
         fixture.assert_not_called()
-        self.assertFalse((source / 'block-workload.json').exists())
+        self.assertEqual(read_json(source / 'block-workload.json')['status'], 'failed')
         self.assertFalse(read_json(source / 'state.json')['restore_required'])
 
 

@@ -57,6 +57,7 @@ class ScalingController(unittest.TestCase):
                         argv=[tool(Path(command[at]).name),*command[at+1:]]
                     return subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,env=env,bufsize=0)
                 def run(self,command,**options):
+                    if '--property=ActiveState' in command:return SimpleNamespace(stdout='inactive\n',returncode=0)
                     if 'wlr-randr' in command or '/usr/bin/wlr-randr' in command:
                         at=next(i for i,v in enumerate(command) if v.endswith('wlr-randr'))
                         return subprocess.run(command[at:],env=env,capture_output=True,text=True,check=True,timeout=15)

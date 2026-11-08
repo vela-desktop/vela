@@ -8,6 +8,7 @@ point requires an explicit root invocation. Workloads always use another UID.
 """
 
 from dataclasses import dataclass
+from contextlib import contextmanager
 import fcntl
 import grp
 import hashlib
@@ -34,7 +35,7 @@ PILOT_SECONDS = 600
 RECOVERY_SECONDS = 300
 SAFE_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C", "LANG": "C"}
 BASE_MODULES = ("__init__.py", "archive.py", "model.py", "discovery.py", "host.py", "pilot.py")
-MODULES = BASE_MODULES + ("diagnostics.py", "conditions.py", "calibration.py", "qualification.py", "campaign.py", "measurements.py", "desktop.py", "workloads.py", "platform_workloads.py", "pixels.py", "resources.py", "interactions.py", "corpus.py", "contention.py", "desktop_legacy.py", "desktop_pixels.py", "input_isolation.py")
+MODULES = BASE_MODULES + ("diagnostics.py", "conditions.py", "calibration.py", "qualification.py", "campaign.py", "measurements.py", "desktop.py", "workloads.py", "platform_workloads.py", "pixels.py", "resources.py", "interactions.py", "corpus.py", "contention.py", "desktop_legacy.py", "desktop_pixels.py", "input_isolation.py", "session_profile.py")
 INSTRUMENTS = ("vela-bench-probe", "vela-bench-desktop", "vela-screen-dump", "vela-bench-input", "vela-slowgpu",
                "vela-bench-scene", "vela-pattern", "vela-bench-corpus-qt", "vela-bench-corpus-gtk",
                "vela-bench-corpus-web", "vela-bench-cpuload")
@@ -236,6 +237,32 @@ def personal_homes():
                    and (x.pw_uid == 0 or limits["UID_MIN"] <= x.pw_uid <= limits["UID_MAX"])})
 
 
+def require_current_home_isolation(record):
+    protected = [Path('/home'), Path('/root'), *(Path(name) for name in record.get('private_homes', []))]
+    if any(not any(Path(name) == root or root in Path(name).parents for root in protected)
+           for name in personal_homes()):
+        raise BenchError('Personal home inventory changed; rerun setup --update before starting benchmarks')
+
+
+@contextmanager
+def setup_lock(layout):
+    # This lock survives uninstall/reinstall and precedes ownership/NSS reads.
+    # /run is root-owned; /run/lock may be writable by non-root groups.
+    runtime = layout.path('run')
+    runtime.mkdir(mode=0o755, exist_ok=True)
+    trusted(runtime, directory=True)
+    descriptor = os.open(runtime / 'vela-benchmark-setup.lock',
+                         os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+            raise BenchError('Untrusted benchmark setup lock')
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
+
+
 def check_account(record, host, layout=Layout()):
     user = host.user()
     group = host.group()
@@ -326,8 +353,14 @@ def useradd_command(layout, account_tag):
 
 
 def install(host, layout=Layout(), source=None, pam_dir=Path("/etc/pam.d"), private_homes=(), probe=None, tools_dir=None):
+    with setup_lock(layout):
+        return _install(host, layout, source, pam_dir, private_homes, probe, tools_dir)
+
+
+def _install(host, layout, source, pam_dir, private_homes, probe, tools_dir):
     """Provision once and refresh owned code. Never adopt unowned resources."""
     source = Path(source or Path(__file__).parent)
+    private_homes = list(dict.fromkeys([*private_homes, *personal_homes()]))
     policy = pam_policy(pam_dir)
     for command in ("useradd", "usermod", "userdel", "groupdel", "loginctl", "systemctl", "systemd-run", "chvt", "fgconsole", "setpriv", "busctl"):
         if host.which(command) is None:
@@ -340,7 +373,7 @@ def install(host, layout=Layout(), source=None, pam_dir=Path("/etc/pam.d"), priv
         if not isinstance(record, dict):
             raise BenchError("Partial setup record is malformed; no resources were overwritten")
         if record.get("status") in ("ready", "updating"):
-            return update_launcher(host, layout, source=source, probe=probe, tools_dir=tools_dir)
+            return _update_launcher(host, layout, source=source, probe=probe, tools_dir=tools_dir, private_homes=private_homes)
         if record.get("status") == "uninstalled":
             previous = record
         elif pending_account_creation(record, host, layout):
@@ -588,16 +621,25 @@ def require_current_launcher(layout=Layout(), source=None):
 
 
 def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=None):
-    """Refresh only owned code, retaining the account, policies and evidence."""
+    with setup_lock(layout):
+        return _update_launcher(host, layout, source, probe, tools_dir)
+
+
+def _update_launcher(host, layout, source=None, probe=None, tools_dir=None, *, private_homes=()):
+    """Refresh owned code/home isolation, retaining the account, PAM and evidence."""
     trusted(layout.record)
     payload = launcher_payload(layout, source, probe, tools_dir)
-    after = {name: hashlib.sha256(data).hexdigest() for name, data in payload.items()}
     with control_lock(layout):
         record = read_json(layout.record)
         if not isinstance(record, dict) or record.get("schema") != 1 or record.get("status") not in ("ready", "updating"):
             raise BenchError("Code update requires a completed owned setup")
         check_account(record, host, layout)
         owned_installation_files(record, layout)
+        homes = list(dict.fromkeys([*record['private_homes'], *private_homes, *personal_homes()]))
+        dropin = layout.path(f"etc/systemd/system/user@{record['uid']}.service.d/70-vela-benchmark.conf")
+        properties = isolation_properties(record['uid'], layout, homes)
+        payload[str(dropin)] = ('[Service]\n' + ''.join(f'{key}={value}\n' for key,value in properties.items())).encode()
+        after = {name: hashlib.sha256(data).hexdigest() for name, data in payload.items()}
         require_workers_stopped(host)
         if host.pids(record["uid"]) or layout.path(f"run/user/{record['uid']}").exists():
             raise BenchError("Stop and restore the pilot before updating installed code")
@@ -620,11 +662,13 @@ def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=No
         update = record.get("code_update")
         if record["status"] == "updating":
             if (not isinstance(update, dict) or update.get("after") != after
+                    or update.get('private_homes_after') != homes
                     or not isinstance(update.get("before"), dict) or update["before"].keys() != payload.keys()
                     or any(update["before"][name] != record["files"].get(name) for name in payload)):
                 raise BenchError("Interrupted update source/record changed; refusing to adopt uncertain files")
         else:
-            update = {"before": {name: record["files"].get(name) for name in payload}, "after": after}
+            update = {"before": {name: record["files"].get(name) for name in payload}, "after": after,
+                      'private_homes_after': homes}
         for name in payload.keys() - record["files"].keys():
             path = Path(name)
             trusted(path.parent, directory=True)
@@ -639,7 +683,7 @@ def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=No
                 permitted.add(after[name])
             if file_hash(name) not in permitted:
                 raise BenchError(f"Installed benchmark resource changed: {name}")
-        if record["status"] == "ready" and update["before"] == after:
+        if record["status"] == "ready" and update["before"] == after and record['private_homes'] == homes:
             return record
         record.update(status="updating", code_update=update)
         atomic_json(layout.record, record)
@@ -661,9 +705,10 @@ def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=No
             finally:
                 Path(temporary).unlink(missing_ok=True)
         record["files"].update(after)
-        if any(update["before"][str(layout.path("etc/systemd/system") / service)] != after[str(layout.path("etc/systemd/system") / service)]
-               for service in (PILOT_UNIT, FAULT_UNIT)):
+        if any(update['before'][name] != after[name] for name in payload
+               if Path(name).is_relative_to(layout.path('etc/systemd/system'))):
             host.run(["systemctl", "daemon-reload"])
+        record['private_homes'] = homes
         record.pop("code_update")
         record["status"] = "ready"
         atomic_json(layout.record, record)
@@ -671,6 +716,11 @@ def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=No
 
 
 def uninstall(host, layout=Layout()):
+    with setup_lock(layout):
+        return _uninstall(host, layout)
+
+
+def _uninstall(host, layout):
     record = load_setup(host, layout)
     owned_files = owned_installation_files(record, layout)
     with control_lock(layout):
@@ -686,8 +736,9 @@ def uninstall(host, layout=Layout()):
         # removal after the NSS identity has already gone.
         code_root = layout.helper.parent
         expected = {Path(name) for name in record["files"] if Path(name).is_relative_to(code_root)}
-        actual = {path for path in code_root.rglob("*") if path.is_file() or path.is_symlink()}
-        if actual != expected:
+        expected_directories = {code_root / 'vela_bench'}
+        actual = set(code_root.rglob('*'))
+        if actual != expected | expected_directories:
             raise BenchError("Untracked installed launcher files; inspect before uninstalling")
         mail = layout.base / "mail"
         if record.get("mail_directory"):

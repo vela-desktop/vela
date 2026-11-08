@@ -117,7 +117,7 @@ inspection; uncertain resources are never adopted or deleted automatically.
 Optional mailbox creation is redirected into the owned directory with the
 supported `MAIL_DIR` override; host defaults are unchanged.
 Rerunning `setup` refreshes the owned installed launcher code from this
-checkout while retaining the same account, PAM/isolation configuration and evidence:
+checkout while retaining the same account, PAM configuration and evidence:
 
 ```sh
 sudo scripts/vela-bench setup
@@ -129,7 +129,11 @@ each file atomically and journals old/new identities. An interrupted update
 can resume by repeating the command with the same source. Changed unrecorded
 files are refused. Owned worker supervision units are also upgraded in place, including their
 recovery deadline and the new fault unit; systemd is reloaded when needed.
-Unrelated PAM/isolation-policy changes still require uninstall and setup. Successful setup prints `Launcher code: up to date with
+Setup also refreshes personal-home isolation in both the session and user-manager
+policies, retaining previously protected paths. Newly discovered nonstandard homes
+block launches until this refresh completes. Setup, update and uninstall share a
+bootstrap lock acquired before reading ownership or NSS state. Unrelated PAM
+changes still require uninstall and setup. Successful setup prints `Launcher code: up to date with
 this checkout`; `--json` prints the full installation record instead.
 `setup --update` remains available as an update-only command requiring an
 existing setup; `setup --update --dry-run` previews that operation.
@@ -444,9 +448,9 @@ workloads below. Scaling/overhead execute the partial P4 workloads described bel
 ## P2 neutral-client measurements
 
 P2 implementation is complete for its declared client-only scope in
-`p2-neutral-client-v2`: input, animation, paired delayed producers and separate
+`p2-neutral-client-v3`: input, animation, paired delayed producers and separate
 CPU/GPU contention. Native shell/window observations belong to P3; complete
-five-family comparison belongs to P5. Physical qualification of the v2 extension
+five-family comparison belongs to P5. Physical qualification of the current method
 is still open, and normal repetitions remain deferred by the operator.
 
 Build the native clients and install the updated launcher/instruments (the
@@ -485,7 +489,7 @@ are exported in `conditions-recovery.json`. This is a recovery measure, not a
 fix for the underlying KWin/amdgpu RA24 format incompatibility; another rejection
 still stops the campaign.
 
-The versioned `p2-neutral-client-v2` workload fixes these samples for both modes:
+The versioned `p2-neutral-client-v3` workload fixes these samples for both modes:
 
 - Input: five warm-up actions plus 100 measured F24 responses, one outstanding
   action at a time. Save and validate all 105 actions and matching feedback;
@@ -496,6 +500,13 @@ The versioned `p2-neutral-client-v2` workload fixes these samples for both modes
   frames, interval/latency p50 and p95, maximum gap and gaps over 1.5 refresh
   periods. The measured interval is active client animation, not idle time or
   native desktop/window motion. The gap count is not a kernel vblank counter.
+  V3 ends the coverage window at the latest measured feedback receipt, including
+  trailing discards. Historical v1/v2 metric formulas remain available for audit.
+  Same-clock presentation feedback is bounded in every version. DRM may report
+  the upcoming start of scanout during vblank, so vsynced feedback may lead its
+  receipt by up to the reported refresh interval. Larger leads and future
+  non-vsynced feedback are rejected. See the kernel's
+  [KMS timestamp contract](https://docs.kernel.org/gpu/drm-kms.html#c.drm_crtc_funcs.get_vblank_timestamp).
 - Slow producer: explicit and implicit GPU acquire-fence cases, each with its
   own new no-load input/animation control in the same block. Report absolute
   results and paired differences. The producer exposes device/queue identity,
@@ -565,11 +576,16 @@ evidence; omitting `--fast` would run 18 blocks.
 
 ## P3 native desktop observation
 
-P3 has its own fixed observation workload, `p3-desktop-observation-v2`, and
+P3 has its own fixed observation workload, `p3-desktop-observation-v3`, and
 keeps its results separate from P2 client timings. It reuses the same
 supervised campaign, account isolation, calibration, condition verification,
 checkpoint/resume, restoration and offline export. It does not change the
 desktops' effects, shortcuts or animation settings.
+
+V3 records capture as enabled in observed CPU/GPU contention metrics; the v2
+reader retains its historical metadata. Original PNGs are decoded for legacy and
+current P3 audits. The identified scene marker also fits a 512-pixel snapped
+window on a 1024-pixel output, without dropping identity bits.
 
 Build/install the scene alongside the existing instruments. Inspect the plan
 from the ordinary desktop without changing the host:
@@ -905,6 +921,49 @@ profile, session and calibration. Changed phase selection, mode, seed,
 installation or environment is refused. Ctrl+C during a block stops the
 supervised worker and journals interruption; export that interrupted campaign
 with `sudo scripts/vela-bench campaign-report` if needed before resuming.
+
+A failed workload now ends only its phase/desktop/repetition block. After the
+pilot verifies hardware restoration, worker exit, physical-input release and
+the absence of reserved-UID processes/runtime, the campaign attempts the next
+independent block, including the other desktop and later phases. Original failed
+captures, errors and attempts remain in the export. Successful blocks retain
+their own statistics; failed blocks never count as valid measurements. Finishing
+the schedule with failures reports `completed-with-failures`,
+`execution_complete=true`, `selection_complete=false`, a failed-block count and
+exit status 1. Resume retries only the unsuccessful blocks. Cancellation
+(including Ctrl+Alt+Esc), incomplete cleanup, a reboot, changed hardware/context,
+or inconsistent accepted evidence stops the campaign for inspection.
+
+`run --json` sends live progress and authorization prompts to stderr and emits
+one JSON result with the exported archive/report paths on stdout. EOF at START
+rejects authorization and never exports a previous run. Campaign exports re-audit
+completed pilot lifecycles and P0 qualification from raw evidence; updated hashes
+alone cannot make contradictory acceptance records valid. Evidence verification
+has no fixed 30-second deadline. The desktop session's runtime limit matches the
+600-second supervised pilot budget. Resource animation retains all 1,800 frames;
+at 30 Hz its probe allows 80 seconds inside the 120-second instrument budget.
+
+Before stopping the display manager, the worker temporarily disables its
+automatic restart, freezes authentication, installs an owned runtime mask and
+checks logind again, including sessions still opening. It queues SIGSTOP before
+thawing systemd, then kills only that verified greeter cgroup and stops its unit.
+Recovery removes the owned mask/restart override and resumes authentication if
+takeover was interrupted. A physical-input monitor failure persists its error
+and immediately terminates the worker through PID 1 recovery, even if a client
+subprocess is blocked. Successful block receipts are published after teardown
+and input-guard release.
+
+New disposable profiles select Do Not Disturb for both Vela and Plasma and use
+per-user XDG `Hidden=true` overrides for system autostart applications outside
+a fixed core-session allowlist. This excludes updater trays, distro reminders,
+indexers and companion apps while retaining the shell, accessibility, power,
+keyring and authentication services. The allowlist and all discovered system
+autostart file hashes are recorded in the immutable context and profile evidence.
+System files and personal profiles are untouched. This addresses the observed
+Cachy-Update popup covering a browser corpus corner marker; captures still use
+the same strict pixel oracle. Unexpected overlays continue to invalidate their
+block. Vela's normal DND policy still permits critical notifications. These
+profile conditions require a new campaign after refreshing setup.
 
 Exercise exports record `execution_mode=exercise`,
 `measurement_blocks_executed=0`, P0 qualification `not-requested` and explicit

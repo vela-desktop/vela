@@ -110,12 +110,14 @@ class InputIsolation(unittest.TestCase):
 
     def test_hotplug_is_grabbed_and_invalidates_the_whole_block(self):
         self.guard.devices = {'event0': {}}
-        with patch.object(isolation.select, 'select', return_value=([], [], [])), \
+        with patch.object(isolation.os, 'kill') as kill, \
+                patch.object(isolation.select, 'select', return_value=([], [], [])), \
                 patch.object(isolation.time, 'monotonic', side_effect=[0, 1, 1]), \
                 patch.object(isolation, 'input_devices', return_value={'event0': {}, 'event1': {'name': 'new'}}), \
                 patch.object(self.guard, 'grab') as grab:
             self.guard.monitor()
         grab.assert_called_once_with('event1', {'name': 'new'})
+        kill.assert_called_once_with(os.getpid(), signal.SIGUSR2)
         with self.assertRaisesRegex(BenchError, 'topology changed'):
             self.guard.check()
         self.assertEqual(self.guard.evidence()['status'], 'failed')

@@ -26,7 +26,7 @@ def parser():
     commands = root.add_subparsers(dest="command", required=True)
     setup = commands.add_parser("setup", help="Provision the dedicated account or refresh installed P0 launcher code")
     setup.add_argument("--dry-run", action="store_true", help="Show persistent resources without changing the host")
-    setup.add_argument("--update", action="store_true", help="Refresh owned code and supervision units while preserving the account and PAM isolation")
+    setup.add_argument("--update", action="store_true", help="Refresh owned code, supervision units and personal-home isolation while preserving the account and PAM configuration")
     setup.add_argument("--json", action="store_true", help="Print the complete installation record")
     setup.add_argument("--probe", type=Path, help="Install the built native vela-bench-probe executable")
     setup.add_argument("--tools-dir", type=Path, help="Install fixed input, presentation, display and capture instruments from a build tools directory")
@@ -127,9 +127,9 @@ def export_latest_pilot(helper, output):
     print(f"Report: {directory / 'report.html'}")
 
 
-def export_latest_campaign(helper, output):
+def export_latest_campaign(helper, output, *, as_json=False):
     result = subprocess.run(["/usr/bin/python3", "-I", str(helper), "campaign-results"], env=SAFE_ENV,
-                            text=True, capture_output=True, timeout=30)
+                            text=True, capture_output=True)
     if result.returncode:
         raise BenchError(result.stderr.strip() or "Cannot inspect calibration campaign")
     data = decode_json(result.stdout)
@@ -138,7 +138,11 @@ def export_latest_campaign(helper, output):
     if uid.isdigit() and gid.isdigit() and int(uid) > 0:
         for path in (directory, *directory.rglob("*")):
             os.chown(path, int(uid), int(gid))  # NOSONAR S8707: only newly created exclusive export contents.
-    print(f"Report: {directory / 'report.html'}")
+    if as_json:
+        print(json.dumps({'archive': str(directory), 'report': str(directory / 'report.html'),
+                          'result': data['stage'], 'selection_complete': data['selection_complete']}))
+    else:
+        print(f"Report: {directory / 'report.html'}")
 
 
 def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exercise=False):
@@ -162,9 +166,10 @@ def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exerci
     for phase in phases or []:
         command += ["--phase", phase]
     # The installed parser revalidates fixed selections; no shell or agent RPC.
-    status = subprocess.call(command, env=SAFE_ENV)  # NOSONAR S8705: explicit local administrator invocation.
+    as_json = getattr(args, 'json', False)
+    status = subprocess.call(command, env=SAFE_ENV, stdout=sys.stderr if as_json else None)  # NOSONAR S8705: explicit local administrator invocation.
     if status in (0, 1):
-        export_latest_campaign(helper, args.output)
+        export_latest_campaign(helper, args.output, as_json=as_json)
     return status
 
 
@@ -172,14 +177,14 @@ def main(argv=None):
     args = parser().parse_args(argv)
     try:
         if args.command == "observe":
+            current = discover()
+            selected = args.target or [name for name in ('vela', 'plasma') if name in current['targets']]
             if args.dry_run:
                 from .campaign import execution_selection
-                current = discover()
-                selected = args.target or [name for name in ("vela", "plasma") if name in current["targets"]]
                 print(json.dumps(execution_selection(current,selected,case="observe",fast=args.fast,seed=args.seed,
                     phases=args.phase,exercise=False),indent=2))
                 return 0
-            return run_calibration_campaign(args, args.target or ["vela", "plasma"], "observe", args.seed,
+            return run_calibration_campaign(args, selected, "observe", args.seed,
                                             phases=args.phase or ["responsiveness", "motion", "slow-apps"])
         if args.command == "qualify":
             if args.dry_run:
@@ -197,7 +202,8 @@ def main(argv=None):
             return 0
         if args.command == "setup":
             if args.dry_run:
-                result = ({"operation": "update installed launcher code", "account_and_policies": "preserved",
+                result = ({"operation": "update installed launcher code", "account_and_pam": "preserved",
+                           "personal_home_isolation": "refresh NSS homes; retain previously protected paths",
                            "requires": "stopped workers and reserved UID; terminal or cleanup-failed pilot; trusted existing setup"} if args.update else setup_preview())
                 if args.probe:
                     result["native_probe_source"] = str(args.probe)
@@ -325,7 +331,10 @@ def main(argv=None):
             return 0
         if args.command in ("status", "report") and (args.archive / "manifest.json").exists():
             from .archive import read_json
-            if read_json(args.archive / "manifest.json").get("kind") in ("calibration-campaign-export", "execution-campaign-export"):
+            manifest = read_json(args.archive / "manifest.json")
+            if not isinstance(manifest, dict):
+                raise BenchError('Archive manifest must be a JSON object')
+            if manifest.get("kind") in ("calibration-campaign-export", "execution-campaign-export"):
                 result = read_export(args.archive)
                 if args.command == "report":
                     render_export(args.archive, result)

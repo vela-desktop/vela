@@ -63,14 +63,20 @@ def sessions(directory=Path("/usr/share/wayland-sessions")):
             # are deliberately unsupported until an adapter resolves them.
             if not argv or any("%" in x for x in argv):
                 raise ValueError("unsupported Exec field codes")
-            identities = []
-            for name in dict.fromkeys([argv[0], entry.get("TryExec", argv[0])] + [x for x in argv[1:] if x.startswith("/")]):
+            identities, files = [], []
+            for name in dict.fromkeys([argv[0], entry.get("TryExec", argv[0])]):
                 identity = executable(name)
                 if identity is None:
                     raise ValueError(f"executable unavailable: {name}")
                 identities.append(identity)
+            for name in dict.fromkeys(x for x in argv[1:] if x.startswith('/')):
+                argument = Path(name).resolve()
+                digest = file_hash(argument) if argument.is_file() else None
+                if digest is None:
+                    raise ValueError(f'session file argument unavailable: {name}')
+                files.append({'path': str(argument), 'sha256': digest})
             found[target] = {"session_file": str(path), "session_sha256": file_hash(path), "argv": argv,
-                             "executables": identities, "binary_source_revision": None,
+                             "executables": identities, "files": files, "binary_source_revision": None,
                              "components": {name: executable(name) for name in COMPONENTS[target]},
                              "adapter_qualified": False}
         except (OSError, ValueError, KeyError, configparser.Error) as exc:

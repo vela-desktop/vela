@@ -696,8 +696,8 @@ static void draw(void)
     fill(b, colors[desktopLoad ? 0 : frame % 4]);
     ++frame;
 
-    const int syncFile = runJob(1); // the GPU is still working when the commit goes out
     const uint64_t submissionNs = (uint64_t)(nowMs() * 1e6);
+    const int syncFile = runJob(1); // the GPU is still working when the commit goes out
     const VkResult fenceState = vkGetFenceStatus(device, fence);
     if (jsonOutput && fenceState != VK_NOT_READY) die("GPU fence was already ready before commit");
     if (implicitSync) {
@@ -771,10 +771,26 @@ static void runContention(struct wl_display *display)
         runJob(0);pendingFrame=++submittedJobs;finishJob();
         uint64_t now=(uint64_t)(nowMs()*1e6);
         if(!loadSequence || now-loadLastSample>=500000000ull)loadSample();
-        struct pollfd input={STDIN_FILENO,POLLIN,0};
-        if(poll(&input,1,0)<0 && errno!=EINTR)die("contention poll");
-        if(input.revents&(POLLIN|POLLHUP|POLLERR)) {char byte;if(read(0,&byte,1)==0)break;die("stdin accepts EOF only");}
-        if(wl_display_dispatch_pending(display)<0)die("Wayland connection lost");
+        while (wl_display_prepare_read(display) != 0)
+            if(wl_display_dispatch_pending(display)<0)die("Wayland connection lost");
+        if (wl_display_flush(display) < 0 && errno != EAGAIN) {
+            wl_display_cancel_read(display);die("Wayland connection lost");
+        }
+        struct pollfd fds[2]={{STDIN_FILENO,POLLIN,0},{wl_display_get_fd(display),POLLIN,0}};
+        int polled=poll(fds,2,0);
+        if(polled<0) {
+            wl_display_cancel_read(display);
+            if(errno==EINTR)continue;
+            die("contention poll");
+        }
+        if(fds[1].revents&(POLLHUP|POLLERR|POLLNVAL)) {
+            wl_display_cancel_read(display);die("Wayland connection lost");
+        }
+        if(fds[1].revents&POLLIN) {
+            if(wl_display_read_events(display)<0)die("Wayland connection lost");
+        } else wl_display_cancel_read(display);
+        if(wl_display_dispatch_pending(display)<0 || wl_display_get_error(display))die("Wayland connection lost");
+        if(fds[0].revents&(POLLIN|POLLHUP|POLLERR)) {char byte;if(read(0,&byte,1)==0)break;die("stdin accepts EOF only");}
     }
     loadSample();
     printf("{\"event\":\"gpu-load-summary\",\"complete\":%s,\"submitted\":%" PRIu64 ",\"completed\":%" PRIu64 ",\"monotonic_ns\":%.0f}\n",

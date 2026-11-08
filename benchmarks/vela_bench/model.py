@@ -93,7 +93,11 @@ def make_plan(campaign, discovery, *, phases=None, targets=None, fast=False, exe
     if requested is not None:
         validate_names("targets", requested, TARGETS)
     installed = discovery["targets"]
-    resolved = [x for x in TARGETS if x in (requested if requested is not None else installed)]
+    supported = ('vela', 'plasma') if any(phase in MEASUREMENTS or phase == 'calibrate' for phase in selected) else TARGETS
+    if requested is not None and any(target not in supported for target in requested):
+        raise BenchError('Selected phases support only Vela and Plasma targets; unsupported: ' +
+                         ', '.join(name for name in requested if name not in supported))
+    resolved = [x for x in supported if x in (requested if requested is not None else installed)]
     missing = [x for x in resolved if x not in installed]
     if missing:
         raise BenchError(f"Requested normal Wayland sessions unavailable: {', '.join(missing)}")

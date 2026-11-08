@@ -168,7 +168,7 @@ class P4Planning(unittest.TestCase):
     def test_mixed_p2_p4_schedule_keeps_distinct_immutable_workloads(self):
         plan=execution_selection({'targets':{'vela':{}}},['vela'],case='calibrate',fast=True,seed=0,
             phases=['motion','overhead'],exercise=False)
-        self.assertEqual([b['workload'] for b in plan['blocks']],['p2-neutral-client-v2',VERSION])
+        self.assertEqual([b['workload'] for b in plan['blocks']],['p2-neutral-client-v3',VERSION])
 
 
 class ResourceCampaign(unittest.TestCase):
@@ -320,7 +320,7 @@ class ResourceCampaign(unittest.TestCase):
         self.assertFalse(audit['checks']['measurement_method_binding'])
         data['blocks'][0]['audit']['measurements']=saved
         output=export_campaign(self.layout.path('downgrade-export'),data,self.layout)
-        with self.assertRaisesRegex(BenchError,'method differs from its planned block'):
+        with self.assertRaisesRegex(BenchError,'lifecycle acceptance|method differs from its planned block'):
             read_export(output)
 
 

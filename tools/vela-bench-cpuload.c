@@ -38,11 +38,12 @@ static void worker(int index,int cpu,int gate,pid_t parent,size_t size)
     if(read(gate,&byte,1)!=1)_exit(1);
     close(gate);
     uint64_t chunks=0,sequence=0,value=0x123456789abcdefull,last=0;
-    do {
+    for (;;) {
         for(unsigned i=0;i<65536;++i) {value^=value<<13;value^=value>>7;value^=value<<17;}
         ++chunks;
+        const int observedStop = stopping;
         uint64_t now=stamp(CLOCK_MONOTONIC);
-        if(now-last>=500000000ull || stopping) {
+        if(now-last>=500000000ull || observedStop) {
             if(sched_getcpu()!=cpu)_exit(1);
             char record[512];
             int n=snprintf(record,sizeof record,"{\"event\":\"cpu-load-sample\",\"worker\":%d,\"pid\":%d,\"cpu\":%d,\"sequence\":%" PRIu64
@@ -51,7 +52,8 @@ static void worker(int index,int cpu,int gate,pid_t parent,size_t size)
             if(n<=0 || n>=(int)sizeof record || write(STDOUT_FILENO,record,(size_t)n)!=n)_exit(1);
             last=now;
         }
-    } while(!stopping);
+        if (observedStop) break;
+    }
     _exit(0);
 }
 int main(int argc,char **argv)

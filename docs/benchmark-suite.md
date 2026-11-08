@@ -678,6 +678,24 @@ interrupted campaign revalidates the environment and repeats incomplete
 blocks; it never treats partial measurements as completed repetitions.
 Kernel/driver failure that prevents recovery cannot be hidden as success.
 
+A workload failure is local to its phase/target/repetition block. Continue the
+remaining independent schedule after verified restoration and worker/account
+teardown. Preserve all failed evidence, keep the failure visible, and exclude
+it from measurement aggregates. A finished schedule containing failures is
+`completed-with-failures` and returns a nonzero status; it is not a passed
+selection. Operator cancellation, failed recovery, changed immutable conditions,
+reboots and evidence-integrity failures stop execution. Resume retries failed
+blocks while retaining verified completions.
+
+The reserved reference profiles enable Do Not Disturb and suppress accessory
+system autostart applications through per-user XDG overrides. A fixed core
+session allowlist preserves desktop infrastructure; the inventory and file
+hashes are frozen before authorization and checked before takeover. This
+prevents distro updater/reminder popups from contaminating captures or starting
+uncontrolled background work. Neither the host's autostart files nor personal
+profiles are edited. Profile policy and applied overrides are retained as
+evidence, and unexpected overlays remain invalid data.
+
 No planned reboot recovery is required for v1. A future campaign requesting
 it must include the reboot count and automatic resume in its initial plan.
 

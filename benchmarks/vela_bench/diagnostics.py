@@ -84,6 +84,14 @@ def parse_probe(raw, *, frames=FRAMES, delay=0, method="wayland-presentation-v1"
                     raise BenchError("Presentation predates submission")
                 for key in ("refresh_ns", "sequence", "flags"):
                     integer(row, key)
+                # DRM timestamps the end of vblank/start of active scanout;
+                # an interrupt delivered inside vblank can precede that time.
+                # Bound this lead by one reported refresh for vsynced feedback.
+                # https://docs.kernel.org/gpu/drm-kms.html#c.drm_crtc_funcs.get_vblank_timestamp
+                allowance = row['refresh_ns'] if row['flags'] & 1 else 0
+                if (clocks[0]['presentation_clock_id'] == clocks[0]['monotonic_clock_id']
+                        and row['presentation_ns'] > row['received_monotonic_ns'] + allowance):
+                    raise BenchError('Presentation timestamp exceeds the refresh bound after its feedback receipt')
             feedback[frame] = row
         elif event == "summary":
             if index != len(rows) - 1 or row.get("complete") is not True:
@@ -132,8 +140,12 @@ def user_command(record, layout, operation, command, runtime_seconds=25):
 def stop_instrument(host, record, layout, operation):
     if operation not in ("probe", "display", "capture", "calibration", "measurement", "producer", "scene", "observation"):
         raise BenchError("Unknown fixed instrument unit")
-    host.run(user_prefix(record, layout) + ["/usr/bin/systemctl", "--user", "stop", "vela-benchmark-" + operation + ".service"],
-             check=False, timeout=8)
+    unit = 'vela-benchmark-' + operation + '.service'
+    prefix = user_prefix(record, layout) + ['/usr/bin/systemctl', '--user']
+    host.run(prefix + ['stop', unit], timeout=8)
+    active = host.run(prefix + ['show', unit, '--property=ActiveState', '--value'], timeout=5)
+    if active.stdout.strip() not in ('inactive', 'failed'):
+        raise BenchError('Instrument still active after stop: ' + unit)
 
 
 def probe_command(record, scenario, layout):

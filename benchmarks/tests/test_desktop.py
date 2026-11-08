@@ -47,7 +47,7 @@ class DesktopObservation(unittest.TestCase):
         self.assertEqual(result['first_observed_response_lower_ms'],0)
         self.assertEqual(result['first_observed_response_upper_ms'],99)
         self.assertFalse(result['fine_grained_motion'])
-        for broken in ('unchanged','tiny','unsettled','no-baseline','wrong-action'):
+        for broken in ('unchanged','tiny','unsettled','closed-again','no-baseline','wrong-action'):
             with self.subTest(broken=broken):
                 data=copy.deepcopy(rows); injected=copy.deepcopy(events)
                 if broken=='unchanged':
@@ -55,6 +55,8 @@ class DesktopObservation(unittest.TestCase):
                 elif broken=='tiny':
                     for row in data[2:]: row['tiles']=[0xffffff]*2+[0]*574
                 elif broken=='unsettled': data[-1]['tiles']=[0]*576
+                elif broken=='closed-again':
+                    for row in data[-2:]:row['tiles']=[0]*576
                 elif broken=='no-baseline': injected[0]['before_monotonic_ns']=1
                 else: injected[0]['command']='pulse'
                 with self.assertRaises(BenchError): action_metrics(data,injected,'launcher-open')
@@ -113,7 +115,7 @@ else:
                 return subprocess.Popen([sys.executable,'-c',script,kind],stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE,stderr=errors,bufsize=0)
             def run(self, command, **kwargs):
-                return SimpleNamespace(returncode=0,stdout='',stderr='')
+                return SimpleNamespace(returncode=0,stdout='inactive\n',stderr='')
         with tempfile.TemporaryDirectory() as tmp:
             directory=Path(tmp)
             result=run_observation(Host(),{'uid':1001,'gid':1001},directory,'vela',Layout(directory),
@@ -178,7 +180,7 @@ else:
     def test_complete_launcher_audit_requires_launch_receipt_content_and_return_to_baseline(self):
         import hashlib
         from vela_bench.desktop_legacy import LAUNCHED, VERSION
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, patch('vela_bench.desktop_pixels.evidence') as decoded:
             directory=Path(tmp)
             sample={'schema':1,'method':VERSION,'spec':SPEC,'phase':'responsiveness','status':'passed','failures':[],
                     'uinput_cleanup':'passed','family_complete':False,'launcher_launch_verified':True,
@@ -206,6 +208,8 @@ else:
                                       'after_monotonic_ns':stamp+1_000_000} for command,stamp in
                                      zip(('launcher','search','enter','close'),(23_500_000_000,23_600_000_000,23_700_000_000,25_400_000_000))]
             profile={'mode':{'width':1280,'height':720}}
+            originals={row['image_file']:copy.deepcopy(row) for action in sample['actions'] for row in action['captures']}
+            decoded.side_effect=lambda path:originals[path.name]
             path=directory/'vela-desktop.json'; atomic_json(path,sample)
             self.assertEqual(audit_observation(directory,'vela',profile,'responsiveness'),sample)
             for broken in ('receipt','search','visible-content','clock'):

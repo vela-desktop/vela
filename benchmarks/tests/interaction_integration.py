@@ -32,6 +32,7 @@ def run_condition(env,target,profile,directory,pattern,keyboard):
             process=subprocess.Popen(argv,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,bufsize=0)
             processes.append(process);return process
         def run(self,command,**options):
+            if '--property=ActiveState' in command:return SimpleNamespace(stdout='inactive\n',returncode=0)
             assert command[-3:]==['--user','stop','vela-benchmark-measurement.service'],command
             return SimpleNamespace(stdout='',returncode=0)
     def snapshot(uid,**options):

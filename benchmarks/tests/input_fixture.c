@@ -23,6 +23,7 @@ int __wrap_libevdev_uinput_create_from_device(const struct libevdev *device, int
 int __wrap_libevdev_uinput_write_event(const struct libevdev_uinput *input,
                                       unsigned type, unsigned code, int value)
 {
+    if (type == EV_KEY && !libevdev_has_event_code((const struct libevdev *)input, type, code)) return -1;
     fprintf(stderr, "EVENT %u %u %d\n", type, code, value);
     return 0;
 }

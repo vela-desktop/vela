@@ -10,8 +10,9 @@ from . import BenchError
 from .archive import decode_json, read_json
 from .calibration import parse_input
 from .diagnostics import SCENARIOS, parse_probe
-from .discovery import file_hash
 from .host import FAULT_UNIT
+from .pixels import image_hash
+from .desktop_pixels import evidence
 
 
 def calibration_evidence(directory, target):
@@ -39,8 +40,11 @@ def calibration_evidence(directory, target):
             seen = set()
             for index, row in enumerate(frames):
                 expected = f"{target}-capture-{index:02d}.png"
-                if row.get("image_file") != expected or file_hash(directory / expected) != row.get("image_sha256"):
+                if row.get("image_file") != expected or image_hash(directory / expected) != row.get("image_sha256"):
                     raise BenchError("Capture image identity changed")
+                pixels = evidence(directory / expected)
+                if any(row.get(key) != pixels[key] for key in ('width', 'height', 'markers')):
+                    raise BenchError('Capture metadata differs from original PNG')
                 markers = row.get("markers", [])
                 if len(markers) != 1 or markers[0].get("frame") not in ids:
                     raise BenchError("Capture lost the presented frame identity")
@@ -67,6 +71,13 @@ def audit_pilot(directory, target, fault=None, *, instruments=True):
         session = read_json(directory / f"{target}-session.json")
         checks["namespace_isolation"] = session.get("fixture_hidden_from_both_trees") is True
         checks["full_session"] = session.get("graphical_session_target") == "active"
+        if state.get('plan', {}).get('desktop_profile_policy'):
+            from .session_profile import POLICY
+            profile = read_json(directory / f'{target}-desktop-profile.json')
+            inventory = state['plan'].get('autostart_inventory')
+            checks['quiet_desktop_profile'] = (profile.get('policy') == POLICY
+                and profile.get('autostart_inventory') == inventory
+                and profile.get('disabled_autostarts') == sorted({row['name'] for row in inventory if not row['allowed']}))
         if state.get('plan', {}).get('input_policy'):
             from .input_isolation import POLICY
             guard = read_json(directory / 'input-isolation.json')

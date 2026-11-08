@@ -79,6 +79,8 @@ def check(env,target,directory,phase,*,session=None,input_command=None,audit=Tru
             p=subprocess.Popen(argv,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,bufsize=0,start_new_session=True)
             processes[role]=p;return p
         def run(self,command,**options):
+            if 'show' in command and '--property=ActiveState' in command:
+                return SimpleNamespace(stdout='inactive\n',returncode=0)
             if command[-1].endswith('.service') and 'stop' in command:
                 p=processes.get(command[-1])
                 if p and p.poll() is None:p.terminate();p.wait(timeout=3)
@@ -91,7 +93,7 @@ def check(env,target,directory,phase,*,session=None,input_command=None,audit=Tru
         outputs=normalized_outputs(subprocess.check_output([tool('vela-bench-desktop'),'--outputs'],env=env,text=True),'plasma')
         profile['primary']=next(o['name'] for o in outputs if o['enabled'])
     original=desktop.producer_metrics
-    def producer(rows,mode,window):return original(rows,mode,window,physical_output_required=False)
+    def producer(rows,mode,window,**kwargs):return original(rows,mode,window,physical_output_required=False,**kwargs)
     try:
         with patch.object(desktop,'producer_metrics',producer):
             result=desktop.run_observation(Host(),{'uid':os.getuid(),'gid':os.getgid()},directory,target,layout,profile,phase,

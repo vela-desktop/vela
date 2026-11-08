@@ -13,7 +13,7 @@ from . import BenchError
 from .archive import decode_json
 from .calibration import Lines, stop_process
 from .diagnostics import user_command, stop_instrument
-from .pixels import png_rgb, png_bytes
+from .pixels import png_rgb, png_bytes, image_hash
 from .input_isolation import PARK_COMMAND
 
 METHOD='toolkit-scaling-corpus-v1'
@@ -173,7 +173,7 @@ def row_metrics(row,directory,profile,target,item,uid,*,parking=PARK_COMMAND):
         name=stem+suffix
         paths[key]=directory/name
         if (row.get(key+'_file')!=name or paths[key].is_symlink()
-                or hashlib.sha256(paths[key].read_bytes()).hexdigest()!=row.get(key+'_sha256')):
+                or image_hash(paths[key])!=row.get(key+'_sha256')):
             raise BenchError('Corpus original/crop evidence changed')
     meta=source_audit(row['source_events'],case,item,uid)
     if row.get('source')!=meta:raise BenchError('Corpus summary differs from source events')

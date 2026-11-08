@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import copy
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -19,7 +20,7 @@ from .archive import atomic_json, decode_json, read_json
 from .calibration import Lines, stop_process
 from .conditions import compare_outputs, display_command, normalized_outputs
 from .diagnostics import user_command, stop_instrument, parse_probe
-from .pixels import pattern_metrics
+from .pixels import pattern_metrics, image_hash
 from . import resources, interactions, corpus
 from .input_isolation import PARK_COMMAND, POLICY as INPUT_POLICY
 
@@ -71,7 +72,7 @@ def scaling_metrics(row,directory,profile,target):
         raise BenchError('Unknown scaling condition')
     name=f'{target}-scale-{round(scale*100)}-{state}.png'
     path=directory/name
-    if row.get('image_file') != name or hashlib.sha256(path.read_bytes()).hexdigest() != row.get('image_sha256'):
+    if row.get('image_file') != name or image_hash(path) != row.get('image_sha256'):
         raise BenchError('Scaling capture image changed')
     backend='ext-image-copy-capture-v1' if target=='vela' else 'kwin-screenshot2-v1'
     capture=row['capture']
@@ -89,7 +90,7 @@ def scaling_metrics(row,directory,profile,target):
     if type(meta.get('monotonic_ns')) is not int or not 0 <= meta['monotonic_ns'] <= capture['begin_monotonic_ns']:
         raise BenchError('Pattern state was not established before capture')
     logical=[meta.get('logical_width'),meta.get('logical_height')]
-    if state in ('opened','restored') and logical != [401,301]:
+    if state in ('opened','restored') and (logical != [401,301] or meta.get('maximized') is not False):
         raise BenchError('Normal/restored pattern did not retain its original logical size')
     if state=='maximized' and (meta.get('maximized') is not True
             or meta['buffer_width']<.9*profile['mode']['width'] or meta['buffer_height']<.6*profile['mode']['height']):
@@ -195,9 +196,20 @@ def run_scaling(host,record,directory,target,layout,profile,health,progress,resu
         result['scale1_restored']=True
 
 
+def resource_animation_timeout(profile):
+    refresh = (profile or {}).get('mode', {}).get('refresh_mhz')
+    if type(refresh) is not int or refresh <= 0:
+        raise BenchError('Animation workload needs a verified refresh rate')
+    seconds = math.ceil(SPEC['active_animation_frames'] * 1000 / refresh) + 20
+    if seconds > 110:
+        raise BenchError('Animation workload exceeds the fixed 120-second instrument budget at this refresh')
+    return seconds
+
+
 def resource_condition(host,record,directory,target,layout,label,health,progress,profile=None):
     if label not in RESOURCE_CONDITIONS:raise BenchError('Unknown fixed resource condition')
     if progress: progress('resources/'+label)
+    animation_timeout = resource_animation_timeout(profile) if label == 'active-animation' else None
     rows=[]
     cpu_before=time.monotonic_ns()
     process=keyboard=None;transport=None;sysfs=None;input_cleanup='not-started'
@@ -206,7 +218,7 @@ def resource_condition(host,record,directory,target,layout,label,health,progress
             health(); rows.append(resources.snapshot(record['uid']))
             if label=='idle': future=None
             else:
-                command=([str(layout.probe),'--frames',str(SPEC['active_animation_frames']),'--timeout','55'] if label=='active-animation'
+                command=([str(layout.probe),'--frames',str(SPEC['active_animation_frames']),'--timeout',str(animation_timeout)] if label=='active-animation'
                          else [str(layout.helper.parent/'vela-pattern'),'--benchmark','401','301'] if label=='window-interaction'
                          else ['/usr/bin/python3','-I',str(layout.helper),'_resource-workload'])
                 if label=='window-interaction':
