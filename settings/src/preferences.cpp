@@ -87,7 +87,6 @@ void Preferences::watchConfig()
     }
 }
 
-/** Reload persisted appearance and shell choices, normalizing absent or invalid settings. */
 void Preferences::reload()
 {
     QSettings settings = shellSettings();
@@ -379,7 +378,6 @@ void Preferences::setAccent(const QColor& color)
     emit accentChanged();
 }
 
-/** Persist the app mode and update GTK and KDE appearance tools with isolated launches. */
 void Preferences::setAppTheme(const QString& theme)
 {
     if (theme == m_appTheme || (theme != QLatin1String("light") && theme != QLatin1String("dark"))) {
@@ -586,3 +584,349 @@ void Preferences::setLanguage(const QString& language)
     }
 }
 
+void Preferences::saveLayouts()
+{
+    saveCompositorKeys(QStringList { QStringLiteral("keyboard-layout"), QStringLiteral("keyboard-variant") });
+    emit keyboardChanged();
+}
+
+void Preferences::addKeyboardLayout(const QString& layout, const QString& variant)
+{
+    for (const QVariant& value : std::as_const(m_layouts)) {
+        const QVariantMap entry = value.toMap();
+        if (entry[QStringLiteral("layout")] == layout && entry[QStringLiteral("variant")] == variant) {
+            return;
+        }
+    }
+    m_layouts.append(QVariantMap { { QStringLiteral("layout"), layout }, { QStringLiteral("variant"), variant } });
+    saveLayouts();
+}
+
+void Preferences::removeKeyboardLayout(int index)
+{
+    if (index >= 0 && index < m_layouts.size()) {
+        m_layouts.removeAt(index);
+        saveLayouts();
+    }
+}
+
+void Preferences::moveKeyboardLayoutUp(int index)
+{
+    if (index > 0 && index < m_layouts.size()) {
+        m_layouts.swapItemsAt(index, index - 1);
+        saveLayouts();
+    }
+}
+
+void Preferences::setRepeatDelay(int ms)
+{
+    if (ms != m_repeatDelay) {
+        m_repeatDelay = std::clamp(ms, 100, 2000);
+        saveCompositorKeys(QStringList { QStringLiteral("keyboard-repeat-delay") });
+        emit keyboardChanged();
+    }
+}
+
+void Preferences::setRepeatRate(int perSecond)
+{
+    if (perSecond != m_repeatRate) {
+        m_repeatRate = std::clamp(perSecond, 1, 100);
+        saveCompositorKeys(QStringList { QStringLiteral("keyboard-repeat-rate") });
+        emit keyboardChanged();
+    }
+}
+
+// ------------------------------------------- night light and accessibility --
+
+namespace {
+
+QString yesNo(bool on)
+{
+    return on ? QStringLiteral("yes") : QStringLiteral("no");
+}
+
+} // namespace
+
+void Preferences::setNightLight(bool on)
+{
+    if (on != m_nightLight) {
+        m_nightLight = on;
+        saveCompositor({ { QStringLiteral("night-light"), yesNo(on) } });
+        emit nightLightChanged();
+    }
+}
+
+void Preferences::setNightTemperature(int kelvin)
+{
+    kelvin = std::clamp((kelvin + 50) / 100 * 100, VELA_NIGHT_KELVIN_MIN, VELA_NIGHT_KELVIN_MAX);
+    if (kelvin != m_nightTemperature) {
+        m_nightTemperature = kelvin;
+        saveCompositor({ { QStringLiteral("night-light-temperature"), QString::number(kelvin) } });
+        emit nightLightChanged();
+    }
+}
+
+/** Persist the NVIDIA workaround setting and notify bindings in the UI. */
+void Preferences::setNightNvidiaFix(bool on)
+{
+    if (on != m_nightNvidiaFix) {
+        m_nightNvidiaFix = on;
+        saveCompositor({ { QStringLiteral("night-light-nvidia-fix"), yesNo(on) } });
+        emit nightLightChanged();
+    }
+}
+
+void Preferences::setNightSchedule(const QString& schedule)
+{
+    if (schedule != m_nightSchedule) {
+        m_nightSchedule = schedule;
+        saveCompositor({ { QStringLiteral("night-light-schedule"), schedule } });
+        emit nightLightChanged();
+    }
+}
+
+void Preferences::setNightFrom(const QString& time)
+{
+    if (time != m_nightFrom && QTime::fromString(time, QStringLiteral("HH:mm")).isValid()) {
+        m_nightFrom = time;
+        saveCompositor({ { QStringLiteral("night-light-from"), time } });
+        emit nightLightChanged();
+    }
+}
+
+void Preferences::setNightTo(const QString& time)
+{
+    if (time != m_nightTo && QTime::fromString(time, QStringLiteral("HH:mm")).isValid()) {
+        m_nightTo = time;
+        saveCompositor({ { QStringLiteral("night-light-to"), time } });
+        emit nightLightChanged();
+    }
+}
+
+void Preferences::setTearing(bool on)
+{
+    if (on != m_tearing) {
+        m_tearing = on;
+        saveCompositor({ { QStringLiteral("tearing"), yesNo(on) } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setVrr(const QString& mode)
+{
+    if (mode != m_vrr) {
+        m_vrr = mode;
+        saveCompositor({ { QStringLiteral("variable-refresh"), mode } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setDirectScanout(const QString& mode)
+{
+    if ((mode == QLatin1String("auto") || mode == QLatin1String("no")) && mode != m_directScanout) {
+        m_directScanout = mode;
+        saveCompositor({ { QStringLiteral("direct-scanout"), mode } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setMagnifier(bool on)
+{
+    if (on != m_magnifier) {
+        m_magnifier = on;
+        sendToCompositor(on ? "magnifier on" : "magnifier off");
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setMagnifierStep(int percent)
+{
+    if (percent != m_magnifierStep) {
+        m_magnifierStep = percent;
+        saveCompositor({ { QStringLiteral("magnifier-step"), QString::number(percent) } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setColorFilter(bool on)
+{
+    if (on != m_colorFilter) {
+        m_colorFilter = on;
+        saveCompositor({ { QStringLiteral("color-filters"), yesNo(on) } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setColorFilterKind(const QString& kind)
+{
+    if (kind != m_colorFilterKind) {
+        m_colorFilterKind = kind;
+        saveCompositor({ { QStringLiteral("color-filter"), kind } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setColorFilterShortcut(bool on)
+{
+    if (on != m_colorFilterShortcut) {
+        m_colorFilterShortcut = on;
+        saveCompositor({ { QStringLiteral("color-filters-shortcut"), yesNo(on) } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setStickyKeys(bool on)
+{
+    if (on != m_stickyKeys) {
+        m_stickyKeys = on;
+        saveCompositor({ { QStringLiteral("sticky-keys"), yesNo(on) } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setAnimationEffects(bool on)
+{
+    if (on != m_animationEffects) {
+        m_animationEffects = on;
+        saveCompositor({ { QStringLiteral("animation-effects"), yesNo(on) } });
+        emit accessibilityChanged();
+    }
+}
+
+void Preferences::setAnimationDuration(int percent)
+{
+    percent = qBound(50, percent, 300);
+    if (percent != m_animationDuration) {
+        m_animationDuration = percent;
+        saveCompositor({ { QStringLiteral("animation-duration"), QString::number(percent) } });
+        emit accessibilityChanged();
+    }
+}
+
+// ---------------------------------------------------- mouse and touchpad --
+
+void Preferences::setMouseSpeed(int value)
+{
+    value = std::clamp(value, 1, 20);
+    if (value != m_mouseSpeed) {
+        m_mouseSpeed = value;
+        saveCompositor({ { QStringLiteral("mouse-speed"), QString::number(value) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setMousePrecision(bool on)
+{
+    if (on != m_mousePrecision) {
+        m_mousePrecision = on;
+        saveCompositor({ { QStringLiteral("mouse-precision"), yesNo(on) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setMouseLeftHanded(bool on)
+{
+    if (on != m_mouseLeftHanded) {
+        m_mouseLeftHanded = on;
+        saveCompositor({ { QStringLiteral("mouse-primary-button"), on ? QStringLiteral("right") : QStringLiteral("left") } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setWheelLines(int lines)
+{
+    lines = std::clamp(lines, 1, 20);
+    if (lines != m_wheelLines) {
+        m_wheelLines = lines;
+        saveCompositor({ { QStringLiteral("mouse-scroll-lines"), QString::number(lines) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setTouchpad(bool on)
+{
+    if (on != m_touchpad) {
+        m_touchpad = on;
+        saveCompositor({ { QStringLiteral("touchpad"), yesNo(on) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setTouchpadWithMouse(bool on)
+{
+    if (on != m_touchpadWithMouse) {
+        m_touchpadWithMouse = on;
+        saveCompositor({ { QStringLiteral("touchpad-with-mouse"), yesNo(on) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setTouchpadSpeed(int value)
+{
+    value = std::clamp(value, 1, 20);
+    if (value != m_touchpadSpeed) {
+        m_touchpadSpeed = value;
+        saveCompositor({ { QStringLiteral("touchpad-speed"), QString::number(value) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setTouchpadTap(bool on)
+{
+    if (on != m_touchpadTap) {
+        m_touchpadTap = on;
+        saveCompositor({ { QStringLiteral("touchpad-tap"), yesNo(on) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setTouchpadNatural(bool on)
+{
+    if (on != m_touchpadNatural) {
+        m_touchpadNatural = on;
+        saveCompositor({ { QStringLiteral("touchpad-natural-scroll"), yesNo(on) } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setThreeFingers(const QString& action)
+{
+    if (action != m_threeFingers) {
+        m_threeFingers = action;
+        saveCompositor({ { QStringLiteral("touchpad-three-fingers"), action } });
+        emit inputChanged();
+    }
+}
+
+void Preferences::setFourFingers(const QString& action)
+{
+    if (action != m_fourFingers) {
+        m_fourFingers = action;
+        saveCompositor({ { QStringLiteral("touchpad-four-fingers"), action } });
+        emit inputChanged();
+    }
+}
+
+// --------------------------------------------------------------- clipboard --
+
+void Preferences::setClipboardHistory(bool on)
+{
+    if (on != m_clipboardHistory) {
+        m_clipboardHistory = on;
+        setShell(QStringLiteral("clipboard/history"), on);
+        emit clipboardChanged();
+    }
+}
+
+void Preferences::clearClipboard()
+{
+    // To the shell, on its socket.
+    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
+    QLocalSocket socket;
+    socket.connectToServer(runtimeDir + QStringLiteral("/vela-shell-") + display + QStringLiteral(".sock"));
+    if (socket.waitForConnected(200)) {
+        socket.write("clipboard-clear\n");
+        socket.waitForBytesWritten(200);
+    }
+}
