@@ -14,10 +14,10 @@ This proposal treats **time spent measuring the system** and **time spent operat
 ### Goals
 
 1. Reduce **total elapsed campaign time**, measured from the accepted START to verified return of the machine, for both `--fast` and the default three-repetition mode.
-2. Preserve *the same* per-condition input actions, submitted frames, fixed work, screenshots, independent repetitions, and accepted source evidence unless a separately reviewed/versioned methodological change is explicitly justified.
+2. Preserve *the same* per-condition input actions, submitted frames, fixed work, screenshots, independent repetitions, source evidence **and temporal stimulus contract** unless a separately reviewed/versioned methodological change is explicitly justified.
 3. Reduce observer/interference overhead in measured windows, particularly repeated external process and D-Bus activity.
 4. Preserve the real-TTY isolation model, fresh desktop profiles and sessions, crash/hang/hotplug recovery, original evidence, offline re-audit, and fail-closed behavior.
-5. Make actual savings measurable, attributable, and repeatable.
+5. Make actual savings measurable, attributable, and repeatable, including invalid blocks, retries, and machine recovery.
 
 ### Non-goals
 
@@ -26,6 +26,7 @@ This proposal treats **time spent measuring the system** and **time spent operat
 - Replacing or weakening raw evidence, hashes, source-identity checks, pixel oracles, sandbox policies, original capture backends, or cleanup requirements.
 - Parallel benchmark sessions, simultaneous desktop comparisons, or overlapping workloads that would interfere with resource/latency measurements.
 - Claiming a numerical speedup without timing a real accepted campaign.
+- Treating unchanged action/frame counts alone as proof of identical timing or observer behavior.
 
 ## 2. Baseline and concrete observations
 
@@ -45,103 +46,136 @@ The existing code establishes the following **work counts**, not actual elapsed 
 
 **Important:** The sum of fixed sleeps is only a lower bound for those explicit waits, not an estimated achievable saving. `model.BUDGETS` and campaign's printed duration ranges are planning allowances, not measured per-stage costs; systemd deadlines are upper bounds, not automatic delays. P3 `observe` is a separate selection, not part of the ordinary five-phase `run` matrix.
 
+
 ## 3. First requirement: profile the harness before optimizing
 
-Implement low-intrusion, monotonic, structured **harness stage timing** *before* implementing performance changes. Each stage record should contain:
+Implement low-intrusion, monotonic, structured **harness stage timing** *before* any optimization. Each event must include campaign/block/attempt IDs, target, phase/repetition, method/spec, stage, start/end `CLOCK_MONOTONIC` timestamps, status and, where relevant, subprocess exit and tool identity.
 
-- Campaign ID, block ID, attempt, target, repetition, method/spec, stage name, start/end `CLOCK_MONOTONIC` timestamps, status, and (when applicable) subprocess exit and instrument identity.
-- Explicit categories: preflight/context refresh, greeter/VT setup, display-manager stop/start, profile reset, session launch/readiness, condition apply/verify, presentation diagnostics, input/capture calibration, fixture launch, per-condition settling, measured workload, capture transport, image analysis, evidence hashing/audit, fsync/checkpoint, session teardown, and recovery.
-- Separate **measured workload windows** from **harness and validation work**. Do not add heavyweight tracing, polling, hashing, printing, or image processing *inside* the timed path simply to profile it.
-- A summarized critical-path view by phase/target/repetition, with the raw stage events retained and re-checkable. A separate CPU-time and process-spawn count is useful where available.
-- On cancellation or failed blocks, preserve partial stage timing without marking incomplete measurement evidence as accepted.
+Also capture the **boot ID** (e.g. `/proc/sys/kernel/random/boot_id`) and clock domain. Monotonic timestamps are comparable only **within the same boot and clock domain**: a resumed campaign after reboot must not concatenate them or calculate a fictitious continuous duration. Report attempt-local durations and externally observed recovery elapsed time separately.
 
-Measurement: compare a frozen pre-optimization baseline with candidate builds on the same hardware and conditions; repeat and rotate candidate ordering to reduce temperature/cache/order effects. Report median/range of *whole-campaign* wall time and per-stage costs, alongside failures, measurements, and environment identities. Do not infer gains from the planner budgets.
+Profile preflight/context refresh, VT/greeter setup, display-manager transitions, reset/profile, session launch/readiness, condition application, presentation probes, input/capture calibration, fixture launch, settling, measured work, capture backend and transport, image analysis, hashes/audit, checkpoint/fsync, teardown and recovery. Preserve partial/failed stage timing; incomplete evidence must never be accepted. A critical-path breakdown must account for overlap rather than naively summing concurrent durations. Track process-spawn counts and harness CPU time when available.
+
+**Freeze a temporal baseline:** in addition to elapsed stages, record actual input injection receipts and inter-arrival intervals (including `health()` time), capture request/receipt/analysis timing, P3 capture-to-action dependencies, and state-to-observation windows. Do not add heavyweight tracing/polling within measured windows merely to profile them.
+
+Compare candidates against a frozen pre-optimization baseline with the same installed desktops, hardware and conditions. Repeat independent whole campaigns, rotate ordering and retain raw stage events. Planner budgets and service deadlines are **not** measured durations. See Section 5 for the preregistered comparison plan.
+
 
 ## 4. Proposed optimization tracks
 
+### Cross-cutting invariant — temporal workload equivalence
+
+Identical counts do **not** necessarily mean identical compositor workloads. For each proposed optimization document and test three independent guarantees:
+
+1. **Work equivalence:** same types/counts of actions, submitted frames, fixed work, cases, captures, repetitions and safety controls.
+2. **Temporal equivalence:** predeclared input intervals, capture-to-action dependencies, minimum pacing, jitter/late-deadline policy, transition timing and observation windows. Currently `calibration.run_input()` performs `health()` **before** its 80–99 ms sleep: a cheaper check changes injection-to-injection timing. In `desktop.Controller.capture()`, P3 actions are issued after selected screenshot receipts: faster capture can accelerate mouse dragging and window actions. Count-preserving optimizations can therefore change the stimulus.
+3. **Observation equivalence:** same backend/source/output/UID/frame semantics, original evidence and pixel oracle, capture position in the timeline and observer interference.
+
+Stage 0 must establish the actual baseline and acceptable timing envelope **before** candidate data is inspected. Where applicable, pace input using explicit monotonic deadlines, record real injection receipts, and forbid catch-up bursts after a delayed step. Preserve prerequisites (e.g. P3 pre-action frame) even when scheduling is made explicit. Missing deadlines or gaps invalidate evidence rather than weaken the contract.
+
+If equivalent pacing cannot be proven, **version the method/stimulus**, qualify it independently and do not claim a like-for-like harness-only speedup. Existing P3 coarse observation is not an optical or frame-level latency measurement.
+
+
 ### T1 — Split inexpensive liveness checking from deep session attestation
 
-**Current hot path:** P2 `run_input()` calls `health()` for every input action. The present `health()` performs full `verify_session()`, which includes external `loginctl`, `systemctl`, `busctl`, namespace reads and `fgconsole`. P2 slow-apps alone repeats at least 840 action-level health checks per block.
+**Current:** P2 `run_input()` calls `pilot.health()` for each action; it executes input isolation checks, `verify_session()` and `fgconsole`, with external logind/systemd/D-Bus queries. Slow-apps alone involves at least 840 action-level checks per block. Since `health()` precedes the fixed pacing sleep, its cost is part of the current stimulus interval.
 
-**Design:**
+**T1a — optimize existing checks first, without another supervisor:**
 
-- Introduce a scoped, root-owned monitor for each benchmark block, with explicit monitor readiness, checked identity, bounded freshness, immutable session/VT identifiers, and a fail-closed `healthy`/invalidated state.
-- Deep attestation remains mandatory before the measurement window, after it, at key transitions, and at final acceptance. Monitor failures, loss of heartbeat, session/VT change, input hotplug, unexplained new processes, and evidence gaps invalidate the affected block.
-- In the action loop, read a low-cost state maintained by that monitor instead of synchronously launching multiple utilities. Establish an independent mechanism to detect mid-window changes (event subscription, guarded periodic revalidation, or equivalent); **checking only at the beginning and end is insufficient**.
-- Keep evdev exclusive-grab enforcement and the emergency abort path independent of the optimization; never suppress an abort to improve timing.
-- Explicitly capture any detection latency in evidence; monitor CPU/process overhead must be characterized. The monitor must not silently survive into resource-accounting scopes in a way that makes desktop comparisons asymmetric.
+- Profile individual checks. Classify properties as immutable for the block, cheap mutable state, or those requiring deep attestation. Cache only frozen IDs/expected values, never an unbounded mutable `healthy=true`.
+- Prefer persistent D-Bus subscriptions/connections, targeted kernel state reads, `pidfd` liveness where relevant, or equivalent cheap existing-path checks over repeated utility launches; integrate with existing `pilot.py` / systemd and `InputIsolation`.
+- Retain deep attestation before/after windows, at key transitions and before acceptance, plus independently proven mid-window change detection. Endpoint checks alone cannot prove an uninterrupted healthy interval.
+- Introduce monotonic-deadline input pacing or an equivalent audited timing contract so cheaper `health()` cannot silently accelerate P2 actions. Record actual injection intervals, overruns and invalidation; **no catch-up bursts**.
+- Continue fault-coverage tests for VT/session loss, device hotplug, process boundary violations and emergency abort. Quantify savings and observer impact.
 
-**Acceptance:** fault injection for loss of user manager/session, VT switch, monitor death/freeze, hotplug, stale heartbeat, and mid-window invalidation; no accepted results after an unobserved interval. Identical input/motion sample requirements. Compare runtime and measured interference before/after.
+**T1b — privileged event monitor only if T1a is insufficient:**
+
+- Keep it block-scoped and subordinate to the **existing PID 1/pilot recovery authority**, not a competing supervisor. Specify startup readiness handshake, UID/process identity, sequence numbers, heartbeat/freshness deadline, explicit invalidated state and durable event log.
+- Add a per-invariant coverage table: logind/user manager, active VT, allowed processes/UID/cgroup, input devices/grab/hotplug and namespace. For each give event source, overflow/loss detection, fallback revalidation, **maximum detection latency**, evidence and invalidation rule.
+- On queue overflow, lost subscription, unobserved interval, stale heartbeat, monitor death/freeze or unverifiable identity, reject the block and invoke supervised recovery, even if a later deep check appears healthy.
+- Keep evdev emergency abort/grab safety independent. Characterize monitor CPU/process cost and avoid contaminating or asymmetrically affecting P4 resource accounting.
+
+**Acceptance:** inject session/user-manager loss, VT switch, process change, hotplug, event loss/overflow, stale state and (T1b) monitor death/freeze; prove bounded detection/recovery and rejection across gaps. Preserve P2 input timing envelope and all existing action/frame requirements. Implement T1b only when T1a cannot meet these guarantees or leaves measured overhead worth addressing.
+
 
 ### T2 — Use persistent, serialized screenshot transport in a block
 
-**Current hot path:** P3 calls the capture worker repeatedly, which in Vela currently invokes `vela-screen-dump` then `vela-bench-desktop --analyze` per capture; P4 also executes one-shot capture requests.
+**Current:** Vela P3 captures may invoke `vela-screen-dump` and `vela-bench-desktop --analyze` repeatedly, while P4 uses one-shot capture calls. In P3, `Controller.capture()` consumes 12 rows and injects certain mouse/window actions only after receiving particular screenshots. Faster capture therefore **changes the temporal stimulus** unless explicitly controlled.
 
 **Design:**
 
-- Evaluate a block-scoped capture service/worker that holds the correct compositor-specific capture connection and accepts individual serialized capture requests. Keep the existing `ext-image-copy-capture-v1` (Vela) and KWin Screenshot2 (Plasma) semantics; no portal/software/fallback substitution.
-- Each request must independently record begin/end bounds, backend, output ID and geometry, source receipt, and an original full-output PNG digest. Preserve existing capture counts, ordering, separation, and per-request auditable evidence.
-- Do not run capture during the P2 neutral measurements or P4 resource measurements that explicitly disable it.
-- Keep capture requests synchronous with benchmark actions where the current action model depends on a prior screenshot. Any asynchronous analysis runs only outside relevant measured intervals or in an isolation domain shown not to perturb them.
-- Failure of the worker, missing response, buffer reuse error, frame-order ambiguity, or malformed image invalidates the block; recreate workers after session resets.
+- Evaluate a block/session-scoped persistent, **serialized** capture worker retaining the exact Vela `ext-image-copy-capture-v1` and Plasma KWin Screenshot2 semantics. Never substitute portal/software capture or reuse a worker across fresh desktop sessions.
+- For every request bind a unique sequence/request ID, associated action, backend, output geometry, UID, source/frame identity, original full-output PNG bytes/hash, and a verifiable response. Stale/duplicated/out-of-order frames, response ambiguity, buffer reuse defects, worker crashes or missing replies fail closed.
+- Distinguish monotonic timestamps for client request, backend dispatch, frame completion/receipt, PNG encoding, analysis and consumer delivery. **Do not compare process-start-inclusive legacy request durations directly with new in-process/IPC durations.** Retain provenance for equivalent time segments.
+- Preserve P3 capture-action dependencies, original capture count/order and an explicit **input pacing envelope** based on Stage 0; do not allow an earlier frame delivery to accelerate the drag trajectory. Use monotonic deadlines where justified, log actual injection receipts, and invalidate missed/ambiguous steps rather than emit bursts.
+- Keep captures synchronous whenever the next action depends on the captured image. Defer analysis only where the next stimulus and measured windows cannot be affected. No capture during P2 neutral or P4 resource conditions where prohibited.
 
-**Acceptance:** replay of original PNG/source validation; exact frame count and order; backend/UID/output identity checks; failure and restart tests; before/after capture request/receipt distributions (not conflated with desktop responsiveness).
+**Acceptance:** replay of original PNG and source identities, exact sample count/order, timestamp semantics, backend/output/UID/frame checks, worker failure/reconnect cases, P3 pointer/window action pacing equivalence, and separated before/after backend-capture versus IPC/encoding/analysis costs. If stimulus timing changes, make it a **new method version**. Do not interpret reduced capture overhead as a measured desktop responsiveness improvement.
 
-### T3 — Make PNG analysis native/efficient without changing the pixel oracle
 
-**Current hot path:** `pixels.png_rgb()` performs PNG filter reconstruction in Python, including per-byte filtered scanlines. Corpus live checks can decode the same original image several times; P3 audits already cache byte-identical image decoding within an audit.
+### T3 — Remove redundant PNG work first; native decoding only if warranted
 
-**Design:**
+**Current:** `pixels.png_rgb()` unfilters PNGs in Python. In P4 corpus, `image_metrics()` decodes the original, then `row_metrics()` calls `image_metrics()` again and separately decodes/validates the crop. P3 offline audit already caches byte-identical detector data within one audit.
 
-- First remove avoidable *same-stage* decoding with content-addressed caches and passing already validated pixel buffers to metric consumers. Never cache across a changed image/hash or different evidence identity.
-- Benchmark a bounded native PNG decoder/unfilter implementation (or an explicitly pinned library with a strict validation wrapper). Continue checking magic, chunk ordering/CRC, decompressed length, image dimensions, accepted color formats, bit depth, no unsupported interlace, and unresampled RGB contents.
-- The native route must produce byte-for-byte identical RGB buffers and identical derived metrics/original PNG checksums to the existing decoder for accepted inputs. Differential fuzz/malformed-input tests must establish equivalent rejection, not broaden acceptance by accident.
-- Audit from persisted original files at least once independently; caching is a performance optimization, not a substitute for verifying each source file hash. Keep any new decoder version and executable/library identity in the immutable tool/method provenance as appropriate.
-- Move expensive decode/metrics out of measured windows where those metrics do not gate the next action; retain fail-closed audit before declaring completion.
+**T3a — zero-new-dependency first step:**
 
-**Acceptance:** golden captures across both desktops, all scale/state/corpus families, malformed/truncated/oversized/CRC/filter tests, tampered original/crop tests, and exact offline replay comparisons.
+- Pass already verified unresampled RGB and derived metrics between consumers in the *same trust stage*, rather than decode and recalculate repeatedly. Keep caches bounded and tied to content hash and evidence/source identity.
+- Always independently hash every persisted source file, check the exact crop pixels, verify backend/output/UID/source receipts and perform at least one **independent offline raw audit**. Do not let a same-stage cache substitute for later on-disk verification.
+- Remove process creation only where profiling proves it is extraneous and the temporal workload/observer contract remains equivalent. Record decode count, CPU cost, wall time and spawn reduction.
+
+**T3b — optional native decoder after T3a is measured:**
+
+- Evaluate a bounded native unfilter/decoder or pinned library plus strict validation wrapper, preserving signature, chunk/CRC/ordering, decompressed length, dimensions, accepted bit depth/color type, non-interlace and all existing rejection limits.
+- Require byte-for-byte identical RGB, original/crop hashes, derived metrics and rejection behavior on malformed/truncated/oversized/fuzzed images. Pin library/tool identity in method provenance if necessary for offline replay.
+- Keep capture and analysis off measurement-critical intervals unless the current stimulus explicitly requires them.
+
+**Acceptance:** golden Vela/Plasma images, all scale/state/toolkit families, raw archive replay, tampered original/crop failures and malformed-input differential tests. Do not add a new decoder dependency unless a measured net gain justifies it.
+
 
 ### T4 — Reorder P4 scaling matrix by scale, not by family
 
-**Current:** Native runs five scales × five states, then each supported toolkit family runs five scales × five states. `apply_outputs()` is called once per scale for each of five case families (25 applications with all four toolkits).
+**Current:** Native runs five scales × five states, then each supported toolkit runs five scales × five states: 25 output applications where all five families are supported.
 
 **Proposed loop:**
 
 ```text
+freeze corpus inventory/capability and exact global schedule
 for scale in fixed_scales:
-    apply and read back display scale once
+    apply and verify output scale once
     for family in [native-pattern, qt-wayland, gtk-wayland,
                    browser-wayland, qt-xwayland]:
-        if supported:
-            for state in fixed_states:
-                launch fresh owned client
-                apply fixed native desktop actions
-                validate source geometry and original capture
-                terminate/reap client
+        if declared unsupported:
+            record skipped family cases with explicit reason
+            continue
+        for state in fixed_states:
+            launch one fresh owned client
+            apply exact native actions; capture full output
+            validate source, geometry, original PNG and receipts
+            terminate/reap client
 finally:
-    restore original outputs and verify restoration
+    restore outputs and verify physical restoration
 ```
 
-- Preserve one new client per case, 125 distinct cases when fully supported, stable font/content/binary identity, sandbox, and original screenshots.
-- Preserve the exact scale/state/family matrix and output readback. Update the offline audit to validate the **new case order**, per-scale output evidence, no concurrent competing windows, and complete restoration on every error path.
-- Do not silently combine v6 evidence with reordered runs. Introduce a new, versioned workload/spec and preserve backward replay of v3–v6 archives. A sequence change is a method change even if the tested matrix is unchanged.
-- Consider order/carry-over effects: family order and repeated-scale exposure can affect caches. Compare paired raw measurements, and consider counterbalancing family order only if its reproducibility and spec semantics can be frozen.
+- Preserve each fresh client, all 125 cases when supported, binary/font/content/sandbox identity and original screenshot/crop evidence.
+- Represent the run as a **global ordered case sequence (scale → family → state)**, with per-scale `apply_outputs()` and readback receipts, explicit skipped cases, monotonic injection/source/capture links, no concurrent competing clients, and restoration on every failure.
+- **Critical capability migration:** current `corpus.run()` permits a `corpus-unsupported` runtime receipt only on a family's *first* scale/state condition. Under scale-major execution define one admissible first probe for each available family (at or before its first scheduled case); preserve exact reason/identity/teardown checks. Later capability failure or partially executed family must **fail**, never be reclassified unsupported.
+- Update both live and offline audits to verify the global order and skipped-case protocol; do not assume per-family contiguous evidence or rely on dictionary insertion order. Version workload/spec and immutable plan; retain untouched historical v3–v6 audit support.
+- Freeze family order; analyze cache, GPU-residency, thermal and repeated-scale effects. Counterbalancing order would be a separately versioned methodological experiment.
 
-**Potential effect:** up to 20 fewer scale applications per desktop/repetition where every family is supported; savings are unknown until measured.
+**Potential:** up to 20 fewer scale applications per desktop/repetition if all families are supported, but unknown realized savings and possible order bias.
+
 
 ### T5 — Replace eligible fixed settling sleeps with verified readiness/stability
 
-**Current:** P4 native has 600 ms after each client launch and 700 ms after each state action; corpus has 250 ms and 350 ms respectively. Other parts of P3 and input calibration use bounded fixed settling intervals.
+**Current:** P4 native waits 600 ms after launch and 700 ms after actions; corpus waits 250 ms and 350 ms. P3 also has setup/settling waits, while other intervals are mandatory workload stimuli.
 
 **Design:**
 
-- Where the benchmark already records configure/state events, require the expected configure, buffer/viewport state, and (where the metric needs pixels) a matching captured/presented state instead of assuming a fixed delay means settled.
-- Define event sequence, stabilization condition, monotonic timestamp proof, maximum timeout and failure policy in the versioned spec. For tests of visual transitions, do not wait for the final state *before* the observation window or accidentally remove the transition being measured.
-- Keep minimum intervals that are actual workload stimuli (e.g. P2 input pacing, P4 750 ms window-action minimum), and mandatory elapsed measurement windows (30 s idle). These are **not** arbitrary setup sleeps.
-- A protocol event alone may not prove that the compositor completed presentation. Where presentation/stability cannot be verified with the declared backend, retain the conservative wait rather than claim it is safe to remove.
-- Preserve the first pre-action stable state requirement and the post-action evidence window in P3.
+- Before removing any sleep, produce a **per-family readiness proof table** covering native pattern, Qt Widgets Wayland, GTK4 Wayland, sandboxed Qt WebEngine, Qt Widgets Xwayland and applicable P3 transitions. Specify available configure/ack/buffer/presentation events, observable stable pixels, source identity, minimum interval, event ordering and timeout.
+- Distinguish **configured**, **presented** and **visually stable**. A configure alone does not prove a displayed frame. Where the existing capture backend cannot prove the required state, retain the conservative wait rather than weaken the proof.
+- Preserve P2 input pacing, P4 750 ms action minimum and 30-second idle resource window, fixed animation submissions and P3 pre-action stable state/post-action evidence window. Do not settle a visual transition **before** the intended observation of that transition.
+- Define bounded deadlines, lost/reordered event policy and audit receipts in a versioned spec. Changes to stimulus or observation timing require a method version bump.
 
-**Acceptance:** fast and slow desktop environments, delayed compositor presentation, lost/misordered configure events, never-settling states, output scale changes, and replay of valid/invalid observations. Report observed readiness times as a distribution.
+**Acceptance:** tests on fast/slow Vela and Plasma, delayed compositor presentation, missing/reordered configure, never-stable state, scale transitions and offline replay. Report observed readiness distributions; reduce only waits with explicit evidence.
 
 ### T6 — Reuse validated instrument calibration only if justified
 
@@ -169,6 +203,7 @@ finally:
 
 This is a **distinct milestone** after lower-risk work and physical qualification, not a prerequisite for T1–T5. It likely offers substantial lifecycle savings but carries the highest reliability risk.
 
+
 ## 5. Measurement methodology and safety gates
 
 ### Baseline comparison
@@ -176,60 +211,91 @@ This is a **distinct milestone** after lower-risk work and physical qualificatio
 Measure separately:
 
 1. `run --phase responsiveness --phase motion --phase slow-apps --phase scaling --phase overhead --target vela --target plasma --fast`
-2. The same five phases with the normal three-repetition policy.
-3. `observe --phase responsiveness --phase motion --phase slow-apps --target vela --target plasma --fast`, separately, because P3 is not part of the same `run` selection.
+2. The same five phases with normal three-repetition policy.
+3. `observe --phase responsiveness --phase motion --phase slow-apps --target vela --target plasma --fast`, separately; P3 is not in the ordinary `run` selection.
 
-Run paired baselines/candidates with identical installed desktop binaries, refresh/mode, GPU, energy/brightness and thermal conditions where practical, rotating execution order. Preserve all archives. A prototype or virtual compositor may help develop the changes, but it does **not** qualify real-TTY time savings or physical recovery.
+Use identical installed target binaries, refresh/mode, GPU driver, energy/brightness policy, input devices and comparable temperatures/background load. Archive all accepted, invalid, cancelled and recovery results. Virtual/headless development checks do not qualify real-TTY performance or restoration.
 
-### Success measures
+**Pre-register quantitative gates before candidate data:**
 
-- **Primary:** accepted end-to-end elapsed wall time, including setup, auditing, cleanup and confirmed machine restoration.
-- **Secondary:** per-stage wall time, capture request duration and cadence, external process count, CPU-time overhead, repetitions/accepted blocks per campaign, time in idle versus measurement, and failure/abort rate.
-- **Scientific invariants:** unchanged counts of frames/actions/cases/repetitions, unchanged capture requirements, valid p50/p95 measurements and clock-domain checks, intact load-window/achieved-load checks, identical accepted pixel-oracle semantics, and no hidden backend fallback.
-- **Reliability invariants:** all P0/P1 takeover/fault recovery checks, real session/UID/process isolation, input grabs and hotplug invalidation, desktop teardown, restored output/brightness/power/VT/display-manager state, accepted offline raw replay.
-- Do not mandate identical latency percentiles across independent noisy physical runs. Investigate systematic bias and any collector-induced interference; compare methodology, trace and distribution rather than requiring bit-for-bit timing equality.
+- Independent **whole campaigns** are the A/B experimental units: three repetitions *inside* one campaign are not three independent elapsed-time trials.
+- Target at least **four ABBA quartets** per scenario (8 baseline and 8 candidate campaigns), alternating starting variant across quartets; extend when variance is high. Fewer runs may be called *exploratory* but must not support a confirmed numeric speedup claim.
+- Report baseline/candidate median and range, paired/order-adjusted percentage saving, and a **95% campaign-level bootstrap confidence interval**. A CI crossing zero is *inconclusive*. Track cooling/cache drift and method/tool/environment identity.
+- **Proposed practical-gain gate:** ≥5% median accepted end-to-end saving with the 95% interval lower bound above zero; alternatively ≥20% saving in a preregistered significant harness stage with clearly demonstrated aggregate benefit and no meaningful regression. These are engineering thresholds to freeze before trials, not proof of reliability or guarantees of statistical power.
+- Report failure/abort rate, invalid blocks, retry count, fault causes, recovery duration, **time per accepted complete campaign including retries**, and successful-only elapsed time separately. Do not conceal failure costs by selecting only successful runs. Small samples cannot statistically prove unchanged fault rate: existing fault-injection gates and no unexplained new regressions are mandatory.
+
+### Success and equivalence gates
+
+- **Primary:** accepted START-to-confirmed-host-restoration wall time. Across reboot/resume, use attempt-local monotonic durations plus separately measured real recovery elapsed time; never subtract unrelated boot-local clocks.
+- **Secondary:** stage critical path, backend capture vs encoding/IPC analysis, process spawns, CPU overhead, readiness distributions, attempts per accepted campaign and failure/recovery cost.
+- **Work equivalence:** identical actions, frames, captures, original evidence and workload versions (or explicitly new versions), fixed load/idle windows and required conditions.
+- **Temporal equivalence:** record actual P2 injection intervals, P3 capture-to-input and drag trajectory receipts, P4 state-to-capture intervals; check a baseline-frozen minimum interval, jitter/late-deadline envelope and no-burst rule. Timed receipts, not nominal `sleep()` values, are evidence. An intentional stimulus change requires a new method, not a silent optimization.
+- **Observation equivalence:** same source/UID/output/frame IDs, full PNG and crop oracle, instrument coverage, no unapproved capture in capture-off windows and no hidden backend fallback.
+- **Reliability:** P0/P1 takeover/fault recovery, evdev grab/hotplug invalidation, process/user isolation, complete audit/replay, and brightness/power/outputs/VT/display-manager restoration. Any uncovered mid-window interval invalidates the block.
+- Do not require identical noisy physical p50/p95 latency values; investigate systematic measurement/observer bias and distributions, not bit-for-bit performance timing.
 
 ### CI and qualification
 
-- Unit tests for versioned plans, immutable spec binding, stage accounting, and compatibility with historical archive readers.
-- Private Vela/KWin integration tests for T1–T5; corpus fixtures include native Wayland, GTK, Qt WebEngine with sandbox, and Xwayland.
-- Fault tests for worker crashes/hangs, stopped user manager, capture worker death, monitor freeze, unexpected input device, VT loss, malformed and duplicated PNG evidence, incomplete corpus, and interrupted checkpoints.
-- Physical fast acceptance for current installed Vela/Plasma candidates before claims of support; three-repetition acceptance remains a separate operator decision.
-- No runtime optimization should relax a failing acceptance check, increase missing evidence or hide unqualified conditions as 'passed'.
+- Unit tests for boot/clock-domain accounting, overlapping/incomplete stage events, immutable timing/spec envelopes, fault invalidation and historical archive audit.
+- Private Vela/KWin integrations across all P4 families including browser sandbox and Xwayland, with capture timing and input pacing proofs.
+- Fault tests for session/VT loss, monitor death/freeze and event loss, user-manager exit, hotplug, stale/duplicate capture, malformed PNG, incomplete corpus, controller death and interrupted checkpoints.
+- Physical fast Vela/Plasma acceptance before support or speedup claims; normal repeated acceptance remains a separate operator qualification.
+- No runtime optimization may relax checks, omit evidence or convert an unsupported outcome into a pass. A correct but low-benefit track may be abandoned.
+
 
 ## 6. Proposed implementation order
 
 | Stage | Scope | Output / merge gate |
 | --- | --- | --- |
-| 0 | Timing instrumentation / baseline | Stage breakdown on real accepted runs; minimal perturbation demonstrated |
-| 1 | T1 low-cost, fail-closed health monitor | Fault-coverage proof + reduced action-loop overhead |
-| 2 | T3 efficient PNG analysis and redundant-decode removal | Exact decoder/oracle equivalence; no lost raw checks |
-| 3 | T2 persistent serialized capture transport | Original PNGs + unchanged per-capture timing and order receipts |
-| 4 | T4 per-scale corpus schedule | Version bump, 125-case evidence and historical audit compatibility |
-| 5 | T5 event-driven settling only where provably equivalent | Explicit state/presentation proof and timeout behavior |
-| 6 | T6 requalification study (optional) | Independent method/validity review before any behavior change |
-| 7 | T7 persistent takeover (optional, separately qualified) | New supervisor/recovery architecture and physical fault acceptance |
+| 0 | Timing instrumentation and baseline | Boot-scoped critical path, frozen input/capture pacing, preregistered A/B design and recovery evidence |
+| 1 | **T3a: simple redundant-work removal** | Same-stage decoding/metric reuse and only proven non-methodological spawn savings; independent raw audit |
+| 2 | **T1a: cheap existing-path checks** | Deep attestation plus continuous coverage, fault injection, preserved injection cadence, reduced overhead |
+| 3 | **T2: persistent capture worker** | Stable per-request provenance/timestamps, original PNG/frame audit, unchanged or explicitly versioned P3 action pacing |
+| 4 | **T4: scale-major P4** | New global ordered spec, capability/unsupported migration, 125-case audit where supported, old archive compatibility |
+| 5 | Review measured savings and complexity | Decide whether to attempt optional T3b, T5 or T1b |
+| 6 (optional) | **T3b / T5 / T1b** as separate changes | Native decoder equivalence, per-family presentation proof, or independently supervised monitor coverage |
+| 7 (optional) | **T6: calibration requalification study** | Independent validity/method review before any reuse |
+| 8 (optional) | **T7: campaign-level takeover** | New PID 1 recovery architecture, physical acceptance under injected faults |
 
-These are milestones, not a mandate to implement every track. Review measurements after each stage and stop when further complexity no longer pays for itself. Isolate changes in reviewable commits; do not mix capture, watchdog and methodological changes in a single untestable jump.
+A milestone is not a mandate. Freeze/replay the baseline between stages; stop if complexity no longer pays. Do not combine capture, monitoring, watchdog and methodological changes in one unreviewable jump. A changed stimulus is a new benchmark method, not an unqualified harness-only speedup.
+
 
 ## 7. Rejected shortcuts
 
 - Fewer actions/frames/captures or one repetition disguised as normal mode.
-- Eliminating full-output PNGs, hash checks or pixel validation.
-- Dropping or shortening mandatory idle/active measurement windows.
-- Running comparisons in parallel on the same GPU/desktop or allowing background decode work to contaminate an active resource measurement.
-- Keeping the same user session/profile between blocks merely to avoid setup.
-- Blindly lowering sleeps without source/presentation readiness evidence.
-- Longer unbounded watchdog deadlines or dropping emergency recovery.
-- Reusing older data/conditions across incompatible versions as if it were a passing current-candidate benchmark.
+- Claiming temporal equivalence from identical counts while input or P3 capture-driven action cadence changes.
+- Accelerated catch-up input bursts after a delayed deadline.
+- Eliminating original full-output PNGs, hashes, independent crop/oracle validation or offline audit.
+- Dropping mandatory idle/active windows, or parallel benchmark sessions on the same machine.
+- Background decoding that contaminates active resource/latency measurements.
+- Reusing desktop sessions/profiles across blocks merely to avoid setup.
+- Treating configure as proof of presentation; blindly reducing sleeps.
+- Lost monitor events, uncovered health intervals, reduced emergency abort or unbounded recovery.
+- Comparing legacy process-start-inclusive capture duration with new in-process latency without semantic separation.
+- Hiding failures/retries when comparing time per accepted campaign.
+- Subtracting `CLOCK_MONOTONIC` timestamps from different boots.
+- Reusing incompatible historical data as passing current-candidate evidence.
 
-## 8. Open design questions
 
-1. How can the T1 monitor prove there were **no** missed mid-window changes despite event loss, scheduling stalls or monitor death, while itself adding less noise than deep queries?
-2. Can a persistent capture worker retain the exact current Vela/KWin capture APIs and independently timestamp requests without changing frame semantics?
-3. Should PNG optimization be a tightly wrapped native decoder or first just a zero-new-dependency change to caching and repeated decoding?
-4. Does scale-major execution introduce measurable cache/order bias relative to the existing family-major sequence, and should we fix or counterbalance order?
-5. What minimum proof of state stability is actually available for each P4 family, and which waits must remain because configure alone is insufficient?
-6. What physical fault coverage and watchdog design would justify moving from block-level recovery to campaign-level recovery?
+## 8. Open design questions and decision log
 
-**Decision requested before code work:** agree on stage ordering and safety gates. This document intentionally adds no benchmark behavior changes.
+**Decisions established by this revision:**
+
+1. Stage 0 must baseline *work, temporal pacing, observer behavior and failure costs* before changing T1/T2; boot IDs prevent cross-reboot monotonic arithmetic.
+2. Implement T3a before adding a native decoder. Evaluate T1a within existing supervision before considering T1b.
+3. P3 capture-driven actions and P2 `health()`-dependent pacing are methodological hazards: hold the frozen temporal contract or explicitly version the stimulus.
+4. A scale-major P4 audit needs a global expected case order, per-scale output evidence and a strictly controlled first-family unsupported receipt.
+5. Configure-only is never sufficient proof of a presented/stable image. Unproven waits stay.
+6. Faster collection must be assessed with independently repeated campaigns, order-balanced A/B, confidence intervals, retries and fault coverage.
+
+**Questions to resolve before corresponding implementation:**
+
+1. For each T1a mutable condition, what kernel/D-Bus signal or bounded direct recheck proves uninterrupted coverage and which invariants require T1b?
+2. What exact P2/P3 pacing envelopes, deadlines and overrun policy do frozen physical Stage-0 traces support for each installed desktop?
+3. Which Vela/KWin capture timestamps and frame identity receipts can be preserved across an in-process worker without changing the meaning of a measurement?
+4. How do new first-probe/unsupported receipts and the global P4 case sequence bind to immutable plans while historical readers remain unchanged?
+5. Which toolkit families have sufficient presented/stable evidence to replace fixed waits, and which retain existing waits?
+6. What minimum physical fault coverage, independent watchdog and recovery proof would justify the optional persistent campaign takeover?
+
+**Decision requested before code work:** accept the revised stage order, temporal-equivalence contract, baseline protocol and fail-closed gates. The PR remains design-only; no benchmark behavior changes are introduced here.
+
