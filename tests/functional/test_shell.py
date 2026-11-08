@@ -125,9 +125,12 @@ class RealShell(unittest.TestCase):
         pending = bytearray()
 
         def send(*actions):
+            """Execute a command, allowing its requested sleeps plus I/O overhead."""
             session.stdin.write("\t".join(map(str, actions)) + "\n")
             session.stdin.flush()
-            deadline = time.monotonic() + 5 * TIME_SCALE
+            sleep_ms = sum(int(actions[i + 1]) for i, action in enumerate(actions[:-1])
+                           if action == "sleep")
+            deadline = time.monotonic() + 5 * TIME_SCALE + sleep_ms / 1000
             # select + os.read also bounds partial replies: TextIO.readline()
             # can block forever after a process writes a non-newline prefix.
             while b"\n" not in pending:
