@@ -28,7 +28,7 @@ mapping={'snap-left':'super+Left','snap-right':'super+Right','maximize':'super+U
 try:
     for index,line in enumerate(sys.stdin,1):
         began=time.monotonic_ns()
-        command='move\\t1919\\t1079' if line.strip()=='point 65535 65535' else 'key\\t'+mapping[line.strip()]
+        command='move\\t0\\t540' if line.strip()=='point 0 32768' else 'key\\t'+mapping[line.strip()]
         device.stdin.write(command+'\\n');device.stdin.flush()
         if device.stdout.readline().strip()!='OK':raise RuntimeError('fixture input failed')
         print(json.dumps({'event':'injected','action_id':index,'before_monotonic_ns':began,'after_monotonic_ns':time.monotonic_ns()}),flush=True)

@@ -1382,11 +1382,20 @@ historical v1 physical results above remain labelled with their original scope.
 ### P4 implementation and acceptance scope
 
 `run --phase scaling` and `run --phase overhead` implement the separate fixed
-`p4-pattern-resources-v5` workload. Mixed P2/P4 selections retain each block's
+`p4-pattern-resources-v6` workload. Mixed P2/P4 selections retain each block's
 own version/specification in the immutable schedule and receipt. Default
 repetitions remain three; `--fast` changes only their count. Offline exports
 recompute original pixel and process/counter evidence, never trust only the
 saved aggregates. Neither phase claims complete family coverage.
+
+New sessions use exclusive worker-owned evdev grabs for physical input, with
+Ctrl+Alt+Esc triggering supervised recovery, and a transparent cursor theme in
+both disposable desktop profiles. Input hotplug invalidates the block. Scaling
+parks the pointer at the left edge's midpoint: the previous bottom-right point
+could hover show-desktop and contaminate corpus markers with tooltip shadows.
+Archives record the policy and release evidence; v3–v5 archives keep their
+original specification. These controls require a new campaign after setup is
+refreshed, rather than resuming measurements from the earlier conditions.
 
 Scaling now covers a native Wayland coordinate pattern at 100/125/150/175/200%
 in opened, snapped-left, snapped-right, maximized and restored states. Each
@@ -1400,7 +1409,7 @@ shared mapping used in version 1; a changed campaign must start anew rather
 than reuse a version 1 completion. Native maximized state and original-size
 restoration remain mandatory. Output
 configuration is read back. Before rendering, a recorded fixed pointer action
-parks the cursor at the output's bottom-right corner to prevent contamination.
+parks the cursor at the output's left edge midpoint to avoid taskbar tooltips.
 The decoder checks PNG CRCs, geometry, bounded
 decompression and all declared interior pixels without resampling. The client
 buffer establishes the expected rectangle; the oracle cannot shrink it to a

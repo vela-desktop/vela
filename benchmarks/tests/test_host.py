@@ -111,6 +111,10 @@ class HostOperations(unittest.TestCase):
         patch("vela_bench.host.trusted").start()
         patch("vela_bench.pilot.trusted").start()
         patch("vela_bench.host.os.chown").start()
+        # Lifecycle tests use a fake host and never touch real evdev nodes.
+        self.input_guard = patch("vela_bench.pilot.InputIsolation").start().return_value
+        self.input_guard.error = None
+        self.input_guard.evidence.return_value = {'status': 'released'}
 
     def setup_account(self):
         return install(self.host, self.layout, pam_dir=self.pam, private_homes=["/home/operator", "/srv/person"])
@@ -1035,6 +1039,22 @@ class HostOperations(unittest.TestCase):
         self.recover_without_fixture_io()
         self.assertEqual(read_json(directory / "state.json")["stage"], "failed")
 
+    def test_worker_exit_records_automatic_input_release_without_reopening_hardware(self):
+        from vela_bench.input_isolation import POLICY
+        self.setup_account()
+        directory = self.pilot_state(result='pending')
+        state = read_json(directory / 'state.json')
+        state['plan'] = {'input_policy': POLICY}
+        atomic_json(directory / 'state.json', state)
+        atomic_json(directory / 'input-isolation.json', {'policy': POLICY, 'status': 'active', 'error': None})
+        self.recover_without_fixture_io()
+        evidence = read_json(directory / 'input-isolation.json')
+        self.assertEqual(evidence['status'], 'released')
+        self.assertEqual(evidence['release_method'], 'worker-process-exit')
+        self.assertTrue(evidence['release_verified_after_worker_exit'])
+        self.assertEqual(read_json(directory / 'state.json')['result'], 'failed')
+        self.input_guard.start.assert_not_called()
+
     def test_uninstall_keeps_evidence_and_removes_only_recorded_files(self):
         record = self.setup_account()
         evidence = self.layout.base / "pilots" / "keep.json"
@@ -1295,7 +1315,10 @@ class Guards(unittest.TestCase):
                      "WAYLAND_DISPLAY": "personal", "DISPLAY": ":0", "DBUS_SESSION_BUS_ADDRESS": "personal",
                      "SSH_AUTH_SOCK": "personal", "PYTHONPATH": "personal", "LD_PRELOAD": "personal"}
         with patch("vela_bench.pilot.os.getuid", return_value=1240), patch("vela_bench.pilot.os.geteuid", return_value=1240):
-            env = desktop_environment("vela", user, inherited)
+            for target in ('vela', 'plasma'):
+                env = desktop_environment(target, user, inherited)
+                self.assertEqual(env['XCURSOR_THEME'], 'vela-benchmark-invisible')
+                self.assertEqual(env['XCURSOR_PATH'], user.pw_dir + '/.icons')
         self.assertEqual(env["HOME"], user.pw_dir)
         self.assertEqual(env["XDG_RUNTIME_DIR"], "/run/user/1240")
         for key in ("WAYLAND_DISPLAY", "DISPLAY", "SSH_AUTH_SOCK", "PYTHONPATH", "LD_PRELOAD"):

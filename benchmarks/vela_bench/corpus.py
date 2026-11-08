@@ -14,6 +14,7 @@ from .archive import decode_json
 from .calibration import Lines, stop_process
 from .diagnostics import user_command, stop_instrument
 from .pixels import png_rgb, png_bytes
+from .input_isolation import PARK_COMMAND
 
 METHOD='toolkit-scaling-corpus-v1'
 CONTENT='Vela toolkit corpus v1|DejaVu Sans|16px|480x320|Alpha,100%,Ready|Beta,125%,Local|Gamma,150%,Fixed|Delta,200%,Offline|0123456789 AaBb CcDd|markers:8,16'
@@ -75,7 +76,7 @@ def palette(case):
 
 def markers(rgb,width,case):
     centers=[]
-    for color in palette(case):
+    for corner, color in enumerate(palette(case)):
         points=set();offset=0
         while True:
             offset=rgb.find(color,offset)
@@ -95,7 +96,9 @@ def markers(rgb,width,case):
             w,h=right-left,bottom-top
             if 3<=w<=128 and 3<=h<=128 and .75<=w/h<=1.33 and len(component)>=.8*w*h:
                 candidates.append([(left+right)/2,(top+bottom)/2])
-        if len(candidates)!=1:raise BenchError('Expected one visible identified corpus marker per corner')
+        if len(candidates)!=1:
+            label=('top-left','top-right','bottom-left','bottom-right')[corner]
+            raise BenchError(f'Expected one visible identified corpus marker per corner: {case}/{label}, found {len(candidates)}')
         centers.append(candidates[0])
     a,b,c,d=centers
     if (max(abs(a[1]-b[1]),abs(c[1]-d[1]),abs(a[0]-c[0]),abs(b[0]-d[0]))>2
@@ -158,7 +161,7 @@ def image_metrics(path,meta,case,mode,scale):
     return metrics,(x2-x,y2-y,crop)
 
 
-def row_metrics(row,directory,profile,target,item,uid):
+def row_metrics(row,directory,profile,target,item,uid,*,parking=PARK_COMMAND):
     from .platform_workloads import SCALES,STATES,scaling_actions
     from .conditions import compare_outputs
     case,scale,state=row['case'],row['scale'],row['state']
@@ -195,7 +198,7 @@ def row_metrics(row,directory,profile,target,item,uid):
         previous=receipt['after_monotonic_ns']
     if injections and injections[0]['before_monotonic_ns']<row['source_events'][0]['monotonic_ns']:
         raise BenchError('Corpus action precedes its fresh client')
-    if park.get('command')!='point 65535 65535':raise BenchError('Corpus pointer parking changed')
+    if park.get('command')!=parking:raise BenchError('Corpus pointer parking changed')
     initial=row['initial_canvas']
     if initial!=[row['source_events'][0]['canvas_width'],row['source_events'][0]['canvas_height']]:
         raise BenchError('Corpus initial size differs from fresh client source')
@@ -231,8 +234,8 @@ def run(host,record,directory,target,layout,profile,health,progress,result,keybo
             for output in wanted:
                 if output['enabled']:output['scale']=scale
             health();outputs=apply_outputs(host,record,layout,target,wanted)
-            keyboard.stdin.write(b'point 65535 65535\n');keyboard.stdin.flush()
-            parked=keys.next(time.monotonic()+5);parked['command']='point 65535 65535'
+            keyboard.stdin.write((PARK_COMMAND+'\n').encode());keyboard.stdin.flush()
+            parked=keys.next(time.monotonic()+5);parked['command']=PARK_COMMAND
             for state in STATES:
                 health();label=f'corpus-{case}-{round(scale*100)}-{state}'
                 if progress:progress(label)
@@ -278,7 +281,7 @@ def run(host,record,directory,target,layout,profile,health,progress,result,keybo
         if not unsupported:availability[case]={'status':'supported','cases':len(SCALES)*len(STATES)}
 
 
-def audit(saved,directory,profile,target):
+def audit(saved,directory,profile,target,*,parking=PARK_COMMAND):
     from .platform_workloads import SCALES,STATES
     inventory=validate_inventory(saved.get('corpus_inventory'));availability=saved.get('corpus_availability',{})
     uid=saved.get('corpus_uid')
@@ -299,7 +302,7 @@ def audit(saved,directory,profile,target):
         for scale in SCALES:
             for state in STATES:
                 name=f'corpus-{case}-{round(scale*100)}-{state}';expected.append(name);row=saved['scenarios'][name]
-                if [row.get('case'),row.get('scale'),row.get('state')]!=[case,scale,state] or row.get('metrics')!=row_metrics(row,directory,profile,target,item,uid):
+                if [row.get('case'),row.get('scale'),row.get('state')]!=[case,scale,state] or row.get('metrics')!=row_metrics(row,directory,profile,target,item,uid,parking=parking):
                     raise BenchError('Corpus metrics differ from original evidence')
                 if row['source_events'][0]['monotonic_ns']<previous:raise BenchError('Corpus capture/source order changed')
                 previous=row['capture']['end_monotonic_ns']

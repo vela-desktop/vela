@@ -210,10 +210,15 @@ class Execution(unittest.TestCase):
         }
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch('vela_bench.host.trusted'))
+            guard = stack.enter_context(patch('vela_bench.pilot.InputIsolation')).return_value
+            guard.error = None
+            guard.evidence.return_value = {'status': 'released'}
             for name, opts in controls.items():
                 stack.enter_context(patch('vela_bench.pilot.' + name, **opts))
             stack.enter_context(patch('vela_bench.pilot.run_input', input_call))
             worker(SimpleNamespace(run=Mock(return_value=SimpleNamespace(stdout=''))), self.layout)
+            guard.start.assert_called_once()
+            guard.close.assert_called_once()
         receipt = read_json(source / 'block-workload.json')
         self.assertEqual(receipt['status'], 'passed')
         self.assertEqual(receipt['block']['id'], 'motion-vela-r1')

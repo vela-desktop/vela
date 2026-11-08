@@ -67,6 +67,14 @@ def audit_pilot(directory, target, fault=None, *, instruments=True):
         session = read_json(directory / f"{target}-session.json")
         checks["namespace_isolation"] = session.get("fixture_hidden_from_both_trees") is True
         checks["full_session"] = session.get("graphical_session_target") == "active"
+        if state.get('plan', {}).get('input_policy'):
+            from .input_isolation import POLICY
+            guard = read_json(directory / 'input-isolation.json')
+            cursor = read_json(directory / f'{target}-cursor-profile.json')
+            checks['physical_input_released'] = (guard.get('policy') == POLICY
+                and guard.get('status') == 'released' and guard.get('error') is None
+                and guard.get('release_verified_after_worker_exit') is True)
+            checks['transparent_cursor_profile'] = all(cursor.get(k) == v for k, v in POLICY.items())
         conditions = read_json(directory / f"{target}-conditions.json")
         checks["hardware_verified"] = conditions.get("status") == "passed"
         if fault:

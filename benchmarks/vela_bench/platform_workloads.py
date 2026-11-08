@@ -21,8 +21,9 @@ from .conditions import compare_outputs, display_command, normalized_outputs
 from .diagnostics import user_command, stop_instrument, parse_probe
 from .pixels import pattern_metrics
 from . import resources, interactions, corpus
+from .input_isolation import PARK_COMMAND, POLICY as INPUT_POLICY
 
-VERSION = 'p4-pattern-resources-v5'
+VERSION = 'p4-pattern-resources-v6'
 PHASES = ('scaling','overhead')
 SCALES = (1.0,1.25,1.5,1.75,2.0)
 STATES = ('opened','snap-left','snap-right','maximized','restored')
@@ -39,8 +40,9 @@ SPEC_V3 = {'version':'p4-pattern-resources-v3','scales':list(SCALES),'states':li
         'resource_transport_accounting':'exact-controller-child-pid-start-cgroup-command; separate-from-session',
         'scope':'native-wayland-pattern-and-reserved-uid-resources; application-corpus-incomplete'}
 SPEC_V4=dict(SPEC_V3,version='p4-pattern-resources-v4',window_interaction=interactions.SPEC)
-SPEC=dict(SPEC_V4,version=VERSION,corpus=corpus.SPEC,
+SPEC_V5=dict(SPEC_V4,version='p4-pattern-resources-v5',corpus=corpus.SPEC,
           scope='native-pattern-controlled-toolkit-corpus-and-uid-resources; families-incomplete')
+SPEC=dict(SPEC_V5,version=VERSION,pattern_pointer_parking='left-output-edge-midpoint',input_policy=INPUT_POLICY)
 RESOURCE_CONDITIONS=('idle','active-animation','window-interaction','local-hash')
 
 
@@ -134,9 +136,9 @@ def run_scaling(host,record,directory,target,layout,profile,health,progress,resu
                     if output['enabled']: output['scale']=scale
                 health()
                 observed=apply_outputs(host,record,layout,target,wanted)
-                keyboard.stdin.write(b'point 65535 65535\n');keyboard.stdin.flush()
+                keyboard.stdin.write((PARK_COMMAND+'\n').encode());keyboard.stdin.flush()
                 parked=lines.next(time.monotonic()+5)
-                parked['command']='point 65535 65535'
+                parked['command']=PARK_COMMAND
                 for state in STATES:
                     health()
                     label=f'{round(scale*100)}-{state}'
@@ -310,13 +312,15 @@ def audit_measurements(directory,target,profile,phase):
     directory=Path(directory)
     saved=read_json(directory/f'{target}-measurements.json')
     legacy=saved.get('method')==SPEC_V3['version']
-    if (saved.get('schema')!=1 or saved.get('method') not in (VERSION,SPEC_V3['version'],SPEC_V4['version'])
-            or saved.get('spec')!=({SPEC_V3['version']:SPEC_V3,SPEC_V4['version']:SPEC_V4,VERSION:SPEC}.get(saved.get('method'))) or saved.get('phase')!=phase
+    specs={spec['version']:spec for spec in (SPEC_V3,SPEC_V4,SPEC_V5,SPEC)}
+    if (saved.get('schema')!=1 or saved.get('method') not in specs
+            or saved.get('spec')!=specs.get(saved.get('method')) or saved.get('phase')!=phase
             or saved.get('status')!='passed' or saved.get('failures')!=[] or saved.get('family_complete') is not False):
         raise BenchError('P4 workload failed or specification changed')
     if phase=='scaling':
         expected=[f'{round(scale*100)}-{state}' for scale in SCALES for state in STATES]
-        corpus_cases=corpus.audit(saved,directory,profile,target) if saved['method']==VERSION else []
+        parking=PARK_COMMAND if saved['method']==VERSION else 'point 65535 65535'
+        corpus_cases=corpus.audit(saved,directory,profile,target,parking=parking) if saved['method'] in (VERSION,SPEC_V5['version']) else []
         if sorted(saved['scenarios'])!=sorted(expected+corpus_cases) or saved.get('scale1_restored') is not True:
             raise BenchError('Incomplete scaling matrix or scale restoration')
         previous_end=-1
@@ -329,7 +333,7 @@ def audit_measurements(directory,target,profile,phase):
             if not row.get('pattern_events') or row['pattern_events'][-1]!=row['pattern']:
                 raise BenchError('Pattern summary differs from native configure evidence')
             parked=row.get('pointer_parking',{})
-            if (parked.get('event')!='injected' or parked.get('command')!='point 65535 65535'
+            if (parked.get('event')!='injected' or parked.get('command')!=parking
                     or any(type(parked.get(k)) is not int for k in ('before_monotonic_ns','after_monotonic_ns'))
                     or not 0<=parked['before_monotonic_ns']<=parked['after_monotonic_ns']<=row['pattern']['monotonic_ns']):
                 raise BenchError('Pattern pointer parking was not verified before rendering')

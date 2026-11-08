@@ -104,7 +104,7 @@ def block_request(layout, run_id, block_id, target):
     return {"schema": 1, "campaign_run_id": run_id, "plan_fingerprint": fingerprint(plan),
             "block": matches[0], "workload": workload, "measurement_executed": measured,
             **({"corpus_inventory": plan["context"]["corpus_inventory"]}
-               if measured and matches[0].get("phase")=="scaling" and workload=="p4-pattern-resources-v5" else {})}
+               if measured and matches[0].get("phase")=="scaling" and workload in ("p4-pattern-resources-v5", "p4-pattern-resources-v6") else {})}
 
 
 def audit_block(source, block, plan, layout):
@@ -170,9 +170,11 @@ def blocks_for(targets, case, seed=0):
 
 def context(host, layout, targets):
     from .pilot import resolve_targets
+    from .input_isolation import POLICY
     setup = load_setup(host, layout)
     inventory = discover()
     return {"account_tag": setup["account_tag"], "uid": setup["uid"], "launcher_files": setup["files"],
+            "input_policy": POLICY,
             "targets": resolve_targets(targets), "environment": inventory["environment"]}
 
 
@@ -395,6 +397,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
         print(f"Provisional duration: about {max(1,round(nominal/60))}–{max(1,round(nominal/30))} minutes; hard per-block budget 900 seconds.", flush=True)
         print("This takes over the machine, changes/restores hardware conditions and launches fresh isolated desktops.", flush=True)
         print("After START, the supervised worker activates the greeter VT to resolve and freeze the hardware profile.", flush=True)
+        print("Physical keyboard/mouse input is blocked in benchmark desktops; the cursor is invisible. "
+              "Ctrl+Alt+Esc aborts and restores the machine. Input hotplug invalidates the block.", flush=True)
         if any(block["fault"] for block in pending):
             print("Fault qualification kills its worker or freezes only benchmark-UID processes; PID 1 must restore the machine.", flush=True)
         measured = plan.get("case") == "measure"
@@ -717,7 +721,7 @@ def read_export(directory):
                 plan=read_json(directory/'campaign-plan.json')
                 if actual.get('contention_uid')!=plan['context']['uid']:
                     raise BenchError('Exported contention UID differs from the planned benchmark account')
-            if actual.get('method')=='p4-pattern-resources-v5' and block.get('phase')=='scaling':
+            if actual.get('method') in ('p4-pattern-resources-v5','p4-pattern-resources-v6') and block.get('phase')=='scaling':
                 if 'campaign-plan.json' not in manifest['files']:
                     raise BenchError('Exported corpus has no hashed immutable plan')
                 plan=read_json(directory/'campaign-plan.json')

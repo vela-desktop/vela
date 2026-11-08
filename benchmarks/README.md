@@ -693,7 +693,7 @@ for reuse decisions, timing limitations and the P4 implementation order.
 
 ## P4 scaling pattern and session resources
 
-The fixed `p4-pattern-resources-v5` workloads now run through `run` with
+The fixed `p4-pattern-resources-v6` workloads now run through `run` with
 independent `scaling` and `overhead` selections. They use the same isolated
 sessions, immutable block receipts, three repetitions/default or one/`--fast`,
 checkpoint/resume, hardware restoration and raw-data re-audit. Initial fast
@@ -732,8 +732,11 @@ neither substitutes for those actions. The exact per-target mapping is part of
 the versioned specification and receipts. The workload validates native
 configure/preferred-scale/buffer/viewport evidence, applies and reads back each
 output scale, and retains the original physical-output PNG. The pointer is
-parked at the output's bottom-right corner before rendering, with its injection
-receipt retained to prevent cursor contamination. A dependency-free bounded
+parked halfway down the output's left edge before rendering, with its injection
+receipt retained. The previous bottom-right parking point hovered the show-desktop
+button: at 200% its tooltip shadow contaminated a corpus corner marker and correctly
+invalidated the block. The v6 policy avoids taskbars and hot corners; original v3–v5
+archives retain their original parking/specification checks. A dependency-free bounded
 PNG decoder rechecks pixels offline. The fixed eight-logical-pixel
 corner exclusion plus pixel-grid allowance is recorded; a maximum two-pixel
 edge overhang is located and counted as offscreen pixels, not silently cropped
@@ -1084,6 +1087,30 @@ Optional `systemd-analyze verify` checks the generated unit syntax. If missing
 or denied socket options by a sandbox, that check is explicitly skipped and
 must be rerun outside that restriction. A passing static check does not open
 PAM sessions or qualify a real seat.
+
+All new supervised desktop sessions exclusively grab physical evdev keyboard,
+mouse, touchpad and touchscreen devices before launching either desktop. Other
+pre-existing virtual input devices are grabbed too. The suite's subsequently
+created BUS_VIRTUAL instruments remain available for automated actions. Input
+descriptors belong to the root worker, are not inherited by commands, and the
+kernel releases their grabs when they close, including after a worker crash.
+`Ctrl+Alt+Esc` on a grabbed keyboard terminates that worker and starts PID 1's
+normal recovery. Input hotplug is scanned every half second; newly discovered
+devices are grabbed where possible and the entire block is invalidated, since
+events before acquisition can race. No input contents are archived; evidence
+contains device identities and a discarded-event count.
+
+Before each desktop starts, its disposable profile receives the same transparent
+Xcursor theme for standard pointer, text, move, resize and busy shapes. Both the
+session and user-manager environments select it; KDE's cursor configuration
+selects it as well. The pointer still participates in the intended synthetic
+interactions, so invisibility alone does not prevent tooltips: scaling also uses
+the safe parking point above. Personal cursor settings, udev rules and device
+permissions are untouched. Profile cleanup removes the theme. The archive records
+the input policy, profile setup and descriptor release. CPU tests cover partial
+grab failure, topology changes, emergency abort and descriptor cleanup; real
+libXcursor decodes the generated transparent pixel at every tested scale. Actual
+kernel grabs and physical restoration still require real-TTY acceptance.
 
 An explicit user-manager integration test reproduces start limiting across
 clean stops with harmless `true` units and verifies recovery. A separate

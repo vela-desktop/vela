@@ -41,7 +41,7 @@ def keyboard():
     for index,line in enumerate(sys.stdin,1):
         command=line.strip();began=time.monotonic_ns()
         if command=='quit':break
-        if command!='point 65535 65535':
+        if command!='point 0 32768':
             invoke(bus,{'snap-left':'Window Quick Tile Left','snap-right':'Window Quick Tile Right',
                         'maximize-toggle':'Window Maximize'}[command])
         # Pointer movement is a fixture/no-op: native capture excludes it.

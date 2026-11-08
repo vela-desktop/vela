@@ -28,6 +28,7 @@ from .archive import append_event, atomic_json, read_json
 from .discovery import sessions
 from .diagnostics import SCENARIOS, pilot_results, run_probe
 from .conditions import apply_conditions, restore_conditions, snapshot_conditions, verify_conditions
+from .input_isolation import InputIsolation, POLICY as INPUT_POLICY, cursor_environment, prepare_cursor_profile
 from .calibration import capture_worker, prepare_fault_input, require_uinput, run_input
 from .host import (ACCOUNT, Host, Layout, PILOT_UNIT, SESSION_UNIT, check_account,
                    control_lock, isolation_properties, load_setup, require_root, reset_profile, stop_user, trusted,
@@ -141,6 +142,7 @@ def preview(targets=None, seconds=30, presentation_probe=False, controlled=False
         raise BenchError("Pilot dwell time must be 5–120 seconds per desktop")
     selected = resolve_targets(targets, check_trust=False)
     return {"kind": "session-lifecycle-pilot", "targets": selected, "target_order": list(selected),
+            "input_policy": INPUT_POLICY,
             "seconds_per_target": seconds, "presentation_probe": presentation_probe or calibrate,
             "controlled_conditions": controlled or calibrate, "instrument_calibration": calibrate,
             "estimated_seconds": {"minimum": len(selected) * (seconds + (7 if presentation_probe else 0)) + 10,
@@ -248,6 +250,8 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
           f"({PILOT_SECONDS} s pilot + {RECOVERY_SECONDS} s recovery deadline).", flush=True)
     print("The display manager may stop; disposable benchmark state will be replaced. No personal sessions will be terminated.", flush=True)
     print("This pilot does not establish qualified comparative performance results.", flush=True)
+    print("Physical input is blocked during the desktop sessions; cursor shapes are transparent. "
+          "Ctrl+Alt+Esc aborts through supervised recovery. Do not connect/disconnect input devices.", flush=True)
     if controlled:
         print("After START, the supervised worker briefly activates the greeter VT to snapshot original outputs. "
               "It then applies primary/native/fixed/scale1, hardware brightness 100%, performance, with verified restoration.", flush=True)
@@ -585,6 +589,7 @@ def worker(host, layout=Layout()):
         state = read_json(directory / "state.json")
         if state.get("stage") != "queued":
             raise BenchError("Pilot is not queued")
+        input_guard = None
         try:
             target_vt = state.get("target_vt")
             if type(target_vt) is not int or not 1 <= target_vt <= 63:
@@ -621,6 +626,9 @@ def worker(host, layout=Layout()):
             if state["display_manager_was_active"]:
                 host.run(["systemctl", "stop", "display-manager.service"], timeout=45)
             reserve_vt(host, directory, state, layout)
+            input_guard = InputIsolation(layout)
+            input_guard.start()
+            atomic_json(directory / "input-isolation.json", input_guard.evidence())
             # JSON object key sorting must never reorder the planned targets.
             order = state["plan"].get("target_order", list(state["plan"]["targets"]))
             diagnostic_failures = []
@@ -631,6 +639,8 @@ def worker(host, layout=Layout()):
                 update(directory, state, "prepare", target=target)
                 stop_user(host, record, layout)
                 reset_profile(host, record, layout)
+                cursor_profile = prepare_cursor_profile(layout, record)
+                atomic_json(directory / f"{target}-cursor-profile.json", cursor_profile)
                 if request and request["workload"] == "p3-desktop-observation-v2":
                     from .desktop import prepare_scene
                     prepare_scene(layout, record)
@@ -670,6 +680,7 @@ def worker(host, layout=Layout()):
                 if state.get("conditions_snapshot"):
                     verify_conditions(host, record, layout, target, state["conditions_snapshot"])
                 def health():
+                    input_guard.check()
                     verify_session(host, record, state, layout)
                     if host.run(["fgconsole"], timeout=5).stdout.strip() != str(target_vt):
                         raise BenchError("Measurement lost the active benchmark VT")
@@ -714,6 +725,7 @@ def worker(host, layout=Layout()):
                 stopped = stop_user(host, record, layout)
                 preserve_session_stop(directory, state, stopped)
                 preserve_session_log(directory, state, record, layout)
+                input_guard.check()
             fields = {"result": "failed" if diagnostic_failures else "passed", "lifecycle_result": "passed"}
             if diagnostic_failures:
                 fields["error"] = "Presentation diagnostics failed: " + "; ".join(diagnostic_failures)
@@ -727,6 +739,12 @@ def worker(host, layout=Layout()):
                 cause = cause.__cause__
             update(directory, state, "restoring", result="failed", error=str(exc))
             raise
+        finally:
+            if input_guard is not None:
+                input_guard.close()
+                atomic_json(directory / "input-isolation.json", input_guard.evidence())
+                if input_guard.error and state.get("result") == "passed":
+                    update(directory, state, "restoring", result="failed", error=input_guard.error)
     # ExecStopPost owns cleanup, including when this process is killed.
 
 
@@ -835,6 +853,16 @@ def recover(host, layout=Layout()):
             # display-manager snapshot to the new login environment.
             state.update(restore_required=False, masked_units=[], result="failed", error="Host rebooted during pilot")
         update(directory, state, "restoring")
+        if state.get("plan", {}).get("input_policy"):
+            guard_path = directory / "input-isolation.json"
+            if guard_path.exists():
+                guard = read_json(guard_path)
+                # ExecStopPost starts after the worker process has exited; all
+                # its evdev descriptors are already closed, even after SIGKILL.
+                guard['release_verified_after_worker_exit'] = True
+                if guard.get('status') == 'active':
+                    guard.update(status='released', release_method='worker-process-exit')
+                atomic_json(guard_path, guard)
         stopped = False
         try:
             released = stop_user(host, record, layout)
@@ -930,6 +958,7 @@ def desktop_environment(target, user, inherited):
                    "XDG_SESSION_TYPE": "wayland", "XDG_SESSION_CLASS": "user", "XDG_SESSION_DESKTOP": target,
                    "XDG_CURRENT_DESKTOP": "Vela:KDE" if target == "vela" else "KDE"}
     environment.update({key: inherited[key] for key in required})
+    environment.update(cursor_environment(Path(user.pw_dir)))
     return environment
 
 

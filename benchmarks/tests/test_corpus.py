@@ -67,6 +67,17 @@ class Corpus(unittest.TestCase):
         w,h,rgb=image()
         with self.assertRaises(BenchError):corpus.markers(rgb,w,'gtk-wayland')
 
+    def test_tooltip_shadow_invalidates_corner_instead_of_moving_the_marker(self):
+        w,h,rgb=image(scale=2.)
+        # At 200%, the failed real frame lost the left nine columns of its
+        # orange marker to a tooltip shadow. Keep rejecting this contamination.
+        left=40+(100-24)*2;top=40+(80-24)*2
+        for y in range(top,top+32):
+            for x in range(left,left+9):
+                rgb[(y*w+x)*3:(y*w+x)*3+3]=bytes((223,128,32))
+        with self.assertRaisesRegex(BenchError,'qt-wayland/bottom-right, found 0'):
+            corpus.markers(rgb,w,'qt-wayland')
+
     def test_all_four_unique_palettes_survive_fractional_scales(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'capture.png'
@@ -137,7 +148,7 @@ class Corpus(unittest.TestCase):
             crop_bytes=png_bytes(*crop);(directory/(stem+'-crop.png')).write_bytes(crop_bytes)
             row={'case':case,'scale':1.,'state':'opened','initial_canvas':[100,80],'outputs':[],
                 'source':meta,'source_events':[meta],'injections':[],
-                'pointer_parking':{'event':'injected','command':'point 65535 65535','before_monotonic_ns':10,'after_monotonic_ns':11},
+                'pointer_parking':{'event':'injected','command':corpus.PARK_COMMAND,'before_monotonic_ns':10,'after_monotonic_ns':11},
                 'capture':{'event':'capture','backend':'ext-image-copy-capture-v1','index':0,'width':w,'height':h,
                            'begin_monotonic_ns':30,'end_monotonic_ns':31},
                 'image_file':stem+'.png','image_sha256':hashlib.sha256(encoded).hexdigest(),

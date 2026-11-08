@@ -14,6 +14,26 @@ from vela_bench.qualification import audit_pilot, qualification_summary
 
 
 class QualificationAcceptance(unittest.TestCase):
+    def test_input_policy_requires_release_and_cursor_evidence_for_new_runs(self):
+        from vela_bench.input_isolation import POLICY
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            atomic_json(directory / 'vela-session.json', {'fixture_hidden_from_both_trees': True, 'graphical_session_target': 'active'})
+            atomic_json(directory / 'vela-conditions.json', {'status': 'passed'})
+            atomic_json(directory / 'state.json', {'stage': 'failed', 'result': 'failed',
+                'conditions_snapshot': {}, 'conditions_restore': {'status': 'passed'},
+                'plan': {'input_policy': POLICY}, 'fault_injected': 'crash', 'unit': FAULT_UNIT,
+                'supervision': {'SERVICE_RESULT': 'signal'}, 'fault_uinput_cleanup': 'passed'})
+            guard = {'policy': POLICY, 'status': 'released', 'error': None, 'release_verified_after_worker_exit': True}
+            for case in ('good', 'no-release', 'guard-error', 'wrong-cursor'):
+                changed = copy.deepcopy(guard)
+                if case == 'no-release': changed['release_verified_after_worker_exit'] = False
+                if case == 'guard-error': changed['error'] = 'hotplug'
+                atomic_json(directory / 'input-isolation.json', changed)
+                atomic_json(directory / 'vela-cursor-profile.json', {} if case == 'wrong-cursor' else POLICY)
+                with self.subTest(case=case):
+                    self.assertEqual(audit_pilot(directory, 'vela', 'crash')['status'], 'passed' if case == 'good' else 'failed')
+
     def test_fault_requires_pid1_result_input_cleanup_and_complete_hardware_restore(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
