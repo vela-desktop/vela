@@ -27,6 +27,8 @@ from vela_bench.measurements import input_metrics
 
 class BenchmarkPresentationProbe(unittest.TestCase):
     def test_half_width_snap_on_1024_output_keeps_native_and_python_marker_identity(self):
+        if not all(Path(tool(name)).is_file() for name in ('vela-bench-scene','vela-bench-desktop')):
+            self.skipTest('optional native Qt desktop instruments unavailable')
         from vela_bench.desktop import SCENE
         from vela_bench.desktop_pixels import evidence
         with Session(size='1024x768@60') as session,tempfile.TemporaryDirectory() as temporary:

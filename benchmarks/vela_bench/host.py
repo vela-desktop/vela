@@ -626,7 +626,7 @@ def update_launcher(host, layout=Layout(), source=None, probe=None, tools_dir=No
 
 
 def _update_launcher(host, layout, source=None, probe=None, tools_dir=None, *, private_homes=()):
-    """Refresh only owned code, retaining the account, policies and evidence."""
+    """Refresh owned code/home isolation, retaining the account, PAM and evidence."""
     trusted(layout.record)
     payload = launcher_payload(layout, source, probe, tools_dir)
     with control_lock(layout):

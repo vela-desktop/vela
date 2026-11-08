@@ -26,7 +26,7 @@ def parser():
     commands = root.add_subparsers(dest="command", required=True)
     setup = commands.add_parser("setup", help="Provision the dedicated account or refresh installed P0 launcher code")
     setup.add_argument("--dry-run", action="store_true", help="Show persistent resources without changing the host")
-    setup.add_argument("--update", action="store_true", help="Refresh owned code and supervision units while preserving the account and PAM isolation")
+    setup.add_argument("--update", action="store_true", help="Refresh owned code, supervision units and personal-home isolation while preserving the account and PAM configuration")
     setup.add_argument("--json", action="store_true", help="Print the complete installation record")
     setup.add_argument("--probe", type=Path, help="Install the built native vela-bench-probe executable")
     setup.add_argument("--tools-dir", type=Path, help="Install fixed input, presentation, display and capture instruments from a build tools directory")
@@ -202,7 +202,8 @@ def main(argv=None):
             return 0
         if args.command == "setup":
             if args.dry_run:
-                result = ({"operation": "update installed launcher code", "account_and_policies": "preserved",
+                result = ({"operation": "update installed launcher code", "account_and_pam": "preserved",
+                           "personal_home_isolation": "refresh NSS homes; retain previously protected paths",
                            "requires": "stopped workers and reserved UID; terminal or cleanup-failed pilot; trusted existing setup"} if args.update else setup_preview())
                 if args.probe:
                     result["native_probe_source"] = str(args.probe)
