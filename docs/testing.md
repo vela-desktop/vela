@@ -15,10 +15,14 @@ ctest --test-dir build --output-on-failure
 CTest includes both CPU-only and GPU-dependent suites.
 The `gpu` label groups `functional`, `sharpness` and `sharpness-cpu`; the latter
 uses CPU fence synchronization while rendering still requires a GPU.
+The separate `rhi` label covers Qt Quick's OpenGL glyph rendering, which is
+verified with Mesa software OpenGL under Xvfb in hosted CI, not the real-GPU
+compositor suites.
 
 ```sh
-ctest --test-dir build -LE gpu --output-on-failure # CPU-only suites
-ctest --test-dir build -L gpu --output-on-failure  # GPU suites
+ctest --test-dir build -LE 'gpu|rhi' --output-on-failure # GPU/RHI-independent suites
+ctest --test-dir build -L '^gpu$' --output-on-failure  # Real-GPU suites
+xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ctest --test-dir build -L '^rhi$' --output-on-failure # Qt RHI via Mesa
 ```
 
 ## Test suites
@@ -224,7 +228,9 @@ use private configuration and cache directories.
 The Arch build job runs the pixel test under Xvfb with Mesa software OpenGL and
 DejaVu fonts, and uploads frames and a comparison report as `text-rendering-frames`.
 It invokes the binary directly, so a missing context (exit 77) fails CI rather
-than silently skipping. CPU-only sanitizer tests exclude its `gpu` label.
+than silently skipping. It is still required in hosted CI but no longer
+belongs to the real-GPU suite; CPU-only sanitizer tests exclude both the
+`gpu` and `rhi` labels.
 
 To separate the renderer decision from the antialiasing decision, capture all
 three policies in fresh processes with the same scene and font:
