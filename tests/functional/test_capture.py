@@ -157,14 +157,24 @@ class DeferredCapture(unittest.TestCase):
                             vela.wait_still(window)
                         before = vela.state()
                         process = self.probe(vela, mode, clients)
-                        if mode != "idle":
-                            end = time.monotonic() + 3.2
-                            maximize = True
-                            while time.monotonic() < end:
-                                vela.command(f"window {window} {'maximize' if maximize else 'restore'}")
-                                maximize = not maximize
-                                time.sleep(0.2)
-                        output, errors = process.communicate(timeout=10)
+                        try:
+                            if mode != "idle":
+                                end = time.monotonic() + 3.2
+                                maximize = True
+                                while time.monotonic() < end:
+                                    vela.command(f"window {window} {'maximize' if maximize else 'restore'}")
+                                    maximize = not maximize
+                                    time.sleep(0.2)
+                            output, errors = process.communicate(timeout=10)
+                        finally:
+                            # subTest continues after a failure. Do not let a
+                            # timed-out probe consume GPU resources during the
+                            # next mode's independent performance measurement.
+                            if process.poll() is None:
+                                process.kill()
+                                process.communicate(timeout=5)
+                                vela.wait_for(lambda s: s["readback"]["pending"] == 0,
+                                              timeout=5, what="readback after probe termination")
                         self.assertEqual(process.returncode, 0, errors)
                         metrics = json.loads(output)
                         after = vela.state()

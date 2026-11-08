@@ -122,15 +122,34 @@ class RealShell(unittest.TestCase):
         notification center loses the keyboard and closes, like Start."""
         session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        pending = bytearray()
 
         def send(*actions):
             session.stdin.write("\t".join(map(str, actions)) + "\n")
             session.stdin.flush()
-            self.assertEqual(session.stdout.readline().strip(), "OK", f"vela-input refused {actions!r}")
+            deadline = time.monotonic() + 5 * TIME_SCALE
+            # select + os.read also bounds partial replies: TextIO.readline()
+            # can block forever after a process writes a non-newline prefix.
+            while b"\n" not in pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([session.stdout], [], [], remaining)[0]:
+                    self.fail(f"vela-input timed out replying to {actions!r}; pid={session.pid}, exit={session.poll()}")
+                chunk = os.read(session.stdout.fileno(), 4096)
+                if not chunk:
+                    self.fail(f"vela-input exited before replying to {actions!r}; exit={session.poll()}")
+                pending.extend(chunk)
+                self.assertLessEqual(len(pending), 4096, "vela-input reply exceeded 4096 bytes")
+            line, _, rest = pending.partition(b"\n")
+            pending[:] = rest
+            self.assertEqual(line.decode("utf-8", errors="replace").strip(), "OK",
+                             f"vela-input refused {actions!r}")
         try:
             yield send
         finally:
-            session.stdin.close()
+            try:
+                session.stdin.close()
+            except BrokenPipeError:
+                pass  # The process may have already died after a timeout.
             try:
                 session.wait(timeout=5)
             except subprocess.TimeoutExpired:
@@ -471,20 +490,31 @@ class QtShell(RealShell):
             # The pointer has not moved: only the list's content can differ.
             self.assertNotEqual(before.rows, self.vela.pixels().rows, "History did not scroll")
 
-            # A HoverHandler is not a reliable click oracle across Qt RHI
-            # backends: a card may be clickable without changing its hover
-            # pixels. Instead, find the card's actual filled background. The
-            # 8px ListView inset leaves a strip of the panel surface at x+3;
-            # the card begins at x+8, with empty padding at x+14. Require a
-            # continuous run so a section label or 6px gap cannot qualify.
+            # Hover pixels vary with Qt RHI; use the rendered card's body.
+            # Compare two interior strips with the surrounding panel, without
+            # depending on any particular theme color or a rounded corner.
+            # Pick the middle of a continuous card run, not its edge, a 6px
+            # gap or the app-name section heading.
             image = self.vela.pixels()
-            for target_y in range(y - 70, y + 71, 4):
-                if all(image.at(left + 14, target_y + offset) !=
-                       image.at(left + 3, target_y + offset)
-                       for offset in (-12, -8, -4, 0, 4, 8, 12)):
-                    break
-            else:
-                self.fail("no filled history card in the scrolled list")
+
+            def card_row(row):
+                outside = image.at(left + 3, row)
+                return all(max(abs(a - b) for a, b in zip(image.at(left + offset, row), outside)) >= 4
+                           for offset in (18, 300))
+
+            runs, run = [], []
+            for sample_y in range(max(12, y - 70), min(image.height - 12, y + 71)):
+                if all(card_row(sample_y + delta) for delta in (-8, 0, 8)):
+                    run.append(sample_y)
+                elif run:
+                    runs.append(run)
+                    run = []
+            if run:
+                runs.append(run)
+            candidates = [run for run in runs if len(run) >= 18]
+            self.assertTrue(candidates, "no visible history card in the scrolled list")
+            best = max(candidates, key=len)
+            target_y = best[len(best) // 2]
             send("move", x, target_y, "sleep", 150)
             # Still cut to the output's height with eleven cards: the D-Bus
             # signal below, not the window's size, proves the removal.

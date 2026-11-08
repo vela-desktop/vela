@@ -171,15 +171,25 @@ class Personalization(ShellChoices):
             state = self.vela.wait_for(lambda s: self.layer(s, "vela-notification-center"),
                                        what="the center open")
             layer = self.layer(state, "vela-notification-center")
-            box = (layer["x"], layer["y"], layer["w"], min(layer["h"], 200))
-            hour24 = self.settled_region(box, still=0.4)
+            # Only the first notification's time label, not the header,
+            # translucent shadows or calendar. NotificationCenter.qml places
+            # the panel at (room, room), its 360px-wide first card below the
+            # 50px header and section label, and timeText at its right edge.
+            room = layer["w"] - 372
+            self.assertGreaterEqual(room, 0)
+            box = (layer["x"] + room + 232, layer["y"] + room + 70, 108, 52)
+            hour24 = self.settled_region(box, still=0.5)
 
             self.write_shell_conf("[clock]\nhours=12\n")
             self.wait_region(box, lambda shot: shot != hour24,
                              "notification timestamp changes to 12-hour format")
+            hour12 = self.settled_region(box, still=0.5)
+            self.assertNotEqual(hour12, hour24, "the 12-hour timestamp never settled to a different image")
             self.write_shell_conf("[clock]\nhours=24\n")
             self.wait_region(box, lambda shot: shot == hour24,
                              "notification timestamp returns to 24-hour format")
+            self.assertEqual(self.settled_region(box, still=0.5), hour24,
+                             "the 24-hour timestamp did not remain stable")
             send("key", "Escape")
             self.vela.wait_for(lambda s: not self.mapped(s, "vela-notification-center"),
                                timeout=5, what="the center closed")
