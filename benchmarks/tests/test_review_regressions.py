@@ -325,6 +325,7 @@ class ReviewAuthentication(unittest.TestCase):
                 calls.append(command);output=''
                 if '--property=Id' in command:output='sddm.service'
                 elif '--property=Restart' in command:output='no'
+                elif '--property=Conditions' in command:output='ConditionPathExists=' + str(directory/'display-manager-start-blocked')
                 elif '--property=FreezerState' in command:output='frozen' if frozen else 'running'
                 elif '--property=ActiveState' in command:output='active'
                 elif command[1]=='freeze':frozen=True
@@ -335,9 +336,63 @@ class ReviewAuthentication(unittest.TestCase):
                 with self.assertRaisesRegex(BenchError,'after authorization'):
                     pilot.quiesce_display_manager(transport,directory,state,layout)
                 self.assertTrue(frozen)
-                self.assertTrue((layout.path('run/systemd/system')/'sddm.service').is_symlink())
+                self.assertFalse((layout.path('run/systemd/system')/'sddm.service').is_symlink())
+                override=layout.path('run/systemd/system/sddm.service.d/99-vela-benchmark-quiescence.conf')
+                self.assertIn('ConditionPathExists=' + str(directory/'display-manager-start-blocked'),override.read_text())
                 self.assertFalse(any(c[1] in ('kill','stop') for c in calls))
                 pilot.release_display_manager_quiescence(transport,directory,state,layout)
             self.assertFalse(frozen)
             self.assertFalse((layout.path('run/systemd/system')/'sddm.service').is_symlink())
             self.assertEqual(state['display_manager_quiescence']['status'],'released')
+
+    def test_plasmalogin_thaws_and_stops_before_runtime_mask_is_loaded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            layout=host.Layout(Path(temporary));directory=layout.path('evidence');directory.mkdir()
+            state={'stage':'takeover'};calls=[];frozen=False;active=True
+            mask=layout.path('run/systemd/system/plasmalogin.service')
+            override=mask.parent/'plasmalogin.service.d/99-vela-benchmark-quiescence.conf'
+            def run(command,**kwargs):
+                nonlocal frozen,active
+                calls.append(command);output=''
+                if '--property=Id' in command:output='plasmalogin.service'
+                elif '--property=Restart' in command:output='no'
+                elif '--property=Conditions' in command:output='ConditionPathExists=' + str(directory/'display-manager-start-blocked')
+                elif '--property=FreezerState' in command:output='frozen' if frozen else 'running'
+                elif '--property=ActiveState' in command:output='active' if active else 'inactive'
+                elif '--property=LoadState' in command:output='masked' if mask.is_symlink() else 'loaded'
+                elif command[1]=='freeze':frozen=True
+                elif command[1]=='thaw':
+                    self.assertFalse(mask.is_symlink(), 'thaw must not resolve a masked unit')
+                    frozen=False
+                elif command[1] in ('kill','stop'):
+                    self.assertFalse(mask.is_symlink(), 'teardown must not resolve a masked unit')
+                    if command[1]=='stop':active=False
+                return SimpleNamespace(returncode=0,stdout=output)
+            transport=SimpleNamespace(run=run)
+            with patch.object(pilot,'trusted'),patch.object(pilot,'logind_sessions',return_value=[]):
+                pilot.quiesce_display_manager(transport,directory,state,layout)
+                self.assertTrue(mask.is_symlink())
+                self.assertFalse(frozen)
+                self.assertFalse(active)
+                self.assertIn('ConditionPathExists=' + str(directory/'display-manager-start-blocked'),override.read_text())
+                commands=[entry[1] for entry in calls]
+                self.assertLess(commands.index('thaw'),commands.index('stop'))
+                self.assertLess(commands.index('stop'),commands.index('daemon-reload',commands.index('stop')))
+                self.assertEqual(state['display_manager_quiescence']['status'],'stopped')
+                pilot.release_display_manager_quiescence(transport,directory,state,layout)
+            self.assertFalse(mask.exists() or mask.is_symlink())
+            self.assertFalse(override.exists())
+            self.assertEqual(state['display_manager_quiescence']['status'],'released')
+
+    def test_quiescence_rejects_an_existing_start_marker_before_mutating_systemd(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            layout=host.Layout(Path(temporary));directory=layout.path('evidence');directory.mkdir()
+            (directory/'display-manager-start-blocked').touch()
+            commands=[]
+            def run(command,**kwargs):
+                commands.append(command)
+                return SimpleNamespace(returncode=0,stdout='plasmalogin.service' if '--property=Id' in command else '')
+            with patch.object(pilot,'trusted'):
+                with self.assertRaisesRegex(BenchError,'start-inhibition marker'):
+                    pilot.quiesce_display_manager(SimpleNamespace(run=run),directory,{'stage':'takeover'},layout)
+            self.assertFalse(any(command[1]=='daemon-reload' for command in commands))
