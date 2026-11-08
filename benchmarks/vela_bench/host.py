@@ -34,7 +34,7 @@ PILOT_SECONDS = 600
 RECOVERY_SECONDS = 300
 SAFE_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C", "LANG": "C"}
 BASE_MODULES = ("__init__.py", "archive.py", "model.py", "discovery.py", "host.py", "pilot.py")
-MODULES = BASE_MODULES + ("diagnostics.py", "conditions.py", "calibration.py", "qualification.py", "campaign.py", "measurements.py", "desktop.py", "workloads.py", "platform_workloads.py", "pixels.py", "resources.py", "interactions.py", "corpus.py", "contention.py", "desktop_legacy.py", "desktop_pixels.py", "input_isolation.py")
+MODULES = BASE_MODULES + ("diagnostics.py", "conditions.py", "calibration.py", "qualification.py", "campaign.py", "measurements.py", "desktop.py", "workloads.py", "platform_workloads.py", "pixels.py", "resources.py", "interactions.py", "corpus.py", "contention.py", "desktop_legacy.py", "desktop_pixels.py", "input_isolation.py", "session_profile.py")
 INSTRUMENTS = ("vela-bench-probe", "vela-bench-desktop", "vela-screen-dump", "vela-bench-input", "vela-slowgpu",
                "vela-bench-scene", "vela-pattern", "vela-bench-corpus-qt", "vela-bench-corpus-gtk",
                "vela-bench-corpus-web", "vela-bench-cpuload")

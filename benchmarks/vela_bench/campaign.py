@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import html
 import shutil
+import time
 import uuid
 
 from . import BenchError
@@ -113,6 +114,10 @@ def audit_block(source, block, plan, layout):
     if plan["kind"] == "execution-campaign":
         expected = block_request(layout, plan["run_id"], block["id"], block["target"])
         state = read_json(source / "state.json")
+        if 'desktop_profile_policy' in plan.get('context', {}):
+            audit['checks']['desktop_profile_binding'] = (
+                state.get('plan', {}).get('desktop_profile_policy') == plan['context']['desktop_profile_policy']
+                and state.get('plan', {}).get('autostart_inventory') == plan['context']['autostart_inventory'])
         if audit['status']!='passed':
             audit['error']=state.get('error') or audit.get('error') or 'Pilot did not pass lifecycle/instrument acceptance'
             return audit
@@ -171,10 +176,12 @@ def blocks_for(targets, case, seed=0):
 def context(host, layout, targets):
     from .pilot import resolve_targets
     from .input_isolation import POLICY
+    from .session_profile import POLICY as PROFILE_POLICY, autostart_inventory
     setup = load_setup(host, layout)
     inventory = discover()
     return {"account_tag": setup["account_tag"], "uid": setup["uid"], "launcher_files": setup["files"],
             "input_policy": POLICY,
+            "desktop_profile_policy": PROFILE_POLICY, "autostart_inventory": autostart_inventory(layout),
             "targets": resolve_targets(targets), "environment": inventory["environment"]}
 
 
@@ -184,6 +191,47 @@ def condition_identity(snapshot):
             "output_identities": snapshot.get("output_identities"),
             "brightness_endpoint": {key: brightness.get(key) for key in ("backend", "connector", "edid_sha256", "maximum", "bus", "device")},
             "power_sources": snapshot["power_sources"]}
+
+
+def verify_failed_block_restoration(host, layout, source, plan):
+    """Only a failed, fully recovered pilot may yield to an independent block.
+
+    Missing state, integrity/audit failures after a successful pilot, changed
+    hardware, incomplete cleanup and operator cancellation still stop execution.
+    """
+    trusted(source / 'state.json')
+    state = read_json(source / 'state.json')
+    if state.get('operator_cancelled'):
+        raise KeyboardInterrupt
+    if (state.get('stage') != 'failed' or state.get('result') != 'failed'
+            or state.get('cleanup_errors') != [] or state.get('conditions_restore', {}).get('status') != 'passed'):
+        raise BenchError('Failed block has no verified complete restoration')
+    if state.get('boot_id') != Path('/proc/sys/kernel/random/boot_id').read_text().strip():
+        raise BenchError('Host rebooted during the failed block')
+    snapshot = state.get('conditions_snapshot')
+    if (not isinstance(snapshot, dict) or condition_identity(snapshot)
+            != resolved_conditions(source.parent.parent / 'campaigns' / plan['run_id'], plan)):
+        raise BenchError('Failed block differs from the immutable hardware conditions')
+    if state.get('plan', {}).get('input_policy'):
+        trusted(source / 'input-isolation.json')
+        guard = read_json(source / 'input-isolation.json')
+        if guard.get('release_verified_after_worker_exit') is not True:
+            raise BenchError('Physical input release was not verified')
+    # The terminal state is written at the end of ExecStopPost, just before
+    # systemd retires the unit. Allow that short deactivation race to settle.
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            require_workers_stopped(host)
+            break
+        except BenchError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(.1)
+    setup = load_setup(host, layout)
+    if host.pids(setup['uid']) or layout.path(f"run/user/{setup['uid']}").exists():
+        raise BenchError('Reserved account still has live processes or runtime state')
+    return {'status': 'allowed', 'restoration': 'verified', 'reserved_uid_stopped': True}
 
 
 def resolved_conditions(directory, plan):
@@ -277,6 +325,8 @@ def inspect_campaign(directory):
             "resolved_conditions": conditions,
             "stage": manifest["stage"], "blocks": accepted, "qualification": qualification,
             "selection_complete": all(row["status"] == "complete" for row in accepted),
+            "execution_complete": all(row['status'] in ('complete', 'failed') for row in accepted),
+            "failed_blocks": sum(row['status'] == 'failed' for row in accepted),
             "full_suite_complete": False, "performance_comparison_available": False}
     observed = scheduled and plan["case"] == "observe"
     if scheduled and not measured and not observed:
@@ -324,6 +374,7 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
         trusted(root, directory=True)
         current = context(host, layout, selected)
         selection = execution_selection(current, selected, case=case, fast=fast, seed=seed, phases=phases, exercise=exercise)
+        selection['failure_policy'] = 'continue-after-verified-restoration-v1'
         if selection["case"] == "observe":
             scene = layout.helper.parent / "vela-bench-scene"
             if str(scene) not in setup["files"]:
@@ -397,6 +448,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
         print(f"Provisional duration: about {max(1,round(nominal/60))}–{max(1,round(nominal/30))} minutes; hard per-block budget 900 seconds.", flush=True)
         print("This takes over the machine, changes/restores hardware conditions and launches fresh isolated desktops.", flush=True)
         print("After START, the supervised worker activates the greeter VT to resolve and freeze the hardware profile.", flush=True)
+        print("A failed block is retained and later blocks continue after verified restoration. "
+              "Cancellation, incomplete recovery or changed conditions stop the campaign.", flush=True)
         print("Physical keyboard/mouse input is blocked in benchmark desktops; the cursor is invisible. "
               "Ctrl+Alt+Esc aborts and restores the machine. Input hotplug invalidates the block.", flush=True)
         if any(block["fault"] for block in pending):
@@ -432,6 +485,7 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                 print(f"[phase {phase}]", flush=True)
             append_event(directory / "events.jsonl", {"event": "block-start", **attempt})
             print(f"[{block['id']}] fresh profile/session/calibration; attempt {attempts}", flush=True)
+            source = layout.base / "pilots" / attempt["pilot_run_id"]
             try:
                 refreshed=context(host, layout, selected)
                 if 'corpus_inventory' in plan['context']:
@@ -509,12 +563,28 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                     append_event(directory / "events.jsonl", {"event": "phase-complete", "phase": phase})
             except (BenchError, OSError, ValueError, KeyboardInterrupt) as exc:
                 cancelled = isinstance(exc, KeyboardInterrupt)
+                continuation = None
+                if not cancelled:
+                    try:
+                        continuation = verify_failed_block_restoration(host, layout, source, plan)
+                    except KeyboardInterrupt:
+                        cancelled = True
+                    except (BenchError, OSError, ValueError, KeyError, TypeError) as recovery_error:
+                        attempt['continuation_blocked'] = str(recovery_error)
                 attempt.update(status="interrupted" if cancelled else "failed", error="Operator interrupted the campaign" if cancelled else str(exc))
+                if continuation:
+                    attempt['continuation'] = continuation
                 atomic_json(attempt_path, attempt)
-                manifest.update(stage="interrupted", error=attempt["error"])
+                manifest.update(stage="running" if continuation else "interrupted", error=attempt["error"])
                 atomic_json(directory / "manifest.json", manifest)
                 append_event(directory / "events.jsonl", {"event": "block-interrupted" if cancelled else "block-failed", "block_id": block["id"], "error": attempt["error"]})
                 print(f"Block {attempt['status']}: {attempt['error']}. Resume ID: {plan['run_id']}", flush=True)
+                if continuation:
+                    append_event(directory / 'events.jsonl', {'event': 'continue-after-failure', 'block_id': block['id'], **continuation})
+                    print('Restoration verified; continuing with the next independent block.', flush=True)
+                    continue
+                if attempt.get('continuation_blocked'):
+                    print('Campaign stopped: ' + attempt['continuation_blocked'], flush=True)
                 return 130 if cancelled else 1
         result = inspect_campaign(directory)
         acceptable = result["selection_complete"]
@@ -522,9 +592,12 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             checks = result["qualification"]["checks"]
             acceptable = acceptable and all(value for name, value in checks.items()
                 if case == "all" or name.endswith(("/independent-calibrations", "/A-A-repeatability")))
-        manifest["stage"] = "done" if acceptable else "qualification-failed"
+        manifest["stage"] = "done" if acceptable else "completed-with-failures" if result['failed_blocks'] else "qualification-failed"
+        if acceptable:
+            manifest.pop('error', None)
         atomic_json(directory / "manifest.json", manifest)
-        print(f"Selection complete: {result['selection_complete']}; P0 qualification: {result['qualification']['status']}", flush=True)
+        print(f"Execution complete: {result['execution_complete']}; failed blocks: {result['failed_blocks']}; "
+              f"selection passed: {result['selection_complete']}; P0 qualification: {result['qualification']['status']}", flush=True)
         return 0 if acceptable else 1
     finally:
         os.close(descriptor)
@@ -557,6 +630,9 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
                  "<h1>Qualification and calibration</h1><p>Instrument acceptance evidence.</p>")
     document += "<p>No comparative desktop performance ranking; the five-family suite is incomplete.</p>"
     document += f"<p>Run: {escape(data['run_id'])}. Stage: {escape(data['stage'])}. Selection complete: {escape(data['selection_complete'])}. P0: {escape(data['qualification']['status'])}.</p>"
+    if 'execution_complete' in data:
+        document += (f"<p>Execution finished: {escape(data['execution_complete'])}. Failed blocks: {escape(data['failed_blocks'])}. "
+                     "Failed blocks retain their diagnostics and are excluded from performance statistics.</p>")
     if exercise or measured or observed:
         document += "<h2>Family coverage</h2><pre>" + escape(json.dumps(data["families"], indent=2)) + "</pre>"
     if observed:
@@ -707,6 +783,12 @@ def read_export(directory):
         raise BenchError("Exported campaign identity/coverage changed")
     if manifest["kind"] != data.get("kind", "") + "-export":
         raise BenchError("Exported campaign kind changed")
+    if ('execution_complete' in data and data['execution_complete'] is not
+            all(row['status'] in ('complete', 'failed') for row in data['blocks'])):
+        raise BenchError('Exported execution coverage changed')
+    if ('failed_blocks' in data and (type(data['failed_blocks']) is not int
+            or data['failed_blocks'] != sum(row['status'] == 'failed' for row in data['blocks']))):
+        raise BenchError('Exported failed-block count changed')
     if data.get("execution_mode") == "measure":
         from .measurements import aggregate
         from .workloads import audit_measurements

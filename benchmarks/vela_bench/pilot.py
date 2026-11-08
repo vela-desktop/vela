@@ -29,6 +29,7 @@ from .discovery import sessions
 from .diagnostics import SCENARIOS, pilot_results, run_probe
 from .conditions import apply_conditions, restore_conditions, snapshot_conditions, verify_conditions
 from .input_isolation import InputIsolation, POLICY as INPUT_POLICY, cursor_environment, prepare_cursor_profile
+from .session_profile import POLICY as PROFILE_POLICY, autostart_inventory, prepare_profile
 from .calibration import capture_worker, prepare_fault_input, require_uinput, run_input
 from .host import (ACCOUNT, Host, Layout, PILOT_UNIT, SESSION_UNIT, check_account,
                    control_lock, isolation_properties, load_setup, require_root, reset_profile, stop_user, trusted,
@@ -143,6 +144,7 @@ def preview(targets=None, seconds=30, presentation_probe=False, controlled=False
     selected = resolve_targets(targets, check_trust=False)
     return {"kind": "session-lifecycle-pilot", "targets": selected, "target_order": list(selected),
             "input_policy": INPUT_POLICY,
+            "desktop_profile_policy": PROFILE_POLICY,
             "seconds_per_target": seconds, "presentation_probe": presentation_probe or calibrate,
             "controlled_conditions": controlled or calibrate, "instrument_calibration": calibrate,
             "estimated_seconds": {"minimum": len(selected) * (seconds + (7 if presentation_probe else 0)) + 10,
@@ -201,6 +203,7 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
     record = load_setup(host, layout)
     presentation_probe, controlled = presentation_probe or calibrate, controlled or calibrate
     plan = preview(targets, seconds, presentation_probe, controlled, calibrate)
+    plan['autostart_inventory'] = autostart_inventory(layout)
     request = None
     if campaign_block_id is not None:
         from .campaign import block_request
@@ -331,7 +334,7 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
                                   if metrics else row.get("error", "no samples"))
                         print(f"  {row['target']}/{row['scenario']}: {row['status']}; {detail}", flush=True)
                     print("The coordinator will export the diagnostic report after restoration.", flush=True)
-                return 0 if stage == "done" else 1
+                return 130 if current.get('operator_cancelled') else 0 if stage == "done" else 1
             if time.monotonic() >= deadline:
                 host.run(["systemctl", "stop", unit], timeout=RECOVERY_SECONDS + 20)
                 raise BenchError("Pilot exceeded its supervision/recovery budget; inspect persistent evidence")
@@ -605,6 +608,8 @@ def worker(host, layout=Layout()):
                         or request != block_request(layout, state["campaign_run_id"], request["block"]["id"], targets[0])):
                     raise BenchError("Worker exercise request changed before takeover")
             require_no_graphical_sessions(logind_sessions(host), after_authorization=True)
+            if autostart_inventory(layout) != state['plan'].get('autostart_inventory', []):
+                raise BenchError('System autostart entries changed after authorization')
             state["restore_required"] = True
             update(directory, state, "takeover")
             create_fixture(state)
@@ -639,6 +644,8 @@ def worker(host, layout=Layout()):
                 update(directory, state, "prepare", target=target)
                 stop_user(host, record, layout)
                 reset_profile(host, record, layout)
+                profile = prepare_profile(layout, record, state['plan'].get('autostart_inventory', []))
+                atomic_json(directory / f"{target}-desktop-profile.json", profile)
                 cursor_profile = prepare_cursor_profile(layout, record)
                 atomic_json(directory / f"{target}-cursor-profile.json", cursor_profile)
                 if request and request["workload"] == "p3-desktop-observation-v2":
@@ -846,6 +853,8 @@ def recover(host, layout=Layout()):
         errors = []
         if os.environ.get("SERVICE_RESULT"):
             state["supervision"] = {key: os.environ.get(key) for key in ("SERVICE_RESULT", "EXIT_CODE", "EXIT_STATUS")}
+            if not state.get('fault') and os.environ.get('EXIT_STATUS') in ('TERM', 'SIGTERM', '15'):
+                state['operator_cancelled'] = True
         if state.get("result") == "pending":
             state.update(result="failed", error="Pilot interrupted before completing its declared work")
         if state.get("boot_id") and state["boot_id"] != Path("/proc/sys/kernel/random/boot_id").read_text().strip():

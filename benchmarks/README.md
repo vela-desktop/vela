@@ -906,6 +906,30 @@ installation or environment is refused. Ctrl+C during a block stops the
 supervised worker and journals interruption; export that interrupted campaign
 with `sudo scripts/vela-bench campaign-report` if needed before resuming.
 
+A failed workload now ends only its phase/desktop/repetition block. After the
+pilot verifies hardware restoration, worker exit, physical-input release and
+the absence of reserved-UID processes/runtime, the campaign attempts the next
+independent block, including the other desktop and later phases. Original failed
+captures, errors and attempts remain in the export. Successful blocks retain
+their own statistics; failed blocks never count as valid measurements. Finishing
+the schedule with failures reports `completed-with-failures`,
+`execution_complete=true`, `selection_complete=false`, a failed-block count and
+exit status 1. Resume retries only the unsuccessful blocks. Cancellation
+(including Ctrl+Alt+Esc), incomplete cleanup, a reboot, changed hardware/context,
+or inconsistent accepted evidence stops the campaign for inspection.
+
+New disposable profiles select Do Not Disturb for both Vela and Plasma and use
+per-user XDG `Hidden=true` overrides for system autostart applications outside
+a fixed core-session allowlist. This excludes updater trays, distro reminders,
+indexers and companion apps while retaining the shell, accessibility, power,
+keyring and authentication services. The allowlist and all discovered system
+autostart file hashes are recorded in the immutable context and profile evidence.
+System files and personal profiles are untouched. This addresses the observed
+Cachy-Update popup covering a browser corpus corner marker; captures still use
+the same strict pixel oracle. Unexpected overlays continue to invalidate their
+block. Vela's normal DND policy still permits critical notifications. These
+profile conditions require a new campaign after refreshing setup.
+
 Exercise exports record `execution_mode=exercise`,
 `measurement_blocks_executed=0`, P0 qualification `not-requested` and explicit
 `exercised-not-measured` family coverage. This path passes CPU coordinator/

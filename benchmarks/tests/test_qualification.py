@@ -14,6 +14,27 @@ from vela_bench.qualification import audit_pilot, qualification_summary
 
 
 class QualificationAcceptance(unittest.TestCase):
+    def test_quiet_profile_must_match_frozen_autostarts_and_exact_overrides(self):
+        from vela_bench.session_profile import POLICY
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            inventory = [{'name': 'arch-update-tray.desktop', 'allowed': False},
+                         {'name': 'kaccess.desktop', 'allowed': True}]
+            atomic_json(directory / 'state.json', {'stage': 'failed', 'result': 'failed',
+                'conditions_snapshot': {}, 'conditions_restore': {'status': 'passed'},
+                'plan': {'desktop_profile_policy': POLICY, 'autostart_inventory': inventory},
+                'fault_injected': 'crash', 'unit': FAULT_UNIT, 'supervision': {'SERVICE_RESULT': 'signal'},
+                'fault_uinput_cleanup': 'passed'})
+            atomic_json(directory / 'vela-session.json', {'fixture_hidden_from_both_trees': True, 'graphical_session_target': 'active'})
+            atomic_json(directory / 'vela-conditions.json', {'status': 'passed'})
+            good = {'policy': POLICY, 'autostart_inventory': inventory, 'disabled_autostarts': ['arch-update-tray.desktop']}
+            for key, value in ((None, None), ('policy', {}), ('autostart_inventory', []), ('disabled_autostarts', ['kaccess.desktop'])):
+                profile = copy.deepcopy(good)
+                if key: profile[key] = value
+                atomic_json(directory / 'vela-desktop-profile.json', profile)
+                with self.subTest(field=key):
+                    self.assertEqual(audit_pilot(directory, 'vela', 'crash')['status'], 'passed' if key is None else 'failed')
+
     def test_input_policy_requires_release_and_cursor_evidence_for_new_runs(self):
         from vela_bench.input_isolation import POLICY
         with tempfile.TemporaryDirectory() as temporary:

@@ -1243,6 +1243,16 @@ class HostOperations(unittest.TestCase):
         self.assertEqual(state["stage"], "failed")
         self.assertEqual(state["supervision"]["SERVICE_RESULT"], "signal")
 
+    def test_sigterm_abort_is_preserved_as_operator_cancellation_after_recovery(self):
+        self.setup_account()
+        directory = self.pilot_state(result='pending')
+        with patch.dict(os.environ, {'SERVICE_RESULT': 'signal', 'EXIT_CODE': 'killed', 'EXIT_STATUS': 'TERM'}):
+            self.recover_without_fixture_io()
+        state = read_json(directory / 'state.json')
+        self.assertTrue(state['operator_cancelled'])
+        self.assertEqual(state['stage'], 'failed')
+        self.assertEqual(state['cleanup_errors'], [])
+
     def test_vt_reservation_preserves_existing_masks(self):
         self.setup_account()
         directory = self.pilot_state()
