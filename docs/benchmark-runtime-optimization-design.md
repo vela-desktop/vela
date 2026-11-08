@@ -18,6 +18,7 @@ This proposal treats **time spent measuring the system** and **time spent operat
 3. Reduce observer/interference overhead in measured windows, particularly repeated external process and D-Bus activity.
 4. Preserve the real-TTY isolation model, fresh desktop profiles and sessions, crash/hang/hotplug recovery, original evidence, offline re-audit, and fail-closed behavior.
 5. Make actual savings measurable, attributable, and repeatable, including invalid blocks, retries, and machine recovery.
+6. Prioritize **net critical-path reduction** over gross work eliminated: an optimization that merely replaces CPU work with mandatory pacing may improve observer interference without shortening the campaign.
 
 ### Non-goals
 
@@ -55,10 +56,34 @@ Also capture the **boot ID** (e.g. `/proc/sys/kernel/random/boot_id`) and clock 
 
 Profile preflight/context refresh, VT/greeter setup, display-manager transitions, reset/profile, session launch/readiness, condition application, presentation probes, input/capture calibration, fixture launch, settling, measured work, capture backend and transport, image analysis, hashes/audit, checkpoint/fsync, teardown and recovery. Preserve partial/failed stage timing; incomplete evidence must never be accepted. A critical-path breakdown must account for overlap rather than naively summing concurrent durations. Track process-spawn counts and harness CPU time when available.
 
-**Freeze a temporal baseline:** in addition to elapsed stages, record actual input injection receipts and inter-arrival intervals (including `health()` time), capture request/receipt/analysis timing, P3 capture-to-action dependencies, and state-to-observation windows. Do not add heavyweight tracing/polling within measured windows merely to profile them.
+**Freeze a temporal baseline:** in addition to elapsed stages, record actual input injection receipts and inter-arrival intervals (including `health()` time), capture request/receipt/analysis timing, P3 capture-to-action dependencies, and state-to-observation windows. Record **feedback completion → check → pacing wait → injection → next feedback completion** separately for P2. Reuse already available monotonic instrument receipts; do not add heavyweight tracing/polling within measured windows merely to profile them.
 
 Compare candidates against a frozen pre-optimization baseline with the same installed desktops, hardware and conditions. Repeat independent whole campaigns, rotate ordering and retain raw stage events. Planner budgets and service deadlines are **not** measured durations. See Section 5 for the preregistered comparison plan.
 
+### Attribution: gross overhead is not net runtime savings
+
+Stage 0 must generate a **time-accounting ledger** by target, phase and block, with these distinct quantities:
+
+| Quantity | Definition | Interpretation |
+| --- | --- | --- |
+| Gross harness overhead removed | Reduced CPU/process/decode/check/transport time in comparable work | May reduce observer interference without shortening elapsed time |
+| Pacing absorption | Time saved by faster work but deliberately reintroduced as waiting to preserve a frozen temporal stimulus | **Not** an end-to-end runtime saving |
+| Critical-path savings | Difference in the elapsed campaign critical path caused by the optimization, after overlap and required pacing | Candidate contribution to actual faster completion |
+| Net accepted-campaign saving | Change in START-to-verified-restoration wall time, counting invalid attempts, retries and recoveries | **Primary optimization outcome** |
+
+In particular, if a P2 health check becomes 20 ms faster but an equivalent stimulus requires 20 ms more controlled waiting, it produces approximately **zero critical-path savings** for that action. Likewise, reducing capture transport latency may lower CPU overhead yet save no wall time when the next action has a fixed deadline. Neither is grounds to claim a faster benchmark.
+
+Attribute candidate savings by category: (a) overhead outside the frozen temporal workload, (b) overhead inside a window but off the critical path, (c) overhead inside a window absorbed by pacing, and (d) savings requiring a **new method/stimulus version**. The latter must be evaluated as a different benchmark, not conflated with a like-for-like suite-speedup claim.
+
+Use measured critical-path weights, not equal weighting of phases. A 20% improvement in a stage accounting for 1% of campaign time cannot by itself justify a claim of material end-to-end speedup. Where parallel work exists, compute the critical path from the event DAG rather than subtracting independent stage totals.
+
+### Exit criteria for Stage 0
+
+- A reproducible, boot-scoped timing ledger with accepted/invalid/recovered attempts and an explicit gross-versus-net attribution.
+- Frozen P2/P3 stimulus contracts with instrumented receipts and defensible tolerances; do not select a favorable tolerance after seeing optimized results.
+- A ranked shortlist of critical-path costs and a rough attainable saving bound for each track.
+- A low-overhead profiling validation (including an A/A comparison where practical) showing that the profiler does not materially perturb the workload.
+- Before changing a safety-sensitive monitor, a per-invariant coverage matrix and fault-injection plan (see T1a).
 
 ## 4. Proposed optimization tracks
 
@@ -72,6 +97,10 @@ Identical counts do **not** necessarily mean identical compositor workloads. For
 
 Stage 0 must establish the actual baseline and acceptable timing envelope **before** candidate data is inspected. Where applicable, pace input using explicit monotonic deadlines, record real injection receipts, and forbid catch-up bursts after a delayed step. Preserve prerequisites (e.g. P3 pre-action frame) even when scheduling is made explicit. Missing deadlines or gaps invalidate evidence rather than weaken the contract.
 
+**P2 is feedback-gated, not an open-loop fixed-frequency generator.** The current order is: previous action's presented-frame receipt (or initial readiness) → synchronous `health()` → fixed 80–99 ms sleep → injection receipt → wait for the corresponding presented frame → next iteration. The measured next-input interval therefore includes both checking cost **and variable prior-frame completion time**. Any replacement pacer must satisfy **all** applicable gates: previous frame accepted, isolation/health valid, baseline-frozen minimum input spacing, and the declared schedule/overrun policy. It must not inject just because a wall-clock deadline passed, skip a pending presentation receipt, compensate for delayed frames with bursts, or silently alter the relationship between presentation and the next input. Preserve or explicitly version *both* injection-to-injection and presentation-to-next-injection timing.
+
+**P3 is similarly feedback-gated:** capture `i` is validated before a callback may inject commands for the next observation; pointer dragging spans specific capture indices. A faster worker must preserve capture/action dependencies **and** the preregistered drag/window-action time envelope. If the old envelope cannot be defined and checked with adequate confidence, retain the current cadence or publish a new method version rather than describe the result as a harness-only optimization.
+
 If equivalent pacing cannot be proven, **version the method/stimulus**, qualify it independently and do not claim a like-for-like harness-only speedup. Existing P3 coarse observation is not an optical or frame-level latency measurement.
 
 
@@ -84,8 +113,20 @@ If equivalent pacing cannot be proven, **version the method/stimulus**, qualify 
 - Profile individual checks. Classify properties as immutable for the block, cheap mutable state, or those requiring deep attestation. Cache only frozen IDs/expected values, never an unbounded mutable `healthy=true`.
 - Prefer persistent D-Bus subscriptions/connections, targeted kernel state reads, `pidfd` liveness where relevant, or equivalent cheap existing-path checks over repeated utility launches; integrate with existing `pilot.py` / systemd and `InputIsolation`.
 - Retain deep attestation before/after windows, at key transitions and before acceptance, plus independently proven mid-window change detection. Endpoint checks alone cannot prove an uninterrupted healthy interval.
-- Introduce monotonic-deadline input pacing or an equivalent audited timing contract so cheaper `health()` cannot silently accelerate P2 actions. Record actual injection intervals, overruns and invalidation; **no catch-up bursts**.
+- Introduce monotonic-deadline input pacing **subject to previous-frame completion and current health validity**, or an equivalent audited feedback-gated timing contract, so cheaper `health()` cannot silently accelerate P2 actions. Record per-action previous-presentation-to-injection and injection-to-injection intervals, overruns and invalidation; **no catch-up bursts**. Treat time spent waiting to preserve the original stimulus as pacing absorption, not a speedup.
 - Continue fault-coverage tests for VT/session loss, device hotplug, process boundary violations and emergency abort. Quantify savings and observer impact.
+
+**T1a coverage feasibility gate — required before replacing any deep check:**
+
+| Safety invariant | Evidence T1a must supply | Unacceptable shortcut / fallback |
+| --- | --- | --- |
+| Active VT and logind session | Authoritative change observation **with loss/overflow detection**, session identity and a bounded revalidation path | A periodic active-VT snapshot alone cannot prove no transient VT change; preserve current checks or escalate |
+| User-manager/process lifetime | PID/cgroup identity, lifecycle transitions, missed-event handling and fail-closed response | Caching a previous `systemctl` or `loginctl` success |
+| Reserved UID, allowed process tree and namespace | Complete enough event coverage to detect transient unauthorized membership, plus identity-bound evidence | Endpoint-only process scans, unbounded cached process lists, or assuming D-Bus reports every process change |
+| Input identity, exclusive grab and hotplug | Current `InputIsolation` guarantees plus authoritative device-change/invalid-grab detection and a bounded invalidation latency | Replacing grab/device checks with an unrelated liveness heartbeat |
+| Recovery authority | Independent PID 1 supervisor/watchdog and an unambiguous recovery trigger | Depending on the workload or the optional monitor to recover itself |
+
+For **each mutable property** record the authoritative event/source, how event loss is detected, maximum detection latency, revalidation strategy, injected fault, expected invalidation evidence and responsible recovery authority. A polling interval alone is not proof of uninterrupted coverage. If a property cannot be covered in T1a, **retain its existing deep check** or defer that part to T1b; never claim T1a has replaced a stronger guarantee on the basis of lower overhead.
 
 **T1b — privileged event monitor only if T1a is insufficient:**
 
@@ -94,7 +135,7 @@ If equivalent pacing cannot be proven, **version the method/stimulus**, qualify 
 - On queue overflow, lost subscription, unobserved interval, stale heartbeat, monitor death/freeze or unverifiable identity, reject the block and invoke supervised recovery, even if a later deep check appears healthy.
 - Keep evdev emergency abort/grab safety independent. Characterize monitor CPU/process cost and avoid contaminating or asymmetrically affecting P4 resource accounting.
 
-**Acceptance:** inject session/user-manager loss, VT switch, process change, hotplug, event loss/overflow, stale state and (T1b) monitor death/freeze; prove bounded detection/recovery and rejection across gaps. Preserve P2 input timing envelope and all existing action/frame requirements. Implement T1b only when T1a cannot meet these guarantees or leaves measured overhead worth addressing.
+**Acceptance:** inject session/user-manager loss, VT switch, transient unauthorized process membership, hotplug, event loss/overflow, stale state and (T1b) monitor death/freeze; prove bounded detection/recovery and rejection across gaps. Preserve **both** P2 injection spacing and presentation-to-next-injection envelopes and all existing action/frame requirements. A T1a proposal that cannot prove its coverage matrix is **not** qualified, even if it substantially reduces process spawns. Implement T1b only when T1a cannot meet these guarantees or leaves measured overhead worth addressing.
 
 
 ### T2 — Use persistent, serialized screenshot transport in a block
@@ -106,7 +147,7 @@ If equivalent pacing cannot be proven, **version the method/stimulus**, qualify 
 - Evaluate a block/session-scoped persistent, **serialized** capture worker retaining the exact Vela `ext-image-copy-capture-v1` and Plasma KWin Screenshot2 semantics. Never substitute portal/software capture or reuse a worker across fresh desktop sessions.
 - For every request bind a unique sequence/request ID, associated action, backend, output geometry, UID, source/frame identity, original full-output PNG bytes/hash, and a verifiable response. Stale/duplicated/out-of-order frames, response ambiguity, buffer reuse defects, worker crashes or missing replies fail closed.
 - Distinguish monotonic timestamps for client request, backend dispatch, frame completion/receipt, PNG encoding, analysis and consumer delivery. **Do not compare process-start-inclusive legacy request durations directly with new in-process/IPC durations.** Retain provenance for equivalent time segments.
-- Preserve P3 capture-action dependencies, original capture count/order and an explicit **input pacing envelope** based on Stage 0; do not allow an earlier frame delivery to accelerate the drag trajectory. Use monotonic deadlines where justified, log actual injection receipts, and invalidate missed/ambiguous steps rather than emit bursts.
+- Preserve P3 capture-action dependencies, original capture count/order and an explicit **feedback-gated input pacing envelope** based on Stage 0; do not allow an earlier frame delivery to accelerate the drag trajectory. Use monotonic deadlines **only alongside successful prior capture receipt and validation**, log capture-to-action and action-to-next-capture intervals, and invalidate missed/ambiguous steps rather than emit bursts. Attribute any time made idle by pacing to absorption, not net wall-clock saving.
 - Keep captures synchronous whenever the next action depends on the captured image. Defer analysis only where the next stimulus and measured windows cannot be affected. No capture during P2 neutral or P4 resource conditions where prohibited.
 
 **Acceptance:** replay of original PNG and source identities, exact sample count/order, timestamp semantics, backend/output/UID/frame checks, worker failure/reconnect cases, P3 pointer/window action pacing equivalence, and separated before/after backend-capture versus IPC/encoding/analysis costs. If stimulus timing changes, make it a **new method version**. Do not interpret reduced capture overhead as a measured desktop responsiveness improvement.
@@ -128,7 +169,7 @@ If equivalent pacing cannot be proven, **version the method/stimulus**, qualify 
 - Require byte-for-byte identical RGB, original/crop hashes, derived metrics and rejection behavior on malformed/truncated/oversized/fuzzed images. Pin library/tool identity in method provenance if necessary for offline replay.
 - Keep capture and analysis off measurement-critical intervals unless the current stimulus explicitly requires them.
 
-**Acceptance:** golden Vela/Plasma images, all scale/state/toolkit families, raw archive replay, tampered original/crop failures and malformed-input differential tests. Do not add a new decoder dependency unless a measured net gain justifies it.
+**Acceptance:** golden Vela/Plasma images, all scale/state/toolkit families, raw archive replay, tampered original/crop failures and malformed-input differential tests. Count PNG decode calls and critical-path wait reductions separately: decoding outside the critical path may lower CPU usage without shortening a campaign. Do not add a new decoder dependency unless a measured net gain justifies it.
 
 
 ### T4 — Reorder P4 scaling matrix by scale, not by family
@@ -161,7 +202,7 @@ finally:
 - Update both live and offline audits to verify the global order and skipped-case protocol; do not assume per-family contiguous evidence or rely on dictionary insertion order. Version workload/spec and immutable plan; retain untouched historical v3–v6 audit support.
 - Freeze family order; analyze cache, GPU-residency, thermal and repeated-scale effects. Counterbalancing order would be a separately versioned methodological experiment.
 
-**Potential:** up to 20 fewer scale applications per desktop/repetition if all families are supported, but unknown realized savings and possible order bias.
+**Potential:** up to 20 fewer scale applications per desktop/repetition if all families are supported, but unknown realized savings and possible order bias. Unlike T1/T2 stimulus-preserving wait substitution, this is a promising **critical-path structural saving** if the saved output transitions are not replaced elsewhere; report actual transition, settling, and audit costs before claiming a net benefit.
 
 
 ### T5 — Replace eligible fixed settling sleeps with verified readiness/stability
@@ -216,18 +257,29 @@ Measure separately:
 
 Use identical installed target binaries, refresh/mode, GPU driver, energy/brightness policy, input devices and comparable temperatures/background load. Archive all accepted, invalid, cancelled and recovery results. Virtual/headless development checks do not qualify real-TTY performance or restoration.
 
-**Pre-register quantitative gates before candidate data:**
+**Pre-register quantitative gates before inspecting each candidate.** Two tiers avoid exhausting real machines on weak ideas while keeping confirmed claims rigorous:
 
-- Independent **whole campaigns** are the A/B experimental units: three repetitions *inside* one campaign are not three independent elapsed-time trials.
-- Target at least **four ABBA quartets** per scenario (8 baseline and 8 candidate campaigns), alternating starting variant across quartets; extend when variance is high. Fewer runs may be called *exploratory* but must not support a confirmed numeric speedup claim.
-- Report baseline/candidate median and range, paired/order-adjusted percentage saving, and a **95% campaign-level bootstrap confidence interval**. A CI crossing zero is *inconclusive*. Track cooling/cache drift and method/tool/environment identity.
-- **Proposed practical-gain gate:** ≥5% median accepted end-to-end saving with the 95% interval lower bound above zero; alternatively ≥20% saving in a preregistered significant harness stage with clearly demonstrated aggregate benefit and no meaningful regression. These are engineering thresholds to freeze before trials, not proof of reliability or guarantees of statistical power.
-- Report failure/abort rate, invalid blocks, retry count, fault causes, recovery duration, **time per accepted complete campaign including retries**, and successful-only elapsed time separately. Do not conceal failure costs by selecting only successful runs. Small samples cannot statistically prove unchanged fault rate: existing fault-injection gates and no unexplained new regressions are mandatory.
+**Tier A — engineering screening (exploratory):**
+
+- Use the complete, unchanged workload for the **affected phases**, with real-TTY checks and raw evidence; `--fast` can bound screening cost but still performs one complete repetition. Do not manufacture shorter scenes/actions to obtain faster screening results.
+- Prefer paired, order-rotated A/B runs; one or two ABBA quartets per affected scenario can identify obvious regressions and approximate critical-path savings. Record all attempted runs, including failures. These samples produce **exploratory estimates only**, not confirmed speedup or reliability claims.
+- Promote a candidate when measured critical-path savings plausibly cover implementation/maintenance cost, with no fault-coverage regression. A ≥20% improvement in a small stage is a useful investigative signal **only if** its actual critical-path weight predicts an aggregate benefit; it is not an alternative end-to-end success gate.
+- Start with a basic A/A perturbation check of the timing instrumentation where practical, before trusting small differences. The full suite need not be rerun after every trivial documentation/refactoring step.
+
+**Tier B — independent whole-campaign validation (confirmatory):**
+
+- A **whole campaign** is one experimental unit. Three internal repetitions are **not** three independent wall-time observations. Keep the default three-repetition scenario, the `--fast` scenario and separately selected P3 `observe` scenario distinct; validate only the scenarios for which a claim is made.
+- Target at least **four ABBA quartets** *per claimed scenario* (8 baseline and 8 candidate campaigns), alternating the starting variant across quartets and extending when variance is high. This is an intentionally expensive confirmation target, not a prerequisite to low-risk code review. If impractical, publish descriptive/exploratory data instead of asserting a statistically confirmed speedup.
+- Report baseline/candidate median and range, order-adjusted percentage change, and a **95% confidence interval** obtained from a prespecified *campaign-level*, order/block-aware resampling method. Preserve campaign pairing/ABBA grouping; do **not** bootstrap individual samples inside a campaign as independent observations. A confidence interval crossing zero is inconclusive; small samples cannot guarantee sufficient power.
+- **Proposed meaningful-speedup claim gate:** ≥5% median reduction in accepted end-to-end duration with a 95% interval lower bound above zero, alongside passed correctness/fault gates. A smaller benefit may still justify a low-risk change on engineering grounds, but must not be advertised as meeting this threshold.
+- Report failure/abort rate, invalid blocks, retry count, fault causes, recovery duration, **total operator wall time consumed per accepted complete campaign including failed attempts/retries**, and successful-only elapsed time separately. Define the aggregate ratio as total elapsed operator time divided by complete accepted campaigns (and report `N=0` as no completion, not a finite duration). Do not silently exclude failures or recovery time. Small samples cannot statistically establish an unchanged fault rate; injected-fault coverage and absence of unexplained new regressions remain mandatory.
+
+**Method-change boundary:** T4 or T5 may legitimately create a new workload version. In that case compare overall **time-to-complete** operationally, but do not claim strict within-method workload equivalence or unchanged scientific interpretation without separate qualification. Keep the original method's archives replayable.
 
 ### Success and equivalence gates
 
 - **Primary:** accepted START-to-confirmed-host-restoration wall time. Across reboot/resume, use attempt-local monotonic durations plus separately measured real recovery elapsed time; never subtract unrelated boot-local clocks.
-- **Secondary:** stage critical path, backend capture vs encoding/IPC analysis, process spawns, CPU overhead, readiness distributions, attempts per accepted campaign and failure/recovery cost.
+- **Secondary:** stage critical path, **gross overhead eliminated versus pacing absorption versus net critical-path saving**, backend capture vs encoding/IPC analysis, process spawns, CPU overhead, readiness distributions, attempts per accepted campaign and failure/recovery cost.
 - **Work equivalence:** identical actions, frames, captures, original evidence and workload versions (or explicitly new versions), fixed load/idle windows and required conditions.
 - **Temporal equivalence:** record actual P2 injection intervals, P3 capture-to-input and drag trajectory receipts, P4 state-to-capture intervals; check a baseline-frozen minimum interval, jitter/late-deadline envelope and no-burst rule. Timed receipts, not nominal `sleep()` values, are evidence. An intentional stimulus change requires a new method, not a silent optimization.
 - **Observation equivalence:** same source/UID/output/frame IDs, full PNG and crop oracle, instrument coverage, no unapproved capture in capture-off windows and no hidden backend fallback.
@@ -247,12 +299,12 @@ Use identical installed target binaries, refresh/mode, GPU driver, energy/bright
 
 | Stage | Scope | Output / merge gate |
 | --- | --- | --- |
-| 0 | Timing instrumentation and baseline | Boot-scoped critical path, frozen input/capture pacing, preregistered A/B design and recovery evidence |
+| 0 | Timing instrumentation and baseline | Boot-scoped critical path, **gross/absorbed/net time ledger**, feedback-gated P2/P3 timing receipts, preregistered two-tier A/B design and recovery evidence |
 | 1 | **T3a: simple redundant-work removal** | Same-stage decoding/metric reuse and only proven non-methodological spawn savings; independent raw audit |
-| 2 | **T1a: cheap existing-path checks** | Deep attestation plus continuous coverage, fault injection, preserved injection cadence, reduced overhead |
+| 2 | **T1a: cheap existing-path checks** | **Per-invariant feasibility/coverage matrix first**; deep attestation plus proven continuous coverage, injected faults, preserved feedback-gated cadence; no unsupported replacement of safety checks |
 | 3 | **T2: persistent capture worker** | Stable per-request provenance/timestamps, original PNG/frame audit, unchanged or explicitly versioned P3 action pacing |
 | 4 | **T4: scale-major P4** | New global ordered spec, capability/unsupported migration, 125-case audit where supported, old archive compatibility |
-| 5 | Review measured savings and complexity | Decide whether to attempt optional T3b, T5 or T1b |
+| 5 | Review **net critical-path savings**, pacing absorption, recovery costs and complexity | Decide whether to attempt optional T3b, T5 or T1b; a stage-only percentage is not an overall speedup |
 | 6 (optional) | **T3b / T5 / T1b** as separate changes | Native decoder equivalence, per-family presentation proof, or independently supervised monitor coverage |
 | 7 (optional) | **T6: calibration requalification study** | Independent validity/method review before any reuse |
 | 8 (optional) | **T7: campaign-level takeover** | New PID 1 recovery architecture, physical acceptance under injected faults |
@@ -264,7 +316,7 @@ A milestone is not a mandate. Freeze/replay the baseline between stages; stop if
 
 - Fewer actions/frames/captures or one repetition disguised as normal mode.
 - Claiming temporal equivalence from identical counts while input or P3 capture-driven action cadence changes.
-- Accelerated catch-up input bursts after a delayed deadline.
+- Accelerated catch-up input bursts after a delayed deadline or issuing P2 input before the prior frame's presentation acknowledgement.
 - Eliminating original full-output PNGs, hashes, independent crop/oracle validation or offline audit.
 - Dropping mandatory idle/active windows, or parallel benchmark sessions on the same machine.
 - Background decoding that contaminates active resource/latency measurements.
@@ -272,7 +324,7 @@ A milestone is not a mandate. Freeze/replay the baseline between stages; stop if
 - Treating configure as proof of presentation; blindly reducing sleeps.
 - Lost monitor events, uncovered health intervals, reduced emergency abort or unbounded recovery.
 - Comparing legacy process-start-inclusive capture duration with new in-process latency without semantic separation.
-- Hiding failures/retries when comparing time per accepted campaign.
+- Hiding failures/retries when comparing time per accepted campaign, or treating three repetitions within one campaign as independent experimental trials.
 - Subtracting `CLOCK_MONOTONIC` timestamps from different boots.
 - Reusing incompatible historical data as passing current-candidate evidence.
 
@@ -282,16 +334,18 @@ A milestone is not a mandate. Freeze/replay the baseline between stages; stop if
 **Decisions established by this revision:**
 
 1. Stage 0 must baseline *work, temporal pacing, observer behavior and failure costs* before changing T1/T2; boot IDs prevent cross-reboot monotonic arithmetic.
-2. Implement T3a before adding a native decoder. Evaluate T1a within existing supervision before considering T1b.
-3. P3 capture-driven actions and P2 `health()`-dependent pacing are methodological hazards: hold the frozen temporal contract or explicitly version the stimulus.
-4. A scale-major P4 audit needs a global expected case order, per-scale output evidence and a strictly controlled first-family unsupported receipt.
-5. Configure-only is never sufficient proof of a presented/stable image. Unproven waits stay.
-6. Faster collection must be assessed with independently repeated campaigns, order-balanced A/B, confidence intervals, retries and fault coverage.
+2. Success means **net elapsed time per accepted campaign**, not merely fewer subprocesses, lower CPU, or a faster stage whose savings are absorbed by preserved pacing.
+3. Implement T3a before adding a native decoder. Evaluate T1a within existing supervision before considering T1b; require the T1a feasibility/coverage table before substituting any deep check.
+4. P3 capture-driven actions and P2 **feedback-gated** `health()`/presentation pacing are methodological hazards: hold the frozen temporal contract or explicitly version the stimulus.
+5. A scale-major P4 audit needs a global expected case order, per-scale output evidence and a strictly controlled first-family unsupported receipt.
+6. Configure-only is never sufficient proof of a presented/stable image. Unproven waits stay.
+7. Use a two-tier testing protocol: affordable exploratory screening of complete affected workloads, then independent whole-campaign ABBA confirmation for any quantitative speedup claim. A 20% stage gain is not a substitute for demonstrated aggregate benefit.
+8. Count failed attempts/retries and recovery in operational cost; never combine monotonic timestamps across boots.
 
 **Questions to resolve before corresponding implementation:**
 
-1. For each T1a mutable condition, what kernel/D-Bus signal or bounded direct recheck proves uninterrupted coverage and which invariants require T1b?
-2. What exact P2/P3 pacing envelopes, deadlines and overrun policy do frozen physical Stage-0 traces support for each installed desktop?
+1. For each T1a mutable condition, what **authoritative loss-detectable event source** and fallback attestation prove uninterrupted coverage? Which invariants cannot be safely optimized without T1b, and which must retain the existing deep check?
+2. What exact P2/P3 **feedback-gated** pacing envelopes, deadlines and overrun policy do frozen physical Stage-0 traces support for each installed desktop? How much eliminated time would simply become controlled waiting?
 3. Which Vela/KWin capture timestamps and frame identity receipts can be preserved across an in-process worker without changing the meaning of a measurement?
 4. How do new first-probe/unsupported receipts and the global P4 case sequence bind to immutable plans while historical readers remain unchanged?
 5. Which toolkit families have sufficient presented/stable evidence to replace fixed waits, and which retain existing waits?
