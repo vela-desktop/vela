@@ -7,6 +7,7 @@ import sys
 
 
 def terminate(*_):
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     raise SystemExit(143)
 
 

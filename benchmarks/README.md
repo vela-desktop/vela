@@ -1096,7 +1096,7 @@ scripts/vela-bench-selftest --case controls-vela
 
 The default `quick` selection builds the native instruments, runs CPU tests,
 then exercises actual systemd transient completion/cleanup, authentication
-quiescence and interrupted recovery using unique disposable user services.
+quiescence, interrupted recovery and timeout cleanup using unique disposable user services.
 It also verifies that a greeter service outside the display-manager cgroup is
 released before a fresh desktop starts. It runs both fixed presentation probes and all three input/capture controls
 on private Vela and KWin, followed by P3 motion on both. P0 and P3 use the
@@ -1120,7 +1120,12 @@ checkpointed `summary.json`, per-case logs, available original captures and
 source/binary hashes. Independent cases continue after failures. A failure,
 timeout, source change during the run or capability skip makes the final result unsuccessful; no absent
 dependency silently counts as a pass. Deadlines terminate the owned process
-groups and private instrument slices. No setup refresh, root password or TTY
+groups and private slices. Each graphical controller runs in its own scope in
+that slice, so descendants using a new process group remain contained along
+with the separate instrument services. Scope stop has a three-second deadline.
+Each graphical case also has a private bus and short runtime path in `/tmp`,
+independent of the operator's bus and the checkout path length.
+No setup refresh, root password or TTY
 switch is required. KWin, a running user manager, a configured native build
 and its normal development dependencies must be available for `quick`/`full`.
 The `Benchmark lifecycle` CI workflow independently repeats the real systemd

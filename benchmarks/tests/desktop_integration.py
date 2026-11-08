@@ -176,6 +176,12 @@ def plasma_child(directory,phase):
 
 
 if __name__=='__main__':
+    # The outer test owns private D-Bus groups; the nested Python controller
+    # must unwind Session/manager cleanup when that group is terminated.
+    def terminate(*_):
+        signal.signal(signal.SIGTERM,signal.SIG_IGN)
+        raise SystemExit(143)
+    signal.signal(signal.SIGTERM,terminate)
     if os.getuid()==0:sys.exit(77)
     if len(sys.argv)==1:sys.argv.append('motion')
     if sys.argv[1]=='--vela-child':main(sys.argv[2])

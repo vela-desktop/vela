@@ -11,6 +11,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -26,6 +27,7 @@ def cases(suite, build):
         ('cpu', [python, '-m', 'unittest', 'discover', '-s', 'benchmarks/tests'], 60, {}),
         ('systemd-instruments', [python, str(TESTS / 'instrument_integration.py')], 30, {}),
         ('systemd-greeter-release', [python, str(TESTS / 'greeter_integration.py')], 30, {}),
+        ('systemd-timeout', [python, str(TESTS / 'selftest_timeout_integration.py')], 30, {}),
         ('systemd-takeover', [python, str(TESTS / 'quiescence_integration.py')], 60, {}),
         ('systemd-recovery', [python, str(TESTS / 'manager_integration.py')], 40, {}),
     ]
@@ -71,7 +73,22 @@ def execute(command, path, env, timeout):
     with path.open('wb') as log:
         wrapped = ([sys.executable, str(TESTS / 'selftest_entry.py'), *command[1:]]
                    if command[0] == sys.executable else command)
-        process = subprocess.Popen(wrapped, cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
+        if env.get('VELA_SELFTEST_PRIVATE_BUS') == '1':
+            wrapped = ['dbus-run-session', '--', *wrapped]
+        runtime = f'/run/user/{os.getuid()}'
+        control_env = dict(env, XDG_RUNTIME_DIR=runtime,
+                           DBUS_SESSION_BUS_ADDRESS='unix:path=' + runtime + '/bus')
+        launch_env = env
+        if env.get('VELA_SELFTEST_PRIVATE_BUS') == '1':
+            # A scope also owns descendants that start a new process group.
+            # The shared private slice owns this scope and independent native
+            # instruments, so a timeout can release both without PID guessing.
+            wrapped = ['systemd-run', '--user', '--scope', '--quiet', '--collect',
+                       '--unit=vela-selftest-controller-' + uuid.uuid4().hex + '.scope',
+                       '--property=TimeoutStopSec=3', '--slice=' + env['VELA_SELFTEST_SLICE'], '/usr/bin/env',
+                       'XDG_RUNTIME_DIR=' + env['XDG_RUNTIME_DIR'], *wrapped]
+            launch_env = control_env
+        process = subprocess.Popen(wrapped, cwd=ROOT, env=launch_env, stdin=subprocess.DEVNULL,
                                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:
             return process.wait(timeout=timeout), None
@@ -92,10 +109,10 @@ def execute(command, path, env, timeout):
             # controller's process group. Stop only this case's private slice
             # as well, including if the Python process exceeded its deadline.
             if owned_slice := env.get('VELA_SELFTEST_SLICE'):
-                subprocess.run(['systemctl', '--user', 'stop', owned_slice], env=env,
+                subprocess.run(['systemctl', '--user', 'stop', owned_slice], env=control_env,
                                capture_output=True, timeout=12, check=False)
                 state = subprocess.run(['systemctl', '--user', 'show', owned_slice,
-                    '--property=ActiveState', '--value'], env=env, capture_output=True, text=True, timeout=5)
+                    '--property=ActiveState', '--value'], env=control_env, capture_output=True, text=True, timeout=5)
                 if state.returncode or state.stdout.strip() not in ('inactive', 'failed'):
                     raise RuntimeError('Could not verify private test slice cleanup: ' + owned_slice)
 
@@ -147,12 +164,20 @@ def main(argv=None):
         case_env = dict(env, **{key: str(directory / value) if value == 'evidence' else value
                                for key, value in extra.items()})
         case_env['VELA_SELFTEST_SLICE'] = 'vela_selftest_' + uuid.uuid4().hex + '.slice'
+        private_runtime = None
+        if name.startswith(('controls-', 'p2-', 'p3-', 'p4-', 'resources-')):
+            # Keep AF_UNIX paths below sun_path's limit even in deep checkouts.
+            private_runtime = tempfile.TemporaryDirectory(prefix='vela-selftest-xdg-')
+            case_env.update(XDG_RUNTIME_DIR=private_runtime.name, VELA_SELFTEST_PRIVATE_BUS='1')
         print('[selftest] ' + name, flush=True)
         start = time.monotonic()
         try:
             status, error = execute(command, directory / 'test.log', case_env, timeout)
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             status, error = None, str(exc)
+        finally:
+            if private_runtime:
+                private_runtime.cleanup()
         result = {'case': name, 'status': 'passed' if status == 0 else 'incomplete' if status == 77 else 'failed',
                   'returncode': status, 'seconds': round(time.monotonic() - start, 3),
                   'log': str((directory / 'test.log').relative_to(output))}

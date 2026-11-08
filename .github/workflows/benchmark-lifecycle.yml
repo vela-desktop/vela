@@ -38,3 +38,5 @@ jobs:
         run: python3 benchmarks/tests/quiescence_integration.py
       - name: Native greeter service outside the display-manager cgroup
         run: python3 benchmarks/tests/greeter_integration.py
+      - name: Deadline releases setsid descendants and independent instruments
+        run: python3 benchmarks/tests/selftest_timeout_integration.py
