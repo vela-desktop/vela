@@ -6,6 +6,7 @@
 #include <libevdev/libevdev.h>
 #include <libevdev/libevdev-uinput.h>
 #include <linux/input.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +28,25 @@ static int pulse(struct libevdev_uinput *input, unsigned code)
 {
     int result = key(input, code, 1);
     return result | key(input, code, 0);
+}
+static int point(const char *command, unsigned coordinates[2])
+{
+    if (strncmp(command, "point ", 6)) return 0;
+    const unsigned char *p = (const unsigned char *)command + 6;
+    for (unsigned axis = 0; axis < 2; ++axis) {
+        while (*p == ' ' || *p == '\t') ++p;
+        if (!isdigit(*p)) return 0;
+        unsigned value = 0;
+        while (isdigit(*p)) {
+            unsigned digit = *p++ - '0';
+            if (value > 6553 || (value == 6553 && digit > 5)) return 0;
+            value = value * 10 + digit;
+        }
+        coordinates[axis] = value;
+        if (axis == 0 && *p != ' ' && *p != '\t') return 0;
+    }
+    while (isspace(*p)) ++p;
+    return *p == '\0';
 }
 int main(int argc, char **argv)
 {
@@ -51,6 +71,9 @@ int main(int argc, char **argv)
     if (desktop) {
         setup |= libevdev_enable_event_code(device, EV_KEY, KEY_LEFTMETA, NULL);
         setup |= libevdev_enable_event_code(device, EV_KEY, KEY_LEFTALT, NULL);
+        setup |= libevdev_enable_event_code(device, EV_KEY, KEY_F1, NULL);
+        setup |= libevdev_enable_event_code(device, EV_KEY, KEY_F2, NULL);
+        setup |= libevdev_enable_event_code(device, EV_KEY, KEY_F3, NULL);
         setup |= libevdev_enable_event_code(device, EV_KEY, KEY_F4, NULL);
         setup |= libevdev_enable_event_code(device, EV_KEY, KEY_LEFT, NULL);
         setup |= libevdev_enable_event_code(device, EV_KEY, KEY_RIGHT, NULL);
@@ -129,10 +152,10 @@ int main(int argc, char **argv)
             const unsigned codes[] = {KEY_V,KEY_E,KEY_L,KEY_A,KEY_B,KEY_E,KEY_N,KEY_C,KEY_H,KEY_S,KEY_C,KEY_E,KEY_N,KEY_E};
             for (unsigned i = 0; i < sizeof(codes)/sizeof(codes[0]); ++i) result |= pulse(input, codes[i]);
         } else if (desktop) {
-            unsigned x, y; char extra;
-            if (sscanf(command, "point %u %u %c", &x, &y, &extra) != 2 || x > 65535 || y > 65535) { failed = 1; break; }
-            result = libevdev_uinput_write_event(input, EV_ABS, ABS_X, x);
-            result |= libevdev_uinput_write_event(input, EV_ABS, ABS_Y, y);
+            unsigned coordinates[2];
+            if (!point(command, coordinates)) { failed = 1; break; }
+            result = libevdev_uinput_write_event(input, EV_ABS, ABS_X, coordinates[0]);
+            result |= libevdev_uinput_write_event(input, EV_ABS, ABS_Y, coordinates[1]);
             result |= libevdev_uinput_write_event(input, EV_SYN, SYN_REPORT, 0);
         } else { failed = 1; break; }
         unsigned long long after = now();

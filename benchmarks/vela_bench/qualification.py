@@ -10,8 +10,9 @@ from . import BenchError
 from .archive import decode_json, read_json
 from .calibration import parse_input
 from .diagnostics import SCENARIOS, parse_probe
-from .discovery import file_hash
 from .host import FAULT_UNIT
+from .pixels import image_hash
+from .desktop_pixels import evidence
 
 
 def calibration_evidence(directory, target):
@@ -39,8 +40,11 @@ def calibration_evidence(directory, target):
             seen = set()
             for index, row in enumerate(frames):
                 expected = f"{target}-capture-{index:02d}.png"
-                if row.get("image_file") != expected or file_hash(directory / expected) != row.get("image_sha256"):
+                if row.get("image_file") != expected or image_hash(directory / expected) != row.get("image_sha256"):
                     raise BenchError("Capture image identity changed")
+                pixels = evidence(directory / expected)
+                if any(row.get(key) != pixels[key] for key in ('width', 'height', 'markers')):
+                    raise BenchError('Capture metadata differs from original PNG')
                 markers = row.get("markers", [])
                 if len(markers) != 1 or markers[0].get("frame") not in ids:
                     raise BenchError("Capture lost the presented frame identity")

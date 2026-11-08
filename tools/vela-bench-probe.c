@@ -35,7 +35,7 @@ static uint32_t requested = 120, delayMs, timeoutSeconds = 30;
 static uint32_t committed, presented, discarded, outstanding;
 static clockid_t presentationClock;
 static bool haveClock, configured, frameReady = true;
-static uint32_t inputRequested, inputReceived, inputDeliveredMs;
+static uint32_t inputRequested, inputReceived, inputSubmitted, inputDeliveredMs;
 static uint64_t inputReceiptNs;
 static bool keyboardFocused, inputReady;
 static bool holdAfterSummary;
@@ -199,6 +199,7 @@ static void submit(void)
     wl_surface_attach(surface, buffer->object, 0, 0);
     wl_surface_damage_buffer(surface, 0, 0, WIDTH, HEIGHT);
     record->commitClockNs = now(presentationClock);
+    inputSubmitted = inputReceived;
     printf("{\"event\":\"commit\",\"frame\":%u,\"commit_clock_ns\":%" PRIu64
            ",\"monotonic_ns\":%" PRIu64 ",\"delay_elapsed_ns\":%" PRIu64
            ",\"input_id\":%u,\"input_received_monotonic_ns\":%" PRIu64 ",\"input_delivered_ms\":%u}\n",
@@ -232,7 +233,8 @@ static void keyboardLeave(void* data, struct wl_keyboard* keyboard, uint32_t ser
 static void keyboardKey(void* data, struct wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
     if (!inputRequested || key != KEY_F24 || state != WL_KEYBOARD_KEY_STATE_PRESSED) return;
-    if (!inputReady || !keyboardFocused || inputReceived == inputRequested) fail("unexpected F24 action");
+    if (!inputReady || !keyboardFocused || inputReceived == inputRequested || inputReceived != inputSubmitted)
+        fail("unexpected F24 action");
     inputReceiptNs = now(CLOCK_MONOTONIC);
     inputDeliveredMs = time;
     ++inputReceived;

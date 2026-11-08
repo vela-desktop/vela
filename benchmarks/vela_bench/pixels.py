@@ -3,6 +3,7 @@
 
 """Bounded, dependency-free PNG decoding and coordinate-pattern pixel oracle."""
 from collections import Counter
+import hashlib
 from pathlib import Path
 import struct
 import zlib
@@ -10,9 +11,21 @@ import zlib
 from . import BenchError
 
 
+def image_bytes(path):
+    with Path(path).open('rb') as stream:
+        raw = stream.read(64 * 1024 * 1024 + 1)
+    if len(raw) > 64 * 1024 * 1024:
+        raise BenchError('PNG exceeds the evidence size limit')
+    return raw
+
+
+def image_hash(path):
+    return hashlib.sha256(image_bytes(path)).hexdigest()
+
+
 def png_rgb(path):
-    raw = Path(path).read_bytes()
-    if len(raw) > 64 * 1024 * 1024 or raw[:8] != b'\x89PNG\r\n\x1a\n':
+    raw = image_bytes(path)
+    if raw[:8] != b'\x89PNG\r\n\x1a\n':
         raise BenchError('Invalid pattern PNG')
     offset, compressed, header, ended = 8, bytearray(), None, False
     while offset + 12 <= len(raw):
@@ -127,6 +140,8 @@ def pattern_metrics(path, metadata, output_size, scale):
             if not different:
                 bounds=[min(bounds[0],x),min(bounds[1],y),max(bounds[2],x),max(bounds[3],y)]
             checked += 1
+    if not checked:
+        raise BenchError('Coordinate pattern has no pixels outside the excluded corners')
     return {'origin':list(origin),'buffer_size':[bw,bh],'checked_pixels':checked,
             'different_pixels':bad,'offscreen_pixels':offscreen,'excluded_corner_side_pixels':corner,
             'matching_coordinate_extent_pixels':[bounds[2]-bounds[0]+1,bounds[3]-bounds[1]+1],

@@ -103,6 +103,7 @@ class WindowInteractions(unittest.TestCase):
         from test_platform_workloads import sample
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);host=Mock()
+            host.run.return_value=SimpleNamespace(returncode=0,stdout='inactive\n',stderr='')
             with patch('vela_bench.resources.snapshot',return_value=sample()), \
                  patch('vela_bench.platform_workloads.stop_process'), \
                  patch('vela_bench.platform_workloads.Lines') as lines:

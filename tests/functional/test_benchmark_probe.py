@@ -5,6 +5,7 @@
 
 import json
 import os
+import select
 import shutil
 import subprocess
 from pathlib import Path
@@ -25,6 +26,26 @@ from vela_bench.measurements import input_metrics
 
 
 class BenchmarkPresentationProbe(unittest.TestCase):
+    def test_half_width_snap_on_1024_output_keeps_native_and_python_marker_identity(self):
+        from vela_bench.desktop import SCENE
+        from vela_bench.desktop_pixels import evidence
+        with Session(size='1024x768@60') as session,tempfile.TemporaryDirectory() as temporary:
+            env=dict(session.client_env,QT_QPA_PLATFORM='wayland')
+            scene=subprocess.Popen([tool('vela-bench-scene'),'--observe'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
+            self.addCleanup(stop_process,scene)
+            lines=Lines(scene)
+            while lines.next(time.monotonic()+5).get('event')!='scene-state':pass
+            session.input('key','super+Left')
+            deadline=time.monotonic()+5;path=Path(temporary)/'snapped.png'
+            while True:
+                session.screenshot(str(path))
+                native=subprocess.run([tool('vela-bench-desktop'),'--analyze',str(path)],env=env,capture_output=True,text=True,timeout=5,check=True)
+                detected=json.loads(native.stdout)
+                if detected['rectangles'].get(str(SCENE),[0,0,0])[2]==512:break
+                self.assertLess(time.monotonic(),deadline,'Snapped half-width scene did not render')
+            decoded=evidence(path)
+            self.assertEqual({key:detected[key] for key in decoded},decoded)
+
     def test_p3_native_scene_is_identified_in_output_and_moves_as_a_real_window(self):
         if not all(Path(tool(name)).is_file() for name in ('vela-bench-scene','vela-bench-desktop')):
             self.skipTest('optional native Qt desktop instruments unavailable')
@@ -51,16 +72,22 @@ class BenchmarkPresentationProbe(unittest.TestCase):
             # Capture while held, including the cursor. The former test only
             # captured after release and missed corruption of the marker bits.
             pointer = subprocess.Popen([tool('vela-input'),'move',str(x),str(y),'sleep','100',
-                'down','left','sleep','1000','move',str(x+80),str(y),'sleep','1000',
-                'move',str(x+160),str(y),'sleep','1000','up','left','sleep','100'],
-                env=env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+                'down','left','checkpoint','move',str(x+80),str(y),'checkpoint',
+                'move',str(x+160),str(y),'checkpoint','up','left','sleep','100'],
+                env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             self.addCleanup(stop_process,pointer)
             self.assertEqual(lines.next(time.monotonic()+5),{'event':'move-request','accepted':True})
             positions=[]
             for index in range(3):
-                _, visible=capture(f'held-{index}.png',cursor=True)
+                self.assertTrue(select.select([pointer.stdout],[],[],5)[0], 'Pointer checkpoint deadline')
+                self.assertEqual(pointer.stdout.readline(),b'READY\n')
+                deadline=time.monotonic()+5
+                while True:
+                    _, visible=capture(f'held-{index}.png',cursor=True)
+                    if visible['x']>=origin['x']+index*80-5:break
+                    self.assertLess(time.monotonic(),deadline,'Held position did not render')
                 positions.append(visible['x'])
-                if index<2: time.sleep(1.05)
+                pointer.stdin.write(b'\n');pointer.stdin.flush()
             self.assertEqual(len(set(positions)),3)
             self.assertGreaterEqual(positions[-1]-positions[0],150)
             self.assertEqual(pointer.wait(timeout=3),0)
@@ -107,7 +134,7 @@ finally:
                     return subprocess.Popen(command, env=session.client_env, stdin=subprocess.PIPE,
                                             stdout=subprocess.PIPE, stderr=errors, bufsize=0)
                 def run(self, command, **kwargs):
-                    return SimpleNamespace(returncode=0, stdout='', stderr='')
+                    return SimpleNamespace(returncode=0, stdout='inactive\n', stderr='')
             result = run_input(Host(), {'uid': os.getuid(), 'gid': os.getgid()}, source, 'vela', layout,
                                lambda: None, measurement_name='measure-input')
             self.assertEqual(result['status'], 'passed', result.get('error'))
@@ -222,18 +249,24 @@ finally:
         # This checks the client with Vela's headless debug transport. It is
         # deliberately not a claim that the real uinput/DRM path is qualified.
         with Session(size="800x600@60") as session:
+            anchor = subprocess.Popen([tool('vela-input'),'sleep','10000'],env=session.client_env,
+                stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            self.addCleanup(self.stop,anchor)
             probe = subprocess.Popen([tool("vela-bench-probe"), "--inputs", "3", "--timeout", "6"],
-                env=session.client_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                env=session.client_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
             self.addCleanup(self.stop, probe)
-            sender = subprocess.Popen([tool("vela-input"), "sleep", "500", "keycode", "194", "sleep", "150",
+            lines=Lines(probe)
+            while lines.next(time.monotonic()+6).get('event')!='input-ready':pass
+            sender = subprocess.Popen([tool("vela-input"), "keycode", "194", "sleep", "150",
                 "keycode", "194", "sleep", "150", "keycode", "194", "sleep", "100"],
                 env=session.client_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             self.addCleanup(self.stop, sender)
-            output, errors = probe.communicate(timeout=9)
+            while lines.next(time.monotonic()+9).get('event')!='summary':pass
+            output, errors = probe.communicate(timeout=3)
             _, sender_errors = sender.communicate(timeout=3)
             self.assertEqual(sender.returncode, 0, sender_errors)
             self.assertEqual(probe.returncode, 0, errors + output)
-            rows = [json.loads(line) for line in output.splitlines()]
+            rows = lines.records
             self.assertEqual([row["action_id"] for row in rows if row["event"] == "input"], [1, 2, 3])
             self.assertEqual([row["input_id"] for row in rows if row["event"] == "commit"], [0, 1, 2, 3])
             filtered = "".join(json.dumps(row) + "\n" for row in rows if row["event"] not in ("input", "input-ready"))

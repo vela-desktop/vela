@@ -23,6 +23,7 @@
 #include <QThread>
 #include <QFile>
 #include <QDir>
+#include <QSet>
 #include <KScreen/Config>
 #include <KScreen/GetConfigOperation>
 #include <KScreen/SetConfigOperation>
@@ -103,18 +104,23 @@ static QJsonArray markers(const QImage &source)
     };
     for (int y = 0; y + 32 <= image.height(); ++y) {
         const auto row = reinterpret_cast<const QRgb *>(image.constScanLine(y));
-        for (int x = 0; x + 608 <= image.width(); ++x) {
+        for (int x = 0; x + 320 <= image.width(); ++x) {
+            int stride = 0;
+            for (int step : {17, 8})
+                if (x + 64 + 32 * step <= image.width() && close(row[x + 32 + 32 * step],32,64,224)
+                    && close(row[x + 48 + 32 * step],224,128,32)) { stride = step; break; }
+            if (!stride) continue;
+            const int tail = x + 48 + 32 * stride;
             if (!close(row[x], 208, 32, 208) || !close(row[x + 15], 208, 32, 208) ||
-                !close(row[x + 16], 32, 208, 32) || !close(row[x + 31], 32, 208, 32) ||
-                !close(row[x + 576], 32, 64, 224) || !close(row[x + 592], 224, 128, 32)) continue;
+                !close(row[x + 16], 32, 208, 32) || !close(row[x + 31], 32, 208, 32)) continue;
             if (y && close(reinterpret_cast<const QRgb *>(image.constScanLine(y - 1))[x], 208, 32, 208)) continue;
             const auto bottom = reinterpret_cast<const QRgb *>(image.constScanLine(y + 31));
-            if (!close(bottom[x], 208, 32, 208) || !close(bottom[x + 592], 224, 128, 32)) continue;
+            if (!close(bottom[x], 208, 32, 208) || !close(bottom[tail], 224, 128, 32)) continue;
             const auto bits = reinterpret_cast<const QRgb *>(image.constScanLine(y + 16));
             quint32 frame = 0;
             bool valid = true;
             for (int bit = 0; bit < 32; ++bit) {
-                const QRgb pixel = bits[x + 32 + bit * 17 + 8];
+                const QRgb pixel = bits[x + 32 + bit * stride + stride / 2];
                 if (qRed(pixel) > 200 && qGreen(pixel) > 200 && qBlue(pixel) > 200) frame |= quint32(1) << bit;
                 else if (!close(pixel, 32, 40, 48)) { valid = false; break; }
             }
@@ -211,8 +217,12 @@ static void apply(const KScreen::ConfigPtr &config, const QByteArray &raw)
     if (error.error != QJsonParseError::NoError || !document.isArray()) fail("expected output configuration array");
     int enabled = 0;
     int lastPriority = 0;
+    QSet<QString> connectors;
     for (const auto &value : document.array()) {
         const auto wanted = value.toObject();
+        const QString name = wanted["name"].toString();
+        if (name.isEmpty() || connectors.contains(name)) fail("duplicate or empty configured connector");
+        connectors.insert(name);
         if (wanted["enabled"].toBool()) lastPriority = qMax(lastPriority, wanted["priority"].toInt());
     }
     for (const auto &value : document.array()) {
@@ -351,7 +361,16 @@ static void workspace(const QString &target,const QString &operation)
 {
     auto initial=workspaceState(target);const int count=initial["count"].toInt();
     if(operation=="create" && count==1) {
-        if(target=="vela") {velaCommand("workspace new\n",false);QThread::msleep(30);velaCommand("workspace rename 1 Vela benchmark fixture\n",false);}
+        if(target=="vela") {
+            velaCommand("workspace new\n",false);
+            bool created=false;
+            for(int attempt=0;attempt<60;++attempt) {
+                if(workspaceState(target)["count"].toInt()==2) {created=true;break;}
+                QThread::msleep(50);
+            }
+            if(!created)fail("workspace creation was not acknowledged");
+            velaCommand("workspace rename 1 Vela benchmark fixture\n",false);
+        }
         else {
             auto request=QDBusMessage::createMethodCall("org.kde.KWin","/VirtualDesktopManager","org.kde.KWin.VirtualDesktopManager","createDesktop");
             request<<quint32(1)<<QString("Vela benchmark fixture");
@@ -370,7 +389,8 @@ static void workspace(const QString &target,const QString &operation)
     QJsonObject settled;
     for(int attempt=0;attempt<30;++attempt) {
         settled=workspaceState(target);
-        if((operation=="create" && count==1 && settled["count"].toInt()!=2)
+        if((operation=="create" && count==1 && (settled["count"].toInt()!=2
+                || settled["names"].toArray()[1].toString()!="Vela benchmark fixture"))
            || (operation=="remove" && settled["count"].toInt()!=1)) {QThread::msleep(50);continue;}
         settled["begin_monotonic_ns"]=QString::number(monotonicNs());print(settled);return;
     }

@@ -82,6 +82,8 @@ def parse_probe(raw, *, frames=FRAMES, delay=0, method="wayland-presentation-v1"
                     raise BenchError("Feedback refers to a different submission clock")
                 if integer(row, "presentation_ns") < row["commit_clock_ns"]:
                     raise BenchError("Presentation predates submission")
+                if clocks[0]['presentation_clock_id'] == clocks[0]['monotonic_clock_id'] and row['presentation_ns'] > row['received_monotonic_ns']:
+                    raise BenchError('Presentation timestamp is after its feedback receipt')
                 for key in ("refresh_ns", "sequence", "flags"):
                     integer(row, key)
             feedback[frame] = row
@@ -132,8 +134,12 @@ def user_command(record, layout, operation, command, runtime_seconds=25):
 def stop_instrument(host, record, layout, operation):
     if operation not in ("probe", "display", "capture", "calibration", "measurement", "producer", "scene", "observation"):
         raise BenchError("Unknown fixed instrument unit")
-    host.run(user_prefix(record, layout) + ["/usr/bin/systemctl", "--user", "stop", "vela-benchmark-" + operation + ".service"],
-             check=False, timeout=8)
+    unit = 'vela-benchmark-' + operation + '.service'
+    prefix = user_prefix(record, layout) + ['/usr/bin/systemctl', '--user']
+    host.run(prefix + ['stop', unit], timeout=8)
+    active = host.run(prefix + ['show', unit, '--property=ActiveState', '--value'], timeout=5)
+    if active.stdout.strip() not in ('inactive', 'failed'):
+        raise BenchError('Instrument still active after stop: ' + unit)
 
 
 def probe_command(record, scenario, layout):

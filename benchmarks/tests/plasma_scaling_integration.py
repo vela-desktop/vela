@@ -71,6 +71,10 @@ def child(adapter,directory,interaction=False,corpus_mode=False,contention_mode=
     # Virtual outputs have no controllable hardware VRR policy. Preserve their
     # reported policy; this fixture qualifies actions/capture, not hardware.
     profile['outputs'][0]['vrr']=initial[0]['vrr']
+    repeated=[profile['outputs'][0],dict(profile['outputs'][0],enabled=False)]
+    rejected=subprocess.run([str(adapter),'--apply',json.dumps(repeated)],env=env,capture_output=True,text=True,timeout=20)
+    assert rejected.returncode and 'duplicate' in rejected.stderr.lower(),rejected
+    assert normalized_outputs(native('--outputs').stdout,'plasma')==initial,'duplicate request changed output topology'
     if contention_mode:
         from contention_integration import motion_only
         print('PLASMA_SCALING_EVIDENCE '+json.dumps(motion_only(env,'plasma',directory,adapter.parent)),flush=True)
@@ -103,6 +107,7 @@ def child(adapter,directory,interaction=False,corpus_mode=False,contention_mode=
                 argv=[str(adapter.parent/Path(command[at]).name),*command[at+1:]]
             return subprocess.Popen(argv,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,bufsize=0)
         def run(self,command,**options):
+            if '--property=ActiveState' in command:return SimpleNamespace(stdout='inactive\n',returncode=0)
             if '_capture' in command:
                 return native('--capture',profile['primary'],'1')
             if '--outputs' in command:return native('--outputs')
@@ -173,6 +178,8 @@ def main(adapter,interaction=False,corpus_mode=False,contention_mode=False):
         process=subprocess.Popen(command,env=env,start_new_session=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         try:
             log,_=process.communicate(timeout=500 if corpus_mode else 160)
+            if process.returncode:
+                raise RuntimeError(f'Private KWin exited with {process.returncode}: ' + log[-4000:])
             records=[line.removeprefix('PLASMA_SCALING_EVIDENCE ') for line in log.splitlines()
                      if line.startswith('PLASMA_SCALING_EVIDENCE ')]
             if len(records)!=1:raise RuntimeError('Private KWin scaling failed: '+log[-8000:])

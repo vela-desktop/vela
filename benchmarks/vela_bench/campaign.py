@@ -130,8 +130,10 @@ def audit_block(source, block, plan, layout):
             audit["measurements"] = audit_measurements(source, block["target"],
                 state["conditions_snapshot"]["profile"], block["phase"])
             audit["checks"]["measurement_raw_evidence"] = True
-            if expected['workload']=='p2-neutral-client-v2' and block['phase']=='slow-apps':
+            if expected['workload'] in ('p2-neutral-client-v2','p2-neutral-client-v3') and block['phase']=='slow-apps':
                 audit['checks']['contention_uid_binding']=audit['measurements'].get('contention_uid')==plan['context']['uid']
+                audit['checks']['producer_uid_binding']=all(sample['producer']['device'].get('uid')==plan['context']['uid']
+                    for sample in audit['measurements']['scenarios'].values() if 'producer' in sample)
             if "corpus_inventory" in expected:
                 audit['checks']['corpus_inventory_binding']=(audit['measurements'].get('corpus_inventory')==expected['corpus_inventory']
                     and audit['measurements'].get('corpus_uid')==plan['context']['uid'])
@@ -142,7 +144,7 @@ def audit_block(source, block, plan, layout):
             audit["desktop_observation"] = audit_observation(source, block["target"],
                 state["conditions_snapshot"]["profile"], block["phase"])
             audit["checks"]["desktop_raw_evidence"] = True
-            if expected['workload']=='p3-desktop-observation-v2':
+            if expected['workload'] in ('p3-desktop-observation-v2','p3-desktop-observation-v3'):
                 audit['checks']['desktop_uid_binding']=audit['desktop_observation'].get('uid')==plan['context']['uid']
             audit['checks']['desktop_method_binding']=(audit['desktop_observation'].get('method')==expected['workload']
                 and audit['desktop_observation'].get('spec')==expected['block']['measurement_spec'])
@@ -464,8 +466,13 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
         if exercise:
             print(f"P1 exercise: {', '.join(plan['execution']['phases'])}; {plan['execution']['repetitions']} complete repetitions per target.", flush=True)
             print("Every phase slot runs the same fixed instrument controls. Measurement scenarios are NOT executed.", flush=True)
-        if not assume_yes and pending and input("Type START to run all selected blocks: ") != "START":
-            raise BenchError("Campaign not authorized")
+        if not assume_yes and pending:
+            try:
+                authorized = input("Type START to run all selected blocks: ") == "START"
+            except EOFError:
+                authorized = False
+            if not authorized:
+                raise BenchError("Campaign not authorized")
         manifest = read_json(directory / "manifest.json")
         manifest["stage"] = "running"
         manifest.pop("error", None)
@@ -783,6 +790,26 @@ def read_export(directory):
         raise BenchError("Exported campaign identity/coverage changed")
     if manifest["kind"] != data.get("kind", "") + "-export":
         raise BenchError("Exported campaign kind changed")
+    if data.get('selection_complete') is not all(row['status']=='complete' for row in data['blocks']):
+        raise BenchError('Exported selection acceptance changed')
+    accepted = []
+    for block in data['blocks']:
+        if block.get('status') != 'complete':
+            accepted.append(block)
+            continue
+        fresh = audit_pilot(directory / block_identity(block['id']), block['target'], block.get('fault'),
+                            instruments=not (data.get('execution_mode')=='measure' and block.get('phase')=='overhead'))
+        saved = block.get('audit', {})
+        if (fresh.get('status') != 'passed' or saved.get('status') != 'passed'
+                or any(saved.get('checks', {}).get(key) != value for key,value in fresh.get('checks', {}).items())
+                or fresh.get('calibration') != saved.get('calibration')):
+            reason = fresh.get('error') or ', '.join(key for key,value in fresh.get('checks', {}).items() if not value)
+            raise BenchError('Exported lifecycle acceptance differs from raw pilot evidence: ' + block['id'] + ': ' + reason)
+        accepted.append(dict(block, audit=fresh))
+    if data['kind']=='calibration-campaign':
+        qualification = qualification_summary(accepted, list(data['plan']['context']['targets']))
+        if qualification != data.get('qualification'):
+            raise BenchError('Exported P0 qualification differs from raw pilot acceptance')
     if ('execution_complete' in data and data['execution_complete'] is not
             all(row['status'] in ('complete', 'failed') for row in data['blocks'])):
         raise BenchError('Exported execution coverage changed')
@@ -797,12 +824,15 @@ def read_export(directory):
             actual = audit_measurements(directory / block_identity(block["id"]), block["target"], block["profile"], block["phase"])
             if actual.get('method')!=block.get('workload') or actual.get('spec')!=block.get('measurement_spec'):
                 raise BenchError('Exported measurement method differs from its planned block')
-            if actual.get('method')=='p2-neutral-client-v2' and block.get('phase')=='slow-apps':
+            if actual.get('method') in ('p2-neutral-client-v2','p2-neutral-client-v3') and block.get('phase')=='slow-apps':
                 if 'campaign-plan.json' not in manifest['files']:
                     raise BenchError('Exported contention has no hashed immutable plan')
                 plan=read_json(directory/'campaign-plan.json')
                 if actual.get('contention_uid')!=plan['context']['uid']:
                     raise BenchError('Exported contention UID differs from the planned benchmark account')
+                if any(sample.get('producer',{}).get('device',{}).get('uid')!=plan['context']['uid']
+                       for sample in actual['scenarios'].values() if 'producer' in sample):
+                    raise BenchError('Exported producer UID differs from the planned benchmark account')
             if actual.get('method') in ('p4-pattern-resources-v5','p4-pattern-resources-v6') and block.get('phase')=='scaling':
                 if 'campaign-plan.json' not in manifest['files']:
                     raise BenchError('Exported corpus has no hashed immutable plan')
@@ -823,7 +853,7 @@ def read_export(directory):
             actual = audit_observation(directory / block_identity(block["id"]), block["target"], block["profile"], block["phase"])
             if actual.get('method')!=block.get('workload') or actual.get('spec')!=block.get('measurement_spec'):
                 raise BenchError('Exported desktop method differs from planned block')
-            if actual.get('method')=='p3-desktop-observation-v2':
+            if actual.get('method') in ('p3-desktop-observation-v2','p3-desktop-observation-v3'):
                 if 'campaign-plan.json' not in manifest['files']:raise BenchError('Exported desktop has no hashed immutable plan')
                 if actual.get('uid')!=read_json(directory/'campaign-plan.json')['context']['uid']:raise BenchError('Exported desktop UID differs from planned benchmark account')
             if actual != block.get("audit", {}).get("desktop_observation"):

@@ -210,6 +210,8 @@ def main(adapter, output=None):
                 log, _ = process.communicate(timeout=35)
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeError("Isolated KWin integration deadline; partial log: " + str(exc.output)[-4000:]) from exc
+            if process.returncode:
+                raise RuntimeError(f'Private KWin exited with {process.returncode}: ' + log[-4000:])
             records = [line.removeprefix("PLASMA_PREFLIGHT_EVIDENCE ") for line in log.splitlines() if line.startswith("PLASMA_PREFLIGHT_EVIDENCE ")]
             if len(records) != 1:
                 raise RuntimeError("Private KWin/preflight failed: " + log[-7000:])

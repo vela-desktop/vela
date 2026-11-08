@@ -42,6 +42,23 @@ class CalibrationCampaign(unittest.TestCase):
             "input": {"session_accounting": {"cpu_usage_begin_usec": 100, "cpu_usage_end_usec": 200},
                       "metrics": {"actions": 20, "injection_to_presentation_upper_ms": {"p50": 5}}}}}).start()
 
+    def test_export_reaudits_lifecycle_and_rejects_rehashed_qualification_or_selection(self):
+        from vela_bench.discovery import file_hash
+        self.fail_plasma=False
+        self.assertEqual(self.campaign(),0)
+        data=latest(self.layout)
+        directory=export_campaign(self.layout.path('review-export'),data,self.layout)
+        self.assertEqual(read_export(directory),data)
+        with patch('vela_bench.campaign.audit_pilot',return_value={'status':'failed','checks':{'successful_run':False}}):
+            with self.assertRaisesRegex(BenchError,'lifecycle acceptance'):read_export(directory)
+        for field,value in (('selection_complete',False),('qualification',dict(data['qualification'],status='passed'))):
+            changed=copy.deepcopy(data);changed[field]=value
+            atomic_json(directory/'summary.json',changed)
+            manifest=read_json(directory/'manifest.json');manifest['files']['summary.json']=file_hash(directory/'summary.json')
+            atomic_json(directory/'manifest.json',manifest)
+            with self.subTest(field=field),self.assertRaisesRegex(BenchError,'selection acceptance|P0 qualification'):
+                read_export(directory)
+
     def fake_begin(self, host, targets, **options):
         self.calls.append(targets[0])
         if targets == ["plasma"] and self.fail_plasma:

@@ -15,6 +15,7 @@ from . import BenchError
 from .archive import atomic_json, decode_json, read_json
 from .calibration import Lines, stop_process
 from .diagnostics import user_command, stop_instrument
+from .pixels import image_hash
 
 VERSION = 'p3-desktop-observation-v1'
 PHASES = ('responsiveness', 'motion')
@@ -86,7 +87,7 @@ def validate_frames(rows, target, profile, directory, stem, *, partial=False, of
             if (not isinstance(value, dict) or value.get('marker') != 'vela-frame-id-v2'
                     or any(type(value.get(k)) is not int for k in ('frame','x','y'))
                     or not 0 <= value['frame'] <= 0xffffffff
-                    or not 0 <= value['x'] <= row['width'] - 608 or not 0 <= value['y'] <= row['height'] - 32):
+                    or not 0 <= value['x'] <= row['width'] - 320 or not 0 <= value['y'] <= row['height'] - 32):
                 raise BenchError('Invalid desktop scene marker')
         name = f'{target}-desktop-{stem}-{index:02d}.png'
         if 'png_base64' in row:
@@ -96,7 +97,7 @@ def validate_frames(rows, target, profile, directory, stem, *, partial=False, of
                 raise BenchError('Desktop PNG geometry differs from capture')
             (directory / name).write_bytes(png)
             row.update(image_file=name, image_sha256=hashlib.sha256(png).hexdigest())
-        if row.get('image_file') != name or hashlib.sha256((directory/name).read_bytes()).hexdigest() != row.get('image_sha256'):
+        if row.get('image_file') != name or image_hash(directory/name) != row.get('image_sha256'):
             raise BenchError('Desktop capture image changed')
     return rows
 
@@ -129,7 +130,8 @@ def action_metrics(rows, actions, kind):
               'capture_count':len(rows), 'maximum_capture_gap_ms':max(b['end_monotonic_ns']-a['begin_monotonic_ns'] for a,b in zip(rows,rows[1:]))/1e6}
     if kind == 'launcher-open':
         responsive = [r for r in post if changed(baseline,r['tiles']) >= 12]
-        if len(responsive) < 2 or changed(post[-2]['tiles'],post[-1]['tiles']) > 8:
+        if (len(responsive) < 2 or any(changed(baseline,r['tiles']) < 12 for r in post[-2:])
+                or changed(post[-2]['tiles'],post[-1]['tiles']) > 8):
             raise BenchError('Launcher absent, ambiguous or not settled in captured output')
         result.update(first_observed_response_upper_ms=(responsive[0]['end_monotonic_ns']-injection['before_monotonic_ns'])/1e6,
                       first_observed_response_lower_ms=0, changed_tiles=changed(baseline,post[-1]['tiles']))
@@ -304,6 +306,11 @@ def audit_observation(directory, target, profile, phase, *, saved=None):
     previous_end=-1
     for action in saved['actions']:
         validate_frames(action['captures'],target,profile,directory,action['id'])
+        from .desktop_pixels import evidence
+        for capture in action['captures']:
+            pixels = evidence(directory/capture['image_file'])
+            if any(capture.get(key) != pixels[key] for key in ('width', 'height', 'tiles', 'markers')):
+                raise BenchError('Legacy desktop metadata differs from original pixels')
         if action['captures'][0]['begin_monotonic_ns'] < previous_end:
             raise BenchError('Desktop observation sequences overlap or reverse their clock')
         previous_end=action['captures'][-1]['end_monotonic_ns']

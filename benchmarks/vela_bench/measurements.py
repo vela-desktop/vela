@@ -15,7 +15,7 @@ from .archive import atomic_json, decode_json, read_json
 from .calibration import Lines, parse_input, run_input, stop_process
 from .diagnostics import distribution, parse_probe, stop_instrument, user_command
 
-VERSION = 'p2-neutral-client-v2'
+VERSION = 'p2-neutral-client-v3'
 PHASES = ('responsiveness', 'motion', 'slow-apps')
 INPUT_WARMUP, INPUT_SAMPLES = 5, 100
 MOTION_WARMUP, MOTION_SAMPLES = 30, 600
@@ -27,7 +27,8 @@ SPEC_V1 = {'version': 'p2-neutral-client-v1', 'input_warmup_actions': INPUT_WARM
         'scope': 'native-neutral-client-only', 'shell_response': False, 'window_movement': False,
         'cpu_contention_workload': False, 'gpu_contention_workload': False,
         'gpu_producer_contention_excluded': False}
-SPEC=dict(SPEC_V1,version=VERSION,cpu_contention_workload=True,gpu_contention_workload=True,contention=contention.SPEC)
+SPEC_V2=dict(SPEC_V1,version='p2-neutral-client-v2',cpu_contention_workload=True,gpu_contention_workload=True,contention=contention.SPEC)
+SPEC=dict(SPEC_V2,version=VERSION,motion_window='first-measured-commit-to-latest-measured-feedback')
 
 
 def records(path):
@@ -96,14 +97,17 @@ def motion_metrics(raw, rows, profile, *, physical_output_required=True, method=
             'submission_to_presentation_ms': distribution([r['presentation_ns'] - r['commit_clock_ns'] for r in shown]),
             'gaps_over_1_5_refresh_periods': sum(gap > 1.5 * period for gap in gaps),
             'refresh_period_ns': period, 'missed_kernel_vblanks': None,
-            'window_monotonic_ns': [commits[0]['monotonic_ns'], shown[-1]['received_monotonic_ns']],
+            'window_monotonic_ns': [commits[0]['monotonic_ns'],
+                max(r['received_monotonic_ns'] for r in shown + discarded) if method == VERSION else shown[-1]['received_monotonic_ns']],
             'p99_available': False, 'desktop_motion': False, 'physical_output_verified': physical}
 
 
-def producer_metrics(rows, mode, window, *, physical_output_required=True):
+def producer_metrics(rows, mode, window, *, physical_output_required=True, uid=None):
     if not rows or rows[0].get('event') != 'producer' or rows[-1].get('event') != 'producer-summary':
         raise BenchError('GPU producer stream is incomplete')
     meta, summary = rows[0], rows[-1]
+    if uid is not None and (type(uid) is not int or uid <= 0 or meta.get('uid') != uid):
+        raise BenchError('GPU producer UID differs from the reserved login session')
     if (meta.get('method') != 'delayed-gpu-acquire-v1' or meta.get('schema') != 1
             or meta.get('sync') != mode or meta.get('requested_delay_ms') != 150
             or meta.get('buffer_width') != 1024 or meta.get('buffer_height') != 640
@@ -143,6 +147,7 @@ def producer_metrics(rows, mode, window, *, physical_output_required=True):
     if (any(type(frame) is not int or not 1 <= frame <= len(commits) for frame in feedback_ids)
             or len(set(feedback_ids)) != len(feedback_ids)
             or any(type(r.get('received_monotonic_ns')) is not int or r['received_monotonic_ns'] < 0 for r in visible)
+            or any(r['received_monotonic_ns'] < commits[r['frame']-1]['monotonic_ns'] for r in visible)
             or any(type(r.get('flags')) is not int or (physical_output_required and not r['flags'] & 1) for r in visible)):
         raise BenchError('GPU producer visibility evidence is invalid')
     visibility = [r['received_monotonic_ns'] for r in visible]
@@ -197,6 +202,13 @@ def input_result(directory, target, label, *, method=VERSION):
 
 
 def paired_metrics(control, loaded):
+    previous = -1
+    for sample in (control, loaded):
+        for scope in ('input', 'motion'):
+            start, end = sample[scope]['window_monotonic_ns']
+            if (type(start) is not int or type(end) is not int or not previous <= start < end):
+                raise BenchError('Paired input/motion/control windows overlap or are reversed')
+            previous = end
     return {'input_p50_upper_delta_ms': loaded['input']['injection_to_presentation_upper_ms']['p50'] - control['input']['injection_to_presentation_upper_ms']['p50'],
             'input_p95_upper_delta_ms': loaded['input']['injection_to_presentation_upper_ms']['p95'] - control['input']['injection_to_presentation_upper_ms']['p95'],
             'animation_p95_interval_delta_ms': loaded['motion']['presentation_intervals_ms']['p95'] - control['motion']['presentation_intervals_ms']['p95'],
@@ -292,7 +304,7 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
                         if process.wait(timeout=5):
                             raise BenchError('GPU producer exited unsuccessfully')
                         window = [sample['input']['window_monotonic_ns'][0], sample['motion']['window_monotonic_ns'][1]]
-                        sample['producer'] = producer_metrics(lines.records, mode, window)
+                        sample['producer'] = producer_metrics(lines.records, mode, window, uid=record['uid'])
                         if mode == 'implicit':
                             explicit = result['scenarios']['explicit']['producer']['device']
                             if any(sample['producer']['device'][key] != explicit[key] for key in ('vendor_id','device_id','drm_major','drm_minor')):
@@ -330,11 +342,11 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
 
 def audit_measurements(directory, target, profile, phase):
     saved = read_json(directory / f'{target}-measurements.json')
-    method=saved.get('method');spec={SPEC_V1['version']:SPEC_V1,VERSION:SPEC}.get(method)
+    method=saved.get('method');spec={SPEC_V1['version']:SPEC_V1,SPEC_V2['version']:SPEC_V2,VERSION:SPEC}.get(method)
     if not spec or saved.get('status') != 'passed' or saved.get('spec') != spec or saved.get('phase') != phase or saved.get('failures') != []:
         raise BenchError('Measurement workload failed or its specification changed')
     names = ['neutral'] if phase != 'slow-apps' else ['explicit-control', 'explicit', 'implicit-control', 'implicit']
-    if phase=='slow-apps' and method==VERSION:names+=['cpu-control','cpu','gpu-control','gpu']
+    if phase=='slow-apps' and method!=SPEC_V1['version']:names+=['cpu-control','cpu','gpu-control','gpu']
     actual = {}
     for name in names:
         label = '' if name == 'neutral' else name + '-'
@@ -351,7 +363,11 @@ def audit_measurements(directory, target, profile, phase):
         if name in ('explicit', 'implicit'):
             _, rows = records(directory / f'{target}-producer-{name}.jsonl')
             window = [row['input']['window_monotonic_ns'][0], row['motion']['window_monotonic_ns'][1]]
-            row['producer'] = producer_metrics(rows, name, window)
+            session = read_json(directory/f'{target}-session.json')
+            uid = session.get('session', {}).get('User', '')
+            if not isinstance(uid, str) or not uid.isdigit() or int(uid) <= 0:
+                raise BenchError('Missing reserved producer session UID')
+            row['producer'] = producer_metrics(rows, name, window, uid=int(uid))
             row['degradation'] = paired_metrics(actual[name + '-control'], row)
             if name == 'implicit':
                 explicit = actual['explicit']['producer']['device']

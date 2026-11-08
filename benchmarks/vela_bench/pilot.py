@@ -25,7 +25,8 @@ import uuid
 
 from . import BenchError
 from .archive import append_event, atomic_json, read_json
-from .discovery import sessions
+from .discovery import sessions, file_hash
+from .host import require_current_home_isolation
 from .diagnostics import SCENARIOS, pilot_results, run_probe
 from .conditions import apply_conditions, restore_conditions, snapshot_conditions, verify_conditions
 from .input_isolation import InputIsolation, POLICY as INPUT_POLICY, cursor_environment, prepare_cursor_profile
@@ -63,7 +64,7 @@ def require_no_graphical_sessions(sessions_, *, after_authorization=False):
     is insufficient: an online desktop on another VT must still block us.
     """
     blocked = [session for session in sessions_
-               if session.get("Type") in ("wayland", "x11") and session.get("Class") != "greeter"
+               if (session.get("Type") in ("wayland", "x11") or session.get('State') == 'opening') and session.get("Class") != "greeter"
                and not (session.get("State") == "closing" and session.get("Active") == "no")]
     if blocked:
         details = [{key: session.get(key, "unknown")
@@ -130,8 +131,10 @@ def resolve_targets(requested=None, *, check_trust=True):
     for target in chosen if check_trust else []:
         descriptor = available[target]
         trusted(descriptor["session_file"])
-        for identity in descriptor["executables"]:
+        for identity in descriptor["executables"] + descriptor.get('files', []):
             trusted(identity["path"])
+            if file_hash(identity['path']) != identity['sha256']:
+                raise BenchError('Session executable or file argument changed during discovery')
         for identity in descriptor.get("components", {}).values():
             if identity is not None:
                 trusted(identity["path"])
@@ -201,6 +204,7 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
     if campaign_run_id is not None and not re.fullmatch(r"[0-9a-f]{32}", campaign_run_id):
         raise BenchError("Invalid campaign identity for controlled pilot")
     record = load_setup(host, layout)
+    require_current_home_isolation(record)
     presentation_probe, controlled = presentation_probe or calibrate, controlled or calibrate
     plan = preview(targets, seconds, presentation_probe, controlled, calibrate)
     plan['autostart_inventory'] = autostart_inventory(layout)
@@ -262,8 +266,13 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
         print("Presentation diagnostics: 120-frame animation, then 120 frames with a known 40 ms client sleep, per desktop.", flush=True)
     if calibrate:
         print("Calibration: persistent uinput F24 actions, native output captures, capture-off/on and known-delay controls.", flush=True)
-    if not assume_yes and input("Type START to reserve the machine: ") != "START":
-        raise BenchError("Pilot not authorized")
+    if not assume_yes:
+        try:
+            authorized = input("Type START to reserve the machine: ") == "START"
+        except EOFError:
+            authorized = False
+        if not authorized:
+            raise BenchError("Pilot not authorized")
     for remaining in range(5 if countdown else 0, 0, -1):
         print(f"Starting in {remaining}s; Ctrl+C cancels.", flush=True)
         time.sleep(1)
@@ -356,7 +365,7 @@ def session_command(target, vt, record, layout=Layout(), *, directory=None):
              "PAMName": "vela-benchmark", "TTYPath": f"/dev/tty{vt}", "StandardInput": "tty-fail",
              "StandardOutput": "journal", "StandardError": "journal", "TTYReset": "yes", "TTYVHangup": "yes",
              "RemainAfterExit": "yes", "UMask": "0077",
-             "RuntimeMaxSec": "300", "TimeoutStartSec": "45", "TimeoutStopSec": "10", "KillMode": "control-group",
+             "RuntimeMaxSec": str(PILOT_SECONDS), "TimeoutStartSec": "45", "TimeoutStopSec": "10", "KillMode": "control-group",
              "WorkingDirectory": str(layout.home), **isolation_properties(record["uid"], layout, record["private_homes"])}
     if directory is not None:
         directory = Path(directory)
@@ -594,6 +603,7 @@ def worker(host, layout=Layout()):
             raise BenchError("Pilot is not queued")
         input_guard = None
         try:
+            require_current_home_isolation(record)
             target_vt = state.get("target_vt")
             if type(target_vt) is not int or not 1 <= target_vt <= 63:
                 raise BenchError("Invalid launch virtual terminal")
@@ -629,9 +639,10 @@ def worker(host, layout=Layout()):
                 require_no_graphical_sessions(logind_sessions(host), after_authorization=True)
                 update(directory, state, "takeover", conditions_restore_required=True)
             if state["display_manager_was_active"]:
-                host.run(["systemctl", "stop", "display-manager.service"], timeout=45)
+                quiesce_display_manager(host, directory, state, layout)
             reserve_vt(host, directory, state, layout)
-            input_guard = InputIsolation(layout)
+            input_guard = InputIsolation(layout, on_failure=lambda evidence:
+                                         atomic_json(directory / 'input-isolation.json', evidence))
             input_guard.start()
             atomic_json(directory / "input-isolation.json", input_guard.evidence())
             # JSON object key sorting must never reorder the planned targets.
@@ -648,7 +659,7 @@ def worker(host, layout=Layout()):
                 atomic_json(directory / f"{target}-desktop-profile.json", profile)
                 cursor_profile = prepare_cursor_profile(layout, record)
                 atomic_json(directory / f"{target}-cursor-profile.json", cursor_profile)
-                if request and request["workload"] == "p3-desktop-observation-v2":
+                if request and request["workload"] in ('p3-desktop-observation-v2','p3-desktop-observation-v3'):
                     from .desktop import prepare_scene
                     prepare_scene(layout, record)
                 marker = layout.home / ".pilot-profile"
@@ -713,7 +724,7 @@ def worker(host, layout=Layout()):
                     phase = request["block"]["phase"]
                     update(directory, state, "measure" if request["measurement_executed"] else "exercise", target=target, scenario=phase)
                     if request["measurement_executed"] and not diagnostic_failures:
-                        if request["workload"] == "p3-desktop-observation-v2":
+                        if request["workload"] in ('p3-desktop-observation-v2','p3-desktop-observation-v3'):
                             from .desktop import run_observation as run_workload
                         else:
                             from .workloads import implementation
@@ -726,8 +737,7 @@ def worker(host, layout=Layout()):
                         if measured["status"] != "passed":
                             diagnostic_failures.append(f"{target}/{phase}: " + "; ".join(measured["failures"]))
                         verify_conditions(host, record, layout, target, state["conditions_snapshot"])
-                    atomic_json(directory / "block-workload.json", dict(request,
-                                status="failed" if diagnostic_failures else "passed"))
+                    atomic_json(directory / "block-workload.json", dict(request, status='pending'))
                 update(directory, state, "teardown", target=target)
                 stopped = stop_user(host, record, layout)
                 preserve_session_stop(directory, state, stopped)
@@ -747,12 +757,105 @@ def worker(host, layout=Layout()):
             update(directory, state, "restoring", result="failed", error=str(exc))
             raise
         finally:
-            if input_guard is not None:
-                input_guard.close()
-                atomic_json(directory / "input-isolation.json", input_guard.evidence())
-                if input_guard.error and state.get("result") == "passed":
-                    update(directory, state, "restoring", result="failed", error=input_guard.error)
+            try:
+                if input_guard is not None:
+                    input_guard.close()
+                    atomic_json(directory / "input-isolation.json", input_guard.evidence())
+                    if input_guard.error:
+                        update(directory, state, 'restoring', result='failed', error=input_guard.error)
+            except BaseException as exc:
+                update(directory, state, 'restoring', result='failed', error=str(exc))
+                raise
+            finally:
+                if state.get('campaign_block'):
+                    atomic_json(directory / 'block-workload.json', dict(state['campaign_block'],
+                                status='passed' if state.get('result') == 'passed' else 'failed'))
     # ExecStopPost owns cleanup, including when this process is killed.
+
+
+def quiesce_display_manager(host, directory, state, layout):
+    """Freeze authentication before the final session check and DM teardown.
+
+    Freeze the cgroup before verifying no personal session opened. SIGSTOP
+    keeps it paused while thawing systemd's freezer, then SIGKILL and stop.
+    ExecStopPost owns mask removal/thaw even if this worker is interrupted.
+    """
+    unit = host.run(['systemctl', 'show', 'display-manager.service', '--property=Id', '--value']).stdout.strip()
+    if unit not in ('sddm.service', 'plasmalogin.service'):
+        raise BenchError('Display manager has no reviewed authentication-quiescence adapter')
+    mask = layout.path('run/systemd/system') / unit
+    override = mask.parent / (unit + '.d') / '99-vela-benchmark-quiescence.conf'
+    mask.parent.mkdir(parents=True, exist_ok=True)
+    trusted(mask.parent, directory=True)
+    if mask.exists() or mask.is_symlink():
+        raise BenchError('Unowned display-manager runtime override exists')
+    if override.exists() or override.is_symlink():
+        raise BenchError('Unowned display-manager restart override exists')
+    created_override_directory = not override.parent.exists()
+    override.parent.mkdir(exist_ok=True)
+    trusted(override.parent, directory=True)
+    guard = {'unit': unit, 'mask_requested': False, 'status': 'freezing',
+             'restart_override_requested': True, 'created_override_directory': created_override_directory}
+    update(directory, state, 'takeover', display_manager_quiescence=guard)
+    with override.open('x') as stream:
+        stream.write('[Service]\nRestart=no\n')
+    host.run(['systemctl', 'daemon-reload'])
+    if host.run(['systemctl','show',unit,'--property=Restart','--value']).stdout.strip() != 'no':
+        raise BenchError('Display-manager automatic restart could not be inhibited')
+    host.run(['systemctl', 'freeze', unit], timeout=15)
+    if host.run(['systemctl', 'show', unit, '--property=FreezerState', '--value']).stdout.strip() != 'frozen':
+        raise BenchError('Display-manager authentication did not freeze')
+    guard['mask_requested'] = True
+    update(directory, state, 'takeover')
+    mask.symlink_to('/dev/null')
+    host.run(['systemctl', 'daemon-reload'])
+    if host.run(['systemctl', 'show', unit, '--property=FreezerState', '--value']).stdout.strip() != 'frozen':
+        raise BenchError('Display-manager authentication resumed before the final login check')
+    require_no_graphical_sessions(logind_sessions(host), after_authorization=True)
+    guard['stop_requested'] = True
+    update(directory, state, 'takeover')
+    host.run(['systemctl', 'kill', '--kill-whom=all', '--signal=SIGSTOP', unit], timeout=10)
+    # A pending SIGSTOP prevents authentication from executing after thaw.
+    # Thaw before SIGKILL avoids stale freezer state on an inactive service.
+    host.run(['systemctl', 'thaw', unit], timeout=15)
+    host.run(['systemctl', 'kill', '--kill-whom=all', '--signal=SIGKILL', unit], timeout=10)
+    host.run(['systemctl', 'stop', 'display-manager.service'], timeout=45)
+    if host.run(['systemctl', 'show', unit, '--property=ActiveState', '--value']).stdout.strip() not in ('inactive','failed'):
+        raise BenchError('Quiesced display manager did not stop')
+    guard['status'] = 'stopped'
+    update(directory, state, 'takeover')
+
+
+def release_display_manager_quiescence(host, directory, state, layout):
+    guard = state.get('display_manager_quiescence')
+    if not guard or guard.get('status') == 'released':
+        return
+    unit = guard.get('unit')
+    if unit not in ('sddm.service','plasmalogin.service'):
+        raise BenchError('Invalid owned display-manager quiescence unit')
+    mask = layout.path('run/systemd/system') / unit
+    override = mask.parent / (unit + '.d') / '99-vela-benchmark-quiescence.conf'
+    if guard.get('mask_requested') and (mask.exists() or mask.is_symlink()):
+        if not mask.is_symlink() or os.readlink(mask) != '/dev/null' or mask.lstat().st_uid != os.geteuid():
+            raise BenchError('Owned display-manager mask changed; refusing removal')
+        mask.unlink()
+    if guard.get('restart_override_requested') and (override.exists() or override.is_symlink()):
+        trusted(override)
+        if override.read_text() != '[Service]\nRestart=no\n':
+            raise BenchError('Owned display-manager restart override changed; refusing removal')
+        override.unlink()
+        if guard.get('created_override_directory') and not any(override.parent.iterdir()):
+            override.parent.rmdir()
+    host.run(['systemctl','daemon-reload'])
+    active = host.run(['systemctl','show',unit,'--property=ActiveState','--value']).stdout.strip()
+    if active in ('active','activating','reloading'):
+        host.run(['systemctl','thaw',unit], timeout=15)
+        if guard.get('stop_requested'):
+            host.run(['systemctl','kill','--kill-whom=all','--signal=SIGCONT',unit], timeout=10)
+        if host.run(['systemctl','show',unit,'--property=FreezerState','--value']).stdout.strip() != 'running':
+            raise BenchError('Display-manager authentication remained frozen during recovery')
+    guard['status'] = 'released'
+    update(directory, state, 'restoring')
 
 
 def restore_display_manager(host, directory, state):
@@ -861,6 +964,7 @@ def recover(host, layout=Layout()):
             # Runtime units/masks vanished at boot. Do not apply an old VT or
             # display-manager snapshot to the new login environment.
             state.update(restore_required=False, masked_units=[], result="failed", error="Host rebooted during pilot")
+            state.pop('display_manager_quiescence', None)
         update(directory, state, "restoring")
         if state.get("plan", {}).get("input_policy"):
             guard_path = directory / "input-isolation.json"
@@ -903,6 +1007,11 @@ def recover(host, layout=Layout()):
         except (BenchError, OSError) as exc:
             errors.append(str(exc))
         if state.get("restore_required"):
+            try:
+                release_display_manager_quiescence(host, directory, state, layout)
+            except (BenchError, OSError) as exc:
+                errors.append(str(exc))
+                stopped = False
             if state["display_manager_was_active"]:
                 if stopped:
                     try:

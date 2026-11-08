@@ -45,6 +45,13 @@ def main(binary):
     for command in commands.splitlines()[:-1]:
         result,keys,rows=run(binary,command+'\n',False)
         assert result.returncode!=0 and len(rows)==1 and not any(v==1 for _,v in keys),(command,keys,rows)
+    for command in ('point 4294967296 0','point 0 4294967296','point 65536 0',
+                    'point -1 0','point +1 0','point 1 2 extra','point 999999999999999999999999 0'):
+        result,keys,rows=run(binary,command+'\n')
+        assert result.returncode!=0 and len(rows)==1,(command,result,rows)
+        assert not any(line.startswith('EVENT 3 ') for line in result.stderr.splitlines()),command
+    result,_,rows=run(binary,'point 0 65535\nquit\n')
+    assert result.returncode==0 and len(rows)==2,(result,rows)
     print('Production evdev shortcut/timestamp/guard checks passed; no kernel device used.')
 
 

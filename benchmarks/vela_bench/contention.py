@@ -74,14 +74,14 @@ def bounds(rows,window,keys):
     return before,after,(after['monotonic_ns']-before['monotonic_ns'])/1e9
 
 
-def metrics(rows,kind,window,uid):
+def metrics(rows,kind,window,uid,*,capture=False):
     meta=metadata(rows,kind,uid)
     if (len(window)!=2 or any(type(v) is not int or v<0 for v in window) or window[1]<=window[0]
             or rows[-1].get('event')!=kind+'-load-summary' or rows[-1].get('complete') is not True
             or integer(rows[-1],'monotonic_ns')<window[1]):raise BenchError('Contention window or completion missing')
     summary=rows[-1]
     result={'method':SPEC[kind]['method'],'kind':kind,'uid':uid,'window_monotonic_ns':window,
-            'window_covered':True,'saturation_claimed':False,'capture':False,'source':meta}
+            'window_covered':True,'saturation_claimed':False,'capture':capture,'source':meta}
     samples=[r for r in rows if r.get('event')==kind+'-load-sample']
     if any(integer(r,'monotonic_ns')>summary['monotonic_ns'] for r in samples):
         raise BenchError('Contention samples occur after completion')

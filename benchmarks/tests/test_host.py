@@ -41,6 +41,7 @@ class FakeHost:
         self.password_locked = True
         self.extra_groups = []
         self.manager_active = False
+        self.manager_frozen = False
         self.fail_start = False
         self.restore_vt = "2\n"
         self.fail_useradd = False
@@ -71,10 +72,20 @@ class FakeHost:
                 raise BenchError("synthetic display-manager start failure")
             self.manager_active = True
         elif argv[:2] == ["systemctl", "show"]:
-            if "--property=LoadState" in argv:
+            if '--property=Id' in argv:
+                stdout='sddm.service\n'
+            elif '--property=Restart' in argv:
+                stdout='no\n'
+            elif '--property=FreezerState' in argv:
+                stdout='frozen\n' if self.manager_frozen else 'running\n'
+            elif "--property=LoadState" in argv:
                 stdout = "not-found\n" if "--value" in argv else "LoadState=not-found\n"
             else:
                 stdout = "active\n" if self.manager_active and argv[2] == "display-manager.service" else "inactive\n"
+        elif argv[:2] == ['systemctl','freeze']:
+            self.manager_frozen=True
+        elif argv[:2] == ['systemctl','thaw']:
+            self.manager_frozen=False
         elif argv == ["fgconsole"]:
             stdout = self.restore_vt
         return SimpleNamespace(returncode=code, stdout=stdout, stderr="")
@@ -297,6 +308,32 @@ class HostOperations(unittest.TestCase):
                          [["systemctl", "show", unit, "--property=ActiveState", "--value"]
                           for unit in (PILOT_UNIT, "vela-benchmark-qualification.service")])
 
+    def test_rerun_setup_refreshes_both_home_isolation_policies_without_changing_account(self):
+        from vela_bench.host import require_current_home_isolation
+        original=self.setup_account()
+        with patch('vela_bench.host.personal_homes',return_value=['/home/operator','/srv/new-person']):
+            with self.assertRaisesRegex(BenchError,'inventory changed'):
+                require_current_home_isolation(original)
+            self.host.calls=[]
+            updated=self.setup_account()
+            require_current_home_isolation(updated)
+        self.assertEqual(updated['uid'],original['uid'])
+        self.assertEqual(updated['account_tag'],original['account_tag'])
+        self.assertIn('/srv/new-person',updated['private_homes'])
+        self.assertIn('/srv/person',updated['private_homes'])
+        dropin=self.layout.path('etc/systemd/system/user@1240.service.d/70-vela-benchmark.conf')
+        self.assertIn('/srv/new-person',dropin.read_text())
+        self.assertIn('/srv/new-person',isolation_properties(1240,self.layout,updated['private_homes'])['InaccessiblePaths'])
+        self.assertFalse(any(call[0] in ('useradd','usermod','userdel') for call in self.host.calls))
+
+    def test_untracked_empty_directory_blocks_uninstall_before_account_deletion(self):
+        record=self.setup_account()
+        (self.layout.helper.parent/'vela_bench/untracked-empty').mkdir()
+        self.host.calls=[]
+        with self.assertRaisesRegex(BenchError,'Untracked'):
+            uninstall(self.host,self.layout)
+        self.assertEqual(self.host.user().pw_uid,record['uid'])
+        self.assertFalse(any(call[0]=='userdel' for call in self.host.calls))
     def changed_source(self):
         original = Path(__file__).resolve().parents[1]
         source = self.layout.path("replacement/vela_bench")

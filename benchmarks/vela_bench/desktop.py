@@ -26,7 +26,7 @@ marker=legacy.marker
 validate_frames=legacy.validate_frames
 # Keep the original raw action functions available for historical callers.
 action_metrics=legacy.action_metrics
-VERSION='p3-desktop-observation-v2'
+VERSION='p3-desktop-observation-v3'
 PHASES=('responsiveness','motion','slow-apps')
 SPEC=dict(legacy.SPEC,version=VERSION,phases=list(PHASES),pixel_audit='native-marker-grid-from-original-png-v1',
           menu_changed_tiles_minimum=4,producer_static_pixels=True,scene_method='native-desktop-scene-v2',alt_tab='held-native-switcher-and-identified-focus-return',
@@ -35,6 +35,7 @@ SPEC=dict(legacy.SPEC,version=VERSION,phases=list(PHASES),pixel_audit='native-ma
           workspaces='two-workspace-fixture; preserve-default-effects; remove-only-owned-addition',
           loads=['explicit','implicit','cpu','gpu'],load_controls='fresh-launcher-and-window-drag-before-each-load',
           contention=dict(contention.SPEC,capture=True,controls='fresh-launcher-and-drag-without-load'),observed_stable_state='coarse-fingerprint-only; not-usable-or-animation-completion')
+SPEC_V2=dict(SPEC,version='p3-desktop-observation-v2')
 
 
 def integer(row,key):
@@ -121,6 +122,9 @@ def metrics(action,directory,target,profile,streams,uid,*,check_pixels=True,pixe
         expected={'launcher-open':['launcher'],'menu-open':['window-menu' if target=='vela' else 'window-menu-plasma'],
                   'alt-tab':['alt-tab-begin','alt-tab-end']}[kind]
         if commands!=expected or result['first_observed_response_upper_ms'] is None:raise BenchError('Native UI did not visibly respond to its declared action')
+        if kind=='launcher-open' and (any(changed(rows[1]['tiles'],r['tiles'])<12 for r in rows[-2:])
+                or changed(rows[-2]['tiles'],rows[-1]['tiles'])>8):
+            raise BenchError('Native launcher did not remain visibly open')
         if kind=='alt-tab':
             peer=sources_audit(streams['peer'],PEER,uid)
             if (state_at(state,rows[1]['end_monotonic_ns'])['active'] is not False
@@ -318,7 +322,7 @@ def loaded(c,mode):
             if process.wait(timeout=5):raise BenchError('Observed load helper failed')
             actions=c.result['actions'][start:]
             window=[actions[0]['captures'][0]['begin_monotonic_ns'],actions[-1]['captures'][-1]['end_monotonic_ns']]
-            metric=(producer_metrics(lines.records,mode,window) if mode in ('explicit','implicit') else contention.metrics(lines.records,mode,window,c.record['uid']))
+            metric=(producer_metrics(lines.records,mode,window,uid=c.record['uid']) if mode in ('explicit','implicit') else contention.metrics(lines.records,mode,window,c.record['uid'],capture=True))
             c.result['loads'][mode]={'window_monotonic_ns':window,'metrics':metric}
         finally:
             stop_instrument(c.host,c.record,c.layout,'producer');stop_process(process)
@@ -381,7 +385,8 @@ def run_observation(host,record,directory,target,layout,profile,phase,health,pro
 def audit_observation(directory,target,profile,phase):
     directory=Path(directory);saved=read_json(directory/f'{target}-desktop.json')
     if saved.get('method')==legacy.VERSION:return legacy.audit_observation(directory,target,profile,phase)
-    if (saved.get('method')!=VERSION or saved.get('spec')!=SPEC or saved.get('status')!='passed' or saved.get('failures')!=[]
+    spec={VERSION:SPEC,SPEC_V2['version']:SPEC_V2}.get(saved.get('method'))
+    if (spec is None or saved.get('spec')!=spec or saved.get('status')!='passed' or saved.get('failures')!=[]
             or saved.get('phase')!=phase or phase not in PHASES or saved.get('uinput_cleanup')!='passed' or saved.get('family_complete') is not False):
         raise BenchError('P3 observation incomplete or fixed specification changed')
     uid=saved['uid']
@@ -394,7 +399,8 @@ def audit_observation(directory,target,profile,phase):
     # digest. The cache stores only derived detector data, never skips raw hashes.
     pixel_cache={}
     def read_pixels(path):
-        digest=hashlib.sha256(path.read_bytes()).digest()
+        from .pixels import image_hash
+        digest=image_hash(path)
         if digest not in pixel_cache:pixel_cache[digest]=evidence(path)
         return pixel_cache[digest]
     previous=-1
@@ -435,7 +441,7 @@ def audit_observation(directory,target,profile,phase):
             window=[actions[0]['captures'][0]['begin_monotonic_ns'],actions[-1]['captures'][-1]['end_monotonic_ns']]
             rows=[decode_json(line) for line in (directory/f'{target}-desktop-load-{mode}.jsonl').read_text().splitlines()]
             if mode in ('explicit','implicit') and (not rows or rows[0].get('uid')!=uid or rows[0].get('desktop_static') is not True):raise BenchError('Observed producer UID differs')
-            value=producer_metrics(rows,mode,window) if mode in ('explicit','implicit') else contention.metrics(rows,mode,window,uid)
+            value=producer_metrics(rows,mode,window,uid=uid) if mode in ('explicit','implicit') else contention.metrics(rows,mode,window,uid,capture=saved['method']==VERSION)
             if saved['loads'][mode]!={'window_monotonic_ns':window,'metrics':value}:raise BenchError('Observed load differs from source evidence')
             if mode!='cpu':
                 identity=value['device'] if mode in ('explicit','implicit') else value['source']

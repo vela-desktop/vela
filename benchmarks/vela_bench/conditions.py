@@ -335,6 +335,15 @@ def brightness_snapshot(host, primary, sysfs=Path("/sys")):
     if len(raw_edid) < 128:
         raise BenchError("Primary monitor has no usable EDID identity for reversible brightness control")
     edid = hashlib.sha256(raw_edid).hexdigest()
+    backlight_dir = sysfs / 'class/backlight'
+    backlights = list(backlight_dir.iterdir()) if backlight_dir.exists() else []
+    if primary.startswith('eDP-') and len(backlights) == 1:
+        path = backlights[0]
+        value, maximum = int((path / 'brightness').read_text()), int((path / 'max_brightness').read_text())
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', path.name) or not 0 <= value <= maximum or maximum <= 0:
+            raise BenchError('Invalid backlight brightness range')
+        return {'backend': 'sysfs-backlight', 'device': path.name, 'value': value, 'maximum': maximum,
+                'connector': physical.name, 'edid_sha256': edid}
     ddc = physical / "ddc"
     if ddc.exists() and re.fullmatch(r"i2c-[0-9]+", ddc.resolve().name):
         bus = int(ddc.resolve().name.removeprefix("i2c-"))
@@ -349,14 +358,6 @@ def brightness_snapshot(host, primary, sysfs=Path("/sys")):
             raise BenchError("Primary monitor changed during DDC readiness checks")
         return {"backend": "ddcutil-vcp10", "bus": bus, "value": int(match[1]), "maximum": int(match[2]),
                 "connector": physical.name, "edid_sha256": edid, "read_attempts": attempts}
-    backlights = list((sysfs / "class/backlight").iterdir())
-    if primary.startswith("eDP-") and len(backlights) == 1:
-        path = backlights[0]
-        value, maximum = int((path / "brightness").read_text()), int((path / "max_brightness").read_text())
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", path.name) or not 0 <= value <= maximum or maximum <= 0:
-            raise BenchError("Invalid backlight brightness range")
-        return {"backend": "sysfs-backlight", "device": path.name, "value": value, "maximum": maximum,
-                "connector": physical.name, "edid_sha256": edid}
     raise BenchError("No verified primary brightness control; no software dimming substitute selected")
 
 

@@ -123,8 +123,9 @@ def input_devices(layout, *, instruments=False):
 
 
 class InputIsolation:
-    def __init__(self, layout):
+    def __init__(self, layout, *, on_failure=None):
         self.layout = layout
+        self.on_failure = on_failure
         self.devices = {}
         self.fds = {}
         self.stop = threading.Event()
@@ -215,6 +216,14 @@ class InputIsolation:
                     raise BenchError('Physical input topology changed; benchmark block invalidated')
         except (OSError, BenchError) as exc:
             self.error = str(exc)
+            try:
+                if self.on_failure:
+                    self.on_failure(self.evidence())
+            finally:
+                # A failed monitor cannot protect a controller blocked in a
+                # subprocess. PID 1 immediately runs ExecStopPost on SIGUSR2.
+                # Keep SIGTERM reserved for the operator's abort chord.
+                os.kill(os.getpid(), signal.SIGUSR2)
 
     def check(self):
         if self.error:

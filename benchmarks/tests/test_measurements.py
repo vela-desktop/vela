@@ -37,7 +37,7 @@ def motion_rows():
 
 
 def gpu_rows(mode='explicit', frames=10):
-    rows = [{'event':'producer', 'schema':1, 'method':'delayed-gpu-acquire-v1', 'sync':mode,
+    rows = [{'event':'producer', 'schema':1, 'method':'delayed-gpu-acquire-v1', 'sync':mode, 'uid':1001,
              'requested_delay_ms':150, 'contention_excluded':False, 'vendor_id':4098, 'device_id':1,
              'drm_major':226, 'drm_minor':128, 'queue_family':0, 'timestamp_valid_bits':64, 'timestamp_period_ns':1, 'buffer_width':1024, 'buffer_height':640},
             {'event':'calibrated', 'iterations':1000, 'wall_duration_ms':150}]
@@ -121,6 +121,10 @@ class Metrics(unittest.TestCase):
         control={'input':input_metrics(rows,inj),'motion':motion_metrics(raw,motion,{'mode':{'refresh_mhz':60000}})}
         loaded=copy.deepcopy(control)
         loaded['input']['injection_to_presentation_upper_ms']['p50']+=40
+        control['input']['window_monotonic_ns']=[1,2]
+        control['motion']['window_monotonic_ns']=[3,4]
+        loaded['input']['window_monotonic_ns']=[5,6]
+        loaded['motion']['window_monotonic_ns']=[7,8]
         paired=paired_metrics(control,loaded)
         self.assertEqual(paired['input_p50_upper_delta_ms'],40)
         self.assertFalse(paired['causal_isolation_from_gpu_contention'])
@@ -267,26 +271,30 @@ class SlowWorkload(unittest.TestCase):
         from vela_bench.host import Layout
         profile={'mode':{'refresh_mhz':60000}}
         calls=[]
-        def offset(rows):
+        clock=1_000_000_000
+        def offset(rows,shift):
             for row in rows:
-                for key in ('monotonic_ns','commit_clock_ns','presentation_ns','received_monotonic_ns','input_received_monotonic_ns'):
-                    if key in row:row[key]+=1_000_000_000
+                for key in ('monotonic_ns','commit_clock_ns','presentation_ns','received_monotonic_ns','input_received_monotonic_ns',
+                            'submitted_monotonic_ns','observed_monotonic_ns','last_submit_ns','end_request_monotonic_ns'):
+                    if key in row:row[key]+=shift
                 for key in ('delivered_ms','input_delivered_ms'):
-                    if key in row:row[key]+=1000
+                    if key in row:row[key]+=shift//1_000_000
             return rows
         def inject(host,record,directory,target,layout,health,*,measurement_name):
             calls.append(measurement_name)
-            rows,inj=input_rows();rows=offset(rows)
+            rows,inj=input_rows();rows=offset(rows,clock)
             for row in inj:
-                row['before_monotonic_ns']+=1_000_000_000
-                row['after_monotonic_ns']+=1_000_000_000
+                row['before_monotonic_ns']+=clock
+                row['after_monotonic_ns']+=clock
             prefix=directory/(target+'-'+measurement_name)
             prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
             atomic_json(prefix.with_suffix('.injections.json'),inj)
             atomic_json(prefix.with_suffix('.json'),{'status':'passed','uinput_cleanup':'passed'})
         def animate(host,record,directory,target,layout,profile,label):
+            nonlocal clock
             calls.append('motion-'+label)
-            _,rows=motion_rows();rows=offset(rows);raw=''.join(json.dumps(r)+'\n' for r in rows)
+            _,rows=motion_rows();rows=offset(rows,clock+12_000_000_000);raw=''.join(json.dumps(r)+'\n' for r in rows)
+            clock+=24_000_000_000
             metrics=motion_metrics(raw,rows,profile)
             prefix=directory/(target+'-measure-'+label+'-motion')
             prefix.with_suffix('.jsonl').write_text(raw)
@@ -297,11 +305,11 @@ class SlowWorkload(unittest.TestCase):
             def __init__(self,process):
                 self.records=[]
                 from test_contention import load_rows
-                self.rows=iter(load_rows(process.kind) if process.kind else gpu_rows(process.mode,100))
+                self.rows=iter(offset(load_rows(process.kind) if process.kind else gpu_rows(process.mode,200),clock-1_000_000_000))
             def next(self,deadline):
                 row=next(self.rows);self.records.append(row);return row
         class Host:
-            def run(self,*args,**kwargs):return SimpleNamespace(returncode=0)
+            def run(self,*args,**kwargs):return SimpleNamespace(returncode=0,stdout='inactive\n')
             def spawn(self,command,errors):
                 return SimpleNamespace(kind='cpu' if any(v.endswith('vela-bench-cpuload') for v in command) else 'gpu' if '--contention' in command else None,
                     mode='implicit' if '--implicit' in command else 'explicit',

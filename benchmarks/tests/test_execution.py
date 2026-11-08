@@ -311,7 +311,7 @@ class Execution(unittest.TestCase):
         controls = {
             'load_setup': {'return_value': record}, 'create_fixture': {},
             'logind_sessions': {'return_value': []}, 'snapshot_conditions': {'return_value': self.snapshot},
-            'reserve_vt': {}, 'session_command': {'return_value': ['fixed-fixture-session']},
+            'reserve_vt': {}, 'quiesce_display_manager': {}, 'session_command': {'return_value': ['fixed-fixture-session']},
             'resolve_targets': {'return_value': {'vela': {}}},
             'stop_user': {'return_value': None}, 'reset_profile': {}, 'wait_session': {'return_value': {}},
             'verify_session': {}, 'apply_conditions': {'return_value': {'status': 'passed'}},
@@ -324,6 +324,7 @@ class Execution(unittest.TestCase):
             guard = stack.enter_context(patch('vela_bench.pilot.InputIsolation')).return_value
             guard.error = None
             guard.evidence.return_value = {'status': 'released'}
+            guard.close.side_effect=lambda:self.assertEqual(read_json(source/'block-workload.json')['status'],'pending')
             for name, opts in controls.items():
                 stack.enter_context(patch('vela_bench.pilot.' + name, **opts))
             stack.enter_context(patch('vela_bench.pilot.run_input', input_call))
@@ -351,7 +352,7 @@ class Execution(unittest.TestCase):
                 worker(SimpleNamespace(), self.layout)
         snapshot.assert_not_called()
         fixture.assert_not_called()
-        self.assertFalse((source / 'block-workload.json').exists())
+        self.assertEqual(read_json(source / 'block-workload.json')['status'], 'failed')
         self.assertFalse(read_json(source / 'state.json')['restore_required'])
 
 

@@ -7,9 +7,9 @@ from .pixels import png_rgb
 
 # These are binary RGB samples, including control-byte values in the green
 # channel. List each accepted byte explicitly rather than using text ranges.
-_MAGENTA_CANDIDATE = re.compile(b''.join(
+_MAGENTA_CANDIDATE = re.compile(b'(?=' + b''.join(
     b'[' + re.escape(bytes(range(channel - 20, channel + 21))) + b']'
-    for channel in (208, 32, 208)))
+    for channel in (208, 32, 208)) + b')')
 
 
 def evidence(path):
@@ -22,14 +22,18 @@ def evidence(path):
     for match in _MAGENTA_CANDIDATE.finditer(rgb):
         if match.start()%3:continue
         p=match.start()//3;x,y=p%width,p//width
-        if x+608>width or y+32>height:continue
+        if x+320>width or y+32>height:continue
+        stride = next((step for step in (17,8) if x+64+32*step<=width
+            and close(pixel(x+32+32*step,y),(32,64,224))
+            and close(pixel(x+48+32*step,y),(224,128,32))),None)
+        if stride is None:continue
+        tail=x+48+32*stride
         if (not close(pixel(x+15,y),(208,32,208)) or not close(pixel(x+16,y),(32,208,32))
-                or not close(pixel(x+31,y),(32,208,32)) or not close(pixel(x+576,y),(32,64,224))
-                or not close(pixel(x+592,y),(224,128,32)) or y and close(pixel(x,y-1),(208,32,208))
-                or not close(pixel(x,y+31),(208,32,208)) or not close(pixel(x+592,y+31),(224,128,32))):continue
+                or not close(pixel(x+31,y),(32,208,32)) or y and close(pixel(x,y-1),(208,32,208))
+                or not close(pixel(x,y+31),(208,32,208)) or not close(pixel(tail,y+31),(224,128,32))):continue
         frame=0
         for bit in range(32):
-            color=pixel(x+32+bit*17+8,y+16)
+            color=pixel(x+32+bit*stride+stride//2,y+16)
             if all(v>200 for v in color):frame|=1<<bit
             elif not close(color,(32,40,48)):break
         else:found.append({'x':x,'y':y,'frame':frame,'marker':'vela-frame-id-v2'})

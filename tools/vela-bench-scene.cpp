@@ -31,7 +31,7 @@ public:
         setFlags(Qt::Window | Qt::FramelessWindowHint);
         setTitle(QStringLiteral("Vela benchmark scene"));
         resize(640, 360);
-        if(observing)setMinimumSize(QSize(640,240));
+        if(observing)setMinimumSize(QSize(352,240));
     }
     void snapshot() {
         QJsonObject value{{"event","scene-state"},{"method","native-desktop-scene-v2"},{"id",qint64(id)},
@@ -63,10 +63,11 @@ public:
         // Same inset marker vocabulary used by the calibrated capture route.
         painter.fillRect(16, 16, 16, 32, QColor(208, 32, 208));
         painter.fillRect(32, 16, 16, 32, QColor(32, 208, 32));
+        const int stride = width() < 640 ? 8 : 17;
         for (int bit = 0; bit < 32; ++bit)
-            painter.fillRect(48 + bit * 17, 16, 17, 32, (id >> bit) & 1 ? Qt::white : QColor(32,40,48));
-        painter.fillRect(592, 16, 16, 32, QColor(32,64,224));
-        painter.fillRect(608, 16, 16, 32, QColor(224,128,32));
+            painter.fillRect(48 + bit * stride, 16, stride, 32, (id >> bit) & 1 ? Qt::white : QColor(32,40,48));
+        painter.fillRect(48 + 32 * stride, 16, 16, 32, QColor(32,64,224));
+        painter.fillRect(64 + 32 * stride, 16, 16, 32, QColor(224,128,32));
         // Keep the system cursor and its shadow away from the encoded bits.
         // Cursor-free requests can still contain a composited software cursor.
         painter.fillRect(0, 64, 640, 64, QColor(44, 58, 68));

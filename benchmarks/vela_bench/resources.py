@@ -163,6 +163,10 @@ def metrics(rows, uid, transport=None):
                     or not process['cgroup'].startswith(f'0::/user.slice/user-{uid}.slice/')
                     or process.get('classification') not in ('session','benchmark-workload')):
                 raise BenchError('Invalid process resource identity')
+            expected = ('benchmark-workload' if any(unit in process['cgroup'] for unit in
+                ('vela-benchmark-measurement.service', 'vela-benchmark-scene.service')) else 'session')
+            if process['classification'] != expected:
+                raise BenchError('Process classification differs from its cgroup')
             if transport and process['pid']==transport['pid']:
                 raise BenchError('Controller transport was counted as a session process')
             key = (process['pid'],process['start_ticks'])

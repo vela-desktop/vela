@@ -55,6 +55,7 @@ def main():
                     stderr=errors,bufsize=0,start_new_session=True)
                 groups[role]=p;return p
             def run(self,command,**options):
+                if '--property=ActiveState' in command:return SimpleNamespace(stdout='inactive\n',returncode=0)
                 if str(layout.probe) in command:
                     at=command.index(str(layout.probe))
                     return subprocess.run([tool('vela-bench-probe'),*command[at+1:]],env=session.client_env,

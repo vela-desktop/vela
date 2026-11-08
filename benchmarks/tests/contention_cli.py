@@ -31,6 +31,8 @@ try:
  assert p.wait(timeout=3)==0
  assert contention.metrics(lines.records,'cpu',[begin,end],os.getuid())['worker_count']==1
  for worker in lines.records[0]['workers']:
+  samples=[r for r in lines.records if r.get('event')=='cpu-load-sample' and r['worker']==worker['worker']]
+  assert samples[-1]['monotonic_ns']>=lines.records[-1]['end_request_monotonic_ns'],'last worker sample predates shutdown'
   assert not Path('/proc',str(worker['pid'])).exists(),'owned CPU worker survived EOF'
 finally:stop_process(p)
 p=start()
