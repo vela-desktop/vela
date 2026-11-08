@@ -577,6 +577,27 @@ evidence; omitting `--fast` would run 18 blocks.
 
 ## P3 native desktop observation
 
+For one command that refreshes the installed launcher, completes any pending
+recovery, then runs every implemented P2/P4 phase and P3, log out and use a local
+TTY:
+
+```sh
+sudo scripts/vela-bench run-all
+```
+
+One START authorizes both campaigns: Vela and Plasma, three complete repetitions,
+30 measurement blocks followed by 18 P3 blocks. Both campaigns retain their own
+reports and immutable evidence. Instruments for both selections are checked
+before measuring. A completed campaign with recovered failed blocks still yields
+to P3; the final command retains a failing exit status. Cancellation, incomplete
+restoration, integrity errors or a changed caller session stop the sequence.
+`run-all --dry-run` previews the schedule from the ordinary desktop. `--fast`
+selects one full repetition (16 blocks), and repeated `--target` options select
+desktops explicitly. `--yes` acknowledges the printed notice for automation.
+This requires the existing owned setup and instruments; measurement never builds
+or updates the target desktops. Each invocation starts fresh campaigns; resume
+their printed IDs individually with the existing `run` or `observe` command.
+
 P3 has its own fixed observation workload, `p3-desktop-observation-v3`, and
 keeps its results separate from P2 client timings. It reuses the same
 supervised campaign, account isolation, calibration, condition verification,

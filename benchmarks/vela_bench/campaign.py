@@ -361,6 +361,62 @@ def inspect_campaign(directory):
     return result
 
 
+def require_selection_instruments(host, layout, setup, current, selection):
+    """Shared non-takeover instrument checks for single and combined campaigns."""
+    if selection["case"] == "observe":
+        scene = layout.helper.parent / "vela-bench-scene"
+        if str(scene) not in setup["files"]:
+            raise BenchError("Desktop observation requires the installed vela-bench-scene instrument before takeover")
+        trusted(scene)
+        help=host.run([str(scene),'--help'],timeout=10).stdout
+        if '--observe' not in help or '--peer' not in help:
+            raise BenchError('Installed scene lacks P3 v2; rebuild instruments and refresh setup')
+        adapter=layout.helper.parent/'vela-bench-desktop'
+        if str(adapter) not in setup['files']:raise BenchError('Desktop observation requires the installed vela-bench-desktop')
+        trusted(adapter)
+        if '--workspace' not in host.run([str(adapter),'--help'],timeout=10).stdout:raise BenchError('Installed adapter lacks P3 workspace support')
+        input_tool=layout.helper.parent/'vela-bench-input'
+        if str(input_tool) not in setup['files']:raise BenchError('Desktop observation requires installed vela-bench-input')
+        trusted(input_tool)
+        if 'P3 v2' not in host.run([str(input_tool),'--help'],timeout=10).stdout:raise BenchError('Installed input helper lacks P3 v2 fixed shortcuts')
+        require_uinput()
+        if 'slow-apps' in selection['execution']['phases']:
+            for name in ('vela-slowgpu','vela-bench-cpuload'):
+                tool=layout.helper.parent/name
+                if str(tool) not in setup['files']:raise BenchError('Observed slow-apps requires installed '+name)
+                trusted(tool)
+            help=host.run([str(layout.helper.parent/'vela-slowgpu'),'--help'],timeout=10).stdout
+            if '--contention' not in help or '--desktop-load' not in help:raise BenchError('Installed GPU helper lacks P3 observed load support')
+    if selection["case"] == "measure" and "scaling" in selection["execution"]["phases"]:
+        pattern = layout.helper.parent / "vela-pattern"
+        if str(pattern) not in setup["files"]:
+            raise BenchError("Scaling requires installed vela-pattern; run setup --tools-dir BUILD/tools")
+        trusted(pattern)
+        from .corpus import describe_inventory
+        current['corpus_inventory']=describe_inventory(host,layout,setup)
+    if selection['case']=='measure' and 'overhead' in selection['execution']['phases']:
+        if str(layout.probe) not in setup['files']:
+            raise BenchError('Resource animation requires installed vela-bench-probe before takeover')
+        trusted(layout.probe)
+        for name in ('vela-pattern','vela-bench-input'):
+            path=layout.helper.parent/name
+            if str(path) not in setup['files']:
+                raise BenchError(f'Resource interactions require installed {name} before takeover; run setup --tools-dir BUILD/tools')
+            trusted(path)
+        require_uinput()
+    if selection["case"] == "measure" and "slow-apps" in selection["execution"]["phases"]:
+        producer = layout.helper.parent / "vela-slowgpu"
+        if str(producer) not in setup["files"]:
+            raise BenchError("Selected slow-apps phase requires the installed vela-slowgpu instrument before takeover")
+        trusted(producer)
+        cpu=layout.helper.parent/'vela-bench-cpuload'
+        if str(cpu) not in setup['files']:
+            raise BenchError('Slow-apps requires the installed vela-bench-cpuload; build and refresh setup --tools-dir BUILD/tools')
+        trusted(cpu)
+        if '--contention' not in host.run([str(producer),'--help'],timeout=10).stdout:
+            raise BenchError('Installed GPU producer lacks the fixed contention workload; rebuild and refresh setup')
+
+
 def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=False, fast=False, seed=0,
             phases=None, exercise=False, layout=Layout()):
     from .pilot import begin, resolve_targets, tty_preconditions
@@ -380,58 +436,7 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
         current = context(host, layout, selected)
         selection = execution_selection(current, selected, case=case, fast=fast, seed=seed, phases=phases, exercise=exercise)
         selection['failure_policy'] = 'continue-after-verified-restoration-v1'
-        if selection["case"] == "observe":
-            scene = layout.helper.parent / "vela-bench-scene"
-            if str(scene) not in setup["files"]:
-                raise BenchError("Desktop observation requires the installed vela-bench-scene instrument before takeover")
-            trusted(scene)
-            help=host.run([str(scene),'--help'],timeout=10).stdout
-            if '--observe' not in help or '--peer' not in help:
-                raise BenchError('Installed scene lacks P3 v2; rebuild instruments and refresh setup')
-            adapter=layout.helper.parent/'vela-bench-desktop'
-            if str(adapter) not in setup['files']:raise BenchError('Desktop observation requires the installed vela-bench-desktop')
-            trusted(adapter)
-            if '--workspace' not in host.run([str(adapter),'--help'],timeout=10).stdout:raise BenchError('Installed adapter lacks P3 workspace support')
-            input_tool=layout.helper.parent/'vela-bench-input'
-            if str(input_tool) not in setup['files']:raise BenchError('Desktop observation requires installed vela-bench-input')
-            trusted(input_tool)
-            if 'P3 v2' not in host.run([str(input_tool),'--help'],timeout=10).stdout:raise BenchError('Installed input helper lacks P3 v2 fixed shortcuts')
-            require_uinput()
-            if 'slow-apps' in selection['execution']['phases']:
-                for name in ('vela-slowgpu','vela-bench-cpuload'):
-                    tool=layout.helper.parent/name
-                    if str(tool) not in setup['files']:raise BenchError('Observed slow-apps requires installed '+name)
-                    trusted(tool)
-                help=host.run([str(layout.helper.parent/'vela-slowgpu'),'--help'],timeout=10).stdout
-                if '--contention' not in help or '--desktop-load' not in help:raise BenchError('Installed GPU helper lacks P3 observed load support')
-        if selection["case"] == "measure" and "scaling" in selection["execution"]["phases"]:
-            pattern = layout.helper.parent / "vela-pattern"
-            if str(pattern) not in setup["files"]:
-                raise BenchError("Scaling requires installed vela-pattern; run setup --tools-dir BUILD/tools")
-            trusted(pattern)
-            from .corpus import describe_inventory
-            current['corpus_inventory']=describe_inventory(host,layout,setup)
-        if selection['case']=='measure' and 'overhead' in selection['execution']['phases']:
-            if str(layout.probe) not in setup['files']:
-                raise BenchError('Resource animation requires installed vela-bench-probe before takeover')
-            trusted(layout.probe)
-            for name in ('vela-pattern','vela-bench-input'):
-                path=layout.helper.parent/name
-                if str(path) not in setup['files']:
-                    raise BenchError(f'Resource interactions require installed {name} before takeover; run setup --tools-dir BUILD/tools')
-                trusted(path)
-            require_uinput()
-        if selection["case"] == "measure" and "slow-apps" in selection["execution"]["phases"]:
-            producer = layout.helper.parent / "vela-slowgpu"
-            if str(producer) not in setup["files"]:
-                raise BenchError("Selected slow-apps phase requires the installed vela-slowgpu instrument before takeover")
-            trusted(producer)
-            cpu=layout.helper.parent/'vela-bench-cpuload'
-            if str(cpu) not in setup['files']:
-                raise BenchError('Slow-apps requires the installed vela-bench-cpuload; build and refresh setup --tools-dir BUILD/tools')
-            trusted(cpu)
-            if '--contention' not in host.run([str(producer),'--help'],timeout=10).stdout:
-                raise BenchError('Installed GPU producer lacks the fixed contention workload; rebuild and refresh setup')
+        require_selection_instruments(host, layout, setup, current, selection)
         if resume:
             directory = root / identity(resume)
             previous = inspect_campaign(directory)

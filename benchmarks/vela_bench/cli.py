@@ -10,14 +10,14 @@ import sys
 import tomllib
 
 from . import BenchError, VERSION
-from .archive import create_check_archive, decode_json, inspect_archive
+from .archive import create_check_archive, decode_json, inspect_archive, read_json
 from .diagnostics import export_report
-from .campaign import blocks_for, export_campaign, read_export, render_export
+from .campaign import blocks_for, export_campaign, identity, read_export, render_export
 from .discovery import discover
-from .model import load_campaign, make_plan, PHASES, TARGETS
+from .model import load_campaign, make_plan, MEASUREMENTS, PHASES, TARGETS
 from .report import compare_archives, render_report
-from .host import Host, Layout, SAFE_ENV, install, personal_homes, require_current_launcher, require_root, setup_preview, trusted, uninstall, update_launcher
-from .pilot import preview
+from .host import Host, Layout, SAFE_ENV, install, load_setup, personal_homes, require_current_launcher, require_root, setup_preview, trusted, uninstall, update_launcher
+from .pilot import preview, tty_preconditions
 
 
 def parser():
@@ -58,6 +58,14 @@ def parser():
     observe.add_argument("--yes", action="store_true")
     observe.add_argument("--seed", type=int, default=0)
     observe.add_argument("--output", type=Path, default=Path("benchmark-results"))
+    complete = commands.add_parser('run-all', help='Refresh/recover, then run P2/P4 and P3 with one START confirmation')
+    complete.add_argument('--target', action='append', choices=('vela', 'plasma'))
+    complete.add_argument('--fast', action='store_true', help='One repetition; default is three complete repetitions')
+    complete.add_argument('--dry-run', action='store_true', help='Preview both campaigns without changing the host')
+    complete.add_argument('--yes', action='store_true')
+    complete.add_argument('--seed', type=int, default=0)
+    complete.add_argument('--output', type=Path, default=Path('benchmark-results'))
+    complete.set_defaults(resume=None)
     campaign_report = commands.add_parser("campaign-report", help="Export the latest qualification/calibration campaign")
     campaign_report.add_argument("--output", type=Path, default=Path("benchmark-results"))
     commands.add_parser("recover", help="Retry restoration of a stopped P0 pilot (root)")
@@ -143,9 +151,10 @@ def export_latest_campaign(helper, output, *, as_json=False):
                           'result': data['stage'], 'selection_complete': data['selection_complete']}))
     else:
         print(f"Report: {directory / 'report.html'}")
+    return data
 
 
-def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exercise=False):
+def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exercise=False, with_result=False):
     require_root()
     helper = Layout().helper
     trusted(helper)
@@ -168,14 +177,111 @@ def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exerci
     # The installed parser revalidates fixed selections; no shell or agent RPC.
     as_json = getattr(args, 'json', False)
     status = subprocess.call(command, env=SAFE_ENV, stdout=sys.stderr if as_json else None)  # NOSONAR S8705: explicit local administrator invocation.
+    result = None
     if status in (0, 1):
-        export_latest_campaign(helper, args.output, as_json=as_json)
-    return status
+        result = export_latest_campaign(helper, args.output, as_json=as_json)
+    return (status, result) if with_result else status
+
+
+def run_all(args):
+    current = discover()
+    targets = args.target or ['vela', 'plasma']
+    config = load_campaign()
+    config['seed'] = args.seed
+    measured = make_plan(config, current, targets=targets, fast=args.fast)
+    from .campaign import execution_selection, context, require_selection_instruments
+    observed = execution_selection(current, targets, case='observe', fast=args.fast,
+                                   seed=args.seed, phases=None, exercise=False)['execution']
+    preview_data = {'command': 'run-all', 'mode': measured['mode'], 'targets': targets,
+        'repetitions': measured['repetitions'], 'preparation': ['update-launcher', 'recover'],
+        'measure': {'phases': measured['phases'], 'blocks': len(measured['blocks'])},
+        'observe': {'phases': observed['phases'], 'blocks': len(observed['blocks'])},
+        'total_blocks': len(measured['blocks']) + len(observed['blocks']),
+        'estimate_seconds': {key: measured['estimate'][key + '_seconds'] + observed['estimate'][key + '_seconds']
+                             for key in ('minimum', 'maximum')}, 'confirmation': 'one START for both campaigns'}
+    if args.dry_run:
+        print(json.dumps(preview_data, indent=2))
+        return 0
+    require_root()
+    host = Host()
+    origin = tty_preconditions(host)
+    print(f"Complete run: {preview_data['total_blocks']} blocks; {measured['repetitions']} repetitions per desktop.", flush=True)
+    estimate = preview_data['estimate_seconds']
+    print(f"Provisional duration: {estimate['minimum'] / 60:.1f}–{estimate['maximum'] / 60:.1f} minutes.", flush=True)
+    print('After START: refresh the installed launcher, finish pending recovery, then run P2/P4 and P3.', flush=True)
+    print('The display manager may stop. Fresh isolated sessions change and restore display, brightness and power conditions.', flush=True)
+    print('Physical keyboard/mouse input is blocked; cursors are transparent. Ctrl+Alt+Esc cancels the remaining sequence.', flush=True)
+    if not args.yes:
+        try:
+            authorized = input('Type START to run both campaigns: ') == 'START'
+        except EOFError:
+            authorized = False
+        if not authorized:
+            raise BenchError('Complete run not authorized')
+    update_launcher(host)
+    helper = Layout().helper
+    trusted(helper)
+    require_current_launcher()
+    layout = Layout()
+    if (layout.base / 'active.json').exists():
+        status = subprocess.call(['/usr/bin/python3', '-I', str(helper), 'recover'], env=SAFE_ENV)
+        if status:
+            return status
+    # Recovery can return to the previous pilot's VT. Re-activate only the
+    # caller's already verified local VT before the ordinary live preflight.
+    if host.run(['fgconsole']).stdout.strip() != str(origin['origin_vt']):
+        host.run(['chvt', str(origin['origin_vt'])], timeout=5)
+    setup = load_setup(host, layout)
+    inventory = context(host, layout, targets)
+    for case, phases in (('calibrate', list(MEASUREMENTS)), ('observe', observed['phases'])):
+        selection = execution_selection(inventory, targets, case=case, fast=args.fast,
+                                        seed=args.seed, phases=phases, exercise=False)
+        require_selection_instruments(host, layout, setup, inventory, selection)
+    child_options = dict(vars(args), yes=True)
+    child = argparse.Namespace(**child_options)
+    failed = False
+    for label, case, phases in (('P2/P4', 'calibrate', list(MEASUREMENTS)),
+                                 ('P3', 'observe', observed['phases'])):
+        active = tty_preconditions(host)
+        if any(active[key] != origin[key] for key in ('origin_vt', 'origin_session')):
+            raise BenchError('Complete run requires the same active local TTY session')
+        previous_id = None
+        pointer = layout.base / 'campaign-active.json'
+        if pointer.exists():
+            trusted(pointer)
+            previous = read_json(pointer)
+            if not isinstance(previous, dict):
+                raise BenchError('Invalid previous campaign identity')
+            previous_id = identity(previous.get('run_id'))
+        print('[run-all] ' + label, flush=True)
+        status, result = run_calibration_campaign(child, targets, case, args.seed,
+                                                   phases=phases, with_result=True)
+        if status not in (0, 1):
+            return status
+        # This is the helper's root-evidence result returned in memory by the
+        # exporter, not a reread of the operator-owned exported summary.
+        if (not isinstance(result, dict) or result.get('execution_complete') is not True
+                or result.get('stage') not in ('done', 'completed-with-failures')):
+            print('[run-all] Stopped: campaign interrupted or restoration/integrity not verified.', flush=True)
+            return status or 1
+        plan = result.get('plan')
+        if (identity(result.get('run_id')) == previous_id or not isinstance(plan, dict)
+                or plan.get('case') != ('observe' if case == 'observe' else 'measure')):
+            raise BenchError('Complete run requires evidence from its new campaign')
+        if ((status == 0 and (result['stage'] != 'done' or result.get('selection_complete') is not True))
+                or (status == 1 and result['stage'] != 'completed-with-failures')):
+            raise BenchError('Complete run campaign status differs from verified evidence')
+        failed |= status != 0
+        del result
+    print('[run-all] Both campaigns finished' + (' with failed blocks.' if failed else ' successfully.'), flush=True)
+    return int(failed)
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
+        if args.command == 'run-all':
+            return run_all(args)
         if args.command == "observe":
             current = discover()
             selected = args.target or [name for name in ('vela', 'plasma') if name in current['targets']]
