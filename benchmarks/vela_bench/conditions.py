@@ -427,7 +427,7 @@ def greeter_outputs(host, layout, greeter, *, activate=False):
             return normalized_outputs(raw, "plasma")
         except OutputsUnavailable as exc:
             if time.monotonic() >= deadline:
-                raise BenchError(f"Greeter snapshot on tty{greeter['vt']}: {exc}; output announcement deadline expired") from exc
+                raise OutputsUnavailable(f"Greeter snapshot on tty{greeter['vt']}: {exc}; output announcement deadline expired") from exc
             time.sleep(.2)
 
 
@@ -436,6 +436,8 @@ def snapshot_conditions(host, layout, sessions, *, activate=False):
     outputs = greeter_outputs(host, layout, greeter, activate=activate)
     profile = desired_profile(outputs)
     return {"schema": 1, "source": "declared-wayland-greeter", "outputs": outputs, "profile": profile,
+            "greeter": {"uid": greeter['uid'], "gid": greeter['gid'],
+                        "account": pwd.getpwuid(greeter['uid']).pw_name},
             "output_identities": output_identities(outputs),
             "brightness": brightness_snapshot(host, profile["primary"]), "power_profile": power_snapshot(host),
             "power_sources": power_sources()}
@@ -514,6 +516,13 @@ def restore_conditions(host, layout, snapshot, get_sessions):
         result["components"]["outputs"] = "failed"
         result["errors"].append("Output restoration: " + str(exc))
         result["output_failure_stage"] = output_stage
+        # The active-VT announcement deadline can expire after greeter restart.
+        # A second attempt must still rediscover and validate exact identities
+        # and modes before applying anything. Other query/read-back failures
+        # remain ineligible for a restart.
+        if isinstance(exc, OutputsUnavailable) and output_stage == 'greeter-query':
+            result['output_restart_eligible'] = True
+            result['output_restart_reason'] = 'output-announcement-deadline'
         if isinstance(exc, HostOperationError):
             result["output_failed_operation"] = exc.operation
             try:

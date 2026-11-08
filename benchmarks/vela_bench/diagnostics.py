@@ -142,8 +142,18 @@ def stop_instrument(host, record, layout, operation):
         raise BenchError("Unknown fixed instrument unit")
     unit = 'vela-benchmark-' + operation + '.service'
     prefix = user_prefix(record, layout) + ['/usr/bin/systemctl', '--user']
-    host.run(prefix + ['stop', unit], timeout=8)
+    stopped = host.run(prefix + ['stop', unit], check=False, timeout=8)
     active = host.run(prefix + ['show', unit, '--property=ActiveState', '--value'], timeout=5)
+    if stopped.returncode:
+        # --collect removes successfully exited transient units before cleanup.
+        # A missing unit is stopped, but require both native read-backs; other
+        # stop errors must not become silent success.
+        loaded = host.run(prefix + ['show', unit, '--property=LoadState', '--value'], timeout=5)
+        if (stopped.returncode != 5 or active.stdout.strip() != 'inactive'
+                or loaded.stdout.strip() != 'not-found'):
+            from .host import HostOperationError
+            raise HostOperationError(prefix + ['stop', unit], stopped.returncode,
+                                     stopped.stdout, stopped.stderr)
     if active.stdout.strip() not in ('inactive', 'failed'):
         raise BenchError('Instrument still active after stop: ' + unit)
 
@@ -203,7 +213,7 @@ def pilot_results(directory, state):
     logs = {name: read_json(directory / name) for name in
             ("vela-session-log.json", "vela-session-exit.json", "plasma-session-exit.json",
              "vela-session-stop.json", "plasma-session-stop.json", "display-manager-recovery.json",
-             "conditions-recovery.json") if (directory / name).exists()}
+             "conditions-recovery.json", "greeter-user-release.json") if (directory / name).exists()}
     for target in order:
         path = directory / f"{target}-launch.stderr"
         if path.exists():

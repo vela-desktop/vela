@@ -800,6 +800,42 @@ def display_manager_start_condition(host, unit, path):
     raise BenchError('Display-manager start-inhibition condition was not loaded')
 
 
+def stop_greeter_manager(host, directory, state, layout):
+    """Release the snapshotted greeter UID, whose services outlive its DM cgroup."""
+    identity = state.get('conditions_snapshot', {}).get('greeter')
+    if identity is None:
+        return  # Historical snapshots and uncontrolled lifecycle diagnostics.
+    if (not isinstance(identity, dict) or identity.get('account') not in ('plasmalogin', 'sddm')
+            or type(identity.get('uid')) is not int or identity['uid'] <= 0
+            or type(identity.get('gid')) is not int or identity['gid'] < 0):
+        raise BenchError('Invalid snapshotted greeter account')
+    try:
+        named = pwd.getpwnam(identity['account'])
+        numbered = pwd.getpwuid(identity['uid'])
+    except KeyError as exc:
+        raise BenchError('Snapshotted greeter account disappeared') from exc
+    expected = (identity['account'], identity['uid'], identity['gid'])
+    if any((user.pw_name, user.pw_uid, user.pw_gid) != expected for user in (named, numbered)):
+        raise BenchError('Snapshotted greeter account identity changed')
+    sessions_ = logind_sessions(host)
+    require_no_graphical_sessions(sessions_, after_authorization=True)
+    if any(row.get('User') == str(identity['uid']) and row.get('Class') != 'greeter' for row in sessions_):
+        raise BenchError('Snapshotted greeter UID has a non-greeter session')
+    active = host.run(['systemctl', 'show', 'display-manager.service', '--property=ActiveState', '--value']).stdout.strip()
+    if active not in ('inactive', 'failed'):
+        raise BenchError('Greeter user-manager release requires a stopped display manager')
+    evidence = dict(identity, status='stopping')
+    update(directory, state, state['stage'], greeter_user_release=evidence)
+    atomic_json(directory / 'greeter-user-release.json', evidence)
+    uid = identity['uid']
+    host.run(['systemctl', 'stop', f'user@{uid}.service', f'user-runtime-dir@{uid}.service'], timeout=45)
+    if host.pids(uid) or layout.path(f'run/user/{uid}').exists():
+        raise BenchError('Greeter UID still has processes or runtime state after stop')
+    evidence['status'] = 'released'
+    update(directory, state, state['stage'])
+    atomic_json(directory / 'greeter-user-release.json', evidence)
+
+
 def quiesce_display_manager(host, directory, state, layout):
     """Freeze authentication before the final session check and DM teardown.
 
@@ -858,6 +894,7 @@ def quiesce_display_manager(host, directory, state, layout):
     host.run(['systemctl', 'stop', 'display-manager.service'], timeout=45)
     if host.run(['systemctl', 'show', unit, '--property=ActiveState', '--value']).stdout.strip() not in ('inactive','failed'):
         raise BenchError('Quiesced display manager did not stop')
+    stop_greeter_manager(host, directory, state, layout)
     # Mask only after the service is stopped; reloading a frozen unit is the
     # plasmalogin.service failure that originally aborted the campaign.
     guard['mask_requested'] = True
@@ -950,8 +987,9 @@ def restore_hardware_conditions(host, layout, directory, state, record):
     """Restore the exact snapshot; restart a rejecting greeter at most once.
 
     A successful systemd start does not imply a working DRM greeter. For
-    example, amdgpu can reject KWin's chosen RA24 framebuffer format. Only
-    a native SetConfig failure permits this recovery, never another mode,
+    example, amdgpu can reject KWin's chosen RA24 framebuffer format. A native
+    SetConfig failure or exhausted output-announcement deadline permits this
+    recovery, never another mode,
     backend, benchmark environment or an occupied personal desktop.
     """
     first = restore_conditions(host, layout, state["conditions_snapshot"], lambda: logind_sessions(host))
@@ -979,6 +1017,7 @@ def restore_hardware_conditions(host, layout, directory, state, record):
         evidence["greeter_restart"] = True
         atomic_json(path, evidence)
         host.run(["systemctl", "stop", "display-manager.service"], timeout=45)
+        stop_greeter_manager(host, directory, state, layout)
         require_no_graphical_sessions(logind_sessions(host), after_authorization=True)
         restore_display_manager(host, directory, state)
         # Resolve the new greeter's credentials/socket and all physical modes
@@ -1073,6 +1112,12 @@ def recover(host, layout=Layout()):
         except (BenchError, OSError) as exc:
             errors.append(str(exc))
         if state.get("restore_required"):
+            if state.get('greeter_user_release', {}).get('status') == 'stopping':
+                try:
+                    stop_greeter_manager(host, directory, state, layout)
+                except (BenchError, OSError) as exc:
+                    errors.append(str(exc))
+                    stopped = False
             try:
                 release_display_manager_quiescence(host, directory, state, layout)
             except (BenchError, OSError) as exc:

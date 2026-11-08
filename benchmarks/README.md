@@ -482,7 +482,8 @@ updates change fingerprints and require a new campaign.
 If a previous run reports `restoration: failed`, update the installed launcher
 and tools, then run `sudo scripts/vela-bench recover` from the TTY before starting
 a new campaign. Do not start a personal desktop during recovery. A native
-KScreen configuration rejection can trigger one recorded greeter restart;
+KScreen configuration rejection or an exhausted active-VT output-announcement
+deadline can trigger one recorded greeter restart;
 the original monitor identities, modes, layout, brightness and power profile
 must still pass verification. Both attempts and full bounded operation errors
 are exported in `conditions-recovery.json`. This is a recovery measure, not a
@@ -1083,7 +1084,56 @@ from bounded run IDs, VT numbers and dwell times are bounded, and corpus images
 use reconstructed filenames with symlinks refused. CPU regressions exercise
 those boundaries without accounts, host services, devices or TTY takeover.
 
-The coordinator tests use temporary directories and mocked host inventory:
+### Autonomous development checks
+
+Run development checks directly from the ordinary desktop, unprivileged:
+
+```sh
+scripts/vela-bench-selftest --build build-native-displays
+scripts/vela-bench-selftest --build build-native-displays --suite full
+scripts/vela-bench-selftest --case controls-vela
+```
+
+The default `quick` selection builds the native instruments, runs CPU tests,
+then exercises actual systemd transient completion/cleanup, authentication
+quiescence and interrupted recovery using unique disposable user services.
+It also verifies that a greeter service outside the display-manager cgroup is
+released before a fresh desktop starts. It runs both fixed presentation probes and all three input/capture controls
+on private Vela and KWin, followed by P3 motion on both. P0 and P3 use the
+production controllers, native capture workers and real user-manager services;
+their unit-stop and state replies are not simulated. Input uses explicit
+virtual-protocol fixtures. Unit environments are set per service; the operator's
+manager environment and personal display/session are untouched.
+
+`full` adds the complete P2 slow-apps controller, the other two P3 phases on
+both desktops, P4 toolkit/corpus checks and native window-resource interactions.
+Older P2/P4 resource-accounting and some service transports remain fixture
+boundaries. The first quick pass before the incremental-build step took about
+110 seconds on the development machine. Timings are development turnaround,
+not benchmark results. `--suite systemd` runs CPU and actual user-manager
+regressions without a build or GPU. `--list` previews the selected cases;
+repeat `--case NAME` to rerun only affected cases. Native cases retain the
+incremental-build step. Full-only cases require `--suite full`.
+
+Each run creates a new `benchmark-results/selftest-*` directory with a
+checkpointed `summary.json`, per-case logs, available original captures and
+source/binary hashes. Independent cases continue after failures. A failure,
+timeout, source change during the run or capability skip makes the final result unsuccessful; no absent
+dependency silently counts as a pass. Deadlines terminate the owned process
+groups and private instrument slices. No setup refresh, root password or TTY
+switch is required. KWin, a running user manager, a configured native build
+and its normal development dependencies must be available for `quick`/`full`.
+The `Benchmark lifecycle` CI workflow independently repeats the real systemd
+instrument and quiescence regressions on an ephemeral Ubuntu runner.
+
+These checks do not qualify physical evdev grabs/uinput, PAM/logind UID
+isolation, DRM/VT switching, monitor/brightness/power restoration or comparative
+performance. Current physical-candidate acceptance still requires the TTY
+runner. Run `quick` before requesting another physical acceptance run; use
+`full` after changing a workload controller. Evidence from this development
+workflow is never accepted as a successful physical campaign block.
+
+The individual coordinator tests use temporary directories and mocked host inventory:
 
 ```sh
 PYTHONPATH=benchmarks python3 -m unittest discover -s benchmarks/tests -v

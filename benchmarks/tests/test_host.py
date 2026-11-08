@@ -1083,6 +1083,34 @@ class HostOperations(unittest.TestCase):
         self.recover_without_fixture_io()
         self.assertEqual(read_json(directory / "state.json")["stage"], "failed")
 
+    def test_recovery_completes_pending_greeter_release_before_restarting_manager(self):
+        self.setup_account()
+        directory = self.pilot_state(result='pending')
+        baseline = read_json(directory / 'state.json')
+        for fails in (False, True):
+            with self.subTest(fails=fails):
+                state = dict(baseline)
+                state['greeter_user_release'] = {'status':'stopping'}
+                atomic_json(directory / 'state.json', state)
+                order = []
+                def release(host, folder, current, layout):
+                    order.append('release')
+                    if fails:raise BenchError('Greeter release incomplete')
+                    current['greeter_user_release']['status'] = 'released'
+                def start(*args):
+                    order.append('start')
+                    return restore_display_manager(*args)
+                with patch('vela_bench.pilot.stop_greeter_manager', side_effect=release), \
+                     patch('vela_bench.pilot.restore_display_manager', side_effect=start):
+                    if fails:
+                        with self.assertRaisesRegex(BenchError, 'Greeter release incomplete'):
+                            self.recover_without_fixture_io()
+                    else:
+                        self.recover_without_fixture_io()
+                self.assertEqual(order, ['release'] if fails else ['release','start'])
+                result = read_json(directory / 'state.json')
+                self.assertEqual(result['stage'], 'cleanup-failed' if fails else 'failed')
+
     def test_worker_exit_records_automatic_input_release_without_reopening_hardware(self):
         from vela_bench.input_isolation import POLICY
         self.setup_account()

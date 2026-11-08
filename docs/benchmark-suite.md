@@ -544,16 +544,28 @@ failed restoration is a visible campaign failure, even if samples were
 collected successfully.
 
 A native KScreen SetConfig rejection after monitor identity and physical-mode
-validation permits one supervised restart of the original greeter. This handles
+validation, or a greeter still announcing no outputs after the active-VT
+deadline, permits one supervised restart of the original greeter. This handles
 failures such as KWin choosing an amdgpu-rejected RA24 format without changing
 the measured desktop's default environment. Persist the restart allowance
 before stopping the service, refuse any open graphical user session or live
 benchmark UID, then resolve the new greeter and verify the exact saved layout
-again. Timeouts, missing modes, replaced monitors and read-back mismatches do
+again. Transport timeouts, missing modes, replaced monitors and read-back mismatches do
 not permit this restart. Keep both attempts, bounded operation diagnostics
 and observed/requested output inventories in `conditions-recovery.json`.
 A second rejection remains a restoration failure; do not select another mode
 or promote the block's samples to accepted results.
+
+The snapshot also binds the greeter's dedicated account name, UID and GID.
+After the display manager has stopped, release that greeter's user manager and
+runtime directory as well: Plasma Login launches KWin under `user@UID.service`,
+outside the display-manager cgroup. Require unchanged forward/reverse NSS
+identity, no personal graphical or non-greeter session for that UID, and verify
+no remaining processes/runtime before launching a measured desktop. Journal
+the operation before stopping so recovery can complete an interrupted release.
+The guarded greeter-restart path repeats this release before starting a fresh
+greeter. It never selects an arbitrary personal UID or stops an active user's
+manager. Retain `greeter-user-release.json` alongside other recovery evidence.
 
 ### 5.3 Dedicated account and disposable home
 

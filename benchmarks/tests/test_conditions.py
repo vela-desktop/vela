@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from vela_bench import BenchError
 from vela_bench.conditions import (brightness_snapshot, compare_outputs, desired_profile, display_command,
-                                   greeter_environment, greeter_outputs, normalized_outputs, output_identities, restore_conditions, set_brightness, set_power)
+                                   greeter_environment, greeter_outputs, normalized_outputs, output_identities, restore_conditions, set_brightness, set_power, OutputsUnavailable)
 from vela_bench.host import HostOperationError, Layout
 
 
@@ -329,6 +329,20 @@ class ControlledConditions(unittest.TestCase):
                 self.assertEqual(result["output_failed_operation"]["stderr"], "driver rejected")
                 self.assertEqual(result["outputs_requested"], plasma())
                 self.assertEqual(result["outputs_before"], plasma())
+
+    def test_only_exhausted_output_announcement_permits_query_restart(self):
+        for error, eligible in ((OutputsUnavailable('announcement deadline'), True),
+                                (BenchError('invalid socket or inventory'), False)):
+            with self.subTest(error=error), \
+                    patch('vela_bench.conditions.greeter_environment', return_value={}), \
+                    patch('vela_bench.conditions.greeter_outputs', side_effect=error), \
+                    patch('vela_bench.conditions.set_brightness'), patch('vela_bench.conditions.set_power'):
+                result = restore_conditions(SimpleNamespace(), Layout(),
+                    {'brightness': {'value':25}, 'power_profile':'balanced'}, lambda: [])
+                self.assertEqual(result['status'], 'failed')
+                self.assertEqual(result.get('output_restart_eligible', False), eligible)
+                if eligible:
+                    self.assertEqual(result['output_restart_reason'], 'output-announcement-deadline')
 
     def test_restoration_readback_checks_identity_and_exact_layout_without_a_restart(self):
         from unittest.mock import Mock
