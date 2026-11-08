@@ -212,8 +212,9 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME process-launch-environment COMMAND vela-process-launch-test)
     set_tests_properties(process-launch-environment PROPERTIES TIMEOUT 30)
 
-    # Actual glyph shader coverage. A missing RHI backend is a skip, never a
-    # pass through Qt Quick's software painter. Mesa software OpenGL works too.
+    # Qt Quick glyph shader coverage uses OpenGL RHI (Mesa software under
+    # Xvfb in hosted CI), not the compositor's real Vulkan GPU. Keep this
+    # separate from real-GPU tests; never fall back to the software painter.
     if(Qt6_VERSION VERSION_GREATER_EQUAL 6.6)
         qt_add_executable(vela-text-rendering-test tests/text_rendering.cpp)
         target_compile_definitions(vela-text-rendering-test PRIVATE
@@ -223,7 +224,7 @@ if(VELA_BUILD_TOOLS)
             vela-controls vela-controlsplugin Qt6::GuiPrivate)
         add_test(NAME text-rendering-rhi COMMAND vela-text-rendering-test)
         set_tests_properties(text-rendering-rhi PROPERTIES
-            TIMEOUT 60 SKIP_RETURN_CODE 77 LABELS "gpu;rhi"
+            TIMEOUT 60 SKIP_RETURN_CODE 77 LABELS "rhi"
             ENVIRONMENT "QT_QPA_PLATFORMTHEME=generic")
     else()
         message(STATUS "Qt ${Qt6_VERSION}: RHI glyph test requires Qt >= 6.6")

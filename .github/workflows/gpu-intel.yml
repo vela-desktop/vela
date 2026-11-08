@@ -156,9 +156,9 @@ jobs:
           if (( jobs > 2 )); then jobs=2; fi
           cmake --build "$RUNNER_TEMP/vela-gpu-build" --parallel "$jobs"
 
-      # Even a partial GPU-labelled suite such as text-rendering-rhi may not
-      # start Vela. Always prove that its actual Vulkan renderer opens the
-      # Intel render node before reporting success on any selected test set.
+      # Even a partial suite selecting only sharpness/CPU-fence tests may
+      # not start Vela. Prove its actual Vulkan renderer opens the Intel
+      # render node before reporting success on any selected test set.
       - name: Verify Vela renderer on Intel hardware
         shell: bash
         run: |

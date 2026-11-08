@@ -161,25 +161,38 @@ class Personalization(ShellChoices):
         self.vela.wait_for(lambda s: self.layer(s, "vela-notifications"), timeout=8, what="the popup shown")
         self.vela.wait_for(lambda s: not self.mapped(s, "vela-notifications"), timeout=10, what="the popup gone")
 
-        def center():
-            self.vela.input("key", "super+n")
-            state = self.vela.wait_for(lambda s: self.layer(s, "vela-notification-center"), what="the center open")
-            time.sleep(1.0) # its entrance over
+        # Keep the same center instance open while toggling. Closing and
+        # reopening it between screenshots also reruns the entrance animation
+        # and shadow/blur composition, which makes full-region pixel equality
+        # a false oracle for whether the timestamp returned to 24-hour time.
+        # One persistent keyboard preserves focus throughout the interaction.
+        with self.input_session() as send:
+            send("key", "super+n", "sleep", 900)
+            state = self.vela.wait_for(lambda s: self.layer(s, "vela-notification-center"),
+                                       what="the center open")
             layer = self.layer(state, "vela-notification-center")
-            # Its first notification's row, under the header.
-            shot = self.region(layer["x"], layer["y"], layer["w"], min(layer["h"], 200))
-            self.vela.input("key", "Escape")
-            self.vela.wait_for(lambda s: not self.mapped(s, "vela-notification-center"), timeout=5,
-                               what="the center closed")
-            return shot
+            # Only the first notification's time label, not the header,
+            # translucent shadows or calendar. NotificationCenter.qml places
+            # the panel at (room, room), its 360px-wide first card below the
+            # 50px header and section label, and timeText at its right edge.
+            room = layer["w"] - 372
+            self.assertGreaterEqual(room, 0)
+            box = (layer["x"] + room + 232, layer["y"] + room + 70, 108, 52)
+            hour24 = self.settled_region(box, still=0.5)
 
-        hour24 = center()
-        self.write_shell_conf("[clock]\nhours=12\n")
-        time.sleep(1.0)
-        self.assertTrue(center() != hour24, "the notification's time didn't change")
-        self.write_shell_conf("[clock]\nhours=24\n")
-        time.sleep(1.0)
-        self.assertTrue(center() == hour24, "the notification's time didn't come back")
+            self.write_shell_conf("[clock]\nhours=12\n")
+            self.wait_region(box, lambda shot: shot != hour24,
+                             "notification timestamp changes to 12-hour format")
+            hour12 = self.settled_region(box, still=0.5)
+            self.assertNotEqual(hour12, hour24, "the 12-hour timestamp never settled to a different image")
+            self.write_shell_conf("[clock]\nhours=24\n")
+            self.wait_region(box, lambda shot: shot == hour24,
+                             "notification timestamp returns to 24-hour format")
+            self.assertEqual(self.settled_region(box, still=0.5), hour24,
+                             "the 24-hour timestamp did not remain stable")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-notification-center"),
+                               timeout=5, what="the center closed")
         self.check_desktop()
 
     def taskbar_has(self, test):
