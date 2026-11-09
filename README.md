@@ -22,7 +22,7 @@ is designed around physical pixels rather than treated as an afterthought.
 
 [Screenshots](#screenshots) · [Try Vela](#try-vela) · [Features](#features) ·
 [Install](#install) · [Build](#build-from-source) · [How it works](#how-it-works) ·
-[Docs](#documentation) · [Roadmap](docs/roadmap.md)
+[Docs](#documentation) · [Community](#community) · [Roadmap](docs/roadmap.md)
 
 <br>
 
@@ -492,6 +492,15 @@ see the documentation below.
 | **[Testing](docs/testing.md)** | Unit, functional and sharpness suites; GPU requirements; local and CI coverage. |
 | **[Configuration](docs/configuration.md)** | `vela.conf`, display persistence, runtime overrides and renderer/debug environment variables. |
 | **[Keyboard shortcuts](docs/shortcuts.md)** | Complete normal-session and nested-session shortcut reference. |
+
+## Community
+
+Join the [Vela Desktop community on Matrix](https://matrix.to/#/#vela:velade.org)
+for discussions, support, announcements and development. Open the Space Lobby to
+browse and join the rooms you're interested in.
+
+You can participate with an account from any federated Matrix homeserver; no
+`velade.org` account is required.
 
 ## Contributing
 
