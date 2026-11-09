@@ -102,7 +102,7 @@ shape the design.
 |---|---|---|---|
 | a. Check every step | `_exit(127)` on any `setenv` failure; treat an unreadable marker as present; preallocate `fatal_waiting` for every output when outputs are added; give the fatal path a blackout that does not allocate | No. A crash elsewhere in the compositor during the 2 s blackout window still restarts unlocked, and every future change to these paths must stay allocation-free | Fragile: the invariant depends on code review |
 | b. Restart locked after **every** crash | The restarted compositor locks unless the supervisor positively passes "was unlocked" | Yes, by construction: any failure to communicate means locked | The user re-enters the password after every crash, even when the desktop was unlocked |
-| c. **Lock state in shared memory** | One shared page between supervisor and compositor (details below). The compositor stores "locked" before the lock becomes visible and "unlocked" only after a successful unlock. The marker file stays as a second signal | Yes: a store into an already mapped page cannot fail, and a compositor that cannot map the page while supervised starts locked | One shared page and a startup flag; the supervisor's existing "unsafe" exit-code protocol is kept |
+| c. **Lock state in shared memory** | One shared page between supervisor and compositor (details below). The compositor stores "locked" before the lock becomes visible and "unlocked" only after a successful unlock. The marker file stays as a second signal | Yes: a store into an already mapped page cannot fail, and a compositor that cannot map the page while supervised ends the session (`VELA_EXIT_LOCK_UNSAFE`) | One shared page and a startup flag; the supervisor's existing "unsafe" exit-code protocol is kept |
 
 **Recommendation: c**, plus the allocation-free fatal path from (a) as
 defence in depth: with c, a crash in the blackout window restarts locked
@@ -125,16 +125,37 @@ implementation choices:
   child, as it already does for the runtime-directory descriptor. No
   application may inherit it: a sandboxed application holding a writable
   view of the page could store "unlocked" into it.
+- **Threat model.** "Sandboxed" means confined by namespaces or an LSM
+  (Flatpak, a strictly confined Snap). Such an application has its own PID
+  namespace or policy and cannot reach the compositor's `/proc/<pid>/fd`.
+  An unconfined process of the same user (including a Snap in devmode) can
+  reopen the page through `/proc/<pid>/fd` and store "unlocked", but it can
+  already delete the marker in `$XDG_RUNTIME_DIR` today, so the page opens
+  nothing new; such a process is "same user" (see the audit), not a trust
+  boundary.
 - **Who writes.** Only the compositor writes; the supervisor only reads.
   The value persists across restarts: a restarted compositor reads the
   previous value first, then keeps the page in step with its own lock
   state. Nothing resets the page between restarts.
-- **The decision at startup.** The restarted compositor starts locked if
-  **any** of these holds: the page says "locked"; the marker is present;
-  the marker's presence cannot be determined (an `fstatat` error other than
-  `ENOENT`); the page cannot be mapped while `--lock-state-fd` was passed.
-  Only a page that says "unlocked" **and** a marker that is positively
-  absent start unlocked.
+- **The page cannot be mapped.** When `--lock-state-fd` was passed but the
+  page cannot be mapped (or the descriptor is not a sealed one-page
+  `memfd`), the compositor exits with `VELA_EXIT_LOCK_UNSAFE` before it
+  shows anything, and the supervisor ends the session without restarting,
+  as it already does for that status. Starting locked instead would not be
+  enough: that instance could not record its lock state, so if the user
+  later locked and the marker could not be created, a crash during the
+  blackout window would again find a page saying "unlocked" and no marker,
+  and restart unlocked. Ending the session costs little in practice: a
+  one-page `mmap` fails only when the whole system is out of memory or
+  under a very low `RLIMIT_AS`, and the rest of startup (Vulkan, wlroots)
+  would almost certainly fail too. Without `--lock-state-fd` (an older
+  supervisor), the compositor keeps today's marker-only behaviour.
+- **The decision at startup.** With the page mapped, the restarted
+  compositor starts locked if **any** of these holds: the page says
+  "locked"; the marker is present; the marker's presence cannot be
+  determined (an `fstatat` error other than `ENOENT`). Only a page that
+  says "unlocked" **and** a marker that is positively absent start
+  unlocked.
 - **The fatal path.** Because "locked" is stored before the marker is
   created, a marker that cannot be created no longer matters for a restart;
   the fatal path still ends the session as today.
@@ -152,6 +173,25 @@ path allocates nothing. Aborting would restart the session for a few bytes,
 and ignoring the failure fails open; a full redraw is correct and cheap.
 Every damage helper (`union_box` and the other region operations in
 `scene/frame.c`) checks the `pixman_bool_t` result.
+
+A flag alone is not enough, because the frame that hit the failure may
+already be committed with stale content, and the lock trusts rendered
+frames today: `vela_server_output_rendered` → `vela_lock_output_rendered`
+(`lock.c`) counts an output as black, and once every output is counted the
+locker receives `locked` (`wlr_session_lock_v1_send_locked`). The fatal
+path counts `fatal_waiting` the same way. Therefore:
+
+- **The flag schedules the recovery.** Setting it also schedules a frame on
+  that output (`vela_output_schedule_frame`), so the full redraw happens
+  even if nothing else changes.
+- **A flagged frame is not a safe frame.** A frame rendered while its
+  output's flag was set, or whose own damage computation failed, is not
+  reported to `vela_lock_output_rendered`. Only the full redraw that clears
+  the flag is.
+- **`locked` follows a safe frame.** The locker is told `locked`, and the
+  fatal path starts its scanout grace period, only once every output has
+  reported a frame that was rendered whole or with valid damage after the
+  lock engaged.
 
 ## Existing defects recorded during the audit
 
@@ -223,7 +263,7 @@ phase.
    including those in flight, with eviction of completed chunks
    (`make_readback_room`).
 
-4. **OOM-only library results are mostly unchecked.**
+4. **Library results are mostly unchecked.**
    - `wl_event_loop_add_fd`/`_timer` are called 22 times; most results are
      not checked. For example, `command.c` `handle_connection` stores a
      `NULL` source and then inserts the client, which then never receives
@@ -355,7 +395,7 @@ see that. Every long-lived pool was checked:
 | Icon cache (`icons.c`) | Every distinct `(app_id, size)`, including misses | None, never evicted | Fixed entry budget with LRU eviction, and a hash or direct lookup instead of a list |
 | Upload staging (`render/renderer.c`) | Size and number of shm uploads in one frame | Two idle chunks per kind, of any size; nothing bounds a frame's peak | Byte budget over every upload chunk, in flight included, like readback; uploads copied in fixed-size pieces (point 6) |
 | Readback staging | Screen capture requests | 128 MiB including chunks in flight, with eviction (`make_readback_room`) | Already compliant: this is the model |
-| Per-client protocol objects | Client requests | Freed when the client disconnects | Per-client quotas: shared with every wlroots compositor, out of scope here |
+| Per-client protocol objects | Client requests | Freed when the client disconnects | **Known risk, out of scope here.** A sandboxed client can keep creating objects while connected, and libwayland has no per-client limit; the problem is shared with every wlroots compositor. This policy does not make it worse: under overcommit, exhaustion ends in the OOM killer rather than in a failed `malloc`, and today only three sites answer a failure with `wl_client_post_no_memory` while the rest already crash on `NULL`. Per-client quotas, with their tests, are separate work |
 | IPC connections and queued topics (`command.c`) | Same-user processes | One queued line per topic per connection | Same user: not a trust boundary |
 | Bluetooth model (`bluetooth/model.c`) | BlueZ objects, including nearby devices | BlueZ's own expiry of temporary devices | Nearby devices are other parties: *to verify* under a spoofed-device flood, and given an entry budget if BlueZ's expiry does not bound it |
 
@@ -375,7 +415,10 @@ functions. Only the `_at` functions are real symbols.
 void *vela_alloc_at(size_t count, size_t size, const char *file, int line);
 void *vela_grow_size_at(void *items, size_t *capacity, size_t needed, size_t size,
     const char *file, int line);
-void *vela_grow_int_at(void *items, int *capacity, int needed, size_t size,
+// `needed` is wider than the int capacity on purpose: a caller's size_t or
+// int64_t count arrives intact and is range-checked here, not truncated by an
+// implicit conversion at the call.
+void *vela_grow_int_at(void *items, int *capacity, long long needed, size_t size,
     const char *file, int line);
 char *vela_strdup_at(const char *s, const char *file, int line);
 char *vela_strndup_at(const char *s, size_t n, const char *file, int line);
@@ -415,9 +458,12 @@ The contract, and every item in it is tested:
   zeroing changes no behaviour. Zeroing large blocks is
   cheap, because `calloc` gets them from `mmap` already zeroed.
 - **Overflow is failure.** `count * size`, capacity doubling, and the
-  `size_t` → `int` conversion in `vela_grow_int_at` are all checked with
-  `__builtin_*_overflow`. A negative `needed` in the `int` form is a
-  programming error and aborts with a distinct message. Callers that compute
+  narrowing of `needed` to `int` in `vela_grow_int_at` are all checked with
+  `__builtin_*_overflow`. Because `needed` is `long long` there, the check
+  sees the caller's real value: a count of 2³² is rejected instead of
+  arriving as 0. A negative `needed` in the `int` form is a programming
+  error and aborts with a distinct message; a `size_t` above `LLONG_MAX`
+  arrives negative and takes the same path. Callers that compute
   a `needed` value (`length + more + 1` in `vela_buffer`) use
   `vela_size_add`/`vela_size_mul`, so the overflow is caught before the
   call.
@@ -443,6 +489,7 @@ application can trigger at will ends the user's session.
 ```c
 noreturn void vela_oom(size_t count, size_t size, const char *file, int line);
 noreturn void vela_alloc_misuse(const char *what, const char *file, int line);
+noreturn void vela_must_failed(const char *expression, const char *file, int line);
 ```
 
 - `vela_oom` writes one line to stderr with `write(2)`, for example
@@ -455,6 +502,10 @@ noreturn void vela_alloc_misuse(const char *what, const char *file, int line);
   omitted.
 - `vela_alloc_misuse` handles a negative `needed` and similar programming
   errors, with its own message.
+- `vela_must_failed` serves `VELA_MUST` (point 2b). It writes the same line
+  with the expression text in place of the sizes, for example
+  `vela: out of memory (wl_event_loop_add_idle(loop, f, d)) at <file>:<line>; rss 412 MiB; available 37 MiB`,
+  and then aborts. The three functions share the allocation-free writer.
 - The session redirects stderr to `vela.log` (`session/vela-session.in`).
   `vela-report` already collects `vela.log` and crash metadata (signal and
   executable, through `coredumpctl`), so an allocation abort reaches a bug
@@ -464,18 +515,27 @@ noreturn void vela_alloc_misuse(const char *what, const char *file, int line);
 ### 2b. OOM-only library results
 
 Some library calls can fail only for lack of memory. For example:
-- `wl_event_loop_add_fd`, `_timer`, `_signal` and `_idle`;
+- `wl_event_loop_add_idle`, which only allocates;
 - `wl_resource_create`, which runs after libwayland has already validated
   the new id.
 
-These take the same path as the helpers:
+`wl_event_loop_add_fd`, `_timer` and `_signal` are **not** in this group.
+They also duplicate a descriptor or create one (`timerfd_create`,
+`signalfd`) and register it with `epoll_ctl`, so they can fail with
+`EMFILE`, `ENFILE` or `ENOSPC`. Descriptor exhaustion is a realistic
+failure here (the supervisor already samples the compositor's descriptor
+count), so each call site handles their failure locally: for example, a new
+IPC connection is closed and dropped, and a timer that cannot be created
+takes the same path as one that cannot be armed.
+
+OOM-only calls take the same path as the helpers:
 
 ```c
 #define VELA_MUST(expr) vela_must_at((expr), #expr, __FILE__, __LINE__)
 ```
 
 `vela_must_at` returns the pointer if it is non-`NULL`; otherwise it calls
-`vela_oom` with the expression text. Each library call is classified once,
+`vela_must_failed` with the expression text (point 2). Each library call is classified once,
 in a table kept next to `common/alloc.h`:
 - **OOM-only:** wrapped in `VELA_MUST`.
 - **Can fail for other reasons:** handled as a real error at the call site.
@@ -571,9 +631,24 @@ memory (see the audit), and both are capped at texture import:
   included, counts against a byte budget. When the budget is reached within
   a frame, the remaining pieces wait for the next frame: the client buffer
   stays locked until its last piece is copied, and its damage stays
-  pending, so nothing is skipped. *To decide in implementation:* whether
-  one surface may use the whole budget, or the budget is shared fairly
-  between surfaces.
+  pending, so nothing is skipped.
+- **Atomic presentation.** An upload that does not complete within one
+  frame never shows half-updated content. Its pieces go into a separate
+  image of the same size, and the surface keeps drawing its previous,
+  complete image until the last piece has been copied; then it switches to
+  the new image in one step, and the old one is retired. The separate image
+  is device memory, sized by the capped extent, and exists only while such
+  an upload is in progress. An upload that fits within the frame's budget
+  is copied in place, as today. Copying into a separate image is the only
+  way that also works when a single damaged rectangle is larger than the
+  whole budget.
+- **Progress.** Pending uploads are served oldest first: each frame
+  continues the upload that has waited longest before starting a newer
+  one, so a surface that commits large buffers every frame cannot starve
+  another one. A surface that commits a new buffer while its previous
+  upload is still pending replaces that upload (the older buffer is
+  released unseen), so a client cannot queue work faster than it is
+  served.
 
 Whenever another external size appears, it is capped where it enters, and
 rejected in that boundary's own terms: a protocol error, a declined command,
@@ -623,9 +698,19 @@ steady state. It is measured, not assumed (see Tests).
 A CI check rejects, in the in-scope C sources, everything except
 `common/alloc.c`:
 - `malloc`, `calloc`, `realloc`, `reallocarray`, `strdup`, `strndup`,
-  `asprintf`, `vasprintf`, `posix_memalign`, `aligned_alloc`;
+  `asprintf`, `vasprintf`, `posix_memalign`, `aligned_alloc`,
+  `open_memstream` and `scandir`;
+- `realpath` whose second argument is `NULL`. A `realpath` with a
+  caller-supplied buffer (`backlight_choice.c`) does not allocate and stays
+  allowed;
 - `getline` and `getdelim` calls that do not follow the point-3 pattern
   (`errno` cleared before the call and checked after the loop).
+
+The check is a script over the preprocessed-free sources, so it can be
+wrong in both directions. It has its own test: a fixture file with one
+call of every rejected form, each of which must be reported, and one with
+the allowed forms (`realpath` with a buffer, the point-3 `getline` loop,
+the names inside comments and strings), none of which may be.
 
 During migration, a baseline in `common/alloc-legacy-sites.txt` (outside
 `docs/`, because CI reads it) lists the remaining legacy sites. Additions
@@ -688,9 +773,12 @@ fail, and the baseline only shrinks, down to empty.
 
   The same test runs through `vela-update-daemon` for `vela.conf`.
 - **Fail-closed recovery, as a matrix:** the compositor is killed with
-  `SIGABRT` (and `SIGSEGV`) in each of these states, and none may ever
-  produce an unlocked compositor or end in desktop pixels on screen:
-  - unlocked;
+  `SIGABRT` (and `SIGSEGV`) in each of these states. A crash while the
+  desktop is unlocked restarts unlocked, as designed: that is the first
+  row. In every other row the result must be a compositor that restarts
+  locked or a session that ends, never an unlocked compositor and never
+  desktop pixels on screen:
+  - unlocked (restarts unlocked);
   - locked;
   - while locking (between the shared-state store and the first lock
     frame);
@@ -700,18 +788,41 @@ fail, and the baseline only shrinks, down to empty.
   - with `setenv` forced to fail in the restart child;
   - with the marker present but `fstatat` on it forced to fail.
 - **Lock-state page:** an application started by the compositor holds no
-  descriptor for the page (checked through `/proc/<pid>/fd`), and a
-  page that cannot be mapped while `--lock-state-fd` was passed starts the
-  compositor locked.
+  descriptor for the page (checked through `/proc/<pid>/fd`). A page that
+  cannot be mapped while `--lock-state-fd` was passed (a descriptor that is
+  not a sealed one-page `memfd`, and `mmap` forced to fail) makes the
+  compositor exit with `VELA_EXIT_LOCK_UNSAFE` before its first frame, and
+  the supervisor ends the session without a restart. Without
+  `--lock-state-fd`, the marker-only behaviour is unchanged.
 - **Damage failure:** a region operation forced to fail (`LD_PRELOAD` shim
-  on pixman) leads to a full redraw on the next frame. This is checked in
-  the lock transition with a screen dump.
+  on pixman) during the lock transition. The test records every frame
+  presented from the forced failure on, not only the next one:
+  - the full redraw is presented without any other scene change;
+  - no presented frame after the lock engaged shows desktop pixels, with
+    the possible exception of the flagged frame itself, which is then not
+    counted;
+  - the locker receives `locked` only after the full redraw has been
+    presented on every output, and the fatal path, with the same failure
+    forced, starts its grace period only after it.
 - **Budgets:** the icon cache stays within its entry budget under a client
   that cycles through distinct `app_id` values. Upload staging stays within
   its byte budget, both after one oversized shm buffer and while several
   surfaces commit large shm buffers in the same frame, and every surface
   still ends up showing its whole buffer.
-- **`VELA_MUST`:** prints the expression and call site.
+- **Deferred uploads:**
+  - every frame presented while an upload spans several frames shows the
+    surface's previous buffer complete, never a mix (checked with a
+    pattern that differs in every row and a screen dump of each frame);
+    the frame after the last piece shows the new buffer complete;
+  - under sustained competing uploads (one client committing a buffer
+    above the budget every frame), a second surface's upload still
+    completes within a bounded number of frames.
+- **`VELA_MUST`:** prints the expression and call site, through
+  `vela_must_failed`.
+- **Event sources:** with a low `RLIMIT_NOFILE`, a new IPC connection and a
+  timer that cannot be created take their local failure paths, and the
+  compositor keeps running.
+- **Enforcement:** the CI check's own fixtures (point 8).
 - **Image extent cap:** a client attaches a shm buffer wider than
   `maxImageDimension2D` (and a dmabuf above the format's `maxExtent`). The
   buffer is rejected before `vkCreateImage`, and Vulkan validation layers
@@ -746,9 +857,11 @@ fail, and the baseline only shrinks, down to empty.
 4. Mechanical conversion of objects and strings, one subsystem per PR
    (render, scene, input/command, config/icons, daemons, update daemon).
 5. The frame path (point 7), measured against the existing benchmarks.
-6. Classification of library results (point 2b) and `VELA_MUST`.
+6. Classification of library results (point 2b) and `VELA_MUST`, with
+   local failure paths for the event sources that create descriptors.
 7. The Vulkan caps and budgets: the image-extent cap, upload staging in
-   pieces under a byte budget, and the icon-cache budget.
+   pieces under a byte budget with atomic presentation and oldest-first
+   progress, and the icon-cache budget.
 8. Removal of the old fallback branches (`wl_client_post_no_memory` in
    `output_preview.c`, the silent returns, the update daemon's dropped
    data), with a review of each for partial state. The baseline reaches
