@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Fedora 44 x86_64 Beta or Experimental package. Build exactly the selected Git commit:
+# Fedora 44/45 x86_64 Beta or Experimental package. Build exactly the selected Git commit:
 #   git archive --format=tar.gz --prefix=vela-0.1.0/ HEAD > SOURCES/vela-0.1.0.tar.gz
 #   rpmbuild -bb packaging/fedora/vela.spec --define "_topdir <rpmbuild-dir>" \
 #     --define "vela_version <CMake project version>" \
@@ -98,8 +98,8 @@ Requires:       hicolor-icon-theme
 # Public, attested binary downloads (curl + cosign) and local RPM build fallback.
 # Keep the build toolchain optional for systems using prebuilt releases.
 # curl and python3 are hard requirements of the Beta updater.
-# Cosign is an optional verification prerequisite; Fedora 44 does not ship it
-# in the default repositories, so document the upstream RPM installation.
+# Cosign is an optional verification prerequisite, separately bootstrapped
+# from the official Sigstore release as documented in installation.md.
 # No GitHub CLI is required by vela-update for public alpha releases.
 Recommends:     rpm-build
 Recommends:     dnf5-plugins
