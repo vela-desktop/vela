@@ -34,14 +34,15 @@ TEST(SupervisorChild, ArgumentsDropSuperviseAndAddTheLockState)
 }
 
 // Runs the child preparation in a forked child, as the supervisor does, and
-// reports what the exec'd compositor would see.
+// reports what the exec'd compositor would see. The child ends with exit(),
+// not _exit(), so that coverage builds record what it ran.
 static int prepare_in_child(int socket_fd, int runtime_fd, int lock_state_fd, bool restarted)
 {
     pid_t pid = fork();
     if (pid == 0) {
         setenv("VELA_START_LOCKED", "1", 1); // stray: must be removed
         if (!vela_supervisor_prepare_child(socket_fd, "wayland-7", runtime_fd, lock_state_fd, restarted)) {
-            _exit(10);
+            exit(10);
         }
         char expected[16];
         snprintf(expected, sizeof(expected), "%d", socket_fd);
@@ -56,7 +57,7 @@ static int prepare_in_child(int socket_fd, int runtime_fd, int lock_state_fd, bo
         for (int fd : { socket_fd, runtime_fd, lock_state_fd }) {
             ok = ok && (fcntl(fd, F_GETFD) & FD_CLOEXEC) == 0; // inherited by exec
         }
-        _exit(ok ? 0 : 11);
+        exit(ok ? 0 : 11);
     }
     int status = 0;
     EXPECT_EQ(waitpid(pid, &status, 0), pid);
