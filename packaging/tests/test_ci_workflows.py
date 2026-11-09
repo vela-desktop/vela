@@ -34,6 +34,20 @@ class CIUpdaterTestOwnership(unittest.TestCase):
         self.assertIn("fedora-package-smoke", build)
         self.assertIn("fedora-tests, fedora-package, fedora-package-smoke", build)
 
+    def test_fedora_beta_tag_pipeline_is_version_independent(self):
+        # 0.1.2 is built from release/0.1 and 0.2.0 from main. Neither
+        # release number should be embedded in the RPM or release asset names.
+        build = (ROOT / ".github/workflows/build.yml").read_text()
+        spec = (ROOT / "packaging/fedora/vela.spec").read_text()
+        self.assertIn("tags: ['v0.*']", build)
+        self.assertIn('version="${GITHUB_REF_NAME#v}"', build)
+        self.assertIn('test "$version" = "${GITHUB_REF_NAME#v}"', build)
+        self.assertIn("fedora44_packages=(vela-[0-9]*.fc44.x86_64.rpm)", build)
+        self.assertIn("fedora45_packages=(vela-[0-9]*.fc45.x86_64.rpm)", build)
+        self.assertIn("Version:        %{vela_version}", spec)
+        self.assertIn("Release:        1%{?dist}", spec)
+        self.assertIn("SHA256SUMS-fedora-45", build)
+
     def test_updater_suite_runs_once_in_shared_packaging_job(self):
         """Keep distro-oriented updater contracts in their single shared packaging job."""
         build = (ROOT / ".github/workflows/build.yml").read_text()
