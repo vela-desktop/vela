@@ -643,6 +643,50 @@ class Supervisor(unittest.TestCase):
             self.assertFalse(vela.state()["locked"])
             self.assertEqual(vela.log_text().count("restarting locked"), 1)
 
+    CRASHES = (signal.SIGSEGV, signal.SIGABRT)  # SIGABRT: what vela_oom will raise
+
+    def _stop_once_logged(self, vela, compositor, text):
+        """Run the compositor in 2 ms slices until `text` is logged, and leave
+        it stopped there (the windows these tests aim at last a frame or more)."""
+        deadline = time.monotonic() + 5 * TIME_SCALE
+        os.kill(compositor, signal.SIGSTOP)
+        while text not in vela.log_text():
+            self.assertLess(time.monotonic(), deadline, f"never logged: {text}")
+            os.kill(compositor, signal.SIGCONT)
+            time.sleep(0.002)
+            os.kill(compositor, signal.SIGSTOP)
+        with open(f"/proc/{compositor}/stat") as stat:
+            self.assertEqual(stat.read().rsplit(")", 1)[1].split()[0], "T", "stopped, not exited")
+
+    def _crash_stopped(self, compositor, signum):
+        os.kill(compositor, signum)
+        os.kill(compositor, signal.SIGCONT)
+
+    def test_crash_during_lock_blackout_restarts_locked(self):
+        # The marker cannot be created, so the lock takes its fatal path: a
+        # blackout, then the end of the session. A crash anywhere during that
+        # window used to restart unlocked (no marker); the shared lock state
+        # now restarts it locked.
+        for signum in self.CRASHES:
+            with self.subTest(signal=signal.Signals(signum).name):
+                with Session(supervise=True, lock_hold_ms=1000) as vela:
+                    marker = self._marker(vela)
+                    compositor = child_compositor(vela.process.pid)
+                    os.mkdir(marker, 0o700)  # renaming a file over it fails
+                    try:
+                        vela.command("lock")
+                        self._stop_once_logged(vela, compositor, "ending session after the black backdrop")
+                    finally:
+                        # Without the directory the restarted compositor can
+                        # create the marker; the page alone keeps it locked.
+                        os.rmdir(marker)
+                    self._crash_stopped(compositor, signum)
+                    vela.wait_for_log("restarting locked")
+                    log = vela.log_text()
+                    self.assertIn("the compositor crashed", log)
+                    self.assertNotIn("secure lock state could not be persisted", log)
+                    vela.wait_for(lambda s: s["locked"], what="restarted locked")
+                    vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
 
     def test_unreadable_lock_marker_restarts_locked(self):
         # A marker whose state cannot be established counts as present, even

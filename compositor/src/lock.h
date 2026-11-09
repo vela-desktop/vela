@@ -61,11 +61,16 @@ struct vela_lock {
     int respawn_count;
     struct vela_lock_retry retry; // registration timeout and bounded retry/cooldown
     bool fatal_exit_pending; // cannot safely continue this session
+    // The fatal path allocates nothing of its own: its timer exists from the
+    // start, and fatal_waiting is reserved for every output while locked.
     struct wl_event_source *fatal_timer;
     struct wl_event_source *pointer_retarget_idle; // after output-layout cursor warps
     struct vela_output **fatal_waiting;
     int fatal_waiting_count;
     int fatal_waiting_capacity;
+    // An active output could not be tracked: wait for the full timeout
+    // instead of ending after the tracked outputs' black frames.
+    bool fatal_waiting_incomplete;
 
     struct wlr_idle_notifier_v1 *idle_notifier;
     struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
