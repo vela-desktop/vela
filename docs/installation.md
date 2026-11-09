@@ -49,6 +49,13 @@ Fedora 44 and 45 (x86_64) have distinct native Beta `vela` and Experimental
 derivatives. The same updater installs Vela and handles subsequent updates
 through DNF.
 
+**Fedora 45 Beta release requirement:** Installing or rolling back to a Beta
+release on Fedora 45 requires that release to publish a Fedora 45 RPM and its
+`SHA256SUMS-fedora-45` manifest. The `v0.1.1` release does not contain these
+assets, so `vela-update` cannot install it or select it for rollback on
+Fedora 45. If no Beta release includes Fedora 45 assets yet, wait for one;
+do not substitute a Fedora 44 RPM.
+
 **Fedora verification prerequisite:** Fedora 44 does not currently ship
 `cosign` in its default repositories. Install the official upstream Cosign RPM
 first; the Beta needs it, and Experimental needs it to use precompiled RPMs:
@@ -91,13 +98,39 @@ disabled during installation, install those optional tools before using their
 respective updater modes. Cosign is installed separately (see above).
 
 Fedora RPMs are built and installation-tested in separate Fedora 44 and 45
-containers before release. Fedora 45 has stricter RPM signature enforcement;
-Vela verifies downloaded packages' Sigstore provenance before passing local RPMs
-to DNF. Actual Wayland logins on physical GPUs still require manual testing. Fedora's immutable/ostree-based variants are not supported by this
-DNF-based installer.
+containers before release. Vela verifies downloaded packages' Sigstore provenance
+before passing local RPMs to DNF; this is not an OpenPGP RPM signature. Vela's
+RPMs do not currently have OpenPGP signatures. DNF disables `localpkg_gpgcheck`
+by default, but enabling it rejects these unsigned Beta RPMs, so that policy
+is not supported for Vela Beta installation or updates. Vela does not bypass
+DNF's signature policy. Actual Wayland logins on physical GPUs still require
+manual testing. Fedora's immutable/ostree-based variants are not supported by
+this DNF-based installer.
 
 Once installed, use **`vela-update`** on either distribution to install
 updates.
+
+### After upgrading Fedora 44 to Fedora 45
+
+An updater installed from an older Fedora 44 RPM may reject Fedora 45 before
+it can download a replacement. Use a **fresh Vela checkout** with Fedora 45
+support to bootstrap the update, explicitly preserving your installed channel:
+
+```sh
+git clone https://github.com/vela-desktop/vela.git vela-fedora-45
+# If `vela` (Beta) is installed, and a Fedora 45 Beta release is available:
+sh vela-fedora-45/packaging/vela-update --channel beta
+# If `vela-git` (Experimental) is installed, run this INSTEAD:
+sh vela-fedora-45/packaging/vela-update --channel experimental
+```
+
+Run **only one** of the two updater commands, matching your installed package.
+The checkout supplies the Fedora 45-capable updater and its Beta helper;
+calling the old installed `/usr/bin/vela-update` will not bootstrap it.
+The Beta command requires a published Fedora 45 RPM and
+`SHA256SUMS-fedora-45` as explained above. If they are not yet available,
+keep the installed Beta and wait rather than switching channels or using a
+Fedora 44 RPM.
 
 ## Ubuntu 26.10
 
