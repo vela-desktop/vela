@@ -39,6 +39,9 @@ def cases(suite, build):
         'vela-pattern', 'vela-slowgpu', 'vela-bench-cpuload', 'vela-bench-corpus'], 600, {}))
     selected += [('controls-' + target, [python, str(TESTS / 'session_integration.py'), target], 150,
                   {'VELA_SELFTEST_EVIDENCE': 'evidence'}) for target in ('vela', 'plasma')]
+    selected.append(('controls-vela-sync-test',
+        [python, str(TESTS / 'session_integration.py'), 'vela', '--vela-sync-test'],
+        150, {'VELA_SELFTEST_EVIDENCE': 'evidence'}))
     selected += [('p3-motion-' + target,
         [python, str(TESTS / 'desktop_integration.py'), *(['--plasma'] if target == 'plasma' else []), 'motion'],
         240, {'VELA_P3_EVIDENCE': 'evidence'}) for target in ('vela', 'plasma')]

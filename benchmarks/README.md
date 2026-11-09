@@ -598,6 +598,28 @@ This requires the existing owned setup and instruments; measurement never builds
 or updates the target desktops. Each invocation starts fresh campaigns; resume
 their printed IDs individually with the existing `run` or `observe` command.
 
+For a separate diagnostic run with both Vela comparison switches enabled:
+
+```sh
+sudo scripts/vela-bench run-all --vela-sync-test
+```
+
+This still refreshes the launcher and runs all 48 normal blocks, including P3,
+with one START. Only Vela receives `VELA_SCANOUT=0 VELA_READY_WAIT=0`; Plasma
+keeps its normal environment. The first switch disables direct scanout for
+eligible fullscreen clients. The second applies commits before their GPU work
+is ready, so the compositor frame can wait for a slow client. This measures the
+effect of those Vela optimizations; it does not reproduce all KWin policies.
+Windowed workloads may not exercise direct scanout at all.
+
+The fixed profile appears in previews, immutable plans, live session receipts
+and HTML exports. A normal campaign cannot satisfy a sync-test request, and
+resume requires the same profile. Keep the two profiles separate when comparing
+results. `run-all` without this option selects normal Vela. Prefixing the
+command with environment variables does not select this mode: the supervised
+launcher deliberately sanitizes its environment. `--vela-sync-test` is also
+available for `session-test`, `qualify`, `plan`, `run` and `observe`.
+
 P3 has its own fixed observation workload, `p3-desktop-observation-v3`, and
 keeps its results separate from P2 client timings. It reuses the same
 supervised campaign, account isolation, calibration, condition verification,
@@ -1141,6 +1163,11 @@ production controllers, native capture workers and real user-manager services;
 their unit-stop and state replies are not simulated. Input uses explicit
 virtual-protocol fixtures. Unit environments are set per service; the operator's
 manager environment and personal display/session are untouched.
+The additional `controls-vela-sync-test` case repeats the five Vela controls
+using the production environment constructor with both fixed switches. It
+checks the actual compositor environment, its native scanout-policy reply and
+the GPU-wait startup log. Run it alone with
+`scripts/vela-bench-selftest --case controls-vela-sync-test`.
 
 `full` adds the complete P2 slow-apps controller, the other two P3 phases on
 both desktops, P4 toolkit/corpus checks and native window-resource interactions.

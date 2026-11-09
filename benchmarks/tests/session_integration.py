@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / 'benchmarks'), str(ROOT / 'tests/functional')]
@@ -26,7 +27,9 @@ from vela_bench.archive import atomic_json, read_json
 from vela_bench.calibration import parse_input, run_input
 from vela_bench.conditions import normalized_outputs
 from vela_bench.diagnostics import SCENARIOS, run_probe
-from vela_bench.host import Layout
+from vela_bench.host import ACCOUNT, Layout
+from vela_bench.model import vela_environment
+from vela_bench.pilot import desktop_environment
 from private_manager import PrivateManager, prepare_tools
 from contention_integration import KEYBOARD
 
@@ -89,7 +92,9 @@ def check(target, directory, env):
                     'real_user_manager': True, 'native_capture': True, 'profile': profile})
 
 
-def main(target):
+def main(target, vela_sync_test=False):
+    if vela_sync_test and target != 'vela':
+        raise ValueError('Sync-test controls require Vela')
     with tempfile.TemporaryDirectory(prefix='vela-session-selftest-') as temporary:
         base = Path(temporary)
         directory = base / 'evidence'
@@ -104,6 +109,11 @@ def main(target):
                'XDG_CACHE_HOME': str(layout.home / '.cache'), 'QT_QPA_PLATFORM': 'wayland',
                'DBUS_SYSTEM_BUS_ADDRESS': 'unix:path=' + str(base / 'no-system-bus'),
                'VELA_BUILD': str(BUILD)}
+        if vela_sync_test:
+            user = SimpleNamespace(pw_uid=os.getuid(), pw_name=ACCOUNT, pw_dir=str(layout.home), pw_shell='/bin/sh')
+            created = desktop_environment('vela', user,
+                {'XDG_SESSION_ID': 'private-test', 'XDG_SEAT': 'seat0', 'XDG_VTNR': '3'}, vela_sync_test=True)
+            env.update({key: created[key] for key in vela_environment(True)})
         if 'VELA_SELFTEST_SLICE' in os.environ:
             env['VELA_SELFTEST_SLICE'] = os.environ['VELA_SELFTEST_SLICE']
         bus = None
@@ -119,6 +129,17 @@ def main(target):
                     time.sleep(.02)
                 env['DBUS_SESSION_BUS_ADDRESS'] = address
                 with Session(size='1920x1080@60', env=env) as session:
+                    if vela_sync_test:
+                        raw = Path(f'/proc/{session.process.pid}/environ').read_bytes()
+                        observed = dict(item.decode().split('=', 1) for item in raw.split(b'\0') if b'=' in item)
+                        assert all(observed.get(key) == value for key, value in vela_environment(True).items())
+                        policy = session.query('scanout-policy')
+                        # enabled is the config preference; envDisabled takes
+                        # precedence on the actual scanout candidate path.
+                        assert policy['envDisabled'] is True, policy
+                        session.wait_for_log("VELA_READY_WAIT=0: frames wait for the apps' GPU")
+                        atomic_json(directory / 'runtime-profile.json', {'environment': vela_environment(True),
+                            'scanout_policy': policy, 'gpu_wait_log_verified': True, 'physical_acceptance': False})
                     check(target, directory, session.client_env)
             else:
                 command = ['dbus-run-session', '--', 'kwin_wayland', '--virtual', '--width', '1920', '--height', '1080',
@@ -162,4 +183,6 @@ if __name__ == '__main__':
     else:
         args = argparse.ArgumentParser(description=__doc__)
         args.add_argument('target', choices=('vela', 'plasma'))
-        main(args.parse_args().target)
+        args.add_argument('--vela-sync-test', action='store_true')
+        options = args.parse_args()
+        main(options.target, options.vela_sync_test)

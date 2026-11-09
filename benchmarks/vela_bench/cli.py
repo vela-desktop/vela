@@ -14,7 +14,7 @@ from .archive import create_check_archive, decode_json, inspect_archive, read_js
 from .diagnostics import export_report
 from .campaign import blocks_for, export_campaign, identity, read_export, render_export
 from .discovery import discover
-from .model import load_campaign, make_plan, MEASUREMENTS, PHASES, TARGETS
+from .model import load_campaign, make_plan, MEASUREMENTS, PHASES, TARGETS, vela_environment
 from .report import compare_archives, render_report
 from .host import Host, Layout, SAFE_ENV, install, load_setup, personal_homes, require_current_launcher, require_root, setup_preview, trusted, uninstall, update_launcher
 from .pilot import preview, tty_preconditions
@@ -66,6 +66,9 @@ def parser():
     complete.add_argument('--seed', type=int, default=0)
     complete.add_argument('--output', type=Path, default=Path('benchmark-results'))
     complete.set_defaults(resume=None)
+    for command in (pilot, qualification, observe, complete):
+        command.add_argument('--vela-sync-test', action='store_true',
+                             help='Vela only: VELA_SCANOUT=0 and VELA_READY_WAIT=0; archive as a distinct profile')
     campaign_report = commands.add_parser("campaign-report", help="Export the latest qualification/calibration campaign")
     campaign_report.add_argument("--output", type=Path, default=Path("benchmark-results"))
     commands.add_parser("recover", help="Retry restoration of a stopped P0 pilot (root)")
@@ -75,6 +78,8 @@ def parser():
     phases.add_argument("--json", action="store_true")
     for name in ("check", "plan", "run"):
         command = commands.add_parser(name)
+        command.add_argument('--vela-sync-test', action='store_true',
+                             help='Vela only: disable direct scanout and GPU-ready commit waiting')
         command.add_argument("campaign", nargs="?", help="TOML campaign; omit to discover installed targets")
         command.add_argument("--phase", action="append", choices=tuple(PHASES))
         command.add_argument("--target", action="append", choices=TARGETS)
@@ -100,6 +105,8 @@ def parser():
 
 def print_plan(plan):
     print(f"Mode: {plan['mode']}; repetitions: {plan['repetitions']}")
+    if plan.get('vela_sync_test'):
+        print('Vela sync-test: VELA_SCANOUT=0 VELA_READY_WAIT=0 (Plasma unchanged)')
     print(f"Targets: {', '.join(plan['targets'])}")
     print(f"Phases: {', '.join(plan['phases'])}; independent blocks: {len(plan['blocks'])}")
     budget = plan["estimate"]
@@ -170,6 +177,8 @@ def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exerci
         command.append("--yes")
     if getattr(args, "fast", False):
         command.append("--fast")
+    if getattr(args, 'vela_sync_test', False):
+        command.append('--vela-sync-test')
     if exercise:
         command.append("--exercise")
     for phase in phases or []:
@@ -188,15 +197,16 @@ def run_all(args):
     targets = args.target or ['vela', 'plasma']
     config = load_campaign()
     config['seed'] = args.seed
-    measured = make_plan(config, current, targets=targets, fast=args.fast)
+    measured = make_plan(config, current, targets=targets, fast=args.fast, vela_sync_test=args.vela_sync_test)
     from .campaign import execution_selection, context, require_selection_instruments
     observed = execution_selection(current, targets, case='observe', fast=args.fast,
-                                   seed=args.seed, phases=None, exercise=False)['execution']
+                                   seed=args.seed, phases=None, exercise=False, vela_sync_test=args.vela_sync_test)['execution']
     preview_data = {'command': 'run-all', 'mode': measured['mode'], 'targets': targets,
         'repetitions': measured['repetitions'], 'preparation': ['update-launcher', 'recover'],
         'measure': {'phases': measured['phases'], 'blocks': len(measured['blocks'])},
         'observe': {'phases': observed['phases'], 'blocks': len(observed['blocks'])},
         'total_blocks': len(measured['blocks']) + len(observed['blocks']),
+        'vela_runtime_environment': vela_environment(args.vela_sync_test),
         'estimate_seconds': {key: measured['estimate'][key + '_seconds'] + observed['estimate'][key + '_seconds']
                              for key in ('minimum', 'maximum')}, 'confirmation': 'one START for both campaigns'}
     if args.dry_run:
@@ -209,6 +219,7 @@ def run_all(args):
     estimate = preview_data['estimate_seconds']
     print(f"Provisional duration: {estimate['minimum'] / 60:.1f}–{estimate['maximum'] / 60:.1f} minutes.", flush=True)
     print('After START: refresh the installed launcher, finish pending recovery, then run P2/P4 and P3.', flush=True)
+    print('Vela profile: ' + (str(vela_environment(True)) if args.vela_sync_test else 'normal (no comparison flags).'), flush=True)
     print('The display manager may stop. Fresh isolated sessions change and restore display, brightness and power conditions.', flush=True)
     print('Physical keyboard/mouse input is blocked; cursors are transparent. Ctrl+Alt+Esc cancels the remaining sequence.', flush=True)
     if not args.yes:
@@ -235,7 +246,7 @@ def run_all(args):
     inventory = context(host, layout, targets)
     for case, phases in (('calibrate', list(MEASUREMENTS)), ('observe', observed['phases'])):
         selection = execution_selection(inventory, targets, case=case, fast=args.fast,
-                                        seed=args.seed, phases=phases, exercise=False)
+                                        seed=args.seed, phases=phases, exercise=False, vela_sync_test=args.vela_sync_test)
         require_selection_instruments(host, layout, setup, inventory, selection)
     child_options = dict(vars(args), yes=True)
     child = argparse.Namespace(**child_options)
@@ -268,6 +279,8 @@ def run_all(args):
         if (identity(result.get('run_id')) == previous_id or not isinstance(plan, dict)
                 or plan.get('case') != ('observe' if case == 'observe' else 'measure')):
             raise BenchError('Complete run requires evidence from its new campaign')
+        if plan.get('vela_sync_test', False) is not args.vela_sync_test:
+            raise BenchError('Complete run campaign used a different Vela runtime profile')
         if ((status == 0 and (result['stage'] != 'done' or result.get('selection_complete') is not True))
                 or (status == 1 and result['stage'] != 'completed-with-failures')):
             raise BenchError('Complete run campaign status differs from verified evidence')
@@ -288,16 +301,17 @@ def main(argv=None):
             if args.dry_run:
                 from .campaign import execution_selection
                 print(json.dumps(execution_selection(current,selected,case="observe",fast=args.fast,seed=args.seed,
-                    phases=args.phase,exercise=False),indent=2))
+                    phases=args.phase,exercise=False,vela_sync_test=args.vela_sync_test),indent=2))
                 return 0
             return run_calibration_campaign(args, selected, "observe", args.seed,
                                             phases=args.phase or ["responsiveness", "motion", "slow-apps"])
         if args.command == "qualify":
             if args.dry_run:
-                selected = list(preview(args.target)["targets"])
+                selected = list(preview(args.target, vela_sync_test=args.vela_sync_test)["targets"])
                 print(json.dumps({"kind": "p0-qualification", "blocks": blocks_for(selected, args.case, args.seed),
                                   "hardware_required": True, "changes": "controlled hardware, fresh sessions, selected worker/UID faults",
-                                  "qualification_proven": False}, indent=2))
+                                  "qualification_proven": False,
+                                  "vela_runtime_environment": vela_environment(args.vela_sync_test)}, indent=2))
                 return 0
             return run_calibration_campaign(args, args.target or list(preview()["targets"]), args.case, args.seed)
         if args.command == "campaign-report":
@@ -342,7 +356,8 @@ def main(argv=None):
             return 0
         if args.command in ("session-test", "recover", "pilot-report"):
             if args.command == "session-test" and args.dry_run:
-                print(json.dumps(preview(args.target, args.seconds, args.probe, args.conditions, args.calibrate), indent=2))
+                print(json.dumps(preview(args.target, args.seconds, args.probe, args.conditions, args.calibrate,
+                                         vela_sync_test=args.vela_sync_test), indent=2))
                 return 0
             require_root()
             helper = Layout().helper
@@ -365,6 +380,8 @@ def main(argv=None):
                     command.append("--conditions")
                 if args.calibrate:
                     command.append("--calibrate")
+                if args.vela_sync_test:
+                    command.append('--vela-sync-test')
             status = subprocess.call(command, env=SAFE_ENV)  # NOSONAR S8705: fixed launcher/parser, shell-free local CLI.
             if args.command == "session-test" and status in (0, 1):
                 export_latest_pilot(helper, args.output)
@@ -398,7 +415,7 @@ def main(argv=None):
                 phases = ["check"]
             discovery = discover()
             plan = make_plan(campaign, discovery, phases=phases, targets=args.target, fast=args.fast,
-                             exercise=getattr(args, "exercise", False))
+                             exercise=getattr(args, "exercise", False), vela_sync_test=args.vela_sync_test)
             if args.command == "run":
                 if args.exercise:
                     return run_calibration_campaign(args, list(plan["targets"]), "calibrate", campaign["seed"],

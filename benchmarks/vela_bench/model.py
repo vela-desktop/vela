@@ -37,6 +37,12 @@ DEFAULT_DISPLAY = {"output": "primary", "resolution": "native", "refresh": "high
                    "brightness_percent": 100, "power_profile": "performance"}
 
 
+def vela_environment(sync_test=False):
+    if type(sync_test) is not bool:
+        raise BenchError('Vela sync-test selection must be a boolean')
+    return {'VELA_SCANOUT': '0', 'VELA_READY_WAIT': '0'} if sync_test else {}
+
+
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
 
@@ -77,7 +83,7 @@ def validate_names(label, names, choices):
         raise BenchError(f"Duplicate {label} selections")
 
 
-def make_plan(campaign, discovery, *, phases=None, targets=None, fast=False, exercise=False):
+def make_plan(campaign, discovery, *, phases=None, targets=None, fast=False, exercise=False, vela_sync_test=False):
     selected = phases if phases is not None else campaign["phases"]
     if selected is None:
         selected = list(MEASUREMENTS)
@@ -103,6 +109,9 @@ def make_plan(campaign, discovery, *, phases=None, targets=None, fast=False, exe
         raise BenchError(f"Requested normal Wayland sessions unavailable: {', '.join(missing)}")
     if not resolved:
         raise BenchError("No supported normal Wayland session entries found")
+    runtime = vela_environment(vela_sync_test)
+    if runtime and 'vela' not in resolved:
+        raise BenchError('--vela-sync-test requires the Vela target')
     repetitions = 1 if fast else 3
     blocks = []
     for phase in selected:
@@ -148,5 +157,7 @@ def make_plan(campaign, discovery, *, phases=None, targets=None, fast=False, exe
                              (["delayed-gpu-producer-explicit-and-implicit", "pinned-cpu-contention", "graphics-compute-contention"] if block["phase"] == "slow-apps" else []),
                              deadline_seconds=900)
         plan["estimate"]["maximum_seconds"] = 10 + sum(x["deadline_seconds"] for x in blocks)
+    if runtime:
+        plan.update(vela_sync_test=True, vela_runtime_environment=runtime)
     plan["fingerprint"] = fingerprint(plan)
     return plan

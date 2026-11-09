@@ -17,7 +17,7 @@ from . import BenchError
 from .archive import append_event, atomic_json, read_json
 from .discovery import discover, file_hash
 from .host import Layout, load_setup, require_workers_stopped, trusted
-from .model import fingerprint, load_campaign, make_plan, MEASUREMENTS
+from .model import fingerprint, load_campaign, make_plan, MEASUREMENTS, vela_environment
 from .qualification import audit_pilot, qualification_summary
 from .calibration import require_uinput
 
@@ -36,13 +36,17 @@ def block_identity(value):
     return value
 
 
-def execution_selection(current, targets, *, case, fast, seed, phases, exercise):
+def execution_selection(current, targets, *, case, fast, seed, phases, exercise, vela_sync_test=False):
     """Build trusted schedules from fixed selections, never an operator script."""
     if type(seed) is not int or not 0 <= seed <= 0xffffffff:
         raise BenchError("Campaign seed is outside uint32 range")
+    runtime = vela_environment(vela_sync_test)
+    if runtime and 'vela' not in targets:
+        raise BenchError('--vela-sync-test requires the Vela target')
+    profile = {'vela_sync_test': True} if runtime else {}
     if case != "observe" and not exercise and not phases:
         return {"kind": "calibration-campaign", "case": case, "fast": fast, "seed": seed,
-                "blocks": blocks_for(targets, case, seed), "scenario_revision": "p0-instruments-v1"}
+                "blocks": blocks_for(targets, case, seed), "scenario_revision": "p0-instruments-v1", **profile}
     if case == "observe":
         from .desktop import PHASES as AVAILABLE, SPEC, VERSION
         phases = phases or list(AVAILABLE)
@@ -51,7 +55,7 @@ def execution_selection(current, targets, *, case, fast, seed, phases, exercise)
         config = load_campaign(); config["seed"] = seed
         schedule = make_plan(config, {"targets": current["targets"], "environment": current.get("environment", {}),
             "suite": {"installed_files": current.get("launcher_files", {})}},
-            phases=phases, targets=targets, fast=fast, exercise=True)
+            phases=phases, targets=targets, fast=fast, exercise=True, vela_sync_test=vela_sync_test)
         for block in schedule["blocks"]:
             block.update(workload=VERSION, measurement_executed=True, measurement_spec=SPEC,
                          measurement_budget_seconds=240 if block["phase"]=="slow-apps" else 120, requirements=["input", "capture", "native-scene", "instrument-calibration"])
@@ -62,7 +66,7 @@ def execution_selection(current, targets, *, case, fast, seed, phases, exercise)
         schedule.pop("fingerprint", None); schedule["fingerprint"] = fingerprint(schedule)
         return {"kind":"execution-campaign", "case":"observe", "fast":fast, "seed":seed,
                 "blocks":[dict(block, fault=None) for block in schedule["blocks"]],
-                "execution":schedule, "scenario_revision":VERSION}
+                "execution":schedule, "scenario_revision":VERSION, **profile}
     if case != "calibrate":
         raise BenchError("Phase execution cannot select fault qualification cases")
     if not exercise:
@@ -73,10 +77,10 @@ def execution_selection(current, targets, *, case, fast, seed, phases, exercise)
     config["seed"] = seed
     schedule = make_plan(config, {"targets": current["targets"], "environment": current.get("environment", {}),
         "suite": {"installed_files": current.get("launcher_files", {})}},
-        phases=phases, targets=targets, fast=fast, exercise=exercise)
+        phases=phases, targets=targets, fast=fast, exercise=exercise, vela_sync_test=vela_sync_test)
     return {"kind": "execution-campaign", "case": "exercise" if exercise else "measure", "fast": fast, "seed": seed,
             "blocks": [dict(block, fault=None) for block in schedule["blocks"]], "execution": schedule,
-            "scenario_revision": schedule["scenario_revision"]}
+            "scenario_revision": schedule["scenario_revision"], **profile}
 
 
 def block_request(layout, run_id, block_id, target):
@@ -104,6 +108,7 @@ def block_request(layout, run_id, block_id, target):
         raise BenchError("Exercise request does not identify one fixed instrument-control block")
     return {"schema": 1, "campaign_run_id": run_id, "plan_fingerprint": fingerprint(plan),
             "block": matches[0], "workload": workload, "measurement_executed": measured,
+            **({'vela_runtime_environment': vela_environment(True)} if plan.get('vela_sync_test') is True and target == 'vela' else {}),
             **({"corpus_inventory": plan["context"]["corpus_inventory"]}
                if measured and matches[0].get("phase")=="scaling" and workload in ("p4-pattern-resources-v5", "p4-pattern-resources-v6") else {})}
 
@@ -418,7 +423,7 @@ def require_selection_instruments(host, layout, setup, current, selection):
 
 
 def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=False, fast=False, seed=0,
-            phases=None, exercise=False, layout=Layout()):
+            phases=None, exercise=False, layout=Layout(), vela_sync_test=False):
     from .pilot import begin, resolve_targets, tty_preconditions
     selected = list(resolve_targets(targets))
     tty_preconditions(host)
@@ -434,7 +439,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
         root.mkdir(mode=0o700, exist_ok=True)
         trusted(root, directory=True)
         current = context(host, layout, selected)
-        selection = execution_selection(current, selected, case=case, fast=fast, seed=seed, phases=phases, exercise=exercise)
+        selection = execution_selection(current, selected, case=case, fast=fast, seed=seed, phases=phases, exercise=exercise,
+                                        vela_sync_test=vela_sync_test)
         selection['failure_policy'] = 'continue-after-verified-restoration-v1'
         require_selection_instruments(host, layout, setup, current, selection)
         if resume:
@@ -509,6 +515,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                 if refreshed != plan["context"]:
                     raise BenchError("Installed versions or environment changed during campaign")
                 options = {"campaign_block_id": block["id"]} if exercise or measured or observed else {}
+                if vela_sync_test and block['target'] == 'vela':
+                    options['vela_sync_test'] = True
                 outcome = begin(host, [block["target"]], seconds=5, assume_yes=True, layout=layout,
                       presentation_probe=not block["fault"] and not (measured and phase=="overhead"), controlled=True,
                       calibrate=not block["fault"] and not (measured and phase=="overhead"),
@@ -645,6 +653,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
                  "<h1>Qualification and calibration</h1><p>Instrument acceptance evidence.</p>")
     document += "<p>No comparative desktop performance ranking; the five-family suite is incomplete.</p>"
     document += f"<p>Run: {escape(data['run_id'])}. Stage: {escape(data['stage'])}. Selection complete: {escape(data['selection_complete'])}. P0: {escape(data['qualification']['status'])}.</p>"
+    if data['plan'].get('vela_sync_test'):
+        document += '<p>Vela sync-test profile: VELA_SCANOUT=0, VELA_READY_WAIT=0. Plasma uses its normal profile. Keep this campaign separate from normal Vela runs.</p>'
     if 'execution_complete' in data:
         document += (f"<p>Execution finished: {escape(data['execution_complete'])}. Failed blocks: {escape(data['failed_blocks'])}. "
                      "Failed blocks retain their diagnostics and are excluded from performance statistics.</p>")
@@ -794,6 +804,13 @@ def read_export(directory):
         if path.is_symlink() or file_hash(path) != digest:
             raise BenchError("Exported campaign evidence changed")
     data = read_json(directory / "summary.json")
+    frozen_plan = read_json(directory / 'campaign-plan.json') if 'campaign-plan.json' in manifest['files'] else {}
+    if data.get('plan', {}).get('vela_sync_test') is not None or frozen_plan.get('vela_sync_test') is not None:
+        flags = vela_environment(data['plan'].get('vela_sync_test', False))
+        if (not flags or 'campaign-plan.json' not in manifest['files']
+                or data['plan'] != frozen_plan
+                or data['plan'].get('execution', {}).get('vela_runtime_environment', flags) != flags):
+            raise BenchError('Exported Vela runtime profile differs from the immutable campaign')
     if data.get("run_id") != manifest.get("run_id") or data.get("full_suite_complete") is not False:
         raise BenchError("Exported campaign identity/coverage changed")
     if manifest["kind"] != data.get("kind", "") + "-export":
@@ -805,8 +822,19 @@ def read_export(directory):
         if block.get('status') != 'complete':
             accepted.append(block)
             continue
+        if data.get('plan', {}).get('vela_sync_test'):
+            state = read_json(directory / block_identity(block['id']) / 'state.json')
+            session = read_json(directory / block_identity(block['id']) / (block['target'] + '-session.json'))
+            expected = vela_environment(block['target'] == 'vela')
+            if (state['plan'].get('vela_sync_test', False) is not (block['target'] == 'vela')
+                    or state['plan'].get('vela_runtime_environment', {}) != expected
+                    or session.get('vela_runtime_environment') != expected
+                    or state.get('campaign_block', {}).get('vela_runtime_environment', {}) != expected):
+                raise BenchError('Exported live session runtime flags differ from the campaign')
         fresh = audit_pilot(directory / block_identity(block['id']), block['target'], block.get('fault'),
                             instruments=not (data.get('execution_mode')=='measure' and block.get('phase')=='overhead'))
+        if 'vela_runtime_profile' in fresh.get('checks', {}) and not data.get('plan', {}).get('vela_sync_test'):
+            raise BenchError('Exported campaign omitted the live Vela runtime profile')
         saved = block.get('audit', {})
         if (fresh.get('status') != 'passed' or saved.get('status') != 'passed'
                 or any(saved.get('checks', {}).get(key) != value for key,value in fresh.get('checks', {}).items())

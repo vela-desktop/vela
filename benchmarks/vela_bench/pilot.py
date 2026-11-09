@@ -40,6 +40,14 @@ VT_GETSTATE, VT_OPENQRY = 0x5603, 0x5600
 TERMINAL = ("done", "failed", "cancelled")
 
 
+def runtime_environment(plan, target):
+    from .model import vela_environment
+    expected = vela_environment(plan.get('vela_sync_test', False))
+    if plan.get('vela_runtime_environment', {}) != expected:
+        raise BenchError('Vela runtime flags differ from the fixed sync-test profile')
+    return expected if target == 'vela' else {}
+
+
 def properties(text):
     return dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
 
@@ -141,11 +149,16 @@ def resolve_targets(requested=None, *, check_trust=True):
     return {x: available[x] for x in ("vela", "plasma") if x in chosen}
 
 
-def preview(targets=None, seconds=30, presentation_probe=False, controlled=False, calibrate=False):
+def preview(targets=None, seconds=30, presentation_probe=False, controlled=False, calibrate=False, vela_sync_test=False):
     if type(seconds) is not int or not 5 <= seconds <= 120:
         raise BenchError("Pilot dwell time must be 5–120 seconds per desktop")
     selected = resolve_targets(targets, check_trust=False)
+    from .model import vela_environment
+    runtime = vela_environment(vela_sync_test)
+    if runtime and 'vela' not in selected:
+        raise BenchError('--vela-sync-test requires the Vela target')
     return {"kind": "session-lifecycle-pilot", "targets": selected, "target_order": list(selected),
+            **({'vela_sync_test': True, 'vela_runtime_environment': runtime} if runtime else {}),
             "input_policy": INPUT_POLICY,
             "desktop_profile_policy": PROFILE_POLICY,
             "seconds_per_target": seconds, "presentation_probe": presentation_probe or calibrate,
@@ -200,13 +213,14 @@ def create_fixture(state):
 
 
 def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), presentation_probe=False, controlled=False,
-          calibrate=False, countdown=True, run_id=None, fault=None, campaign_run_id=None, campaign_block_id=None):
+          calibrate=False, countdown=True, run_id=None, fault=None, campaign_run_id=None, campaign_block_id=None,
+          vela_sync_test=False):
     if campaign_run_id is not None and not re.fullmatch(r"[0-9a-f]{32}", campaign_run_id):
         raise BenchError("Invalid campaign identity for controlled pilot")
     record = load_setup(host, layout)
     require_current_home_isolation(record)
     presentation_probe, controlled = presentation_probe or calibrate, controlled or calibrate
-    plan = preview(targets, seconds, presentation_probe, controlled, calibrate)
+    plan = preview(targets, seconds, presentation_probe, controlled, calibrate, vela_sync_test=vela_sync_test)
     plan['autostart_inventory'] = autostart_inventory(layout)
     request = None
     if campaign_block_id is not None:
@@ -214,6 +228,8 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
         if campaign_run_id is None or len(plan["targets"]) != 1 or fault:
             raise BenchError("Campaign exercises require one target, fresh calibration and no fault")
         request = block_request(layout, campaign_run_id, campaign_block_id, next(iter(plan["targets"])))
+        if request.get('vela_runtime_environment', {}) != runtime_environment(plan, next(iter(plan['targets']))):
+            raise BenchError('Pilot runtime flags differ from the immutable campaign')
         if not calibrate and not (request["measurement_executed"] and request["block"]["phase"]=="overhead" and controlled and not presentation_probe):
             raise BenchError("Only resource blocks may omit input/capture calibration")
         if request["measurement_executed"] and request["block"]["phase"] == "slow-apps":
@@ -359,7 +375,7 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
         return 130
 
 
-def session_command(target, vt, record, layout=Layout(), *, directory=None):
+def session_command(target, vt, record, layout=Layout(), *, directory=None, vela_sync_test=False):
     if target not in ("vela", "plasma") or type(vt) is not int or not 1 <= vt <= 63:
         raise BenchError("Invalid fixed session operation")
     props = {"Description": "Vela benchmark P0 session " + record["account_tag"],
@@ -383,13 +399,16 @@ def session_command(target, vt, record, layout=Layout(), *, directory=None):
     command += [f"--setenv={key}={value}" for key, value in {"XDG_SESSION_TYPE": "wayland", "XDG_SESSION_CLASS": "user",
                  "XDG_SEAT": "seat0", "XDG_VTNR": str(vt), "XDG_SESSION_DESKTOP": target,
                  "XDG_CURRENT_DESKTOP": "Vela:KDE" if target == "vela" else "KDE"}.items()]
-    return command + ["/usr/bin/python3", "-I", str(layout.helper), "_session", target]
+    from .model import vela_environment
+    if vela_environment(vela_sync_test) and target != 'vela':
+        raise BenchError('Sync-test flags may only be applied to Vela')
+    return command + ["/usr/bin/python3", "-I", str(layout.helper), "_session", target] + (['--vela-sync-test'] if vela_sync_test else [])
 
 
-def launch_session(host, target, vt, record, layout, directory):
+def launch_session(host, target, vt, record, layout, directory, *, vela_sync_test=False):
     began=int(time.time())-1
     try:
-        host.run(session_command(target,vt,record,layout,directory=directory),timeout=50)
+        host.run(session_command(target,vt,record,layout,directory=directory,vela_sync_test=vela_sync_test),timeout=50)
     except BenchError as exc:
         evidence={'schema':1,'status':'failed','error':str(exc),'unit':SESSION_UNIT}
         for name,command in (
@@ -488,6 +507,11 @@ def verify_session(host, record, state, layout=Layout()):
         raw = Path(f"/proc/{pid}/environ").read_bytes()
         environment = dict(item.decode("utf-8", errors="replace").split("=", 1) for item in raw.split(b"\0") if b"=" in item)
         check_profile_environment(environment, str(layout.home), str(runtime))
+        if pid == leader:
+            from .model import vela_environment
+            observed = {key: environment[key] for key in vela_environment(True) if key in environment}
+            if observed != runtime_environment(state.get('plan', {}), state.get('target')):
+                raise BenchError('Live session runtime flags differ from the authorized profile')
     bus = f"unix:path={runtime}/bus"
     query = host.run(["setpriv", f"--reuid={uid}", f"--regid={record['gid']}", "--clear-groups", "busctl",
                       "--address=" + bus, "get-property", "org.freedesktop.systemd1",
@@ -495,6 +519,7 @@ def verify_session(host, record, state, layout=Layout()):
     if shlex.split(query.stdout) != ["s", "active"]:
         raise BenchError("The full graphical session target is not active")
     return {"session": session, "manager_sessions": managers, "user_manager_pid": int(manager), "runtime": str(runtime),
+            "vela_runtime_environment": observed,
             "fixture_hidden_from_both_trees": True, "graphical_session_target": "active"}
 
 
@@ -606,6 +631,7 @@ def worker(host, layout=Layout()):
         input_guard = None
         try:
             require_current_home_isolation(record)
+            runtime_environment(state.get('plan', {}), 'vela')
             target_vt = state.get("target_vt")
             if type(target_vt) is not int or not 1 <= target_vt <= 63:
                 raise BenchError("Invalid launch virtual terminal")
@@ -674,7 +700,8 @@ def worker(host, layout=Layout()):
                 descriptor = os.open(directory / f"{target}-launch.stderr", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                 os.close(descriptor)
                 host.run(["chvt", str(target_vt)])
-                launch_session(host,target,target_vt,record,layout,directory)
+                options = {'vela_sync_test': True} if runtime_environment(state['plan'], target) else {}
+                launch_session(host,target,target_vt,record,layout,directory,**options)
                 evidence = wait_session(host, record, state, directory, layout)
                 atomic_json(directory / f"{target}-session.json", evidence)
                 if state.get("conditions_snapshot"):
@@ -1221,7 +1248,7 @@ def recover(host, layout=Layout()):
             raise BenchError("Pilot restoration failed: " + "; ".join(errors))
 
 
-def desktop_environment(target, user, inherited):
+def desktop_environment(target, user, inherited, *, vela_sync_test=False):
     if os.getuid() != user.pw_uid or os.geteuid() != user.pw_uid or user.pw_name != ACCOUNT:
         raise BenchError("Desktop entry may only execute as the reserved unprivileged account")
     required = {"XDG_SESSION_ID", "XDG_SEAT", "XDG_VTNR"}
@@ -1238,6 +1265,11 @@ def desktop_environment(target, user, inherited):
                    "XDG_CURRENT_DESKTOP": "Vela:KDE" if target == "vela" else "KDE"}
     environment.update({key: inherited[key] for key in required})
     environment.update(cursor_environment(Path(user.pw_dir)))
+    from .model import vela_environment
+    flags = vela_environment(vela_sync_test)
+    if flags and target != 'vela':
+        raise BenchError('Sync-test flags may only be applied to Vela')
+    environment.update(flags)
     return environment
 
 
@@ -1270,6 +1302,8 @@ def launcher_main(argv=None):
     campaign.add_argument("--exercise", action="store_true")
     from .model import MEASUREMENTS
     campaign.add_argument("--phase", action="append", choices=MEASUREMENTS)
+    for command in (live, campaign, child):
+        command.add_argument('--vela-sync-test', action='store_true')
     args = parser.parse_args(argv)
     host = Host()
     try:
@@ -1292,7 +1326,7 @@ def launcher_main(argv=None):
             print("vela-benchmark-session: " + json.dumps({"stage": "entry", "pid": os.getpid(),
                   "uid": os.getuid(), "euid": os.geteuid(), "target": args.target}), file=sys.stderr, flush=True)
             user = pwd.getpwnam(ACCOUNT)
-            env = desktop_environment(args.target, user, os.environ)
+            env = desktop_environment(args.target, user, os.environ, vela_sync_test=args.vela_sync_test)
             print("vela-benchmark-session: environment validated", file=sys.stderr, flush=True)
             descriptor = resolve_targets([args.target])[args.target]
             os.chdir(user.pw_dir)
@@ -1306,7 +1340,8 @@ def launcher_main(argv=None):
                 print(json.dumps(latest(), allow_nan=False))
                 return 0
             return execute(host, args.target, case=args.case, resume=args.resume, assume_yes=args.yes,
-                           fast=args.fast, seed=args.seed, phases=args.phase, exercise=args.exercise)
+                           fast=args.fast, seed=args.seed, phases=args.phase, exercise=args.exercise,
+                           vela_sync_test=args.vela_sync_test)
         if args.command == "results":
             load_setup(host)
             directory = state_directory()
@@ -1314,7 +1349,7 @@ def launcher_main(argv=None):
             return 0
         if args.command == "session-test":
             return begin(host, args.target, args.seconds, args.yes, presentation_probe=args.probe,
-                         controlled=args.conditions, calibrate=args.calibrate)
+                         controlled=args.conditions, calibrate=args.calibrate, vela_sync_test=args.vela_sync_test)
         if args.command == "_pilot":
             return worker(host) or 0
         if args.command == "recover":

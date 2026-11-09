@@ -98,6 +98,22 @@ class RunAll(unittest.TestCase):
         self.update.assert_not_called()
         self.assertFalse(self.commands)
 
+    def test_sync_profile_is_previewed_forwarded_and_bound_to_both_results(self):
+        self.assertEqual(self.invoke('--vela-sync-test', '--dry-run'), 0)
+        preview = json.loads(self.output.getvalue())
+        self.assertEqual(preview['total_blocks'], 48)
+        self.assertEqual(preview['vela_runtime_environment'], {'VELA_SCANOUT':'0','VELA_READY_WAIT':'0'})
+        for result in self.results:
+            result['plan']['vela_sync_test'] = True
+        self.assertEqual(self.invoke('--vela-sync-test', '--yes'), 0)
+        self.assertTrue(all('--vela-sync-test' in command for command in self.commands[1:]))
+        self.assertNotIn('--vela-sync-test', self.commands[0])
+        self.assertTrue(all(call.args[-1]['vela_sync_test'] for call in self.preflight.call_args_list))
+
+    def test_normal_result_cannot_satisfy_sync_profile_or_continue_to_p3(self):
+        self.assertEqual(self.invoke('--vela-sync-test', '--yes'), 2)
+        self.assertEqual(len(self.commands), 2)
+
     def test_completed_recovered_failures_do_not_skip_p3_or_become_success(self):
         self.statuses = [1,0]
         self.results = [complete(True), complete(case='observe',run_id='b'*32)]
