@@ -1,18 +1,18 @@
 {
-  "collected_at": "2026-11-08T10:20:47+00:00",
+  "collected_at": "2026-11-09T11:29:30+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 599,
+      "count": 574,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 300
+      "uniques": 284
     },
     {
-      "count": 192,
+      "count": 166,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
-      "uniques": 10
+      "uniques": 11
     },
     {
       "count": 62,
@@ -21,37 +21,37 @@
       "uniques": 16
     },
     {
-      "count": 54,
+      "count": 34,
       "path": "/vela-desktop/vela/actions",
       "title": "/actions",
       "uniques": 1
     },
     {
-      "count": 36,
+      "count": 26,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
+      "title": "/blob/main/docs/screenshots/start.webp",
+      "uniques": 24
+    },
+    {
+      "count": 26,
       "path": "/vela-desktop/vela/actions/workflows/gpu-amd.yml",
       "title": "/actions/workflows/gpu-amd.yml",
       "uniques": 1
     },
     {
-      "count": 31,
+      "count": 23,
       "path": "/vela-desktop/vela/actions/workflows/gpu-nvidia.yml",
       "title": "/actions/workflows/gpu-nvidia.yml",
       "uniques": 2
     },
     {
-      "count": 28,
-      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
-      "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 26
-    },
-    {
-      "count": 28,
+      "count": 21,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 11
+      "uniques": 10
     },
     {
-      "count": 21,
+      "count": 19,
       "path": "/vela-desktop/vela/forks",
       "title": "/forks",
       "uniques": 4
@@ -60,7 +60,7 @@
       "count": 18,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/snap.webp",
       "title": "/blob/main/docs/screenshots/snap.webp",
-      "uniques": 15
+      "uniques": 14
     }
   ],
   "schema_version": 1,

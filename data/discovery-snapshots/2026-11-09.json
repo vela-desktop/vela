@@ -1,0 +1,120 @@
+{
+  "collected_at": "2026-11-09T11:29:30+00:00",
+  "coverage": "top_10_only",
+  "popular_paths": [
+    {
+      "count": 574,
+      "path": "/vela-desktop/vela",
+      "title": "Overview",
+      "uniques": 284
+    },
+    {
+      "count": 166,
+      "path": "/vela-desktop/vela/pulls",
+      "title": "/pulls",
+      "uniques": 11
+    },
+    {
+      "count": 62,
+      "path": "/vela-desktop/vela/issues",
+      "title": "/issues",
+      "uniques": 16
+    },
+    {
+      "count": 34,
+      "path": "/vela-desktop/vela/actions",
+      "title": "/actions",
+      "uniques": 1
+    },
+    {
+      "count": 26,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
+      "title": "/blob/main/docs/screenshots/start.webp",
+      "uniques": 24
+    },
+    {
+      "count": 26,
+      "path": "/vela-desktop/vela/actions/workflows/gpu-amd.yml",
+      "title": "/actions/workflows/gpu-amd.yml",
+      "uniques": 1
+    },
+    {
+      "count": 23,
+      "path": "/vela-desktop/vela/actions/workflows/gpu-nvidia.yml",
+      "title": "/actions/workflows/gpu-nvidia.yml",
+      "uniques": 2
+    },
+    {
+      "count": 21,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 10
+    },
+    {
+      "count": 19,
+      "path": "/vela-desktop/vela/forks",
+      "title": "/forks",
+      "uniques": 4
+    },
+    {
+      "count": 18,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/snap.webp",
+      "title": "/blob/main/docs/screenshots/snap.webp",
+      "uniques": 14
+    }
+  ],
+  "referrers": [
+    {
+      "count": 116,
+      "referrer": "velade.org",
+      "uniques": 100
+    },
+    {
+      "count": 60,
+      "referrer": "github.com",
+      "uniques": 35
+    },
+    {
+      "count": 55,
+      "referrer": "reddit.com",
+      "uniques": 41
+    },
+    {
+      "count": 26,
+      "referrer": "com.reddit.frontpage",
+      "uniques": 23
+    },
+    {
+      "count": 23,
+      "referrer": "news.ycombinator.com",
+      "uniques": 20
+    },
+    {
+      "count": 7,
+      "referrer": "Google",
+      "uniques": 7
+    },
+    {
+      "count": 3,
+      "referrer": "DuckDuckGo",
+      "uniques": 2
+    },
+    {
+      "count": 1,
+      "referrer": "Bing",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "app.raindrop.io",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "com.fluxer",
+      "uniques": 1
+    }
+  ],
+  "schema_version": 1,
+  "window": "rolling_14_days"
+}

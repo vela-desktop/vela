@@ -1542,84 +1542,84 @@
     },
     "696240842": {
       "first_seen_at": "2026-11-01T10:27:19+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
       "max_downloads_observed": 19,
       "name": "vela-0.1.0-1-x86_64.pkg.tar.zst",
       "release_tag": "v0.1.0"
     },
     "696240843": {
       "first_seen_at": "2026-11-01T10:27:19+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
-      "max_downloads_observed": 4,
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
+      "max_downloads_observed": 5,
       "name": "vela_0.1.0_amd64.deb",
       "release_tag": "v0.1.0"
     },
     "696240844": {
       "first_seen_at": "2026-11-01T10:27:19+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
       "max_downloads_observed": 1,
       "name": "SHA256SUMS-fedora",
       "release_tag": "v0.1.0"
     },
     "696240846": {
       "first_seen_at": "2026-11-01T10:27:19+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
       "max_downloads_observed": 18,
       "name": "SHA256SUMS",
       "release_tag": "v0.1.0"
     },
     "696240850": {
       "first_seen_at": "2026-11-01T10:27:19+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
       "max_downloads_observed": 2,
       "name": "vela-0.1.0-1.fc44.x86_64.rpm",
       "release_tag": "v0.1.0"
     },
     "696240871": {
       "first_seen_at": "2026-11-01T10:27:19+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
       "max_downloads_observed": 1,
       "name": "SHA256SUMS-ubuntu",
       "release_tag": "v0.1.0"
     },
     "706673380": {
       "first_seen_at": "2026-11-04T10:54:13+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
-      "max_downloads_observed": 17,
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
+      "max_downloads_observed": 20,
       "name": "vela-0.1.1-1-x86_64.pkg.tar.zst",
       "release_tag": "v0.1.1"
     },
     "706673381": {
       "first_seen_at": "2026-11-04T10:54:13+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
       "max_downloads_observed": 6,
       "name": "vela_0.1.1_amd64.deb",
       "release_tag": "v0.1.1"
     },
     "706673382": {
       "first_seen_at": "2026-11-04T10:54:13+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
-      "max_downloads_observed": 14,
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
+      "max_downloads_observed": 17,
       "name": "SHA256SUMS",
       "release_tag": "v0.1.1"
     },
     "706673384": {
       "first_seen_at": "2026-11-04T10:54:13+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
       "max_downloads_observed": 5,
       "name": "vela-0.1.1-1.fc44.x86_64.rpm",
       "release_tag": "v0.1.1"
     },
     "706673386": {
       "first_seen_at": "2026-11-04T10:54:13+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
       "max_downloads_observed": 5,
       "name": "SHA256SUMS-fedora",
       "release_tag": "v0.1.1"
     },
     "706673405": {
       "first_seen_at": "2026-11-04T10:54:13+00:00",
-      "last_seen_at": "2026-11-08T10:20:47+00:00",
+      "last_seen_at": "2026-11-09T11:29:30+00:00",
       "max_downloads_observed": 5,
       "name": "SHA256SUMS-ubuntu",
       "release_tag": "v0.1.1"
