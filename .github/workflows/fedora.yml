@@ -30,9 +30,17 @@ concurrency:
 
 jobs:
   fedora:
-    name: Fedora 44
+    name: Fedora ${{ matrix.fedora }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fedora: 44
+            image: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+          - fedora: 45
+            image: fedora@sha256:aacbc26b38361ba0cb3d10f268da40b61b36aed6ed6fe5831a35871636bedb06
     runs-on: ubuntu-latest
-    container: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 # official Docker Fedora 44 OCI image index, pinned intentionally
+    container: ${{ matrix.image }}
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-fedora
       CCACHE_MAXSIZE: 350M
@@ -60,9 +68,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache-fedora
-          key: ccache-fedora44-relwithdebinfo-v1-${{ github.sha }}
+          key: ccache-fedora${{ matrix.fedora }}-relwithdebinfo-v1-${{ github.sha }}
           restore-keys: |
-            ccache-fedora44-relwithdebinfo-v1-
+            ccache-fedora${{ matrix.fedora }}-relwithdebinfo-v1-
 
       - name: Configure
         run: >-
@@ -171,7 +179,7 @@ jobs:
         if: ${{ inputs.audio_diagnostics && always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: fedora-audio-diagnostics
+          name: fedora-${{ matrix.fedora }}-audio-diagnostics
           path: audio-diagnostics/
           if-no-files-found: warn
           retention-days: 7

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Run only as root in a disposable Fedora 44 CI container, BEFORE installing
+# Run only as root in a disposable Fedora 44/45 CI container, BEFORE installing
 # the real vela-git RPM. Exercises the updater with real Git, DNF5 and RPM.
 set -euo pipefail
 
 test "$(id -u)" -eq 0
 work=$(mktemp -d)
+release=$(rpm --eval '%{?fedora}')
+case "$release" in 44|45) ;; *) echo "Unsupported Fedora CI release: $release" >&2; exit 1 ;; esac
 cleanup() {
     dnf remove -y vela-git >/dev/null 2>&1 || true
     rm -rf -- "$work"
@@ -78,7 +80,7 @@ new_sha=$(git -C "$work/source" rev-parse HEAD)
 # Use the actual installed script from this commit, not a mocked runner.
 sh packaging/vela-update --source "$work/source" --commit "$new_sha" --build --jobs 1
 test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci-v2'
-rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]2[.]g${new_sha:0:7}[.]fc44$"
+rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]2[.]g${new_sha:0:7}[.]fc${release}$"
 test "$(find "$XDG_CACHE_HOME/vela-update/packages" -maxdepth 1 -name 'vela-git-*.x86_64.rpm' | wc -l)" -eq 1
 
 # An identical selected revision must be a no-op without --force.
@@ -94,11 +96,11 @@ test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci-v2'
 # The updater's own --commit path must downgrade the installed RPM.
 sh packaging/vela-update --source "$work/source" --commit "$old_sha" --build --jobs 1
 test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci'
-rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]1[.]g${old_sha:0:7}[.]fc44$"
+rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]1[.]g${old_sha:0:7}[.]fc${release}$"
 
 # Upgrading again must restore the newer payload and preserve both RPMs.
 sh packaging/vela-update --source "$work/source" --commit "$new_sha" --build --jobs 1
 test "$(/usr/bin/vela-ci-marker)" = 'vela-fedora-updater-ci-v2'
-rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]2[.]g${new_sha:0:7}[.]fc44$"
+rpm -q --qf '%{VERSION}-%{RELEASE}\n' vela-git | grep -Eq "^0[.]1[.]0-1[.]2[.]g${new_sha:0:7}[.]fc${release}$"
 test "$(find "$XDG_CACHE_HOME/vela-update/packages" -maxdepth 1 -name 'vela-git-*.x86_64.rpm' | wc -l)" -eq 2
 echo ":: Fedora updater local-build, force-reinstall, downgrade and upgrade passed"

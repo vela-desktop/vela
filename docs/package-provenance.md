@@ -3,10 +3,10 @@
 Vela's signed packages come from two places (see
 [release channels](release-channels.md)):
 
-- **Beta releases** `v0.x.y`: the `vela` package for Arch, Fedora 44 and
+- **Beta releases** `v0.x.y`: the `vela` package for Arch, Fedora 44/45 and
   Ubuntu 26.10, built from a protected tag and published as a GitHub
   release.
-- **Experimental workflow artifacts**: `vela-git` for Arch and Fedora 44,
+- **Experimental workflow artifacts**: `vela-git` for Arch and Fedora 44/45,
   built for a `main` (or manually selected) commit and kept for 14 days;
   `vela-update` retrieves them with an authenticated GitHub CLI.
 
@@ -14,7 +14,8 @@ Vela used to publish per-commit `alpha-<full-SHA>` releases from `main`.
 Pushes to `main` no longer create them, and the historical ones have been
 retired.
 
-Arch assets use `SHA256SUMS`, Fedora RPMs `SHA256SUMS-fedora` and Ubuntu DEBs
+Arch assets use `SHA256SUMS`, Fedora 44 RPMs `SHA256SUMS-fedora`, Fedora 45 RPMs
+`SHA256SUMS-fedora-45`, and Ubuntu DEBs
 `SHA256SUMS-ubuntu`, with one checksum entry in each. A matching filename and manifest downloaded together
 are **not** proof of origin:
 both files can be replaced by the same attacker. Downloaded packages must pass
@@ -24,7 +25,7 @@ cryptographic provenance verification **before** `sudo pacman -U` or
 ## Trust model
 
 The [Build workflow](../.github/workflows/build.yml) runs `makepkg` for Arch
-and `rpmbuild` for Fedora 44, and the
+and `rpmbuild` for Fedora 44 and 45, and the
 [Ubuntu workflow](../.github/workflows/ubuntu.yml) builds the DEB; each signs
 the exact output files using `actions/attest`. The signed SLSA
 build-provenance attestations bind each package's SHA-256 to the workflow's
@@ -47,7 +48,7 @@ attestation service means **no binary install**: the updater reports the
 applicable verifier, helper, or service failure. Beta then stops without
 installing anything; Experimental falls back to building from the selected
 Git revision with native packaging tools (`makepkg` on Arch, `rpmbuild` plus
-`dnf builddep` on Fedora 44).
+`dnf builddep` on Fedora 44/45).
 The optional GitHub CLI downloads workflow artifacts but does not verify them.
 
 Use `--build` to skip all binary download paths explicitly. Installing from
@@ -59,7 +60,7 @@ are outside the updater's verification boundary.
 ### Requirements for users
 
 Install Cosign for verified prebuilt packages (Arch: `sudo pacman -S cosign`;
-Fedora 44: use the upstream RPM instructions in [installation.md](installation.md#fedora-44);
+Fedora 44/45: use the upstream RPM instructions in [installation.md](installation.md#fedora-44-and-45);
 Ubuntu 26.10: `sudo apt install cosign`, from universe). Beta cannot install without it.
 No GitHub login or GitHub CLI is needed for Beta releases. On Experimental,
 if verification is unavailable, use `vela-update --build`. No `--insecure`
@@ -77,8 +78,8 @@ gh attestation verify vela-<version>-<release>-x86_64.pkg.tar.zst \
 ```
 
 Fedora uses the same verification flags, replacing the input with
-`vela-<version>-<release>.fc44.x86_64.rpm`; Ubuntu uses
-`vela_<version>_amd64.deb` and the signer workflow `ubuntu.yml`. All three
+`vela-<version>-<release>.fc44.x86_64.rpm` or `.fc45.x86_64.rpm` as appropriate; Ubuntu uses
+`vela_<version>_amd64.deb` and the signer workflow `ubuntu.yml`. All four
 packages are published atomically under the same `v<version>` release,
 following successful package smoke checks on each distribution.
 
@@ -93,7 +94,7 @@ This prevents modification of release tags and assets after publication.
 It affects only releases published after it is enabled.
 See [GitHub's instructions](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes).
 
-The Beta publisher attaches the three packages and their checksum manifests
+The Beta publisher attaches the four packages and their checksum manifests
 when creating the release. Deleted immutable releases cannot have their tag
 names reused, so never delete and republish a Beta: publish a new patch
 release instead. The publisher intentionally does not overwrite released
