@@ -492,7 +492,7 @@ eviction rule, documented next to its definition and covered by a test.
 
 ## Policy
 
-### 1. The helpers (`common/alloc.{h,c}`)
+### 1. The helpers (`common/alloc/alloc.{h,c}`)
 
 The public names are macros that pass the caller's location to `_at`
 functions. Only the `_at` functions are real symbols.
@@ -588,7 +588,12 @@ noreturn void vela_must_failed(const char *expression, const char *file, int lin
   and `MemAvailable` from `/proc/meminfo`. If a read fails, the field is
   omitted.
 - `vela_alloc_misuse` handles a negative `needed` and similar programming
-  errors, with its own message.
+  errors, with its own message
+  (`vela: allocation misuse (negative count) at <file>:<line>`).
+- An overflow in `vela_size_add` is not a request for memory, so it says
+  so: `vela: size overflow (<a> + <b>) at <file>:<line>`, with the same
+  memory figures. Every other overflow is reported by `vela_oom` with the
+  operands as count and size.
 - `vela_must_failed` serves `VELA_MUST` (point 2b). It writes the same line
   with the expression text in place of the sizes, for example
   `vela: out of memory (wl_event_loop_add_idle(loop, f, d)) at <file>:<line>; rss 412 MiB; available 37 MiB`,
@@ -623,7 +628,7 @@ OOM-only calls take the same path as the helpers:
 
 `vela_must_at` returns the pointer if it is non-`NULL`; otherwise it calls
 `vela_must_failed` with the expression text (point 2). Each library call is classified once,
-in a table kept next to `common/alloc.h`:
+in a table kept next to `common/alloc/alloc.h`:
 - **OOM-only:** wrapped in `VELA_MUST`.
 - **Can fail for other reasons:** handled as a real error at the call site.
   Many `wlr_*_create` constructors (backends, renderers, GBM) belong here.
@@ -784,26 +789,35 @@ steady state. It is measured, not assumed (see Tests).
 
 ### 8. Enforcement
 
-A CI check rejects, in the in-scope C sources, everything except
-`common/alloc.c`:
+A CI check (`scripts/check-allocations.py`, the `allocation-sites` test)
+rejects, in the in-scope C sources (point 9, plus Vela's C libraries in
+`common/alloc` and `common/caller`), everything except
+`common/alloc/alloc.c`:
 - `malloc`, `calloc`, `realloc`, `reallocarray`, `strdup`, `strndup`,
   `asprintf`, `vasprintf`, `posix_memalign`, `aligned_alloc`,
   `open_memstream` and `scandir`;
 - `realpath` whose second argument is `NULL`. A `realpath` with a
   caller-supplied buffer (`backlight_choice.c`) does not allocate and stays
   allowed;
-- `getline` and `getdelim` calls that do not follow the point-3 pattern
-  (`errno` cleared before the call and checked after the loop).
+- `getline` and `getdelim` calls that do not follow the point-3 pattern:
+  `errno = 0;` as the statement right before the call (so never in a loop
+  condition, where a clear before the loop happens once), and `ENOMEM`
+  checked later in the same function.
 
 The check is a script over the preprocessed-free sources, so it can be
-wrong in both directions. It has its own test: a fixture file with one
-call of every rejected form, each of which must be reported, and one with
-the allowed forms (`realpath` with a buffer, the point-3 `getline` loop,
-the names inside comments and strings), none of which may be.
+wrong in both directions. It has its own test
+(`scripts/tests/test_check_allocations.py`): a fixture with one call of
+every rejected form, each of which must be reported, and one with the
+allowed forms (the helpers, `realpath` with a buffer, the point-3 `getline`
+loop, members such as `allocator->malloc`, the names inside comments and
+strings), none of which may be. The fixtures are text in the test, not `.c`
+files, so the code scanners do not analyse them.
 
-During migration, a baseline in `common/alloc-legacy-sites.txt` (outside
-`docs/`, because CI reads it) lists the remaining legacy sites. Additions
-fail, and the baseline only shrinks, down to empty.
+During migration, a baseline in `common/alloc/legacy-sites.txt` (outside
+`docs/`, because CI reads it) counts the remaining legacy sites per file and
+call. A count above the baseline fails, with the lines of that call; a count
+below it fails too, asking for the baseline to be lowered in the same
+change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
 
 ### 9. Scope
 
@@ -839,12 +853,22 @@ fail, and the baseline only shrinks, down to empty.
   overflows (`vela_alloc(SIZE_MAX, 2)`), which is deterministic and needs no
   hook. It checks that the printed `file:line` is the test's own line. The
   same test is repeated through `VELA_NEW_N`, `vela_grow` (both capacity
-  types), `vela_strndup` and `vela_size_add`.
+  types, including a 64-bit count of 2³² in the `int` form), `vela_size_add`
+  and `vela_size_mul`. A string copy cannot overflow, so `vela_strdup`,
+  `vela_strndup` and `vela_asprintf` are checked through a forced
+  allocation failure instead: the test binary wraps `calloc` and `realloc`
+  (`-Wl,--wrap`), and the wrappers also return `NULL` for a zero size, as C
+  allows, and fill new `realloc` memory with a pattern, so only the helpers'
+  own handling makes a zero-size block non-`NULL` and a grown tail zero
+  (`alloc.helpers`, `common/alloc/tests/alloc_test.c`).
 - **Real allocation failure:** a death test in a child process with a low
-  `RLIMIT_AS` checks the `vela_oom` message and `SIGABRT`.
+  `RLIMIT_AS` checks the `vela_oom` message and `SIGABRT`. It is skipped
+  under ASan, which reserves its shadow memory beyond any such limit; the
+  memory figures are also checked through a forced failure.
 - **Existing test:** `compositor.wait-arrays-oom` keeps forcing the
-  allocation under `vela_grow` to fail, now through whatever `vela_grow_*_at`
-  calls, and expects the `vela_oom` abort.
+  `realloc` under `vela_grow` to fail, and expects the `vela_oom` abort and
+  its line, which names `render/wait_arrays.c` and the size of the array
+  that failed.
 - **Contract:** the zero-size cases return non-`NULL` and can be freed.
   `vela_grow` zeroes the tail, doubles the capacity, preserves contents, and
   does nothing when `needed` is not larger than the capacity and the array
@@ -954,10 +978,15 @@ fail, and the baseline only shrinks, down to empty.
      A crash inside `lock_fatal_shutdown` itself is not reproduced: the
      tests stop the compositor once the fatal path has logged its start,
      which is the window it opens, not its own code.
-2. `common/alloc` with its tests; `vela_grow` with its two capacity types,
-   and `compositor.wait-arrays-oom` moved onto it;
-   `vela_buffer` on the `size_t` core with checked addition; the CI check
-   with a full baseline.
+2. **Done:** `common/alloc` with its tests (`alloc.helpers`); `vela_grow`
+   with its two capacity types, replacing the one in `util.c`, and
+   `compositor.wait-arrays-oom` moved onto it; `vela_buffer` on the `size_t`
+   core with checked addition (`compositor.Buffer*`); the CI check with a
+   full baseline (`allocation-sites`, 193 sites). An empty array asked for
+   zero elements is now allocated instead of left `NULL`: the scene diff's
+   first empty frame allocates its match flags once
+   (`compositor.scene-diff`). The one `getline`, in `vela_read_line`
+   (`config.c`), is in the baseline until step 3 adds its `ENOMEM` check.
 3. The unchecked `realloc` sites (`buffer.c`, `config.c`, `icons.c`,
    `output_config.c`) and the `getline` rule.
 4. Mechanical conversion of objects and strings, one subsystem per PR
