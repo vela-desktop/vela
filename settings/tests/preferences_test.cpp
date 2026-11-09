@@ -47,6 +47,31 @@ class PreferencesTest : public QObject {
         return path;
     }
 
+    // Values written before the config path was blocked must stay put.
+    static void expectRejectedChanges(Preferences& prefs)
+    {
+        prefs.setNightTemperature(3000);
+        QCOMPARE(prefs.nightTemperature(), 4500);
+        prefs.setTearing(true);
+        QVERIFY(!prefs.tearing());
+        prefs.setVrr(QStringLiteral("always"));
+        QCOMPARE(prefs.vrr(), QStringLiteral("never"));
+        prefs.setDirectScanout(QStringLiteral("auto"));
+        QCOMPARE(prefs.directScanout(), QStringLiteral("no"));
+        prefs.setMagnifierStep(200);
+        QCOMPARE(prefs.magnifierStep(), 150);
+        prefs.setColorFilter(false);
+        QVERIFY(prefs.colorFilter());
+        prefs.setStickyKeys(false);
+        QVERIFY(prefs.stickyKeys());
+        prefs.setAnimationEffects(true);
+        QVERIFY(!prefs.animationEffects());
+        prefs.setMouseSpeed(3);
+        QCOMPARE(prefs.mouseSpeed(), 12);
+        prefs.setTouchpad(true);
+        QVERIFY(!prefs.touchpad());
+    }
+
 private slots:
     /** Missing desktop helpers must produce a diagnostic without opening another app. */
     void missingFolderOpener()
@@ -437,26 +462,7 @@ private slots:
             QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
             prefs.setNightLight(false);
             QVERIFY(prefs.nightLight());
-            prefs.setNightTemperature(3000);
-            QCOMPARE(prefs.nightTemperature(), 4500);
-            prefs.setTearing(true);
-            QVERIFY(!prefs.tearing());
-            prefs.setVrr(QStringLiteral("always"));
-            QCOMPARE(prefs.vrr(), QStringLiteral("never"));
-            prefs.setDirectScanout(QStringLiteral("auto"));
-            QCOMPARE(prefs.directScanout(), QStringLiteral("no"));
-            prefs.setMagnifierStep(200);
-            QCOMPARE(prefs.magnifierStep(), 150);
-            prefs.setColorFilter(false);
-            QVERIFY(prefs.colorFilter());
-            prefs.setStickyKeys(false);
-            QVERIFY(prefs.stickyKeys());
-            prefs.setAnimationEffects(true);
-            QVERIFY(!prefs.animationEffects());
-            prefs.setMouseSpeed(3);
-            QCOMPARE(prefs.mouseSpeed(), 12);
-            prefs.setTouchpad(true);
-            QVERIFY(!prefs.touchpad());
+            expectRejectedChanges(prefs);
         }
 
         // A file where the config directory should be. Root can still write
@@ -480,26 +486,7 @@ private slots:
         QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
         prefs.setLockOnIdle(true);
         QVERIFY(!prefs.lockOnIdle());
-        prefs.setNightTemperature(3000);
-        QCOMPARE(prefs.nightTemperature(), 4500);
-        prefs.setTearing(true);
-        QVERIFY(!prefs.tearing());
-        prefs.setVrr(QStringLiteral("always"));
-        QCOMPARE(prefs.vrr(), QStringLiteral("never"));
-        prefs.setDirectScanout(QStringLiteral("auto"));
-        QCOMPARE(prefs.directScanout(), QStringLiteral("no"));
-        prefs.setMagnifierStep(200);
-        QCOMPARE(prefs.magnifierStep(), 150);
-        prefs.setColorFilter(false);
-        QVERIFY(prefs.colorFilter());
-        prefs.setStickyKeys(false);
-        QVERIFY(prefs.stickyKeys());
-        prefs.setAnimationEffects(true);
-        QVERIFY(!prefs.animationEffects());
-        prefs.setMouseSpeed(3);
-        QCOMPARE(prefs.mouseSpeed(), 12);
-        prefs.setTouchpad(true);
-        QVERIFY(!prefs.touchpad());
+        expectRejectedChanges(prefs);
 
         QVERIFY(QFile::remove(dir));
         QVERIFY(QDir().mkpath(dir));
