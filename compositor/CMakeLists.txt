@@ -249,6 +249,13 @@ install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # sharpness geometry, color, sun, settings. They need GoogleTest (the gtest
 # package) and the test tools enabled.
 if(VELA_BUILD_TOOLS)
+    # LD_PRELOAD shim that makes one pixman region operation really fail
+    # (tests/functional/test_session.py, damage fallback).
+    add_library(vela-pixman-fail-preload MODULE tests/pixman_fail_preload.c)
+    target_link_libraries(vela-pixman-fail-preload PRIVATE PkgConfig::PIXMAN ${CMAKE_DL_LIBS})
+    target_compile_options(vela-pixman-fail-preload PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-pixman-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+
     add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
     target_include_directories(vela-device-loss-policy-test PRIVATE src)
     set_target_properties(vela-device-loss-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)

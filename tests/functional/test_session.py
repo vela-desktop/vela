@@ -298,6 +298,121 @@ class Lock(unittest.TestCase):
             self.assertTrue(vela.state().has(window))
 
 
+class DamageFailure(unittest.TestCase):
+    """A pixman region operation that runs out of memory must never leave
+    stale pixels: the frame redraws whole buffers instead of trusting broken
+    damage. The failures are real (an LD_PRELOAD shim makes malloc fail
+    inside the chosen operation), not simulated in Vela's code."""
+
+    SHIM = os.path.join(BUILD, "compositor", "libvela-pixman-fail-preload.so")
+    # copy also reaches wlroots' own region code (wlr_region_transform).
+    OPERATIONS = ("union", "union_rect", "intersect", "subtract", "copy")
+
+    def start(self, **options):
+        self.assertTrue(os.path.exists(self.SHIM), "build the vela-pixman-fail-preload target")
+        directory = tempfile.mkdtemp(prefix="vela-pixman-fail-")
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        self.trigger = os.path.join(directory, "trigger")
+        self.injections = 0
+        return Session(env={"LD_PRELOAD": self.SHIM, "VELA_TEST_PIXMAN_FAIL": self.trigger}, **options)
+
+    def arm(self, vela, operation, skip, case):
+        with open(self.trigger + ".tmp", "w") as trigger:
+            trigger.write(f"{vela.process.pid} {operation} {skip} {case}")
+        os.replace(self.trigger + ".tmp", self.trigger)
+
+    def disarm(self, vela):
+        """True when the armed failure really happened."""
+        injected = not os.path.exists(self.trigger)
+        if not injected:
+            os.unlink(self.trigger)  # this change needed fewer allocations
+        return injected
+
+    def assert_matches_full_redraw(self, vela, what):
+        # One capture after each of a few small frames (the pointer moving in
+        # a corner): each frame reuses another swapchain buffer, so stale
+        # pixels left in any one of them reach a capture.
+        shown = []
+        for step in range(3):
+            vela.input("move", 3 + step % 2, 3)
+            time.sleep(0.1 * TIME_SCALE)
+            shown.append(vela.pixels())
+        # SIGUSR1 redraws every buffer from scratch (server.c): if the image
+        # changes, the damage had left stale pixels.
+        os.kill(vela.process.pid, signal.SIGUSR1)
+        time.sleep(0.3 * TIME_SCALE)
+        redrawn = vela.pixels()
+        for index, image in enumerate(shown):
+            stale = sum(a != b for a, b in zip(image.rows, redrawn.rows))
+            self.assertEqual(stale, 0, f"{what}, capture {index}: {stale} rows differ from a full redraw")
+
+    @staticmethod
+    def recoveries(vela):
+        log = vela.log_text()
+        return log.count("damage lost (out of memory)") + log.count("drawing hit a failed region operation")
+
+    def test_failed_region_operations_never_leave_stale_pixels(self):
+        # Decorated, most allocating operations are in occlusion culling.
+        # Undecorated there are fewer, so increasing `skip` reaches the damage
+        # diff, the damage ring and the drawing too.
+        for decorated in (True, False):
+            with self.subTest(decorated=decorated):
+                self.check_failed_region_operations(decorated)
+
+    def check_failed_region_operations(self, decorated):
+        with self.start() as vela:
+            window = vela.open_window(400, 300, decorated=decorated)
+            vela.wait_for(lambda s: s["focused"] == window)
+            injected = {operation: 0 for operation in self.OPERATIONS}
+            case = 0
+            for operation in self.OPERATIONS:
+                for skip in range(6):
+                    with self.subTest(operation=operation, skip=skip):
+                        case += 1
+                        # Keyboard Move changes the scene in one step, with no
+                        # animation whose later frames would damage the lost
+                        # area again. Return ends it, so the pointer moved
+                        # below no longer drags the window.
+                        vela.command("window active move")
+                        time.sleep(0.1 * TIME_SCALE)
+                        before = vela.state().window(window)["x"]
+                        recovered = self.recoveries(vela)
+                        self.arm(vela, operation, skip, case)
+                        vela.input("key", "Right" if case % 2 else "Left")
+                        vela.wait_for(lambda s: s.window(window)["x"] != before, what="the window moved")
+                        time.sleep(0.2 * TIME_SCALE)
+                        if self.disarm(vela):
+                            injected[operation] += 1
+                            # Recovered on its own, before a screen capture
+                            # could force a frame of its own.
+                            self.assertGreater(self.recoveries(vela), recovered, "no recovery frame")
+                        vela.input("key", "Return")
+                        self.assert_matches_full_redraw(vela, f"{operation} after {skip}")
+            log = vela.log_text()
+            # Every operation really failed at least once, along both paths.
+            for operation, count in injected.items():
+                self.assertGreater(count, 0, f"no {operation} failure was injected")
+            self.assertIn("damage lost (out of memory)", log)
+            self.assertIn("drawing hit a failed region operation", log)
+
+    def test_failed_region_operation_while_locking_shows_only_the_lock(self):
+        for operation in self.OPERATIONS:
+            with self.subTest(operation=operation):
+                with self.start(lock_hold_ms=10000) as vela:
+                    vela.open_window(800, 600)
+                    self.arm(vela, operation, 0, 1)
+                    vela.command("lock")
+                    vela.wait_for_log("vela-testlock: locked")
+                    time.sleep(0.2 * TIME_SCALE)
+                    self.disarm(vela)
+                    image = vela.pixels()
+                    lock_color = (16, 32, 64)  # what vela-testlock paints
+                    for y in range(0, image.height, 16):
+                        for x in range(0, image.width, 16):
+                            self.assertEqual(image.at(x, y), lock_color, (x, y))
+                    self.assert_matches_full_redraw(vela, f"lock after {operation}")
+
+
 class VulkanShutdown(unittest.TestCase):
     """Headless shutdown smoke tests; physical DRM/KMS regression tests are separate."""
 

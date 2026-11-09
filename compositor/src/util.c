@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+unsigned long vela_region_failures;
+
 int64_t vela_timespec_ns(const struct timespec *t)
 {
     return (int64_t)t->tv_sec * VELA_NS_PER_SEC + t->tv_nsec;

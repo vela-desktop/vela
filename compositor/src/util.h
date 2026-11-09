@@ -20,6 +20,22 @@ int64_t vela_timespec_ns(const struct timespec *t);
 int64_t vela_now_ns(void);
 struct timespec vela_ns_timespec(int64_t ns);
 
+// Region operations (pixman) that failed, out of memory, since the process
+// started. Pixman then turns the destination into an empty "broken" region,
+// and every later operation that reads it fails too: damage that went
+// through a failed operation is unknown, so the frame path compares this
+// counter before and after its work and redraws whole output buffers
+// instead (docs/memory-allocation-policy.md, "Design for (4)").
+extern unsigned long vela_region_failures;
+// Wraps a pixman region operation's pixman_bool_t result.
+static inline bool vela_region_ok(int ok)
+{
+    if (!ok) {
+        ++vela_region_failures;
+    }
+    return ok != 0;
+}
+
 // The variable is set, not empty and not "0" (VELA_STATS=1).
 bool vela_env_flag(const char *name);
 // The variable is exactly "0": turns off something that is usually on
