@@ -1,7 +1,11 @@
 # Host allocation policy — design draft
 
-> **Status:** proposal, fifth revision, 9 November 2026, against `main` at
-> `bb6cc0c`. No implementation in this PR. Every factual claim names the
+> **Status:** accepted with option c, fifth revision, 9 November 2026,
+> against `main` at `bb6cc0c`. Migration step 1 is done: the shared
+> lock-state page, the fail-closed marker reading, the allocation-free lock
+> fatal path, the damage fallback (all four items of "The premise"), the
+> configuration-read defects and the recovery test matrix. Every factual
+> claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
 
@@ -39,8 +43,10 @@ Abort-on-failure is acceptable only if every crash leads to a safe state.
 The supervisor restarts the compositor locked when the lock marker exists
 (`supervisor.c` → `VELA_START_LOCKED` → `server.c`). The audit found four
 ways in which a crash, from an allocation or from anything else, can end up
-in an unlocked or stale screen. None of them is fixed in this phase; they
-shape the design.
+in an unlocked or stale screen. They shape the design. Items 1 and 2 are
+fixed by the shared lock-state page (`lock_state.c`), which also closes
+item 3; the fatal path no longer allocates on its own (see below). Item 4
+is fixed by the damage fallback ("Design for (4)").
 
 1. **Unchecked `setenv` after `fork()`.** The supervisor's restart child
    calls `setenv("VELA_START_LOCKED", "1", 1)` without checking the result
@@ -121,10 +127,11 @@ implementation choices:
   no `setenv` is involved.
 - **Inheritance.** The descriptor survives `execv` in the restart child only
   (its `CLOEXEC` flag is cleared there, as for `socket.fd` today). The
-  compositor sets `FD_CLOEXEC` on it again at startup, before it starts any
-  child, as it already does for the runtime-directory descriptor. No
-  application may inherit it: a sandboxed application holding a writable
-  view of the page could store "unlocked" into it.
+  compositor maps the page first thing in `main`, before it creates the
+  server or starts any child, and then closes the descriptor: the mapping
+  keeps the page alive, and no descriptor is left that a child could
+  inherit. No application may hold one: a sandboxed application holding a
+  writable view of the page could store "unlocked" into it.
 - **Threat model.** "Sandboxed" means confined by namespaces or an LSM
   (Flatpak, a strictly confined Snap). Such an application has its own PID
   namespace or policy and cannot reach the compositor's `/proc/<pid>/fd`.
@@ -133,10 +140,15 @@ implementation choices:
   already delete the marker in `$XDG_RUNTIME_DIR` today, so the page opens
   nothing new; such a process is "same user" (see the audit), not a trust
   boundary.
-- **Who writes.** Only the compositor writes; the supervisor only reads.
-  The value persists across restarts: a restarted compositor reads the
-  previous value first, then keeps the page in step with its own lock
-  state. Nothing resets the page between restarts.
+- **Who writes.** Only the compositor writes. The supervisor creates the
+  page already zeroed ("unlocked") and backed by memory (it writes the
+  initial value instead of only truncating, so the compositor's first store
+  never has to allocate), then only holds it; it no longer decides whether
+  to start locked and no longer passes `VELA_START_LOCKED`. The value
+  persists across restarts: a restarted compositor reads the previous value
+  first, then keeps the page in step with its own lock state. Nothing
+  resets the page between restarts. Any value other than "unlocked" reads
+  as locked.
 - **The page cannot be mapped.** When `--lock-state-fd` was passed but the
   page cannot be mapped (or the descriptor is not a sealed one-page
   `memfd`), the compositor exits with `VELA_EXIT_LOCK_UNSAFE` before it
@@ -153,9 +165,11 @@ implementation choices:
 - **The decision at startup.** With the page mapped, the restarted
   compositor starts locked if **any** of these holds: the page says
   "locked"; the marker is present; the marker's presence cannot be
-  determined (an `fstatat` error other than `ENOENT`). Only a page that
-  says "unlocked" **and** a marker that is positively absent start
-  unlocked.
+  determined (an `fstatat` error other than `ENOENT`, or an entry with the
+  marker's name that is not this user's private regular file). Only a page
+  that says "unlocked" **and** a marker that is positively absent start
+  unlocked (`vela_lock_start_locked`, `vela_lock_marker_state_at`). A
+  `VELA_START_LOCKED` from an older supervisor still forces a locked start.
 - **The fatal path.** Because "locked" is stored before the marker is
   created, a marker that cannot be created no longer matters for a restart;
   the fatal path still ends the session as today.
@@ -193,10 +207,54 @@ path counts `fatal_waiting` the same way. Therefore:
   reported a frame that was rendered whole or with valid damage after the
   lock engaged.
 
+**As implemented.** `vela_region_failures` (`util.h`) counts failed region
+operations; every allocating operation in `scene/frame.c` and in the pass's
+clipping (`render/pass.c` `add_draw`) goes through `vela_region_ok`. The
+regions wlroots computes (`wlr_region_transform`, the damage ring) are
+checked with `pixman_region32_selfcheck`, which a broken region fails.
+`vela_output_frame_render` checks at three points, each covering only the
+failures since the previous one:
+
+1. **Before drawing:** a failure since the last frame (including damage
+   reported between frames), a broken scene damage or ring, or a previous
+   frame that was not drawn whole resets the ring and makes the scene damage
+   the whole output. A one-rectangle region (`pixman_region32_init_rect`)
+   needs no allocation, so the recovery cannot fail in turn. This happens in
+   the same frame: the failure does not reach the screen at all.
+2. **After the damage ring:** a failure there makes the frame and buffer
+   damage whole and resets the ring.
+3. **After drawing:** a failure while drawing (a clip region) can leave parts
+   of the buffer undrawn. The frame is marked unsafe
+   (`vela_output_frame_safe`), is not reported to the lock, and schedules the
+   next frame, which redraws whole.
+
+Occlusion culling needed its own rule, found by the tests: a failure there
+breaks the "covered" region and dropped elements that were visible, which no
+full redraw brings back. A culling failure now keeps the elements (drawing
+too much is correct; dropping one is not).
+
+Tests (`test_session.py` `DamageFailure`): an `LD_PRELOAD` shim
+(`compositor/tests/pixman_fail_preload.c`) makes `malloc` fail inside a
+chosen pixman operation, so pixman takes its real failure path. Every
+operation (`union`, `union_rect`, `intersect`, `subtract`, `copy`) is made to
+fail at several points of a one-step window move (keyboard Move, with and
+without decorations), which reaches culling, the damage diff, the ring and
+the drawing. Each time the recovery frame must come by itself, before any
+screen capture, and three captures (each after a frame that reuses another
+swapchain buffer) must match a full redraw (`SIGUSR1`). A failure while
+locking must show only the lock. Removing the counter, the culling rule or
+the check before drawing makes these tests fail. Three parts are defence in
+depth that the headless tests cannot tell apart, and are kept on reasoning
+alone: the check after the ring (headless ignores the frame damage it
+protects; DRM uses it as `FB_DAMAGE_CLIPS`), the unsafe-frame rule after
+drawing (the failures reachable headless clip shadow pieces that end up
+covered), and the lock's wait for a safe frame (a lock frame's damage is the
+whole output, a single rectangle, so its drawing never allocates).
+
 ## Existing defects recorded during the audit
 
-Documented here so the design accounts for them. They are not fixed in this
-phase.
+Documented here so the design accounts for them. Defect 1 is fixed in
+migration step 1; the others belong to later steps.
 
 1. **A failed open or read erases the user's configuration.** `read_lines`
    (`compositor/src/config.c`) returns zero lines when `fopen` fails, for
@@ -228,6 +286,26 @@ phase.
    caller, and nothing derived from it is written back. The remaining loops
    (`icons.c` ×2, `text.c`) only read; they get the same treatment so that
    an error is never mistaken for a short or missing file.
+
+   **As implemented.** `vela_config_open` and `vela_read_line` (`config.h`)
+   carry the rule: only `ENOENT` is a missing file, and a read ends cleanly
+   only when `getline` fails with `errno` still 0 and no stream error. Until
+   `vela_oom` exists (step 2), `ENOMEM` from `getline` is a read error like
+   `EIO`: nothing is written back, and the next step turns it into the
+   fail-fast path. Writers refuse instead of rewriting: `vela.conf`
+   (`vela_config_write_checked`, which `vela-update-daemon` uses, and the
+   startup migration), `outputs.conf` (`vela_output_config_save`; the
+   legacy `schermi.conf` is read only when `outputs.conf` is positively
+   missing), and `desktop.conf` (marked unreadable for the session, with a
+   log line). The read-only readers (`icons.c` ×2, `text.c`) treat a
+   partial read as no data. Tests: `compositor.config-read` (a C test under
+   an `LD_PRELOAD` shim, `compositor/tests/getline_fail_preload.c`, that
+   makes `getline` fail on a chosen line: `EIO`, `ENOMEM`, descriptors
+   exhausted, no permission),
+   `ConfigurationRead` in `test_session.py` for `desktop.conf`, and
+   `unreadableSettingsAreNeverRewritten` in `tests/updates/client.cpp` for
+   the daemon. The `ferror` half of the end-of-file check is not covered:
+   the shim cannot make glibc set the stream's error flag without `errno`.
 
 2. **The icon cache grows without bound, keyed by client input.**
    `vela_icons_app` (`icons.c`) keeps a linked list of `cached_icon`
@@ -586,7 +664,7 @@ if (error || ferror(file)) {
 
 | Process | After `abort()` | Checked against |
 |---|---|---|
-| `vela-compositor` | The supervisor restarts it and keeps the Wayland socket; Qt/KDE apps reconnect, others close. A locked session restarts locked, but today only while the lock marker exists and can be read, and `setenv` succeeds; see "The premise". The budget is three crashes per minute, then the session ends. | `supervisor.c` restart loop (`WIFSIGNALED` covers `SIGABRT`); `tests/functional/test_session.py` `test_crash_while_locked_restarts_locked` and `test_gives_up_after_three_quick_crashes`, both using `SIGSEGV` |
+| `vela-compositor` | The supervisor restarts it and keeps the Wayland socket; Qt/KDE apps reconnect, others close. A locked session restarts locked: the shared lock-state page or a marker that is present or unreadable is enough; see "The premise". The budget is three crashes per minute, then the session ends. | `supervisor.c` restart loop (`WIFSIGNALED` covers `SIGABRT`); `tests/functional/test_session.py` `test_crash_while_locked_restarts_locked`, `test_crash_while_locked_restarts_locked_without_marker`, `test_unreadable_lock_marker_restarts_locked` and `test_gives_up_after_three_quick_crashes`, all using `SIGSEGV` |
 | `vela-bluetooth` | Restarted by the compositor's generic child supervision. It stops after three consecutive exits that each happen within 5 s of start. | `process.c` `handle_exit` |
 | `vela-update-daemon` | Started and restarted by the same generic child supervision, with the same limit | `updates.c` `vela_child_start`; `process.c` `handle_exit` |
 | `vela-brightness` | Restarted by its own `exited` handler, with its own limit | `brightness.c` |
@@ -607,12 +685,14 @@ it.
   threads started by libraries (for example the Vulkan driver), so `malloc`
   in a forked child could deadlock on a lock held by another thread at the
   moment of the fork.
-- **The supervisor's restart child** calls `snprintf`, `setenv`,
-  `unsetenv` and `fstatat` before `execv`. `setenv` can allocate. That is
-  safe as far as locks go, because the supervisor creates no threads (no
+- **The supervisor's restart child** calls `fcntl`, `snprintf`, `setenv`
+  and `unsetenv` before `execv`; its argv, `--lock-state-fd` included, is
+  built before the first fork. `setenv` can allocate. That is safe as far
+  as locks go, because the supervisor creates no threads (no
   `pthread_create` in `supervisor*.c`; *to verify* that no library it
-  initialises starts one). It is not safe as far as failure goes; see
-  "The premise", items 1 and 2.
+  initialises starts one). Every one of those calls is checked and a
+  failure ends the child with `_exit(127)`, and the lock decision no longer
+  travels through the environment ("The premise", items 1 and 2).
 - **Rule:** after `fork()`, code calls none of the helpers. Any libc call
   that can fail is checked, and failure means `_exit(127)`.
 
@@ -841,13 +921,30 @@ fail, and the baseline only shrinks, down to empty.
 ## Migration order
 
 1. **Fail-closed recovery first,** because the whole policy depends on it:
-   - the shared lock-state page (option c, or the option chosen), including
-     an unreadable marker counting as present;
-   - an allocation-free lock fatal path;
-   - the damage fallback;
-   - the configuration-read defects (open errors and read errors, in the
-     compositor and in the update daemon);
-   - the recovery test matrix.
+   - **done:** the shared lock-state page (option c), including an
+     unreadable marker counting as present, checked `setenv` in the restart
+     child, and their tests (`compositor.LockState.*`,
+     `compositor.LockMarker.*`, and the lock-state tests in
+     `test_session.py`);
+   - **done:** an allocation-free lock fatal path. Its timer is created
+     with the lock, `fatal_waiting` is reserved for every output when the
+     lock engages and on every layout change while locked, and the path no
+     longer rebuilds the backdrop (it is already current while locked). It
+     still renders through the frame path (step 5) and sends libwayland
+     leave events; a crash there restarts locked through the page
+     (`test_crash_during_lock_blackout_restarts_locked`);
+   - **done:** the damage fallback (see "Design for (4)", as implemented);
+   - **done:** the configuration-read defects (open errors and read
+     errors, in the compositor and in the update daemon; see "Existing
+     defects", 1);
+   - **done:** the recovery test matrix (`Supervisor` in
+     `test_session.py`): unlocked, locked, while locking, during the fatal
+     blackout, `setenv` failing in the restart child once and always, and
+     `fstatat` failing on the marker (an `LD_PRELOAD` shim,
+     `compositor/tests/libc_fail_preload.c`), with `SIGSEGV` and `SIGABRT`.
+     A crash inside `lock_fatal_shutdown` itself is not reproduced: the
+     tests stop the compositor once the fatal path has logged its start,
+     which is the window it opens, not its own code.
 2. `common/alloc` with its tests; `vela_grow` with its two capacity types,
    and `compositor.wait-arrays-oom` moved onto it;
    `vela_buffer` on the `size_t` core with checked addition; the CI check
