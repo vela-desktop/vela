@@ -808,6 +808,7 @@ class Supervisor(unittest.TestCase):
             self.assertEqual(vela.log_text().count("restarting locked"), 1)
 
     CRASHES = (signal.SIGSEGV, signal.SIGABRT)  # SIGABRT: what vela_oom will raise
+    LIBC_SHIM = os.path.join(BUILD, "compositor", "libvela-libc-fail-preload.so")
 
     def _stop_once_logged(self, vela, compositor, text):
         """Run the compositor in 2 ms slices until `text` is logged, and leave
@@ -825,6 +826,14 @@ class Supervisor(unittest.TestCase):
     def _crash_stopped(self, compositor, signum):
         os.kill(compositor, signum)
         os.kill(compositor, signal.SIGCONT)
+
+    def _libc_failures(self):
+        self.assertTrue(os.path.exists(self.LIBC_SHIM), "build the vela-libc-fail-preload target")
+        directory = tempfile.mkdtemp(prefix="vela-libc-fail-")
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        setenv, fstatat = os.path.join(directory, "setenv"), os.path.join(directory, "fstatat")
+        env = {"LD_PRELOAD": self.LIBC_SHIM, "VELA_TEST_SETENV_FAIL": setenv, "VELA_TEST_FSTATAT_FAIL": fstatat}
+        return env, setenv, fstatat
 
     def test_crash_during_lock_blackout_restarts_locked(self):
         # The marker cannot be created, so the lock takes its fatal path: a
@@ -851,6 +860,74 @@ class Supervisor(unittest.TestCase):
                     self.assertNotIn("secure lock state could not be persisted", log)
                     vela.wait_for(lambda s: s["locked"], what="restarted locked")
                     vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+
+    def test_crash_while_locking_restarts_locked(self):
+        # Between the lock engaging and the locker being told "locked".
+        for signum in self.CRASHES:
+            with self.subTest(signal=signal.Signals(signum).name):
+                with Session(supervise=True, lock_hold_ms=1000) as vela:
+                    compositor = child_compositor(vela.process.pid)
+                    vela.command("lock")
+                    self._stop_once_logged(vela, compositor, "Screen locked")
+                    self.assertNotIn("vela-testlock: locked", vela.log_text())
+                    self._crash_stopped(compositor, signum)
+                    vela.wait_for_log("restarting locked")
+                    vela.wait_for(lambda s: s["locked"], what="restarted locked")
+                    vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+
+    def test_crash_while_locked_restarts_locked_after_abort(self):
+        # The same as test_crash_while_locked_restarts_locked, with the signal
+        # an allocation failure raises.
+        with Session(supervise=True, lock_hold_ms=3000) as vela:
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            os.kill(child_compositor(vela.process.pid), signal.SIGABRT)
+            vela.wait_for_log("restarting locked")
+            vela.wait_for(lambda s: s["locked"], what="restarted locked")
+
+    def test_setenv_failure_in_restart_child_never_restarts_unlocked(self):
+        for signum in self.CRASHES:
+            with self.subTest(signal=signal.Signals(signum).name):
+                env, setenv, _ = self._libc_failures()
+                with Session(supervise=True, lock_hold_ms=3000, env=env) as vela:
+                    vela.command("lock")
+                    vela.wait_for(lambda s: s["locked"])
+                    with open(setenv, "w") as trigger:
+                        trigger.write("VELA_RESTARTED once")
+                    os.kill(child_compositor(vela.process.pid), signum)
+                    # That child gives up before exec; the next one starts
+                    # locked from the page.
+                    vela.wait_for_log("injected setenv failure")
+                    vela.wait_for_log("exited with an error (code 127)")
+                    vela.wait_for_log("restarting locked")
+                    vela.wait_for(lambda s: s["locked"], what="restarted locked")
+
+    def test_setenv_always_failing_ends_the_session(self):
+        env, setenv, _ = self._libc_failures()
+        with Session(supervise=True, lock_hold_ms=10000, env=env, expected_exit=1) as vela:
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            with open(setenv, "w") as trigger:
+                trigger.write("VELA_RESTARTED")
+            os.kill(child_compositor(vela.process.pid), signal.SIGABRT)
+            self.assertEqual(vela.process.wait(timeout=15), 1)
+            log = vela.log_text()
+            self.assertIn("giving up", log)
+            self.assertEqual(log.count("Vela running on"), 1, "no compositor ever started again")
+
+    def test_marker_that_cannot_be_checked_restarts_locked(self):
+        # Unlocked page, no marker, but fstatat on the marker fails (EIO): its
+        # absence is not proven, so the restart is locked.
+        env, _, fstatat = self._libc_failures()
+        with Session(supervise=True, lock_hold_ms=1000, env=env) as vela:
+            open(fstatat, "w").close()
+            try:
+                os.kill(child_compositor(vela.process.pid), signal.SIGSEGV)
+                vela.wait_for_log("Lock marker unreadable")
+                vela.wait_for_log("restarting locked")
+            finally:
+                os.unlink(fstatat)
+            vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
 
     def test_unreadable_lock_marker_restarts_locked(self):
         # A marker whose state cannot be established counts as present, even
