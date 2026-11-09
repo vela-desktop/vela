@@ -162,7 +162,8 @@ implementation choices:
   under a very low `RLIMIT_AS`, and the rest of startup (Vulkan, wlroots)
   would almost certainly fail too. Without `--lock-state-fd` (an older
   supervisor), the compositor keeps today's marker-only behaviour.
-- **The decision at startup.** With the page mapped, the restarted
+- **The decision at startup** (`vela_lock_restart_locked`, unit-tested;
+  the restart child's setup is `supervisor_child.c`). With the page mapped, the restarted
   compositor starts locked if **any** of these holds: the page says
   "locked"; the marker is present; the marker's presence cannot be
   determined (an `fstatat` error other than `ENOENT`, or an entry with the
@@ -243,13 +244,19 @@ the drawing. Each time the recovery frame must come by itself, before any
 screen capture, and three captures (each after a frame that reuses another
 swapchain buffer) must match a full redraw (`SIGUSR1`). A failure while
 locking must show only the lock. Removing the counter, the culling rule or
-the check before drawing makes these tests fail. Three parts are defence in
-depth that the headless tests cannot tell apart, and are kept on reasoning
-alone: the check after the ring (headless ignores the frame damage it
-protects; DRM uses it as `FB_DAMAGE_CLIPS`), the unsafe-frame rule after
-drawing (the failures reachable headless clip shadow pieces that end up
-covered), and the lock's wait for a safe frame (a lock frame's damage is the
-whole output, a single rectangle, so its drawing never allocates).
+the check before drawing makes these tests fail.
+
+The three checks are also separate functions (`check_damage_before_drawing`,
+`check_damage_after_ring`, `check_damage_after_drawing`), and
+`compositor.damage-fallback` runs them and the culling rule on the CPU,
+with pixman failing for real (the test's own `malloc`): removing any part
+of any check, or the culling rule, fails it. The headless functional tests
+could not tell two of them apart, because headless ignores the frame
+damage the ring check protects (DRM uses it as `FB_DAMAGE_CLIPS`) and the
+drawing failures reachable there clip shadow pieces that end up covered.
+One part has no test that fails without it: the lock's wait for a safe
+frame (`output.c`), since a lock frame's damage is the whole output, a
+single rectangle, so its drawing never allocates.
 
 ## Existing defects recorded during the audit
 
@@ -296,9 +303,11 @@ migration step 1; the others belong to later steps.
    (`vela_config_write_checked`, which `vela-update-daemon` uses, and the
    startup migration), `outputs.conf` (`vela_output_config_save`; the
    legacy `schermi.conf` is read only when `outputs.conf` is positively
-   missing), and `desktop.conf` (marked unreadable for the session, with a
-   log line). The read-only readers (`icons.c` ×2, `text.c`) treat a
-   partial read as no data. Tests: `compositor.config-read` (a C test under
+   missing), and `desktop.conf` (read by `desktop_conf.c`; marked
+   unreadable for the session, with a log line). The read-only readers
+   treat a partial read as no data: the section reader, now
+   `vela_ini_read` in `config.c` and shared by `icons.c` and `text.c`, and
+   the icon theme index in `icons.c`. Tests: `compositor.config-read` (a C test under
    an `LD_PRELOAD` shim, `compositor/tests/getline_fail_preload.c`, that
    makes `getline` fail on a chosen line: `EIO`, `ENOMEM`, descriptors
    exhausted, no permission),
