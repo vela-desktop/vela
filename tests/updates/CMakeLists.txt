@@ -28,7 +28,7 @@ add_dependencies(vela-updates-client-test vela-update-daemon-testing)
 # (compositor/tests/getline_fail_preload.c).
 if(TARGET vela-getline-fail-preload)
     target_compile_definitions(vela-updates-client-test PRIVATE
-        VELA_GETLINE_FAIL_PRELOAD="$<TARGET_FILE:vela-getline-fail-preload>")
+        VELA_GETLINE_FAIL_PRELOAD="${VELA_TEST_PRELOAD_PREFIX}$<TARGET_FILE:vela-getline-fail-preload>")
     add_dependencies(vela-updates-client-test vela-getline-fail-preload)
 endif()
 add_test(NAME updates-client COMMAND vela-updates-client-test)

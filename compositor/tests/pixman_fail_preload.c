@@ -6,7 +6,8 @@
 // thread's malloc/calloc/realloc return NULL, so pixman takes its genuine
 // failure path (a "broken" region and a FALSE result).
 //
-// VELA_TEST_PIXMAN_FAIL names a trigger file containing
+// VELA_TEST_PIXMAN_FAIL_DIR is an inherited descriptor (a number) of the
+// test's directory; its file "pixman-fail" is the trigger, containing
 // "<pid> <operation> <skip> <id>", such as "1234 union_rect 2 7". Calls of
 // that operation in that process that need memory are let through `skip`
 // times; the next one fails, then the shim deletes the file and prints
@@ -89,13 +90,23 @@ static bool next_number(char **cursor, long *value)
 
 // The calls to let through before failing, or -1 when not armed for this
 // operation. No stdio and no heap: this runs on every wrapped call.
+// The test directory's descriptor, or -1. Only a number comes from the
+// environment: the file names are fixed.
+static int trigger_directory(void)
+{
+    const char *text = getenv("VELA_TEST_PIXMAN_FAIL_DIR");
+    char *end = NULL;
+    long fd = text && *text ? strtol(text, &end, 10) : -1;
+    return end && !*end && fd >= 0 && fd < 1024 ? (int)fd : -1;
+}
+
 static long armed(const char *operation)
 {
-    const char *path = getenv("VELA_TEST_PIXMAN_FAIL");
-    if (!path || !*path) {
+    int directory = trigger_directory();
+    if (directory < 0) {
         return -1;
     }
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    int fd = openat(directory, "pixman-fail", O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         return -1;
     }
@@ -132,8 +143,7 @@ static pixman_bool_t finish(const char *operation, pixman_bool_t ok)
 {
     failing = false;
     if (!ok) {
-        const char *path = getenv("VELA_TEST_PIXMAN_FAIL");
-        unlink(path);
+        unlinkat(trigger_directory(), "pixman-fail", 0);
         fprintf(stderr, "pixman-fail: injected %s failure\n", operation);
         if (getenv("VELA_TEST_PIXMAN_FAIL_BACKTRACE")) {
             void *frames[16];

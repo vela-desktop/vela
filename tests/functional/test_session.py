@@ -312,9 +312,14 @@ class DamageFailure(unittest.TestCase):
         self.assertTrue(os.path.exists(self.SHIM), "build the vela-pixman-fail-preload target")
         directory = tempfile.mkdtemp(prefix="vela-pixman-fail-")
         self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
-        self.trigger = os.path.join(directory, "trigger")
+        # The shim gets the directory as an inherited descriptor and opens a
+        # fixed name in it: no path travels through the environment.
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, fd)
+        self.trigger = os.path.join(directory, "pixman-fail")
         self.injections = 0
-        return Session(env={"LD_PRELOAD": self.SHIM, "VELA_TEST_PIXMAN_FAIL": self.trigger}, **options)
+        return Session(env={"LD_PRELOAD": self.SHIM, "VELA_TEST_PIXMAN_FAIL_DIR": str(fd)}, pass_fds=(fd,),
+                       **options)
 
     def arm(self, vela, operation, skip, case):
         with open(self.trigger + ".tmp", "w") as trigger:
@@ -820,8 +825,16 @@ class Supervisor(unittest.TestCase):
             os.kill(compositor, signal.SIGCONT)
             time.sleep(0.002)
             os.kill(compositor, signal.SIGSTOP)
-        with open(f"/proc/{compositor}/stat") as stat:
-            self.assertEqual(stat.read().rsplit(")", 1)[1].split()[0], "T", "stopped, not exited")
+        # SIGSTOP takes effect asynchronously: wait until the process is
+        # really stopped (and not gone).
+        state = None
+        for _ in range(200):
+            with open(f"/proc/{compositor}/stat") as stat:
+                state = stat.read().rsplit(")", 1)[1].split()[0]
+            if state != "R" and state != "S" and state != "D":
+                break
+            time.sleep(0.005)
+        self.assertEqual(state, "T", "stopped, not exited")
 
     def _crash_stopped(self, compositor, signum):
         os.kill(compositor, signum)
@@ -831,9 +844,12 @@ class Supervisor(unittest.TestCase):
         self.assertTrue(os.path.exists(self.LIBC_SHIM), "build the vela-libc-fail-preload target")
         directory = tempfile.mkdtemp(prefix="vela-libc-fail-")
         self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        # An inherited descriptor of the directory, with fixed trigger names.
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, fd)
         setenv, fstatat = os.path.join(directory, "setenv"), os.path.join(directory, "fstatat")
-        env = {"LD_PRELOAD": self.LIBC_SHIM, "VELA_TEST_SETENV_FAIL": setenv, "VELA_TEST_FSTATAT_FAIL": fstatat}
-        return env, setenv, fstatat
+        options = {"env": {"LD_PRELOAD": self.LIBC_SHIM, "VELA_TEST_FAIL_DIR": str(fd)}, "pass_fds": (fd,)}
+        return options, setenv, fstatat
 
     def test_crash_during_lock_blackout_restarts_locked(self):
         # The marker cannot be created, so the lock takes its fatal path: a
@@ -888,8 +904,8 @@ class Supervisor(unittest.TestCase):
     def test_setenv_failure_in_restart_child_never_restarts_unlocked(self):
         for signum in self.CRASHES:
             with self.subTest(signal=signal.Signals(signum).name):
-                env, setenv, _ = self._libc_failures()
-                with Session(supervise=True, lock_hold_ms=3000, env=env) as vela:
+                options, setenv, _ = self._libc_failures()
+                with Session(supervise=True, lock_hold_ms=3000, **options) as vela:
                     vela.command("lock")
                     vela.wait_for(lambda s: s["locked"])
                     with open(setenv, "w") as trigger:
@@ -903,8 +919,8 @@ class Supervisor(unittest.TestCase):
                     vela.wait_for(lambda s: s["locked"], what="restarted locked")
 
     def test_setenv_always_failing_ends_the_session(self):
-        env, setenv, _ = self._libc_failures()
-        with Session(supervise=True, lock_hold_ms=10000, env=env, expected_exit=1) as vela:
+        options, setenv, _ = self._libc_failures()
+        with Session(supervise=True, lock_hold_ms=10000, expected_exit=1, **options) as vela:
             vela.command("lock")
             vela.wait_for(lambda s: s["locked"])
             with open(setenv, "w") as trigger:
@@ -918,8 +934,8 @@ class Supervisor(unittest.TestCase):
     def test_marker_that_cannot_be_checked_restarts_locked(self):
         # Unlocked page, no marker, but fstatat on the marker fails (EIO): its
         # absence is not proven, so the restart is locked.
-        env, _, fstatat = self._libc_failures()
-        with Session(supervise=True, lock_hold_ms=1000, env=env) as vela:
+        options, _, fstatat = self._libc_failures()
+        with Session(supervise=True, lock_hold_ms=1000, **options) as vela:
             open(fstatat, "w").close()
             try:
                 os.kill(child_compositor(vela.process.pid), signal.SIGSEGV)
@@ -931,22 +947,20 @@ class Supervisor(unittest.TestCase):
 
     def test_unreadable_lock_marker_restarts_locked(self):
         # A marker whose state cannot be established counts as present, even
-        # though the page says "unlocked". A group-readable file is not a
-        # valid marker, but the restarted lock can still replace it (a
+        # though the page says "unlocked". A symlink is not a valid marker,
+        # but the restarted lock can still replace it atomically (a
         # directory could not be replaced, which ends the session instead).
         with Session(supervise=True, lock_hold_ms=1000) as vela:
             marker = self._marker(vela)
-            with open(marker, "w"):
-                pass
-            os.chmod(marker, 0o640)
+            os.symlink(os.path.join(vela.directory, "nowhere"), marker)
             try:
                 os.kill(child_compositor(vela.process.pid), signal.SIGSEGV)
                 vela.wait_for_log("Lock marker unreadable")
                 vela.wait_for_log("restarting locked")
                 vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
-                self.assertFalse(os.path.exists(marker))
+                self.assertFalse(os.path.lexists(marker))
             finally:
-                if os.path.exists(marker):
+                if os.path.lexists(marker):
                     os.unlink(marker)
 
     def test_lock_state_is_never_inherited_by_applications(self):

@@ -101,12 +101,17 @@ int fclose(FILE *file)
 static int injected(FILE *file)
 {
     for (int i = 0; i < TRACKED; ++i) {
-        if (tracked[i].file == file && ++tracked[i].lines >= tracked[i].fail_at) {
-            fprintf(stderr, "getline-fail: injected %s on line %ld\n",
-                tracked[i].error == ENOMEM ? "ENOMEM" : "EIO", tracked[i].lines);
-            errno = tracked[i].error;
-            return 1;
+        if (tracked[i].file != file) {
+            continue;
         }
+        tracked[i].lines += 1;
+        if (tracked[i].lines < tracked[i].fail_at) {
+            return 0;
+        }
+        fprintf(stderr, "getline-fail: injected %s on line %ld\n",
+            tracked[i].error == ENOMEM ? "ENOMEM" : "EIO", tracked[i].lines);
+        errno = tracked[i].error;
+        return 1;
     }
     return 0;
 }

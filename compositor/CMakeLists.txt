@@ -251,23 +251,42 @@ install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # sharpness geometry, color, sun, settings. They need GoogleTest (the gtest
 # package) and the test tools enabled.
 if(VELA_BUILD_TOOLS)
+    # The LD_PRELOAD test shims below are never instrumented. With ASan its
+    # runtime must come first in the initial library list, so a test's
+    # LD_PRELOAD becomes "<asan runtime>:<shim>"; ASan's interceptors then
+    # reach the shim as the next definition.
+    set(VELA_TEST_PRELOAD_PREFIX "")
+    set(VELA_TEST_ASAN OFF)
+    if(CMAKE_C_FLAGS MATCHES "-fsanitize=[^ ]*address")
+        set(VELA_TEST_ASAN ON)
+        foreach(runtime libasan.so libclang_rt.asan-x86_64.so)
+            execute_process(COMMAND ${CMAKE_C_COMPILER} -print-file-name=${runtime}
+                OUTPUT_VARIABLE asan_runtime OUTPUT_STRIP_TRAILING_WHITESPACE)
+            if(IS_ABSOLUTE "${asan_runtime}" AND EXISTS "${asan_runtime}")
+                set(VELA_TEST_PRELOAD_PREFIX "${asan_runtime}:")
+                break()
+            endif()
+        endforeach()
+    endif()
+    set(VELA_TEST_PRELOAD_PREFIX "${VELA_TEST_PRELOAD_PREFIX}" CACHE INTERNAL "ASan runtime before test shims")
+
     # LD_PRELOAD shim that makes one pixman region operation really fail
     # (tests/functional/test_session.py, damage fallback).
     add_library(vela-pixman-fail-preload MODULE tests/pixman_fail_preload.c)
     target_link_libraries(vela-pixman-fail-preload PRIVATE PkgConfig::PIXMAN ${CMAKE_DL_LIBS})
-    target_compile_options(vela-pixman-fail-preload PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(vela-pixman-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-pixman-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
 
     # LD_PRELOAD shim that makes getline fail partway through a chosen file,
     # and the configuration-read test that runs under it.
     add_library(vela-getline-fail-preload MODULE tests/getline_fail_preload.c)
     target_link_libraries(vela-getline-fail-preload PRIVATE ${CMAKE_DL_LIBS})
-    target_compile_options(vela-getline-fail-preload PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(vela-getline-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-getline-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     # setenv and fstatat failures on the supervisor's restart path.
     add_library(vela-libc-fail-preload MODULE tests/libc_fail_preload.c)
     target_link_libraries(vela-libc-fail-preload PRIVATE ${CMAKE_DL_LIBS})
-    target_compile_options(vela-libc-fail-preload PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(vela-libc-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-libc-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_executable(vela-config-read-test tests/config_read_test.c)
     target_link_libraries(vela-config-read-test PRIVATE vela-pure)
@@ -277,7 +296,7 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME compositor.config-read COMMAND vela-config-read-test
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     set_tests_properties(compositor.config-read PROPERTIES
-        ENVIRONMENT "LD_PRELOAD=$<TARGET_FILE:vela-getline-fail-preload>")
+        ENVIRONMENT "LD_PRELOAD=${VELA_TEST_PRELOAD_PREFIX}$<TARGET_FILE:vela-getline-fail-preload>")
 
     add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
     target_include_directories(vela-device-loss-policy-test PRIVATE src)
