@@ -144,6 +144,7 @@ target_include_directories(vela-pure PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(vela-pure PUBLIC _GNU_SOURCE)
 target_compile_options(vela-pure PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-pure PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(vela-pure PUBLIC vela-alloc)
 find_library(MATH_LIBRARY m)
 if(MATH_LIBRARY)
     target_link_libraries(vela-pure PUBLIC ${MATH_LIBRARY})
@@ -511,7 +512,7 @@ if(VELA_BUILD_TOOLS)
     target_compile_definitions(vela-capture-watch-test PRIVATE WLR_USE_UNSTABLE _GNU_SOURCE)
     target_compile_options(vela-capture-watch-test PRIVATE -Wall -Wextra -Wno-unused-parameter
         -Wno-missing-field-initializers)
-    target_link_libraries(vela-capture-watch-test PRIVATE PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER
+    target_link_libraries(vela-capture-watch-test PRIVATE vela-alloc PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER
         PkgConfig::WAYLAND_CLIENT PkgConfig::PIXMAN)
     set_target_properties(vela-capture-watch-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.capture-watch COMMAND vela-capture-watch-test)

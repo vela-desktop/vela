@@ -9,6 +9,7 @@
 
 #include "render/render.h"
 
+#include "alloc/alloc.h"
 #include "color.h"
 #include "util.h"
 

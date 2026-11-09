@@ -61,23 +61,6 @@ bool vela_format(char *out, size_t size, const char *format, ...)
     return n >= 0 && (size_t)n < size;
 }
 
-void *vela_grow(void *items, int *capacity, int needed, size_t size)
-{
-    if (needed <= *capacity) {
-        return items;
-    }
-    int grown = *capacity ? *capacity : 8;
-    while (grown < needed) {
-        grown *= 2;
-    }
-    void *bigger = realloc(items, (size_t)grown * size);
-    if (!bigger) {
-        abort(); // without memory the compositor can't go on
-    }
-    *capacity = grown;
-    return bigger;
-}
-
 bool vela_desktop_names(const char *current, char *out, size_t size)
 {
     size_t length = 0;

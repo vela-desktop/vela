@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "lock.h"
+#include "alloc/alloc.h"
 #include "lock_retry_policy.h"
 #include "lock_state.h"
 

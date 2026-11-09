@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "buffer.h"
+#include "alloc/alloc.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -10,16 +11,9 @@
 
 static void reserve(struct vela_buffer *buffer, size_t more)
 {
-    size_t needed = buffer->length + more + 1;
-    if (needed <= buffer->capacity) {
-        return;
-    }
-    size_t capacity = buffer->capacity ? buffer->capacity : 64;
-    while (capacity < needed) {
-        capacity *= 2;
-    }
-    buffer->data = realloc(buffer->data, capacity);
-    buffer->capacity = capacity;
+    // Overflow aborts here instead of wrapping to a small size.
+    size_t needed = vela_size_add(vela_size_add(buffer->length, more), 1);
+    buffer->data = vela_grow(buffer->data, &buffer->capacity, needed, 1);
 }
 
 void vela_buffer_finish(struct vela_buffer *buffer)

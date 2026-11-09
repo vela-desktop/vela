@@ -55,9 +55,11 @@ available directly, for example `vela-scene-diff-bench 128 2 reverse`.
 
 ## Scratch buffer
 
-Each output retains its match flags, grows them with the existing `vela_grow`
-helper and clears only the used portion. There is no match-buffer allocation or
-free at steady scene size. Empty scenes need no buffer. Capacity is retained
+Each output retains its match flags, grows them with `vela_grow`
+(`common/alloc/alloc.h`) and clears only the used portion. There is no
+match-buffer allocation or free at steady scene size. `vela_grow` never returns
+`NULL`, so the first frame of an empty scene allocates the initial capacity
+(8 flags) once. Capacity is retained
 when a scene shrinks and released when the output frame is destroyed; on this
 platform 1,024 elements require 1 KiB per output. Growth follows the same
 out-of-memory policy as the existing element lists.

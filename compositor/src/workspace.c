@@ -3,6 +3,7 @@
 
 #include "workspace.h"
 
+#include "alloc/alloc.h"
 #include "focus.h"
 #include "buffer.h"
 #include "config.h"

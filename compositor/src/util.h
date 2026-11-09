@@ -50,11 +50,6 @@ int vela_env_int(const char *name, int fallback);
 // must not be used).
 bool vela_format(char *out, size_t size, const char *format, ...) __attribute__((format(printf, 3, 4)));
 
-// An allocated array with room for at least `needed` elements of `size`
-// bytes: when it's too small, the capacity doubles (realloc). Usage:
-//   list = vela_grow(list, &capacity, count + 1, sizeof(*list));
-void *vela_grow(void *items, int *capacity, int needed, size_t size);
-
 // The desktop names of XDG_CURRENT_DESKTOP separated by ':' as apps expect
 // ("Vela;KDE;" becomes "Vela:KDE": Plasma Login copies DesktopNames from the
 // .desktop file as it is). false if it doesn't fit in `size`.

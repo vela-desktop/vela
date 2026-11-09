@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "scene/frame.h"
+#include "alloc/alloc.h"
 #include "scene/night_light_policy.h"
 
 #include "geometry.h"

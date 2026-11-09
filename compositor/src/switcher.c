@@ -3,6 +3,7 @@
 
 #include "switcher.h"
 
+#include "alloc/alloc.h"
 #include "buffer.h"
 #include "focus.h"
 #include "server.h"
