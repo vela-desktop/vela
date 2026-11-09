@@ -20,7 +20,7 @@ sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland w
     libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt \
     vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
     pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
-    pipewire wireplumber systemd-libs
+    pipewire wireplumber systemd-libs xdg-utils
 ```
 </details>
 
@@ -36,7 +36,7 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
     vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
     fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
     zlib-devel gtest-devel python3 python3-numpy python3-pillow shared-mime-info \
-    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber systemd-devel
+    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber systemd-devel xdg-utils
 ```
 </details>
 
@@ -53,7 +53,7 @@ GPU/DRM functionality.
 ```sh
 sudo apt update
 sudo apt install --no-install-recommends \
-    ca-certificates git build-essential cmake ninja-build pkgconf \
+    ca-certificates git build-essential cmake ninja-build pkgconf xdg-utils \
     libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
     libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
     libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \

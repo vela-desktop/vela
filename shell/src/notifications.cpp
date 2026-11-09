@@ -12,6 +12,8 @@
 #include <QUrl>
 #include <QtDebug>
 
+#include <algorithm>
+
 namespace {
 
 constexpr int defaultTimeoutMs = 6000; // like Windows (about six seconds)
@@ -220,6 +222,9 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
     }
     n.critical = hints.value(QStringLiteral("urgency")).toInt() == 2;
     n.transient = hints.value(QStringLiteral("transient")).toBool();
+    // Vela's own hint: a critical notification that still expires (it passes
+    // Do not disturb, but doesn't stay on screen until dismissed).
+    const bool expires = hints.value(QStringLiteral("x-vela-expires")).toBool();
 
     // Already in the notification center (replaced): updated there.
     if (const int old = replaces_id ? historyRow(replaces_id) : -1; old >= 0 && existing < 0) {
@@ -252,9 +257,10 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
         return id;
     }
 
-    // Expiry: the requested one, or ours; 0 and critical ones stay.
+    // Expiry: the requested one, or ours; 0 and critical ones stay (unless
+    // x-vela-expires).
     const int timeout = expire_timeout < 0 ? defaultTimeoutMs : expire_timeout;
-    if (timeout > 0 && !n.critical) {
+    if (timeout > 0 && (!n.critical || expires)) {
         n.timer = std::make_unique<QTimer>();
         n.timer->setSingleShot(true);
         n.timer->setInterval(timeout);
@@ -272,8 +278,12 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
         m_items.push_back(std::move(n));
         endInsertRows();
         Q_EMIT countChanged();
+        // Too many: the oldest goes into the center, but not a critical one
+        // that stays, unless they all are.
         while (int(m_items.size()) > maxVisible) {
-            close(m_items.front().id, Reason::Expired);
+            const auto stays = [](const Notification& item) { return item.critical && !item.timer; };
+            auto oldest = std::find_if_not(m_items.begin(), m_items.end(), stays);
+            close((oldest != m_items.end() ? *oldest : m_items.front()).id, Reason::Expired);
         }
     }
     return id;

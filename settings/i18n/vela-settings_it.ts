@@ -553,6 +553,18 @@ Specifiche sistema
         <translation>Attivato</translation>
     </message>
     <message>
+        <source>Device settings</source>
+        <translation>Impostazioni dei dispositivi</translation>
+    </message>
+    <message>
+        <source>Low battery notifications</source>
+        <translation>Notifiche di batteria scarica</translation>
+    </message>
+    <message>
+        <source>When a mouse, keyboard, headset or another wireless device is running out of battery</source>
+        <translation>Quando la batteria di un mouse, di una tastiera, delle cuffie o di un altro dispositivo wireless si sta esaurendo</translation>
+    </message>
+    <message>
         <source>Advanced</source>
         <translation>Avanzate</translation>
     </message>
@@ -2481,6 +2493,26 @@ Specifiche sistema
     <message>
         <source>On battery</source>
         <translation>A batteria</translation>
+    </message>
+    <message>
+        <source>Battery</source>
+        <translation>Batteria</translation>
+    </message>
+    <message>
+        <source>Battery notifications</source>
+        <translation>Notifiche della batteria</translation>
+    </message>
+    <message>
+        <source>Tell me when the battery is low, and when it&apos;s about to run out</source>
+        <translation>Avvisami quando la batteria è scarica e quando sta per esaurirsi</translation>
+    </message>
+    <message>
+        <source>Low battery level</source>
+        <translation>Livello di batteria scarica</translation>
+    </message>
+    <message>
+        <source>The charge at which the low battery notification comes</source>
+        <translation>La carica a cui arriva la notifica di batteria scarica</translation>
     </message>
     <message>
         <source>Power</source>
