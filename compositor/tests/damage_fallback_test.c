@@ -144,18 +144,27 @@ static void test_before_drawing(void)
     const struct wlr_box whole = { 0, 0, 640, 480 };
     struct vela_output_frame frame;
 
-    // Nothing failed: the damage is left as it is.
+    // Nothing failed: the damage is left as it is, and no frame is added.
     frame_init(&frame);
     pixman_region32_union_rect(&frame.scene_damage, &frame.scene_damage, 5, 5, 10, 10);
+    unsigned before = scheduled;
     CHECK(check_damage_before_drawing(&frame, &whole) == vela_region_failures);
     CHECK(!frame.damage_unknown && is_rect(&frame.scene_damage, 5, 5, 10, 10));
+    CHECK(scheduled == before);
     frame_finish(&frame);
 
     // A failure since the last frame, even one that broke no region of ours.
+    // It may have hit the elements just built (a blur region): one more frame
+    // builds them again, and only one.
     frame_init(&frame);
     CHECK(!vela_region_ok(0));
-    check_damage_before_drawing(&frame, &whole);
+    before = scheduled;
+    unsigned long checked = check_damage_before_drawing(&frame, &whole);
     CHECK(frame.damage_unknown && is_rect(&frame.scene_damage, 0, 0, 640, 480));
+    CHECK(scheduled == before + 1);
+    check_damage_after_drawing(&frame, checked); // drawn whole
+    check_damage_before_drawing(&frame, &whole);
+    CHECK(scheduled == before + 1);
     frame_finish(&frame);
 
     // A broken scene damage (wlroots' calls do not count failures).

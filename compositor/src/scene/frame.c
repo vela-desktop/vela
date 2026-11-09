@@ -1065,15 +1065,24 @@ static bool region_valid(pixman_region32_t *region)
 // reported between frames), a broken scene damage or ring, or a previous
 // frame that was not drawn whole. The damage is unknown: every buffer is
 // redrawn whole, in this same frame.
+//
+// A counted failure may also have hit this frame's elements, built just
+// before: a broken blur region reads as empty, so the element is drawn
+// without its blur. One more frame, scheduled now, builds them again; it
+// does not repeat, since check_damage_after_drawing records the count.
 static unsigned long check_damage_before_drawing(struct vela_output_frame *frame, const struct wlr_box *whole)
 {
-    if (frame->damage_unknown || vela_region_failures != frame->region_failures_seen
-        || !region_valid(&frame->scene_damage) || !region_valid(&frame->ring.current)) {
+    bool failed_since = vela_region_failures != frame->region_failures_seen;
+    if (frame->damage_unknown || failed_since || !region_valid(&frame->scene_damage)
+        || !region_valid(&frame->ring.current)) {
         if (!frame->damage_unknown) {
             wlr_log(WLR_ERROR, "%s: damage lost (out of memory); redrawing the whole output", frame->output->name);
         }
         restart_damage_whole(frame, whole);
         frame->damage_unknown = true;
+    }
+    if (failed_since) {
+        vela_output_schedule_frame(frame->owner);
     }
     return vela_region_failures;
 }
