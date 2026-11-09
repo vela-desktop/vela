@@ -12,7 +12,7 @@ Vela is a beta Linux desktop environment with a C17 Wayland compositor, Vulkan r
 
 ## Build and test
 
-See [the source build instructions](README.md#build-from-source) and [development guide](docs/development.md).
+See [the source build instructions](docs/development.md#build) and the rest of the [development guide](docs/development.md).
 
 ```sh
 cmake -B build -G Ninja
