@@ -63,6 +63,9 @@ Column {
             return
         }
         Prefs.setSurfaceStyle(surface, style)
+        if (Prefs.saveError !== "") {
+            return
+        }
         const surface_ = surface
         root.offerUndo(style === "" ? qsTr("The theme's style is in use") : qsTr("%1 is in use").arg(Prefs.displayName(surface, style) || style),
             () => Prefs.setSurfaceStyle(surface_, previous))

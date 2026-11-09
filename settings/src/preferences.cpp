@@ -327,6 +327,9 @@ void Preferences::reloadCompositor()
     queryCompositor();
     emit nightLightChanged();
     emit accessibilityChanged();
+    if (!m_saveError.isEmpty()) {
+        publishSaveError();
+    }
 }
 
 QString Preferences::compositorValue(const QString& key) const
@@ -714,7 +717,45 @@ void Preferences::setDeviceBatteryNotify(bool on)
 
 // ------------------------------------------------------- compositor --
 
-void Preferences::saveCompositorKeys(const QStringList& keys)
+void Preferences::publishSaveError()
+{
+    const QString message = tr("Check that you can write %1.").arg(compositorConfigPath());
+    if (m_saveError == message) {
+        return;
+    }
+    m_saveError = message;
+    emit saveErrorChanged();
+}
+
+void Preferences::noteSaveFailure()
+{
+    publishSaveError();
+    if (m_reportingSaveFailure) {
+        return;
+    }
+    const QFileInfo info(compositorConfigPath());
+    if (!info.isFile() || !info.isReadable()) {
+        return;
+    }
+    // The file is still the previous save. Memory can be older than that when
+    // the watcher never attached, so read it back instead of the copy taken
+    // before this attempt.
+    m_reportingSaveFailure = true;
+    reloadCompositor();
+    m_reportingSaveFailure = false;
+    m_restoredFromFile = true;
+}
+
+void Preferences::clearSaveError()
+{
+    if (m_saveError.isEmpty()) {
+        return;
+    }
+    m_saveError.clear();
+    emit saveErrorChanged();
+}
+
+bool Preferences::saveCompositorKeys(const QStringList& keys)
 {
     QList<QPair<QString, QString>> changes;
     for (const QString& key : keys) {
@@ -740,10 +781,10 @@ void Preferences::saveCompositorKeys(const QStringList& keys)
             changes.append({ key, QString::number(m_repeatRate) });
         }
     }
-    saveCompositor(changes);
+    return saveCompositor(changes);
 }
 
-void Preferences::saveCompositor(const QList<QPair<QString, QString>>& changes)
+bool Preferences::saveCompositor(const QList<QPair<QString, QString>>& changes)
 {
     // The file as it is now (the compositor may have changed it), with these
     // new keys.
@@ -782,25 +823,32 @@ void Preferences::saveCompositor(const QList<QPair<QString, QString>>& changes)
     QSaveFile file(path);
     // Existing settings may have been created with mode 0644.
     if (!vela::openPrivateFile(file, QIODevice::WriteOnly | QIODevice::Text)) {
-        return;
+        noteSaveFailure();
+        return false;
     }
     const QByteArray data = (lines.join(u'\n') + u'\n').toUtf8();
     if (file.write(data) != data.size()) {
         file.cancelWriting();
-        return;
+        noteSaveFailure();
+        return false;
     }
-    if (file.commit()) {
-        // The compositor rereads (and our copy of the file updates from the
-        // watcher).
-        sendToCompositor("reload-config");
+    if (!file.commit()) {
+        noteSaveFailure();
+        return false;
     }
+    // The compositor rereads (and our copy of the file updates from the
+    // watcher).
+    clearSaveError();
+    sendToCompositor("reload-config");
+    return true;
 }
 
 void Preferences::setScreenOffMinutes(int minutes)
 {
     if (minutes != m_screenOffMinutes) {
+        const auto previous = m_screenOffMinutes;
         m_screenOffMinutes = std::max(0, minutes);
-        saveCompositorKeys(QStringList { QStringLiteral("screen-off") });
+        keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("screen-off") }), m_screenOffMinutes, previous);
         emit idleChanged();
     }
 }
@@ -808,8 +856,9 @@ void Preferences::setScreenOffMinutes(int minutes)
 void Preferences::setLockOnIdle(bool on)
 {
     if (on != m_lockOnIdle) {
+        const auto previous = m_lockOnIdle;
         m_lockOnIdle = on;
-        saveCompositorKeys(QStringList { QStringLiteral("lock-on-idle") });
+        keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("lock-on-idle") }), m_lockOnIdle, previous);
         emit idleChanged();
     }
 }
@@ -817,8 +866,9 @@ void Preferences::setLockOnIdle(bool on)
 void Preferences::setLanguage(const QString& language)
 {
     if (language != m_language) {
+        const auto previous = m_language;
         m_language = language;
-        saveCompositorKeys(QStringList { QStringLiteral("language") });
+        keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("language") }), m_language, previous);
         emit languageChanged();
     }
 }
@@ -828,9 +878,10 @@ void Preferences::setVisualTheme(const QString& name)
     // Only a name themefile.h would load: a path stays out of vela.conf.
     const QString theme = name.isEmpty() ? vela::themes::defaultTheme() : name;
     if (theme != m_visualTheme && vela::themes::validName(theme)) {
+        const QString previous = m_visualTheme;
         m_visualTheme = theme;
         // The shell and the apps follow (Appearance watches vela.conf).
-        saveCompositorKeys(QStringList { QStringLiteral("theme") });
+        keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("theme") }), m_visualTheme, previous);
         emit visualThemeChanged();
     }
 }
@@ -863,8 +914,14 @@ void Preferences::setSurfaceStyle(const QString& surface, const QString& style)
         || (!name.isEmpty() && !vela::themes::validName(name))) {
         return;
     }
+    const QString previous = m_surfaceStyles.value(surface).toString();
     m_surfaceStyles.insert(surface, name);
-    saveCompositorKeys(QStringList { surface + QStringLiteral("-style") });
+    if (!saveCompositorKeys(QStringList { surface + QStringLiteral("-style") })) {
+        if (!m_restoredFromFile) {
+            m_surfaceStyles.insert(surface, previous);
+        }
+        m_restoredFromFile = false;
+    }
     emit visualThemeChanged();
 }
 
@@ -880,13 +937,21 @@ QVariantMap Preferences::themeSurfacePictures(const QString& theme, const QStrin
 
 void Preferences::resetThemes()
 {
+    const QString previousTheme = m_visualTheme;
+    const QVariantMap previousStyles = m_surfaceStyles;
     QStringList keys { QStringLiteral("theme") };
     m_visualTheme = vela::themes::defaultTheme();
     for (auto it = m_surfaceStyles.begin(); it != m_surfaceStyles.end(); ++it) {
         it.value() = QString();
         keys.append(it.key() + QStringLiteral("-style"));
     }
-    saveCompositorKeys(keys);
+    if (!saveCompositorKeys(keys)) {
+        if (!m_restoredFromFile) {
+            m_visualTheme = previousTheme;
+            m_surfaceStyles = previousStyles;
+        }
+        m_restoredFromFile = false;
+    }
     emit visualThemeChanged();
 }
 
@@ -924,6 +989,8 @@ void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& sty
     // A theme name vela.conf had by hand and Vela can't load stays as it is;
     // the styles come back all the same.
     const QString name = theme.isEmpty() ? vela::themes::defaultTheme() : theme;
+    const QString previousTheme = m_visualTheme;
+    const QVariantMap previousStyles = m_surfaceStyles;
     QStringList keys;
     if (vela::themes::validName(name)) {
         m_visualTheme = name;
@@ -934,14 +1001,19 @@ void Preferences::setThemeAndStyles(const QString& theme, const QVariantMap& sty
         it.value() = style.isEmpty() || vela::themes::validName(style) ? style : QString();
         keys.append(it.key() + QStringLiteral("-style"));
     }
-    saveCompositorKeys(keys);
+    if (!saveCompositorKeys(keys)) {
+        if (!m_restoredFromFile) {
+            m_visualTheme = previousTheme;
+            m_surfaceStyles = previousStyles;
+        }
+        m_restoredFromFile = false;
+    }
     emit visualThemeChanged();
 }
 
-void Preferences::saveLayouts()
+bool Preferences::saveLayouts()
 {
-    saveCompositorKeys(QStringList { QStringLiteral("keyboard-layout"), QStringLiteral("keyboard-variant") });
-    emit keyboardChanged();
+    return saveCompositorKeys(QStringList { QStringLiteral("keyboard-layout"), QStringLiteral("keyboard-variant") });
 }
 
 void Preferences::addKeyboardLayout(const QString& layout, const QString& variant)
@@ -953,14 +1025,27 @@ void Preferences::addKeyboardLayout(const QString& layout, const QString& varian
         }
     }
     m_layouts.append(QVariantMap { { QStringLiteral("layout"), layout }, { QStringLiteral("variant"), variant } });
-    saveLayouts();
+    if (!saveLayouts()) {
+        if (!m_restoredFromFile) {
+            m_layouts.removeLast();
+        }
+        m_restoredFromFile = false;
+    }
+    emit keyboardChanged();
 }
 
 void Preferences::removeKeyboardLayout(int index)
 {
     if (index >= 0 && index < m_layouts.size()) {
+        const QVariant previous = m_layouts.at(index);
         m_layouts.removeAt(index);
-        saveLayouts();
+        if (!saveLayouts()) {
+            if (!m_restoredFromFile) {
+                m_layouts.insert(index, previous);
+            }
+            m_restoredFromFile = false;
+        }
+        emit keyboardChanged();
     }
 }
 
@@ -968,15 +1053,22 @@ void Preferences::moveKeyboardLayoutUp(int index)
 {
     if (index > 0 && index < m_layouts.size()) {
         m_layouts.swapItemsAt(index, index - 1);
-        saveLayouts();
+        if (!saveLayouts()) {
+            if (!m_restoredFromFile) {
+                m_layouts.swapItemsAt(index, index - 1);
+            }
+            m_restoredFromFile = false;
+        }
+        emit keyboardChanged();
     }
 }
 
 void Preferences::setRepeatDelay(int ms)
 {
     if (ms != m_repeatDelay) {
+        const auto previous = m_repeatDelay;
         m_repeatDelay = std::clamp(ms, 100, 2000);
-        saveCompositorKeys(QStringList { QStringLiteral("keyboard-repeat-delay") });
+        keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("keyboard-repeat-delay") }), m_repeatDelay, previous);
         emit keyboardChanged();
     }
 }
@@ -984,8 +1076,9 @@ void Preferences::setRepeatDelay(int ms)
 void Preferences::setRepeatRate(int perSecond)
 {
     if (perSecond != m_repeatRate) {
+        const auto previous = m_repeatRate;
         m_repeatRate = std::clamp(perSecond, 1, 100);
-        saveCompositorKeys(QStringList { QStringLiteral("keyboard-repeat-rate") });
+        keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("keyboard-repeat-rate") }), m_repeatRate, previous);
         emit keyboardChanged();
     }
 }
@@ -1004,8 +1097,9 @@ QString yesNo(bool on)
 void Preferences::setNightLight(bool on)
 {
     if (on != m_nightLight) {
+        const auto previous = m_nightLight;
         m_nightLight = on;
-        saveCompositor({ { QStringLiteral("night-light"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("night-light"), yesNo(on) } }), m_nightLight, previous);
         emit nightLightChanged();
     }
 }
@@ -1014,8 +1108,9 @@ void Preferences::setNightTemperature(int kelvin)
 {
     kelvin = std::clamp((kelvin + 50) / 100 * 100, VELA_NIGHT_KELVIN_MIN, VELA_NIGHT_KELVIN_MAX);
     if (kelvin != m_nightTemperature) {
+        const auto previous = m_nightTemperature;
         m_nightTemperature = kelvin;
-        saveCompositor({ { QStringLiteral("night-light-temperature"), QString::number(kelvin) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("night-light-temperature"), QString::number(kelvin) } }), m_nightTemperature, previous);
         emit nightLightChanged();
     }
 }
@@ -1024,8 +1119,9 @@ void Preferences::setNightTemperature(int kelvin)
 void Preferences::setNightNvidiaFix(bool on)
 {
     if (on != m_nightNvidiaFix) {
+        const auto previous = m_nightNvidiaFix;
         m_nightNvidiaFix = on;
-        saveCompositor({ { QStringLiteral("night-light-nvidia-fix"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("night-light-nvidia-fix"), yesNo(on) } }), m_nightNvidiaFix, previous);
         emit nightLightChanged();
     }
 }
@@ -1033,8 +1129,9 @@ void Preferences::setNightNvidiaFix(bool on)
 void Preferences::setNightSchedule(const QString& schedule)
 {
     if (schedule != m_nightSchedule) {
+        const auto previous = m_nightSchedule;
         m_nightSchedule = schedule;
-        saveCompositor({ { QStringLiteral("night-light-schedule"), schedule } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("night-light-schedule"), schedule } }), m_nightSchedule, previous);
         emit nightLightChanged();
     }
 }
@@ -1042,8 +1139,9 @@ void Preferences::setNightSchedule(const QString& schedule)
 void Preferences::setNightFrom(const QString& time)
 {
     if (time != m_nightFrom && QTime::fromString(time, QStringLiteral("HH:mm")).isValid()) {
+        const auto previous = m_nightFrom;
         m_nightFrom = time;
-        saveCompositor({ { QStringLiteral("night-light-from"), time } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("night-light-from"), time } }), m_nightFrom, previous);
         emit nightLightChanged();
     }
 }
@@ -1051,8 +1149,9 @@ void Preferences::setNightFrom(const QString& time)
 void Preferences::setNightTo(const QString& time)
 {
     if (time != m_nightTo && QTime::fromString(time, QStringLiteral("HH:mm")).isValid()) {
+        const auto previous = m_nightTo;
         m_nightTo = time;
-        saveCompositor({ { QStringLiteral("night-light-to"), time } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("night-light-to"), time } }), m_nightTo, previous);
         emit nightLightChanged();
     }
 }
@@ -1060,8 +1159,9 @@ void Preferences::setNightTo(const QString& time)
 void Preferences::setTearing(bool on)
 {
     if (on != m_tearing) {
+        const auto previous = m_tearing;
         m_tearing = on;
-        saveCompositor({ { QStringLiteral("tearing"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("tearing"), yesNo(on) } }), m_tearing, previous);
         emit accessibilityChanged();
     }
 }
@@ -1069,8 +1169,9 @@ void Preferences::setTearing(bool on)
 void Preferences::setVrr(const QString& mode)
 {
     if (mode != m_vrr) {
+        const auto previous = m_vrr;
         m_vrr = mode;
-        saveCompositor({ { QStringLiteral("variable-refresh"), mode } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("variable-refresh"), mode } }), m_vrr, previous);
         emit accessibilityChanged();
     }
 }
@@ -1078,8 +1179,9 @@ void Preferences::setVrr(const QString& mode)
 void Preferences::setDirectScanout(const QString& mode)
 {
     if ((mode == QLatin1String("auto") || mode == QLatin1String("no")) && mode != m_directScanout) {
+        const auto previous = m_directScanout;
         m_directScanout = mode;
-        saveCompositor({ { QStringLiteral("direct-scanout"), mode } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("direct-scanout"), mode } }), m_directScanout, previous);
         emit accessibilityChanged();
     }
 }
@@ -1096,8 +1198,9 @@ void Preferences::setMagnifier(bool on)
 void Preferences::setMagnifierStep(int percent)
 {
     if (percent != m_magnifierStep) {
+        const auto previous = m_magnifierStep;
         m_magnifierStep = percent;
-        saveCompositor({ { QStringLiteral("magnifier-step"), QString::number(percent) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("magnifier-step"), QString::number(percent) } }), m_magnifierStep, previous);
         emit accessibilityChanged();
     }
 }
@@ -1105,8 +1208,9 @@ void Preferences::setMagnifierStep(int percent)
 void Preferences::setColorFilter(bool on)
 {
     if (on != m_colorFilter) {
+        const auto previous = m_colorFilter;
         m_colorFilter = on;
-        saveCompositor({ { QStringLiteral("color-filters"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("color-filters"), yesNo(on) } }), m_colorFilter, previous);
         emit accessibilityChanged();
     }
 }
@@ -1114,8 +1218,9 @@ void Preferences::setColorFilter(bool on)
 void Preferences::setColorFilterKind(const QString& kind)
 {
     if (kind != m_colorFilterKind) {
+        const auto previous = m_colorFilterKind;
         m_colorFilterKind = kind;
-        saveCompositor({ { QStringLiteral("color-filter"), kind } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("color-filter"), kind } }), m_colorFilterKind, previous);
         emit accessibilityChanged();
     }
 }
@@ -1123,8 +1228,9 @@ void Preferences::setColorFilterKind(const QString& kind)
 void Preferences::setColorFilterShortcut(bool on)
 {
     if (on != m_colorFilterShortcut) {
+        const auto previous = m_colorFilterShortcut;
         m_colorFilterShortcut = on;
-        saveCompositor({ { QStringLiteral("color-filters-shortcut"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("color-filters-shortcut"), yesNo(on) } }), m_colorFilterShortcut, previous);
         emit accessibilityChanged();
     }
 }
@@ -1132,8 +1238,9 @@ void Preferences::setColorFilterShortcut(bool on)
 void Preferences::setStickyKeys(bool on)
 {
     if (on != m_stickyKeys) {
+        const auto previous = m_stickyKeys;
         m_stickyKeys = on;
-        saveCompositor({ { QStringLiteral("sticky-keys"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("sticky-keys"), yesNo(on) } }), m_stickyKeys, previous);
         emit accessibilityChanged();
     }
 }
@@ -1141,8 +1248,9 @@ void Preferences::setStickyKeys(bool on)
 void Preferences::setAnimationEffects(bool on)
 {
     if (on != m_animationEffects) {
+        const auto previous = m_animationEffects;
         m_animationEffects = on;
-        saveCompositor({ { QStringLiteral("animation-effects"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("animation-effects"), yesNo(on) } }), m_animationEffects, previous);
         emit accessibilityChanged();
     }
 }
@@ -1151,8 +1259,9 @@ void Preferences::setAnimationDuration(int percent)
 {
     percent = qBound(50, percent, 300);
     if (percent != m_animationDuration) {
+        const auto previous = m_animationDuration;
         m_animationDuration = percent;
-        saveCompositor({ { QStringLiteral("animation-duration"), QString::number(percent) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("animation-duration"), QString::number(percent) } }), m_animationDuration, previous);
         emit accessibilityChanged();
     }
 }
@@ -1163,8 +1272,9 @@ void Preferences::setMouseSpeed(int value)
 {
     value = std::clamp(value, 1, 20);
     if (value != m_mouseSpeed) {
+        const auto previous = m_mouseSpeed;
         m_mouseSpeed = value;
-        saveCompositor({ { QStringLiteral("mouse-speed"), QString::number(value) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("mouse-speed"), QString::number(value) } }), m_mouseSpeed, previous);
         emit inputChanged();
     }
 }
@@ -1172,8 +1282,9 @@ void Preferences::setMouseSpeed(int value)
 void Preferences::setMousePrecision(bool on)
 {
     if (on != m_mousePrecision) {
+        const auto previous = m_mousePrecision;
         m_mousePrecision = on;
-        saveCompositor({ { QStringLiteral("mouse-precision"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("mouse-precision"), yesNo(on) } }), m_mousePrecision, previous);
         emit inputChanged();
     }
 }
@@ -1181,8 +1292,9 @@ void Preferences::setMousePrecision(bool on)
 void Preferences::setMouseLeftHanded(bool on)
 {
     if (on != m_mouseLeftHanded) {
+        const auto previous = m_mouseLeftHanded;
         m_mouseLeftHanded = on;
-        saveCompositor({ { QStringLiteral("mouse-primary-button"), on ? QStringLiteral("right") : QStringLiteral("left") } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("mouse-primary-button"), on ? QStringLiteral("right") : QStringLiteral("left") } }), m_mouseLeftHanded, previous);
         emit inputChanged();
     }
 }
@@ -1191,8 +1303,9 @@ void Preferences::setWheelLines(int lines)
 {
     lines = std::clamp(lines, 1, 20);
     if (lines != m_wheelLines) {
+        const auto previous = m_wheelLines;
         m_wheelLines = lines;
-        saveCompositor({ { QStringLiteral("mouse-scroll-lines"), QString::number(lines) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("mouse-scroll-lines"), QString::number(lines) } }), m_wheelLines, previous);
         emit inputChanged();
     }
 }
@@ -1200,8 +1313,9 @@ void Preferences::setWheelLines(int lines)
 void Preferences::setTouchpad(bool on)
 {
     if (on != m_touchpad) {
+        const auto previous = m_touchpad;
         m_touchpad = on;
-        saveCompositor({ { QStringLiteral("touchpad"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("touchpad"), yesNo(on) } }), m_touchpad, previous);
         emit inputChanged();
     }
 }
@@ -1209,8 +1323,9 @@ void Preferences::setTouchpad(bool on)
 void Preferences::setTouchpadWithMouse(bool on)
 {
     if (on != m_touchpadWithMouse) {
+        const auto previous = m_touchpadWithMouse;
         m_touchpadWithMouse = on;
-        saveCompositor({ { QStringLiteral("touchpad-with-mouse"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("touchpad-with-mouse"), yesNo(on) } }), m_touchpadWithMouse, previous);
         emit inputChanged();
     }
 }
@@ -1219,8 +1334,9 @@ void Preferences::setTouchpadSpeed(int value)
 {
     value = std::clamp(value, 1, 20);
     if (value != m_touchpadSpeed) {
+        const auto previous = m_touchpadSpeed;
         m_touchpadSpeed = value;
-        saveCompositor({ { QStringLiteral("touchpad-speed"), QString::number(value) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("touchpad-speed"), QString::number(value) } }), m_touchpadSpeed, previous);
         emit inputChanged();
     }
 }
@@ -1228,8 +1344,9 @@ void Preferences::setTouchpadSpeed(int value)
 void Preferences::setTouchpadTap(bool on)
 {
     if (on != m_touchpadTap) {
+        const auto previous = m_touchpadTap;
         m_touchpadTap = on;
-        saveCompositor({ { QStringLiteral("touchpad-tap"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("touchpad-tap"), yesNo(on) } }), m_touchpadTap, previous);
         emit inputChanged();
     }
 }
@@ -1237,8 +1354,9 @@ void Preferences::setTouchpadTap(bool on)
 void Preferences::setTouchpadNatural(bool on)
 {
     if (on != m_touchpadNatural) {
+        const auto previous = m_touchpadNatural;
         m_touchpadNatural = on;
-        saveCompositor({ { QStringLiteral("touchpad-natural-scroll"), yesNo(on) } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("touchpad-natural-scroll"), yesNo(on) } }), m_touchpadNatural, previous);
         emit inputChanged();
     }
 }
@@ -1246,8 +1364,9 @@ void Preferences::setTouchpadNatural(bool on)
 void Preferences::setThreeFingers(const QString& action)
 {
     if (action != m_threeFingers) {
+        const auto previous = m_threeFingers;
         m_threeFingers = action;
-        saveCompositor({ { QStringLiteral("touchpad-three-fingers"), action } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("touchpad-three-fingers"), action } }), m_threeFingers, previous);
         emit inputChanged();
     }
 }
@@ -1255,8 +1374,9 @@ void Preferences::setThreeFingers(const QString& action)
 void Preferences::setFourFingers(const QString& action)
 {
     if (action != m_fourFingers) {
+        const auto previous = m_fourFingers;
         m_fourFingers = action;
-        saveCompositor({ { QStringLiteral("touchpad-four-fingers"), action } });
+        keepOrRestore(saveCompositor({ { QStringLiteral("touchpad-four-fingers"), action } }), m_fourFingers, previous);
         emit inputChanged();
     }
 }
