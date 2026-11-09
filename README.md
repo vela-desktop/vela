@@ -14,7 +14,8 @@ renderer, a Qt Quick shell, a file manager and a settings app, designed together
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 [Website](https://velade.org) · [Get Vela](#get-vela) · [Features](docs/features.md) ·
-[How it works](#how-it-works) · [Documentation](#documentation) · [Roadmap](docs/roadmap.md)
+[How it works](#how-it-works) · [Documentation](#documentation) ·
+[Community](#community) · [Roadmap](docs/roadmap.md)
 
 <br>
 
@@ -123,6 +124,13 @@ Vela is a young project and moves fast. Every kind of help is welcome:
 - **Translate.** New languages are welcome ([how translations work](docs/development.md#translations)).
 - **Contribute code.** Read the [contribution guide](CONTRIBUTING.md) and open an issue
   before larger changes. Security issues go through the [security policy](SECURITY.md).
+
+## Community
+
+Join the [Vela Desktop community on Matrix](https://matrix.to/#/#vela:velade.org)
+for discussions, support, announcements and development. Open the Space Lobby to
+browse and join the rooms you're interested in. An account from any federated
+Matrix homeserver works; no `velade.org` account is required.
 
 ## Documentation
 
