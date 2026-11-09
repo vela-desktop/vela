@@ -22,7 +22,7 @@ the future stable milestone.
    repository can be neither moved nor deleted, so a tag whose pipeline
    fails burns that version number.
 3. Create a signed, protected Git tag `v0.x.y` pointing to that commit.
-4. GitHub Actions builds Arch/CachyOS, Fedora 44 and Ubuntu 26.10 packages
+4. GitHub Actions builds Arch/CachyOS, Fedora 44/45 and Ubuntu 26.10 packages
    for the **tagged** commit, verifies package installs and their runtime
    requirements, then publishes an official GitHub prerelease.
 5. The published release includes the package files and one SHA-256 manifest
@@ -130,7 +130,7 @@ Then check:
 - a rerun of `publish-beta` keeps the published assets unchanged;
 - each package matches its manifest and its attestation names the fork,
   the tag, the commit and the expected workflow;
-- in clean Arch, Fedora 44 and Ubuntu 26.10 containers, the installed
+- in clean Arch, Fedora 44/45 and Ubuntu 26.10 containers, the installed
   `vela-update-beta` with `REPO` pointed at the fork finds the release,
   replaces `vela-git` unattended, then reports `up-to-date`; the verifier
   rejects the wrong repository, the wrong commit and tampered bytes; and
