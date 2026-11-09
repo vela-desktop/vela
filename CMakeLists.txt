@@ -50,6 +50,7 @@ if(VELA_BUILD_REPORT)
 endif()
 
 if(VELA_BUILD_COMPOSITOR)
+    add_subdirectory(common/alloc)
     add_subdirectory(compositor)
     add_subdirectory(brightness)
     add_subdirectory(common/caller)
