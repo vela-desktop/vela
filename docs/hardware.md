@@ -26,7 +26,7 @@ These are **coverage descriptions**, not a ranking of hardware or a statement th
 
 - Retain a working desktop session or TTY as a fallback. Vela is beta software.
 - Confirm Vulkan 1.4, a usable render node and compatible drivers.
-- Prefer [running nested](../README.md#try-it-without-logging-out) before using Vela as your login session. Nested mode does not prove physical DRM/scanout works.
+- Prefer [running nested](development.md#run-vela-nested) before using Vela as your login session. Nested mode does not prove physical DRM/scanout works.
 - For reporting, note distro, kernel, GPU, Vulkan driver, GPU driver version, display mode/refresh/scale, nested or DRM session and the Vela commit.
 - The headless functional and sharpness tests check important invariants but do not replace observing the real monitor and driver.
 

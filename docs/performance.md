@@ -1,6 +1,6 @@
 # Performance claims and reproduction
 
-Vela measures *observable* behavior rather than treating low memory use or high frame rate as substitutes for visual quality. This page explains the scope of the numbers in the [README](../README.md#performance).
+Vela measures *observable* behavior rather than treating low memory use or high frame rate as substitutes for visual quality. This page explains the scope of the numbers quoted in the [README](../README.md#why-vela).
 
 ## Existing published observations
 
