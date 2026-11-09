@@ -379,6 +379,21 @@ if(VELA_BUILD_TOOLS)
     endforeach()
     target_compile_definitions(vela-scene-diff-test PRIVATE VELA_DIFF_ALLOCATION_TEST)
 
+    # The frame path's damage fallback on the CPU, with real pixman failures
+    # (the test's own malloc). Not with ASan, whose allocator it would replace.
+    if(NOT VELA_TEST_ASAN)
+        add_executable(vela-damage-fallback-test tests/damage_fallback_test.c ${VELA_PROTOCOL_HEADERS})
+        target_include_directories(vela-damage-fallback-test PRIVATE src ${VELA_GENERATED_DIR})
+        target_compile_definitions(vela-damage-fallback-test PRIVATE WLR_USE_UNSTABLE)
+        target_compile_options(vela-damage-fallback-test PRIVATE -ffunction-sections -fdata-sections
+            -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unused-function)
+        target_link_options(vela-damage-fallback-test PRIVATE -Wl,--gc-sections)
+        target_link_libraries(vela-damage-fallback-test PRIVATE vela-pure PkgConfig::WLROOTS
+            PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+        set_target_properties(vela-damage-fallback-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON
+            C_EXTENSIONS OFF)
+        add_test(NAME compositor.damage-fallback COMMAND vela-damage-fallback-test)
+    endif()
     target_link_options(vela-scene-diff-test PRIVATE -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free)
     add_test(NAME compositor.scene-diff COMMAND vela-scene-diff-test --test)
 

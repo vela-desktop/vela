@@ -1056,6 +1056,61 @@ static bool region_valid(pixman_region32_t *region)
     return pixman_region32_selfcheck(region);
 }
 
+// The three damage checks of vela_output_frame_render, each covering the
+// failures since the previous one (docs/memory-allocation-policy.md,
+// "Design for (4)"). They return the failure count they checked up to.
+
+// Before drawing: a failure since the last frame (here, or in damage
+// reported between frames), a broken scene damage or ring, or a previous
+// frame that was not drawn whole. The damage is unknown: every buffer is
+// redrawn whole, in this same frame.
+static unsigned long check_damage_before_drawing(struct vela_output_frame *frame, const struct wlr_box *whole)
+{
+    if (frame->damage_unknown || vela_region_failures != frame->region_failures_seen
+        || !region_valid(&frame->scene_damage) || !region_valid(&frame->ring.current)) {
+        if (!frame->damage_unknown) {
+            wlr_log(WLR_ERROR, "%s: damage lost (out of memory); redrawing the whole output", frame->output->name);
+        }
+        restart_damage_whole(frame, whole);
+        frame->damage_unknown = true;
+    }
+    return vela_region_failures;
+}
+
+// After the damage ring: the ring and wlr_region_transform (wlroots) do not
+// report failures, so what they produced is checked too.
+static unsigned long check_damage_after_ring(struct vela_output_frame *frame, unsigned long checked,
+    pixman_region32_t *frame_damage, pixman_region32_t *buffer_damage, int width, int height)
+{
+    if (vela_region_failures != checked || !region_valid(frame_damage) || !region_valid(buffer_damage)
+        || !region_valid(&frame->ring.current)) {
+        if (!frame->damage_unknown) {
+            wlr_log(WLR_ERROR, "%s: damage lost (out of memory); redrawing the whole output", frame->output->name);
+        }
+        region_set_whole(frame_damage, width, height);
+        region_set_whole(buffer_damage, width, height);
+        // The ring's history is no longer trustworthy either.
+        wlr_damage_ring_finish(&frame->ring);
+        wlr_damage_ring_init(&frame->ring);
+    }
+    return vela_region_failures;
+}
+
+// After drawing: a failure while drawing (a clip region in the pass) can
+// leave parts of the buffer undrawn. The frame is not safe, and the next
+// one, scheduled now even if nothing else changes, redraws everything.
+static void check_damage_after_drawing(struct vela_output_frame *frame, unsigned long checked)
+{
+    bool drawn_whole = vela_region_failures == checked;
+    if (!drawn_whole) {
+        wlr_log(WLR_ERROR, "%s: drawing hit a failed region operation; redrawing the whole output",
+            frame->output->name);
+        vela_output_schedule_frame(frame->owner);
+    }
+    frame->damage_unknown = !drawn_whole;
+    frame->region_failures_seen = vela_region_failures;
+}
+
 void vela_output_frame_reset_damage(struct vela_output_frame *frame)
 {
     // All buffers start over: the next frame redraws them whole.
@@ -1274,19 +1329,8 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
     }
     update_surfaces(frame, elements);
 
-    // A region operation failed since the last frame (here, or in damage
-    // reported between frames), or the previous frame's drawing did: the
-    // damage is unknown. Redraw every buffer whole rather than trust it.
-    if (frame->damage_unknown || vela_region_failures != frame->region_failures_seen
-        || !region_valid(&frame->scene_damage) || !region_valid(&frame->ring.current)) {
-        if (!frame->damage_unknown) {
-            wlr_log(WLR_ERROR, "%s: damage lost (out of memory); redrawing the whole output", output->name);
-        }
-        restart_damage_whole(frame, &whole);
-        frame->damage_unknown = true;
-    }
-    // Each check below covers only the failures since the previous one.
-    unsigned long checked_failures = vela_region_failures;
+    // Each check covers only the failures since the previous one.
+    unsigned long checked_failures = check_damage_before_drawing(frame, &whole);
 
     // Color: filters, and night light when the monitor's gamma won't take it,
     // are applied while drawing (cursor included).
@@ -1404,21 +1448,9 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
     // must reach the renderer and wlroots' screencopy path.
     vela_region_ok(pixman_region32_intersect_rect(&buffer_damage, &buffer_damage, 0, 0, buffer->width, buffer->height));
     vela_region_ok(pixman_region32_intersect_rect(&frame_damage, &frame_damage, 0, 0, buffer->width, buffer->height));
-    // The ring and wlr_region_transform (wlroots) do not report failures:
-    // check what they produced, and the counter for our own operations.
-    if (vela_region_failures != checked_failures || !region_valid(&frame_damage)
-        || !region_valid(&buffer_damage) || !region_valid(&frame->ring.current)) {
-        if (!frame->damage_unknown) {
-            wlr_log(WLR_ERROR, "%s: damage lost (out of memory); redrawing the whole output", output->name);
-        }
-        region_set_whole(&frame_damage, buffer->width, buffer->height);
-        region_set_whole(&buffer_damage, buffer->width, buffer->height);
-        // The ring's history is no longer trustworthy either.
-        wlr_damage_ring_finish(&frame->ring);
-        wlr_damage_ring_init(&frame->ring);
-    }
     // From here on a failure means this frame may show stale pixels.
-    const unsigned long drawing_failures = vela_region_failures;
+    const unsigned long drawing_failures =
+        check_damage_after_ring(frame, checked_failures, &frame_damage, &buffer_damage, buffer->width, buffer->height);
 
     bool ok = false;
     bool color_commit_failed = false;
@@ -1531,17 +1563,7 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
         // does not mean the gamma LUT was applied.
         night_color_commit_failed(frame);
     }
-    // A failure while drawing (a clip region in the pass) can leave parts of
-    // the buffer undrawn: the frame is not safe, and the next one, scheduled
-    // now even if nothing else changes, redraws everything.
-    bool drawn_whole = vela_region_failures == drawing_failures;
-    if (!drawn_whole) {
-        wlr_log(WLR_ERROR, "%s: drawing hit a failed region operation; redrawing the whole output",
-            output->name);
-        vela_output_schedule_frame(frame->owner);
-    }
-    frame->damage_unknown = !drawn_whole;
-    frame->region_failures_seen = vela_region_failures;
+    check_damage_after_drawing(frame, drawing_failures);
     pixman_region32_fini(&frame_damage);
     pixman_region32_fini(&buffer_damage);
     return ok;
