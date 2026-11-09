@@ -426,13 +426,18 @@ class ConfigurationRead(unittest.TestCase):
     SHIM = os.path.join(BUILD, "compositor", "libvela-getline-fail-preload.so")
     CONTENT = "# mine\ndesktop=Work\ndesktop=Games\nsticky-app=org.kde.konsole\n"
 
-    def run_session(self, failure):
+    def make_config(self):
+        """A private XDG_CONFIG_HOME holding CONTENT as vela/desktop.conf."""
         config = tempfile.mkdtemp(prefix="vela-desktop-conf-")
         self.addCleanup(lambda: subprocess.run(["rm", "-rf", config], check=False))
         os.mkdir(os.path.join(config, "vela"), 0o700)
         path = os.path.join(config, "vela", "desktop.conf")
         with open(path, "w") as file:
             file.write(self.CONTENT)
+        return config, path
+
+    def run_session(self, failure):
+        config, path = self.make_config()
         env = {"XDG_CONFIG_HOME": config}
         if failure == "unreadable":
             os.chmod(path, 0)
@@ -453,11 +458,29 @@ class ConfigurationRead(unittest.TestCase):
             return file.read()
 
     def test_desktop_conf_read_failure_never_rewrites_it(self):
-        for failure in ("EIO", "ENOMEM", "unreadable"):
+        for failure in ("EIO", "unreadable"):
             with self.subTest(failure=failure):
                 if failure == "unreadable" and os.geteuid() == 0:
                     self.skipTest("root ignores file permissions")
                 self.assertEqual(self.run_session(failure), self.CONTENT)
+
+    def test_desktop_conf_out_of_memory_aborts_without_rewriting(self):
+        # No memory for a line is not a read error: the compositor aborts
+        # through vela_oom (docs/memory-allocation-policy.md, "getline") and
+        # its supervisor restarts it. Nothing is written on the way out.
+        config, path = self.make_config()
+        self.assertTrue(os.path.exists(self.SHIM), "build the vela-getline-fail-preload target")
+        env = {"XDG_CONFIG_HOME": config, "LD_PRELOAD": self.SHIM,
+               "VELA_TEST_GETLINE_FAIL": "desktop.conf 3 ENOMEM"}
+        vela = Session(env=env, expected_exit=-signal.SIGABRT)
+        # Started after all (the check under test is missing): stop it.
+        self.addCleanup(lambda: vela.process and vela.process.poll() is None and vela.process.kill())
+        with self.assertRaises(AssertionError) as failure:
+            vela.start()
+        self.assertEqual(vela.process.returncode, -signal.SIGABRT, str(failure.exception))
+        self.assertRegex(str(failure.exception), r"vela: out of memory \(\d+ x 1 bytes\) at \S*config\.c:\d+")
+        with open(path) as file:
+            self.assertEqual(file.read(), self.CONTENT)
 
     def test_readable_desktop_conf_is_still_saved(self):
         # The control: the same commands do rewrite a file read whole.

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "config.h"
+#include "alloc/alloc.h"
 
 #include "legacy_names.h"
 #include "path_security.h"
@@ -69,10 +70,7 @@ struct lines {
 
 static void lines_push(struct lines *lines, char *line)
 {
-    if (lines->count == lines->capacity) {
-        lines->capacity = lines->capacity ? lines->capacity * 2 : 32;
-        lines->items = realloc(lines->items, (size_t)lines->capacity * sizeof(*lines->items));
-    }
+    lines->items = vela_grow(lines->items, &lines->capacity, lines->count + 1, sizeof(*lines->items));
     lines->items[lines->count++] = line;
 }
 
@@ -97,12 +95,16 @@ int vela_read_line(FILE *file, char **line, size_t *capacity, ssize_t *length)
     // getline returns -1 both at the end and on an error. errno is cleared
     // right before the call (the caller's loop body may have set it), and the
     // stream's error flag is checked too: a failed allocation does not
-    // necessarily set it.
+    // necessarily set it. A failed allocation is fatal, as everywhere else
+    // (docs/memory-allocation-policy.md, "getline").
     errno = 0;
     ssize_t n = getline(line, capacity, file);
     if (n >= 0) {
         *length = n;
         return 1;
+    }
+    if (errno == ENOMEM) {
+        vela_oom(*capacity, 1, __FILE__, __LINE__);
     }
     return errno != 0 || ferror(file) ? -1 : 0;
 }

@@ -4,6 +4,7 @@
 #include "output_config.h"
 
 #include "config.h"
+#include "alloc/alloc.h"
 
 #include <limits.h>
 #include <stdint.h>
@@ -39,10 +40,7 @@ struct file {
 
 static struct section *add_section(struct file *file, const char *name, size_t length)
 {
-    if (file->count == file->capacity) {
-        file->capacity = file->capacity ? file->capacity * 2 : 8;
-        file->sections = realloc(file->sections, (size_t)file->capacity * sizeof(*file->sections));
-    }
+    file->sections = vela_grow(file->sections, &file->capacity, file->count + 1, sizeof(*file->sections));
     struct section *section = &file->sections[file->count++];
     memset(section, 0, sizeof(*section));
     section->name = strndup(name, length);

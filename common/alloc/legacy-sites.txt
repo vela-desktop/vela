@@ -28,8 +28,7 @@ compositor/src/capture_watch.c strdup 1
 compositor/src/command.c calloc 3
 compositor/src/command.c strdup 2
 compositor/src/config.c asprintf 2
-compositor/src/config.c getline 1
-compositor/src/config.c realloc 2
+compositor/src/config.c realloc 1
 compositor/src/config.c strdup 5
 compositor/src/config.c strndup 1
 compositor/src/decoration.c calloc 3
@@ -37,7 +36,6 @@ compositor/src/decoration.c malloc 1
 compositor/src/decoration.c strdup 2
 compositor/src/icons.c calloc 3
 compositor/src/icons.c malloc 1
-compositor/src/icons.c realloc 3
 compositor/src/icons.c strdup 4
 compositor/src/icons.c strndup 1
 compositor/src/input.c calloc 4
@@ -47,7 +45,6 @@ compositor/src/layer.c calloc 1
 compositor/src/lock.c calloc 3
 compositor/src/nested.c calloc 1
 compositor/src/output.c calloc 1
-compositor/src/output_config.c realloc 1
 compositor/src/output_config.c strndup 1
 compositor/src/output_manager.c calloc 3
 compositor/src/output_preview.c calloc 2

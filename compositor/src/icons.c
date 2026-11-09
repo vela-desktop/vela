@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "icons.h"
+#include "alloc/alloc.h"
 #include "config.h"
 
 #include "util.h"
@@ -31,10 +32,7 @@ struct strings {
 
 static void strings_push(struct strings *list, const char *text)
 {
-    if (list->count == list->capacity) {
-        list->capacity = list->capacity ? list->capacity * 2 : 16;
-        list->items = realloc(list->items, (size_t)list->capacity * sizeof(*list->items));
-    }
+    list->items = vela_grow(list->items, &list->capacity, list->count + 1, sizeof(*list->items));
     list->items[list->count++] = strdup(text);
 }
 
@@ -100,10 +98,7 @@ static void icon_names_add(struct icon_names *names, const char *key, const char
     if (icon_names_find(names, key)) {
         return;
     }
-    if (names->count == names->capacity) {
-        names->capacity = names->capacity ? names->capacity * 2 : 128;
-        names->items = realloc(names->items, (size_t)names->capacity * sizeof(*names->items));
-    }
+    names->items = vela_grow(names->items, &names->capacity, names->count + 1, sizeof(*names->items));
     names->items[names->count].key = strdup(key);
     names->items[names->count].icon = strdup(icon);
     ++names->count;
@@ -382,10 +377,7 @@ static int theme_dirs(const char *index, struct theme_dir **out)
                     }
                 }
                 if (current < 0) {
-                    if (count == capacity) {
-                        capacity = capacity ? capacity * 2 : 64;
-                        dirs = realloc(dirs, (size_t)capacity * sizeof(*dirs));
-                    }
+                    dirs = vela_grow(dirs, &capacity, count + 1, sizeof(*dirs));
                     current = count++;
                     snprintf(dirs[current].name, sizeof(dirs[current].name), "%s", line + 1);
                     dirs[current].size = 0;

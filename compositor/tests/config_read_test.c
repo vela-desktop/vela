@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -167,15 +168,13 @@ static void test_vela_conf(bool root_user)
     CHECK(vela_config_write_checked("screen-off", "5"));
     expect_content("vela.conf", "# mine\nscreen-off=5\ntheme=dark\nlanguage=it\n");
 
-    // A read error partway through (I/O, or no memory for a line).
-    for (int i = 0; i < 2; ++i) {
-        const char *error = i == 0 ? "EIO" : "ENOMEM";
-        write_file("vela.conf", settings);
-        fail_getline("vela.conf", 3, error);
-        CHECK(!vela_config_write_checked("screen-off", "5"));
-        no_getline_failure();
-        expect_content("vela.conf", settings);
-    }
+    // A read error partway through. No memory for a line is not one: it
+    // aborts (test_read_line_out_of_memory).
+    write_file("vela.conf", settings);
+    fail_getline("vela.conf", 3, "EIO");
+    CHECK(!vela_config_write_checked("screen-off", "5"));
+    no_getline_failure();
+    expect_content("vela.conf", settings);
 
     // Exists but cannot be opened: descriptors exhausted.
     write_file("vela.conf", settings);
@@ -326,13 +325,79 @@ static void test_desktop_conf(void)
         && strcmp(d.sticky[1], "old.name") == 0); // the empty one is skipped
 
     memset(&d, 0, sizeof(d));
-    fail_getline("desktop.conf", 3, "ENOMEM");
+    fail_getline("desktop.conf", 3, "EIO");
     CHECK(!vela_desktop_conf_read(path, &reader));
     no_getline_failure();
     CHECK(d.count == 1); // what was read before the failure, and false
 
     // Exists but cannot be opened.
     CHECK(!with_no_free_descriptor(read_desktops));
+}
+
+// Coverage builds (VELA_TEST_COVERAGE from CMake) flush their counters at
+// exit, which an abort skips: the aborting child flushes them from its
+// SIGABRT handler, and abort() still ends it with SIGABRT.
+#ifdef VELA_TEST_COVERAGE
+extern void __gcov_dump(void);
+#endif
+
+static void flush_coverage(int signal_number)
+{
+    (void)signal_number;
+#ifdef VELA_TEST_COVERAGE
+    __gcov_dump();
+#endif
+}
+
+// A failed allocation in getline is fatal (docs/memory-allocation-policy.md,
+// "getline"): vela_read_line aborts through vela_oom instead of reporting a
+// read error. Runs in a child and checks its signal and its stderr line.
+static void test_read_line_out_of_memory(void)
+{
+    char probe[640];
+    path_of("probe.conf", probe, sizeof(probe));
+    int out[2];
+    CHECK(pipe(out) == 0);
+    fflush(NULL);
+    pid_t pid = fork();
+    CHECK(pid >= 0);
+    if (pid == 0) {
+        close(out[0]);
+        if (dup2(out[1], STDERR_FILENO) < 0) {
+            _exit(EXIT_FAILURE);
+        }
+        struct rlimit no_core = { 0, 0 };
+        setrlimit(RLIMIT_CORE, &no_core);
+        signal(SIGABRT, flush_coverage);
+        fail_getline("probe.conf", 2, "ENOMEM");
+        FILE *file = fopen(probe, "re");
+        char *line = NULL;
+        size_t capacity = 0;
+        ssize_t length = 0;
+        if (!file || vela_read_line(file, &line, &capacity, &length) != 1) {
+            _exit(EXIT_FAILURE);
+        }
+        vela_read_line(file, &line, &capacity, &length);
+        _exit(EXIT_SUCCESS); // not reached: the read must abort
+    }
+    close(out[1]);
+    char text[1024] = { 0 };
+    size_t used = 0;
+    for (;;) {
+        ssize_t n = read(out[0], text + used, sizeof(text) - 1 - used);
+        if (n <= 0) {
+            break;
+        }
+        used += (size_t)n;
+    }
+    close(out[0]);
+    int status = 0;
+    CHECK(waitpid(pid, &status, 0) == pid);
+    if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGABRT) {
+        fprintf(stderr, "vela_read_line on ENOMEM did not abort (status %d): %s\n", status, text);
+        exit(EXIT_FAILURE);
+    }
+    CHECK(strstr(text, "vela: out of memory (") && strstr(text, "config.c:"));
 }
 
 static int remove_entry(const char *path, const struct stat *info, int type, struct FTW *walk)
@@ -376,6 +441,7 @@ int main(void)
     CHECK(vela_read_line(file, &line, &capacity, &length) == 0);
     fclose(file);
     free(line);
+    test_read_line_out_of_memory();
     remove_file("probe.conf");
 
     test_vela_conf(root_user);

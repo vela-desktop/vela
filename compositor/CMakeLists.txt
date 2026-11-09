@@ -294,6 +294,10 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-config-read-test PRIVATE -Wall -Wextra -Werror)
     set_target_properties(vela-config-read-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_dependencies(vela-config-read-test vela-getline-fail-preload)
+    # The ENOMEM case aborts in a child: flush its coverage.
+    if(CMAKE_C_FLAGS MATCHES "--coverage")
+        target_compile_definitions(vela-config-read-test PRIVATE VELA_TEST_COVERAGE)
+    endif()
     add_test(NAME compositor.config-read COMMAND vela-config-read-test
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     set_tests_properties(compositor.config-read PROPERTIES
