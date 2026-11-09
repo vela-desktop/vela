@@ -189,6 +189,31 @@ private Q_SLOTS:
         QTRY_COMPARE(updates->checkInterval(), 48u);
     }
 
+    // vela.conf that cannot be read to the end is never rewritten from what
+    // was read: the daemon's settings changes fail instead of dropping the
+    // rest of the user's settings.
+    void unreadableSettingsAreNeverRewritten()
+    {
+#ifndef VELA_GETLINE_FAIL_PRELOAD
+        QSKIP("needs the vela-getline-fail-preload target");
+#else
+        const QString conf = m_home.filePath(QStringLiteral("config/vela/vela.conf"));
+        const QByteArray content = "# mine\nupdate-check-interval=24\ntheme=dark\nlanguage=it\n";
+        QVERIFY(write(conf, content));
+        QVERIFY(startDaemon({ { QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_GETLINE_FAIL_PRELOAD) },
+            { QStringLiteral("VELA_TEST_GETLINE_FAIL"), QStringLiteral("vela.conf 3 EIO") } }));
+        auto updates = client();
+        QTRY_VERIFY(updates->available());
+        updates->setCheckInterval(12u);
+        QTRY_COMPARE(updates->error(), QStringLiteral("Couldn't save the automatic update check frequency."));
+        QCOMPARE(updates->checkInterval(), 24u);
+        updates->setAutoCheck(false); // the daemon logs the failure
+        QTRY_VERIFY(!updates->autoCheck());
+        QTest::qWait(300);
+        QCOMPARE(read(conf), content);
+#endif
+    }
+
     void checkFindsAnUpdate()
     {
         nextCheck({ { "status", "update-available" }, { "commit", commitB }, { "version", "0.1.1" },

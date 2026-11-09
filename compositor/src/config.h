@@ -53,6 +53,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <sys/types.h>
 
 // The file as read: one entry per key (for repeated keys the last line wins).
 // Each entry is a single allocation, "key\0value".
@@ -67,8 +69,8 @@ struct vela_config {
     int capacity;
 };
 
-// Reads vela.conf (a missing file gives an empty list). Free with
-// vela_config_finish.
+// Reads vela.conf (a missing or unreadable file gives an empty list: the
+// defaults). Free with vela_config_finish.
 void vela_config_read(struct vela_config *config);
 void vela_config_finish(struct vela_config *config);
 
@@ -80,12 +82,25 @@ bool vela_config_flag(const struct vela_config *config, const char *key, bool fa
 // Changes one key in the file and leaves the rest as it is (comments too): for
 // what is also turned on outside Settings (quick settings, shortcuts).
 void vela_config_write(const char *key, const char *value);
-// Checked variant for callers that must report persistence failures.
+// Checked variant for callers that must report persistence failures. Fails,
+// and leaves the file as it is, when the file exists but cannot be read.
 bool vela_config_write_checked(const char *key, const char *value);
 
 // Rewrites vela.conf with the English names of keys and values if it still has
 // the old Italian ones. At startup.
 void vela_config_migrate(void);
+
+// Reading a file that Vela may later rewrite (docs/memory-allocation-policy.md,
+// "getline"). Only a missing file is an empty one: a file that exists but
+// cannot be opened or read to the end must never be rewritten from what was
+// read, or the user's settings are lost.
+//
+// Opens `path` for reading. NULL with *missing true: the file does not exist
+// (ENOENT). NULL with *missing false: it exists but cannot be opened.
+FILE *vela_config_open(const char *path, bool *missing);
+// One line, as getline: 1 with *length set, 0 at a clean end of the file,
+// -1 on a read error (I/O, or no memory for the line).
+int vela_read_line(FILE *file, char **line, size_t *capacity, ssize_t *length);
 
 // $XDG_CONFIG_HOME/vela/<name> (or ~/.config/vela/<name>); name NULL: the
 // directory. false if the directory is unknown or the path doesn't fit in

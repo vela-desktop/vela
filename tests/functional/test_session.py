@@ -413,6 +413,55 @@ class DamageFailure(unittest.TestCase):
                     self.assert_matches_full_redraw(vela, f"lock after {operation}")
 
 
+class ConfigurationRead(unittest.TestCase):
+    """desktop.conf that exists but cannot be read whole is never rewritten
+    from what the compositor managed to read (docs/memory-allocation-policy.md,
+    "Existing defects", 1). vela.conf and outputs.conf: compositor.config-read."""
+
+    SHIM = os.path.join(BUILD, "compositor", "libvela-getline-fail-preload.so")
+    CONTENT = "# mine\ndesktop=Work\ndesktop=Games\nsticky-app=org.kde.konsole\n"
+
+    def run_session(self, failure):
+        config = tempfile.mkdtemp(prefix="vela-desktop-conf-")
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", config], check=False))
+        os.mkdir(os.path.join(config, "vela"), 0o700)
+        path = os.path.join(config, "vela", "desktop.conf")
+        with open(path, "w") as file:
+            file.write(self.CONTENT)
+        env = {"XDG_CONFIG_HOME": config}
+        if failure == "unreadable":
+            os.chmod(path, 0)
+        elif failure:
+            self.assertTrue(os.path.exists(self.SHIM), "build the vela-getline-fail-preload target")
+            env.update({"LD_PRELOAD": self.SHIM, "VELA_TEST_GETLINE_FAIL": f"desktop.conf 3 {failure}"})
+        with Session(env=env) as vela:
+            if failure:
+                vela.wait_for_log("desktop.conf could not be read")
+            # Both rewrite desktop.conf.
+            desktops = vela.state()["workspaces"]
+            vela.command("workspace rename 0 Renamed")
+            vela.command("workspace new")
+            vela.wait_for(lambda s: s["workspaces"] == desktops + 1, what="the new desktop")
+            time.sleep(0.3 * TIME_SCALE)
+        os.chmod(path, 0o600)
+        with open(path) as file:
+            return file.read()
+
+    def test_desktop_conf_read_failure_never_rewrites_it(self):
+        for failure in ("EIO", "ENOMEM", "unreadable"):
+            with self.subTest(failure=failure):
+                if failure == "unreadable" and os.geteuid() == 0:
+                    self.skipTest("root ignores file permissions")
+                self.assertEqual(self.run_session(failure), self.CONTENT)
+
+    def test_readable_desktop_conf_is_still_saved(self):
+        # The control: the same commands do rewrite a file read whole.
+        content = self.run_session(None)
+        self.assertIn("desktop=Renamed", content)
+        self.assertIn("desktop=Games", content)
+        self.assertIn("sticky-app=org.kde.konsole", content)
+
+
 class VulkanShutdown(unittest.TestCase):
     """Headless shutdown smoke tests; physical DRM/KMS regression tests are separate."""
 

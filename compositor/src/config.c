@@ -84,18 +84,44 @@ static void lines_free(struct lines *lines)
     free(lines->items);
 }
 
-// The file line by line, already with the current names; *changed if some
-// still had the old ones.
-static void read_lines(const char *path, struct lines *lines, bool *changed)
+FILE *vela_config_open(const char *path, bool *missing)
 {
-    FILE *file = fopen(path, "r");
+    errno = 0;
+    FILE *file = fopen(path, "re");
+    *missing = !file && errno == ENOENT;
+    return file;
+}
+
+int vela_read_line(FILE *file, char **line, size_t *capacity, ssize_t *length)
+{
+    // getline returns -1 both at the end and on an error. errno is cleared
+    // right before the call (the caller's loop body may have set it), and the
+    // stream's error flag is checked too: a failed allocation does not
+    // necessarily set it.
+    errno = 0;
+    ssize_t n = getline(line, capacity, file);
+    if (n >= 0) {
+        *length = n;
+        return 1;
+    }
+    return errno != 0 || ferror(file) ? -1 : 0;
+}
+
+// The file line by line, already with the current names; *changed if some
+// still had the old ones. false when the file exists but could not be read
+// whole: nothing derived from it may be written back.
+static bool read_lines(const char *path, struct lines *lines, bool *changed)
+{
+    bool missing = false;
+    FILE *file = vela_config_open(path, &missing);
     if (!file) {
-        return;
+        return missing;
     }
     char *line = NULL;
     size_t capacity = 0;
-    ssize_t n;
-    while ((n = getline(&line, &capacity, file)) >= 0) {
+    ssize_t n = 0;
+    int status;
+    while ((status = vela_read_line(file, &line, &capacity, &n)) > 0) {
         if (n > 0 && line[n - 1] == '\n') {
             line[n - 1] = '\0';
         }
@@ -107,6 +133,7 @@ static void read_lines(const char *path, struct lines *lines, bool *changed)
     }
     free(line);
     fclose(file);
+    return status == 0;
 }
 
 // A new file in place of the old one: readers never see half a file.
@@ -231,7 +258,10 @@ bool vela_config_write_checked(const char *key, const char *value)
     }
 
     struct lines lines = { 0 };
-    read_lines(path, &lines, NULL);
+    if (!read_lines(path, &lines, NULL)) {
+        lines_free(&lines);
+        return false; // never replace a file we could not read
+    }
     char *wanted = NULL;
     if (asprintf(&wanted, "%s=%s", key, value) < 0) {
         lines_free(&lines);
@@ -280,8 +310,7 @@ void vela_config_migrate(void)
     }
     struct lines lines = { 0 };
     bool changed = false;
-    read_lines(path, &lines, &changed);
-    if (changed) {
+    if (read_lines(path, &lines, &changed) && changed) {
         write_lines(path, &lines);
     }
     lines_free(&lines);

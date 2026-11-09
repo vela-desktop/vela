@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "text.h"
+#include "config.h"
 
 #include <fontconfig/fontconfig.h>
 #include <ft2build.h>
@@ -37,7 +38,7 @@ static void kde_font(char *family, size_t size, double *points)
     } else {
         return;
     }
-    FILE *file = fopen(path, "r");
+    FILE *file = fopen(path, "re");
     if (!file) {
         return;
     }
@@ -46,8 +47,9 @@ static void kde_font(char *family, size_t size, double *points)
     char section[256] = { 0 };
     char *line = NULL;
     size_t capacity = 0;
-    ssize_t n;
-    while ((n = getline(&line, &capacity, file)) >= 0) {
+    ssize_t n = 0;
+    int status;
+    while ((status = vela_read_line(file, &line, &capacity, &n)) > 0) {
         if (n > 0 && line[n - 1] == '\n') {
             line[n - 1] = '\0';
         }
@@ -61,6 +63,9 @@ static void kde_font(char *family, size_t size, double *points)
     }
     free(line);
     fclose(file);
+    if (status < 0) {
+        return; // a partial read could pick the wrong font: keep the default
+    }
     const char *chosen = wm_font[0] ? wm_font : general_font;
     if (!chosen[0]) {
         return;

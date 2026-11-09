@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "icons.h"
+#include "config.h"
 
 #include "util.h"
 #include "path_security.h"
@@ -171,7 +172,7 @@ static void read_section(const char *path, const char *section, const char *cons
     for (int i = 0; i < count; ++i) {
         values[i][0] = '\0';
     }
-    FILE *file = fopen(path, "r");
+    FILE *file = fopen(path, "re");
     if (!file) {
         return;
     }
@@ -179,8 +180,9 @@ static void read_section(const char *path, const char *section, const char *cons
     bool inside = false;
     char *line = NULL;
     size_t capacity = 0;
-    ssize_t n;
-    while ((n = getline(&line, &capacity, file)) >= 0) {
+    ssize_t n = 0;
+    int status;
+    while ((status = vela_read_line(file, &line, &capacity, &n)) > 0) {
         if (n > 0 && line[n - 1] == '\n') {
             line[--n] = '\0';
         }
@@ -202,6 +204,13 @@ static void read_section(const char *path, const char *section, const char *cons
     }
     free(line);
     fclose(file);
+    if (status < 0) {
+        // A partial read is not a file without those keys that happens to be
+        // short: report nothing rather than a mix.
+        for (int i = 0; i < count; ++i) {
+            values[i][0] = '\0';
+        }
+    }
 }
 
 static void kdeglobals_path(char *out, size_t size)
@@ -394,7 +403,7 @@ struct theme_dir {
 static int theme_dirs(const char *index, struct theme_dir **out)
 {
     *out = NULL;
-    FILE *file = fopen(index, "r");
+    FILE *file = fopen(index, "re");
     if (!file) {
         return 0;
     }
@@ -406,8 +415,9 @@ static int theme_dirs(const char *index, struct theme_dir **out)
     bool in_theme = false;
     char *line = NULL;
     size_t line_capacity = 0;
-    ssize_t n;
-    while ((n = getline(&line, &line_capacity, file)) >= 0) {
+    ssize_t n = 0;
+    int status;
+    while ((status = vela_read_line(file, &line, &line_capacity, &n)) > 0) {
         if (n > 0 && line[n - 1] == '\n') {
             line[--n] = '\0';
         }
@@ -451,6 +461,13 @@ static int theme_dirs(const char *index, struct theme_dir **out)
     }
     free(line);
     fclose(file);
+    if (status < 0) {
+        // A partial index would list only some directories: treat it as no
+        // index, like a missing one.
+        strings_free(&listed);
+        free(dirs);
+        return 0;
+    }
 
     // In the order of Directories; a directory without a section counts as 0,
     // Threshold.

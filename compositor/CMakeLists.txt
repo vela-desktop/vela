@@ -256,6 +256,21 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-pixman-fail-preload PRIVATE -Wall -Wextra -Werror)
     set_target_properties(vela-pixman-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
 
+    # LD_PRELOAD shim that makes getline fail partway through a chosen file,
+    # and the configuration-read test that runs under it.
+    add_library(vela-getline-fail-preload MODULE tests/getline_fail_preload.c)
+    target_link_libraries(vela-getline-fail-preload PRIVATE ${CMAKE_DL_LIBS})
+    target_compile_options(vela-getline-fail-preload PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-getline-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_executable(vela-config-read-test tests/config_read_test.c)
+    target_link_libraries(vela-config-read-test PRIVATE vela-pure)
+    target_compile_options(vela-config-read-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-config-read-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_dependencies(vela-config-read-test vela-getline-fail-preload)
+    add_test(NAME compositor.config-read COMMAND vela-config-read-test)
+    set_tests_properties(compositor.config-read PROPERTIES
+        ENVIRONMENT "LD_PRELOAD=$<TARGET_FILE:vela-getline-fail-preload>")
+
     add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
     target_include_directories(vela-device-loss-policy-test PRIVATE src)
     set_target_properties(vela-device-loss-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)

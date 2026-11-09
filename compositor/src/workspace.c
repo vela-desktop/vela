@@ -50,12 +50,15 @@ struct vela_workspaces *vela_workspaces_create(struct vela_server *server)
     // desktop=<name> for each desktop (empty: "Desktop N");
     // sticky-app=<app_id>.
     char path[PATH_MAX];
-    FILE *in = vela_config_path("desktop.conf", path, sizeof(path)) ? fopen(path, "re") : NULL;
+    bool missing = false;
+    FILE *in = vela_config_path("desktop.conf", path, sizeof(path)) ? vela_config_open(path, &missing) : NULL;
+    ws->unreadable = !in && !missing;
     if (in) {
         char *line = NULL;
         size_t size = 0;
-        ssize_t length;
-        while ((length = getline(&line, &size, in)) >= 0) {
+        ssize_t length = 0;
+        int status;
+        while ((status = vela_read_line(in, &line, &size, &length)) > 0) {
             if (length > 0 && line[length - 1] == '\n') {
                 line[--length] = '\0';
             }
@@ -69,6 +72,10 @@ struct vela_workspaces *vela_workspaces_create(struct vela_server *server)
         }
         free(line);
         fclose(in);
+        ws->unreadable = status < 0;
+    }
+    if (ws->unreadable) {
+        wlr_log(WLR_ERROR, "desktop.conf could not be read; desktop changes will not be saved this session");
     }
     if (ws->count == 0) {
         push_string(&ws->names, &ws->count, &ws->capacity, "");
@@ -92,6 +99,9 @@ static void save(const struct vela_workspaces *ws)
     char directory[PATH_MAX];
     char path[PATH_MAX];
     char temporary[PATH_MAX + 8];
+    if (ws->unreadable) {
+        return; // the file holds more than we could read: leave it
+    }
     if (!vela_config_path(NULL, directory, sizeof(directory)) || !vela_config_path("desktop.conf", path, sizeof(path))
         || !vela_format(temporary, sizeof(temporary), "%s.XXXXXX", path)) {
         return;
