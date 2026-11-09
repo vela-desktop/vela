@@ -27,7 +27,9 @@ struct TempDir {
     std::string path;
     TempDir()
     {
-        path = (std::filesystem::temp_directory_path() / "vela-lock-state-XXXXXX").string();
+        // Under the test's working directory (the build tree), never in a
+        // publicly writable one.
+        path = (std::filesystem::current_path() / "vela-lock-state-XXXXXX").string();
         if (!mkdtemp(path.data())) {
             path.clear();
         }
@@ -175,6 +177,46 @@ TEST(LockState, StartsUnlockedOnlyWhenPageAndMarkerBothSayUnlocked)
     EXPECT_TRUE(vela_lock_start_locked(true, VELA_LOCK_MARKER_ABSENT));
     EXPECT_TRUE(vela_lock_start_locked(true, VELA_LOCK_MARKER_PRESENT));
     EXPECT_TRUE(vela_lock_start_locked(true, VELA_LOCK_MARKER_UNKNOWN));
+}
+
+TEST(LockState, RestartDecisionCombinesPageMarkerAndOlderSupervisors)
+{
+    TempDir dir;
+    ASSERT_FALSE(dir.path.empty());
+    int runtime_fd = vela_runtime_dir_open(dir.path.c_str());
+    ASSERT_GE(runtime_fd, 0);
+    bool unreadable = true;
+
+    // No page: an older supervisor, or no supervisor. Only its variable counts.
+    EXPECT_FALSE(vela_lock_restart_locked(nullptr, runtime_fd, "wayland-0", false, &unreadable));
+    EXPECT_FALSE(unreadable);
+    EXPECT_TRUE(vela_lock_restart_locked(nullptr, runtime_fd, "wayland-0", true, &unreadable));
+
+    int fd = vela_lock_state_create();
+    ASSERT_GE(fd, 0);
+    struct vela_lock_state *state = vela_lock_state_map(fd);
+    ASSERT_NE(state, nullptr);
+
+    // Unlocked page, no marker: the only unlocked start.
+    EXPECT_FALSE(vela_lock_restart_locked(state, runtime_fd, "wayland-0", false, &unreadable));
+    EXPECT_FALSE(unreadable);
+    EXPECT_TRUE(vela_lock_restart_locked(state, runtime_fd, "wayland-0", true, &unreadable));
+
+    // Locked page without a marker (one that could not be created).
+    vela_lock_state_store(state, true);
+    EXPECT_TRUE(vela_lock_restart_locked(state, runtime_fd, "wayland-0", false, &unreadable));
+    vela_lock_state_store(state, false);
+
+    // A marker that is present, or whose state cannot be established.
+    ASSERT_TRUE(vela_lock_marker_create_at(runtime_fd, "wayland-0"));
+    EXPECT_TRUE(vela_lock_restart_locked(state, runtime_fd, "wayland-0", false, &unreadable));
+    EXPECT_FALSE(unreadable);
+    ASSERT_TRUE(vela_lock_marker_remove_at(runtime_fd, "wayland-0"));
+    EXPECT_TRUE(vela_lock_restart_locked(state, -1, "wayland-0", false, &unreadable));
+    EXPECT_TRUE(unreadable);
+
+    vela_lock_state_unmap(state);
+    close(runtime_fd);
 }
 
 TEST(LockMarker, OnlyAMissingEntryIsAbsent)

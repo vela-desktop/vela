@@ -6,6 +6,7 @@
 #include "focus.h"
 #include "buffer.h"
 #include "config.h"
+#include "desktop_conf.h"
 #include "motion.h"
 #include "output.h"
 #include "scene/scene.h"
@@ -42,6 +43,18 @@ static void free_strings(char **items, int count)
     free(items);
 }
 
+static void add_desktop(void *data, const char *name)
+{
+    struct vela_workspaces *ws = data;
+    push_string(&ws->names, &ws->count, &ws->capacity, name);
+}
+
+static void add_sticky_app(void *data, const char *app_id)
+{
+    struct vela_workspaces *ws = data;
+    push_string(&ws->sticky_apps, &ws->sticky_count, &ws->sticky_capacity, app_id);
+}
+
 struct vela_workspaces *vela_workspaces_create(struct vela_server *server)
 {
     struct vela_workspaces *ws = calloc(1, sizeof(*ws));
@@ -50,30 +63,8 @@ struct vela_workspaces *vela_workspaces_create(struct vela_server *server)
     // desktop=<name> for each desktop (empty: "Desktop N");
     // sticky-app=<app_id>.
     char path[PATH_MAX];
-    bool missing = false;
-    FILE *in = vela_config_path("desktop.conf", path, sizeof(path)) ? vela_config_open(path, &missing) : NULL;
-    ws->unreadable = !in && !missing;
-    if (in) {
-        char *line = NULL;
-        size_t size = 0;
-        ssize_t length = 0;
-        int status;
-        while ((status = vela_read_line(in, &line, &size, &length)) > 0) {
-            if (length > 0 && line[length - 1] == '\n') {
-                line[--length] = '\0';
-            }
-            if (strncmp(line, "desktop=", 8) == 0) {
-                push_string(&ws->names, &ws->count, &ws->capacity, line + 8);
-            } else if (strncmp(line, "sticky-app=", 11) == 0 && length > 11) {
-                push_string(&ws->sticky_apps, &ws->sticky_count, &ws->sticky_capacity, line + 11);
-            } else if (strncmp(line, "app-ovunque=", 12) == 0 && length > 12) {
-                push_string(&ws->sticky_apps, &ws->sticky_count, &ws->sticky_capacity, line + 12); // the old name
-            }
-        }
-        free(line);
-        fclose(in);
-        ws->unreadable = status < 0;
-    }
+    const struct vela_desktop_conf_reader reader = { add_desktop, add_sticky_app, ws };
+    ws->unreadable = vela_config_path("desktop.conf", path, sizeof(path)) && !vela_desktop_conf_read(path, &reader);
     if (ws->unreadable) {
         wlr_log(WLR_ERROR, "desktop.conf could not be read; desktop changes will not be saved this session");
     }

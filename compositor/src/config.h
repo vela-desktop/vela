@@ -102,6 +102,12 @@ FILE *vela_config_open(const char *path, bool *missing);
 // -1 on a read error (I/O, or no memory for the line).
 int vela_read_line(FILE *file, char **line, size_t *capacity, ssize_t *length);
 
+// The values of some keys in a [section] of an .ini or .desktop file (for
+// repeated keys the last line wins); values[i] stays empty if the key is
+// missing. false when the file cannot be opened or read to the end, with
+// every value empty rather than a mix.
+bool vela_ini_read(const char *path, const char *section, const char *const *keys, char (*values)[256], int count);
+
 // $XDG_CONFIG_HOME/vela/<name> (or ~/.config/vela/<name>); name NULL: the
 // directory. false if the directory is unknown or the path doesn't fit in
 // `size`.

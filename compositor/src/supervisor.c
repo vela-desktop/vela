@@ -28,6 +28,7 @@
 #include "diagnostics.h"
 #include "lock_state.h"
 #include "path_security.h"
+#include "supervisor_child.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -277,22 +278,12 @@ int vela_supervise(int argc, char **argv)
         return 1;
     }
     char lock_state_argument[32];
-    snprintf(lock_state_argument, sizeof(lock_state_argument), "--%s=%d",
-        VELA_LOCK_STATE_OPTION, lock_state_fd);
-    char **arguments = calloc((size_t)argc + 2, sizeof(*arguments));
+    char **arguments = vela_supervisor_arguments(argc, argv, self, lock_state_fd, lock_state_argument,
+        sizeof(lock_state_argument));
     if (!arguments) {
         say("out of memory");
         return 1;
     }
-    int count = 0;
-    arguments[count++] = self;
-    for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--supervise") != 0) {
-            arguments[count++] = argv[i];
-        }
-    }
-    arguments[count++] = lock_state_argument;
-    arguments[count] = NULL;
 
     // Apps started in the session (by the shell, with a double fork) stay our
     // children: at the end of the session we know whom to close.
@@ -318,29 +309,7 @@ int vela_supervise(int argc, char **argv)
             signal(SIGTERM, SIG_DFL);
             signal(SIGINT, SIG_DFL);
             signal(SIGHUP, SIG_DFL);
-            // The compositor inherits the Wayland socket, the exact
-            // runtime-directory descriptor and the lock state. It restores
-            // CLOEXEC on the runtime directory and closes the lock state
-            // before launching any applications.
-            if (fcntl(socket.fd, F_SETFD, 0) != 0
-                || fcntl(runtime_fd, F_SETFD, 0) != 0
-                || fcntl(lock_state_fd, F_SETFD, 0) != 0) {
-                _exit(127);
-            }
-            // Every step that can fail ends the child: a compositor started
-            // with a partial environment is never better than a restart.
-            // Whether to start locked is no longer passed here: the
-            // compositor reads the shared page and the marker itself.
-            char fd[16];
-            snprintf(fd, sizeof(fd), "%d", socket.fd);
-            if (setenv("VELA_WAYLAND_SOCKET_FD", fd, 1) != 0
-                || setenv("VELA_WAYLAND_DISPLAY", socket.name, 1) != 0) {
-                _exit(127);
-            }
-            snprintf(fd, sizeof(fd), "%d", runtime_fd);
-            if (setenv("VELA_RUNTIME_DIR_FD", fd, 1) != 0
-                || (restarted && setenv("VELA_RESTARTED", "1", 1) != 0)
-                || unsetenv("VELA_START_LOCKED") != 0) {
+            if (!vela_supervisor_prepare_child(socket.fd, socket.name, runtime_fd, lock_state_fd, restarted)) {
                 _exit(127);
             }
             execv(self, arguments);

@@ -49,4 +49,11 @@ void vela_lock_state_store(struct vela_lock_state *state, bool locked);
 // "unlocked" and the marker is positively absent.
 bool vela_lock_start_locked(bool page_locked, enum vela_lock_marker marker);
 
+// The whole decision at startup. `forced`: VELA_START_LOCKED from an older
+// supervisor. Without a page (unsupervised, or an older supervisor) only
+// `forced` counts, as before. *unreadable is set when the marker's state
+// could not be established (which counts as locked).
+bool vela_lock_restart_locked(const struct vela_lock_state *state, int runtime_fd, const char *display,
+    bool forced, bool *unreadable);
+
 #endif

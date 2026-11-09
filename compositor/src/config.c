@@ -107,6 +107,55 @@ int vela_read_line(FILE *file, char **line, size_t *capacity, ssize_t *length)
     return errno != 0 || ferror(file) ? -1 : 0;
 }
 
+bool vela_ini_read(const char *path, const char *section, const char *const *keys, char (*values)[256], int count)
+{
+    for (int i = 0; i < count; ++i) {
+        values[i][0] = '\0';
+    }
+    FILE *file = fopen(path, "re");
+    if (!file) {
+        return false;
+    }
+    size_t section_length = strlen(section);
+    bool inside = false;
+    char *line = NULL;
+    size_t capacity = 0;
+    ssize_t n = 0;
+    int status;
+    while ((status = vela_read_line(file, &line, &capacity, &n)) > 0) {
+        if (n > 0 && line[n - 1] == '\n') {
+            line[--n] = '\0';
+        }
+        if (line[0] == '[') {
+            inside = (size_t)n == section_length + 2 && strncmp(line + 1, section, section_length) == 0
+                && line[n - 1] == ']';
+            continue;
+        }
+        char *eq = inside ? strchr(line, '=') : NULL;
+        if (!eq) {
+            continue;
+        }
+        *eq = '\0';
+        for (int i = 0; i < count; ++i) {
+            if (strcmp(line, keys[i]) == 0) {
+                snprintf(values[i], sizeof(values[i]), "%s", eq + 1);
+            }
+        }
+    }
+    free(line);
+    fclose(file);
+    if (status < 0) {
+        // A partial read is not a file without those keys that happens to be
+        // short: report nothing rather than a mix.
+        for (int i = 0; i < count; ++i) {
+            values[i][0] = '\0';
+        }
+        return false;
+    }
+    return true;
+}
+
+
 // The file line by line, already with the current names; *changed if some
 // still had the old ones. false when the file exists but could not be read
 // whole: nothing derived from it may be written back.

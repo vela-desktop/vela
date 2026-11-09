@@ -113,3 +113,15 @@ bool vela_lock_start_locked(bool page_locked, enum vela_lock_marker marker)
 {
     return page_locked || marker != VELA_LOCK_MARKER_ABSENT;
 }
+
+bool vela_lock_restart_locked(const struct vela_lock_state *state, int runtime_fd, const char *display,
+    bool forced, bool *unreadable)
+{
+    *unreadable = false;
+    if (!state) {
+        return forced;
+    }
+    enum vela_lock_marker marker = vela_lock_marker_state_at(runtime_fd, display);
+    *unreadable = marker == VELA_LOCK_MARKER_UNKNOWN;
+    return forced || vela_lock_start_locked(vela_lock_state_locked(state), marker);
+}

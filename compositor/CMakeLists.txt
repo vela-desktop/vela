@@ -125,6 +125,7 @@ add_library(vela-pure STATIC
     src/buffer.c
     src/color.c
     src/config.c
+    src/desktop_conf.c
     src/diagnostics.c
     src/frame_clock.c
     src/geometry.c
@@ -135,6 +136,7 @@ add_library(vela-pure STATIC
     src/output_key.c
     src/path_security.c
     src/sun.c
+    src/supervisor_child.c
     src/sync.c
     src/util.c
     src/x11_space.c)
@@ -272,7 +274,8 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-config-read-test PRIVATE -Wall -Wextra -Werror)
     set_target_properties(vela-config-read-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_dependencies(vela-config-read-test vela-getline-fail-preload)
-    add_test(NAME compositor.config-read COMMAND vela-config-read-test)
+    add_test(NAME compositor.config-read COMMAND vela-config-read-test
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     set_tests_properties(compositor.config-read PROPERTIES
         ENVIRONMENT "LD_PRELOAD=$<TARGET_FILE:vela-getline-fail-preload>")
 
@@ -356,6 +359,7 @@ if(VELA_BUILD_TOOLS)
         set_target_properties(${target} PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     endforeach()
     target_compile_definitions(vela-scene-diff-test PRIVATE VELA_DIFF_ALLOCATION_TEST)
+
     target_link_options(vela-scene-diff-test PRIVATE -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free)
     add_test(NAME compositor.scene-diff COMMAND vela-scene-diff-test --test)
 
@@ -502,6 +506,7 @@ if(VELA_BUILD_TOOLS)
             tests/output_key_test.cpp
             tests/path_security_test.cpp
             tests/lock_state_test.cpp
+            tests/supervisor_child_test.cpp
             tests/diagnostics_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp

@@ -424,16 +424,12 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     // black screen until vela-lock shows up. With the shared page, only a
     // page saying "unlocked" and a marker that is positively absent start
     // unlocked; an older supervisor still passes VELA_START_LOCKED.
-    bool start_locked = getenv("VELA_START_LOCKED") != NULL;
+    bool unreadable = false;
+    bool start_locked = vela_lock_restart_locked(server->lock_state, server->runtime_dir_fd,
+        server->socket_name, getenv("VELA_START_LOCKED") != NULL, &unreadable);
     unsetenv("VELA_START_LOCKED");
-    if (server->lock_state) {
-        bool page_locked = vela_lock_state_locked(server->lock_state);
-        enum vela_lock_marker marker =
-            vela_lock_marker_state_at(server->runtime_dir_fd, server->socket_name);
-        if (marker == VELA_LOCK_MARKER_UNKNOWN) {
-            wlr_log(WLR_ERROR, "Lock marker unreadable: treating the screen as locked");
-        }
-        start_locked = start_locked || vela_lock_start_locked(page_locked, marker);
+    if (unreadable) {
+        wlr_log(WLR_ERROR, "Lock marker unreadable: treating the screen as locked");
     }
     if (start_locked) {
         wlr_log(WLR_INFO, "The screen was locked: restarting locked");

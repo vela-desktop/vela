@@ -38,34 +38,17 @@ static void kde_font(char *family, size_t size, double *points)
     } else {
         return;
     }
-    FILE *file = fopen(path, "re");
-    if (!file) {
+    static const char *const wm_key[] = { "activeFont" };
+    static const char *const general_key[] = { "font" };
+    char wm[1][256];
+    char general[1][256];
+    // Missing, unreadable or read only in part: KDE's default (a partial
+    // read could pick the wrong font).
+    if (!vela_ini_read(path, "WM", wm_key, wm, 1) || !vela_ini_read(path, "General", general_key, general, 1)) {
         return;
     }
-    char wm_font[256] = { 0 };
-    char general_font[256] = { 0 };
-    char section[256] = { 0 };
-    char *line = NULL;
-    size_t capacity = 0;
-    ssize_t n = 0;
-    int status;
-    while ((status = vela_read_line(file, &line, &capacity, &n)) > 0) {
-        if (n > 0 && line[n - 1] == '\n') {
-            line[n - 1] = '\0';
-        }
-        if (line[0] == '[') {
-            snprintf(section, sizeof(section), "%s", line);
-        } else if (strcmp(section, "[WM]") == 0 && strncmp(line, "activeFont=", 11) == 0) {
-            snprintf(wm_font, sizeof(wm_font), "%s", line + 11);
-        } else if (strcmp(section, "[General]") == 0 && strncmp(line, "font=", 5) == 0) {
-            snprintf(general_font, sizeof(general_font), "%s", line + 5);
-        }
-    }
-    free(line);
-    fclose(file);
-    if (status < 0) {
-        return; // a partial read could pick the wrong font: keep the default
-    }
+    const char *wm_font = wm[0];
+    const char *general_font = general[0];
     const char *chosen = wm_font[0] ? wm_font : general_font;
     if (!chosen[0]) {
         return;

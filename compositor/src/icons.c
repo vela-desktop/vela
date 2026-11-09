@@ -163,56 +163,6 @@ static void data_dirs(struct strings *dirs)
     strings_split(dirs, system && *system ? system : "/usr/local/share:/usr/share", ':');
 }
 
-// The values of some keys in a [section] of an .ini or .desktop file (for
-// repeated keys the last line wins). values[i] stays empty if the key is
-// missing.
-static void read_section(const char *path, const char *section, const char *const *keys, char (*values)[256],
-    int count)
-{
-    for (int i = 0; i < count; ++i) {
-        values[i][0] = '\0';
-    }
-    FILE *file = fopen(path, "re");
-    if (!file) {
-        return;
-    }
-    size_t section_length = strlen(section);
-    bool inside = false;
-    char *line = NULL;
-    size_t capacity = 0;
-    ssize_t n = 0;
-    int status;
-    while ((status = vela_read_line(file, &line, &capacity, &n)) > 0) {
-        if (n > 0 && line[n - 1] == '\n') {
-            line[--n] = '\0';
-        }
-        if (line[0] == '[') {
-            inside = (size_t)n == section_length + 2 && strncmp(line + 1, section, section_length) == 0
-                && line[n - 1] == ']';
-            continue;
-        }
-        char *eq = inside ? strchr(line, '=') : NULL;
-        if (!eq) {
-            continue;
-        }
-        *eq = '\0';
-        for (int i = 0; i < count; ++i) {
-            if (strcmp(line, keys[i]) == 0) {
-                snprintf(values[i], sizeof(values[i]), "%s", eq + 1);
-            }
-        }
-    }
-    free(line);
-    fclose(file);
-    if (status < 0) {
-        // A partial read is not a file without those keys that happens to be
-        // short: report nothing rather than a mix.
-        for (int i = 0; i < count; ++i) {
-            values[i][0] = '\0';
-        }
-    }
-}
-
 static void kdeglobals_path(char *out, size_t size)
 {
     const char *config = getenv("XDG_CONFIG_HOME");
@@ -242,7 +192,7 @@ struct vela_icons *vela_icons_create(void)
     static const char *const theme_key[] = { "Theme" };
     char theme[1][256];
     kdeglobals_path(path, sizeof(path));
-    read_section(path, "Icons", theme_key, theme, 1);
+    vela_ini_read(path, "Icons", theme_key, theme, 1);
     // The chain: the theme, those it inherits (Inherits), finally hicolor.
     struct strings pending = { 0 };
     strings_push(&pending, vela_path_component_safe(theme[0]) ? theme[0] : "breeze");
@@ -260,7 +210,7 @@ struct vela_icons *vela_icons_create(void)
             if (exists(path)) {
                 static const char *const inherits_key[] = { "Inherits" };
                 char inherits[1][256];
-                read_section(path, "Icon Theme", inherits_key, inherits, 1);
+                vela_ini_read(path, "Icon Theme", inherits_key, inherits, 1);
                 strings_split(&pending, inherits[0], ',');
                 break;
             }
@@ -327,7 +277,7 @@ static void scan_applications(struct vela_icons *icons, const char *apps, const 
         }
         static const char *const keys[] = { "Icon", "StartupWMClass" };
         char values[2][256];
-        read_section(path, "Desktop Entry", keys, values, 2);
+        vela_ini_read(path, "Desktop Entry", keys, values, 2);
         if (!values[0][0]) {
             continue;
         }
