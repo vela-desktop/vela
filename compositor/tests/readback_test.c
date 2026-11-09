@@ -265,6 +265,14 @@ static void semaphore_creation_loss(void)
     semaphore_result = VK_SUCCESS;
 }
 
+// The arrays a submit grows; a real renderer frees them in its teardown.
+static void free_submit_arrays(struct vela_renderer *renderer)
+{
+    free(renderer->wait_infos);
+    free(renderer->wait_semaphores);
+    free(renderer->used_semaphores);
+}
+
 static void submission_loss_stops_new_gpu_work(void)
 {
     struct vela_vulkan vk = { 0 };
@@ -277,6 +285,7 @@ static void submission_loss_stops_new_gpu_work(void)
     assert(renderer.last_point == 0 && end_calls == 1 && submit_calls == 1);
     assert(!vela_renderer_submit(&renderer, (VkCommandBuffer)(uintptr_t)1, NULL, 0, NULL));
     assert(end_calls == 1 && submit_calls == 1); // no new Vulkan work
+    free_submit_arrays(&renderer);
 }
 
 static void failed_end_releases_command_reservations(void)
@@ -321,7 +330,7 @@ static void semaphore_fd_export_loss(void)
     assert(!vela_renderer_submit(&renderer, (VkCommandBuffer)(uintptr_t)1, NULL, 0, &fd));
     assert(vk.loss.lost && fd == -1 && exported_fds == 1 && submit_calls == 1);
     assert(strcmp(vk.loss.first_operation, "vkGetSemaphoreFdKHR") == 0);
-    free(renderer.used_semaphores);
+    free_submit_arrays(&renderer);
 }
 
 static void debug_sync_failed_wait_closes_exported_fd(void)
@@ -344,7 +353,7 @@ static void debug_sync_failed_wait_closes_exported_fd(void)
     assert(fcntl(last_exported_fd, F_GETFD) == -1 && errno == EBADF);
     assert(unsetenv("VELA_DEBUG_SYNC") == 0);
     wait_result = VK_SUCCESS;
-    free(renderer.used_semaphores);
+    free_submit_arrays(&renderer);
 }
 
 static void semaphore_fd_import_loss(void)

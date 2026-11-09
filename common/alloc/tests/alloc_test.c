@@ -11,6 +11,7 @@
 
 #undef NDEBUG // CI uses RelWithDebInfo: assertions must remain active.
 #include <assert.h>
+#include <errno.h>
 #include <limits.h>
 #include <malloc.h>
 #include <signal.h>
@@ -112,8 +113,14 @@ static void finish_child(pid_t pid, int fd, const char *expected, int site)
 {
     char text[1024];
     size_t length = 0;
-    ssize_t n;
-    while (length < sizeof(text) - 1 && (n = read(fd, text + length, sizeof(text) - 1 - length)) > 0) {
+    while (length < sizeof(text) - 1) {
+        ssize_t n = read(fd, text + length, sizeof(text) - 1 - length);
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        if (n <= 0) {
+            break;
+        }
         length += (size_t)n;
     }
     text[length] = '\0';

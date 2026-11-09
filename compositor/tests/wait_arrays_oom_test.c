@@ -8,6 +8,7 @@
 
 #undef NDEBUG // CI uses RelWithDebInfo: assertions must remain active.
 #include <assert.h>
+#include <errno.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -84,8 +85,14 @@ static void expect_abort(int nth_failure, const char *expected)
     close(pipe_fds[1]);
     char text[512];
     size_t length = 0;
-    ssize_t n;
-    while (length < sizeof(text) - 1 && (n = read(pipe_fds[0], text + length, sizeof(text) - 1 - length)) > 0) {
+    while (length < sizeof(text) - 1) {
+        ssize_t n = read(pipe_fds[0], text + length, sizeof(text) - 1 - length);
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        if (n <= 0) {
+            break;
+        }
         length += (size_t)n;
     }
     text[length] = '\0';
