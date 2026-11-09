@@ -305,7 +305,8 @@ migration step 1; the others belong to later steps.
    legacy `schermi.conf` is read only when `outputs.conf` is positively
    missing), and `desktop.conf` (read by `desktop_conf.c`; marked
    unreadable for the session, with a log line). The read-only readers
-   treat a partial read as no data: the section reader, now
+   treat a partial read as no data: the settings (`vela_config_read`), a
+   saved monitor (`vela_output_config_load`), the section reader, now
    `vela_ini_read` in `config.c` and shared by `icons.c` and `text.c`, and
    the icon theme index in `icons.c`. Tests: `compositor.config-read` (a C test under
    an `LD_PRELOAD` shim, `compositor/tests/getline_fail_preload.c`, that
@@ -987,7 +988,7 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    first empty frame allocates its match flags once
    (`compositor.scene-diff`). The one `getline`, in `vela_read_line`
    (`config.c`), is in the baseline until step 3 adds its `ENOMEM` check.
-3. The unchecked `realloc` sites (`buffer.c`, `config.c`, `icons.c`,
+3. The unchecked `realloc` sites (`config.c`, `icons.c`,
    `output_config.c`) and the `getline` rule.
 4. Mechanical conversion of objects and strings, one subsystem per PR
    (render, scene, input/command, config/icons, daemons, update daemon).

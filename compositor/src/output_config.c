@@ -166,7 +166,12 @@ static bool read_file(struct file *file)
 bool vela_output_config_load(const char *key, struct vela_saved_output *out)
 {
     struct file file;
-    read_file(&file);
+    if (!read_file(&file)) {
+        // A partial read is no data: the position normalization below needs
+        // every enabled output, not the ones read before the error.
+        free_file(&file);
+        return false;
+    }
     struct section *section = find_section(&file, key);
     if (!section) {
         free_file(&file);

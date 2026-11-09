@@ -69,8 +69,8 @@ struct vela_config {
     int capacity;
 };
 
-// Reads vela.conf (a missing or unreadable file gives an empty list: the
-// defaults). Free with vela_config_finish.
+// Reads vela.conf (a missing or unreadable file, or a read error partway
+// through, gives an empty list: the defaults). Free with vela_config_finish.
 void vela_config_read(struct vela_config *config);
 void vela_config_finish(struct vela_config *config);
 

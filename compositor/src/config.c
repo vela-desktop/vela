@@ -255,7 +255,11 @@ void vela_config_read(struct vela_config *config)
         return;
     }
     struct lines lines = { 0 };
-    read_lines(path, &lines, NULL);
+    if (!read_lines(path, &lines, NULL)) {
+        // A partial read is no data: never some settings and defaults for the rest.
+        lines_free(&lines);
+        return;
+    }
     for (int i = 0; i < lines.count; ++i) {
         const char *line = lines.items[i];
         const char *eq = strchr(line, '=');

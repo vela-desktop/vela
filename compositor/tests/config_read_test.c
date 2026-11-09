@@ -197,12 +197,14 @@ static void test_vela_conf(bool root_user)
     no_getline_failure();
     expect_content("vela.conf", "spegni-schermo=10\ntheme=dark\n");
 
-    // Reading for settings falls back to the defaults, without a crash.
+    // Reading for settings falls back to the defaults, without a crash:
+    // the setting read before the error is dropped too, not mixed in.
     write_file("vela.conf", settings);
-    fail_getline("vela.conf", 2, "EIO");
+    fail_getline("vela.conf", 3, "EIO"); // after screen-off
     struct vela_config config;
     vela_config_read(&config);
     no_getline_failure();
+    CHECK(config.count == 0);
     vela_config_finish(&config);
 }
 
@@ -218,6 +220,13 @@ static void test_outputs_conf(bool root_user)
     CHECK(!vela_output_config_save(&output, 1));
     no_getline_failure();
     expect_content("outputs.conf", outputs);
+
+    // Loading after the same kind of error: no saved output, not the part
+    // of the section read before it.
+    fail_getline("outputs.conf", 5, "EIO"); // after enabled, before mode
+    struct vela_saved_output partial;
+    CHECK(!vela_output_config_load("Other Monitor 2", &partial));
+    no_getline_failure();
 
     // outputs.conf exists but cannot be opened: neither rewritten, nor
     // replaced by the stale legacy schermi.conf, which also stays.
