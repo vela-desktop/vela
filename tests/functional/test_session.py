@@ -14,7 +14,7 @@ import tempfile
 import time
 import unittest
 
-from harness import TIME_SCALE, Session, tool
+from harness import BUILD, TIME_SCALE, Session, tool
 
 
 def child_compositor(supervisor_pid):
@@ -614,6 +614,106 @@ class Supervisor(unittest.TestCase):
             time.sleep(0.5)
             vela.wait_for(lambda s: s["locked"], what="restarted locked")
             vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+
+    def _marker(self, vela):
+        runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+        return os.path.join(runtime, f"vela-locked-{vela.display}")
+
+    def test_crash_while_locked_restarts_locked_without_marker(self):
+        # The shared lock state alone carries the lock across a restart: the
+        # case of a marker that could not be created, or was removed, when a
+        # crash happens (such as during the lock's fatal blackout window).
+        with Session(supervise=True, lock_hold_ms=3000) as vela:
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            os.unlink(self._marker(vela))
+            first = child_compositor(vela.process.pid)
+            os.kill(first, signal.SIGSEGV)
+            vela.wait_for_log("restarting locked")
+            vela.wait_for(lambda s: s["locked"], what="restarted locked")
+            vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+
+            # After a real unlock the page says "unlocked": the next crash
+            # restarts unlocked, as before.
+            second = child_compositor(vela.process.pid)
+            os.kill(second, signal.SIGSEGV)
+            vela.wait_for(lambda s: child_compositor(vela.process.pid) not in (None, second),
+                          read_state=False, what="a third compositor")
+            vela.wait_for(lambda s: s["outputs"], what="the third compositor responds")
+            self.assertFalse(vela.state()["locked"])
+            self.assertEqual(vela.log_text().count("restarting locked"), 1)
+
+
+    def test_unreadable_lock_marker_restarts_locked(self):
+        # A marker whose state cannot be established counts as present, even
+        # though the page says "unlocked". A group-readable file is not a
+        # valid marker, but the restarted lock can still replace it (a
+        # directory could not be replaced, which ends the session instead).
+        with Session(supervise=True, lock_hold_ms=1000) as vela:
+            marker = self._marker(vela)
+            with open(marker, "w"):
+                pass
+            os.chmod(marker, 0o640)
+            try:
+                os.kill(child_compositor(vela.process.pid), signal.SIGSEGV)
+                vela.wait_for_log("Lock marker unreadable")
+                vela.wait_for_log("restarting locked")
+                vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+                self.assertFalse(os.path.exists(marker))
+            finally:
+                if os.path.exists(marker):
+                    os.unlink(marker)
+
+    def test_lock_state_is_never_inherited_by_applications(self):
+        def descriptors(pid):
+            links = []
+            for fd in os.listdir(f"/proc/{pid}/fd"):
+                try:
+                    links.append(os.readlink(f"/proc/{pid}/fd/{fd}"))
+                except OSError:
+                    pass
+            return links
+
+        def descendants(pid):
+            found, frontier = [], [pid]
+            while frontier:
+                parent = frontier.pop()
+                try:
+                    children = open(f"/proc/{parent}/task/{parent}/children").read().split()
+                except OSError:
+                    continue
+                found += [int(child) for child in children]
+                frontier += [int(child) for child in children]
+            return found
+
+        page = "memfd:vela-lock-state"
+        with Session(supervise=True, lock_hold_ms=5000) as vela:
+            vela.command("lock")  # starts the locker, a child of the compositor
+            vela.wait_for(lambda s: s["locked"])
+            compositor = child_compositor(vela.process.pid)
+            self.assertTrue(any(page in link for link in descriptors(vela.process.pid)),
+                            "the supervisor keeps the page for the next compositor")
+            self.assertFalse(any(page in link for link in descriptors(compositor)),
+                             "the compositor keeps only the mapping")
+            with open(f"/proc/{compositor}/maps") as maps:
+                self.assertIn(page, maps.read())
+            applications = descendants(compositor)
+            self.assertTrue(applications, "the locker is running")
+            for pid in applications:
+                self.assertFalse(any(page in link for link in descriptors(pid)), pid)
+
+    def test_unusable_lock_state_ends_session_before_starting(self):
+        # Only the supervisor passes --lock-state-fd; a value that is not its
+        # sealed page is refused before anything is shown (status 77).
+        compositor = os.path.join(BUILD, "compositor", "vela-compositor")
+        env = dict(os.environ, WLR_BACKENDS="headless", WLR_LIBINPUT_NO_DEVICES="1")
+        env.pop("WAYLAND_DISPLAY", None)
+        for value in ("0", "abc", "-1", "999"):
+            with self.subTest(value=value):
+                result = subprocess.run([compositor, f"--lock-state-fd={value}"], env=env,
+                                        stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 77, result.stderr)
+                self.assertIn(b"lock state is unusable", result.stderr)
 
     def test_gives_up_after_three_quick_crashes(self):
         with Session(supervise=True, expected_exit=1) as vela:

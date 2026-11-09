@@ -12,7 +12,9 @@
 // Plasma when KWin restarts. The others (Chromium, Electron, GTK, X11) close.
 //
 // If the screen was locked, the new compositor starts locked (black, and
-// vela-lock): a crash must never reveal the desktop. If the compositor crashes
+// vela-lock): a crash must never reveal the desktop. The lock state lives in a
+// sealed shared page (lock_state.h) that the compositor keeps up to date and
+// every restarted compositor reads, together with the lock marker file. If the compositor crashes
 // three times in a minute, the supervisor gives up and the session ends (back
 // to the login screen).
 //
@@ -24,6 +26,7 @@
 #include "supervisor_children.h"
 #include "error_screen.h"
 #include "diagnostics.h"
+#include "lock_state.h"
 #include "path_security.h"
 
 #include <errno.h>
@@ -249,22 +252,38 @@ int vela_supervise(int argc, char **argv)
         say("XDG_RUNTIME_DIR must be an absolute, private directory owned by this user");
         return 1;
     }
+    // Before the first fork: every compositor of this session shares it.
+    int lock_state_fd = vela_lock_state_create();
+    if (lock_state_fd < 0) {
+        say("can't create the shared lock state: %s", strerror(errno));
+        close(runtime_fd);
+        return 1;
+    }
     struct wayland_socket socket = { 0 };
     if (!create_socket(runtime_fd, &socket)) {
         say("can't create the Wayland socket");
+        close(lock_state_fd);
         close(runtime_fd);
         return 1;
     }
     say("socket %s; starting the compositor", socket.name);
 
     // The compositor: the same program, with the same arguments except
-    // --supervise.
+    // --supervise, plus the shared lock state. Built here, before any fork:
+    // the restart child must not allocate.
     char self[PATH_MAX] = { 0 };
     if (readlink("/proc/self/exe", self, sizeof(self) - 1) <= 0) {
         say("can't find my own executable");
         return 1;
     }
-    char **arguments = calloc((size_t)argc + 1, sizeof(*arguments));
+    char lock_state_argument[32];
+    snprintf(lock_state_argument, sizeof(lock_state_argument), "--%s=%d",
+        VELA_LOCK_STATE_OPTION, lock_state_fd);
+    char **arguments = calloc((size_t)argc + 2, sizeof(*arguments));
+    if (!arguments) {
+        say("out of memory");
+        return 1;
+    }
     int count = 0;
     arguments[count++] = self;
     for (int i = 1; i < argc; ++i) {
@@ -272,6 +291,7 @@ int vela_supervise(int argc, char **argv)
             arguments[count++] = argv[i];
         }
     }
+    arguments[count++] = lock_state_argument;
     arguments[count] = NULL;
 
     // Apps started in the session (by the shell, with a double fork) stay our
@@ -298,25 +318,30 @@ int vela_supervise(int argc, char **argv)
             signal(SIGTERM, SIG_DFL);
             signal(SIGINT, SIG_DFL);
             signal(SIGHUP, SIG_DFL);
-            // The compositor inherits the Wayland socket and the exact
-            // runtime-directory descriptor. It restores CLOEXEC on the latter
+            // The compositor inherits the Wayland socket, the exact
+            // runtime-directory descriptor and the lock state. It restores
+            // CLOEXEC on the runtime directory and closes the lock state
             // before launching any applications.
             if (fcntl(socket.fd, F_SETFD, 0) != 0
-                || fcntl(runtime_fd, F_SETFD, 0) != 0) {
+                || fcntl(runtime_fd, F_SETFD, 0) != 0
+                || fcntl(lock_state_fd, F_SETFD, 0) != 0) {
                 _exit(127);
             }
+            // Every step that can fail ends the child: a compositor started
+            // with a partial environment is never better than a restart.
+            // Whether to start locked is no longer passed here: the
+            // compositor reads the shared page and the marker itself.
             char fd[16];
             snprintf(fd, sizeof(fd), "%d", socket.fd);
-            setenv("VELA_WAYLAND_SOCKET_FD", fd, 1);
-            setenv("VELA_WAYLAND_DISPLAY", socket.name, 1);
-            snprintf(fd, sizeof(fd), "%d", runtime_fd);
-            setenv("VELA_RUNTIME_DIR_FD", fd, 1);
-            if (restarted) {
-                setenv("VELA_RESTARTED", "1", 1);
+            if (setenv("VELA_WAYLAND_SOCKET_FD", fd, 1) != 0
+                || setenv("VELA_WAYLAND_DISPLAY", socket.name, 1) != 0) {
+                _exit(127);
             }
-            unsetenv("VELA_START_LOCKED");
-            if (vela_lock_marker_present_at(runtime_fd, socket.name)) {
-                setenv("VELA_START_LOCKED", "1", 1);
+            snprintf(fd, sizeof(fd), "%d", runtime_fd);
+            if (setenv("VELA_RUNTIME_DIR_FD", fd, 1) != 0
+                || (restarted && setenv("VELA_RESTARTED", "1", 1) != 0)
+                || unsetenv("VELA_START_LOCKED") != 0) {
+                _exit(127);
             }
             execv(self, arguments);
             _exit(127);
@@ -411,6 +436,7 @@ int vela_supervise(int argc, char **argv)
     close(socket.fd);
     unlinkat(runtime_fd, socket.lock_path, 0);
     close(socket.lock_fd);
+    close(lock_state_fd);
     close(runtime_fd);
     return exit_code;
 }

@@ -28,8 +28,20 @@ bool vela_runtime_dir_fd_private(int fd);
 // Create/check/remove the screen-lock marker relative to the exact runtime
 // directory inode opened by the supervisor. The display is one path component.
 bool vela_lock_marker_create_at(int runtime_fd, const char *display);
-bool vela_lock_marker_present_at(int runtime_fd, const char *display);
 bool vela_lock_marker_remove_at(int runtime_fd, const char *display);
+
+// Whether the marker exists. Only ENOENT is "absent": an fstatat error, an
+// invalid display or descriptor, or an entry that is not this user's private
+// regular file is "unknown", which every caller treats as locked.
+enum vela_lock_marker {
+    VELA_LOCK_MARKER_ABSENT,
+    VELA_LOCK_MARKER_PRESENT,
+    VELA_LOCK_MARKER_UNKNOWN,
+};
+enum vela_lock_marker vela_lock_marker_state_at(int runtime_fd, const char *display);
+
+// Present or unknown: the fail-closed reading of the marker.
+bool vela_lock_marker_present_at(int runtime_fd, const char *display);
 
 // The lock marker stays directly within the private runtime directory.
 // This builder is also tested without having to start a compositor.

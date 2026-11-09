@@ -3,6 +3,7 @@
 
 #include "lock.h"
 #include "lock_retry_policy.h"
+#include "lock_state.h"
 
 #include "listen.h"
 #include "a11y.h"
@@ -283,6 +284,8 @@ static void handle_unlock(struct wl_listener *listener, void *data)
         lock->pointer_retarget_idle = NULL;
     }
     server->locked = false;
+    // Only now may a crash restart the session unlocked.
+    vela_lock_state_store(server->lock_state, false);
     vela_bluetooth_report_lock(server, false);
     if (server->runtime_dir_fd >= 0
         && !vela_lock_marker_remove_at(server->runtime_dir_fd, server->socket_name)) {
@@ -703,6 +706,9 @@ void vela_lock_engage(struct vela_lock *lock)
         return;
     }
     server->locked = true;
+    // First, before anything else can fail or crash: from here on a restart
+    // starts locked even if the marker below cannot be created.
+    vela_lock_state_store(server->lock_state, true);
     vela_bluetooth_report_lock(server, true);
     // Cancel the active DnD grab before hiding the desktop. Ending the
     // matching wlroots grab invokes its cancellation path (not its drop path).
