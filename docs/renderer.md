@@ -149,6 +149,57 @@ surfaces too (Qt ≥ 6.5), with `QT_SCALE_FACTOR_ROUNDING_POLICY=PassThrough`. T
 theme's measurements are logical; borders and thin lines must be drawn aligned
 to physical pixels.
 
+Vela's Qt Quick applications explicitly call
+`vela::rendering::configureApplication()` (in `common/src/renderingpolicy.cpp`)
+before constructing `QGuiApplication` or any Quick window. This is *not*
+a side effect of importing/linking `Vela.Controls`. Shell, Settings, Files,
+the polkit prompt and their Quick Test runners use the same policy.
+
+There are two **independent** decisions: `configureTextRenderer()` selects
+scalable `QtRendering`, while `configureGrayscaleAntialiasing()` requests
+grayscale distance-field coverage for translucent surfaces. The latter is a
+Qt process setting (`QSG_DISTANCEFIELD_ANTIALIASING=gray`): it avoids RGB
+fringes without assuming a display's subpixel order or rotation, but respects
+any explicitly supplied value. Vela's external process launch helper restores
+the original environment, so this setting cannot leak into apps opened from
+the taskbar, Files, Settings or notification links.
+
+The same renderer and font metrics apply at rest and during motion. Do not switch
+to `NativeTextRendering` when motion stops: that changes font metrics, and the
+native renderer caches rasterized glyphs which snap and stretch when a parent
+is scaled (for example, Start's app tiles on either mouse button press) or placed
+at fractional coordinates while scrolling. This happens inside the Qt surface,
+before the compositor copies its buffer, so compositor pixel snapping cannot
+repair it. Qt documents this restriction for
+[`Text.NativeRendering`](https://doc.qt.io/qt-6/qml-qtquick-text.html#renderType-prop).
+
+The normal distance-field quality is retained: increasing it consumes more glyph
+cache memory without addressing bitmap snapping or RGB fringes. **Exceptions
+are per component**, using `Text.renderType` when a measured, documented case
+requires it. A small stationary label could use `NativeRendering` only if
+it never scrolls on fractional coordinates or inherits a scale transform.
+Very large headings may use `CurveRendering` after a GPU benchmark; it is
+not the default for desktop labels. Do not dynamically switch renderers
+when motion starts or ends, and do not add a custom compositor text pipeline.
+The pixel regression test is described in
+[testing](testing.md#qt-quick-text-rendering).
+
+Qt Quick text configuration must stay inside the Vela process. C++ external
+program launches use `vela::process::startDetached()` or an
+`ExternalProcess` (both in `common/src/processlaunch.h`), not raw
+`QProcess::startDetached()`. Links use `System.openUrl()` to reach the
+same path. A user-supplied antialiasing override is retained in child processes.
+The `vela-process` library owns private environment defaults and external launch
+environments using Qt Core only (`common/src/processenvironment.cpp`). Rendering
+registers its default with that library; launchers and non-UI models do not
+depend on the Qt Quick rendering policy. Environment changes made after startup,
+including activation tokens, are retained when launching a child.
+Each managed or detached launch refreshes that environment, including when an
+`ExternalProcess` instance is reused after a token change.
+The `process-launch-environment` integration test verifies real children;
+packaging tests prohibit UI launchers that bypass the wrapper. The RHI glyph
+test requires Qt 6.6+ without increasing Vela's 6.5 production minimum.
+
 ### 3.8 The default scale
 
 Like Windows, Vela chooses the scale of each output by itself the first time it

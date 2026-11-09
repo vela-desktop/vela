@@ -350,7 +350,7 @@ installPackage() {
     elif rpm -q vela >/dev/null 2>&1; then
         # Switching from the mutually-exclusive Beta RPM to vela-git.
         sudo dnf install -y --allowerasing "$1"
-    elif [ "$force" = 1 ] && [ -n "$installed" ] &&
+    elif [ "$force" = 1 ] && [ "$native_rpm_mismatch" = 0 ] && [ -n "$installed" ] &&
          [ "${latestFull#"$installed"}" != "$latestFull" ]; then
         # DNF 'install' deliberately skips an already installed identical NEVRA.
         sudo dnf reinstall -y "$1"
@@ -738,6 +738,17 @@ else
     installed=$(printf '%s\n' "$installed_version" | sed -n 's/.*+git\([0-9a-f]*\).*$/\1/p')
 fi
 
+# A distro upgrade changes the native RPM target even if the selected Git
+# revision is unchanged. An installed .fc44 RPM must not be treated as
+# up-to-date on Fedora 45 (and vice versa).
+native_rpm_mismatch=0
+if [ "$backend" = fedora ] && [ -n "$installed_version" ]; then
+    case "$installed_version" in
+        *".fc${fedora_release}") ;;
+        *) native_rpm_mismatch=1 ;;
+    esac
+fi
+
 # The project version at the selected commit, as its package will have it.
 projectVersion() {
     git -C "$MIRROR" show "$latestFull:CMakeLists.txt" 2>/dev/null |
@@ -750,7 +761,8 @@ check_done() {
         --commit "$latestFull" --source "$source" ${CHANGES:+--changes "$CHANGES"}
 }
 
-if [ -n "$installed" ] && [ "${latestFull#"$installed"}" != "$latestFull" ] && [ "$force" = 0 ]; then
+if [ -n "$installed" ] && [ "${latestFull#"$installed"}" != "$latestFull" ] &&
+   [ "$force" = 0 ] && [ "$native_rpm_mismatch" = 0 ]; then
     echo ":: Vela is up to date ($(packageVersion))."
     if [ "$check" = 1 ]; then
         check_done up-to-date

@@ -20,6 +20,18 @@ target_link_libraries(vela-app PUBLIC Qt6::Gui PRIVATE Qt6::GuiPrivate)
 # Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin) and, before loading QML,
 # vela::controls::install(engine, mode).
 find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Gui GuiPrivate Qml Quick QuickControls2 Svg)
+
+# Process-local environment defaults and external launches need only Qt Core.
+add_library(vela-process STATIC src/processenvironment.cpp)
+target_include_directories(vela-process PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(vela-process PRIVATE -Wall -Wextra)
+target_link_libraries(vela-process PUBLIC Qt6::Core)
+
+# Explicit Qt Quick text policy, independent from the Vela.Controls module.
+add_library(vela-rendering STATIC src/renderingpolicy.cpp)
+target_include_directories(vela-rendering PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(vela-rendering PRIVATE -Wall -Wextra)
+target_link_libraries(vela-rendering PUBLIC Qt6::Quick PRIVATE vela-process)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CONTROLS_WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_get_variable(CONTROLS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
@@ -166,6 +178,8 @@ qt_add_qml_module(vela-controls
 target_include_directories(vela-controls PUBLIC src ${SHELL_SRC} PRIVATE ${CONTROLS_GENERATED_DIR})
 target_compile_options(vela-controls PRIVATE -Wall -Wextra)
 target_link_libraries(vela-controls PUBLIC
+    vela-rendering
+    vela-process
     vela-theme-tokens
     Qt6::DBus
     Qt6::Gui
@@ -190,6 +204,31 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME controls-no-effects COMMAND vela-controls-test)
     set_tests_properties(controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(controls controls-no-effects PROPERTIES TIMEOUT 120)
+
+    # Real-process environment tests need no GPU, display, or Qt 6.6 APIs.
+    qt_add_executable(vela-process-launch-test tests/process_launch.cpp)
+    target_compile_options(vela-process-launch-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-process-launch-test PRIVATE vela-process)
+    add_test(NAME process-launch-environment COMMAND vela-process-launch-test)
+    set_tests_properties(process-launch-environment PROPERTIES TIMEOUT 30)
+
+    # Qt Quick glyph shader coverage uses OpenGL RHI (Mesa software under
+    # Xvfb in hosted CI), not the compositor's real Vulkan GPU. Keep this
+    # separate from real-GPU tests; never fall back to the software painter.
+    if(Qt6_VERSION VERSION_GREATER_EQUAL 6.6)
+        qt_add_executable(vela-text-rendering-test tests/text_rendering.cpp)
+        target_compile_definitions(vela-text-rendering-test PRIVATE
+            TEXT_SCENE="${CMAKE_CURRENT_SOURCE_DIR}/tests/TextRenderingScene.qml")
+        target_compile_options(vela-text-rendering-test PRIVATE -Wall -Wextra)
+        target_link_libraries(vela-text-rendering-test PRIVATE
+            vela-controls vela-controlsplugin Qt6::GuiPrivate)
+        add_test(NAME text-rendering-rhi COMMAND vela-text-rendering-test)
+        set_tests_properties(text-rendering-rhi PROPERTIES
+            TIMEOUT 60 SKIP_RETURN_CODE 77 LABELS "rhi"
+            ENVIRONMENT "QT_QPA_PLATFORMTHEME=generic")
+    else()
+        message(STATUS "Qt ${Qt6_VERSION}: RHI glyph test requires Qt >= 6.6")
+    endif()
 endif()
 
 # vela-audio: the audio backend of the shell and Settings (docs/audio.md).

@@ -173,6 +173,48 @@ class FedoraUpdates(FedoraFixture):
         self.run_update("--build")
         self.assertIn(".fc45.x86_64.rpm", self.calls("sudo")[-1]["args"][-1])
 
+    def test_fedora_45_same_commit_fc44_requires_native_replacement(self):
+        self.env.update(TEST_FEDORA_RELEASE="45", TEST_INSTALLED_FEDORA_RELEASE="44",
+                        TEST_INSTALLED=self.main[:7])
+        self.run_update("--check")
+        self.assertEqual(self.calls("sudo"), [])
+        self.run_update("--build")
+        self.assertEqual(len(self.calls("rpmbuild")), 1)
+        installs = [c for c in self.calls("sudo") if c["args"][:2] == ["dnf", "install"]]
+        self.assertEqual(len(installs), 1)
+        self.assertIn(".fc45.x86_64.rpm", installs[0]["args"][-1])
+        self.assertFalse(any(c["args"][:2] == ["dnf", "reinstall"] for c in self.calls("sudo")))
+
+    def test_fedora_45_same_commit_fc44_force_does_not_reinstall_wrong_rpm(self):
+        self.env.update(TEST_FEDORA_RELEASE="45", TEST_INSTALLED_FEDORA_RELEASE="44",
+                        TEST_INSTALLED=self.main[:7])
+        self.run_update("--force", "--build")
+        installs = [c for c in self.calls("sudo") if c["args"][:2] == ["dnf", "install"]]
+        self.assertEqual(len(installs), 1)
+        self.assertIn(".fc45.x86_64.rpm", installs[0]["args"][-1])
+        self.assertFalse(any(c["args"][:2] == ["dnf", "reinstall"] for c in self.calls("sudo")))
+
+    def test_fedora_45_same_commit_fc44_downloads_native_artifact(self):
+        self.env.update(TEST_FEDORA_RELEASE="45", TEST_INSTALLED_FEDORA_RELEASE="44",
+                        TEST_INSTALLED=self.main[:7], TEST_CI_RUN="123",
+                        TEST_DOWNLOAD_SHA=self.main[:7])
+        self.run_update("--download")
+        downloads = [c for c in self.calls("gh") if c["args"][:2] == ["run", "download"]]
+        self.assertEqual(len(downloads), 1)
+        self.assertEqual(downloads[0]["args"][downloads[0]["args"].index("-n") + 1],
+                         "vela-fedora-45-rpm")
+        installs = [c for c in self.calls("sudo") if c["args"][:2] == ["dnf", "install"]]
+        self.assertEqual(len(installs), 1)
+        self.assertIn(".fc45.x86_64.rpm", installs[0]["args"][-1])
+        self.assertEqual(self.calls("rpmbuild"), [])
+
+    def test_fedora_45_same_commit_fc45_remains_up_to_date(self):
+        self.env.update(TEST_FEDORA_RELEASE="45", TEST_INSTALLED=self.main[:7])
+        self.run_update("--check", status=1)
+        self.run_update()
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("rpmbuild"), [])
+
     def test_reject_unsupported_fedora_release(self):
         self.env["TEST_FEDORA_RELEASE"] = "46"
         result = self.run_update("--check", status=1)

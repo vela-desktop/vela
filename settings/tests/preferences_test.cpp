@@ -17,6 +17,7 @@
 #include <QIcon>
 #include <QImage>
 #include <QSettings>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -44,6 +45,65 @@ class PreferencesTest : public QObject {
     }
 
 private slots:
+    /** Missing desktop helpers must produce a diagnostic without opening another app. */
+    void missingFolderOpener()
+    {
+        const QByteArray originalPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] { qputenv("PATH", originalPath); });
+        const QString bin = home().filePath(QStringLiteral("empty-bin"));
+        QVERIFY(QDir().mkpath(bin));
+        qputenv("PATH", bin.toUtf8());
+        Preferences prefs;
+        QTest::ignoreMessage(QtWarningMsg,
+            "vela-settings: cannot open themes folder: xdg-open is unavailable (install xdg-utils)");
+        prefs.openThemesFolder(QString());
+        QVERIFY(QDir(home().filePath(QStringLiteral("config/vela/themes"))).exists());
+    }
+
+    /** An executable whose interpreter is unavailable must report its launch failure. */
+    void brokenFolderOpener()
+    {
+        const QByteArray originalPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] { qputenv("PATH", originalPath); });
+        const QString bin = home().filePath(QStringLiteral("broken-bin"));
+        const QString opener = bin + QStringLiteral("/xdg-open");
+        QVERIFY(writeFile(QStringLiteral("broken-bin/xdg-open"),
+            "#!" + home().filePath(QStringLiteral("missing-interpreter")).toUtf8() + '\n'));
+        QVERIFY(QFile::setPermissions(opener, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        qputenv("PATH", bin.toUtf8());
+        Preferences prefs;
+        const QString directory = home().filePath(QStringLiteral("config/vela/themes"));
+        const QByteArray warning = QStringLiteral("vela-settings: failed to start xdg-open for %1").arg(directory).toUtf8();
+        QTest::ignoreMessage(QtWarningMsg, warning.constData());
+        prefs.openThemesFolder(QString());
+    }
+
+    /** The external opener receives the requested surface directory as one argument. */
+    void folderOpenerGetsRequestedDirectory()
+    {
+        const QByteArray originalPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] {
+            qputenv("PATH", originalPath);
+            qunsetenv("VELA_TEST_FOLDER_PROBE");
+        });
+        const QString bin = home().filePath(QStringLiteral("working-bin"));
+        const QString opener = bin + QStringLiteral("/xdg-open");
+        QVERIFY(writeFile(QStringLiteral("working-bin/xdg-open"),
+            "#!/bin/sh\nprintf '%s' \"$1\" > \"$VELA_TEST_FOLDER_PROBE\"\n"));
+        QVERIFY(QFile::setPermissions(opener, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        qputenv("PATH", bin.toUtf8());
+        const QString probe = home().filePath(QStringLiteral("folder-probe"));
+        qputenv("VELA_TEST_FOLDER_PROBE", probe.toUtf8());
+        Preferences prefs;
+        prefs.openThemesFolder(QStringLiteral("taskbar"));
+        const auto contents = [&] {
+            QFile file(probe);
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        QTRY_COMPARE_WITH_TIMEOUT(contents(),
+            home().filePath(QStringLiteral("config/vela/themes/taskbar")).toUtf8(), 5000);
+    }
+
     void init()
     {
         QDir().mkpath(QFileInfo(confPath()).absolutePath());
@@ -91,6 +151,45 @@ private slots:
         QVERIFY(desktop.count() >= 1);
         QVERIFY(prefs.desktopIcons());
         QVERIFY(prefs.clock24());
+    }
+
+    // docs/battery-notifications.md §6.
+    void batterySettings()
+    {
+        {
+            Preferences prefs;
+            QVERIFY(prefs.batteryNotify());
+            QCOMPARE(prefs.batteryLowLevel(), 20);
+            QVERIFY(prefs.deviceBatteryNotify());
+            QCOMPARE(prefs.batteryLowLevels(), (QVariantList { 10, 15, 20, 25, 30, 40, 50 }));
+            QSignalSpy battery(&prefs, &Preferences::batteryChanged);
+            prefs.setBatteryNotify(false);
+            QCOMPARE(saved(QStringLiteral("battery/notify")).toBool(), false);
+            prefs.setBatteryLowLevel(30);
+            QCOMPARE(saved(QStringLiteral("battery/lowLevel")).toInt(), 30);
+            prefs.setBatteryLowLevel(2); // out of range: refused
+            QCOMPARE(prefs.batteryLowLevel(), 30);
+            prefs.setDeviceBatteryNotify(false);
+            QCOMPARE(saved(QStringLiteral("battery/devices")).toBool(), false);
+            QCOMPARE(battery.count(), 3);
+            prefs.setDeviceBatteryNotify(false);
+            QCOMPARE(battery.count(), 3);
+        }
+        // A level set by hand is offered among the others, in its place.
+        // (Each file a different size: QSettings rereads by size and time.)
+        write("[appearance]\nappTheme=dark\n[battery]\nlowLevel=12\n");
+        Preferences prefs;
+        QCOMPARE(prefs.batteryLowLevel(), 12);
+        QCOMPARE(prefs.batteryLowLevels(), (QVariantList { 10, 12, 15, 20, 25, 30, 40, 50 }));
+        write("[appearance]\nappTheme=dark\n[battery]\nlowLevel=8\n");
+        prefs.reload();
+        QCOMPARE(prefs.batteryLowLevels(), (QVariantList { 8, 10, 15, 20, 25, 30, 40, 50 }));
+        write("[appearance]\nappTheme=dark\n[battery]\nlowLevel=80\nnotify=true\n");
+        prefs.reload();
+        QCOMPARE(prefs.batteryLowLevels().last().toInt(), 80);
+        write("[appearance]\nappTheme=dark\n[battery]\nlowLevel=100\n\n");
+        prefs.reload();
+        QCOMPARE(prefs.batteryLowLevel(), 20);
     }
 
     void switchesWriteTheirKeys()

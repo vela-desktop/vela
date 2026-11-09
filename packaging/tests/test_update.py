@@ -107,7 +107,7 @@ elif name == "rpm":
         sys.exit(0)
     if not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
-    print("0.1.0-1.1.g" + os.environ["TEST_INSTALLED"] + ".fc" + os.environ.get("TEST_FEDORA_RELEASE", "44"))
+    print("0.1.0-1.1.g" + os.environ["TEST_INSTALLED"] + ".fc" + os.environ.get("TEST_INSTALLED_FEDORA_RELEASE", os.environ.get("TEST_FEDORA_RELEASE", "44")))
 elif name == "rpmbuild":
     values = {}
     for idx, value in enumerate(args[:-1]):

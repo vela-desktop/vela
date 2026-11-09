@@ -79,7 +79,7 @@ gh attestation verify vela-<version>-<release>-x86_64.pkg.tar.zst \
 
 Fedora uses the same verification flags, replacing the input with
 `vela-<version>-<release>.fc44.x86_64.rpm` or `.fc45.x86_64.rpm` as appropriate; Ubuntu uses
-`vela_<version>_amd64.deb` and the signer workflow `ubuntu.yml`. All three
+`vela_<version>_amd64.deb` and the signer workflow `ubuntu.yml`. All four
 packages are published atomically under the same `v<version>` release,
 following successful package smoke checks on each distribution.
 
@@ -94,7 +94,7 @@ This prevents modification of release tags and assets after publication.
 It affects only releases published after it is enabled.
 See [GitHub's instructions](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes).
 
-The Beta publisher attaches the three packages and their checksum manifests
+The Beta publisher attaches the four packages and their checksum manifests
 when creating the release. Deleted immutable releases cannot have their tag
 names reused, so never delete and republish a Beta: publish a new patch
 release instead. The publisher intentionally does not overwrite released
