@@ -11,6 +11,7 @@ QtObject {
     // Colors.
     property color accent: "#0078d4"
     property string appTheme: "dark"
+    property string saveError: ""
     property string shellTheme: "dark"
     readonly property bool light: appTheme === "light"
     // A picture in the tree, so that the previews have a wallpaper to load.
