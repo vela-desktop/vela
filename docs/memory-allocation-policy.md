@@ -988,8 +988,13 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    first empty frame allocates its match flags once
    (`compositor.scene-diff`). The one `getline`, in `vela_read_line`
    (`config.c`), is in the baseline until step 3 adds its `ENOMEM` check.
-3. The unchecked `realloc` sites (`config.c`, `icons.c`,
-   `output_config.c`) and the `getline` rule.
+3. **Done:** the unchecked `realloc` sites (`config.c` `lines_push`,
+   `icons.c` three, `output_config.c` one) are on `vela_grow`; the checked
+   one in `config.c` waits for step 4 with the rest of that file.
+   `vela_read_line` follows the `getline` rule: `ENOMEM` ends in `vela_oom`
+   instead of counting as a read error (`compositor.config-read` runs it in
+   a child and checks the abort and its line). The baseline is down to 188
+   sites, with no `getline` left in it.
 4. Mechanical conversion of objects and strings, one subsystem per PR
    (render, scene, input/command, config/icons, daemons, update daemon).
 5. The frame path (point 7), measured against the existing benchmarks.
