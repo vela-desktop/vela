@@ -11,11 +11,14 @@
 #include "preferences.h"
 #include "privatehome.h"
 
+#include <unistd.h>
+
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QImage>
+#include <QProcess>
 #include <QSettings>
 #include <QScopeGuard>
 #include <QSignalSpy>
@@ -412,6 +415,50 @@ private slots:
         QVERIFY(text.contains(QStringLiteral("night-light=yes")));
         QVERIFY(text.contains(QStringLiteral("mouse-primary-button=right")));
 
+        // An immutable file still reads, but QSaveFile cannot replace it.
+        // That is the reload path. chattr is optional; the file-blocker below
+        // covers the same setters when the file cannot be reread.
+        const bool frozen = geteuid() == 0
+            && QProcess::execute(QStringLiteral("chattr"), { QStringLiteral("+i"), conf.fileName() }) == 0;
+        const auto thaw = qScopeGuard([frozen, path = conf.fileName()] {
+            if (frozen) {
+                QProcess::execute(QStringLiteral("chattr"), { QStringLiteral("-i"), path });
+            }
+        });
+        if (frozen) {
+            prefs.setScreenOffMinutes(9);
+            QCOMPARE(prefs.screenOffMinutes(), 4);
+            QVERIFY(!prefs.saveError().isEmpty());
+            prefs.setLockOnIdle(true);
+            QVERIFY(!prefs.lockOnIdle());
+            prefs.setLanguage(QStringLiteral("en"));
+            QCOMPARE(prefs.language(), QStringLiteral("it"));
+            prefs.setVisualTheme(QStringLiteral("Fluent"));
+            QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
+            prefs.setNightLight(false);
+            QVERIFY(prefs.nightLight());
+            prefs.setNightTemperature(3000);
+            QCOMPARE(prefs.nightTemperature(), 4500);
+            prefs.setTearing(true);
+            QVERIFY(!prefs.tearing());
+            prefs.setVrr(QStringLiteral("always"));
+            QCOMPARE(prefs.vrr(), QStringLiteral("never"));
+            prefs.setDirectScanout(QStringLiteral("auto"));
+            QCOMPARE(prefs.directScanout(), QStringLiteral("no"));
+            prefs.setMagnifierStep(200);
+            QCOMPARE(prefs.magnifierStep(), 150);
+            prefs.setColorFilter(false);
+            QVERIFY(prefs.colorFilter());
+            prefs.setStickyKeys(false);
+            QVERIFY(prefs.stickyKeys());
+            prefs.setAnimationEffects(true);
+            QVERIFY(!prefs.animationEffects());
+            prefs.setMouseSpeed(3);
+            QCOMPARE(prefs.mouseSpeed(), 12);
+            prefs.setTouchpad(true);
+            QVERIFY(!prefs.touchpad());
+        }
+
         // A file where the config directory should be. Root can still write
         // into a mode-0555 directory, which is what the CI runners are, so
         // the block has to be the path itself.
@@ -431,6 +478,28 @@ private slots:
         QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
         prefs.resetThemes();
         QCOMPARE(prefs.visualTheme(), QStringLiteral("Pill"));
+        prefs.setLockOnIdle(true);
+        QVERIFY(!prefs.lockOnIdle());
+        prefs.setNightTemperature(3000);
+        QCOMPARE(prefs.nightTemperature(), 4500);
+        prefs.setTearing(true);
+        QVERIFY(!prefs.tearing());
+        prefs.setVrr(QStringLiteral("always"));
+        QCOMPARE(prefs.vrr(), QStringLiteral("never"));
+        prefs.setDirectScanout(QStringLiteral("auto"));
+        QCOMPARE(prefs.directScanout(), QStringLiteral("no"));
+        prefs.setMagnifierStep(200);
+        QCOMPARE(prefs.magnifierStep(), 150);
+        prefs.setColorFilter(false);
+        QVERIFY(prefs.colorFilter());
+        prefs.setStickyKeys(false);
+        QVERIFY(prefs.stickyKeys());
+        prefs.setAnimationEffects(true);
+        QVERIFY(!prefs.animationEffects());
+        prefs.setMouseSpeed(3);
+        QCOMPARE(prefs.mouseSpeed(), 12);
+        prefs.setTouchpad(true);
+        QVERIFY(!prefs.touchpad());
 
         QVERIFY(QFile::remove(dir));
         QVERIFY(QDir().mkpath(dir));
