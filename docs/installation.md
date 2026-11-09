@@ -4,7 +4,7 @@ Vela is beta software. Keep a working desktop or TTY available, and review
 the [hardware coverage](hardware.md) before using a full session.
 
 Vela requires a Vulkan 1.4 GPU and a working PipeWire/WirePlumber audio stack.
-`vela-update` installs it on Arch, Fedora 44 and Ubuntu 26.10 as a native
+`vela-update` installs it on Arch, Fedora 44/45 and Ubuntu 26.10 as a native
 package, on one of two [channels](release-channels.md):
 
 | Channel | Package | What it installs |
@@ -42,14 +42,21 @@ verified the same way; otherwise it builds the native package locally.
 
 Once installed, use **`vela-update`** to install updates.
 
-## Fedora 44
+## Fedora 44 and 45
 
-Fedora 44 x86_64 has a Beta `vela` RPM and an Experimental `vela-git` RPM.
-RPMs are not supported on other Fedora releases or other DNF-based
-distributions. The same updater installs Vela and handles subsequent updates
+Fedora 44 and 45 (x86_64) have distinct native Beta `vela` and Experimental
+`vela-git` RPMs. RPMs are not supported on other Fedora releases or DNF-based
+derivatives. The same updater installs Vela and handles subsequent updates
 through DNF.
 
-**Fedora 44 verification prerequisite:** Fedora 44 does not currently ship
+**Fedora 45 Beta release requirement:** Installing or rolling back to a Beta
+release on Fedora 45 requires that release to publish a Fedora 45 RPM and its
+`SHA256SUMS-fedora-45` manifest. The `v0.1.1` release does not contain these
+assets, so `vela-update` cannot install it or select it for rollback on
+Fedora 45. If no Beta release includes Fedora 45 assets yet, wait for one;
+do not substitute a Fedora 44 RPM.
+
+**Fedora verification prerequisite:** Fedora 44 does not currently ship
 `cosign` in its default repositories. Install the official upstream Cosign RPM
 first; the Beta needs it, and Experimental needs it to use precompiled RPMs:
 
@@ -90,13 +97,40 @@ installed directly without following the bootstrap commands above. It recommends
 disabled during installation, install those optional tools before using their
 respective updater modes. Cosign is installed separately (see above).
 
-Fedora RPMs are built and installation-tested in a fresh Fedora 44 container
-before release; a physical GPU login and other Fedora versions still require
-testing. Fedora's immutable/ostree-based variants are not supported by this
-DNF-based installer.
+Fedora RPMs are built and installation-tested in separate Fedora 44 and 45
+containers before release. Vela verifies downloaded packages' Sigstore provenance
+before passing local RPMs to DNF; this is not an OpenPGP RPM signature. Vela's
+RPMs do not currently have OpenPGP signatures. DNF disables `localpkg_gpgcheck`
+by default, but enabling it rejects these unsigned Beta RPMs, so that policy
+is not supported for Vela Beta installation or updates. Vela does not bypass
+DNF's signature policy. Actual Wayland logins on physical GPUs still require
+manual testing. Fedora's immutable/ostree-based variants are not supported by
+this DNF-based installer.
 
 Once installed, use **`vela-update`** on either distribution to install
 updates.
+
+### After upgrading Fedora 44 to Fedora 45
+
+An updater installed from an older Fedora 44 RPM may reject Fedora 45 before
+it can download a replacement. Use a **fresh Vela checkout** with Fedora 45
+support to bootstrap the update, explicitly preserving your installed channel:
+
+```sh
+git clone https://github.com/vela-desktop/vela.git vela-fedora-45
+# If `vela` (Beta) is installed, and a Fedora 45 Beta release is available:
+sh vela-fedora-45/packaging/vela-update --channel beta
+# If `vela-git` (Experimental) is installed, run this INSTEAD:
+sh vela-fedora-45/packaging/vela-update --channel experimental
+```
+
+Run **only one** of the two updater commands, matching your installed package.
+The checkout supplies the Fedora 45-capable updater and its Beta helper;
+calling the old installed `/usr/bin/vela-update` will not bootstrap it.
+The Beta command requires a published Fedora 45 RPM and
+`SHA256SUMS-fedora-45` as explained above. If they are not yet available,
+keep the installed Beta and wait rather than switching channels or using a
+Fedora 44 RPM.
 
 ## Ubuntu 26.10
 
@@ -167,7 +201,7 @@ blueman or GNOME's Bluetooth panel are not needed.
 | Distribution | BlueZ |
 |---|---|
 | Arch Linux and derivatives | `bluez` is an optional dependency: `sudo pacman -S --needed bluez` |
-| Fedora 44 | `bluez` is a weak dependency, installed unless weak dependencies are disabled |
+| Fedora 44/45 | `bluez` is a weak dependency, installed unless weak dependencies are disabled |
 | Ubuntu 26.10 | `bluez` is recommended, installed unless recommends are disabled |
 
 Then turn the service on once: `sudo systemctl enable --now bluetooth`.
@@ -223,7 +257,7 @@ otherwise it builds locally as usual.
 To prepare a package for a test branch, run the **Build** workflow manually in
 GitHub Actions, selecting that branch (or run
 `gh workflow run build.yml --ref YOUR_TEST_BRANCH` for maintainers). Replace `YOUR_TEST_BRANCH` with a real branch name. Manual runs produce both the `vela-git` Arch artifact and the
-`vela-fedora-rpm` artifact, as on pushes to `main`; workflow artifacts expire
+`vela-fedora-rpm` (44) and `vela-fedora-45-rpm` (45) artifacts, as on pushes to `main`; workflow artifacts expire
 after 14 days. PR builds also smoke-test both packages, but their artifacts are
 not attested, and `vela-update` does not accept them as trusted downloads.
 The GitHub CLI is only needed for optional private workflow-artifact retrieval;
