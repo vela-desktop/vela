@@ -12,6 +12,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "log.h"
 #include "rfkill.h"
 
@@ -181,11 +182,7 @@ int vela_bt_power_set(struct vela_bt_daemon *d, sd_bus_message *call, bool on, s
             }
         }
     }
-    *power = (struct vela_bt_power) { .active = true, .on = on, .adapter = strdup(adapter->path) };
-    if (!power->adapter) {
-        power->active = false;
-        return -ENOMEM;
-    }
+    *power = (struct vela_bt_power) { .active = true, .on = on, .adapter = vela_strdup(adapter->path) };
     vela_bt_waiters_add(&power->waiters, call);
     send_powered(d);
     return 1;
