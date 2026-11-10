@@ -1,11 +1,10 @@
 # Host allocation policy — design draft
 
 > **Status:** accepted with option c, fifth revision, 9 November 2026,
-> against `main` at `bb6cc0c`. Migration step 1 is done: the shared
-> lock-state page, the fail-closed marker reading, the allocation-free lock
-> fatal path, the damage fallback (all four items of "The premise"), the
-> configuration-read defects and the recovery test matrix. Every factual
-> claim names the
+> against `main` at `bb6cc0c`. Migration steps 1–3 are done (#148): the
+> fail-closed recovery, `common/alloc` with its CI check, and the unchecked
+> `realloc` and `getline` sites. Step 4 is done but for one site left to
+> step 8 (see "Migration order"). Every factual claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
 
@@ -995,8 +994,104 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    instead of counting as a read error (`compositor.config-read` runs it in
    a child and checks the abort and its line). The baseline is down to 188
    sites, with no `getline` left in it.
-4. Mechanical conversion of objects and strings, one subsystem per PR
-   (render, scene, input/command, config/icons, daemons, update daemon).
+4. Mechanical conversion of objects and strings, in one PR with one commit
+   per subsystem: render, scene, input/command, windows, outputs/session,
+   config/icons, daemons, update daemon. Windows: `view`, `layer`, `popup`,
+   `xwayland`, `x11_root`, `snap`, `switcher`, `workspace`, `decoration`,
+   `text`. Outputs/session: `output`, `output_manager`, `output_preview`,
+   `lock`, `session`, `server`, `nested`, `snapshot`, `supervisor_child`,
+   `a11y`, `capture_watch`, `brightness`, `bluetooth`. Config/icons also
+   takes `output_config.c` and `path_security.c`.
+   A `NULL` check right after a converted allocation is removed with it,
+   together with the cleanup it guarded: the helper never returns `NULL`,
+   so the branch is unreachable and cannot leave partial state. Checks of a
+   function's result in its callers stay until step 8, because those
+   functions still fail for other reasons. A `count ? count : 1` guard
+   against a zero-size `calloc` goes too, since `vela_alloc` allocates a
+   minimum block for zero. **Done:** 186 of the 187 sites, so the baseline
+   is down to one, `check.c` `on_check_output`'s `realloc` (see the update
+   daemon below).
+   - **render** (`compositor/src/render/`, 21 sites): the Vulkan and DRM
+     enumeration arrays, the pass temporaries (which step 5 turns into
+     arrays owned by the pass), and the renderer, target, texture, readback,
+     GBM allocator and buffer objects. The pixel buffer's `width × height`
+     goes through `vela_size_mul`. Six dead checks went
+     (`vela_renderer_begin_pass`, `vela_target` creation, the readback,
+     three in `allocator.c`).
+   - **scene** (`compositor/src/scene/`, 15 sites): the scene, its tree,
+     surface, rect and buffer nodes, the output frame, the surface state,
+     the background-effect object, the ready gate and its held commits, and
+     the window and output capture sources with their pending frames. Four
+     dead checks went: the two pending capture frames (which failed the
+     frame), the output source (which posted `no_memory` to the manager) and
+     the output-capture manager.
+   - **input/command** (`input.c`, `keyboard.c`, `interact.c`, `command.c`,
+     `shell.c`, `process.c`; 13 sites): the input, pointer, constraint, drag
+     icon, keyboard and interaction objects; the IPC listener, its clients
+     and their queued topic lines; the `end_task` PID list; the line sent to
+     the shell, whose `length + 1` goes through `vela_size_add`; and the
+     spawned command's copy. None had a check.
+   - **windows** (23 sites): the XDG and X11 views, unmanaged X11 windows,
+     layer surfaces, popups, the X11 root's `xdg_output` objects and
+     manager, the switcher, snapping and its group list, workspaces with
+     their names and the taskbar ordering, the decoration with its title,
+     app ID, texture owner and images, and the text renderer with its
+     pixels. Image sizes (`decoration.c` twice, `text.c`) go through
+     `vela_size_mul`, and the cleaned desktop name's `length + 1` through
+     `vela_size_add`. Two dead checks went, both in `x11_root.c`: the
+     `xdg_output` (which posted `no_memory` to the client) and the manager.
+   - **outputs/session** (28 sites): outputs, nested outputs, the output
+     manager's tracked views and saved entries, output previews, the lock
+     with its surfaces and inhibitor watches, the server, the session's
+     desktop names (`length + 16` through `vela_size_add`), the supervisor's
+     restart argv, accessibility, window snapshots and their animations, the
+     capture watch (capturers, sessions, frames, streams, published text),
+     brightness (outputs, helpers, published text) and the logind session
+     path for Bluetooth. Nine dead checks went: five in `capture_watch.c`,
+     `tracked` and the `keys && entries` condition in `output_manager.c`,
+     the restart argv in `supervisor_child.c`, and the preview owner. The
+     supervisor's message for a `NULL` argv now names the remaining causes
+     instead of "out of memory". The two `wl_client_post_no_memory` branches
+     in `output_preview.c` stay for step 8, though they cannot be reached
+     any more.
+   - **config/icons** (`config.c`, `icons.c`, `output_config.c`,
+     `path_security.c`; 20 sites): configuration keys, lines and entries,
+     the legacy-key rewrite and the written line (`vela_asprintf`), icon
+     directories, theme directories and names, cached icons and their pixels
+     (`size × size` through `vela_size_mul`), output-config section names
+     and path components. The checked `realloc` in `config.c` `set_entry` is
+     on `vela_grow`, so `config.c` has no legacy site left. Four dead checks
+     went: the entry copy and its array growth in `set_entry`, the written
+     line in `vela_config_write_checked` (which returned `false`), and the
+     path component in `path_security.c`.
+   - **daemons** (`bluetooth/`, `brightness/`, `capture/`; 29 sites). In the
+     Bluetooth daemon, the five checked `realloc` sites (adapters, devices,
+     removed paths, waiters, search leases) grew by one element per call;
+     they are on `vela_grow` with a new `size_t` capacity next to each
+     count, reset wherever the array is freed. Its objects (adapters,
+     devices, questions, operations, leases) and strings use `VELA_NEW` and
+     `vela_strdup`. Fourteen dead checks went with them: the property copy
+     in `set_text`, the new adapter and device, both in `note_removed`, the
+     two that rejected a question, and the `-ENOMEM` paths of
+     `vela_bt_waiters_add`, the operation, the power request, the search
+     adapter, the lease array and the lease, and the adapter choice. The
+     logind session path keeps its check, which also covers a reply without
+     a path. `brightness/probe.c` copies its sysfs names with `vela_strdup`,
+     and libvela-capture's job uses `VELA_NEW` without its dead check. Both
+     libraries now link `vela-alloc`, which the top-level build adds
+     whenever the compositor, the shell or the capture tools are built,
+     since libvela-capture is built without the compositor too.
+   - **update daemon** (`updates/src/`, 37 of 38 sites): the report strings
+     and pair arrays parsed from `vela-update`'s JSON and the state files,
+     the terminal argv, the install argv (`count + 17` through
+     `vela_size_add`), the state paths (`vela_asprintf`), the source URL and
+     the synthesized check and install results. Fourteen dead checks went,
+     among them the combined `NULL` tests after parsing a check, an install
+     and a run, the two inside `pairs_at`, the terminal argv's copy loop,
+     and `make_dirs`. Parse errors (schema, JSON) still fail as before. The
+     one left is `check.c` `on_check_output`'s `realloc`: its failure drops
+     the data and continues, which step 8 names, so it stays whole until
+     then.
 5. The frame path (point 7), measured against the existing benchmarks.
 6. Classification of library results (point 2b) and `VELA_MUST`, with
    local failure paths for the event sources that create descriptors.
