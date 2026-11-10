@@ -31,6 +31,20 @@ if name == "curl":
         if "-w" in args:
             print(code, end="")
         sys.exit(22)
+    if url.startswith("https://raw.githubusercontent.com/vela-desktop/vela/"):
+        if os.environ.get("TEST_RECIPE_MISSING") == "1":
+            refuse("404")
+        prefix = "https://raw.githubusercontent.com/vela-desktop/vela/" + os.environ["TEST_COMMIT"] + "/"
+        if not url.startswith(prefix):
+            sys.exit("Recipe is not pinned to the release commit: " + url)
+        path = url[len(prefix):]
+        known = {"packaging/arch/PKGBUILD.beta": "pkgname=vela",
+                 "packaging/fedora/vela.spec": "Name: vela",
+                 "packaging/ubuntu/build-depends": "cmake",
+                 "CMakeLists.txt": 'option(VELA_PACKAGE_DEB "DEB" OFF)\\nset(CPACK_GENERATOR "DEB")'}
+        if path not in known:
+            sys.exit("Unexpected recipe URL: " + url)
+        respond(known[path].encode())
     if "/releases?per_page=100&page=" in url:
         if os.environ.get("TEST_API_STATUS"):
             refuse(os.environ["TEST_API_STATUS"])
@@ -218,6 +232,41 @@ class BetaUpdateTests(unittest.TestCase):
         result = self.run_update("--check", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["tag"], "v0.99.0")
+
+    def test_beta_install_shows_pinned_arch_pkgbuild(self):
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Beta packaging recipe for arch at v0.1.11 (" + COMMIT + ")", result.stdout)
+        self.assertIn("--- packaging/arch/PKGBUILD.beta ---", result.stdout)
+        self.assertIn("pkgname=vela", result.stdout)
+
+    def test_beta_install_shows_fedora_spec_and_ubuntu_cpack(self):
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        self.configure_os("fedora", "45")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--- packaging/fedora/vela.spec ---", result.stdout)
+        self.assertIn("Name: vela", result.stdout)
+        self.configure_os("ubuntu", "26.10")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--- packaging/ubuntu/build-depends ---", result.stdout)
+        self.assertIn("--- CMakeLists.txt ---", result.stdout)
+        self.assertIn('set(CPACK_GENERATOR "DEB")', result.stdout)
+
+    def test_beta_recipe_outage_does_not_bypass_signature_or_block_install(self):
+        self.env.update(TEST_SIGNED_MANIFEST="1", TEST_RECIPE_MISSING="1")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("couldn't display packaging/arch/PKGBUILD.beta", result.stderr)
+        self.assertTrue(self.verified.exists())
+
+    def test_beta_check_json_has_no_package_recipe(self):
+        result = self.run_update("--check", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["commit"], COMMIT)
+        self.assertNotIn("packaging recipe", result.stdout.lower())
 
     def test_signed_arch_beta_installs_successfully(self):
         self.env["TEST_SIGNED_MANIFEST"] = "1"
