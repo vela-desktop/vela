@@ -3,6 +3,7 @@
 
 #include "interact.h"
 
+#include "alloc/alloc.h"
 #include "a11y.h"
 #include "bindings.h"
 #include "decoration.h"
@@ -41,7 +42,7 @@ static void finish_keyboard(struct vela_server *server, bool confirm);
 
 struct vela_interaction *vela_interaction_create(void)
 {
-    return calloc(1, sizeof(struct vela_interaction));
+    return VELA_NEW(struct vela_interaction);
 }
 
 void vela_interaction_destroy(struct vela_interaction *interaction)

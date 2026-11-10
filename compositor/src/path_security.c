@@ -3,6 +3,8 @@
 
 #include "path_security.h"
 
+#include "alloc/alloc.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -102,11 +104,7 @@ int vela_runtime_dir_open(const char *path)
             return -1;
         }
 
-        char *name = strndup(component, length);
-        if (!name) {
-            close(fd);
-            return -1;
-        }
+        char *name = vela_strndup(component, length);
 
         // Preserve the previous semantics: parent symlinks may be part of a
         // valid absolute XDG path, but the runtime directory itself must not

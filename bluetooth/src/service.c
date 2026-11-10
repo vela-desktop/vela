@@ -8,6 +8,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "caller.h"
 #include "config.h"
 #include "describe.h"
@@ -165,10 +166,7 @@ static int method_use_adapter(sd_bus_message *call, void *data, sd_bus_error *er
         const char *busy = d->pairing ? d->pairing->path : d->question ? d->question->device : "";
         return sd_bus_error_set(error, VELA_BT_ERROR("Busy"), busy);
     }
-    char *chosen = strdup(address);
-    if (!chosen) {
-        return -ENOMEM;
-    }
+    char *chosen = vela_strdup(address);
     // Persist before changing the live selection. A failed save must not
     // appear successful and silently revert on the next daemon restart.
     if (!vela_config_write_checked("bluetooth-adapter", address)) {

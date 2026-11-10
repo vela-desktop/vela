@@ -3,6 +3,7 @@
 
 #include "input.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "workspace.h"
 #include "view.h"
@@ -227,7 +228,7 @@ static void handle_pointer_destroy(struct wl_listener *listener, void *data)
 
 static void add_pointer(struct vela_input *input, struct wlr_input_device *device)
 {
-    struct vela_pointer *pointer = calloc(1, sizeof(*pointer));
+    struct vela_pointer *pointer = VELA_NEW(struct vela_pointer);
     pointer->input = input;
     pointer->device = device;
 #if WLR_HAS_LIBINPUT_BACKEND
@@ -300,7 +301,7 @@ static void handle_new_constraint(struct wl_listener *listener, void *data)
 {
     struct vela_input *input = wl_container_of(listener, input, new_constraint);
     struct wlr_pointer_constraint_v1 *wlr = data;
-    struct vela_constraint *constraint = calloc(1, sizeof(*constraint));
+    struct vela_constraint *constraint = VELA_NEW(struct vela_constraint);
     constraint->input = input;
     constraint->wlr = wlr;
     vela_listen(&wlr->events.destroy, &constraint->destroy, handle_constraint_destroy);
@@ -686,7 +687,7 @@ static void handle_start_drag(struct wl_listener *listener, void *data)
     }
     drag_icon_destroy(input->drag_icon); // one drag at a time
     struct wlr_surface *surface = drag->icon->surface;
-    struct vela_drag_icon *icon = calloc(1, sizeof(*icon));
+    struct vela_drag_icon *icon = VELA_NEW(struct vela_drag_icon);
     icon->input = input;
     icon->surface = surface;
     icon->tree = vela_tree_create(input->server->layers.drag);
@@ -776,7 +777,7 @@ void vela_input_paste(struct vela_input *input)
 
 struct vela_input *vela_input_create(struct vela_server *server)
 {
-    struct vela_input *input = calloc(1, sizeof(*input));
+    struct vela_input *input = VELA_NEW(struct vela_input);
     input->server = server;
     wl_list_init(&input->pointers);
     wl_list_init(&input->keyboards);

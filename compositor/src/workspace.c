@@ -33,7 +33,7 @@ static void finish_switch(struct vela_server *server);
 static void push_string(char ***items, int *count, int *capacity, const char *text)
 {
     *items = vela_grow(*items, capacity, *count + 1, sizeof(**items));
-    (*items)[(*count)++] = strdup(text);
+    (*items)[(*count)++] = vela_strdup(text);
 }
 
 static void free_strings(char **items, int count)
@@ -58,7 +58,7 @@ static void add_sticky_app(void *data, const char *app_id)
 
 struct vela_workspaces *vela_workspaces_create(struct vela_server *server)
 {
-    struct vela_workspaces *ws = calloc(1, sizeof(*ws));
+    struct vela_workspaces *ws = VELA_NEW(struct vela_workspaces);
     ws->server = server;
     ws->next_map_serial = 1;
     // desktop=<name> for each desktop (empty: "Desktop N");
@@ -242,7 +242,7 @@ static void sync_taskbar(struct vela_server *server)
 {
     // In opening order: the taskbar shows them in that order.
     int count = wl_list_length(&server->views);
-    struct vela_view **ordered = calloc((size_t)(count ? count : 1), sizeof(*ordered));
+    struct vela_view **ordered = VELA_NEW_N(struct vela_view *, count);
     int n = 0;
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
@@ -490,7 +490,7 @@ void vela_workspaces_rename(struct vela_server *server, int index, const char *n
     if (index < 0 || index >= ws->count) {
         return;
     }
-    char *clean = malloc(strlen(name) + 1);
+    char *clean = VELA_NEW_N(char, vela_size_add(strlen(name), 1));
     size_t n = 0;
     for (const char *c = name; *c; ++c) {
         if (*c != '\n' && *c != '\r') {

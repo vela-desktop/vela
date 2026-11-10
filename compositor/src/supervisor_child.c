@@ -3,6 +3,7 @@
 
 #include "supervisor_child.h"
 
+#include "alloc/alloc.h"
 #include "lock_state.h"
 
 #include <fcntl.h>
@@ -17,10 +18,7 @@ char **vela_supervisor_arguments(int argc, char **argv, const char *self, int lo
     if (written < 0 || (size_t)written >= option_size || argc < 1) {
         return NULL;
     }
-    char **arguments = calloc((size_t)argc + 2, sizeof(*arguments));
-    if (!arguments) {
-        return NULL;
-    }
+    char **arguments = VELA_NEW_N(char *, (size_t)argc + 2);
     int count = 0;
     arguments[count++] = (char *)self;
     for (int i = 1; i < argc; ++i) {
