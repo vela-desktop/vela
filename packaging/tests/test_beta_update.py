@@ -41,7 +41,7 @@ if name == "curl":
         known = {"packaging/arch/PKGBUILD.beta": "pkgname=vela",
                  "packaging/fedora/vela.spec": "Name: vela",
                  "packaging/ubuntu/build-depends": "cmake",
-                 "CMakeLists.txt": 'option(VELA_PACKAGE_DEB "DEB" OFF)\\nset(CPACK_GENERATOR "DEB")'}
+                 "CMakeLists.txt": 'option(VELA_PACKAGE_DEB "DEB" OFF)\nset(CPACK_GENERATOR "DEB")'}
         if path not in known:
             sys.exit("Unexpected recipe URL: " + url)
         respond(known[path].encode())
