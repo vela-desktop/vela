@@ -52,12 +52,6 @@ compositor/src/output_preview.c strdup 1
 compositor/src/path_security.c strndup 1
 compositor/src/popup.c calloc 1
 compositor/src/process.c strdup 1
-compositor/src/render/allocator.c calloc 3
-compositor/src/render/pass.c calloc 5
-compositor/src/render/pixel_buffer.c calloc 2
-compositor/src/render/renderer.c calloc 2
-compositor/src/render/texture.c calloc 2
-compositor/src/render/vulkan.c calloc 7
 compositor/src/scene/capture.c calloc 2
 compositor/src/scene/effects.c calloc 1
 compositor/src/scene/frame.c calloc 1
