@@ -284,7 +284,7 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         return indexes;
     }
 
-    bool startDaemon()
+    bool startDaemon(const QMap<QString, QString>& extra = {})
     {
         // The last test's signals may still be queued here (blocking calls
         // don't process events): from now on they don't count.
@@ -307,6 +307,9 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         }
         if (restartWindowMs > 0) {
             environment.insert(QStringLiteral("VELA_BT_RESTART_WINDOW_MS"), QString::number(restartWindowMs));
+        }
+        for (auto it = extra.begin(); it != extra.end(); ++it) {
+            environment.insert(it.key(), it.value());
         }
         daemon.setProcessEnvironment(environment);
         daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
@@ -1405,6 +1408,74 @@ private slots:
     }
 
     // Add on the device that is asking takes its request over: no Pair.
+    // ------------------------- event sources that fail (point 2b of the
+    // allocation policy), through compositor/tests/sd_event_fail_preload.c --
+
+#ifdef VELA_SD_EVENT_FAIL_PRELOAD
+    // The daemon again, ready as init() leaves it, with `failing` sources.
+    void restartFailing(const QString& failing)
+    {
+        QCOMPARE(stopDaemon(), 0);
+        QVERIFY(startDaemon({ { QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_SD_EVENT_FAIL_PRELOAD) },
+            { QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), failing } }));
+        QTRY_COMPARE(devices().size(), 3);
+        QTRY_VERIFY(property(QStringLiteral("Active")).toBool());
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+        QCOMPARE(errorOf(call(QStringLiteral("PresentQuestions"))), QString());
+    }
+#endif
+
+    // Without its expiry timer, a question still ends with its answer.
+    void questionWithoutItsTimer()
+    {
+#ifndef VELA_SD_EVENT_FAIL_PRELOAD
+        QSKIP("needs the vela-sd-event-fail-preload target");
+#else
+        restartFailing(QStringLiteral("time_after=55000000")); // its 60 s expiry
+        onDevice(mouse, [](FakeBluez::Device& device) {
+            device.method = FakeBluez::Device::Confirm;
+            device.passkey = 4321;
+        });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), true });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("confirm-passkey"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
+        QCOMPARE(errorOf(add), QString());
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+#endif
+    }
+
+    // Without its 30 s timeout, a removal ends when BlueZ removes Device1.
+    void removeWithoutItsTimer()
+    {
+#ifndef VELA_SD_EVENT_FAIL_PRELOAD
+        QSKIP("needs the vela-sd-event-fail-preload target");
+#else
+        restartFailing(QStringLiteral("time_relative=30000000"));
+        QCOMPARE(errorOf(start(QStringLiteral("Remove"), { object(headset) })), QString());
+        QVERIFY(!devices().contains(headset));
+#endif
+    }
+
+    // Without its 90 s pairing timeout, an adopted Add ends with the answer.
+    void adoptedAddWithoutItsTimer()
+    {
+#ifndef VELA_SD_EVENT_FAIL_PRELOAD
+        QSKIP("needs the vela-sd-event-fail-preload target");
+#else
+        restartFailing(QStringLiteral("time_relative=90000000"));
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
+        const Asked question = nextQuestion(0);
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), true });
+        const Asked adopted = nextQuestion(1);
+        QCOMPARE(adopted.id, question.id);
+        QTRY_COMPARE(devices().value(mouse).value(QStringLiteral("operation")).toString(), QStringLiteral("pairing"));
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
+        QCOMPARE(errorOf(add), QString());
+        QVERIFY(devices().value(mouse).value(QStringLiteral("paired")).toBool());
+#endif
+    }
+
     void addOnTheDeviceThatAsks()
     {
         deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
