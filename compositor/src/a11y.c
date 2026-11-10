@@ -3,6 +3,7 @@
 
 #include "a11y.h"
 
+#include "alloc/alloc.h"
 #include "color.h"
 #include "config.h"
 #include "input.h"
@@ -200,7 +201,7 @@ static int handle_schedule_timer(void *data)
 
 struct vela_a11y *vela_a11y_create(struct vela_server *server)
 {
-    struct vela_a11y *a11y = calloc(1, sizeof(*a11y));
+    struct vela_a11y *a11y = VELA_NEW(struct vela_a11y);
     a11y->server = server;
     a11y->night_kelvin = VELA_NIGHT_KELVIN_DEFAULT;
     snprintf(a11y->schedule, sizeof(a11y->schedule), "no");

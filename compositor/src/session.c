@@ -3,6 +3,7 @@
 
 #include "session.h"
 
+#include "alloc/alloc.h"
 #include "supervisor.h"
 #include "util.h"
 
@@ -27,8 +28,8 @@ void vela_session_set_environment(void)
     // the .desktop file as it is ("Vela;KDE;"), while apps expect the names
     // separated by ':'.
     const char *current = getenv("XDG_CURRENT_DESKTOP");
-    size_t size = (current ? strlen(current) : 0) + 16;
-    char *desktops = calloc(size, 1);
+    size_t size = vela_size_add(current ? strlen(current) : 0, 16);
+    char *desktops = VELA_NEW_N(char, size);
     vela_desktop_names(current, desktops, size);
     if (!desktops[0] || strcmp(desktops, "Vela") == 0) {
         snprintf(desktops, size, "Vela:KDE");

@@ -3,6 +3,7 @@
 
 #include "brightness.h"
 
+#include "alloc/alloc.h"
 #include "backlight_choice.h"
 #include "brightness_model.h"
 #include "buffer.h"
@@ -123,7 +124,7 @@ static void publish(struct vela_brightness *brightness)
     const char *text = vela_buffer_text(&json);
     if (!brightness->published || strcmp(brightness->published, text) != 0) {
         free(brightness->published);
-        brightness->published = strdup(text);
+        brightness->published = vela_strdup(text);
         vela_commands_notify(brightness->server, "brightness");
     }
     vela_buffer_finish(&json);
@@ -343,7 +344,7 @@ static void start_helper(struct vela_brightness_output *output)
         return;
     }
     fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL) | O_NONBLOCK);
-    struct helper *helper = calloc(1, sizeof(*helper));
+    struct helper *helper = VELA_NEW(struct helper);
     helper->brightness = brightness;
     helper->fd = fds[0];
     helper->power = helper->session = true;
@@ -501,7 +502,7 @@ void vela_brightness_output_added(struct vela_output *output)
     if (!drm && !brightness->fake) {
         return; // nested or headless: no monitor of ours behind it
     }
-    struct vela_brightness_output *entry = calloc(1, sizeof(*entry));
+    struct vela_brightness_output *entry = VELA_NEW(struct vela_brightness_output);
     entry->brightness = brightness;
     entry->output = output;
     entry->was_powered = output->powered;
@@ -633,7 +634,7 @@ void vela_brightness_load_settings(struct vela_server *server)
 
 void vela_brightness_start(struct vela_server *server)
 {
-    struct vela_brightness *brightness = calloc(1, sizeof(*brightness));
+    struct vela_brightness *brightness = VELA_NEW(struct vela_brightness);
     brightness->server = server;
     brightness->session_active = !server->session || server->session->active;
     wl_list_init(&brightness->outputs);

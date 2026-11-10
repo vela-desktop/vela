@@ -8,6 +8,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "log.h"
 
 #include <errno.h>
@@ -29,12 +30,7 @@ void vela_bt_waiters_add(struct vela_bt_waiters *waiters, sd_bus_message *call)
     if (!call) {
         return;
     }
-    sd_bus_message **calls = realloc(waiters->calls, (waiters->count + 1) * sizeof(*calls));
-    if (!calls) {
-        sd_bus_reply_method_errno(call, ENOMEM, NULL);
-        return;
-    }
-    waiters->calls = calls;
+    waiters->calls = vela_grow(waiters->calls, &waiters->capacity, waiters->count + 1, sizeof(*waiters->calls));
     waiters->calls[waiters->count++] = sd_bus_message_ref(call);
 }
 
@@ -54,6 +50,7 @@ void vela_bt_waiters_reply(struct vela_bt_waiters *waiters, const struct vela_bt
     free(waiters->calls);
     waiters->calls = NULL;
     waiters->count = 0;
+    waiters->capacity = 0;
 }
 
 static void free_operation(struct vela_bt_operation *operation)
@@ -294,13 +291,9 @@ int vela_bt_operation_start(struct vela_bt_daemon *d, sd_bus_message *call, stru
         return sd_bus_error_set(error, VELA_BT_ERROR("Busy"), asking->device);
     }
     bool adopt = kind == VELA_BT_ADD && asking && asking->unsolicited;
-    struct vela_bt_operation *operation = calloc(1, sizeof(*operation));
-    if (operation && name) {
-        operation->name = strdup(name);
-    }
-    if (!operation || (name && !operation->name)) {
-        free(operation);
-        return -ENOMEM;
+    struct vela_bt_operation *operation = VELA_NEW(struct vela_bt_operation);
+    if (name) {
+        operation->name = vela_strdup(name);
     }
     operation->daemon = d;
     operation->device = device;

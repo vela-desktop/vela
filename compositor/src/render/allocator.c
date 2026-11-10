@@ -8,6 +8,7 @@
 #include "render/renderer.h"
 #include "render/cursor_policy.h"
 
+#include "alloc/alloc.h"
 #include "util.h"
 
 #include <drm_fourcc.h>
@@ -66,11 +67,7 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
     struct gbm_allocator *alloc = (struct gbm_allocator *)wlr_alloc;
 
     // Explicit modifiers only: Vulkan must know how the buffer is laid out.
-    uint64_t *modifiers = calloc(format->len ? format->len : 1, sizeof(*modifiers));
-    if (!modifiers) {
-        wlr_log_errno(WLR_ERROR, "Allocator: allocating modifiers");
-        return NULL;
-    }
+    uint64_t *modifiers = VELA_NEW_N(uint64_t, format->len);
     unsigned count = 0;
     bool has_linear = false;
     for (size_t i = 0; i < format->len; ++i) {
@@ -119,11 +116,7 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
         return NULL;
     }
 
-    struct gbm_buffer *buffer = calloc(1, sizeof(*buffer));
-    if (!buffer) {
-        gbm_bo_destroy(bo);
-        return NULL;
-    }
+    struct gbm_buffer *buffer = VELA_NEW(struct gbm_buffer);
     buffer->bo = bo;
     struct wlr_dmabuf_attributes *d = &buffer->dmabuf;
     d->width = width;
@@ -184,12 +177,7 @@ static struct wlr_allocator *allocator_create(int render_fd, bool cursor, struct
         wlr_log(WLR_ERROR, "Allocator: can't create the GBM device");
         return NULL;
     }
-    struct gbm_allocator *alloc = calloc(1, sizeof(*alloc));
-    if (!alloc) {
-        wlr_log_errno(WLR_ERROR, "Allocator: allocating GBM allocator");
-        gbm_device_destroy(gbm);
-        return NULL;
-    }
+    struct gbm_allocator *alloc = VELA_NEW(struct gbm_allocator);
     alloc->gbm = gbm;
     alloc->cursor = cursor;
     alloc->renderer = renderer;

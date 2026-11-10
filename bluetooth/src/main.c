@@ -15,6 +15,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "config.h"
 #include "log.h"
 
@@ -133,7 +134,7 @@ int main(void)
     struct vela_config settings;
     vela_config_read(&settings);
     const char *chosen = vela_config_get(&settings, "bluetooth-adapter", "");
-    d.chosen = *chosen ? strdup(chosen) : NULL;
+    d.chosen = *chosen ? vela_strdup(chosen) : NULL;
     vela_config_finish(&settings);
 
     sigset_t mask;

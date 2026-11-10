@@ -16,6 +16,7 @@
 
 #include "view.h"
 
+#include "alloc/alloc.h"
 #include "interact.h"
 #include "focus.h"
 #include "bindings.h"
@@ -594,7 +595,7 @@ static void handle_unmanaged_set_override_redirect(struct wl_listener *listener,
 
 static struct unmanaged *unmanaged_create(struct vela_server *server, struct wlr_xwayland_surface *x11)
 {
-    struct unmanaged *menu = calloc(1, sizeof(*menu));
+    struct unmanaged *menu = VELA_NEW(struct unmanaged);
     menu->server = server;
     menu->x11 = x11;
     menu->tree = vela_tree_create(server->layers.x11_popups);
@@ -909,7 +910,7 @@ static void handle_set_override_redirect(struct wl_listener *listener, void *dat
 
 static struct vela_view *view_create(struct vela_server *server, struct wlr_xwayland_surface *x11)
 {
-    struct vela_view *view = calloc(1, sizeof(*view));
+    struct vela_view *view = VELA_NEW(struct vela_view);
     vela_view_init(view, server);
     view->x11 = x11;
     view->x11_density = 1.0;

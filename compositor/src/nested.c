@@ -3,6 +3,7 @@
 
 #include "nested.h"
 
+#include "alloc/alloc.h"
 #include "output.h"
 
 #include <math.h>
@@ -124,7 +125,7 @@ static const struct wl_registry_listener registry_listener = {
 
 struct vela_nested *vela_nested_create(struct vela_output *output)
 {
-    struct vela_nested *nested = calloc(1, sizeof(*nested));
+    struct vela_nested *nested = VELA_NEW(struct vela_nested);
     nested->output = output;
     nested->remote = wlr_wl_backend_get_remote_display(output->wlr->backend);
     nested->surface = wlr_wl_output_get_surface(output->wlr);

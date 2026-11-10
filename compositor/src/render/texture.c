@@ -7,6 +7,7 @@
 
 #include "render/render.h"
 
+#include "alloc/alloc.h"
 #include "util.h"
 
 #include <assert.h>
@@ -111,7 +112,7 @@ static bool create_view(struct vela_texture *texture)
 static struct vela_texture *new_texture(struct vela_renderer *renderer, const struct vela_pixel_format *format,
     int width, int height)
 {
-    struct vela_texture *texture = calloc(1, sizeof(*texture));
+    struct vela_texture *texture = VELA_NEW(struct vela_texture);
     wlr_texture_init(&texture->base, vela_renderer_wlr(renderer), &texture_impl, (uint32_t)width, (uint32_t)height);
     texture->renderer = renderer;
     texture->format = format;
@@ -775,11 +776,7 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
         if (wlr) wlr_texture_destroy(wlr);
         return NULL;
     }
-    struct vela_readback *readback = calloc(1, sizeof(*readback));
-    if (!readback) {
-        wlr_texture_destroy(wlr);
-        return NULL;
-    }
+    struct vela_readback *readback = VELA_NEW(struct vela_readback);
     if (!renderer->readback_timer) {
         renderer->readback_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
         if (renderer->readback_fd >= 0) {

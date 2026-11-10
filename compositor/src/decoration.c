@@ -3,6 +3,7 @@
 
 #include "decoration.h"
 
+#include "alloc/alloc.h"
 #include "icons.h"
 #include "motion.h"
 #include "render/pixel_buffer.h"
@@ -165,7 +166,7 @@ static uint32_t scaled_channel(uint32_t color, int shift, double coverage)
 static struct vela_image draw_segments(int size, double stroke, uint32_t color, const struct segment *segments,
     int count)
 {
-    struct vela_image image = { size, size, calloc((size_t)size * (size_t)size, 4) };
+    struct vela_image image = { size, size, VELA_NEW_N(uint32_t, vela_size_mul((size_t)size, (size_t)size)) };
     double span = size - stroke; // the stroke stays inside the image
     double offset = stroke / 2.0;
     double alpha = ((color >> 24) & 0xff) / 255.0;
@@ -279,7 +280,7 @@ static void set_image(struct vela_decoration *decoration, struct image *image, s
     struct wlr_buffer *buffer = vela_pixel_buffer_create(pixels);
     struct wlr_texture *texture = wlr_texture_from_buffer(decoration->server->wlr_renderer, buffer);
     if (texture) {
-        struct texture_owner *owner = calloc(1, sizeof(*owner));
+        struct texture_owner *owner = VELA_NEW(struct texture_owner);
         owner->texture = texture;
         wlr_addon_init(&owner->addon, &buffer->addons, owner, &texture_owner_impl);
         const struct wlr_fbox src = { 0, 0, width, height };
@@ -372,8 +373,9 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
         const struct vela_image *icon = vela_icons_app(icon_loader(server), state->app_id, pixels);
         decoration->has_icon = icon->pixels != NULL;
         if (decoration->has_icon) {
-            size_t bytes = (size_t)icon->width * (size_t)icon->height * 4;
-            struct vela_image copy = { icon->width, icon->height, malloc(bytes) };
+            size_t pixels = vela_size_mul((size_t)icon->width, (size_t)icon->height);
+            size_t bytes = vela_size_mul(pixels, sizeof(uint32_t));
+            struct vela_image copy = { icon->width, icon->height, VELA_NEW_N(uint32_t, pixels) };
             memcpy(copy.pixels, icon->pixels, bytes);
             set_image(decoration, &decoration->icon, &copy, VELA_DECORATION_ICON_X,
                 (HEIGHT - VELA_DECORATION_ICON_SIZE) / 2.0, VELA_DECORATION_ICON_SIZE, VELA_DECORATION_ICON_SIZE);
@@ -431,11 +433,11 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
     decoration->maximized = maximized;
     if (new_title) {
         free(decoration->title_text);
-        decoration->title_text = strdup(state->title);
+        decoration->title_text = vela_strdup(state->title);
     }
     if (new_app) {
         free(decoration->app_id);
-        decoration->app_id = strdup(state->app_id);
+        decoration->app_id = vela_strdup(state->app_id);
     }
     decoration->look_version = server->look_version;
     decoration->drawn = true;
@@ -444,7 +446,7 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
 struct vela_decoration *vela_decoration_create(struct vela_server *server, struct vela_tree *parent,
     const struct vela_decoration_state *state)
 {
-    struct vela_decoration *decoration = calloc(1, sizeof(*decoration));
+    struct vela_decoration *decoration = VELA_NEW(struct vela_decoration);
     decoration->server = server;
     decoration->width = -1;
     decoration->tree = vela_tree_create(parent);

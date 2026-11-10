@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # vela-alloc: the host allocation helpers (alloc.h,
-# docs/memory-allocation-policy.md), for the compositor and the session
-# daemons. C17, no dependencies.
+# docs/memory-allocation-policy.md), for the compositor, the session
+# daemons and libvela-capture. C17, no dependencies.
 add_library(vela-alloc STATIC alloc.c)
 # Included as "alloc/alloc.h".
 target_include_directories(vela-alloc PUBLIC ${PROJECT_SOURCE_DIR}/common)
