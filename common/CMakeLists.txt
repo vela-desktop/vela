@@ -63,11 +63,13 @@ function(vela_theme_token name kind)
 endfunction()
 file(STRINGS ${THEME_QML} themed_lines REGEX "themed\\(\"")
 foreach(line IN LISTS themed_lines)
-    if(NOT line MATCHES "readonly property (color|int|real|bool) [A-Za-z0-9_]+: .*themed\\(\"([A-Za-z0-9_-]+)\"")
-        message(FATAL_ERROR "Theme.qml: themed() outside a `readonly property color|int|real|bool` line:\n${line}")
+    if(NOT line MATCHES "readonly property (color|int|real|bool|string) [A-Za-z0-9_]+: .*themed\\(\"([A-Za-z0-9_-]+)\"")
+        message(FATAL_ERROR "Theme.qml: themed() outside a `readonly property color|int|real|bool|string` line:\n${line}")
     endif()
     if(CMAKE_MATCH_1 STREQUAL "color")
         vela_theme_token(${CMAKE_MATCH_2} Color)
+    elseif(CMAKE_MATCH_1 STREQUAL "string")
+        vela_theme_token(${CMAKE_MATCH_2} Variant)
     else()
         vela_theme_token(${CMAKE_MATCH_2} Number)
     endif()
@@ -137,6 +139,7 @@ qt_add_library(vela-controls STATIC)
 
 set(CONTROLS_QML_FILES
     controls/Theme.qml
+    controls/TonalSurface.qml
     controls/Fill.qml
     controls/Eased.qml
     controls/ColorFade.qml
