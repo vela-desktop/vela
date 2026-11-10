@@ -35,6 +35,14 @@ class FedoraFixture(UpdateFixture):
 
 
 class FedoraUpdates(FedoraFixture):
+    def test_selected_branch_spec_is_visible_before_rpmbuild(self):
+        result = self.run_update("--branch", "fix/nvidia", "--build")
+        self.assertIn("Packaging recipe for fedora at " + self.nvidia, result.stdout)
+        self.assertIn("--- packaging/fedora/vela.spec ---", result.stdout)
+        self.assertIn("# branch spec", result.stdout)
+        self.assertLess(result.stdout.index("# branch spec"),
+                        result.stdout.index(":: Building the fedora package"))
+
     def test_rpm_declares_updater_dependencies(self):
         # The RPM must work when installed directly, not only through the
         # README bootstrap command that already installs these utilities.
