@@ -1,30 +1,24 @@
 {
-  "collected_at": "2026-11-09T11:29:30+00:00",
+  "collected_at": "2026-11-10T11:10:27+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 574,
+      "count": 477,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 284
+      "uniques": 276
     },
     {
-      "count": 166,
-      "path": "/vela-desktop/vela/pulls",
-      "title": "/pulls",
-      "uniques": 11
-    },
-    {
-      "count": 62,
+      "count": 66,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 16
+      "uniques": 17
     },
     {
-      "count": 34,
-      "path": "/vela-desktop/vela/actions",
-      "title": "/actions",
-      "uniques": 1
+      "count": 54,
+      "path": "/vela-desktop/vela/pulls",
+      "title": "/pulls",
+      "uniques": 10
     },
     {
       "count": 26,
@@ -33,34 +27,40 @@
       "uniques": 24
     },
     {
-      "count": 26,
-      "path": "/vela-desktop/vela/actions/workflows/gpu-amd.yml",
-      "title": "/actions/workflows/gpu-amd.yml",
-      "uniques": 1
-    },
-    {
-      "count": 23,
-      "path": "/vela-desktop/vela/actions/workflows/gpu-nvidia.yml",
-      "title": "/actions/workflows/gpu-nvidia.yml",
-      "uniques": 2
-    },
-    {
-      "count": 21,
-      "path": "/vela-desktop/vela/commits/main",
-      "title": "/commits/main",
-      "uniques": 10
-    },
-    {
-      "count": 19,
-      "path": "/vela-desktop/vela/forks",
-      "title": "/forks",
-      "uniques": 4
-    },
-    {
       "count": 18,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/snap.webp",
       "title": "/blob/main/docs/screenshots/snap.webp",
       "uniques": 14
+    },
+    {
+      "count": 17,
+      "path": "/vela-desktop/vela/tree/main",
+      "title": "/tree/main",
+      "uniques": 10
+    },
+    {
+      "count": 16,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 9
+    },
+    {
+      "count": 15,
+      "path": "/vela-desktop/vela/tree/main/compositor/src/render",
+      "title": "/tree/main/compositor/src/render",
+      "uniques": 9
+    },
+    {
+      "count": 15,
+      "path": "/vela-desktop/vela/tree/main/compositor",
+      "title": "/tree/main/compositor",
+      "uniques": 6
+    },
+    {
+      "count": 14,
+      "path": "/vela-desktop/vela/actions/workflows/gpu-amd.yml",
+      "title": "/actions/workflows/gpu-amd.yml",
+      "uniques": 1
     }
   ],
   "schema_version": 1,
