@@ -134,8 +134,7 @@ private slots:
 
         AppModel apps;
         DesktopModel model(&apps);
-        model.setAreaHeight(800); // a view's area: layout() fills the grid
-        model.moveTo(file, 120, 60);
+        model.moveTo(file, 120, 60); // no view yet: nothing to crash on
         // The position is on disk, not only in memory.
         QSettings reader(shellConfPath(), QSettings::IniFormat);
         QVERIFY(reader.contains(QStringLiteral("desktop-positions/note.txt")));
@@ -158,8 +157,7 @@ private slots:
 
         AppModel apps;
         DesktopModel model(&apps);
-        model.setAreaHeight(800); // a view's area: layout() fills the grid
-        model.moveTo(file, 40, 80);
+        model.moveTo(file, 40, 80); // no view yet: nothing to crash on
         QVERIFY(model.rename(file, "after.txt"));
         // The old name is gone, the new one is saved.
         QSettings reader(shellConfPath(), QSettings::IniFormat);

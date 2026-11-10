@@ -569,8 +569,10 @@ void DesktopModel::moveTo(const QString& path, qreal x, qreal y)
         }
     }
     layout();
-    // With the grid the saved position becomes the chosen cell's.
-    for (qsizetype i = 0; i < m_items.size(); ++i) {
+    // With the grid the saved position becomes the chosen cell's. layout()
+    // keeps nothing when no view has set the area (m_layout empty), and the
+    // saved position above already stands until it does.
+    for (qsizetype i = 0; i < m_items.size() && i < m_layout.size(); ++i) {
         if (m_items.at(i).path == path && m_alignToGrid) {
             m_items[i].position = m_layout.at(i);
             savePosition(m_items.at(i).isTrash ? path : QFileInfo(path).fileName(), m_layout.at(i));
