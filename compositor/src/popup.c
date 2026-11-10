@@ -3,6 +3,7 @@
 
 #include "popup.h"
 
+#include "alloc/alloc.h"
 #include "layer.h"
 #include "listen.h"
 #include "output.h"
@@ -99,7 +100,7 @@ static void handle_destroy(struct wl_listener *listener, void *data)
 
 void vela_popup_create(struct wlr_xdg_popup *xdg, struct vela_tree *parent, struct vela_owner *owner)
 {
-    struct vela_popup *popup = calloc(1, sizeof(*popup));
+    struct vela_popup *popup = VELA_NEW(struct vela_popup);
     popup->xdg = xdg;
     popup->owner = owner;
     popup->tree = vela_tree_create(parent);
