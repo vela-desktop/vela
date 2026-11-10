@@ -71,6 +71,17 @@ class CpuTargetTests(unittest.TestCase):
         self.assertNotEqual(run.returncode, 0)
         self.assertIn("VELA_CPU_TARGET must not be empty", run.stdout + run.stderr)
 
+    def test_cxx_only_probe_failure_is_rejected(self):
+        # A failed C++ probe must fail configuration even if C succeeds.
+        run = subprocess.run(
+            ["cmake", "-S", str(self.root / "src"), "-B", str(self.root / "build"),
+             "-DVELA_C_MARCH_x86_64_v3=1", "-DVELA_CXX_MARCH_x86_64_v3="],
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("Compiler does not support VELA_CPU_TARGET", run.stdout + run.stderr)
+        self.assertNotIn("Unknown arguments specified", run.stdout + run.stderr)
+
 
 @unittest.skipUnless(X86, "x86-64-only preflight")
 class CpuPreflightTests(unittest.TestCase):
