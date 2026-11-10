@@ -51,8 +51,12 @@ if(VELA_BUILD_REPORT)
     add_subdirectory(report)
 endif()
 
-if(VELA_BUILD_COMPOSITOR)
+# The allocation helpers: the compositor and its daemons, and libvela-capture,
+# which the shell and the capture tools also build without the compositor.
+if(VELA_BUILD_COMPOSITOR OR VELA_BUILD_SHELL OR VELA_BUILD_CAPTURE_TOOLS OR VELA_BUILD_TOOLS)
     add_subdirectory(common/alloc)
+endif()
+if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
     add_subdirectory(brightness)
     add_subdirectory(common/caller)

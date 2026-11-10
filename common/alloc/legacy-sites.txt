@@ -1,24 +1,6 @@
 # Direct allocations still to migrate to common/alloc/alloc.h
 # (docs/memory-allocation-policy.md, "Enforcement"): <path> <call> <count>.
 # Checked by scripts/check-allocations.py. It only shrinks, down to empty.
-bluetooth/src/agent.c calloc 1
-bluetooth/src/agent.c strdup 5
-bluetooth/src/bluez.c strdup 1
-bluetooth/src/main.c strdup 1
-bluetooth/src/model.c calloc 2
-bluetooth/src/model.c realloc 3
-bluetooth/src/model.c strdup 5
-bluetooth/src/operations.c calloc 1
-bluetooth/src/operations.c realloc 1
-bluetooth/src/operations.c strdup 1
-bluetooth/src/power.c strdup 1
-bluetooth/src/search.c calloc 1
-bluetooth/src/search.c realloc 1
-bluetooth/src/search.c strdup 1
-bluetooth/src/service.c strdup 1
-bluetooth/src/session.c strdup 1
-brightness/src/probe.c strdup 1
-capture/src/capture.c calloc 1
 updates/src/check.c realloc 1
 updates/src/check.c strdup 4
 updates/src/install.c calloc 2
