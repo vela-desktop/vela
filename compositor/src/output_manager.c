@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "output_manager.h"
+#include "alloc/alloc.h"
 #include "output_preview.h"
 
 #include "listen.h"
@@ -124,10 +125,7 @@ static bool commit_configuration(struct vela_server *server, const struct wlr_ou
     int origin_x, origin_y;
     configuration_origin(config, &origin_x, &origin_y);
     int tracked_count = wl_list_length(&server->views);
-    struct vela_tracked_view *tracked = calloc((size_t)tracked_count + 1, sizeof(*tracked));
-    if (!tracked) {
-        return false;
-    }
+    struct vela_tracked_view *tracked = VELA_NEW_N(struct vela_tracked_view, (size_t)tracked_count + 1);
     struct vela_view *view;
     int n = 0;
     wl_list_for_each (view, &server->views, link) {
@@ -227,22 +225,19 @@ bool vela_output_manager_save(struct vela_server *server)
         return false;
     }
     int count = wl_list_length(&config->heads);
-    char (*keys)[256] = calloc((size_t)count + 1, sizeof(*keys));
-    struct vela_output_config_entry *entries = calloc((size_t)count + 1, sizeof(*entries));
-    bool saved = false;
-    if (keys && entries) {
-        int n = 0;
-        struct wlr_output_configuration_head_v1 *head;
-        wl_list_for_each (head, &config->heads, link) {
-            const struct wlr_output_head_v1_state *state = &head->state;
-            const struct wlr_output *wlr = state->output;
-            vela_output_key(wlr, keys[n], sizeof(keys[n]));
-            entries[n] = (struct vela_output_config_entry) { keys[n], state->enabled, wlr->width, wlr->height,
-                wlr->refresh, wlr->scale, wlr->transform, state->x, state->y };
-            ++n;
-        }
-        saved = vela_output_config_save(entries, n);
+    char (*keys)[256] = vela_alloc((size_t)count + 1, sizeof(*keys));
+    struct vela_output_config_entry *entries = VELA_NEW_N(struct vela_output_config_entry, (size_t)count + 1);
+    int n = 0;
+    struct wlr_output_configuration_head_v1 *head;
+    wl_list_for_each (head, &config->heads, link) {
+        const struct wlr_output_head_v1_state *state = &head->state;
+        const struct wlr_output *wlr = state->output;
+        vela_output_key(wlr, keys[n], sizeof(keys[n]));
+        entries[n] = (struct vela_output_config_entry) { keys[n], state->enabled, wlr->width, wlr->height,
+            wlr->refresh, wlr->scale, wlr->transform, state->x, state->y };
+        ++n;
     }
+    bool saved = vela_output_config_save(entries, n);
     free(entries);
     free(keys);
     wlr_output_configuration_v1_destroy(config);

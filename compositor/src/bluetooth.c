@@ -3,6 +3,7 @@
 
 #include "bluetooth.h"
 
+#include "alloc/alloc.h"
 #include "process.h"
 #include "server.h"
 
@@ -76,7 +77,7 @@ void vela_bluetooth_report_lock(struct vela_server *server, bool locked)
             "org.freedesktop.login1.Manager", "GetSession", &error, &reply, "s", id);
         const char *path = NULL;
         if (r >= 0 && sd_bus_message_read(reply, "o", &path) > 0) {
-            lock_session_path = strdup(path);
+            lock_session_path = vela_strdup(path);
         }
         if (!lock_session_path) {
             wlr_log(WLR_ERROR, "Bluetooth lock hint: cannot identify logind session: %s",
