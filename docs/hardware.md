@@ -1,5 +1,26 @@
 # Hardware coverage and known limitations
 
+## CPU baseline: x86-64-v3
+
+Vela's supported x86-64 builds require **x86-64-v3** (AVX2, FMA, BMI1/2
+and the other features in the x86-64-v3 psABI level). The design reference is
+**2017-era CPUs**, including first-generation AMD Ryzen and mainstream Intel
+Core 7th generation, but CPU age is not used as a compatibility test. Some
+older CPUs support v3; some newer entry-level processors do not.
+
+The CMake default is `-march=x86-64-v3`; official Beta packages and normal
+Experimental builds use this minimum. Local builders may explicitly select a
+more specific CPU target (for example `znver5` for AMD Zen 5) by setting
+`VELA_CPU_TARGET`. Such native packages are not portable to CPUs with fewer
+features. Below-v3 local builds are outside the supported hardware baseline.
+
+The CPU requirement is independent of the **Vulkan 1.4** GPU/driver requirement.
+Adding a Vulkan-capable graphics card to an older computer does not guarantee
+that its CPU supports x86-64-v3; conversely, a modern CPU alone does not make
+the graphics stack compatible.
+
+## GPU baseline
+
 Vela needs a GPU and driver exposing **Vulkan 1.4** with the dmabuf/DRM capabilities described in [renderer.md](renderer.md#71-minimum-requirement). A successful build does not guarantee that a particular GPU, driver, compositor nesting setup or display configuration works.
 
 ## Evidence, not a compatibility guarantee
