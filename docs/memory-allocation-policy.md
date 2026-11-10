@@ -3,9 +3,11 @@
 > **Status:** accepted with option c, fifth revision, 9 November 2026,
 > against `main` at `bb6cc0c`. Migration steps 1–3 are done (#148): the
 > fail-closed recovery, `common/alloc` with its CI check, and the unchecked
-> `realloc` and `getline` sites. Step 4 is done (#243) but for one site
-> left to step 5; steps 5–7 follow (see "Migration order"). Every factual
-> claim names the
+> `realloc` and `getline` sites. Step 4 is done (#243). Step 5 is done:
+> `VELA_MUST` and the classification of library results, the local paths
+> for descriptor exhaustion, the fallbacks removed with the baseline at
+> zero, and the C++ new handler. Steps 6–7 follow (see "Migration
+> order"). Every factual claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
 
@@ -619,7 +621,10 @@ They also duplicate a descriptor or create one (`timerfd_create`,
 failure here (the supervisor already samples the compositor's descriptor
 count), so each call site handles their failure locally: for example, a new
 IPC connection is closed and dropped, and a timer that cannot be created
-takes the same path as one that cannot be armed.
+takes the same path as one that cannot be armed. In libwayland 1.26 a loop's
+timers share one `timerfd`, made by its first `wl_event_loop_add_timer`;
+later timers only allocate. Vela's own `timerfd`s (an output's latch and
+virtual vblank) are separate descriptors.
 
 OOM-only calls take the same path as the helpers:
 
@@ -934,9 +939,13 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
     completes within a bounded number of frames.
 - **`VELA_MUST`:** prints the expression and call site, through
   `vela_must_failed`.
-- **Event sources:** with a low `RLIMIT_NOFILE`, a new IPC connection and a
-  timer that cannot be created take their local failure paths, and the
-  compositor keeps running.
+- **Event sources:** with the running compositor's `RLIMIT_NOFILE` lowered
+  to its next free descriptor, a new IPC connection is dropped; lowered to
+  leave room for that connection alone, a hot-plugged output gets neither
+  its latch nor its virtual vblank `timerfd` and still presents frames,
+  following the backend's; the compositor keeps running
+  (`functional-resources`, `DescriptorExhaustion`). libwayland's own timers
+  cannot fail this way after startup (point 2b).
 - **Enforcement:** the CI check's own fixtures (point 8).
 - **Image extent cap:** a client attaches a shm buffer wider than
   `maxImageDimension2D` (and a dmabuf above the format's `maxExtent`). The
@@ -1110,6 +1119,33 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
      same `rss` and `available` figures, through the allocation-free writer
      that `vela_oom` uses, then calls `abort()`. Tested like `vela_oom`: a
      child forces a failed `new` and checks the abort and the line.
+   - **Done.** `VELA_MUST` and `vela_must_failed` are in `common/alloc`,
+     with the classification in `common/alloc/library-results.md`
+     (checked against the wlroots 0.20.2 and libwayland 1.26.0 sources).
+     `wl_event_loop_add_idle`, `wl_resource_create`, `wl_global_create`
+     and the wlroots constructors that only allocate and create a global
+     go through it, so the nine `wl_client_post_no_memory` branches
+     (`output_preview.c`, `x11_root.c`, `scene/effects.c`,
+     `scene/output_capture.c`) are gone, and so are the callers' checks
+     of `vela_output_manager_snapshot`, `vela_output_capture_manager_create`
+     (now `void`), `vela_x11_root_create`, the update daemon's state paths
+     and the Bluetooth model's new adapters and devices.
+     `wlr_ext_foreign_toplevel_handle_v1_create` is not OOM-only (its
+     identifier comes from `/dev/urandom`), and its unchecked result in
+     `view.c` is now handled: the window has no handle, which every user
+     of `ext_handle` already allows. Descriptor exhaustion takes local
+     paths at the twelve compositor sources that had none (the IPC
+     listener and its connections, the brightness helper's timer and
+     socket, a spawned child's pidfd, which is now stopped and reaped,
+     paste, key repeat, snap layouts, accessibility, the idle timer, and an
+     output's latch and virtual vblank) and at the seven unchecked
+     `sd_event_add_*` calls of the daemons. `check.c` `on_check_output`
+     grows its buffer through `vela_grow` (bounded by `MAX_OUTPUT`), so
+     the baseline is empty. The new handler is in
+     `common/alloc/new_handler.h`, installed first in the seven C++
+     programs; `vela-files` and `vela-settings` were seen writing the line
+     under a low `prlimit --as`, the other five installing it under gdb.
+     `common/alloc` is now part of every build.
 6. The frame path (point 7), measured against the existing benchmarks.
 7. The Vulkan caps and budgets: the image-extent cap, upload staging in
    pieces under a byte budget with atomic presentation and oldest-first
