@@ -25,8 +25,6 @@ compositor/src/brightness.c calloc 3
 compositor/src/brightness.c strdup 1
 compositor/src/capture_watch.c calloc 5
 compositor/src/capture_watch.c strdup 1
-compositor/src/command.c calloc 3
-compositor/src/command.c strdup 2
 compositor/src/config.c asprintf 2
 compositor/src/config.c realloc 1
 compositor/src/config.c strdup 5
@@ -38,9 +36,6 @@ compositor/src/icons.c calloc 3
 compositor/src/icons.c malloc 1
 compositor/src/icons.c strdup 4
 compositor/src/icons.c strndup 1
-compositor/src/input.c calloc 4
-compositor/src/interact.c calloc 1
-compositor/src/keyboard.c calloc 1
 compositor/src/layer.c calloc 1
 compositor/src/lock.c calloc 3
 compositor/src/nested.c calloc 1
@@ -51,10 +46,8 @@ compositor/src/output_preview.c calloc 2
 compositor/src/output_preview.c strdup 1
 compositor/src/path_security.c strndup 1
 compositor/src/popup.c calloc 1
-compositor/src/process.c strdup 1
 compositor/src/server.c calloc 1
 compositor/src/session.c calloc 1
-compositor/src/shell.c malloc 1
 compositor/src/snap.c calloc 2
 compositor/src/snapshot.c calloc 2
 compositor/src/supervisor_child.c calloc 1
