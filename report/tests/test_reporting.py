@@ -491,9 +491,16 @@ class ReportingTests(unittest.TestCase):
         compositor = bindir / "vela-compositor"
         compositor.write_text('#!/bin/sh\nprintf "compositor arguments: %s\\n" "$*" >&2\n')
         compositor.chmod(0o700)
+        helperdir = self.root / "libexec with spaces"
+        helperdir.mkdir()
+        cpu_check = helperdir / "vela-cpu-check"
+        cpu_check.write_text('#!/bin/sh\nexit 0\n')
+        cpu_check.chmod(0o700)
         template = Path(__file__).resolve().parents[2] / "session/vela-session.in"
         launcher = self.root / "session"
-        launcher.write_text(template.read_text().replace("@CMAKE_INSTALL_FULL_BINDIR@", str(bindir)))
+        launcher.write_text(template.read_text()
+                            .replace("@CMAKE_INSTALL_FULL_BINDIR@", str(bindir))
+                            .replace("@CMAKE_INSTALL_FULL_LIBEXECDIR@", str(helperdir)))
         state = self.home / "state"
         (state / "vela").mkdir(parents=True)
         (state / "vela/vela.log").write_text("previous incident\n")
@@ -507,6 +514,15 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("started_at", self.report.context["log_session"])
         self.assertIn("--supervise -s", self.report.preview("logs/vela.log"))
         self.assertIn("--test", self.report.preview("logs/vela.log"))
+
+        # Fail before executing the compositor when the preflight rejects the CPU.
+        cpu_check.write_text('#!/bin/sh\necho "unsupported CPU" >&2\nexit 1\n')
+        rejected = subprocess.run(["sh", str(launcher), "--test"], capture_output=True,
+                                  env=dict(os.environ, XDG_STATE_HOME=str(state)), timeout=5)
+        self.assertEqual(rejected.returncode, 1, rejected.stderr)
+        error_log = (state / "vela/vela.log").read_text()
+        self.assertIn("unsupported CPU", error_log)
+        self.assertNotIn("compositor arguments:", error_log)
 
     def test_retained_resource_samples_survive_without_live_process(self):
         source = self.home / "incident.log"

@@ -63,8 +63,10 @@ The [feature list](docs/features.md) has the details and more screenshots.
 
 ## Get Vela
 
-Vela needs a GPU with **Vulkan 1.4** (AMD or Intel with Mesa ≥ 25.0, NVIDIA with the
-proprietary driver ≥ 570 or NVK) and **PipeWire with WirePlumber** for sound.
+Vela needs an **x86-64-v3 CPU** (roughly 2017-generation hardware; the ISA,
+not the manufacturing date, is the actual requirement), a GPU with **Vulkan 1.4**
+(AMD or Intel with Mesa ≥ 25.0, NVIDIA with the proprietary driver ≥ 570 or NVK),
+and **PipeWire with WirePlumber** for sound. CPU and GPU requirements are independent.
 
 Install the prerequisites for your distribution:
 
