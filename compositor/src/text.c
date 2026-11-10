@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "text.h"
+#include "alloc/alloc.h"
 #include "config.h"
 
 #include <fontconfig/fontconfig.h>
@@ -101,7 +102,7 @@ struct vela_text *vela_text_create(void)
         wlr_log(WLR_ERROR, "Text: no usable font, titles will have no text");
         return NULL;
     }
-    struct vela_text *text = calloc(1, sizeof(*text));
+    struct vela_text *text = VELA_NEW(struct vela_text);
     if (FT_Init_FreeType(&text->library) != 0 || FT_New_Face(text->library, file, index, &text->face) != 0) {
         wlr_log(WLR_ERROR, "Text: no usable font, titles will have no text");
         vela_text_destroy(text);
@@ -235,7 +236,7 @@ void vela_text_render(struct vela_text *text, const char *utf8, double pixel_siz
     if (out->height < 1) {
         out->height = 1;
     }
-    out->pixels = calloc((size_t)out->width * (size_t)out->height, sizeof(uint32_t));
+    out->pixels = VELA_NEW_N(uint32_t, vela_size_mul((size_t)out->width, (size_t)out->height));
 
     // Alpha, red, green, blue, from 0 to 1.
     const double channels[4] = { ((color >> 24) & 0xff) / 255.0, ((color >> 16) & 0xff) / 255.0,

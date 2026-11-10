@@ -3,6 +3,7 @@
 
 #include "view.h"
 
+#include "alloc/alloc.h"
 #include "capture_watch.h"
 #include "interact.h"
 #include "focus.h"
@@ -1450,7 +1451,7 @@ static void handle_new_toplevel(struct wl_listener *listener, void *data)
 {
     struct vela_server *server = wl_container_of(listener, server, new_toplevel);
     struct wlr_xdg_toplevel *xdg = data;
-    struct vela_view *view = calloc(1, sizeof(*view));
+    struct vela_view *view = VELA_NEW(struct vela_view);
     vela_view_init(view, server);
     view->xdg = xdg;
     view->surface_node = vela_surface_node_create(view->tree, xdg->base->surface);
@@ -1642,7 +1643,7 @@ void vela_views_check_outputs(struct vela_server *server)
 {
     // The current outputs, by name (as they will be remembered next time).
     int count = wl_list_length(&server->outputs);
-    struct vela_seen_output *now = calloc((size_t)(count ? count : 1), sizeof(*now));
+    struct vela_seen_output *now = VELA_NEW_N(struct vela_seen_output, count);
     int n = 0;
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
