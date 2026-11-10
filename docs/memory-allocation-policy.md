@@ -1,10 +1,10 @@
 # Host allocation policy — design draft
 
 > **Status:** accepted with option c, fifth revision, 9 November 2026,
-> against `main` at `bb6cc0c`. Migration step 1 is done: the shared
-> lock-state page, the fail-closed marker reading, the allocation-free lock
-> fatal path, the damage fallback (all four items of "The premise"), the
-> configuration-read defects and the recovery test matrix. Every factual
+> against `main` at `bb6cc0c`. Migration steps 1–3 are done (#148): the
+> fail-closed recovery, `common/alloc` with its CI check, and the unchecked
+> `realloc` and `getline` sites. Step 4 is under way, one subsystem per PR
+> (see "Migration order"). Every factual
 > claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
@@ -996,7 +996,33 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    a child and checks the abort and its line). The baseline is down to 188
    sites, with no `getline` left in it.
 4. Mechanical conversion of objects and strings, one subsystem per PR
-   (render, scene, input/command, config/icons, daemons, update daemon).
+   (render, scene, input/command, windows, outputs/session, config/icons,
+   daemons, update daemon). Windows: `view`, `layer`, `popup`, `xwayland`,
+   `x11_root`, `snap`, `switcher`, `workspace`, `decoration`, `text`.
+   Outputs/session: `output`, `output_manager`, `output_preview`, `lock`,
+   `session`, `server`, `nested`, `snapshot`, `supervisor_child`, `a11y`,
+   `capture_watch`, `brightness`, `bluetooth`. Config/icons also takes
+   `output_config.c` and `path_security.c`. `output_preview.c`'s
+   `wl_client_post_no_memory` stays for step 8, which names it.
+   A `NULL` check right after a converted allocation is removed with it,
+   together with the cleanup it guarded: the helper never returns `NULL`,
+   so the branch is unreachable and cannot leave partial state. Checks of a
+   function's result in its callers stay until step 8, because those
+   functions still fail for other reasons. A `count ? count : 1` guard
+   against a zero-size `calloc` goes too, since `vela_alloc` allocates a
+   minimum block for zero.
+   - **Done, update daemon** (`updates/src/`, 37 of 38 sites): the report
+     strings and pair arrays parsed from `vela-update`'s JSON and the state
+     files, the terminal argv, the install argv (`count + 17` through
+     `vela_size_add`), the state paths (`vela_asprintf`), the source URL
+     and the synthesized check and install results. Fourteen dead checks
+     went, among them the combined `NULL` tests after parsing a check, an
+     install and a run, the two inside `pairs_at`, the terminal argv's
+     copy loop, and `make_dirs`. Parse errors (schema, JSON) still fail as
+     before. The one
+     left is `check.c` `on_check_output`'s `realloc`: its failure drops
+     the data and continues, which step 8 names, so it stays whole until
+     then. The baseline is down to 150 sites.
 5. The frame path (point 7), measured against the existing benchmarks.
 6. Classification of library results (point 2b) and `VELA_MUST`, with
    local failure paths for the event sources that create descriptors.
