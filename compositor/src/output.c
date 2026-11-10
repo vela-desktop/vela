@@ -179,7 +179,7 @@ static void handle_present(struct wl_listener *listener, void *data);
 static void handle_request_state(struct wl_listener *listener, void *data);
 static void handle_output_commit(struct wl_listener *listener, void *data);
 static void handle_destroy(struct wl_listener *listener, void *data);
-static void start_virtual_vblank(struct vela_output *output);
+static bool start_virtual_vblank(struct vela_output *output);
 
 // wlroots uses the output allocator for both cursor and primary buffers, and
 // doesn't tell the allocator which it is requesting. Supply a *dedicated*
@@ -274,14 +274,20 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     if (output->latch_fd >= 0) {
         output->latch_source = wl_event_loop_add_fd(server->loop, output->latch_fd, WL_EVENT_READABLE,
             handle_latch_timer, output);
-    } else {
+    }
+    if (!output->latch_source) {
+        // Drawing then starts at the backend's frame event.
+        if (output->latch_fd >= 0) {
+            close(output->latch_fd);
+            output->latch_fd = -1;
+        }
         output->latching = false;
     }
     wl_list_init(&output->present.link);
     wl_list_init(&output->frame_event.link);
-    if (wlr_output_is_headless(wlr)) {
-        start_virtual_vblank(output);
-    } else {
+    // Without the virtual vblank, a headless output also follows the
+    // backend's frame events.
+    if (!wlr_output_is_headless(wlr) || !start_virtual_vblank(output)) {
         vela_listen(&wlr->events.present, &output->present, handle_present);
         vela_listen(&wlr->events.frame, &output->frame_event, handle_frame_event);
     }
@@ -762,18 +768,25 @@ static void collect_costs(struct vela_output *output)
 
 static int handle_virtual_vblank(int fd, uint32_t mask, void *data);
 
-static void start_virtual_vblank(struct vela_output *output)
+static bool start_virtual_vblank(struct vela_output *output)
 {
     output->vblank_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
-    if (output->vblank_fd < 0) {
-        wlr_log_errno(WLR_ERROR, "%s: timerfd for the virtual vblank", output->wlr->name);
-        return;
+    if (output->vblank_fd >= 0) {
+        output->vblank_source = wl_event_loop_add_fd(output->server->loop, output->vblank_fd, WL_EVENT_READABLE,
+            handle_virtual_vblank, output);
     }
-    output->vblank_source = wl_event_loop_add_fd(output->server->loop, output->vblank_fd, WL_EVENT_READABLE,
-        handle_virtual_vblank, output);
+    if (!output->vblank_source) {
+        wlr_log_errno(WLR_ERROR, "%s: no virtual vblank, frames follow the backend", output->wlr->name);
+        if (output->vblank_fd >= 0) {
+            close(output->vblank_fd);
+            output->vblank_fd = -1;
+        }
+        return false;
+    }
     output->last_vblank = vela_now_ns();
     wlr_log(WLR_INFO, "%s: virtual vblank every %.3f ms", output->wlr->name,
         vela_frame_clock_period(&output->clock) / 1e6);
+    return true;
 }
 
 // The next vblank on the exact grid (last vblank + multiples of the period),

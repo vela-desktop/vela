@@ -205,7 +205,13 @@ static int on_check_timeout(sd_event_source *source, uint64_t usec, void *data)
     vela_up_log("vela-update --check is taking too long: stopping it");
     if (d->check_pid > 0) {
         signal_check(d, SIGTERM);
-        sd_event_add_time_relative(d->event, &d->check_kill, CLOCK_MONOTONIC, d->timing.kill_us, 0, on_check_kill, d);
+        int r = sd_event_add_time_relative(d->event, &d->check_kill, CLOCK_MONOTONIC, d->timing.kill_us, 0,
+            on_check_kill, d);
+        if (r < 0) {
+            // No grace period to wait out: stop it now.
+            vela_up_log("check kill timer: %s", strerror(-r));
+            signal_check(d, SIGKILL);
+        }
     }
     return 0;
 }

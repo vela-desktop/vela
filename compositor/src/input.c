@@ -769,6 +769,10 @@ void vela_input_paste(struct vela_input *input)
     // app, then Ctrl+V.
     if (!input->paste_timer) {
         input->paste_timer = wl_event_loop_add_timer(input->server->loop, handle_paste_timer, input);
+        if (!input->paste_timer) {
+            wlr_log_errno(WLR_ERROR, "Paste: no timer, the text stays on the clipboard");
+            return;
+        }
     }
     wl_event_source_timer_update(input->paste_timer, 120);
 }

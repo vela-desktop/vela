@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/wait.h>
@@ -356,10 +357,23 @@ static void start_helper(struct vela_brightness_output *output)
     helper->child.exited = helper_exited;
 
     char command[sizeof(brightness->command) + 192];
-    bool ok = vela_format(command, sizeof(command), "VELA_BRIGHTNESS_FD=%d exec %s %s '%s'", fds[1],
-                  brightness->command, output->mechanism, output->target)
+    // Without its timer the helper has no watchdog: don't start it.
+    bool ok = helper->timer
+        && vela_format(command, sizeof(command), "VELA_BRIGHTNESS_FD=%d exec %s %s '%s'", fds[1],
+            brightness->command, output->mechanism, output->target)
         && vela_child_start(&helper->child, server->loop, command);
     close(fds[1]);
+    if (ok) {
+        helper->source = wl_event_loop_add_fd(server->loop, helper->fd, WL_EVENT_READABLE, handle_readable, helper);
+        if (!helper->source) {
+            // Started but unreadable: end and reap it before its watch goes.
+            wlr_log_errno(WLR_ERROR, "Brightness %s: can't watch the helper", output->connector);
+            kill(helper->child.pid, SIGKILL);
+            waitpid(helper->child.pid, NULL, 0);
+            vela_child_stop(&helper->child);
+            ok = false;
+        }
+    }
     if (!ok) {
         // Not started, or started and not watched: without our end it exits.
         helper_free(helper);
@@ -369,7 +383,6 @@ static void start_helper(struct vela_brightness_output *output)
     }
     helper->owner = output;
     output->helper = helper;
-    helper->source = wl_event_loop_add_fd(server->loop, helper->fd, WL_EVENT_READABLE, handle_readable, helper);
     vela_brightness_model_restart(&output->model);
     publish(brightness);
 }

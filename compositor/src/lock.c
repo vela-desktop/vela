@@ -685,6 +685,9 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     const char *screen_off = getenv("VELA_SCREEN_OFF");
     if (server->session || (screen_off && *screen_off)) {
         lock->idle_timer = wl_event_loop_add_timer(server->loop, handle_idle_timer, lock);
+        if (!lock->idle_timer) {
+            wlr_log_errno(WLR_ERROR, "Unable to create the idle timer: screens stay on and nothing locks on idle");
+        }
         vela_lock_load_settings(lock);
     }
     return lock;

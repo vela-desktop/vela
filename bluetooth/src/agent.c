@@ -218,7 +218,10 @@ static void ask(struct vela_bt_daemon *d, struct vela_bt_device *device, enum ve
     question->entered = entered;
     snprintf(question->pin, sizeof(question->pin), "%s", pin ? pin : "");
     question->request = sd_bus_message_ref(request);
-    sd_event_add_time(d->event, &question->timer, CLOCK_MONOTONIC, question->expires, 0, on_expired, d);
+    if (sd_event_add_time(d->event, &question->timer, CLOCK_MONOTONIC, question->expires, 0, on_expired, d) < 0) {
+        // It still ends with BlueZ's Cancel or the user's answer.
+        vela_bt_log("question timer: failed");
+    }
     d->question = question;
     vela_bt_log("question %llu: %s for %s%s", (unsigned long long)question->id, vela_bt_question_kind_name(kind),
         device->path, question->unsolicited ? " (unsolicited)" : "");

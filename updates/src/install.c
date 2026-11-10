@@ -100,13 +100,23 @@ int vela_up_install_start(struct vela_up_daemon *d, const struct vela_up_options
         return sd_bus_error_set(error, VELA_UP_ERROR("NoTerminal"), "The terminal could not be opened.");
     }
     // Owned by the loop (floating): only there to reap the terminal.
-    sd_event_add_child(d->event, NULL, pid, WEXITED, on_terminal_exit, d);
+    int r = sd_event_add_child(d->event, NULL, pid, WEXITED, on_terminal_exit, d);
+    if (r < 0) {
+        vela_up_log("terminal watch: %s (it is reaped when the daemon exits)", strerror(-r));
+    }
 
+    // "Starting" needs its timeout, or it could stay forever: without one
+    // the state goes straight back, and the run file still reports the
+    // install once vela-update starts.
+    d->start_timeout = sd_event_source_disable_unref(d->start_timeout);
+    r = sd_event_add_time_relative(d->event, &d->start_timeout, CLOCK_MONOTONIC, d->timing.start_timeout_us, 0,
+        on_start_timeout, d);
+    if (r < 0) {
+        vela_up_log("start timer: %s", strerror(-r));
+        return 0;
+    }
     d->starting = true;
     d->starting_at = (int64_t)time(NULL);
-    d->start_timeout = sd_event_source_disable_unref(d->start_timeout);
-    sd_event_add_time_relative(d->event, &d->start_timeout, CLOCK_MONOTONIC, d->timing.start_timeout_us, 0,
-        on_start_timeout, d);
     vela_up_changed(d);
     return 0;
 }

@@ -9,7 +9,9 @@ both synchronization paths beyond that limit and check actual /proc growth.
 
 import os
 import re
+import resource
 import signal
+import socket
 import time
 import unittest
 
@@ -24,6 +26,55 @@ def descriptor_counts(pid):
         except FileNotFoundError:
             pass
     return len(links), sum("sync_file" in link for link in links)
+
+
+def lowest_free_descriptor(pid):
+    used = {int(name) for name in os.listdir(f"/proc/{pid}/fd")}
+    number = 0
+    while number in used:
+        number += 1
+    return number
+
+
+class DescriptorExhaustion(unittest.TestCase):
+    """Event sources that create descriptors fail locally
+    (docs/memory-allocation-policy.md, point 2b): the compositor's real
+    RLIMIT_NOFILE is lowered while it runs, so the next descriptor it creates
+    fails with EMFILE."""
+
+    def test_a_connection_and_a_timer_fail_locally(self):
+        with Session() as vela:
+            pid = vela.process.pid
+            vela.state()
+            soft, hard = resource.prlimit(pid, resource.RLIMIT_NOFILE)
+            try:
+                # Room for the accepted connection alone: watching it needs a
+                # duplicate, which fails, and the connection is dropped.
+                resource.prlimit(pid, resource.RLIMIT_NOFILE, (lowest_free_descriptor(pid) + 1, hard))
+                with socket.socket(socket.AF_UNIX) as connection:
+                    connection.settimeout(5)
+                    connection.connect(vela.socket_path)
+                    self.assertEqual(connection.recv(1), b"")
+                vela.wait_for_log("Can't watch a command connection")
+                # Room for the command's connection and its watch: the new
+                # output's timers (its latch and its virtual vblank, each a
+                # timerfd) get none. libwayland's own timers share one
+                # timerfd, made at startup, so they cannot fail this way.
+                resource.prlimit(pid, resource.RLIMIT_NOFILE, (lowest_free_descriptor(pid) + 2, hard))
+                vela.command("test-output add 640x480")
+                vela.wait_for_log("HEADLESS-2: no virtual vblank, frames follow the backend")
+            finally:
+                resource.prlimit(pid, resource.RLIMIT_NOFILE, (soft, hard))
+            # Its first buffers could not be exported under the same limit, but
+            # it draws: each redraw (SIGUSR1 redraws everything) presents a
+            # frame, following the backend's frame events, and the compositor
+            # keeps answering.
+            def frames(state):
+                return next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")["frames"]
+            before = frames(vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two monitors"))
+            os.kill(pid, signal.SIGUSR1)
+            vela.wait_for(lambda s: frames(s) > before,
+                          what="frames on the output without its timers")
 
 
 class RetainedResources(unittest.TestCase):

@@ -738,8 +738,15 @@ static void create_handles(struct vela_view *view)
         .title = vela_view_title(view),
         .app_id = vela_view_app_id(view),
     };
+    // Not OOM-only: wlroots reads its identifier from /dev/urandom, which
+    // can fail with descriptors exhausted. The window then has no
+    // ext-foreign-toplevel handle, which every user of ext_handle allows.
     view->ext_handle = wlr_ext_foreign_toplevel_handle_v1_create(view->server->ext_toplevels, &state);
-    view->ext_handle->data = view;
+    if (view->ext_handle) {
+        view->ext_handle->data = view;
+    } else {
+        wlr_log(WLR_ERROR, "No ext-foreign-toplevel handle for \"%s\"", state.app_id ? state.app_id : "");
+    }
     if (vela_view_on_current_workspace(view)) {
         create_taskbar_handle(view);
     }

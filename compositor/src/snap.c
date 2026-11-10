@@ -487,6 +487,10 @@ void vela_snap_hover_maximize(struct vela_server *server, struct vela_view *view
     snapping->layouts_hover = view;
     if (!snapping->layouts_timer) {
         snapping->layouts_timer = wl_event_loop_add_timer(server->loop, handle_layouts_timer, server);
+        if (!snapping->layouts_timer) {
+            wlr_log_errno(WLR_ERROR, "Snap: no timer, the layouts are not shown");
+            return;
+        }
     }
     wl_event_source_timer_update(snapping->layouts_timer, view ? LAYOUTS_DELAY_MS : 0);
 }
