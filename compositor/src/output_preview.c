@@ -139,7 +139,7 @@ static void protect(struct wl_client *client, struct wl_resource *resource, uint
         return;
     }
     // VELA_NEW and vela_strdup never return NULL, so the next two
-    // no_memory branches cannot run. They stay until step 8 of
+    // no_memory branches cannot run. They stay until step 5 of
     // docs/memory-allocation-policy.md, which removes this fallback.
     struct vela_output_preview *preview = VELA_NEW(struct vela_output_preview);
     if (!preview) {
