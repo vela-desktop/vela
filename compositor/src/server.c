@@ -16,6 +16,7 @@
 #include "layer.h"
 #include "listen.h"
 #include "lock.h"
+#include "lock_state.h"
 #include "motion.h"
 #include "output.h"
 #include "output_manager.h"
@@ -420,9 +421,17 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
         getenv("VELA_RESTARTED") ? " (restarted after a crash)" : "");
     unsetenv("VELA_RESTARTED");
     // It was locked when the previous compositor went down: start locked,
-    // black screen until vela-lock shows up.
-    if (getenv("VELA_START_LOCKED")) {
-        unsetenv("VELA_START_LOCKED");
+    // black screen until vela-lock shows up. With the shared page, only a
+    // page saying "unlocked" and a marker that is positively absent start
+    // unlocked; an older supervisor still passes VELA_START_LOCKED.
+    bool unreadable = false;
+    bool start_locked = vela_lock_restart_locked(server->lock_state, server->runtime_dir_fd,
+        server->socket_name, getenv("VELA_START_LOCKED") != NULL, &unreadable);
+    unsetenv("VELA_START_LOCKED");
+    if (unreadable) {
+        wlr_log(WLR_ERROR, "Lock marker unreadable: treating the screen as locked");
+    }
+    if (start_locked) {
         wlr_log(WLR_INFO, "The screen was locked: restarting locked");
         vela_lock_engage(server->lock);
         vela_lock_screen(server->lock);

@@ -6,6 +6,7 @@
 // times and the wlr_renderer wlroots sees.
 
 #include "render/render.h"
+#include "alloc/alloc.h"
 #include "render/wait_arrays.h"
 #include "sync.h"
 

@@ -39,6 +39,9 @@ struct vela_workspaces {
     int sticky_count;
     int sticky_capacity;
     uint64_t next_map_serial;
+    // desktop.conf exists but could not be read whole: it is never rewritten
+    // from what this session holds, which would drop the rest of it.
+    bool unreadable;
     // The switch in progress: the outgoing windows (bottom to top) and its
     // direction.
     struct vela_view **outgoing;

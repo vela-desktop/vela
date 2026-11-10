@@ -24,6 +24,13 @@ target_compile_definitions(vela-updates-client-test PRIVATE
     VELA_UPDATE_STATE="${PROJECT_SOURCE_DIR}/packaging/vela-update-state")
 target_link_libraries(vela-updates-client-test PRIVATE vela-updates-client Qt6::DBus Qt6::Test)
 add_dependencies(vela-updates-client-test vela-update-daemon-testing)
+# Makes getline fail partway through vela.conf in the daemon
+# (compositor/tests/getline_fail_preload.c).
+if(TARGET vela-getline-fail-preload)
+    target_compile_definitions(vela-updates-client-test PRIVATE
+        VELA_GETLINE_FAIL_PRELOAD="${VELA_TEST_PRELOAD_PREFIX}$<TARGET_FILE:vela-getline-fail-preload>")
+    add_dependencies(vela-updates-client-test vela-getline-fail-preload)
+endif()
 add_test(NAME updates-client COMMAND vela-updates-client-test)
 set_tests_properties(updates-client PROPERTIES TIMEOUT 120)
 

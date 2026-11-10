@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+unsigned long vela_region_failures;
+
 int64_t vela_timespec_ns(const struct timespec *t)
 {
     return (int64_t)t->tv_sec * VELA_NS_PER_SEC + t->tv_nsec;
@@ -57,23 +59,6 @@ bool vela_format(char *out, size_t size, const char *format, ...)
     int n = vsnprintf(out, size, format, args);
     va_end(args);
     return n >= 0 && (size_t)n < size;
-}
-
-void *vela_grow(void *items, int *capacity, int needed, size_t size)
-{
-    if (needed <= *capacity) {
-        return items;
-    }
-    int grown = *capacity ? *capacity : 8;
-    while (grown < needed) {
-        grown *= 2;
-    }
-    void *bigger = realloc(items, (size_t)grown * size);
-    if (!bigger) {
-        abort(); // without memory the compositor can't go on
-    }
-    *capacity = grown;
-    return bigger;
 }
 
 bool vela_desktop_names(const char *current, char *out, size_t size)

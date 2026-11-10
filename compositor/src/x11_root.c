@@ -3,6 +3,7 @@
 
 #include "x11_root.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "server.h"
 #include "util.h"

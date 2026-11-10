@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "icons.h"
+#include "alloc/alloc.h"
+#include "config.h"
 
 #include "util.h"
 #include "path_security.h"
@@ -30,10 +32,7 @@ struct strings {
 
 static void strings_push(struct strings *list, const char *text)
 {
-    if (list->count == list->capacity) {
-        list->capacity = list->capacity ? list->capacity * 2 : 16;
-        list->items = realloc(list->items, (size_t)list->capacity * sizeof(*list->items));
-    }
+    list->items = vela_grow(list->items, &list->capacity, list->count + 1, sizeof(*list->items));
     list->items[list->count++] = strdup(text);
 }
 
@@ -99,10 +98,7 @@ static void icon_names_add(struct icon_names *names, const char *key, const char
     if (icon_names_find(names, key)) {
         return;
     }
-    if (names->count == names->capacity) {
-        names->capacity = names->capacity ? names->capacity * 2 : 128;
-        names->items = realloc(names->items, (size_t)names->capacity * sizeof(*names->items));
-    }
+    names->items = vela_grow(names->items, &names->capacity, names->count + 1, sizeof(*names->items));
     names->items[names->count].key = strdup(key);
     names->items[names->count].icon = strdup(icon);
     ++names->count;
@@ -162,48 +158,6 @@ static void data_dirs(struct strings *dirs)
     strings_split(dirs, system && *system ? system : "/usr/local/share:/usr/share", ':');
 }
 
-// The values of some keys in a [section] of an .ini or .desktop file (for
-// repeated keys the last line wins). values[i] stays empty if the key is
-// missing.
-static void read_section(const char *path, const char *section, const char *const *keys, char (*values)[256],
-    int count)
-{
-    for (int i = 0; i < count; ++i) {
-        values[i][0] = '\0';
-    }
-    FILE *file = fopen(path, "r");
-    if (!file) {
-        return;
-    }
-    size_t section_length = strlen(section);
-    bool inside = false;
-    char *line = NULL;
-    size_t capacity = 0;
-    ssize_t n;
-    while ((n = getline(&line, &capacity, file)) >= 0) {
-        if (n > 0 && line[n - 1] == '\n') {
-            line[--n] = '\0';
-        }
-        if (line[0] == '[') {
-            inside = (size_t)n == section_length + 2 && strncmp(line + 1, section, section_length) == 0
-                && line[n - 1] == ']';
-            continue;
-        }
-        char *eq = inside ? strchr(line, '=') : NULL;
-        if (!eq) {
-            continue;
-        }
-        *eq = '\0';
-        for (int i = 0; i < count; ++i) {
-            if (strcmp(line, keys[i]) == 0) {
-                snprintf(values[i], sizeof(values[i]), "%s", eq + 1);
-            }
-        }
-    }
-    free(line);
-    fclose(file);
-}
-
 static void kdeglobals_path(char *out, size_t size)
 {
     const char *config = getenv("XDG_CONFIG_HOME");
@@ -233,7 +187,7 @@ struct vela_icons *vela_icons_create(void)
     static const char *const theme_key[] = { "Theme" };
     char theme[1][256];
     kdeglobals_path(path, sizeof(path));
-    read_section(path, "Icons", theme_key, theme, 1);
+    vela_ini_read(path, "Icons", theme_key, theme, 1);
     // The chain: the theme, those it inherits (Inherits), finally hicolor.
     struct strings pending = { 0 };
     strings_push(&pending, vela_path_component_safe(theme[0]) ? theme[0] : "breeze");
@@ -251,7 +205,7 @@ struct vela_icons *vela_icons_create(void)
             if (exists(path)) {
                 static const char *const inherits_key[] = { "Inherits" };
                 char inherits[1][256];
-                read_section(path, "Icon Theme", inherits_key, inherits, 1);
+                vela_ini_read(path, "Icon Theme", inherits_key, inherits, 1);
                 strings_split(&pending, inherits[0], ',');
                 break;
             }
@@ -318,7 +272,7 @@ static void scan_applications(struct vela_icons *icons, const char *apps, const 
         }
         static const char *const keys[] = { "Icon", "StartupWMClass" };
         char values[2][256];
-        read_section(path, "Desktop Entry", keys, values, 2);
+        vela_ini_read(path, "Desktop Entry", keys, values, 2);
         if (!values[0][0]) {
             continue;
         }
@@ -394,7 +348,7 @@ struct theme_dir {
 static int theme_dirs(const char *index, struct theme_dir **out)
 {
     *out = NULL;
-    FILE *file = fopen(index, "r");
+    FILE *file = fopen(index, "re");
     if (!file) {
         return 0;
     }
@@ -406,8 +360,9 @@ static int theme_dirs(const char *index, struct theme_dir **out)
     bool in_theme = false;
     char *line = NULL;
     size_t line_capacity = 0;
-    ssize_t n;
-    while ((n = getline(&line, &line_capacity, file)) >= 0) {
+    ssize_t n = 0;
+    int status;
+    while ((status = vela_read_line(file, &line, &line_capacity, &n)) > 0) {
         if (n > 0 && line[n - 1] == '\n') {
             line[--n] = '\0';
         }
@@ -422,10 +377,7 @@ static int theme_dirs(const char *index, struct theme_dir **out)
                     }
                 }
                 if (current < 0) {
-                    if (count == capacity) {
-                        capacity = capacity ? capacity * 2 : 64;
-                        dirs = realloc(dirs, (size_t)capacity * sizeof(*dirs));
-                    }
+                    dirs = vela_grow(dirs, &capacity, count + 1, sizeof(*dirs));
                     current = count++;
                     snprintf(dirs[current].name, sizeof(dirs[current].name), "%s", line + 1);
                     dirs[current].size = 0;
@@ -451,6 +403,13 @@ static int theme_dirs(const char *index, struct theme_dir **out)
     }
     free(line);
     fclose(file);
+    if (status < 0) {
+        // A partial index would list only some directories: treat it as no
+        // index, like a missing one.
+        strings_free(&listed);
+        free(dirs);
+        return 0;
+    }
 
     // In the order of Directories; a directory without a section counts as 0,
     // Threshold.

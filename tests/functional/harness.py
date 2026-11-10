@@ -75,7 +75,7 @@ class Session:
     """
 
     def __init__(self, scale=1.0, size="1920x1080@60", supervise=False, lock_hold_ms=None, env=None, startup=None,
-                 nofile=None, expected_exit=0):
+                 nofile=None, expected_exit=0, pass_fds=()):
         self.scale = scale
         self.size = size
         self.supervise = supervise
@@ -84,6 +84,7 @@ class Session:
         self.startup = startup # the startup command (-s), like the shell
         self.nofile = nofile
         self.expected_exit = expected_exit
+        self.pass_fds = tuple(pass_fds)  # descriptors the compositor inherits (test shims)
         self.process = None
         self.clients = []
         self.display = None
@@ -149,6 +150,7 @@ class Session:
         self.log_path = os.path.join(self.directory, "vela.log")
         self.log = open(self.log_path, "w")
         self.process = subprocess.Popen(command, env=env, stdout=self.log, stderr=subprocess.STDOUT,
+                                        pass_fds=self.pass_fds,
                                         start_new_session=True)
         self.display = self.wait_for_log(r"WAYLAND_DISPLAY=", lambda line: line.split("WAYLAND_DISPLAY=")[1].split()[0])
         # On hardware CI, prove which DRM render node Vela itself opened.

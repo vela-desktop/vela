@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "scene/frame.h"
+#include "alloc/alloc.h"
 #include "scene/night_light_policy.h"
 
 #include "geometry.h"
@@ -93,8 +94,8 @@ static int64_t region_area(const pixman_region32_t *region)
 
 static void union_box(pixman_region32_t *region, const struct wlr_box *box)
 {
-    pixman_region32_union_rect(region, region, box->x, box->y, (unsigned)(box->width > 0 ? box->width : 0),
-        (unsigned)(box->height > 0 ? box->height : 0));
+    vela_region_ok(pixman_region32_union_rect(region, region, box->x, box->y, (unsigned)(box->width > 0 ? box->width : 0),
+        (unsigned)(box->height > 0 ? box->height : 0)));
 }
 
 static struct vela_element *push_element(struct vela_elements *list)
@@ -158,7 +159,7 @@ static void surface_region_to_pixels(const struct vela_element *e, const pixman_
         int px2 = (int)fmin(right, outward ? ceil(x2) : floor(x2));
         int py2 = (int)fmin(bottom, outward ? ceil(y2) : floor(y2));
         if (px2 > px1 && py2 > py1) {
-            pixman_region32_union_rect(out, out, px1, py1, (unsigned)(px2 - px1), (unsigned)(py2 - py1));
+            vela_region_ok(pixman_region32_union_rect(out, out, px1, py1, (unsigned)(px2 - px1), (unsigned)(py2 - py1)));
         }
     }
 }
@@ -415,16 +416,16 @@ static void subtract_corners(const struct vela_element *e, pixman_region32_t *re
         return;
     }
     const struct wlr_box *r = &e->shape_rect;
-    pixman_region32_intersect_rect(region, region, r->x, r->y, (unsigned)r->width, (unsigned)r->height);
+    vela_region_ok(pixman_region32_intersect_rect(region, region, r->x, r->y, (unsigned)r->width, (unsigned)r->height));
     int c = (int)ceilf(e->shape_radius);
     pixman_region32_t corners;
     pixman_region32_init(&corners);
-    pixman_region32_union_rect(&corners, &corners, r->x, r->y, (unsigned)c, (unsigned)c);
-    pixman_region32_union_rect(&corners, &corners, r->x + r->width - c, r->y, (unsigned)c, (unsigned)c);
-    pixman_region32_union_rect(&corners, &corners, r->x, r->y + r->height - c, (unsigned)c, (unsigned)c);
-    pixman_region32_union_rect(&corners, &corners, r->x + r->width - c, r->y + r->height - c, (unsigned)c,
-        (unsigned)c);
-    pixman_region32_subtract(region, region, &corners);
+    vela_region_ok(pixman_region32_union_rect(&corners, &corners, r->x, r->y, (unsigned)c, (unsigned)c));
+    vela_region_ok(pixman_region32_union_rect(&corners, &corners, r->x + r->width - c, r->y, (unsigned)c, (unsigned)c));
+    vela_region_ok(pixman_region32_union_rect(&corners, &corners, r->x, r->y + r->height - c, (unsigned)c, (unsigned)c));
+    vela_region_ok(pixman_region32_union_rect(&corners, &corners, r->x + r->width - c, r->y + r->height - c, (unsigned)c,
+        (unsigned)c));
+    vela_region_ok(pixman_region32_subtract(region, region, &corners));
     pixman_region32_fini(&corners);
 }
 
@@ -462,12 +463,18 @@ static void cull_occluded(struct vela_elements *elements)
     for (int i = elements->count - 1; i >= 0; --i) {
         struct vela_element *e = &elements->items[i];
         pixman_region32_init_rect(&visible, e->box.x, e->box.y, (unsigned)e->box.width, (unsigned)e->box.height);
-        pixman_region32_subtract(&visible, &visible, &covered);
-        e->visible = pixman_region32_not_empty(&visible);
-        e->visible_area = e->visible ? region_area(&visible) : 0;
+        // Out of memory, `covered` (or `visible`) is broken, and stays broken
+        // for every element below: keep them all. Drawing too much is
+        // correct; dropping an element that shows is not, and redrawing the
+        // whole output would not bring it back.
+        bool known = vela_region_ok(pixman_region32_subtract(&visible, &visible, &covered));
+        e->visible = !known || pixman_region32_not_empty(&visible);
+        e->visible_area = !known ? (int64_t)e->box.width * e->box.height
+            : e->visible        ? region_area(&visible)
+                                : 0;
         if (e->visible) {
             opaque_region(e, &opaque);
-            pixman_region32_union(&covered, &covered, &opaque);
+            vela_region_ok(pixman_region32_union(&covered, &covered, &opaque));
         }
         pixman_region32_fini(&visible);
     }
@@ -494,12 +501,12 @@ static void expand_damage_for_blur(const struct vela_elements *elements, pixman_
             pixman_region32_t inside;
             pixman_region32_init_rect(&inside, zone.x1, zone.y1, (unsigned)(zone.x2 - zone.x1),
                 (unsigned)(zone.y2 - zone.y1));
-            pixman_region32_intersect(&inside, &inside, damage);
+            vela_region_ok(pixman_region32_intersect(&inside, &inside, damage));
             bool touched = pixman_region32_not_empty(&inside);
             pixman_region32_fini(&inside);
             if (touched && pixman_region32_contains_rectangle(damage, &zone) != PIXMAN_REGION_IN) {
-                pixman_region32_union_rect(damage, damage, zone.x1, zone.y1, (unsigned)(zone.x2 - zone.x1),
-                    (unsigned)(zone.y2 - zone.y1));
+                vela_region_ok(pixman_region32_union_rect(damage, damage, zone.x1, zone.y1, (unsigned)(zone.x2 - zone.x1),
+                    (unsigned)(zone.y2 - zone.y1)));
                 grown = true;
             }
         }
@@ -547,16 +554,16 @@ void vela_draw_elements(struct vela_scene *scene, struct vela_pass *pass, const 
             pixman_region32_t ring;
             pixman_region32_init_rect(&ring, dst.x, dst.y, (unsigned)dst.width, (unsigned)dst.height);
             if (clip) {
-                pixman_region32_intersect(&ring, &ring, clip);
+                vela_region_ok(pixman_region32_intersect(&ring, &ring, clip));
             }
             int inset = (int)ceilf(e->shape_radius);
             if (window.width > 2 * inset && window.height > 2 * inset) {
                 pixman_region32_t inner;
                 pixman_region32_init_rect(&inner, window.x + inset, window.y, (unsigned)(window.width - 2 * inset),
                     (unsigned)window.height);
-                pixman_region32_union_rect(&inner, &inner, window.x, window.y + inset, (unsigned)window.width,
-                    (unsigned)(window.height - 2 * inset));
-                pixman_region32_subtract(&ring, &ring, &inner);
+                vela_region_ok(pixman_region32_union_rect(&inner, &inner, window.x, window.y + inset, (unsigned)window.width,
+                    (unsigned)(window.height - 2 * inset)));
+                vela_region_ok(pixman_region32_subtract(&ring, &ring, &inner));
                 pixman_region32_fini(&inner);
             }
             vela_pass_add_shadow(pass, &dst, &shape, &window, e->shape_radius, e->shadow_sigma, &e->color, &ring);
@@ -601,7 +608,7 @@ void vela_draw_elements(struct vela_scene *scene, struct vela_pass *pass, const 
             surface_region_to_pixels(e, blur, true, &region);
             wlr_region_transform(&region, &region, to_buffer, width, height);
             if (clip) {
-                pixman_region32_intersect(&region, &region, clip);
+                vela_region_ok(pixman_region32_intersect(&region, &region, clip));
             }
             if (pixman_region32_not_empty(&region)) {
                 struct vela_texture_draw panel = draw;
@@ -652,7 +659,7 @@ static void handle_damage(struct wl_listener *listener, void *data)
     // Upright output coordinates, already like scene_damage: wlroots' header
     // calls them buffer-local, but its cursors emit their box as is, and its
     // own scene converts that damage to the buffer as we do in render(), once.
-    pixman_region32_union(&frame->scene_damage, &frame->scene_damage, event->damage);
+    vela_region_ok(pixman_region32_union(&frame->scene_damage, &frame->scene_damage, event->damage));
     vela_output_schedule_frame(frame->owner);
 }
 
@@ -920,8 +927,8 @@ void vela_output_frame_surface_committed(struct vela_output_frame *frame, struct
     // kept its previous frame. A new buffer from X11 is damaged whole.
     if (!pixman_region32_not_empty(&region) && (surface->current.committed & WLR_SURFACE_STATE_BUFFER)
         && wlr_surface_state_has_buffer(&surface->current) && wlr_xwayland_surface_try_from_wlr_surface(surface)) {
-        pixman_region32_union_rect(&region, &region, 0, 0, (unsigned)surface->current.width,
-            (unsigned)surface->current.height);
+        vela_region_ok(pixman_region32_union_rect(&region, &region, 0, 0, (unsigned)surface->current.width,
+            (unsigned)surface->current.height));
     }
 #endif
     if (pixman_region32_not_empty(&region)) {
@@ -932,9 +939,9 @@ void vela_output_frame_surface_committed(struct vela_output_frame *frame, struct
         if (!exact) {
             wlr_region_expand(&region, &region, 1); // the filter touches the neighbors too
         }
-        pixman_region32_intersect_rect(&region, &region, e->box.x, e->box.y, (unsigned)e->box.width,
-            (unsigned)e->box.height);
-        pixman_region32_union(&frame->scene_damage, &frame->scene_damage, &region);
+        vela_region_ok(pixman_region32_intersect_rect(&region, &region, e->box.x, e->box.y, (unsigned)e->box.width,
+            (unsigned)e->box.height));
+        vela_region_ok(pixman_region32_union(&frame->scene_damage, &frame->scene_damage, &region));
     }
     pixman_region32_fini(&region);
     // Even without damage: the app waits for its frame callback.
@@ -1017,6 +1024,101 @@ void vela_output_frame_scanout_policy_changed(struct vela_output_frame *frame)
         frame->feedback_surface = NULL;
         frame->feedback_debounce = 0;
     }
+}
+
+bool vela_output_frame_safe(const struct vela_output_frame *frame)
+{
+    return !frame->damage_unknown;
+}
+
+// Damage is unknown: every region that tracks it may be broken. Start over
+// with whole-buffer damage. A single-rectangle region needs no allocation, so
+// this cannot fail in turn, and neither can the damage ring's reset.
+static void restart_damage_whole(struct vela_output_frame *frame, const struct wlr_box *whole)
+{
+    wlr_damage_ring_finish(&frame->ring);
+    wlr_damage_ring_init(&frame->ring);
+    pixman_region32_fini(&frame->scene_damage);
+    pixman_region32_init_rect(&frame->scene_damage, whole->x, whole->y, (unsigned)whole->width,
+        (unsigned)whole->height);
+}
+
+static void region_set_whole(pixman_region32_t *region, int width, int height)
+{
+    pixman_region32_fini(region);
+    pixman_region32_init_rect(region, 0, 0, (unsigned)(width > 0 ? width : 0), (unsigned)(height > 0 ? height : 0));
+}
+
+// A broken region (pixman's result after a failed allocation) fails the
+// self-check; the regions wlroots computes for us are checked this way, since
+// its own region calls do not report failures.
+static bool region_valid(pixman_region32_t *region)
+{
+    return pixman_region32_selfcheck(region);
+}
+
+// The three damage checks of vela_output_frame_render, each covering the
+// failures since the previous one (docs/memory-allocation-policy.md,
+// "Design for (4)"). They return the failure count they checked up to.
+
+// Before drawing: a failure since the last frame (here, or in damage
+// reported between frames), a broken scene damage or ring, or a previous
+// frame that was not drawn whole. The damage is unknown: every buffer is
+// redrawn whole, in this same frame.
+//
+// A counted failure may also have hit this frame's elements, built just
+// before: a broken blur region reads as empty, so the element is drawn
+// without its blur. One more frame, scheduled now, builds them again; it
+// does not repeat, since check_damage_after_drawing records the count.
+static unsigned long check_damage_before_drawing(struct vela_output_frame *frame, const struct wlr_box *whole)
+{
+    bool failed_since = vela_region_failures != frame->region_failures_seen;
+    if (frame->damage_unknown || failed_since || !region_valid(&frame->scene_damage)
+        || !region_valid(&frame->ring.current)) {
+        if (!frame->damage_unknown) {
+            wlr_log(WLR_ERROR, "%s: damage lost (out of memory); redrawing the whole output", frame->output->name);
+        }
+        restart_damage_whole(frame, whole);
+        frame->damage_unknown = true;
+    }
+    if (failed_since) {
+        vela_output_schedule_frame(frame->owner);
+    }
+    return vela_region_failures;
+}
+
+// After the damage ring: the ring and wlr_region_transform (wlroots) do not
+// report failures, so what they produced is checked too.
+static unsigned long check_damage_after_ring(struct vela_output_frame *frame, unsigned long checked,
+    pixman_region32_t *frame_damage, pixman_region32_t *buffer_damage, int width, int height)
+{
+    if (vela_region_failures != checked || !region_valid(frame_damage) || !region_valid(buffer_damage)
+        || !region_valid(&frame->ring.current)) {
+        if (!frame->damage_unknown) {
+            wlr_log(WLR_ERROR, "%s: damage lost (out of memory); redrawing the whole output", frame->output->name);
+        }
+        region_set_whole(frame_damage, width, height);
+        region_set_whole(buffer_damage, width, height);
+        // The ring's history is no longer trustworthy either.
+        wlr_damage_ring_finish(&frame->ring);
+        wlr_damage_ring_init(&frame->ring);
+    }
+    return vela_region_failures;
+}
+
+// After drawing: a failure while drawing (a clip region in the pass) can
+// leave parts of the buffer undrawn. The frame is not safe, and the next
+// one, scheduled now even if nothing else changes, redraws everything.
+static void check_damage_after_drawing(struct vela_output_frame *frame, unsigned long checked)
+{
+    bool drawn_whole = vela_region_failures == checked;
+    if (!drawn_whole) {
+        wlr_log(WLR_ERROR, "%s: drawing hit a failed region operation; redrawing the whole output",
+            frame->output->name);
+        vela_output_schedule_frame(frame->owner);
+    }
+    frame->damage_unknown = !drawn_whole;
+    frame->region_failures_seen = vela_region_failures;
 }
 
 void vela_output_frame_reset_damage(struct vela_output_frame *frame)
@@ -1151,7 +1253,7 @@ static void diff_with_last(struct vela_output_frame *frame)
             vela_surface_forget(last->items[j].surface, frame->output);
         }
     }
-    pixman_region32_union(&frame->scene_damage, &frame->scene_damage, &changed);
+    vela_region_ok(pixman_region32_union(&frame->scene_damage, &frame->scene_damage, &changed));
     pixman_region32_fini(&changed);
 
     struct vela_elements swap = *last;
@@ -1237,6 +1339,9 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
     }
     update_surfaces(frame, elements);
 
+    // Each check covers only the failures since the previous one.
+    unsigned long checked_failures = check_damage_before_drawing(frame, &whole);
+
     // Color: filters, and night light when the monitor's gamma won't take it,
     // are applied while drawing (cursor included).
     prepare_night_light(frame);
@@ -1289,6 +1394,10 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
 
     // Direct scanout: no drawing, the app's buffer goes on screen.
     if (candidate && try_scanout(frame, candidate, state)) {
+        // The client's own complete buffer is on screen; no region of ours
+        // shaped it.
+        frame->damage_unknown = false;
+        frame->region_failures_seen = vela_region_failures;
         wlr_output_state_finish(&own);
         if (frame->night_commit_pending) {
             frame->night_gamma_committed = frame->night_transform != NULL;
@@ -1337,7 +1446,7 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
     wlr_region_transform(&frame_damage, &frame->scene_damage, to_buffer, width, height);
     wlr_damage_ring_add(&frame->ring, &frame_damage);
     pixman_region32_clear(&frame->scene_damage);
-    pixman_region32_copy(&frame_damage, &frame->ring.current);
+    vela_region_ok(pixman_region32_copy(&frame_damage, &frame->ring.current));
     wlr_damage_ring_rotate_buffer(&frame->ring, buffer, &buffer_damage);
     // Blur dependencies live in upright scene coordinates.
     wlr_region_transform(&buffer_damage, &buffer_damage, transform, buffer->width, buffer->height);
@@ -1347,8 +1456,11 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
     // The damage ring may contain rectangles outside the output (for example
     // when a window crosses a monitor edge). Only valid buffer coordinates
     // must reach the renderer and wlroots' screencopy path.
-    pixman_region32_intersect_rect(&buffer_damage, &buffer_damage, 0, 0, buffer->width, buffer->height);
-    pixman_region32_intersect_rect(&frame_damage, &frame_damage, 0, 0, buffer->width, buffer->height);
+    vela_region_ok(pixman_region32_intersect_rect(&buffer_damage, &buffer_damage, 0, 0, buffer->width, buffer->height));
+    vela_region_ok(pixman_region32_intersect_rect(&frame_damage, &frame_damage, 0, 0, buffer->width, buffer->height));
+    // From here on a failure means this frame may show stale pixels.
+    const unsigned long drawing_failures =
+        check_damage_after_ring(frame, checked_failures, &frame_damage, &buffer_damage, buffer->width, buffer->height);
 
     bool ok = false;
     bool color_commit_failed = false;
@@ -1461,6 +1573,7 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
         // does not mean the gamma LUT was applied.
         night_color_commit_failed(frame);
     }
+    check_damage_after_drawing(frame, drawing_failures);
     pixman_region32_fini(&frame_damage);
     pixman_region32_fini(&buffer_damage);
     return ok;

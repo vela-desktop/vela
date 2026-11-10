@@ -20,6 +20,22 @@ int64_t vela_timespec_ns(const struct timespec *t);
 int64_t vela_now_ns(void);
 struct timespec vela_ns_timespec(int64_t ns);
 
+// Region operations (pixman) that failed, out of memory, since the process
+// started. Pixman then turns the destination into an empty "broken" region,
+// and every later operation that reads it fails too: damage that went
+// through a failed operation is unknown, so the frame path compares this
+// counter before and after its work and redraws whole output buffers
+// instead (docs/memory-allocation-policy.md, "Design for (4)").
+extern unsigned long vela_region_failures;
+// Wraps a pixman region operation's pixman_bool_t result.
+static inline bool vela_region_ok(int ok)
+{
+    if (!ok) {
+        ++vela_region_failures;
+    }
+    return ok != 0;
+}
+
 // The variable is set, not empty and not "0" (VELA_STATS=1).
 bool vela_env_flag(const char *name);
 // The variable is exactly "0": turns off something that is usually on
@@ -33,11 +49,6 @@ int vela_env_int(const char *name, int fallback);
 // snprintf that tells whether the text fits: false if it was cut (a cut path
 // must not be used).
 bool vela_format(char *out, size_t size, const char *format, ...) __attribute__((format(printf, 3, 4)));
-
-// An allocated array with room for at least `needed` elements of `size`
-// bytes: when it's too small, the capacity doubles (realloc). Usage:
-//   list = vela_grow(list, &capacity, count + 1, sizeof(*list));
-void *vela_grow(void *items, int *capacity, int needed, size_t size);
 
 // The desktop names of XDG_CURRENT_DESKTOP separated by ':' as apps expect
 // ("Vela;KDE;" becomes "Vela:KDE": Plasma Login copies DesktopNames from the

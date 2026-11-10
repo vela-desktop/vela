@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "render/wait_arrays.h"
+#include "alloc/alloc.h"
 #include "util.h"
 
 void vela_wait_arrays_reserve(VkSemaphoreSubmitInfo **infos, int *infos_capacity,

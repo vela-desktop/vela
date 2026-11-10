@@ -122,6 +122,9 @@ struct vela_server {
     // Exact XDG_RUNTIME_DIR inode inherited from the supervisor; -1 when
     // running nested/headless without supervision.
     int runtime_dir_fd;
+    // Lock state shared with the supervisor (lock_state.h); NULL when not
+    // supervised, or started by an older supervisor.
+    struct vela_lock_state *lock_state;
 
     struct vela_layers layers;
     struct wlr_layer_shell_v1 *layer_shell;
