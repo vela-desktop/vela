@@ -55,6 +55,7 @@ private slots:
         DesktopModel desktop(&apps);
         desktop.setShowIcons(false);
         desktop.setIconSize(2);
+        QVERIFY(saved(QStringLiteral("desktop/showIcons")).isValid()); // false, not absent
         QCOMPARE(saved(QStringLiteral("desktop/showIcons")).toBool(), false);
         QCOMPARE(saved(QStringLiteral("desktop/iconSize")).toInt(), 2);
     }
@@ -92,6 +93,7 @@ private slots:
         desktop.setShowIcons(false);
         QCOMPARE(view.count(), 1);
         QCOMPARE(desktop.showIcons(), false);
+        QVERIFY(saved(QStringLiteral("desktop/showIcons")).isValid()); // false, not absent
         QCOMPARE(saved(QStringLiteral("desktop/showIcons")).toBool(), false);
 
         desktop.setShowIcons(true);
