@@ -418,9 +418,6 @@ int vela_bt_read_object(struct vela_bt_daemon *d, const char *path, sd_bus_messa
             bool added = !adapter;
             if (added) {
                 adapter = add_adapter(d, path);
-                if (!adapter) {
-                    return -ENOMEM;
-                }
             }
             bool was_powered = adapter->powered;
             bool was_discovering = adapter->discovering;
@@ -438,9 +435,6 @@ int vela_bt_read_object(struct vela_bt_daemon *d, const char *path, sd_bus_messa
             struct vela_bt_device *device = vela_bt_device_find(d, path);
             if (!device) {
                 device = add_device(d, path);
-                if (!device) {
-                    return -ENOMEM;
-                }
             }
             if ((r = read_properties(m, read_device_property, device)) < 0) {
                 return r;

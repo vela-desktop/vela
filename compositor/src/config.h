@@ -99,7 +99,7 @@ void vela_config_migrate(void);
 // (ENOENT). NULL with *missing false: it exists but cannot be opened.
 FILE *vela_config_open(const char *path, bool *missing);
 // One line, as getline: 1 with *length set, 0 at a clean end of the file,
-// -1 on a read error (I/O, or no memory for the line).
+// -1 on a read error (I/O). No memory for the line aborts (vela_oom).
 int vela_read_line(FILE *file, char **line, size_t *capacity, ssize_t *length);
 
 // The values of some keys in a [section] of an .ini or .desktop file (for

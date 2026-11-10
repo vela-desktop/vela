@@ -129,10 +129,11 @@ void vela_bt_question_resend(struct vela_bt_daemon *d)
 
 int vela_bt_present_questions(struct vela_bt_daemon *d, sd_bus_message *call)
 {
-    if (!d->presenters && sd_bus_track_new(d->session, &d->presenters, NULL, NULL) < 0) {
-        return -ENOMEM;
+    int r = d->presenters ? 0 : sd_bus_track_new(d->session, &d->presenters, NULL, NULL);
+    if (r < 0) {
+        return r;
     }
-    int r = sd_bus_track_add_sender(d->presenters, call);
+    r = sd_bus_track_add_sender(d->presenters, call);
     if (r < 0) {
         return r;
     }

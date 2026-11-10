@@ -86,7 +86,7 @@ static void watch_run(struct vela_up_daemon *d)
 static void read_source(struct vela_up_daemon *d)
 {
     char *path = path_in(d->config_dir, "updates.conf");
-    FILE *f = path ? fopen(path, "re") : NULL;
+    FILE *f = fopen(path, "re");
     free(path);
     char *source = NULL;
     char line[4200];
@@ -118,7 +118,7 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     // checks within one second must both be observed. Reloads triggered by
     // run.json or install.json must not reapply an old check.
     struct stat observed;
-    if (path && stat(path, &observed) == 0
+    if (stat(path, &observed) == 0
         && (observed.st_dev != d->file_seen_dev || observed.st_ino != d->file_seen_ino
             || observed.st_mtim.tv_sec != d->file_seen_mtime.tv_sec
             || observed.st_mtim.tv_nsec != d->file_seen_mtime.tv_nsec)) {
@@ -135,11 +135,11 @@ void vela_up_state_reload(struct vela_up_daemon *d)
 
     path = path_in(d->state_dir, "install.json");
     struct vela_up_install install = { 0 };
-    bool changed = path && stat(path, &observed) == 0
+    bool changed = stat(path, &observed) == 0
         && (observed.st_dev != d->install_seen_dev || observed.st_ino != d->install_seen_ino
             || observed.st_mtim.tv_sec != d->install_seen_mtime.tv_sec
             || observed.st_mtim.tv_nsec != d->install_seen_mtime.tv_nsec);
-    if (path && vela_up_install_read(path, &install) >= 0
+    if (vela_up_install_read(path, &install) >= 0
         && (!d->install.present || install.finished_at >= d->install.finished_at)) {
         if (changed) {
             d->install_seen_dev = observed.st_dev;
@@ -159,7 +159,7 @@ void vela_up_state_reload(struct vela_up_daemon *d)
 
     path = path_in(d->state_dir, "run.json");
     struct vela_up_run run;
-    int r = path ? vela_up_run_read(path, &run) : -ENOMEM;
+    int r = vela_up_run_read(path, &run);
     free(path);
     vela_up_run_clear(&d->run);
     if (r >= 0 && run.present) {
@@ -243,7 +243,7 @@ int vela_up_state_start(struct vela_up_daemon *d)
     }
 
     char *path = path_in(d->state_dir, "announced");
-    FILE *f = path ? fopen(path, "re") : NULL;
+    FILE *f = fopen(path, "re");
     free(path);
     char line[128];
     if (f && fgets(line, sizeof(line), f)) {
@@ -270,7 +270,7 @@ void vela_up_announced(struct vela_up_daemon *d, const char *commit)
     // mkstemp creates a unique file with mode 0600 (regardless of umask).
     // Never open a predictable, potentially pre-existing file for writing.
     char *temp = path_in(d->state_dir, ".announced.XXXXXX");
-    int fd = temp ? mkstemp(temp) : -1;
+    int fd = mkstemp(temp);
     FILE *f = fd >= 0 ? fdopen(fd, "w") : NULL;
     if (!f && fd >= 0) {
         close(fd);

@@ -123,7 +123,7 @@ static void check_finish(struct vela_up_daemon *d)
 
     free(d->check_buffer);
     d->check_buffer = NULL;
-    d->check_length = 0;
+    d->check_length = d->check_capacity = 0;
     d->check_pid = 0;
     d->check_exited = false;
     d->check_child = sd_event_source_disable_unref(d->check_child);
@@ -151,11 +151,8 @@ static int on_check_output(sd_event_source *source, int fd, uint32_t revents, vo
         if (d->check_length + (size_t)n > MAX_OUTPUT) {
             continue; // not a report anymore; the parse will fail
         }
-        char *grown = realloc(d->check_buffer, d->check_length + (size_t)n + 1);
-        if (!grown) {
-            continue;
-        }
-        d->check_buffer = grown;
+        // Bounded by MAX_OUTPUT, so a failure is real exhaustion.
+        d->check_buffer = vela_grow(d->check_buffer, &d->check_capacity, d->check_length + (size_t)n + 1, 1);
         memcpy(d->check_buffer + d->check_length, chunk, (size_t)n);
         d->check_length += (size_t)n;
         d->check_buffer[d->check_length] = '\0';
