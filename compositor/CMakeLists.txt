@@ -442,7 +442,7 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-capture-damage-test PRIVATE -ffunction-sections -fdata-sections
         -Wall -Wextra -Wno-unused-parameter)
     target_link_options(vela-capture-damage-test PRIVATE -Wl,--gc-sections)
-    target_link_libraries(vela-capture-damage-test PRIVATE PkgConfig::WLROOTS
+    target_link_libraries(vela-capture-damage-test PRIVATE vela-alloc PkgConfig::WLROOTS
         PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN PkgConfig::VULKAN m)
     set_target_properties(vela-capture-damage-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.capture-damage COMMAND vela-capture-damage-test)

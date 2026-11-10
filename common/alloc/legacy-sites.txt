@@ -58,13 +58,6 @@ compositor/src/render/pixel_buffer.c calloc 2
 compositor/src/render/renderer.c calloc 2
 compositor/src/render/texture.c calloc 2
 compositor/src/render/vulkan.c calloc 7
-compositor/src/scene/capture.c calloc 2
-compositor/src/scene/effects.c calloc 1
-compositor/src/scene/frame.c calloc 1
-compositor/src/scene/output_capture.c calloc 3
-compositor/src/scene/ready.c calloc 2
-compositor/src/scene/scene.c calloc 5
-compositor/src/scene/surface.c calloc 1
 compositor/src/server.c calloc 1
 compositor/src/session.c calloc 1
 compositor/src/shell.c malloc 1

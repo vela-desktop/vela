@@ -3,6 +3,7 @@
 
 #include "scene/capture.h"
 
+#include "alloc/alloc.h"
 #include "render/renderer.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
@@ -110,11 +111,7 @@ void vela_capture_copy_frame(struct wlr_ext_image_capture_source_v1 *source,
         }
         return;
     }
-    struct pending_capture *pending = calloc(1, sizeof(*pending));
-    if (!pending) {
-        wlr_ext_image_copy_capture_frame_v1_fail(frame, EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
-        return;
-    }
+    struct pending_capture *pending = VELA_NEW(struct pending_capture);
     pending->frame = frame;
     pending->transform = transform;
     pending->when = *when;
@@ -234,7 +231,7 @@ static const struct wlr_ext_image_capture_source_v1_interface capture_impl = {
 struct vela_window_capture *vela_window_capture_create(struct vela_scene *scene, struct vela_node *source,
     struct vela_view *view, struct vela_renderer *renderer, struct wlr_allocator *allocator)
 {
-    struct vela_window_capture *capture = calloc(1, sizeof(*capture));
+    struct vela_window_capture *capture = VELA_NEW(struct vela_window_capture);
     wlr_ext_image_capture_source_v1_init(&capture->base, &capture_impl);
     capture->scene = scene;
     capture->node = source;

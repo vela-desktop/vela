@@ -672,7 +672,7 @@ static void handle_needs_frame(struct wl_listener *listener, void *data)
 struct vela_output_frame *vela_output_frame_create(struct vela_scene *scene, struct vela_renderer *renderer,
     struct wlr_output *output, struct vela_output *owner)
 {
-    struct vela_output_frame *frame = calloc(1, sizeof(*frame));
+    struct vela_output_frame *frame = VELA_NEW(struct vela_output_frame);
     frame->scene = scene;
     frame->renderer = renderer;
     frame->output = output;
