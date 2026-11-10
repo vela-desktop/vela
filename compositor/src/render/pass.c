@@ -9,6 +9,7 @@
 
 #include "render/render.h"
 
+#include "alloc/alloc.h"
 #include "color.h"
 #include "util.h"
 
@@ -191,9 +192,9 @@ static void add_draw(struct vela_pass *pass, const struct draw *draw, const stru
     pixman_region32_t region;
     pixman_region32_init_rect(&region, dst->x, dst->y, (unsigned)(dst->width > 0 ? dst->width : 0),
         (unsigned)(dst->height > 0 ? dst->height : 0));
-    pixman_region32_intersect_rect(&region, &region, 0, 0, pass->target->width, pass->target->height);
+    vela_region_ok(pixman_region32_intersect_rect(&region, &region, 0, 0, pass->target->width, pass->target->height));
     if (clip) {
-        pixman_region32_intersect(&region, &region, clip);
+        vela_region_ok(pixman_region32_intersect(&region, &region, clip));
     }
     int count = 0;
     const pixman_box32_t *rects = pixman_region32_rectangles(&region, &count);

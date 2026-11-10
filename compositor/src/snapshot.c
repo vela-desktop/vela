@@ -3,6 +3,7 @@
 
 #include "snapshot.h"
 
+#include "alloc/alloc.h"
 #include "motion.h"
 #include "scene/scene.h"
 #include "scene/surface.h"

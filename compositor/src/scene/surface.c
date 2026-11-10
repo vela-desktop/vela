@@ -3,6 +3,7 @@
 
 #include "scene/surface.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "scene/frame.h"
 #include "scene/scene.h"

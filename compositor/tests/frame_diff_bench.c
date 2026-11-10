@@ -376,7 +376,9 @@ static int test_diff(void)
         }
     }
 
-    // Empty scenes also swap safely.
+    // Empty scenes also swap safely. vela_grow never returns NULL, so the
+    // first empty frame allocates the initial capacity once; later ones
+    // reuse it.
     init_fixture(&f, 0, STABLE);
 #ifdef VELA_DIFF_ALLOCATION_TEST
     allocations = frees = 0;
@@ -385,8 +387,14 @@ static int test_diff(void)
     tick(&f);
 #ifdef VELA_DIFF_ALLOCATION_TEST
     track_allocations = false;
+    CHECK(allocations == 1 && frees == 0);
+    CHECK(f.frame.found != NULL && f.frame.found_capacity == 8);
+    allocations = frees = 0;
+    track_allocations = true;
+    tick(&f);
+    tick(&f);
+    track_allocations = false;
     CHECK(allocations == 0 && frees == 0);
-    CHECK(f.frame.found == NULL && f.frame.found_capacity == 0);
 #endif
     CHECK(!pixman_region32_not_empty(&f.frame.scene_damage));
     finish_fixture(&f);
