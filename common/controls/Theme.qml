@@ -27,6 +27,10 @@ QtObject {
     property bool windowActive: true // the app's Main.qml updates it
     readonly property color background: themed("background", windowActive ? Style.mica : Style.micaInactive)
 
+    // The theme selects only Vela-owned, built-in control implementations.
+    // Theme packages remain declarative: no arbitrary QML is loaded.
+    readonly property string controlsVariant: themed("controls-variant", "default")
+
     // --- controls and surfaces ---
     readonly property color control: themed("control", light ? Qt.rgba(1, 1, 1, 0.7) : Qt.rgba(1, 1, 1, 0.061))
     readonly property color controlHover: themed("controlHover", light ? Qt.rgba(0.976, 0.976, 0.976, 0.5) : Qt.rgba(1, 1, 1, 0.084))
@@ -129,6 +133,17 @@ QtObject {
         const contrast = (Math.max(back, text) + 0.05) / (Math.min(back, text) + 0.05)
         return contrast >= 3 ? Qt.color(preferred) : Qt.color(text > 0.5 ? "#000000" : "#ffffff")
     }
+    // Semantic tonal roles for optional expressive controls. These are
+    // static fallbacks, not a wallpaper-derived Material HCT palette.
+    readonly property color primary: themed("primary", accentFill)
+    readonly property color onPrimary: themed("onPrimary", accentText)
+    readonly property color primaryContainer: themed("primaryContainer", light ? "#eaddff" : "#4f378b")
+    readonly property color onPrimaryContainer: themed("onPrimaryContainer", light ? "#4f378b" : "#eaddff")
+    readonly property color secondaryContainer: themed("secondaryContainer", light ? "#e8def8" : "#4a4458")
+    readonly property color onSecondaryContainer: themed("onSecondaryContainer", light ? "#1d192b" : "#e8def8")
+    readonly property color surfaceContainer: themed("surfaceContainer", light ? "#f3edf7" : "#211f26")
+    readonly property color surfaceContainerHigh: themed("surfaceContainerHigh", light ? "#ece6f0" : "#2b2930")
+    readonly property color outline: themed("outline", light ? "#79747e" : "#938f99")
     readonly property color link: light ? Qt.darker(accent, 1.3) : Qt.lighter(accent, 1.5)
     // Icons of the theme matching the mode ("image://icon/l/<name>"; the
     // prefix reloads them when the mode changes). Always white on the accent.
@@ -140,6 +155,10 @@ QtObject {
     readonly property int radius: Math.max(0, Math.min(24, themed("radius", 4))) // controls
     readonly property int radiusCard: Math.max(0, Math.min(24, themed("radiusCard", 6)))
     readonly property int radiusOverlay: Math.max(0, Math.min(24, themed("radiusOverlay", 8))) // menus, flyouts, dialogs, panels
+    // Additional semantic shapes for expressive layouts.
+    readonly property int shapeSmall: Math.max(0, Math.min(24, themed("shapeSmall", 8)))
+    readonly property int shapeMedium: Math.max(0, Math.min(32, themed("shapeMedium", 12)))
+    readonly property int shapeLarge: Math.max(0, Math.min(48, themed("shapeLarge", 24)))
     // Shadows (Shadow.qml): WinUI's elevations for what floats. Flyouts:
     // menus, panels, previews; dialogs: above a window or the screen. The
     // compositor gives windows their own (scene/, two layers).
@@ -147,11 +166,11 @@ QtObject {
         flyout: { blur: 32, offset: 6, opacity: 0.45 },
         dialog: { blur: 48, offset: 16, opacity: 0.45 }
     })
-    readonly property int fontCaption: 12
-    readonly property int fontBody: 14
-    readonly property int fontBodyLarge: 18
-    readonly property int fontSubtitle: 20
-    readonly property int fontTitle: 28
+    readonly property int fontCaption: Math.max(9, Math.min(24, themed("fontCaption", 12)))
+    readonly property int fontBody: Math.max(10, Math.min(28, themed("fontBody", 14)))
+    readonly property int fontBodyLarge: Math.max(12, Math.min(36, themed("fontBodyLarge", 18)))
+    readonly property int fontSubtitle: Math.max(14, Math.min(44, themed("fontSubtitle", 20)))
+    readonly property int fontTitle: Math.max(16, Math.min(64, themed("fontTitle", 28)))
 
     // --- motion: four durations and one curve, the same as the compositor's
     // (compositor/src/motion.h), so windows and shell move the same way.
