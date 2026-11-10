@@ -105,6 +105,23 @@ private slots:
         QVERIFY(!vela::themes::token(QStringLiteral("subtleHover"))); // not themed (Theme.qml says why)
     }
 
+    // Theme-authored controls select only built-in variants. The new semantic
+    // palette, shape and typography keys stay typed and are not executable.
+    void expressiveControlTokens()
+    {
+        const vela::themes::File file = read("controls-variant=expressive\nlight.primary=#6750A4\n"
+                                             "dark.secondaryContainer=#4A4458\nshapeLarge=24\nfontBody=16\n");
+        QVERIFY(file.problems.isEmpty());
+        QCOMPARE(file.tokens.value(QStringLiteral("controls-variant")).toString(), QStringLiteral("expressive"));
+        QCOMPARE(file.tokens.value(QStringLiteral("light.primary")).value<QColor>(), QColor(QStringLiteral("#6750A4")));
+        QCOMPARE(file.tokens.value(QStringLiteral("dark.secondaryContainer")).value<QColor>(), QColor(QStringLiteral("#4A4458")));
+        QCOMPARE(file.tokens.value(QStringLiteral("shapeLarge")).toDouble(), 24.0);
+        QCOMPARE(file.tokens.value(QStringLiteral("fontBody")).toDouble(), 16.0);
+
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: controls-variant=custom-qml is not one of Vela's layouts (default, expressive): skipped");
+        QCOMPARE(kinds(read("controls-variant=custom-qml\n").problems), QStringList { "unknown-variant" });
+    }
+
     // A theme sets any surface's keys: numbers, and layouts among Vela's own.
     void surfaceKeysAndVariants()
     {
