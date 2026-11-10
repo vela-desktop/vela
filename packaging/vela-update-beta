@@ -344,6 +344,35 @@ if [ "$current" = 1 ] && [ "$force" = 0 ]; then
 fi
 echo ":: Vela Beta ${status}: $tag ($latestFull)"
 if [ "$check" = 1 ]; then exit 0; fi
+# Beta installs attested binaries, not a local build. Display the packaging
+# source from the exact release commit for transparency, without confusing it
+# with verification of the downloaded binary (which happens separately).
+# This is informative: a GitHub raw-content outage cannot block a signed update.
+showBetaRecipeFile() {
+    path="$1"
+    printf '%s\n' "--- $path ---"
+    url="https://raw.githubusercontent.com/$REPO/$latestFull/$path"
+    if curl -fsSL --connect-timeout 5 --max-time 15 -o "$work/recipe" "$url"; then
+        if [ "$path" = CMakeLists.txt ]; then
+            sed -n '/^option(VELA_PACKAGE_DEB /,$p' "$work/recipe"
+        else
+            cat "$work/recipe"
+        fi
+    else
+        printf '%s\n' "vela-update: couldn't display $path; inspect $url (signature verification still applies)." >&2
+    fi
+}
+
+printf '\n%s\n' ":: Beta packaging recipe for $backend at $tag ($latestFull)"
+case "$backend" in
+    arch) showBetaRecipeFile packaging/arch/PKGBUILD.beta ;;
+    fedora) showBetaRecipeFile packaging/fedora/vela.spec ;;
+    ubuntu)
+        showBetaRecipeFile packaging/ubuntu/build-depends
+        showBetaRecipeFile CMakeLists.txt ;;
+esac
+printf '%s\n\n' ":: End of packaging recipe"
+
 # Installation requires signed provenance. Fail before transferring the binary.
 if ! command -v cosign >/dev/null 2>&1; then
     fail missing-tool "cosign is required to install signed Beta packages"
