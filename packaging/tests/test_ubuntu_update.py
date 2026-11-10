@@ -118,6 +118,27 @@ class UbuntuFixture(UpdateFixture):
 
 
 class UbuntuUpdates(UbuntuFixture):
+    def test_install_shows_selected_ubuntu_dependency_and_cpack_recipe(self):
+        dependencies = self.source / "packaging/ubuntu/build-depends"
+        dependencies.parent.mkdir(parents=True, exist_ok=True)
+        dependencies.write_text("ca-certificates\\ncmake\\n")
+        (self.source / "CMakeLists.txt").write_text(
+            'project(Vela VERSION 0.1.0)\\n'
+            'option(VELA_PACKAGE_DEB "DEB" OFF)\\n'
+            'if(VELA_PACKAGE_DEB)\\n'
+            '    set(CPACK_GENERATOR "DEB")\\n'
+            '    include(CPack)\\n'
+            'endif()\\n')
+        revision = self.commit("add Debian packaging metadata")
+        result = self.run_update("--build")
+        self.assertIn("Packaging recipe for ubuntu at " + revision, result.stdout)
+        self.assertIn("--- packaging/ubuntu/build-depends ---", result.stdout)
+        self.assertIn("ca-certificates", result.stdout)
+        self.assertIn("--- CMakeLists.txt (DEB / CPack configuration) ---", result.stdout)
+        self.assertIn('set(CPACK_GENERATOR "DEB")', result.stdout)
+        self.assertLess(result.stdout.index('set(CPACK_GENERATOR "DEB")'),
+                        result.stdout.index(":: Building the ubuntu package"))
+
 
     def test_installed_beta_defaults_to_beta_helper_on_ubuntu(self):
         self.env["TEST_BETA_INSTALLED"] = "1"
