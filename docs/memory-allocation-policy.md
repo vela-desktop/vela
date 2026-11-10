@@ -1,10 +1,10 @@
 # Host allocation policy — design draft
 
 > **Status:** accepted with option c, fifth revision, 9 November 2026,
-> against `main` at `bb6cc0c`. Migration step 1 is done: the shared
-> lock-state page, the fail-closed marker reading, the allocation-free lock
-> fatal path, the damage fallback (all four items of "The premise"), the
-> configuration-read defects and the recovery test matrix. Every factual
+> against `main` at `bb6cc0c`. Migration steps 1–3 are done (#148): the
+> fail-closed recovery, `common/alloc` with its CI check, and the unchecked
+> `realloc` and `getline` sites. Step 4 is under way, one subsystem per PR
+> (see "Migration order"). Every factual
 > claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
@@ -997,6 +997,21 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    sites, with no `getline` left in it.
 4. Mechanical conversion of objects and strings, one subsystem per PR
    (render, scene, input/command, config/icons, daemons, update daemon).
+   A `NULL` check right after a converted allocation is removed with it,
+   together with the cleanup it guarded: the helper never returns `NULL`,
+   so the branch is unreachable and cannot leave partial state. Checks of a
+   function's result in its callers stay until step 8, because those
+   functions still fail for other reasons. A `count ? count : 1` guard
+   against a zero-size `calloc` goes too, since `vela_alloc` allocates a
+   minimum block for zero.
+   - **Done, scene** (`compositor/src/scene/`, 15 sites): the scene, its
+     tree, surface, rect and buffer nodes, the output frame, the surface
+     state, the background-effect object, the ready gate and its held
+     commits, and the window and output capture sources with their pending
+     frames. Four dead checks went: the two pending capture frames (which
+     failed the frame), the output source (which posted `no_memory` to the
+     manager) and the output-capture manager. The baseline is down to 172
+     sites.
 5. The frame path (point 7), measured against the existing benchmarks.
 6. Classification of library results (point 2b) and `VELA_MUST`, with
    local failure paths for the event sources that create descriptors.
