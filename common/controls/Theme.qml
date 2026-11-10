@@ -124,7 +124,7 @@ QtObject {
     // other one.
     function readableOn(background, preferred) {
         const text = luminanceOf(preferred)
-        return contrastOf(background, preferred) >= 3 ? Qt.color(preferred) : Qt.color(text > 0.5 ? "#000000" : "#ffffff")
+        return contrastOf(background, preferred) >= 3 ? asColor(preferred) : Qt.color(text > 0.5 ? "#000000" : "#ffffff")
     }
     // A "#rrggbb" string or a color as a color: Qt.color() takes only
     // strings.
