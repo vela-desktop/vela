@@ -14,6 +14,15 @@ more specific CPU target (for example `znver5` for AMD Zen 5) by setting
 `VELA_CPU_TARGET`. Such native packages are not portable to CPUs with fewer
 features. Below-v3 local builds are outside the supported hardware baseline.
 
+For installed desktop sessions, `vela-session` runs a POSIX-shell
+`vela-cpu-check` preflight **before** starting the optimized compositor.
+On an unsupported x86-64 CPU it exits with a readable error in
+`~/.local/state/vela/vela.log` (or `$XDG_STATE_HOME/vela/vela.log`)
+rather than knowingly launching a binary that may fault with `SIGILL`.
+This checks the official v3 minimum, not the additional features of locally
+specialized `native`, `x86-64-v4` or `znver5` builds. Starting the compositor
+directly bypasses the installed session preflight.
+
 The CPU requirement is independent of the **Vulkan 1.4** GPU/driver requirement.
 Adding a Vulkan-capable graphics card to an older computer does not guarantee
 that its CPU supports x86-64-v3; conversely, a modern CPU alone does not make
