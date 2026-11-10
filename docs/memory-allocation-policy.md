@@ -1,10 +1,10 @@
 # Host allocation policy — design draft
 
 > **Status:** accepted with option c, fifth revision, 9 November 2026,
-> against `main` at `bb6cc0c`. Migration step 1 is done: the shared
-> lock-state page, the fail-closed marker reading, the allocation-free lock
-> fatal path, the damage fallback (all four items of "The premise"), the
-> configuration-read defects and the recovery test matrix. Every factual
+> against `main` at `bb6cc0c`. Migration steps 1–3 are done (#148): the
+> fail-closed recovery, `common/alloc` with its CI check, and the unchecked
+> `realloc` and `getline` sites. Step 4 is under way, one subsystem per PR
+> (see "Migration order"). Every factual
 > claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
@@ -996,7 +996,31 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    a child and checks the abort and its line). The baseline is down to 188
    sites, with no `getline` left in it.
 4. Mechanical conversion of objects and strings, one subsystem per PR
-   (render, scene, input/command, config/icons, daemons, update daemon).
+   (render, scene, input/command, windows, outputs/session, config/icons,
+   daemons, update daemon). Windows: `view`, `layer`, `popup`, `xwayland`,
+   `x11_root`, `snap`, `switcher`, `workspace`, `decoration`, `text`.
+   Outputs/session: `output`, `output_manager`, `output_preview`, `lock`,
+   `session`, `server`, `nested`, `snapshot`, `supervisor_child`, `a11y`,
+   `capture_watch`, `brightness`, `bluetooth`. Config/icons also takes
+   `output_config.c` and `path_security.c`. `output_preview.c`'s
+   `wl_client_post_no_memory` stays for step 8, which names it.
+   A `NULL` check right after a converted allocation is removed with it,
+   together with the cleanup it guarded: the helper never returns `NULL`,
+   so the branch is unreachable and cannot leave partial state. Checks of a
+   function's result in its callers stay until step 8, because those
+   functions still fail for other reasons. A `count ? count : 1` guard
+   against a zero-size `calloc` goes too, since `vela_alloc` allocates a
+   minimum block for zero.
+   - **Done, windows** (23 sites): the XDG and X11 views, unmanaged X11
+     windows, layer surfaces, popups, the X11 root's `xdg_output` objects
+     and manager, the switcher, snapping and its group list, workspaces
+     with their names and the taskbar ordering, the decoration with its
+     title, app ID, texture owner and images, and the text renderer with
+     its pixels. Image sizes (`decoration.c` twice, `text.c`) go through
+     `vela_size_mul`, and the cleaned desktop name's `length + 1` through
+     `vela_size_add`. Two dead checks went, both in `x11_root.c`: the
+     `xdg_output` (which posted `no_memory` to the client) and the
+     manager. The baseline is down to 164 sites.
 5. The frame path (point 7), measured against the existing benchmarks.
 6. Classification of library results (point 2b) and `VELA_MUST`, with
    local failure paths for the event sources that create descriptors.
