@@ -138,6 +138,9 @@ static void protect(struct wl_client *client, struct wl_resource *resource, uint
             "Expected a wlr output configuration owned by this client");
         return;
     }
+    // VELA_NEW and vela_strdup never return NULL, so the next two
+    // no_memory branches cannot run. They stay until step 8 of
+    // docs/memory-allocation-policy.md, which removes this fallback.
     struct vela_output_preview *preview = VELA_NEW(struct vela_output_preview);
     if (!preview) {
         wl_client_post_no_memory(client);
