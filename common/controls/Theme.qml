@@ -123,27 +123,54 @@ QtObject {
     // (contrast at least 3:1, WCAG's for large text and controls), else the
     // other one.
     function readableOn(background, preferred) {
-        const luminance = c => {
-            const channel = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
-            const color = Qt.color(c)
-            return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b)
-        }
-        const back = luminance(background)
-        const text = luminance(preferred)
-        const contrast = (Math.max(back, text) + 0.05) / (Math.min(back, text) + 0.05)
-        return contrast >= 3 ? Qt.color(preferred) : Qt.color(text > 0.5 ? "#000000" : "#ffffff")
+        const text = luminanceOf(preferred)
+        return contrastOf(background, preferred) >= 3 ? Qt.color(preferred) : Qt.color(text > 0.5 ? "#000000" : "#ffffff")
+    }
+    // A "#rrggbb" string or a color as a color: Qt.color() takes only
+    // strings.
+    function asColor(c) {
+        return typeof c === "string" ? Qt.color(c) : c
+    }
+    // WCAG's relative luminance and contrast ratio (1 to 21).
+    function luminanceOf(c) {
+        const color = asColor(c)
+        const channel = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+        return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b)
+    }
+    function contrastOf(a, b) {
+        const la = luminanceOf(a)
+        const lb = luminanceOf(b)
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+    }
+    // A color part `t` (0 to 1) of the way from `a` to `b`, opaque.
+    function mix(a, b, t) {
+        const x = asColor(a)
+        const y = asColor(b)
+        return Qt.rgba(x.r + (y.r - x.r) * t, x.g + (y.g - x.g) * t, x.b + (y.b - x.b) * t, 1)
+    }
+    // Content over a tonal role: the theme's color (or Vela's) if it reads
+    // there at 4.5:1 (WCAG's for body text), else black or white, whichever
+    // reads better. A theme can tint it, never make it unreadable.
+    function legibleOn(background, preferred) {
+        if (contrastOf(background, preferred) >= 4.5)
+            return asColor(preferred)
+        return Qt.color(contrastOf(background, "#000000") >= contrastOf(background, "#ffffff") ? "#000000" : "#ffffff")
     }
     // Semantic tonal roles for optional expressive controls. These are
-    // static fallbacks, not a wallpaper-derived Material HCT palette.
+    // static fallbacks, not a wallpaper-derived Material HCT palette: a theme
+    // that sets only `primary` (or none) gets containers tinted by the accent,
+    // never a fixed hue that clashes with it.
     readonly property color primary: themed("primary", accentFill)
-    readonly property color onPrimary: themed("onPrimary", accentText)
-    readonly property color primaryContainer: themed("primaryContainer", light ? "#eaddff" : "#4f378b")
-    readonly property color onPrimaryContainer: themed("onPrimaryContainer", light ? "#4f378b" : "#eaddff")
-    readonly property color secondaryContainer: themed("secondaryContainer", light ? "#e8def8" : "#4a4458")
-    readonly property color onSecondaryContainer: themed("onSecondaryContainer", light ? "#1d192b" : "#e8def8")
-    readonly property color surfaceContainer: themed("surfaceContainer", light ? "#f3edf7" : "#211f26")
-    readonly property color surfaceContainerHigh: themed("surfaceContainerHigh", light ? "#ece6f0" : "#2b2930")
-    readonly property color outline: themed("outline", light ? "#79747e" : "#938f99")
+    // The theme file's on… keys; QML reads a property named on<Name> as a
+    // signal handler, so here they are <role>Text, like accentText.
+    readonly property color primaryText: legibleOn(primary, themed("onPrimary", light ? "#ffffff" : "#000000"))
+    readonly property color primaryContainer: themed("primaryContainer", light ? mix(primary, "#ffffff", 0.75) : mix(primary, "#000000", 0.6))
+    readonly property color primaryContainerText: legibleOn(primaryContainer, themed("onPrimaryContainer", light ? mix(primary, "#000000", 0.6) : mix(primary, "#ffffff", 0.75)))
+    readonly property color secondaryContainer: themed("secondaryContainer", light ? mix(primary, "#f0f0f0", 0.82) : mix(primary, "#2c2c2c", 0.8))
+    readonly property color secondaryContainerText: legibleOn(secondaryContainer, themed("onSecondaryContainer", light ? mix(primary, "#000000", 0.8) : mix(primary, "#ffffff", 0.85)))
+    readonly property color surfaceContainer: themed("surfaceContainer", light ? mix(primary, "#f5f5f5", 0.94) : mix(primary, "#1f1f1f", 0.93))
+    readonly property color surfaceContainerHigh: themed("surfaceContainerHigh", light ? mix(primary, "#ebebeb", 0.92) : mix(primary, "#2a2a2a", 0.91))
+    readonly property color outline: themed("outline", light ? mix(primary, "#737373", 0.85) : mix(primary, "#8f8f8f", 0.85))
     readonly property color link: light ? Qt.darker(accent, 1.3) : Qt.lighter(accent, 1.5)
     // Icons of the theme matching the mode ("image://icon/l/<name>"; the
     // prefix reloads them when the mode changes). Always white on the accent.

@@ -48,7 +48,7 @@ T.Switch {
             radius: size / 2
             anchors.verticalCenter: parent.verticalCenter
             x: 4 + control.visualPosition * (track.width - width - 8)
-            color: control.expressive ? (control.checked ? Theme.onPrimary : Theme.outline)
+            color: control.expressive ? (control.checked ? Theme.primaryText : Theme.outline)
                 : control.checked ? Theme.accentText : Theme.textSecondary
             // motion: the knob follows a drag; it slides only on its own.
             Behavior on x { enabled: !control.down && Theme.motion > 0; Eased { duration: Theme.fast } }

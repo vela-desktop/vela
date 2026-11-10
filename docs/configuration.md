@@ -349,6 +349,11 @@ Theme authors can use these additional semantic color roles:
 `primary`, `onPrimary`, `primaryContainer`, `onPrimaryContainer`,
 `secondaryContainer`, `onSecondaryContainer`, `surfaceContainer`,
 `surfaceContainerHigh`, `outline`. They accept the usual hex color syntax.
+Roles a theme leaves out are derived from `primary` (itself the accent by
+default), so a theme that sets only `primary` still gets matching containers.
+The `on…` roles are a request, not a guarantee: when one would read below
+4.5:1 on its background, Vela uses black or white instead. A thick slider
+(a Quick Settings style) keeps its shape and takes only the tonal colors.
 The numeric `shapeSmall` (0–24), `shapeMedium` (0–32) and `shapeLarge`
 (0–48) tokens supply corner sizes. `fontCaption`, `fontBody`,
 `fontBodyLarge`, `fontSubtitle` and `fontTitle` are now themeable font-size

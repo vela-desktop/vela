@@ -37,12 +37,15 @@ T.Button {
 
     background: Fill {
         radius: control.expressive ? height / 2 : Theme.radius
+        // Expressive states are layers of the content color over the fill
+        // (8% hovered, 12% pressed), so they read in both modes.
+        readonly property real stateLayer: control.down ? 0.12 : control.hovered || (control.subtle && control.checked) ? 0.08 : 0
         color: control.expressive
             ? (control.subtle
-                ? (control.down ? Theme.surfaceContainerHigh : control.hovered || control.checked ? Theme.surfaceContainer : "transparent")
+                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, stateLayer)
                 : control.accent
-                    ? (control.down ? Qt.darker(Theme.primary, 1.15) : control.hovered ? Qt.lighter(Theme.primary, 1.08) : Theme.primary)
-                    : (control.down ? Theme.surfaceContainerHigh : control.hovered ? Theme.surfaceContainer : Theme.secondaryContainer))
+                    ? Theme.mix(Theme.primary, Theme.primaryText, stateLayer)
+                    : Theme.mix(Theme.secondaryContainer, Theme.secondaryContainerText, stateLayer))
             : (control.subtle ? (control.down ? Theme.subtlePressed : control.hovered || control.checked ? Theme.subtleHover : Theme.subtleRest)
                 : control.accent ? (control.hovered ? Theme.accentFillHover : Theme.accentFill)
                 : (control.down ? Theme.controlPressed : control.hovered ? Theme.controlHover : Theme.control))
@@ -67,10 +70,11 @@ T.Button {
                 onAccent: control.accent
             }
             Text {
+                objectName: "label"
                 visible: control.text !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 text: control.text
-                color: control.expressive ? (control.accent ? Theme.onPrimary : control.subtle ? Theme.primary : Theme.onSecondaryContainer)
+                color: control.expressive ? (control.accent ? Theme.primaryText : control.subtle ? Theme.primary : Theme.secondaryContainerText)
                                           : (control.accent ? Theme.accentText : Theme.text)
                 font: control.font
             }
