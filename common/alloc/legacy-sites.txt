@@ -19,16 +19,6 @@ bluetooth/src/service.c strdup 1
 bluetooth/src/session.c strdup 1
 brightness/src/probe.c strdup 1
 capture/src/capture.c calloc 1
-compositor/src/config.c asprintf 2
-compositor/src/config.c realloc 1
-compositor/src/config.c strdup 5
-compositor/src/config.c strndup 1
-compositor/src/icons.c calloc 3
-compositor/src/icons.c malloc 1
-compositor/src/icons.c strdup 4
-compositor/src/icons.c strndup 1
-compositor/src/output_config.c strndup 1
-compositor/src/path_security.c strndup 1
 updates/src/check.c realloc 1
 updates/src/check.c strdup 4
 updates/src/install.c calloc 2

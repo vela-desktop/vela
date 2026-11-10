@@ -47,15 +47,13 @@ static char *modernize(const char *line)
     if (!*line || *line == '#' || !eq) {
         return NULL;
     }
-    char *key = strndup(line, (size_t)(eq - line));
+    char *key = vela_strndup(line, (size_t)(eq - line));
     const char *value = eq + 1;
     const char *new_key = vela_legacy_key(key);
     const char *new_value = vela_legacy_value(new_key ? new_key : key, value);
     char *result = NULL;
     if (new_key || new_value) {
-        if (asprintf(&result, "%s=%s", new_key ? new_key : key, new_value ? new_value : value) < 0) {
-            result = NULL;
-        }
+        result = vela_asprintf("%s=%s", new_key ? new_key : key, new_value ? new_value : value);
     }
     free(key);
     return result;
@@ -180,7 +178,7 @@ static bool read_lines(const char *path, struct lines *lines, bool *changed)
         if (modern && changed) {
             *changed = true;
         }
-        lines_push(lines, modern ? modern : strdup(line));
+        lines_push(lines, modern ? modern : vela_strdup(line));
     }
     free(line);
     fclose(file);
@@ -221,10 +219,7 @@ static bool write_lines(const char *path, const struct lines *lines)
 
 static void set_entry(struct vela_config *config, const char *line, size_t key_length)
 {
-    char *entry = strdup(line);
-    if (!entry) {
-        return;
-    }
+    char *entry = vela_strdup(line);
     entry[key_length] = '\0';
     for (int i = 0; i < config->count; ++i) {
         if (strcmp(config->entries[i].key, entry) == 0) {
@@ -234,16 +229,7 @@ static void set_entry(struct vela_config *config, const char *line, size_t key_l
             return;
         }
     }
-    if (config->count == config->capacity) {
-        int capacity = config->capacity ? config->capacity * 2 : 32;
-        struct vela_config_entry *entries = realloc(config->entries, (size_t)capacity * sizeof(*entries));
-        if (!entries) {
-            free(entry);
-            return;
-        }
-        config->entries = entries;
-        config->capacity = capacity;
-    }
+    config->entries = vela_grow(config->entries, &config->capacity, config->count + 1, sizeof(*config->entries));
     config->entries[config->count].key = entry;
     config->entries[config->count].value = entry + key_length + 1;
     ++config->count;
@@ -317,11 +303,7 @@ bool vela_config_write_checked(const char *key, const char *value)
         lines_free(&lines);
         return false; // never replace a file we could not read
     }
-    char *wanted = NULL;
-    if (asprintf(&wanted, "%s=%s", key, value) < 0) {
-        lines_free(&lines);
-        return false;
-    }
+    char *wanted = vela_asprintf("%s=%s", key, value);
     size_t key_length = strlen(key);
     bool found = false;
     int kept = 0;
@@ -334,17 +316,17 @@ bool vela_config_write_checked(const char *key, const char *value)
         }
         if (same_key) {
             free(line);
-            line = strdup(wanted);
+            line = vela_strdup(wanted);
             found = true;
         }
         lines.items[kept++] = line;
     }
     lines.count = kept;
     if (lines.count == 0) {
-        lines_push(&lines, strdup("# Vela settings (written by the Settings app)"));
+        lines_push(&lines, vela_strdup("# Vela settings (written by the Settings app)"));
     }
     if (!found) {
-        lines_push(&lines, strdup(wanted));
+        lines_push(&lines, vela_strdup(wanted));
     }
     free(wanted);
     bool ok = write_lines(path, &lines);
