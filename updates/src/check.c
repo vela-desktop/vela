@@ -7,6 +7,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "child.h"
 #include "config.h"
 #include "log.h"
@@ -101,20 +102,17 @@ int vela_up_clock_start(struct vela_up_daemon *d)
 
 static void check_finish(struct vela_up_daemon *d)
 {
-    d->check_buffer = d->check_buffer ? d->check_buffer : strdup("");
+    d->check_buffer = d->check_buffer ? d->check_buffer : vela_strdup("");
     struct vela_up_check check;
-    if (!d->check_buffer || vela_up_check_parse(d->check_buffer, &check) < 0) {
+    if (vela_up_check_parse(d->check_buffer, &check) < 0) {
         // No report at all: the script couldn't even start, or crashed.
         vela_up_log("vela-update --check ended without a result (status %d)", d->check_status);
         memset(&check, 0, sizeof(check));
         check.valid = true;
-        check.status = strdup("error");
-        check.error_code = strdup("failed");
-        check.error_message = strdup("The update check ended without a result.");
+        check.status = vela_strdup("error");
+        check.error_code = vela_strdup("failed");
+        check.error_message = vela_strdup("The update check ended without a result.");
         check.checked_at = (int64_t)time(NULL);
-        if (!check.status || !check.error_code || !check.error_message) {
-            vela_up_check_clear(&check);
-        }
     }
     bool failed = check.valid && strcmp(check.status, "error") == 0;
     bool network = failed

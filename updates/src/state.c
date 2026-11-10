@@ -8,6 +8,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "log.h"
 
 #include <errno.h>
@@ -23,14 +24,13 @@
 
 static char *path_in(const char *dir, const char *name)
 {
-    char *path = NULL;
-    return asprintf(&path, "%s/%s", dir, name) < 0 ? NULL : path;
+    return vela_asprintf("%s/%s", dir, name);
 }
 
 static void set_string(char **field, const char *value)
 {
     free(*field);
-    *field = value && *value ? strdup(value) : NULL;
+    *field = value && *value ? vela_strdup(value) : NULL;
 }
 
 // A check's outcome, from check.json or our own check's output, in the
@@ -96,7 +96,7 @@ static void read_source(struct vela_up_daemon *d)
             if (newline) {
                 *newline = '\0';
             }
-            source = strdup(line + 7);
+            source = vela_strdup(line + 7);
             break;
         }
     }
@@ -104,7 +104,7 @@ static void read_source(struct vela_up_daemon *d)
         fclose(f);
     }
     free(d->source);
-    d->source = source && *source ? source : strdup("https://github.com/vela-desktop/vela.git");
+    d->source = source && *source ? source : vela_strdup("https://github.com/vela-desktop/vela.git");
     if (source && !*source) {
         free(source);
     }
@@ -172,11 +172,11 @@ void vela_up_state_reload(struct vela_up_daemon *d)
                 && (!d->install.present || d->install.finished_at < run.started_at)) {
                 vela_up_install_clear(&d->install);
                 d->install.present = true;
-                d->install.channel = strdup(run.channel);
-                d->install.result = strdup("cancelled");
-                d->install.error_code = strdup("cancelled");
-                d->install.error_message = strdup("The update was interrupted.");
-                d->install.installed_version = strdup("");
+                d->install.channel = vela_strdup(run.channel);
+                d->install.result = vela_strdup("cancelled");
+                d->install.error_code = vela_strdup("cancelled");
+                d->install.error_message = vela_strdup("The update was interrupted.");
+                d->install.installed_version = vela_strdup("");
                 d->install.finished_at = (int64_t)time(NULL);
             }
             vela_up_run_clear(&run);
@@ -212,10 +212,7 @@ static int on_inotify(sd_event_source *source, int fd, uint32_t revents, void *d
 
 static int make_dirs(const char *path)
 {
-    char *copy = strdup(path);
-    if (!copy) {
-        return -ENOMEM;
-    }
+    char *copy = vela_strdup(path);
     for (char *slash = strchr(copy + 1, '/'); slash; slash = strchr(slash + 1, '/')) {
         *slash = '\0';
         mkdir(copy, 0700);
