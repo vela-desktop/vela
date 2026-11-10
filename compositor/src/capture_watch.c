@@ -3,6 +3,7 @@
 
 #include "capture_watch.h"
 
+#include "alloc/alloc.h"
 #include "buffer.h"
 #include "command.h"
 #include "output.h"
@@ -292,10 +293,7 @@ static void handle_new_session(struct wl_listener *listener, void *data)
     if (capturer->shell) {
         return;
     }
-    struct session *session = calloc(1, sizeof(*session));
-    if (!session) {
-        return;
-    }
+    struct session *session = VELA_NEW(struct session);
     session->capturer = capturer;
     session->wlr = wlr;
     session->opened_ns = vela_now_ns();
@@ -337,11 +335,7 @@ static void resolve_frames(void *data)
             }
         }
         if (!stream) {
-            stream = calloc(1, sizeof(*stream));
-            if (!stream) {
-                free_frame(frame);
-                continue;
-            }
+            stream = VELA_NEW(struct screencopy_stream);
             stream->capturer = capturer;
             snprintf(stream->output, sizeof(stream->output), "%s", wlr->output->name);
             wl_list_init(&stream->frames);
@@ -372,10 +366,7 @@ static void handle_resource_created(struct wl_listener *listener, void *data)
     if (capturer->shell) {
         return;
     }
-    struct screencopy_frame *frame = calloc(1, sizeof(*frame));
-    if (!frame) {
-        return;
-    }
+    struct screencopy_frame *frame = VELA_NEW(struct screencopy_frame);
     frame->capturer = capturer;
     frame->resource = resource;
     wl_list_insert(watch->unresolved.prev, &frame->link);
@@ -423,10 +414,7 @@ static void handle_client_created(struct wl_listener *listener, void *data)
 {
     struct vela_capture_watch *watch = wl_container_of(listener, watch, client_created);
     struct wl_client *client = data;
-    struct capturer *capturer = calloc(1, sizeof(*capturer));
-    if (!capturer) {
-        return;
-    }
+    struct capturer *capturer = VELA_NEW(struct capturer);
     capturer->watch = watch;
     capturer->client = client;
     wl_client_get_credentials(client, &capturer->pid, NULL, NULL);
@@ -591,7 +579,7 @@ static void publish(struct vela_capture_watch *watch)
     const char *text = vela_buffer_text(&json);
     if (!watch->published || strcmp(watch->published, text) != 0) {
         free(watch->published);
-        watch->published = strdup(text);
+        watch->published = vela_strdup(text);
         vela_commands_notify(watch->server, "capture");
     }
     vela_buffer_finish(&json);
@@ -657,10 +645,7 @@ struct vela_capture_watch *vela_capture_watch_create(struct vela_server *server,
     struct wlr_ext_image_copy_capture_manager_v1 *copy_capture, struct wlr_screencopy_manager_v1 *screencopy)
 {
     (void)screencopy; // its frames are seen per client (resource_created)
-    struct vela_capture_watch *watch = calloc(1, sizeof(*watch));
-    if (!watch) {
-        return NULL;
-    }
+    struct vela_capture_watch *watch = VELA_NEW(struct vela_capture_watch);
     watch->server = server;
     wl_list_init(&watch->capturers);
     wl_list_init(&watch->unresolved);

@@ -3,6 +3,7 @@
 
 #include "output.h"
 
+#include "alloc/alloc.h"
 #include "brightness.h"
 #include "config.h"
 #include "geometry.h"
@@ -223,7 +224,7 @@ static void prepare_cursor_swapchain(struct vela_server *server, struct wlr_outp
 
 void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
 {
-    struct vela_output *output = calloc(1, sizeof(*output));
+    struct vela_output *output = VELA_NEW(struct vela_output);
     output->server = server;
     output->wlr = wlr;
     output->powered = true;

@@ -263,7 +263,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, new_surface);
     struct wlr_session_lock_surface_v1 *wlr = data;
-    struct lock_surface *surface = calloc(1, sizeof(*surface));
+    struct lock_surface *surface = VELA_NEW(struct lock_surface);
     surface->server = lock->server;
     surface->wlr = wlr;
     surface->tree = vela_tree_create(lock->server->layers.lock);
@@ -445,7 +445,7 @@ static void handle_new_inhibitor(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, new_inhibitor);
     struct wlr_idle_inhibitor_v1 *inhibitor = data;
-    struct inhibitor_watch *watch = calloc(1, sizeof(*watch));
+    struct inhibitor_watch *watch = VELA_NEW(struct inhibitor_watch);
     watch->lock = lock;
     vela_listen(&inhibitor->events.destroy, &watch->destroy, handle_inhibitor_destroy);
     vela_lock_note_activity(lock);
@@ -646,7 +646,7 @@ static int handle_caffeine_timer(void *data)
 
 struct vela_lock *vela_lock_create(struct vela_server *server)
 {
-    struct vela_lock *lock = calloc(1, sizeof(*lock));
+    struct vela_lock *lock = VELA_NEW(struct vela_lock);
     lock->server = server;
     lock->lock_on_idle = true;
     vela_node_set_enabled(&server->layers.lock->node, false);

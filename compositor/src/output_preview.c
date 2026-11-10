@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "output_preview.h"
+#include "alloc/alloc.h"
 #include "output_manager.h"
 #include "output.h"
 #include "server.h"
@@ -137,13 +138,13 @@ static void protect(struct wl_client *client, struct wl_resource *resource, uint
             "Expected a wlr output configuration owned by this client");
         return;
     }
-    struct vela_output_preview *preview = calloc(1, sizeof(*preview));
+    struct vela_output_preview *preview = VELA_NEW(struct vela_output_preview);
     if (!preview) {
         wl_client_post_no_memory(client);
         return;
     }
     preview->owner = owner;
-    preview->preserve_position = strdup(preserve_position);
+    preview->preserve_position = vela_strdup(preserve_position);
     if (!preview->preserve_position) {
         free(preview);
         wl_client_post_no_memory(client);
@@ -196,10 +197,7 @@ static void bind_manager(struct wl_client *client, void *data, uint32_t version,
 
 void vela_output_preview_init(struct vela_server *server)
 {
-    struct vela_output_previews *owner = calloc(1, sizeof(*owner));
-    if (!owner) {
-        return;
-    }
+    struct vela_output_previews *owner = VELA_NEW(struct vela_output_previews);
     owner->server = server;
     wl_list_init(&owner->previews);
     owner->global = wl_global_create(server->display, &vela_output_preview_manager_v1_interface, 1, owner, bind_manager);

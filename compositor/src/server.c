@@ -3,6 +3,7 @@
 
 #include "server.h"
 
+#include "alloc/alloc.h"
 #include "a11y.h"
 #include "capture_watch.h"
 #include "bluetooth.h"
@@ -322,7 +323,7 @@ struct vela_server *vela_server_create(bool *unsupported_gpu, bool *device_lost)
 {
     if (unsupported_gpu) *unsupported_gpu = false;
     if (device_lost) *device_lost = false;
-    struct vela_server *server = calloc(1, sizeof(*server));
+    struct vela_server *server = VELA_NEW(struct vela_server);
     server->runtime_dir_fd = -1;
     if (!init(server)) {
         // What was already created is left to the process, which is about to
