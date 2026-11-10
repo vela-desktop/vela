@@ -98,6 +98,41 @@ private slots:
         QCOMPARE(view.count(), 2);
         QVERIFY(saved(QStringLiteral("desktop/showIcons")).toBool());
     }
+
+    // Auto arrange: the flag is saved, and the saved positions are dropped
+    // (the desktop lays the icons out again).
+    void autoArrangeSavesAndClearsPositions()
+    {
+        AppModel apps;
+        DesktopModel desktop(&apps);
+        desktop.setShowIcons(false); // a model without icons of its own
+
+        desktop.setAutoArrange(true);
+        QVERIFY(saved(QStringLiteral("desktop/autoArrange")).toBool());
+
+        desktop.setAutoArrange(false);
+        QVERIFY(!saved(QStringLiteral("desktop/autoArrange")).toBool());
+    }
+
+    // Align to grid: the choice is saved like the others.
+    void alignToGridIsSaved()
+    {
+        AppModel apps;
+        DesktopModel desktop(&apps);
+        desktop.setAlignToGrid(false);
+        QVERIFY(!saved(QStringLiteral("desktop/alignToGrid")).toBool());
+        desktop.setAlignToGrid(true);
+        QVERIFY(saved(QStringLiteral("desktop/alignToGrid")).toBool());
+    }
+
+    // Sort by: the mode is saved, so a restart keeps the order.
+    void sortModeIsSaved()
+    {
+        AppModel apps;
+        DesktopModel desktop(&apps);
+        desktop.sortBy(2); // item type
+        QCOMPARE(saved(QStringLiteral("desktop/sortMode")).toInt(), 2);
+    }
 };
 
 int main(int argc, char** argv)
