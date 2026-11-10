@@ -11,6 +11,7 @@ configure_file(vela-session-env ${CMAKE_BINARY_DIR}/compositor/vela-session-env 
 
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/vela-session DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(PROGRAMS vela-session-env DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
+install(PROGRAMS vela-cpu-check DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/vela.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)
 install(FILES vela-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
 install(FILES vela-session.target DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/systemd/user)
