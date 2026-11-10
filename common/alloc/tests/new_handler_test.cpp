@@ -80,6 +80,7 @@ int main()
             // Far beyond any address space: malloc fails, the handler runs.
             void *block = ::operator new(SIZE_MAX / 2);
             std::printf("%p\n", block);
+            ::operator delete(block);
         },
         &status);
     bool aborted = WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
@@ -94,6 +95,7 @@ int main()
             try {
                 void *block = ::operator new(SIZE_MAX / 2);
                 std::printf("%p\n", block);
+                ::operator delete(block);
             } catch (const std::bad_alloc &) {
                 _exit(3);
             }
