@@ -45,6 +45,10 @@ private slots:
     {
         QVERIFY(QDir().mkpath(QFileInfo(confPath()).absolutePath()));
         QFile::remove(confPath());
+        // No system-wide settings: an XDG_CONFIG_DIRS default elsewhere on
+        // the machine must not answer for the keys the test writes.
+        qputenv("XDG_CONFIG_DIRS", QDir(QCoreApplication::applicationDirPath())
+            .absoluteFilePath(QStringLiteral("no-system-settings")).toUtf8());
     }
 
     // The bug: the model wrote desktop/* keys through the default QSettings
