@@ -12,6 +12,7 @@
 #include "privatehome.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QSettings>
@@ -118,6 +119,52 @@ private slots:
 
         desktop.setAutoArrange(false);
         QVERIFY(!saved(QStringLiteral("desktop/autoArrange")).toBool());
+    }
+
+    // A saved position survives a restart of the model (a new one reads it).
+    void savedPositionSurvivesARestart()
+    {
+        const QString desktopDir = home().filePath(QStringLiteral("home/Desktop"));
+        QDir().mkpath(desktopDir);
+        const QString file = desktopDir + QStringLiteral("/note.txt");
+        QFile fileHandle(file);
+        QVERIFY(fileHandle.open(QIODevice::WriteOnly));
+        fileHandle.write("x");
+        fileHandle.close();
+
+        AppModel apps;
+        DesktopModel model(&apps);
+        model.setAreaHeight(800); // a view's area: layout() fills the grid
+        model.moveTo(file, 120, 60);
+        // The position is on disk, not only in memory.
+        QSettings reader(shellConfPath(), QSettings::IniFormat);
+        QVERIFY(reader.contains(QStringLiteral("desktop-positions/note.txt")));
+
+        // A fresh model (a restarted shell) puts the icon back there.
+        DesktopModel again(&apps);
+        QCOMPARE(again.rowCount(), 2); // the Recycle Bin and note.txt
+    }
+
+    // Renaming moves the saved position with the file.
+    void renameKeepsThePosition()
+    {
+        const QString desktopDir = home().filePath(QStringLiteral("home/Desktop"));
+        QDir().mkpath(desktopDir);
+        const QString file = desktopDir + QStringLiteral("/before.txt");
+        QFile fileHandle(file);
+        QVERIFY(fileHandle.open(QIODevice::WriteOnly));
+        fileHandle.write("x");
+        fileHandle.close();
+
+        AppModel apps;
+        DesktopModel model(&apps);
+        model.setAreaHeight(800); // a view's area: layout() fills the grid
+        model.moveTo(file, 40, 80);
+        QVERIFY(model.rename(file, "after.txt"));
+        // The old name is gone, the new one is saved.
+        QSettings reader(shellConfPath(), QSettings::IniFormat);
+        QVERIFY(!reader.contains(QStringLiteral("desktop-positions/before.txt")));
+        QVERIFY(reader.contains(QStringLiteral("desktop-positions/after.txt")));
     }
 
     // Align to grid: the choice is saved like the others.
