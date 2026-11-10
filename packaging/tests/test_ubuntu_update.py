@@ -121,14 +121,14 @@ class UbuntuUpdates(UbuntuFixture):
     def test_install_shows_selected_ubuntu_dependency_and_cpack_recipe(self):
         dependencies = self.source / "packaging/ubuntu/build-depends"
         dependencies.parent.mkdir(parents=True, exist_ok=True)
-        dependencies.write_text("ca-certificates\\ncmake\\n")
+        dependencies.write_text("ca-certificates\ncmake\n")
         (self.source / "CMakeLists.txt").write_text(
-            'project(Vela VERSION 0.1.0)\\n'
-            'option(VELA_PACKAGE_DEB "DEB" OFF)\\n'
-            'if(VELA_PACKAGE_DEB)\\n'
-            '    set(CPACK_GENERATOR "DEB")\\n'
-            '    include(CPack)\\n'
-            'endif()\\n')
+            'project(Vela VERSION 0.1.0)\n'
+            'option(VELA_PACKAGE_DEB "DEB" OFF)\n'
+            'if(VELA_PACKAGE_DEB)\n'
+            '    set(CPACK_GENERATOR "DEB")\n'
+            '    include(CPack)\n'
+            'endif()\n')
         revision = self.commit("add Debian packaging metadata")
         result = self.run_update("--build")
         self.assertIn("Packaging recipe for ubuntu at " + revision, result.stdout)
