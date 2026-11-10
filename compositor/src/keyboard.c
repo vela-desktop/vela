@@ -3,6 +3,7 @@
 
 #include "keyboard.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "switcher.h"
 #include "lock.h"
@@ -368,7 +369,7 @@ static void handle_destroy(struct wl_listener *listener, void *data)
 
 struct vela_keyboard *vela_keyboard_create(struct vela_input *input, struct wlr_keyboard *wlr)
 {
-    struct vela_keyboard *keyboard = calloc(1, sizeof(*keyboard));
+    struct vela_keyboard *keyboard = VELA_NEW(struct vela_keyboard);
     keyboard->input = input;
     keyboard->wlr = wlr;
     struct vela_config settings;

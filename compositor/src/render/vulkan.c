@@ -6,6 +6,7 @@
 
 #include "render/render.h"
 
+#include "alloc/alloc.h"
 #include "util.h"
 #include "sync.h"
 
@@ -45,7 +46,7 @@ static VkExtensionProperties *device_extensions(VkPhysicalDevice physical, uint3
 {
     *count = 0;
     vkEnumerateDeviceExtensionProperties(physical, NULL, count, NULL);
-    VkExtensionProperties *list = calloc(*count ? *count : 1, sizeof(*list));
+    VkExtensionProperties *list = VELA_NEW_N(VkExtensionProperties, *count);
     vkEnumerateDeviceExtensionProperties(physical, NULL, count, list);
     return list;
 }
@@ -76,7 +77,7 @@ static bool create_instance(struct vela_vulkan *vk)
     if (vela_env_flag("VELA_VULKAN_VALIDATION")) {
         uint32_t count = 0;
         vkEnumerateInstanceLayerProperties(&count, NULL);
-        VkLayerProperties *available = calloc(count ? count : 1, sizeof(*available));
+        VkLayerProperties *available = VELA_NEW_N(VkLayerProperties, count);
         vkEnumerateInstanceLayerProperties(&count, available);
         bool found = false;
         for (uint32_t i = 0; i < count; ++i) {
@@ -141,7 +142,7 @@ static bool pick_physical_device(struct vela_vulkan *vk, int backend_drm_fd)
 
     uint32_t count = 0;
     vkEnumeratePhysicalDevices(vk->instance, &count, NULL);
-    VkPhysicalDevice *devices = calloc(count ? count : 1, sizeof(*devices));
+    VkPhysicalDevice *devices = VELA_NEW_N(VkPhysicalDevice, count);
     vkEnumeratePhysicalDevices(vk->instance, &count, devices);
 
     VkPhysicalDevice best = VK_NULL_HANDLE;
@@ -232,7 +233,7 @@ static bool supports_calibrated_timestamps(struct vela_vulkan *vk)
     if (!get_domains || get_domains(vk->physical, &count, NULL) != VK_SUCCESS) {
         return false;
     }
-    VkTimeDomainKHR *domains = calloc(count ? count : 1, sizeof(*domains));
+    VkTimeDomainKHR *domains = VELA_NEW_N(VkTimeDomainKHR, count);
     get_domains(vk->physical, &count, domains);
     bool device = false;
     bool monotonic = false;
@@ -248,7 +249,7 @@ static bool create_device(struct vela_vulkan *vk)
 {
     uint32_t family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(vk->physical, &family_count, NULL);
-    VkQueueFamilyProperties *families = calloc(family_count ? family_count : 1, sizeof(*families));
+    VkQueueFamilyProperties *families = VELA_NEW_N(VkQueueFamilyProperties, family_count);
     vkGetPhysicalDeviceQueueFamilyProperties(vk->physical, &family_count, families);
     bool found = false;
     for (uint32_t i = 0; i < family_count && !found; ++i) {
@@ -466,7 +467,7 @@ static VkDrmFormatModifierPropertiesEXT *format_modifiers(const struct vela_vulk
     VkFormatProperties2 props = { .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, .pNext = &list };
     vkGetPhysicalDeviceFormatProperties2(vk->physical, format, &props);
     *count = list.drmFormatModifierCount;
-    VkDrmFormatModifierPropertiesEXT *modifiers = calloc(*count ? *count : 1, sizeof(*modifiers));
+    VkDrmFormatModifierPropertiesEXT *modifiers = VELA_NEW_N(VkDrmFormatModifierPropertiesEXT, *count);
     list.pDrmFormatModifierProperties = modifiers;
     vkGetPhysicalDeviceFormatProperties2(vk->physical, format, &props);
     if (optimal_features) {
@@ -518,7 +519,7 @@ static void query_formats(struct vela_vulkan *vk)
 struct vela_vulkan *vela_vulkan_create(int backend_drm_fd, bool *device_lost)
 {
     if (device_lost) *device_lost = false;
-    struct vela_vulkan *vk = calloc(1, sizeof(*vk));
+    struct vela_vulkan *vk = VELA_NEW(struct vela_vulkan);
     vk->render_fd = -1;
     if (!create_instance(vk) || !pick_physical_device(vk, backend_drm_fd) || !create_device(vk)
         || !open_render_node(vk)) {

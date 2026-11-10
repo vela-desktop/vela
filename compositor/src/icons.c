@@ -33,7 +33,7 @@ struct strings {
 static void strings_push(struct strings *list, const char *text)
 {
     list->items = vela_grow(list->items, &list->capacity, list->count + 1, sizeof(*list->items));
-    list->items[list->count++] = strdup(text);
+    list->items[list->count++] = vela_strdup(text);
 }
 
 static bool strings_contain(const struct strings *list, const char *text)
@@ -62,7 +62,7 @@ static void strings_split(struct strings *list, const char *text, char separator
         const char *end = strchr(text, separator);
         size_t length = end ? (size_t)(end - text) : strlen(text);
         if (length > 0) {
-            char *item = strndup(text, length);
+            char *item = vela_strndup(text, length);
             strings_push(list, item);
             free(item);
         }
@@ -99,8 +99,8 @@ static void icon_names_add(struct icon_names *names, const char *key, const char
         return;
     }
     names->items = vela_grow(names->items, &names->capacity, names->count + 1, sizeof(*names->items));
-    names->items[names->count].key = strdup(key);
-    names->items[names->count].icon = strdup(icon);
+    names->items[names->count].key = vela_strdup(key);
+    names->items[names->count].icon = vela_strdup(icon);
     ++names->count;
 }
 
@@ -173,7 +173,7 @@ static void kdeglobals_path(char *out, size_t size)
 
 struct vela_icons *vela_icons_create(void)
 {
-    struct vela_icons *icons = calloc(1, sizeof(*icons));
+    struct vela_icons *icons = VELA_NEW(struct vela_icons);
     struct strings dirs = { 0 };
     data_dirs(&dirs);
     char path[PATH_MAX];
@@ -413,7 +413,7 @@ static int theme_dirs(const char *index, struct theme_dir **out)
 
     // In the order of Directories; a directory without a section counts as 0,
     // Threshold.
-    struct theme_dir *result = calloc((size_t)(listed.count ? listed.count : 1), sizeof(*result));
+    struct theme_dir *result = VELA_NEW_N(struct theme_dir, listed.count);
     for (int i = 0; i < listed.count; ++i) {
         snprintf(result[i].name, sizeof(result[i].name), "%s", listed.items[i]);
         for (int d = 0; d < count; ++d) {
@@ -541,7 +541,7 @@ static void render(const char *path, int size, struct vela_image *image)
         const unsigned char *data = cairo_image_surface_get_data(surface);
         image->width = size;
         image->height = size;
-        image->pixels = malloc((size_t)size * (size_t)size * 4);
+        image->pixels = VELA_NEW_N(uint32_t, vela_size_mul((size_t)size, (size_t)size));
         for (int y = 0; y < size; ++y) {
             memcpy(&image->pixels[(size_t)y * (size_t)size], data + (size_t)y * (size_t)stride, (size_t)size * 4);
         }
@@ -561,8 +561,8 @@ const struct vela_image *vela_icons_app(struct vela_icons *icons, const char *ap
             return &entry->image;
         }
     }
-    struct cached_icon *entry = calloc(1, sizeof(*entry));
-    entry->app_id = strdup(app_id);
+    struct cached_icon *entry = VELA_NEW(struct cached_icon);
+    entry->app_id = vela_strdup(app_id);
     entry->size = size;
     char path[PATH_MAX];
     if (find_file(icons, icon_name(icons, app_id), size, path, sizeof(path))) {

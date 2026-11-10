@@ -3,6 +3,7 @@
 
 #include "scene/effects.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "scene/scene.h"
 
@@ -115,7 +116,7 @@ static void handle_get_effect(struct wl_client *client, struct wl_resource *mana
         wl_client_post_no_memory(client);
         return;
     }
-    struct effect *effect = calloc(1, sizeof(*effect));
+    struct effect *effect = VELA_NEW(struct effect);
     effect->resource = resource;
     effect->surface = surface;
     effect->scene = wl_resource_get_user_data(manager);

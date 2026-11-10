@@ -3,6 +3,7 @@
 
 #include "process.h"
 
+#include "alloc/alloc.h"
 #include "util.h"
 
 #include <fcntl.h>
@@ -134,7 +135,7 @@ bool vela_child_start(struct vela_child *child, struct wl_event_loop *loop, cons
 {
     // A single fork, so the process stays our child and a pidfd in the Wayland
     // loop tells us when it ends.
-    char *copy = strdup(command);
+    char *copy = vela_strdup(command);
     free(child->command);
     child->command = copy;
     child->loop = loop;

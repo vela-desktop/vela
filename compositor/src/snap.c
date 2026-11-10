@@ -3,6 +3,7 @@
 
 #include "snap.h"
 
+#include "alloc/alloc.h"
 #include "buffer.h"
 #include "decoration.h"
 #include "focus.h"
@@ -207,7 +208,7 @@ void vela_snap_keyboard(struct vela_server *server, struct vela_view *view, uint
 
 struct vela_snapping *vela_snapping_create(void)
 {
-    struct vela_snapping *snapping = calloc(1, sizeof(*snapping));
+    struct vela_snapping *snapping = VELA_NEW(struct vela_snapping);
     snapping->tween = (struct vela_tween) { -1.0, 1.0, NULL };
     snapping->next_group = 1;
     return snapping;
@@ -421,7 +422,7 @@ void vela_snap_activate_group(struct vela_server *server, struct vela_view *view
     // list changes while they're brought forward: collect them first.
     uint32_t group = view->snap_group;
     int count = wl_list_length(&server->views);
-    struct vela_view **members = calloc((size_t)count + 1, sizeof(*members));
+    struct vela_view **members = VELA_NEW_N(struct vela_view *, (size_t)count + 1);
     int n = 0;
     struct vela_view *other;
     wl_list_for_each (other, &server->views, link) {

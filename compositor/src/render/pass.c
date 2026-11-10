@@ -120,11 +120,7 @@ struct vela_pass *vela_renderer_begin_pass(struct vela_renderer *renderer, struc
     if (!target) {
         return NULL;
     }
-    struct vela_pass *pass = calloc(1, sizeof(*pass));
-    if (!pass) {
-        wlr_log_errno(WLR_ERROR, "Renderer: allocating render pass");
-        return NULL;
-    }
+    struct vela_pass *pass = VELA_NEW(struct vela_pass);
     wlr_render_pass_init(&pass->base, &pass_impl);
     pass->renderer = renderer;
     pass->target = target;
@@ -568,7 +564,7 @@ static bool explicit_sync(const struct vela_pass *pass, const struct vela_textur
 // array.
 static struct vela_texture **foreign_textures(const struct vela_pass *pass, int *count)
 {
-    struct vela_texture **foreign = calloc((size_t)(pass->draw_count ? pass->draw_count : 1), sizeof(*foreign));
+    struct vela_texture **foreign = VELA_NEW_N(struct vela_texture *, pass->draw_count);
     *count = 0;
     for (int i = 0; i < pass->draw_count; ++i) {
         struct vela_texture *texture = pass->draws[i].texture;
@@ -614,8 +610,8 @@ static bool record(struct vela_pass *pass, VkCommandBuffer cmd, struct vela_text
     uint32_t family = renderer->vk->queue_family;
     VkPipelineLayout layout = renderer->layout;
 
-    VkImageMemoryBarrier2 *acquire = calloc((size_t)foreign_count + 1, sizeof(*acquire));
-    VkImageMemoryBarrier2 *release = calloc((size_t)foreign_count + 1, sizeof(*release));
+    VkImageMemoryBarrier2 *acquire = VELA_NEW_N(VkImageMemoryBarrier2, (size_t)foreign_count + 1);
+    VkImageMemoryBarrier2 *release = VELA_NEW_N(VkImageMemoryBarrier2, (size_t)foreign_count + 1);
     // The target's content is kept: only what changed is redrawn.
     acquire[0] = ownership(target->image, family, true, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -791,7 +787,7 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
 
     // The waits: one per explicit sync point, one for the target and one per
     // imported texture.
-    int *waits = calloc((size_t)(pass->wait_count + foreign_count + 1), sizeof(*waits));
+    int *waits = VELA_NEW_N(int, (size_t)pass->wait_count + (size_t)foreign_count + 1);
     int wait_count = 0;
     // Explicit sync: apps with linux-drm-syncobj-v1 say themselves which point
     // to wait for before reading the buffer.

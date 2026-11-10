@@ -125,7 +125,7 @@ static void collect(struct vela_snapshot *snapshot, struct vela_node *node, doub
 // coordinates: transformations happen around its center.
 static struct vela_snapshot *snapshot_create(struct vela_tree *parent, struct vela_node *source, struct wlr_box frame)
 {
-    struct vela_snapshot *snapshot = calloc(1, sizeof(*snapshot));
+    struct vela_snapshot *snapshot = VELA_NEW(struct vela_snapshot);
     snapshot->tree = vela_tree_create(parent);
     snapshot->frame = frame;
     double lx = 0.0;
@@ -244,7 +244,7 @@ void vela_snapshot_cancel(struct vela_server *server, struct vela_view *view)
 static struct animation *animation_create(struct vela_view *view, enum vela_snapshot_kind kind, struct wlr_box frame)
 {
     struct vela_tree *tree = view->tree;
-    struct animation *animation = calloc(1, sizeof(*animation));
+    struct animation *animation = VELA_NEW(struct animation);
     animation->kind = kind;
     animation->owner = kind == VELA_SNAPSHOT_CLOSE ? NULL : view;
     animation->snapshot = snapshot_create(tree->node.parent, &tree->node, frame);
