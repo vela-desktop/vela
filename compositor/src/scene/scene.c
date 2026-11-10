@@ -3,6 +3,7 @@
 
 #include "scene/scene.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "output.h"
 #include "scene/frame.h"
@@ -44,7 +45,7 @@ static void detach(struct vela_node *node)
 
 static struct vela_tree *tree_new(struct vela_scene *scene, struct vela_tree *parent)
 {
-    struct vela_tree *tree = calloc(1, sizeof(*tree));
+    struct vela_tree *tree = VELA_NEW(struct vela_tree);
     wl_list_init(&tree->children);
     node_init(&tree->node, VELA_NODE_TREE, scene, parent);
     return tree;
@@ -57,7 +58,7 @@ struct vela_tree *vela_tree_create(struct vela_tree *parent)
 
 struct vela_surface_node *vela_surface_node_create(struct vela_tree *parent, struct wlr_surface *surface)
 {
-    struct vela_surface_node *node = calloc(1, sizeof(*node));
+    struct vela_surface_node *node = VELA_NEW(struct vela_surface_node);
     node->surface = surface;
     node_init(&node->node, VELA_NODE_SURFACE, parent->node.scene, parent);
     return node;
@@ -66,7 +67,7 @@ struct vela_surface_node *vela_surface_node_create(struct vela_tree *parent, str
 struct vela_rect_node *vela_rect_node_create(struct vela_tree *parent, double width, double height,
     const struct wlr_render_color *color)
 {
-    struct vela_rect_node *rect = calloc(1, sizeof(*rect));
+    struct vela_rect_node *rect = VELA_NEW(struct vela_rect_node);
     rect->width = width;
     rect->height = height;
     rect->color = *color;
@@ -78,7 +79,7 @@ struct vela_buffer_node *vela_buffer_node_create(struct vela_tree *parent, struc
     struct wlr_texture *texture, const struct wlr_fbox *src, enum wl_output_transform transform, double width,
     double height)
 {
-    struct vela_buffer_node *node = calloc(1, sizeof(*node));
+    struct vela_buffer_node *node = VELA_NEW(struct vela_buffer_node);
     node->buffer = wlr_buffer_lock(buffer);
     node->texture = texture;
     node->src = *src;
@@ -331,7 +332,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
 
 struct vela_scene *vela_scene_create(void)
 {
-    struct vela_scene *scene = calloc(1, sizeof(*scene));
+    struct vela_scene *scene = VELA_NEW(struct vela_scene);
     wl_list_init(&scene->frames);
     wl_list_init(&scene->new_surface.link);
     scene->acrylic_tint = (struct wlr_render_color) { 0.11f * 0.55f, 0.11f * 0.55f, 0.12f * 0.55f, 0.55f };
