@@ -67,6 +67,7 @@ if pacman -Q base-devel >/dev/null 2>&1; then
     fail "base-devel should only be installed when a local build is requested"
 fi
 [[ -x /usr/lib/vela/vela-qt-rebuild-notice ]] || fail 'Missing Qt rebuild notification helper'
+[[ -x /usr/lib/vela/vela-cpu-check ]] || fail 'Missing CPU compatibility preflight helper'
 grep -Fxq 'Target = qt6-base' /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
     || fail 'Qt upgrade hook must match qt6-base'
 grep -Fxq 'Exec = /usr/lib/vela/vela-qt-rebuild-notice' /usr/share/libalpm/hooks/vela-qt-private-rebuild.hook \
