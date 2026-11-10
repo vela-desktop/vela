@@ -501,7 +501,7 @@ static void request_frame(struct vela_output *output)
     // with DRM blocks until the vblank).
     bool waiting = output->vblank_fd >= 0 ? output->awaiting_present : output->wlr->frame_pending;
     if (!waiting && !output->drawing && !output->latch_armed && !output->idle_frame) {
-        output->idle_frame = wl_event_loop_add_idle(output->server->loop, handle_idle_frame, output);
+        output->idle_frame = VELA_MUST(wl_event_loop_add_idle(output->server->loop, handle_idle_frame, output));
     }
 }
 

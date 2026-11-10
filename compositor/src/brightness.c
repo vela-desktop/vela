@@ -434,7 +434,7 @@ static void sync_all(void *data)
 static void schedule_sync(struct vela_brightness *brightness)
 {
     if (!brightness->sync) {
-        brightness->sync = wl_event_loop_add_idle(brightness->server->loop, sync_all, brightness);
+        brightness->sync = VELA_MUST(wl_event_loop_add_idle(brightness->server->loop, sync_all, brightness));
     }
 }
 

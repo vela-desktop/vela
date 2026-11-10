@@ -1059,9 +1059,6 @@ void vela_xwayland_init(struct vela_server *server)
     }
     // The outputs in pixels, for Xwayland alone.
     server->x11_root = vela_x11_root_create(server);
-    if (!server->x11_root) {
-        wlr_log(WLR_ERROR, "Xwayland: no xdg-output of its own, X11 apps get logical sizes");
-    }
     // Observe Wine's _WINE_HWND_STYLE notifications while forwarding every
     // event to wlroots for normal XWM management.
     server->xwayland->data = server;
