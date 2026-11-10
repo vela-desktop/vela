@@ -49,6 +49,9 @@ VELA_ALLOC_NORETURN void vela_alloc_misuse(const char *what, const char *file, i
 // A library call that can only fail for lack of memory returned NULL:
 // "vela: out of memory (<expression>) at <file>:<line>; rss <n> MiB; available <n> MiB".
 VELA_ALLOC_NORETURN void vela_must_failed(const char *expression, const char *file, int line);
+// A C++ operator new failed in `process` (the new handler of new_handler.h):
+// "vela: out of memory (operator new) in <process>; rss <n> MiB; available <n> MiB".
+VELA_ALLOC_NORETURN void vela_new_failed(const char *process);
 // `value`, or vela_must_failed when it is NULL.
 const void *vela_must_at(const void *value, const char *expression, const char *file, int line);
 

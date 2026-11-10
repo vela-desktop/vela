@@ -184,6 +184,15 @@ void vela_must_failed(const char *expression, const char *file, int line)
     finish(&out);
 }
 
+void vela_new_failed(const char *process)
+{
+    struct line out = { .length = 0 };
+    put(&out, "vela: out of memory (operator new) in ");
+    put(&out, process ? process : "?");
+    put_memory(&out);
+    finish(&out);
+}
+
 const void *vela_must_at(const void *value, const char *expression, const char *file, int line)
 {
     if (!value) {

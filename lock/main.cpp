@@ -14,6 +14,7 @@
 // checked with PAM (the "vela-lock" service, or "login" if not installed) in a
 // separate thread: a failure makes you wait a few seconds.
 
+#include "alloc/new_handler.h"
 #include "ext-session-lock-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
@@ -515,6 +516,7 @@ const wl_registry_listener registryListener { onGlobal, onGlobalRemove };
 
 int main(int argc, char* argv[])
 {
+    vela::install_new_handler("vela-lock");
     // Qt only for fonts and images: no Qt window.
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);

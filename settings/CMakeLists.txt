@@ -144,7 +144,7 @@ qt_add_resources(vela-settings "images"
     PREFIX "/vela"
     BASE ${PROJECT_SOURCE_DIR}
     FILES ${PROJECT_SOURCE_DIR}/images/vela_splash_169.svg)
-target_link_libraries(vela-settings PRIVATE
+target_link_libraries(vela-settings PRIVATE vela-alloc
     vela-displays
     Qt6::DBus
     Qt6::Gui
