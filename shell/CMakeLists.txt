@@ -295,6 +295,16 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-start-icon COMMAND vela-start-icon-test)
     set_tests_properties(shell-start-icon PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test Network)
+    qt_add_executable(vela-desktop-model-test tests/desktopmodel_test.cpp
+        src/desktopmodel.cpp src/desktopmodel.h src/appmodel.cpp src/appmodel.h
+        src/systemactions.cpp src/systemactions.h)
+    target_include_directories(vela-desktop-model-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
+    target_compile_options(vela-desktop-model-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-desktop-model-test PRIVATE vela-process Qt6::DBus Qt6::Gui Qt6::Network Qt6::Test)
+    add_test(NAME shell-desktop-model COMMAND vela-desktop-model-test)
+    set_tests_properties(shell-desktop-model PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
     target_include_directories(vela-tool-path-test PRIVATE src)
     target_compile_options(vela-tool-path-test PRIVATE -Wall -Wextra)
