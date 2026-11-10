@@ -840,7 +840,8 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   compositor's child supervision (`server.c`, `vela_child_init` for
   "Shell"). The only addition proposed is a `std::set_new_handler` in a
   shared C++ header that writes the same `vela: out of memory …` line before
-  aborting, so `vela.log` reads the same whichever process failed.
+  aborting, so `vela.log` reads the same whichever process failed (step 9
+  of the migration order).
 - **Signal handlers:** checked. The supervisor's handlers only call `kill`
   and set a `sig_atomic_t` (`supervisor.c` `on_terminate`). The compositor
   and Bluetooth daemon handle signals through their event loops
@@ -1102,6 +1103,15 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    `output_preview.c`, the silent returns, the update daemon's dropped
    data), with a review of each for partial state. The baseline reaches
    zero.
+9. The C++/Qt processes (point 9, "Scope"): a `std::set_new_handler` in a
+   shared C++ header, installed at the start of `main` in `vela-shell`,
+   Settings, `vela-lock`, the polkit agent and prompt, `vela-files` and
+   `vela-report-gui`. The handler has no size, file or line to report, so
+   it writes `vela: out of memory (operator new) in <process>` followed by
+   the same `rss` and `available` figures, through the allocation-free
+   writer that `vela_oom` uses, then calls `abort()`. `vela.log` then
+   reads the same whichever process failed. Tested like `vela_oom`: a child
+   forces a failed `new` and checks the abort and the line.
 
 ## Options considered
 
