@@ -115,6 +115,7 @@ Useful CMake options:
 | `VELA_BUILD_REPORT` | `ON` | Install the standalone diagnostic reporter; requires Python 3.10 or newer. |
 | `VELA_REPORT_GUI` | Same as `VELA_BUILD_SHELL` | Build the ordinary Qt Widgets reporting window, also usable in other desktops. |
 | `VELA_WLROOTS` | `wlroots-0.20` | pkg-config name used for wlroots. Only wlroots 0.20 is supported. |
+| `VELA_CPU_TARGET` | `x86-64-v3` | x86-64 ISA/codegen baseline; optional local override such as `native` or `znver5` for single-machine builds. |
 
 For example:
 
