@@ -16,6 +16,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "config.h"
 #include "log.h"
 
@@ -72,10 +73,8 @@ static const char *command(void)
 static char *user_dir(const char *variable, const char *fallback, const char *name)
 {
     const char *base = getenv(variable);
-    char *path = NULL;
-    int r = base && *base == '/' ? asprintf(&path, "%s/%s", base, name)
-                                 : asprintf(&path, "%s/%s/%s", getenv("HOME") ? getenv("HOME") : "", fallback, name);
-    return r < 0 ? NULL : path;
+    return base && *base == '/' ? vela_asprintf("%s/%s", base, name)
+                                : vela_asprintf("%s/%s/%s", getenv("HOME") ? getenv("HOME") : "", fallback, name);
 }
 
 static uint64_t boottime_us(void)

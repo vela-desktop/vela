@@ -2,12 +2,3 @@
 # (docs/memory-allocation-policy.md, "Enforcement"): <path> <call> <count>.
 # Checked by scripts/check-allocations.py. It only shrinks, down to empty.
 updates/src/check.c realloc 1
-updates/src/check.c strdup 4
-updates/src/install.c calloc 2
-updates/src/install.c strdup 6
-updates/src/main.c asprintf 2
-updates/src/report.c calloc 3
-updates/src/report.c strdup 9
-updates/src/report.c strndup 1
-updates/src/state.c asprintf 1
-updates/src/state.c strdup 9
