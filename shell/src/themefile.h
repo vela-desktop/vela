@@ -173,6 +173,9 @@ inline const QMap<QString, QStringList>& variants()
         { QStringLiteral("controls-variant"), { QStringLiteral("default"), QStringLiteral("expressive") } },
         // Where the tonal palette starts (accentsource.h).
         { QStringLiteral("color-source"), { QStringLiteral("accent"), QStringLiteral("wallpaper") } },
+        // How Vela's QML moves: the shared curve, or M3 Expressive's spatial
+        // ones (Theme.qml); windows keep the compositor's either way.
+        { QStringLiteral("motion-variant"), { QStringLiteral("default"), QStringLiteral("expressive") } },
     };
     return list;
 }

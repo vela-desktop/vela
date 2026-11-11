@@ -160,6 +160,7 @@ set(CONTROLS_QML_FILES
     controls/TonalSurface.qml
     controls/Fill.qml
     controls/Eased.qml
+    controls/Spatial.qml
     controls/ColorFade.qml
     controls/Icon.qml
     controls/Chevron.qml
@@ -226,6 +227,15 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME controls-no-effects COMMAND vela-controls-test)
     set_tests_properties(controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(controls controls-no-effects PROPERTIES TIMEOUT 120)
+    # The same runner with a theme of expressive controls and motion
+    # (quicktest.h, VELA_TEST_THEME), on the tests in tests/expressive/ only:
+    # the others assert the default look, and those skip themselves there.
+    add_test(NAME controls-expressive COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    add_test(NAME controls-expressive-no-effects COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    set_tests_properties(controls-expressive PROPERTIES ENVIRONMENT "VELA_TEST_THEME=expressive")
+    set_tests_properties(controls-expressive-no-effects PROPERTIES
+        ENVIRONMENT "VELA_TEST_THEME=expressive;VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(controls-expressive controls-expressive-no-effects PROPERTIES TIMEOUT 120)
 
     # vela-color against Material Color Utilities' own results.
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)

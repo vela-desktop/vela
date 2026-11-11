@@ -110,12 +110,13 @@ private slots:
     // and are not executable.
     void expressiveControlTokens()
     {
-        const vela::themes::File file = read("controls-variant=expressive\ncolor-source=wallpaper\nlight.primary=#6750A4\n"
+        const vela::themes::File file = read("controls-variant=expressive\nmotion-variant=expressive\ncolor-source=wallpaper\nlight.primary=#6750A4\n"
                                              "dark.secondaryContainer=#4A4458\nsurfaceBase=#FEF7FF\nonSurfaceVariant=#49454F\n"
                                              "shapeLarge=24\nshapeExtraLarge=28\nfontBody=16\n");
         QVERIFY(file.problems.isEmpty());
         QCOMPARE(file.tokens.value(QStringLiteral("controls-variant")).toString(), QStringLiteral("expressive"));
         QCOMPARE(file.tokens.value(QStringLiteral("color-source")).toString(), QStringLiteral("wallpaper"));
+        QCOMPARE(file.tokens.value(QStringLiteral("motion-variant")).toString(), QStringLiteral("expressive"));
         QCOMPARE(file.tokens.value(QStringLiteral("light.primary")).value<QColor>(), QColor(QStringLiteral("#6750A4")));
         QCOMPARE(file.tokens.value(QStringLiteral("dark.secondaryContainer")).value<QColor>(), QColor(QStringLiteral("#4A4458")));
         QCOMPARE(file.tokens.value(QStringLiteral("surfaceBase")).value<QColor>(), QColor(QStringLiteral("#FEF7FF")));
@@ -125,6 +126,7 @@ private slots:
         QCOMPARE(file.tokens.value(QStringLiteral("fontBody")).toDouble(), 16.0);
         using vela::themes::TokenKind;
         QCOMPARE(vela::themes::token(QStringLiteral("color-source"))->kind, TokenKind::Variant);
+        QCOMPARE(vela::themes::token(QStringLiteral("motion-variant"))->kind, TokenKind::Variant);
         QCOMPARE(vela::themes::token(QStringLiteral("tertiaryContainer"))->kind, TokenKind::Color);
         QCOMPARE(vela::themes::token(QStringLiteral("inverseOnSurface"))->kind, TokenKind::Color);
         QCOMPARE(vela::themes::token(QStringLiteral("shapeExtraSmall"))->kind, TokenKind::Number);
@@ -137,6 +139,9 @@ private slots:
         QCOMPARE(kinds(read("controls-variant=custom-qml\n").problems), QStringList { "unknown-variant" });
         QTest::ignoreMessage(QtWarningMsg, "theme test:1: color-source=image is not one of Vela's layouts (accent, wallpaper): skipped");
         QCOMPARE(kinds(read("color-source=image\n").problems), QStringList { "unknown-variant" });
+        // The compositor's motion is not a theme's: only Vela's two QML ones.
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: motion-variant=bouncy is not one of Vela's layouts (default, expressive): skipped");
+        QCOMPARE(kinds(read("motion-variant=bouncy\n").problems), QStringList { "unknown-variant" });
     }
 
     // A theme sets any surface's keys: numbers, and layouts among Vela's own.

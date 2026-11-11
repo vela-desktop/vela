@@ -284,4 +284,60 @@ QtObject {
     // cubic-bezier(0, 0, 0.2, 1): a decisive start, a soft landing. For exits
     // too, which are shorter: one that starts slowly seems to ignore the click.
     readonly property var decelerate: [0.0, 0.0, 0.2, 1.0, 1.0, 1.0]
+
+    // --- spatial motion: QML only, the compositor keeps the curve above
+    // (windows don't bounce). motion-variant=expressive moves positions,
+    // sizes and corners on M3 Expressive's spatial springs, as the
+    // cubic-bezier curves and durations M3 publishes for springs without a
+    // gesture (its web conversion). Colors and opacity keep ColorFade and
+    // Eased: they never overshoot (M3's effects springs). ---
+    readonly property string motionVariant: themed("motion-variant", "default")
+    readonly property bool spatialMotion: motionVariant === "expressive"
+    // M3's milliseconds (`ms`), scaled by spatialDuration() like every
+    // duration.
+    readonly property var spatial: ({
+        fast: { curve: [0.42, 1.67, 0.21, 0.90, 1.0, 1.0], ms: 350 },
+        "default": { curve: [0.38, 1.21, 0.22, 1.00, 1.0, 1.0], ms: 500 },
+        slow: { curve: [0.39, 1.29, 0.35, 0.98, 1.0, 1.0], ms: 650 }
+    })
+    // Vela's rule (M3 prescribes none): fast for small controls (a switch's
+    // knob, a button's corners, a tile), default for panels; slow is unused
+    // in the shell. Exits don't bounce: they stay Eased, in `normal`.
+    // The curve of a speed ("fast", "default", "slow"): decelerate with the
+    // default variant or without animation effects.
+    function spatialCurve(speed) {
+        return spatialMotion && animationEffects ? (spatial[speed] || spatial["default"]).curve : decelerate
+    }
+    // Its duration: `fallback` (the default variant's, a Theme token) with
+    // the default variant, `fast` without animation effects, else M3's times
+    // the duration scale.
+    function spatialDuration(speed, fallback) {
+        if (!spatialMotion)
+            return fallback
+        if (!animationEffects)
+            return fast
+        return Math.round((spatial[speed] || spatial["default"]).ms * duration)
+    }
+    // How far past its end the curve of a speed goes, as a fraction of the
+    // distance (0 when it doesn't): what a panel's blur region must leave
+    // room for. Computed once per curve.
+    readonly property var spatialOvershoots: ({
+        fast: overshootOf(spatial.fast.curve),
+        "default": overshootOf(spatial["default"].curve),
+        slow: overshootOf(spatial.slow.curve)
+    })
+    function spatialOvershoot(speed) {
+        return spatialMotion && animationEffects ? spatialOvershoots[speed] || spatialOvershoots["default"] : 0
+    }
+    // The highest point of a cubic Bézier's y (from 0 to 1, control points
+    // y1 and y2), above 1.
+    function overshootOf(curve) {
+        let top = 1
+        for (let i = 1; i < 1000; ++i) {
+            const s = i / 1000
+            const y = 3 * (1 - s) * (1 - s) * s * curve[1] + 3 * (1 - s) * s * s * curve[3] + s * s * s
+            top = Math.max(top, y)
+        }
+        return top - 1
+    }
 }
