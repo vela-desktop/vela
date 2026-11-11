@@ -56,6 +56,14 @@ QString positionKey(const QString& name)
     return QStringLiteral("desktop-positions/") + QString::fromLatin1(QUrl::toPercentEncoding(name));
 }
 
+// The same file Settings writes (Vela/vela-shell.conf): the default scope
+// would be Vela/vela-shell only once the application name is set, which
+// happens after this model is built.
+QSettings shellSettings()
+{
+    return QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"));
+}
+
 // A .desktop shortcut's name and icon, in the user's language.
 void readDesktopFile(const QString& path, QString& name, QString& icon)
 {
@@ -187,7 +195,7 @@ DesktopModel::DesktopModel(AppModel* apps, QObject* parent)
     m_dir = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
     QDir().mkpath(m_dir);
 
-    QSettings settings;
+    QSettings settings = shellSettings();
     m_iconSize = std::clamp(settings.value(QStringLiteral("desktop/iconSize"), 1).toInt(), 0, 2);
     m_sortMode = std::clamp(settings.value(QStringLiteral("desktop/sortMode"), 0).toInt(), 0, 3);
     m_autoArrange = settings.value(QStringLiteral("desktop/autoArrange"), false).toBool();
@@ -279,7 +287,7 @@ void DesktopModel::setIconSize(int size)
     size = std::clamp(size, 0, 2);
     if (size != m_iconSize) {
         m_iconSize = size;
-        QSettings().setValue(QStringLiteral("desktop/iconSize"), size);
+        shellSettings().setValue(QStringLiteral("desktop/iconSize"), size);
         emit viewChanged();
         layout();
     }
@@ -291,7 +299,7 @@ void DesktopModel::setAutoArrange(bool on)
         return;
     }
     m_autoArrange = on;
-    QSettings settings;
+    QSettings settings = shellSettings();
     settings.setValue(QStringLiteral("desktop/autoArrange"), on);
     if (on) {
         settings.remove(QStringLiteral("desktop-positions")); // all in a row
@@ -307,7 +315,7 @@ void DesktopModel::setAlignToGrid(bool on)
 {
     if (on != m_alignToGrid) {
         m_alignToGrid = on;
-        QSettings().setValue(QStringLiteral("desktop/alignToGrid"), on);
+        shellSettings().setValue(QStringLiteral("desktop/alignToGrid"), on);
         emit viewChanged();
         layout();
     }
@@ -319,7 +327,7 @@ void DesktopModel::setShowIcons(bool on)
         beginResetModel();
         m_showIcons = on;
         endResetModel();
-        QSettings().setValue(QStringLiteral("desktop/showIcons"), on);
+        shellSettings().setValue(QStringLiteral("desktop/showIcons"), on);
         emit viewChanged();
     }
 }
@@ -355,7 +363,7 @@ QPointF DesktopModel::cellPosition(int column, int row) const
 void DesktopModel::sortBy(int mode)
 {
     m_sortMode = std::clamp(mode, 0, 3);
-    QSettings settings;
+    QSettings settings = shellSettings();
     settings.setValue(QStringLiteral("desktop/sortMode"), m_sortMode);
     settings.remove(QStringLiteral("desktop-positions")); // sorted: all in a row
     emit viewChanged();
@@ -438,7 +446,7 @@ void DesktopModel::reload()
     items.append(files);
 
     // Positions chosen by hand (by file name).
-    QSettings settings;
+    QSettings settings = shellSettings();
     for (Item& item : items) {
         const QVariant saved = settings.value(positionKey(item.isTrash ? item.path : QFileInfo(item.path).fileName()));
         item.position = saved.isValid() && !m_autoArrange ? saved.toPointF() : QPointF(-1, -1);
@@ -544,7 +552,7 @@ void DesktopModel::layout(bool notify)
 
 void DesktopModel::savePosition(const QString& name, const QPointF& position)
 {
-    QSettings().setValue(positionKey(name), position);
+    shellSettings().setValue(positionKey(name), position);
 }
 
 void DesktopModel::moveTo(const QString& path, qreal x, qreal y)
@@ -561,8 +569,10 @@ void DesktopModel::moveTo(const QString& path, qreal x, qreal y)
         }
     }
     layout();
-    // With the grid the saved position becomes the chosen cell's.
-    for (qsizetype i = 0; i < m_items.size(); ++i) {
+    // With the grid the saved position becomes the chosen cell's. layout()
+    // keeps nothing when no view has set the area (m_layout empty), and the
+    // saved position above already stands until it does.
+    for (qsizetype i = 0; i < m_items.size() && i < m_layout.size(); ++i) {
         if (m_items.at(i).path == path && m_alignToGrid) {
             m_items[i].position = m_layout.at(i);
             savePosition(m_items.at(i).isTrash ? path : QFileInfo(path).fileName(), m_layout.at(i));
@@ -656,7 +666,7 @@ bool DesktopModel::rename(const QString& path, const QString& newName)
         return false;
     }
     // The position follows the file.
-    QSettings settings;
+    QSettings settings = shellSettings();
     const QVariant position = settings.value(positionKey(info.fileName()));
     if (position.isValid()) {
         settings.remove(positionKey(info.fileName()));
