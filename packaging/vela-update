@@ -971,6 +971,42 @@ prune() {
     done
 }
 
+# Always show what describes the package being installed, whether a verified
+# binary is available or we build it locally. Read the recipe from the pinned
+# commit, never from the updater's own (possibly older) installed files.
+# Checks stay quiet: their JSON output is a public interface.
+showRecipe() {
+    printf '\n%s\n' ":: Packaging recipe for $backend at $latestFull"
+    if [ "$backend" = ubuntu ]; then
+        printf '%s\n' "--- packaging/ubuntu/build-depends ---"
+        if git -C "$MIRROR" cat-file -e "$latestFull:packaging/ubuntu/build-depends" 2>/dev/null; then
+            git -C "$MIRROR" show "$latestFull:packaging/ubuntu/build-depends"
+        else
+            printf '%s\n' "(legacy revision: vela-update uses its built-in dependency fallback)"
+        fi
+        printf '%s\n' "--- CMakeLists.txt (DEB / CPack configuration) ---"
+        if git -C "$MIRROR" cat-file -e "$latestFull:CMakeLists.txt" 2>/dev/null; then
+            git -C "$MIRROR" show "$latestFull:CMakeLists.txt" |
+                sed -n '/^option(VELA_PACKAGE_DEB /,$p'
+        else
+            printf '%s\n' "(CMakeLists.txt unavailable at this revision)"
+        fi
+    else
+        if [ "$backend" = arch ]; then
+            recipe=packaging/arch/PKGBUILD
+        else
+            recipe=packaging/fedora/vela.spec
+        fi
+        printf '%s\n' "--- $recipe ---"
+        if ! git -C "$MIRROR" show "$latestFull:$recipe"; then
+            printf '%s\n' "vela-update: can't display $recipe at $latestFull" >&2
+        fi
+    fi
+    printf '%s\n\n' ":: End of packaging recipe"
+}
+
+showRecipe
+
 # Prefer a public release if its checksum AND signed build provenance verify.
 # Failed verification must never install or cache an untrusted package.
 if [ -n "$release_package" ]; then

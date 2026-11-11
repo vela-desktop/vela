@@ -500,6 +500,27 @@ class UpdateFixture(unittest.TestCase):
 
 
 class UpdateRevision(UpdateFixture):
+    def test_install_prints_selected_arch_recipe_before_build(self):
+        result = self.run_update("--branch", "fix/nvidia", "--build")
+        self.assertIn("Packaging recipe for arch at " + self.nvidia, result.stdout)
+        self.assertIn("--- packaging/arch/PKGBUILD ---", result.stdout)
+        self.assertIn("# NVIDIA test package", result.stdout)
+        self.assertNotIn("# main package", result.stdout)
+        self.assertLess(result.stdout.index("# NVIDIA test package"),
+                        result.stdout.index(":: Building the arch package"))
+
+    def test_verified_arch_download_also_shows_recipe(self):
+        self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.main[:7])
+        result = self.run_update("--download")
+        self.assertIn("# main package", result.stdout)
+        self.assertEqual(self.calls("makepkg"), [])
+
+    def test_check_json_does_not_include_recipe(self):
+        result = self.run_update("--check", "--json")
+        self.assertEqual(json.loads(result.stdout)["commit"], self.main)
+        self.assertNotIn("Packaging recipe", result.stdout)
+        self.assertEqual(self.calls("makepkg"), [])
+
     def test_explicit_arch_beta_to_experimental_is_single_transaction(self):
         if not self.os_release.read_text().startswith("ID=arch"):
             self.skipTest("Arch-only native package transition")
