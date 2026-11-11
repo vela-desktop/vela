@@ -100,6 +100,10 @@ public:
     // The wallpaper's average color (the Mica tint, docs/renderer.md §9.4),
     // also left in the cache for Vela's apps; invalid if it can't be read.
     QColor wallpaperTint(const QString& wallpaper) const;
+    // The wallpaper's source color for a tonal palette (mica.h's
+    // wallpaper-color), also left in the cache for Style and the lock
+    // screen; invalid if it can't be read or has no color for one.
+    QColor wallpaperColor(const QString& wallpaper) const;
     // Locks the screen before the computer suspends.
     void watchSleep();
     // The computer, through systemd-logind (polkit asks for the password if

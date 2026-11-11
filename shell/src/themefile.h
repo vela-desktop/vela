@@ -171,6 +171,8 @@ inline const QMap<QString, QStringList>& variants()
             { QStringLiteral("default"), QStringLiteral("floating"), QStringLiteral("floating-split"), QStringLiteral("dock") } },
         { QStringLiteral("quicksettings-variant"), { QStringLiteral("default"), QStringLiteral("glass"), QStringLiteral("classic") } },
         { QStringLiteral("controls-variant"), { QStringLiteral("default"), QStringLiteral("expressive") } },
+        // Where the tonal palette starts (accentsource.h).
+        { QStringLiteral("color-source"), { QStringLiteral("accent"), QStringLiteral("wallpaper") } },
     };
     return list;
 }

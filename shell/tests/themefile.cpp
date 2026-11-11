@@ -105,21 +105,38 @@ private slots:
         QVERIFY(!vela::themes::token(QStringLiteral("subtleHover"))); // not themed (Theme.qml says why)
     }
 
-    // Theme-authored controls select only built-in variants. The new semantic
-    // palette, shape and typography keys stay typed and are not executable.
+    // Theme-authored controls select only built-in variants, and the palette
+    // only its source. The tonal roles, shape and typography keys stay typed
+    // and are not executable.
     void expressiveControlTokens()
     {
-        const vela::themes::File file = read("controls-variant=expressive\nlight.primary=#6750A4\n"
-                                             "dark.secondaryContainer=#4A4458\nshapeLarge=24\nfontBody=16\n");
+        const vela::themes::File file = read("controls-variant=expressive\ncolor-source=wallpaper\nlight.primary=#6750A4\n"
+                                             "dark.secondaryContainer=#4A4458\nsurfaceBase=#FEF7FF\nonSurfaceVariant=#49454F\n"
+                                             "shapeLarge=24\nshapeExtraLarge=28\nfontBody=16\n");
         QVERIFY(file.problems.isEmpty());
         QCOMPARE(file.tokens.value(QStringLiteral("controls-variant")).toString(), QStringLiteral("expressive"));
+        QCOMPARE(file.tokens.value(QStringLiteral("color-source")).toString(), QStringLiteral("wallpaper"));
         QCOMPARE(file.tokens.value(QStringLiteral("light.primary")).value<QColor>(), QColor(QStringLiteral("#6750A4")));
         QCOMPARE(file.tokens.value(QStringLiteral("dark.secondaryContainer")).value<QColor>(), QColor(QStringLiteral("#4A4458")));
+        QCOMPARE(file.tokens.value(QStringLiteral("surfaceBase")).value<QColor>(), QColor(QStringLiteral("#FEF7FF")));
+        QCOMPARE(file.tokens.value(QStringLiteral("onSurfaceVariant")).value<QColor>(), QColor(QStringLiteral("#49454F")));
         QCOMPARE(file.tokens.value(QStringLiteral("shapeLarge")).toDouble(), 24.0);
+        QCOMPARE(file.tokens.value(QStringLiteral("shapeExtraLarge")).toDouble(), 28.0);
         QCOMPARE(file.tokens.value(QStringLiteral("fontBody")).toDouble(), 16.0);
+        using vela::themes::TokenKind;
+        QCOMPARE(vela::themes::token(QStringLiteral("color-source"))->kind, TokenKind::Variant);
+        QCOMPARE(vela::themes::token(QStringLiteral("tertiaryContainer"))->kind, TokenKind::Color);
+        QCOMPARE(vela::themes::token(QStringLiteral("inverseOnSurface"))->kind, TokenKind::Color);
+        QCOMPARE(vela::themes::token(QStringLiteral("shapeExtraSmall"))->kind, TokenKind::Number);
+        // The surface role has a key of its own: `surface` is the shell's panels.
+        QCOMPARE(vela::themes::token(QStringLiteral("surface"))->kind, TokenKind::Color);
+        QVERIFY(!vela::themes::token(QStringLiteral("surfaceTone")));
+        QVERIFY(!vela::themes::token(QStringLiteral("weightLabel"))); // follows the variant
 
         QTest::ignoreMessage(QtWarningMsg, "theme test:1: controls-variant=custom-qml is not one of Vela's layouts (default, expressive): skipped");
         QCOMPARE(kinds(read("controls-variant=custom-qml\n").problems), QStringList { "unknown-variant" });
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: color-source=image is not one of Vela's layouts (accent, wallpaper): skipped");
+        QCOMPARE(kinds(read("color-source=image\n").problems), QStringList { "unknown-variant" });
     }
 
     // A theme sets any surface's keys: numbers, and layouts among Vela's own.

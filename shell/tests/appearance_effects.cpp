@@ -4,17 +4,23 @@
 // Style.animationEffects and Style.animationDuration (docs/visual-coherence.md
 // §6.5): read from animation-effects and animation-duration in vela.conf (on,
 // at Vela's durations, by default), and followed live when Settings replaces
-// the file.
+// the file. And where the accent comes from (accentsource.h): the theme's,
+// the wallpaper's or the chosen one, and the tonal palette that follows it.
 
 #include "appearance.h"
+#include "mica.h"
+#include "scheme.h"
 
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
 #include <QSaveFile>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <iterator>
 
 namespace {
 
@@ -31,13 +37,137 @@ bool writeConf(const QByteArray& text)
     return file.open(QIODevice::WriteOnly) && file.write(text) == text.size() && file.commit();
 }
 
+bool writeTheme(const QString& name, const QByteArray& text)
+{
+    const QString themes = qEnvironmentVariable("XDG_CONFIG_HOME") + QStringLiteral("/vela/themes");
+    QDir().mkpath(themes);
+    QSaveFile file(themes + u'/' + name + QStringLiteral(".conf"));
+    return file.open(QIODevice::WriteOnly) && file.write(text) == text.size() && file.commit();
+}
+
+// Settings' keys in vela-shell.conf: the chosen accent and where it comes
+// from; an empty value removes the key.
+void setShell(const QString& accent, const QString& source)
+{
+    QSettings shell(QStringLiteral("Vela"), QStringLiteral("vela-shell"));
+    for (const auto& [key, value] : { std::pair { QStringLiteral("appearance/accent"), accent },
+             std::pair { QStringLiteral("appearance/accentSource"), source } }) {
+        if (value.isEmpty()) {
+            shell.remove(key);
+        } else {
+            shell.setValue(key, value);
+        }
+    }
+    shell.sync();
+}
+
+const QColor chosen(QStringLiteral("#8a2be2"));
+const QColor wallpaper(QStringLiteral("#2e7d32"));
+const QColor themeAccent(QStringLiteral("#c00000"));
+
 } // namespace
 
 class AppearanceEffectsTest : public QObject {
     Q_OBJECT
 
 private slots:
-    void init() { QFile::remove(velaConf()); }
+    void init()
+    {
+        QFile::remove(velaConf());
+        QFile::remove(wallpaperColorCachePath());
+        setShell(QString(), QString());
+    }
+
+    // 1. A theme's accent wins over everything: the wallpaper asked for by
+    // the user or the theme, the chosen one. Style.accent stays the user's
+    // (Theme.qml puts the theme's over it), the palette starts from the
+    // theme's.
+    void themeAccentWins()
+    {
+        QVERIFY(writeTheme(QStringLiteral("painted"), "accent=#c00000\ncolor-source=wallpaper\n"));
+        QVERIFY(writeConf("theme=painted\n"));
+        saveWallpaperColor(wallpaper);
+        setShell(chosen.name(), QStringLiteral("wallpaper"));
+        const Appearance appearance;
+        QCOMPARE(appearance.accent(), wallpaper);
+        const vela::accent::Resolved effective = vela::accent::effectiveAccent(
+            appearance.theme(), appearance.light(), vela::accent::Source::Wallpaper, chosen, wallpaper);
+        QCOMPARE(effective.color, themeAccent);
+        QCOMPARE(effective.origin, vela::accent::Origin::Theme);
+        QCOMPARE(appearance.schemeSource(appearance.light()), themeAccent);
+        QCOMPARE(appearance.tonal(), appearance.tonalOf(themeAccent, appearance.light()));
+        QVERIFY(appearance.tonal() != appearance.tonalOf(wallpaper, appearance.light()));
+        // A theme's primary is the palette's source over its accent.
+        QVERIFY(writeTheme(QStringLiteral("painted"), "accent=#c00000\nprimary=#1565c0\n"));
+        const Appearance withPrimary;
+        QCOMPARE(withPrimary.tonal(), withPrimary.tonalOf(QColor(QStringLiteral("#1565c0")), withPrimary.light()));
+    }
+
+    // 2. The wallpaper's, when the user asks or leaves it to a theme that
+    // asks, and only if the wallpaper has one.
+    void wallpaperWhenAsked()
+    {
+        saveWallpaperColor(wallpaper);
+        setShell(chosen.name(), QStringLiteral("wallpaper"));
+        QCOMPARE(Appearance().accent(), wallpaper);
+        QCOMPARE(Appearance().tonal(), Appearance().tonalOf(wallpaper, Appearance().light()));
+
+        QVERIFY(writeTheme(QStringLiteral("tonal"), "color-source=wallpaper\n"));
+        QVERIFY(writeConf("theme=tonal\n"));
+        setShell(chosen.name(), QStringLiteral("theme"));
+        QCOMPARE(Appearance().accent(), wallpaper);
+        setShell(chosen.name(), QString()); // theme is the default
+        QCOMPARE(Appearance().accent(), wallpaper);
+        const vela::accent::Resolved resolved
+            = vela::accent::effectiveAccent(Appearance().theme(), false, vela::accent::Source::Theme, chosen, wallpaper);
+        QCOMPARE(resolved.origin, vela::accent::Origin::Wallpaper);
+
+        // A theme that doesn't ask leaves the chosen one.
+        QVERIFY(writeTheme(QStringLiteral("tonal"), "color-source=accent\n"));
+        QCOMPARE(Appearance().accent(), chosen);
+
+        // A grayscale wallpaper (an empty cache) or none yet: the chosen one.
+        QVERIFY(writeTheme(QStringLiteral("tonal"), "color-source=wallpaper\n"));
+        saveWallpaperColor(QColor());
+        QVERIFY(!cachedWallpaperColor().isValid());
+        QCOMPARE(Appearance().accent(), chosen);
+        QFile::remove(wallpaperColorCachePath());
+        QCOMPARE(Appearance().accent(), chosen);
+    }
+
+    // 3. Otherwise the chosen one, also over a theme that asks for the
+    // wallpaper; Vela's own when none was chosen.
+    void chosenOtherwise()
+    {
+        saveWallpaperColor(wallpaper);
+        QVERIFY(writeTheme(QStringLiteral("tonal"), "color-source=wallpaper\n"));
+        QVERIFY(writeConf("theme=tonal\n"));
+        setShell(chosen.name(), QStringLiteral("chosen"));
+        const Appearance appearance;
+        QCOMPARE(appearance.accent(), chosen);
+        QCOMPARE(appearance.tonal(), appearance.tonalOf(chosen, appearance.light()));
+        QVERIFY(writeConf("theme=\n"));
+        setShell(QString(), QString());
+        const Appearance fresh;
+        QCOMPARE(fresh.accent(), QColor(0x5b, 0x8c, 0xff));
+        QCOMPARE(fresh.tonal().value(QStringLiteral("primary")).value<QColor>(), QColor(QStringLiteral("#b2c5ff"))); // dark
+        QCOMPARE(fresh.tonal().size(), int(std::size(vela::color::roleNames)));
+    }
+
+    // The palette follows the wallpaper live: the shell rewrites the cache.
+    void followsTheWallpaperColor()
+    {
+        saveWallpaperColor(wallpaper);
+        setShell(chosen.name(), QStringLiteral("wallpaper"));
+        Appearance appearance;
+        appearance.watch();
+        QSignalSpy changed(&appearance, &Appearance::changed);
+        const QColor next(QStringLiteral("#ef6c00"));
+        saveWallpaperColor(next);
+        QTRY_COMPARE(appearance.accent(), next);
+        QCOMPARE(appearance.tonal(), appearance.tonalOf(next, appearance.light()));
+        QVERIFY(changed.count() >= 1);
+    }
 
     void onWithoutTheKey()
     {

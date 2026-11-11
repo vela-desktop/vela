@@ -199,6 +199,7 @@ qt_add_qml_module(vela-controls
 target_include_directories(vela-controls PUBLIC src ${SHELL_SRC} PRIVATE ${CONTROLS_GENERATED_DIR})
 target_compile_options(vela-controls PRIVATE -Wall -Wextra)
 target_link_libraries(vela-controls PUBLIC
+    vela-color # Style.tonal (appearance.cpp)
     vela-rendering
     vela-process
     vela-theme-tokens

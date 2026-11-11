@@ -46,6 +46,41 @@ inline QColor cachedWallpaperTint()
     return QColor(parts[0].toInt(), parts[1].toInt(), parts[2].toInt());
 }
 
+// The wallpaper's source color (vela::color::sourceFromPixels: its most
+// suitable color for a tonal palette, not its average), which the shell
+// leaves next to the tint in ~/.cache/vela/wallpaper-color as "#rrggbb".
+// The palette follows the wallpaper when the user or the theme asks
+// (accentsource.h). An empty file: the wallpaper has no such color (a
+// grayscale one), the chosen accent stays.
+inline QString wallpaperColorCachePath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + QStringLiteral("/vela/wallpaper-color");
+}
+
+inline void saveWallpaperColor(const QColor& color)
+{
+    const QString path = wallpaperColorCachePath();
+    QDir().mkpath(path.section(u'/', 0, -2));
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        file.write(color.isValid() ? color.name().toLatin1() + '\n' : QByteArray("\n"));
+    }
+}
+
+// Invalid if the shell hasn't written it yet, or the wallpaper has none.
+inline QColor cachedWallpaperColor()
+{
+    QFile file(wallpaperColorCachePath());
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    const QByteArray line = file.readAll().trimmed();
+    if (line.size() != 7 || !line.startsWith('#')) {
+        return {};
+    }
+    return QColor::fromString(QLatin1StringView(line));
+}
+
 // Dark: active base #202020 30% toward the tint, inactive #2b2b2b 45%. Light:
 // #f3f3f3 and #f9f9f9, with the tint brought into the light band. Like
 // mica_color in compositor/src/decoration.c.
