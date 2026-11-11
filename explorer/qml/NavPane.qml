@@ -20,8 +20,12 @@ Flickable {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
 
+    // Expressive: M3's navigation drawer item at Vela's 32 rows: the place
+    // in use a full pill of secondary container with its text in Medium, no
+    // bar; the others state layers.
     component Entry: Fill {
         id: entry
+        readonly property bool expressive: Theme.expressive
         property string icon
         property string label
         property string location
@@ -33,11 +37,11 @@ Flickable {
         readonly property bool selected: pane.current === location
         width: column.width
         height: 32
-        radius: Theme.radius
-        color: drop.containsDrag ? Theme.selectionHover : selected ? Theme.selection : mouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+        radius: expressive ? height / 2 : Theme.radius
+        color: drop.containsDrag ? Theme.selectionHover : selected ? Theme.selection : mouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
 
         Rectangle {
-            visible: entry.selected
+            visible: entry.selected && !entry.expressive
             anchors.verticalCenter: parent.verticalCenter
             width: 3
             height: 16
@@ -57,8 +61,9 @@ Flickable {
             width: parent.width - x - (entry.pinned ? 28 : 8)
             anchors.verticalCenter: parent.verticalCenter
             text: entry.label
-            color: Theme.text
+            color: entry.expressive && entry.selected ? Theme.secondaryContainerText : Theme.text
             font.pixelSize: Theme.fontBody
+            font.weight: entry.expressive && entry.selected ? Theme.weightLabel : Font.Normal
             elide: Text.ElideRight
         }
         Text {

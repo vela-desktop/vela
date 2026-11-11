@@ -133,9 +133,14 @@ if(VELA_BUILD_TOOLS)
     qt_add_executable(vela-files-views-test tests/views_test.cpp)
     target_compile_definitions(vela-files-views-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
     target_compile_options(vela-files-views-test PRIVATE -Wall -Wextra)
+    target_include_directories(vela-files-views-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
     target_link_libraries(vela-files-views-test PRIVATE vela-files-core vela-controls vela-controlsplugin Qt6::QuickTest)
     add_test(NAME files-views COMMAND vela-files-views-test)
     set_tests_properties(files-views PROPERTIES TIMEOUT 120)
+    # Under a theme of expressive controls and motion (common/tests/quicktest.h,
+    # VELA_TEST_THEME), on tests/expressive/ only.
+    add_test(NAME files-views-expressive COMMAND vela-files-views-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    set_tests_properties(files-views-expressive PROPERTIES TIMEOUT 120 ENVIRONMENT "VELA_TEST_THEME=expressive")
 endif()
 
 install(TARGETS vela-files RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

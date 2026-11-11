@@ -62,6 +62,12 @@ QtObject {
     // subtleHover at alpha 0: what a subtle control fades from ("transparent"
     // is black at alpha 0, and a fade from it would pass through gray).
     readonly property color subtleRest: light ? Qt.rgba(0, 0, 0, 0) : Qt.rgba(1, 1, 1, 0)
+    // What a subtle control (a row, a crumb, a tool) shows at rest, hovered
+    // and pressed: the subtle colors above, expressive Material's state
+    // layers of on surface (8%, 10%, from its alpha 0 at rest).
+    readonly property color hoverLayer: expressive ? Qt.rgba(surfaceText.r, surfaceText.g, surfaceText.b, stateHover) : subtleHover
+    readonly property color pressedLayer: expressive ? Qt.rgba(surfaceText.r, surfaceText.g, surfaceText.b, statePressed) : subtlePressed
+    readonly property color restLayer: expressive ? Qt.rgba(surfaceText.r, surfaceText.g, surfaceText.b, 0) : subtleRest
     // Expressive: dividers and multi-element outlines are outline variant
     // (M3), cards surface container low.
     readonly property color stroke: themed("stroke", expressive ? outlineVariant : light ? Qt.rgba(0, 0, 0, 0.09) : Qt.rgba(1, 1, 1, 0.09)) // panels and menus
@@ -86,7 +92,9 @@ QtObject {
     readonly property color focusRing: expressive ? outline : light ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(1, 1, 1, 0.35)
     // Files: the files and navigation area, the selection, the scroll bars.
     // Expressive: the selection in secondary container.
-    readonly property color layer: light ? Qt.rgba(1, 1, 1, 0.5) : Qt.rgba(0.227, 0.227, 0.227, 0.30)
+    // Expressive: the files area on surface container low, as the cards
+    // (Vela's choice: the content one step from the window's surface).
+    readonly property color layer: expressive ? surfaceContainerLow : light ? Qt.rgba(1, 1, 1, 0.5) : Qt.rgba(0.227, 0.227, 0.227, 0.30)
     readonly property color layerStroke: expressive ? outlineVariant : light ? Qt.rgba(0, 0, 0, 0.06) : Qt.rgba(0, 0, 0, 0.10)
     readonly property color selection: expressive ? secondaryContainer : light ? Qt.rgba(0, 0, 0, 0.06) : Qt.rgba(1, 1, 1, 0.10)
     readonly property color selectionHover: expressive ? mix(secondaryContainer, secondaryContainerText, stateHover) : light ? Qt.rgba(0, 0, 0, 0.09) : Qt.rgba(1, 1, 1, 0.13)

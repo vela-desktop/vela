@@ -64,10 +64,12 @@ Item {
         id: address
         anchors { left: buttons.right; leftMargin: 8; right: searchBox.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
         height: 32
-        radius: Theme.radius
+        // Expressive: M3's search bar's full pill on surface container
+        // high, outlined in primary (2) only while typing.
+        radius: Theme.expressive ? height / 2 : Theme.radius
         color: bar.editing ? Theme.field : addressMouse.containsMouse ? Theme.controlHover : Theme.control
-        border.width: 1
-        border.color: bar.editing ? Theme.accent : Theme.controlStroke
+        border.width: Theme.expressive ? (bar.editing ? 2 : 0) : 1
+        border.color: bar.editing ? (Theme.expressive ? Theme.primary : Theme.accent) : Theme.controlStroke
         clip: true
 
         MouseArea {
@@ -99,7 +101,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             width: crumbContent.width + 12
                             radius: Theme.radius
-                            color: crumbMouse.containsMouse || crumbDrop.containsDrag ? Theme.subtleHover : Theme.subtleRest
+                            color: crumbMouse.containsMouse || crumbDrop.containsDrag ? Theme.hoverLayer : Theme.restLayer
                             Row {
                                 id: crumbContent
                                 anchors.centerIn: parent
@@ -145,7 +147,7 @@ Item {
                             width: 18
                             anchors.verticalCenter: parent.verticalCenter
                             radius: Theme.radius
-                            color: chevronMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                            color: chevronMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                             Chevron {
                                 anchors.centerIn: parent
                                 color: Theme.textSecondary
@@ -204,10 +206,10 @@ Item {
         anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
         width: Math.min(280, bar.width * 0.25)
         height: 32
-        radius: Theme.radius
+        radius: Theme.expressive ? height / 2 : Theme.radius
         color: search.activeFocus ? Theme.field : searchMouse.containsMouse ? Theme.controlHover : Theme.control
-        border.width: 1
-        border.color: search.activeFocus ? Theme.accent : Theme.controlStroke
+        border.width: Theme.expressive ? (search.activeFocus ? 2 : 0) : 1
+        border.color: search.activeFocus ? (Theme.expressive ? Theme.primary : Theme.accent) : Theme.controlStroke
         opacity: bar.tab.isFolder ? 1 : 0.5
         MouseArea {
             id: searchMouse

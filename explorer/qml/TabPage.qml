@@ -518,10 +518,13 @@ Item {
     }
     Rectangle {
         anchors { left: parent.left; right: parent.right; top: commandBar.bottom; bottom: parent.bottom }
+        objectName: "filesLayer"
+        // Expressive: the files area on Theme.layer (surface container low)
+        // with large top corners and no outline.
         color: Theme.layer
-        topLeftRadius: Theme.radiusOverlay
-        topRightRadius: Theme.radiusOverlay
-        border.width: 1
+        topLeftRadius: Theme.expressive ? Theme.shapeLarge : Theme.radiusOverlay
+        topRightRadius: Theme.expressive ? Theme.shapeLarge : Theme.radiusOverlay
+        border.width: Theme.expressive ? 0 : 1
         border.color: Theme.layerStroke
 
         NavPane {

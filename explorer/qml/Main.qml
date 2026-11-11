@@ -152,7 +152,7 @@ Window {
                     radius: 0
                     topLeftRadius: Theme.radiusOverlay
                     topRightRadius: Theme.radiusOverlay
-                    color: active ? Theme.layer : tabMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    color: active ? Theme.layer : tabMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                     Image {
                         x: 12
                         anchors.verticalCenter: parent.verticalCenter

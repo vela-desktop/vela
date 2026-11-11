@@ -76,7 +76,7 @@ Item {
                 Fill {
                     anchors { fill: parent; topMargin: 2; bottomMargin: 2 }
                     radius: Theme.radius
-                    color: headerMouse.containsMouse && column.modelData.key >= 0 ? Theme.subtleHover : Theme.subtleRest
+                    color: headerMouse.containsMouse && column.modelData.key >= 0 ? Theme.hoverLayer : Theme.restLayer
                 }
                 Text {
                     x: 8
@@ -212,7 +212,7 @@ Item {
                 radius: Theme.radius
                 color: rowDrop.containsDrag ? Theme.selectionHover
                     : row.selected ? (rowMouse.containsMouse ? Theme.selectionHover : Theme.selection)
-                    : rowMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    : rowMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                 border.width: view.model.currentIndex === row.index && view.tab.viewFocused ? 1 : 0
                 border.color: Theme.focusRing
             }
