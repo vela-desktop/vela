@@ -75,11 +75,17 @@ QtObject {
         // A look of its own (a style, or the theme's keys for it): its blur is
         // rounded like the panel, glass from 4%.
         readonly property bool chosen: Style.chosenStyles.indexOf("startmenu") >= 0
+        // expressive: Vela Expressive's (M3 Expressive's look, StartMenu.qml
+        // and AppTile.qml): a taller search pill, the pinned apps in a tonal
+        // container, the selected tile in secondary container.
+        readonly property string variant: Theme.themed("startmenu-variant", "default")
+        readonly property bool expressive: variant === "expressive"
         // The menu's size with its margins, as in the files (StartMenu.qml
         // takes the panel out of it): 660 x 732 is Vela's 640 x 700 panel.
         readonly property int width: styles.size("startmenu-width", 660, 360, 1600)
         readonly property int height: styles.size("startmenu-height", 732, 320, 2000)
-        readonly property int radius: styles.size("startmenu-radius", Theme.radiusOverlay, 0, 48)
+        // Expressive: M3's extra large corners (28), Vela's choice for a panel.
+        readonly property int radius: styles.size("startmenu-radius", expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay, 0, 48)
         readonly property color surface: Theme.themed("startmenu-surface", Theme.surface)
         readonly property int cellHeight: styles.size("startmenu-cell-height", 96, 64, 160)
     }

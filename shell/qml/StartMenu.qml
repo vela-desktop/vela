@@ -336,21 +336,25 @@ Window {
             anchors.fill: parent
             radius: root.style.radius
             color: root.style.surface
-            border.width: 1
+            border.width: root.style.expressive ? 0 : 1 // M3's surfaces have no outline
             border.color: Theme.stroke
 
             // --- search ---
+            // Expressive: M3's search bar, a 56 pill on surface container
+            // high without an outline (the keyboard is always there); the
+            // text 24 from its ends, Vela's choice.
             Rectangle {
                 id: searchBox
+                readonly property int textMargin: root.style.expressive ? 24 : 18
                 anchors { top: parent.top; left: parent.left; right: parent.right; margins: 24 }
-                height: 38
+                height: root.style.expressive ? 56 : 38
                 radius: height / 2
-                color: Theme.control
-                border.width: search.activeFocus ? 1 : 0
+                color: root.style.expressive ? Theme.surfaceContainerHigh : Theme.control
+                border.width: search.activeFocus && !root.style.expressive ? 1 : 0
                 border.color: Theme.accent
 
                 Text {
-                    anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
+                    anchors { left: parent.left; leftMargin: searchBox.textMargin; verticalCenter: parent.verticalCenter }
                     visible: search.text.length === 0
                     text: qsTr("Search apps")
                     color: Theme.textSecondary
@@ -359,7 +363,7 @@ Window {
 
                 MenuTextField {
                     id: search
-                    anchors { left: parent.left; right: parent.right; leftMargin: 18; rightMargin: 18; verticalCenter: parent.verticalCenter }
+                    anchors { left: parent.left; right: parent.right; leftMargin: searchBox.textMargin; rightMargin: searchBox.textMargin; verticalCenter: parent.verticalCenter }
                     mapToScreen: (x, y) => root.screenPoint(search, x, y)
 
                     onTextChanged: {
@@ -388,7 +392,7 @@ Window {
                 text: search.text.length > 0 ? qsTr("Results") : root.showPinned ? qsTr("Pinned") : qsTr("All apps")
                 color: Theme.text
                 font.pixelSize: Theme.fontBody
-                font.weight: Font.DemiBold
+                font.weight: root.style.expressive ? Theme.weightEmphasis : Font.DemiBold
             }
 
             // --- app grid ---
@@ -413,6 +417,7 @@ Window {
                     width: grid.cellWidth
                     height: grid.cellHeight
                     current: root.selectionShown && root.pinnedSelection < 0 && index === grid.currentIndex
+                    expressive: root.style.expressive
                     onActivated: root.launch(index)
                     onContextRequested: (x, y) => root.openAppMenu(tile, x, y, tile.appId, false)
                 }
@@ -424,6 +429,18 @@ Window {
                     visible: root.showPinned
                     function tileAt(index) {
                         return pinnedTiles.itemAt(index)
+                    }
+
+                    // Expressive: the pinned apps in a tonal container, in
+                    // M3's extra large corners (28): the tiles' large ones
+                    // (24) are about them less the tiles' 3 of margin.
+                    // Vela's choices.
+                    TonalSurface {
+                        objectName: "pinnedContainer"
+                        visible: root.style.expressive
+                        anchors.fill: pinnedGrid
+                        level: "high"
+                        radius: Theme.shapeExtraLarge
                     }
 
                     Grid {
@@ -443,6 +460,7 @@ Window {
                                 iconName: modelData.iconName
                                 comment: ""
                                 current: root.selectionShown && root.pinnedSelection === index
+                                expressive: root.style.expressive
                                 onActivated: {
                                     if (Apps.launchId(modelData.id)) {
                                         root.close()
@@ -458,7 +476,7 @@ Window {
                         text: qsTr("All apps")
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
+                        font.weight: root.style.expressive ? Theme.weightEmphasis : Font.DemiBold
                     }
                 }
 
@@ -529,11 +547,12 @@ Window {
                         width: 32
                         height: 32
                         radius: 16
-                        color: Theme.accent
+                        // Expressive: M3's avatar in primary container.
+                        color: root.style.expressive ? Theme.primaryContainer : Theme.accent
                         Text {
                             anchors.centerIn: parent
                             text: Shell.userInitial
-                            color: "white"
+                            color: root.style.expressive ? Theme.primaryContainerText : "white"
                             font.pixelSize: Theme.fontBody
                             font.weight: Font.DemiBold
                         }

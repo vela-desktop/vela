@@ -171,7 +171,8 @@ inline const QMap<QString, QStringList>& variants()
             { QStringLiteral("default"), QStringLiteral("floating"), QStringLiteral("floating-split"), QStringLiteral("dock") } },
         { QStringLiteral("quicksettings-variant"),
             { QStringLiteral("default"), QStringLiteral("glass"), QStringLiteral("classic"), QStringLiteral("expressive") } },
-        // Vela Expressive's notification center (Styles.qml).
+        // Vela Expressive's Start menu and notification center (Styles.qml).
+        { QStringLiteral("startmenu-variant"), { QStringLiteral("default"), QStringLiteral("expressive") } },
         { QStringLiteral("notifications-variant"), { QStringLiteral("default"), QStringLiteral("expressive") } },
         { QStringLiteral("controls-variant"), { QStringLiteral("default"), QStringLiteral("expressive") } },
         // Where the tonal palette starts (accentsource.h).

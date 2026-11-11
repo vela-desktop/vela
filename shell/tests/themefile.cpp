@@ -153,17 +153,21 @@ private slots:
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-height")).toDouble(), 52.0);
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-variant")).toString(), QStringLiteral("floating"));
 
-        // Vela Expressive's shell: quick settings and the notification
+        // Vela Expressive's shell: quick settings, Start and the notification
         // center, only Vela's own layouts.
-        const vela::themes::File expressive = read("quicksettings-variant=expressive\nnotifications-variant=expressive\n");
+        const vela::themes::File expressive = read("quicksettings-variant=expressive\nstartmenu-variant=expressive\n"
+                                                   "notifications-variant=expressive\n");
         QVERIFY(expressive.problems.isEmpty());
-        for (const char* key : { "quicksettings-variant", "notifications-variant" }) {
+        for (const char* key : { "quicksettings-variant", "startmenu-variant", "notifications-variant" }) {
             QCOMPARE(expressive.tokens.value(QLatin1String(key)).toString(), QStringLiteral("expressive"));
             QCOMPARE(vela::themes::token(QLatin1String(key))->kind, vela::themes::TokenKind::Variant);
         }
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: startmenu-variant=tiles is not one of Vela's layouts (default, expressive): skipped");
+        QCOMPARE(kinds(read("startmenu-variant=tiles\n").problems), QStringList { "unknown-variant" });
         QTest::ignoreMessage(QtWarningMsg, "theme test:1: notifications-variant=stack is not one of Vela's layouts (default, expressive): skipped");
         QCOMPARE(kinds(read("notifications-variant=stack\n").problems), QStringList { "unknown-variant" });
         // A surface's style may choose its own variant.
+        QVERIFY(read("startmenu-variant=expressive\n", vela::themes::StartMenu).problems.isEmpty());
         QVERIFY(read("notifications-variant=expressive\nquicksettings-variant=expressive\n", vela::themes::Notifications).problems.isEmpty());
     }
 

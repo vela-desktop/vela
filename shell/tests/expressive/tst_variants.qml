@@ -8,11 +8,11 @@ import "../../qml"
 import Vela.Shell.Test as ShellTest
 import "../../../common/tests/colors.js" as Colors
 
-// The shell's expressive variants (quicksettings- and notifications-variant
-// =expressive, in the shell-controls-expressive test theme): the quick
-// settings tile that changes shape (QsTile.qml), compared with the live
-// Theme and Styles values, with the default tile's keyboard, right click
-// and accessibility; the notification center's shapes.
+// The shell's expressive variants (quicksettings-, startmenu- and
+// notifications-variant=expressive, in the shell-controls-expressive test
+// theme): the quick settings tile that changes shape (QsTile.qml) and
+// Start's tile (AppTile.qml), compared with the live Theme and Styles
+// values, with the default tile's keyboard, right click and accessibility.
 Item {
     id: root
     width: 500
@@ -51,6 +51,18 @@ Item {
         label: "Accessibility"
         menu: true
     }
+    AppTile {
+        id: app
+        x: 200
+        y: 100
+        width: 104
+        height: 96
+        index: 0
+        name: "Files"
+        iconName: "system-file-manager"
+        comment: ""
+        expressive: styles.startMenu.expressive
+    }
     SignalSpy { id: toggled; target: plain; signalName: "toggled" }
     SignalSpy { id: splitToggled; target: split; signalName: "toggled" }
     SignalSpy { id: splitDetails; target: split; signalName: "details" }
@@ -69,6 +81,7 @@ Item {
             start.forceActiveFocus()
             plain.checked = false
             split.checked = false
+            app.current = false
             for (const spy of [toggled, splitToggled, splitDetails, menuDetails, menuToggled, context])
                 spy.clear()
             tryCompare(plain, "radius", plain.height / 2, 5000)
@@ -76,6 +89,7 @@ Item {
 
         function test_variants_are_on() {
             verify(styles.quickSettings.expressive)
+            verify(styles.startMenu.expressive)
             verify(styles.notifications.expressive)
             // The variant's defaults, unless the keys say otherwise.
             verify(styles.quickSettings.borderless)
@@ -87,6 +101,7 @@ Item {
             // Nested corners: the tile's square ones are the panel's less its
             // 12 of padding.
             compare(styles.quickSettings.radius - styles.quickSettings.tileRadius, 12)
+            compare(styles.startMenu.radius, Theme.shapeExtraLarge)
             compare(styles.notifications.radius, Theme.shapeExtraLarge)
             compare(styles.notifications.cardRadius, Theme.shapeLarge)
         }
@@ -185,5 +200,18 @@ Item {
             plain.usable = true
         }
 
+        function test_start_tile_selected_in_secondary_container() {
+            const fill = findChild(app, "appTileFill")
+            compare(fill.radius, Theme.shapeLarge)
+            compare(fill.border.width, 0)
+            compare(fill.color.a, 0)
+            app.current = true
+            tryVerify(() => Colors.same(fill.color, Theme.secondaryContainer), 5000)
+            compare(fill.border.width, 0)
+            tryVerify(() => Colors.same(findChild(app, "appTileLabel").color, Theme.secondaryContainerText), 5000)
+            app.current = false
+            mouseMove(app, 50, 50)
+            tryVerify(() => Math.abs(fill.color.a - Theme.stateHover) < 0.01, 5000)
+        }
     }
 }

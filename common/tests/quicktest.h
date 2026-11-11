@@ -10,8 +10,8 @@
 // effects are off (two ctest entries per runner). With
 // VELA_TEST_THEME=expressive the private config also has a theme with the
 // expressive controls and motion (controls-variant and motion-variant
-// expressive) and the shell's expressive variants (quicksettings- and
-// notifications-variant), and vela.conf chooses it: the *-expressive ctest entries,
+// expressive) and the shell's expressive variants (quicksettings-,
+// startmenu- and notifications-variant), and vela.conf chooses it: the *-expressive ctest entries,
 // which run the tests in the suite's expressive/ folder (-input).
 
 #include "renderingpolicy.h"
@@ -46,6 +46,7 @@ inline bool writeConfig(const QTemporaryDir& home)
                     "controls-variant=expressive\n"
                     "motion-variant=expressive\n"
                     "quicksettings-variant=expressive\n"
+                    "startmenu-variant=expressive\n"
                     "notifications-variant=expressive\n");
         conf.write("theme=vela-test-expressive\n");
     }
