@@ -65,6 +65,7 @@ build() {
     # makepkg.conf gives the build options (CMAKE_BUILD_TYPE=None).
     cmake -B build -S "$_name" \
         -DCMAKE_BUILD_TYPE=None \
+        -DVELA_CPU_TARGET="${VELA_CPU_TARGET:-x86-64-v3}" \
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DCMAKE_INSTALL_LIBEXECDIR=lib/vela \
         -DVELA_BUILD_TOOLS=OFF \

@@ -27,6 +27,10 @@ QtObject {
     property bool windowActive: true // the app's Main.qml updates it
     readonly property color background: themed("background", windowActive ? Style.mica : Style.micaInactive)
 
+    // The theme selects only Vela-owned, built-in control implementations.
+    // Theme packages remain declarative: no arbitrary QML is loaded.
+    readonly property string controlsVariant: themed("controls-variant", "default")
+
     // --- controls and surfaces ---
     readonly property color control: themed("control", light ? Qt.rgba(1, 1, 1, 0.7) : Qt.rgba(1, 1, 1, 0.061))
     readonly property color controlHover: themed("controlHover", light ? Qt.rgba(0.976, 0.976, 0.976, 0.5) : Qt.rgba(1, 1, 1, 0.084))
@@ -119,16 +123,54 @@ QtObject {
     // (contrast at least 3:1, WCAG's for large text and controls), else the
     // other one.
     function readableOn(background, preferred) {
-        const luminance = c => {
-            const channel = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
-            const color = Qt.color(c)
-            return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b)
-        }
-        const back = luminance(background)
-        const text = luminance(preferred)
-        const contrast = (Math.max(back, text) + 0.05) / (Math.min(back, text) + 0.05)
-        return contrast >= 3 ? Qt.color(preferred) : Qt.color(text > 0.5 ? "#000000" : "#ffffff")
+        const text = luminanceOf(preferred)
+        return contrastOf(background, preferred) >= 3 ? asColor(preferred) : Qt.color(text > 0.5 ? "#000000" : "#ffffff")
     }
+    // A "#rrggbb" string or a color as a color: Qt.color() takes only
+    // strings.
+    function asColor(c) {
+        return typeof c === "string" ? Qt.color(c) : c
+    }
+    // WCAG's relative luminance and contrast ratio (1 to 21).
+    function luminanceOf(c) {
+        const color = asColor(c)
+        const channel = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+        return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b)
+    }
+    function contrastOf(a, b) {
+        const la = luminanceOf(a)
+        const lb = luminanceOf(b)
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+    }
+    // A color part `t` (0 to 1) of the way from `a` to `b`, opaque.
+    function mix(a, b, t) {
+        const x = asColor(a)
+        const y = asColor(b)
+        return Qt.rgba(x.r + (y.r - x.r) * t, x.g + (y.g - x.g) * t, x.b + (y.b - x.b) * t, 1)
+    }
+    // Content over a tonal role: the theme's color (or Vela's) if it reads
+    // there at 4.5:1 (WCAG's for body text), else black or white, whichever
+    // reads better. A theme can tint it, never make it unreadable.
+    function legibleOn(background, preferred) {
+        if (contrastOf(background, preferred) >= 4.5)
+            return asColor(preferred)
+        return Qt.color(contrastOf(background, "#000000") >= contrastOf(background, "#ffffff") ? "#000000" : "#ffffff")
+    }
+    // Semantic tonal roles for optional expressive controls. These are
+    // static fallbacks, not a wallpaper-derived Material HCT palette: a theme
+    // that sets only `primary` (or none) gets containers tinted by the accent,
+    // never a fixed hue that clashes with it.
+    readonly property color primary: themed("primary", accentFill)
+    // The theme file's on… keys; QML reads a property named on<Name> as a
+    // signal handler, so here they are <role>Text, like accentText.
+    readonly property color primaryText: legibleOn(primary, themed("onPrimary", light ? "#ffffff" : "#000000"))
+    readonly property color primaryContainer: themed("primaryContainer", light ? mix(primary, "#ffffff", 0.75) : mix(primary, "#000000", 0.6))
+    readonly property color primaryContainerText: legibleOn(primaryContainer, themed("onPrimaryContainer", light ? mix(primary, "#000000", 0.6) : mix(primary, "#ffffff", 0.75)))
+    readonly property color secondaryContainer: themed("secondaryContainer", light ? mix(primary, "#f0f0f0", 0.82) : mix(primary, "#2c2c2c", 0.8))
+    readonly property color secondaryContainerText: legibleOn(secondaryContainer, themed("onSecondaryContainer", light ? mix(primary, "#000000", 0.8) : mix(primary, "#ffffff", 0.85)))
+    readonly property color surfaceContainer: themed("surfaceContainer", light ? mix(primary, "#f5f5f5", 0.94) : mix(primary, "#1f1f1f", 0.93))
+    readonly property color surfaceContainerHigh: themed("surfaceContainerHigh", light ? mix(primary, "#ebebeb", 0.92) : mix(primary, "#2a2a2a", 0.91))
+    readonly property color outline: themed("outline", light ? mix(primary, "#737373", 0.85) : mix(primary, "#8f8f8f", 0.85))
     readonly property color link: light ? Qt.darker(accent, 1.3) : Qt.lighter(accent, 1.5)
     // Icons of the theme matching the mode ("image://icon/l/<name>"; the
     // prefix reloads them when the mode changes). Always white on the accent.
@@ -140,6 +182,10 @@ QtObject {
     readonly property int radius: Math.max(0, Math.min(24, themed("radius", 4))) // controls
     readonly property int radiusCard: Math.max(0, Math.min(24, themed("radiusCard", 6)))
     readonly property int radiusOverlay: Math.max(0, Math.min(24, themed("radiusOverlay", 8))) // menus, flyouts, dialogs, panels
+    // Additional semantic shapes for expressive layouts.
+    readonly property int shapeSmall: Math.max(0, Math.min(24, themed("shapeSmall", 8)))
+    readonly property int shapeMedium: Math.max(0, Math.min(32, themed("shapeMedium", 12)))
+    readonly property int shapeLarge: Math.max(0, Math.min(48, themed("shapeLarge", 24)))
     // Shadows (Shadow.qml): WinUI's elevations for what floats. Flyouts:
     // menus, panels, previews; dialogs: above a window or the screen. The
     // compositor gives windows their own (scene/, two layers).
@@ -147,11 +193,11 @@ QtObject {
         flyout: { blur: 32, offset: 6, opacity: 0.45 },
         dialog: { blur: 48, offset: 16, opacity: 0.45 }
     })
-    readonly property int fontCaption: 12
-    readonly property int fontBody: 14
-    readonly property int fontBodyLarge: 18
-    readonly property int fontSubtitle: 20
-    readonly property int fontTitle: 28
+    readonly property int fontCaption: Math.max(9, Math.min(24, themed("fontCaption", 12)))
+    readonly property int fontBody: Math.max(10, Math.min(28, themed("fontBody", 14)))
+    readonly property int fontBodyLarge: Math.max(12, Math.min(36, themed("fontBodyLarge", 18)))
+    readonly property int fontSubtitle: Math.max(14, Math.min(44, themed("fontSubtitle", 20)))
+    readonly property int fontTitle: Math.max(16, Math.min(64, themed("fontTitle", 28)))
 
     // --- motion: four durations and one curve, the same as the compositor's
     // (compositor/src/motion.h), so windows and shell move the same way.

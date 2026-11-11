@@ -170,6 +170,7 @@ inline const QMap<QString, QStringList>& variants()
         { QStringLiteral("taskbar-variant"),
             { QStringLiteral("default"), QStringLiteral("floating"), QStringLiteral("floating-split"), QStringLiteral("dock") } },
         { QStringLiteral("quicksettings-variant"), { QStringLiteral("default"), QStringLiteral("glass"), QStringLiteral("classic") } },
+        { QStringLiteral("controls-variant"), { QStringLiteral("default"), QStringLiteral("expressive") } },
     };
     return list;
 }
