@@ -147,11 +147,16 @@ private slots:
     // A theme sets any surface's keys: numbers, and layouts among Vela's own.
     void surfaceKeysAndVariants()
     {
-        QTest::ignoreMessage(QtWarningMsg, "theme test:3: quicksettings-variant=seven is not one of Vela's layouts (default, glass, classic): skipped");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:3: quicksettings-variant=seven is not one of Vela's layouts (default, glass, classic, expressive): skipped");
         const vela::themes::File file = read("taskbar-height=52\ntaskbar-variant=floating\nquicksettings-variant=seven\n");
         QCOMPARE(kinds(file.problems), QStringList { "unknown-variant" });
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-height")).toDouble(), 52.0);
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-variant")).toString(), QStringLiteral("floating"));
+
+        // Vela Expressive's quick settings, a theme's or its style's.
+        QCOMPARE(read("quicksettings-variant=expressive\n").tokens.value(QStringLiteral("quicksettings-variant")).toString(),
+            QStringLiteral("expressive"));
+        QVERIFY(read("quicksettings-variant=expressive\n", vela::themes::Notifications).problems.isEmpty());
     }
 
     // A style only sets its own surface's keys and the blur's: anything else

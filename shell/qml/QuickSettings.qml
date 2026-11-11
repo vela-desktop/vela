@@ -164,7 +164,7 @@ Window {
     // larger height before the panel animates and shrinks after it: two
     // configures per change, none per frame, and at rest the window is just
     // the panel and its shadow, so clicks above it reach what is below.
-    readonly property real targetHeight: page === "" ? content.height + 24 + footer.height
+    readonly property real targetHeight: page === "" ? content.height + content.y + 8 + footer.height
         : (page === "wifi" ? wifiPage.finalHeight : page === "bluetooth" ? bluetoothPage.finalHeight
            : page === "sound" ? soundPage.height
            : page === "brightness" ? brightnessPage.height : accessPage.height) + 32
@@ -244,7 +244,8 @@ Window {
     // A tile: on (accent color) or off, with the label below. `split`: an
     // arrow on the right opening its page (Wi-Fi); `menu`: the whole tile
     // opens the page (Accessibility). Turning on fades to the accent, hover
-    // and press fade; a right click opens its Settings page.
+    // and press fade; a right click opens its Settings page. The expressive
+    // variant draws QsTile instead, with the same properties and signals.
     component Tile: Item {
         id: tile
         property string icon
@@ -256,12 +257,31 @@ Window {
         signal toggled()
         signal details()
         signal contextMenu()
-        width: 104
-        height: 82
-        opacity: usable ? 1 : 0.45
+        readonly property bool expressive: Styles.quickSettings.expressive
+        width: expressive ? (content.width - 8) / 2 : 104
+        height: expressive ? 56 : 82
+        opacity: usable || expressive ? 1 : 0.45 // QsTile fades itself
+
+        Loader {
+            active: tile.expressive
+            anchors.fill: parent
+            sourceComponent: QsTile {
+                icon: tile.icon
+                label: tile.label
+                checked: tile.checked
+                usable: tile.usable
+                split: tile.split
+                menu: tile.menu
+                squareRadius: Styles.quickSettings.tileRadius
+                onToggled: tile.toggled()
+                onDetails: tile.details()
+                onContextMenu: tile.contextMenu()
+            }
+        }
 
         Item {
             id: face
+            visible: !tile.expressive
             width: parent.width
             height: 48
             // A style's arrow beside the icon (quicksettings-inline-arrow): the
@@ -340,6 +360,7 @@ Window {
             }
         }
         Text {
+            visible: !tile.expressive
             anchors { top: face.bottom; topMargin: 6; horizontalCenter: parent.horizontalCenter }
             width: parent.width
             text: tile.label
@@ -421,7 +442,8 @@ Window {
             value: row.value
             enabled: !row.locked
             wheelEnabled: false
-            fillColor: row.muted ? Theme.textSecondary : Theme.accentFill
+            // The expressive variant's fill: M3's slider, primary.
+            fillColor: row.muted ? Theme.textSecondary : Styles.quickSettings.expressive ? Theme.primary : Theme.accentFill
             Accessible.name: row.name
             onMoved: row.moved(value)
         }
@@ -673,15 +695,19 @@ Window {
                 Column {
                     id: content
                     visible: root.page === ""
-                    x: 16
-                    y: 16
-                    width: parent.width - 32
+                    // Expressive: 12 from the panel's edges, so a tile's
+                    // square corners (16) are the panel's (28) less the
+                    // padding (M3's nested radii); Vela's choice.
+                    readonly property int pad: Styles.quickSettings.expressive ? 12 : 16
+                    x: pad
+                    y: pad
+                    width: parent.width - 2 * pad
                     spacing: 16
 
                     Grid {
-                        columns: 3
+                        columns: Styles.quickSettings.expressive ? 2 : 3
                         columnSpacing: 8
-                        rowSpacing: 4
+                        rowSpacing: Styles.quickSettings.expressive ? 8 : 4
 
                         Tile {
                             visible: Status.wifiAvailable
@@ -752,8 +778,8 @@ Window {
                     // A style without the footer band: a line above the sliders.
                     Rectangle {
                         visible: Styles.quickSettings.flatFooter
-                        x: -16
-                        width: parent.width + 32
+                        x: -content.pad
+                        width: parent.width + 2 * content.pad
                         height: 1
                         color: Theme.stroke
                     }
@@ -1347,10 +1373,11 @@ Window {
                 }
             }
 
+            // Not the expressive variant's: M3's surfaces have no edge.
             GlassEdge {
                 z: 1
                 cornerRadius: panel.radius
-                visible: Styles.quickSettings.borderless
+                visible: Styles.quickSettings.borderless && !Styles.quickSettings.expressive
             }
         }
     }

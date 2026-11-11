@@ -144,6 +144,7 @@ set(VELA_QML_FILES
     qml/PropertiesDialog.qml
     qml/CheckBox.qml
     qml/QuickSettings.qml
+    qml/QsTile.qml
     qml/NotificationCenter.qml
     qml/TaskView.qml
     qml/DesktopOsd.qml

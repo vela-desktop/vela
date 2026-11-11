@@ -88,17 +88,24 @@ QtObject {
     readonly property QtObject quickSettings: QtObject {
         readonly property bool chosen: Style.chosenStyles.indexOf("notifications") >= 0
         readonly property string variant: Theme.themed("quicksettings-variant", "default")
-        readonly property int radius: styles.size("quicksettings-radius", variant === "classic" ? 0 : Theme.radiusOverlay, 0, 48)
-        readonly property int tileRadius: styles.size("quicksettings-tile-radius", Theme.radius, 0, 24)
+        // expressive: Vela Expressive's (M3 Expressive's look): wide tiles two
+        // to a row that change shape (QsTile.qml), the panel in M3's extra
+        // large corners (28, Vela's choice for a panel), a tile's square
+        // corners M3's medium toggle button's (CornerLarge, 16: the panel's
+        // 28 less its 12 of padding); borderless, a flat footer and a thick
+        // slider unless the keys say otherwise.
+        readonly property bool expressive: variant === "expressive"
+        readonly property int radius: styles.size("quicksettings-radius", variant === "classic" ? 0 : expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay, 0, 48)
+        readonly property int tileRadius: styles.size("quicksettings-tile-radius", expressive ? 16 : Theme.radius, 0, 24)
         readonly property color surface: Theme.themed("quicksettings-surface", Theme.surface)
         // WindowGlass's: borders only along the panel's top edge and the tiles'
         // bottom edge; a split tile's arrow right beside its icon; no footer
         // band (a line above the sliders, the mixer's icon by the arrow); a
         // thick slider with a wide knob.
-        readonly property bool borderless: styles.flag("quicksettings-borderless", variant === "glass")
+        readonly property bool borderless: styles.flag("quicksettings-borderless", variant === "glass" || expressive)
         readonly property bool inlineArrow: styles.flag("quicksettings-inline-arrow", variant === "glass")
-        readonly property bool flatFooter: styles.flag("quicksettings-flat-footer", variant === "glass")
-        readonly property bool thickSlider: styles.flag("quicksettings-thick-slider", variant === "glass")
+        readonly property bool flatFooter: styles.flag("quicksettings-flat-footer", variant === "glass" || expressive)
+        readonly property bool thickSlider: styles.flag("quicksettings-thick-slider", variant === "glass" || expressive)
     }
     readonly property QtObject notifications: QtObject {
         readonly property bool chosen: Style.chosenStyles.indexOf("notifications") >= 0

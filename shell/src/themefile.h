@@ -169,7 +169,8 @@ inline const QMap<QString, QStringList>& variants()
     static const QMap<QString, QStringList> list {
         { QStringLiteral("taskbar-variant"),
             { QStringLiteral("default"), QStringLiteral("floating"), QStringLiteral("floating-split"), QStringLiteral("dock") } },
-        { QStringLiteral("quicksettings-variant"), { QStringLiteral("default"), QStringLiteral("glass"), QStringLiteral("classic") } },
+        { QStringLiteral("quicksettings-variant"),
+            { QStringLiteral("default"), QStringLiteral("glass"), QStringLiteral("classic"), QStringLiteral("expressive") } },
         { QStringLiteral("controls-variant"), { QStringLiteral("default"), QStringLiteral("expressive") } },
         // Where the tonal palette starts (accentsource.h).
         { QStringLiteral("color-source"), { QStringLiteral("accent"), QStringLiteral("wallpaper") } },
