@@ -806,6 +806,13 @@
     </message>
 </context>
 <context>
+    <name>QsTile</name>
+    <message>
+        <source>%1 settings</source>
+        <translation>Impostazioni di %1</translation>
+    </message>
+</context>
+<context>
     <name>QuickSettings</name>
     <message>
         <source>Default output</source>
