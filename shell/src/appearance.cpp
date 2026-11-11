@@ -175,6 +175,7 @@ void Appearance::reload()
     // The accent after the theme: it may ask for the wallpaper's.
     m_accentSource = source;
     m_chosenAccent = chosen;
+    const bool wallpaperChanged = wallpaper != m_wallpaperColor;
     m_wallpaperColor = wallpaper;
     const QColor accent = vela::accent::userAccent(theme, light, source, chosen, wallpaper).color;
     // The palette only when its source or the mode changed: the quantized
@@ -186,9 +187,9 @@ void Appearance::reload()
         m_tonal = tonalOf(tonalSource, light);
     }
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
-        // Only the theme, the palette or the motion: the icons stay as they
-        // are.
-        if (themeChanged || tonalChanged || motion.effects != m_animationEffects
+        // Only the theme, the palette, the wallpaper's color (Settings shows
+        // it) or the motion: the icons stay as they are.
+        if (themeChanged || tonalChanged || wallpaperChanged || motion.effects != m_animationEffects
             || motion.duration != m_animationDuration) {
             m_animationEffects = motion.effects;
             m_animationDuration = motion.duration;

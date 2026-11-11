@@ -181,6 +181,38 @@ private slots:
         QVERIFY(prefs.clock24());
     }
 
+    // appearance/accentSource (shell/src/accentsource.h): the theme decides
+    // until the user chooses; only the three names are written, and a value
+    // another program wrote is reread.
+    void accentSource()
+    {
+        Preferences prefs;
+        QCOMPARE(prefs.accentSource(), QStringLiteral("theme"));
+        QSignalSpy accent(&prefs, &Preferences::accentChanged);
+        prefs.setAccentSource(QStringLiteral("wallpaper"));
+        QCOMPARE(prefs.accentSource(), QStringLiteral("wallpaper"));
+        QCOMPARE(saved(QStringLiteral("appearance/accentSource")).toString(), QStringLiteral("wallpaper"));
+        QCOMPARE(accent.count(), 1);
+        prefs.setAccentSource(QStringLiteral("wallpaper")); // the same: nothing
+        QCOMPARE(accent.count(), 1);
+        prefs.setAccentSource(QStringLiteral("sunset")); // not a source: refused
+        QCOMPARE(prefs.accentSource(), QStringLiteral("wallpaper"));
+        QCOMPARE(saved(QStringLiteral("appearance/accentSource")).toString(), QStringLiteral("wallpaper"));
+        prefs.setAccentSource(QStringLiteral("chosen"));
+        QCOMPARE(saved(QStringLiteral("appearance/accentSource")).toString(), QStringLiteral("chosen"));
+        // Choosing a color leaves the source as it is.
+        prefs.setAccent(QColor(QStringLiteral("#ff8c00")));
+        QCOMPARE(prefs.accentSource(), QStringLiteral("chosen"));
+        QCOMPARE(saved(QStringLiteral("appearance/accent")).toString(), QStringLiteral("#ff8c00"));
+
+        write("[appearance]\nappTheme=dark\naccentSource=wallpaper\n");
+        prefs.reload();
+        QCOMPARE(prefs.accentSource(), QStringLiteral("wallpaper"));
+        write("[appearance]\nappTheme=dark\naccentSource=bogus\n");
+        prefs.reload();
+        QCOMPARE(prefs.accentSource(), QStringLiteral("theme"));
+    }
+
     // docs/battery-notifications.md §6.
     void batterySettings()
     {

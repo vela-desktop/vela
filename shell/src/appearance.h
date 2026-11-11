@@ -33,6 +33,10 @@ class Appearance : public QObject {
     // this mode, from the theme's primary or the effective accent, as
     // QColor. Theme.qml's tonal roles fall back to them.
     Q_PROPERTY(QVariantMap tonal READ tonal NOTIFY changed)
+    // The wallpaper's source color (mica.h's cachedWallpaperColor()), what
+    // the accent takes from the wallpaper; invalid while the shell hasn't
+    // found one or the wallpaper has none. Settings > Colors shows it.
+    Q_PROPERTY(QColor wallpaperColor READ wallpaperColor NOTIFY changed)
     Q_PROPERTY(QColor mica READ mica NOTIFY changed)
     Q_PROPERTY(QColor micaInactive READ micaInactive NOTIFY changed)
     // The chosen theme's and styles' values, merged (theme=, taskbar-style=,
@@ -59,6 +63,7 @@ public:
     bool light() const { return m_light; }
     QColor accent() const { return m_accent; }
     QVariantMap tonal() const { return m_tonal; }
+    QColor wallpaperColor() const { return m_wallpaperColor; }
     // The roles of another source color or mode, as tonal (Settings'
     // previews, the title bars in the apps' mode).
     Q_INVOKABLE QVariantMap tonalOf(const QColor& source, bool light) const;

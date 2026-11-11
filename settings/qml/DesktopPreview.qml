@@ -24,8 +24,31 @@ Item {
         return modeKey in t ? t[modeKey] : (key in t ? t[key] : fallback)
     }
     function accentFill(light) {
+        const roles = light === appsLight ? appsTonal : shellTonal
+        if (roles !== null) {
+            return themed("primary", light, roles.primary)
+        }
         return Theme.accentFillOf(themed("accent", light, Style.accent), light)
     }
+    // A theme with the expressive controls draws with Material's tonal
+    // roles (Theme.qml), so its miniature does too: the roles of the
+    // palette these tokens would start from in a mode (accentsource.h's
+    // schemeSource(): the theme's primary, its accent, else the user's, the
+    // wallpaper's when asked), or null with the default look.
+    function tonalFor(light) {
+        if (themed("controls-variant", light, "default") !== "expressive") {
+            return null
+        }
+        const own = themed("primary", light, themed("accent", light, null))
+        if (own !== null) {
+            return Style.tonalOf(own, light)
+        }
+        const asks = themed("color-source", light, "accent") === "wallpaper"
+        const fromWallpaper = Prefs.accentSource === "wallpaper" || (Prefs.accentSource === "theme" && asks)
+        return Style.tonalOf(fromWallpaper && Style.wallpaperColor.valid ? Style.wallpaperColor : Prefs.accent, light)
+    }
+    readonly property var appsTonal: tonalFor(appsLight)
+    readonly property var shellTonal: tonalFor(shellLight)
     width: framed ? parent.width : frame.width
     height: framed ? 210 : frame.height
     Rectangle {
@@ -47,17 +70,22 @@ Item {
                 asynchronous: true
             }
             Rectangle {
+                objectName: "previewWindow"
                 x: parent.width * 0.22
                 y: parent.height * 0.18
                 width: parent.width * 0.56
                 height: parent.height * 0.52
                 radius: 3
                 // A window, in the apps' mode.
+                // Expressive: Material's surface, as Theme.background.
                 color: preview.themed("background", preview.appsLight,
-                    preview.appsLight ? Qt.rgba(0.95, 0.95, 0.95, 0.97) : Qt.rgba(0.13, 0.13, 0.13, 0.96))
+                    preview.appsTonal !== null ? preview.themed("surfaceBase", preview.appsLight, preview.appsTonal.surface)
+                    : preview.appsLight ? Qt.rgba(0.95, 0.95, 0.95, 0.97) : Qt.rgba(0.13, 0.13, 0.13, 0.96))
                 // The text: the theme's at the opacity of these lines.
                 readonly property color line: {
-                    const text = preview.themed("text", preview.appsLight, preview.appsLight ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1))
+                    const text = preview.themed("text", preview.appsLight,
+                        preview.appsTonal !== null ? preview.themed("onSurface", preview.appsLight, preview.appsTonal.onSurface)
+                        : preview.appsLight ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1))
                     return Qt.rgba(text.r, text.g, text.b, 0.2)
                 }
                 Rectangle { x: 8; y: 8; width: parent.width * 0.4; height: 5; radius: 2; color: preview.accentFill(preview.appsLight) }
@@ -73,15 +101,25 @@ Item {
                 // its own at the edge (edge 1 and 2).
                 readonly property var layout: Style.taskbarLayout(preview.themeTokens || {}, preview.shellLight,
                     Prefs.taskbarAlignment)
+                // Expressive: surface container, as Theme.taskbar; the apps
+                // in on surface variant.
                 readonly property color fill: preview.themed("taskbar", preview.shellLight,
-                    preview.shellLight ? Qt.rgba(0.94, 0.94, 0.95, 0.88) : Qt.rgba(0.11, 0.11, 0.13, 0.85))
-                readonly property color dot: preview.shellLight ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.45)
+                    preview.shellTonal !== null ? preview.themed("surfaceContainer", preview.shellLight, preview.shellTonal.surfaceContainer)
+                    : preview.shellLight ? Qt.rgba(0.94, 0.94, 0.95, 0.88) : Qt.rgba(0.11, 0.11, 0.13, 0.85))
+                readonly property color dot: {
+                    if (preview.shellTonal === null) {
+                        return preview.shellLight ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.45)
+                    }
+                    const c = preview.shellTonal.onSurfaceVariant
+                    return Qt.rgba(c.r, c.g, c.b, 0.6)
+                }
                 width: parent.width
                 height: 14
                 y: parent.height - height - (layout.floating ? 4 : 0)
 
                 Rectangle {
                     // The apps' bar, or pill.
+                    objectName: "previewBar"
                     width: bar.layout.fit ? icons.width + 16 : bar.layout.floating ? parent.width - 12 : parent.width
                     x: bar.layout.fit && bar.layout.edge === 2 ? 6 : (parent.width - width) / 2
                     height: parent.height

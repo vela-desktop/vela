@@ -10,6 +10,8 @@ import QtQuick
 QtObject {
     // Colors.
     property color accent: "#0078d4"
+    // "theme", "wallpaper" or "chosen" (appearance/accentSource).
+    property string accentSource: "theme"
     property string appTheme: "dark"
     property string saveError: ""
     property string shellTheme: "dark"
@@ -51,6 +53,7 @@ QtObject {
 
     function reset() {
         accent = "#0078d4"
+        accentSource = "theme"
         appTheme = "dark"
         shellTheme = "dark"
         visualTheme = "vela"
