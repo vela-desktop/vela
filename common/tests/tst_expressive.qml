@@ -57,7 +57,7 @@ Item {
             compare(toggle.showLabel, false)
             compare(toggle.indicator.width, 52)
             compare(toggle.indicator.height, 32)
-            tryVerify(() => Colors.same(toggle.indicator.color, Theme.surfaceContainerHigh), 2000)
+            tryVerify(() => Colors.same(toggle.indicator.color, Theme.surfaceContainerHighest), 2000)
             mouseClick(toggle)
             compare(toggle.checked, true)
             tryVerify(() => Colors.same(toggle.indicator.color, Theme.primary), 2000)
@@ -81,7 +81,7 @@ Item {
             compare(thickSlider.handle.height, 25)
             compare(thickSlider.background.children[0].x, 0)
             compare(thickSlider.background.children[0].width, thickSlider.availableWidth)
-            verify(Colors.same(thickSlider.background.children[0].color, Theme.surfaceContainerHigh))
+            verify(Colors.same(thickSlider.background.children[0].color, Theme.secondaryContainer))
         }
 
         // Content on the tonal roles reads at 4.5:1 whatever the theme set.

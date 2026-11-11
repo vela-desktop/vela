@@ -249,10 +249,24 @@ QtObject {
     // Shadows (Shadow.qml): WinUI's elevations for what floats. Flyouts:
     // menus, panels, previews; dialogs: above a window or the screen. The
     // compositor gives windows their own (scene/, two layers).
-    readonly property var shadow: ({
-        flyout: { blur: 32, offset: 6, opacity: 0.45 },
-        dialog: { blur: 48, offset: 16, opacity: 0.45 }
-    })
+    // Expressive: lower, as M3's hierarchy is tonal: its menus' level 2
+    // (3 dp) and dialogs' level 3 (6 dp) as the offset; the blur (four
+    // times the offset) and the opacity are Vela's choice, M3 publishes
+    // only the levels.
+    // (A block: a conditional between two object literals came out
+    // undefined from the compiled binding.)
+    readonly property var shadow: {
+        if (expressive) {
+            return {
+                flyout: { blur: 12, offset: 3, opacity: 0.3 },
+                dialog: { blur: 24, offset: 6, opacity: 0.3 }
+            }
+        }
+        return {
+            flyout: { blur: 32, offset: 6, opacity: 0.45 },
+            dialog: { blur: 48, offset: 16, opacity: 0.45 }
+        }
+    }
     readonly property int fontCaption: Math.max(9, Math.min(24, themed("fontCaption", 12)))
     readonly property int fontBody: Math.max(10, Math.min(28, themed("fontBody", 14)))
     readonly property int fontBodyLarge: Math.max(12, Math.min(36, themed("fontBodyLarge", 18)))
