@@ -169,6 +169,8 @@ Item {
             verify(Colors.same(bar.children[0].color, Theme.secondaryContainer))
             compare(bar.children[2].width, 40)
             compare(bar.children[2].height, 25)
+            verify(Colors.same(bar.children[2].color, Theme.primary))
+            compare(bar.children[2].border.width, 0)
         }
 
         function test_tooltip_is_plain() {

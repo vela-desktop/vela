@@ -96,6 +96,8 @@ Item {
             verify(styles.quickSettings.flatFooter)
             verify(styles.quickSettings.thickSlider)
             verify(!styles.quickSettings.inlineArrow)
+            // The taskbar without an outline, as the panels.
+            compare(styles.taskbar.stroke.a, 0)
             compare(styles.quickSettings.radius, Theme.shapeExtraLarge)
             compare(styles.quickSettings.tileRadius, 16)
             // Nested corners: the tile's square ones are the panel's less its

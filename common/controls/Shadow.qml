@@ -56,4 +56,19 @@ Item {
     Strip { x: 0; y: root.reach + root.target.height; width: root.width; height: Math.min(root.below, root.reach) }
     Strip { x: 0; y: root.reach; width: root.reach; height: root.target.height }
     Strip { x: root.reach + root.target.width; y: root.reach; width: root.reach; height: root.target.height }
+    // Expressive: the corners too, inside the target's box, where its round
+    // corners leave the strips' gap (a lighter square at M3's 28). Its
+    // tonal surfaces are opaque and every Shadow lies beneath its target, so
+    // only the part outside the round corner shows.
+    Repeater {
+        model: Theme.expressive && root.radius > 0 ? 4 : 0
+        delegate: Strip {
+            required property int index
+            readonly property real size: Math.min(root.radius, root.target.width / 2, root.target.height / 2)
+            x: index % 2 === 0 ? root.reach : root.reach + root.target.width - size
+            y: index < 2 ? root.reach : root.reach + root.target.height - size
+            width: size
+            height: size
+        }
+    }
 }

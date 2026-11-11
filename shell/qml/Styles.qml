@@ -61,7 +61,9 @@ QtObject {
         readonly property int splitRadius: styles.size("taskbar-split-radius", 5, 0, 48)
         readonly property int edge: layout.edge
         readonly property bool flush: styles.flag("taskbar-flush", false)
-        readonly property color stroke: Theme.themed("taskbar-stroke", Theme.stroke)
+        // Expressive: none, as the expressive panels (M3's floating toolbar
+        // has no outline).
+        readonly property color stroke: Theme.themed("taskbar-stroke", Theme.expressive ? "transparent" : Theme.stroke)
         // The buttons.
         readonly property int buttonWidth: styles.size("taskbar-button-width", 44, 24, 96)
         readonly property int buttonHeight: styles.size("taskbar-button-height", 40, 24, 96)

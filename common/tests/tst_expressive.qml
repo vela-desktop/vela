@@ -82,6 +82,9 @@ Item {
             compare(thickSlider.background.children[0].x, 0)
             compare(thickSlider.background.children[0].width, thickSlider.availableWidth)
             verify(Colors.same(thickSlider.background.children[0].color, Theme.secondaryContainer))
+            // The knob is the fill's rounded end, in its color, unbordered.
+            verify(Colors.same(thickSlider.handle.color, thickSlider.fillColor))
+            compare(thickSlider.handle.border.width, 0)
         }
 
         // Content on the tonal roles reads at 4.5:1 whatever the theme set.

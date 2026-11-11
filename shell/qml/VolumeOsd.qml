@@ -228,9 +228,11 @@ Window {
                     width: root.expressive ? 40 : 18
                     height: root.expressive ? 25 : 18
                     radius: root.expressive ? 12 : 9
-                    color: Theme.popup
-                    border.width: 1
-                    border.color: root.expressive ? Theme.outlineVariant : Theme.stroke
+                    // Expressive: the fill's rounded end, in its color
+                    // (as Slider's thick knob).
+                    color: root.expressive ? (root.muted ? Theme.outline : Theme.primary) : Theme.popup
+                    border.width: root.expressive ? 0 : 1
+                    border.color: Theme.stroke
                     Rectangle {
                         visible: !root.expressive
                         anchors.centerIn: parent
