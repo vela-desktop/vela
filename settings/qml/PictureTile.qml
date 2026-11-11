@@ -10,6 +10,8 @@ import Vela.Controls
 // and a check. A click, Space or Enter chooses it (the gallery applies it
 // at once).
 // The picture goes in `picture`, filling pictureHeight.
+// Expressive: an M3 card's medium corners; the colors are the remapped
+// card and accent tokens (primary for the one in use).
 T.AbstractButton {
     id: tile
     property bool selected: false
@@ -58,7 +60,7 @@ T.AbstractButton {
     Keys.onEnterPressed: clicked()
 
     background: Fill {
-        radius: Theme.radiusCard
+        radius: Theme.expressive ? Theme.shapeMedium : Theme.radiusCard
         color: tile.down ? Theme.cardPressed : tile.hovered ? Theme.cardHover : Theme.card
         border.width: tile.selected ? 2 : 1
         border.color: tile.selected ? Theme.accentFill : Theme.cardStroke

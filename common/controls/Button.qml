@@ -19,6 +19,10 @@ T.Button {
     // The theme normally selects this; an instance may override it for previews.
     property string styleVariant: Theme.controlsVariant
     readonly property bool expressive: styleVariant === "expressive"
+    // Expressive, subtle: a text button on the inverse surface (a
+    // snackbar's action), in inverse primary.
+    property bool onInverse: false
+    readonly property color textTint: onInverse ? Theme.inversePrimary : Theme.primary
 
     // Expressive: M3's small button (40 high, 16 on each side; an icon-only
     // one is the 40 small icon button). Its 20 px icon stays Vela's 16, the
@@ -57,7 +61,7 @@ T.Button {
         radius: Math.min(control.shape, height / 2)
         color: control.expressive
             ? (control.subtle
-                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, control.stateLayer)
+                ? Qt.rgba(control.textTint.r, control.textTint.g, control.textTint.b, control.stateLayer)
                 : control.accent
                     ? Theme.mix(Theme.primary, Theme.primaryText, control.stateLayer)
                     : Theme.mix(Theme.secondaryContainer, Theme.secondaryContainerText, control.stateLayer))
@@ -95,7 +99,7 @@ T.Button {
                 visible: control.text !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 text: control.text
-                color: control.expressive ? (control.accent ? Theme.primaryText : control.subtle ? Theme.primary : Theme.secondaryContainerText)
+                color: control.expressive ? (control.accent ? Theme.primaryText : control.subtle ? control.textTint : Theme.secondaryContainerText)
                                           : (control.accent ? Theme.accentText : Theme.text)
                 font: control.font
             }

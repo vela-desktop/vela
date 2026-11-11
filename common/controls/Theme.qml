@@ -223,6 +223,8 @@ QtObject {
     readonly property color outlineVariant: themed("outlineVariant", Style.tonal.outlineVariant)
     readonly property color inverseSurface: themed("inverseSurface", Style.tonal.inverseSurface)
     readonly property color inverseSurfaceText: legibleOn(inverseSurface, themed("inverseOnSurface", Style.tonal.inverseOnSurface))
+    // Actions on the inverse surface (M3's snackbar action).
+    readonly property color inversePrimary: themed("inversePrimary", Style.tonal.inversePrimary)
     // Expressive: links are primary (M3, underlined where they're used).
     readonly property color link: expressive ? primary : light ? Qt.darker(accent, 1.3) : Qt.lighter(accent, 1.5)
     // Icons of the theme matching the mode ("image://icon/l/<name>"; the

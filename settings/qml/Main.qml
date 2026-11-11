@@ -333,17 +333,27 @@ Window {
             boundsBehavior: Flickable.StopAtBounds
             model: root.sections
             spacing: 2
+            // Expressive: M3's navigation drawer item, at Vela's 36 rows
+            // (pointer density): the page in use a full pill of secondary
+            // container with its text in Medium, no bar; the others state
+            // layers of on surface.
             delegate: Fill {
                 id: entry
+                objectName: "navigation:" + modelData
                 required property string modelData
                 readonly property bool selected: root.section === modelData
+                readonly property bool expressive: Theme.expressive
+                readonly property real amount: entryMouse.pressed ? Theme.statePressed : entryMouse.containsMouse ? Theme.stateHover : 0
                 width: sectionList.width - 16
                 height: 36
-                radius: Theme.radius
-                color: entryMouse.pressed ? Theme.subtlePressed : selected || entryMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                radius: expressive ? height / 2 : Theme.radius
+                color: expressive
+                    ? (selected ? Theme.mix(Theme.secondaryContainer, Theme.secondaryContainerText, amount)
+                                : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, amount))
+                    : entryMouse.pressed ? Theme.subtlePressed : selected || entryMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
 
                 Rectangle {
-                    visible: entry.selected
+                    visible: entry.selected && !entry.expressive
                     anchors.verticalCenter: parent.verticalCenter
                     width: 3
                     height: entryMouse.pressed ? 10 : 16
@@ -362,8 +372,9 @@ Window {
                     x: 48
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.pages[entry.modelData].title
-                    color: Theme.text
+                    color: entry.expressive && entry.selected ? Theme.secondaryContainerText : Theme.text
                     font.pixelSize: Theme.fontBody
+                    font.weight: entry.expressive && entry.selected ? Theme.weightLabel : Font.Normal
                 }
                 MouseArea {
                     id: entryMouse
