@@ -1664,5 +1664,139 @@ class PanelBlur(RealShell):
         self.assertGreater(sliding, 0, "no capture landed while the panel was sliding")
 
 
+
+# Vela Expressive's shell (themes/vela-expressive.conf is not shipped yet):
+# its keys in a theme of the session's own, as docs/theme-system.md's variant
+# contract asks of a variant.
+EXPRESSIVE_THEME = ("# Vela Test Expressive: the shell's expressive variants\n"
+                    "schema-version=1\n"
+                    "controls-variant=expressive\n"
+                    "motion-variant=expressive\n"
+                    "color-source=wallpaper\n"
+                    "quicksettings-variant=expressive\n"
+                    "notifications-variant=expressive\n"
+                    "startmenu-variant=expressive\n")
+# The QML the variants touch: a warning from them in the log fails a test.
+EXPRESSIVE_QML = ("QsTile.qml", "QuickSettings.qml", "StartMenu.qml", "AppTile.qml", "NotificationCenter.qml",
+                  "Styles.qml")
+
+
+class ExpressiveShell(RealShell):
+    """Start, quick settings and the notification center with their
+    expressive variants: they open and close, Start launches from the
+    keyboard, a tile toggles with Enter, the blur stays behind each panel."""
+
+    # No system bus: no Wi-Fi, Bluetooth or power profile of this machine's
+    # among the tiles, so the keys below reach Night light, whose state the
+    # compositor reports.
+    shell_env = {"DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/nonexistent/vela-test-system-bus"}
+
+    def use_expressive_theme(self):
+        themes = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "vela", "themes")
+        os.makedirs(themes, exist_ok=True)
+        with open(os.path.join(themes, "vela-test-expressive.conf"), "w") as file:
+            file.write(EXPRESSIVE_THEME)
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write("theme=vela-test-expressive\n")
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell rereads the theme
+
+    def assert_clean_log(self):
+        warnings = [line for line in self.vela.log_text().splitlines()
+                    if any(f"{name}:" in line for name in EXPRESSIVE_QML)]
+        self.assertEqual(warnings, [], "QML warnings from the expressive variants")
+
+    def open_panel(self, send, key, namespace):
+        send("key", key, "sleep", 900)
+        state = self.vela.wait_for(lambda s: self.layer(s, namespace), timeout=8, what=f"{namespace} open")
+        return self.layer(state, namespace)
+
+    def close_panel(self, send, namespace):
+        send("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+
+    def test_panels_open_and_close_with_blur(self):
+        # Quick settings' tiles are two to a row, 56 high: its window differs
+        # from the default look's.
+        with self.input_session() as send:
+            default = self.open_panel(send, "super+a", "vela-quick-settings")
+            self.close_panel(send, "vela-quick-settings")
+        self.use_expressive_theme()
+        with self.input_session() as send:
+            for key, namespace in (("super", "vela-start-menu"), ("super+a", "vela-quick-settings"),
+                                   ("super+n", "vela-notification-center")):
+                with self.subTest(panel=namespace):
+                    layer = self.open_panel(send, key, namespace)
+                    time.sleep(1.0) # at rest
+                    if namespace == "vela-quick-settings":
+                        self.assertNotEqual(layer["h"], default["h"], "quick settings kept the default tiles")
+                    # The blur is asked for the panel at rest, rounded like
+                    # it (a region of many rectangles): it spans the panel,
+                    # its shadow's room on the left (and on the right for
+                    # Start, 12 for the others), 12 above the window's bottom
+                    # (the taskbar).
+                    regions = PanelBlur.blur_regions(self, namespace)
+                    self.assertTrue(regions and regions[-1], f"{namespace} has no blur region")
+                    rects = regions[-1]
+                    x0, y0 = min(r[0] for r in rects), min(r[1] for r in rects)
+                    x1, y1 = max(r[0] + r[2] for r in rects), max(r[1] + r[3] for r in rects)
+                    start = namespace == "vela-start-menu"
+                    self.assertEqual(x1 - x0, 640 if start else 360)
+                    self.assertEqual(layer["w"] - x1, x0 if start else 12)
+                    self.assertEqual(y1, layer["h"] - 12)
+                    self.assertGreaterEqual(y0, 0)
+                    area = sum(r[2] * r[3] for r in rects)
+                    self.assertGreater(area, 0.9 * (x1 - x0) * (y1 - y0), f"{namespace}'s blur doesn't cover it")
+                    self.close_panel(send, namespace)
+        self.check_desktop()
+        self.assert_clean_log()
+
+    def test_notifications_of_one_app_in_the_center(self):
+        self.use_expressive_theme()
+        for summary in ("First", "Second", "Third"):
+            self.send_notification(summary)
+        with self.input_session() as send:
+            center = self.open_panel(send, "super+n", "vela-notification-center")
+            time.sleep(1.0)
+            self.assertGreater(center["h"], 300)
+            self.close_panel(send, "vela-notification-center")
+        self.check_desktop()
+        self.assert_clean_log()
+
+    send_notification = QtShell.send_notification
+
+    def test_start_launches_from_the_keyboard(self):
+        applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
+        os.makedirs(applications, exist_ok=True)
+        marker = os.path.join(self.vela.directory, "launched-probe")
+        with open(os.path.join(applications, "vela-expressive-probe.desktop"), "w") as file:
+            file.write(f"[Desktop Entry]\nType=Application\nName=Expressive Probe\nExec=/usr/bin/touch {marker}\n")
+        self.use_expressive_theme()
+        with self.input_session() as send:
+            self.open_panel(send, "super", "vela-start-menu")
+            send("type", "Expressive Probe", "sleep", 800, "key", "Return")
+            self.vela.wait_for(lambda _: os.path.exists(marker), timeout=8, read_state=False,
+                               what="the app launched from Start")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        self.check_desktop()
+        self.assert_clean_log()
+
+    def test_a_tile_toggles_with_enter(self):
+        self.use_expressive_theme()
+        self.assertFalse(self.vela.query("accessibility")["nightLight"])
+        with self.input_session() as send:
+            self.open_panel(send, "super+a", "vela-quick-settings")
+            # Without Wi-Fi the network's tile first, then Night light.
+            send("key", "Tab", "sleep", 200, "key", "Tab", "sleep", 200, "key", "Return", "sleep", 300)
+            self.vela.wait_for(lambda _: self.vela.query("accessibility")["nightLight"], timeout=5,
+                               read_state=False, what="Night light on")
+            self.assertTrue(self.mapped(self.vela.state(), "vela-quick-settings"), "a tile closed quick settings")
+            send("key", "Return", "sleep", 300)
+            self.vela.wait_for(lambda _: not self.vela.query("accessibility")["nightLight"], timeout=5,
+                               read_state=False, what="Night light off")
+            self.close_panel(send, "vela-quick-settings")
+        self.check_desktop()
+        self.assert_clean_log()
+
 if __name__ == "__main__":
     unittest.main()
