@@ -45,6 +45,7 @@ if name == "curl":
         if path not in known:
             sys.exit("Unexpected recipe URL: " + url)
         respond(known[path].encode())
+        sys.exit(0)
     if "/releases?per_page=100&page=" in url:
         if os.environ.get("TEST_API_STATUS"):
             refuse(os.environ["TEST_API_STATUS"])
