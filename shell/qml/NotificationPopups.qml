@@ -7,6 +7,9 @@ import Vela.Controls
 
 // Notifications, at the bottom right above the taskbar like on Windows 11. The
 // window is as tall as the tiles: the rest of the output stays clickable.
+// Expressive: each tile on surface container high (Theme.popup) with large
+// corners and no outline, a critical one outlined in error, the summary in
+// the emphasis weight; it slides in on the default spatial curve.
 Window {
     id: root
     width: 380
@@ -51,12 +54,14 @@ Window {
                 required property bool hasDefaultAction
                 required property bool critical
 
+                readonly property bool expressive: Theme.expressive
+                objectName: "toast"
                 width: stack.width
                 height: content.implicitHeight + 28
-                radius: Theme.radiusOverlay
+                radius: expressive ? Theme.shapeLarge : Theme.radiusOverlay
                 color: Theme.popup
-                border.width: 1
-                border.color: critical ? Qt.rgba(1, 0.35, 0.35, 0.6) : Theme.stroke
+                border.width: expressive && !critical ? 0 : 1
+                border.color: critical ? (expressive ? Theme.error : Qt.rgba(1, 0.35, 0.35, 0.6)) : Theme.stroke
 
                 // It comes in from the right, like on Windows.
                 transform: Translate { id: slide; x: 60 * Theme.motion }
@@ -64,7 +69,7 @@ Window {
                 Component.onCompleted: appear.start()
                 ParallelAnimation {
                     id: appear
-                    Eased { target: slide; property: "x"; to: 0; duration: Theme.slow }
+                    Spatial { target: slide; property: "x"; to: 0; speed: "default"; rest: Theme.slow }
                     Eased { target: toast; property: "opacity"; to: 1 }
                 }
 
@@ -119,7 +124,7 @@ Window {
                         visible: text !== ""
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.weightEmphasis
                         wrapMode: Text.Wrap
                         maximumLineCount: 2
                         elide: Text.ElideRight

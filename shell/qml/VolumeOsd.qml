@@ -10,8 +10,14 @@ import Vela.Controls
 // volume instead, with its icon. It can be used too: dragged, the wheel, a
 // click on the icon mutes. It stays while the mouse is on it. The microphone
 // mute key shows whether the microphone is on, once the system confirms it.
+//
+// Expressive: a full pill on surface container without outline, the bar
+// with the thick slider's geometry (Slider.thick: a 10 track across the
+// whole width, filled to the middle of a 40 × 25 knob) in M3's slider roles
+// (secondary container and primary), the speaker's hover a state layer.
 Window {
     id: root
+    readonly property bool expressive: Theme.expressive
     visible: false
     // The pill with room for its shadow around it, cut where the window
     // meets the taskbar (docs/visual-coherence.md §6.9): the pill rests 12
@@ -121,14 +127,16 @@ Window {
         Shadow {
             id: shadow
             target: pill
+            radius: pill.radius
         }
 
         Rectangle {
             id: pill
+            objectName: "volumePill"
             anchors.fill: parent
-            radius: Theme.radiusOverlay
+            radius: root.expressive ? height / 2 : Theme.radiusOverlay
             color: Theme.surface
-            border.width: 1
+            border.width: root.expressive ? 0 : 1
             border.color: Theme.stroke
 
             HoverHandler { id: hover }
@@ -147,7 +155,10 @@ Window {
                 height: 36
                 Fill {
                     anchors.fill: parent
-                    color: speakerMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    radius: root.expressive ? width / 2 : Theme.radius
+                    color: root.expressive
+                        ? Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, speakerMouse.containsMouse ? Theme.stateHover : 0)
+                        : speakerMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 }
                 Icon {
                     anchors.centerIn: parent
@@ -186,34 +197,42 @@ Window {
 
             Item {
                 id: bar
+                objectName: "volumeBar"
                 visible: !root.microphone
                 readonly property real shown: Math.max(0, Math.min(1, root.volume))
+                // Where the knob's middle travels: the whole width, or
+                // expressive between half a knob from each end.
+                readonly property real inset: root.expressive ? knob.width / 2 : 0
+                readonly property real knobCenter: inset + (width - 2 * inset) * shown
                 anchors { left: speaker.right; leftMargin: 10; right: number.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
                 height: 20
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width
-                    height: 4
-                    radius: 2
-                    color: Theme.stroke
+                    height: root.expressive ? 10 : 4
+                    radius: height / 2
+                    color: root.expressive ? Theme.secondaryContainer : Theme.stroke
                 }
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width * bar.shown
-                    height: 4
-                    radius: 2
-                    color: root.muted ? Theme.textSecondary : Theme.accent
+                    width: bar.knobCenter
+                    height: root.expressive ? 10 : 4
+                    radius: height / 2
+                    color: root.muted ? (root.expressive ? Theme.outline : Theme.textSecondary)
+                         : root.expressive ? Theme.primary : Theme.accent
                 }
                 Rectangle {
-                    x: parent.width * bar.shown - width / 2
+                    id: knob
+                    x: bar.knobCenter - width / 2
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 18
-                    height: 18
-                    radius: 9
+                    width: root.expressive ? 40 : 18
+                    height: root.expressive ? 25 : 18
+                    radius: root.expressive ? 12 : 9
                     color: Theme.popup
                     border.width: 1
-                    border.color: Theme.stroke
+                    border.color: root.expressive ? Theme.outlineVariant : Theme.stroke
                     Rectangle {
+                        visible: !root.expressive
                         anchors.centerIn: parent
                         width: barMouse.pressed ? 8 : 10
                         height: width
@@ -225,7 +244,7 @@ Window {
                     id: barMouse
                     anchors { fill: parent; margins: -8 }
                     function update(x) {
-                        root.setVolume(Math.max(0, Math.min(1, (x - 8) / bar.width)))
+                        root.setVolume(Math.max(0, Math.min(1, (x - 8 - bar.inset) / (bar.width - 2 * bar.inset))))
                         hideTimer.restart()
                     }
                     onPressed: mouse => update(mouse.x)

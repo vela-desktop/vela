@@ -5,9 +5,11 @@ import QtQuick
 import Vela.Controls
 
 // The desktop name, in the center of the output for a moment, when switching
-// desktops (Win+Ctrl+arrows), like Windows 11.
+// desktops (Win+Ctrl+arrows), like Windows 11. Expressive: a full pill on
+// surface container without outline, the name in the emphasis weight.
 Window {
     id: root
+    readonly property bool expressive: Theme.expressive
     visible: false
     // The pill with room for its shadow around it (docs/visual-coherence.md
     // §6.9).
@@ -55,14 +57,16 @@ Window {
         Shadow {
             id: shadow
             target: pill
+            radius: pill.radius
         }
 
         Rectangle {
             id: pill
+            objectName: "desktopPill"
             anchors.fill: parent
-            radius: Theme.radiusOverlay
+            radius: root.expressive ? height / 2 : Theme.radiusOverlay
             color: Theme.surface
-            border.width: 1
+            border.width: root.expressive ? 0 : 1
             border.color: Theme.stroke
             Text {
                 id: label
@@ -70,7 +74,7 @@ Window {
                 text: Desktops.names[Desktops.current] || ""
                 color: Theme.text
                 font.pixelSize: 20
-                font.weight: Font.DemiBold
+                font.weight: Theme.weightEmphasis
             }
         }
     }

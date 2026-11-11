@@ -278,6 +278,14 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-controls-no-effects COMMAND vela-shell-test)
     set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
+    # Under a theme of expressive controls and motion (common/tests/quicktest.h,
+    # VELA_TEST_THEME), on tests/expressive/ only.
+    add_test(NAME shell-controls-expressive COMMAND vela-shell-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    add_test(NAME shell-controls-expressive-no-effects COMMAND vela-shell-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    set_tests_properties(shell-controls-expressive PROPERTIES ENVIRONMENT "VELA_TEST_THEME=expressive")
+    set_tests_properties(shell-controls-expressive-no-effects PROPERTIES
+        ENVIRONMENT "VELA_TEST_THEME=expressive;VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(shell-controls-expressive shell-controls-expressive-no-effects PROPERTIES TIMEOUT 60)
 
     # Config on a private vela-shell.conf, rewritten as Settings does.
     qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h

@@ -7,8 +7,11 @@ import Vela.Controls
 // A taskbar tooltip, like Windows 11's: a small flyout above the taskbar,
 // centered on what the mouse rests on (Menus.tooltip). The mouse goes
 // through it. It fades in and goes at once (docs/visual-coherence.md K5).
+// Expressive: M3's plain tooltip, inverse surface with its text, extra small
+// corners, 8 on each side and 24 high for a line.
 Window {
     id: root
+    readonly property bool expressive: Theme.expressive
     visible: false
     // The tooltip with room for its shadow around it, cut where the window
     // meets the taskbar (docs/visual-coherence.md §6.9): it rests 8 units
@@ -48,32 +51,35 @@ Window {
         id: motion
         x: root.room
         y: root.room
-        width: label.width + 20
-        height: label.height + 14
+        width: label.width + 2 * label.x
+        height: label.height + 2 * label.y
         instantExit: true
         onClosed: root.visible = false
 
         Shadow {
             id: shadow
             target: panel
-            radius: Theme.radius
+            radius: panel.radius
         }
 
         Rectangle {
             id: panel
+            objectName: "tooltip"
             anchors.fill: parent
-            radius: Theme.radius
-            color: Theme.popup
-            border.width: 1
+            radius: root.expressive ? Theme.shapeExtraSmall : Theme.radius
+            color: root.expressive ? Theme.inverseSurface : Theme.popup
+            border.width: root.expressive ? 0 : 1
             border.color: Theme.stroke
 
             Text {
                 id: label
-                x: 10
-                y: 7
+                x: root.expressive ? 8 : 10
+                // Expressive: a caption line (15) and 4.5 above and below
+                // make M3's 24.
+                y: root.expressive ? 4 : 7
                 width: Math.min(implicitWidth, 360)
                 text: root.text
-                color: Theme.text
+                color: root.expressive ? Theme.inverseSurfaceText : Theme.text
                 font.pixelSize: Theme.fontCaption
                 wrapMode: Text.Wrap
                 lineHeight: 1.15
