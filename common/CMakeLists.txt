@@ -32,6 +32,24 @@ add_library(vela-rendering STATIC src/renderingpolicy.cpp)
 target_include_directories(vela-rendering PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(vela-rendering PRIVATE -Wall -Wextra)
 target_link_libraries(vela-rendering PUBLIC Qt6::Quick PRIVATE vela-process)
+
+# vela-color: Material's HCT color space, tonal palettes, the Tonal Spot
+# scheme and a wallpaper's source color, ported from Material Color
+# Utilities (Apache-2.0, color/LICENSE). Plain C++, no Qt: the shell, the
+# apps' Style and the lock screen compute the same palette.
+add_library(vela-color STATIC
+    color/hct.cpp
+    color/hct.h
+    color/palette.cpp
+    color/palette.h
+    color/scheme.cpp
+    color/scheme.h
+    color/quantize.cpp
+    color/quantize.h)
+target_include_directories(vela-color PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/color)
+target_compile_options(vela-color PRIVATE -Wall -Wextra)
+set_target_properties(vela-color PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CONTROLS_WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_get_variable(CONTROLS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
@@ -207,6 +225,14 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME controls-no-effects COMMAND vela-controls-test)
     set_tests_properties(controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(controls controls-no-effects PROPERTIES TIMEOUT 120)
+
+    # vela-color against Material Color Utilities' own results.
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    qt_add_executable(vela-color-test tests/color_test.cpp)
+    target_compile_options(vela-color-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-color-test PRIVATE vela-color Qt6::Test)
+    add_test(NAME color COMMAND vela-color-test)
+    set_tests_properties(color PROPERTIES TIMEOUT 60)
 
     # Real-process environment tests need no GPU, display, or Qt 6.6 APIs.
     qt_add_executable(vela-process-launch-test tests/process_launch.cpp)
