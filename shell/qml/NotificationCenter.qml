@@ -66,9 +66,11 @@ Window {
 
     }
 
-    // The panels' small buttons: subtle, or the accent while on.
+    // The panels' small buttons: subtle, or the accent while on; `tonal`,
+    // the expressive variant's filled tonal button ("Clear all").
     component SmallButton: Button {
-        subtle: !accent
+        property bool tonal: false
+        subtle: !accent && !tonal
         implicitWidth: text === "" ? 32 : implicitContentWidth + 20
         implicitHeight: 28
         leftPadding: 10
@@ -118,7 +120,7 @@ Window {
                 height: Math.min(Screen.height - Styles.taskbar.height - calendar.height - 60, header.height + Math.max(list.contentHeight, 64) + 24)
                 radius: Styles.notifications.radius
                 color: Styles.notifications.surface
-                border.width: 1
+                border.width: Styles.notifications.expressive ? 0 : 1 // M3's surfaces have no outline
                 border.color: Theme.stroke
 
                 Item {
@@ -132,7 +134,7 @@ Window {
                         text: qsTr("Notifications")
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
+                        font.weight: Styles.notifications.expressive ? Theme.weightEmphasis : Font.DemiBold
                     }
                     // Held back by the rule, not by the user's switch
                     // (docs/screen-sharing.md §7): under the title and the
@@ -163,6 +165,7 @@ Window {
                         SmallButton {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: root.history.count > 0
+                            tonal: Styles.notifications.expressive
                             text: qsTr("Clear all")
                             onClicked: Notifications.clearHistory()
                         }
@@ -173,7 +176,10 @@ Window {
                     id: list
                     anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: 8; topMargin: 4 }
                     clip: true
-                    spacing: 6
+                    // Expressive: an app's notifications 2 apart, one
+                    // container (M3's segmented list, as Settings' card
+                    // groups).
+                    spacing: Styles.notifications.expressive ? 2 : 6
                     model: root.history
                     boundsBehavior: Flickable.StopAtBounds
                     section.property: "appName"
@@ -197,10 +203,28 @@ Window {
                         required property var actions
                         required property bool hasDefaultAction
                         required property date time
+                        // Expressive: the first and the last of an app's
+                        // run take the outer corners (Styles'
+                        // cardRadius), those between M3's extra small
+                        // ones; the neighbors' app from the model (the
+                        // list's sections).
+                        readonly property bool expressive: Styles.notifications.expressive
+                        readonly property bool first: ListView.previousSection !== ListView.section
+                        readonly property bool last: ListView.nextSection !== ListView.section
+                        readonly property real outer: Styles.notifications.cardRadius
+                        readonly property real inner: Math.min(outer, Theme.shapeExtraSmall)
                         width: list.width
                         height: itemContent.height + 20
                         radius: Styles.notifications.cardRadius
-                        color: itemHover.hovered ? Theme.subtleHover : Theme.control
+                        // undefined: the default look keeps `radius` alone.
+                        topLeftRadius: expressive ? (first ? outer : inner) : undefined
+                        topRightRadius: expressive ? (first ? outer : inner) : undefined
+                        bottomLeftRadius: expressive ? (last ? outer : inner) : undefined
+                        bottomRightRadius: expressive ? (last ? outer : inner) : undefined
+                        color: itemHover.hovered ? (expressive ? Theme.controlHover : Theme.subtleHover) : Theme.control
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: summary
+                        Accessible.description: body
 
                         HoverHandler { id: itemHover }
                         // Passive right-click handling works across child
@@ -246,7 +270,7 @@ Window {
                                         textFormat: Text.PlainText // the spec's summary has no markup
                                         color: Theme.text
                                         font.pixelSize: Theme.fontBody
-                                        font.weight: Font.DemiBold
+                                        font.weight: item.expressive ? Theme.weightEmphasis : Font.DemiBold
                                         elide: Text.ElideRight
                                     }
                                     Text {
@@ -311,7 +335,7 @@ Window {
                 height: calendarContent.height + 32
                 radius: Styles.notifications.radius
                 color: Styles.notifications.surface
-                border.width: 1
+                border.width: Styles.notifications.expressive ? 0 : 1 // M3's surfaces have no outline
                 border.color: Theme.stroke
 
                 Column {
@@ -412,12 +436,18 @@ Window {
                                     width: 32
                                     height: 32
                                     radius: Styles.notifications.todayRadius
-                                    color: parent.today ? Theme.accent : dayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                                    // Expressive: today a full primary circle
+                                    // (todayRadius 16 is round), hover a state
+                                    // layer.
+                                    color: parent.today ? (Styles.notifications.expressive ? Theme.primary : Theme.accent)
+                                        : dayMouse.containsMouse ? (Styles.notifications.expressive ? Theme.hoverLayer : Theme.subtleHover)
+                                        : Styles.notifications.expressive ? Theme.restLayer : Theme.subtleRest
                                 }
                                 Text {
                                     anchors.centerIn: parent
                                     text: parent.day.getDate()
-                                    color: parent.today ? Theme.readableOn(Theme.accent, "white") : parent.inMonth ? Theme.text : Theme.textSecondary
+                                    color: parent.today ? (Styles.notifications.expressive ? Theme.primaryText : Theme.readableOn(Theme.accent, "white"))
+                                        : parent.inMonth ? Theme.text : Theme.textSecondary
                                     opacity: parent.inMonth || parent.today ? 1 : 0.5
                                     font.pixelSize: Theme.fontCaption
                                 }

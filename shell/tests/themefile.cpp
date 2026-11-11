@@ -153,10 +153,18 @@ private slots:
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-height")).toDouble(), 52.0);
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-variant")).toString(), QStringLiteral("floating"));
 
-        // Vela Expressive's quick settings, a theme's or its style's.
-        QCOMPARE(read("quicksettings-variant=expressive\n").tokens.value(QStringLiteral("quicksettings-variant")).toString(),
-            QStringLiteral("expressive"));
-        QVERIFY(read("quicksettings-variant=expressive\n", vela::themes::Notifications).problems.isEmpty());
+        // Vela Expressive's shell: quick settings and the notification
+        // center, only Vela's own layouts.
+        const vela::themes::File expressive = read("quicksettings-variant=expressive\nnotifications-variant=expressive\n");
+        QVERIFY(expressive.problems.isEmpty());
+        for (const char* key : { "quicksettings-variant", "notifications-variant" }) {
+            QCOMPARE(expressive.tokens.value(QLatin1String(key)).toString(), QStringLiteral("expressive"));
+            QCOMPARE(vela::themes::token(QLatin1String(key))->kind, vela::themes::TokenKind::Variant);
+        }
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: notifications-variant=stack is not one of Vela's layouts (default, expressive): skipped");
+        QCOMPARE(kinds(read("notifications-variant=stack\n").problems), QStringList { "unknown-variant" });
+        // A surface's style may choose its own variant.
+        QVERIFY(read("notifications-variant=expressive\nquicksettings-variant=expressive\n", vela::themes::Notifications).problems.isEmpty());
     }
 
     // A style only sets its own surface's keys and the blur's: anything else

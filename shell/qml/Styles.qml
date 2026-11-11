@@ -109,8 +109,15 @@ QtObject {
     }
     readonly property QtObject notifications: QtObject {
         readonly property bool chosen: Style.chosenStyles.indexOf("notifications") >= 0
-        readonly property int radius: styles.size("notifications-radius", Theme.radiusOverlay, 0, 48)
-        readonly property int cardRadius: styles.size("notifications-card-radius", Theme.radius, 0, 24)
+        // expressive: Vela Expressive's (M3 Expressive's look,
+        // NotificationCenter.qml): an app's notifications one container, the
+        // header in the emphasis weight, a tonal "Clear all", today a full
+        // primary circle; the panels in M3's extra large corners (28) and the
+        // cards in Vela's large ones (Theme.shapeLarge), Vela's choices.
+        readonly property string variant: Theme.themed("notifications-variant", "default")
+        readonly property bool expressive: variant === "expressive"
+        readonly property int radius: styles.size("notifications-radius", expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay, 0, 48)
+        readonly property int cardRadius: styles.size("notifications-card-radius", expressive ? Theme.shapeLarge : Theme.radius, 0, 24)
         readonly property color surface: Theme.themed("notifications-surface", Theme.surface)
         // Today in the calendar: a circle (16), or a rounded square.
         readonly property int todayRadius: styles.size("notifications-today-radius", 16, 0, 24)

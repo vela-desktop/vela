@@ -8,10 +8,11 @@ import "../../qml"
 import Vela.Shell.Test as ShellTest
 import "../../../common/tests/colors.js" as Colors
 
-// The shell's expressive variants (quicksettings-variant=expressive, in
-// the shell-controls-expressive test theme): the quick settings tile that
-// changes shape (QsTile.qml), compared with the live Theme and Styles
-// values, with the default tile's keyboard, right click and accessibility.
+// The shell's expressive variants (quicksettings- and notifications-variant
+// =expressive, in the shell-controls-expressive test theme): the quick
+// settings tile that changes shape (QsTile.qml), compared with the live
+// Theme and Styles values, with the default tile's keyboard, right click
+// and accessibility; the notification center's shapes.
 Item {
     id: root
     width: 500
@@ -75,6 +76,7 @@ Item {
 
         function test_variants_are_on() {
             verify(styles.quickSettings.expressive)
+            verify(styles.notifications.expressive)
             // The variant's defaults, unless the keys say otherwise.
             verify(styles.quickSettings.borderless)
             verify(styles.quickSettings.flatFooter)
@@ -85,6 +87,8 @@ Item {
             // Nested corners: the tile's square ones are the panel's less its
             // 12 of padding.
             compare(styles.quickSettings.radius - styles.quickSettings.tileRadius, 12)
+            compare(styles.notifications.radius, Theme.shapeExtraLarge)
+            compare(styles.notifications.cardRadius, Theme.shapeLarge)
         }
 
         function test_off_is_a_pill_on_is_primary_and_square() {
