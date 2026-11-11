@@ -334,3 +334,50 @@ Force full damage while diagnosing rendering artifacts:
 ```sh
 VELA_DEBUG_DAMAGE=1 sh scripts/run-nested.sh
 ```
+
+
+### Expressive controls (experimental foundation)
+
+A complete theme can opt into Vela's built-in expressive control rendering
+with `controls-variant=expressive` (the default, `default`, keeps the existing
+Vela look). This applies to **Button**, **Switch** and **Slider** in Vela-owned
+Qt Quick interfaces; it does not affect third-party Qt/GTK applications.
+Vela-owned QML components may override `styleVariant` for a preview.
+Mode-specific `light.controls-variant` / `dark.controls-variant` are supported.
+
+Theme authors can use these additional semantic color roles:
+`primary`, `onPrimary`, `primaryContainer`, `onPrimaryContainer`,
+`secondaryContainer`, `onSecondaryContainer`, `surfaceContainer`,
+`surfaceContainerHigh`, `outline`. They accept the usual hex color syntax.
+Roles a theme leaves out are derived from `primary` (itself the accent by
+default), so a theme that sets only `primary` still gets matching containers.
+The `on…` roles are a request, not a guarantee: when one would read below
+4.5:1 on its background, Vela uses black or white instead. A thick slider
+(a Quick Settings style) keeps its shape and takes only the tonal colors.
+The numeric `shapeSmall` (0–24), `shapeMedium` (0–32) and `shapeLarge`
+(0–48) tokens supply corner sizes. `fontCaption`, `fontBody`,
+`fontBodyLarge`, `fontSubtitle` and `fontTitle` are now themeable font-size
+tokens (clamped to prevent unusable sizes). Vela-owned QML may also use
+`TonalSurface` for low/high-emphasis cards with an optional outline.
+
+Example for a **future** complete theme:
+
+```ini
+inherits=vela
+controls-variant=expressive
+light.primary=#6750A4
+light.onPrimary=#FFFFFF
+light.secondaryContainer=#E8DEF8
+light.onSecondaryContainer=#1D192B
+dark.primary=#D0BCFF
+dark.onPrimary=#381E72
+dark.secondaryContainer=#4A4458
+dark.onSecondaryContainer=#E8DEF8
+shapeLarge=24
+```
+
+This is an incremental foundation, **not** a faithful implementation of
+Material 3 Expressive. Wallpaper-derived HCT tonal palettes, spring/shape
+morphing, further controls and shell layouts remain separate work.
+No external QML or scripts are loaded from theme files; keyboard, pointer,
+accessibility and existing animation-preference handling remain Vela-owned.
