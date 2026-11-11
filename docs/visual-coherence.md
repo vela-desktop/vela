@@ -482,6 +482,30 @@ compositor into `common/`; a twenty-line test keeps two readable copies equal.
 in `scripts/tests`), and the window animations' logged durations
 (`test_animation.py`, `Durations`).
 
+**The expressive motion variant.** A theme with `motion-variant=expressive`
+(Vela Expressive) adds Material 3 Expressive's three spatial curves, in QML
+only, for what moves in Vela's interfaces: positions, sizes and corners. They
+are the cubic Béziers Material publishes for its spatial springs where no
+gesture drives the motion, with its durations:
+
+| Speed | Curve | ms | Used for (Vela's choice) |
+|---|---|---|---|
+| fast | `(0.42, 1.67, 0.21, 0.90)` | 350 | small controls: a switch's knob, a button's or a tile's corners |
+| default | `(0.38, 1.21, 0.22, 1.00)` | 500 | panels entering |
+| slow | `(0.39, 1.29, 0.35, 0.98)` | 650 | unused in the shell |
+
+They overshoot their end a little and settle. `Spatial.qml` animates on them
+(`Theme.spatialCurve()`, `Theme.spatialDuration()`); with the default variant it
+is `Eased` with the shared curve and the duration it is given, so the default
+look moves as before. Colors and opacity never overshoot (they stay
+`ColorFade` and `Eased`), exits don't bounce (they stay `Eased` in `normal`),
+the durations are multiplied by `animation-duration` like every other, and with
+animation effects off nothing moves. The scale and the curve above stay the
+only ones shared with the compositor, and `motion.h` doesn't change: windows
+don't bounce, because their animations are the compositor's, which keeps one
+curve for every theme. A window that overshot would also cross its own
+snapped position (§6.1), and a theme file can't reach the compositor's motion.
+
 ### 6.5 Animation effects: one switch (D11)
 
 `animation-effects` in `vela.conf` (default `yes`), next to the other
@@ -753,6 +777,28 @@ click gives no keyboard focus (`focusPolicy: Qt.TabFocus`), as before: Tab
 does, with the ring, so a click on a toolbar button doesn't take the keys from
 a view. `TextBox` takes `Fill` as its background.
 
+**The expressive variant.** `controls-variant=expressive` gives the same
+controls Material 3 Expressive's look, on the same Templates, `Fill` and state
+precedence; only `background`, `contentItem` and sizes change, and the default
+look is unchanged:
+
+| Control | Expressive look (M3's tokens; sizes for the mouse are Vela's) |
+|---|---|
+| `Button` | 40 high, 16 a side, label in Medium; state layers of 8% and 10%; corners morph to the pressed (8) and selected (12) shapes on the fast spatial curve |
+| `Switch` | M3's handle (16, 24 on, 28 pressed) on the fast spatial curve, a 40 state layer, the track off on surface container highest |
+| `Slider` | inactive track in secondary container; the thick slider (quick settings) keeps its shape, its knob the fill's color |
+| `ListItem` | 56 high, state layers of on surface, the selected item a full secondary container pill in Medium |
+| `Dialog` | extra large corners, headline title, no footer band, the actions at the trailing edge (the accent one tonal) |
+| `TextBox`, `Choice` | M3's filled field: surface container highest, the indicator in primary with the focus |
+| `FocusRing` | secondary, same geometry |
+| `CheckBox`, `RadioButton` | M3's 18 box and 20 ring in primary, a 40 state layer |
+| `ToolButton` (Files) | M3's extra small buttons: round, 32 high, the checked one in secondary container |
+| Settings' cards, Files' rows | a card group is one container (large outer, extra small inner corners, 2 apart); rows keep their `MouseArea` and take state layers through `Theme.hoverLayer`, `pressedLayer` and `restLayer` |
+
+`TonalSurface` (`level`: lowest to highest) is a container on Material's
+surface roles. A control's `styleVariant` (default `Theme.controlsVariant`)
+lets a preview draw either look.
+
 **Verified by** Qt Quick Test (part of Qt): for `Button`, `Switch` and `Slider`,
 each state combination gives the expected color at rest; a hover reversed
 halfway turns back from its current color; Space and Enter activate, Tab moves
@@ -817,6 +863,14 @@ context menus, send the list of theirs). `area` doesn't change during a slide;
 it follows the panel's size, on every frame of Quick Settings' height change
 like Start's updates today. Start drops its per-frame updates.
 
+Under the expressive motion variant a panel's entrance (`away` on the default
+spatial curve, §6.4) passes its rest by `Theme.spatialOvershoot("default")` of
+its offset before settling. `travel` is widened by that much on the side
+opposite to where the panel comes from (and a scale's change by as much), so
+the region still covers the panel on every frame and still doesn't change
+during the slide. With the default variant, or without animation effects, the
+overshoot is 0 and `travel` is as above.
+
 **`Shadow.qml`** is `PanelShadow` moved into `Vela.Controls` (so the polkit
 prompt can use it), with two depths in `Theme.shadow` (`Theme.flyout` and
 `Theme.dialog` are colors): `flyout` (blur 32, offset 6, 45%) and `dialog`
@@ -827,7 +881,9 @@ panel, as a click outside does, through a `MouseArea` under the `PanelMotion`,
 the way `ContextMenu.qml` already handles its whole window. An input region
 would let the click through, but needs a new path from QML to
 `QWindow::setMask()` for a band 46 units wide; consuming it is what Vela's menus
-already do.
+already do. Under the expressive controls, whose surfaces are opaque, a
+`Shadow` also fills its target's corners inside the target's box: the four
+strips alone left a lighter square behind M3's large round corners.
 
 **`Dialog.qml`** is Files' dialog (the button list is the more general API) with
 Settings' content slot and only `Theme` values, in `Vela.Controls`; the two
@@ -1041,7 +1097,9 @@ are independent of each other and of the QML work. 8–11, the largest part, las
   a QML token and an include path into `common/` to share four numbers; and the
   formula belongs to the shell (§6.6).
 - **Three motion levels** (full, reduced, off): no user need beyond Windows'
-  switch, and one more state in both processes.
+  switch, and one more state in both processes. This still holds: the
+  expressive motion variant (§6.4) is a theme's look in QML, not a user's
+  level, and the compositor keeps one curve and four durations.
 - **`PanelMotion` with modes and a recipe table** (`Edge`, `Popup`, `Dialog`,
   `Overlay`, `Toast`, `Page`): six modes to express three numbers, and pages and
   toasts aren't panel lifecycles.

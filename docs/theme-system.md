@@ -1,7 +1,6 @@
 # Vela themes: declarative Level 2.5 design
 
-> Status: design contract, implemented in PR #207 as far as "Supported
-> today" says. Items marked **planned** are not implemented. PR #205 and #206
+> Status: design contract, implemented as far as "Supported today" says. Items marked **planned** are not implemented. PR #205 and #206
 > are superseded, not discarded.
 
 ## Product contract
@@ -29,7 +28,7 @@ or the compositor's frame scheduling.
 3. **Inheritance:** one parent per package, recursively resolved before
    local overrides, without cycles or paths outside theme roots.
 
-### Supported today (PR #207)
+### Supported today
 
 - INI-style `.conf` themes, custom user packages, layered per-surface
   styles, reactive QML tokens, compositor blur values, and built-in layouts.
@@ -58,6 +57,19 @@ or the compositor's frame scheduling.
   the reason, and a taskbar pill that places its apps itself disables the
   alignment with the reason.
 - 22 of the 80 preset files from #205: one of each look.
+- Four installed themes: Vela Official, Vela Floating, Window Glass and Vela
+  Expressive, a look inspired by Material 3 Expressive built on the
+  variants below (`controls-`, `motion-`, `quicksettings-`, `startmenu-`,
+  `notifications-variant=expressive`, `color-source=wallpaper`).
+- Dynamic color: Material's tonal roles (the Tonal Spot scheme of
+  `common/color/`, `vela-color`) from the theme's `primary` or the accent in
+  use, which may be the wallpaper's color: the theme asks with
+  `color-source=wallpaper`, the user chooses in Settings > Colors
+  (`appearance/accentSource`); one rule (`shell/src/accentsource.h`) for the
+  shell, the apps and the lock screen. Colors says, in every state, where the
+  accent in use comes from and why the palette is disabled when it is.
+- A theme without a picture previews in its own colors: `DesktopPreview`
+  draws an expressive theme's miniature with its tonal roles.
 
 The preview is currently **schematic**, not an accurate rendering of every
 surface or a full-desktop rollback mechanism.
@@ -108,13 +120,21 @@ data source, launch/search behavior and focus semantics as Vela Default.
 
 ### Current draft identifiers
 
-| Surface | IDs |
-| --- | --- |
-| Taskbar | `default`, `floating`, `floating-split`, `dock` |
-| Quick settings | `default`, `glass`, `classic` |
+| Key | Surface | IDs |
+| --- | --- | --- |
+| `taskbar-variant` | Taskbar | `default`, `floating`, `floating-split`, `dock` |
+| `quicksettings-variant` | Quick settings | `default`, `glass`, `classic`, `expressive` |
+| `notifications-variant` | Notification center | `default`, `expressive` |
+| `startmenu-variant` | Start | `default`, `expressive` |
+| `controls-variant` | The controls of Vela's apps and shell | `default`, `expressive` |
+| `motion-variant` | What moves in Vela's QML (never the compositor's windows) | `default`, `expressive` |
+| `color-source` | Where the accent comes from when the user leaves it to the theme | `accent`, `wallpaper` |
 
-These are **initial curated combinations**, not evidence that every component
-already has an independent implementation.
+The `expressive` shell variants keep the default's data, keyboard,
+`PanelMotion` and blur, and replace only the delegates; their functional test
+is `ExpressiveShell` in `tests/functional/test_shell.py`. The others are
+**initial curated combinations**, not evidence that every component already
+has an independent implementation.
 
 ## Runtime architecture (planned final form)
 
