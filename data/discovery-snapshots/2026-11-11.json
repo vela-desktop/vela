@@ -1,0 +1,120 @@
+{
+  "collected_at": "2026-11-11T10:55:55+00:00",
+  "coverage": "top_10_only",
+  "popular_paths": [
+    {
+      "count": 529,
+      "path": "/vela-desktop/vela",
+      "title": "Overview",
+      "uniques": 316
+    },
+    {
+      "count": 77,
+      "path": "/vela-desktop/vela/issues",
+      "title": "/issues",
+      "uniques": 23
+    },
+    {
+      "count": 42,
+      "path": "/vela-desktop/vela/pulls",
+      "title": "/pulls",
+      "uniques": 12
+    },
+    {
+      "count": 23,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
+      "title": "/blob/main/docs/screenshots/start.webp",
+      "uniques": 21
+    },
+    {
+      "count": 20,
+      "path": "/vela-desktop/vela/tree/main",
+      "title": "/tree/main",
+      "uniques": 11
+    },
+    {
+      "count": 19,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 10
+    },
+    {
+      "count": 18,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/snap.webp",
+      "title": "/blob/main/docs/screenshots/snap.webp",
+      "uniques": 14
+    },
+    {
+      "count": 15,
+      "path": "/vela-desktop/vela/tree/main/compositor/src/render",
+      "title": "/tree/main/compositor/src/render",
+      "uniques": 9
+    },
+    {
+      "count": 15,
+      "path": "/vela-desktop/vela/tree/main/compositor",
+      "title": "/tree/main/compositor",
+      "uniques": 6
+    },
+    {
+      "count": 13,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/panels.webp",
+      "title": "/blob/main/docs/screenshots/panels.webp",
+      "uniques": 13
+    }
+  ],
+  "referrers": [
+    {
+      "count": 128,
+      "referrer": "velade.org",
+      "uniques": 110
+    },
+    {
+      "count": 55,
+      "referrer": "github.com",
+      "uniques": 36
+    },
+    {
+      "count": 41,
+      "referrer": "reddit.com",
+      "uniques": 29
+    },
+    {
+      "count": 35,
+      "referrer": "news.ycombinator.com",
+      "uniques": 32
+    },
+    {
+      "count": 26,
+      "referrer": "com.reddit.frontpage",
+      "uniques": 23
+    },
+    {
+      "count": 8,
+      "referrer": "Google",
+      "uniques": 8
+    },
+    {
+      "count": 2,
+      "referrer": "Bing",
+      "uniques": 2
+    },
+    {
+      "count": 2,
+      "referrer": "DuckDuckGo",
+      "uniques": 2
+    },
+    {
+      "count": 1,
+      "referrer": "app.raindrop.io",
+      "uniques": 1
+    },
+    {
+      "count": 1,
+      "referrer": "com.fluxer",
+      "uniques": 1
+    }
+  ],
+  "schema_version": 1,
+  "window": "rolling_14_days"
+}

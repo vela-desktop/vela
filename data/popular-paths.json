@@ -1,48 +1,48 @@
 {
-  "collected_at": "2026-11-10T11:10:27+00:00",
+  "collected_at": "2026-11-11T10:55:55+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 477,
+      "count": 529,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 276
+      "uniques": 316
     },
     {
-      "count": 66,
+      "count": 77,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 17
+      "uniques": 23
     },
     {
-      "count": 54,
+      "count": 42,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
-      "uniques": 10
+      "uniques": 12
     },
     {
-      "count": 26,
+      "count": 23,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
       "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 24
+      "uniques": 21
+    },
+    {
+      "count": 20,
+      "path": "/vela-desktop/vela/tree/main",
+      "title": "/tree/main",
+      "uniques": 11
+    },
+    {
+      "count": 19,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 10
     },
     {
       "count": 18,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/snap.webp",
       "title": "/blob/main/docs/screenshots/snap.webp",
       "uniques": 14
-    },
-    {
-      "count": 17,
-      "path": "/vela-desktop/vela/tree/main",
-      "title": "/tree/main",
-      "uniques": 10
-    },
-    {
-      "count": 16,
-      "path": "/vela-desktop/vela/commits/main",
-      "title": "/commits/main",
-      "uniques": 9
     },
     {
       "count": 15,
@@ -57,10 +57,10 @@
       "uniques": 6
     },
     {
-      "count": 14,
-      "path": "/vela-desktop/vela/actions/workflows/gpu-amd.yml",
-      "title": "/actions/workflows/gpu-amd.yml",
-      "uniques": 1
+      "count": 13,
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/panels.webp",
+      "title": "/blob/main/docs/screenshots/panels.webp",
+      "uniques": 13
     }
   ],
   "schema_version": 1,
