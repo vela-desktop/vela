@@ -56,7 +56,9 @@ or the compositor's frame scheduling.
 - No hidden conflicts: a theme's own accent disables the grid in Colors with
   the reason, and a taskbar pill that places its apps itself disables the
   alignment with the reason.
-- 22 of the 80 preset files from #205: one of each look.
+- 22 of the 80 preset files from #205: one of each look; and Vela Expressive's
+  Start and notifications surfaces as styles of their own
+  (`themes/startmenu/expressive.conf`, `themes/notifications/expressive.conf`).
 - Four installed themes: Vela Official, Vela Floating, Window Glass and Vela
   Expressive, a look inspired by Material 3 Expressive built on the
   variants below (`controls-`, `motion-`, `quicksettings-`, `startmenu-`,
@@ -132,9 +134,13 @@ data source, launch/search behavior and focus semantics as Vela Default.
 
 The `expressive` shell variants keep the default's data, keyboard,
 `PanelMotion` and blur, and replace only the delegates; their functional test
-is `ExpressiveShell` in `tests/functional/test_shell.py`. The others are
-**initial curated combinations**, not evidence that every component already
-has an independent implementation.
+is `ExpressiveShell` in `tests/functional/test_shell.py`, which also applies
+the two Expressive style files over Vela Official. The expressive identifiers
+are independent: each works alone with any value of the others (the
+`*-expressive-<piece>` QML suites, [testing](testing.md)); a shell variant
+without `controls-variant=expressive` takes the colors of the controls in
+use. The others are **initial curated combinations**, not evidence that every
+component already has an independent implementation.
 
 ## Runtime architecture (planned final form)
 
