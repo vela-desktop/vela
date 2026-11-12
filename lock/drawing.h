@@ -104,6 +104,13 @@ inline void paint(QImage& image, const QImage& background, const QImage& blurred
         font.setWeight(QFont::Medium);
         p.setFont(font);
         const QString date = QLocale().toString(now.date(), QStringLiteral("dddd d MMMM"));
+        // The date too, on a narrow output: a long day and month in a wide
+        // font ran past both edges.
+        const qreal dateWide = QFontMetricsF(font).horizontalAdvance(date);
+        if (dateWide > lw * 0.9) {
+            font.setPixelSize(std::max(12, int(26 * lw * 0.9 / dateWide)));
+            p.setFont(font);
+        }
         p.drawText(QRectF(0, timeBox.bottom() + 4, lw, 40), Qt::AlignHCenter | Qt::AlignTop, date);
     } else {
         // User in the center, password below.

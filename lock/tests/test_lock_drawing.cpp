@@ -201,20 +201,31 @@ void testClock()
     check(!anyPixel(image, timeBox, look.primary), "no primary there");
 }
 
-// A narrow output: the time shrinks to 90% of its width, in both looks.
+// A narrow output: the time and the date below it shrink to 90% of its
+// width, in both looks, whatever the font (a long date at 150 wide would not
+// fit in any).
 void testNarrowOutput()
 {
     for (const Look& look : { defaultLook(), expressiveLook() }) {
         Scene scene = clockScene();
         scene.timeFormat = QStringLiteral("hh:mm AP");
-        const QImage image = paint(look, scene, { 300, 600 });
+        QImage image = paint(look, scene, { 300, 600 });
         const QColor behind = dimmed(wallpaper, 60);
-        bool inside = true;
-        for (int y = 72; y < 272; ++y) {
-            for (const int x : { 0, 1, 2, 297, 298, 299 }) {
-                inside = inside && near(image.pixelColor(x, y), behind, 1);
+        // The time's box and the date's: 72 to 266 by default, to 316 expressive.
+        const auto fits = [&behind](const QImage& picture) {
+            for (int y = 72; y < 320; ++y) {
+                for (const int x : { 0, 1, 2 }) {
+                    if (!near(picture.pixelColor(x, y), behind, 1)
+                            || !near(picture.pixelColor(picture.width() - 1 - x, y), behind, 1)) {
+                        return false;
+                    }
+                }
             }
-        }
+            return true;
+        };
+        const bool inside = fits(image);
+        check(fits(paint(look, scene, { 150, 600 })),
+            look.expressive ? "the expressive date fits a very narrow output" : "the date fits a very narrow output");
         check(inside, look.expressive ? "the expressive time fits a narrow output" : "the time fits a narrow output");
         check(anyPixel(image, QRect(15, 72, 270, 200), behind, 0)
                 && image.pixelColor(150, 5) == image.pixelColor(5, 5),
