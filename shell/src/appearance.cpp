@@ -186,10 +186,16 @@ void Appearance::reload()
         m_tonalSource = tonalSource;
         m_tonal = tonalOf(tonalSource, light);
     }
+    // The other mode's palette too: with the shell dark and the apps light,
+    // the title bars take the light palette's surface, whose source may
+    // change (the chosen accent) while this mode's stays (the wallpaper's).
+    const QColor otherSource = schemeSource(!light);
+    const bool otherChanged = otherSource != m_otherTonalSource;
+    m_otherTonalSource = otherSource;
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
         // Only the theme, the palette, the wallpaper's color (Settings shows
         // it) or the motion: the icons stay as they are.
-        if (themeChanged || tonalChanged || wallpaperChanged || motion.effects != m_animationEffects
+        if (themeChanged || tonalChanged || otherChanged || wallpaperChanged || motion.effects != m_animationEffects
             || motion.duration != m_animationDuration) {
             m_animationEffects = motion.effects;
             m_animationDuration = motion.duration;

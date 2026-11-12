@@ -171,6 +171,30 @@ private slots:
         QVERIFY(changed.count() >= 1);
     }
 
+    // The other mode's palette source is heard too: with the shell dark and
+    // the apps light, the title bars take the light palette (the shell's
+    // sendLook), which here follows the chosen accent while the dark one
+    // follows the wallpaper.
+    void followsTheOtherModesSource()
+    {
+        saveWallpaperColor(wallpaper);
+        QVERIFY(writeTheme(QStringLiteral("split"), "dark.color-source=wallpaper\nlight.color-source=accent\n"));
+        QVERIFY(writeConf("theme=split\n"));
+        setShell(chosen.name(), QStringLiteral("theme"));
+        Appearance appearance;
+        appearance.watch();
+        QCOMPARE(appearance.light(), false);
+        QCOMPARE(appearance.accent(), wallpaper);
+        QCOMPARE(appearance.schemeSource(true), chosen);
+        QSignalSpy changed(&appearance, &Appearance::changed);
+        const QColor next(QStringLiteral("#ef6c00"));
+        setShell(next.name(), QStringLiteral("theme"));
+        QTRY_COMPARE(appearance.schemeSource(true), next);
+        QTRY_VERIFY(changed.count() >= 1);
+        QCOMPARE(appearance.accent(), wallpaper);
+        QVERIFY(writeConf("theme=\n"));
+    }
+
     // The wallpaper's source color (wallpapercolor.h, what the shell leaves
     // in the cache): a colored picture's, none for one that can't be read or
     // has no color for a palette.

@@ -111,6 +111,7 @@ private:
     QColor m_wallpaperColor;
     QVariantMap m_tonal;
     QColor m_tonalSource; // the palette is computed again only when it or the mode change
+    QColor m_otherTonalSource; // the other mode's: the apps' title bars may use it (the shell's sendLook)
     QColor m_mica;
     QColor m_micaInactive;
     QVariantMap m_theme;
