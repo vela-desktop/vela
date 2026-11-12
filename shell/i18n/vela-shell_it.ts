@@ -608,6 +608,10 @@
         <translation>Silenziate mentre lo schermo è condiviso</translation>
     </message>
     <message>
+        <source>Do not disturb</source>
+        <translation>Non disturbare</translation>
+    </message>
+    <message>
         <source>Clear all</source>
         <translation>Cancella tutto</translation>
     </message>
@@ -823,10 +827,6 @@
         <translation>Ingresso predefinito</translation>
     </message>
     <message>
-        <source>%1 settings</source>
-        <translation>Impostazioni di %1</translation>
-    </message>
-    <message>
         <source>Unmute</source>
         <translation>Riattiva audio</translation>
     </message>
@@ -997,6 +997,13 @@
     <message>
         <source>More accessibility settings</source>
         <translation>Altre impostazioni di accessibilità</translation>
+    </message>
+</context>
+<context>
+    <name>QuickSettingsTile</name>
+    <message>
+        <source>%1 settings</source>
+        <translation>Impostazioni di %1</translation>
     </message>
 </context>
 <context>

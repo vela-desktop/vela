@@ -4,6 +4,7 @@
 import QtQuick
 import QtTest
 import Vela.Controls
+import Vela.Test
 import "../qml"
 
 // Personalization's themes: the gallery (ThemeGallery.qml), where a click or
@@ -100,6 +101,22 @@ Item {
             compare(Prefs.visualTheme, "mine")
             compare(root.offers[0].text, "Mine is in use")
             compare(tile("Mine").Accessible.checked, true)
+        }
+
+        // What the tiles' accessible interfaces report: the theme in use
+        // checked from the start, the others not; a click on the one in use
+        // leaves it checked.
+        function test_screen_readers_hear_the_theme_in_use() {
+            const official = AccessibleProbe.state(tile("Vela Official"))
+            compare(official.role, Accessible.RadioButton)
+            verify(official.checkable)
+            verify(official.checked)
+            verify(!AccessibleProbe.state(tile("Mine")).checked)
+            mouseClick(tile("Mine"))
+            verify(AccessibleProbe.state(tile("Mine")).checked)
+            verify(!AccessibleProbe.state(tile("Vela Official")).checked)
+            mouseClick(tile("Mine"))
+            verify(AccessibleProbe.state(tile("Mine")).checked)
         }
 
         // One stop for Tab, on the theme in use; the arrows move, Space applies.

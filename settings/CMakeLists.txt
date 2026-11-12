@@ -179,7 +179,7 @@ qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-disp
 # Vela.Bluetooth and Vela.Updates, with animation effects on and off.
 if(VELA_BUILD_TOOLS)
     find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
-    qt_add_executable(vela-settings-test tests/settings_test.cpp)
+    qt_add_executable(vela-settings-test tests/settings_test.cpp ${PROJECT_SOURCE_DIR}/common/tests/accessibleprobe.h)
     target_compile_definitions(vela-settings-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
         FAKE_BLUETOOTH="${PROJECT_SOURCE_DIR}/common/bluetooth/tests/FakeBluetooth.qml"
         FAKE_UPDATES="${PROJECT_SOURCE_DIR}/common/updates/tests/FakeUpdates.qml"

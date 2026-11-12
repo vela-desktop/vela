@@ -145,7 +145,9 @@ set(VELA_QML_FILES
     qml/CheckBox.qml
     qml/QuickSettings.qml
     qml/QsTile.qml
+    qml/QuickSettingsTile.qml
     qml/NotificationCenter.qml
+    qml/SmallButton.qml
     qml/TaskView.qml
     qml/DesktopOsd.qml
     qml/VolumeOsd.qml
@@ -269,7 +271,7 @@ if(VELA_BUILD_TOOLS)
     # of what its windows find in their context (Vela.Bluetooth, Shell,
     # BluetoothPrompts), with animation effects on and off.
     find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
-    qt_add_executable(vela-shell-test tests/shell_test.cpp)
+    qt_add_executable(vela-shell-test tests/shell_test.cpp ${PROJECT_SOURCE_DIR}/common/tests/accessibleprobe.h)
     target_compile_definitions(vela-shell-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
         FAKE_BLUETOOTH="${PROJECT_SOURCE_DIR}/common/bluetooth/tests/FakeBluetooth.qml")
     target_compile_options(vela-shell-test PRIVATE -Wall -Wextra)

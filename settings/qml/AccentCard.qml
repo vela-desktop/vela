@@ -235,8 +235,11 @@ Card {
                         Accessible.role: Accessible.RadioButton
                         Accessible.name: card.colorName(modelData)
                         Accessible.description: qsTr("Color %1 of %2").arg(index + 1).arg(card.accents.length)
-                        Accessible.checkable: true
-                        Accessible.checked: chosen
+                        // Qt's own check state, as PictureTile's: it
+                        // follows the color chosen, never toggles itself.
+                        checkable: true
+                        checked: chosen
+                        onToggled: checked = Qt.binding(() => swatch.chosen)
                         Keys.onLeftPressed: swatches.moveFocus(index, -1)
                         Keys.onRightPressed: swatches.moveFocus(index, 1)
                         Keys.onUpPressed: swatches.moveFocus(index, -swatches.columns)

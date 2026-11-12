@@ -4,6 +4,7 @@
 import QtQuick
 import QtTest
 import Vela.Controls
+import Vela.Test
 import "../qml"
 
 // Colors' accent color (AccentCard.qml) against the theme in use: its own
@@ -288,6 +289,29 @@ Item {
             compare(all[10].Accessible.name, "Red")
             compare(all[24].Accessible.name, "Purple")
             compare(all[41].Accessible.name, "Gray")
+        }
+
+        // What the swatches' accessible interfaces report (Qt's button
+        // writes its own check state over the attached one once
+        // accessibility is on): the chosen one checked, from the start, and
+        // the choice moving with the keyboard and a click.
+        function test_screen_readers_hear_the_chosen_color() {
+            const all = swatches()
+            for (const [i, chosen] of [[17, true], [16, false]]) {
+                const state = AccessibleProbe.state(all[i])
+                compare(state.role, Accessible.RadioButton)
+                verify(state.checkable, `swatch ${i}`)
+                compare(state.checked, chosen, `swatch ${i}`)
+            }
+            mouseClick(all[16])
+            verify(AccessibleProbe.state(all[16]).checked)
+            verify(!AccessibleProbe.state(all[17]).checked)
+            // A click on the chosen one leaves it chosen, and heard so.
+            mouseClick(all[16])
+            verify(AccessibleProbe.state(all[16]).checked)
+            AccessibleProbe.restart()
+            verify(AccessibleProbe.state(all[16]).checked, "a screen reader started later")
+            verify(AccessibleProbe.state(all[16]).checkable)
         }
 
         function test_choosing_a_color() {

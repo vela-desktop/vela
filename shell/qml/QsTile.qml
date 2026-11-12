@@ -100,9 +100,14 @@ Item {
         enabled: tile.usable
         Keys.onReturnPressed: clicked()
         Keys.onEnterPressed: clicked()
+        // Qt's own check state, as the default tile's TileButton
+        // (QuickSettingsTile.qml): Qt writes it over the attached one once
+        // accessibility is on. It follows the tile and never toggles itself.
+        checkable: !tile.menu
+        checked: checkable && tile.checked
+        onToggled: checked = Qt.binding(() => mainButton.checkable && tile.checked)
+        Accessible.role: Accessible.Button
         Accessible.name: tile.label
-        Accessible.checkable: !tile.menu
-        Accessible.checked: tile.checked
         onClicked: tile.menu ? tile.details() : tile.toggled()
         // The ring around the whole tile, with its corners.
         background: Item {

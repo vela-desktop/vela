@@ -52,9 +52,14 @@ T.AbstractButton {
     Keys.onUpPressed: arrow(0, -1)
     Keys.onDownPressed: arrow(0, 1)
     hoverEnabled: true
+    // Qt's own check state is what a screen reader hears (Qt's button writes
+    // it over the attached Accessible one once accessibility is on): the
+    // tile is checked while selected and never toggles itself, the gallery
+    // chooses.
+    checkable: true
+    checked: selected
+    onToggled: checked = Qt.binding(() => tile.selected)
     Accessible.role: Accessible.RadioButton
-    Accessible.checkable: true
-    Accessible.checked: selected
     Accessible.description: subtitle
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()

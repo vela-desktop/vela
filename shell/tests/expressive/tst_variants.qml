@@ -158,11 +158,11 @@ Item {
             compare(toggled.count, 1)
             keyClick(Qt.Key_Enter)
             compare(toggled.count, 2)
-            // The default tile's names; its checkable and checked are set
-            // as the default tile's (Qt's button writes its own over them
-            // once a screen reader is there, in both looks).
+            // The default tile's names and role; what a screen reader hears
+            // of its check state, in both looks, is tst_quicksettingstile.qml's.
             compare(main.Accessible.name, "Night light")
             compare(main.Accessible.role, Accessible.Button)
+            verify(main.checkable)
         }
 
         function test_split_tile_has_its_arrow() {

@@ -66,18 +66,6 @@ Window {
 
     }
 
-    // The panels' small buttons: subtle, or the accent while on; `tonal`,
-    // the expressive variant's filled tonal button ("Clear all").
-    component SmallButton: Button {
-        property bool tonal: false
-        subtle: !accent && !tonal
-        implicitWidth: text === "" ? 32 : implicitContentWidth + 20
-        implicitHeight: 28
-        leftPadding: 10
-        rightPadding: 10
-        font.pixelSize: Theme.fontCaption
-    }
-
     ShadowRoom {
         panels: [notifications, calendar]
         onOutside: root.close()
@@ -157,9 +145,13 @@ Window {
                         height: 36
                         spacing: 4
                         SmallButton {
+                            objectName: "doNotDisturb"
                             anchors.verticalCenter: parent.verticalCenter
                             icon.name: Notifications.doNotDisturb ? "notifications-disabled" : "notifications"
                             accent: Notifications.doNotDisturb
+                            toggle: true
+                            on: Notifications.doNotDisturb
+                            Accessible.name: qsTr("Do not disturb")
                             onClicked: Notifications.doNotDisturb = !Notifications.doNotDisturb
                         }
                         SmallButton {
