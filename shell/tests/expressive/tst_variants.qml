@@ -75,7 +75,9 @@ Item {
         when: windowShown
 
         function init() {
-            if (!Theme.expressive)
+            // The variants with the expressive controls (Vela Expressive);
+            // each alone is tst_mixed.qml's.
+            if (!Theme.expressive || !styles.quickSettings.expressive)
                 skip("with the expressive theme (the *-expressive ctest entries)")
             mouseMove(root, 490, 390)
             start.forceActiveFocus()

@@ -45,8 +45,10 @@ Item {
         }
 
         function init() {
-            if (!Theme.expressive)
-                skip("with the expressive theme (the *-expressive ctest entries)")
+            // The motion variant, alone (*-expressive-motion) or in the
+            // whole expressive theme.
+            if (!Theme.spatialMotion)
+                skip("with motion-variant=expressive (the *-expressive ctest entries)")
             motion.close(true)
             grower.close(true)
         }

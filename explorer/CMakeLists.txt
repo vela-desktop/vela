@@ -142,6 +142,9 @@ if(VELA_BUILD_TOOLS)
     # VELA_TEST_THEME), on tests/expressive/ only.
     add_test(NAME files-views-expressive COMMAND vela-files-views-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
     set_tests_properties(files-views-expressive PROPERTIES TIMEOUT 120 ENVIRONMENT "VELA_TEST_THEME=expressive")
+    # The expressive controls alone.
+    add_test(NAME files-views-expressive-controls COMMAND vela-files-views-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    set_tests_properties(files-views-expressive-controls PROPERTIES TIMEOUT 120 ENVIRONMENT "VELA_TEST_THEME=controls")
 endif()
 
 install(TARGETS vela-files RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

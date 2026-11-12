@@ -11,8 +11,13 @@
 // VELA_TEST_THEME=expressive the private config also has a theme with the
 // expressive controls and motion (controls-variant and motion-variant
 // expressive) and the shell's expressive variants (quicksettings-,
-// startmenu- and notifications-variant), and vela.conf chooses it: the *-expressive ctest entries,
-// which run the tests in the suite's expressive/ folder (-input).
+// startmenu- and notifications-variant), and vela.conf chooses it: the
+// *-expressive ctest entries, which run the tests in the suite's
+// expressive/ folder (-input). VELA_TEST_THEME=controls, motion, color or
+// shell sets one piece alone (controls-variant, motion-variant,
+// color-source=wallpaper with a wallpaper color of #2e7d32 in the cache, or
+// the three shell variants): the *-expressive-<piece> entries, on the same
+// folder, whose tests skip what their theme doesn't set.
 
 #include "renderingpolicy.h"
 #include <QDir>
@@ -35,20 +40,42 @@ inline bool writeConfig(const QTemporaryDir& home)
     if (qEnvironmentVariable("VELA_TEST_ANIMATION_EFFECTS") == QLatin1String("no")) {
         conf.write("animation-effects=no\n");
     }
-    if (qEnvironmentVariable("VELA_TEST_THEME") == QLatin1String("expressive")) {
+    // The expressive test themes: the whole look, or one of its keys alone
+    // (the mixed combinations: each piece inside an otherwise default theme).
+    const QString which = qEnvironmentVariable("VELA_TEST_THEME");
+    const QByteArray keys = which == QLatin1String("expressive")
+        ? "controls-variant=expressive\n"
+          "motion-variant=expressive\n"
+          "quicksettings-variant=expressive\n"
+          "startmenu-variant=expressive\n"
+          "notifications-variant=expressive\n"
+        : which == QLatin1String("controls") ? "controls-variant=expressive\n"
+        : which == QLatin1String("motion") ? "motion-variant=expressive\n"
+        : which == QLatin1String("color") ? "color-source=wallpaper\n"
+        : which == QLatin1String("shell") ? "quicksettings-variant=expressive\n"
+                                            "startmenu-variant=expressive\n"
+                                            "notifications-variant=expressive\n"
+                                          : QByteArray();
+    if (!keys.isEmpty()) {
         QDir().mkpath(vela + QStringLiteral("/themes"));
         QFile theme(vela + QStringLiteral("/themes/vela-test-expressive.conf"));
         if (!theme.open(QIODevice::WriteOnly)) {
             return false;
         }
-        theme.write("# Vela Test Expressive: the expressive controls, motion and shell variants, nothing else\n"
+        theme.write("# Vela Test Expressive: some of the expressive keys, nothing else\n"
                     "schema-version=1\n"
-                    "controls-variant=expressive\n"
-                    "motion-variant=expressive\n"
-                    "quicksettings-variant=expressive\n"
-                    "startmenu-variant=expressive\n"
-                    "notifications-variant=expressive\n");
+                    + keys);
         conf.write("theme=vela-test-expressive\n");
+    }
+    if (which == QLatin1String("color")) {
+        // The wallpaper's color, as the shell leaves it (mica.h).
+        const QString cache = home.filePath(QStringLiteral("cache/vela"));
+        QDir().mkpath(cache);
+        QFile color(cache + QStringLiteral("/wallpaper-color"));
+        if (!color.open(QIODevice::WriteOnly)) {
+            return false;
+        }
+        color.write("#2e7d32\n");
     }
     return true;
 }

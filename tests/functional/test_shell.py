@@ -1677,8 +1677,9 @@ EXPRESSIVE_THEME = ("# Vela Test Expressive: the shell's expressive variants\n"
                     "notifications-variant=expressive\n"
                     "startmenu-variant=expressive\n")
 # The QML the variants touch: a warning from them in the log fails a test.
-EXPRESSIVE_QML = ("QsTile.qml", "QuickSettings.qml", "StartMenu.qml", "AppTile.qml", "NotificationCenter.qml",
-                  "Styles.qml")
+EXPRESSIVE_QML = ("QsTile.qml", "QuickSettingsTile.qml", "QuickSettings.qml", "StartMenu.qml", "AppTile.qml",
+                  "NotificationCenter.qml", "NotificationList.qml", "NotificationToast.qml",
+                  "NotificationPopups.qml", "SmallButton.qml", "Styles.qml")
 
 
 class ExpressiveShell(RealShell):
@@ -1791,6 +1792,49 @@ class ExpressiveShell(RealShell):
             self.vela.wait_for(lambda _: self.vela.query("accessibility")["nightLight"], timeout=5,
                                read_state=False, what="Night light on")
             self.assertTrue(self.mapped(self.vela.state(), "vela-quick-settings"), "a tile closed quick settings")
+            send("key", "Return", "sleep", 300)
+            self.vela.wait_for(lambda _: not self.vela.query("accessibility")["nightLight"], timeout=5,
+                               read_state=False, what="Night light off")
+            self.close_panel(send, "vela-quick-settings")
+        self.check_desktop()
+        self.assert_clean_log()
+
+    use_checkout_themes = QtShell.use_checkout_themes
+
+    def test_style_files_on_the_default_theme(self):
+        # themes/startmenu/expressive.conf and themes/notifications/
+        # expressive.conf, chosen as styles over Vela Official: the variants
+        # alone, in a theme of Fluent controls and acrylic panels.
+        with self.input_session() as send:
+            default = self.open_panel(send, "super+a", "vela-quick-settings")
+            self.close_panel(send, "vela-quick-settings")
+        self.use_checkout_themes()
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write("theme=vela\nstartmenu-style=expressive\nnotifications-style=expressive\n")
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell rereads the styles
+        self.send_notification("Grouped")
+        with self.input_session() as send:
+            for key, namespace in (("super", "vela-start-menu"), ("super+a", "vela-quick-settings"),
+                                   ("super+n", "vela-notification-center")):
+                with self.subTest(panel=namespace):
+                    layer = self.open_panel(send, key, namespace)
+                    time.sleep(1.0) # at rest
+                    if namespace == "vela-quick-settings":
+                        self.assertNotEqual(layer["h"], default["h"], "the style kept the default tiles")
+                    # The blur at rest spans the panel, as with the theme.
+                    regions = PanelBlur.blur_regions(self, namespace)
+                    self.assertTrue(regions and regions[-1], f"{namespace} has no blur region")
+                    rects = regions[-1]
+                    x0, x1 = min(r[0] for r in rects), max(r[0] + r[2] for r in rects)
+                    self.assertEqual(x1 - x0, 640 if namespace == "vela-start-menu" else 360)
+                    self.close_panel(send, namespace)
+            # A tile of the style turns Night light on and off from the keyboard.
+            self.assertFalse(self.vela.query("accessibility")["nightLight"])
+            self.open_panel(send, "super+a", "vela-quick-settings")
+            send("key", "Tab", "sleep", 200, "key", "Tab", "sleep", 200, "key", "Return", "sleep", 300)
+            self.vela.wait_for(lambda _: self.vela.query("accessibility")["nightLight"], timeout=5,
+                               read_state=False, what="Night light on")
             send("key", "Return", "sleep", 300)
             self.vela.wait_for(lambda _: not self.vela.query("accessibility")["nightLight"], timeout=5,
                                read_state=False, what="Night light off")

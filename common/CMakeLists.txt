@@ -236,6 +236,12 @@ if(VELA_BUILD_TOOLS)
     set_tests_properties(controls-expressive-no-effects PROPERTIES
         ENVIRONMENT "VELA_TEST_THEME=expressive;VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(controls-expressive controls-expressive-no-effects PROPERTIES TIMEOUT 120)
+    # Each expressive piece alone inside the default theme (VELA_TEST_THEME=
+    # controls, motion, color): the mixed combinations.
+    foreach(piece controls motion color)
+        add_test(NAME controls-expressive-${piece} COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+        set_tests_properties(controls-expressive-${piece} PROPERTIES TIMEOUT 120 ENVIRONMENT "VELA_TEST_THEME=${piece}")
+    endforeach()
 
     # vela-color against Material Color Utilities' own results.
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)

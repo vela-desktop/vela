@@ -292,6 +292,13 @@ if(VELA_BUILD_TOOLS)
     set_tests_properties(shell-controls-expressive-no-effects PROPERTIES
         ENVIRONMENT "VELA_TEST_THEME=expressive;VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(shell-controls-expressive shell-controls-expressive-no-effects PROPERTIES TIMEOUT 60)
+    # Each expressive piece alone inside the default theme (VELA_TEST_THEME=
+    # shell, controls): the mixed combinations; motion and color alone are
+    # the controls suite's (common/CMakeLists.txt).
+    foreach(piece shell controls)
+        add_test(NAME shell-controls-expressive-${piece} COMMAND vela-shell-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+        set_tests_properties(shell-controls-expressive-${piece} PROPERTIES TIMEOUT 60 ENVIRONMENT "VELA_TEST_THEME=${piece}")
+    endforeach()
 
     # Config on a private vela-shell.conf, rewritten as Settings does.
     qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h

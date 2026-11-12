@@ -99,6 +99,8 @@ Item {
         function test_button_radius_morphs_on_the_spatial_curve() {
             if (!Theme.animationEffects)
                 skip("with effects on")
+            if (!Theme.spatialMotion)
+                skip("with motion-variant=expressive")
             mousePress(tonal, 10, 10)
             wait(Theme.spatialDuration("fast", Theme.fast) / 4)
             const r = tonal.background.radius
