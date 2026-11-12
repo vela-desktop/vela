@@ -113,8 +113,8 @@ inline double contrast(const QColor& a, const QColor& b)
 
 // The lightest color of `behind` in `box` (physical pixels) as the clock
 // sees it, under the clock's dimming (black at `dim` alpha): what text must
-// read against. Sampled on a grid: the blurred wallpaper has no detail
-// finer than it.
+// read against. Every pixel: the clock is over the sharp wallpaper, where a
+// bright detail may be a few pixels wide.
 inline QColor brightestBehind(const QImage& behind, QRect box, int dim)
 {
     box = box.intersected(behind.rect());
@@ -124,9 +124,8 @@ inline QColor brightestBehind(const QImage& behind, QRect box, int dim)
     const double keep = 1.0 - std::clamp(dim, 0, 255) / 255.0;
     QColor brightest(Qt::black);
     double most = -1;
-    const int step = std::max(1, std::min(box.width(), box.height()) / 16);
-    for (int y = box.top(); y <= box.bottom(); y += step) {
-        for (int x = box.left(); x <= box.right(); x += step) {
+    for (int y = box.top(); y <= box.bottom(); ++y) {
+        for (int x = box.left(); x <= box.right(); ++x) {
             const QRgb pixel = behind.pixel(x, y);
             const QColor dimmed(int(qRed(pixel) * keep), int(qGreen(pixel) * keep), int(qBlue(pixel) * keep));
             const double l = luminance(dimmed);

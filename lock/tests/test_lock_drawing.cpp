@@ -58,12 +58,18 @@ QColor over(QColor color, int alpha, QColor under)
 }
 
 QImage paint(const Look& look, const Scene& scene, QSize logical = { 800, 600 }, uint32_t scale120 = 120,
-    QColor blurred = wallpaperBlurred)
+    QColor blurred = wallpaperBlurred, QColor sharp = wallpaper, QRect detail = {})
 {
     const QSize physical(int(logical.width() * scale120 / 120), int(logical.height() * scale120 / 120));
     QImage image(physical, QImage::Format_RGB32);
     QImage background(physical, QImage::Format_RGB32);
-    background.fill(wallpaper);
+    background.fill(sharp);
+    // A white detail of the sharp wallpaper, gone in the blurred one.
+    for (int y = detail.top(); y <= detail.bottom(); ++y) {
+        for (int x = detail.left(); x <= detail.right(); ++x) {
+            background.setPixelColor(x, y, Qt::white);
+        }
+    }
     QImage behind(physical, QImage::Format_RGB32);
     behind.fill(blurred);
     vela::lock::paint(image, background, behind, logical, scale120, look, scene);
@@ -196,9 +202,16 @@ void testClock()
     check(anyPixel(image, timeBox, look.primary), "the expressive time in primary");
     check(!anyPixel(image, timeBox, over(Qt::white, 240, behind), 1), "not in the default white");
 
-    image = paint(look, clockScene(), { 800, 600 }, 120, QColor(235, 235, 235));
+    image = paint(look, clockScene(), { 800, 600 }, 120, QColor(235, 235, 235), QColor(235, 235, 235));
     check(anyPixel(image, timeBox, Qt::white), "behind it a light wallpaper: white");
     check(!anyPixel(image, timeBox, look.primary), "no primary there");
+
+    // The clock is over the sharp wallpaper: its color is read against that
+    // one, a small bright detail included, not against the blurred one.
+    image = paint(look, clockScene(), { 800, 600 }, 120, wallpaperBlurred, wallpaper, QRect(399, 100, 3, 3));
+    check(!anyPixel(image, timeBox, look.primary), "a bright detail behind the time: no primary");
+    image = paint(look, clockScene(), { 800, 600 }, 120, QColor(235, 235, 235));
+    check(anyPixel(image, timeBox, look.primary), "a light blurred wallpaper, not shown behind the clock, changes nothing");
 }
 
 // A narrow output: the time and the date below it shrink to 90% of its

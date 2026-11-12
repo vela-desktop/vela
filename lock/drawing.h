@@ -88,14 +88,15 @@ inline void paint(QImage& image, const QImage& background, const QImage& blurred
         QColor timeColor(255, 255, 255, 240);
         if (look.expressive) {
             // Primary, lighter where the wallpaper behind the time is
-            // light (3:1 against its blurred, dimmed colors), else white.
+            // light (3:1 against its dimmed colors: the sharp wallpaper's,
+            // which the clock is drawn over), else white.
             const QFontMetricsF metrics(font);
             const qreal textWidth = metrics.horizontalAdvance(time);
             const QRectF text((lw - textWidth) / 2, timeBox.top(), textWidth, metrics.height());
             const QRect physical(int(text.left() * scale), int(text.top() * scale), int(text.width() * scale),
                 int(text.height() * scale));
             timeColor = clockColor(look.primary,
-                brightestBehind(blurred, physical, 60));
+                brightestBehind(background, physical, 60));
         }
         p.setPen(timeColor);
         p.drawText(timeBox, Qt::AlignHCenter | Qt::AlignTop, time);
