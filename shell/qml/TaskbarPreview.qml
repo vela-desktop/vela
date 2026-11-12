@@ -207,7 +207,9 @@ Window {
         duration: Theme.normal
         instantExit: true
         onClosed: root.visible = false
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the panel at rest
+        // The travel while it moves, the panel at rest; round under the
+        // expressive panel, as when it opens.
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
 
         Shadow {
             id: shadow
