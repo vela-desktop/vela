@@ -52,7 +52,11 @@ T.Button {
     // Expressive shapes (M3's buttons): round at rest, the pressed shape
     // (small, 8) while pressed, square (medium, 12) while checked, as a
     // selected toggle button. Fluent: Theme.radius.
-    readonly property real shape: !expressive ? Theme.radius
+    // A button in the corner of a rounder shape (a panel's footer): that
+    // shape's radius and how far inside it the button is, for Theme.nested.
+    property real outerRadius: 0
+    property real outerGap: 0
+    readonly property real shape: !expressive ? Theme.nested(outerRadius, outerGap, Theme.radius)
         : down ? Theme.shapeSmall
         : checked ? Theme.shapeMedium
         : height / 2

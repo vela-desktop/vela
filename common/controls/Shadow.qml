@@ -16,7 +16,9 @@ Item {
 
     required property Item target
     property var depth: Theme.shadow.flyout
-    property real radius: Theme.radiusOverlay
+    // The target's corners, when it has them (a Rectangle): a panel in a
+    // style's own radius casts a shadow of that shape.
+    property real radius: target && target.radius !== undefined ? target.radius : Theme.radiusOverlay
     property real blur: depth.blur
     property vector2d offset: Qt.vector2d(0, depth.offset)
     property color color: Qt.rgba(0, 0, 0, depth.opacity)

@@ -170,6 +170,7 @@ set(CONTROLS_QML_FILES
     controls/Slider.qml
     controls/TextBox.qml
     controls/ListItem.qml
+    controls/RoundClip.qml
     controls/Shadow.qml
     controls/PanelMotion.qml
     controls/Dialog.qml

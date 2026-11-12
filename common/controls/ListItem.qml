@@ -31,13 +31,19 @@ T.ItemDelegate {
     font.weight: expressive && selected ? Font.Medium : Font.Normal
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
+    // The radius of the shape the item sits in and how far inside it, for
+    // Theme.nested; 0: none.
+    property real outerRadius: 0
+    property real outerGap: 0
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()
 
     background: Fill {
-        radius: !control.expressive ? Theme.radius
+        // In a rounder shape (a menu): that shape's corners less the gap
+        // (Theme.nested); a selected expressive item stays a pill.
+        radius: !control.expressive ? Theme.nested(control.outerRadius, control.outerGap, Theme.radius)
             : control.selected ? height / 2
-            : Math.min(Theme.shapeMedium, height / 2)
+            : Math.min(Theme.nested(control.outerRadius, control.outerGap, Theme.shapeMedium), height / 2)
         color: control.expressive
             ? (control.selected
                 ? Theme.mix(Theme.secondaryContainer, Theme.secondaryContainerText, control.stateLayer)

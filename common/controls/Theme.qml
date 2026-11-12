@@ -247,6 +247,15 @@ QtObject {
     readonly property int radius: Math.max(0, Math.min(24, themed("radius", 4))) // controls
     readonly property int radiusCard: Math.max(0, Math.min(32, themed("radiusCard", 6)))
     readonly property int radiusOverlay: Math.max(0, Math.min(32, themed("radiusOverlay", 8))) // menus, flyouts, dialogs, panels
+    // Corners inside corners (docs/visual-coherence.md §6.12): a shape that
+    // sits `gap` inside a rounder one, in its corner, takes the outer radius
+    // less the gap, so that both arcs share a center, whatever the theme's
+    // radii; farther in than the outer radius (or in a square shape) the
+    // corner is not its concern, and it keeps its `own`. Full pills and
+    // circles are shapes of their own and do not ask.
+    function nested(outer, gap, own) {
+        return gap < outer ? outer - gap : own
+    }
     // Additional semantic shapes for expressive layouts: steps of M3's
     // corner scale (extra small 4, small 8, medium 12, extra large 28), up
     // to its extra extra large, 48. shapeLarge is Vela's 24 (M3's large is
