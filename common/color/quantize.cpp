@@ -439,7 +439,10 @@ std::map<Argb, std::uint32_t> quantizeWsmeans(
         clusters.push_back(labFromArgb(argb));
     }
 
-    std::minstd_rand random(42688);
+    // Not a secret: a fixed sequence that only spreads the pixels over the
+    // starting clusters, the same in every run so a wallpaper always gives
+    // the same color.
+    std::minstd_rand random(42688); // NOSONAR(cpp:S2245)
     std::vector<int> clusterIndices;
     clusterIndices.reserve(points.size());
     for (std::size_t i = 0; i < points.size(); i++) {
