@@ -113,7 +113,8 @@ Item {
             tryCompare(menu, "opacity", 1, 5000)
             const [open, hidden, del] = fills()
             // At rest: nothing; the checked entry in tertiary container.
-            compare(open.color.a, 0)
+            // (a fade from an earlier test's hover may still be ending)
+            tryVerify(() => open.color.a === 0, 5000)
             compare(open.radius, Theme.shapeExtraSmall)
             compare(hidden.radius, Theme.shapeMedium)
             tryVerify(() => Colors.same(hidden.color, Theme.tertiaryContainer), 5000)
