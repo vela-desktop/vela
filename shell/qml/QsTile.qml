@@ -53,7 +53,13 @@ Item {
     // The overshoot stays inside the shape: never past round or below square.
     readonly property real radius: Math.max(0, Math.min(height / 2, shownRadius))
 
-    readonly property color content: checked ? Theme.primaryText : Theme.surfaceText
+    // The colors follow the controls in use: Vela Expressive's tonal ones
+    // (controls-variant=expressive), else the default tile's (QuickSettingsTile:
+    // the control's fill with the panels' outline, the accent with white on
+    // it), so the variant on its own sits in a Fluent panel; its shapes and
+    // layout stay the variant's. Vela's choice.
+    readonly property bool tonal: Theme.expressive
+    readonly property color content: checked ? (tonal ? Theme.primaryText : "white") : (tonal ? Theme.surfaceText : Theme.text)
     readonly property real detailsWidth: split ? 44 : 0
 
     function stateColor(button) {
@@ -65,7 +71,13 @@ Item {
         objectName: "tileShape"
         anchors.fill: parent
         radius: tile.radius
-        color: tile.checked ? Theme.primary : Theme.surfaceContainerHigh
+        color: tile.checked ? (tile.tonal ? Theme.primary : Theme.accent)
+            : (tile.tonal ? Theme.surfaceContainerHigh : Theme.control)
+        // The default tile's outline, fading away as it turns on; none on
+        // the tonal tile (M3's buttons have none).
+        border.width: tile.tonal ? 0 : 1
+        border.color: tile.checked ? Qt.rgba(Theme.stroke.r, Theme.stroke.g, Theme.stroke.b, 0) : Theme.stroke
+        Behavior on border.color { ColorFade {} }
     }
     // The state layers, one per half, with the shape's outer corners.
     Fill {
@@ -152,6 +164,7 @@ Item {
         // On primary: white drawings on the light mode's dark primary, the
         // light mode's dark ones on the dark mode's light primary.
         source: name === "" ? "" : !tile.checked ? Theme.icons + encodeURIComponent(name)
+            : !tile.tonal ? Theme.iconsOnAccent + encodeURIComponent(name)
             : "image://icon/" + (Theme.light ? "w/" : "l/") + encodeURIComponent(name)
     }
     Text {

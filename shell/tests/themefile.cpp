@@ -715,7 +715,10 @@ private slots:
                 QVERIFY2(names.contains(name), qPrintable(surface + u'/' + picture));
             }
         }
-        QCOMPARE(count, 22); // Lowell137's, one of each look: 11 taskbar, 5 Start menu, 6 quick settings styles
+        // Lowell137's, one of each look (11 taskbar, 5 Start menu, 6 quick
+        // settings styles), and Vela Expressive's Start menu and quick
+        // settings with the notification center.
+        QCOMPARE(count, 24);
     }
 };
 
