@@ -83,7 +83,8 @@ Item {
             const c = Data.cards(list)
             const outer = style.cardRadius
             const inner = Math.min(outer, Theme.shapeExtraSmall)
-            compare(outer, Theme.shapeLarge)
+            // 8 inside the panel: its corners less that (Theme.nested).
+            compare(outer, style.radius - 8)
             compare(inner, 4)
             compare(corners(c[1]), [outer, outer, inner, inner], "the first: the outer corners on top")
             compare(corners(c[2]), [inner, inner, inner, inner], "between: extra small")

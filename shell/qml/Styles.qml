@@ -67,7 +67,15 @@ QtObject {
         // The buttons.
         readonly property int buttonWidth: styles.size("taskbar-button-width", 44, 24, 96)
         readonly property int buttonHeight: styles.size("taskbar-button-height", 40, 24, 96)
-        readonly property int buttonRadius: styles.size("taskbar-button-radius", Theme.radius, 0, 48)
+        // In a floating pill the buttons and the highlights follow its ends
+        // (Theme.nested): `gap` inside it above and below, `own` on a bar
+        // that does not float, or where the pill's radius is no larger.
+        readonly property real pillHeight: height - 2 * margin
+        function corner(gap, own) {
+            return floating ? Theme.nested(Math.min(radius, pillHeight / 2), gap, own) : own
+        }
+        readonly property int ownButtonRadius: styles.size("taskbar-button-radius", Theme.radius, 0, 48)
+        readonly property real buttonRadius: corner((pillHeight - buttonHeight) / 2, ownButtonRadius)
         readonly property int iconSize: styles.size("taskbar-icon-size", 26, 12, 64)
         readonly property int spacing: styles.size("taskbar-spacing", 4, 0, 24)
     }
@@ -104,7 +112,12 @@ QtObject {
         // slider unless the keys say otherwise.
         readonly property bool expressive: variant === "expressive"
         readonly property int radius: styles.size("quicksettings-radius", variant === "classic" ? 0 : expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay, 0, 48)
-        readonly property int tileRadius: styles.size("quicksettings-tile-radius", expressive ? 16 : Theme.radius, 0, 24)
+        // What the panel holds, that far from its edges; a tile's corners
+        // follow the panel's from there (Theme.nested): its own radius
+        // (quicksettings-tile-radius) where the panel's is no larger than
+        // the padding.
+        readonly property int pad: expressive ? 12 : 16
+        readonly property int tileRadius: Theme.nested(radius, pad, styles.size("quicksettings-tile-radius", expressive ? 16 : Theme.radius, 0, 24))
         readonly property color surface: Theme.themed("quicksettings-surface", Theme.surface)
         // WindowGlass's: borders only along the panel's top edge and the tiles'
         // bottom edge; a split tile's arrow right beside its icon; no footer
@@ -125,7 +138,12 @@ QtObject {
         readonly property string variant: Theme.themed("notifications-variant", "default")
         readonly property bool expressive: variant === "expressive"
         readonly property int radius: styles.size("notifications-radius", expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay, 0, 48)
-        readonly property int cardRadius: styles.size("notifications-card-radius", expressive ? Theme.shapeLarge : Theme.radius, 0, 24)
+        // The cards in the center's list, 8 inside its panel, follow the
+        // panel's corners from there (Theme.nested): notifications-card-radius
+        // where the panel's is no larger than 8.
+        readonly property int listInset: 8
+        readonly property int ownCardRadius: styles.size("notifications-card-radius", expressive ? Theme.shapeLarge : Theme.radius, 0, 24)
+        readonly property int cardRadius: Theme.nested(radius, listInset, ownCardRadius)
         readonly property color surface: Theme.themed("notifications-surface", Theme.surface)
         // Today in the calendar: a circle (16), or a rounded square.
         readonly property int todayRadius: styles.size("notifications-today-radius", 16, 0, 24)

@@ -345,7 +345,10 @@ Item {
                             x: 4
                             width: parent.width - 8
                             height: parent.height
-                            radius: !panel.expressive ? Theme.radius : row.selected ? Theme.shapeMedium : Theme.shapeExtraSmall
+                            // 4 inside the menu: the menu's corners less
+                            // that (Theme.nested), every row alike.
+                            radius: Theme.nested(Theme.radiusOverlay, 4,
+                                !panel.expressive ? Theme.radius : row.selected ? Theme.shapeMedium : Theme.shapeExtraSmall)
                             color: panel.expressive
                                 ? (row.selected ? Theme.mix(Theme.tertiaryContainer, Theme.tertiaryContainerText, amount) : panel.stateLayer(amount))
                                 : !row.isCurrent || !row.usable ? Theme.subtleRest

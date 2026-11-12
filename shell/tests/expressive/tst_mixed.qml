@@ -90,7 +90,7 @@ Item {
             compare(root.styles.quickSettings.radius, Theme.shapeExtraLarge)
             compare(root.styles.quickSettings.tileRadius, 16)
             compare(root.styles.startMenu.radius, Theme.shapeExtraLarge)
-            compare(root.styles.notifications.cardRadius, Theme.shapeLarge)
+            compare(root.styles.notifications.cardRadius, root.styles.notifications.radius - 8)
             // The panels keep the theme's surface (acrylic), not a tonal one.
             verify(Colors.same(root.styles.quickSettings.surface, Theme.surface))
             verify(!Colors.same(Theme.surface, Theme.surfaceContainer))

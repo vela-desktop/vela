@@ -129,7 +129,7 @@ Window {
         signal closeRequested()
         width: root.cardWidth
         height: root.cardHeight
-        radius: Theme.radiusOverlay
+        radius: Theme.nested(Theme.radiusOverlay, 6, Theme.radius) // 6 inside the panel
         color: cardHover.hovered ? Theme.subtleHover : Theme.subtleRest
 
         HoverHandler { id: cardHover }
@@ -173,7 +173,7 @@ Window {
             anchors { right: parent.right; top: parent.top; margins: 4 }
             width: 28
             height: 24
-            radius: Theme.radius
+            radius: Theme.nested(parent.radius, 4, Theme.radius) // 4 inside the card
             color: closeMouse.containsMouse ? "#c42b1c" : "#00c42b1c"
             Text {
                 anchors.centerIn: parent

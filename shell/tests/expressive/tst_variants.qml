@@ -107,7 +107,9 @@ Item {
             compare(styles.quickSettings.radius - styles.quickSettings.tileRadius, 12)
             compare(styles.startMenu.radius, Theme.shapeExtraLarge)
             compare(styles.notifications.radius, Theme.shapeExtraLarge)
-            compare(styles.notifications.cardRadius, Theme.shapeLarge)
+            // The cards, 8 inside their panel: its corners less that.
+            compare(styles.notifications.cardRadius, styles.notifications.radius - 8)
+            compare(styles.notifications.ownCardRadius, Theme.shapeLarge)
         }
 
         function test_off_is_a_pill_on_is_primary_and_square() {

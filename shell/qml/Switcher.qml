@@ -121,7 +121,7 @@ Window {
 
                         width: root.cardWidth
                         height: root.cardHeight
-                        radius: Theme.radiusOverlay
+                        radius: Theme.nested(Theme.radiusOverlay, 16, Theme.radiusOverlay) // 16 inside the panel
                         color: current || cardMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         border.width: current ? 2 : 0
                         border.color: Theme.accent

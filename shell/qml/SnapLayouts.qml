@@ -167,7 +167,7 @@ Window {
                         required property int index
                         width: 96
                         height: 60
-                        radius: Theme.radius
+                        radius: Theme.nested(Theme.radiusOverlay, 12, Theme.radius) // 12 inside the panel
                         color: Theme.light ? Qt.rgba(0, 0, 0, 0.03) : Qt.rgba(1, 1, 1, 0.05)
                         border.width: 1
                         border.color: Theme.stroke

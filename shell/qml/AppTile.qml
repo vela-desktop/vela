@@ -22,6 +22,9 @@ Item {
     // surface, the keyboard's tile in secondary container with its own state
     // layers (M3's selected list item; the shape is Vela's choice).
     property bool expressive: false
+    // The radius of the shape the tile sits in (the expressive pinned apps'
+    // container), 0 for none: its fill, 3 inside, follows it.
+    property real containerRadius: 0
     readonly property real stateLayer: mouse.pressed ? Theme.statePressed : mouse.containsMouse ? Theme.stateHover : 0
     readonly property color layerColor: current ? Theme.secondaryContainerText : Theme.surfaceText
 
@@ -29,7 +32,7 @@ Item {
         objectName: "appTileFill"
         anchors.fill: parent
         anchors.margins: 3
-        radius: root.expressive ? Theme.shapeLarge : Theme.radius
+        radius: Theme.nested(root.containerRadius, 3, root.expressive ? Theme.shapeLarge : Theme.radius)
         color: root.expressive
             ? (root.current ? Theme.mix(Theme.secondaryContainer, Theme.secondaryContainerText, root.stateLayer)
                             : Qt.rgba(root.layerColor.r, root.layerColor.g, root.layerColor.b, root.stateLayer))

@@ -149,6 +149,8 @@ Window {
         default property alias glyph: glyphSlot.data
         width: parent ? parent.width : 0
         height: 36
+        outerRadius: Theme.radiusOverlay // 4 inside the power menu
+        outerGap: 4
 
         Icon {
             x: 10
@@ -432,9 +434,9 @@ Window {
                     }
 
                     // Expressive: the pinned apps in a tonal container, in
-                    // M3's extra large corners (28): the tiles' large ones
-                    // (24) are about them less the tiles' 3 of margin.
-                    // Vela's choices.
+                    // M3's extra large corners (28): a tile's highlight, 3
+                    // inside it, is that less 3 (Theme.nested). Vela's
+                    // choices.
                     TonalSurface {
                         objectName: "pinnedContainer"
                         visible: root.style.expressive
@@ -460,6 +462,7 @@ Window {
                                 iconName: modelData.iconName
                                 comment: ""
                                 current: root.selectionShown && root.pinnedSelection === index
+                                containerRadius: root.style.expressive ? Theme.shapeExtraLarge : 0
                                 expressive: root.style.expressive
                                 onActivated: {
                                     if (Apps.launchId(modelData.id)) {
@@ -570,6 +573,9 @@ Window {
                 Button {
                     id: powerButton
                     anchors { right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter }
+                    // In the panel's corner, 24 from its side (10 from below).
+                    outerRadius: panel.radius
+                    outerGap: 24
                     width: 40
                     height: 40
                     padding: 0

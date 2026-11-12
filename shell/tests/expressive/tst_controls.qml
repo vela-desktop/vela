@@ -115,8 +115,10 @@ Item {
             // At rest: nothing; the checked entry in tertiary container.
             // (a fade from an earlier test's hover may still be ending)
             tryVerify(() => open.color.a === 0, 5000)
-            compare(open.radius, Theme.shapeExtraSmall)
-            compare(hidden.radius, Theme.shapeMedium)
+            // 4 inside the menu: its corners less that, every row alike
+            // (Theme.nested); their own shapes in a menu no rounder than 4.
+            compare(open.radius, Theme.nested(Theme.radiusOverlay, 4, Theme.shapeExtraSmall))
+            compare(hidden.radius, Theme.nested(Theme.radiusOverlay, 4, Theme.shapeMedium))
             tryVerify(() => Colors.same(hidden.color, Theme.tertiaryContainer), 5000)
             // The current row: a state layer of on surface.
             mouseMove(open, 30, 16)

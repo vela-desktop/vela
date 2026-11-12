@@ -147,6 +147,8 @@ Window {
                         SmallButton {
                             objectName: "doNotDisturb"
                             anchors.verticalCenter: parent.verticalCenter
+                            outerRadius: notifications.radius
+                            outerGap: 16
                             icon.name: Notifications.doNotDisturb ? "notifications-disabled" : "notifications"
                             accent: Notifications.doNotDisturb
                             toggle: true
@@ -156,6 +158,9 @@ Window {
                         }
                         SmallButton {
                             anchors.verticalCenter: parent.verticalCenter
+                            // In the panel's corner, 16 inside it.
+                            outerRadius: notifications.radius
+                            outerGap: 16
                             visible: root.history.count > 0
                             tonal: Styles.notifications.expressive
                             text: qsTr("Clear all")

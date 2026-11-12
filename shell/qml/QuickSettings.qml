@@ -397,6 +397,9 @@ Window {
         height: 36
         Button {
             id: back
+            // At the top of a page, 16 inside the panel's corner.
+            outerRadius: Styles.quickSettings.radius
+            outerGap: 16
             subtle: true
             width: 32
             height: 32
@@ -475,6 +478,8 @@ Window {
         Keys.onReturnPressed: clicked()
         Keys.onEnterPressed: clicked()
         background: Fill {
+            // At the bottom of a page, 16 inside the panel's corner.
+            radius: Theme.nested(Styles.quickSettings.radius, 16, Theme.radius)
             color: link.down ? Theme.subtlePressed : link.hovered ? Theme.subtleHover : Theme.subtleRest
             FocusRing { visible: link.visualFocus }
         }
@@ -539,7 +544,7 @@ Window {
                     // Expressive: 12 from the panel's edges, so a tile's
                     // square corners (16) are the panel's (28) less the
                     // padding (M3's nested radii); Vela's choice.
-                    readonly property int pad: Styles.quickSettings.expressive ? 12 : 16
+                    readonly property int pad: Styles.quickSettings.pad
                     x: pad
                     y: pad
                     width: parent.width - 2 * pad
@@ -713,6 +718,8 @@ Window {
                                 // password field and button, in `normal`.
                                 delegate: ListItem {
                                     id: net
+                                    outerRadius: Styles.quickSettings.radius // 16 inside the panel
+                                    outerGap: 16
                                     required property var modelData
                                     readonly property bool open: wifiPage.expanded === modelData.ssid
                                     readonly property bool needsPassword: modelData.secure && !modelData.active
@@ -927,6 +934,8 @@ Window {
                                 model: Audio.outputs
                                 delegate: ListItem {
                                     id: output
+                                    outerRadius: Styles.quickSettings.radius // 16 inside the panel
+                                    outerGap: 16
                                     required property var modelData
                                     width: soundColumn.width
                                     height: 44
@@ -1140,6 +1149,8 @@ Window {
                         ]
                         delegate: ListItem {
                             id: option
+                            outerRadius: Styles.quickSettings.radius // 16 inside the panel
+                            outerGap: 16
                             required property var modelData
                             width: accessPage.width
                             height: 48
@@ -1202,7 +1213,10 @@ Window {
                     }
                 }
                 Button {
-                    anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                    // 6 from the footer's edges, in the panel's corner.
+                    anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                    outerRadius: panel.radius
+                    outerGap: 6
                     subtle: true
                     width: 36
                     height: 36

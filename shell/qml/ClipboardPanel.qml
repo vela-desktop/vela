@@ -205,7 +205,7 @@ Window {
                                 readonly property bool selected: index === root.current
                                 width: cards.width
                                 height: Math.max(56, (modelData.kind === "image" ? thumb.height : body.height) + 24)
-                                radius: Theme.radius
+                                radius: Theme.nested(Theme.radiusOverlay, 16, Theme.radius) // 16 inside the panel
                                 color: cardMouse.containsMouse ? Theme.subtleHover : Theme.control
                                 border.width: selected ? 2 : 1
                                 border.color: selected ? Theme.accent : Theme.stroke
