@@ -883,7 +883,10 @@ would let the click through, but needs a new path from QML to
 `QWindow::setMask()` for a band 46 units wide; consuming it is what Vela's menus
 already do. Under the expressive controls, whose surfaces are opaque, a
 `Shadow` also fills its target's corners inside the target's box: the four
-strips alone left a lighter square behind M3's large round corners.
+strips alone left a lighter square behind M3's large round corners. Since the
+compositor blurs wherever a window isn't transparent, a blurred window then
+asks for its blur rounded like its panel (`Effects.setBlur`'s radius), or the
+shaded corners show blurred, a lighter fringe in light mode.
 
 **`Dialog.qml`** is Files' dialog (the button list is the more general API) with
 Settings' content slot and only `Theme` values, in `Vela.Controls`; the two
