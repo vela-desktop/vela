@@ -28,6 +28,7 @@ C.TextField {
     font.pixelSize: Theme.fontBody
     leftPadding: expressive ? 16 : 11
     rightPadding: expressive ? 16 : 11
+    hoverEnabled: true // not dependent on platform style hints (also works offscreen)
     verticalAlignment: TextInput.AlignVCenter
     echoMode: password ? TextInput.Password : TextInput.Normal
     passwordCharacter: "●"

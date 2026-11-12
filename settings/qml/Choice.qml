@@ -24,6 +24,7 @@ C.ComboBox {
     signal chosen(int index)
 
     enabled: usable
+    hoverEnabled: true // not dependent on platform style hints (also works offscreen)
     // Disabled, the whole control fades, text and chevron too, like Button,
     // Switch and Slider: a drop-down that only lost its background read as
     // one that works.
