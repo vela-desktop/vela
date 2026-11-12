@@ -74,6 +74,7 @@ set(FILES_QML_FILES
     qml/Main.qml
     qml/TabPage.qml
     qml/NavPane.qml
+    qml/FilesLayer.qml
     qml/AddressBar.qml
     qml/CommandBar.qml
     qml/DetailsView.qml

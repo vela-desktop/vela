@@ -129,6 +129,7 @@ set(VELA_QML_FILES
     qml/Switcher.qml
     qml/Wallpaper.qml
     qml/NotificationPopups.qml
+    qml/NotificationToast.qml
     qml/Menus.qml
     qml/Styles.qml
     qml/ContextMenu.qml
@@ -148,6 +149,7 @@ set(VELA_QML_FILES
     qml/QuickSettingsTile.qml
     qml/NotificationCenter.qml
     qml/SmallButton.qml
+    qml/NotificationList.qml
     qml/TaskView.qml
     qml/DesktopOsd.qml
     qml/VolumeOsd.qml

@@ -615,13 +615,16 @@
         <source>Clear all</source>
         <translation>Cancella tutto</translation>
     </message>
+</context>
+<context>
+    <name>NotificationList</name>
     <message>
         <source>No new notifications</source>
         <translation>Nessuna nuova notifica</translation>
     </message>
 </context>
 <context>
-    <name>NotificationPopups</name>
+    <name>NotificationToast</name>
     <message>
         <source>Close</source>
         <translation>Chiudi</translation>

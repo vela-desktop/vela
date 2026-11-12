@@ -62,6 +62,7 @@ Item {
 
     Fill {
         id: address
+        objectName: "addressField"
         anchors { left: buttons.right; leftMargin: 8; right: searchBox.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
         height: 32
         // Expressive: M3's search bar's full pill on surface container
@@ -97,6 +98,7 @@ Item {
                         required property int index
                         height: parent.height
                         Fill {
+                            objectName: "crumb" + crumb.index
                             height: 26
                             anchors.verticalCenter: parent.verticalCenter
                             width: crumbContent.width + 12
@@ -176,6 +178,7 @@ Item {
 
         TextInput {
             id: editor
+            objectName: "addressEditor"
             visible: bar.editing
             anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
             verticalAlignment: TextInput.AlignVCenter
@@ -203,6 +206,7 @@ Item {
     // Search: in this folder and its subfolders.
     Fill {
         id: searchBox
+        objectName: "searchBox"
         anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
         width: Math.min(280, bar.width * 0.25)
         height: 32
@@ -227,6 +231,7 @@ Item {
         }
         TextInput {
             id: search
+            objectName: "searchInput"
             anchors { fill: parent; leftMargin: 10; rightMargin: 32 }
             verticalAlignment: TextInput.AlignVCenter
             enabled: bar.tab.isFolder

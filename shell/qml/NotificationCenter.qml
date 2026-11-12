@@ -164,158 +164,17 @@ Window {
                     }
                 }
 
-                ListView {
+                NotificationList {
                     id: list
                     anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: 8; topMargin: 4 }
-                    clip: true
-                    // Expressive: an app's notifications 2 apart, one
-                    // container (M3's segmented list, as Settings' card
-                    // groups).
-                    spacing: Styles.notifications.expressive ? 2 : 6
                     model: root.history
-                    boundsBehavior: Flickable.StopAtBounds
-                    section.property: "appName"
-                    section.delegate: Text {
-                        required property string section
-                        width: list.width
-                        leftPadding: 8
-                        topPadding: 6
-                        bottomPadding: 2
-                        text: section
-                        color: Theme.textSecondary
-                        font.pixelSize: Theme.fontCaption
-                    }
-
-                    delegate: Fill {
-                        id: item
-                        required property int notificationId
-                        required property string icon
-                        required property string summary
-                        required property string body
-                        required property var actions
-                        required property bool hasDefaultAction
-                        required property date time
-                        // Expressive: the first and the last of an app's
-                        // run take the outer corners (Styles'
-                        // cardRadius), those between M3's extra small
-                        // ones; the neighbors' app from the model (the
-                        // list's sections).
-                        readonly property bool expressive: Styles.notifications.expressive
-                        readonly property bool first: ListView.previousSection !== ListView.section
-                        readonly property bool last: ListView.nextSection !== ListView.section
-                        readonly property real outer: Styles.notifications.cardRadius
-                        readonly property real inner: Math.min(outer, Theme.shapeExtraSmall)
-                        width: list.width
-                        height: itemContent.height + 20
-                        radius: Styles.notifications.cardRadius
-                        // undefined: the default look keeps `radius` alone.
-                        topLeftRadius: expressive ? (first ? outer : inner) : undefined
-                        topRightRadius: expressive ? (first ? outer : inner) : undefined
-                        bottomLeftRadius: expressive ? (last ? outer : inner) : undefined
-                        bottomRightRadius: expressive ? (last ? outer : inner) : undefined
-                        color: itemHover.hovered ? (expressive ? Theme.controlHover : Theme.subtleHover) : Theme.control
-                        Accessible.role: Accessible.ListItem
-                        Accessible.name: summary
-                        Accessible.description: body
-
-                        HoverHandler { id: itemHover }
-                        // Passive right-click handling works across child
-                        // controls without changing their left-button actions.
-                        TapHandler {
-                            acceptedButtons: Qt.RightButton
-                            onTapped: Notifications.dismissFromHistory(item.notificationId)
-                        }
-                        MouseArea {
-                            id: itemMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: {
-                                if (item.hasDefaultAction) {
-                                    Notifications.invokeFromHistory(item.notificationId, "default")
-                                    root.close()
-                                }
-                            }
-                        }
-                        Row {
-                            id: itemContent
-                            x: 12
-                            y: 10
-                            width: parent.width - 24
-                            spacing: 12
-                            Image {
-                                width: 28
-                                height: 28
-                                source: item.icon
-                                sourceSize: Qt.size(width, height)
-                                fillMode: Image.PreserveAspectFit
-                            }
-                            Column {
-                                width: parent.width - 40
-                                spacing: 2
-                                Item {
-                                    width: parent.width
-                                    height: summaryText.height
-                                    Text {
-                                        id: summaryText
-                                        width: parent.width - timeText.width - 30
-                                        text: item.summary
-                                        textFormat: Text.PlainText // the spec's summary has no markup
-                                        color: Theme.text
-                                        font.pixelSize: Theme.fontBody
-                                        font.weight: item.expressive ? Theme.weightEmphasis : Font.DemiBold
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        id: timeText
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 24
-                                        text: Qt.formatTime(item.time, Config.timeFormat)
-                                        color: Theme.textSecondary
-                                        font.pixelSize: Theme.fontCaption
-                                    }
-                                }
-                                Text {
-                                    visible: item.body !== ""
-                                    width: parent.width
-                                    text: item.body
-                                    textFormat: Text.StyledText
-                                    color: Theme.textSecondary
-                                    font.pixelSize: Theme.fontCaption
-                                    wrapMode: Text.Wrap
-                                    maximumLineCount: 4
-                                    elide: Text.ElideRight
-                                }
-                                Row {
-                                    visible: item.actions.length > 0
-                                    spacing: 6
-                                    topPadding: 6
-                                    Repeater {
-                                        model: item.actions
-                                        delegate: SmallButton {
-                                            required property var modelData
-                                            text: modelData.label
-                                            onClicked: Notifications.invokeFromHistory(item.notificationId, modelData.key)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // Close (on hover), like on Windows.
-                        SmallButton {
-                            anchors { right: parent.right; top: parent.top; margins: 6 }
-                            visible: itemHover.hovered
-                            icon.name: "window-close"
-                            onClicked: Notifications.dismissFromHistory(item.notificationId)
+                    onInvoked: (notificationId, key) => {
+                        Notifications.invokeFromHistory(notificationId, key)
+                        if (key === "default") {
+                            root.close()
                         }
                     }
-
-                    Text {
-                        anchors.centerIn: parent
-                        visible: list.count === 0
-                        text: qsTr("No new notifications")
-                        color: Theme.textSecondary
-                        font.pixelSize: Theme.fontBody
-                    }
+                    onDismissed: notificationId => Notifications.dismissFromHistory(notificationId)
                 }
             }
 

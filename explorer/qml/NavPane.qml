@@ -35,12 +35,14 @@ Flickable {
         property bool droppable: location.startsWith("/")
         property int indent: 0
         readonly property bool selected: pane.current === location
+        objectName: "place:" + location
         width: column.width
         height: 32
         radius: expressive ? height / 2 : Theme.radius
         color: drop.containsDrag ? Theme.selectionHover : selected ? Theme.selection : mouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
 
         Rectangle {
+            objectName: "selectionBar"
             visible: entry.selected && !entry.expressive
             anchors.verticalCenter: parent.verticalCenter
             width: 3
@@ -57,6 +59,7 @@ Flickable {
             sourceSize: Qt.size(width, height)
         }
         Text {
+            objectName: "label"
             x: 38 + entry.indent
             width: parent.width - x - (entry.pinned ? 28 : 8)
             anchors.verticalCenter: parent.verticalCenter

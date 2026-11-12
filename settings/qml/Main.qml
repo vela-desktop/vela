@@ -333,55 +333,14 @@ Window {
             boundsBehavior: Flickable.StopAtBounds
             model: root.sections
             spacing: 2
-            // Expressive: M3's navigation drawer item, at Vela's 36 rows
-            // (pointer density): the page in use a full pill of secondary
-            // container with its text in Medium, no bar; the others state
-            // layers of on surface.
-            delegate: Fill {
-                id: entry
-                objectName: "navigation:" + modelData
+            delegate: NavigationEntry {
                 required property string modelData
-                readonly property bool selected: root.section === modelData
-                readonly property bool expressive: Theme.expressive
-                readonly property real amount: entryMouse.pressed ? Theme.statePressed : entryMouse.containsMouse ? Theme.stateHover : 0
+                objectName: "navigation:" + modelData
                 width: sectionList.width - 16
-                height: 36
-                radius: expressive ? height / 2 : Theme.radius
-                color: expressive
-                    ? (selected ? Theme.mix(Theme.secondaryContainer, Theme.secondaryContainerText, amount)
-                                : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, amount))
-                    : entryMouse.pressed ? Theme.subtlePressed : selected || entryMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
-
-                Rectangle {
-                    visible: entry.selected && !entry.expressive
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 3
-                    height: entryMouse.pressed ? 10 : 16
-                    radius: 1.5
-                    color: Theme.accentFill
-                }
-                Image {
-                    x: 16
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 16
-                    height: 16
-                    source: "image://fileicon/" + encodeURIComponent(root.pages[entry.modelData].icon)
-                    sourceSize: Qt.size(width, height)
-                }
-                Text {
-                    x: 48
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.pages[entry.modelData].title
-                    color: entry.expressive && entry.selected ? Theme.secondaryContainerText : Theme.text
-                    font.pixelSize: Theme.fontBody
-                    font.weight: entry.expressive && entry.selected ? Theme.weightLabel : Font.Normal
-                }
-                MouseArea {
-                    id: entryMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: root.navigate(entry.modelData)
-                }
+                title: root.pages[modelData].title
+                icon: root.pages[modelData].icon
+                selected: root.section === modelData
+                onActivated: root.navigate(modelData)
             }
         }
 

@@ -21,6 +21,7 @@
 #include <QImage>
 #include <QPainter>
 #include <QPdfWriter>
+#include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QTemporaryDir>
@@ -95,6 +96,13 @@ public:
         emit peekReady(path, QVariantMap { { QStringLiteral("kind"), isPdf ? QStringLiteral("pdf") : QStringLiteral("image") },
                                  { QStringLiteral("name"), QFileInfo(path).fileName() } });
     }
+    // The address bar's: a typed path that exists (absolute here), and a
+    // folder's subfolders.
+    Q_INVOKABLE QString resolve(const QString& text, const QString&) const
+    {
+        return text.startsWith(u'/') ? text : QString();
+    }
+    Q_INVOKABLE QStringList subfolders(const QString&, bool) const { return { QStringLiteral("a"), QStringLiteral("b") }; }
     Q_INVOKABLE void dismissJob(int id)
     {
         for (qsizetype i = 0; i < m_jobs.size(); ++i) {
@@ -134,6 +142,14 @@ public slots:
         engine->rootContext()->setContextProperty(QStringLiteral("TestImage"), image);
         engine->rootContext()->setContextProperty(QStringLiteral("TestPdf"), pdf);
         engine->rootContext()->setContextProperty(QStringLiteral("Ops"), &m_ops);
+        // The places the navigation pane and the address bar show.
+        QQmlComponent places(engine, QUrl::fromLocalFile(QStringLiteral(QUICK_TEST_SOURCE_DIR "/FakePlaces.qml")));
+        QObject* fake = places.create();
+        if (!fake) {
+            qFatal("FakePlaces.qml: %s", qPrintable(places.errorString()));
+        }
+        fake->setParent(engine);
+        engine->rootContext()->setContextProperty(QStringLiteral("Places"), fake);
     }
 private:
     TestTransferOps m_ops;
