@@ -17,7 +17,7 @@ T.AbstractButton {
     property bool selected: false
     property string subtitle
     property real pictureHeight: 120
-    default property alias picture: pictureBox.data
+    default property alias picture: pictureBox.content
     // In a gallery, Tab stops on the tile in use only (the gallery says
     // which), and on the one the arrows took the focus to while it has it;
     // the arrows ask the gallery to move the focus.
@@ -73,13 +73,15 @@ T.AbstractButton {
     }
 
     contentItem: Item {
-        Item {
+        // The picture, 6 inside the tile: its corners are the tile's less
+        // that (Theme.nested), square in a tile no rounder than 6.
+        RoundClip {
             id: pictureBox
             x: 6
             y: 6
             width: parent.width - 12
             height: tile.pictureHeight
-            clip: true
+            radius: Theme.nested(tile.background.radius, 6, 0)
         }
         Column {
             id: labels

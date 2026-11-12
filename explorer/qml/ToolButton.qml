@@ -25,6 +25,10 @@ T.ToolButton {
     readonly property bool expressive: styleVariant === "expressive"
     readonly property real stateLayer: down ? Theme.statePressed : hovered ? Theme.stateHover : 0
     property bool menu: false // with the little arrow: opens a menu
+    // In the corner of a rounder shape (a tab): its radius and how far
+    // inside it the button is, for Theme.nested.
+    property real outerRadius: 0
+    property real outerGap: 0
     property string tooltip
 
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
@@ -52,7 +56,7 @@ T.ToolButton {
     }
 
     background: Fill {
-        radius: !button.expressive ? Theme.radius
+        radius: !button.expressive ? Theme.nested(button.outerRadius, button.outerGap, Theme.radius)
             : button.down ? Theme.shapeSmall
             : button.checked ? Theme.shapeMedium
             : height / 2

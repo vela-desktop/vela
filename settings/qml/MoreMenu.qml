@@ -39,6 +39,8 @@ Button {
                     objectName: "entry:" + modelData.text
                     width: Math.max(180, label.implicitWidth + 24 + leftPadding + rightPadding)
                     height: 36
+                    outerRadius: Theme.radiusOverlay // 4 inside the menu
+                    outerGap: 4
                     text: modelData.text
                     Keys.onUpPressed: nextItemInFocusChain(false).forceActiveFocus()
                     Keys.onDownPressed: nextItemInFocusChain(true).forceActiveFocus()

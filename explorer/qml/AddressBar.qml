@@ -102,7 +102,7 @@ Item {
                             height: 26
                             anchors.verticalCenter: parent.verticalCenter
                             width: crumbContent.width + 12
-                            radius: Theme.radius
+                            radius: Theme.nested(address.radius, 3, Theme.radius) // 3 inside the bar
                             color: crumbMouse.containsMouse || crumbDrop.containsDrag ? Theme.hoverLayer : Theme.restLayer
                             Row {
                                 id: crumbContent
@@ -148,7 +148,7 @@ Item {
                             height: 26
                             width: 18
                             anchors.verticalCenter: parent.verticalCenter
-                            radius: Theme.radius
+                            radius: Theme.nested(address.radius, 3, Theme.radius)
                             color: chevronMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                             Chevron {
                                 anchors.centerIn: parent

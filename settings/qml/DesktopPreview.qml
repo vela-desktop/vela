@@ -59,9 +59,12 @@ Item {
         color: preview.framed ? "#101010" : "transparent"
         border.width: preview.framed ? 1 : 0
         border.color: Qt.rgba(1, 1, 1, 0.12)
-        Item {
-            anchors { fill: parent; margins: preview.framed ? 6 : 0 }
-            clip: true
+        // The screen, a rim of 6 inside the frame: its corners are the
+        // frame's less the rim.
+        readonly property int rim: preview.framed ? 6 : 0
+        RoundClip {
+            anchors { fill: parent; margins: frame.rim }
+            radius: Theme.nested(frame.radius, frame.rim, 0)
             Image {
                 anchors.fill: parent
                 source: Prefs.wallpaper.startsWith(":") ? "qrc" + Prefs.wallpaper : "file://" + Prefs.wallpaper
@@ -124,6 +127,10 @@ Item {
                     x: bar.layout.fit && bar.layout.edge === 2 ? 6 : (parent.width - width) / 2
                     height: parent.height
                     radius: bar.layout.floating ? 7 : 0
+                    // On the screen's bottom edge: its corners, the frame's
+                    // less its rim.
+                    bottomLeftRadius: bar.layout.floating ? 7 : Theme.nested(frame.radius, frame.rim, 0)
+                    bottomRightRadius: bottomLeftRadius
                     color: bar.fill
                     Row {
                         id: icons

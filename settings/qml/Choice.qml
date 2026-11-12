@@ -90,7 +90,9 @@ C.ComboBox {
         readonly property bool chosen: combo.currentIndex === index
         background: Fill {
             readonly property real amount: entry.down ? Theme.statePressed : entry.highlighted || entry.hovered ? Theme.stateHover : 0
-            radius: !combo.expressive ? Theme.radius : entry.chosen ? Theme.shapeMedium : Theme.shapeExtraSmall
+            // 4 inside the list: its corners less that, every entry alike.
+            radius: Theme.nested(Theme.radiusOverlay, 4,
+                !combo.expressive ? Theme.radius : entry.chosen ? Theme.shapeMedium : Theme.shapeExtraSmall)
             color: combo.expressive
                 ? (entry.chosen ? Theme.mix(Theme.tertiaryContainer, Theme.tertiaryContainerText, amount) : combo.stateLayer(amount))
                 : entry.highlighted || entry.hovered ? Theme.subtleHover : Theme.subtleRest

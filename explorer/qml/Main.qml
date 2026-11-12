@@ -197,6 +197,8 @@ Window {
                     }
                     ToolButton {
                         anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                        outerRadius: Theme.radiusOverlay // the tab's top corners
+                        outerGap: 6
                         width: 24
                         height: 24
                         icon.name: "window-close"

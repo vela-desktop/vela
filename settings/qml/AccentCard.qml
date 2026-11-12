@@ -258,7 +258,7 @@ Card {
                             border.color: swatch.chosen ? Theme.text : Theme.controlStrokeStrong
                             Rectangle {
                                 anchors { fill: parent; margins: 4 }
-                                radius: 2
+                                radius: Theme.nested(Theme.radius, 4, 2) // inside the ring
                                 color: swatch.modelData
                                 Text {
                                     visible: swatch.chosen
@@ -296,7 +296,7 @@ Card {
                         border.color: Theme.text
                         Rectangle {
                             anchors { fill: parent; margins: 4 }
-                            radius: 2
+                            radius: Theme.nested(Theme.radius, 4, 2)
                             color: Prefs.accent
                         }
                     }

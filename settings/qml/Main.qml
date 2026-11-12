@@ -369,7 +369,7 @@ Window {
                         required property var modelData
                         width: results.width
                         height: 40
-                        radius: Theme.radius
+                        radius: Theme.nested(Theme.radiusOverlay, 4, Theme.radius) // 4 inside the list
                         color: resultMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         Image {
                             x: 10
