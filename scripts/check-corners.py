@@ -14,8 +14,9 @@ with corners in every window, where it is and its radii, twice a second, as
   scripts/check-corners.py <directory> [--pills]
 
 A shape is reported when its corner is within the outer shape's radius of
-that shape's corner and its own radius is not the outer one less the gap
-(between the two gaps when they differ, one unit of tolerance). Also: a
+that shape's corner and its own radius is less than the outer one less the
+gap, or more than both that and the gap (Theme.nested; the wider reading
+when the two gaps differ, one unit of tolerance). Also: a
 Shadow whose corners are not its target's, and two shapes in the same box
 with different corners. Pictures are shapes with square corners, unless a
 RoundClip cuts them. Full pills and circles are shapes of their own and are
@@ -126,7 +127,10 @@ def findings(items, pills=False):
             if radius < 2 or gap_x >= radius or gap_y >= radius:
                 continue # out of this corner's reach
             own = inner_radii[index]
-            if radius - max(gap_x, gap_y) - TOLERANCE <= own <= radius - min(gap_x, gap_y) + TOLERANCE:
+            # Theme.nested: at least the outer radius less the gap; rounder
+            # only up to the gap.
+            most = max(radius - min(gap_x, gap_y), max(gap_x, gap_y))
+            if radius - max(gap_x, gap_y) - TOLERANCE <= own <= most + TOLERANCE:
                 continue
             if own < 0.5 and not drawn(inner):
                 continue # draws nothing and has no shape

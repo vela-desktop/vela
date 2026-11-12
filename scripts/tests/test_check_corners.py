@@ -36,6 +36,12 @@ class Nested(unittest.TestCase):
         # The same radius inside as outside: the usual mistake.
         self.assertEqual(kinds(PANEL, item(12, 12, 100, 60, 28, id="tile")), [("nested", "Test.qml#tile", 28)])
 
+    def test_rounder_than_concentric_passes_up_to_the_gap(self):
+        # 16 inside a 20 panel 16 away: concentric is 4, its own 16 is no larger than the gap.
+        panel = item(0, 0, 300, 200, 20, id="panel")
+        self.assertEqual(kinds(panel, item(16, 16, 80, 48, 16, id="tile")), [])
+        self.assertEqual(kinds(panel, item(8, 8, 80, 48, 16, id="tile")), [("nested", "Test.qml#tile", 16)])
+
     def test_every_corner_it_reaches(self):
         full = item(8, 8, 284, 184, 4, id="card")
         self.assertEqual([f[7] for f in c.findings([PANEL, full])],
@@ -48,7 +54,7 @@ class Nested(unittest.TestCase):
         self.assertEqual(kinds(item(0, 0, 300, 200, 0), item(4, 4, 100, 50, 9)), [])
 
     def test_unequal_gaps_take_any_radius_between(self):
-        for radius, fine in ((4, True), (11, True), (18, True), (2, False), (24, False)):
+        for radius, fine in ((4, True), (11, True), (18, True), (24, True), (2, False), (27, False)):
             found = kinds(PANEL, item(24, 10, 60, 60, radius, id="button"))
             self.assertEqual(found == [], fine, radius)
 

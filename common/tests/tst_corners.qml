@@ -47,7 +47,10 @@ Item {
         function test_nested_rule_data() {
             return [
                 { tag: "in the corner", outer: 28, gap: 12, own: 4, radius: 16 },
-                { tag: "a rounder own radius still follows", outer: 20, gap: 16, own: 16, radius: 4 },
+                { tag: "its own, rounder, up to the gap", outer: 20, gap: 16, own: 16, radius: 16 },
+                { tag: "rounder than the gap: the gap", outer: 20, gap: 8, own: 16, radius: 12 },
+                { tag: "much rounder, close to the edge: concentric", outer: 20, gap: 4, own: 24, radius: 16 },
+                { tag: "never squarer than its own, far enough", outer: 13, gap: 12, own: 4, radius: 4 },
                 { tag: "at the edge", outer: 8, gap: 0, own: 4, radius: 8 },
                 { tag: "as far as the radius: its own", outer: 8, gap: 8, own: 4, radius: 4 },
                 { tag: "farther: its own", outer: 8, gap: 16, own: 4, radius: 4 },
@@ -56,8 +59,9 @@ Item {
             ]
         }
 
-        // Both arcs share a center: the outer radius less the gap; where
-        // the outer corner is out of reach, the shape's own.
+        // Both arcs share a center: at least the outer radius less the gap,
+        // the shape's own if rounder and no larger than the gap; where the
+        // outer corner is out of reach, the shape's own.
         function test_nested_rule(data) {
             compare(Theme.nested(data.outer, data.gap, data.own), data.radius)
         }

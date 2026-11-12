@@ -1049,9 +1049,13 @@ shadow, the pictures in Settings' tiles.
 
 One rule, in one place, `Theme.nested(outer, gap, own)`:
 
-- **In the corner** (`gap < outer`): `outer - gap`, whatever radius the shape
-  would have had. A theme chooses the outer shape; what sits in its corner
-  follows.
+- **In the corner** (`gap < outer`): at least `outer - gap`. A theme chooses
+  the outer shape; what sits in its corner follows.
+- **Its own radius, if rounder, up to the gap**: a corner no larger than its
+  distance from the edge does not fight the outer one (Window Glass's tiles,
+  16 round and 16 inside a panel of 20, stay 16, not the concentric 4, which
+  would make them square where the panel's corner is barely felt); a larger
+  one is cut to the larger of the gap and `outer - gap`.
 - **Out of the corner's reach** (`gap >= outer`, a square outer shape
   included): the shape's `own` radius. Buttons in the middle of a dialog are
   not the dialog's corner's concern.
@@ -1066,8 +1070,9 @@ One rule, in one place, `Theme.nested(outer, gap, own)`:
 
 So a style's `quicksettings-tile-radius`, `notifications-card-radius` and
 `taskbar-button-radius` are those pieces' own radii: they show where the
-panel's radius is no larger than the gap (as in Vela Official), and inside a
-rounder panel the pieces follow the panel.
+panel's radius is no larger than the gap (as in Vela Official) or where
+they are no larger than the gap themselves, and otherwise the pieces follow
+the panel.
 
 | Outer shape | What follows it | Gap |
 | --- | --- | --- |
