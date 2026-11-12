@@ -74,6 +74,7 @@ qt_add_executable(vela-shell
     src/tray.cpp
     src/taskbarmodel.h
     src/wallpaperprovider.h
+    src/wallpapercolor.h
     src/screensharing.cpp
     src/screensharing.h
     src/screenwindows.cpp

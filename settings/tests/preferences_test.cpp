@@ -8,6 +8,7 @@
 // only setters that write vela-shell.conf are called: none starts a process
 // or talks to a compositor.
 
+#include "defaults.h"
 #include "preferences.h"
 #include "privatehome.h"
 
@@ -211,6 +212,30 @@ private slots:
         write("[appearance]\nappTheme=dark\naccentSource=bogus\n");
         prefs.reload();
         QCOMPARE(prefs.accentSource(), QStringLiteral("theme"));
+    }
+
+    // Another program changing only the source: Colors hears it once (the
+    // accent's signal), and not again for a reread that changes nothing; an
+    // empty source is refused, a broken accent is Vela's.
+    void accentSourceChangedElsewhere()
+    {
+        write("[appearance]\nappTheme=dark\naccent=#ff8c00\naccentSource=theme\n");
+        Preferences prefs;
+        QSignalSpy accent(&prefs, &Preferences::accentChanged);
+        write("[appearance]\nappTheme=dark\naccent=#ff8c00\naccentSource=chosen\n");
+        prefs.reload();
+        QCOMPARE(prefs.accentSource(), QStringLiteral("chosen"));
+        QCOMPARE(prefs.accent(), QColor(QStringLiteral("#ff8c00")));
+        QCOMPARE(accent.count(), 1);
+        prefs.reload();
+        QCOMPARE(accent.count(), 1);
+        prefs.setAccentSource(QString());
+        QCOMPARE(prefs.accentSource(), QStringLiteral("chosen"));
+        QCOMPARE(accent.count(), 1);
+        write("[appearance]\nappTheme=dark\naccent=not a color\naccentSource=chosen\n");
+        prefs.reload();
+        QCOMPARE(prefs.accent(), vela::defaults::accent());
+        QCOMPARE(accent.count(), 2);
     }
 
     // docs/battery-notifications.md §6.

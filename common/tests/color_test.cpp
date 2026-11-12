@@ -266,6 +266,67 @@ private slots:
         QCOMPARE(hex(vela::color::sourceFromPixels(transparent, 0xff5b8cff)), hex(0xff5b8cff));
         QCOMPARE(hex(vela::color::sourceFromPixels({}, 0)), hex(0));
     }
+    // A picture whose colors differ mostly in green, or in blue: the
+    // quantizer cuts its boxes along that axis and the source keeps the
+    // picture's hue (HCT hues: greens about 140, blues about 280).
+    void sourceFollowsTheDominantAxis_data()
+    {
+        QTest::addColumn<int>("axis"); // 1 green, 2 blue
+        QTest::addColumn<double>("low");
+        QTest::addColumn<double>("high");
+        QTest::newRow("green gradient") << 1 << 100.0 << 170.0;
+        QTest::newRow("blue gradient") << 2 << 230.0 << 300.0;
+    }
+    void sourceFollowsTheDominantAxis()
+    {
+        QFETCH(int, axis);
+        QFETCH(double, low);
+        QFETCH(double, high);
+        std::vector<Argb> pixels;
+        for (Argb v = 0; v < 256; ++v) {
+            for (int repeat = 0; repeat < 8; ++repeat) {
+                pixels.push_back(axis == 1 ? 0xFF000000u | 40u << 16 | v << 8 | 50u : 0xFF000000u | 30u << 16 | 60u << 8 | v);
+            }
+        }
+        const Argb source = vela::color::sourceFromPixels(pixels, 0);
+        QVERIFY(source != 0);
+        const double hue = vela::color::hctFromArgb(source).hue;
+        QVERIFY2(hue >= low && hue <= high, QByteArray::number(hue) + " for " + hex(source));
+    }
+
+    // Whatever the source, Tonal Spot's pairs keep M3's minimum contrast of
+    // 3:1 (color.md: "accessible pairings guaranteeing a minimum 3:1"), in
+    // both modes: every hue at a high and a low chroma, black, white and
+    // a fully saturated yellow.
+    void pairsKeepTheirContrast()
+    {
+        std::vector<Argb> sources { 0xff000000, 0xffffffff, 0xffffff00, 0xff00ff00, 0xff0000ff };
+        for (int hue = 0; hue < 360; hue += 15) {
+            sources.push_back(vela::color::argbFromHct(hue, 80, 50));
+            sources.push_back(vela::color::argbFromHct(hue, 8, 70));
+        }
+        using R = vela::color::Roles;
+        const std::pair<Argb R::*, Argb R::*> pairs[] = {
+            { &R::onPrimary, &R::primary }, { &R::onPrimaryContainer, &R::primaryContainer },
+            { &R::onSecondary, &R::secondary }, { &R::onSecondaryContainer, &R::secondaryContainer },
+            { &R::onTertiary, &R::tertiary }, { &R::onTertiaryContainer, &R::tertiaryContainer },
+            { &R::onError, &R::error }, { &R::onErrorContainer, &R::errorContainer },
+            { &R::onSurface, &R::surface }, { &R::onSurface, &R::surfaceContainerHighest },
+            { &R::onSurfaceVariant, &R::surfaceContainerHighest }, { &R::inverseOnSurface, &R::inverseSurface },
+            { &R::primary, &R::surface }, { &R::outline, &R::surface },
+        };
+        for (const Argb source : sources) {
+            for (const bool dark : { false, true }) {
+                const R roles = vela::color::tonalSpot(source, dark);
+                for (const auto& [fore, back] : pairs) {
+                    const double ratio = vela::color::ratioOfTones(vela::color::hctFromArgb(roles.*fore).tone,
+                        vela::color::hctFromArgb(roles.*back).tone);
+                    QVERIFY2(ratio >= 3.0 - 0.05, hex(source) + (dark ? " dark: " : " light: ") + QByteArray::number(ratio)
+                        + " between " + hex(roles.*fore) + " and " + hex(roles.*back));
+                }
+            }
+        }
+    }
 };
 
 QTEST_APPLESS_MAIN(ColorTest)

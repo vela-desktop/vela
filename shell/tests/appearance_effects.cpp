@@ -10,10 +10,12 @@
 #include "appearance.h"
 #include "mica.h"
 #include "scheme.h"
+#include "wallpapercolor.h"
 
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QImage>
 #include <QSaveFile>
 #include <QSettings>
 #include <QSignalSpy>
@@ -167,6 +169,169 @@ private slots:
         QTRY_COMPARE(appearance.accent(), next);
         QCOMPARE(appearance.tonal(), appearance.tonalOf(next, appearance.light()));
         QVERIFY(changed.count() >= 1);
+    }
+
+    // The wallpaper's source color (wallpapercolor.h, what the shell leaves
+    // in the cache): a colored picture's, none for one that can't be read or
+    // has no color for a palette.
+    void wallpaperSourceColor_data()
+    {
+        QTest::addColumn<QString>("kind");
+        QTest::addColumn<bool>("valid");
+        QTest::newRow("missing file") << QStringLiteral("missing") << false;
+        QTest::newRow("not a picture") << QStringLiteral("garbage") << false;
+        QTest::newRow("empty file") << QStringLiteral("empty") << false;
+        QTest::newRow("grayscale") << QStringLiteral("gray") << false;
+        QTest::newRow("transparent") << QStringLiteral("transparent") << false;
+        QTest::newRow("green") << QStringLiteral("green") << true;
+        QTest::newRow("wide, scaled down") << QStringLiteral("wide") << true;
+        QTest::newRow("one pixel") << QStringLiteral("pixel") << true;
+    }
+    void wallpaperSourceColor()
+    {
+        QFETCH(QString, kind);
+        QFETCH(bool, valid);
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("wallpaper.png"));
+        const QColor green(QStringLiteral("#2e7d32"));
+        const auto save = [&](QImage image) { QVERIFY(image.save(path)); };
+        if (kind == QLatin1String("garbage")) {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("\x89PNG not really a picture");
+        } else if (kind == QLatin1String("empty")) {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        } else if (kind == QLatin1String("gray")) {
+            QImage image(64, 64, QImage::Format_RGB32);
+            for (int y = 0; y < 64; ++y) {
+                for (int x = 0; x < 64; ++x) {
+                    image.setPixel(x, y, qRgb(x * 4, x * 4, x * 4));
+                }
+            }
+            save(image);
+        } else if (kind == QLatin1String("transparent")) {
+            QImage image(64, 64, QImage::Format_ARGB32);
+            image.fill(QColor(46, 125, 50, 0));
+            save(image);
+        } else if (kind == QLatin1String("green")) {
+            QImage image(64, 64, QImage::Format_RGB32);
+            image.fill(green);
+            save(image);
+        } else if (kind == QLatin1String("wide")) {
+            QImage image(2000, 50, QImage::Format_RGB32);
+            image.fill(green);
+            save(image);
+        } else if (kind == QLatin1String("pixel")) {
+            QImage image(1, 1, QImage::Format_RGB32);
+            image.fill(green);
+            save(image);
+        }
+        const QColor color = ::wallpaperSourceColor(path);
+        QCOMPARE(color.isValid(), valid);
+        if (valid) {
+            // One color: the quantizer gives it back (Material's score keeps
+            // a single, chromatic enough color).
+            QCOMPARE(color, green);
+        }
+    }
+
+    // The cache as the lock and the apps read it: one "#rrggbb" line, or
+    // nothing usable.
+    void cachedWallpaperColorRejectsBrokenFiles_data()
+    {
+        QTest::addColumn<QByteArray>("text");
+        QTest::addColumn<QString>("color");
+        QTest::newRow("a color") << QByteArray("#2e7d32\n") << QStringLiteral("#2e7d32");
+        QTest::newRow("upper case, spaces") << QByteArray("  #2E7D32  \n\n") << QStringLiteral("#2e7d32");
+        QTest::newRow("no newline") << QByteArray("#ef6c00") << QStringLiteral("#ef6c00");
+        QTest::newRow("empty") << QByteArray() << QString();
+        QTest::newRow("only a newline") << QByteArray("\n") << QString();
+        QTest::newRow("short") << QByteArray("#2e7d3\n") << QString();
+        QTest::newRow("with alpha") << QByteArray("#ff2e7d32\n") << QString();
+        QTest::newRow("no hash") << QByteArray("2e7d32a\n") << QString();
+        QTest::newRow("not hex") << QByteArray("#zzzzzz\n") << QString();
+        QTest::newRow("a name") << QByteArray("green\n") << QString();
+        QTest::newRow("two lines") << QByteArray("#2e7d32\n#ef6c00\n") << QString();
+        QTest::newRow("binary") << QByteArray("\x00\xff\x01#2e7", 8) << QString();
+    }
+    void cachedWallpaperColorRejectsBrokenFiles()
+    {
+        QFETCH(QByteArray, text);
+        QFETCH(QString, color);
+        QDir().mkpath(wallpaperColorCachePath().section(u'/', 0, -2));
+        QFile file(wallpaperColorCachePath());
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        file.write(text);
+        file.close();
+        QCOMPARE(cachedWallpaperColor(), color.isEmpty() ? QColor() : QColor(color));
+        // Style takes the chosen accent over a broken cache, even when asked
+        // for the wallpaper's.
+        setShell(chosen.name(), QStringLiteral("wallpaper"));
+        QCOMPARE(Appearance().accent(), color.isEmpty() ? chosen : QColor(color));
+    }
+
+    // appearance/accentSource another program wrote: an unknown value is
+    // "theme", as Settings reads it (Preferences::reload()).
+    void unknownAccentSourceIsTheTheme_data()
+    {
+        QTest::addColumn<QString>("value");
+        QTest::newRow("unknown") << QStringLiteral("sunset");
+        QTest::newRow("upper case") << QStringLiteral("WALLPAPER");
+        QTest::newRow("padded") << QStringLiteral(" wallpaper");
+        QTest::newRow("explicit") << QStringLiteral("theme");
+    }
+    void unknownAccentSourceIsTheTheme()
+    {
+        QFETCH(QString, value);
+        QCOMPARE(vela::accent::sourceFromString(value), vela::accent::Source::Theme);
+        saveWallpaperColor(wallpaper);
+        // The theme doesn't ask: the chosen accent, not the wallpaper's.
+        setShell(chosen.name(), value);
+        QCOMPARE(Appearance().accent(), chosen);
+        // The theme asks: the wallpaper's, as for "theme".
+        QVERIFY(writeTheme(QStringLiteral("tonal"), "color-source=wallpaper\n"));
+        QVERIFY(writeConf("theme=tonal\n"));
+        QCOMPARE(Appearance().accent(), wallpaper);
+    }
+
+    // A theme with `primary` and no `accent`: the accent stays the user's,
+    // the palette starts from the primary, in the modes it's set for.
+    void primaryWithoutAccent()
+    {
+        QVERIFY(writeTheme(QStringLiteral("blue"), "dark.primary=#1565c0\n"));
+        QVERIFY(writeConf("theme=blue\n"));
+        setShell(chosen.name(), QString());
+        const Appearance appearance;
+        QVERIFY(!appearance.light());
+        QCOMPARE(appearance.accent(), chosen);
+        const vela::accent::Resolved effective = vela::accent::effectiveAccent(
+            appearance.theme(), false, vela::accent::Source::Theme, chosen, QColor());
+        QCOMPARE(effective.color, chosen);
+        QCOMPARE(effective.origin, vela::accent::Origin::Chosen);
+        QCOMPARE(appearance.schemeSource(false), QColor(QStringLiteral("#1565c0")));
+        QCOMPARE(appearance.tonal(), appearance.tonalOf(QColor(QStringLiteral("#1565c0")), false));
+        // Set for dark only: the light mode starts from the accent.
+        QCOMPARE(appearance.schemeSource(true), chosen);
+    }
+
+    // What the rule takes as a theme's color: only a color, for the mode.
+    void themeValuesThatAreNotColors()
+    {
+        const QVariantMap theme { { QStringLiteral("accent"), QStringLiteral("red") },
+            { QStringLiteral("primary"), 12 }, { QStringLiteral("light.color-source"), QStringLiteral("wallpaper") } };
+        using vela::accent::Source;
+        const vela::accent::Resolved dark = vela::accent::effectiveAccent(theme, false, Source::Theme, chosen, wallpaper);
+        QCOMPARE(dark.color, chosen);
+        QCOMPARE(dark.origin, vela::accent::Origin::Chosen);
+        const vela::accent::Resolved light = vela::accent::effectiveAccent(theme, true, Source::Theme, chosen, wallpaper);
+        QCOMPARE(light.color, wallpaper);
+        QCOMPARE(light.origin, vela::accent::Origin::Wallpaper);
+        QCOMPARE(vela::accent::schemeSource(theme, false, Source::Theme, chosen, wallpaper), chosen);
+        // An invalid color stored as a color is no accent either.
+        const QVariantMap invalid { { QStringLiteral("accent"), QColor() }, { QStringLiteral("primary"), QColor() } };
+        QCOMPARE(vela::accent::effectiveAccent(invalid, false, Source::Chosen, chosen, wallpaper).color, chosen);
+        QCOMPARE(vela::accent::schemeSource(invalid, false, Source::Wallpaper, chosen, wallpaper), wallpaper);
     }
 
     void onWithoutTheKey()
