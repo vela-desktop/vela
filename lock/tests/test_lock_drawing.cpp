@@ -202,8 +202,8 @@ void testClock()
 }
 
 // A narrow output: the time and the date below it shrink to 90% of its
-// width, in both looks, whatever the font (a long date at 150 wide would not
-// fit in any).
+// width, in both looks. At 200 wide the date does not fit unshrunk, and
+// neither size reaches its floor (24 and 12), under which nothing fits.
 void testNarrowOutput()
 {
     for (const Look& look : { defaultLook(), expressiveLook() }) {
@@ -224,7 +224,7 @@ void testNarrowOutput()
             return true;
         };
         const bool inside = fits(image);
-        check(fits(paint(look, scene, { 150, 600 })),
+        check(fits(paint(look, scene, { 200, 600 })),
             look.expressive ? "the expressive date fits a very narrow output" : "the date fits a very narrow output");
         check(inside, look.expressive ? "the expressive time fits a narrow output" : "the time fits a narrow output");
         check(anyPixel(image, QRect(15, 72, 270, 200), behind, 0)
