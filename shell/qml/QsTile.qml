@@ -59,7 +59,10 @@ Item {
     // it), so the variant on its own sits in a Fluent panel; its shapes and
     // layout stay the variant's. Vela's choice.
     readonly property bool tonal: Theme.expressive
-    readonly property color content: checked ? (tonal ? Theme.primaryText : "white") : (tonal ? Theme.surfaceText : Theme.text)
+    // On the accent: white where it reads (3:1), else black (a white or
+    // pale accent of the user's).
+    readonly property color content: checked ? (tonal ? Theme.primaryText : Theme.readableOn(Theme.accent, "#ffffff"))
+        : (tonal ? Theme.surfaceText : Theme.text)
     readonly property real detailsWidth: split ? 44 : 0
 
     function stateColor(button) {
@@ -161,11 +164,10 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         name: tile.icon
         size: 20
-        // On primary: white drawings on the light mode's dark primary, the
-        // light mode's dark ones on the dark mode's light primary.
+        // On: drawn in the label's color (the provider's "t<rrggbb>/"), dark
+        // on the dark mode's light primary, where the theme's own are light.
         source: name === "" ? "" : !tile.checked ? Theme.icons + encodeURIComponent(name)
-            : !tile.tonal ? Theme.iconsOnAccent + encodeURIComponent(name)
-            : "image://icon/" + (Theme.light ? "w/" : "l/") + encodeURIComponent(name)
+            : "image://icon/t" + ("" + tile.content).substring(1, 7) + "/" + encodeURIComponent(name)
     }
     Text {
         objectName: "tileLabel"

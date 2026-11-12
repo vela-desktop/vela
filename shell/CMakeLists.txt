@@ -316,6 +316,13 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-start-icon COMMAND vela-start-icon-test)
     set_tests_properties(shell-start-icon PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    qt_add_executable(vela-icon-provider-test tests/iconprovider.cpp src/iconprovider.h)
+    target_include_directories(vela-icon-provider-test PRIVATE src)
+    target_compile_options(vela-icon-provider-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-icon-provider-test PRIVATE Qt6::Quick Qt6::DBus Qt6::Test)
+    add_test(NAME shell-icon-provider COMMAND vela-icon-provider-test)
+    set_tests_properties(shell-icon-provider PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
     target_include_directories(vela-tool-path-test PRIVATE src)
     target_compile_options(vela-tool-path-test PRIVATE -Wall -Wextra)
