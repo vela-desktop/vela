@@ -202,8 +202,7 @@ void testClock()
 }
 
 // A narrow output: the time and the date below it shrink to 90% of its
-// width, in both looks. At 200 wide the date does not fit unshrunk, and
-// neither size reaches its floor (24 and 12), under which nothing fits.
+// width, in both looks.
 void testNarrowOutput()
 {
     for (const Look& look : { defaultLook(), expressiveLook() }) {
@@ -224,8 +223,11 @@ void testNarrowOutput()
             return true;
         };
         const bool inside = fits(image);
-        check(fits(paint(look, scene, { 200, 600 })),
-            look.expressive ? "the expressive date fits a very narrow output" : "the date fits a very narrow output");
+        // 250 wide: the date does not fit unshrunk in an ordinary font, and
+        // still fits at its smallest size (12) in the boxes Qt draws when
+        // no font is installed, one per letter and as wide as the size.
+        check(fits(paint(look, scene, { 250, 600 })),
+            look.expressive ? "the expressive date fits a narrower output" : "the date fits a narrower output");
         check(inside, look.expressive ? "the expressive time fits a narrow output" : "the time fits a narrow output");
         check(anyPixel(image, QRect(15, 72, 270, 200), behind, 0)
                 && image.pixelColor(150, 5) == image.pixelColor(5, 5),
