@@ -144,6 +144,8 @@ Surface tokens ([`Styles.qml`](../shell/qml/Styles.qml)), for a theme or that su
 | `quicksettings-borderless`, `quicksettings-inline-arrow`, `quicksettings-flat-footer`, `quicksettings-thick-slider` | WindowGlass's: no borders, the arrow beside the icon, no footer band, a thick slider. |
 | `notifications-radius`, `notifications-card-radius`, `notifications-surface`, `notifications-today-radius`, `notifications-focus` | The notification center's corners, tint and today's mark; the focus timer. |
 
+What sits in the corner of a rounder shape follows that shape: its radius is the outer one less the gap between them, so the two corners are concentric ([visual coherence §6.12](visual-coherence.md#612-corners-inside-corners)). `taskbar-button-radius`, `quicksettings-tile-radius` and `notifications-card-radius` are therefore those pieces' own radii, used where the bar does not float or the panel's radius is no larger than its padding (16 for quick settings, 12 in the expressive variant; 8 for the notification center's list). A menu's rows, the buttons in a panel's corners, shadows and the pictures in round tiles follow the same rule with nothing to set.
+
 Variants name layouts Vela implements, never code from the file; the numeric tokens above can tune them further:
 
 | Token | Layouts |

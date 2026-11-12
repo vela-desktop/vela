@@ -1033,6 +1033,60 @@ check (PR 8 only reported, until PR 11 replaced the private controls). Local `Be
 animations are allowed: the taskbar indicator, the Start menu's app tiles, the
 polkit prompt's shake and spinner have motion of their own.
 
+### 6.12 Corners inside corners
+
+A round shape inside a round shape reads as one object only when the two
+corners are **concentric**: the inner arc has the outer one's center, so the
+band between them is as wide in the corner as along the edges. That fixes the
+inner radius: the outer radius less the gap. Two corners of the same radius,
+one inside the other, are the usual mistake: the band swells in the corner.
+
+Vela had it in many places, most of them hidden by the default theme's small
+radii (8 outside, 4 inside, 4 apart happens to be right) and plain in every
+rounder theme or style: a menu's rows, the quick settings' tiles, the
+notification center's cards, the buttons of a floating taskbar, a panel's
+shadow, the pictures in Settings' tiles.
+
+One rule, in one place, `Theme.nested(outer, gap, own)`:
+
+- **In the corner** (`gap < outer`): `outer - gap`, whatever radius the shape
+  would have had. A theme chooses the outer shape; what sits in its corner
+  follows.
+- **Out of the corner's reach** (`gap >= outer`, a square outer shape
+  included): the shape's `own` radius. Buttons in the middle of a dialog are
+  not the dialog's corner's concern.
+- **Things in a row share a radius**: every row of a menu and every tile of a
+  grid takes the radius of the ones at the corners.
+- **Unequal gaps** (24 from the side, 10 from below): the larger one.
+- **Full pills and circles are shapes of their own** (a switch, an avatar, an
+  expressive button, the expressive quick settings' off tile): they do not
+  ask.
+- **A picture has square corners**: inside a round shape it goes in a
+  `RoundClip` with the nested radius.
+
+So a style's `quicksettings-tile-radius`, `notifications-card-radius` and
+`taskbar-button-radius` are those pieces' own radii: they show where the
+panel's radius is no larger than the gap (as in Vela Official), and inside a
+rounder panel the pieces follow the panel.
+
+| Outer shape | What follows it | Gap |
+| --- | --- | --- |
+| A panel (`Shadow`'s target) | its shadow | 0: the same corners |
+| A menu, a drop-down's list, Settings' search results | every row | 4 |
+| Quick settings | the tiles; a page's back button, list items and link; the footer's button | 16 (12 expressive); 16; 6 |
+| The notification center | the cards; the header's buttons | 8; 16 |
+| Start | the Power button; a pinned app's highlight in the expressive container; the power menu's entries | 24; 3; 4 |
+| A floating taskbar | the buttons and the highlights | what is left above and below them |
+| Alt+Tab, the taskbar's previews, Task View, Snap layouts, the snipping bar, the clipboard | their cards and buttons | each one's padding |
+| Files' address bar and tabs | the path's pieces; a tab's close button | 3; 6 |
+| Settings' picture tiles, wallpapers, previews; Task View's thumbnails | the picture (`RoundClip`) | each one's margin |
+
+`VELA_ROUNDED_DUMP=<directory>` makes any of Vela's Qt programs write, twice a
+second, every shown item with corners, where it is and its radii
+(`common/src/controls.cpp`); `scripts/check-corners.py` reads those files and
+lists each shape that sits in the corner of a rounder one without following
+it. `tst_corners.qml` tests the rule and the pieces that apply it.
+
 ## 7. Verification
 
 Three kinds, kept apart:
