@@ -30,7 +30,7 @@ Window {
         visible = true
         motion.open()
         panel.forceActiveFocus()
-        Effects.setBlur(root, [motion.visibleArea])
+        Effects.setBlur(root, [motion.visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
     }
     function close() {
         motion.close()
@@ -77,7 +77,7 @@ Window {
         height: panel.height
         offset: Qt.point(0, 48)
         onClosed: root.visible = false
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the panel at rest
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], Theme.expressive ? Theme.radiusOverlay : 0) // the travel while it moves, the panel at rest
 
         Shadow {
             id: shadow

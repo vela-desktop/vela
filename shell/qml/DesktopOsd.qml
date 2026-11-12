@@ -39,7 +39,7 @@ Window {
         Shell.placeOnScreen(root, Shell.primaryScreen)
         visible = true
         motion.open()
-        Effects.setBlur(root, [motion.visibleArea])
+        Effects.setBlur(root, [motion.visibleArea], Theme.expressive ? pill.radius : 0)
         hideTimer.restart()
     }
     Timer { id: hideTimer; interval: 900; onTriggered: motion.close() }
@@ -52,7 +52,7 @@ Window {
         width: label.implicitWidth + 64
         height: 64
         onClosed: root.visible = false
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea])
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], Theme.expressive ? pill.radius : 0)
 
         Shadow {
             id: shadow

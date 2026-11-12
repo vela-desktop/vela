@@ -110,7 +110,7 @@ Window {
         Shell.placeAtLeft(root, Math.round(Math.max(0, Math.min(screenWidth - w, info.center - w / 2))))
         visible = true // again, on another output
         motion.open()
-        Effects.setBlur(root, [motion.visibleArea])
+        Effects.setBlur(root, [motion.visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
     }
     function hide() {
         hideTimer.stop()

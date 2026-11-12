@@ -59,7 +59,9 @@ Item {
     // Expressive: the corners too, inside the target's box, where its round
     // corners leave the strips' gap (a lighter square at M3's 28). Its
     // tonal surfaces are opaque and every Shadow lies beneath its target, so
-    // only the part outside the round corner shows.
+    // only the part outside the round corner shows. A blurred window asks
+    // for its blur rounded like the target (Effects.setBlur's radius): the
+    // compositor blurs wherever the window isn't transparent.
     Repeater {
         model: Theme.expressive && root.radius > 0 ? 4 : 0
         delegate: Strip {

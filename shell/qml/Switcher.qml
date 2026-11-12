@@ -35,7 +35,7 @@ Window {
             Shell.placeOnScreen(root, Shell.primaryScreen)
             root.visible = true
             motion.open()
-            Effects.setBlur(root, [motion.visibleArea])
+            Effects.setBlur(root, [motion.visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
         }
     }
 
@@ -87,7 +87,7 @@ Window {
         duration: Theme.normal
         instantExit: true
         onClosed: root.visible = false
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea])
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
 
         Shadow {
             target: panel
