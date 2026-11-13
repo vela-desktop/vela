@@ -122,6 +122,26 @@ static struct vela_texture *new_texture(struct vela_renderer *renderer, const st
     return texture;
 }
 
+// --------------------------------------------------------- image extent --
+
+// A client buffer the device can't make an image of is refused here, before
+// vkCreateImage, where it would be invalid usage rather than an error
+// (docs/memory-allocation-policy.md, point 6). The surface keeps what it
+// showed: wlroots keeps its previous buffer when no texture comes.
+static bool extent_allowed(struct vela_renderer *renderer, const struct wlr_buffer *buffer, int width, int height,
+    struct vela_extent max, bool dmabuf)
+{
+    if (width > 0 && height > 0 && (uint32_t)width <= max.width && (uint32_t)height <= max.height) {
+        return true;
+    }
+    renderer->extent_rejected = (struct vela_extent_rejection) { buffer, width, height, max.width, max.height,
+        dmabuf };
+    ++renderer->upload_stats.rejected;
+    wlr_log(WLR_DEBUG, "Texture: %s %dx%d refused, above %ux%u", dmabuf ? "dmabuf" : "buffer", width, height,
+        max.width, max.height);
+    return false;
+}
+
 // --------------------------------------------------------------- dmabuf --
 
 static struct wlr_texture *import_dmabuf(struct vela_renderer *renderer, struct wlr_buffer *buffer,
@@ -141,6 +161,10 @@ static struct wlr_texture *import_dmabuf(struct vela_renderer *renderer, struct 
     if (!format || !wlr_drm_format_set_has(&vk->texture_formats, dmabuf->format, dmabuf->modifier)) {
         wlr_log(WLR_DEBUG, "Texture: dmabuf 0x%08x (modifier 0x%" PRIx64 ") not supported", dmabuf->format,
             dmabuf->modifier);
+        return NULL;
+    }
+    if (!extent_allowed(renderer, buffer, dmabuf->width, dmabuf->height,
+            vela_vulkan_dmabuf_max_extent(vk, dmabuf->format, dmabuf->modifier), true)) {
         return NULL;
     }
     struct vela_texture *texture = new_texture(renderer, format, dmabuf->width, dmabuf->height);
@@ -259,6 +283,11 @@ static struct wlr_texture *upload_buffer(struct vela_renderer *renderer, struct 
     if (!format || !shm_format_supported(vk, drm_format)) {
         wlr_buffer_end_data_ptr_access(buffer);
         wlr_log(WLR_DEBUG, "Texture: format 0x%08x not supported", drm_format);
+        return NULL;
+    }
+    if (!extent_allowed(renderer, buffer, buffer->width, buffer->height,
+            vela_vulkan_shm_max_extent(vk, drm_format), false)) {
+        wlr_buffer_end_data_ptr_access(buffer);
         return NULL;
     }
 

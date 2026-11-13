@@ -782,6 +782,23 @@ bool vela_renderer_stage_readback(struct vela_renderer *r, VkDeviceSize size, st
     return stage(r, size, true, out);
 }
 
+struct vela_upload_stats vela_renderer_upload_stats(const struct vela_renderer *r)
+{
+    return r->upload_stats;
+}
+
+bool vela_renderer_take_extent_rejection(struct wlr_renderer *wlr, const struct wlr_buffer *buffer,
+    struct vela_extent_rejection *out)
+{
+    // The compositor's only wlr_renderer is ours (vela_renderer_create).
+    if (!wlr || !buffer) return false;
+    struct vela_renderer *r = (struct vela_renderer *)wlr;
+    if (r->extent_rejected.buffer != buffer) return false;
+    *out = r->extent_rejected;
+    r->extent_rejected = (struct vela_extent_rejection) { 0 };
+    return true;
+}
+
 // ---------------------------------------------------------- submission --
 
 static VkSemaphore take_semaphore(struct vela_renderer *r, bool release)

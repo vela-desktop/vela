@@ -42,6 +42,22 @@ const struct vela_pixel_format *vela_pixel_format_from_drm(uint32_t drm);
 
 #define VELA_MAX_SHM_FORMATS 16
 
+// The largest image of a format the device makes for a use: the maxExtent of
+// vkGetPhysicalDeviceImageFormatProperties2, never above maxImageDimension2D.
+// A client buffer beyond it is refused before vkCreateImage, where it would be
+// invalid usage rather than an error (docs/memory-allocation-policy.md,
+// point 6).
+struct vela_extent {
+    uint32_t width, height;
+};
+
+// The limit of a dmabuf texture of this format and modifier.
+struct vela_dmabuf_extent {
+    uint32_t format;
+    uint64_t modifier;
+    struct vela_extent max;
+};
+
 struct vela_vulkan {
     VkInstance instance;
     VkPhysicalDevice physical;
@@ -62,6 +78,12 @@ struct vela_vulkan {
     // Formats of shared-memory (wl_shm) buffers we can upload.
     uint32_t shm_formats[VELA_MAX_SHM_FORMATS];
     int shm_format_count;
+    // The largest image each of them can be uploaded to (optimal tiling, the
+    // texture's uses), in the same order.
+    struct vela_extent shm_max_extent[VELA_MAX_SHM_FORMATS];
+    // The same for every (format, modifier) of texture_formats.
+    struct vela_dmabuf_extent *texture_extents;
+    int texture_extent_count, texture_extent_capacity;
     // The GPU can export and import semaphores as sync_files (implicit sync
     // with the kernel, §7.3).
     bool sync_file;
@@ -84,6 +106,27 @@ struct vela_vulkan {
 static inline bool vela_vulkan_unusable(const struct vela_vulkan *vk)
 {
     return vk->loss.lost || vk->terminal_error;
+}
+
+// The largest shm texture of this format; 0 x 0 if the format can't be
+// uploaded.
+static inline struct vela_extent vela_vulkan_shm_max_extent(const struct vela_vulkan *vk, uint32_t drm)
+{
+    for (int i = 0; i < vk->shm_format_count; ++i) {
+        if (vk->shm_formats[i] == drm) return vk->shm_max_extent[i];
+    }
+    return (struct vela_extent) { 0, 0 };
+}
+
+// The largest dmabuf texture of this format and modifier; 0 x 0 if unknown.
+static inline struct vela_extent vela_vulkan_dmabuf_max_extent(const struct vela_vulkan *vk, uint32_t drm,
+    uint64_t modifier)
+{
+    for (int i = 0; i < vk->texture_extent_count; ++i) {
+        const struct vela_dmabuf_extent *e = &vk->texture_extents[i];
+        if (e->format == drm && e->modifier == modifier) return e->max;
+    }
+    return (struct vela_extent) { 0, 0 };
 }
 
 uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t type_bits, VkMemoryPropertyFlags flags);
@@ -289,6 +332,9 @@ struct vela_renderer {
     int retired_count, retired_capacity;
     struct staging_chunk *staging;
     int staging_count, staging_capacity;
+
+    struct vela_upload_stats upload_stats;
+    struct vela_extent_rejection extent_rejected;
 
     struct vela_readback *readbacks[VELA_READBACK_MAX_JOBS];
     size_t readback_next; // round-robin cursor in the bounded queue

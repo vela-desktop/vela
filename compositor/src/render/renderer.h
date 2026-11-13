@@ -104,6 +104,23 @@ bool vela_renderer_read_timing(struct vela_renderer *renderer, int slot, uint64_
 // The texture is ours and its format has no alpha (an opaque buffer).
 bool vela_texture_is_opaque(struct wlr_texture *texture);
 
+struct vela_upload_stats {
+    uint64_t rejected; // client buffers refused for their size
+};
+struct vela_upload_stats vela_renderer_upload_stats(const struct vela_renderer *renderer);
+// A client buffer refused for its size (a shm buffer above the device's image
+// limit, a dmabuf above its format's), kept until the commit that brought it
+// asks: vela_renderer_take_extent_rejection says so once, and the caller
+// logs it once per client.
+struct vela_extent_rejection {
+    const struct wlr_buffer *buffer; // only compared, never used
+    int width, height;
+    uint32_t max_width, max_height;
+    bool dmabuf;
+};
+bool vela_renderer_take_extent_rejection(struct wlr_renderer *renderer, const struct wlr_buffer *buffer,
+    struct vela_extent_rejection *out);
+
 // Deferred SHM capture from buffers produced on this renderer's queue. Sources
 // must be compositor-owned render targets, never directly scanned-out clients.
 // Up to four requests / 128 MiB are retained. NULL means not queued; otherwise

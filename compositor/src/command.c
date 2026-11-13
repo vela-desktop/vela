@@ -137,6 +137,8 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         readbacks.pending, readbacks.bytes, (unsigned long long)readbacks.completed,
         (unsigned long long)readbacks.cancelled, (unsigned long long)readbacks.failed,
         (unsigned long long)readbacks.rejected, (unsigned long long)readbacks.submitted);
+    struct vela_upload_stats uploads = vela_renderer_upload_stats(server->renderer);
+    vela_buffer_appendf(json, ",\"upload\":{\"rejected\":%llu}", (unsigned long long)uploads.rejected);
     vela_buffer_appendf(json, ",\"held\":%llu,\"outputs\":[", (unsigned long long)server->ready.held_total);
     bool first = true;
     struct vela_output *output;
