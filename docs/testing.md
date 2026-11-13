@@ -544,6 +544,17 @@ descriptor exhaustion, including removing derived summaries during review.
 Both sharpness suites honor `VELA_BUILD`, including build paths with spaces,
 and fail immediately if an executable is missing.
 
+## Icon cache budget
+
+The title bars' icon cache keeps at most `VELA_ICON_CACHE_BUDGET` entries
+and evicts the least recently used
+([allocation policy](memory-allocation-policy.md#aggregate-growth)).
+`compositor.icon-cache` (CPU) checks the cache on its own, against a model;
+`compositor.icons` (CPU) checks it through `vela_icons_app` on an icon theme
+the test writes, including a held icon whose entry is evicted (the cases
+that draw an icon need librsvg). `functional-decorations` (GPU) has a
+client cycle through 600 app ids with `vela-pattern --cycle-app-ids`.
+
 ## Frame-path allocations
 
 The frame path draws without allocating once warmed
