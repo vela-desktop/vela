@@ -75,8 +75,9 @@ class Session:
     """
 
     def __init__(self, scale=1.0, size="1920x1080@60", supervise=False, lock_hold_ms=None, env=None, startup=None,
-                 nofile=None, expected_exit=0, pass_fds=()):
+                 nofile=None, expected_exit=0, pass_fds=(), binary="vela-compositor"):
         self.scale = scale
+        self.binary = binary  # in build/compositor: a test build of the compositor
         self.size = size
         self.supervise = supervise
         self.lock_hold_ms = lock_hold_ms
@@ -138,7 +139,7 @@ class Session:
             env["VELA_LOCK"] = f"{tool('vela-testlock')} {self.lock_hold_ms}"
         env.update(self.extra_env)
         self.env = env
-        command = [os.path.join(BUILD, "compositor", "vela-compositor")]
+        command = [os.path.join(BUILD, "compositor", self.binary)]
         if self.supervise:
             command.append("--supervise")
         if self.startup:
