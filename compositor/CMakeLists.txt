@@ -477,6 +477,23 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-frame-path-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.frame-path COMMAND vela-frame-path-test)
 
+    # Shared-memory uploads under the staging budget, the deferred uploads'
+    # atomic switch and progress, and the image-extent cap: the production
+    # renderer, texture and pass code on a fake device that runs the copies
+    # and draws in memory (docs/memory-allocation-policy.md, point 6).
+    add_executable(vela-upload-test tests/upload_test.c tests/alloc_count.c src/render/formats.c
+        src/render/wait_arrays.c ${VELA_SHADERS})
+    target_include_directories(vela-upload-test PRIVATE src tests ${VELA_SHADER_DIR} ${VELA_GENERATED_DIR}
+        ${VULKAN_INCLUDE_DIRS})
+    target_compile_definitions(vela-upload-test PRIVATE WLR_USE_UNSTABLE _GNU_SOURCE)
+    target_compile_options(vela-upload-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-upload-test PRIVATE -Wl,--gc-sections ${VELA_ALLOC_COUNT_WRAP})
+    target_link_libraries(vela-upload-test PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN)
+    set_target_properties(vela-upload-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.upload-staging COMMAND vela-upload-test)
+
     # Real output-source damage/idle policy with GPU work replaced by terminal
     # frame notifications; no private wlroots session state is accessed.
     add_executable(vela-capture-damage-test tests/capture_damage_test.c ${VELA_OWN_PROTOCOL_SOURCES})
