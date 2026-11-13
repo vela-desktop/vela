@@ -17,8 +17,9 @@
 //   last, after the renderer;
 // - vela_renderer belongs to wlroots: born with vela_renderer_create, it
 //   dies with wlr_renderer_destroy(vela_renderer_wlr(r));
-// - a vela_pass lives from vela_renderer_begin_pass to vela_pass_submit,
-//   which consumes it;
+// - a vela_pass is open from vela_renderer_begin_pass to vela_pass_submit,
+//   which ends it: the caller must not use it again. The object itself
+//   belongs to the renderer, which keeps it for the next drawing;
 // - textures are created and destroyed by wlroots (wlr_texture_from_buffer,
 //   wlr_texture_destroy); their Vulkan resources go away when the GPU is
 //   done with them.
@@ -187,10 +188,10 @@ void vela_pass_measure(struct vela_pass *pass);
 // capture with explicit sync).
 void vela_pass_signal_on_done(struct vela_pass *pass, struct wlr_drm_syncobj_timeline *timeline, uint64_t point);
 
-// Submits the drawing and frees the pass. In the result: the renderer timeline
-// point, the measurement slot (-1: not measured) and the syncobj timeline
-// point signaled at the end (0 if none): the release of the app buffers this
-// drawing read.
+// Submits the drawing and ends the pass, whose locks and references are
+// dropped even when it fails. In the result: the renderer timeline point, the
+// measurement slot (-1: not measured) and the syncobj timeline point signaled
+// at the end (0 if none): the release of the app buffers this drawing read.
 struct vela_pass_result {
     uint64_t point;
     int timing_slot;
