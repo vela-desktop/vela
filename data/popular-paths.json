@@ -1,30 +1,30 @@
 {
-  "collected_at": "2026-11-12T11:06:11+00:00",
+  "collected_at": "2026-11-13T10:57:22+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 556,
+      "count": 567,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 322
+      "uniques": 319
     },
     {
-      "count": 83,
+      "count": 98,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 26
+      "uniques": 28
     },
     {
-      "count": 43,
+      "count": 48,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
-      "uniques": 11
+      "uniques": 12
     },
     {
-      "count": 22,
-      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
-      "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 20
+      "count": 24,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 10
     },
     {
       "count": 21,
@@ -34,15 +34,21 @@
     },
     {
       "count": 20,
-      "path": "/vela-desktop/vela/commits/main",
-      "title": "/commits/main",
-      "uniques": 11
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
+      "title": "/blob/main/docs/screenshots/start.webp",
+      "uniques": 18
     },
     {
-      "count": 18,
+      "count": 16,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/snap.webp",
       "title": "/blob/main/docs/screenshots/snap.webp",
-      "uniques": 14
+      "uniques": 12
+    },
+    {
+      "count": 16,
+      "path": "/vela-desktop/vela/tree/main/compositor",
+      "title": "/tree/main/compositor",
+      "uniques": 7
     },
     {
       "count": 15,
@@ -51,16 +57,10 @@
       "uniques": 9
     },
     {
-      "count": 15,
-      "path": "/vela-desktop/vela/tree/main/compositor",
-      "title": "/tree/main/compositor",
-      "uniques": 6
-    },
-    {
-      "count": 14,
+      "count": 13,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/panels.webp",
       "title": "/blob/main/docs/screenshots/panels.webp",
-      "uniques": 14
+      "uniques": 13
     }
   ],
   "schema_version": 1,

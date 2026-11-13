@@ -1,29 +1,29 @@
 {
-  "generated_at": "2026-11-12T11:06:11+00:00",
+  "generated_at": "2026-11-13T10:57:22+00:00",
   "popular_paths": [
     {
-      "count": 556,
+      "count": 567,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 322
+      "uniques": 319
     },
     {
-      "count": 83,
+      "count": 98,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 26
+      "uniques": 28
     },
     {
-      "count": 43,
+      "count": 48,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
-      "uniques": 11
+      "uniques": 12
     },
     {
-      "count": 22,
-      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
-      "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 20
+      "count": 24,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 10
     },
     {
       "count": 21,
@@ -33,15 +33,21 @@
     },
     {
       "count": 20,
-      "path": "/vela-desktop/vela/commits/main",
-      "title": "/commits/main",
-      "uniques": 11
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
+      "title": "/blob/main/docs/screenshots/start.webp",
+      "uniques": 18
     },
     {
-      "count": 18,
+      "count": 16,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/snap.webp",
       "title": "/blob/main/docs/screenshots/snap.webp",
-      "uniques": 14
+      "uniques": 12
+    },
+    {
+      "count": 16,
+      "path": "/vela-desktop/vela/tree/main/compositor",
+      "title": "/tree/main/compositor",
+      "uniques": 7
     },
     {
       "count": 15,
@@ -50,16 +56,10 @@
       "uniques": 9
     },
     {
-      "count": 15,
-      "path": "/vela-desktop/vela/tree/main/compositor",
-      "title": "/tree/main/compositor",
-      "uniques": 6
-    },
-    {
-      "count": 14,
+      "count": 13,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/panels.webp",
       "title": "/blob/main/docs/screenshots/panels.webp",
-      "uniques": 14
+      "uniques": 13
     }
   ],
   "releases": {
@@ -104,7 +104,7 @@
       {
         "assets": [
           {
-            "downloads": 28,
+            "downloads": 29,
             "id": "706673382",
             "name": "SHA256SUMS"
           },
@@ -119,7 +119,7 @@
             "name": "SHA256SUMS-ubuntu"
           },
           {
-            "downloads": 30,
+            "downloads": 31,
             "id": "706673380",
             "name": "vela-0.1.1-1-x86_64.pkg.tar.zst"
           },
@@ -134,43 +134,38 @@
             "name": "vela_0.1.1_amd64.deb"
           }
         ],
-        "downloads_current_assets": 91,
+        "downloads_current_assets": 93,
         "tag": "v0.1.1"
       }
     ],
-    "downloads_current_assets": 139,
-    "downloads_observed_maxima": 318,
-    "downloads_since_previous_daily_snapshot": 16,
-    "previous_snapshot_date": "2026-11-11",
+    "downloads_current_assets": 141,
+    "downloads_observed_maxima": 320,
+    "downloads_since_previous_daily_snapshot": 2,
+    "previous_snapshot_date": "2026-11-12",
     "release_count": 2
   },
   "repository": "vela-desktop/vela",
   "schema_version": 1,
   "sources": {
     "releases": {
-      "last_collected_at": "2026-11-12T11:06:11+00:00",
+      "last_collected_at": "2026-11-13T10:57:22+00:00",
       "status": "ok"
     },
     "traffic": {
-      "last_collected_at": "2026-11-12T11:06:11+00:00",
+      "last_collected_at": "2026-11-13T10:57:22+00:00",
       "status": "ok"
     }
   },
   "top_referrers": [
     {
-      "count": 133,
+      "count": 136,
       "referrer": "velade.org",
-      "uniques": 112
+      "uniques": 114
     },
     {
-      "count": 53,
+      "count": 52,
       "referrer": "github.com",
-      "uniques": 32
-    },
-    {
-      "count": 39,
-      "referrer": "reddit.com",
-      "uniques": 30
+      "uniques": 31
     },
     {
       "count": 36,
@@ -178,9 +173,14 @@
       "uniques": 33
     },
     {
-      "count": 25,
+      "count": 36,
+      "referrer": "reddit.com",
+      "uniques": 29
+    },
+    {
+      "count": 28,
       "referrer": "com.reddit.frontpage",
-      "uniques": 22
+      "uniques": 24
     },
     {
       "count": 8,
@@ -210,51 +210,51 @@
   ],
   "traffic": {
     "clones": {
-      "growth_vs_previous_7_days_percent": -46.54,
+      "growth_vs_previous_7_days_percent": -55.53,
       "last_30_complete_days": {
         "complete": true,
-        "count": 35224,
-        "end_date": "2026-11-11",
+        "count": 34661,
+        "end_date": "2026-11-12",
         "observed_days": 30,
-        "start_date": "2026-10-13"
+        "start_date": "2026-10-14"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 6126,
-        "end_date": "2026-11-11",
+        "count": 5057,
+        "end_date": "2026-11-12",
         "observed_days": 7,
-        "start_date": "2026-11-05"
+        "start_date": "2026-11-06"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 11460,
-        "end_date": "2026-11-04",
+        "count": 11371,
+        "end_date": "2026-11-05",
         "observed_days": 7,
-        "start_date": "2026-10-29"
+        "start_date": "2026-10-30"
       }
     },
     "views": {
-      "growth_vs_previous_7_days_percent": -42.39,
+      "growth_vs_previous_7_days_percent": -38.0,
       "last_30_complete_days": {
         "complete": true,
-        "count": 3393,
-        "end_date": "2026-11-11",
+        "count": 3276,
+        "end_date": "2026-11-12",
         "observed_days": 30,
-        "start_date": "2026-10-13"
+        "start_date": "2026-10-14"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 443,
-        "end_date": "2026-11-11",
+        "count": 478,
+        "end_date": "2026-11-12",
         "observed_days": 7,
-        "start_date": "2026-11-05"
+        "start_date": "2026-11-06"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 769,
-        "end_date": "2026-11-04",
+        "count": 771,
+        "end_date": "2026-11-05",
         "observed_days": 7,
-        "start_date": "2026-10-29"
+        "start_date": "2026-10-30"
       }
     }
   }
