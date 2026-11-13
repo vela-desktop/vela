@@ -4,6 +4,7 @@
 #include "icons.h"
 #include "alloc/alloc.h"
 #include "config.h"
+#include "icon_cache.h"
 
 #include "util.h"
 #include "path_security.h"
@@ -113,21 +114,16 @@ static void icon_names_free(struct icon_names *names)
     free(names->items);
 }
 
-// An icon already drawn (or looked up without success), per app and size.
-struct cached_icon {
-    char *app_id;
-    int size;
-    struct vela_image image;
-    struct cached_icon *next;
-};
-
 struct vela_icons {
     struct strings theme_chain; // the theme, those it inherits, hicolor
     struct strings icon_dirs; // .../icons
     bool desktop_loaded;
     struct icon_names by_id; // .desktop id (without extension) -> Icon
     struct icon_names by_class; // StartupWMClass -> Icon
-    struct cached_icon *cache;
+    // The icons already drawn (or looked up without success), per app and
+    // size: at most VELA_ICON_CACHE_BUDGET entries, the least recently used
+    // evicted first (icon_cache.h).
+    struct vela_icon_cache *cache;
 };
 
 static void lowercase(char *text)
@@ -174,6 +170,7 @@ static void kdeglobals_path(char *out, size_t size)
 struct vela_icons *vela_icons_create(void)
 {
     struct vela_icons *icons = VELA_NEW(struct vela_icons);
+    icons->cache = vela_icon_cache_create(VELA_ICON_CACHE_BUDGET);
     struct strings dirs = { 0 };
     data_dirs(&dirs);
     char path[PATH_MAX];
@@ -227,14 +224,7 @@ void vela_icons_destroy(struct vela_icons *icons)
     strings_free(&icons->icon_dirs);
     icon_names_free(&icons->by_id);
     icon_names_free(&icons->by_class);
-    struct cached_icon *entry = icons->cache;
-    while (entry) {
-        struct cached_icon *next = entry->next;
-        free(entry->app_id);
-        vela_image_finish(&entry->image);
-        free(entry);
-        entry = next;
-    }
+    vela_icon_cache_destroy(icons->cache);
     free(icons);
 }
 
@@ -554,24 +544,42 @@ static void render(const char *path, int size, struct vela_image *image)
 #endif
 }
 
-const struct vela_image *vela_icons_app(struct vela_icons *icons, const char *app_id, int size)
+bool vela_icons_app(struct vela_icons *icons, const char *app_id, int size, struct vela_image *out)
 {
-    for (struct cached_icon *entry = icons->cache; entry; entry = entry->next) {
-        if (entry->size == size && strcmp(entry->app_id, app_id) == 0) {
-            return &entry->image;
+    *out = (struct vela_image) { 0 };
+    // Neither a .desktop id nor an icon file's name is this long (NAME_MAX),
+    // so there is nothing to find, and nothing to remember: the cache's keys
+    // stay short whatever a client sends.
+    if (strlen(app_id) > VELA_ICON_APP_ID_MAX) {
+        return false;
+    }
+    const struct vela_image *cached = vela_icon_cache_find(icons->cache, app_id, size);
+    if (!cached) {
+        struct vela_image drawn = { 0 };
+        char path[PATH_MAX];
+        if (find_file(icons, icon_name(icons, app_id), size, path, sizeof(path))) {
+            render(path, size, &drawn);
         }
+        if (!drawn.pixels) {
+            wlr_log(WLR_DEBUG, "Icons: no icon for %s", app_id);
+        }
+        // A miss is remembered too: it is the lookup that searched the most.
+        cached = vela_icon_cache_insert(icons->cache, app_id, size, &drawn);
     }
-    struct cached_icon *entry = VELA_NEW(struct cached_icon);
-    entry->app_id = vela_strdup(app_id);
-    entry->size = size;
-    char path[PATH_MAX];
-    if (find_file(icons, icon_name(icons, app_id), size, path, sizeof(path))) {
-        render(path, size, &entry->image);
+    if (!cached->pixels) {
+        return false;
     }
-    if (!entry->image.pixels) {
-        wlr_log(WLR_DEBUG, "Icons: no icon for %s", app_id);
-    }
-    entry->next = icons->cache;
-    icons->cache = entry;
-    return &entry->image;
+    // A copy, because the cache may evict this entry at the next request
+    // while the caller's image is still on screen.
+    size_t count = vela_size_mul((size_t)cached->width, (size_t)cached->height);
+    out->width = cached->width;
+    out->height = cached->height;
+    out->pixels = VELA_NEW_N(uint32_t, count);
+    memcpy(out->pixels, cached->pixels, vela_size_mul(count, sizeof(uint32_t)));
+    return true;
+}
+
+int vela_icons_cached(const struct vela_icons *icons)
+{
+    return vela_icon_cache_count(icons->cache);
 }

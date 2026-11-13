@@ -129,6 +129,7 @@ add_library(vela-pure STATIC
     src/diagnostics.c
     src/frame_clock.c
     src/geometry.c
+    src/icon_cache.c
     src/legacy_names.c
     src/lock_state.c
     src/motion.c
