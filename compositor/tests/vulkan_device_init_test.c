@@ -10,6 +10,8 @@
 
 static VkResult device_creation_result;
 static int device_creations, instance_destroys;
+static VkResult format_result;
+static VkExternalMemoryFeatureFlags external_features;
 
 void _wlr_log(enum wlr_log_importance importance, const char *format, ...) {}
 
@@ -115,11 +117,62 @@ static void failed_device_creation(VkResult fault, bool expected_loss)
     assert(device_creations == 2 && instance_destroys == 2);
 }
 
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physical,
+    const VkPhysicalDeviceImageFormatInfo2 *info, VkImageFormatProperties2 *properties)
+{
+    VkExternalImageFormatProperties *external = properties->pNext;
+    external->externalMemoryProperties.externalMemoryFeatures = external_features;
+    return format_result;
+}
+
+static void allocator_selection(void)
+{
+    const VkDriverId drivers[] = { VK_DRIVER_ID_MESA_VENUS, VK_DRIVER_ID_MESA_RADV,
+        VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA, VK_DRIVER_ID_NVIDIA_PROPRIETARY };
+    for (size_t i = 0; i < sizeof(drivers) / sizeof(drivers[0]); ++i) {
+        VkPhysicalDeviceDriverProperties driver = { .driverID = drivers[i] };
+        struct vela_vulkan vk = { 0 };
+        unsetenv("VELA_ALLOCATOR");
+        assert(select_buffer_allocator(&vk, &driver));
+        assert(vk.export_buffers == (drivers[i] == VK_DRIVER_ID_MESA_VENUS));
+        setenv("VELA_ALLOCATOR", "auto", 1);
+        assert(select_buffer_allocator(&vk, &driver));
+        assert(vk.export_buffers == (drivers[i] == VK_DRIVER_ID_MESA_VENUS));
+        setenv("VELA_ALLOCATOR", "vulkan", 1);
+        assert(select_buffer_allocator(&vk, &driver) && vk.export_buffers);
+        setenv("VELA_ALLOCATOR", "gbm", 1);
+        assert(select_buffer_allocator(&vk, &driver) && !vk.export_buffers);
+        setenv("VELA_ALLOCATOR", "typo", 1);
+        assert(!select_buffer_allocator(&vk, &driver));
+    }
+    unsetenv("VELA_ALLOCATOR");
+}
+
+static void export_capabilities(void)
+{
+    struct vela_vulkan vk = { 0 };
+    for (unsigned flags = 0; flags < 8; ++flags) {
+        external_features = flags;
+        format_result = VK_SUCCESS;
+        bool can_import = (flags & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) != 0;
+        bool can_export = can_import && (flags & VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT);
+        assert(vela_vulkan_supports_dmabuf(&vk, VK_FORMAT_B8G8R8A8_SRGB, 0,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == can_import);
+        assert(vela_vulkan_can_export_dmabuf(&vk, VK_FORMAT_B8G8R8A8_SRGB, 0,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == can_export);
+        format_result = VK_ERROR_FORMAT_NOT_SUPPORTED;
+        assert(!vela_vulkan_can_export_dmabuf(&vk, VK_FORMAT_B8G8R8A8_SRGB, 0,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT));
+    }
+}
+
 int main(void)
 {
     failed_device_creation(VK_ERROR_DEVICE_LOST, true);
     failed_device_creation(VK_ERROR_OUT_OF_HOST_MEMORY, false);
     failed_device_creation(VK_ERROR_OUT_OF_DEVICE_MEMORY, false);
     failed_device_creation(VK_ERROR_INITIALIZATION_FAILED, false);
+    allocator_selection();
+    export_capabilities();
     return 0;
 }

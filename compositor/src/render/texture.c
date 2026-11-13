@@ -137,6 +137,10 @@ static struct wlr_texture *import_dmabuf(struct vela_renderer *renderer, struct 
     }
 
     struct vela_vulkan *vk = renderer->vk;
+    if (vela_env_one("VELA_DEBUG_DMABUF")) {
+        wlr_log(WLR_INFO, "DMABUF trace: client texture %dx%d drm=0x%08x modifier=0x%" PRIx64 " fd0=%d",
+            dmabuf->width, dmabuf->height, dmabuf->format, dmabuf->modifier, dmabuf->fd[0]);
+    }
     const struct vela_pixel_format *format = vela_pixel_format_from_drm(dmabuf->format);
     if (!format || !wlr_drm_format_set_has(&vk->texture_formats, dmabuf->format, dmabuf->modifier)) {
         wlr_log(WLR_DEBUG, "Texture: dmabuf 0x%08x (modifier 0x%" PRIx64 ") not supported", dmabuf->format,

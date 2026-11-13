@@ -245,6 +245,20 @@ static bool supports_calibrated_timestamps(struct vela_vulkan *vk)
     return device && monotonic;
 }
 
+static bool select_buffer_allocator(struct vela_vulkan *vk, const VkPhysicalDeviceDriverProperties *driver)
+{
+    const char *allocator = getenv("VELA_ALLOCATOR");
+    if (allocator && strcmp(allocator, "auto") && strcmp(allocator, "gbm") && strcmp(allocator, "vulkan")) {
+        wlr_log(WLR_ERROR, "Invalid VELA_ALLOCATOR=%s (expected auto, gbm or vulkan)", allocator);
+        return false;
+    }
+    vk->export_buffers = allocator && strcmp(allocator, "auto")
+        ? strcmp(allocator, "vulkan") == 0 : driver->driverID == VK_DRIVER_ID_MESA_VENUS;
+    wlr_log(WLR_INFO, "Output buffer allocator: %s (Vulkan driver %s)",
+        vk->export_buffers ? "Vulkan DMA-BUF export" : "GBM", driver->driverName);
+    return true;
+}
+
 static bool create_device(struct vela_vulkan *vk)
 {
     uint32_t family_count = 0;
@@ -393,6 +407,7 @@ static bool create_device(struct vela_vulkan *vk)
         .pNext = &driver,
     };
     vkGetPhysicalDeviceProperties2(vk->physical, &properties);
+    if (!select_buffer_allocator(vk, &driver)) return false;
     bool nvidia = driver.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY;
     unsigned driver_major = properties.properties.driverVersion >> 22;
     const char *override = getenv("VELA_SYNC_FILE");
@@ -429,8 +444,8 @@ static bool open_render_node(struct vela_vulkan *vk)
     return true;
 }
 
-bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
-    VkImageUsageFlags usage)
+static bool dmabuf_features(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
+    VkImageUsageFlags usage, VkExternalMemoryFeatureFlags required)
 {
     const VkPhysicalDeviceImageDrmFormatModifierInfoEXT modifier_info = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT,
@@ -453,10 +468,38 @@ bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, 
     VkExternalImageFormatProperties external_props = { .sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES };
     VkImageFormatProperties2 image_props
         = { .sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2, .pNext = &external_props };
-    if (vkGetPhysicalDeviceImageFormatProperties2(vk->physical, &image_info, &image_props) != VK_SUCCESS) {
-        return false;
+    const bool trace = vela_env_one("VELA_DEBUG_DMABUF");
+    if (trace) {
+        wlr_log(WLR_INFO, "DMABUF trace: before vkGetPhysicalDeviceImageFormatProperties2 format=%d modifier=0x%llx usage=0x%x",
+            (int)format, (unsigned long long)modifier, (unsigned)usage);
     }
-    return external_props.externalMemoryProperties.externalMemoryFeatures & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
+    VkResult result = vkGetPhysicalDeviceImageFormatProperties2(vk->physical, &image_info, &image_props);
+    VkExternalMemoryFeatureFlags features = result == VK_SUCCESS
+        ? external_props.externalMemoryProperties.externalMemoryFeatures : 0;
+    if (trace) {
+        wlr_log(WLR_INFO, "DMABUF trace: after vkGetPhysicalDeviceImageFormatProperties2 result=%d externalFeatures=0x%x",
+            (int)result, (unsigned)features);
+    }
+    return result == VK_SUCCESS && (features & required) == required;
+}
+
+bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
+    VkImageUsageFlags usage)
+{
+    return dmabuf_features(vk, format, modifier, usage, VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT);
+}
+
+bool vela_vulkan_can_export_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
+    VkImageUsageFlags usage)
+{
+    // The renderer imports the exported buffer through its usual target cache.
+    return dmabuf_features(vk, format, modifier, usage,
+        VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT | VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT);
+}
+
+bool vela_vulkan_exports_buffers(const struct vela_vulkan *vk)
+{
+    return vk->export_buffers;
 }
 
 // A format's modifiers with their properties, in an allocated array.
@@ -499,10 +542,16 @@ static void query_formats(struct vela_vulkan *vk)
         if (format->srgb != VK_FORMAT_UNDEFINED) {
             modifiers = format_modifiers(vk, format->srgb, &count, NULL);
             for (uint32_t i = 0; i < count; ++i) {
+                uint64_t modifier = modifiers[i].drmFormatModifier;
+                VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                if (vk->export_buffers && vela_vulkan_supports_dmabuf(vk, format->srgb, modifier,
+                        usage | VK_IMAGE_USAGE_SAMPLED_BIT)) {
+                    usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+                }
                 if ((modifiers[i].drmFormatModifierTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT)
-                    && vela_vulkan_supports_dmabuf(vk, format->srgb, modifiers[i].drmFormatModifier,
-                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) {
-                    wlr_drm_format_set_add(&vk->render_formats, format->drm, modifiers[i].drmFormatModifier);
+                    && (vk->export_buffers ? vela_vulkan_can_export_dmabuf(vk, format->srgb, modifier, usage)
+                        : vela_vulkan_supports_dmabuf(vk, format->srgb, modifier, usage))) {
+                    wlr_drm_format_set_add(&vk->render_formats, format->drm, modifier);
                 }
             }
             free(modifiers);
@@ -623,6 +672,7 @@ bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_a
 {
     *image = VK_NULL_HANDLE;
     *memory = VK_NULL_HANDLE;
+    const bool trace = vela_env_one("VELA_DEBUG_DMABUF");
     if (dmabuf->n_planes < 1 || dmabuf->n_planes > WLR_DMABUF_MAX_PLANES) {
         wlr_log(WLR_ERROR, "DMABUF import: invalid plane count %d", dmabuf->n_planes);
         return false;
@@ -632,6 +682,12 @@ bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_a
     if (fstat(dmabuf->fd[0], &first) < 0) {
         wlr_log_errno(WLR_ERROR, "DMABUF import: fstat plane 0 fd=%d", dmabuf->fd[0]);
         return false;
+    }
+    if (trace) {
+        wlr_log(WLR_INFO, "DMABUF trace: import dev=%llu ino=%llu %dx%d format=%d modifier=0x%llx planes=%d fd=%d",
+            (unsigned long long)first.st_dev, (unsigned long long)first.st_ino,
+            dmabuf->width, dmabuf->height, (int)format, (unsigned long long)dmabuf->modifier,
+            dmabuf->n_planes, dmabuf->fd[0]);
     }
     for (int i = 1; i < dmabuf->n_planes; ++i) {
         struct stat other;
@@ -675,7 +731,9 @@ bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_a
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
+    if (trace) wlr_log(WLR_INFO, "DMABUF trace: before vkCreateImage (import)");
     VkResult image_result = vkCreateImage(vk->device, &image_info, NULL, image);
+    if (trace) wlr_log(WLR_INFO, "DMABUF trace: after vkCreateImage result=%d", (int)image_result);
     if (image_result != VK_SUCCESS) {
         vela_vulkan_result(vk, image_result, "vkCreateImage(dmabuf)");
         *image = VK_NULL_HANDLE;
@@ -683,10 +741,18 @@ bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_a
     }
 
     VkMemoryRequirements requirements;
+    if (trace) wlr_log(WLR_INFO, "DMABUF trace: before vkGetImageMemoryRequirements");
     vkGetImageMemoryRequirements(vk->device, *image, &requirements);
+    if (trace) wlr_log(WLR_INFO, "DMABUF trace: after vkGetImageMemoryRequirements size=%llu memoryTypeBits=0x%x",
+        (unsigned long long)requirements.size, requirements.memoryTypeBits);
+    if (trace) wlr_log(WLR_INFO, "DMABUF trace: before vkGetMemoryFdPropertiesKHR fd=%d", dmabuf->fd[0]);
     VkMemoryFdPropertiesKHR fd_props = { .sType = VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR };
     VkResult fd_result = vk->get_memory_fd_properties(
         vk->device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, dmabuf->fd[0], &fd_props);
+    if (trace) {
+        wlr_log(WLR_INFO, "DMABUF trace: after vkGetMemoryFdPropertiesKHR result=%d memoryTypeBits=0x%x imageBits=0x%x",
+            (int)fd_result, fd_props.memoryTypeBits, requirements.memoryTypeBits);
+    }
     if (fd_result != VK_SUCCESS) {
         vela_vulkan_result(vk, fd_result, "vkGetMemoryFdPropertiesKHR");
         vkDestroyImage(vk->device, *image, NULL);
@@ -726,7 +792,9 @@ bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_a
         .allocationSize = requirements.size,
         .memoryTypeIndex = memory_type,
     };
+    if (trace) wlr_log(WLR_INFO, "DMABUF trace: before vkAllocateMemory (import)");
     VkResult allocate_result = vkAllocateMemory(vk->device, &alloc_info, NULL, memory);
+    if (trace) wlr_log(WLR_INFO, "DMABUF trace: after vkAllocateMemory result=%d", (int)allocate_result);
     if (allocate_result != VK_SUCCESS) {
         vela_vulkan_result(vk, allocate_result, "vkAllocateMemory(dmabuf)");
         // Vulkan consumes the duplicated FD only if the import succeeds.
@@ -736,7 +804,9 @@ bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_a
         *memory = VK_NULL_HANDLE;
         return false;
     }
+    if (trace) wlr_log(WLR_INFO, "DMABUF trace: before vkBindImageMemory (import)");
     VkResult bind_result = vkBindImageMemory(vk->device, *image, *memory, 0);
+    if (trace) wlr_log(WLR_INFO, "DMABUF trace: after vkBindImageMemory result=%d", (int)bind_result);
     if (bind_result != VK_SUCCESS) {
         vela_vulkan_result(vk, bind_result, "vkBindImageMemory(dmabuf)");
         vkDestroyImage(vk->device, *image, NULL);

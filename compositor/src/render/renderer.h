@@ -55,6 +55,11 @@ void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation);
 // The render node of the same GPU, opened by the device: the allocator and the
 // syncobj timelines need it.
 int vela_vulkan_render_fd(const struct vela_vulkan *vk);
+bool vela_vulkan_exports_buffers(const struct vela_vulkan *vk);
+
+// Vulkan-owned DMA-BUFs avoid importing virgl GBM resources into Venus.
+// Destroy before the Vulkan device, with wlr_allocator_destroy().
+struct wlr_allocator *vela_vulkan_allocator_create(struct vela_vulkan *vk);
 
 // Allocator of output buffers (docs/renderer.md §7.2): GBM on the render node,
 // buffers exported as dmabufs with an explicit modifier, fit for both Vulkan

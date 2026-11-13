@@ -246,7 +246,15 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     wlr_output_state_init(&state);
     initial_state(wlr, saved, &state);
     // The frame cycle turns VRR on and off (vrr_state).
-    wlr_output_commit_state(wlr, &state);
+    if (vela_env_one("VELA_DEBUG_DMABUF")) {
+        wlr_log(WLR_INFO, "DMABUF trace: before initial wlr_output_commit_state output=%s committed=0x%x enabled=%d",
+            wlr->name, state.committed, state.enabled);
+    }
+    bool initial_ok = wlr_output_commit_state(wlr, &state);
+    if (vela_env_one("VELA_DEBUG_DMABUF")) {
+        wlr_log(WLR_INFO, "DMABUF trace: after initial wlr_output_commit_state output=%s ok=%d %dx%d",
+            wlr->name, initial_ok, wlr->width, wlr->height);
+    }
     wlr_output_state_finish(&state);
     // Query the committed DRM/CRTC cursor plane, not an unconfigured output.
     if (enabled) {

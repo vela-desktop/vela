@@ -205,16 +205,21 @@ static bool init(struct vela_server *server)
         return false;
     }
     server->wlr_renderer = vela_renderer_wlr(server->renderer);
-    server->allocator = vela_gbm_allocator_create(vela_vulkan_render_fd(server->vulkan));
+    bool vulkan_buffers = vela_vulkan_exports_buffers(server->vulkan);
+    server->allocator = vulkan_buffers ? vela_vulkan_allocator_create(server->vulkan)
+        : vela_gbm_allocator_create(vela_vulkan_render_fd(server->vulkan));
     if (!server->allocator) {
-        wlr_log(WLR_ERROR, "Can't create the buffer allocator (GBM)");
+        wlr_log(WLR_ERROR, "Can't create the buffer allocator (%s)", vulkan_buffers ? "Vulkan" : "GBM");
         return false;
     }
     // Optional optimization: keep the normal allocator even if cursor-only
     // GBM allocations are unavailable. One allocator for all DRM outputs;
     // swapchains themselves are per-output and hotplug-safe.
-    server->cursor_allocator = vela_gbm_cursor_allocator_create(vela_vulkan_render_fd(server->vulkan),
-        server->renderer);
+    // Venus must not fall back to importing virgl GBM cursor buffers either.
+    if (!vulkan_buffers) {
+        server->cursor_allocator = vela_gbm_cursor_allocator_create(vela_vulkan_render_fd(server->vulkan),
+            server->renderer);
+    }
     wlr_renderer_init_wl_shm(server->wlr_renderer, display);
     // GPU buffers shared with apps, without copies: the formats are those our
     // device can read.
