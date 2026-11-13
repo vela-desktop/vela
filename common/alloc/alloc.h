@@ -46,6 +46,14 @@ size_t vela_size_mul_at(size_t a, size_t b, const char *file, int line);
 VELA_ALLOC_NORETURN void vela_oom(size_t count, size_t size, const char *file, int line);
 // A programming error, such as a negative count: "vela: allocation misuse (<what>) at <file>:<line>".
 VELA_ALLOC_NORETURN void vela_alloc_misuse(const char *what, const char *file, int line);
+// A library call that can only fail for lack of memory returned NULL:
+// "vela: out of memory (<expression>) at <file>:<line>; rss <n> MiB; available <n> MiB".
+VELA_ALLOC_NORETURN void vela_must_failed(const char *expression, const char *file, int line);
+// A C++ operator new failed in `process` (the new handler of new_handler.h):
+// "vela: out of memory (operator new) in <process>; rss <n> MiB; available <n> MiB".
+VELA_ALLOC_NORETURN void vela_new_failed(const char *process);
+// `value`, or vela_must_failed when it is NULL.
+const void *vela_must_at(const void *value, const char *expression, const char *file, int line);
 
 // Public API.
 #define vela_alloc(count, size) vela_alloc_at((count), (size), __FILE__, __LINE__)
@@ -66,6 +74,15 @@ VELA_ALLOC_NORETURN void vela_alloc_misuse(const char *what, const char *file, i
 #define vela_asprintf(...) vela_asprintf_at(__FILE__, __LINE__, __VA_ARGS__)
 #define vela_size_add(a, b) vela_size_add_at((a), (b), __FILE__, __LINE__)
 #define vela_size_mul(a, b) vela_size_mul_at((a), (b), __FILE__, __LINE__)
+#ifndef __cplusplus
+// The result of a library call that fails only for lack of memory, such as
+// wl_event_loop_add_idle or wl_resource_create, never NULL: a NULL result
+// aborts like a failed helper. Only for the calls listed as OOM-only in
+// common/alloc/library-results.md; any other failure is handled where it
+// happens. The expression is evaluated once and keeps its pointer type.
+#define VELA_MUST(expr)                                                                \
+    ((__typeof__(expr))vela_must_at((expr), #expr, __FILE__, __LINE__))
+#endif
 
 #ifdef __cplusplus
 }

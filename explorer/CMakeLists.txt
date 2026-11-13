@@ -105,7 +105,7 @@ qt_add_qml_module(vela-files
     QML_FILES ${FILES_QML_FILES})
 
 target_compile_options(vela-files PRIVATE -Wall -Wextra)
-target_link_libraries(vela-files PRIVATE
+target_link_libraries(vela-files PRIVATE vela-alloc
     vela-files-core
     vela-controls # Theme, Style (common/)
     vela-controlsplugin

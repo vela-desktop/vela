@@ -10,6 +10,7 @@
 // Exit codes: 0 closed with SIGTERM/SIGINT, 1 error, 2 another agent is
 // already registered for this session (the compositor doesn't restart it).
 
+#include "alloc/new_handler.h"
 #include "agent.hpp"
 #include "backend.hpp"
 #include "system.hpp"
@@ -252,6 +253,7 @@ bool registerAgent(Registration& registration)
 
 int main(int argc, char* argv[])
 {
+    vela::install_new_handler("vela-polkit-agent");
     if (argc > 1 && (!std::strcmp(argv[1], "--help") || !std::strcmp(argv[1], "-h"))) {
         std::printf("Usage: vela-polkit-agent\n"
                     "Vela's polkit authentication agent. Started by vela-compositor.\n"

@@ -418,7 +418,7 @@ void vela_scene_changed(struct vela_scene *scene)
         vela_output_schedule_frame(frame->owner);
     }
     if (scene->rearranged && !scene->rearranged_idle && scene->event_loop) {
-        scene->rearranged_idle = wl_event_loop_add_idle(scene->event_loop, rearranged, scene);
+        scene->rearranged_idle = VELA_MUST(wl_event_loop_add_idle(scene->event_loop, rearranged, scene));
     }
 }
 

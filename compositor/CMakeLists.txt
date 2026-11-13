@@ -284,6 +284,12 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-getline-fail-preload PRIVATE ${CMAKE_DL_LIBS})
     target_compile_options(vela-getline-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-getline-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    # sd-event sources that fail as with descriptors exhausted, for the
+    # daemons' tests (tests/updates, tests/bluetooth).
+    add_library(vela-sd-event-fail-preload MODULE tests/sd_event_fail_preload.c)
+    target_link_libraries(vela-sd-event-fail-preload PRIVATE ${CMAKE_DL_LIBS})
+    target_compile_options(vela-sd-event-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
+    set_target_properties(vela-sd-event-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     # setenv and fstatat failures on the supervisor's restart path.
     add_library(vela-libc-fail-preload MODULE tests/libc_fail_preload.c)
     target_link_libraries(vela-libc-fail-preload PRIVATE ${CMAKE_DL_LIBS})
@@ -520,6 +526,17 @@ if(VELA_BUILD_TOOLS)
         PkgConfig::WAYLAND_CLIENT PkgConfig::PIXMAN)
     set_target_properties(vela-capture-watch-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.capture-watch COMMAND vela-capture-watch-test)
+
+    # The compositor's children on a real event loop, no GPU: an exit reaches
+    # its callback, and a child that can't be watched is reaped.
+    add_executable(vela-process-test tests/process_test.c src/process.c)
+    target_include_directories(vela-process-test PRIVATE src)
+    target_compile_definitions(vela-process-test PRIVATE VELA_LIBEXECDIR="${CMAKE_INSTALL_FULL_LIBEXECDIR}")
+    target_compile_options(vela-process-test PRIVATE -Wall -Wextra -Wno-unused-parameter -Werror)
+    target_link_libraries(vela-process-test PRIVATE vela-pure PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER)
+    set_target_properties(vela-process-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.process COMMAND vela-process-test)
+    set_tests_properties(compositor.process PROPERTIES TIMEOUT 30)
 
     # Which vela-update-daemon the compositor starts, if any.
     add_executable(vela-updates-start-test tests/updates_start_test.c src/updates.c)

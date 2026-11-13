@@ -129,10 +129,11 @@ void vela_bt_question_resend(struct vela_bt_daemon *d)
 
 int vela_bt_present_questions(struct vela_bt_daemon *d, sd_bus_message *call)
 {
-    if (!d->presenters && sd_bus_track_new(d->session, &d->presenters, NULL, NULL) < 0) {
-        return -ENOMEM;
+    int r = d->presenters ? 0 : sd_bus_track_new(d->session, &d->presenters, NULL, NULL);
+    if (r < 0) {
+        return r;
     }
-    int r = sd_bus_track_add_sender(d->presenters, call);
+    r = sd_bus_track_add_sender(d->presenters, call);
     if (r < 0) {
         return r;
     }
@@ -218,7 +219,10 @@ static void ask(struct vela_bt_daemon *d, struct vela_bt_device *device, enum ve
     question->entered = entered;
     snprintf(question->pin, sizeof(question->pin), "%s", pin ? pin : "");
     question->request = sd_bus_message_ref(request);
-    sd_event_add_time(d->event, &question->timer, CLOCK_MONOTONIC, question->expires, 0, on_expired, d);
+    if (sd_event_add_time(d->event, &question->timer, CLOCK_MONOTONIC, question->expires, 0, on_expired, d) < 0) {
+        // It still ends with BlueZ's Cancel or the user's answer.
+        vela_bt_log("question timer: failed");
+    }
     d->question = question;
     vela_bt_log("question %llu: %s for %s%s", (unsigned long long)question->id, vela_bt_question_kind_name(kind),
         device->path, question->unsolicited ? " (unsolicited)" : "");

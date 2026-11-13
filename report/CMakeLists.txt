@@ -36,7 +36,7 @@ option(VELA_REPORT_GUI "Build the standalone report GUI (Qt Widgets)" ${VELA_BUI
 if(VELA_REPORT_GUI)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets)
     add_executable(vela-report-gui gui/main.cpp)
-    target_link_libraries(vela-report-gui PRIVATE Qt6::Widgets)
+    target_link_libraries(vela-report-gui PRIVATE vela-alloc Qt6::Widgets)
     target_compile_options(vela-report-gui PRIVATE -Wall -Wextra)
     install(TARGETS vela-report-gui RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
     install(FILES vela-report.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)

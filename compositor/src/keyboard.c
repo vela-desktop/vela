@@ -284,6 +284,10 @@ static void start_repeat(struct vela_keyboard *keyboard, uint32_t keycode, xkb_k
     if (!keyboard->repeat) {
         struct wl_event_loop *loop = wl_display_get_event_loop(keyboard->input->server->display);
         keyboard->repeat = wl_event_loop_add_timer(loop, repeat_binding, keyboard);
+        if (!keyboard->repeat) {
+            wlr_log_errno(WLR_ERROR, "Keyboard: no repeat timer, the binding runs once");
+            return;
+        }
     }
     keyboard->repeat_keycode = keycode;
     keyboard->repeat_sym = sym;

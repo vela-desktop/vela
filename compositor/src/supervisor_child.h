@@ -13,7 +13,7 @@
 // --supervise, then --lock-state-fd=<lock_state_fd>, written into the
 // caller's `option` buffer. NULL-terminated; free() the array (not the
 // strings). Built before the first fork: the restart child must not
-// allocate. NULL when out of memory or `option` is too small.
+// allocate. NULL when `option` is too small or argc is 0.
 char **vela_supervisor_arguments(int argc, char **argv, const char *self, int lock_state_fd, char *option,
     size_t option_size);
 

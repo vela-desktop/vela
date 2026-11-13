@@ -373,7 +373,7 @@ static void handle_resource_created(struct wl_listener *listener, void *data)
     frame->destroy.notify = handle_frame_destroy;
     wl_resource_add_destroy_listener(resource, &frame->destroy);
     if (!watch->idle) {
-        watch->idle = wl_event_loop_add_idle(watch->server->loop, resolve_frames, watch);
+        watch->idle = VELA_MUST(wl_event_loop_add_idle(watch->server->loop, resolve_frames, watch));
     }
 }
 

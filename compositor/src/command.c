@@ -818,6 +818,13 @@ static int handle_connection(int fd, uint32_t mask, void *data)
     client->server = server;
     client->fd = client_fd;
     client->source = wl_event_loop_add_fd(server->loop, client_fd, WL_EVENT_READABLE, handle_client, client);
+    if (!client->source) {
+        // Descriptors exhausted (epoll or the duplicate): drop this client.
+        wlr_log_errno(WLR_ERROR, "Can't watch a command connection");
+        close(client_fd);
+        free(client);
+        return 0;
+    }
     wl_list_insert(server->commands->clients.prev, &client->link);
     return 0;
 }
@@ -851,6 +858,12 @@ void vela_commands_listen(struct vela_server *server)
     }
     chmod(commands->path, 0600);
     commands->source = wl_event_loop_add_fd(server->loop, commands->fd, WL_EVENT_READABLE, handle_connection, server);
+    if (!commands->source) {
+        wlr_log_errno(WLR_ERROR, "Can't watch for commands on %s", commands->path);
+        close(commands->fd);
+        commands->fd = -1;
+        unlink(commands->path);
+    }
 }
 
 void vela_commands_stop(struct vela_server *server)

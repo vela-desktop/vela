@@ -17,6 +17,17 @@
 #include <csignal>
 #include <sys/stat.h>
 
+// Counts the signals it is connected to.
+class SignalCounter : public QObject {
+    Q_OBJECT
+
+public:
+    int count = 0;
+
+public slots:
+    void received() { ++count; }
+};
+
 class UpdatesDaemon : public QObject, protected UpdatesBench {
     Q_OBJECT
 
@@ -367,6 +378,64 @@ private Q_SLOTS:
         QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
         QCOMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("failed"));
         QCOMPARE(property(QStringLiteral("InstallError")).toStringList().value(0), QStringLiteral("terminal"));
+    }
+
+    // Event sources that can't be created (descriptors exhausted) take
+    // their local paths (docs/memory-allocation-policy.md, point 2b),
+    // through compositor/tests/sd_event_fail_preload.c.
+    void stubbornCheckIsKilledWithoutItsKillTimer()
+    {
+#ifndef VELA_SD_EVENT_FAIL_PRELOAD
+        QSKIP("needs the vela-sd-event-fail-preload target");
+#else
+        nextCheck({});
+        QVERIFY(write(fake(QStringLiteral("check-hold")), ""));
+        QVERIFY(write(fake(QStringLiteral("check-stubborn")), ""));
+        // A minute of grace that can't be timed: SIGKILL comes at once.
+        QVERIFY(startDaemon({ { QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_SD_EVENT_FAIL_PRELOAD) },
+            { QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), QStringLiteral("time_relative=60000000") },
+            { QStringLiteral("VELA_UPDATE_CHECK_TIMEOUT_MS"), QStringLiteral("200") },
+            { QStringLiteral("VELA_UPDATE_KILL_MS"), QStringLiteral("60000") } }));
+        call(QStringLiteral("Check"));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        QCOMPARE(property(QStringLiteral("Error")).toStringList().value(0), QStringLiteral("failed"));
+#endif
+    }
+
+    void installWithoutItsTimers()
+    {
+#ifndef VELA_SD_EVENT_FAIL_PRELOAD
+        QSKIP("needs the vela-sd-event-fail-preload target");
+#else
+        // Neither the terminal's reaper nor the start timeout: the terminal
+        // still opens, and "starting" is not entered, since nothing would
+        // ever end it.
+        QVERIFY(startDaemon({ { QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_SD_EVENT_FAIL_PRELOAD) },
+            { QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), QStringLiteral("child time_relative=300000") },
+            { QStringLiteral("VELA_UPDATE_START_TIMEOUT_MS"), QStringLiteral("300") } }));
+        QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).type(), QDBusMessage::ReplyMessage);
+        QTRY_VERIFY(QFile::exists(fake(QStringLiteral("terminal"))));
+        QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        QTest::qWait(500);
+        QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+#endif
+    }
+
+    void changesAreSignalledWithoutADeferredFlush()
+    {
+#ifndef VELA_SD_EVENT_FAIL_PRELOAD
+        QSKIP("needs the vela-sd-event-fail-preload target");
+#else
+        QVERIFY(startDaemon({ { QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_SD_EVENT_FAIL_PRELOAD) },
+            { QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), QStringLiteral("defer") } }));
+        SignalCounter changes;
+        QVERIFY(bus().connect(service, objectPath, QStringLiteral("org.freedesktop.DBus.Properties"),
+            QStringLiteral("PropertiesChanged"), &changes, SLOT(received())));
+        nextCheck({ { "status", "update-available" }, { "commit", commitB } });
+        call(QStringLiteral("Check"));
+        QTRY_VERIFY(changes.count > 0);
+        QTRY_COMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("update-available"));
+#endif
     }
 
     void invalidOptions()

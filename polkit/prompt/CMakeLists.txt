@@ -25,7 +25,7 @@ qt_add_qml_module(vela-polkit-prompt
     QML_FILES ${PROMPT_QML_FILES})
 
 target_compile_options(vela-polkit-prompt PRIVATE -Wall -Wextra)
-target_link_libraries(vela-polkit-prompt PRIVATE
+target_link_libraries(vela-polkit-prompt PRIVATE vela-alloc
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick

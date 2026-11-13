@@ -7,6 +7,7 @@
 // of the desktop (not an app), keeps it above or below the windows and
 // reserves space for it on the output.
 
+#include "alloc/new_handler.h"
 #include "renderingpolicy.h"
 #include "accessibility.h"
 #include "appmodel.h"
@@ -278,6 +279,7 @@ void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVaria
 /** Configure text before Qt startup and run the shell's desktop surfaces and services. */
 int main(int argc, char* argv[])
 {
+    vela::install_new_handler("vela-shell");
     // "vela-shell --choose-source": the chooser xdg-desktop-portal-wlr
     // launches when an app wants to share the screen. It asks the already open
     // shell, which shows the choice, and prints the answer for the portal.

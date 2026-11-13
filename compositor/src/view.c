@@ -696,7 +696,7 @@ static void create_taskbar_handle(struct vela_view *view)
     }
 #endif
     struct wlr_foreign_toplevel_handle_v1 *handle
-        = wlr_foreign_toplevel_handle_v1_create(view->server->foreign_toplevels);
+        = VELA_MUST(wlr_foreign_toplevel_handle_v1_create(view->server->foreign_toplevels));
     view->handle = handle;
     handle->data = view;
     wlr_foreign_toplevel_handle_v1_set_title(handle, vela_view_title(view));
@@ -738,8 +738,15 @@ static void create_handles(struct vela_view *view)
         .title = vela_view_title(view),
         .app_id = vela_view_app_id(view),
     };
+    // Not OOM-only: wlroots reads its identifier from /dev/urandom, which
+    // can fail with descriptors exhausted. The window then has no
+    // ext-foreign-toplevel handle, which every user of ext_handle allows.
     view->ext_handle = wlr_ext_foreign_toplevel_handle_v1_create(view->server->ext_toplevels, &state);
-    view->ext_handle->data = view;
+    if (view->ext_handle) {
+        view->ext_handle->data = view;
+    } else {
+        wlr_log(WLR_ERROR, "No ext-foreign-toplevel handle for \"%s\"", state.app_id ? state.app_id : "");
+    }
     if (vela_view_on_current_workspace(view)) {
         create_taskbar_handle(view);
     }
@@ -1556,28 +1563,26 @@ void vela_views_init(struct vela_server *server)
 {
     struct wl_display *display = server->display;
     wl_list_init(&server->views);
-    server->xdg_shell = wlr_xdg_shell_create(display, 5);
+    server->xdg_shell = VELA_MUST(wlr_xdg_shell_create(display, 5));
     vela_listen(&server->xdg_shell->events.new_toplevel, &server->new_toplevel, handle_new_toplevel);
 
     // The window list for the taskbar, with activate/minimize/close.
-    server->foreign_toplevels = wlr_foreign_toplevel_manager_v1_create(display);
+    server->foreign_toplevels = VELA_MUST(wlr_foreign_toplevel_manager_v1_create(display));
 
     // Output and window capture (Alt+Tab previews, and later screen sharing):
     // the standard ext-* protocols.
-    server->ext_toplevels = wlr_ext_foreign_toplevel_list_v1_create(display, 1);
-    server->copy_capture = wlr_ext_image_copy_capture_manager_v1_create(display, 1);
-    if (!vela_output_capture_manager_create(server)) {
-        wlr_log(WLR_ERROR, "Cannot create output capture manager");
-    }
+    server->ext_toplevels = VELA_MUST(wlr_ext_foreign_toplevel_list_v1_create(display, 1));
+    server->copy_capture = VELA_MUST(wlr_ext_image_copy_capture_manager_v1_create(display, 1));
+    vela_output_capture_manager_create(server);
     struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 *capture
-        = wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(display, 1);
+        = VELA_MUST(wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(display, 1));
     vela_listen(&capture->events.new_request, &server->new_capture_request, handle_capture_request);
 
     // Vela's title bar for the apps that accept it (§9.1).
-    struct wlr_xdg_decoration_manager_v1 *decorations = wlr_xdg_decoration_manager_v1_create(display);
+    struct wlr_xdg_decoration_manager_v1 *decorations = VELA_MUST(wlr_xdg_decoration_manager_v1_create(display));
     vela_listen(&decorations->events.new_toplevel_decoration, &server->new_decoration, handle_new_decoration);
 
-    struct wlr_xdg_activation_v1 *activation = wlr_xdg_activation_v1_create(display);
+    struct wlr_xdg_activation_v1 *activation = VELA_MUST(wlr_xdg_activation_v1_create(display));
     vela_listen(&activation->events.request_activate, &server->request_activation, handle_request_activation);
 }
 
@@ -1726,6 +1731,6 @@ static void handle_output_check(void *data)
 void vela_views_check_outputs_later(struct vela_server *server)
 {
     if (!server->output_check) {
-        server->output_check = wl_event_loop_add_idle(server->loop, handle_output_check, server);
+        server->output_check = VELA_MUST(wl_event_loop_add_idle(server->loop, handle_output_check, server));
     }
 }

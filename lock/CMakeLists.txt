@@ -38,7 +38,7 @@ qt_add_resources(vela-lock "images"
 target_include_directories(vela-lock PRIVATE ${LOCK_GENERATED_DIR} ${PROJECT_SOURCE_DIR}/shell/src)
 target_compile_options(vela-lock PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
 # The theme, the accent and its tonal roles (look.h).
-target_link_libraries(vela-lock PRIVATE Qt6::Gui Qt6::Svg PkgConfig::LOCK_DEPS ${PAM_LIBRARY} vela-app
+target_link_libraries(vela-lock PRIVATE vela-alloc Qt6::Gui Qt6::Svg PkgConfig::LOCK_DEPS ${PAM_LIBRARY} vela-app
     vela-color vela-theme-tokens)
 
 # Fast, display-independent pixel tests for the actual login blur implementation.

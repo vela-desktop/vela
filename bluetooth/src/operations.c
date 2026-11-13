@@ -211,8 +211,12 @@ static int on_reply(sd_bus_message *reply, void *data, sd_bus_error *error)
             vela_bt_operation_end(d, device, failure, false);
         } else {
             // Done once Device1 disappears (vela_bt_operations_device_gone).
-            sd_event_add_time_relative(d->event, &operation->timer, CLOCK_MONOTONIC, VELA_BT_STEP_TIMEOUT_US, 0,
-                on_remove_timeout, operation);
+            if (sd_event_add_time_relative(d->event, &operation->timer, CLOCK_MONOTONIC, VELA_BT_STEP_TIMEOUT_US, 0,
+                    on_remove_timeout, operation)
+                < 0) {
+                // BlueZ removes Device1 right after its reply.
+                vela_bt_log("%s: remove timer: failed", device->path);
+            }
         }
         break;
     default:
@@ -335,8 +339,12 @@ int vela_bt_operation_start(struct vela_bt_daemon *d, sd_bus_message *call, stru
         vela_bt_touch(d, device);
         vela_bt_emit_operation(d, device, vela_bt_step_state(operation->step), NULL);
         vela_bt_question_resend(d);
-        sd_event_add_time_relative(d->event, &operation->timer, CLOCK_MONOTONIC, VELA_BT_PAIR_TIMEOUT_US, 0,
-            on_adopted_timeout, operation);
+        if (sd_event_add_time_relative(d->event, &operation->timer, CLOCK_MONOTONIC, VELA_BT_PAIR_TIMEOUT_US, 0,
+                on_adopted_timeout, operation)
+            < 0) {
+            // BlueZ ends the pairing it started on its own timeout.
+            vela_bt_log("%s: pairing timer: failed", device->path);
+        }
         return 1;
     }
     run_step(d, device, first[kind]);

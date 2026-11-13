@@ -330,12 +330,8 @@ static void output_manager_bind(struct wl_client *client, void *data,
 		uint32_t version, uint32_t id) {
 	struct vela_output_capture_manager *manager = data;
 
-	struct wl_resource *resource = wl_resource_create(client,
-		&ext_output_image_capture_source_manager_v1_interface, version, id);
-	if (!resource) {
-		wl_client_post_no_memory(client);
-		return;
-	}
+	struct wl_resource *resource = VELA_MUST(wl_resource_create(client,
+		&ext_output_image_capture_source_manager_v1_interface, version, id));
 	wl_resource_set_implementation(resource, &output_manager_impl, manager, NULL);
 }
 
@@ -347,19 +343,14 @@ static void output_manager_handle_display_destroy(struct wl_listener *listener, 
 	free(manager);
 }
 
-bool vela_output_capture_manager_create(struct vela_server *server)
+void vela_output_capture_manager_create(struct vela_server *server)
 {
     struct vela_output_capture_manager *manager = VELA_NEW(struct vela_output_capture_manager);
     manager->server = server;
-    manager->global = wl_global_create(server->display,
-        &ext_output_image_capture_source_manager_v1_interface, 1, manager, output_manager_bind);
-    if (!manager->global) {
-        free(manager);
-        return false;
-    }
+    manager->global = VELA_MUST(wl_global_create(server->display,
+        &ext_output_image_capture_source_manager_v1_interface, 1, manager, output_manager_bind));
     manager->display_destroy.notify = output_manager_handle_display_destroy;
     wl_display_add_destroy_listener(server->display, &manager->display_destroy);
-    return true;
 }
 
 static void output_cursor_source_request_frame(struct wlr_ext_image_capture_source_v1 *base,

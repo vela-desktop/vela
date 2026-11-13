@@ -177,7 +177,7 @@ qt_add_qml_module(vela-shell
     QML_FILES ${VELA_QML_FILES})
 
 target_compile_options(vela-shell PRIVATE -Wall -Wextra)
-target_link_libraries(vela-shell PRIVATE
+target_link_libraries(vela-shell PRIVATE vela-alloc
     Qt6::DBus
     Qt6::Gui
     Qt6::Qml

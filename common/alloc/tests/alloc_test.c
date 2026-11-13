@@ -208,6 +208,25 @@ static void allocation_failure_aborts(void)
     reset_counts();
 }
 
+static void *returns(void *value)
+{
+    return value;
+}
+
+static void must_names_the_expression(void)
+{
+    int value = 7;
+    // A non-NULL result passes through with its type.
+    int *same = VELA_MUST(returns(&value));
+    if (same != &value) {
+        fprintf(stderr, "VELA_MUST changed a non-NULL result\n");
+        ++failures;
+    }
+    EXPECT_ABORT("vela: out of memory (returns(NULL))", VELA_MUST(returns(NULL)));
+    // The memory figures follow, as for vela_oom.
+    EXPECT_ABORT(" MiB; available ", VELA_MUST(returns(NULL)));
+}
+
 // A real failure, not a forced one: the address space is limited below the
 // request. ASan reserves terabytes of shadow memory and cannot run under it.
 static void real_failure_reports_memory(void)
@@ -335,6 +354,7 @@ int main(void)
     overflow_names_the_call_site();
     misuse_is_reported_as_such();
     allocation_failure_aborts();
+    must_names_the_expression();
     real_failure_reports_memory();
     if (failures) {
         fprintf(stderr, "%d failure(s)\n", failures);
