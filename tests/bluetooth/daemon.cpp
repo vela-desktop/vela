@@ -1420,7 +1420,6 @@ private slots:
         QCOMPARE(errorOf(start(QStringLiteral("Add"), { object(mouse), false })), QString());
     }
 
-    // Add on the device that is asking takes its request over: no Pair.
     // ------------------------- event sources that fail (point 2b of the
     // allocation policy), through compositor/tests/sd_event_fail_preload.c --
 
@@ -1495,6 +1494,7 @@ private slots:
 #endif
     }
 
+    // Add on the device that is asking takes its request over: no Pair.
     void addOnTheDeviceThatAsks()
     {
         deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
