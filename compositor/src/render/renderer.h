@@ -103,8 +103,26 @@ bool vela_renderer_read_timing(struct vela_renderer *renderer, int slot, uint64_
 
 // The texture is ours and its format has no alpha (an opaque buffer).
 bool vela_texture_is_opaque(struct wlr_texture *texture);
+// The texture has something to draw: false only for one of ours whose first
+// content is still being uploaded over several frames.
+bool vela_texture_shown(struct wlr_texture *texture);
+// Changes when a deferred upload switches the texture to its new image: the
+// texture's whole area must be drawn again then (0 for others).
+uint64_t vela_texture_content(struct wlr_texture *texture);
 
+// Shared-memory uploads (docs/memory-allocation-policy.md, point 6). An
+// upload that doesn't fit in the upload staging budget is copied over the
+// next frames: vela_renderer_continue_uploads, at the start of every output
+// frame, copies the next pieces, oldest upload first.
+struct vela_upload_progress {
+    int pending; // uploads still waiting for pieces
+    int completed; // uploads finished now: their textures show the new image
+};
+struct vela_upload_progress vela_renderer_continue_uploads(struct vela_renderer *renderer);
 struct vela_upload_stats {
+    int chunks, chunks_peak; // upload staging chunks allocated, now and at most
+    int chunks_max; // the budget, in chunks of the same size
+    uint64_t in_place, deferred, replaced, completed, abandoned, pieces;
     uint64_t rejected; // client buffers refused for their size
 };
 struct vela_upload_stats vela_renderer_upload_stats(const struct vela_renderer *renderer);

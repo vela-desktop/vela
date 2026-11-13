@@ -38,6 +38,7 @@ struct vela_element {
     const void *key; // who it is: the surface or our node
     struct wlr_surface *surface; // app surfaces, otherwise NULL
     struct wlr_texture *texture; // NULL: solid color
+    uint64_t content; // vela_texture_content: a new value is a new image of the texture
     struct wlr_render_color color;
     struct wlr_fbox src;
     enum wl_output_transform transform;
