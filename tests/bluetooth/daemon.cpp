@@ -29,6 +29,7 @@
 
 #include <linux/rfkill.h>
 
+#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -94,6 +95,7 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
     int restartWindowMs = 0; // bounded retry-window tests
     bool stoppedBeingVisible = false; // the test pressed "Stop being visible"
     QString daemonName; // its unique name: signals of an earlier daemon don't count
+    QByteArray daemonLog; // its stderr, when startDaemon() was asked to keep it
     QString mouse;
     QString headset;
     QString keyboard;
@@ -284,11 +286,12 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         return indexes;
     }
 
-    bool startDaemon(const QMap<QString, QString>& extra = {})
+    bool startDaemon(const QMap<QString, QString>& extra = {}, bool keepLog = false)
     {
         // The last test's signals may still be queued here (blocking calls
         // don't process events): from now on they don't count.
         daemonName.clear();
+        daemonLog.clear();
         operations.clear();
         asked.clear();
         questionChanges.clear();
@@ -312,7 +315,7 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
             environment.insert(it.key(), it.value());
         }
         daemon.setProcessEnvironment(environment);
-        daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+        daemon.setProcessChannelMode(keepLog ? QProcess::SeparateChannels : QProcess::ForwardedErrorChannel);
         daemon.start(QStringLiteral(VELA_BLUETOOTH_DAEMON), {});
         if (!daemon.waitForStarted()) {
             return false;
@@ -324,6 +327,16 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         daemonName = bus.interface()->serviceOwner(service);
         // As Vela's UI does: from now on the question signals come here.
         return !daemonName.isEmpty() && errorOf(call(QStringLiteral("Questions"))).isEmpty();
+    }
+
+    // The daemon's stderr so far (startDaemon with keepLog), still shown
+    // on the test's own.
+    QString logged()
+    {
+        const QByteArray more = daemon.readAllStandardError();
+        std::fwrite(more.constData(), 1, size_t(more.size()), stderr);
+        daemonLog += more;
+        return QString::fromUtf8(daemonLog);
     }
 
     int stopDaemon()
@@ -1412,12 +1425,15 @@ private slots:
     // allocation policy), through compositor/tests/sd_event_fail_preload.c --
 
 #ifdef VELA_SD_EVENT_FAIL_PRELOAD
-    // The daemon again, ready as init() leaves it, with `failing` sources.
+    // The daemon again, ready as init() leaves it, with `failing` sources
+    // and its log kept: each test checks the line of the source that failed,
+    // which the same outcome with the source would not show.
     void restartFailing(const QString& failing)
     {
         QCOMPARE(stopDaemon(), 0);
         QVERIFY(startDaemon({ { QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_SD_EVENT_FAIL_PRELOAD) },
-            { QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), failing } }));
+                                { QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), failing } },
+            true));
         QTRY_COMPARE(devices().size(), 3);
         QTRY_VERIFY(property(QStringLiteral("Active")).toBool());
         QTRY_VERIFY(velaIsTheDefaultAgent());
@@ -1439,6 +1455,7 @@ private slots:
         QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), true });
         const Asked question = nextQuestion(0);
         QCOMPARE(question.kind(), QStringLiteral("confirm-passkey"));
+        QTRY_VERIFY(logged().contains(QStringLiteral("vela-bluetooth: question timer: failed")));
         QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
         QCOMPARE(errorOf(add), QString());
         QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
@@ -1454,6 +1471,7 @@ private slots:
         restartFailing(QStringLiteral("time_relative=30000000"));
         QCOMPARE(errorOf(start(QStringLiteral("Remove"), { object(headset) })), QString());
         QVERIFY(!devices().contains(headset));
+        QTRY_VERIFY(logged().contains(QStringLiteral("vela-bluetooth: ") + headset + QStringLiteral(": remove timer: failed")));
 #endif
     }
 
@@ -1470,6 +1488,7 @@ private slots:
         const Asked adopted = nextQuestion(1);
         QCOMPARE(adopted.id, question.id);
         QTRY_COMPARE(devices().value(mouse).value(QStringLiteral("operation")).toString(), QStringLiteral("pairing"));
+        QTRY_VERIFY(logged().contains(QStringLiteral("vela-bluetooth: ") + mouse + QStringLiteral(": pairing timer: failed")));
         QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
         QCOMPARE(errorOf(add), QString());
         QVERIFY(devices().value(mouse).value(QStringLiteral("paired")).toBool());
