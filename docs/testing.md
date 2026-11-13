@@ -566,6 +566,27 @@ scenarios: open a log file for appending, start
 `Session(binary="vela-compositor-alloc-count",
 env={"VELA_TEST_ALLOC_LOG_FD": str(fd)}, pass_fds=(fd,))`, then read the log.
 
+## Upload staging and image limits
+
+Shared-memory uploads are copied in pieces under a byte budget, deferred
+over frames when they don't fit, and client buffers above the device's
+image limits are refused
+([allocation policy](memory-allocation-policy.md#6-external-sizes)):
+
+- `compositor.upload-staging` (CPU, also in hosted CI) runs the production
+  `renderer.c`, `texture.c` and `pass.c` on a fake Vulkan device that keeps
+  images and buffers in memory and runs the recorded copies and draws when
+  its timeline reaches them; every draw must read a whole committed buffer.
+  The budget is the production code with smaller numbers. It is linked with
+  the allocation counter, like `compositor.frame-path`.
+- `functional-uploads` (GPU) uses `tools/vela-bigbuffer`, a client with
+  buffers of any size (banded per version and per row band, scaled into a
+  small window, or a linear dmabuf claiming any size), and checks the
+  budget, the atomic switch frame by frame with `vela-screen-record`, the
+  progress of one upload under a client committing above the budget every
+  frame, and the limits the compositor logs at startup, with Vulkan
+  validation on.
+
 ## Vulkan validation and renderer diagnosis
 
 For renderer work, run relevant scenarios with Vulkan validation enabled:
