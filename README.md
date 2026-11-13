@@ -53,6 +53,8 @@ desktop feel less modern.
   window previews, blur, rounded corners and shadows, and Xwayland for X11 apps and games.
 - **Shell:** taskbar, app launcher, quick settings, notifications, clipboard history,
   screenshots and desktop icons, in light and dark modes.
+- **Themes:** complete looks in one click, Vela Expressive among them, with an accent
+  that can follow your wallpaper's colors.
 - **Files:** tabs, search, previews, archives, removable drives and safe background copies.
 - **Settings:** displays, sound, network, Bluetooth, input, personalization,
   accessibility and updates.

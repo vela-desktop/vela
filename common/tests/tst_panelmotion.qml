@@ -180,6 +180,26 @@ Item {
             compare(motion.area, a)
         }
 
+        // The panel is inside its blur region on every frame of the
+        // entrance; with the default motion it never passes its rest (the
+        // expressive one does: expressive/tst_panelmotion_spatial.qml).
+        function test_area_holds_the_panel_on_every_frame() {
+            if (!Theme.animationEffects)
+                skip("with effects on")
+            motion.open()
+            let lowest = 1
+            while (motion.moving) {
+                const a = motion.area
+                const top = motion.y + shift.y
+                verify(top >= a.y - 0.01 && top + motion.height <= a.y + a.height + 0.01,
+                       "panel at " + top + " in " + a.y + "+" + a.height)
+                lowest = Math.min(lowest, motion.away)
+                wait(8)
+            }
+            compare(Theme.spatialOvershoot("default"), 0)
+            verify(lowest >= 0, "away went to " + lowest)
+        }
+
         function test_visible_area_is_cut_by_the_parent() {
             if (!Theme.animationEffects)
                 skip("with effects on")

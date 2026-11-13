@@ -1,0 +1,11 @@
+# Temporary, for PR #248 only: the pull request has more files than one
+# review takes. First pass: the code. Pictures, translations, documents and
+# tests are left out here and reviewed in a second pass. Remove this file
+# before the pull request leaves draft.
+reviews:
+  path_filters:
+    - "!**/*.png"
+    - "!**/*.ts"
+    - "!**/*.md"
+    - "!**/LICENSE"
+    - "!**/tests/**"

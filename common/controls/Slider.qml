@@ -94,7 +94,8 @@ T.Slider {
             width: control.thick ? control.availableWidth : control.trackLength
             height: control.expressiveShape ? 12 : control.thick ? 10 : 4
             radius: height / 2
-            color: control.expressive ? Theme.surfaceContainerHigh : Theme.controlStrokeStrong
+            // Expressive: M3's inactive track is secondary container.
+            color: control.expressive ? Theme.secondaryContainer : Theme.controlStrokeStrong
             opacity: control.expressive ? 1 : 0.6
         }
         Rectangle {
@@ -127,8 +128,12 @@ T.Slider {
         implicitWidth: control.expressiveShape ? 8 : control.thick ? 40 : 20
         implicitHeight: control.expressiveShape ? 28 : control.thick ? 25 : 20
         radius: control.expressiveShape ? Math.min(Theme.shapeSmall, height / 2) : control.thick ? 12 : 10
-        color: control.expressiveShape ? Theme.primary : control.thick ? Theme.popup : Theme.light ? "#ffffff" : "#454545"
-        border.width: control.expressiveShape ? 0 : control.knobBorder ? 1 : 0
+        // Expressive and thick: the knob the fill's color, the filled part's
+        // rounded end (Vela's choice: a surface-colored knob read as a gap
+        // in the tonal track).
+        color: control.expressiveShape ? Theme.primary : control.thick && control.expressive ? control.fillColor
+            : control.thick ? Theme.popup : Theme.light ? "#ffffff" : "#454545"
+        border.width: control.expressive ? 0 : control.knobBorder ? 1 : 0
         border.color: Theme.light ? Qt.rgba(0, 0, 0, 0.1) : Qt.rgba(1, 1, 1, 0.09)
         Rectangle {
             visible: !control.thick && !control.expressiveShape

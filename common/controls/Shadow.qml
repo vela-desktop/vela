@@ -16,7 +16,9 @@ Item {
 
     required property Item target
     property var depth: Theme.shadow.flyout
-    property real radius: Theme.radiusOverlay
+    // The target's corners, when it has them (a Rectangle): a panel in a
+    // style's own radius casts a shadow of that shape.
+    property real radius: target && target.radius !== undefined ? target.radius : Theme.radiusOverlay
     property real blur: depth.blur
     property vector2d offset: Qt.vector2d(0, depth.offset)
     property color color: Qt.rgba(0, 0, 0, depth.opacity)
@@ -56,4 +58,21 @@ Item {
     Strip { x: 0; y: root.reach + root.target.height; width: root.width; height: Math.min(root.below, root.reach) }
     Strip { x: 0; y: root.reach; width: root.reach; height: root.target.height }
     Strip { x: root.reach + root.target.width; y: root.reach; width: root.reach; height: root.target.height }
+    // Expressive: the corners too, inside the target's box, where its round
+    // corners leave the strips' gap (a lighter square at M3's 28). Its
+    // tonal surfaces are opaque and every Shadow lies beneath its target, so
+    // only the part outside the round corner shows. A blurred window asks
+    // for its blur rounded like the target (Effects.setBlur's radius): the
+    // compositor blurs wherever the window isn't transparent.
+    Repeater {
+        model: Theme.expressive && root.radius > 0 ? 4 : 0
+        delegate: Strip {
+            required property int index
+            readonly property real size: Math.min(root.radius, root.target.width / 2, root.target.height / 2)
+            x: index % 2 === 0 ? root.reach : root.reach + root.target.width - size
+            y: index < 2 ? root.reach : root.reach + root.target.height - size
+            width: size
+            height: size
+        }
+    }
 }

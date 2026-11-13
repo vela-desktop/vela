@@ -26,14 +26,21 @@ Page {
         color: "#101010"
         border.width: Prefs.wallpaper === path ? 2 : 0
         border.color: Theme.accentFill
-        Image {
-            anchors { fill: parent; margins: Prefs.wallpaper === thumb.path ? 3 : 0 }
-            source: page.urlFor(thumb.path)
-            sourceSize: Qt.size(240, 160)
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            opacity: status === Image.Ready ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+        // The picture in the thumbnail's corners, less the ring's 3 when
+        // it is the one in use.
+        RoundClip {
+            readonly property int inset: Prefs.wallpaper === thumb.path ? 3 : 0
+            anchors { fill: parent; margins: inset }
+            radius: Math.max(0, thumb.radius - inset)
+            Image {
+                anchors.fill: parent
+                source: page.urlFor(thumb.path)
+                sourceSize: Qt.size(240, 160)
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                opacity: status === Image.Ready ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+            }
         }
         Fill {
             anchors.fill: parent

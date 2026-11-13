@@ -17,12 +17,27 @@ Item {
     signal activated()
     signal contextRequested(real x, real y) // right button, in the tile's coordinates
 
+    // Expressive (startmenu-variant=expressive, which StartMenu passes):
+    // Vela's large corners (Theme.shapeLarge), M3's state layers of on
+    // surface, the keyboard's tile in secondary container with its own state
+    // layers (M3's selected list item; the shape is Vela's choice).
+    property bool expressive: false
+    // The radius of the shape the tile sits in (the expressive pinned apps'
+    // container), 0 for none: its fill, 3 inside, follows it.
+    property real containerRadius: 0
+    readonly property real stateLayer: mouse.pressed ? Theme.statePressed : mouse.containsMouse ? Theme.stateHover : 0
+    readonly property color layerColor: current ? Theme.secondaryContainerText : Theme.surfaceText
+
     Fill {
+        objectName: "appTileFill"
         anchors.fill: parent
         anchors.margins: 3
-        radius: Theme.radius
-        color: mouse.pressed ? Theme.subtlePressed : mouse.containsMouse || root.current ? Theme.subtleHover : Theme.subtleRest
-        border.width: root.current ? 1 : 0
+        radius: Theme.nested(root.containerRadius, 3, root.expressive ? Theme.shapeLarge : Theme.radius)
+        color: root.expressive
+            ? (root.current ? Theme.mix(Theme.secondaryContainer, Theme.secondaryContainerText, root.stateLayer)
+                            : Qt.rgba(root.layerColor.r, root.layerColor.g, root.layerColor.b, root.stateLayer))
+            : mouse.pressed ? Theme.subtlePressed : mouse.containsMouse || root.current ? Theme.subtleHover : Theme.subtleRest
+        border.width: root.current && !root.expressive ? 1 : 0
         border.color: Theme.stroke
     }
 
@@ -47,7 +62,8 @@ Item {
             objectName: "appTileLabel"
             width: parent.width
             text: root.name
-            color: Theme.text
+            color: root.expressive && root.current ? Theme.secondaryContainerText : Theme.text
+            Behavior on color { enabled: root.expressive; ColorFade {} }
             font.pixelSize: Theme.fontCaption
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap

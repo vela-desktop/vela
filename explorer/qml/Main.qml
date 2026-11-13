@@ -152,7 +152,7 @@ Window {
                     radius: 0
                     topLeftRadius: Theme.radiusOverlay
                     topRightRadius: Theme.radiusOverlay
-                    color: active ? Theme.layer : tabMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    color: active ? Theme.layer : tabMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                     Image {
                         x: 12
                         anchors.verticalCenter: parent.verticalCenter
@@ -197,6 +197,8 @@ Window {
                     }
                     ToolButton {
                         anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                        outerRadius: Theme.radiusOverlay // the tab's top corners
+                        outerGap: 6
                         width: 24
                         height: 24
                         icon.name: "window-close"

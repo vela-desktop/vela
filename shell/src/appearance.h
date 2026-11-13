@@ -10,10 +10,12 @@
 #include <QTimer>
 #include <QVariantMap>
 
+#include "accentsource.h"
 #include "themefile.h"
 
 // The look of Vela's interfaces (Vela.Controls' Style): the apps' light or
-// dark mode ("Choose your mode"), accent color and Mica (see mica.h). System
+// dark mode ("Choose your mode"), accent color (from the wallpaper too:
+// accentsource.h), its tonal palette and Mica (see mica.h). System
 // UI (the shell, the polkit dialog) follows the shell's mode instead
 // (Mode::Shell). Also whether things move (animation-effects in vela.conf,
 // which Theme reads: docs/visual-coherence.md §6.5).
@@ -22,7 +24,19 @@
 class Appearance : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool light READ light NOTIFY changed)
+    // The user's accent: the chosen one, or the wallpaper's when the user or
+    // the theme asks (accentsource.h, steps 2-3). Theme.qml puts a theme's
+    // own accent over it.
     Q_PROPERTY(QColor accent READ accent NOTIFY changed)
+    // Material's Tonal Spot roles (vela::color::Roles, keys as its names:
+    // primary, onPrimary, ..., surfaceContainerHighest, inversePrimary) in
+    // this mode, from the theme's primary or the effective accent, as
+    // QColor. Theme.qml's tonal roles fall back to them.
+    Q_PROPERTY(QVariantMap tonal READ tonal NOTIFY changed)
+    // The wallpaper's source color (mica.h's cachedWallpaperColor()), what
+    // the accent takes from the wallpaper; invalid while the shell hasn't
+    // found one or the wallpaper has none. Settings > Colors shows it.
+    Q_PROPERTY(QColor wallpaperColor READ wallpaperColor NOTIFY changed)
     Q_PROPERTY(QColor mica READ mica NOTIFY changed)
     Q_PROPERTY(QColor micaInactive READ micaInactive NOTIFY changed)
     // The chosen theme's and styles' values, merged (theme=, taskbar-style=,
@@ -48,6 +62,13 @@ public:
 
     bool light() const { return m_light; }
     QColor accent() const { return m_accent; }
+    QVariantMap tonal() const { return m_tonal; }
+    QColor wallpaperColor() const { return m_wallpaperColor; }
+    // The roles of another source color or mode, as tonal (Settings'
+    // previews, the title bars in the apps' mode).
+    Q_INVOKABLE QVariantMap tonalOf(const QColor& source, bool light) const;
+    // The palette's source color in a mode (accentsource.h's schemeSource()).
+    QColor schemeSource(bool light) const;
     QColor mica() const { return m_mica; }
     QColor micaInactive() const { return m_micaInactive; }
     bool animationEffects() const { return m_animationEffects; }
@@ -84,6 +105,13 @@ private:
     bool m_watching = false;
     bool m_light = false;
     QColor m_accent;
+    // What the accent rule read (accentsource.h).
+    vela::accent::Source m_accentSource = vela::accent::Source::Theme;
+    QColor m_chosenAccent;
+    QColor m_wallpaperColor;
+    QVariantMap m_tonal;
+    QColor m_tonalSource; // the palette is computed again only when it or the mode change
+    QColor m_otherTonalSource; // the other mode's: the apps' title bars may use it (the shell's sendLook)
     QColor m_mica;
     QColor m_micaInactive;
     QVariantMap m_theme;

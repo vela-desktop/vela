@@ -36,6 +36,30 @@ Item {
         function init() {
             Prefs.reset()
             root.navigated = []
+            card.wallpaperUsable = true
+        }
+
+        // The accent from the wallpaper: the user's wish or the theme's.
+        function test_the_accent_from_the_wallpaper() {
+            Prefs.accentSource = "wallpaper"
+            compare(line("inUseAccent").value, "From the wallpaper")
+            // A wallpaper without a usable color: the user's is used.
+            card.wallpaperUsable = false
+            compare(line("inUseAccent").value, "Yours")
+            card.wallpaperUsable = true
+            Prefs.accentSource = "theme"
+            compare(line("inUseAccent").value, "Yours")
+            Prefs.tokens = { vela: { "color-source": "wallpaper" } }
+            ++Prefs.themesRevision
+            compare(line("inUseAccent").value, "From the wallpaper")
+            Prefs.tokens = { vela: { "color-source": "wallpaper", "dark.accent": "#00b294" } }
+            ++Prefs.themesRevision
+            compare(line("inUseAccent").value, "The theme's in dark mode, the wallpaper's in light mode")
+            Prefs.tokens = { vela: { "dark.color-source": "wallpaper" } }
+            ++Prefs.themesRevision
+            compare(line("inUseAccent").value, "From the wallpaper in dark mode, yours in light mode")
+            Prefs.accentSource = "chosen"
+            compare(line("inUseAccent").value, "Yours")
         }
 
         function test_vela_own_look() {

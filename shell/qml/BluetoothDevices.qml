@@ -43,6 +43,8 @@ Flickable {
             model: Bluetooth.paired
             delegate: ListItem {
                 id: device
+                outerRadius: Styles.quickSettings.radius // 16 inside the quick settings' panel
+                outerGap: 16
                 required property var modelData
                 readonly property bool open: view.expanded === modelData.path
                 readonly property bool busy: modelData.operation !== ""

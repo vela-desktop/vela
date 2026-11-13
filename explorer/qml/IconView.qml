@@ -129,7 +129,7 @@ Item {
                 radius: Theme.radius
                 color: cellDrop.containsDrag ? Theme.selectionHover
                     : cell.selected ? (cellMouse.containsMouse ? Theme.selectionHover : Theme.selection)
-                    : cellMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    : cellMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                 border.width: view.model.currentIndex === cell.index && view.tab.viewFocused ? 1 : 0
                 border.color: Theme.focusRing
             }

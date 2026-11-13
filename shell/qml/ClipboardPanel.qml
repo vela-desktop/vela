@@ -30,7 +30,7 @@ Window {
         visible = true
         motion.open()
         panel.forceActiveFocus()
-        Effects.setBlur(root, [motion.visibleArea])
+        Effects.setBlur(root, [motion.visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
     }
     function close() {
         motion.close()
@@ -77,7 +77,7 @@ Window {
         height: panel.height
         offset: Qt.point(0, 48)
         onClosed: root.visible = false
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the panel at rest
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], Theme.expressive ? Theme.radiusOverlay : 0) // the travel while it moves, the panel at rest
 
         Shadow {
             id: shadow
@@ -205,7 +205,7 @@ Window {
                                 readonly property bool selected: index === root.current
                                 width: cards.width
                                 height: Math.max(56, (modelData.kind === "image" ? thumb.height : body.height) + 24)
-                                radius: Theme.radius
+                                radius: Theme.nested(Theme.radiusOverlay, 16, Theme.radius) // 16 inside the panel
                                 color: cardMouse.containsMouse ? Theme.subtleHover : Theme.control
                                 border.width: selected ? 2 : 1
                                 border.color: selected ? Theme.accent : Theme.stroke

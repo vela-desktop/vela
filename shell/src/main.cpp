@@ -481,6 +481,12 @@ int main(int argc, char* argv[])
     qmlEngine = &engine;
     // Theme, Style (the shell's mode, accent, icons) and Effects (the blur):
     // Vela.Controls, like the apps.
+    // First the wallpaper's tint and its source color (for a palette from
+    // the wallpaper), which Style reads from their caches: written before it
+    // exists, so on a first run, when the cache directory was not there to
+    // watch, it starts from them.
+    QColor tint = shell.wallpaperTint(config.wallpaper());
+    shell.wallpaperColor(config.wallpaper());
     Appearance* style = vela::controls::install(engine, Appearance::Mode::Shell);
     style->watch();
     // The distribution's logo may be in the icon theme only: look again now
@@ -491,7 +497,6 @@ int main(int argc, char* argv[])
     // §6.6): both modes and the accent (acrylic tint, title bars, the snap
     // preview), and the title bars' Mica colors in the apps' mode, with the
     // formula Vela's apps use for their content (mica.h).
-    QColor tint = shell.wallpaperTint(config.wallpaper());
     // A theme's accent and window background (themes/<name>.conf) win, as in
     // Theme.qml: the title bars match the apps' content. A see-through
     // background (Window Glass) keeps Mica on the title bars, as in Lowell137's
@@ -504,8 +509,23 @@ int main(int argc, char* argv[])
         const bool appsLight = config.appTheme() == QLatin1String("light");
         const QVariant background = vela::themes::themed(style->theme(), QStringLiteral("background"), appsLight);
         const bool themed = background.typeId() == QMetaType::QColor && background.value<QColor>().alpha() == 255;
-        const QColor active = themed ? background.value<QColor>() : micaFromTint(tint, true, appsLight);
-        const QColor inactive = themed ? active : micaFromTint(tint, false, appsLight);
+        // The expressive variant's windows are the palette's opaque surface
+        // (Theme.qml's background): the title bars too, active or not, or
+        // a Mica bar would sit over tonal content. The theme's own surface
+        // role (surfaceBase) if it sets one, as Theme.qml.
+        const bool expressive = !background.isValid()
+            && vela::themes::themed(style->theme(), QStringLiteral("controls-variant"), appsLight).toString()
+                == QLatin1String("expressive");
+        QColor active = micaFromTint(tint, true, appsLight);
+        QColor inactive = micaFromTint(tint, false, appsLight);
+        if (themed) {
+            active = inactive = background.value<QColor>();
+        } else if (expressive) {
+            const QVariant surfaceBase = vela::themes::themed(style->theme(), QStringLiteral("surfaceBase"), appsLight);
+            active = inactive = surfaceBase.typeId() == QMetaType::QColor
+                ? surfaceBase.value<QColor>()
+                : style->tonalOf(style->schemeSource(appsLight), appsLight).value(QStringLiteral("surface")).value<QColor>();
+        }
         ShellController::sendToCompositor("mica " + active.name().toLatin1() + ' ' + inactive.name().toLatin1());
         // The blur's look (the blur-* keys): the theme's for every acrylic
         // surface, then each panel's from the theme and its own style only, so
@@ -528,6 +548,7 @@ int main(int argc, char* argv[])
     sendLook();
     QObject::connect(&config, &Config::wallpaperChanged, &shell, [&] {
         tint = shell.wallpaperTint(config.wallpaper());
+        shell.wallpaperColor(config.wallpaper());
         sendLook();
     });
     QObject::connect(&config, &Config::themeChanged, &shell, sendLook);

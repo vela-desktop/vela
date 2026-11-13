@@ -57,7 +57,7 @@ Item {
             compare(toggle.showLabel, false)
             compare(toggle.indicator.width, 52)
             compare(toggle.indicator.height, 32)
-            tryVerify(() => Colors.same(toggle.indicator.color, Theme.surfaceContainerHigh), 2000)
+            tryVerify(() => Colors.same(toggle.indicator.color, Theme.surfaceContainerHighest), 2000)
             mouseClick(toggle)
             compare(toggle.checked, true)
             tryVerify(() => Colors.same(toggle.indicator.color, Theme.primary), 2000)
@@ -81,7 +81,10 @@ Item {
             compare(thickSlider.handle.height, 25)
             compare(thickSlider.background.children[0].x, 0)
             compare(thickSlider.background.children[0].width, thickSlider.availableWidth)
-            verify(Colors.same(thickSlider.background.children[0].color, Theme.surfaceContainerHigh))
+            verify(Colors.same(thickSlider.background.children[0].color, Theme.secondaryContainer))
+            // The knob is the fill's rounded end, in its color, unbordered.
+            verify(Colors.same(thickSlider.handle.color, thickSlider.fillColor))
+            compare(thickSlider.handle.border.width, 0)
         }
 
         // Content on the tonal roles reads at 4.5:1 whatever the theme set.
@@ -95,13 +98,59 @@ Item {
             verify(Colors.same(Theme.legibleOn("#ffffff", "#1d192b"), Qt.color("#1d192b")))
         }
 
-        // Without theme values the containers follow the accent: the same hue
-        // family as primary, not Material's baseline purple.
-        function test_fallback_containers_follow_primary() {
-            verify(Colors.same(Theme.mix("#000000", "#ffffff", 0.5), Qt.rgba(0.5, 0.5, 0.5, 1)))
-            const expected = Theme.light ? Theme.mix(Theme.primary, "#f0f0f0", 0.82)
-                                         : Theme.mix(Theme.primary, "#2c2c2c", 0.8)
-            verify(Colors.same(Theme.secondaryContainer, expected))
+        // Without theme values the roles are the accent's Tonal Spot palette
+        // (Style.tonal, vela-color's): the same hue family as the accent,
+        // not Material's baseline purple, each with its own key.
+        function test_roles_come_from_the_palette() {
+            const roles = {
+                primary: "primary", primaryText: "onPrimary",
+                primaryContainer: "primaryContainer", primaryContainerText: "onPrimaryContainer",
+                secondary: "secondary", secondaryText: "onSecondary",
+                secondaryContainer: "secondaryContainer", secondaryContainerText: "onSecondaryContainer",
+                tertiary: "tertiary", tertiaryText: "onTertiary",
+                tertiaryContainer: "tertiaryContainer", tertiaryContainerText: "onTertiaryContainer",
+                error: "error", errorText: "onError",
+                errorContainer: "errorContainer", errorContainerText: "onErrorContainer",
+                surfaceTone: "surface",
+                surfaceContainerLowest: "surfaceContainerLowest", surfaceContainerLow: "surfaceContainerLow",
+                surfaceContainer: "surfaceContainer", surfaceContainerHigh: "surfaceContainerHigh",
+                surfaceContainerHighest: "surfaceContainerHighest",
+                surfaceText: "onSurface", surfaceVariantText: "onSurfaceVariant",
+                outline: "outline", outlineVariant: "outlineVariant",
+                inverseSurface: "inverseSurface", inverseSurfaceText: "inverseOnSurface"
+            }
+            for (const name in roles)
+                verify(Colors.same(Theme[name], Style.tonal[roles[name]]), name)
+            // The palette's source is the accent (no theme here sets one or
+            // a primary), in the current mode.
+            const own = Style.tonalOf(Theme.accent, Theme.light)
+            for (const key in own)
+                verify(Colors.same(own[key], Style.tonal[key]), key)
+            verify(!Colors.same(Theme.primary, Theme.tertiary))
+        }
+
+        // Material's pairs read in both modes: content on its role at 4.5:1
+        // (WCAG's for body text), the outline on the surface at 3:1 (a
+        // target's boundary).
+        function test_palette_contrast_in_both_modes() {
+            const pairs = [
+                ["primary", "onPrimary"], ["primaryContainer", "onPrimaryContainer"],
+                ["secondary", "onSecondary"], ["secondaryContainer", "onSecondaryContainer"],
+                ["tertiary", "onTertiary"], ["tertiaryContainer", "onTertiaryContainer"],
+                ["error", "onError"], ["errorContainer", "onErrorContainer"],
+                ["surface", "onSurface"], ["surface", "onSurfaceVariant"],
+                ["surfaceContainerLowest", "onSurface"], ["surfaceContainerLow", "onSurface"],
+                ["surfaceContainer", "onSurface"], ["surfaceContainerHigh", "onSurface"],
+                ["surfaceContainerHighest", "onSurface"], ["surfaceContainerHighest", "onSurfaceVariant"],
+                ["inverseSurface", "inverseOnSurface"]
+            ]
+            for (const isLight of [true, false]) {
+                const tonal = Style.tonalOf(Theme.accent, isLight)
+                const mode = isLight ? "light " : "dark "
+                for (const [role, on] of pairs)
+                    verify(Theme.contrastOf(tonal[role], tonal[on]) >= 4.5, mode + on + " on " + role)
+                verify(Theme.contrastOf(tonal.surface, tonal.outline) >= 3, mode + "outline on surface")
+            }
         }
 
         function test_surface_uses_shape_and_outline_tokens() {

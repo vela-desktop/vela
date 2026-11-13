@@ -188,6 +188,30 @@ Specifiche sistema
         <translation>Colore principale</translation>
     </message>
     <message>
+        <source>In dark mode %1, the theme in use, brings its own</source>
+        <translation>In modalità scura %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
+        <source>In light mode %1, the theme in use, brings its own</source>
+        <translation>In modalità chiara %1, il tema in uso, ha il suo</translation>
+    </message>
+    <message>
+        <source>Taken from your wallpaper: it changes with it. Choose My color to pick one below</source>
+        <translation>Preso dal tuo sfondo: cambia insieme a lui. Scegli Il mio colore per sceglierne uno qui sotto</translation>
+    </message>
+    <message>
+        <source>%1, the theme in use, takes it from your wallpaper: it changes with it. Choose My color to pick one below</source>
+        <translation>%1, il tema in uso, lo prende dal tuo sfondo: cambia insieme a lui. Scegli Il mio colore per sceglierne uno qui sotto</translation>
+    </message>
+    <message>
+        <source>Your wallpaper has no color to take, so the one chosen below is used</source>
+        <translation>Il tuo sfondo non ha un colore da prendere, quindi si usa quello scelto qui sotto</translation>
+    </message>
+    <message>
+        <source>%1, the theme in use, takes it from your wallpaper, which has no color to take, so the one chosen below is used</source>
+        <translation>%1, il tema in uso, lo prende dal tuo sfondo, che non ha un colore da prendere, quindi si usa quello scelto qui sotto</translation>
+    </message>
+    <message>
         <source>%1, the theme in use, brings its own accent color. The one chosen here comes back with another theme</source>
         <translation>%1, il tema in uso, ha un suo colore principale. Quello scelto qui torna con un altro tema</translation>
     </message>
@@ -214,6 +238,34 @@ Specifiche sistema
     <message>
         <source>Themes</source>
         <translation>Temi</translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation>Origine</translation>
+    </message>
+    <message>
+        <source>Wallpaper color: %1</source>
+        <translation>Colore dello sfondo: %1</translation>
+    </message>
+    <message>
+        <source>No color in the wallpaper</source>
+        <translation>Nessun colore nello sfondo</translation>
+    </message>
+    <message>
+        <source>From the theme</source>
+        <translation>Dal tema</translation>
+    </message>
+    <message>
+        <source>From the wallpaper</source>
+        <translation>Dallo sfondo</translation>
+    </message>
+    <message>
+        <source>My color</source>
+        <translation>Il mio colore</translation>
+    </message>
+    <message>
+        <source>Accent color source</source>
+        <translation>Origine del colore principale</translation>
     </message>
     <message>
         <source>Colors</source>
@@ -2544,6 +2596,13 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>Preferences</name>
+    <message>
+        <source>Check that you can write %1.</source>
+        <translation>Controlla di poter scrivere %1.</translation>
+    </message>
+</context>
+<context>
     <name>ResetThemesCard</name>
     <message>
         <source>Reset</source>
@@ -3307,12 +3366,32 @@ Specifiche sistema
         <translation>Quello del tema</translation>
     </message>
     <message>
+        <source>The theme&apos;s in dark mode, the wallpaper&apos;s in light mode</source>
+        <translation>Quello del tema in modalità scura, quello dello sfondo in modalità chiara</translation>
+    </message>
+    <message>
         <source>The theme&apos;s in dark mode, yours in light mode</source>
         <translation>Quello del tema in modalità scura, il tuo in modalità chiara</translation>
     </message>
     <message>
+        <source>The theme&apos;s in light mode, the wallpaper&apos;s in dark mode</source>
+        <translation>Quello del tema in modalità chiara, quello dello sfondo in modalità scura</translation>
+    </message>
+    <message>
         <source>The theme&apos;s in light mode, yours in dark mode</source>
         <translation>Quello del tema in modalità chiara, il tuo in modalità scura</translation>
+    </message>
+    <message>
+        <source>From the wallpaper</source>
+        <translation>Dallo sfondo</translation>
+    </message>
+    <message>
+        <source>From the wallpaper in dark mode, yours in light mode</source>
+        <translation>Dallo sfondo in modalità scura, il tuo in modalità chiara</translation>
+    </message>
+    <message>
+        <source>From the wallpaper in light mode, yours in dark mode</source>
+        <translation>Dallo sfondo in modalità chiara, il tuo in modalità scura</translation>
     </message>
     <message>
         <source>Yours</source>
@@ -3970,13 +4049,6 @@ Specifiche sistema
     <message>
         <source>Couldn&apos;t save the automatic update check frequency.</source>
         <translation>Impossibile salvare la frequenza dei controlli automatici degli aggiornamenti.</translation>
-    </message>
-</context>
-<context>
-    <name>Preferences</name>
-    <message>
-        <source>Check that you can write %1.</source>
-        <translation>Controlla di poter scrivere %1.</translation>
     </message>
 </context>
 </TS>

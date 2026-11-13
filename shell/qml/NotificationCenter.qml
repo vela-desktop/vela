@@ -66,16 +66,6 @@ Window {
 
     }
 
-    // The panels' small buttons: subtle, or the accent while on.
-    component SmallButton: Button {
-        subtle: !accent
-        implicitWidth: text === "" ? 32 : implicitContentWidth + 20
-        implicitHeight: 28
-        leftPadding: 10
-        rightPadding: 10
-        font.pixelSize: Theme.fontCaption
-    }
-
     ShadowRoom {
         panels: [notifications, calendar]
         onOutside: root.close()
@@ -118,7 +108,7 @@ Window {
                 height: Math.min(Screen.height - Styles.taskbar.height - calendar.height - 60, header.height + Math.max(list.contentHeight, 64) + 24)
                 radius: Styles.notifications.radius
                 color: Styles.notifications.surface
-                border.width: 1
+                border.width: Styles.notifications.expressive ? 0 : 1 // M3's surfaces have no outline
                 border.color: Theme.stroke
 
                 Item {
@@ -132,7 +122,7 @@ Window {
                         text: qsTr("Notifications")
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
+                        font.weight: Styles.notifications.expressive ? Theme.weightEmphasis : Font.DemiBold
                     }
                     // Held back by the rule, not by the user's switch
                     // (docs/screen-sharing.md §7): under the title and the
@@ -155,151 +145,41 @@ Window {
                         height: 36
                         spacing: 4
                         SmallButton {
+                            objectName: "doNotDisturb"
                             anchors.verticalCenter: parent.verticalCenter
+                            outerRadius: notifications.radius
+                            outerGap: 16
                             icon.name: Notifications.doNotDisturb ? "notifications-disabled" : "notifications"
                             accent: Notifications.doNotDisturb
+                            toggle: true
+                            on: Notifications.doNotDisturb
+                            Accessible.name: qsTr("Do not disturb")
                             onClicked: Notifications.doNotDisturb = !Notifications.doNotDisturb
                         }
                         SmallButton {
                             anchors.verticalCenter: parent.verticalCenter
+                            // In the panel's corner, 16 inside it.
+                            outerRadius: notifications.radius
+                            outerGap: 16
                             visible: root.history.count > 0
+                            tonal: Styles.notifications.expressive
                             text: qsTr("Clear all")
                             onClicked: Notifications.clearHistory()
                         }
                     }
                 }
 
-                ListView {
+                NotificationList {
                     id: list
                     anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: 8; topMargin: 4 }
-                    clip: true
-                    spacing: 6
                     model: root.history
-                    boundsBehavior: Flickable.StopAtBounds
-                    section.property: "appName"
-                    section.delegate: Text {
-                        required property string section
-                        width: list.width
-                        leftPadding: 8
-                        topPadding: 6
-                        bottomPadding: 2
-                        text: section
-                        color: Theme.textSecondary
-                        font.pixelSize: Theme.fontCaption
-                    }
-
-                    delegate: Fill {
-                        id: item
-                        required property int notificationId
-                        required property string icon
-                        required property string summary
-                        required property string body
-                        required property var actions
-                        required property bool hasDefaultAction
-                        required property date time
-                        width: list.width
-                        height: itemContent.height + 20
-                        radius: Styles.notifications.cardRadius
-                        color: itemHover.hovered ? Theme.subtleHover : Theme.control
-
-                        HoverHandler { id: itemHover }
-                        // Passive right-click handling works across child
-                        // controls without changing their left-button actions.
-                        TapHandler {
-                            acceptedButtons: Qt.RightButton
-                            onTapped: Notifications.dismissFromHistory(item.notificationId)
-                        }
-                        MouseArea {
-                            id: itemMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: {
-                                if (item.hasDefaultAction) {
-                                    Notifications.invokeFromHistory(item.notificationId, "default")
-                                    root.close()
-                                }
-                            }
-                        }
-                        Row {
-                            id: itemContent
-                            x: 12
-                            y: 10
-                            width: parent.width - 24
-                            spacing: 12
-                            Image {
-                                width: 28
-                                height: 28
-                                source: item.icon
-                                sourceSize: Qt.size(width, height)
-                                fillMode: Image.PreserveAspectFit
-                            }
-                            Column {
-                                width: parent.width - 40
-                                spacing: 2
-                                Item {
-                                    width: parent.width
-                                    height: summaryText.height
-                                    Text {
-                                        id: summaryText
-                                        width: parent.width - timeText.width - 30
-                                        text: item.summary
-                                        textFormat: Text.PlainText // the spec's summary has no markup
-                                        color: Theme.text
-                                        font.pixelSize: Theme.fontBody
-                                        font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        id: timeText
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 24
-                                        text: Qt.formatTime(item.time, Config.timeFormat)
-                                        color: Theme.textSecondary
-                                        font.pixelSize: Theme.fontCaption
-                                    }
-                                }
-                                Text {
-                                    visible: item.body !== ""
-                                    width: parent.width
-                                    text: item.body
-                                    textFormat: Text.StyledText
-                                    color: Theme.textSecondary
-                                    font.pixelSize: Theme.fontCaption
-                                    wrapMode: Text.Wrap
-                                    maximumLineCount: 4
-                                    elide: Text.ElideRight
-                                }
-                                Row {
-                                    visible: item.actions.length > 0
-                                    spacing: 6
-                                    topPadding: 6
-                                    Repeater {
-                                        model: item.actions
-                                        delegate: SmallButton {
-                                            required property var modelData
-                                            text: modelData.label
-                                            onClicked: Notifications.invokeFromHistory(item.notificationId, modelData.key)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // Close (on hover), like on Windows.
-                        SmallButton {
-                            anchors { right: parent.right; top: parent.top; margins: 6 }
-                            visible: itemHover.hovered
-                            icon.name: "window-close"
-                            onClicked: Notifications.dismissFromHistory(item.notificationId)
+                    onInvoked: (notificationId, key) => {
+                        Notifications.invokeFromHistory(notificationId, key)
+                        if (key === "default") {
+                            root.close()
                         }
                     }
-
-                    Text {
-                        anchors.centerIn: parent
-                        visible: list.count === 0
-                        text: qsTr("No new notifications")
-                        color: Theme.textSecondary
-                        font.pixelSize: Theme.fontBody
-                    }
+                    onDismissed: notificationId => Notifications.dismissFromHistory(notificationId)
                 }
             }
 
@@ -311,7 +191,7 @@ Window {
                 height: calendarContent.height + 32
                 radius: Styles.notifications.radius
                 color: Styles.notifications.surface
-                border.width: 1
+                border.width: Styles.notifications.expressive ? 0 : 1 // M3's surfaces have no outline
                 border.color: Theme.stroke
 
                 Column {
@@ -412,12 +292,18 @@ Window {
                                     width: 32
                                     height: 32
                                     radius: Styles.notifications.todayRadius
-                                    color: parent.today ? Theme.accent : dayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                                    // Expressive: today a full primary circle
+                                    // (todayRadius 16 is round), hover a state
+                                    // layer.
+                                    color: parent.today ? (Styles.notifications.expressive ? Theme.primary : Theme.accent)
+                                        : dayMouse.containsMouse ? (Styles.notifications.expressive ? Theme.hoverLayer : Theme.subtleHover)
+                                        : Styles.notifications.expressive ? Theme.restLayer : Theme.subtleRest
                                 }
                                 Text {
                                     anchors.centerIn: parent
                                     text: parent.day.getDate()
-                                    color: parent.today ? Theme.readableOn(Theme.accent, "white") : parent.inMonth ? Theme.text : Theme.textSecondary
+                                    color: parent.today ? (Styles.notifications.expressive ? Theme.primaryText : Theme.readableOn(Theme.accent, "white"))
+                                        : parent.inMonth ? Theme.text : Theme.textSecondary
                                     opacity: parent.inMonth || parent.today ? 1 : 0.5
                                     font.pixelSize: Theme.fontCaption
                                 }

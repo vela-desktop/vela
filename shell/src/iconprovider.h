@@ -94,7 +94,9 @@ inline void applyIconTheme(bool light)
 //
 // A prefix before the name: "l/" and "d/" say for which mode (light or dark)
 // the icon is asked, so changing mode changes the address and QML reloads
-// it; "w/" wants it white (on the accent).
+// it; "w/" wants it white (on the accent); "t<rrggbb>/" wants it in that
+// color (on a tonal fill, whose content may be dark in the dark mode, where
+// the theme's drawings are light).
 class IconProvider : public QQuickImageProvider {
 public:
     explicit IconProvider(int designSize = 0)
@@ -109,10 +111,18 @@ public:
             ? std::max({ requestedSize.width(), requestedSize.height(), 8 })
             : 64;
         QString name = QUrl::fromPercentEncoding(id.toUtf8());
-        bool white = false;
+        QColor tint;
         if (id.size() > 2 && id[1] == u'/' && (id[0] == u'l' || id[0] == u'd' || id[0] == u'w')) {
-            white = id[0] == u'w';
+            if (id[0] == u'w') {
+                tint = Qt::white;
+            }
             name = QUrl::fromPercentEncoding(id.mid(2).toUtf8());
+        } else if (id.size() > 8 && id[0] == u't' && id[7] == u'/') {
+            const QColor asked = QColor::fromString(u'#' + id.mid(1, 6));
+            if (asked.isValid()) {
+                tint = asked;
+                name = QUrl::fromPercentEncoding(id.mid(8).toUtf8());
+            }
         }
 
         QIcon icon = name.startsWith(u'/') ? QIcon(name) : QIcon::fromTheme(name);
@@ -131,10 +141,10 @@ public:
         } else {
             pixmap = icon.pixmap(QSize(extent, extent), 1.0);
         }
-        if (white && !pixmap.isNull()) {
+        if (tint.isValid() && !pixmap.isNull()) {
             QPainter painter(&pixmap);
             painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
-            painter.fillRect(pixmap.rect(), Qt::white);
+            painter.fillRect(pixmap.rect(), tint);
         }
         if (size) {
             *size = pixmap.size();

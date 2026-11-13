@@ -336,30 +336,51 @@ class LockClock(unittest.TestCase):
 
     def time_width(self, hours, size="1920x1080@60"):
         """How wide the lock screen's time is drawn with clock/hours=."""
+        return self.lock_clock(hours, size)[0]
+
+    def lock_clock(self, hours, size="1920x1080@60", theme=None):
+        """The lock screen's time with clock/hours= (and a theme of the
+        session's own): its width and the colors of its text."""
         with Session(size=size, env={"VELA_LOCK": LOCK}) as vela:
             folder = os.path.join(vela.env["XDG_CONFIG_HOME"], "Vela")
             os.makedirs(folder, exist_ok=True)
             with open(os.path.join(folder, "vela-shell.conf"), "w") as file:
                 file.write(f"[clock]\nhours={hours}\n")
+            if theme:
+                themes = os.path.join(vela.env["XDG_CONFIG_HOME"], "vela", "themes")
+                os.makedirs(themes, exist_ok=True)
+                with open(os.path.join(themes, "lock-test.conf"), "w") as file:
+                    file.write(theme)
+                with open(vela.config_path(), "a") as conf:
+                    conf.write("theme=lock-test\n")
             vela.command("lock")
             output = vela.wait_for(lambda s: s["locked"], what="locked").output
 
             width = 0
+            colors = []
+            # The time's box (lock/main.cpp): from 12% of the height, 150
+            # tall (200 expressive); its text is near white over the dimmed
+            # wallpaper (expressive: a light primary, bright in one channel).
+            expressive = theme is not None and "controls-variant=expressive" in theme
+            bottom = 180 if expressive else 130
+
+            def text(color):
+                return max(color) > 200 and sum(color) > 450 if expressive else min(color) > 200
 
             def drawn(_):
-                nonlocal width
+                nonlocal width, colors
                 image = vela.pixels()
-                # The time's box (lock/main.cpp): from 12% of the height, 150
-                # tall; its text is near white over the dimmed wallpaper.
                 top = int(output["h"] * 0.12)
+                colors = [image.at(x, y) for x in range(image.width) for y in range(top + 20, top + bottom, 3)
+                          if text(image.at(x, y))]
                 columns = [x for x in range(image.width)
-                           if any(min(image.at(x, y)) > 200 for y in range(top + 20, top + 130, 3))]
+                           if any(text(image.at(x, y)) for y in range(top + 20, top + bottom, 3))]
                 width = columns[-1] - columns[0] if columns else 0
                 return width > 0
             vela.wait_for(drawn, timeout=10, read_state=False, what="the lock screen's time")
             time.sleep(0.5) # its first frames over
             drawn(None)
-            return width
+            return width, colors
 
     def test_the_lock_screen_follows_the_time_format(self):
         # "1:45 PM" is wider than "13:45" whatever the time: AM or PM after it.
@@ -369,6 +390,19 @@ class LockClock(unittest.TestCase):
         # 300 wide: a 12-hour time at 120 pixels (about 340 wide) would be
         # cut at both sides.
         self.assertLessEqual(self.time_width(12, size="300x700@60"), 300 * 0.9 + 2)
+
+    def test_the_expressive_lock_screen_clock(self):
+        # Vela Expressive's (controls-variant=expressive): the time larger
+        # and bolder, in the accent's primary (the default blue's: a light
+        # blue on the dark wallpaper, not white), still within a narrow
+        # output.
+        theme = "# Lock Test: expressive\nschema-version=1\ncontrols-variant=expressive\n"
+        default = self.time_width(24)
+        width, colors = self.lock_clock(24, theme=theme)
+        self.assertGreater(width, default * 1.2, "the expressive time isn't larger")
+        tinted = [c for c in colors if c[2] - c[0] > 20]
+        self.assertGreater(len(tinted), len(colors) // 2, f"the time isn't in primary: {colors[:8]}")
+        self.assertLessEqual(self.lock_clock(12, size="300x700@60", theme=theme)[0], 300 * 0.9 + 2)
 
 
 if __name__ == "__main__":

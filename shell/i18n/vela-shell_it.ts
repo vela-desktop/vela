@@ -608,16 +608,23 @@
         <translation>Silenziate mentre lo schermo è condiviso</translation>
     </message>
     <message>
+        <source>Do not disturb</source>
+        <translation>Non disturbare</translation>
+    </message>
+    <message>
         <source>Clear all</source>
         <translation>Cancella tutto</translation>
     </message>
+</context>
+<context>
+    <name>NotificationList</name>
     <message>
         <source>No new notifications</source>
         <translation>Nessuna nuova notifica</translation>
     </message>
 </context>
 <context>
-    <name>NotificationPopups</name>
+    <name>NotificationToast</name>
     <message>
         <source>Close</source>
         <translation>Chiudi</translation>
@@ -806,6 +813,13 @@
     </message>
 </context>
 <context>
+    <name>QsTile</name>
+    <message>
+        <source>%1 settings</source>
+        <translation>Impostazioni di %1</translation>
+    </message>
+</context>
+<context>
     <name>QuickSettings</name>
     <message>
         <source>Default output</source>
@@ -814,10 +828,6 @@
     <message>
         <source>Default input</source>
         <translation>Ingresso predefinito</translation>
-    </message>
-    <message>
-        <source>%1 settings</source>
-        <translation>Impostazioni di %1</translation>
     </message>
     <message>
         <source>Unmute</source>
@@ -990,6 +1000,13 @@
     <message>
         <source>More accessibility settings</source>
         <translation>Altre impostazioni di accessibilità</translation>
+    </message>
+</context>
+<context>
+    <name>QuickSettingsTile</name>
+    <message>
+        <source>%1 settings</source>
+        <translation>Impostazioni di %1</translation>
     </message>
 </context>
 <context>

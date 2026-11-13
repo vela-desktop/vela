@@ -70,6 +70,9 @@ see the [roadmap](roadmap.md).
   undo. Also **Run** (Super+R) and **Show desktop** (Super+D).
 - **Light and dark** modes and a coordinated accent palette, applied to KDE and GTK apps
   too.
+- **Themes**: Vela Official, Vela Floating, Window Glass and Vela Expressive (inspired by
+  Material 3 Expressive), plus your own; the accent can follow the wallpaper's color,
+  with Material's tonal palette for Vela's apps and shell ([themes](configuration.md#theme-files)).
 
 ## Files (`vela-files`)
 - Tabs, breadcrumb address bar, search in subfolders, Details and icon views (remembered

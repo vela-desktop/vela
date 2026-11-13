@@ -333,44 +333,14 @@ Window {
             boundsBehavior: Flickable.StopAtBounds
             model: root.sections
             spacing: 2
-            delegate: Fill {
-                id: entry
+            delegate: NavigationEntry {
                 required property string modelData
-                readonly property bool selected: root.section === modelData
+                objectName: "navigation:" + modelData
                 width: sectionList.width - 16
-                height: 36
-                radius: Theme.radius
-                color: entryMouse.pressed ? Theme.subtlePressed : selected || entryMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
-
-                Rectangle {
-                    visible: entry.selected
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 3
-                    height: entryMouse.pressed ? 10 : 16
-                    radius: 1.5
-                    color: Theme.accentFill
-                }
-                Image {
-                    x: 16
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 16
-                    height: 16
-                    source: "image://fileicon/" + encodeURIComponent(root.pages[entry.modelData].icon)
-                    sourceSize: Qt.size(width, height)
-                }
-                Text {
-                    x: 48
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.pages[entry.modelData].title
-                    color: Theme.text
-                    font.pixelSize: Theme.fontBody
-                }
-                MouseArea {
-                    id: entryMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: root.navigate(entry.modelData)
-                }
+                title: root.pages[modelData].title
+                icon: root.pages[modelData].icon
+                selected: root.section === modelData
+                onActivated: root.navigate(modelData)
             }
         }
 
@@ -399,7 +369,7 @@ Window {
                         required property var modelData
                         width: results.width
                         height: 40
-                        radius: Theme.radius
+                        radius: Theme.nested(Theme.radiusOverlay, 4, Theme.radius) // 4 inside the list
                         color: resultMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         Image {
                             x: 10

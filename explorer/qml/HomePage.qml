@@ -26,7 +26,7 @@ Flickable {
         width: column.width
         height: 32
         radius: Theme.radius
-        color: rowMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+        color: rowMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
         Image {
             x: 8
             anchors.verticalCenter: parent.verticalCenter
@@ -113,7 +113,7 @@ Flickable {
                     width: 220
                     height: 64
                     radius: Theme.radius
-                    color: tileMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    color: tileMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                     Image {
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter

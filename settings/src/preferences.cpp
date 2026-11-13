@@ -154,8 +154,13 @@ void Preferences::reload()
     if (!accent.isValid()) {
         accent = vela::defaults::accent();
     }
-    if (accent != m_accent) {
+    QString source = settings.value(QStringLiteral("appearance/accentSource")).toString();
+    if (source != QLatin1String("wallpaper") && source != QLatin1String("chosen")) {
+        source = QStringLiteral("theme");
+    }
+    if (accent != m_accent || source != m_accentSource) {
         m_accent = accent;
+        m_accentSource = source;
         emit accentChanged();
     }
 
@@ -460,6 +465,18 @@ void Preferences::setAccent(const QColor& color)
     }
     m_accent = color;
     setShell(QStringLiteral("appearance/accent"), color.name());
+    emit accentChanged();
+}
+
+void Preferences::setAccentSource(const QString& source)
+{
+    if (source == m_accentSource
+        || (source != QLatin1String("theme") && source != QLatin1String("wallpaper")
+            && source != QLatin1String("chosen"))) {
+        return;
+    }
+    m_accentSource = source;
+    setShell(QStringLiteral("appearance/accentSource"), source);
     emit accentChanged();
 }
 

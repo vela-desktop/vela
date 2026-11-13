@@ -104,8 +104,12 @@ Window {
 
     // The blurred background under the open menus (the window covers the
     // output): each one's travel while it slides in, the menu at rest.
+    // Expressive: rounded like the menus, as their Shadow also shades the
+    // corners inside their box (Shadow.qml), and the compositor blurs
+    // wherever the window isn't transparent: a lighter fringe showed past
+    // the bottom corners in light mode.
     function updateBlur() {
-        Effects.setBlur(root, panels.map(p => p.area))
+        Effects.setBlur(root, panels.map(p => p.area), Theme.expressive ? Theme.radiusOverlay : 0)
     }
 
     function openSubmenu(parentPanel, index, rowY, keyboard) {

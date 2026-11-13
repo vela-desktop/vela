@@ -110,7 +110,7 @@ Window {
         Shell.placeAtLeft(root, Math.round(Math.max(0, Math.min(screenWidth - w, info.center - w / 2))))
         visible = true // again, on another output
         motion.open()
-        Effects.setBlur(root, [motion.visibleArea])
+        Effects.setBlur(root, [motion.visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
     }
     function hide() {
         hideTimer.stop()
@@ -129,7 +129,7 @@ Window {
         signal closeRequested()
         width: root.cardWidth
         height: root.cardHeight
-        radius: Theme.radiusOverlay
+        radius: Theme.nested(Theme.radiusOverlay, 6, Theme.radius) // 6 inside the panel
         color: cardHover.hovered ? Theme.subtleHover : Theme.subtleRest
 
         HoverHandler { id: cardHover }
@@ -173,7 +173,7 @@ Window {
             anchors { right: parent.right; top: parent.top; margins: 4 }
             width: 28
             height: 24
-            radius: Theme.radius
+            radius: Theme.nested(parent.radius, 4, Theme.radius) // 4 inside the card
             color: closeMouse.containsMouse ? "#c42b1c" : "#00c42b1c"
             Text {
                 anchors.centerIn: parent
@@ -207,7 +207,9 @@ Window {
         duration: Theme.normal
         instantExit: true
         onClosed: root.visible = false
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the panel at rest
+        // The travel while it moves, the panel at rest; round under the
+        // expressive panel, as when it opens.
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
 
         Shadow {
             id: shadow

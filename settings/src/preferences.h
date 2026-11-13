@@ -30,6 +30,10 @@ class Preferences : public QObject {
     Q_PROPERTY(QStringList systemWallpapers READ systemWallpapers CONSTANT)
     Q_PROPERTY(QString defaultWallpaper READ defaultWallpaper CONSTANT) // Vela's
     Q_PROPERTY(QColor accent READ accent WRITE setAccent NOTIFY accentChanged)
+    // Where the accent comes from (appearance/accentSource, shell/src/accentsource.h):
+    // "theme" (the theme decides: its own accent, the wallpaper's color or
+    // the one chosen), "wallpaper" or "chosen".
+    Q_PROPERTY(QString accentSource READ accentSource WRITE setAccentSource NOTIFY accentChanged)
     Q_PROPERTY(QString appTheme READ appTheme WRITE setAppTheme NOTIFY appThemeChanged)
     // Vela's mode (taskbar, menus, panels): "dark" or "light".
     Q_PROPERTY(QString shellTheme READ shellTheme WRITE setShellTheme NOTIFY appThemeChanged)
@@ -156,6 +160,8 @@ public:
 
     QColor accent() const { return m_accent; }
     void setAccent(const QColor& color);
+    QString accentSource() const { return m_accentSource; }
+    void setAccentSource(const QString& source);
 
     QString appTheme() const { return m_appTheme; }
     void setAppTheme(const QString& theme);
@@ -381,6 +387,7 @@ private:
     QString m_wallpaper;
     QStringList m_recentWallpapers;
     QColor m_accent;
+    QString m_accentSource = QStringLiteral("theme");
     QString m_appTheme;
     QString m_shellTheme;
     QString m_taskbarAlignment;

@@ -61,11 +61,21 @@ QtObject {
         readonly property int splitRadius: styles.size("taskbar-split-radius", 5, 0, 48)
         readonly property int edge: layout.edge
         readonly property bool flush: styles.flag("taskbar-flush", false)
-        readonly property color stroke: Theme.themed("taskbar-stroke", Theme.stroke)
+        // Expressive: none, as the expressive panels (M3's floating toolbar
+        // has no outline).
+        readonly property color stroke: Theme.themed("taskbar-stroke", Theme.expressive ? "transparent" : Theme.stroke)
         // The buttons.
         readonly property int buttonWidth: styles.size("taskbar-button-width", 44, 24, 96)
         readonly property int buttonHeight: styles.size("taskbar-button-height", 40, 24, 96)
-        readonly property int buttonRadius: styles.size("taskbar-button-radius", Theme.radius, 0, 48)
+        // In a floating pill the buttons and the highlights follow its ends
+        // (Theme.nested): `gap` inside it above and below, `own` on a bar
+        // that does not float, or where the pill's radius is no larger.
+        readonly property real pillHeight: height - 2 * margin
+        function corner(gap, own) {
+            return floating ? Theme.nested(Math.min(radius, pillHeight / 2), gap, own) : own
+        }
+        readonly property int ownButtonRadius: styles.size("taskbar-button-radius", Theme.radius, 0, 48)
+        readonly property real buttonRadius: corner((pillHeight - buttonHeight) / 2, ownButtonRadius)
         readonly property int iconSize: styles.size("taskbar-icon-size", 26, 12, 64)
         readonly property int spacing: styles.size("taskbar-spacing", 4, 0, 24)
     }
@@ -75,11 +85,17 @@ QtObject {
         // A look of its own (a style, or the theme's keys for it): its blur is
         // rounded like the panel, glass from 4%.
         readonly property bool chosen: Style.chosenStyles.indexOf("startmenu") >= 0
+        // expressive: Vela Expressive's (M3 Expressive's look, StartMenu.qml
+        // and AppTile.qml): a taller search pill, the pinned apps in a tonal
+        // container, the selected tile in secondary container.
+        readonly property string variant: Theme.themed("startmenu-variant", "default")
+        readonly property bool expressive: variant === "expressive"
         // The menu's size with its margins, as in the files (StartMenu.qml
         // takes the panel out of it): 660 x 732 is Vela's 640 x 700 panel.
         readonly property int width: styles.size("startmenu-width", 660, 360, 1600)
         readonly property int height: styles.size("startmenu-height", 732, 320, 2000)
-        readonly property int radius: styles.size("startmenu-radius", Theme.radiusOverlay, 0, 48)
+        // Expressive: M3's extra large corners (28), Vela's choice for a panel.
+        readonly property int radius: styles.size("startmenu-radius", expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay, 0, 48)
         readonly property color surface: Theme.themed("startmenu-surface", Theme.surface)
         readonly property int cellHeight: styles.size("startmenu-cell-height", 96, 64, 160)
     }
@@ -88,22 +104,46 @@ QtObject {
     readonly property QtObject quickSettings: QtObject {
         readonly property bool chosen: Style.chosenStyles.indexOf("notifications") >= 0
         readonly property string variant: Theme.themed("quicksettings-variant", "default")
-        readonly property int radius: styles.size("quicksettings-radius", variant === "classic" ? 0 : Theme.radiusOverlay, 0, 48)
-        readonly property int tileRadius: styles.size("quicksettings-tile-radius", Theme.radius, 0, 24)
+        // expressive: Vela Expressive's (M3 Expressive's look): wide tiles two
+        // to a row that change shape (QsTile.qml), the panel in M3's extra
+        // large corners (28, Vela's choice for a panel), a tile's square
+        // corners M3's medium toggle button's (CornerLarge, 16: the panel's
+        // 28 less its 12 of padding); borderless, a flat footer and a thick
+        // slider unless the keys say otherwise.
+        readonly property bool expressive: variant === "expressive"
+        readonly property int radius: styles.size("quicksettings-radius", variant === "classic" ? 0 : expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay, 0, 48)
+        // What the panel holds, that far from its edges; a tile's corners
+        // follow the panel's from there (Theme.nested): its own radius
+        // (quicksettings-tile-radius) where the panel's is no larger than
+        // the padding.
+        readonly property int pad: expressive ? 12 : 16
+        readonly property int tileRadius: Theme.nested(radius, pad, styles.size("quicksettings-tile-radius", expressive ? 16 : Theme.radius, 0, 24))
         readonly property color surface: Theme.themed("quicksettings-surface", Theme.surface)
         // WindowGlass's: borders only along the panel's top edge and the tiles'
         // bottom edge; a split tile's arrow right beside its icon; no footer
         // band (a line above the sliders, the mixer's icon by the arrow); a
         // thick slider with a wide knob.
-        readonly property bool borderless: styles.flag("quicksettings-borderless", variant === "glass")
+        readonly property bool borderless: styles.flag("quicksettings-borderless", variant === "glass" || expressive)
         readonly property bool inlineArrow: styles.flag("quicksettings-inline-arrow", variant === "glass")
-        readonly property bool flatFooter: styles.flag("quicksettings-flat-footer", variant === "glass")
-        readonly property bool thickSlider: styles.flag("quicksettings-thick-slider", variant === "glass")
+        readonly property bool flatFooter: styles.flag("quicksettings-flat-footer", variant === "glass" || expressive)
+        readonly property bool thickSlider: styles.flag("quicksettings-thick-slider", variant === "glass" || expressive)
     }
     readonly property QtObject notifications: QtObject {
         readonly property bool chosen: Style.chosenStyles.indexOf("notifications") >= 0
-        readonly property int radius: styles.size("notifications-radius", Theme.radiusOverlay, 0, 48)
-        readonly property int cardRadius: styles.size("notifications-card-radius", Theme.radius, 0, 24)
+        // expressive: Vela Expressive's (M3 Expressive's look,
+        // NotificationCenter.qml): an app's notifications one container, the
+        // header in the emphasis weight, a tonal "Clear all", today a full
+        // primary circle; the panels in M3's extra large corners (28) and the
+        // cards in Vela's large ones (Theme.shapeLarge), Vela's choices.
+        readonly property string variant: Theme.themed("notifications-variant", "default")
+        readonly property bool expressive: variant === "expressive"
+        readonly property int radius: styles.size("notifications-radius", expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay, 0, 48)
+        // The cards in the center's list, 8 inside its panel, follow the
+        // panel's corners from there (Theme.nested): notifications-card-radius
+        // where the panel's is no larger than 8.
+        readonly property int listInset: 8
+        readonly property int ownCardRadius: styles.size("notifications-card-radius", expressive ? Theme.shapeLarge : Theme.radius, 0, 24)
+        readonly property int cardRadius: Theme.nested(radius, listInset, ownCardRadius)
         readonly property color surface: Theme.themed("notifications-surface", Theme.surface)
         // Today in the calendar: a circle (16), or a rounded square.
         readonly property int todayRadius: styles.size("notifications-today-radius", 16, 0, 24)

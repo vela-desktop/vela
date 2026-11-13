@@ -62,12 +62,15 @@ Item {
 
     Fill {
         id: address
+        objectName: "addressField"
         anchors { left: buttons.right; leftMargin: 8; right: searchBox.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
         height: 32
-        radius: Theme.radius
+        // Expressive: M3's search bar's full pill on surface container
+        // high, outlined in primary (2) only while typing.
+        radius: Theme.expressive ? height / 2 : Theme.radius
         color: bar.editing ? Theme.field : addressMouse.containsMouse ? Theme.controlHover : Theme.control
-        border.width: 1
-        border.color: bar.editing ? Theme.accent : Theme.controlStroke
+        border.width: Theme.expressive ? (bar.editing ? 2 : 0) : 1
+        border.color: bar.editing ? (Theme.expressive ? Theme.primary : Theme.accent) : Theme.controlStroke
         clip: true
 
         MouseArea {
@@ -95,11 +98,12 @@ Item {
                         required property int index
                         height: parent.height
                         Fill {
+                            objectName: "crumb" + crumb.index
                             height: 26
                             anchors.verticalCenter: parent.verticalCenter
                             width: crumbContent.width + 12
-                            radius: Theme.radius
-                            color: crumbMouse.containsMouse || crumbDrop.containsDrag ? Theme.subtleHover : Theme.subtleRest
+                            radius: Theme.nested(address.radius, 3, Theme.radius) // 3 inside the bar
+                            color: crumbMouse.containsMouse || crumbDrop.containsDrag ? Theme.hoverLayer : Theme.restLayer
                             Row {
                                 id: crumbContent
                                 anchors.centerIn: parent
@@ -144,8 +148,8 @@ Item {
                             height: 26
                             width: 18
                             anchors.verticalCenter: parent.verticalCenter
-                            radius: Theme.radius
-                            color: chevronMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                            radius: Theme.nested(address.radius, 3, Theme.radius)
+                            color: chevronMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                             Chevron {
                                 anchors.centerIn: parent
                                 color: Theme.textSecondary
@@ -174,6 +178,7 @@ Item {
 
         TextInput {
             id: editor
+            objectName: "addressEditor"
             visible: bar.editing
             anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
             verticalAlignment: TextInput.AlignVCenter
@@ -201,13 +206,14 @@ Item {
     // Search: in this folder and its subfolders.
     Fill {
         id: searchBox
+        objectName: "searchBox"
         anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
         width: Math.min(280, bar.width * 0.25)
         height: 32
-        radius: Theme.radius
+        radius: Theme.expressive ? height / 2 : Theme.radius
         color: search.activeFocus ? Theme.field : searchMouse.containsMouse ? Theme.controlHover : Theme.control
-        border.width: 1
-        border.color: search.activeFocus ? Theme.accent : Theme.controlStroke
+        border.width: Theme.expressive ? (search.activeFocus ? 2 : 0) : 1
+        border.color: search.activeFocus ? (Theme.expressive ? Theme.primary : Theme.accent) : Theme.controlStroke
         opacity: bar.tab.isFolder ? 1 : 0.5
         MouseArea {
             id: searchMouse
@@ -225,6 +231,7 @@ Item {
         }
         TextInput {
             id: search
+            objectName: "searchInput"
             anchors { fill: parent; leftMargin: 10; rightMargin: 32 }
             verticalAlignment: TextInput.AlignVCenter
             enabled: bar.tab.isFolder
