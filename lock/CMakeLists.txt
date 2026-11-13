@@ -37,7 +37,7 @@ qt_add_resources(vela-lock "images"
     FILES ${PROJECT_SOURCE_DIR}/images/vela_splash_169.svg)
 target_include_directories(vela-lock PRIVATE ${LOCK_GENERATED_DIR} ${PROJECT_SOURCE_DIR}/shell/src)
 target_compile_options(vela-lock PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
-target_link_libraries(vela-lock PRIVATE Qt6::Gui Qt6::Svg PkgConfig::LOCK_DEPS ${PAM_LIBRARY} vela-app)
+target_link_libraries(vela-lock PRIVATE vela-alloc Qt6::Gui Qt6::Svg PkgConfig::LOCK_DEPS ${PAM_LIBRARY} vela-app)
 
 # Fast, display-independent pixel tests for the actual login blur implementation.
 # These run in regular non-GPU CTest jobs and do not require a Wayland session.

@@ -166,7 +166,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
 void vela_layers_init(struct vela_server *server)
 {
     wl_list_init(&server->layer_surfaces);
-    server->layer_shell = wlr_layer_shell_v1_create(server->display, 4);
+    server->layer_shell = VELA_MUST(wlr_layer_shell_v1_create(server->display, 4));
     vela_listen(&server->layer_shell->events.new_surface, &server->new_layer_surface, handle_new_surface);
 }
 

@@ -163,6 +163,14 @@ bool vela_child_start(struct vela_child *child, struct wl_event_loop *loop, cons
     child->pidfd = pidfd;
     child->started_ns = vela_now_ns();
     child->source = wl_event_loop_add_fd(loop, pidfd, WL_EVENT_READABLE, handle_exit, child);
+    if (!child->source) {
+        // Unwatched, it would never be reaped or restarted: end it now.
+        wlr_log_errno(WLR_ERROR, "Can't watch \"%s\": stopped", command);
+        kill(pid, SIGKILL);
+        waitpid(pid, NULL, 0);
+        stop_watching(child);
+        return false;
+    }
     return true;
 }
 

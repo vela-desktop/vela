@@ -3,8 +3,11 @@
 > **Status:** accepted with option c, fifth revision, 9 November 2026,
 > against `main` at `bb6cc0c`. Migration steps 1–3 are done (#148): the
 > fail-closed recovery, `common/alloc` with its CI check, and the unchecked
-> `realloc` and `getline` sites. Step 4 is done but for one site left to
-> step 8 (see "Migration order"). Every factual claim names the
+> `realloc` and `getline` sites. Step 4 is done (#243). Step 5 is done:
+> `VELA_MUST` and the classification of library results, the local paths
+> for descriptor exhaustion, the fallbacks removed with the baseline at
+> zero, and the C++ new handler. Steps 6–7 follow (see "Migration
+> order"). Every factual claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
 
@@ -618,7 +621,10 @@ They also duplicate a descriptor or create one (`timerfd_create`,
 failure here (the supervisor already samples the compositor's descriptor
 count), so each call site handles their failure locally: for example, a new
 IPC connection is closed and dropped, and a timer that cannot be created
-takes the same path as one that cannot be armed.
+takes the same path as one that cannot be armed. In libwayland 1.26 a loop's
+timers share one `timerfd`, made by its first `wl_event_loop_add_timer`;
+later timers only allocate. Vela's own `timerfd`s (an output's latch and
+virtual vblank) are separate descriptors.
 
 OOM-only calls take the same path as the helpers:
 
@@ -840,7 +846,7 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   compositor's child supervision (`server.c`, `vela_child_init` for
   "Shell"). The only addition proposed is a `std::set_new_handler` in a
   shared C++ header that writes the same `vela: out of memory …` line before
-  aborting, so `vela.log` reads the same whichever process failed (step 9
+  aborting, so `vela.log` reads the same whichever process failed (step 5
   of the migration order).
 - **Signal handlers:** checked. The supervisor's handlers only call `kill`
   and set a `sig_atomic_t` (`supervisor.c` `on_terminate`). The compositor
@@ -933,9 +939,16 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
     completes within a bounded number of frames.
 - **`VELA_MUST`:** prints the expression and call site, through
   `vela_must_failed`.
-- **Event sources:** with a low `RLIMIT_NOFILE`, a new IPC connection and a
-  timer that cannot be created take their local failure paths, and the
-  compositor keeps running.
+- **Event sources:** with the running compositor's `RLIMIT_NOFILE` lowered
+  to its next free descriptor, a new IPC connection is dropped; lowered to
+  leave room for a connection and its watch alone, the connection kept
+  open while its command runs,
+  a hot-plugged output gets neither its latch nor its virtual vblank
+  `timerfd` (nor its buffers, so it starts off) and, switched on once the
+  limit is restored, presents frames following the backend's; the
+  compositor keeps running
+  (`functional-resources`, `DescriptorExhaustion`). libwayland's own timers
+  cannot fail this way after startup (point 2b).
 - **Enforcement:** the CI check's own fixtures (point 8).
 - **Image extent cap:** a client attaches a shm buffer wider than
   `maxImageDimension2D` (and a dmabuf above the format's `maxExtent`). The
@@ -964,7 +977,7 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
      with the lock, `fatal_waiting` is reserved for every output when the
      lock engages and on every layout change while locked, and the path no
      longer rebuilds the backdrop (it is already current while locked). It
-     still renders through the frame path (step 5) and sends libwayland
+     still renders through the frame path (step 6) and sends libwayland
      leave events; a crash there restarts locked through the page
      (`test_crash_during_lock_blackout_restarts_locked`);
    - **done:** the damage fallback (see "Design for (4)", as implemented);
@@ -1006,14 +1019,14 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    A `NULL` check right after a converted allocation is removed with it,
    together with the cleanup it guarded: the helper never returns `NULL`,
    so the branch is unreachable and cannot leave partial state. Checks of a
-   function's result in its callers stay until step 8, because those
+   function's result in its callers stay until step 5, because those
    functions still fail for other reasons. A `count ? count : 1` guard
    against a zero-size `calloc` goes too, since `vela_alloc` allocates a
    minimum block for zero. **Done:** 186 of the 187 sites, so the baseline
    is down to one, `check.c` `on_check_output`'s `realloc` (see the update
    daemon below).
    - **render** (`compositor/src/render/`, 21 sites): the Vulkan and DRM
-     enumeration arrays, the pass temporaries (which step 5 turns into
+     enumeration arrays, the pass temporaries (which step 6 turns into
      arrays owned by the pass), and the renderer, target, texture, readback,
      GBM allocator and buffer objects. The pixel buffer's `width × height`
      goes through `vela_size_mul`. Six dead checks went
@@ -1053,7 +1066,7 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
      the restart argv in `supervisor_child.c`, and the preview owner. The
      supervisor's message for a `NULL` argv now names the remaining causes
      instead of "out of memory". The two `wl_client_post_no_memory` branches
-     in `output_preview.c` stay for step 8, though they cannot be reached
+     in `output_preview.c` stay for step 5, though they cannot be reached
      any more.
    - **config/icons** (`config.c`, `icons.c`, `output_config.c`,
      `path_security.c`; 20 sites): configuration keys, lines and entries,
@@ -1091,27 +1104,55 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
      and a run, the two inside `pairs_at`, the terminal argv's copy loop,
      and `make_dirs`. Parse errors (schema, JSON) still fail as before. The
      one left is `check.c` `on_check_output`'s `realloc`: its failure drops
-     the data and continues, which step 8 names, so it stays whole until
+     the data and continues, which step 5 names, so it stays whole until
      then.
-5. The frame path (point 7), measured against the existing benchmarks.
-6. Classification of library results (point 2b) and `VELA_MUST`, with
-   local failure paths for the event sources that create descriptors.
+5. Closing the failure contract, in one PR:
+   - classification of library results (point 2b) and `VELA_MUST`, with
+     local failure paths for the event sources that create descriptors;
+   - removal of the old fallback branches (`wl_client_post_no_memory` in
+     `output_preview.c`, the silent returns, the update daemon's dropped
+     data) and of the callers' checks left by step 4, with a review of
+     each for partial state. The baseline reaches zero;
+   - the C++/Qt processes (point 9, "Scope"): a `std::set_new_handler` in
+     a shared C++ header, installed at the start of `main` in
+     `vela-shell`, Settings, `vela-lock`, the polkit agent and prompt,
+     `vela-files` and `vela-report-gui`. The handler has no size, file or
+     line to report, so it writes
+     `vela: out of memory (operator new) in <process>` followed by the
+     same `rss` and `available` figures, through the allocation-free writer
+     that `vela_oom` uses, then calls `abort()`. Tested like `vela_oom`: a
+     child forces a failed `new` and checks the abort and the line.
+   - **Done.** `VELA_MUST` and `vela_must_failed` are in `common/alloc`,
+     with the classification in `common/alloc/library-results.md`
+     (checked against the wlroots 0.20.2 and libwayland 1.26.0 sources).
+     `wl_event_loop_add_idle`, `wl_resource_create`, `wl_global_create`
+     and the wlroots constructors that only allocate and create a global
+     go through it, so the nine `wl_client_post_no_memory` branches
+     (`output_preview.c`, `x11_root.c`, `scene/effects.c`,
+     `scene/output_capture.c`) are gone, and so are the callers' checks
+     of `vela_output_manager_snapshot`, `vela_output_capture_manager_create`
+     (now `void`), `vela_x11_root_create`, the update daemon's state paths
+     and the Bluetooth model's new adapters and devices.
+     `wlr_ext_foreign_toplevel_handle_v1_create` is not OOM-only (its
+     identifier comes from `/dev/urandom`), and its unchecked result in
+     `view.c` is now handled: the window has no handle, which every user
+     of `ext_handle` already allows. Descriptor exhaustion takes local
+     paths at the twelve compositor sources that had none (the IPC
+     listener and its connections, the brightness helper's timer and
+     socket, a spawned child's pidfd, which is now stopped and reaped,
+     paste, key repeat, snap layouts, accessibility, the idle timer, and an
+     output's latch and virtual vblank) and at the seven unchecked
+     `sd_event_add_*` calls of the daemons. `check.c` `on_check_output`
+     grows its buffer through `vela_grow` (bounded by `MAX_OUTPUT`), so
+     the baseline is empty. The new handler is in
+     `common/alloc/new_handler.h`, installed first in the seven C++
+     programs; `vela-files` and `vela-settings` were seen writing the line
+     under a low `prlimit --as`, the other five installing it under gdb.
+     `common/alloc` is now part of every build.
+6. The frame path (point 7), measured against the existing benchmarks.
 7. The Vulkan caps and budgets: the image-extent cap, upload staging in
    pieces under a byte budget with atomic presentation and oldest-first
    progress, and the icon-cache budget.
-8. Removal of the old fallback branches (`wl_client_post_no_memory` in
-   `output_preview.c`, the silent returns, the update daemon's dropped
-   data), with a review of each for partial state. The baseline reaches
-   zero.
-9. The C++/Qt processes (point 9, "Scope"): a `std::set_new_handler` in a
-   shared C++ header, installed at the start of `main` in `vela-shell`,
-   Settings, `vela-lock`, the polkit agent and prompt, `vela-files` and
-   `vela-report-gui`. The handler has no size, file or line to report, so
-   it writes `vela: out of memory (operator new) in <process>` followed by
-   the same `rss` and `available` figures, through the allocation-free
-   writer that `vela_oom` uses, then calls `abort()`. `vela.log` then
-   reads the same whichever process failed. Tested like `vela_oom`: a child
-   forces a failed `new` and checks the abort and the line.
 
 ## Options considered
 

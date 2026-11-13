@@ -667,7 +667,7 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     wl_list_init(&lock->unlock.link);
     wl_list_init(&lock->destroy.link);
 
-    lock->manager = wlr_session_lock_manager_v1_create(server->display);
+    lock->manager = VELA_MUST(wlr_session_lock_manager_v1_create(server->display));
     vela_listen(&lock->manager->events.new_lock, &lock->new_lock, handle_new_lock);
 
     // Timed caffeine turns itself off (cheap in every session, tests too).
@@ -676,8 +676,8 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
         wlr_log_errno(WLR_ERROR, "Unable to create caffeine expiry timer");
     }
 
-    lock->idle_notifier = wlr_idle_notifier_v1_create(server->display);
-    lock->idle_inhibit = wlr_idle_inhibit_v1_create(server->display);
+    lock->idle_notifier = VELA_MUST(wlr_idle_notifier_v1_create(server->display));
+    lock->idle_inhibit = VELA_MUST(wlr_idle_inhibit_v1_create(server->display));
     vela_listen(&lock->idle_inhibit->events.new_inhibitor, &lock->new_inhibitor, handle_new_inhibitor);
 
     // Only in the real session: nested or headless nothing turns off (tests
@@ -685,6 +685,9 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     const char *screen_off = getenv("VELA_SCREEN_OFF");
     if (server->session || (screen_off && *screen_off)) {
         lock->idle_timer = wl_event_loop_add_timer(server->loop, handle_idle_timer, lock);
+        if (!lock->idle_timer) {
+            wlr_log_errno(WLR_ERROR, "Unable to create the idle timer: screens stay on and nothing locks on idle");
+        }
         vela_lock_load_settings(lock);
     }
     return lock;
@@ -907,6 +910,7 @@ void vela_lock_update_layout(struct vela_lock *lock)
     // Defer the hit test: a layout-change callback may precede wlroots'
     // output-removal cursor warp, and a click must work without motion.
     if (!lock->pointer_retarget_idle) {
-        lock->pointer_retarget_idle = wl_event_loop_add_idle(server->loop, retarget_pointer_after_layout, lock);
+        lock->pointer_retarget_idle
+            = VELA_MUST(wl_event_loop_add_idle(server->loop, retarget_pointer_after_layout, lock));
     }
 }
