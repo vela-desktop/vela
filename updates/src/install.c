@@ -105,9 +105,15 @@ int vela_up_install_start(struct vela_up_daemon *d, const struct vela_up_options
         vela_up_log("terminal watch: %s (it is reaped when the daemon exits)", strerror(-r));
     }
 
-    // "Starting" needs its timeout, or it could stay forever: without one
-    // the state goes straight back, and the run file still reports the
-    // install once vela-update starts.
+    // "Starting" ends when vela-update's run file appears (state.c) or when
+    // this timeout fires. Without the timeout it could stay forever, so it
+    // is not entered: the activity stays "idle" and Install still succeeds.
+    // That is a trade-off. An install that does start is followed from its
+    // run file as usual; one whose terminal never starts vela-update reports
+    // nothing. Failing it here would report a failure for every install
+    // that succeeds, and nothing else tells "never started" from "not yet":
+    // the terminal's exit doesn't, since some terminals hand the command to
+    // an instance already running and return at once.
     d->start_timeout = sd_event_source_disable_unref(d->start_timeout);
     r = sd_event_add_time_relative(d->event, &d->start_timeout, CLOCK_MONOTONIC, d->timing.start_timeout_us, 0,
         on_start_timeout, d);
