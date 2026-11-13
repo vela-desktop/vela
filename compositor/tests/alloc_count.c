@@ -8,7 +8,9 @@
 
 #include "alloc/alloc.h"
 
+#include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,12 +43,33 @@ struct vela_alloc_count vela_alloc_count_get(void)
     return counts;
 }
 
+// The descriptor VELA_TEST_ALLOC_LOG_FD names, opened for appending by the
+// test, or -1. The counter opens nothing itself. The descriptor is kept from
+// the compositor's children.
+static int inherited_log(void)
+{
+    const char *text = getenv("VELA_TEST_ALLOC_LOG_FD");
+    if (!text || !*text) {
+        return -1;
+    }
+    char *end;
+    errno = 0;
+    long fd = strtol(text, &end, 10);
+    if (errno || *end || fd < 0 || fd > INT_MAX) {
+        return -1;
+    }
+    int flags = fcntl((int)fd, F_GETFD);
+    if (flags < 0 || fcntl((int)fd, F_SETFD, flags | FD_CLOEXEC) < 0) {
+        return -1;
+    }
+    return (int)fd;
+}
+
 static void note(const char *kind, const char *file, int line, size_t count, size_t size)
 {
     ++counts.allocations;
     if (log_fd == -2) {
-        const char *path = getenv("VELA_TEST_ALLOC_LOG");
-        log_fd = path && *path ? open(path, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0600) : -1;
+        log_fd = inherited_log();
     }
     if (log_fd < 0) {
         return;

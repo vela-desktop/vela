@@ -6,8 +6,9 @@
 docs/memory-allocation-policy.md, point 7 and "Frame path". The compositor
 under test is vela-compositor-alloc-count: the same objects as
 vela-compositor, linked with compositor/tests/alloc_count.c, which logs every
-allocation made through Vela's helpers (file and line) to
-VELA_TEST_ALLOC_LOG. The test reads that log over a window of frames.
+allocation made through Vela's helpers (file and line) to the descriptor
+VELA_TEST_ALLOC_LOG_FD names. The test opens that log, passes it to the
+compositor and reads it over a window of frames.
 
 The scene redraws every frame: a decorated window and vela-slowgpu, a dmabuf
 client that commits a new buffer every frame with explicit sync. Then the
@@ -102,8 +103,10 @@ class FramePath(unittest.TestCase):
     def test_steady_frames_allocate_nothing(self):
         request_sites = {site(*where) for where in PER_REQUEST.values()}
         capture_sites = {site(*where) for where in PER_CAPTURE.values()}
+        log_fd = os.open(self.log, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_CLOEXEC, 0o600)
+        self.addCleanup(os.close, log_fd)
         with Session(size="1280x720@60", binary="vela-compositor-alloc-count",
-                     env={"VELA_TEST_ALLOC_LOG": self.log}) as vela:
+                     env={"VELA_TEST_ALLOC_LOG_FD": str(log_fd)}, pass_fds=(log_fd,)) as vela:
             vela.open_window(400, 300, decorated=True)
             vela.open_window(300, 200, command=[tool("vela-slowgpu"), "1"])
             time.sleep(WARM_UP_S)
@@ -120,6 +123,9 @@ class FramePath(unittest.TestCase):
             self.assertEqual(probe.returncode, 0)
             self.assertGreater(frames, 30, "the scene must redraw every frame")
             self.assertGreater(readbacks, 30, "the capture must copy every frame")
+            # Each capture allocates for its request: a silent log means the
+            # counter's descriptor did not reach the compositor.
+            self.assertTrue(sites, "nothing was logged: is VELA_TEST_ALLOC_LOG_FD inherited?")
             self.check(sites, request_sites | capture_sites, f"{frames} frames and {readbacks} captures",
                        CAPTURE_WATCH_FILES)
 

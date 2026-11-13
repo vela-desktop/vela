@@ -16,8 +16,9 @@
 // copies, vela_asprintf, and a vela_grow that grows the array. A vela_grow
 // that finds room is only a comparison; it is counted apart, as a check.
 //
-// With VELA_TEST_ALLOC_LOG=<path> in the environment, each allocation also
-// appends one line to that file, "<kind> <file>:<line> <count>x<size>", with
+// With VELA_TEST_ALLOC_LOG_FD=<n> in the environment, n being a descriptor
+// the test opened for appending and the process inherited, each allocation
+// also appends one line to it, "<kind> <file>:<line> <count>x<size>", with
 // write(2), so a test can read which sites allocated over a window of time.
 
 #include <stdint.h>

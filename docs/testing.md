@@ -556,12 +556,15 @@ count the calls to Vela's allocation helpers through
   not linked: an entry point without its stub fails at link time.
 - `functional-frame-path` (GPU) runs `vela-compositor-alloc-count`, the
   compositor built from the same objects with the counter, which appends
-  every allocation's file and line to `VELA_TEST_ALLOC_LOG`. The test reads
-  the log over a window of frames and fails on any site it does not name.
+  every allocation's file and line to the descriptor named by
+  `VELA_TEST_ALLOC_LOG_FD`, opened by the test and inherited by the
+  compositor (the counter opens no file itself). The test reads the log over
+  a window of frames and fails on any site it does not name.
 
 The counted compositor also answers "what allocates here?" in other
-scenarios: `Session(binary="vela-compositor-alloc-count",
-env={"VELA_TEST_ALLOC_LOG": path})` in the harness, then read the log.
+scenarios: open a log file for appending, start
+`Session(binary="vela-compositor-alloc-count",
+env={"VELA_TEST_ALLOC_LOG_FD": str(fd)}, pass_fds=(fd,))`, then read the log.
 
 ## Vulkan validation and renderer diagnosis
 
