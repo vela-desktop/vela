@@ -49,11 +49,17 @@ struct sync_wait {
     uint64_t point;
 };
 
+// A pass belongs to its renderer for as long as the renderer lives: open
+// (renderer->passes_open, from vela_renderer_begin_pass to vela_pass_submit)
+// or ready for the next drawing (renderer->passes_free). Its arrays keep their
+// capacity from one drawing to the next, so drawing allocates nothing once
+// they are large enough (docs/memory-allocation-policy.md, point 7).
 struct vela_pass {
     struct wlr_render_pass base; // first member: wlr_render_pass* <-> vela_pass*
+    struct wl_list link; // renderer->passes_open or renderer->passes_free
     struct vela_renderer *renderer;
     struct vela_target *target;
-    struct wlr_buffer *buffer; // locked as long as the pass exists
+    struct wlr_buffer *buffer; // locked while the pass is open
 
     struct draw *draws;
     int draw_count, draw_capacity;
@@ -120,7 +126,17 @@ struct vela_pass *vela_renderer_begin_pass(struct vela_renderer *renderer, struc
     if (!target) {
         return NULL;
     }
-    struct vela_pass *pass = VELA_NEW(struct vela_pass);
+    struct vela_pass *pass;
+    if (!wl_list_empty(&renderer->passes_free)) {
+        pass = wl_container_of(renderer->passes_free.next, pass, link);
+        wl_list_remove(&pass->link);
+        --renderer->passes_free_count;
+    } else {
+        pass = VELA_NEW(struct vela_pass);
+    }
+    // A pass from the list was emptied by pass_release: no count, no
+    // reference, only the arrays' capacity.
+    wl_list_insert(&renderer->passes_open, &pass->link);
     wlr_render_pass_init(&pass->base, &pass_impl);
     pass->renderer = renderer;
     pass->target = target;
@@ -129,7 +145,20 @@ struct vela_pass *vela_renderer_begin_pass(struct vela_renderer *renderer, struc
     return pass;
 }
 
-static void pass_free(struct vela_pass *pass)
+// An array whose capacity went beyond VELA_PASS_KEEP_BYTES in one unusual
+// drawing is given back instead of being kept for good.
+static void trim(void **items, int *capacity, size_t size)
+{
+    if (*items && (size_t)*capacity > VELA_PASS_KEEP_BYTES / size) {
+        free(*items);
+        *items = NULL;
+        *capacity = 0;
+    }
+}
+
+// Drops what the pass holds (the buffer lock and the timeline references) and
+// forgets the drawing; the arrays stay, with their capacity.
+static void pass_empty(struct vela_pass *pass)
 {
     for (int i = 0; i < pass->wait_count; ++i) {
         wlr_drm_syncobj_timeline_unref(pass->waits[i].timeline);
@@ -137,11 +166,63 @@ static void pass_free(struct vela_pass *pass)
     if (pass->signal_timeline) {
         wlr_drm_syncobj_timeline_unref(pass->signal_timeline);
     }
-    wlr_buffer_unlock(pass->buffer);
+    if (pass->buffer) {
+        wlr_buffer_unlock(pass->buffer);
+    }
+    pass->target = NULL;
+    pass->buffer = NULL;
+    pass->draw_count = 0;
+    pass->blur_count = 0;
+    pass->wait_count = 0;
+    pass->signal_timeline = NULL;
+    pass->signal_point = 0;
+    pass->timing_slot = -1;
+    pass->filtered = false;
+}
+
+static void pass_destroy(struct vela_pass *pass)
+{
+    wl_list_remove(&pass->link);
     free(pass->draws);
     free(pass->blur_ops);
     free(pass->waits);
     free(pass);
+}
+
+// The end of every pass, submitted or not: back on the renderer's list, or
+// freed when the list already holds VELA_PASS_FREE_MAX.
+static void pass_release(struct vela_pass *pass)
+{
+    struct vela_renderer *renderer = pass->renderer;
+    pass_empty(pass);
+    if (renderer->passes_free_count >= VELA_PASS_FREE_MAX) {
+        pass_destroy(pass);
+        return;
+    }
+    trim((void **)&pass->draws, &pass->draw_capacity, sizeof(*pass->draws));
+    trim((void **)&pass->blur_ops, &pass->blur_capacity, sizeof(*pass->blur_ops));
+    trim((void **)&pass->waits, &pass->wait_capacity, sizeof(*pass->waits));
+    wl_list_remove(&pass->link);
+    wl_list_insert(&renderer->passes_free, &pass->link);
+    ++renderer->passes_free_count;
+}
+
+void vela_renderer_destroy_passes(struct vela_renderer *renderer)
+{
+    struct vela_pass *pass, *tmp;
+    wl_list_for_each_safe (pass, tmp, &renderer->passes_open, link) {
+        // Every caller submits the pass it began before returning to the
+        // event loop, so none should be open here. One that is would be
+        // used after this, wherever it is: drop its references and free it
+        // once, like the others.
+        wlr_log(WLR_ERROR, "Renderer destroyed with a pass still open");
+        pass_empty(pass);
+        pass_destroy(pass);
+    }
+    wl_list_for_each_safe (pass, tmp, &renderer->passes_free, link) {
+        pass_destroy(pass);
+    }
+    renderer->passes_free_count = 0;
 }
 
 struct wlr_render_pass *vela_pass_wlr(struct vela_pass *pass)
@@ -754,7 +835,7 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
     struct vela_renderer *renderer = pass->renderer;
     if (result) *result = (struct vela_pass_result) { 0, -1, 0 };
     if (vela_vulkan_unusable(renderer->vk)) {
-        pass_free(pass);
+        pass_release(pass);
         return false;
     }
     struct vela_target *target = pass->target;
@@ -767,7 +848,7 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
             wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point);
         }
         vela_renderer_timing_submitted(renderer, pass->timing_slot, 0);
-        pass_free(pass);
+        pass_release(pass);
         return false;
     }
     int foreign_count = 0;
@@ -780,7 +861,7 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
         vela_renderer_submit(renderer, cmd, NULL, 0, NULL);
         vela_renderer_timing_submitted(renderer, pass->timing_slot, 0);
         free(foreign);
-        pass_free(pass);
+        pass_release(pass);
         return false;
     }
     vela_renderer_write_timestamp(renderer, cmd, pass->timing_slot, true);
@@ -820,7 +901,7 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
             wlr_drm_syncobj_timeline_signal(pass->signal_timeline, pass->signal_point);
         }
         free(foreign);
-        pass_free(pass);
+        pass_release(pass);
         return false;
     }
     bool sync_ok = true;
@@ -859,14 +940,14 @@ bool vela_pass_submit(struct vela_pass *pass, struct vela_pass_result *result)
         close(release_fd);
     }
     if (!sync_ok || vela_vulkan_unusable(renderer->vk)) {
-        pass_free(pass);
+        pass_release(pass);
         return false;
     }
     target->initialized = true;
     if (result) {
         *result = (struct vela_pass_result) { point, pass->timing_slot, sync_point };
     }
-    pass_free(pass);
+    pass_release(pass);
     return true;
 }
 
