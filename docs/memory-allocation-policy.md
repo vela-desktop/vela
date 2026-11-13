@@ -941,9 +941,12 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   `vela_must_failed`.
 - **Event sources:** with the running compositor's `RLIMIT_NOFILE` lowered
   to its next free descriptor, a new IPC connection is dropped; lowered to
-  leave room for that connection alone, a hot-plugged output gets neither
-  its latch nor its virtual vblank `timerfd` and still presents frames,
-  following the backend's; the compositor keeps running
+  leave room for a connection and its watch alone, the connection kept
+  open while its command runs,
+  a hot-plugged output gets neither its latch nor its virtual vblank
+  `timerfd` (nor its buffers, so it starts off) and, switched on once the
+  limit is restored, presents frames following the backend's; the
+  compositor keeps running
   (`functional-resources`, `DescriptorExhaustion`). libwayland's own timers
   cannot fail this way after startup (point 2b).
 - **Enforcement:** the CI check's own fixtures (point 8).

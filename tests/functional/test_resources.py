@@ -28,12 +28,17 @@ def descriptor_counts(pid):
     return len(links), sum("sync_file" in link for link in links)
 
 
-def lowest_free_descriptor(pid):
+def limit_with_room_for(pid, count):
+    """The RLIMIT_NOFILE that leaves the process room for count more
+    descriptors: one above its count-th lowest free number, since a new
+    descriptor takes the lowest free one and a gap may sit below the last."""
     used = {int(name) for name in os.listdir(f"/proc/{pid}/fd")}
-    number = 0
-    while number in used:
+    number = -1
+    for _ in range(count):
         number += 1
-    return number
+        while number in used:
+            number += 1
+    return number + 1
 
 
 class DescriptorExhaustion(unittest.TestCase):
@@ -50,7 +55,7 @@ class DescriptorExhaustion(unittest.TestCase):
             try:
                 # Room for the accepted connection alone: watching it needs a
                 # duplicate, which fails, and the connection is dropped.
-                resource.prlimit(pid, resource.RLIMIT_NOFILE, (lowest_free_descriptor(pid) + 1, hard))
+                resource.prlimit(pid, resource.RLIMIT_NOFILE, (limit_with_room_for(pid, 1), hard))
                 with socket.socket(socket.AF_UNIX) as connection:
                     connection.settimeout(5)
                     connection.connect(vela.socket_path)
@@ -60,18 +65,29 @@ class DescriptorExhaustion(unittest.TestCase):
                 # output's timers (its latch and its virtual vblank, each a
                 # timerfd) get none. libwayland's own timers share one
                 # timerfd, made at startup, so they cannot fail this way.
-                resource.prlimit(pid, resource.RLIMIT_NOFILE, (lowest_free_descriptor(pid) + 2, hard))
-                vela.command("test-output add 640x480")
-                vela.wait_for_log("HEADLESS-2: no virtual vblank, frames follow the backend")
+                # The command's connection stays open until the output
+                # exists. One closed at once is read to its end and dropped
+                # before the command runs, and its two descriptors go to
+                # whatever the new output creates first: its buffers, or
+                # its latch.
+                resource.prlimit(pid, resource.RLIMIT_NOFILE, (limit_with_room_for(pid, 2), hard))
+                with socket.socket(socket.AF_UNIX) as connection:
+                    connection.connect(vela.socket_path)
+                    connection.sendall(b"test-output add 640x480\n")
+                    vela.wait_for_log("HEADLESS-2: no virtual vblank, frames follow the backend")
+                    vela.wait_for_log("test-output: connected HEADLESS-2")
             finally:
                 resource.prlimit(pid, resource.RLIMIT_NOFILE, (soft, hard))
-            # Its first buffers could not be exported under the same limit, but
-            # it draws: each redraw (SIGUSR1 redraws everything) presents a
-            # frame, following the backend's frame events, and the compositor
-            # keeps answering.
+            # Its buffers could not be made under the same limit either, so it
+            # starts off. Switched on now, it draws without its timers: each
+            # redraw (SIGUSR1 redraws everything) presents a frame, following
+            # the backend's frame events, and the compositor keeps answering.
             def frames(state):
                 return next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")["frames"]
-            before = frames(vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two monitors"))
+            vela.randr("--output", "HEADLESS-2", "--on")
+            before = frames(vela.wait_for(
+                lambda s: any(o["name"] == "HEADLESS-2" and o["enabled"] for o in s["outputs"]),
+                what="the output without its timers on"))
             os.kill(pid, signal.SIGUSR1)
             vela.wait_for(lambda s: frames(s) > before,
                           what="frames on the output without its timers")
