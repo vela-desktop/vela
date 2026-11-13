@@ -150,6 +150,15 @@ target_link_libraries(vela-slowgpu PRIVATE proto-xdg-shell proto-linux-dmabuf pr
     PkgConfig::TOOLS_VULKAN PkgConfig::TOOLS_GBM PkgConfig::TOOLS_DRM)
 endif()
 
+# A client with buffers above the upload budget or the device's image limit
+# (tests/functional/test_uploads.py).
+if(VELA_BUILD_GPU_TEST_TOOLS)
+add_executable(vela-bigbuffer vela-bigbuffer.c)
+target_link_libraries(vela-bigbuffer PRIVATE proto-xdg-shell proto-viewporter proto-linux-dmabuf
+    PkgConfig::TOOLS_GBM PkgConfig::TOOLS_DRM)
+target_compile_options(vela-bigbuffer PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
+
 foreach(tool vela-windows vela-input vela-pattern vela-testlock vela-panel vela-randr)
     target_compile_options(${tool} PRIVATE -Wall -Wextra -Wno-unused-parameter)
 endforeach()
