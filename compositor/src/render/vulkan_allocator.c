@@ -193,7 +193,10 @@ static struct wlr_buffer *export_buffer(struct vulkan_allocator *alloc, int widt
     if (!vela_vulkan_result(vk, result, "vkGetMemoryFdKHR")) goto fail;
     if (d->fd[0] < 0) goto fail;
     for (uint32_t i = 0; i < planes; ++i) {
-        if (i > 0 && (d->fd[i] = fcntl(d->fd[0], F_DUPFD_CLOEXEC, 0)) < 0) goto fail;
+        if (i > 0) {
+            d->fd[i] = fcntl(d->fd[0], F_DUPFD_CLOEXEC, 0);
+            if (d->fd[i] < 0) goto fail;
+        }
         const VkImageSubresource subresource = {
             .aspectMask = VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT << i,
         };
