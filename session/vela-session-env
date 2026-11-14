@@ -57,23 +57,47 @@ start)
     fi
     : > "$STATE"
     systemctl --user -q mask --runtime "$RESTORE" 2> /dev/null
+    credential_issue=0
     if [ "$FIRST_START" -eq 1 ]; then
-        # Owned by vela-session.target; do not touch the daemon PAM may own.
-        # GNOME's --start initializes a pre-unlocked PAM daemon when present.
+        # Select once per outer session, but validate the actual Secret Service
+        # owner. Never start a competing provider or stop one owned by PAM.
+        . "$(dirname "$0")/credential-compat/ensure-backend"
         case "${VELA_SECRET_BACKEND:-kwallet}" in
-            gnome) systemctl --user start vela-gnome-keyring-compat.service ||
-                echo "vela-session-env: unable to start GNOME keyring compatibility" >&2 ;;
-            kwallet) systemctl --user start vela-kwallet-compat.service ||
-                echo "vela-session-env: unable to start KWallet compatibility" >&2 ;;
+            gnome)
+                vela_credential_ensure gnome /usr/bin/gnome-keyring-daemon \
+                    vela-gnome-keyring-compat.service || credential_issue=1 ;;
+            kwallet)
+                vela_credential_ensure kwallet /usr/bin/kwalletd6 \
+                    vela-kwallet-compat.service || credential_issue=1 ;;
         esac
     fi
     if systemctl --user cat vela-session.target > /dev/null 2>&1; then
         systemctl --user --no-block start vela-session.target
     fi
+    if [ "$FIRST_START" -eq 1 ] && { [ "${VELA_SECRET_CONFIGURED:-0}" = 0 ] || [ "$credential_issue" -ne 0 ]; }; then
+        # Optional desktop notice after the shell notification server is ready.
+        # Settings also shows a persistent reminder if the backend was not
+        # explicitly chosen or is unavailable; notification delivery is best-effort.
+        (
+            sleep 3
+            if command -v notify-send >/dev/null 2>&1; then
+                if [ "$credential_issue" -ne 0 ]; then
+                    notify-send -a "Vela Desktop" -u critical -t 20000 \
+                        "Password manager unavailable" \
+                        "Vela could not use the selected password manager. Open Settings > System and check the session log."
+                else
+                    notify-send -a "Vela Desktop" -t 20000 \
+                        "Choose your password manager" \
+                        "Open Settings > System and choose KWallet or GNOME Keyring. Passwords are not migrated."
+                fi
+            fi
+        ) >/dev/null 2>&1 &
+    fi
     ;;
 stop)
     [ -e "$STATE" ] || exit 0
     rm -f "$STATE"
+    [ -z "${XDG_RUNTIME_DIR:-}" ] || rm -f "$XDG_RUNTIME_DIR/vela-credential-compat.status"
     # Only the services started by Vela. Other user/PAM-owned daemons remain.
     systemctl --user --no-block stop vela-gnome-keyring-compat.service vela-kwallet-compat.service 2> /dev/null
     if systemctl --user cat vela-session.target > /dev/null 2>&1; then
