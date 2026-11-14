@@ -16,6 +16,9 @@ framework: it never opens, reads, deletes, migrates, or copies credential files.
   graphical login (and each later login while unset), Vela automatically opens
   a **choice dialog** in Settings, even if the implicit fallback works. The
   user can choose KWallet, GNOME Keyring, or defer until the next login.
+  Providers whose daemon is not installed are disabled in the choice dialog.
+  The session retries opening Settings for a bounded period and cancels a
+  pending prompt when its original session ends (even if the display is reused).
   Settings > System also shows an unselected choice until one is saved.
   Choosing even the already-used KWallet persists the decision explicitly.
   Supervised compositor restarts never relaunch the dialog.
@@ -34,15 +37,21 @@ owner using `busctl --user` and `GetConnectionUnixProcessID`:
    unlocked by PAM), do not launch or manage it.
 2. If **another** daemon owns the bus name, report a conflict. Do not replace,
    terminate, or reconfigure someone else's password store.
-3. If no owner exists, check the selected daemon executable explicitly.
+3. For KWallet, **also inspect `org.kde.kwalletd6`**, the native KDE API:
+   `kwalletd6` and `ksecretd` can be separate processes. If KWallet's
+   native API is available but `org.freedesktop.secrets` is not, report
+   `limited`, not a full success or a broken wallet. Some Chromium/KDE
+   clients may still work, but generic libsecret consumers (including `gh`)
+   need Secret Service. Do not start a competing native daemon.
+4. If no compatible owner exists, check the selected daemon executable explicitly.
    Start the matching Vela-owned systemd unit, then verify the bus owner.
    `ConditionFileIsExecutable` and a successful `systemctl start` on their
    own **do not** prove that the provider is usable.
-4. If the bus response is unreadable, no owner appears, or the selected
+5. If the bus response is unreadable, no owner appears, or the selected
    executable is missing, report the failure without claiming success.
 
 The result is written to `$XDG_RUNTIME_DIR/vela-credential-compat.status`
-with a private umask: `ok`, `missing`, `conflict`, `unverified`, or `failed`.
+with a private umask: `ok`, `limited`, `missing`, `conflict`, `unverified`, or `failed`.
 Settings > System displays persistent failure guidance; notification delivery
 for actual provider failures is best effort after Vela's notification server
 starts. The missing-choice dialog is separate from those warnings. Logs also explain
@@ -73,8 +82,9 @@ ctest --test-dir build -R session.credential-compat --output-on-failure
 
 They cover explicit/unset/invalid selection, selection precedence, a
 pre-existing PAM daemon, a wrong bus owner, a missing daemon, failed systemd
-start, an unrecognizable D-Bus response, successful startup, and prompt
-launch only on the first start of an unconfigured session.
+start, an unrecognizable D-Bus response, native-only KWallet and ksecretd
+ownership, successful startup, and prompt launch only on the first start
+of an unconfigured session.
 
 **Manual acceptance before merge:**
 
@@ -82,13 +92,17 @@ launch only on the first start of an unconfigured session.
   login again, check stored Brave/Chromium/Electron sessions and `gh auth status`,
   and confirm that the provider's process owns `org.freedesktop.secrets`.
 - Arch SDDM + an existing KWallet: select KWallet, login again, check the
-  same clients and confirm the KWallet owner. Verify that a missing
-  `kwalletd6` is clearly reported.
+  same clients and confirm both `org.kde.kwalletd6` and, when enabled,
+  `org.freedesktop.secrets` (often owned by `ksecretd`). Verify that a
+  native-only KWallet is reported as `limited` rather than as missing.
+  Verify that a missing `kwalletd6` is clearly reported.
 - Verify the first-login modal appears regardless of the implicit KWallet
   fallback and repeats on a new login when dismissed; choosing either provider
   persists `secret-backend` in `vela.conf`. After saving, verify that it
   does not return, including after a supervised compositor restart. Verify that
   forwarding to an already-open Settings instance still displays the modal.
+  Also verify that a delayed prompt cannot open after logout, and unavailable
+  provider choices are visibly disabled.
 - With GNOME and with Plasma active on another VT, confirm that Vela neither
   steals their bus name nor stops their daemon. Switch desktop environments
   and confirm previous credentials remain available.
@@ -105,6 +119,7 @@ For a failing session, inspect:
 ```sh
 cat "${XDG_RUNTIME_DIR}/vela-credential-compat.status"
 busctl --user status org.freedesktop.secrets
+busctl --user status org.kde.kwalletd6 # Native KWallet API; may be inactive until first use
 systemctl --user status vela-gnome-keyring-compat.service vela-kwallet-compat.service
 ```
 
