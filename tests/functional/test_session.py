@@ -709,6 +709,28 @@ class CommandSocket(unittest.TestCase):
             self.assertEqual(len(vela.state().windows), 20)
 
 
+class DmabufDiagnostics(unittest.TestCase):
+    """PR 19's opt-in trace, plus the real Vulkan export/import path."""
+
+    def test_vulkan_export_renders_and_can_be_captured(self):
+        with Session(size="640x480@60", env={"VELA_ALLOCATOR": "vulkan", "VELA_DEBUG_DMABUF": "1"}) as vela:
+            vela.wait_for_log("Output buffer allocator: Vulkan DMA-BUF export")
+            vela.wait_for_log("DMABUF trace: after initial wlr_output_commit_state")
+            vela.wait_for_log("DMABUF trace: Vulkan export plane=")
+            vela.wait_for_log("DMABUF trace: render target ready")
+            wallpaper = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "804020"], env=vela.client_env)
+            vela.clients.append(wallpaper)
+            vela.open_window(200, 150)
+            vela.wait_for_log("DMABUF trace: after frame wlr_output_commit_state")
+            vela.wait_for(lambda _: vela.pixels().at(10, 10) == (128, 64, 32),
+                          what="Vulkan-exported output pixels", read_state=False)
+
+    def test_trace_off_by_default(self):
+        with Session(size="640x480@60", env={"VELA_DEBUG_DMABUF": "0"}) as vela:
+            vela.open_window()
+            self.assertNotIn("DMABUF trace:", vela.log_text())
+
+
 class Supervisor(unittest.TestCase):
     def test_redraw_signal_keeps_supervised_session_alive(self):
         # pkill -x matches /proc/<pid>/comm, not argv. Never run pkill in
